@@ -12,7 +12,20 @@
             <div class="w-44">
                 <x-select name="period" :options="['today' => 'اليوم', 'week' => 'هذا الأسبوع', 'month' => 'هذا الشهر', 'year' => 'هذه السنة']" selected="month" />
             </div>
-            <x-button variant="outline" icon="calendar" type="button">تحديد التاريخ</x-button>
+            <div class="relative" x-data="{ open: false, from: '', to: '' }" @click.outside="open = false">
+                <x-button variant="outline" icon="calendar" type="button" @click="open = !open">تحديد التاريخ</x-button>
+                <div x-show="open" x-cloak x-transition class="absolute left-0 mt-2 z-30 w-64 bg-white rounded-xl border border-gray-100 shadow-lg p-4 space-y-3">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">من تاريخ</label>
+                        <input type="date" x-model="from" class="w-full rounded-lg border-gray-200 text-sm" />
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">إلى تاريخ</label>
+                        <input type="date" x-model="to" class="w-full rounded-lg border-gray-200 text-sm" />
+                    </div>
+                    <a x-bind:href="'{{ route('admin.reports.index') }}' + (from ? ('?from=' + from + '&to=' + to) : '')" class="block text-center bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg py-2">عرض التقرير للفترة</a>
+                </div>
+            </div>
         </x-slot:actions>
     </x-page-header>
 

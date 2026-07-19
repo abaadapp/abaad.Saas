@@ -8,9 +8,43 @@
     >
         <x-slot:actions>
             <x-button variant="outline" size="md" icon="arrow-right" :href="route('super-admin.users.index')">رجوع</x-button>
-            <x-button variant="primary" size="md" icon="pencil">تعديل</x-button>
+            <x-button variant="primary" size="md" icon="pencil" @click="$dispatch('open-modal','edit-user')">تعديل</x-button>
         </x-slot:actions>
     </x-page-header>
+
+    @php $userModel = \App\Models\User::find($user['id']); @endphp
+    {{-- نافذة تعديل المستخدم --}}
+    <x-modal name="edit-user" title="تعديل بيانات المستخدم">
+        <form id="edit-user-form" method="POST" action="{{ route('super-admin.users.update', $user['id']) }}" class="space-y-4">
+            @csrf @method('PUT')
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">الاسم</label>
+                <input type="text" name="name" value="{{ $userModel->name ?? '' }}" required class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">البريد</label>
+                    <input type="email" name="email" value="{{ $userModel->email ?? '' }}" required dir="ltr" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">الهاتف</label>
+                    <input type="text" name="phone" value="{{ $userModel->phone ?? '' }}" dir="ltr" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">الدور</label>
+                <select name="role" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200">
+                    @foreach (['super_admin' => 'مدير المنصة', 'admin' => 'مدير نشاط', 'manager' => 'مدير فرع', 'cashier' => 'كاشير', 'sales' => 'موظف مبيعات', 'accountant' => 'محاسب'] as $val => $label)
+                        <option value="{{ $val }}" @selected(($userModel->role ?? '') === $val)>{{ $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+        </form>
+        <x-slot:footer>
+            <x-button variant="light" @click="$dispatch('close-modal')">إلغاء</x-button>
+            <button type="submit" form="edit-user-form" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg px-4 py-2">حفظ</button>
+        </x-slot:footer>
+    </x-modal>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {{-- بطاقة الملف الشخصي --}}
@@ -23,8 +57,11 @@
                     <x-badge :text="$user['status']" />
                 </div>
                 <div class="mt-5 flex items-center justify-center gap-2">
-                    <x-button variant="light" size="sm" icon="mail">مراسلة</x-button>
-                    <x-button variant="outline" size="sm" icon="lock">تعطيل</x-button>
+                    <x-button variant="light" size="sm" icon="mail" :href="'mailto:' . $user['email']">مراسلة</x-button>
+                    <form method="POST" action="{{ route('super-admin.users.toggle', $user['id']) }}" onsubmit="return confirm('تغيير حالة هذا المستخدم؟')">
+                        @csrf
+                        <x-button variant="outline" size="sm" :icon="$user['status'] === 'نشط' ? 'lock' : 'unlock'" type="submit">{{ $user['status'] === 'نشط' ? 'تعطيل' : 'تفعيل' }}</x-button>
+                    </form>
                 </div>
             </div>
 

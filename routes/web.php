@@ -73,7 +73,13 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 
     // المستخدمون
     Route::get('/users', [\App\Http\Controllers\SuperAdmin\UserController::class, 'index'])->name('users.index');
+    Route::post('/users', [\App\Http\Controllers\SuperAdmin\UserController::class, 'store'])->name('users.store');
+    Route::put('/users/{id}', [\App\Http\Controllers\SuperAdmin\UserController::class, 'update'])->name('users.update');
+    Route::post('/users/{id}/toggle', [\App\Http\Controllers\SuperAdmin\UserController::class, 'toggleStatus'])->name('users.toggle');
     Route::view('/users/{id}', 'super-admin.users.show')->name('users.show');
+
+    // إنشاء باقة
+    Route::post('/plans', [\App\Http\Controllers\SuperAdmin\PlanController::class, 'store'])->name('plans.store');
 
     // التقارير والإعدادات وسجل النشاط
     Route::view('/reports', 'super-admin.reports.index')->name('reports.index');
@@ -145,7 +151,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::put('/employees/{id}', [EmployeeController::class, 'update'])->name('employees.update');
     Route::post('/employees/{id}/toggle', [EmployeeController::class, 'toggleStatus'])->name('employees.toggle');
     Route::post('/employees/{id}/reset-password', [EmployeeController::class, 'resetPassword'])->name('employees.resetPassword');
+    Route::post('/employees/{id}/goal', [EmployeeController::class, 'updateGoal'])->name('employees.goal');
     Route::view('/employees/{id}', 'admin.employees.show')->name('employees.show');
+
+    // المواعيد والطلبات المجدولة
+    Route::view('/appointments', 'admin.appointments.index')->name('appointments.index');
+    Route::post('/appointments', [\App\Http\Controllers\Admin\AppointmentController::class, 'store'])->name('appointments.store');
+    Route::post('/appointments/{id}/status', [\App\Http\Controllers\Admin\AppointmentController::class, 'updateStatus'])->name('appointments.status');
+    Route::delete('/appointments/{id}', [\App\Http\Controllers\Admin\AppointmentController::class, 'destroy'])->name('appointments.destroy');
 
     // المخزون
     Route::view('/inventory', 'admin.inventory.index')->name('inventory.index');
@@ -176,6 +189,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::get('/export/customers', [\App\Http\Controllers\ExportController::class, 'customers'])->name('export.customers');
     Route::get('/export/transactions', [\App\Http\Controllers\ExportController::class, 'transactions'])->name('export.transactions');
     Route::get('/export/analytics', [\App\Http\Controllers\ExportController::class, 'analytics'])->name('export.analytics');
+    Route::get('/export/expenses', [\App\Http\Controllers\ExportController::class, 'expenses'])->name('export.expenses');
+    Route::get('/export/employees', [\App\Http\Controllers\ExportController::class, 'employees'])->name('export.employees');
+    Route::get('/export/inventory', [\App\Http\Controllers\ExportController::class, 'inventory'])->name('export.inventory');
 
     Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'adminIndex'])->name('activity.index');
     Route::view('/settings', 'admin.settings.index')->name('settings.index');

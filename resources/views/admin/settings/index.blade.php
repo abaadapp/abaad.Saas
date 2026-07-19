@@ -310,30 +310,71 @@
                         <x-input label="حد التوصيل المجاني (ر.ع)" name="free_threshold" type="number" value="25.000" icon="gift" />
                     </div>
 
-                    <div>
+                    <div x-data="{
+                            zones: [
+                                { name: 'الخوير', fee: 1.000 },
+                                { name: 'روي', fee: 1.500 },
+                                { name: 'السيب', fee: 2.000 },
+                                { name: 'بوشر', fee: 2.500 },
+                            ],
+                            form: { name: '', fee: '' },
+                            editIndex: null,
+                            save() {
+                                if (!this.form.name || this.form.fee === '') return;
+                                const z = { name: this.form.name, fee: parseFloat(this.form.fee) || 0 };
+                                if (this.editIndex === null) this.zones.push(z);
+                                else this.zones[this.editIndex] = z;
+                                this.form = { name: '', fee: '' }; this.editIndex = null;
+                            },
+                            edit(i) { this.form = { name: this.zones[i].name, fee: this.zones[i].fee }; this.editIndex = i; },
+                            remove(i) { this.zones.splice(i, 1); if (this.editIndex === i) { this.editIndex = null; this.form = { name: '', fee: '' }; } },
+                        }">
                         <h4 class="text-sm font-semibold text-gray-800 mb-3">مناطق التوصيل ورسومها</h4>
-                        @php
-                            $zones = [
-                                ['name' => 'الخوير', 'fee' => 1.000],
-                                ['name' => 'روي', 'fee' => 1.500],
-                                ['name' => 'السيب', 'fee' => 2.000],
-                                ['name' => 'بوشر', 'fee' => 2.500],
-                            ];
-                        @endphp
-                        <x-table :headers="['المنطقة', 'رسوم التوصيل', 'إجراءات']">
-                            @foreach ($zones as $zone)
-                                <tr class="hover:bg-gray-50">
-                                    <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $zone['name'] }}</td>
-                                    <td class="px-4 py-3 text-gray-700 whitespace-nowrap">{{ \App\Support\Demo::money($zone['fee']) }}</td>
-                                    <td class="px-4 py-3 whitespace-nowrap">
-                                        <div class="flex items-center gap-1">
-                                            <x-button variant="ghost" size="sm" icon="pencil">تعديل</x-button>
-                                            <x-button variant="ghost" size="sm" icon="trash-2">حذف</x-button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </x-table>
+                        <div class="overflow-x-auto rounded-xl border border-gray-100">
+                            <table class="min-w-full text-sm">
+                                <thead class="bg-gray-50 text-gray-500">
+                                    <tr>
+                                        <th class="px-4 py-2.5 text-right font-medium">المنطقة</th>
+                                        <th class="px-4 py-2.5 text-right font-medium">رسوم التوصيل (ر.ع)</th>
+                                        <th class="px-4 py-2.5 text-right font-medium">إجراءات</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-50">
+                                    <template x-for="(zone, i) in zones" :key="i">
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-3 font-medium text-gray-800" x-text="zone.name"></td>
+                                            <td class="px-4 py-3 text-gray-700" x-text="Number(zone.fee).toFixed(3)"></td>
+                                            <td class="px-4 py-3">
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" @click="edit(i)" class="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title="تعديل"><x-icon name="pencil" class="w-4 h-4" /></button>
+                                                    <button type="button" @click="remove(i)" class="p-1.5 rounded-lg text-danger-600 hover:bg-danger-50" title="حذف"><x-icon name="trash-2" class="w-4 h-4" /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <tr x-show="!zones.length"><td colspan="3" class="px-4 py-6 text-center text-gray-400">لا توجد مناطق. أضف منطقة جديدة أدناه.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        {{-- إضافة / تعديل منطقة --}}
+                        <div class="mt-3 flex flex-col sm:flex-row gap-2 items-end">
+                            <div class="flex-1 w-full">
+                                <label class="block text-xs text-gray-500 mb-1">اسم المنطقة</label>
+                                <input type="text" x-model="form.name" placeholder="مثال: المعبيلة" class="w-full rounded-lg border-gray-200 text-sm" />
+                            </div>
+                            <div class="w-full sm:w-40">
+                                <label class="block text-xs text-gray-500 mb-1">الرسوم</label>
+                                <input type="number" step="0.001" min="0" x-model="form.fee" class="w-full rounded-lg border-gray-200 text-sm" />
+                            </div>
+                            <button type="button" @click="save()" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg px-4 py-2 whitespace-nowrap" x-text="editIndex === null ? 'إضافة منطقة' : 'حفظ التعديل'"></button>
+                        </div>
+                        {{-- إرسال القيم مع النموذج --}}
+                        <template x-for="(zone, i) in zones" :key="'h'+i">
+                            <span>
+                                <input type="hidden" :name="'delivery_zones['+i+'][name]'" :value="zone.name" />
+                                <input type="hidden" :name="'delivery_zones['+i+'][fee]'" :value="zone.fee" />
+                            </span>
+                        </template>
                     </div>
                 </div>
                 <div class="mt-6 flex justify-end">

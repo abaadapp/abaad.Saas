@@ -10,14 +10,15 @@
         </x-slot:actions>
     </x-page-header>
 
+    <div x-data="listFilter()" x-ref="list">
     {{-- شريط الفلاتر --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
         <div class="flex flex-col md:flex-row md:items-center gap-3">
             <div class="flex-1">
-                <x-input name="search" placeholder="ابحث باسم المنتج أو رمز SKU..." icon="search" />
+                <x-input name="search" placeholder="ابحث باسم المنتج أو رمز SKU..." icon="search" x-model="q" @input="apply()" />
             </div>
             <div class="w-full md:w-56">
-                <x-select name="type" placeholder="كل أنواع الحركات" :options="[
+                <x-select name="type" placeholder="كل أنواع الحركات" x-model="tag" @change="apply()" :options="[
                     'إضافة كمية' => 'إضافة كمية',
                     'خصم كمية' => 'خصم كمية',
                     'مرتجع' => 'مرتجع',
@@ -25,7 +26,7 @@
                     'تعديل يدوي' => 'تعديل يدوي',
                 ]" />
             </div>
-            <x-button variant="light" size="md" icon="filter">تصفية</x-button>
+            <x-button variant="light" size="md" icon="filter" @click="apply()">تصفية</x-button>
         </div>
     </div>
 
@@ -41,7 +42,7 @@
     @endphp
     <x-table :headers="['المنتج', 'SKU', 'نوع الحركة', 'الكمية', 'الموظف', 'التاريخ']">
         @foreach (\App\Support\Demo::movements() as $movement)
-            <tr class="hover:bg-gray-50">
+            <tr class="hover:bg-gray-50" data-row data-tag="{{ $movement['type'] }}" data-search="{{ $movement['product'] }} {{ $movement['sku'] }} {{ $movement['employee'] }}">
                 <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $movement['product'] }}</td>
                 <td class="px-4 py-3 text-gray-500 whitespace-nowrap font-mono">{{ $movement['sku'] }}</td>
                 <td class="px-4 py-3 whitespace-nowrap">
@@ -59,6 +60,7 @@
             <x-pagination :total="count(\App\Support\Demo::movements())" :perPage="10" :current="1" />
         </x-slot:footer>
     </x-table>
+    </div>
 
     {{-- نافذة إضافة حركة --}}
     <x-modal name="add-movement" title="إضافة حركة مخزون" maxWidth="max-w-lg">

@@ -28,7 +28,7 @@
                 <input type="date" @click="period = 'custom'" :class="period === 'custom' ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-300'" class="rounded-xl border bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none" />
                 <span class="text-gray-400">—</span>
                 <input type="date" @click="period = 'custom'" :class="period === 'custom' ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-300'" class="rounded-xl border bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none" />
-                <x-button variant="primary" size="sm" icon="filter">تطبيق</x-button>
+                <x-button variant="primary" size="sm" icon="filter" @click="period = 'custom'">تطبيق</x-button>
             </div>
         </div>
     </div>

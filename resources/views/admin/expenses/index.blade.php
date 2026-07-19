@@ -12,7 +12,7 @@
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'المصروفات' => '#']"
     >
         <x-slot:actions>
-            <x-button variant="outline" size="md" icon="download">تصدير</x-button>
+            <x-button variant="outline" size="md" icon="download" :href="route('admin.export.expenses')">تصدير CSV</x-button>
             <x-button variant="primary" size="md" icon="plus" x-on:click="$dispatch('open-modal','add-expense')">إضافة مصروف</x-button>
         </x-slot:actions>
     </x-page-header>
@@ -25,14 +25,15 @@
         <x-stat-card label="عدد المصروفات" :value="$count" icon="receipt" color="primary" />
     </div>
 
+    <div x-data="listFilter()" x-ref="list">
     {{-- شريط الفلاتر --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
         <div class="flex flex-col md:flex-row md:items-center gap-3">
             <div class="flex-1">
-                <x-input name="search" placeholder="ابحث في وصف المصروف..." icon="search" />
+                <x-input name="search" placeholder="ابحث في وصف المصروف..." icon="search" x-model="q" @input="apply()" />
             </div>
             <div class="w-full md:w-48">
-                <x-select name="type" placeholder="كل الأنواع" :options="[
+                <x-select name="type" placeholder="كل الأنواع" x-model="tag" @change="apply()" :options="[
                     'إيجار' => 'إيجار',
                     'رواتب' => 'رواتب',
                     'كهرباء وماء' => 'كهرباء وماء',
@@ -45,7 +46,7 @@
             <div class="w-full md:w-44">
                 <input type="date" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none transition" />
             </div>
-            <x-button variant="light" size="md" icon="filter">تصفية</x-button>
+            <x-button variant="light" size="md" icon="filter" @click="apply()">تصفية</x-button>
         </div>
     </div>
 
@@ -55,7 +56,7 @@
     @endphp
     <x-table :headers="['نوع المصروف', 'الوصف', 'المبلغ', 'التاريخ', 'الموظف', 'طريقة الدفع']">
         @foreach ($expenses as $expense)
-            <tr class="hover:bg-gray-50">
+            <tr class="hover:bg-gray-50" data-row data-tag="{{ $expense['type'] }}" data-search="{{ $expense['type'] }} {{ $expense['description'] }} {{ $expense['employee'] }}">
                 <td class="px-4 py-3 whitespace-nowrap"><x-badge type="secondary" :text="$expense['type']" /></td>
                 <td class="px-4 py-3 text-gray-700 whitespace-nowrap">{{ $expense['description'] }}</td>
                 <td class="px-4 py-3 font-semibold text-danger-600 whitespace-nowrap">{{ \App\Support\Demo::money($expense['amount']) }}</td>
@@ -71,6 +72,7 @@
             <x-pagination :total="$count" :perPage="10" :current="1" />
         </x-slot:footer>
     </x-table>
+    </div>
 
     {{-- نافذة إضافة مصروف --}}
     <x-modal name="add-expense" title="إضافة مصروف جديد" maxWidth="max-w-lg">

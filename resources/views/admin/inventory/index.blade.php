@@ -12,7 +12,7 @@
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'المخزون' => '#']"
     >
         <x-slot:actions>
-            <x-button variant="outline" size="md" icon="clipboard-list">جرد المخزون</x-button>
+            <x-button variant="outline" size="md" icon="clipboard-list" :href="route('admin.export.inventory')">جرد المخزون (CSV)</x-button>
             <x-button variant="primary" size="md" icon="repeat" :href="route('admin.inventory.movements')">حركة مخزون جديدة</x-button>
         </x-slot:actions>
     </x-page-header>
@@ -33,20 +33,21 @@
         </div>
     @endif
 
+    <div x-data="listFilter()" x-ref="list">
     {{-- شريط الفلاتر --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
         <div class="flex flex-col md:flex-row md:items-center gap-3">
             <div class="flex-1">
-                <x-input name="search" placeholder="ابحث باسم المنتج أو رمز SKU..." icon="search" />
+                <x-input name="search" placeholder="ابحث باسم المنتج أو رمز SKU..." icon="search" x-model="q" @input="apply()" />
             </div>
             <div class="w-full md:w-56">
-                <x-select name="status" placeholder="كل الحالات" :options="[
+                <x-select name="status" placeholder="كل الحالات" x-model="tag" @change="apply()" :options="[
                     'متوفر' => 'متوفر',
                     'منخفض' => 'منخفض',
                     'نفد المخزون' => 'نفد المخزون',
                 ]" />
             </div>
-            <x-button variant="light" size="md" icon="filter">تصفية</x-button>
+            <x-button variant="light" size="md" icon="filter" @click="apply()">تصفية</x-button>
         </div>
     </div>
 
@@ -54,7 +55,7 @@
     <div x-data="{ sel: { id: '', name: '', sku: '', qty: 0 } }">
     <x-table :headers="['المنتج', 'SKU', 'الكمية الحالية', 'الحد الأدنى', 'حالة المخزون', 'آخر تحديث', 'إجراء']">
         @foreach ($inventory as $item)
-            <tr class="hover:bg-gray-50">
+            <tr class="hover:bg-gray-50" data-row data-tag="{{ $item['status'] }}" data-search="{{ $item['name'] }} {{ $item['sku'] }}">
                 <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $item['name'] }}</td>
                 <td class="px-4 py-3 text-gray-500 whitespace-nowrap font-mono">{{ $item['sku'] }}</td>
                 <td class="px-4 py-3 whitespace-nowrap">
@@ -98,5 +99,6 @@
             <x-button variant="primary" size="md" icon="check" type="submit" form="adjust-form">حفظ</x-button>
         </x-slot:footer>
     </x-modal>
+    </div>
     </div>
 </x-layouts::admin>

@@ -294,5 +294,35 @@ class DatabaseSeeder extends Seeder
                 \App\Models\Currency::create(array_merge($cur, ['business_id' => $bizId, 'active' => true]));
             }
         }
+
+        // أهداف وعمولات تجريبية للموظفين
+        foreach (\App\Models\User::where('role', '!=', 'super_admin')->get() as $i => $u) {
+            $u->update([
+                'monthly_target' => [3000, 4500, 6000, 2500, 5000][$i % 5],
+                'commission_rate' => [2, 3, 2.5, 1.5, 4][$i % 5],
+            ]);
+        }
+
+        // مواعيد وطلبات مجدولة تجريبية لكل متجر
+        $sampleAppointments = [
+            ['title' => 'تجهيز باقة ورد لحفل زفاف', 'customer_name' => 'نورة السالمي', 'phone' => '96890112233', 'offset' => 1, 'hour' => 10, 'status' => 'مؤكد'],
+            ['title' => 'توصيل طلب مناسبة تخرّج', 'customer_name' => 'خالد البلوشي', 'phone' => '96890445566', 'offset' => 1, 'hour' => 16, 'status' => 'مجدول'],
+            ['title' => 'تنسيق زهور مكتب شركة', 'customer_name' => 'شركة الأفق', 'phone' => '96824778899', 'offset' => 2, 'hour' => 9, 'status' => 'مجدول'],
+            ['title' => 'باقة عيد ميلاد', 'customer_name' => 'ريم الهنائي', 'phone' => '96895223344', 'offset' => 3, 'hour' => 12, 'status' => 'مجدول'],
+            ['title' => 'طلب اشتراك زهور شهري', 'customer_name' => 'مها الكندي', 'phone' => '96891667788', 'offset' => 5, 'hour' => 11, 'status' => 'مجدول'],
+        ];
+        foreach (\App\Models\Business::pluck('id') as $bizId) {
+            foreach ($sampleAppointments as $ap) {
+                \App\Models\Appointment::create([
+                    'business_id' => $bizId,
+                    'title' => $ap['title'],
+                    'customer_name' => $ap['customer_name'],
+                    'phone' => $ap['phone'],
+                    'branch' => 'الفرع الرئيسي',
+                    'scheduled_at' => now()->addDays($ap['offset'])->setTime($ap['hour'], 0),
+                    'status' => $ap['status'],
+                ]);
+            }
+        }
     }
 }

@@ -78,6 +78,36 @@ class ExportController extends Controller
         return $this->stream('analytics', ['العنصر', 'القيمة 1', 'القيمة 2'], $rows);
     }
 
+    public function expenses()
+    {
+        $rows = array_map(fn ($e) => [
+            $e['date'], $e['type'], $e['description'],
+            number_format($e['amount'], 3, '.', ''), $e['method'], $e['employee'],
+        ], Demo::expenses());
+
+        return $this->stream('expenses', ['التاريخ', 'النوع', 'الوصف', 'المبلغ', 'الطريقة', 'الموظف'], $rows);
+    }
+
+    public function employees()
+    {
+        $rows = array_map(fn ($u) => [
+            $u['id'], $u['name'], $u['role'], $u['branch'], $u['phone'], $u['email'],
+            number_format($u['achieved'], 3, '.', ''), number_format($u['target'], 3, '.', ''),
+            $u['pct'] . '%', $u['commission_rate'] . '%', number_format($u['commission'], 3, '.', ''), $u['status'],
+        ], Demo::employees());
+
+        return $this->stream('employees', ['المعرّف', 'الاسم', 'الدور', 'الفرع', 'الهاتف', 'البريد', 'مبيعات الشهر', 'الهدف', 'الإنجاز', 'نسبة العمولة', 'العمولة', 'الحالة'], $rows);
+    }
+
+    public function inventory()
+    {
+        $rows = array_map(fn ($p) => [
+            $p['id'], $p['name'], $p['sku'], $p['qty'], $p['min'], $p['status'], $p['updated'],
+        ], Demo::inventory());
+
+        return $this->stream('inventory', ['المعرّف', 'المنتج', 'SKU', 'الكمية الحالية', 'الحد الأدنى', 'حالة المخزون', 'آخر تحديث'], $rows);
+    }
+
     /* ------------------------------ لوحة المنصة ------------------------------ */
 
     public function businesses()

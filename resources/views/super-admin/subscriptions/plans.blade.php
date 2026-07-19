@@ -6,9 +6,48 @@
     >
         <x-slot:actions>
             <x-button variant="outline" size="md" icon="refresh-cw" :href="route('super-admin.subscriptions.index')">الاشتراكات</x-button>
-            <x-button variant="primary" size="md" icon="plus">باقة جديدة</x-button>
+            <x-button variant="primary" size="md" icon="plus" @click="$dispatch('open-modal','add-plan')">باقة جديدة</x-button>
         </x-slot:actions>
     </x-page-header>
+
+    {{-- نافذة إضافة باقة --}}
+    <x-modal name="add-plan" title="إضافة باقة اشتراك جديدة">
+        <form id="add-plan-form" method="POST" action="{{ route('super-admin.plans.store') }}" class="space-y-4">
+            @csrf
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">اسم الباقة <span class="text-danger-500">*</span></label>
+                <input type="text" name="name" required placeholder="مثال: الباقة الاحترافية" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">السعر الشهري (ر.ع) <span class="text-danger-500">*</span></label>
+                    <input type="number" step="0.001" min="0" name="monthly_price" required class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">السعر السنوي (ر.ع) <span class="text-danger-500">*</span></label>
+                    <input type="number" step="0.001" min="0" name="yearly_price" required class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">اللون</label>
+                <select name="color" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200">
+                    <option value="primary">أساسي</option>
+                    <option value="secondary">ثانوي</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">المزايا (ميزة في كل سطر)</label>
+                <textarea name="features" rows="4" placeholder="عدد فروع غير محدود&#10;تقارير متقدمة&#10;دعم فني على مدار الساعة" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200"></textarea>
+            </div>
+            <label class="flex items-center gap-2 text-sm text-gray-600">
+                <input type="checkbox" name="is_popular" value="1" class="rounded border-gray-300 text-primary-600 focus:ring-primary-200" /> باقة مميّزة (الأكثر شيوعًا)
+            </label>
+        </form>
+        <x-slot:footer>
+            <x-button variant="light" @click="$dispatch('close-modal')">إلغاء</x-button>
+            <button type="submit" form="add-plan-form" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg px-4 py-2">إضافة الباقة</button>
+        </x-slot:footer>
+    </x-modal>
 
     @php
         $ringMap = [

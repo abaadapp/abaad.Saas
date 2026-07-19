@@ -47,7 +47,7 @@
         <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="font-bold text-gray-800">ملخص وسائل الدفع</h3>
-                <x-button variant="light" size="sm" icon="download">تصدير</x-button>
+                <x-button variant="light" size="sm" icon="download" :href="route('admin.export.transactions')">تصدير</x-button>
             </div>
             <div class="space-y-4">
                 @foreach ($methods as $m)

@@ -451,18 +451,37 @@ class Demo
 
     public static function employees(): array
     {
-        return User::where('business_id', self::bid())->where('role', '!=', 'super_admin')
-            ->orderBy('id')->get()->map(fn ($u) => [
-                'id' => $u->id,
-                'name' => $u->name,
-                'avatar' => $u->avatar ?? self::image('emp' . $u->id, 100, 100),
-                'role' => $u->roleLabel(),
-                'branch' => $u->branch ?? 'الفرع الرئيسي',
-                'phone' => $u->phone,
-                'email' => $u->email,
-                'sales' => (float) $u->sales_total,
-                'status' => $u->status,
-            ])->all();
+        $bid = self::bid();
+
+        // مبيعات كل موظف خلال الشهر الحالي (من الطلبات المرتبطة به)
+        $monthly = Order::where('business_id', $bid)->where('is_held', false)
+            ->whereBetween('ordered_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->whereNotNull('user_id')
+            ->selectRaw('user_id, SUM(total) as s')->groupBy('user_id')->pluck('s', 'user_id');
+
+        return User::where('business_id', $bid)->where('role', '!=', 'super_admin')
+            ->orderBy('id')->get()->map(function ($u) use ($monthly) {
+                $target = (float) $u->monthly_target;
+                $rate = (float) $u->commission_rate;
+                $achieved = (float) ($monthly[$u->id] ?? 0);
+
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'avatar' => $u->avatar ?? self::image('emp' . $u->id, 100, 100),
+                    'role' => $u->roleLabel(),
+                    'branch' => $u->branch ?? 'الفرع الرئيسي',
+                    'phone' => $u->phone,
+                    'email' => $u->email,
+                    'sales' => (float) $u->sales_total,
+                    'status' => $u->status,
+                    'target' => $target,
+                    'commission_rate' => $rate,
+                    'achieved' => $achieved,
+                    'pct' => $target > 0 ? min(100, round($achieved / $target * 100, 1)) : 0,
+                    'commission' => round($achieved * $rate / 100, 3),
+                ];
+            })->all();
     }
 
     public static function inventory(): array
@@ -615,15 +634,30 @@ class Demo
         ];
     }
 
-    /** تنبيهات ذكية: تراجع المبيعات، منتجات راكدة، عملاء غير نشطين */
+    /** تنبيهات ذكية للمستأجر الحالي (للعرض في الداشبورد) */
     public static function smartAlerts(): array
     {
-        $bid = self::bid();
+        return self::smartAlertsFor(self::bid());
+    }
+
+    /**
+     * تنبيهات ذكية لمتجر محدّد: تراجع المبيعات، منتجات راكدة، عملاء غير نشطين.
+     * مستقلّة عن الجلسة كي يستخدمها أمر البريد المجدول.
+     */
+    public static function smartAlertsFor(int $bid): array
+    {
         $alerts = [];
 
-        $salesDelta = self::periodComparison()[0]['delta'] ?? 0;
-        if ($salesDelta < 0) {
-            $alerts[] = ['type' => 'تراجع المبيعات', 'text' => 'انخفضت مبيعات هذا الشهر بنسبة ' . abs($salesDelta) . '% مقارنةً بالشهر السابق', 'icon' => 'trending-down', 'color' => 'danger', 'url' => route('admin.analytics.index')];
+        // تراجع المبيعات: هذا الشهر مقابل السابق
+        $sum = fn ($start, $end) => (float) Order::where('business_id', $bid)->where('is_held', false)
+            ->whereBetween('ordered_at', [$start, $end])->sum('total');
+        $cur = $sum(now()->startOfMonth(), now()->endOfMonth());
+        $prev = $sum(now()->subMonthNoOverflow()->startOfMonth(), now()->subMonthNoOverflow()->endOfMonth());
+        if ($prev > 0) {
+            $delta = round(($cur - $prev) / $prev * 100, 1);
+            if ($delta < 0) {
+                $alerts[] = ['type' => 'تراجع المبيعات', 'text' => 'انخفضت مبيعات هذا الشهر بنسبة ' . abs($delta) . '% مقارنةً بالشهر السابق', 'icon' => 'trending-down', 'color' => 'danger', 'url' => route('admin.analytics.index')];
+            }
         }
 
         $soldIds = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('ordered_at', '>=', now()->subDays(30)))
@@ -645,6 +679,39 @@ class Demo
         }
 
         return $alerts;
+    }
+
+    /** المواعيد والطلبات المجدولة للمستأجر الحالي */
+    public static function appointments(): array
+    {
+        return \App\Models\Appointment::where('business_id', self::bid())
+            ->orderBy('scheduled_at')->get()->map(fn ($a) => [
+                'id' => $a->id,
+                'title' => $a->title,
+                'customer' => $a->customer_name,
+                'phone' => $a->phone,
+                'branch' => $a->branch,
+                'notes' => $a->notes,
+                'status' => $a->status,
+                'at' => $a->scheduled_at,
+                'date' => $a->scheduled_at->format('Y-m-d'),
+                'time' => $a->scheduled_at->format('H:i'),
+                'is_past' => $a->scheduled_at->isPast(),
+            ])->all();
+    }
+
+    /** إحصائيات المواعيد */
+    public static function appointmentStats(): array
+    {
+        $bid = self::bid();
+        $base = \App\Models\Appointment::where('business_id', $bid);
+
+        return [
+            'total' => (clone $base)->count(),
+            'upcoming' => (clone $base)->where('scheduled_at', '>=', now())->whereNotIn('status', ['ملغي', 'مكتمل'])->count(),
+            'today' => (clone $base)->whereBetween('scheduled_at', [now()->startOfDay(), now()->endOfDay()])->count(),
+            'done' => (clone $base)->where('status', 'مكتمل')->count(),
+        ];
     }
 
     /** مقارنة أداء الشهر الحالي بالشهر السابق */

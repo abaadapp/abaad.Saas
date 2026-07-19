@@ -5,7 +5,6 @@
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'العملاء' => '#']"
     >
         <x-slot:actions>
-            <x-button variant="outline" size="md" icon="download">تصدير</x-button>
             <x-button variant="outline" size="md" icon="download" :href="route('admin.export.customers')">تصدير CSV</x-button>
             <x-button variant="primary" size="md" icon="user-plus" x-on:click="$dispatch('open-modal','add-customer')">إضافة عميل</x-button>
         </x-slot:actions>

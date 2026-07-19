@@ -7,7 +7,7 @@
         <x-slot:actions>
             <x-button variant="outline" size="md" icon="layers" :href="route('super-admin.subscriptions.plans')">الباقات</x-button>
             <x-button variant="outline" size="md" icon="file-text" :href="route('super-admin.subscriptions.invoices')">الفواتير</x-button>
-            <x-button variant="primary" size="md" icon="plus">اشتراك جديد</x-button>
+            <x-button variant="primary" size="md" icon="plus" :href="route('super-admin.businesses.create')">اشتراك جديد</x-button>
         </x-slot:actions>
     </x-page-header>
 

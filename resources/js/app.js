@@ -151,6 +151,29 @@ document.addEventListener('alpine:init', () => {
         },
     });
 
+    /* تصفية قوائم/جداول لحظية على جهة العميل.
+       الاستخدام: x-data="listFilter()" على الحاوية، x-ref="list" على حاوية الصفوف،
+       وكل صف يحمل data-row مع data-search (نص البحث) و data-tag (قيمة الفلتر). */
+    Alpine.data('listFilter', () => ({
+        q: '',
+        tag: '',
+        apply() {
+            const box = this.$refs.list;
+            if (!box) return;
+            const q = this.q.trim().toLowerCase();
+            const tag = this.tag;
+            let shown = 0;
+            box.querySelectorAll('[data-row]').forEach((row) => {
+                const text = (row.getAttribute('data-search') || row.textContent || '').toLowerCase();
+                const rowTag = row.getAttribute('data-tag') || '';
+                const ok = (!q || text.includes(q)) && (!tag || rowTag === tag);
+                row.style.display = ok ? '' : 'none';
+                if (ok) shown++;
+            });
+            if (this.$refs.empty) this.$refs.empty.style.display = shown ? 'none' : '';
+        },
+    }));
+
     /* البحث الموحّد في الشريط العلوي */
     Alpine.data('unifiedSearch', (url) => ({
         q: '',

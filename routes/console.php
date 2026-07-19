@@ -16,3 +16,9 @@ Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 
 // تقرير الأداء الشهري بالبريد (أول كل شهر 07:00)
 Schedule::command('reports:email')->monthlyOn(1, '07:00')->withoutOverlapping();
+
+// تنبيهات ذكية فورية بالبريد (تراجع مبيعات/منتجات راكدة/عملاء متعثرون) يوميًا 08:30
+Schedule::command('alerts:smart')->dailyAt('08:30')->withoutOverlapping();
+
+// تذكير بمواعيد الغد المجدولة يوميًا 18:00
+Schedule::command('appointments:remind')->dailyAt('18:00')->withoutOverlapping();

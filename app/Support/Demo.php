@@ -592,6 +592,61 @@ class Demo
             ->map(fn ($r) => ['name' => $r->name, 'qty' => (int) $r->q, 'total' => round((float) $r->t, 3)])->all();
     }
 
+    /** مؤشرات الأهداف (KPI): الهدف الشهري مقابل المحقّق */
+    public static function kpi(): array
+    {
+        $bid = self::bid();
+        $target = (float) (\App\Models\Setting::where('business_id', $bid)->where('key', 'monthly_target')->value('value') ?? 0);
+        $now = now();
+        $achieved = (float) Order::where('business_id', $bid)->where('is_held', false)
+            ->whereBetween('ordered_at', [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()])->sum('total');
+        $daysInMonth = $now->daysInMonth;
+        $dayNow = max(1, $now->day);
+        $projected = $achieved / $dayNow * $daysInMonth;
+
+        return [
+            'target' => $target,
+            'achieved' => $achieved,
+            'pct' => $target > 0 ? min(100, round($achieved / $target * 100, 1)) : 0,
+            'remaining' => max(0, $target - $achieved),
+            'projected' => $projected,
+            'days_left' => $daysInMonth - $now->day,
+            'on_track' => $target > 0 ? $projected >= $target : null,
+        ];
+    }
+
+    /** تنبيهات ذكية: تراجع المبيعات، منتجات راكدة، عملاء غير نشطين */
+    public static function smartAlerts(): array
+    {
+        $bid = self::bid();
+        $alerts = [];
+
+        $salesDelta = self::periodComparison()[0]['delta'] ?? 0;
+        if ($salesDelta < 0) {
+            $alerts[] = ['type' => 'تراجع المبيعات', 'text' => 'انخفضت مبيعات هذا الشهر بنسبة ' . abs($salesDelta) . '% مقارنةً بالشهر السابق', 'icon' => 'trending-down', 'color' => 'danger', 'url' => route('admin.analytics.index')];
+        }
+
+        $soldIds = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('ordered_at', '>=', now()->subDays(30)))
+            ->pluck('product_id')->filter()->unique();
+        $stagnant = Product::where('business_id', $bid)->where('quantity', '>', 0)->whereNotIn('id', $soldIds)
+            ->orderByDesc('quantity')->limit(3)->get();
+        foreach ($stagnant as $p) {
+            $alerts[] = ['type' => 'منتج راكد', 'text' => 'المنتج «' . $p->name . '» لم يُبَع خلال 30 يومًا (' . $p->quantity . ' بالمخزون)', 'icon' => 'package', 'color' => 'warning', 'url' => route('admin.products.show', $p->id)];
+        }
+
+        $inactive = Customer::where('business_id', $bid)->whereHas('orders')->get()
+            ->filter(function ($c) {
+                $last = Order::where('customer_id', $c->id)->max('ordered_at');
+
+                return $last && \Illuminate\Support\Carbon::parse($last)->lt(now()->subDays(60));
+            })->take(3);
+        foreach ($inactive as $c) {
+            $alerts[] = ['type' => 'عميل متعثّر', 'text' => 'العميل «' . $c->name . '» لم يشترِ منذ أكثر من 60 يومًا', 'icon' => 'user-x', 'color' => 'info', 'url' => route('admin.customers.show', $c->id)];
+        }
+
+        return $alerts;
+    }
+
     /** مقارنة أداء الشهر الحالي بالشهر السابق */
     public static function periodComparison(): array
     {

@@ -3,7 +3,8 @@
     <x-page-header title="تحليلات متقدمة" subtitle="أفضل المنتجات والعملاء وأوقات الذروة"
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'تحليلات متقدمة' => '#']">
         <x-slot:actions>
-            <x-button variant="outline" icon="file-text" :href="route('admin.reports.pdf')" target="_blank">تقرير PDF</x-button>
+            <x-button variant="outline" icon="download" :href="route('admin.export.analytics')">تصدير CSV</x-button>
+            <x-button variant="outline" icon="file-text" :href="route('admin.analytics.pdf')" target="_blank">تصدير PDF</x-button>
         </x-slot:actions>
     </x-page-header>
 

@@ -41,6 +41,81 @@
         </div>
     </div>
 
+    {{-- الهدف الشهري (KPI) + التنبيهات الذكية --}}
+    @php $kpi = \App\Support\Demo::kpi(); $alerts = \App\Support\Demo::smartAlerts(); @endphp
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
+        {{-- لوحة الهدف --}}
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5" x-data="{ editing: {{ $kpi['target'] > 0 ? 'false' : 'true' }} }">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-800 flex items-center gap-2"><x-icon name="target" class="w-5 h-5 text-primary-600" /> الهدف الشهري</h3>
+                <button type="button" @click="editing = !editing" class="text-xs text-primary-600 hover:text-primary-700 font-medium">
+                    <span x-text="editing ? 'إلغاء' : 'تعديل'"></span>
+                </button>
+            </div>
+
+            <form x-show="editing" x-cloak method="POST" action="{{ route('admin.goals.update') }}" class="flex items-end gap-2 mb-3">
+                @csrf
+                <div class="flex-1">
+                    <label class="block text-xs text-gray-500 mb-1">قيمة الهدف (ر.ع)</label>
+                    <input type="number" step="0.001" name="monthly_target" value="{{ $kpi['target'] }}" placeholder="0.000"
+                           class="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none" />
+                </div>
+                <x-button variant="primary" size="md" type="submit" icon="check">حفظ</x-button>
+            </form>
+
+            <div x-show="!editing">
+                @if ($kpi['target'] > 0)
+                    <div class="flex items-end justify-between mb-2">
+                        <div>
+                            <p class="text-2xl font-extrabold text-gray-800">{{ \App\Support\Demo::money($kpi['achieved']) }}</p>
+                            <p class="text-xs text-gray-400">من هدف {{ \App\Support\Demo::money($kpi['target']) }}</p>
+                        </div>
+                        <span class="text-lg font-bold {{ $kpi['pct'] >= 100 ? 'text-success-600' : 'text-primary-600' }}">{{ $kpi['pct'] }}%</span>
+                    </div>
+                    <div class="h-3 rounded-full bg-gray-100 overflow-hidden">
+                        <div class="h-full rounded-full {{ $kpi['pct'] >= 100 ? 'bg-success-500' : 'bg-primary-500' }}" style="width: {{ $kpi['pct'] }}%"></div>
+                    </div>
+                    <div class="mt-3 flex items-center justify-between text-xs">
+                        <span class="text-gray-500">متبقٍ: {{ \App\Support\Demo::money($kpi['remaining']) }}</span>
+                        <span class="inline-flex items-center gap-1 {{ $kpi['on_track'] ? 'text-success-600' : 'text-warning-600' }}">
+                            <x-icon :name="$kpi['on_track'] ? 'trending-up' : 'trending-down'" class="w-3.5 h-3.5" />
+                            متوقّع: {{ \App\Support\Demo::money($kpi['projected']) }}
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-gray-400 mt-1">{{ $kpi['days_left'] }} يومًا متبقية في الشهر</p>
+                @else
+                    <x-empty-state icon="target" title="لم يُحدَّد هدف" message="حدّد هدف مبيعات شهري لمتابعة إنجازه." />
+                @endif
+            </div>
+        </div>
+
+        {{-- التنبيهات الذكية --}}
+        <div class="xl:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-800 flex items-center gap-2"><x-icon name="sparkles" class="w-5 h-5 text-warning-500" /> تنبيهات ذكية</h3>
+                @if (count($alerts))<span class="text-xs bg-warning-50 text-warning-700 px-2 py-0.5 rounded-full">{{ count($alerts) }}</span>@endif
+            </div>
+            @php $alertColors = ['danger' => 'bg-danger-50 text-danger-600', 'warning' => 'bg-warning-50 text-warning-600', 'info' => 'bg-info-50 text-info-600']; @endphp
+            @if (count($alerts))
+                <ul class="space-y-2.5 max-h-64 overflow-y-auto">
+                    @foreach ($alerts as $a)
+                        <a href="{{ $a['url'] }}" class="flex items-start gap-3 p-2.5 rounded-xl hover:bg-gray-50 transition">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 {{ $alertColors[$a['color']] ?? $alertColors['info'] }}">
+                                <x-icon :name="$a['icon']" class="w-4 h-4" />
+                            </span>
+                            <div class="min-w-0">
+                                <p class="text-xs font-semibold text-gray-500">{{ $a['type'] }}</p>
+                                <p class="text-sm text-gray-700">{{ $a['text'] }}</p>
+                            </div>
+                        </a>
+                    @endforeach
+                </ul>
+            @else
+                <x-empty-state icon="check-circle" title="كل شيء على ما يُرام" message="لا توجد تنبيهات ذكية حاليًا." />
+            @endif
+        </div>
+    </div>
+
     {{-- المبيعات + وسائل الدفع --}}
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
         <div class="xl:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">

@@ -54,6 +54,30 @@ class ExportController extends Controller
         return $this->stream('transactions', ['المرجع', 'التاريخ', 'الوصف', 'الطريقة', 'النوع', 'المبلغ', 'الموظف'], $rows);
     }
 
+    public function analytics()
+    {
+        $rows = [];
+        $rows[] = ['— أفضل المنتجات —', '', ''];
+        $rows[] = ['المنتج', 'الكمية المباعة', 'الإيراد'];
+        foreach (Demo::topProducts() as $p) {
+            $rows[] = [$p['name'], $p['qty'], number_format($p['total'], 3, '.', '')];
+        }
+        $rows[] = ['', '', ''];
+        $rows[] = ['— أفضل العملاء —', '', ''];
+        $rows[] = ['العميل', 'عدد الطلبات', 'إجمالي الإنفاق'];
+        foreach (Demo::topCustomers() as $c) {
+            $rows[] = [$c['name'], $c['orders'], number_format($c['total'], 3, '.', '')];
+        }
+        $rows[] = ['', '', ''];
+        $rows[] = ['— المبيعات حسب التصنيف —', '', ''];
+        $cat = Demo::categorySales();
+        foreach ($cat['labels'] as $i => $label) {
+            $rows[] = [$label, number_format($cat['series'][$i] ?? 0, 3, '.', ''), ''];
+        }
+
+        return $this->stream('analytics', ['العنصر', 'القيمة 1', 'القيمة 2'], $rows);
+    }
+
     /* ------------------------------ لوحة المنصة ------------------------------ */
 
     public function businesses()

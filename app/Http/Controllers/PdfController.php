@@ -68,6 +68,26 @@ class PdfController extends Controller
         return $this->pdf($html, 'platform-report-' . now()->format('Y-m-d'));
     }
 
+    /** تقرير التحليلات المتقدمة (PDF) */
+    public function analyticsReport()
+    {
+        $customers = Demo::topCustomers();
+
+        $html = view('pdf.analytics-report', [
+            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'comparison' => Demo::periodComparison(),
+            'topProducts' => Demo::topProducts(),
+            'topCustomers' => $customers,
+            'categorySales' => Demo::categorySales(),
+            'byWeekday' => Demo::salesByWeekday(),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر تقرير التحليلات (PDF)');
+
+        return $this->pdf($html, 'analytics-' . now()->format('Y-m-d'));
+    }
+
     /** كشف حساب عميل (PDF) */
     public function customerStatement($id)
     {

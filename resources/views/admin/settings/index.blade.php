@@ -1,4 +1,8 @@
 <x-layouts::admin title="الإعدادات">
+    @php
+        // مساعد لقراءة قيمة إعداد محفوظ (كل الحقول المسمّاة تُحفظ عبر SettingController@update)
+        $sget = fn ($k, $default = '1') => \App\Models\Setting::where('business_id', auth()->user()->business_id)->where('key', $k)->value('value') ?? $default;
+    @endphp
     <x-page-header
         title="الإعدادات"
         subtitle="إدارة إعدادات المحل والفروع والضرائب وطرق الدفع والطباعة"
@@ -74,7 +78,7 @@
                             <span class="text-sm font-medium text-gray-700">تفعيل ضريبة القيمة المضافة (VAT)</span>
                             <p class="text-xs text-gray-400">إضافة الضريبة تلقائيًا على الفواتير</p>
                         </div>
-                        <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="vat_enabled" value="0" /><input type="checkbox" name="vat_enabled" value="1" @checked($sget('vat_enabled') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                     @php
                         $bid = auth()->user()->business_id;
@@ -141,7 +145,7 @@
                                     <p class="text-xs text-gray-400">{{ $method['desc'] }}</p>
                                 </div>
                             </div>
-                            <input type="checkbox" @checked($method['on']) class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                            <span><input type="hidden" name="pay_{{ $method['key'] }}" value="0" /><input type="checkbox" name="pay_{{ $method['key'] }}" value="1" @checked($sget('pay_' . $method['key'], $method['on'] ? '1' : '0') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                         </label>
                     @endforeach
                 </div>
@@ -164,7 +168,7 @@
                     </div>
                     <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                         <span class="text-sm font-medium text-gray-700">إظهار الشعار على الفاتورة</span>
-                        <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="invoice_show_logo" value="0" /><input type="checkbox" name="invoice_show_logo" value="1" @checked($sget('invoice_show_logo') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                 </div>
                 <div class="mt-6 flex justify-end">
@@ -186,11 +190,11 @@
                     </div>
                     <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                         <span class="text-sm font-medium text-gray-700">طباعة تلقائية بعد إتمام الطلب</span>
-                        <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="print_auto" value="0" /><input type="checkbox" name="print_auto" value="1" @checked($sget('print_auto') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                     <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                         <span class="text-sm font-medium text-gray-700">طباعة نسخة للمطبخ / قسم التجهيز</span>
-                        <input type="checkbox" class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="print_kitchen" value="0" /><input type="checkbox" name="print_kitchen" value="1" @checked($sget('print_kitchen', '0') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                 </div>
                 <div class="mt-6 flex justify-end">
@@ -215,8 +219,10 @@
                             <h4 class="text-sm font-semibold text-gray-800 mb-3">{{ $role }}</h4>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                 @foreach ($perms as $perm)
+                                    @php $pk = 'perm_' . $loop->parent->index . '_' . $loop->index; @endphp
                                     <label class="flex items-center gap-2.5 cursor-pointer">
-                                        <input type="checkbox" checked class="w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                                        <input type="hidden" name="{{ $pk }}" value="0" />
+                                        <input type="checkbox" name="{{ $pk }}" value="1" @checked($sget($pk) !== '0') class="w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
                                         <span class="text-sm text-gray-700">{{ $perm }}</span>
                                     </label>
                                 @endforeach
@@ -277,9 +283,10 @@
                 @endphp
                 <div class="space-y-3">
                     @foreach ($notifs as $notif => $on)
+                        @php $nk = 'notif_opt_' . $loop->index; @endphp
                         <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 cursor-pointer hover:bg-gray-50">
                             <span class="text-sm font-medium text-gray-700">{{ $notif }}</span>
-                            <input type="checkbox" @checked($on) class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                            <span><input type="hidden" name="{{ $nk }}" value="0" /><input type="checkbox" name="{{ $nk }}" value="1" @checked($sget($nk, $on ? '1' : '0') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                         </label>
                     @endforeach
                 </div>
@@ -301,11 +308,11 @@
                     </div>
                     <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                         <span class="text-sm font-medium text-gray-700">السماح بتعديل الطلب بعد إنشائه</span>
-                        <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="order_allow_edit" value="0" /><input type="checkbox" name="order_allow_edit" value="1" @checked($sget('order_allow_edit') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                     <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                         <span class="text-sm font-medium text-gray-700">طلب تأكيد قبل إلغاء الطلب</span>
-                        <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="order_confirm_cancel" value="0" /><input type="checkbox" name="order_confirm_cancel" value="1" @checked($sget('order_confirm_cancel') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                 </div>
                 <div class="mt-6 flex justify-end">
@@ -325,7 +332,7 @@
                             <span class="text-sm font-medium text-gray-700">تفعيل خدمة التوصيل</span>
                             <p class="text-xs text-gray-400">إتاحة التوصيل للطلبات الخارجية</p>
                         </div>
-                        <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="delivery_enabled" value="0" /><input type="checkbox" name="delivery_enabled" value="1" @checked($sget('delivery_enabled') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <x-input label="رسوم التوصيل الافتراضية (ر.ع)" name="delivery_fee" type="number" value="1.500" icon="truck" />

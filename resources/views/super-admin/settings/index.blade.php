@@ -1,4 +1,8 @@
 <x-layouts::super-admin title="الإعدادات">
+    @php
+        // إعدادات المنصة تُحفظ بـ business_id=null عبر SuperAdmin\SettingController@update
+        $pget = fn ($k, $default = '1') => \App\Models\Setting::whereNull('business_id')->where('key', $k)->value('value') ?? $default;
+    @endphp
     <x-page-header
         title="الإعدادات"
         subtitle="إدارة إعدادات المنصة العامة والاشتراكات والضرائب والإشعارات"
@@ -57,7 +61,7 @@
                             <span class="text-sm font-medium text-gray-700">وضع الصيانة</span>
                             <p class="text-xs text-gray-400">إيقاف الوصول للمنصة مؤقتًا</p>
                         </div>
-                        <input type="checkbox" class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="maintenance_mode" value="0" /><input type="checkbox" name="maintenance_mode" value="1" @checked($pget('maintenance_mode', '0') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                 </div>
                 <div class="mt-6 flex justify-end">
@@ -96,11 +100,11 @@
                     <x-select label="الباقة الافتراضية عند التسجيل" name="default_plan" :options="['أساسية' => 'الباقة الأساسية', 'احترافية' => 'الباقة الاحترافية']" selected="أساسية" />
                     <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                         <span class="text-sm font-medium text-gray-700">التجديد التلقائي للاشتراكات</span>
-                        <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="auto_renew" value="0" /><input type="checkbox" name="auto_renew" value="1" @checked($pget('auto_renew') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                     <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                         <span class="text-sm font-medium text-gray-700">تعطيل الحساب تلقائيًا عند انتهاء المهلة</span>
-                        <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="auto_suspend" value="0" /><input type="checkbox" name="auto_suspend" value="1" @checked($pget('auto_suspend') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                 </div>
                 <div class="mt-6 flex justify-end">
@@ -119,7 +123,7 @@
                     <x-select label="طريقة احتساب الضريبة" name="tax_mode" :options="['inclusive' => 'شاملة السعر', 'exclusive' => 'مضافة على السعر']" selected="exclusive" />
                     <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                         <span class="text-sm font-medium text-gray-700">تفعيل ضريبة القيمة المضافة</span>
-                        <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                        <span><input type="hidden" name="platform_vat_enabled" value="0" /><input type="checkbox" name="platform_vat_enabled" value="1" @checked($pget('platform_vat_enabled') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                     </label>
                 </div>
                 <div class="mt-6 flex justify-end">
@@ -160,9 +164,10 @@
                         ];
                     @endphp
                     @foreach ($notes as $note => $on)
+                        @php $pnk = 'platform_notif_' . $loop->index; @endphp
                         <label class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                             <span class="text-sm font-medium text-gray-700">{{ $note }}</span>
-                            <input type="checkbox" @checked($on) class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
+                            <span><input type="hidden" name="{{ $pnk }}" value="0" /><input type="checkbox" name="{{ $pnk }}" value="1" @checked($pget($pnk, $on ? '1' : '0') !== '0') class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" /></span>
                         </label>
                     @endforeach
                 </div>

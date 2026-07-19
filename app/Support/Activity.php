@@ -14,6 +14,7 @@ class Activity
         'login' => 'log-in', 'logout' => 'log-out', 'checkout' => 'shopping-cart',
         'status' => 'refresh-cw', 'settings' => 'settings', 'hold' => 'pause-circle',
         'shift' => 'clock', 'report' => 'file-text', 'backup' => 'database-backup', 'restore' => 'database',
+        'return' => 'undo-2',
     ];
 
     private const COLORS = [
@@ -21,6 +22,7 @@ class Activity
         'login' => 'primary', 'logout' => 'gray', 'checkout' => 'success',
         'status' => 'warning', 'settings' => 'primary', 'hold' => 'warning',
         'shift' => 'info', 'report' => 'info', 'backup' => 'primary', 'restore' => 'warning',
+        'return' => 'danger',
     ];
 
     public static function log(string $action, string $description, array $opts = []): void

@@ -31,6 +31,9 @@ Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->na
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [\App\Http\Controllers\ProfileController::class, 'edit'])->name('profile.edit');
     Route::put('/profile', [\App\Http\Controllers\ProfileController::class, 'update'])->name('profile.update');
+
+    // المرتجعات (متاح للنشاط ونقطة البيع — محصور بالمستأجر)
+    Route::post('/orders/{id}/return', [\App\Http\Controllers\ReturnController::class, 'store'])->name('orders.return');
 });
 
 /* --------------------------- Super Admin --------------------------- */

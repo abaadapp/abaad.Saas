@@ -1,6 +1,7 @@
 import Alpine from 'alpinejs';
 import ApexCharts from 'apexcharts';
 import JsBarcode from 'jsbarcode';
+import Sortable from 'sortablejs';
 import { createIcons, icons } from 'lucide';
 
 window.Alpine = Alpine;
@@ -166,6 +167,71 @@ document.addEventListener('alpine:init', () => {
                 this.loading = false;
                 this.$nextTick(() => window.renderIcons());
             }
+        },
+    }));
+
+    /* لوحة قابلة للتخصيص: إعادة ترتيب البطاقات بالسحب + إظهار/إخفاء (تُحفظ محليًا) */
+    Alpine.data('dashboardGrid', (storageKey) => ({
+        editing: false,
+        hidden: [],
+        sortable: null,
+        key(kind) { return `abadpos:dash:${storageKey}:${kind}`; },
+        labelOf(card) { return card.querySelector('[data-stat-value]')?.getAttribute('data-stat-value') || ''; },
+        init() {
+            const grid = this.$refs.grid;
+            this.hidden = JSON.parse(localStorage.getItem(this.key('hidden')) || '[]');
+            this.applyOrder(JSON.parse(localStorage.getItem(this.key('order')) || '[]'));
+            this.injectButtons();
+            this.applyHidden();
+            this.sortable = Sortable.create(grid, {
+                disabled: true, animation: 150, draggable: '[data-card]',
+                onEnd: () => this.saveOrder(),
+            });
+        },
+        applyOrder(order) {
+            if (!order.length) return;
+            const grid = this.$refs.grid;
+            const map = {};
+            Array.from(grid.children).forEach((c) => (map[this.labelOf(c)] = c));
+            order.forEach((l) => { if (map[l]) grid.appendChild(map[l]); });
+        },
+        applyHidden() {
+            Array.from(this.$refs.grid.children).forEach((c) => {
+                c.style.display = this.hidden.includes(this.labelOf(c)) ? 'none' : '';
+            });
+        },
+        saveOrder() {
+            const order = Array.from(this.$refs.grid.children).map((c) => this.labelOf(c));
+            localStorage.setItem(this.key('order'), JSON.stringify(order));
+        },
+        injectButtons() {
+            Array.from(this.$refs.grid.children).forEach((card) => {
+                card.setAttribute('data-card', this.labelOf(card));
+                card.classList.add('relative');
+                if (card.querySelector('.dash-hide')) return;
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'dash-hide absolute top-2 left-2 w-6 h-6 rounded-lg bg-danger-50 text-danger-600 items-center justify-center hover:bg-danger-100';
+                b.innerHTML = '<i data-lucide="eye-off" class="w-3.5 h-3.5"></i>';
+                b.addEventListener('click', () => this.hide(this.labelOf(card)));
+                card.appendChild(b);
+            });
+            window.renderIcons();
+        },
+        hide(label) {
+            if (!this.hidden.includes(label)) this.hidden.push(label);
+            localStorage.setItem(this.key('hidden'), JSON.stringify(this.hidden));
+            this.applyHidden();
+        },
+        show(label) {
+            this.hidden = this.hidden.filter((l) => l !== label);
+            localStorage.setItem(this.key('hidden'), JSON.stringify(this.hidden));
+            this.applyHidden();
+        },
+        toggleEdit() {
+            this.editing = !this.editing;
+            if (this.sortable) this.sortable.option('disabled', !this.editing);
+            this.$refs.grid.classList.toggle('dash-editing', this.editing);
         },
     }));
 

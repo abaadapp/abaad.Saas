@@ -83,6 +83,23 @@
     display: none !important;
 }
 
+/* ===== اللوحة القابلة للتخصيص ===== */
+.dash-hide {
+    display: none;
+}
+.dash-editing .dash-hide {
+    display: flex;
+}
+.dash-editing [data-card] {
+    cursor: move;
+    outline: 2px dashed var(--color-primary-300, #c4b5fd);
+    outline-offset: 2px;
+    border-radius: 1rem;
+}
+.sortable-ghost {
+    opacity: 0.4;
+}
+
 /* إخفاء شريط التمرير مع إبقاء إمكانية التمرير */
 .no-scrollbar::-webkit-scrollbar {
     display: none;

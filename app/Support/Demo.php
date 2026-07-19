@@ -278,6 +278,49 @@ class Demo
             ])->all();
     }
 
+    /** تفاصيل طلب كامل بأصنافه الحقيقية وكميات الاسترجاع (حسب رقم الطلب) */
+    public static function orderDetails($number): array
+    {
+        $o = Order::where('business_id', self::bid())->where('number', $number)->with('items')->first();
+        if (! $o) {
+            return [];
+        }
+
+        $items = $o->items->map(fn ($it) => [
+            'id' => $it->id,
+            'product_id' => $it->product_id,
+            'name' => $it->name,
+            'price' => (float) $it->price,
+            'qty' => (int) $it->quantity,
+            'returned' => (int) $it->returned_quantity,
+            'remaining' => $it->remaining,
+            'total' => (float) $it->total,
+        ])->all();
+
+        $returnedTotal = (float) $o->returns()->sum('amount');
+
+        return [
+            'id' => $o->number,
+            'db_id' => $o->id,
+            'customer' => $o->customer_name ?? 'عميل نقدي',
+            'employee' => $o->employee_name ?? '—',
+            'branch' => $o->branch ?? 'الفرع الرئيسي',
+            'status' => $o->status,
+            'payment' => $o->payment_method,
+            'payment_status' => $o->payment_status ?? 'مدفوع',
+            'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
+            'subtotal' => (float) $o->subtotal,
+            'discount' => (float) $o->discount,
+            'tax' => (float) $o->tax,
+            'delivery' => (float) $o->delivery_fee,
+            'total' => (float) $o->total,
+            'notes' => $o->notes,
+            'items' => $items,
+            'returned_total' => $returnedTotal,
+            'has_returnable' => collect($items)->sum('remaining') > 0,
+        ];
+    }
+
     public static function customers(): array
     {
         return Customer::where('business_id', self::bid())->withCount('orders')->orderBy('id')->get()->map(fn ($c) => [

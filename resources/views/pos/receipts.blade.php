@@ -56,7 +56,11 @@
                             <span x-text="rec.customer"></span>
                             <span x-text="rec.time"></span>
                         </div>
-                        <div class="mt-2 flex justify-end">
+                        <div class="mt-2 flex justify-end gap-3">
+                            <a :href="'{{ route('pos.order-details', '__NUMBER__') }}'.replace('__NUMBER__', rec.number)" @click.stop
+                               class="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800 font-medium">
+                                <x-icon name="eye" class="w-3.5 h-3.5" /> التفاصيل
+                            </a>
                             <a :href="'{{ $pdfBase }}'.replace('__NUMBER__', rec.number)" target="_blank" @click.stop
                                class="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium">
                                 <x-icon name="file-text" class="w-3.5 h-3.5" /> PDF

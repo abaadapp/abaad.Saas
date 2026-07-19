@@ -16,12 +16,29 @@
         </x-slot:actions>
     </x-page-header>
 
-    {{-- بطاقات الإحصائيات (تحديث لحظي) --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
-         x-data="{}" x-init="liveStats($el, '{{ route('admin.dashboard.stats') }}')">
-        @foreach (\App\Support\Demo::adminStats() as $s)
-            <x-stat-card :label="$s['label']" :value="$s['value']" :icon="$s['icon']" :trend="$s['trend']" :up="$s['up']" :color="$s['color']" />
-        @endforeach
+    {{-- بطاقات الإحصائيات (تحديث لحظي + قابلة للتخصيص) --}}
+    <div x-data="dashboardGrid('admin')" class="mb-6">
+        <div class="flex flex-wrap items-center justify-end gap-2 mb-3">
+            <div x-show="editing" x-cloak class="flex items-center gap-1.5 flex-wrap ml-auto mr-0">
+                <span class="text-xs text-gray-400">المخفية:</span>
+                <template x-for="label in hidden" :key="label">
+                    <button type="button" @click="show(label)" class="inline-flex items-center gap-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg px-2 py-1 text-gray-600">
+                        <i data-lucide="plus" class="w-3 h-3"></i><span x-text="label"></span>
+                    </button>
+                </template>
+                <span x-show="!hidden.length" class="text-xs text-gray-300">لا شيء</span>
+            </div>
+            <button type="button" @click="toggleEdit()" :class="editing ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200'" class="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors">
+                <i :data-lucide="editing ? 'check' : 'sliders-horizontal'" class="w-4 h-4"></i>
+                <span x-text="editing ? 'تم' : 'تخصيص اللوحة'"></span>
+            </button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+             x-ref="grid" x-init="liveStats($refs.grid, '{{ route('admin.dashboard.stats') }}')">
+            @foreach (\App\Support\Demo::adminStats() as $s)
+                <x-stat-card :label="$s['label']" :value="$s['value']" :icon="$s['icon']" :trend="$s['trend']" :up="$s['up']" :color="$s['color']" />
+            @endforeach
+        </div>
     </div>
 
     {{-- المبيعات + وسائل الدفع --}}

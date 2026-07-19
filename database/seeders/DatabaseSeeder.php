@@ -370,30 +370,6 @@ class DatabaseSeeder extends Seeder
                 }
                 $po2->update(['total' => $t2]);
             }
-
-            // ذمم: أول 3 عملاء عليهم ديون، بعضهم متأخر وبعضهم سدّد جزئيًا
-            $customers = \App\Models\Customer::where('business_id', $bizId)->take(3)->get();
-            $debts = [
-                ['debt' => 45.500, 'paid' => 0, 'due' => -5],   // متأخر
-                ['debt' => 30.000, 'paid' => 10.000, 'due' => 12],
-                ['debt' => 18.750, 'paid' => 0, 'due' => 20],
-            ];
-            foreach ($customers as $i => $c) {
-                $c->update(['credit_limit' => [40, 100, 50][$i] ?? 50]);
-                $d = $debts[$i];
-                \App\Models\CustomerLedger::create([
-                    'business_id' => $bizId, 'customer_id' => $c->id, 'type' => 'دين',
-                    'amount' => $d['debt'], 'note' => 'بيع آجل', 'due_at' => now()->addDays($d['due']),
-                    'created_at' => now()->subDays(10), 'updated_at' => now()->subDays(10),
-                ]);
-                if ($d['paid'] > 0) {
-                    \App\Models\CustomerLedger::create([
-                        'business_id' => $bizId, 'customer_id' => $c->id, 'type' => 'سداد',
-                        'amount' => $d['paid'], 'method' => 'نقدي', 'note' => 'سداد جزئي',
-                        'created_at' => now()->subDays(4), 'updated_at' => now()->subDays(4),
-                    ]);
-                }
-            }
         }
     }
 }

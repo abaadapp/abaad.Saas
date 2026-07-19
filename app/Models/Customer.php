@@ -11,5 +11,4 @@ class Customer extends Model
     protected $guarded = [];
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
     public function orders(): HasMany { return $this->hasMany(Order::class); }
-    public function ledger(): HasMany { return $this->hasMany(CustomerLedger::class); }
 }

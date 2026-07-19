@@ -181,12 +181,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::post('/purchases/{id}/receive', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'receive'])->name('purchases.receive');
     Route::delete('/purchases/{id}', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
 
-    // الذمم (البيع الآجل)
-    Route::view('/receivables', 'admin.receivables.index')->name('receivables.index');
-    Route::post('/receivables/{id}/debt', [\App\Http\Controllers\Admin\ReceivableController::class, 'recordDebt'])->name('receivables.debt');
-    Route::post('/receivables/{id}/payment', [\App\Http\Controllers\Admin\ReceivableController::class, 'recordPayment'])->name('receivables.payment');
-    Route::post('/receivables/{id}/limit', [\App\Http\Controllers\Admin\ReceivableController::class, 'setLimit'])->name('receivables.limit');
-
     // تحليلات الربحية
     Route::view('/profitability', 'admin.profitability')->name('profitability.index');
 

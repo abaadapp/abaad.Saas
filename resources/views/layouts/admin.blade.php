@@ -24,7 +24,6 @@
             ['label' => 'المخزون', 'icon' => 'boxes', 'route' => 'admin.inventory.index'],
             ['label' => 'المورّدون', 'icon' => 'truck', 'route' => 'admin.suppliers.index'],
             ['label' => 'أوامر الشراء', 'icon' => 'clipboard-list', 'route' => 'admin.purchases.index'],
-            ['label' => 'الذمم (الآجل)', 'icon' => 'hand-coins', 'route' => 'admin.receivables.index'],
             ['label' => 'المالية', 'icon' => 'wallet', 'route' => 'admin.finance.index'],
             ['label' => 'المصروفات', 'icon' => 'arrow-down-circle', 'route' => 'admin.expenses.index'],
             ['label' => 'التقارير', 'icon' => 'bar-chart-3', 'route' => 'admin.reports.index'],

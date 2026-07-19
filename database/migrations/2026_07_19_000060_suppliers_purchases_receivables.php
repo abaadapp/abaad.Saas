@@ -45,31 +45,10 @@ return new class extends Migration
             $table->unsignedInteger('received_quantity')->default(0);
             $table->timestamps();
         });
-
-        // حدّ الائتمان للعميل (البيع الآجل)
-        Schema::table('customers', function (Blueprint $table) {
-            $table->decimal('credit_limit', 12, 3)->default(0)->after('points');
-        });
-
-        // دفتر ذمم العملاء (دين/سداد)
-        Schema::create('customer_ledger', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('business_id')->constrained('businesses')->cascadeOnDelete();
-            $table->foreignId('customer_id')->constrained('customers')->cascadeOnDelete();
-            $table->string('order_number')->nullable();
-            $table->string('type'); // دين | سداد
-            $table->decimal('amount', 12, 3)->default(0);
-            $table->string('method')->nullable(); // نقدي | تحويل | بطاقة (للسداد)
-            $table->string('note')->nullable();
-            $table->timestamp('due_at')->nullable(); // تاريخ استحقاق الدين
-            $table->timestamps();
-        });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('customer_ledger');
-        Schema::table('customers', fn (Blueprint $t) => $t->dropColumn('credit_limit'));
         Schema::dropIfExists('purchase_order_items');
         Schema::dropIfExists('purchase_orders');
         Schema::dropIfExists('suppliers');

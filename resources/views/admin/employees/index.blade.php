@@ -5,6 +5,7 @@
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'الموظفون' => '#']"
     >
         <x-slot:actions>
+            <x-button variant="outline" size="md" icon="trophy" :href="route('admin.employees.performance')">لوحة الأداء</x-button>
             <x-button variant="outline" size="md" icon="download" :href="route('admin.export.employees')">تصدير CSV</x-button>
             <x-button variant="primary" size="md" icon="user-plus" :href="route('admin.employees.create')">إضافة موظف</x-button>
         </x-slot:actions>

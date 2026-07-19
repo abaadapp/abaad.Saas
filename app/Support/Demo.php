@@ -484,6 +484,46 @@ class Demo
             })->all();
     }
 
+    /** ترتيب الموظفين حسب مبيعات الشهر (لوحة الأداء) */
+    public static function employeeLeaderboard(): array
+    {
+        $rows = collect(self::employees())
+            ->sortByDesc('achieved')->values();
+
+        return $rows->map(function ($e, $i) {
+            $e['rank'] = $i + 1;
+
+            return $e;
+        })->all();
+    }
+
+    /** بيانات كشف العمولة لموظف: طلباته خلال الشهر + الإجماليات */
+    public static function employeeCommission($id): array
+    {
+        $bid = self::bid();
+        $u = User::where('business_id', $bid)->where('role', '!=', 'super_admin')->findOrFail($id);
+
+        $orders = Order::where('business_id', $bid)->where('is_held', false)->where('user_id', $u->id)
+            ->whereBetween('ordered_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->orderBy('ordered_at')->get();
+
+        $achieved = (float) $orders->sum('total');
+        $rate = (float) $u->commission_rate;
+        $target = (float) $u->monthly_target;
+
+        return [
+            'employee' => $u,
+            'orders' => $orders,
+            'achieved' => $achieved,
+            'orders_count' => $orders->count(),
+            'target' => $target,
+            'pct' => $target > 0 ? min(100, round($achieved / $target * 100, 1)) : 0,
+            'rate' => $rate,
+            'commission' => round($achieved * $rate / 100, 3),
+            'month' => now()->translatedFormat('F Y'),
+        ];
+    }
+
     public static function inventory(): array
     {
         return Product::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($p) => [

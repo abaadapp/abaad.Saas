@@ -152,12 +152,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::post('/employees/{id}/toggle', [EmployeeController::class, 'toggleStatus'])->name('employees.toggle');
     Route::post('/employees/{id}/reset-password', [EmployeeController::class, 'resetPassword'])->name('employees.resetPassword');
     Route::post('/employees/{id}/goal', [EmployeeController::class, 'updateGoal'])->name('employees.goal');
+    Route::view('/employees-performance', 'admin.employees.performance')->name('employees.performance');
+    Route::get('/employees/{id}/commission-pdf', [\App\Http\Controllers\PdfController::class, 'commissionStatement'])->name('employees.commission');
     Route::view('/employees/{id}', 'admin.employees.show')->name('employees.show');
 
     // المواعيد والطلبات المجدولة
     Route::view('/appointments', 'admin.appointments.index')->name('appointments.index');
     Route::post('/appointments', [\App\Http\Controllers\Admin\AppointmentController::class, 'store'])->name('appointments.store');
     Route::post('/appointments/{id}/status', [\App\Http\Controllers\Admin\AppointmentController::class, 'updateStatus'])->name('appointments.status');
+    Route::post('/appointments/{id}/convert', [\App\Http\Controllers\Admin\AppointmentController::class, 'convert'])->name('appointments.convert');
     Route::delete('/appointments/{id}', [\App\Http\Controllers\Admin\AppointmentController::class, 'destroy'])->name('appointments.destroy');
 
     // المخزون

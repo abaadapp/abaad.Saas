@@ -60,7 +60,13 @@
                                         <p class="text-xs text-gray-400 mt-1 truncate">{{ $a['notes'] }}</p>
                                     @endif
 
-                                    <div class="flex items-center gap-1.5 mt-3">
+                                    <div class="flex items-center gap-1.5 mt-3 flex-wrap">
+                                        @if (!in_array($a['status'], ['مكتمل', 'ملغي']))
+                                            <form method="POST" action="{{ route('admin.appointments.convert', $a['id']) }}" onsubmit="return confirm('تحويل هذا الموعد إلى طلب؟')">
+                                                @csrf
+                                                <button type="submit" class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-primary-600 text-white hover:bg-primary-700"><x-icon name="shopping-cart" class="w-3.5 h-3.5" /> تحويل لطلب</button>
+                                            </form>
+                                        @endif
                                         @foreach (['مؤكد', 'مكتمل', 'ملغي'] as $st)
                                             @if ($a['status'] !== $st)
                                                 <form method="POST" action="{{ route('admin.appointments.status', $a['id']) }}">

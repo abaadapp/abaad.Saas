@@ -119,6 +119,21 @@ class PdfController extends Controller
         return $this->pdf($html, 'statement-' . $customer->id . '-' . now()->format('Y-m-d'));
     }
 
+    public function commissionStatement($id)
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $data = Demo::employeeCommission($id);
+
+        $html = view('pdf.commission-statement', array_merge($data, [
+            'business' => Demo::business($bid),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ]))->render();
+
+        \App\Support\Activity::log('report', 'صدّر كشف عمولة الموظف: ' . $data['employee']->name, ['subject_id' => $data['employee']->id]);
+
+        return $this->pdf($html, 'commission-' . $id . '-' . now()->format('Y-m'));
+    }
+
     /** مولّد A4 عربي/RTL */
     private function pdf(string $html, string $name)
     {

@@ -51,6 +51,40 @@ class AppointmentController extends Controller
         return back()->with('toast', ['msg' => 'تم تحديث حالة الموعد', 'type' => 'success']);
     }
 
+    /** تحويل موعد مجدول إلى طلب POS بضغطة واحدة */
+    public function convert($id)
+    {
+        $appt = $this->find($id);
+
+        $order = \App\Models\Order::create([
+            'business_id' => $this->bid(),
+            'number' => 'ORD-' . random_int(10000, 99999),
+            'customer_name' => $appt->customer_name ?: 'عميل نقدي',
+            'employee_name' => auth()->user()->name,
+            'branch' => $appt->branch ?: 'الفرع الرئيسي',
+            'status' => 'جديد',
+            'payment_method' => 'غير محدد',
+            'payment_status' => 'غير مدفوع',
+            'subtotal' => 0,
+            'total' => 0,
+            'notes' => 'محوّل من موعد مجدول: ' . $appt->title . ($appt->notes ? ' — ' . $appt->notes : ''),
+            'ordered_at' => now(),
+        ]);
+        $order->items()->create([
+            'product_id' => null,
+            'name' => $appt->title,
+            'price' => 0,
+            'quantity' => 1,
+            'total' => 0,
+        ]);
+
+        $appt->update(['status' => 'مكتمل']);
+        \App\Support\Activity::log('checkout', 'حوّل موعدًا إلى طلب ' . $order->number . ': ' . $appt->title, ['subject_id' => $order->id]);
+
+        return redirect()->route('admin.orders.show', $order->number)
+            ->with('toast', ['msg' => 'تم إنشاء الطلب ' . $order->number . ' — أضِف الأصناف والدفع', 'type' => 'success']);
+    }
+
     public function destroy($id)
     {
         $appt = $this->find($id);

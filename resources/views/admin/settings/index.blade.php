@@ -243,6 +243,22 @@
                     </span>
                 </label>
 
+                {{-- التنبيهات الذكية بالبريد (فعّالة عبر أمر alerts:smart المجدول) --}}
+                @php $notifySmart = \App\Models\Setting::where('business_id', auth()->user()->business_id)->where('key', 'notify_smart_alerts')->value('value'); @endphp
+                <label class="flex items-center justify-between rounded-xl border border-secondary-100 bg-secondary-50/40 px-4 py-3.5 cursor-pointer mb-5">
+                    <div class="flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-xl bg-secondary-100 text-secondary-600 flex items-center justify-center"><x-icon name="sparkles" class="w-5 h-5" /></span>
+                        <div>
+                            <span class="text-sm font-semibold text-gray-800">تنبيهات ذكية يومية بالبريد</span>
+                            <p class="text-xs text-gray-500">تراجع المبيعات، المنتجات الراكدة، والعملاء المتعثّرون — تُرسَل صباح كل يوم.</p>
+                        </div>
+                    </div>
+                    <span>
+                        <input type="hidden" name="notify_smart_alerts" value="0" />
+                        <input type="checkbox" name="notify_smart_alerts" value="1" @checked($notifySmart !== '0') class="w-5 h-5 rounded text-secondary-600 focus:ring-secondary-500 border-gray-300" />
+                    </span>
+                </label>
+
                 @php
                     $notifs = [
                         'تنبيه انخفاض المخزون' => true,

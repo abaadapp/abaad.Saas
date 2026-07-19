@@ -53,8 +53,10 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // محلات الورود
     Route::view('/flower-shops', 'super-admin.flower-shops.index')->name('flower-shops.index');
     Route::view('/flower-shops/create', 'super-admin.flower-shops.create')->name('flower-shops.create');
+    Route::post('/flower-shops', [\App\Http\Controllers\SuperAdmin\FlowerShopController::class, 'store'])->name('flower-shops.store');
     Route::view('/flower-shops/{id}', 'super-admin.flower-shops.show')->name('flower-shops.show');
     Route::view('/flower-shops/{id}/edit', 'super-admin.flower-shops.edit')->name('flower-shops.edit');
+    Route::put('/flower-shops/{id}', [\App\Http\Controllers\SuperAdmin\FlowerShopController::class, 'update'])->name('flower-shops.update');
 
     // الاشتراكات والباقات
     Route::view('/subscriptions', 'super-admin.subscriptions.index')->name('subscriptions.index');
@@ -79,6 +81,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'superIndex'])->name('activity.index');
     Route::view('/settings', 'super-admin.settings.index')->name('settings.index');
     Route::post('/settings', [\App\Http\Controllers\SuperAdmin\SettingController::class, 'update'])->name('settings.update');
+    Route::post('/settings/test-email', [\App\Http\Controllers\SuperAdmin\SettingController::class, 'testEmail'])->name('settings.testEmail');
 });
 
 /* ------------------------------- Admin ----------------------------- */
@@ -86,8 +89,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::view('/dashboard', 'admin.dashboard')->name('dashboard');
     Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'adminStats'])->name('dashboard.stats');
 
-    // تبديل الفرع الحالي
+    // الفروع
     Route::get('/branch/{id}/switch', [\App\Http\Controllers\Admin\BranchController::class, 'switch'])->name('branch.switch');
+    Route::post('/branches', [\App\Http\Controllers\Admin\BranchController::class, 'store'])->name('branches.store');
+    Route::delete('/branches/{id}', [\App\Http\Controllers\Admin\BranchController::class, 'destroy'])->name('branches.destroy');
 
     // البحث الموحّد
     Route::get('/search', [\App\Http\Controllers\SearchController::class, 'admin'])->name('search');
@@ -126,6 +131,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // العملاء
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
     Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
+    Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
+    Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');
     Route::view('/customers/{id}', 'admin.customers.show')->name('customers.show');
 
     // الموظفون
@@ -180,6 +187,7 @@ Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
     Route::view('/receipts', 'pos.receipts')->name('receipts');
     Route::get('/receipt/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');
     Route::view('/customers', 'pos.customers')->name('customers');
+    Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
     Route::view('/shift', 'pos.shift')->name('shift');
     Route::post('/shift/close', [PosController::class, 'closeShift'])->name('shift.close');
 });

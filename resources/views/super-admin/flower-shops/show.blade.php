@@ -9,7 +9,10 @@
         :breadcrumbs="['الرئيسية' => route('super-admin.dashboard'), 'محلات الورود' => route('super-admin.flower-shops.index'), $shop['name'] => '#']">
         <x-slot:actions>
             <x-button variant="outline" icon="pencil" :href="route('super-admin.flower-shops.edit', $shop['id'])">تعديل</x-button>
-            <x-button variant="danger" type="button" icon="ban" @click="$store.toasts.add('تم تعطيل المحل', 'warning')">تعطيل</x-button>
+            <form method="POST" action="{{ route('super-admin.businesses.destroy', $shop['id']) }}" @submit="if(!confirm('تعطيل هذا المحل؟')) $event.preventDefault()">
+                @csrf @method('DELETE')
+                <x-button variant="danger" type="submit" icon="ban">تعطيل</x-button>
+            </form>
         </x-slot:actions>
     </x-page-header>
 

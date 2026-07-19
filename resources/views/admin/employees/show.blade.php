@@ -23,6 +23,7 @@
                     <x-badge :text="$employee['status']" />
                 </div>
                 <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
+                    <x-button variant="light" size="sm" icon="mail" :href="'mailto:' . $employee['email']">مراسلة</x-button>
                     <form method="POST" action="{{ route('admin.employees.toggle', $employee['id']) }}">
                         @csrf
                         @if ($employee['status'] === 'نشط')

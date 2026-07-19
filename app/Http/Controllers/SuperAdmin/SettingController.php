@@ -22,4 +22,20 @@ class SettingController extends Controller
 
         return back()->with('toast', ['msg' => 'تم حفظ إعدادات المنصة بنجاح', 'type' => 'success']);
     }
+
+    public function testEmail(Request $request)
+    {
+        $to = $request->input('to', auth()->user()->email);
+        try {
+            \Illuminate\Support\Facades\Mail::raw('هذه رسالة اختبار من نظام Abad POS. إذا وصلتك فإن إعدادات البريد تعمل بنجاح.', function ($m) use ($to) {
+                $m->to($to)->subject('اختبار البريد — Abad POS');
+            });
+
+            return back()->with('toast', ['msg' => 'تم إرسال بريد تجريبي إلى ' . $to, 'type' => 'success']);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with('toast', ['msg' => 'تعذّر إرسال البريد التجريبي', 'type' => 'error']);
+        }
+    }
 }

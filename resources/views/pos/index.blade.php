@@ -288,16 +288,15 @@
 
         {{-- ============ نافذة عميل جديد ============ --}}
         <x-modal name="new-customer" title="إضافة عميل جديد" maxWidth="max-w-md">
-            <div class="space-y-4">
-                <x-input label="الاسم الكامل" name="nc-name" placeholder="اسم العميل" icon="user" :required="true" />
-                <x-input label="رقم الهاتف" name="nc-phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" :required="true" />
-                <x-input label="البريد الإلكتروني" name="nc-email" type="email" placeholder="example@mail.com" icon="mail" />
-                <x-input label="العنوان" name="nc-address" placeholder="المدينة / المنطقة" icon="map-pin" />
-            </div>
+            <form id="pos-new-customer" method="POST" action="{{ route('pos.customers.store') }}" class="space-y-4">
+                @csrf
+                <x-input label="الاسم الكامل" name="name" placeholder="اسم العميل" icon="user" :required="true" />
+                <x-input label="رقم الهاتف" name="phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" />
+                <x-input label="البريد الإلكتروني" name="email" type="email" placeholder="example@mail.com" icon="mail" />
+            </form>
             <x-slot:footer>
                 <x-button variant="outline" @click="$dispatch('close-modal')">إلغاء</x-button>
-                <x-button variant="dark" icon="user-plus"
-                          @click="$dispatch('close-modal'); $store.toasts.add('تمت إضافة العميل', 'success')">حفظ العميل</x-button>
+                <x-button variant="dark" icon="user-plus" type="submit" form="pos-new-customer">حفظ العميل</x-button>
             </x-slot:footer>
         </x-modal>
 

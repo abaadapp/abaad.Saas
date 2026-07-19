@@ -57,7 +57,7 @@
     @endphp
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 mb-6">
         @foreach ($reportCards as $card)
-            <a href="#" class="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-primary-200 transition">
+            <a href="{{ route('admin.reports.pdf') }}" target="_blank" class="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-primary-200 transition">
                 <div class="flex items-center justify-between">
                     <span class="w-11 h-11 rounded-xl flex items-center justify-center {{ $cardColors[$card['color']] }}">
                         <x-icon :name="$card['icon']" class="w-5 h-5" />

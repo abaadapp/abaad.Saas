@@ -45,8 +45,16 @@
                 </div>
 
                 <div class="mt-5 flex items-center justify-center gap-2">
-                    <x-button variant="light" size="sm" icon="message-circle">مراسلة</x-button>
-                    <x-button variant="outline" size="sm" icon="gift">صرف نقاط</x-button>
+                    <x-button variant="light" size="sm" icon="mail" :href="'mailto:' . $customer['email']">مراسلة</x-button>
+                    @if ($customer['phone'])
+                        <x-button variant="light" size="sm" icon="phone" :href="'tel:' . preg_replace('/\s+/', '', $customer['phone'])">اتصال</x-button>
+                    @endif
+                    <form method="POST" action="{{ route('admin.customers.redeem', $customer['id']) }}"
+                          @submit="if(!confirm('صرف كل نقاط العميل ({{ $customer['points'] }})؟')) $event.preventDefault()">
+                        @csrf
+                        <input type="hidden" name="points" value="{{ $customer['points'] }}" />
+                        <x-button variant="outline" size="sm" icon="gift" type="submit" :disabled="! $customer['points']">صرف نقاط</x-button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -136,19 +144,17 @@
 
                 {{-- الملاحظات --}}
                 <div x-show="tab === 'notes'" x-cloak class="p-6">
-                    <div class="space-y-4">
-                        <div class="rounded-xl bg-gray-50 border border-gray-100 p-4">
-                            <p class="text-sm text-gray-700">يفضّل الورود ذات الألوان الفاتحة، ويطلب عادةً توصيلًا مسائيًا بعد الساعة 6.</p>
-                            <p class="text-xs text-gray-400 mt-2">أضيفت بواسطة سارة حسن — 2026-07-10</p>
-                        </div>
+                    @php $customerModel = \App\Models\Customer::find($customer['id']); @endphp
+                    <form method="POST" action="{{ route('admin.customers.note', $customer['id']) }}" class="space-y-4">
+                        @csrf
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1.5">إضافة ملاحظة جديدة</label>
-                            <textarea rows="3" placeholder="اكتب ملاحظة حول تفضيلات العميل..." class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none transition"></textarea>
+                            <label class="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات العميل</label>
+                            <textarea name="notes" rows="4" placeholder="اكتب ملاحظة حول تفضيلات العميل..." class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none transition">{{ $customerModel->notes ?? '' }}</textarea>
                         </div>
                         <div class="flex justify-end">
-                            <x-button variant="primary" size="md" icon="save" x-on:click="$store.toasts.add('تمت إضافة الملاحظة', 'success')">حفظ الملاحظة</x-button>
+                            <x-button variant="primary" size="md" icon="save" type="submit">حفظ الملاحظة</x-button>
                         </div>
-                    </div>
+                    </form>
                 </div>
             </div>
         </div>

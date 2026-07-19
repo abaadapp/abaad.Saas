@@ -63,36 +63,7 @@
                 </div>
             </div>
 
-            {{-- الفروع --}}
-            <div x-show="tab === 'branches'" x-cloak class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-lg font-bold text-gray-800">الفروع</h3>
-                    <x-button variant="primary" size="sm" icon="plus" x-on:click="$store.toasts.add('نموذج إضافة فرع', 'info')">إضافة فرع</x-button>
-                </div>
-                @php
-                    $branches = [
-                        ['name' => 'الفرع الرئيسي', 'city' => 'مسقط - الخوير', 'phone' => '+968 24123456', 'status' => 'نشط'],
-                        ['name' => 'فرع روي', 'city' => 'مسقط - روي', 'phone' => '+968 24765432', 'status' => 'نشط'],
-                        ['name' => 'فرع صحار', 'city' => 'صحار - الطريف', 'phone' => '+968 26887744', 'status' => 'معطل'],
-                    ];
-                @endphp
-                <x-table :headers="['الفرع', 'المدينة', 'الهاتف', 'الحالة', 'إجراءات']">
-                    @foreach ($branches as $branch)
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $branch['name'] }}</td>
-                            <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $branch['city'] }}</td>
-                            <td class="px-4 py-3 text-gray-600 whitespace-nowrap" dir="ltr">{{ $branch['phone'] }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap"><x-badge :text="$branch['status']" /></td>
-                            <td class="px-4 py-3 whitespace-nowrap">
-                                <div class="flex items-center gap-1">
-                                    <x-button variant="ghost" size="sm" icon="pencil">تعديل</x-button>
-                                    <x-button variant="ghost" size="sm" icon="trash-2">حذف</x-button>
-                                </div>
-                            </td>
-                        </tr>
-                    @endforeach
-                </x-table>
-            </div>
+            {{-- الفروع تُدار في كتلة مستقلة خارج النموذج (بالأسفل) --}}
 
             {{-- الضرائب --}}
             <div x-show="tab === 'taxes'" x-cloak class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
@@ -370,6 +341,45 @@
                 </div>
             </div>
         </form>
+
+        {{-- الفروع (نماذج مستقلة خارج نموذج الإعدادات) --}}
+        <div x-show="tab === 'branches'" x-cloak x-data="{ adding: false }" class="lg:col-span-3 lg:col-start-2 space-y-6">
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <div class="flex items-center justify-between mb-5">
+                    <h3 class="text-lg font-bold text-gray-800">الفروع</h3>
+                    <x-button variant="primary" size="sm" icon="plus" type="button" x-on:click="adding = !adding">إضافة فرع</x-button>
+                </div>
+
+                <form x-show="adding" x-cloak method="POST" action="{{ route('admin.branches.store') }}" class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end mb-6 bg-gray-50 rounded-xl p-4">
+                    @csrf
+                    <x-input label="اسم الفرع" name="name" placeholder="فرع صحار" :required="true" />
+                    <x-input label="الهاتف" name="phone" placeholder="+968 2xxxxxxx" />
+                    <x-input label="العنوان" name="address" placeholder="المدينة - الحي" />
+                    <x-button variant="primary" size="md" type="submit" icon="check">حفظ الفرع</x-button>
+                </form>
+
+                @php $branchList = \App\Support\Demo::branches(); @endphp
+                @if (count($branchList))
+                    <x-table :headers="['الفرع', 'الهاتف', 'العنوان', '']">
+                        @foreach ($branchList as $branch)
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $branch['name'] }}</td>
+                                <td class="px-4 py-3 text-gray-600 whitespace-nowrap" dir="ltr">{{ $branch['phone'] ?: '—' }}</td>
+                                <td class="px-4 py-3 text-gray-600">{{ $branch['address'] ?: '—' }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <form method="POST" action="{{ route('admin.branches.destroy', $branch['id']) }}" @submit="if(!confirm('حذف هذا الفرع؟')) $event.preventDefault()">
+                                        @csrf @method('DELETE')
+                                        <x-button variant="ghost" size="sm" type="submit" icon="trash-2" class="text-danger-600">حذف</x-button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </x-table>
+                @else
+                    <x-empty-state icon="map-pin" title="لا توجد فروع" message="أضف أول فرع لنشاطك." />
+                @endif
+            </div>
+        </div>
 
         {{-- أسعار الصرف / تعدّد العملات (نماذج مستقلة) --}}
         <div x-show="tab === 'currencies'" x-cloak class="lg:col-span-3 lg:col-start-2 space-y-6">

@@ -65,7 +65,7 @@ class Demo
     public static function branches(): array
     {
         return \App\Models\Branch::where('business_id', self::bid())->orderBy('id')->get()
-            ->map(fn ($b) => ['id' => $b->id, 'name' => $b->name])->all();
+            ->map(fn ($b) => ['id' => $b->id, 'name' => $b->name, 'phone' => $b->phone, 'address' => $b->address])->all();
     }
 
     /* ============================ Super Admin ============================ */
@@ -419,6 +419,7 @@ class Demo
     public static function inventory(): array
     {
         return Product::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($p) => [
+            'id' => $p->id,
             'name' => $p->name,
             'sku' => $p->sku,
             'qty' => $p->quantity,

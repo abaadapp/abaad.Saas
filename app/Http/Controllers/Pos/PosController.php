@@ -109,6 +109,21 @@ class PosController extends Controller
         return redirect()->route('pos.shift')->with('toast', ['msg' => 'تم إغلاق الوردية بنجاح', 'type' => 'success']);
     }
 
+    /** إضافة عميل سريع من نقطة البيع */
+    public function storeCustomer(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'email' => ['nullable', 'email'],
+        ]);
+        $data['business_id'] = $this->bid();
+        \App\Models\Customer::create($data);
+        \App\Support\Activity::log('created', 'أضاف عميلًا من نقطة البيع: ' . $data['name']);
+
+        return back()->with('toast', ['msg' => 'تم إضافة العميل', 'type' => 'success']);
+    }
+
     /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */
     private function notifyNewOrder(Order $order): void
     {

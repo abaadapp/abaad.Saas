@@ -61,7 +61,7 @@
                         <p class="text-sm font-semibold text-gray-800 leading-tight">سارة حسن</p>
                         <p class="text-xs text-gray-400">كاشير</p>
                     </div>
-                    <a href="#" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="user" class="w-4 h-4" /> الملف الشخصي</a>
+                    <a href="{{ route('profile.edit') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="user" class="w-4 h-4" /> الملف الشخصي</a>
                     <a href="{{ route('pos.shift') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="clock" class="w-4 h-4" /> الوردية</a>
                     <div class="my-1 border-t border-gray-100"></div>
                     <a href="{{ route('logout') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger-600 hover:bg-danger-50"><x-icon name="log-out" class="w-4 h-4" /> تسجيل الخروج</a>

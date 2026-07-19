@@ -9,7 +9,10 @@
         :breadcrumbs="['الرئيسية' => route('super-admin.dashboard'), 'الشركات' => route('super-admin.businesses.index'), $b['name'] => '#']">
         <x-slot:actions>
             <x-button variant="outline" icon="pencil" :href="route('super-admin.businesses.edit', $b['id'])">تعديل</x-button>
-            <x-button variant="danger" type="button" icon="ban" @click="$store.toasts.add('تم تعطيل الشركة', 'warning')">تعطيل</x-button>
+            <form method="POST" action="{{ route('super-admin.businesses.destroy', $b['id']) }}" @submit="if(!confirm('تعطيل هذه الشركة؟')) $event.preventDefault()">
+                @csrf @method('DELETE')
+                <x-button variant="danger" type="submit" icon="ban">تعطيل</x-button>
+            </form>
         </x-slot:actions>
     </x-page-header>
 

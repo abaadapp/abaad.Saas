@@ -4,7 +4,8 @@
         :breadcrumbs="['الرئيسية' => route('super-admin.dashboard'), 'محلات الورود' => route('super-admin.flower-shops.index'), 'إضافة محل' => '#']">
     </x-page-header>
 
-    <form class="space-y-6">
+    <form method="POST" action="{{ route('super-admin.flower-shops.store') }}" enctype="multipart/form-data" class="space-y-6">
+        @csrf
         {{-- بيانات المحل --}}
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <div class="flex items-center gap-2 mb-5">
@@ -63,7 +64,7 @@
         {{-- أزرار الحفظ --}}
         <div class="flex items-center justify-end gap-3">
             <x-button variant="outline" :href="route('super-admin.flower-shops.index')">إلغاء</x-button>
-            <x-button variant="secondary" type="button" icon="check" @click="$store.toasts.add('تم حفظ محل الورود بنجاح')">حفظ المحل</x-button>
+            <x-button variant="secondary" type="submit" icon="check">حفظ المحل</x-button>
         </div>
     </form>
 

@@ -46,7 +46,7 @@
                         <input type="checkbox" name="remember" value="1" class="rounded border-gray-300 text-primary-600 focus:ring-primary-200" checked>
                         تذكرني
                     </label>
-                    <a href="#" class="text-sm text-primary-600 hover:text-primary-700">نسيت كلمة المرور؟</a>
+                    <a href="mailto:support@abadpos.com?subject=إعادة تعيين كلمة المرور" class="text-sm text-primary-600 hover:text-primary-700">نسيت كلمة المرور؟</a>
                 </div>
 
                 <x-button type="submit" variant="primary" class="w-full" x-bind:disabled="loading">

@@ -51,6 +51,7 @@
     </div>
 
     {{-- جدول المخزون --}}
+    <div x-data="{ sel: { id: '', name: '', sku: '', qty: 0 } }">
     <x-table :headers="['المنتج', 'SKU', 'الكمية الحالية', 'الحد الأدنى', 'حالة المخزون', 'آخر تحديث', 'إجراء']">
         @foreach ($inventory as $item)
             <tr class="hover:bg-gray-50">
@@ -65,7 +66,7 @@
                 <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $item['updated'] }}</td>
                 <td class="px-4 py-3 whitespace-nowrap">
                     <x-button variant="light" size="sm" icon="pencil"
-                        x-on:click="$dispatch('open-modal','edit-qty')">تعديل الكمية</x-button>
+                        x-on:click="sel = { id: {{ $item['id'] }}, name: @js($item['name']), sku: @js($item['sku']), qty: {{ $item['qty'] }} }; $dispatch('open-modal','edit-qty')">تعديل الكمية</x-button>
                 </td>
             </tr>
         @endforeach
@@ -77,22 +78,25 @@
 
     {{-- نافذة تعديل الكمية --}}
     <x-modal name="edit-qty" title="تعديل كمية المنتج" maxWidth="max-w-md">
-        <form class="space-y-4">
+        <form id="adjust-form" method="POST" action="{{ route('admin.inventory.store') }}" class="space-y-4">
+            @csrf
+            <input type="hidden" name="product_id" :value="sel.id" />
             <div class="rounded-xl bg-gray-50 border border-gray-100 p-3 text-sm text-gray-600">
-                المنتج: <span class="font-semibold text-gray-800">باقة ورد أحمر</span> — SKU: <span class="font-mono">FLW-0001</span>
+                المنتج: <span class="font-semibold text-gray-800" x-text="sel.name"></span> — SKU: <span class="font-mono" x-text="sel.sku"></span>
             </div>
-            <x-select label="نوع التعديل" name="op" :options="[
-                'set' => 'تعيين الكمية الجديدة',
-                'add' => 'إضافة كمية',
-                'sub' => 'خصم كمية',
-            ]" selected="set" />
-            <x-input label="الكمية" name="qty" type="number" value="34" icon="hash" :required="true" />
+            <x-select label="نوع التعديل" name="type" :options="[
+                'تعديل يدوي' => 'تعيين الكمية الجديدة',
+                'إضافة كمية' => 'إضافة كمية',
+                'خصم كمية' => 'خصم كمية',
+            ]" selected="تعديل يدوي" />
+            <x-input label="الكمية" name="quantity" type="number" x-bind:value="sel.qty" icon="hash" :required="true" />
             <x-input label="ملاحظة" name="note" placeholder="سبب التعديل (اختياري)" icon="sticky-note" />
         </form>
 
         <x-slot:footer>
             <x-button variant="ghost" size="md" x-on:click="$dispatch('close-modal')">إلغاء</x-button>
-            <x-button variant="primary" size="md" icon="check" x-on:click="$store.toasts.add('تم تحديث كمية المخزون', 'success'); $dispatch('close-modal')">حفظ</x-button>
+            <x-button variant="primary" size="md" icon="check" type="submit" form="adjust-form">حفظ</x-button>
         </x-slot:footer>
     </x-modal>
+    </div>
 </x-layouts::admin>

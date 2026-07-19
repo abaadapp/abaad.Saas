@@ -6,7 +6,9 @@
         :breadcrumbs="['الرئيسية' => route('super-admin.dashboard'), 'محلات الورود' => route('super-admin.flower-shops.index'), $shop['name'] => '#']">
     </x-page-header>
 
-    <form class="space-y-6">
+    <form method="POST" action="{{ route('super-admin.flower-shops.update', $shop['id']) }}" enctype="multipart/form-data" class="space-y-6">
+        @csrf
+        @method('PUT')
         {{-- بيانات المحل --}}
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <div class="flex items-center gap-2 mb-5">
@@ -68,7 +70,7 @@
         {{-- أزرار الحفظ --}}
         <div class="flex items-center justify-end gap-3">
             <x-button variant="outline" :href="route('super-admin.flower-shops.index')">إلغاء</x-button>
-            <x-button variant="secondary" type="button" icon="check" @click="$store.toasts.add('تم حفظ التعديلات بنجاح')">حفظ التعديلات</x-button>
+            <x-button variant="secondary" type="submit" icon="check">حفظ التعديلات</x-button>
         </div>
     </form>
 

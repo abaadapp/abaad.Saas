@@ -189,7 +189,7 @@
                     </div>
                 </div>
                 <div class="mt-6 flex justify-end gap-2">
-                    <x-button variant="outline" size="md" icon="send" x-on:click="$store.toasts.add('تم إرسال بريد تجريبي', 'info')">اختبار الإرسال</x-button>
+                    <x-button variant="outline" size="md" icon="send" type="submit" formaction="{{ route('super-admin.settings.testEmail') }}" formmethod="POST">اختبار الإرسال</x-button>
                     <x-button variant="primary" size="md" icon="save" type="submit">حفظ التغييرات</x-button>
                 </div>
             </div>

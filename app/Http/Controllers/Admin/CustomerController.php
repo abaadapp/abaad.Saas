@@ -47,4 +47,28 @@ class CustomerController extends Controller
 
         return redirect()->route('admin.customers.index')->with('toast', ['msg' => 'تم إضافة العميل بنجاح', 'type' => 'success']);
     }
+
+    public function saveNote(Request $request, $id)
+    {
+        $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
+        $data = $request->validate(['notes' => ['nullable', 'string', 'max:2000']]);
+        $customer->update(['notes' => $data['notes'] ?? null]);
+        \App\Support\Activity::log('updated', 'حدّث ملاحظات العميل: ' . $customer->name, ['subject_id' => $customer->id]);
+
+        return back()->with('toast', ['msg' => 'تم حفظ الملاحظة', 'type' => 'success']);
+    }
+
+    public function redeem(Request $request, $id)
+    {
+        $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
+        $points = (int) $request->input('points', $customer->points);
+        $points = max(0, min($points, (int) $customer->points));
+        if ($points <= 0) {
+            return back()->with('toast', ['msg' => 'لا توجد نقاط كافية للصرف', 'type' => 'warning']);
+        }
+        $customer->decrement('points', $points);
+        \App\Support\Activity::log('updated', "صرف {$points} نقطة للعميل: {$customer->name}", ['subject_id' => $customer->id]);
+
+        return back()->with('toast', ['msg' => "تم صرف {$points} نقطة (خصم " . Demo::money($points / 100) . ')', 'type' => 'success']);
+    }
 }

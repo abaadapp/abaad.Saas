@@ -17,7 +17,10 @@
         <x-slot:actions>
             <x-button variant="outline" icon="barcode" :href="route('admin.products.barcodes', ['copies' => 1])">الباركود</x-button>
             <x-button variant="outline" icon="pencil" :href="route('admin.products.edit', $product['id'])">تعديل</x-button>
-            <x-button variant="danger" icon="trash-2" type="button" x-data @click="$store.toasts.add('تم حذف المنتج')">حذف</x-button>
+            <form method="POST" action="{{ route('admin.products.destroy', $product['id']) }}" @submit="if(!confirm('حذف هذا المنتج نهائيًا؟')) $event.preventDefault()">
+                @csrf @method('DELETE')
+                <x-button variant="danger" icon="trash-2" type="submit">حذف</x-button>
+            </form>
         </x-slot:actions>
     </x-page-header>
 

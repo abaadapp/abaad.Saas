@@ -15,6 +15,7 @@
         <x-slot:actions>
             <x-badge :text="$order['status']" />
             <x-button variant="outline" icon="file-text" :href="route('admin.orders.pdf', $order['id'])" target="_blank">تصدير PDF</x-button>
+            <x-button variant="outline" icon="landmark" :href="route('admin.orders.taxInvoice', $order['id'])" target="_blank">فاتورة ضريبية</x-button>
             @if ($order['has_returnable'])
                 <x-button variant="danger" icon="undo-2" type="button" x-data @click="$dispatch('open-returns')">استرجاع</x-button>
             @endif

@@ -371,5 +371,43 @@ class DatabaseSeeder extends Seeder
                 $po2->update(['total' => $t2]);
             }
         }
+
+        // كوبونات تجريبية + ورديات مغلقة + إعدادات ضريبية (للمتجر الأساسي)
+        $mainBiz = \App\Models\Business::whereHas('users', fn ($q) => $q->where('role', 'admin'))->value('id')
+            ?? \App\Models\Business::value('id');
+        if ($mainBiz) {
+            $coupons = [
+                ['code' => 'WELCOME10', 'type' => 'نسبة', 'value' => 10, 'min_order' => 5, 'max_uses' => 100, 'used_count' => 12],
+                ['code' => 'SUMMER5', 'type' => 'مبلغ', 'value' => 5, 'min_order' => 20, 'max_uses' => null, 'used_count' => 4],
+                ['code' => 'VIP20', 'type' => 'نسبة', 'value' => 20, 'min_order' => 50, 'max_uses' => 30, 'used_count' => 0],
+            ];
+            foreach ($coupons as $cp) {
+                \App\Models\Coupon::create(array_merge($cp, [
+                    'business_id' => $mainBiz, 'active' => true,
+                    'expires_at' => now()->addMonths(2),
+                ]));
+            }
+
+            // إعدادات الضريبة
+            \App\Models\Setting::updateOrCreate(['business_id' => $mainBiz, 'key' => 'vat_rate'], ['value' => '5']);
+            \App\Models\Setting::updateOrCreate(['business_id' => $mainBiz, 'key' => 'vat_number'], ['value' => 'OM1100234567']);
+
+            // ورديات مغلقة سابقة
+            $adminUser = \App\Models\User::where('business_id', $mainBiz)->where('role', 'admin')->first();
+            $shifts = [
+                ['days' => 2, 'open' => 50, 'cash' => 320.500, 'card' => 180.000, 'actual' => 370.000],
+                ['days' => 1, 'open' => 50, 'cash' => 415.750, 'card' => 210.250, 'actual' => 465.750],
+            ];
+            foreach ($shifts as $sh) {
+                $expected = $sh['open'] + $sh['cash'];
+                \App\Models\Shift::create([
+                    'business_id' => $mainBiz, 'user_id' => $adminUser?->id, 'employee_name' => $adminUser?->name ?? 'الكاشير',
+                    'opened_at' => now()->subDays($sh['days'])->setTime(8, 0), 'closed_at' => now()->subDays($sh['days'])->setTime(22, 0),
+                    'opening_balance' => $sh['open'], 'cash_sales' => $sh['cash'], 'card_sales' => $sh['card'],
+                    'expected_balance' => $expected, 'actual_balance' => $sh['actual'], 'difference' => $sh['actual'] - $expected,
+                    'status' => 'مغلقة',
+                ]);
+            }
+        }
     }
 }

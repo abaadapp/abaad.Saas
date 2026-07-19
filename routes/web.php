@@ -184,6 +184,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // تحليلات الربحية
     Route::view('/profitability', 'admin.profitability')->name('profitability.index');
 
+    // التسويق والكوبونات
+    Route::view('/marketing', 'admin.marketing')->name('marketing.index');
+    Route::post('/coupons', [\App\Http\Controllers\Admin\CouponController::class, 'store'])->name('coupons.store');
+    Route::post('/coupons/{id}/toggle', [\App\Http\Controllers\Admin\CouponController::class, 'toggle'])->name('coupons.toggle');
+    Route::delete('/coupons/{id}', [\App\Http\Controllers\Admin\CouponController::class, 'destroy'])->name('coupons.destroy');
+
+    // ضريبة القيمة المضافة
+    Route::view('/vat', 'admin.vat')->name('vat.index');
+    Route::get('/vat/pdf', [\App\Http\Controllers\PdfController::class, 'vatReport'])->name('vat.pdf');
+    Route::get('/orders/{id}/tax-invoice', [\App\Http\Controllers\PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
+
     // المالية والمصروفات والتقارير والإعدادات
     Route::view('/finance', 'admin.finance.index')->name('finance.index');
     Route::post('/finance/transactions', [FinanceController::class, 'store'])->name('finance.store');
@@ -231,5 +242,6 @@ Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
     Route::view('/customers', 'pos.customers')->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
     Route::view('/shift', 'pos.shift')->name('shift');
+    Route::post('/shift/open', [PosController::class, 'openShift'])->name('shift.open');
     Route::post('/shift/close', [PosController::class, 'closeShift'])->name('shift.close');
 });

@@ -44,6 +44,21 @@
             </div>
         </div>
 
+        @if (! $shift['exists'])
+            {{-- فتح وردية جديدة --}}
+            <form method="POST" action="{{ route('pos.shift.open') }}" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 max-w-lg">
+                @csrf
+                <div class="flex items-center gap-2 mb-4">
+                    <x-icon name="log-in" class="w-5 h-5 text-success-500" />
+                    <h2 class="font-bold text-gray-800">فتح وردية جديدة</h2>
+                </div>
+                <p class="text-sm text-gray-500 mb-4">أدخل الرصيد النقدي الافتتاحي في الصندوق لبدء الوردية.</p>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">الرصيد الافتتاحي (ر.ع)</label>
+                <input type="number" step="0.001" min="0" name="opening_balance" value="0" required
+                    class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-lg font-bold text-gray-800 focus:border-gray-900 focus:ring-2 focus:ring-gray-200 focus:outline-none" />
+                <button type="submit" class="mt-5 w-full bg-gray-900 hover:bg-black text-white font-medium rounded-xl py-3">فتح الوردية</button>
+            </form>
+        @else
         {{-- حالة الوردية --}}
         <div class="bg-gray-900 rounded-2xl shadow-sm p-5 text-white mb-6">
             <div class="flex flex-wrap items-center justify-between gap-4">
@@ -132,5 +147,44 @@
             </x-slot:footer>
         </x-modal>
         </form>
+        @endif
+
+        {{-- سجل الورديات المغلقة --}}
+        @php $history = \App\Support\Demo::shiftHistory(); @endphp
+        @if (count($history))
+            <div class="mt-8">
+                <h2 class="font-bold text-gray-800 mb-3 flex items-center gap-2"><x-icon name="history" class="w-5 h-5 text-gray-400" /> سجل الورديات السابقة</h2>
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-50 text-gray-500">
+                            <tr>
+                                <th class="px-4 py-2.5 text-right font-medium">الموظف</th>
+                                <th class="px-4 py-2.5 text-right font-medium">الفتح</th>
+                                <th class="px-4 py-2.5 text-right font-medium">الإغلاق</th>
+                                <th class="px-4 py-2.5 text-right font-medium">نقدي</th>
+                                <th class="px-4 py-2.5 text-right font-medium">المتوقع</th>
+                                <th class="px-4 py-2.5 text-right font-medium">الفعلي</th>
+                                <th class="px-4 py-2.5 text-right font-medium">الفرق</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50">
+                            @foreach ($history as $h)
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $h['employee'] }}</td>
+                                    <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $h['opened'] }}</td>
+                                    <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $h['closed'] }}</td>
+                                    <td class="px-4 py-3 text-gray-700 whitespace-nowrap">{{ \App\Support\Demo::money($h['cash_sales']) }}</td>
+                                    <td class="px-4 py-3 text-gray-700 whitespace-nowrap">{{ \App\Support\Demo::money($h['expected']) }}</td>
+                                    <td class="px-4 py-3 text-gray-700 whitespace-nowrap">{{ \App\Support\Demo::money($h['actual']) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap font-semibold {{ $h['difference'] == 0 ? 'text-gray-500' : ($h['difference'] > 0 ? 'text-success-600' : 'text-danger-600') }}">
+                                        {{ $h['difference'] > 0 ? '+' : '' }}{{ \App\Support\Demo::money($h['difference']) }}
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
     </div>
 </x-layouts::pos>

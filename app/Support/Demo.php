@@ -584,6 +584,136 @@ class Demo
             ])->all();
     }
 
+    /* ============================ التسويق والكوبونات ============================ */
+
+    public static function coupons(): array
+    {
+        return \App\Models\Coupon::where('business_id', self::bid())->orderByDesc('id')->get()->map(fn ($c) => [
+            'id' => $c->id,
+            'code' => $c->code,
+            'type' => $c->type,
+            'value' => (float) $c->value,
+            'min_order' => (float) $c->min_order,
+            'max_uses' => $c->max_uses,
+            'used_count' => (int) $c->used_count,
+            'expires' => optional($c->expires_at)->format('Y-m-d'),
+            'expired' => $c->expires_at && $c->expires_at->isPast(),
+            'active' => (bool) $c->active,
+            'display' => $c->type === 'نسبة' ? rtrim(rtrim(number_format($c->value, 2, '.', ''), '0'), '.') . '%' : self::money($c->value),
+        ])->all();
+    }
+
+    public static function couponStats(): array
+    {
+        $bid = self::bid();
+
+        return [
+            'total' => \App\Models\Coupon::where('business_id', $bid)->count(),
+            'active' => \App\Models\Coupon::where('business_id', $bid)->where('active', true)->count(),
+            'redemptions' => (int) \App\Models\Coupon::where('business_id', $bid)->sum('used_count'),
+        ];
+    }
+
+    /** شرائح العملاء للحملات التسويقية (مع أرقام واتساب) */
+    public static function marketingSegment(string $segment = 'all'): array
+    {
+        $bid = self::bid();
+        $q = Customer::where('business_id', $bid)->whereNotNull('phone');
+
+        $customers = $q->get()->map(function ($c) {
+            $last = Order::where('customer_id', $c->id)->max('ordered_at');
+
+            return [
+                'id' => $c->id,
+                'name' => $c->name,
+                'phone' => $c->phone,
+                'wa' => preg_replace('/\D/', '', (string) $c->phone),
+                'last_order' => $last ? \Illuminate\Support\Carbon::parse($last) : null,
+                'spent' => (float) Order::where('customer_id', $c->id)->where('is_held', false)->sum('total'),
+            ];
+        });
+
+        $filtered = match ($segment) {
+            'inactive' => $customers->filter(fn ($c) => ! $c['last_order'] || $c['last_order']->lt(now()->subDays(60))),
+            'top' => $customers->sortByDesc('spent')->take(10),
+            default => $customers,
+        };
+
+        return $filtered->map(fn ($c) => [
+            'id' => $c['id'],
+            'name' => $c['name'],
+            'phone' => $c['phone'],
+            'wa' => $c['wa'],
+            'spent' => $c['spent'],
+            'last_order' => $c['last_order']?->format('Y-m-d') ?? 'لا يوجد',
+        ])->values()->all();
+    }
+
+    /* ============================ ضريبة القيمة المضافة ============================ */
+
+    public static function vatSettings(): array
+    {
+        $bid = self::bid();
+        $get = fn ($k, $d) => \App\Models\Setting::where('business_id', $bid)->where('key', $k)->value('value') ?? $d;
+
+        return [
+            'rate' => (float) $get('vat_rate', 5),
+            'number' => $get('vat_number', ''),
+        ];
+    }
+
+    /** تقرير ضريبة القيمة المضافة لفترة (month|quarter|year) */
+    public static function vatReport(string $period = 'quarter'): array
+    {
+        $bid = self::bid();
+        $rate = self::vatSettings()['rate'];
+        $now = now();
+        [$start, $end, $label] = match ($period) {
+            'month' => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth(), 'هذا الشهر'],
+            'year' => [$now->copy()->startOfYear(), $now->copy()->endOfYear(), 'هذه السنة'],
+            default => [$now->copy()->startOfQuarter(), $now->copy()->endOfQuarter(), 'هذا الربع'],
+        };
+
+        $orders = Order::where('business_id', $bid)->where('is_held', false)
+            ->whereBetween('ordered_at', [$start, $end]);
+        $outputVat = (float) (clone $orders)->sum('tax');
+        $taxableSales = (float) (clone $orders)->sum('subtotal');
+        $grossSales = (float) (clone $orders)->sum('total');
+
+        // ضريبة المدخلات من المشتريات المستلمة (تُعامل قيمة الأمر كصافٍ قبل الضريبة)
+        $purchases = PurchaseOrder::where('business_id', $bid)->where('status', 'مستلم')
+            ->whereBetween('received_at', [$start, $end]);
+        $inputBase = (float) (clone $purchases)->sum('total');
+        $inputVat = round($inputBase * $rate / 100, 3);
+
+        // تفصيل شهري ضمن الفترة
+        $months = [];
+        $cursor = $start->copy();
+        while ($cursor <= $end) {
+            $mStart = $cursor->copy()->startOfMonth();
+            $mEnd = $cursor->copy()->endOfMonth();
+            $mOut = (float) Order::where('business_id', $bid)->where('is_held', false)->whereBetween('ordered_at', [$mStart, $mEnd])->sum('tax');
+            $mSales = (float) Order::where('business_id', $bid)->where('is_held', false)->whereBetween('ordered_at', [$mStart, $mEnd])->sum('subtotal');
+            $months[] = ['label' => $cursor->translatedFormat('F Y'), 'taxable' => round($mSales, 3), 'vat' => round($mOut, 3)];
+            $cursor->addMonthNoOverflow();
+        }
+
+        return [
+            'label' => $label,
+            'period' => $period,
+            'rate' => $rate,
+            'taxable_sales' => round($taxableSales, 3),
+            'gross_sales' => round($grossSales, 3),
+            'output_vat' => round($outputVat, 3),
+            'input_base' => round($inputBase, 3),
+            'input_vat' => $inputVat,
+            'net_vat' => round($outputVat - $inputVat, 3),
+            'months' => $months,
+            'from' => $start->format('Y-m-d'),
+            'to' => $end->format('Y-m-d'),
+        ];
+    }
+
     /* ============================ الربحية ============================ */
 
     /** ربح كل منتج = (سعر البيع - التكلفة) × الكمية المباعة، من عناصر الطلبات الفعلية */
@@ -1110,6 +1240,23 @@ class Demo
     }
 
     /** بيانات وردية الموظف الحالي المحسوبة فعليًا */
+    /** سجل الورديات المغلقة (آخر 10) */
+    public static function shiftHistory(): array
+    {
+        return Shift::where('business_id', self::bid())->where('status', 'مغلقة')
+            ->orderByDesc('closed_at')->limit(10)->get()->map(fn ($s) => [
+                'employee' => $s->employee_name,
+                'opened' => optional($s->opened_at)->format('Y-m-d H:i') ?? '—',
+                'closed' => optional($s->closed_at)->format('Y-m-d H:i') ?? '—',
+                'opening' => (float) $s->opening_balance,
+                'cash_sales' => (float) $s->cash_sales,
+                'card_sales' => (float) $s->card_sales,
+                'expected' => (float) $s->expected_balance,
+                'actual' => (float) $s->actual_balance,
+                'difference' => (float) $s->difference,
+            ])->all();
+    }
+
     public static function currentShift(): array
     {
         $bid = self::bid();

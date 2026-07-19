@@ -76,10 +76,16 @@
                         </div>
                         <input type="checkbox" checked class="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300" />
                     </label>
+                    @php
+                        $bid = auth()->user()->business_id;
+                        $vatRate = \App\Models\Setting::where('business_id', $bid)->where('key', 'vat_rate')->value('value') ?? '5';
+                        $vatNumber = \App\Models\Setting::where('business_id', $bid)->where('key', 'vat_number')->value('value') ?? '';
+                    @endphp
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <x-input label="نسبة الضريبة (%)" name="vat_rate" type="number" value="5" icon="percent" />
-                        <x-input label="الرقم الضريبي" name="tax_number" value="OM100234567" icon="hash" />
+                        <x-input label="نسبة الضريبة (%)" name="vat_rate" type="number" :value="$vatRate" icon="percent" />
+                        <x-input label="الرقم الضريبي (TRN)" name="vat_number" :value="$vatNumber" placeholder="OM1100XXXXXX" icon="hash" />
                     </div>
+                    <p class="text-xs text-gray-400">يظهران في الفاتورة الضريبية وإقرار VAT. <a href="{{ route('admin.vat.index') }}" class="text-primary-600 hover:underline">عرض إقرار الضريبة ←</a></p>
                     <x-select label="طريقة احتساب الضريبة" name="tax_mode" :options="[
                         'exclusive' => 'مضافة على السعر',
                         'inclusive' => 'مشمولة في السعر',

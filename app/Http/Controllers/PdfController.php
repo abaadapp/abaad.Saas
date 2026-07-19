@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Support\Demo;
+use Illuminate\Http\Request;
 use Mpdf\Mpdf;
 
 class PdfController extends Controller
@@ -132,6 +133,41 @@ class PdfController extends Controller
         \App\Support\Activity::log('report', 'صدّر كشف عمولة الموظف: ' . $data['employee']->name, ['subject_id' => $data['employee']->id]);
 
         return $this->pdf($html, 'commission-' . $id . '-' . now()->format('Y-m'));
+    }
+
+    public function vatReport(Request $request)
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $period = $request->query('period', 'quarter');
+        $report = Demo::vatReport($period);
+
+        $html = view('pdf.vat-report', [
+            'report' => $report,
+            'vat' => Demo::vatSettings(),
+            'business' => Demo::business($bid),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر تقرير ضريبة القيمة المضافة (' . $report['label'] . ')');
+
+        return $this->pdf($html, 'vat-' . $period . '-' . now()->format('Y-m-d'));
+    }
+
+    public function taxInvoice($id)
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $order = Order::where('business_id', $bid)->where('number', $id)->with('items')->firstOrFail();
+
+        $html = view('pdf.tax-invoice', [
+            'order' => $order,
+            'vat' => Demo::vatSettings(),
+            'business' => Demo::business($bid),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'أصدر فاتورة ضريبية للطلب: ' . $order->number, ['subject_id' => $order->id]);
+
+        return $this->pdf($html, 'tax-invoice-' . $order->number);
     }
 
     /** مولّد A4 عربي/RTL */

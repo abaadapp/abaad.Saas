@@ -2,7 +2,7 @@
 
 <header class="sticky top-0 z-20 h-16 bg-white/80 backdrop-blur border-b border-gray-100 flex items-center gap-3 px-4 lg:px-6">
     {{-- زر فتح القائمة على الجوال --}}
-    <button @click="$store.sidebar.toggle()" class="lg:hidden w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-600">
+    <button type="button" @click="$store.sidebar.toggle()" class="lg:hidden w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-600">
         <x-icon name="menu" class="w-5 h-5" />
     </button>
 

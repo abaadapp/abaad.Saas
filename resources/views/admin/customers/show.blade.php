@@ -72,17 +72,17 @@
             {{-- التبويبات --}}
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm" x-data="{ tab: 'orders' }">
                 <div class="flex items-center gap-1 border-b border-gray-100 px-4 overflow-x-auto">
-                    <button
+                    <button type="button"
                         @click="tab = 'orders'"
                         :class="tab === 'orders' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="px-4 py-3.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors"
                     >سجل الطلبات</button>
-                    <button
+                    <button type="button"
                         @click="tab = 'addresses'"
                         :class="tab === 'addresses' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="px-4 py-3.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors"
                     >العناوين</button>
-                    <button
+                    <button type="button"
                         @click="tab = 'notes'"
                         :class="tab === 'notes' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="px-4 py-3.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors"

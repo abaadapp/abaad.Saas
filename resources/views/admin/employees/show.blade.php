@@ -123,17 +123,17 @@
             {{-- التبويبات --}}
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm" x-data="{ tab: 'sales' }">
                 <div class="flex items-center gap-1 border-b border-gray-100 px-4 overflow-x-auto">
-                    <button
+                    <button type="button"
                         @click="tab = 'sales'"
                         :class="tab === 'sales' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="px-4 py-3.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors"
                     >المبيعات</button>
-                    <button
+                    <button type="button"
                         @click="tab = 'activity'"
                         :class="tab === 'activity' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="px-4 py-3.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors"
                     >سجل النشاط</button>
-                    <button
+                    <button type="button"
                         @click="tab = 'permissions'"
                         :class="tab === 'permissions' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="px-4 py-3.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors"

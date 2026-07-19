@@ -124,12 +124,12 @@
         <div class="lg:col-span-2">
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm" x-data="{ tab: 'activities' }">
                 <div class="flex items-center gap-1 border-b border-gray-100 px-4">
-                    <button
+                    <button type="button"
                         @click="tab = 'activities'"
                         :class="tab === 'activities' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="px-4 py-3.5 text-sm font-medium border-b-2 transition-colors"
                     >النشاطات</button>
-                    <button
+                    <button type="button"
                         @click="tab = 'permissions'"
                         :class="tab === 'permissions' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="px-4 py-3.5 text-sm font-medium border-b-2 transition-colors"

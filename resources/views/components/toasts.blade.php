@@ -25,7 +25,7 @@
                 <template x-if="toast.type === 'info'"><i data-lucide="info" class="w-5 h-5 text-blue-500"></i></template>
             </div>
             <p class="flex-1 text-sm text-gray-700" x-text="toast.message"></p>
-            <button @click="$store.toasts.remove(toast.id)" class="shrink-0 text-gray-300 hover:text-gray-500">
+            <button type="button" @click="$store.toasts.remove(toast.id)" class="shrink-0 text-gray-300 hover:text-gray-500">
                 <i data-lucide="x" class="w-4 h-4"></i>
             </button>
         </div>

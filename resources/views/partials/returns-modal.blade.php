@@ -10,7 +10,7 @@
                 <h3 class="font-bold text-gray-800 flex items-center gap-2">
                     <x-icon name="undo-2" class="w-5 h-5 text-danger-600" /> استرجاع الطلب {{ $order['id'] }}
                 </h3>
-                <button @click="open = false" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500">
+                <button type="button" @click="open = false" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500">
                     <x-icon name="x" class="w-4 h-4" />
                 </button>
             </div>

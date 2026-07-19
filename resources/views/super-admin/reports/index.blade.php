@@ -15,7 +15,7 @@
         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div class="inline-flex rounded-xl bg-gray-100 p-1">
                 <template x-for="opt in [{ k: 'day', l: 'اليوم' }, { k: 'week', l: 'الأسبوع' }, { k: 'month', l: 'الشهر' }, { k: 'year', l: 'السنة' }]" :key="opt.k">
-                    <button
+                    <button type="button"
                         @click="period = opt.k"
                         :class="period === opt.k ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
                         class="px-4 py-2 rounded-lg text-sm font-medium transition-colors"

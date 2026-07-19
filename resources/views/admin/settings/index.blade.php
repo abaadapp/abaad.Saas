@@ -32,7 +32,7 @@
                 @endphp
                 <nav class="flex lg:flex-col gap-1 overflow-x-auto">
                     @foreach ($tabs as $key => $t)
-                        <button
+                        <button type="button"
                             @click="tab = '{{ $key }}'"
                             :class="tab === '{{ $key }}' ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50'"
                             class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors text-right"

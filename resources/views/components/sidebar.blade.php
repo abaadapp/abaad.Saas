@@ -28,7 +28,7 @@
             <p class="font-bold text-gray-800 truncate">{{ $brand }}</p>
             <p class="text-xs text-gray-400 truncate">{{ $subtitle }}</p>
         </div>
-        <button @click="$store.sidebar.open = false" class="lg:hidden mr-auto text-gray-400">
+        <button type="button" @click="$store.sidebar.open = false" class="lg:hidden mr-auto text-gray-400">
             <x-icon name="x" class="w-5 h-5" />
         </button>
     </div>

@@ -324,5 +324,76 @@ class DatabaseSeeder extends Seeder
                 ]);
             }
         }
+
+        // مورّدون + أوامر شراء + ذمم تجريبية لكل متجر
+        $supplierNames = [
+            ['name' => 'مؤسسة الخليج للتوريدات', 'phone' => '96824601122', 'contact_person' => 'سالم الراشدي'],
+            ['name' => 'شركة النور للجملة', 'phone' => '96824703344', 'contact_person' => 'يوسف البلوشي'],
+            ['name' => 'مزارع ظفار', 'phone' => '96823805566', 'contact_person' => 'أحمد المعشني'],
+        ];
+        foreach (\App\Models\Business::pluck('id') as $bizId) {
+            $supplierIds = [];
+            foreach ($supplierNames as $sn) {
+                $supplierIds[] = \App\Models\Supplier::create(array_merge($sn, [
+                    'business_id' => $bizId,
+                    'email' => 'sales@' . \Illuminate\Support\Str::random(6) . '.com',
+                ]))->id;
+            }
+
+            $products = \App\Models\Product::where('business_id', $bizId)->take(4)->get();
+            if ($products->count()) {
+                // أمر شراء مُرسل (لم يُستلم بعد)
+                $po1 = \App\Models\PurchaseOrder::create([
+                    'business_id' => $bizId, 'number' => 'PO-' . rand(10000, 99999),
+                    'supplier_id' => $supplierIds[0], 'supplier_name' => $supplierNames[0]['name'],
+                    'status' => 'مُرسل', 'total' => 0, 'ordered_at' => now()->subDays(3),
+                ]);
+                $t1 = 0;
+                foreach ($products->take(3) as $p) {
+                    $qty = 20;
+                    $po1->items()->create(['product_id' => $p->id, 'name' => $p->name, 'cost' => $p->cost, 'quantity' => $qty]);
+                    $t1 += $p->cost * $qty;
+                }
+                $po1->update(['total' => $t1]);
+
+                // أمر شراء مستلم
+                $po2 = \App\Models\PurchaseOrder::create([
+                    'business_id' => $bizId, 'number' => 'PO-' . rand(10000, 99999),
+                    'supplier_id' => $supplierIds[1], 'supplier_name' => $supplierNames[1]['name'],
+                    'status' => 'مستلم', 'total' => 0, 'ordered_at' => now()->subDays(15), 'received_at' => now()->subDays(12),
+                ]);
+                $t2 = 0;
+                foreach ($products->take(2) as $p) {
+                    $qty = 15;
+                    $po2->items()->create(['product_id' => $p->id, 'name' => $p->name, 'cost' => $p->cost, 'quantity' => $qty, 'received_quantity' => $qty]);
+                    $t2 += $p->cost * $qty;
+                }
+                $po2->update(['total' => $t2]);
+            }
+
+            // ذمم: أول 3 عملاء عليهم ديون، بعضهم متأخر وبعضهم سدّد جزئيًا
+            $customers = \App\Models\Customer::where('business_id', $bizId)->take(3)->get();
+            $debts = [
+                ['debt' => 45.500, 'paid' => 0, 'due' => -5],   // متأخر
+                ['debt' => 30.000, 'paid' => 10.000, 'due' => 12],
+                ['debt' => 18.750, 'paid' => 0, 'due' => 20],
+            ];
+            foreach ($customers as $i => $c) {
+                $c->update(['credit_limit' => [40, 100, 50][$i] ?? 50]);
+                $d = $debts[$i];
+                \App\Models\CustomerLedger::create([
+                    'business_id' => $bizId, 'customer_id' => $c->id, 'type' => 'دين',
+                    'amount' => $d['debt'], 'note' => 'بيع آجل', 'due_at' => now()->addDays($d['due']),
+                    'created_at' => now()->subDays(10), 'updated_at' => now()->subDays(10),
+                ]);
+                if ($d['paid'] > 0) {
+                    \App\Models\CustomerLedger::create([
+                        'business_id' => $bizId, 'customer_id' => $c->id, 'type' => 'سداد',
+                        'amount' => $d['paid'], 'method' => 'نقدي', 'note' => 'سداد جزئي',
+                        'created_at' => now()->subDays(4), 'updated_at' => now()->subDays(4),
+                    ]);
+                }
+            }
+        }
     }
 }

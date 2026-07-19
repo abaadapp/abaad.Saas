@@ -11,8 +11,8 @@ class Permissions
     public const MAP = [
         'admin' => ['*'],
         'manager' => ['*'],
-        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses', 'reports', 'pos'],
-        'inventory' => ['dashboard', 'products', 'categories', 'inventory', 'reports', 'pos'],
+        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses', 'reports', 'receivables', 'profitability', 'pos'],
+        'inventory' => ['dashboard', 'products', 'categories', 'inventory', 'suppliers', 'purchases', 'reports', 'pos'],
         'sales' => ['dashboard', 'orders', 'customers', 'products', 'pos'],
         'cashier' => ['dashboard', 'pos'],
         'delivery' => ['dashboard', 'orders', 'pos'],

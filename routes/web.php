@@ -168,6 +168,28 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::view('/inventory/movements', 'admin.inventory.movements')->name('inventory.movements');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
+    // المورّدون
+    Route::view('/suppliers', 'admin.suppliers.index')->name('suppliers.index');
+    Route::post('/suppliers', [\App\Http\Controllers\Admin\SupplierController::class, 'store'])->name('suppliers.store');
+    Route::put('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'update'])->name('suppliers.update');
+    Route::delete('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'destroy'])->name('suppliers.destroy');
+
+    // أوامر الشراء
+    Route::view('/purchases', 'admin.purchases.index')->name('purchases.index');
+    Route::view('/purchases/create', 'admin.purchases.create')->name('purchases.create');
+    Route::post('/purchases', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'store'])->name('purchases.store');
+    Route::post('/purchases/{id}/receive', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'receive'])->name('purchases.receive');
+    Route::delete('/purchases/{id}', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
+
+    // الذمم (البيع الآجل)
+    Route::view('/receivables', 'admin.receivables.index')->name('receivables.index');
+    Route::post('/receivables/{id}/debt', [\App\Http\Controllers\Admin\ReceivableController::class, 'recordDebt'])->name('receivables.debt');
+    Route::post('/receivables/{id}/payment', [\App\Http\Controllers\Admin\ReceivableController::class, 'recordPayment'])->name('receivables.payment');
+    Route::post('/receivables/{id}/limit', [\App\Http\Controllers\Admin\ReceivableController::class, 'setLimit'])->name('receivables.limit');
+
+    // تحليلات الربحية
+    Route::view('/profitability', 'admin.profitability')->name('profitability.index');
+
     // المالية والمصروفات والتقارير والإعدادات
     Route::view('/finance', 'admin.finance.index')->name('finance.index');
     Route::post('/finance/transactions', [FinanceController::class, 'store'])->name('finance.store');

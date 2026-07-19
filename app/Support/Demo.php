@@ -13,7 +13,9 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Plan;
 use App\Models\Product;
+use App\Models\PurchaseOrder;
 use App\Models\Shift;
+use App\Models\Supplier;
 use App\Models\Subscription;
 use App\Models\Transaction;
 use App\Models\User;
@@ -521,6 +523,208 @@ class Demo
             'rate' => $rate,
             'commission' => round($achieved * $rate / 100, 3),
             'month' => now()->translatedFormat('F Y'),
+        ];
+    }
+
+    /* ============================ المورّدون والمشتريات ============================ */
+
+    public static function suppliers(): array
+    {
+        return Supplier::where('business_id', self::bid())->withCount('purchaseOrders')->orderBy('name')->get()->map(fn ($s) => [
+            'id' => $s->id,
+            'name' => $s->name,
+            'phone' => $s->phone,
+            'email' => $s->email,
+            'contact' => $s->contact_person,
+            'notes' => $s->notes,
+            'orders_count' => $s->purchase_orders_count,
+        ])->all();
+    }
+
+    public static function purchaseOrders(): array
+    {
+        return PurchaseOrder::where('business_id', self::bid())->withCount('items')
+            ->orderByDesc('id')->get()->map(fn ($p) => [
+                'id' => $p->id,
+                'number' => $p->number,
+                'supplier' => $p->supplier_name ?? optional($p->supplier)->name ?? '—',
+                'status' => $p->status,
+                'total' => (float) $p->total,
+                'items_count' => $p->items_count,
+                'ordered' => optional($p->ordered_at)->format('Y-m-d') ?? '—',
+                'received' => optional($p->received_at)->format('Y-m-d'),
+            ])->all();
+    }
+
+    public static function purchaseOrderStats(): array
+    {
+        $bid = self::bid();
+        $base = PurchaseOrder::where('business_id', $bid);
+
+        return [
+            'total' => (clone $base)->count(),
+            'pending' => (clone $base)->whereIn('status', ['مسودة', 'مُرسل', 'مستلم جزئيًا'])->count(),
+            'received' => (clone $base)->where('status', 'مستلم')->count(),
+            'value' => (float) (clone $base)->whereIn('status', ['مسودة', 'مُرسل', 'مستلم جزئيًا'])->sum('total'),
+        ];
+    }
+
+    /** اقتراح إعادة الطلب: منتجات وصلت حدّ التنبيه (كمية مقترحة تُعيدها لضعف الحدّ) */
+    public static function reorderSuggestions(): array
+    {
+        return Product::where('business_id', self::bid())->where('active', true)
+            ->whereColumn('quantity', '<=', 'alert_qty')->orderBy('quantity')->get()->map(fn ($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'sku' => $p->sku,
+                'qty' => (int) $p->quantity,
+                'alert' => (int) $p->alert_qty,
+                'suggested' => max(1, (int) $p->alert_qty * 2 - (int) $p->quantity),
+                'cost' => (float) $p->cost,
+            ])->all();
+    }
+
+    /* ============================ الذمم (البيع الآجل) ============================ */
+
+    /** رصيد العميل المستحقّ = مجموع الديون - مجموع السداد */
+    public static function customerBalance($id): float
+    {
+        $debit = (float) \App\Models\CustomerLedger::where('customer_id', $id)->where('type', 'دين')->sum('amount');
+        $credit = (float) \App\Models\CustomerLedger::where('customer_id', $id)->where('type', 'سداد')->sum('amount');
+
+        return round($debit - $credit, 3);
+    }
+
+    public static function customerLedger($id): array
+    {
+        return \App\Models\CustomerLedger::where('customer_id', $id)->orderBy('created_at')->orderBy('id')->get()->map(fn ($e) => [
+            'type' => $e->type,
+            'amount' => (float) $e->amount,
+            'method' => $e->method,
+            'note' => $e->note,
+            'order' => $e->order_number,
+            'due' => optional($e->due_at)->format('Y-m-d'),
+            'date' => optional($e->created_at)->format('Y-m-d') ?? '—',
+        ])->all();
+    }
+
+    /** كل العملاء الذين لديهم رصيد مستحقّ */
+    public static function receivables(): array
+    {
+        $bid = self::bid();
+        $rows = [];
+        foreach (Customer::where('business_id', $bid)->whereHas('ledger')->get() as $c) {
+            $balance = self::customerBalance($c->id);
+            if ($balance <= 0) {
+                continue;
+            }
+            $overdue = (float) \App\Models\CustomerLedger::where('customer_id', $c->id)->where('type', 'دين')
+                ->whereNotNull('due_at')->where('due_at', '<', now())->sum('amount');
+            $rows[] = [
+                'id' => $c->id,
+                'name' => $c->name,
+                'phone' => $c->phone,
+                'limit' => (float) $c->credit_limit,
+                'balance' => $balance,
+                'over_limit' => $c->credit_limit > 0 && $balance > $c->credit_limit,
+                'has_overdue' => $overdue > 0,
+            ];
+        }
+
+        usort($rows, fn ($a, $b) => $b['balance'] <=> $a['balance']);
+
+        return $rows;
+    }
+
+    public static function receivablesStats(): array
+    {
+        $rows = self::receivables();
+
+        return [
+            'total_due' => round(array_sum(array_column($rows, 'balance')), 3),
+            'debtors' => count($rows),
+            'overdue' => count(array_filter($rows, fn ($r) => $r['has_overdue'])),
+            'over_limit' => count(array_filter($rows, fn ($r) => $r['over_limit'])),
+        ];
+    }
+
+    /* ============================ الربحية ============================ */
+
+    /** ربح كل منتج = (سعر البيع - التكلفة) × الكمية المباعة، من عناصر الطلبات الفعلية */
+    public static function productProfitability(): array
+    {
+        $bid = self::bid();
+        $costs = Product::where('business_id', $bid)->pluck('cost', 'id');
+
+        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
+            ->selectRaw('product_id, name, SUM(quantity) as qty, SUM(total) as revenue')
+            ->groupBy('product_id', 'name')->get()->map(function ($r) use ($costs) {
+                $cost = (float) ($costs[$r->product_id] ?? 0);
+                $cogs = $cost * (int) $r->qty;
+                $revenue = (float) $r->revenue;
+                $profit = $revenue - $cogs;
+
+                return [
+                    'name' => $r->name,
+                    'qty' => (int) $r->qty,
+                    'revenue' => round($revenue, 3),
+                    'cost' => round($cogs, 3),
+                    'profit' => round($profit, 3),
+                    'margin' => $revenue > 0 ? round($profit / $revenue * 100, 1) : 0,
+                ];
+            })->sortByDesc('profit')->values()->all();
+
+        return $rows;
+    }
+
+    public static function categoryProfitability(): array
+    {
+        $bid = self::bid();
+        // خريطة product_id -> [category, cost]
+        $products = Product::where('business_id', $bid)->with('category')->get()
+            ->keyBy('id')->map(fn ($p) => ['cat' => optional($p->category)->name ?? 'غير مصنّف', 'cost' => (float) $p->cost]);
+
+        $agg = [];
+        $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
+            ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue')->groupBy('product_id')->get();
+        foreach ($items as $it) {
+            $info = $products[$it->product_id] ?? ['cat' => 'غير مصنّف', 'cost' => 0];
+            $cat = $info['cat'];
+            $agg[$cat] ??= ['revenue' => 0, 'cost' => 0];
+            $agg[$cat]['revenue'] += (float) $it->revenue;
+            $agg[$cat]['cost'] += $info['cost'] * (int) $it->qty;
+        }
+
+        $rows = [];
+        foreach ($agg as $cat => $v) {
+            $profit = $v['revenue'] - $v['cost'];
+            $rows[] = [
+                'name' => $cat,
+                'revenue' => round($v['revenue'], 3),
+                'profit' => round($profit, 3),
+                'margin' => $v['revenue'] > 0 ? round($profit / $v['revenue'] * 100, 1) : 0,
+            ];
+        }
+        usort($rows, fn ($a, $b) => $b['profit'] <=> $a['profit']);
+
+        return $rows;
+    }
+
+    public static function profitSummary(): array
+    {
+        $prods = self::productProfitability();
+        $revenue = array_sum(array_column($prods, 'revenue'));
+        $cost = array_sum(array_column($prods, 'cost'));
+        $profit = $revenue - $cost;
+
+        return [
+            'revenue' => round($revenue, 3),
+            'cost' => round($cost, 3),
+            'profit' => round($profit, 3),
+            'margin' => $revenue > 0 ? round($profit / $revenue * 100, 1) : 0,
+            'best' => $prods[0] ?? null,
+            'worst' => ! empty($prods) ? end($prods) : null,
+            'loss_makers' => array_values(array_filter($prods, fn ($p) => $p['profit'] < 0)),
         ];
     }
 

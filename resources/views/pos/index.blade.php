@@ -223,11 +223,11 @@
                     <div class="grid grid-cols-2 gap-3">
                         <div class="bg-gray-50 rounded-xl p-3 text-center">
                             <p class="text-xs text-gray-400">المبلغ المتبقي</p>
-                            <p class="font-bold text-danger-600 mt-0.5" x-text="money(Math.max(0, total - paid))"></p>
+                            <p class="font-bold text-danger-600 mt-0.5" x-text="fmt(Math.max(0, displayTotal - paid))"></p>
                         </div>
                         <div class="bg-gray-50 rounded-xl p-3 text-center">
                             <p class="text-xs text-gray-400">المبلغ المرتجع</p>
-                            <p class="font-bold text-success-600 mt-0.5" x-text="money(Math.max(0, paid - total))"></p>
+                            <p class="font-bold text-success-600 mt-0.5" x-text="fmt(Math.max(0, paid - displayTotal))"></p>
                         </div>
                     </div>
 

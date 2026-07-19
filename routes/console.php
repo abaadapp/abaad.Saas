@@ -13,3 +13,6 @@ Schedule::command('backup:run')->dailyAt('02:00')->withoutOverlapping();
 
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
+
+// تقرير الأداء الشهري بالبريد (أول كل شهر 07:00)
+Schedule::command('reports:email')->monthlyOn(1, '07:00')->withoutOverlapping();

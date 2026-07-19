@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    @php $dc = \App\Support\Demo::displayCurrency(); $dcDec = in_array($dc['code'], ['OMR', 'KWD', 'BHD']) ? 3 : 2; @endphp
+    <meta name="app-currency" content='@json(['rate' => $dc['rate'], 'symbol' => $dc['symbol'], 'decimals' => $dcDec])'>
 
     <title>{{ $title ?? 'نقطة البيع' }} — Abad POS</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -43,6 +45,26 @@
 
             {{-- أدوات الجانب --}}
             <div class="flex items-center gap-2 shrink-0">
+                {{-- مبدّل عملة العرض --}}
+                @php $posCurrencies = collect(\App\Support\Demo::currencies())->where('active', true); @endphp
+                @if ($posCurrencies->count() > 1)
+                    <x-dropdown align="left" width="w-48">
+                        <x-slot:trigger>
+                            <button class="flex items-center gap-1.5 h-9 px-3 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-colors" title="عملة العرض">
+                                <x-icon name="coins" class="w-4 h-4 text-amber-500" />
+                                <span>{{ $dc['code'] }}</span>
+                            </button>
+                        </x-slot:trigger>
+                        <div class="px-4 py-2 text-xs text-gray-400 border-b border-gray-50">عملة العرض</div>
+                        @foreach ($posCurrencies as $c)
+                            <a href="{{ route('pos.currency.switch', $c['is_base'] ? 'base' : $c['code']) }}"
+                               class="flex items-center justify-between gap-2 px-4 py-2.5 text-sm {{ $dc['code'] === $c['code'] ? 'text-gray-900 bg-gray-100 font-semibold' : 'text-gray-600 hover:bg-gray-50' }}">
+                                <span class="flex items-center gap-2"><span class="font-mono text-xs">{{ $c['code'] }}</span> {{ $c['name'] }}</span>
+                                @if ($c['is_base'])<span class="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded">أساسية</span>@endif
+                            </a>
+                        @endforeach
+                    </x-dropdown>
+                @endif
                 <button class="w-9 h-9 flex items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors" title="بحث">
                     <x-icon name="search" class="w-5 h-5" />
                 </button>

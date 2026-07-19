@@ -592,6 +592,29 @@ class Demo
             ->map(fn ($r) => ['name' => $r->name, 'qty' => (int) $r->q, 'total' => round((float) $r->t, 3)])->all();
     }
 
+    /** مقارنة أداء الشهر الحالي بالشهر السابق */
+    public static function periodComparison(): array
+    {
+        $bid = self::bid();
+        $now = now();
+        $metric = function ($start, $end) use ($bid) {
+            $q = Order::where('business_id', $bid)->where('is_held', false)->whereBetween('ordered_at', [$start, $end]);
+            $sales = (float) (clone $q)->sum('total');
+            $orders = (clone $q)->count();
+
+            return ['sales' => $sales, 'orders' => $orders, 'avg' => $orders ? $sales / $orders : 0];
+        };
+        $cur = $metric($now->copy()->startOfMonth(), $now->copy()->endOfMonth());
+        $prev = $metric($now->copy()->subMonthNoOverflow()->startOfMonth(), $now->copy()->subMonthNoOverflow()->endOfMonth());
+        $delta = fn ($c, $p) => $p > 0 ? round(($c - $p) / $p * 100, 1) : ($c > 0 ? 100.0 : 0.0);
+
+        return [
+            ['label' => 'مبيعات الشهر', 'cur' => self::money($cur['sales']), 'prev' => self::money($prev['sales']), 'delta' => $delta($cur['sales'], $prev['sales']), 'icon' => 'trending-up'],
+            ['label' => 'عدد الطلبات', 'cur' => (string) $cur['orders'], 'prev' => (string) $prev['orders'], 'delta' => $delta($cur['orders'], $prev['orders']), 'icon' => 'receipt'],
+            ['label' => 'متوسط قيمة الطلب', 'cur' => self::money($cur['avg']), 'prev' => self::money($prev['avg']), 'delta' => $delta($cur['avg'], $prev['avg']), 'icon' => 'calculator'],
+        ];
+    }
+
     /** المبيعات حسب أيام الأسبوع */
     public static function salesByWeekday(): array
     {

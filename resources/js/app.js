@@ -7,6 +7,15 @@ import { createIcons, icons } from 'lucide';
 window.Alpine = Alpine;
 window.ApexCharts = ApexCharts;
 
+/* عملة العرض (تُحقن من الخادم عبر <meta name="app-currency">) */
+window.CURRENCY = (() => {
+    try {
+        return JSON.parse(document.querySelector('meta[name=app-currency]')?.content) || null;
+    } catch (e) {
+        return null;
+    }
+})() || { rate: 1, symbol: 'ر.ع', decimals: 3 };
+
 /* رسم أيقونات Lucide الموجودة في الصفحة */
 window.renderIcons = () => createIcons({ icons });
 document.addEventListener('DOMContentLoaded', () => window.renderIcons());
@@ -291,8 +300,20 @@ document.addEventListener('alpine:init', () => {
         get total() {
             return this.subtotal - this.discountAmount + this.taxAmount + Number(this.deliveryFee || 0);
         },
+        // الإجمالي بعملة العرض (للعرض فقط — التخزين يبقى بالأساسية)
+        get displayTotal() {
+            return this.total * window.CURRENCY.rate;
+        },
+        // تنسيق قيمة بعملة العرض (القيمة أصلًا بالأساسية → تُحوّل)
         money(v) {
-            return Number(v).toFixed(3) + ' ر.ع';
+            return this.fmt(Number(v) * window.CURRENCY.rate);
+        },
+        // تنسيق قيمة مُعطاة أصلًا بعملة العرض (بدون تحويل)
+        fmt(v) {
+            return Number(v).toLocaleString('en-US', {
+                minimumFractionDigits: window.CURRENCY.decimals,
+                maximumFractionDigits: window.CURRENCY.decimals,
+            }) + ' ' + window.CURRENCY.symbol;
         },
     }));
 });

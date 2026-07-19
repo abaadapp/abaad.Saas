@@ -7,6 +7,26 @@
         </x-slot:actions>
     </x-page-header>
 
+    {{-- مقارنة الفترات: هذا الشهر مقابل السابق --}}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        @foreach (\App\Support\Demo::periodComparison() as $m)
+            @php $up = $m['delta'] >= 0; @endphp
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500">{{ $m['label'] }}</p>
+                        <p class="mt-2 text-2xl font-bold text-gray-800">{{ $m['cur'] }}</p>
+                        <p class="text-xs text-gray-400 mt-1">الشهر السابق: {{ $m['prev'] }}</p>
+                    </div>
+                    <span class="shrink-0 inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg {{ $up ? 'bg-success-50 text-success-600' : 'bg-danger-50 text-danger-600' }}">
+                        <x-icon :name="$up ? 'trending-up' : 'trending-down'" class="w-3.5 h-3.5" />
+                        {{ $up ? '+' : '' }}{{ $m['delta'] }}%
+                    </span>
+                </div>
+            </div>
+        @endforeach
+    </div>
+
     <p class="text-xs text-gray-400 mb-4">جميع القيم بالعملة الأساسية (الريال العماني).</p>
 
     @php

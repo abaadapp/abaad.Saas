@@ -16,6 +16,7 @@
             ['label' => 'المنتجات', 'icon' => 'package', 'route' => 'admin.products.index'],
             ['label' => 'التصنيفات', 'icon' => 'tags', 'route' => 'admin.categories.index'],
             ['label' => 'الطلبات', 'icon' => 'shopping-cart', 'route' => 'admin.orders.index'],
+            ['label' => 'المرتجعات', 'icon' => 'undo-2', 'route' => 'admin.returns.index'],
             ['label' => 'العملاء', 'icon' => 'users', 'route' => 'admin.customers.index'],
             ['heading' => 'الإدارة'],
             ['label' => 'الموظفون', 'icon' => 'user-cog', 'route' => 'admin.employees.index'],

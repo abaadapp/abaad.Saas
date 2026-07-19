@@ -284,5 +284,18 @@ class DatabaseSeeder extends Seeder
                 'created_at' => now()->subHours($ai * 3), 'updated_at' => now()->subHours($ai * 3),
             ]);
         }
+
+        // عملات افتراضية لكل متجر (الأساسية OMR + عملات خليجية/دولية)
+        $defaultCurrencies = [
+            ['code' => 'OMR', 'name' => 'ريال عماني', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true],
+            ['code' => 'AED', 'name' => 'درهم إماراتي', 'symbol' => 'د.إ', 'rate' => 9.54, 'is_base' => false],
+            ['code' => 'SAR', 'name' => 'ريال سعودي', 'symbol' => 'ر.س', 'rate' => 9.75, 'is_base' => false],
+            ['code' => 'USD', 'name' => 'دولار أمريكي', 'symbol' => '$', 'rate' => 2.60, 'is_base' => false],
+        ];
+        foreach (\App\Models\Business::pluck('id') as $bizId) {
+            foreach ($defaultCurrencies as $cur) {
+                \App\Models\Currency::create(array_merge($cur, ['business_id' => $bizId, 'active' => true]));
+            }
+        }
     }
 }

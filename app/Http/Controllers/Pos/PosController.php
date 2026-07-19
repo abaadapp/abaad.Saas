@@ -63,6 +63,8 @@ class PosController extends Controller
 
         \App\Support\Activity::log('checkout', 'أتمّ بيعًا ' . $order->number . ' بقيمة ' . number_format($order->total, 3) . ' ر.ع', ['subject_id' => $order->id]);
 
+        $this->notifyNewOrder($order);
+
         return response()->json(['ok' => true, 'invoice' => $order->number]);
     }
 
@@ -105,5 +107,23 @@ class PosController extends Controller
         }
 
         return redirect()->route('pos.shift')->with('toast', ['msg' => 'تم إغلاق الوردية بنجاح', 'type' => 'success']);
+    }
+
+    /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */
+    private function notifyNewOrder(Order $order): void
+    {
+        $business = \App\Models\Business::find($this->bid());
+        if (! $business || ! $business->email) {
+            return;
+        }
+        $enabled = \App\Models\Setting::where('business_id', $this->bid())->where('key', 'notify_new_order')->value('value');
+        if ($enabled === '0') {
+            return;
+        }
+        try {
+            \Illuminate\Support\Facades\Mail::to($business->email)->send(new \App\Mail\NewOrderMail($order));
+        } catch (\Throwable $e) {
+            report($e); // لا نُفشل عملية البيع بسبب البريد
+        }
     }
 }

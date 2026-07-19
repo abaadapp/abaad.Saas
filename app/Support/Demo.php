@@ -338,6 +338,54 @@ class Demo
         ])->all();
     }
 
+    /** سجل المرتجعات للنشاط الحالي */
+    public static function returns(): array
+    {
+        return \App\Models\OrderReturn::where('business_id', self::bid())->orderByDesc('id')->get()->map(fn ($r) => [
+            'id' => $r->id,
+            'order' => $r->order_number,
+            'type' => $r->type,
+            'amount' => (float) $r->amount,
+            'items' => $r->items_count,
+            'reason' => $r->reason,
+            'employee' => $r->employee_name,
+            'date' => optional($r->created_at)->format('Y-m-d H:i') ?? '—',
+        ])->all();
+    }
+
+    /** إحصائيات المرتجعات */
+    public static function returnsStats(): array
+    {
+        $bid = self::bid();
+        $q = \App\Models\OrderReturn::where('business_id', $bid);
+        $total = (float) (clone $q)->sum('amount');
+        $count = (clone $q)->count();
+        $full = (clone $q)->where('type', 'كلي')->count();
+        $partial = (clone $q)->where('type', 'جزئي')->count();
+        $month = (float) (clone $q)->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year)->sum('amount');
+
+        return [
+            ['label' => 'إجمالي المرتجعات', 'value' => self::money($total), 'icon' => 'undo-2', 'trend' => 'الكل', 'up' => false, 'color' => 'danger'],
+            ['label' => 'عدد عمليات الاسترجاع', 'value' => (string) $count, 'icon' => 'receipt', 'trend' => 'عملية', 'up' => false, 'color' => 'warning'],
+            ['label' => 'مرتجعات هذا الشهر', 'value' => self::money($month), 'icon' => 'calendar', 'trend' => 'الشهر', 'up' => false, 'color' => 'info'],
+            ['label' => 'كلي / جزئي', 'value' => $full . ' / ' . $partial, 'icon' => 'split', 'trend' => 'التوزيع', 'up' => true, 'color' => 'secondary'],
+        ];
+    }
+
+    /** عملات النشاط (مع العملة الأساسية) */
+    public static function currencies(): array
+    {
+        return \App\Models\Currency::where('business_id', self::bid())->orderByDesc('is_base')->orderBy('code')->get()->map(fn ($c) => [
+            'id' => $c->id,
+            'code' => $c->code,
+            'name' => $c->name,
+            'symbol' => $c->symbol,
+            'rate' => (float) $c->rate,
+            'is_base' => (bool) $c->is_base,
+            'active' => (bool) $c->active,
+        ])->all();
+    }
+
     /** طلبات عميل محدّد (سجل مشترياته) */
     public static function customerOrders($id): array
     {

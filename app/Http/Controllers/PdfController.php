@@ -97,12 +97,10 @@ class PdfController extends Controller
 
         $orders = Order::where('business_id', $bid)->where('customer_id', $customer->id)->where('is_held', false)
             ->orderBy('ordered_at')->get();
-        $orderNumbers = $orders->pluck('number');
-        $returns = \App\Models\OrderReturn::where('business_id', $bid)->whereIn('order_number', $orderNumbers)
-            ->orderBy('created_at')->get();
+        $returns = collect();
 
         $totalSpent = (float) $orders->sum('total');
-        $totalReturned = (float) $returns->sum('amount');
+        $totalReturned = 0.0;
 
         $html = view('pdf.customer-statement', [
             'customer' => $customer,

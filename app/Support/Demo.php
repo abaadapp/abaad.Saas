@@ -329,7 +329,7 @@ class Demo
             ])->all();
     }
 
-    /** تفاصيل طلب كامل بأصنافه الحقيقية وكميات الاسترجاع (حسب رقم الطلب) */
+    /** تفاصيل طلب كامل بأصنافه الحقيقية (حسب رقم الطلب) */
     public static function orderDetails($number): array
     {
         $o = Order::where('business_id', self::bid())->where('number', $number)->with('items')->first();
@@ -343,12 +343,8 @@ class Demo
             'name' => $it->name,
             'price' => (float) $it->price,
             'qty' => (int) $it->quantity,
-            'returned' => (int) $it->returned_quantity,
-            'remaining' => $it->remaining,
             'total' => (float) $it->total,
         ])->all();
-
-        $returnedTotal = (float) $o->returns()->sum('amount');
 
         return [
             'id' => $o->number,
@@ -367,8 +363,6 @@ class Demo
             'total' => (float) $o->total,
             'notes' => $o->notes,
             'items' => $items,
-            'returned_total' => $returnedTotal,
-            'has_returnable' => collect($items)->sum('remaining') > 0,
         ];
     }
 
@@ -387,40 +381,6 @@ class Demo
             'points' => $c->points,
             'avatar' => self::image('cust' . $c->id, 100, 100),
         ])->all();
-    }
-
-    /** سجل المرتجعات للنشاط الحالي */
-    public static function returns(): array
-    {
-        return \App\Models\OrderReturn::where('business_id', self::bid())->orderByDesc('id')->get()->map(fn ($r) => [
-            'id' => $r->id,
-            'order' => $r->order_number,
-            'type' => $r->type,
-            'amount' => (float) $r->amount,
-            'items' => $r->items_count,
-            'reason' => $r->reason,
-            'employee' => $r->employee_name,
-            'date' => optional($r->created_at)->format('Y-m-d H:i') ?? '—',
-        ])->all();
-    }
-
-    /** إحصائيات المرتجعات */
-    public static function returnsStats(): array
-    {
-        $bid = self::bid();
-        $q = \App\Models\OrderReturn::where('business_id', $bid);
-        $total = (float) (clone $q)->sum('amount');
-        $count = (clone $q)->count();
-        $full = (clone $q)->where('type', 'كلي')->count();
-        $partial = (clone $q)->where('type', 'جزئي')->count();
-        $month = (float) (clone $q)->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year)->sum('amount');
-
-        return [
-            ['label' => 'إجمالي المرتجعات', 'value' => self::money($total), 'icon' => 'undo-2', 'trend' => 'الكل', 'up' => false, 'color' => 'danger'],
-            ['label' => 'عدد عمليات الاسترجاع', 'value' => (string) $count, 'icon' => 'receipt', 'trend' => 'عملية', 'up' => false, 'color' => 'warning'],
-            ['label' => 'مرتجعات هذا الشهر', 'value' => self::money($month), 'icon' => 'calendar', 'trend' => 'الشهر', 'up' => false, 'color' => 'info'],
-            ['label' => 'كلي / جزئي', 'value' => $full . ' / ' . $partial, 'icon' => 'split', 'trend' => 'التوزيع', 'up' => true, 'color' => 'secondary'],
-        ];
     }
 
     /** عملات النشاط (مع العملة الأساسية) */
@@ -989,39 +949,6 @@ class Demo
         }
 
         return $alerts;
-    }
-
-    /** المواعيد والطلبات المجدولة للمستأجر الحالي */
-    public static function appointments(): array
-    {
-        return \App\Models\Appointment::where('business_id', self::bid())
-            ->orderBy('scheduled_at')->get()->map(fn ($a) => [
-                'id' => $a->id,
-                'title' => $a->title,
-                'customer' => $a->customer_name,
-                'phone' => $a->phone,
-                'branch' => $a->branch,
-                'notes' => $a->notes,
-                'status' => $a->status,
-                'at' => $a->scheduled_at,
-                'date' => $a->scheduled_at->format('Y-m-d'),
-                'time' => $a->scheduled_at->format('H:i'),
-                'is_past' => $a->scheduled_at->isPast(),
-            ])->all();
-    }
-
-    /** إحصائيات المواعيد */
-    public static function appointmentStats(): array
-    {
-        $bid = self::bid();
-        $base = \App\Models\Appointment::where('business_id', $bid);
-
-        return [
-            'total' => (clone $base)->count(),
-            'upcoming' => (clone $base)->where('scheduled_at', '>=', now())->whereNotIn('status', ['ملغي', 'مكتمل'])->count(),
-            'today' => (clone $base)->whereBetween('scheduled_at', [now()->startOfDay(), now()->endOfDay()])->count(),
-            'done' => (clone $base)->where('status', 'مكتمل')->count(),
-        ];
     }
 
     /** مقارنة أداء الشهر الحالي بالشهر السابق */

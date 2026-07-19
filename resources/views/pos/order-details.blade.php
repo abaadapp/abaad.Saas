@@ -2,7 +2,6 @@
     @php
         $order = \App\Support\Demo::orderDetails(request()->route('id'));
         abort_if(empty($order), 404);
-        $isReturned = in_array($order['status'], ['مرتجع', 'مرتجع جزئي']);
     @endphp
 
     <div class="h-full overflow-y-auto p-4 sm:p-6">
@@ -22,30 +21,17 @@
             </div>
             <div class="flex items-center gap-2">
                 <x-button variant="outline" icon="printer" :href="route('pos.receipt.pdf', $order['id'])" target="_blank">إعادة طباعة</x-button>
-                @if ($order['has_returnable'])
-                    <x-button variant="danger" icon="undo-2" type="button" x-data @click="$dispatch('open-returns')">استرجاع</x-button>
-                @endif
             </div>
         </div>
-
-        @if ($isReturned)
-            <div class="flex items-center gap-2 bg-danger-50 text-danger-700 rounded-2xl px-5 py-3 mb-6 text-sm">
-                <x-icon name="undo-2" class="w-5 h-5" />
-                هذا الطلب {{ $order['status'] }} — استُرجع منه بقيمة {{ \App\Support\Demo::money($order['returned_total']) }}.
-            </div>
-        @endif
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {{-- المنتجات + الملخص --}}
             <div class="lg:col-span-2 space-y-6">
-                <x-table :headers="['المنتج', 'الكمية', 'المسترجع', 'السعر', 'الإجمالي']">
+                <x-table :headers="['المنتج', 'الكمية', 'السعر', 'الإجمالي']">
                     @foreach ($order['items'] as $l)
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-3 font-semibold text-gray-800">{{ $l['name'] }}</td>
                             <td class="px-4 py-3 text-gray-600">{{ $l['qty'] }}</td>
-                            <td class="px-4 py-3">
-                                @if ($l['returned'] > 0)<span class="text-danger-600 font-medium">{{ $l['returned'] }}</span>@else<span class="text-gray-300">—</span>@endif
-                            </td>
                             <td class="px-4 py-3 text-gray-600">{{ \App\Support\Demo::money($l['price']) }}</td>
                             <td class="px-4 py-3 font-semibold text-gray-800">{{ \App\Support\Demo::money($l['total']) }}</td>
                         </tr>
@@ -64,9 +50,6 @@
                             <span class="font-bold text-gray-800">الإجمالي</span>
                             <span class="text-lg font-extrabold text-gray-900">{{ \App\Support\Demo::money($order['total']) }}</span>
                         </div>
-                        @if ($order['returned_total'] > 0)
-                            <div class="flex justify-between text-danger-600"><span>إجمالي المسترجع</span><span>- {{ \App\Support\Demo::money($order['returned_total']) }}</span></div>
-                        @endif
                     </div>
                 </div>
             </div>
@@ -96,6 +79,4 @@
             </div>
         </div>
     </div>
-
-    @include('partials.returns-modal')
 </x-layouts::pos>

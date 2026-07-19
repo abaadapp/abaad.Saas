@@ -54,25 +54,9 @@
     @endforelse
 </table>
 
-@if ($returns->count())
-    <h2>المرتجعات</h2>
-    <table>
-        <tr><th>الطلب</th><th>النوع</th><th>التاريخ</th><th>المبلغ المسترجع</th></tr>
-        @foreach ($returns as $r)
-            <tr>
-                <td>{{ $r->order_number }}</td>
-                <td>مرتجع {{ $r->type }}</td>
-                <td>{{ optional($r->created_at)->format('Y-m-d') }}</td>
-                <td style="text-align:left; color:#dc2626;">- {{ \App\Support\Demo::moneyBase($r->amount) }}</td>
-            </tr>
-        @endforeach
-    </table>
-@endif
-
 <h2>الملخّص</h2>
 <table class="totals">
     <tr><td style="color:#6b7280;">إجمالي المشتريات</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($totalSpent) }}</td></tr>
-    <tr><td style="color:#6b7280;">إجمالي المرتجعات</td><td style="text-align:left; color:#dc2626;">- {{ \App\Support\Demo::moneyBase($totalReturned) }}</td></tr>
     <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">صافي الإنفاق</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($net) }}</td></tr>
 </table>
 

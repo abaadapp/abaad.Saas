@@ -31,9 +31,6 @@ Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->na
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [\App\Http\Controllers\ProfileController::class, 'edit'])->name('profile.edit');
     Route::put('/profile', [\App\Http\Controllers\ProfileController::class, 'update'])->name('profile.update');
-
-    // المرتجعات (متاح للنشاط ونقطة البيع — محصور بالمستأجر)
-    Route::post('/orders/{id}/return', [\App\Http\Controllers\ReturnController::class, 'store'])->name('orders.return');
 });
 
 /* --------------------------- Super Admin --------------------------- */
@@ -96,6 +93,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'adminStats'])->name('dashboard.stats');
 
     // الفروع
+    Route::view('/branches', 'admin.branches.index')->name('branches.index');
     Route::get('/branch/{id}/switch', [\App\Http\Controllers\Admin\BranchController::class, 'switch'])->name('branch.switch');
     Route::post('/branches', [\App\Http\Controllers\Admin\BranchController::class, 'store'])->name('branches.store');
     Route::delete('/branches/{id}', [\App\Http\Controllers\Admin\BranchController::class, 'destroy'])->name('branches.destroy');
@@ -125,9 +123,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::put('/orders/{id}/status', [\App\Http\Controllers\Admin\OrderController::class, 'updateStatus'])->name('orders.updateStatus');
     Route::get('/orders/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('orders.pdf');
 
-    // المرتجعات
-    Route::view('/returns', 'admin.returns.index')->name('returns.index');
-
     // العملات وأسعار الصرف
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
     Route::post('/currencies', [\App\Http\Controllers\Admin\CurrencyController::class, 'store'])->name('currencies.store');
@@ -155,13 +150,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::view('/employees-performance', 'admin.employees.performance')->name('employees.performance');
     Route::get('/employees/{id}/commission-pdf', [\App\Http\Controllers\PdfController::class, 'commissionStatement'])->name('employees.commission');
     Route::view('/employees/{id}', 'admin.employees.show')->name('employees.show');
-
-    // المواعيد والطلبات المجدولة
-    Route::view('/appointments', 'admin.appointments.index')->name('appointments.index');
-    Route::post('/appointments', [\App\Http\Controllers\Admin\AppointmentController::class, 'store'])->name('appointments.store');
-    Route::post('/appointments/{id}/status', [\App\Http\Controllers\Admin\AppointmentController::class, 'updateStatus'])->name('appointments.status');
-    Route::post('/appointments/{id}/convert', [\App\Http\Controllers\Admin\AppointmentController::class, 'convert'])->name('appointments.convert');
-    Route::delete('/appointments/{id}', [\App\Http\Controllers\Admin\AppointmentController::class, 'destroy'])->name('appointments.destroy');
 
     // المخزون
     Route::view('/inventory', 'admin.inventory.index')->name('inventory.index');

@@ -1,0 +1,79 @@
+<style>
+    * { font-family: 'dejavusans', sans-serif; }
+    body { color: #1f2937; font-size: 11px; }
+    .head { border-bottom: 3px solid #7c3aed; padding-bottom: 10px; margin-bottom: 16px; }
+    .brand { font-size: 20px; font-weight: bold; color: #7c3aed; }
+    .muted { color: #6b7280; font-size: 10px; }
+    h2 { font-size: 13px; color: #4c1d95; margin: 16px 0 8px; border-right: 4px solid #7c3aed; padding-right: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    th { background: #f5f3ff; color: #4c1d95; text-align: right; padding: 7px; font-size: 10px; border-bottom: 1px solid #ede9fe; }
+    td { padding: 7px; border-bottom: 1px solid #f3f4f6; font-size: 10px; }
+    .info td { border: none; padding: 3px 0; }
+    .totals td { padding: 8px; font-size: 12px; }
+    .foot { margin-top: 24px; border-top: 1px solid #e5e7eb; padding-top: 8px; color: #9ca3af; font-size: 9px; text-align: center; }
+    .pill { background: #f5f3ff; border-radius: 6px; padding: 2px 6px; font-size: 9px; }
+</style>
+
+<div class="head">
+    <table style="border:none;"><tr>
+        <td style="border:none; width:60%;">
+            <div class="brand">{{ $business['name'] ?? 'Abad POS' }}</div>
+            <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
+        </td>
+        <td style="border:none; text-align:left;">
+            <div style="font-size:15px; font-weight:bold;">كشف حساب عميل</div>
+            <div class="muted">تاريخ الإصدار: {{ $generatedAt }}</div>
+        </td>
+    </tr></table>
+</div>
+
+<table class="info">
+    <tr>
+        <td style="width:50%;"><strong>العميل:</strong> {{ $customer->name }}</td>
+        <td style="width:50%;"><strong>الهاتف:</strong> {{ $customer->phone ?: '—' }}</td>
+    </tr>
+    <tr>
+        <td><strong>البريد:</strong> {{ $customer->email ?: '—' }}</td>
+        <td><strong>نقاط الولاء:</strong> {{ $customer->points }}</td>
+    </tr>
+</table>
+
+<h2>سجل الطلبات</h2>
+<table>
+    <tr><th>رقم الطلب</th><th>التاريخ</th><th>الحالة</th><th>وسيلة الدفع</th><th>الإجمالي</th></tr>
+    @forelse ($orders as $o)
+        <tr>
+            <td>{{ $o->number }}</td>
+            <td>{{ optional($o->ordered_at)->format('Y-m-d') }}</td>
+            <td><span class="pill">{{ $o->status }}</span></td>
+            <td>{{ $o->payment_method }}</td>
+            <td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($o->total) }}</td>
+        </tr>
+    @empty
+        <tr><td colspan="5" style="text-align:center; color:#9ca3af;">لا توجد طلبات لهذا العميل.</td></tr>
+    @endforelse
+</table>
+
+@if ($returns->count())
+    <h2>المرتجعات</h2>
+    <table>
+        <tr><th>الطلب</th><th>النوع</th><th>التاريخ</th><th>المبلغ المسترجع</th></tr>
+        @foreach ($returns as $r)
+            <tr>
+                <td>{{ $r->order_number }}</td>
+                <td>مرتجع {{ $r->type }}</td>
+                <td>{{ optional($r->created_at)->format('Y-m-d') }}</td>
+                <td style="text-align:left; color:#dc2626;">- {{ \App\Support\Demo::moneyBase($r->amount) }}</td>
+            </tr>
+        @endforeach
+    </table>
+@endif
+
+<h2>الملخّص</h2>
+<table class="totals">
+    <tr><td style="color:#6b7280;">إجمالي المشتريات</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($totalSpent) }}</td></tr>
+    <tr><td style="color:#6b7280;">إجمالي المرتجعات</td><td style="text-align:left; color:#dc2626;">- {{ \App\Support\Demo::moneyBase($totalReturned) }}</td></tr>
+    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">صافي الإنفاق</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($net) }}</td></tr>
+</table>
+
+<div class="foot">كشف حساب آلي عبر نظام Abad POS — {{ $generatedAt }} — القيم بالريال العماني</div>

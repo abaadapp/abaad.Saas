@@ -68,6 +68,37 @@ class PdfController extends Controller
         return $this->pdf($html, 'platform-report-' . now()->format('Y-m-d'));
     }
 
+    /** كشف حساب عميل (PDF) */
+    public function customerStatement($id)
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $customer = \App\Models\Customer::where('business_id', $bid)->findOrFail($id);
+
+        $orders = Order::where('business_id', $bid)->where('customer_id', $customer->id)->where('is_held', false)
+            ->orderBy('ordered_at')->get();
+        $orderNumbers = $orders->pluck('number');
+        $returns = \App\Models\OrderReturn::where('business_id', $bid)->whereIn('order_number', $orderNumbers)
+            ->orderBy('created_at')->get();
+
+        $totalSpent = (float) $orders->sum('total');
+        $totalReturned = (float) $returns->sum('amount');
+
+        $html = view('pdf.customer-statement', [
+            'customer' => $customer,
+            'orders' => $orders,
+            'returns' => $returns,
+            'totalSpent' => $totalSpent,
+            'totalReturned' => $totalReturned,
+            'net' => $totalSpent - $totalReturned,
+            'business' => Demo::business($bid),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر كشف حساب العميل: ' . $customer->name, ['subject_id' => $customer->id]);
+
+        return $this->pdf($html, 'statement-' . $customer->id . '-' . now()->format('Y-m-d'));
+    }
+
     /** مولّد A4 عربي/RTL */
     private function pdf(string $html, string $name)
     {

@@ -71,6 +71,32 @@
         @endif
     @endauth
 
+    {{-- مبدّل عملة العرض (للنشاط التجاري) --}}
+    @auth
+        @if (auth()->user()->business_id)
+            @php $curList = collect(\App\Support\Demo::currencies())->where('active', true); $curNow = \App\Support\Demo::displayCurrency(); @endphp
+            @if ($curList->count() > 1)
+                <x-dropdown align="left" width="w-52">
+                    <x-slot:trigger>
+                        <button class="flex items-center gap-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                            <x-icon name="coins" class="w-4 h-4 text-warning-500" />
+                            <span class="font-medium">{{ $curNow['code'] }}</span>
+                            <x-icon name="chevron-down" class="w-4 h-4 text-gray-400" />
+                        </button>
+                    </x-slot:trigger>
+                    <div class="px-4 py-2 text-xs text-gray-400 border-b border-gray-50">عملة العرض</div>
+                    @foreach ($curList as $c)
+                        <a href="{{ route('admin.currency.switch', $c['is_base'] ? 'base' : $c['code']) }}"
+                           class="flex items-center justify-between gap-2 px-4 py-2.5 text-sm {{ $curNow['code'] === $c['code'] ? 'text-primary-600 bg-primary-50' : 'text-gray-600 hover:bg-gray-50' }}">
+                            <span class="flex items-center gap-2"><span class="font-mono text-xs">{{ $c['code'] }}</span> {{ $c['name'] }}</span>
+                            @if ($c['is_base'])<span class="text-[10px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded">أساسية</span>@endif
+                        </a>
+                    @endforeach
+                </x-dropdown>
+            @endif
+        @endif
+    @endauth
+
     {{-- الإشعارات (حقيقية من قاعدة البيانات) --}}
     @php
         $notifications = \App\Support\Demo::notifications();

@@ -29,9 +29,58 @@ class Demo
 {
     /* ============================ مساعدات ============================ */
 
+    private static $baseCur = null;
+    private static $displayCur = null;
+
+    /** العملة الأساسية للنشاط (الافتراضي: ريال عماني) */
+    public static function baseCurrency(): array
+    {
+        if (self::$baseCur !== null) {
+            return self::$baseCur;
+        }
+        $c = \App\Models\Currency::where('business_id', self::bid())->where('is_base', true)->first();
+
+        return self::$baseCur = $c
+            ? ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => true]
+            : ['code' => 'OMR', 'symbol' => 'ر.ع', 'rate' => 1.0, 'is_base' => true];
+    }
+
+    /** عملة العرض المختارة (من الجلسة) أو الأساسية */
+    public static function displayCurrency(): array
+    {
+        if (self::$displayCur !== null) {
+            return self::$displayCur;
+        }
+        $code = session('display_currency');
+        if ($code) {
+            $c = \App\Models\Currency::where('business_id', self::bid())->where('code', $code)->where('active', true)->first();
+            if ($c) {
+                return self::$displayCur = ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => (bool) $c->is_base];
+            }
+        }
+
+        return self::$displayCur = self::baseCurrency();
+    }
+
+    private static function formatMoney(float $value, array $cur): string
+    {
+        $decimals = in_array($cur['code'], ['OMR', 'KWD', 'BHD']) ? 3 : 2;
+
+        return number_format($value, $decimals, '.', ',') . ' ' . $cur['symbol'];
+    }
+
+    /** المبلغ بعملة العرض المختارة (تحويل تلقائي حسب سعر الصرف) */
     public static function money($value): string
     {
-        return number_format((float) $value, 3, '.', ',') . ' ر.ع';
+        $cur = self::displayCurrency();
+
+        return self::formatMoney((float) $value * $cur['rate'], $cur);
+    }
+
+    /** المبلغ بالعملة الأساسية دائمًا (للفواتير والإيصالات وكشوف الحساب) */
+    public static function moneyBase($value): string
+    {
+        return self::formatMoney((float) $value, self::baseCurrency());
     }
 
     public static function image(string $seed, int $w = 400, int $h = 400): string
@@ -541,6 +590,58 @@ class Demo
             ->selectRaw('name, SUM(quantity) as q, SUM(total) as t')
             ->groupBy('name')->orderByDesc('q')->limit(5)->get()
             ->map(fn ($r) => ['name' => $r->name, 'qty' => (int) $r->q, 'total' => round((float) $r->t, 3)])->all();
+    }
+
+    /** المبيعات حسب أيام الأسبوع */
+    public static function salesByWeekday(): array
+    {
+        $labels = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+        $rows = Order::where('business_id', self::bid())->where('is_held', false)
+            ->selectRaw("strftime('%w', ordered_at) as w, SUM(total) as s")->groupBy('w')->pluck('s', 'w');
+        $data = [];
+        for ($i = 0; $i < 7; $i++) {
+            $data[] = round((float) ($rows[(string) $i] ?? 0), 3);
+        }
+
+        return ['labels' => $labels, 'data' => $data];
+    }
+
+    /** المبيعات حسب ساعات اليوم */
+    public static function salesByHour(): array
+    {
+        $rows = Order::where('business_id', self::bid())->where('is_held', false)
+            ->selectRaw("strftime('%H', ordered_at) as h, SUM(total) as s")->groupBy('h')->pluck('s', 'h');
+        $labels = [];
+        $data = [];
+        for ($i = 8; $i <= 22; $i++) {
+            $labels[] = sprintf('%02d:00', $i);
+            $data[] = round((float) ($rows[sprintf('%02d', $i)] ?? 0), 3);
+        }
+
+        return ['labels' => $labels, 'data' => $data];
+    }
+
+    /** أفضل العملاء إنفاقًا */
+    public static function topCustomers(int $limit = 7): array
+    {
+        return Order::where('business_id', self::bid())->where('is_held', false)->whereNotNull('customer_name')
+            ->selectRaw('customer_name, SUM(total) as t, COUNT(*) as c')
+            ->groupBy('customer_name')->orderByDesc('t')->limit($limit)->get()
+            ->map(fn ($r) => ['name' => $r->customer_name, 'total' => round((float) $r->t, 3), 'orders' => (int) $r->c])->all();
+    }
+
+    /** المبيعات حسب التصنيف */
+    public static function categorySales(): array
+    {
+        $rows = \Illuminate\Support\Facades\DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
+            ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
+            ->where('orders.business_id', self::bid())->where('orders.is_held', false)
+            ->selectRaw('COALESCE(categories.name, "غير مصنّف") as cat, SUM(order_items.total) as s')
+            ->groupBy('cat')->orderByDesc('s')->get();
+
+        return ['labels' => $rows->pluck('cat')->all(), 'series' => $rows->pluck('s')->map(fn ($v) => round((float) $v, 3))->all()];
     }
 
     /** إيرادات المنصة (فواتير) آخر 6 أشهر */

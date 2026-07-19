@@ -8,7 +8,7 @@
     >
         <x-slot:actions>
             <x-button variant="outline" size="md" icon="arrow-right" :href="route('admin.customers.index')">رجوع</x-button>
-            <x-button variant="primary" size="md" icon="pencil">تعديل البيانات</x-button>
+            <x-button variant="outline" size="md" icon="file-text" :href="route('admin.customers.statement', $customer['id'])" target="_blank">كشف حساب PDF</x-button>
         </x-slot:actions>
     </x-page-header>
 

@@ -54,7 +54,7 @@
         <tr>
             <td style="width:16%;">{{ $label }}</td>
             <td style="width:60%;"><div class="barwrap"><div class="bar" style="width: {{ pbar($val / $maxRev * 100) }}%;"></div></div></td>
-            <td style="width:24%; text-align:left; font-weight:bold;">{{ \App\Support\Demo::money($val) }}</td>
+            <td style="width:24%; text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($val) }}</td>
         </tr>
     @endforeach
 </table>
@@ -83,7 +83,7 @@
 <table>
     <tr><th>الشركة</th><th>المدينة</th><th>الباقة</th><th>المبيعات</th></tr>
     @foreach ($topBusinesses as $b)
-        <tr><td>{{ $b['name'] }}</td><td>{{ $b['city'] }}</td><td>{{ $b['plan'] }}</td><td>{{ \App\Support\Demo::money($b['sales']) }}</td></tr>
+        <tr><td>{{ $b['name'] }}</td><td>{{ $b['city'] }}</td><td>{{ $b['plan'] }}</td><td>{{ \App\Support\Demo::moneyBase($b['sales']) }}</td></tr>
     @endforeach
 </table>
 

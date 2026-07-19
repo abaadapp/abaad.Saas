@@ -24,6 +24,7 @@
             ['label' => 'المالية', 'icon' => 'wallet', 'route' => 'admin.finance.index'],
             ['label' => 'المصروفات', 'icon' => 'arrow-down-circle', 'route' => 'admin.expenses.index'],
             ['label' => 'التقارير', 'icon' => 'bar-chart-3', 'route' => 'admin.reports.index'],
+            ['label' => 'تحليلات متقدمة', 'icon' => 'chart-line', 'route' => 'admin.analytics.index'],
             ['label' => 'سجل النشاط', 'icon' => 'history', 'route' => 'admin.activity.index'],
             ['label' => 'الإعدادات', 'icon' => 'settings', 'route' => 'admin.settings.index'],
             ['heading' => 'نقطة البيع'],

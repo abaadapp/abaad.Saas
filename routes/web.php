@@ -123,6 +123,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::view('/returns', 'admin.returns.index')->name('returns.index');
 
     // العملات وأسعار الصرف
+    Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
     Route::post('/currencies', [\App\Http\Controllers\Admin\CurrencyController::class, 'store'])->name('currencies.store');
     Route::put('/currencies/{id}', [\App\Http\Controllers\Admin\CurrencyController::class, 'update'])->name('currencies.update');
     Route::post('/currencies/{id}/base', [\App\Http\Controllers\Admin\CurrencyController::class, 'setBase'])->name('currencies.setBase');
@@ -133,6 +134,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
     Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');
+    Route::get('/customers/{id}/statement', [\App\Http\Controllers\PdfController::class, 'customerStatement'])->name('customers.statement');
     Route::view('/customers/{id}', 'admin.customers.show')->name('customers.show');
 
     // الموظفون
@@ -157,6 +159,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
     Route::view('/reports', 'admin.reports.index')->name('reports.index');
     Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'salesReport'])->name('reports.pdf');
+    Route::view('/analytics', 'admin.analytics')->name('analytics.index');
 
     // إشعارات المتصفح (Polling)
     Route::get('/notifications/feed', [\App\Http\Controllers\NotificationController::class, 'feed'])->name('notifications.feed');

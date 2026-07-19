@@ -1,0 +1,148 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
+
+@theme {
+    /* الخطوط */
+    --font-sans: 'Tajawal', 'Cairo', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+
+    /* اللون الأساسي — بنفسجي هادئ */
+    --color-primary-50: #f5f3ff;
+    --color-primary-100: #ede9fe;
+    --color-primary-200: #ddd6fe;
+    --color-primary-300: #c4b5fd;
+    --color-primary-400: #a78bfa;
+    --color-primary-500: #8b5cf6;
+    --color-primary-600: #7c3aed;
+    --color-primary-700: #6d28d9;
+    --color-primary-800: #5b21b6;
+    --color-primary-900: #4c1d95;
+    --color-primary-950: #2e1065;
+
+    /* اللون الثانوي — وردي لمحلات الورود */
+    --color-secondary-50: #fdf2f8;
+    --color-secondary-100: #fce7f3;
+    --color-secondary-200: #fbcfe8;
+    --color-secondary-300: #f9a8d4;
+    --color-secondary-400: #f472b6;
+    --color-secondary-500: #ec4899;
+    --color-secondary-600: #db2777;
+    --color-secondary-700: #be185d;
+    --color-secondary-800: #9d174d;
+    --color-secondary-900: #831843;
+
+    /* حالات */
+    --color-success-50: #ecfdf5;
+    --color-success-500: #10b981;
+    --color-success-600: #059669;
+    --color-success-700: #047857;
+    --color-warning-50: #fffbeb;
+    --color-warning-500: #f59e0b;
+    --color-warning-600: #d97706;
+    --color-danger-50: #fef2f2;
+    --color-danger-500: #ef4444;
+    --color-danger-600: #dc2626;
+    --color-danger-700: #b91c1c;
+    --color-info-50: #eff6ff;
+    --color-info-500: #3b82f6;
+    --color-info-600: #2563eb;
+}
+
+@layer base {
+    html {
+        direction: rtl;
+    }
+
+    body {
+        font-family: var(--font-sans);
+        background-color: #f4f5f7;
+        color: #1f2937;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
+}
+
+/* إخفاء العناصر حتى تحميل Alpine */
+[x-cloak] {
+    display: none !important;
+}
+
+/* إخفاء شريط التمرير مع إبقاء إمكانية التمرير */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* ===== ثيمة نقطة البيع (POS) بأسلوب Apple — بسيطة ومحايدة ===== */
+.pos-scope {
+    /* خلفية رمادية فاتحة مثل نظام macOS */
+    background-color: #f5f5f7;
+    letter-spacing: -0.01em;
+}
+/* حلقة تركيز محايدة وناعمة بدل الألوان */
+.pos-scope input:not([type='checkbox']):not([type='radio']):focus,
+.pos-scope select:focus,
+.pos-scope textarea:focus {
+    border-color: #d1d5db !important;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05) !important;
+    outline: none !important;
+}
+/* تحييد أي حلقة تركيز ملوّنة قادمة من المكوّنات المشتركة داخل POS */
+.pos-scope *:focus {
+    --tw-ring-color: rgba(0, 0, 0, 0.12) !important;
+}
+/* مربعات الاختيار باللون الأسود بدل البنفسجي */
+.pos-scope input[type='checkbox'],
+.pos-scope input[type='radio'] {
+    accent-color: #111827;
+}
+/* ظلال أنعم وحواف أهدأ للبطاقات داخل POS */
+.pos-scope .shadow-sm {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+.pos-scope .shadow-md {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06) !important;
+}
+/* حدود رمادية فاتحة موحّدة */
+.pos-scope .border-gray-100 {
+    border-color: #ececed !important;
+}
+
+/* أنماط الطباعة الحرارية 80mm */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .thermal-receipt,
+    .thermal-receipt * {
+        visibility: visible;
+    }
+    .thermal-receipt {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 80mm;
+    }
+    .no-print {
+        display: none !important;
+    }
+}

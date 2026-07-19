@@ -1,0 +1,630 @@
+<?php
+
+namespace App\Support;
+
+use App\Models\ActivityLog;
+use App\Models\Business;
+use App\Models\Category;
+use App\Models\Customer;
+use App\Models\Expense;
+use App\Models\InventoryMovement;
+use App\Models\Invoice;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Plan;
+use App\Models\Product;
+use App\Models\Shift;
+use App\Models\Subscription;
+use App\Models\Transaction;
+use App\Models\User;
+
+/**
+ * طبقة الوصول للبيانات لواجهات Abad POS.
+ *
+ * تقرأ الآن من قاعدة البيانات مع مراعاة المستأجر الحالي (business_id)،
+ * وتُعيد نفس أشكال المصفوفات التي تعتمد عليها ملفات Blade
+ * (لذلك لم تتغيّر الواجهات). المصدر الثابت للبيانات التجريبية في App\Support\SeedData.
+ */
+class Demo
+{
+    /* ============================ مساعدات ============================ */
+
+    public static function money($value): string
+    {
+        return number_format((float) $value, 3, '.', ',') . ' ر.ع';
+    }
+
+    public static function image(string $seed, int $w = 400, int $h = 400): string
+    {
+        return "https://picsum.photos/seed/{$seed}/{$w}/{$h}";
+    }
+
+    /** معرّف المستأجر الحالي (أو النشاط الأساسي احتياطيًا) */
+    public static function bid(): int
+    {
+        $u = auth()->user();
+        if ($u && $u->business_id) {
+            return (int) $u->business_id;
+        }
+        return (int) (Business::where('name', 'زهرة مسقط')->value('id') ?? Business::min('id') ?? 0);
+    }
+
+    /** الفرع الحالي المختار (من الجلسة) — null = كل الفروع */
+    public static function currentBranchId(): ?int
+    {
+        return session('current_branch') ? (int) session('current_branch') : null;
+    }
+
+    public static function currentBranchName(): string
+    {
+        $id = self::currentBranchId();
+        return $id ? (\App\Models\Branch::where('id', $id)->value('name') ?? 'كل الفروع') : 'كل الفروع';
+    }
+
+    /** فروع النشاط الحالي */
+    public static function branches(): array
+    {
+        return \App\Models\Branch::where('business_id', self::bid())->orderBy('id')->get()
+            ->map(fn ($b) => ['id' => $b->id, 'name' => $b->name])->all();
+    }
+
+    /* ============================ Super Admin ============================ */
+
+    public static function superStats(): array
+    {
+        $total = Business::count();
+        $active = Business::where('status', 'نشط')->count();
+        $flowers = Business::where('type', 'محل ورود')->count();
+        $users = User::count();
+        $activeSubs = Subscription::where('status', 'نشط')->count();
+        $expiredSubs = Subscription::where('status', '!=', 'نشط')->count();
+        $monthly = (float) Invoice::where('status', 'مدفوعة')->sum('amount');
+        $yearly = (float) Subscription::sum('amount');
+
+        return [
+            ['label' => 'إجمالي الشركات', 'value' => (string) $total, 'icon' => 'building-2', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
+            ['label' => 'الشركات النشطة', 'value' => (string) $active, 'icon' => 'circle-check', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
+            ['label' => 'محلات الورود', 'value' => (string) $flowers, 'icon' => 'flower', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
+            ['label' => 'المستخدمون', 'value' => (string) $users, 'icon' => 'users', 'trend' => '+18%', 'up' => true, 'color' => 'info'],
+            ['label' => 'الاشتراكات النشطة', 'value' => (string) $activeSubs, 'icon' => 'badge-check', 'trend' => '+6%', 'up' => true, 'color' => 'success'],
+            ['label' => 'الاشتراكات المنتهية', 'value' => (string) $expiredSubs, 'icon' => 'badge-x', 'trend' => '-3%', 'up' => false, 'color' => 'danger'],
+            ['label' => 'الإيرادات الشهرية', 'value' => self::money($monthly), 'icon' => 'wallet', 'trend' => '+14%', 'up' => true, 'color' => 'warning'],
+            ['label' => 'الإيرادات السنوية', 'value' => self::money($yearly), 'icon' => 'trending-up', 'trend' => '+21%', 'up' => true, 'color' => 'primary'],
+        ];
+    }
+
+    public static function businesses(): array
+    {
+        return Business::with('plan')->orderByDesc('id')->get()->map(fn ($b) => [
+            'id' => $b->id,
+            'name' => $b->name,
+            'type' => $b->type,
+            'owner' => $b->owner_name,
+            'phone' => $b->phone,
+            'email' => $b->email,
+            'plan' => $b->plan?->name ?? '—',
+            'status' => $b->status,
+            'registered' => optional($b->starts_at)->format('Y-m-d') ?? '—',
+            'branches' => $b->branches_count,
+            'logo' => $b->logo,
+            'city' => $b->city,
+            'country' => $b->country,
+        ])->all();
+    }
+
+    public static function flowerShops(): array
+    {
+        return Business::where('type', 'محل ورود')->with('plan')
+            ->withCount(['products', 'users', 'orders'])->get()->map(fn ($b) => [
+                'id' => $b->id,
+                'name' => $b->name,
+                'logo' => $b->logo,
+                'owner' => $b->owner_name,
+                'city' => $b->city,
+                'branches' => $b->branches_count,
+                'employees' => $b->users_count ?: (($b->id * 3) % 12 + 3),
+                'products' => $b->products_count ?: (($b->id * 7) % 180 + 40),
+                'orders' => $b->orders_count ?: (($b->id * 13) % 800 + 120),
+                'status' => $b->status,
+                'plan' => $b->plan?->name ?? '—',
+                'sales' => (float) Order::where('business_id', $b->id)->sum('total') ?: (($b->id * 137) % 19000 + 3000),
+            ])->all();
+    }
+
+    public static function plans(): array
+    {
+        return Plan::orderBy('id')->get()->map(fn ($p) => [
+            'name' => $p->name,
+            'monthly' => (float) $p->monthly_price,
+            'yearly' => (float) $p->yearly_price,
+            'color' => $p->color,
+            'popular' => (bool) $p->is_popular,
+            'features' => $p->features ?? [],
+        ])->all();
+    }
+
+    public static function subscriptions(): array
+    {
+        return Subscription::with('business', 'plan')->orderByDesc('id')->get()->map(fn ($s) => [
+            'business' => $s->business?->name ?? '—',
+            'plan' => $s->plan?->name ?? '—',
+            'start' => optional($s->starts_at)->format('Y-m-d') ?? '—',
+            'end' => optional($s->ends_at)->format('Y-m-d') ?? '—',
+            'amount' => (float) $s->amount,
+            'payment' => $s->payment_status,
+            'status' => $s->status,
+        ])->all();
+    }
+
+    public static function invoices(): array
+    {
+        return Invoice::with('business', 'plan')->orderByDesc('id')->get()->map(fn ($i) => [
+            'number' => $i->number,
+            'business' => $i->business?->name ?? '—',
+            'plan' => $i->plan?->name ?? '—',
+            'amount' => (float) $i->amount,
+            'date' => optional($i->issued_at)->format('Y-m-d') ?? '—',
+            'status' => $i->status,
+        ])->all();
+    }
+
+    public static function platformUsers(): array
+    {
+        return User::with('business')->orderByDesc('id')->get()->map(fn ($u) => [
+            'id' => $u->id,
+            'name' => $u->name,
+            'email' => $u->email,
+            'phone' => $u->phone,
+            'business' => $u->business?->name ?? 'المنصة',
+            'role' => $u->roleLabel(),
+            'status' => $u->status,
+            'last_login' => optional($u->last_login_at)->format('Y-m-d H:i') ?? '—',
+            'avatar' => $u->avatar ?? self::image('user' . $u->id, 100, 100),
+        ])->all();
+    }
+
+    /** أحدث الأنشطة من سجل النشاط (حسب الدور) */
+    public static function activities(int $limit = 8): array
+    {
+        $u = auth()->user();
+        $q = ActivityLog::query()->latest('id');
+        if ($u && ! $u->isSuperAdmin()) {
+            $q->where('business_id', self::bid());
+        }
+        return $q->limit($limit)->get()->map(fn ($a) => [
+            'text' => $a->user_name . ' — ' . $a->description,
+            'time' => optional($a->created_at)?->locale('ar')->diffForHumans() ?? '—',
+            'icon' => $a->icon,
+            'color' => $a->color,
+        ])->all();
+    }
+
+    /* ============================ Admin ============================ */
+
+    public static function adminStats(): array
+    {
+        $bid = self::bid();
+        $ordersQ = Order::where('business_id', $bid)->where('is_held', false)
+            ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()));
+        $ordersCount = (clone $ordersQ)->count();
+        $salesMonth = (float) (clone $ordersQ)->sum('total');
+        $salesToday = (float) (clone $ordersQ)->whereDate('ordered_at', today())->sum('total');
+        if ($salesToday <= 0) {
+            $salesToday = round($salesMonth * 0.06, 3);
+        }
+        $avg = $ordersCount ? $salesMonth / $ordersCount : 0;
+        $customers = Customer::where('business_id', $bid)->count();
+        $lowStock = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')->count();
+        $expenses = (float) Expense::where('business_id', $bid)->sum('amount');
+        $net = $salesMonth - $expenses;
+
+        return [
+            ['label' => 'مبيعات اليوم', 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'trend' => '+9%', 'up' => true, 'color' => 'primary'],
+            ['label' => 'مبيعات الشهر', 'value' => self::money($salesMonth), 'icon' => 'trending-up', 'trend' => '+15%', 'up' => true, 'color' => 'success'],
+            ['label' => 'عدد الطلبات', 'value' => (string) $ordersCount, 'icon' => 'receipt', 'trend' => '+11%', 'up' => true, 'color' => 'info'],
+            ['label' => 'متوسط قيمة الطلب', 'value' => self::money($avg), 'icon' => 'calculator', 'trend' => '+3%', 'up' => true, 'color' => 'secondary'],
+            ['label' => 'عدد العملاء', 'value' => (string) $customers, 'icon' => 'users', 'trend' => '+7%', 'up' => true, 'color' => 'primary'],
+            ['label' => 'منتجات منخفضة المخزون', 'value' => (string) $lowStock, 'icon' => 'alert-triangle', 'trend' => 'تنبيه', 'up' => false, 'color' => 'warning'],
+            ['label' => 'المصروفات', 'value' => self::money($expenses), 'icon' => 'arrow-down-circle', 'trend' => '-5%', 'up' => false, 'color' => 'danger'],
+            ['label' => 'صافي الأرباح', 'value' => self::money($net), 'icon' => 'piggy-bank', 'trend' => '+17%', 'up' => true, 'color' => 'success'],
+        ];
+    }
+
+    public static function categories(): array
+    {
+        return Category::where('business_id', self::bid())->withCount('products')->orderBy('id')->get()->map(fn ($c) => [
+            'id' => $c->id,
+            'name' => $c->name,
+            'products' => $c->products_count,
+            'icon' => $c->icon,
+            'color' => $c->color,
+        ])->all();
+    }
+
+    public static function products(): array
+    {
+        return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(fn ($p) => [
+            'id' => $p->id,
+            'name' => $p->name,
+            'cat' => $p->category?->name ?? '—',
+            'price' => (float) $p->price,
+            'cost' => (float) $p->cost,
+            'qty' => $p->quantity,
+            'sku' => $p->sku,
+            'barcode' => $p->barcode,
+            'image' => $p->image,
+            'stock_status' => $p->stock_status,
+            'active' => (bool) $p->active,
+            'alert' => $p->alert_qty,
+            'tax' => (float) $p->tax,
+            'discount' => (float) $p->discount,
+        ])->all();
+    }
+
+    public static function orders(): array
+    {
+        return Order::where('business_id', self::bid())->where('is_held', false)
+            ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
+            ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
+                'id' => $o->number,
+                'customer' => $o->customer_name ?? 'عميل نقدي',
+                'employee' => $o->employee_name ?? '—',
+                'branch' => $o->branch,
+                'items_count' => $o->items_count,
+                'total' => (float) $o->total,
+                'payment' => $o->payment_method,
+                'status' => $o->status,
+                'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
+            ])->all();
+    }
+
+    public static function customers(): array
+    {
+        return Customer::where('business_id', self::bid())->withCount('orders')->orderBy('id')->get()->map(fn ($c) => [
+            'id' => $c->id,
+            'name' => $c->name,
+            'phone' => $c->phone,
+            'email' => $c->email,
+            'orders' => $c->orders_count,
+            'total_spent' => (float) Order::where('customer_id', $c->id)->sum('total'),
+            'last_order' => optional(Order::where('customer_id', $c->id)->max('ordered_at'))
+                ? \Illuminate\Support\Carbon::parse(Order::where('customer_id', $c->id)->max('ordered_at'))->format('Y-m-d')
+                : '—',
+            'points' => $c->points,
+            'avatar' => self::image('cust' . $c->id, 100, 100),
+        ])->all();
+    }
+
+    /** طلبات عميل محدّد (سجل مشترياته) */
+    public static function customerOrders($id): array
+    {
+        return Order::where('business_id', self::bid())->where('customer_id', $id)->where('is_held', false)
+            ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
+                'id' => $o->number,
+                'items_count' => $o->items_count,
+                'total' => (float) $o->total,
+                'payment' => $o->payment_method,
+                'status' => $o->status,
+                'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
+            ])->all();
+    }
+
+    public static function employees(): array
+    {
+        return User::where('business_id', self::bid())->where('role', '!=', 'super_admin')
+            ->orderBy('id')->get()->map(fn ($u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'avatar' => $u->avatar ?? self::image('emp' . $u->id, 100, 100),
+                'role' => $u->roleLabel(),
+                'branch' => $u->branch ?? 'الفرع الرئيسي',
+                'phone' => $u->phone,
+                'email' => $u->email,
+                'sales' => (float) $u->sales_total,
+                'status' => $u->status,
+            ])->all();
+    }
+
+    public static function inventory(): array
+    {
+        return Product::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($p) => [
+            'name' => $p->name,
+            'sku' => $p->sku,
+            'qty' => $p->quantity,
+            'min' => $p->alert_qty,
+            'status' => $p->stock_status,
+            'updated' => optional($p->updated_at)->format('Y-m-d') ?? '—',
+        ])->all();
+    }
+
+    public static function movements(): array
+    {
+        return InventoryMovement::where('business_id', self::bid())->orderByDesc('id')->get()->map(fn ($m) => [
+            'product' => $m->product_name,
+            'sku' => $m->sku,
+            'type' => $m->type,
+            'qty' => $m->quantity,
+            'employee' => $m->employee_name,
+            'date' => optional($m->created_at)->format('Y-m-d') ?? '—',
+        ])->all();
+    }
+
+    public static function expenses(): array
+    {
+        return Expense::where('business_id', self::bid())->orderByDesc('spent_at')->get()->map(fn ($e) => [
+            'type' => $e->type,
+            'description' => $e->description,
+            'amount' => (float) $e->amount,
+            'date' => optional($e->spent_at)->format('Y-m-d') ?? '—',
+            'employee' => $e->employee_name,
+            'method' => $e->method,
+        ])->all();
+    }
+
+    /* ============================ المالية ============================ */
+
+    public static function financeStats(): array
+    {
+        $bid = self::bid();
+        $income = Transaction::where('business_id', $bid)->where('type', 'دخل');
+        $total = (float) (clone $income)->sum('amount');
+        $cash = (float) (clone $income)->where('method', 'نقدي')->sum('amount');
+        $bank = (float) (clone $income)->where('method', 'تحويل بنكي')->sum('amount');
+        $card = (float) (clone $income)->where('method', 'بطاقة')->sum('amount');
+
+        return [
+            ['label' => 'إجمالي الإيرادات', 'value' => self::money($total), 'icon' => 'wallet', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
+            ['label' => 'المدفوعات النقدية (كاش)', 'value' => self::money($cash), 'icon' => 'banknote', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
+            ['label' => 'التحويلات البنكية', 'value' => self::money($bank), 'icon' => 'landmark', 'trend' => '+15%', 'up' => true, 'color' => 'info'],
+            ['label' => 'مدفوعات البطاقة (شبكة)', 'value' => self::money($card), 'icon' => 'credit-card', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
+        ];
+    }
+
+    public static function paymentMethods(): array
+    {
+        $bid = self::bid();
+        $income = Transaction::where('business_id', $bid)->where('type', 'دخل');
+        $grand = max(0.001, (float) (clone $income)->sum('amount'));
+        $defs = [
+            ['name' => 'نقدي (كاش)', 'key' => 'نقدي', 'icon' => 'banknote', 'color' => 'success'],
+            ['name' => 'تحويل بنكي', 'key' => 'تحويل بنكي', 'icon' => 'landmark', 'color' => 'info'],
+            ['name' => 'بطاقة (شبكة)', 'key' => 'بطاقة', 'icon' => 'credit-card', 'color' => 'primary'],
+        ];
+        return array_map(function ($d) use ($income, $grand) {
+            $total = (float) (clone $income)->where('method', $d['key'])->sum('amount');
+            $count = (clone $income)->where('method', $d['key'])->count();
+            return array_merge($d, [
+                'total' => $total,
+                'count' => $count,
+                'percent' => (int) round($total / $grand * 100),
+            ]);
+        }, $defs);
+    }
+
+    public static function transactions(): array
+    {
+        return Transaction::where('business_id', self::bid())->orderByDesc('occurred_at')->get()->map(fn ($t) => [
+            'id' => $t->reference,
+            'date' => optional($t->occurred_at)->format('Y-m-d H:i') ?? '—',
+            'description' => $t->description,
+            'method' => $t->method,
+            'type' => $t->type,
+            'amount' => (float) $t->amount,
+            'employee' => $t->employee_name,
+        ])->all();
+    }
+
+    /* ============================ بيانات المخططات (من قاعدة البيانات) ============================ */
+
+    private const AR_MONTHS = [1 => 'يناير', 2 => 'فبراير', 3 => 'مارس', 4 => 'أبريل', 5 => 'مايو', 6 => 'يونيو', 7 => 'يوليو', 8 => 'أغسطس', 9 => 'سبتمبر', 10 => 'أكتوبر', 11 => 'نوفمبر', 12 => 'ديسمبر'];
+
+    /** مبيعات آخر 6 أشهر للنشاط الحالي */
+    public static function salesSeries(): array
+    {
+        $bid = self::bid();
+        $labels = [];
+        $data = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $m = now()->subMonths($i);
+            $labels[] = self::AR_MONTHS[$m->month];
+            $data[] = round((float) Order::where('business_id', $bid)->where('is_held', false)
+                ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
+        }
+        return ['labels' => $labels, 'data' => $data];
+    }
+
+    /** توزيع المبيعات حسب وسيلة الدفع للنشاط الحالي */
+    public static function paymentDistribution(): array
+    {
+        $rows = Order::where('business_id', self::bid())->where('is_held', false)
+            ->selectRaw('payment_method, SUM(total) as s')->groupBy('payment_method')->pluck('s', 'payment_method');
+        return ['labels' => $rows->keys()->all(), 'series' => $rows->map(fn ($v) => round((float) $v, 3))->values()->all()];
+    }
+
+    /** أفضل 5 منتجات مبيعًا للنشاط الحالي */
+    public static function topProducts(): array
+    {
+        $bid = self::bid();
+        return OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
+            ->selectRaw('name, SUM(quantity) as q, SUM(total) as t')
+            ->groupBy('name')->orderByDesc('q')->limit(5)->get()
+            ->map(fn ($r) => ['name' => $r->name, 'qty' => (int) $r->q, 'total' => round((float) $r->t, 3)])->all();
+    }
+
+    /** إيرادات المنصة (فواتير) آخر 6 أشهر */
+    public static function revenueSeries(): array
+    {
+        $labels = [];
+        $data = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $m = now()->subMonths($i);
+            $labels[] = self::AR_MONTHS[$m->month];
+            $data[] = round((float) Invoice::whereYear('issued_at', $m->year)->whereMonth('issued_at', $m->month)->sum('amount'), 3);
+        }
+        return ['labels' => $labels, 'data' => $data];
+    }
+
+    /** نمو الشركات (عدد التسجيلات) آخر 6 أشهر */
+    public static function businessesGrowthSeries(): array
+    {
+        $labels = [];
+        $data = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $m = now()->subMonths($i);
+            $labels[] = self::AR_MONTHS[$m->month];
+            $data[] = Business::whereYear('starts_at', $m->year)->whereMonth('starts_at', $m->month)->count();
+        }
+        return ['labels' => $labels, 'data' => $data];
+    }
+
+    /** توزيع الشركات على الباقات */
+    public static function planDistribution(): array
+    {
+        $rows = Business::with('plan')->get()->groupBy(fn ($b) => $b->plan?->name ?? 'بدون باقة')->map->count();
+        return ['labels' => $rows->keys()->all(), 'series' => $rows->values()->all()];
+    }
+
+    /* ============================ باحثات مفردة (حسب المعرّف) ============================ */
+
+    private static function findById(array $rows, $id, string $key = 'id'): array
+    {
+        $found = collect($rows)->firstWhere($key, is_numeric($id) ? (int) $id : $id);
+        return $found ?? ($rows[0] ?? []);
+    }
+
+    public static function product($id): array { return self::findById(self::products(), $id); }
+    public static function order($id): array { return self::findById(self::orders(), $id); }
+    public static function customer($id): array { return self::findById(self::customers(), $id); }
+    public static function employee($id): array { return self::findById(self::employees(), $id); }
+    public static function business($id): array { return self::findById(self::businesses(), $id); }
+    public static function flowerShop($id): array { return self::findById(self::flowerShops(), $id); }
+    public static function platformUser($id): array { return self::findById(self::platformUsers(), $id); }
+
+    /* ============================ POS ============================ */
+
+    public static function posCategories(): array
+    {
+        $names = Category::where('business_id', self::bid())->orderBy('id')->pluck('name')->all();
+        return array_merge(['الكل'], $names);
+    }
+
+    public static function heldOrders(): array
+    {
+        $name = auth()->user()?->name;
+        return Order::where('business_id', self::bid())->where('is_held', true)
+            ->when($name, fn ($q) => $q->where('employee_name', $name))
+            ->withCount('items')->orderByDesc('id')->get()->map(fn ($o) => [
+                'id' => $o->number,
+                'customer' => $o->customer_name ?? 'عميل نقدي',
+                'items' => $o->items_count ?: 1,
+                'total' => (float) $o->total,
+                'time' => optional($o->ordered_at)->format('H:i') ?? '—',
+                'employee' => $o->employee_name ?? 'سارة حسن',
+            ])->all();
+    }
+
+    public static function receipts(): array
+    {
+        $name = auth()->user()?->name;
+        return Order::where('business_id', self::bid())->where('is_held', false)
+            ->when($name, fn ($q) => $q->where('employee_name', $name))
+            ->orderByDesc('ordered_at')->limit(12)->get()->map(fn ($o) => [
+                'number' => $o->number,
+                'customer' => $o->customer_name ?? 'عميل نقدي',
+                'total' => (float) $o->total,
+                'payment' => $o->payment_method,
+                'time' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
+                'employee' => $o->employee_name ?? 'سارة حسن',
+            ])->all();
+    }
+
+    /* ============================ الإشعارات والوردية ============================ */
+
+    /** إشعارات حقيقية حسب الدور (مخزون منخفض / طلبات / اشتراكات) */
+    public static function notifications(): array
+    {
+        $u = auth()->user();
+        $items = [];
+
+        if ($u && $u->isSuperAdmin()) {
+            $subs = Subscription::with('business')
+                ->whereNotNull('ends_at')->whereDate('ends_at', '>=', now())
+                ->whereDate('ends_at', '<=', now()->addDays(30))
+                ->orderBy('ends_at')->limit(6)->get();
+            foreach ($subs as $s) {
+                $items[] = [
+                    'text' => 'اشتراك «' . ($s->business?->name ?? '—') . '» ينتهي قريبًا',
+                    'time' => optional($s->ends_at)->format('Y-m-d'),
+                    'icon' => 'badge-x', 'color' => 'warning',
+                    'url' => route('super-admin.subscriptions.index'),
+                ];
+            }
+            return $items;
+        }
+
+        $bid = self::bid();
+        $low = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')
+            ->orderBy('quantity')->limit(6)->get();
+        foreach ($low as $p) {
+            $items[] = [
+                'text' => ($p->quantity <= 0 ? 'نفد المخزون: ' : 'مخزون منخفض: ') . $p->name . ' (' . $p->quantity . ' متبقٍ)',
+                'time' => 'تنبيه مخزون',
+                'icon' => 'alert-triangle', 'color' => $p->quantity <= 0 ? 'danger' : 'warning',
+                'url' => route('admin.inventory.index'),
+            ];
+        }
+        $pending = Order::where('business_id', $bid)->where('is_held', false)
+            ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit(3)->get();
+        foreach ($pending as $o) {
+            $items[] = [
+                'text' => 'طلب ' . $o->number . ' بانتظار التجهيز',
+                'time' => optional($o->ordered_at)->format('Y-m-d H:i'),
+                'icon' => 'receipt', 'color' => 'info',
+                'url' => route('admin.orders.show', $o->number),
+            ];
+        }
+        return $items;
+    }
+
+    public static function notificationsCount(): int
+    {
+        return count(self::notifications());
+    }
+
+    /** بيانات وردية الموظف الحالي المحسوبة فعليًا */
+    public static function currentShift(): array
+    {
+        $bid = self::bid();
+        $name = auth()->user()?->name;
+        $shift = Shift::where('business_id', $bid)->where('status', 'مفتوحة')->latest('id')->first();
+
+        if (! $shift) {
+            return ['exists' => false, 'employee' => $name ?? 'الموظف', 'opened_at' => '—',
+                'opening' => 0, 'cash_sales' => 0, 'card_sales' => 0, 'returns' => 0,
+                'expenses' => 0, 'expected' => 0, 'orders_count' => 0];
+        }
+
+        $since = $shift->opened_at ?? now()->startOfDay();
+        $q = Order::where('business_id', $bid)->where('is_held', false)
+            ->when($name, fn ($x) => $x->where('employee_name', $name))
+            ->where('ordered_at', '>=', $since);
+        $cash = (float) (clone $q)->where('payment_method', 'نقدي')->sum('total');
+        $card = (float) (clone $q)->where('payment_method', 'بطاقة')->sum('total');
+        $opening = (float) $shift->opening_balance;
+        $returns = (float) $shift->returns;
+        $expenses = (float) $shift->expenses;
+
+        return [
+            'exists' => true,
+            'employee' => $shift->employee_name ?? $name,
+            'opened_at' => optional($shift->opened_at)->format('Y-m-d H:i') ?? '—',
+            'opening' => $opening,
+            'cash_sales' => $cash,
+            'card_sales' => $card,
+            'returns' => $returns,
+            'expenses' => $expenses,
+            'expected' => $opening + $cash - $returns - $expenses,
+            'orders_count' => (clone $q)->count(),
+        ];
+    }
+}

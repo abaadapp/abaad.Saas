@@ -1,0 +1,136 @@
+<x-layouts::pos title="الفواتير">
+    @php
+        $receipts = \App\Support\Demo::receipts();
+        $products = \App\Support\Demo::products();
+        $data = [];
+        foreach ($receipts as $i => $r) {
+            $lines = [];
+            $count = ($i % 3) + 2;
+            for ($j = 0; $j < $count; $j++) {
+                $p = $products[($i + $j) % count($products)];
+                $qty = ($j % 2) + 1;
+                $lines[] = ['name' => $p['name'], 'qty' => $qty, 'price' => $p['price'], 'total' => round($p['price'] * $qty, 3)];
+            }
+            $subtotal = array_sum(array_column($lines, 'total'));
+            $discount = round($subtotal * ($i % 3 === 0 ? 0.10 : 0), 3);
+            $tax = round(($subtotal - $discount) * 0.05, 3);
+            $total = round($subtotal - $discount + $tax, 3);
+            $data[] = array_merge($r, [
+                'lines' => $lines,
+                'subtotal' => $subtotal,
+                'discount' => $discount,
+                'tax' => $tax,
+                'total' => $total,
+            ]);
+        }
+        $pdfBase = route('pos.receipt.pdf', '__NUMBER__');
+    @endphp
+
+    <div class="h-full flex flex-col lg:flex-row"
+         x-data="{ list: @js($data), sel: 0, money(v) { return Number(v).toFixed(3) + ' ر.ع'; } }">
+
+        {{-- ======= قائمة الفواتير (يمين) ======= --}}
+        <div class="lg:w-2/5 xl:w-1/3 border-l border-gray-100 flex flex-col min-h-0 no-print">
+            <div class="p-4 border-b border-gray-100 shrink-0">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="w-10 h-10 rounded-xl bg-gray-100 text-gray-700 flex items-center justify-center">
+                        <x-icon name="receipt" class="w-5 h-5" />
+                    </span>
+                    <div>
+                        <h1 class="text-lg font-bold text-gray-800">الفواتير</h1>
+                        <p class="text-xs text-gray-400">اختر فاتورة لمعاينتها وطباعتها</p>
+                    </div>
+                </div>
+                <x-input name="rec-search" placeholder="ابحث برقم الفاتورة أو العميل..." icon="search" />
+            </div>
+            <div class="flex-1 overflow-y-auto p-3 space-y-2">
+                <template x-for="(rec, idx) in list" :key="rec.number">
+                    <div @click="sel = idx"
+                            :class="sel === idx ? 'border-gray-900 bg-gray-100' : 'border-gray-100 bg-white hover:bg-gray-50'"
+                            class="w-full text-right border rounded-xl p-3 transition-colors cursor-pointer">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-gray-800" x-text="rec.number"></span>
+                            <span class="text-sm font-bold text-gray-700" x-text="money(rec.total)"></span>
+                        </div>
+                        <div class="flex items-center justify-between mt-1 text-xs text-gray-400">
+                            <span x-text="rec.customer"></span>
+                            <span x-text="rec.time"></span>
+                        </div>
+                        <div class="mt-2 flex justify-end">
+                            <a :href="'{{ $pdfBase }}'.replace('__NUMBER__', rec.number)" target="_blank" @click.stop
+                               class="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium">
+                                <x-icon name="file-text" class="w-3.5 h-3.5" /> PDF
+                            </a>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        {{-- ======= معاينة الفاتورة الحرارية (يسار) ======= --}}
+        <div class="flex-1 overflow-y-auto bg-gray-100 p-4 sm:p-8 flex flex-col items-center">
+            <div class="mb-4 no-print">
+                <x-button variant="dark" icon="printer" onclick="window.print()">طباعة الفاتورة</x-button>
+            </div>
+
+            <div class="thermal-receipt bg-white shadow-lg rounded-lg p-5 text-gray-800" style="width: 300px; font-family: 'Tajawal', monospace;">
+                {{-- الترويسة --}}
+                <div class="text-center border-b border-dashed border-gray-300 pb-3">
+                    <div class="w-14 h-14 mx-auto rounded-full bg-gray-200 text-gray-700 flex items-center justify-center mb-2">
+                        <x-icon name="flower" class="w-8 h-8" />
+                    </div>
+                    <h2 class="text-lg font-extrabold">زهرة مسقط</h2>
+                    <p class="text-xs text-gray-500">متجر الورود والهدايا</p>
+                    <p class="text-xs text-gray-500">الفرع الرئيسي — مسقط</p>
+                </div>
+
+                {{-- بيانات الفاتورة --}}
+                <div class="text-xs py-2 border-b border-dashed border-gray-300 space-y-1">
+                    <div class="flex justify-between"><span class="text-gray-500">رقم الفاتورة</span><span class="font-bold" x-text="list[sel].number"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">التاريخ/الوقت</span><span x-text="list[sel].time"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">العميل</span><span x-text="list[sel].customer"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">الموظف</span><span x-text="list[sel].employee"></span></div>
+                </div>
+
+                {{-- المنتجات --}}
+                <table class="w-full text-xs my-2">
+                    <thead>
+                        <tr class="border-b border-gray-200 text-gray-500">
+                            <th class="text-right font-medium py-1">الصنف</th>
+                            <th class="text-center font-medium py-1">كمية</th>
+                            <th class="text-left font-medium py-1">السعر</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="line in list[sel].lines" :key="line.name">
+                            <tr class="border-b border-dashed border-gray-100">
+                                <td class="py-1.5 text-right" x-text="line.name"></td>
+                                <td class="py-1.5 text-center" x-text="line.qty"></td>
+                                <td class="py-1.5 text-left" x-text="money(line.total)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+
+                {{-- الإجماليات --}}
+                <div class="text-xs py-2 border-t border-dashed border-gray-300 space-y-1">
+                    <div class="flex justify-between"><span class="text-gray-500">المجموع الفرعي</span><span x-text="money(list[sel].subtotal)"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">الخصم</span><span x-text="'- ' + money(list[sel].discount)"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">الضريبة (5%)</span><span x-text="money(list[sel].tax)"></span></div>
+                    <div class="flex justify-between text-sm font-extrabold pt-1.5 border-t border-gray-300 mt-1">
+                        <span>الإجمالي</span><span x-text="money(list[sel].total)"></span>
+                    </div>
+                    <div class="flex justify-between pt-1"><span class="text-gray-500">وسيلة الدفع</span><span class="font-medium" x-text="list[sel].payment"></span></div>
+                </div>
+
+                {{-- التذييل --}}
+                <div class="text-center text-xs text-gray-500 pt-3 border-t border-dashed border-gray-300 space-y-1">
+                    <p class="flex items-center justify-center gap-1"><x-icon name="phone" class="w-3 h-3" /> +968 24123456</p>
+                    <p class="flex items-center justify-center gap-1"><x-icon name="map-pin" class="w-3 h-3" /> مسقط — الخوير</p>
+                    <p class="font-bold text-gray-700 pt-2">شكرًا لزيارتكم 🌹</p>
+                    <p class="text-[10px] text-gray-400">Abad POS — نظام نقاط البيع</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</x-layouts::pos>

@@ -1,0 +1,85 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Business;
+use App\Models\Customer;
+use App\Models\Order;
+use App\Models\Product;
+use App\Models\User;
+use App\Support\Demo;
+use Illuminate\Http\Request;
+
+/**
+ * البحث العام الموحّد للشريط العلوي (JSON، مجمّع حسب النوع).
+ */
+class SearchController extends Controller
+{
+    public function admin(Request $request)
+    {
+        $q = trim((string) $request->query('q'));
+        if (mb_strlen($q) < 2) {
+            return response()->json(['groups' => []]);
+        }
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $like = "%{$q}%";
+
+        $products = Product::where('business_id', $bid)
+            ->where(fn ($w) => $w->where('name', 'like', $like)->orWhere('sku', 'like', $like))
+            ->limit(5)->get()->map(fn ($p) => [
+                'label' => $p->name, 'meta' => $p->sku ?: '—',
+                'url' => route('admin.products.show', $p->id),
+            ]);
+
+        $orders = Order::where('business_id', $bid)->where('is_held', false)
+            ->where(fn ($w) => $w->where('number', 'like', $like)->orWhere('customer_name', 'like', $like))
+            ->orderByDesc('id')->limit(5)->get()->map(fn ($o) => [
+                'label' => $o->number, 'meta' => $o->customer_name ?? 'عميل نقدي',
+                'url' => route('admin.orders.show', $o->number),
+            ]);
+
+        $customers = Customer::where('business_id', $bid)
+            ->where(fn ($w) => $w->where('name', 'like', $like)->orWhere('phone', 'like', $like))
+            ->limit(5)->get()->map(fn ($c) => [
+                'label' => $c->name, 'meta' => $c->phone ?: '—',
+                'url' => route('admin.customers.show', $c->id),
+            ]);
+
+        return response()->json(['groups' => array_values(array_filter([
+            $this->group('المنتجات', 'package', $products),
+            $this->group('الطلبات', 'shopping-cart', $orders),
+            $this->group('العملاء', 'users', $customers),
+        ]))]);
+    }
+
+    public function super(Request $request)
+    {
+        $q = trim((string) $request->query('q'));
+        if (mb_strlen($q) < 2) {
+            return response()->json(['groups' => []]);
+        }
+        $like = "%{$q}%";
+
+        $businesses = Business::where(fn ($w) => $w->where('name', 'like', $like)->orWhere('owner_name', 'like', $like))
+            ->limit(6)->get()->map(fn ($b) => [
+                'label' => $b->name, 'meta' => $b->owner_name ?: '—',
+                'url' => route('super-admin.businesses.show', $b->id),
+            ]);
+
+        $users = User::where(fn ($w) => $w->where('name', 'like', $like)->orWhere('email', 'like', $like))
+            ->limit(6)->get()->map(fn ($u) => [
+                'label' => $u->name, 'meta' => $u->email ?: '—',
+                'url' => route('super-admin.users.show', $u->id),
+            ]);
+
+        return response()->json(['groups' => array_values(array_filter([
+            $this->group('الشركات', 'building-2', $businesses),
+            $this->group('المستخدمون', 'users', $users),
+        ]))]);
+    }
+
+    private function group(string $title, string $icon, $items): ?array
+    {
+        return $items->isEmpty() ? null : ['title' => $title, 'icon' => $icon, 'items' => $items->all()];
+    }
+}

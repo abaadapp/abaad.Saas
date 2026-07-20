@@ -22,8 +22,6 @@
             ['heading' => 'الإدارة'],
             ['label' => 'الفروع', 'icon' => 'git-branch', 'route' => 'admin.branches.index'],
             ['label' => 'المخزون', 'icon' => 'boxes', 'route' => 'admin.inventory.index'],
-            ['label' => 'المورّدون', 'icon' => 'truck', 'route' => 'admin.suppliers.index'],
-            ['label' => 'أوامر الشراء', 'icon' => 'clipboard-list', 'route' => 'admin.purchases.index'],
             ['label' => 'المالية', 'icon' => 'wallet', 'route' => 'admin.finance.index'],
             ['label' => 'المصروفات', 'icon' => 'arrow-down-circle', 'route' => 'admin.expenses.index'],
             ['label' => 'التقارير', 'icon' => 'bar-chart-3', 'route' => 'admin.reports.index'],

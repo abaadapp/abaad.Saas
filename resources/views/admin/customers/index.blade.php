@@ -5,12 +5,12 @@
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'العملاء' => '#']"
     >
         <x-slot:actions>
-            {{-- زر التصدير/الاستيراد الموحّد --}}
+            {{-- زر «المزيد» (تصدير/استيراد) --}}
             <x-dropdown align="left" width="w-60">
                 <x-slot:trigger>
-                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer">
-                        <x-icon name="arrow-down-up" class="w-4 h-4" /> تصدير / استيراد
-                        <x-icon name="chevron-down" class="w-4 h-4 text-gray-400" />
+                    <span title="المزيد" aria-label="المزيد"
+                          class="inline-flex items-center justify-center w-10 h-10 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition cursor-pointer">
+                        <x-icon name="ellipsis-vertical" class="w-5 h-5" />
                     </span>
                 </x-slot:trigger>
 

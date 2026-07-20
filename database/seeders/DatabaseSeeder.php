@@ -206,19 +206,35 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        foreach (SeedData::expenses() as $e) {
+        foreach (SeedData::expenses() as $i => $e) {
+            $spentAt = Carbon::parse($e['date']);
             Expense::create([
-                'business_id' => $primary->id, 'type' => $e['type'], 'description' => $e['description'],
+                'business_id' => $primary->id,
+                'reference' => 'EXP-' . (1001 + $i),
+                'type' => $e['type'], 'description' => $e['description'],
                 'amount' => $e['amount'], 'method' => $e['method'], 'employee_name' => $e['employee'],
-                'spent_at' => Carbon::parse($e['date']),
+                'spent_at' => $spentAt,
+                'due_date' => $spentAt->copy()->addDays(15),
+                'status' => $i % 4 === 0 ? 'غير مدفوع' : 'مدفوع',
             ]);
         }
 
         // أنواع المصروفات الافتراضية لكل نشاط
-        $defaultExpenseTypes = ['إيجار', 'رواتب', 'كهرباء وماء', 'مواد خام', 'تسويق', 'صيانة', 'نقل وتوصيل'];
+        $defaultExpenseTypes = [
+            'إيجار' => 'إيجار المحل والمستودعات',
+            'رواتب' => 'رواتب وأجور الموظفين',
+            'كهرباء وماء' => 'فواتير الكهرباء والمياه',
+            'مواد خام' => 'شراء المواد والبضاعة',
+            'تسويق' => 'الإعلانات والحملات التسويقية',
+            'صيانة' => 'صيانة المعدات والمحل',
+            'نقل وتوصيل' => 'مصاريف الشحن والتوصيل',
+        ];
         foreach (Business::pluck('id') as $bizId) {
-            foreach ($defaultExpenseTypes as $typeName) {
-                \App\Models\ExpenseType::firstOrCreate(['business_id' => $bizId, 'name' => $typeName]);
+            foreach ($defaultExpenseTypes as $typeName => $typeDesc) {
+                \App\Models\ExpenseType::firstOrCreate(
+                    ['business_id' => $bizId, 'name' => $typeName],
+                    ['description' => $typeDesc]
+                );
             }
         }
 

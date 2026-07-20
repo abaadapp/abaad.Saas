@@ -805,6 +805,7 @@ class Demo
         return \App\Models\ExpenseType::where('business_id', $bid)->orderBy('name')->get()->map(fn ($t) => [
             'id' => $t->id,
             'name' => $t->name,
+            'description' => $t->description,
             'count' => (int) ($usage[$t->name]->cnt ?? 0),
             'total' => (float) ($usage[$t->name]->total ?? 0),
         ])->all();

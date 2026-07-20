@@ -193,8 +193,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // المالية والمصروفات والتقارير والإعدادات
     Route::view('/finance', 'admin.finance.index')->name('finance.index');
     Route::post('/finance/transactions', [FinanceController::class, 'store'])->name('finance.store');
-    Route::view('/expenses', 'admin.expenses.index')->name('expenses.index');
+    Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
+    Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
     // أنواع المصروفات
     Route::post('/expense-types', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'store'])->name('expenseTypes.store');
     Route::delete('/expense-types/{id}', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'destroy'])->name('expenseTypes.destroy');

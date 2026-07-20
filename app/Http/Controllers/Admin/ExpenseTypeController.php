@@ -21,11 +21,16 @@ class ExpenseTypeController extends Controller
                 'required', 'string', 'max:255',
                 Rule::unique('expense_types', 'name')->where(fn ($q) => $q->where('business_id', $bid)),
             ],
+            'description' => ['nullable', 'string', 'max:255'],
         ], [
             'name.unique' => 'هذا النوع موجود مسبقًا.',
         ], ['name' => 'اسم النوع']);
 
-        ExpenseType::create(['business_id' => $bid, 'name' => $data['name']]);
+        ExpenseType::create([
+            'business_id' => $bid,
+            'name' => $data['name'],
+            'description' => $data['description'] ?? null,
+        ]);
         Activity::log('created', 'أضاف نوع مصروف: ' . $data['name']);
 
         return back()->with('toast', ['msg' => 'تم إضافة نوع المصروف', 'type' => 'success']);

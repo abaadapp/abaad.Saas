@@ -21,60 +21,87 @@
             <x-input name="search" placeholder="ابحث باسم المورّد أو الهاتف..." icon="search" x-model="q" @input="apply()" />
         </div>
 
-        @if (count($suppliers))
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                @foreach ($suppliers as $s)
-                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5" data-row data-search="{{ $s['name'] }} {{ $s['phone'] }} {{ $s['contact'] }}"
-                        x-data='{ edit: false, s: @json($s) }'>
-                        <div x-show="!edit">
-                            <div class="flex items-start justify-between">
+        <div x-data="{ sel: { id: '', name: '', phone: '', contact: '', email: '' } }">
+            @if (count($suppliers))
+                <x-table :headers="['المورّد', 'الهاتف', 'الشخص المسؤول', 'البريد', 'أوامر الشراء', 'إجراءات']">
+                    @foreach ($suppliers as $s)
+                        <tr class="hover:bg-gray-50" data-row data-search="{{ $s['name'] }} {{ $s['phone'] }} {{ $s['contact'] }}">
+                            <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="flex items-center gap-3">
-                                    <span class="w-11 h-11 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center"><x-icon name="truck" class="w-5 h-5" /></span>
-                                    <div>
-                                        <p class="font-bold text-gray-800">{{ $s['name'] }}</p>
-                                        <p class="text-xs text-gray-400">{{ $s['orders_count'] }} أمر شراء</p>
-                                    </div>
+                                    <span class="w-9 h-9 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center shrink-0">
+                                        <x-icon name="truck" class="w-4 h-4" />
+                                    </span>
+                                    <span class="font-medium text-gray-800">{{ $s['name'] }}</span>
                                 </div>
-                                <x-dropdown align="left" width="w-36">
+                            </td>
+                            <td class="px-4 py-3 text-gray-600 whitespace-nowrap" dir="ltr">{{ $s['phone'] ?: '—' }}</td>
+                            <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $s['contact'] ?: '—' }}</td>
+                            <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $s['email'] ?: '—' }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <x-badge type="info" :text="$s['orders_count'] . ' أمر'" />
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <x-dropdown align="left" width="w-40">
                                     <x-slot:trigger>
-                                        <button type="button" class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-400 flex items-center justify-center"><x-icon name="ellipsis-vertical" class="w-5 h-5" /></button>
+                                        <button type="button" class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-400 flex items-center justify-center">
+                                            <x-icon name="ellipsis-vertical" class="w-5 h-5" />
+                                        </button>
                                     </x-slot:trigger>
-                                    <button type="button" @click="edit = true" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"><x-icon name="pencil" class="w-4 h-4" /> تعديل</button>
+                                    @if ($s['phone'])
+                                        <a href="tel:{{ $s['phone'] }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                            <x-icon name="phone" class="w-4 h-4" /> اتصال
+                                        </a>
+                                    @endif
+                                    <button type="button" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                        x-on:click="sel = { id: {{ $s['id'] }}, name: @js($s['name']), phone: @js($s['phone']), contact: @js($s['contact']), email: @js($s['email']) }; $dispatch('open-modal','edit-supplier')">
+                                        <x-icon name="pencil" class="w-4 h-4" /> تعديل
+                                    </button>
                                     <form method="POST" action="{{ route('admin.suppliers.destroy', $s['id']) }}" @submit.prevent="if(confirm('حذف المورّد؟')) $el.submit()">
                                         @csrf @method('DELETE')
-                                        <button type="submit" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-danger-600 hover:bg-danger-50"><x-icon name="trash-2" class="w-4 h-4" /> حذف</button>
+                                        <button type="submit" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-danger-600 hover:bg-danger-50">
+                                            <x-icon name="trash-2" class="w-4 h-4" /> حذف
+                                        </button>
                                     </form>
                                 </x-dropdown>
-                            </div>
-                            <ul class="mt-4 space-y-2 text-sm border-t border-gray-50 pt-3">
-                                <li class="flex items-center justify-between"><span class="text-gray-500 flex items-center gap-2"><x-icon name="phone" class="w-4 h-4" /> الهاتف</span><span class="text-gray-700" dir="ltr">{{ $s['phone'] ?: '—' }}</span></li>
-                                <li class="flex items-center justify-between"><span class="text-gray-500 flex items-center gap-2"><x-icon name="user" class="w-4 h-4" /> المسؤول</span><span class="text-gray-700">{{ $s['contact'] ?: '—' }}</span></li>
-                                <li class="flex items-center justify-between"><span class="text-gray-500 flex items-center gap-2"><x-icon name="mail" class="w-4 h-4" /> البريد</span><span class="text-gray-700 truncate max-w-[140px]" dir="ltr">{{ $s['email'] ?: '—' }}</span></li>
-                            </ul>
-                            @if ($s['phone'])
-                                <a href="tel:{{ $s['phone'] }}" class="mt-3 inline-flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700"><x-icon name="phone" class="w-4 h-4" /> اتصال</a>
-                            @endif
-                        </div>
-                        {{-- تعديل inline --}}
-                        <form x-show="edit" x-cloak method="POST" action="{{ route('admin.suppliers.update', $s['id']) }}" class="space-y-2">
-                            @csrf @method('PUT')
-                            <input type="text" name="name" :value="s.name" required placeholder="الاسم" class="w-full rounded-lg border-gray-200 text-sm" />
-                            <input type="text" name="phone" :value="s.phone" placeholder="الهاتف" dir="ltr" class="w-full rounded-lg border-gray-200 text-sm" />
-                            <input type="text" name="contact_person" :value="s.contact" placeholder="الشخص المسؤول" class="w-full rounded-lg border-gray-200 text-sm" />
-                            <input type="email" name="email" :value="s.email" placeholder="البريد" dir="ltr" class="w-full rounded-lg border-gray-200 text-sm" />
-                            <div class="flex gap-2 pt-1">
-                                <button type="submit" class="flex-1 bg-primary-600 hover:bg-primary-700 text-white text-sm rounded-lg py-2">حفظ</button>
-                                <button type="button" @click="edit = false" class="px-3 text-sm text-gray-500">إلغاء</button>
-                            </div>
-                        </form>
+                            </td>
+                        </tr>
+                    @endforeach
+                </x-table>
+            @else
+                <x-empty-state icon="truck" title="لا يوجد مورّدون بعد" message="أضِف أول مورّد لبدء إنشاء أوامر الشراء.">
+                    <x-button variant="primary" icon="plus" x-data @click="$dispatch('open-modal','add-supplier')">مورّد جديد</x-button>
+                </x-empty-state>
+            @endif
+
+            {{-- نافذة تعديل المورّد --}}
+            <x-modal name="edit-supplier" title="تعديل بيانات المورّد" maxWidth="max-w-md">
+                <form id="edit-supplier-form" method="POST" :action="'{{ url('admin/suppliers') }}/' + sel.id" class="space-y-4">
+                    @csrf @method('PUT')
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">اسم المورّد <span class="text-danger-500">*</span></label>
+                        <input type="text" name="name" x-bind:value="sel.name" required class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
                     </div>
-                @endforeach
-            </div>
-        @else
-            <x-empty-state icon="truck" title="لا يوجد مورّدون بعد" message="أضِف أول مورّد لبدء إنشاء أوامر الشراء.">
-                <x-button variant="primary" icon="plus" x-data @click="$dispatch('open-modal','add-supplier')">مورّد جديد</x-button>
-            </x-empty-state>
-        @endif
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">الهاتف</label>
+                            <input type="text" name="phone" x-bind:value="sel.phone" dir="ltr" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-600 mb-1">الشخص المسؤول</label>
+                            <input type="text" name="contact_person" x-bind:value="sel.contact" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">البريد الإلكتروني</label>
+                        <input type="email" name="email" x-bind:value="sel.email" dir="ltr" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
+                    </div>
+                </form>
+                <x-slot:footer>
+                    <x-button variant="ghost" size="md" x-on:click="$dispatch('close-modal')">إلغاء</x-button>
+                    <x-button variant="primary" size="md" icon="check" type="submit" form="edit-supplier-form">حفظ</x-button>
+                </x-slot:footer>
+            </x-modal>
+        </div>
     </div>
 
     {{-- نافذة إضافة مورّد --}}

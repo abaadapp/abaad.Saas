@@ -9,7 +9,7 @@
         </x-slot:actions>
     </x-page-header>
 
-    <div x-data="{ view: 'grid' }">
+    <div x-data="{ view: 'table' }">
 
         {{-- شريط الفلاتر --}}
         <form method="GET" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
@@ -46,7 +46,7 @@
         </form>
 
         {{-- عرض الشبكة --}}
-        <div x-show="view === 'grid'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+        <div x-show="view === 'grid'" x-cloak class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
             @foreach ($products as $p)
                 <x-product-card :product="$p">
                     <x-dropdown align="left" width="w-44">
@@ -74,7 +74,7 @@
         </div>
 
         {{-- عرض الجدول --}}
-        <div x-show="view === 'table'" x-cloak>
+        <div x-show="view === 'table'">
             <x-table :headers="['الصورة', 'الاسم', 'SKU', 'التصنيف', 'السعر', 'سعر التكلفة', 'الكمية', 'المخزون', 'الحالة', 'إجراءات']">
                 @foreach ($products as $p)
                     <tr class="hover:bg-gray-50">
@@ -122,7 +122,7 @@
         </div>
 
         {{-- ترقيم صفحات الشبكة --}}
-        <div x-show="view === 'grid'" class="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
+        <div x-show="view === 'grid'" x-cloak class="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
             <x-pagination :paginator="$products" />
         </div>
 

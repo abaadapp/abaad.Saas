@@ -204,6 +204,24 @@
 .admin-ui .focus\:ring-primary-300:focus { --tw-ring-color: rgba(17,17,17,0.10) !important; }
 .admin-ui .ring-primary-50, .admin-ui .ring-primary-100 { --tw-ring-color: #f0f0ee !important; }
 
+/* إغلاق التسرّبات المتبقية: كل درجات primary/secondary تصبح محايدة داخل اللوحة */
+.admin-ui .bg-primary-100, .admin-ui .bg-secondary-100 { background-color: #ebebe9 !important; }
+.admin-ui .text-secondary-500 { color: #111 !important; }
+.admin-ui .border-primary-300, .admin-ui .border-primary-400,
+.admin-ui .border-primary-500, .admin-ui .border-primary-600,
+.admin-ui .border-secondary-300, .admin-ui .border-secondary-400,
+.admin-ui .border-secondary-500, .admin-ui .border-secondary-600 { border-color: #111 !important; }
+.admin-ui .focus\:ring-primary-500:focus, .admin-ui .focus\:ring-secondary-500:focus,
+.admin-ui .focus\:ring-primary-400:focus { --tw-ring-color: rgba(17,17,17,0.14) !important; }
+.admin-ui .ring-primary-200, .admin-ui .ring-primary-300,
+.admin-ui .ring-secondary-200 { --tw-ring-color: rgba(17,17,17,0.12) !important; }
+.admin-ui .focus\:border-primary-300:focus, .admin-ui .focus\:border-primary-600:focus,
+.admin-ui .focus\:border-secondary-400:focus, .admin-ui .focus\:border-secondary-500:focus { border-color: #111 !important; }
+/* تدرّجات لونية داخل اللوحة → محايدة */
+.admin-ui .from-primary-50, .admin-ui .from-secondary-50 { --tw-gradient-from: #f6f6f4 !important; }
+.admin-ui .to-primary-50, .admin-ui .to-secondary-50 { --tw-gradient-to: #f6f6f4 !important; }
+.admin-ui .via-primary-50, .admin-ui .via-secondary-50 { --tw-gradient-via: #f6f6f4 !important; }
+
 /* --- تنعيم الأسطح: حدود أرقّ، ظلال أخفت، زوايا ألطف عبر كل صفحات اللوحة --- */
 .admin-ui .border-gray-100, .admin-ui .border-gray-200 { border-color: var(--ui-border) !important; }
 .admin-ui .shadow-sm { box-shadow: 0 1px 2px rgba(17,17,17,0.035) !important; }

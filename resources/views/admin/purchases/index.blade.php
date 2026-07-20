@@ -8,6 +8,8 @@
         </x-slot:actions>
     </x-page-header>
 
+    @include('partials.inventory-tabs')
+
     @php
         $stats = \App\Support\Demo::purchaseOrderStats();
         $orders = \App\Support\Demo::purchaseOrders();

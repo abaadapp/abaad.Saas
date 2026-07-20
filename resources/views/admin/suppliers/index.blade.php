@@ -8,6 +8,8 @@
         </x-slot:actions>
     </x-page-header>
 
+    @include('partials.inventory-tabs')
+
     @php $suppliers = \App\Support\Demo::suppliers(); @endphp
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">

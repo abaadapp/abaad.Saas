@@ -17,46 +17,7 @@
         </x-slot:actions>
     </x-page-header>
 
-    {{-- الأقسام المرتبطة بالمخزون --}}
-    @php
-        $inventorySections = [
-            [
-                'title' => 'المورّدون',
-                'desc' => 'إدارة موردي البضاعة وبيانات التواصل',
-                'icon' => 'truck',
-                'route' => route('admin.suppliers.index'),
-                'color' => 'bg-primary-50 text-primary-600',
-            ],
-            [
-                'title' => 'أوامر الشراء',
-                'desc' => 'طلبات التوريد واستلام البضاعة',
-                'icon' => 'clipboard-list',
-                'route' => route('admin.purchases.index'),
-                'color' => 'bg-info-50 text-info-600',
-            ],
-            [
-                'title' => 'حركات المخزون',
-                'desc' => 'سجل الإضافات والخصومات على الكميات',
-                'icon' => 'repeat',
-                'route' => route('admin.inventory.movements'),
-                'color' => 'bg-secondary-50 text-secondary-600',
-            ],
-        ];
-    @endphp
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        @foreach ($inventorySections as $s)
-            <a href="{{ $s['route'] }}" class="group block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-300 transition">
-                <div class="flex items-center justify-between">
-                    <span class="w-11 h-11 rounded-xl flex items-center justify-center {{ $s['color'] }}">
-                        <x-icon :name="$s['icon']" class="w-5 h-5" />
-                    </span>
-                    <x-icon name="chevron-left" class="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition" />
-                </div>
-                <h3 class="mt-4 font-bold text-gray-800">{{ $s['title'] }}</h3>
-                <p class="mt-1 text-xs text-gray-500 leading-relaxed">{{ $s['desc'] }}</p>
-            </a>
-        @endforeach
-    </div>
+    @include('partials.inventory-tabs')
 
     {{-- بطاقات الحالة --}}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">

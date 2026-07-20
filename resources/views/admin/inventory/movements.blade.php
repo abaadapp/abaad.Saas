@@ -10,6 +10,8 @@
         </x-slot:actions>
     </x-page-header>
 
+    @include('partials.inventory-tabs')
+
     <div x-data="listFilter()" x-ref="list">
     {{-- شريط الفلاتر --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">

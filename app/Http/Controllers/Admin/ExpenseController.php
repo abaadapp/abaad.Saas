@@ -50,17 +50,30 @@ class ExpenseController extends Controller
             'amount' => ['required', 'numeric', 'min:0'],
             'method' => ['nullable', 'string', 'max:50'],
             'spent_at' => ['nullable', 'date'],
-            'due_date' => ['nullable', 'date'],
             'status' => ['nullable', 'string', 'max:50'],
-        ]);
+            'attachment' => ['nullable', 'file', 'max:10240', 'extensions:jpg,jpeg,png,pdf,webp,heic'],
+        ], [
+            'attachment.extensions' => 'الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC.',
+            'attachment.max' => 'أقصى حجم للمرفق 10 ميجابايت.',
+        ], ['attachment' => 'المرفق']);
+
+        // رفع المرفق (إن وُجد)
+        $attachment = null;
+        $attachmentName = null;
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            $attachmentName = $file->getClientOriginalName();
+            $attachment = $file->store("expenses/{$bid}", 'public');
+        }
 
         $data['business_id'] = $bid;
         $data['method'] = $data['method'] ?? 'نقدي';
         $data['status'] = $data['status'] ?? 'مدفوع';
         $data['spent_at'] = $data['spent_at'] ?? now();
-        $data['due_date'] = $data['due_date'] ?? null;
         $data['employee_name'] = auth()->user()->name;
         $data['reference'] = $this->nextReference($bid);
+        $data['attachment'] = $attachment;
+        $data['attachment_name'] = $attachmentName;
 
         Expense::create($data);
         \App\Support\Activity::log('created', 'سجّل مصروف ' . $data['type'] . ' بقيمة ' . $data['amount']);
@@ -72,6 +85,11 @@ class ExpenseController extends Controller
     {
         $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
         \App\Support\Activity::log('deleted', 'حذف المصروف: ' . $expense->reference, ['subject_id' => $expense->id]);
+
+        // حذف الملف المرفق مع المصروف
+        if ($expense->attachment) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($expense->attachment);
+        }
         $expense->delete();
 
         return back()->with('toast', ['msg' => 'تم حذف المصروف', 'type' => 'warning']);

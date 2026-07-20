@@ -55,7 +55,7 @@
             </form>
 
             @if ($expenses->total())
-                <x-table :headers="['الرقم المرجعي', 'تاريخ الإستحقاق', 'أنواع المصروفات', 'المبلغ', 'الحالة', 'ملاحظات', '']">
+                <x-table :headers="['الرقم المرجعي', 'تاريخ الإستحقاق', 'أنواع المصروفات', 'المبلغ', 'الحالة', 'المرفق', 'ملاحظات', '']">
                     @foreach ($expenses as $e)
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap font-mono">{{ $e->reference ?: '—' }}</td>
@@ -64,6 +64,17 @@
                             <td class="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{{ \App\Support\Demo::money($e->amount) }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <x-badge :type="$statusColors[$e->status] ?? 'gray'" :text="$e->status" />
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                @if ($e->attachment)
+                                    <a href="{{ \Illuminate\Support\Facades\Storage::url($e->attachment) }}" target="_blank"
+                                       title="{{ $e->attachment_name }}"
+                                       class="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 underline decoration-gray-300">
+                                        <x-icon name="paperclip" class="w-4 h-4 text-gray-400" /> عرض
+                                    </a>
+                                @else
+                                    <span class="text-gray-300">—</span>
+                                @endif
                             </td>
                             <td class="px-4 py-3 text-gray-600">{{ $e->description ?: '—' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap text-left">
@@ -159,7 +170,7 @@
 
     {{-- نافذة إضافة مصروف --}}
     <x-modal name="add-expense" title="مصروف جديد" maxWidth="max-w-lg">
-        <form id="add-expense-form" method="POST" action="{{ route('admin.expenses.store') }}" class="space-y-4">
+        <form id="add-expense-form" method="POST" action="{{ route('admin.expenses.store') }}" enctype="multipart/form-data" class="space-y-4">
             @csrf
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <x-select label="نوع المصروف" name="type" placeholder="اختر النوع..." :options="$typeOptions" :required="true" />
@@ -168,11 +179,17 @@
             <x-input label="ملاحظات" name="description" placeholder="مثال: إيجار المحل لشهر يوليو" icon="file-text" />
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <x-input label="تاريخ الصرف" name="spent_at" type="date" value="{{ now()->format('Y-m-d') }}" :required="true" />
-                <x-input label="تاريخ الإستحقاق" name="due_date" type="date" />
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <x-select label="طريقة الدفع" name="method" :options="['نقدي' => 'نقدي', 'بطاقة' => 'بطاقة', 'تحويل بنكي' => 'تحويل بنكي']" selected="نقدي" />
-                <x-select label="الحالة" name="status" :options="['مدفوع' => 'مدفوع', 'غير مدفوع' => 'غير مدفوع']" selected="مدفوع" />
+            </div>
+            <x-select label="الحالة" name="status" :options="['مدفوع' => 'مدفوع', 'غير مدفوع' => 'غير مدفوع']" selected="مدفوع" />
+
+            {{-- المرفق --}}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">المرفق</label>
+                <input type="file" name="attachment" accept=".jpg,.jpeg,.png,.pdf,.webp,.heic,image/jpeg,image/png,application/pdf,image/webp,image/heic"
+                       class="block w-full text-sm text-gray-600 file:mr-0 file:ml-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-900 file:text-white hover:file:bg-black cursor-pointer border border-gray-200 rounded-xl p-2" />
+                <p class="text-xs text-gray-400 mt-1.5">الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC — بحد أقصى 10 ميجابايت.</p>
+                @error('attachment')<p class="text-xs text-danger-600 mt-1">{{ $message }}</p>@enderror
             </div>
         </form>
 

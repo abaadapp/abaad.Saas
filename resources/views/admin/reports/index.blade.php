@@ -10,6 +10,47 @@
         </x-slot:actions>
     </x-page-header>
 
+    {{-- الأقسام التحليلية المدمجة --}}
+    @php
+        $sections = [
+            [
+                'title' => 'تحليلات متقدمة',
+                'desc' => 'رسوم بيانية معمّقة للمبيعات والاتجاهات',
+                'icon' => 'chart-line',
+                'route' => route('admin.analytics.index'),
+                'color' => 'bg-primary-50 text-primary-600',
+            ],
+            [
+                'title' => 'الربحية',
+                'desc' => 'أرباح المنتجات والتصنيفات وهوامش الربح',
+                'icon' => 'trending-up',
+                'route' => route('admin.profitability.index'),
+                'color' => 'bg-success-50 text-success-600',
+            ],
+            [
+                'title' => 'ضريبة القيمة المضافة',
+                'desc' => 'تقرير الضريبة والفواتير الضريبية',
+                'icon' => 'landmark',
+                'route' => route('admin.vat.index'),
+                'color' => 'bg-info-50 text-info-600',
+            ],
+        ];
+    @endphp
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        @foreach ($sections as $s)
+            <a href="{{ $s['route'] }}" class="group block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-300 transition">
+                <div class="flex items-center justify-between">
+                    <span class="w-11 h-11 rounded-xl flex items-center justify-center {{ $s['color'] }}">
+                        <x-icon :name="$s['icon']" class="w-5 h-5" />
+                    </span>
+                    <x-icon name="chevron-left" class="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition" />
+                </div>
+                <h3 class="mt-4 font-bold text-gray-800">{{ $s['title'] }}</h3>
+                <p class="mt-1 text-xs text-gray-500 leading-relaxed">{{ $s['desc'] }}</p>
+            </a>
+        @endforeach
+    </div>
+
     {{-- بطاقات التقارير --}}
     @php
         $reportCards = [

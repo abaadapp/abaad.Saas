@@ -3,6 +3,10 @@
     $total = collect($expenses)->sum('amount');
     $count = count($expenses);
     $avg = $count ? $total / $count : 0;
+
+    // أنواع المصروفات (تُغذّي قوائم الاختيار والفلترة)
+    $expenseTypes = \App\Support\Demo::expenseTypes();
+    $typeOptions = collect($expenseTypes)->pluck('name', 'name')->toArray();
 @endphp
 
 <x-layouts::admin title="المصروفات">
@@ -25,6 +29,61 @@
         <x-stat-card label="عدد المصروفات" :value="$count" icon="receipt" color="primary" />
     </div>
 
+    {{-- قسم أنواع المصروفات --}}
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6" x-data="{ adding: {{ $errors->any() ? 'true' : 'false' }} }">
+        <div class="flex items-center justify-between mb-5">
+            <div class="flex items-center gap-2">
+                <span class="w-9 h-9 rounded-xl bg-secondary-50 text-secondary-600 flex items-center justify-center">
+                    <x-icon name="tags" class="w-5 h-5" />
+                </span>
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">أنواع المصروفات</h3>
+                    <p class="text-xs text-gray-400">تُستخدم عند تسجيل المصروفات وفلترتها</p>
+                </div>
+            </div>
+            <x-button variant="primary" size="sm" icon="plus" type="button" x-on:click="adding = !adding">إضافة نوع</x-button>
+        </div>
+
+        {{-- نموذج إضافة نوع --}}
+        <form x-show="adding" x-cloak method="POST" action="{{ route('admin.expenseTypes.store') }}"
+              class="flex flex-col sm:flex-row gap-3 items-start mb-5 bg-gray-50 rounded-xl p-4">
+            @csrf
+            <div class="flex-1 w-full">
+                <input type="text" name="name" placeholder="مثال: اشتراكات وبرمجيات" required
+                       class="w-full rounded-xl border-gray-200 text-sm focus:border-primary-400 focus:ring-primary-200" />
+                @error('name')<p class="text-xs text-danger-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <x-button variant="primary" size="md" type="submit" icon="check">حفظ</x-button>
+        </form>
+
+        @if (count($expenseTypes))
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                @foreach ($expenseTypes as $t)
+                    <div class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-4 py-3 hover:bg-gray-50 transition">
+                        <div class="min-w-0">
+                            <p class="font-medium text-gray-800 truncate">{{ $t['name'] }}</p>
+                            <p class="text-xs text-gray-400">
+                                {{ $t['count'] }} مصروف
+                                @if ($t['total'] > 0)
+                                    — {{ \App\Support\Demo::money($t['total']) }}
+                                @endif
+                            </p>
+                        </div>
+                        <form method="POST" action="{{ route('admin.expenseTypes.destroy', $t['id']) }}"
+                              @submit.prevent="if(confirm('حذف نوع «{{ $t['name'] }}»؟ لن تتأثر المصروفات المسجّلة سابقًا.')) $el.submit()">
+                            @csrf @method('DELETE')
+                            <button type="submit" class="w-8 h-8 rounded-lg text-gray-400 hover:bg-danger-50 hover:text-danger-600 flex items-center justify-center transition shrink-0">
+                                <x-icon name="trash-2" class="w-4 h-4" />
+                            </button>
+                        </form>
+                    </div>
+                @endforeach
+            </div>
+        @else
+            <x-empty-state icon="tags" title="لا توجد أنواع" message="أضف أول نوع مصروف لتستخدمه عند التسجيل." />
+        @endif
+    </div>
+
     <div x-data="listFilter()" x-ref="list">
     {{-- شريط الفلاتر --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
@@ -33,15 +92,7 @@
                 <x-input name="search" placeholder="ابحث في وصف المصروف..." icon="search" x-model="q" @input="apply()" />
             </div>
             <div class="w-full md:w-48">
-                <x-select name="type" placeholder="كل الأنواع" x-model="tag" @change="apply()" :options="[
-                    'إيجار' => 'إيجار',
-                    'رواتب' => 'رواتب',
-                    'كهرباء وماء' => 'كهرباء وماء',
-                    'مواد خام' => 'مواد خام',
-                    'تسويق' => 'تسويق',
-                    'صيانة' => 'صيانة',
-                    'نقل وتوصيل' => 'نقل وتوصيل',
-                ]" />
+                <x-select name="type" placeholder="كل الأنواع" x-model="tag" @change="apply()" :options="$typeOptions" />
             </div>
             <div class="w-full md:w-44">
                 <input type="date" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none transition" />
@@ -79,15 +130,7 @@
         <form id="add-expense-form" method="POST" action="{{ route('admin.expenses.store') }}" class="space-y-4">
             @csrf
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <x-select label="نوع المصروف" name="type" placeholder="اختر النوع..." :options="[
-                    'إيجار' => 'إيجار',
-                    'رواتب' => 'رواتب',
-                    'كهرباء وماء' => 'كهرباء وماء',
-                    'مواد خام' => 'مواد خام',
-                    'تسويق' => 'تسويق',
-                    'صيانة' => 'صيانة',
-                    'نقل وتوصيل' => 'نقل وتوصيل',
-                ]" :required="true" />
+                <x-select label="نوع المصروف" name="type" placeholder="اختر النوع..." :options="$typeOptions" :required="true" />
                 <x-input label="المبلغ (ر.ع)" name="amount" type="number" placeholder="0.000" icon="wallet" :required="true" />
             </div>
             <x-input label="الوصف" name="description" placeholder="مثال: إيجار المحل لشهر يوليو" icon="file-text" :required="true" />

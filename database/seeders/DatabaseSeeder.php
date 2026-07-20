@@ -214,6 +214,14 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
+        // أنواع المصروفات الافتراضية لكل نشاط
+        $defaultExpenseTypes = ['إيجار', 'رواتب', 'كهرباء وماء', 'مواد خام', 'تسويق', 'صيانة', 'نقل وتوصيل'];
+        foreach (Business::pluck('id') as $bizId) {
+            foreach ($defaultExpenseTypes as $typeName) {
+                \App\Models\ExpenseType::firstOrCreate(['business_id' => $bizId, 'name' => $typeName]);
+            }
+        }
+
         foreach (SeedData::transactions() as $ti => $t) {
             Transaction::create([
                 'business_id' => $primary->id, 'reference' => $t['id'], 'description' => $t['description'],

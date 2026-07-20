@@ -791,6 +791,25 @@ class Demo
         ])->all();
     }
 
+    /** أنواع المصروفات للنشاط الحالي مع إحصاء الاستخدام */
+    public static function expenseTypes(): array
+    {
+        $bid = self::bid();
+
+        // إجماليات المصروفات حسب النوع (نوع المصروف مخزّن كنص في جدول المصروفات)
+        $usage = Expense::where('business_id', $bid)
+            ->selectRaw('type, COUNT(*) as cnt, SUM(amount) as total')
+            ->groupBy('type')->get()
+            ->keyBy('type');
+
+        return \App\Models\ExpenseType::where('business_id', $bid)->orderBy('name')->get()->map(fn ($t) => [
+            'id' => $t->id,
+            'name' => $t->name,
+            'count' => (int) ($usage[$t->name]->cnt ?? 0),
+            'total' => (float) ($usage[$t->name]->total ?? 0),
+        ])->all();
+    }
+
     /* ============================ المالية ============================ */
 
     public static function financeStats(): array

@@ -40,8 +40,16 @@ class CustomerController extends Controller
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email'],
             'address' => ['nullable', 'string', 'max:255'],
+            'branch_id' => ['nullable', 'integer'],
         ]);
         $data['business_id'] = $this->bid();
+
+        // الفرع اختياري — ويجب أن يكون تابعًا لنفس النشاط
+        $branchId = $data['branch_id'] ?? null;
+        $data['branch_id'] = $branchId && \App\Models\Branch::where('business_id', $data['business_id'])->whereKey($branchId)->exists()
+            ? $branchId
+            : null;
+
         Customer::create($data);
         \App\Support\Activity::log('created', 'أضاف عميلًا: ' . $data['name']);
 

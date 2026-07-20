@@ -104,6 +104,19 @@
             <x-input label="رقم الهاتف" name="phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" :required="true" />
             <x-input label="البريد الإلكتروني" name="email" type="email" placeholder="name@example.com" icon="mail" hint="اختياري — لإرسال الفواتير والعروض" />
             <x-input label="العنوان" name="address" placeholder="مثال: مسقط، السيب" icon="map-pin" />
+
+            {{-- الفرع (اختياري) --}}
+            @php $addBranches = \App\Support\Demo::branches(); @endphp
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">الفرع</label>
+                <select name="branch_id" class="w-full rounded-xl border-gray-200 focus:border-primary-400 focus:ring-primary-200 text-sm">
+                    <option value="">بدون فرع (عام)</option>
+                    @foreach ($addBranches as $b)
+                        <option value="{{ $b['id'] }}" @selected(\App\Support\Demo::currentBranchId() == $b['id'])>{{ $b['name'] }}</option>
+                    @endforeach
+                </select>
+                <p class="text-xs text-gray-400 mt-1.5">اختياري — يُربط العميل بالفرع المحدد.</p>
+            </div>
         </form>
 
         <x-slot:footer>

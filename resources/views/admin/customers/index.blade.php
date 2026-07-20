@@ -5,7 +5,33 @@
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'العملاء' => '#']"
     >
         <x-slot:actions>
-            <x-button variant="outline" size="md" icon="download" :href="route('admin.export.customers')">تصدير CSV</x-button>
+            {{-- زر التصدير/الاستيراد الموحّد --}}
+            <x-dropdown align="left" width="w-60">
+                <x-slot:trigger>
+                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer">
+                        <x-icon name="arrow-down-up" class="w-4 h-4" /> تصدير / استيراد
+                        <x-icon name="chevron-down" class="w-4 h-4 text-gray-400" />
+                    </span>
+                </x-slot:trigger>
+
+                <p class="px-4 pt-2 pb-1 text-[11px] font-semibold text-gray-400">تصدير</p>
+                <a href="{{ route('admin.customers.export.xlsx') }}" class="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-spreadsheet" class="w-4 h-4 text-green-600" /> تصدير Excel (xlsx)
+                </a>
+                <a href="{{ route('admin.customers.export.pdf') }}" target="_blank" class="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-text" class="w-4 h-4 text-red-600" /> تصدير PDF
+                </a>
+                <a href="{{ route('admin.export.customers') }}" class="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-down" class="w-4 h-4 text-gray-500" /> تصدير CSV
+                </a>
+
+                <div class="my-1 border-t border-gray-100"></div>
+                <p class="px-4 pt-1 pb-1 text-[11px] font-semibold text-gray-400">استيراد</p>
+                <button type="button" x-on:click="$dispatch('open-modal','import-customers')" class="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="upload" class="w-4 h-4 text-primary-600" /> استيراد من ملف…
+                </button>
+            </x-dropdown>
+
             <x-button variant="primary" size="md" icon="user-plus" x-on:click="$dispatch('open-modal','add-customer')">إضافة عميل</x-button>
         </x-slot:actions>
     </x-page-header>
@@ -83,6 +109,44 @@
         <x-slot:footer>
             <x-button variant="ghost" size="md" x-on:click="$dispatch('close-modal')">إلغاء</x-button>
             <x-button variant="primary" size="md" type="submit" form="add-customer-form" icon="check">حفظ العميل</x-button>
+        </x-slot:footer>
+    </x-modal>
+
+    {{-- نافذة استيراد العملاء --}}
+    @php $importBranches = \App\Support\Demo::branches(); @endphp
+    <x-modal name="import-customers" title="استيراد العملاء من ملف" maxWidth="max-w-lg">
+        <form id="import-customers-form" method="POST" action="{{ route('admin.customers.import.upload') }}" enctype="multipart/form-data" class="space-y-4">
+            @csrf
+
+            {{-- القسم الأول: اختيار الملف --}}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">ملف العملاء</label>
+                <input type="file" name="file" required accept=".csv,.xls,.xlsx,.xlsm"
+                    class="block w-full text-sm text-gray-600 file:mr-0 file:ml-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-900 file:text-white hover:file:bg-black cursor-pointer border border-gray-200 rounded-xl p-2" />
+                <p class="text-xs text-gray-400 mt-1.5">الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، الهاتف، البريد، العنوان، النقاط.</p>
+            </div>
+
+            {{-- القسم الثاني: ربط الفرع --}}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">ربط العملاء بفرع</label>
+                <select name="branch_id" class="w-full rounded-xl border-gray-200 focus:border-primary-400 focus:ring-primary-200 text-sm">
+                    <option value="">بدون فرع (عام)</option>
+                    @foreach ($importBranches as $b)
+                        <option value="{{ $b['id'] }}">{{ $b['name'] }}</option>
+                    @endforeach
+                </select>
+                <p class="text-xs text-gray-400 mt-1.5">سيُربط كل عميل مُستورد بالفرع المختار.</p>
+            </div>
+
+            <div class="flex items-start gap-2 bg-primary-50 text-primary-700 rounded-xl px-3 py-2.5 text-xs">
+                <x-icon name="eye" class="w-4 h-4 shrink-0 mt-0.5" />
+                <span>بعد الرفع ستظهر لك <strong>معاينة كاملة</strong> للبيانات قبل التأكيد النهائي — لن يُحفظ شيء قبل موافقتك.</span>
+            </div>
+        </form>
+
+        <x-slot:footer>
+            <x-button variant="ghost" size="md" x-on:click="$dispatch('close-modal')">إلغاء</x-button>
+            <x-button variant="primary" size="md" type="submit" form="import-customers-form" icon="eye">معاينة الملف</x-button>
         </x-slot:footer>
     </x-modal>
 </x-layouts::admin>

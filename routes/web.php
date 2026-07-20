@@ -132,6 +132,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
     // العملاء
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
+    // تصدير/استيراد العملاء (Excel/PDF + معاينة قبل التأكيد)
+    Route::get('/customers/export/xlsx', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'exportXlsx'])->name('customers.export.xlsx');
+    Route::get('/customers/export/pdf', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'exportPdf'])->name('customers.export.pdf');
+    Route::post('/customers/import', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'upload'])->name('customers.import.upload');
+    Route::get('/customers/import/preview', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'preview'])->name('customers.import.preview');
+    Route::post('/customers/import/confirm', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'confirm'])->name('customers.import.confirm');
+    Route::post('/customers/import/cancel', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'cancel'])->name('customers.import.cancel');
     Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
     Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');

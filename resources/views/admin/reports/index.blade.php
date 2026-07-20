@@ -10,29 +10,6 @@
         </x-slot:actions>
     </x-page-header>
 
-    {{-- الفلتر الزمني --}}
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6" x-data="{ period: 'month' }">
-        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div class="inline-flex rounded-xl bg-gray-100 p-1 flex-wrap">
-                <template x-for="opt in [{ k: 'day', l: 'اليوم' }, { k: 'week', l: 'الأسبوع' }, { k: 'month', l: 'الشهر' }, { k: 'year', l: 'السنة' }]" :key="opt.k">
-                    <button type="button"
-                        @click="period = opt.k"
-                        :class="period === opt.k ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
-                        class="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                        x-text="opt.l"
-                    ></button>
-                </template>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-sm text-gray-500">فترة مخصصة:</span>
-                <input type="date" @click="period = 'custom'" :class="period === 'custom' ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-300'" class="rounded-xl border bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none" />
-                <span class="text-gray-400">—</span>
-                <input type="date" @click="period = 'custom'" :class="period === 'custom' ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-300'" class="rounded-xl border bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none" />
-                <x-button variant="primary" size="sm" icon="filter" @click="period = 'custom'">تطبيق</x-button>
-            </div>
-        </div>
-    </div>
-
     {{-- بطاقات التقارير --}}
     @php
         $reportCards = [

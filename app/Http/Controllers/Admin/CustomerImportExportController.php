@@ -22,21 +22,22 @@ class CustomerImportExportController extends Controller
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
-    /** أعمدة الملف (الترويسة) */
+    /** أعمدة الملف بترتيب النشاط (تُستخدم للتصدير والنموذج) */
     private function columns(): array
     {
-        return ['الاسم', 'الهاتف', 'البريد', 'العنوان', 'النقاط'];
+        return ['الاسم', 'الهاتف', 'البريد', 'العنوان', 'الفرع', 'النقاط'];
     }
 
     private function customerRows(): array
     {
         return Customer::where('business_id', $this->bid())
-            ->orderBy('id')->get()
+            ->with('branch')->orderBy('id')->get()
             ->map(fn ($c) => [
                 $c->name,
                 $c->phone ?? '',
                 $c->email ?? '',
                 $c->address ?? '',
+                $c->branch?->name ?? '',
                 (int) $c->points,
             ])->all();
     }
@@ -49,11 +50,9 @@ class CustomerImportExportController extends Controller
         $sheet->setRightToLeft(true);
         $sheet->setTitle('العملاء');
 
-        $headers = $this->columns();
-        $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray($this->columns(), null, 'A1');
 
-        // تنسيق الترويسة
-        $lastCol = 'E';
+        $lastCol = 'F';
         $sheet->getStyle("A1:{$lastCol}1")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
         $sheet->getStyle("A1:{$lastCol}1")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
         $sheet->getStyle("A1:{$lastCol}1")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -118,10 +117,24 @@ class CustomerImportExportController extends Controller
             return back()->with('toast', ['msg' => 'صيغة غير مدعومة. المدعوم: ' . implode('، ', self::ALLOWED_EXT), 'type' => 'danger']);
         }
 
-        // التحقق من الفرع (ضمن نفس النشاط)
-        $branchId = $request->integer('branch_id') ?: null;
-        if ($branchId && ! Branch::where('business_id', $this->bid())->whereKey($branchId)->exists()) {
-            $branchId = null;
+        $bid = $this->bid();
+
+        // الفرع الافتراضي (لمن ليس له فرع في الملف)
+        $defaultBranchId = $request->integer('branch_id') ?: null;
+        if ($defaultBranchId && ! Branch::where('business_id', $bid)->whereKey($defaultBranchId)->exists()) {
+            $defaultBranchId = null;
+        }
+
+        // خريطة فروع النشاط بالاسم (لمطابقة عمود الفرع في الملف)
+        $branches = Branch::where('business_id', $bid)->get();
+        $branchByName = [];
+        $branchName = [];
+        foreach ($branches as $b) {
+            $branchByName[$this->norm($b->name)] = $b->id;
+            $branchName[$b->id] = $b->name;
+        }
+        if ($defaultBranchId) {
+            $branchName[$defaultBranchId] = $branches->firstWhere('id', $defaultBranchId)?->name;
         }
 
         try {
@@ -138,29 +151,50 @@ class CustomerImportExportController extends Controller
             return back()->with('toast', ['msg' => 'الملف فارغ.', 'type' => 'warning']);
         }
 
-        // اكتشاف الترويسة وترتيب الأعمدة
         $map = $this->detectColumns($data[0]);
         if ($map['isHeader']) {
             array_shift($data);
         }
         $idx = $map['index'];
 
-        $existingPhones = Customer::where('business_id', $this->bid())
-            ->whereNotNull('phone')->pluck('phone')->map(fn ($p) => $this->normPhone($p))->filter()->all();
-        $existingPhones = array_flip($existingPhones);
-        $seen = [];
+        // العملاء الحاليون: للمطابقة (تحديث بدل تكرار)
+        $existing = Customer::where('business_id', $bid)->get(['id', 'name', 'phone']);
+        $byPhone = [];
+        $byName = [];
+        foreach ($existing as $c) {
+            $np = $this->normPhone((string) $c->phone);
+            if ($np !== '') {
+                $byPhone[$np] ??= $c->id;
+            }
+            $nn = $this->norm((string) $c->name);
+            if ($nn !== '') {
+                $byName[$nn] ??= $c->id;
+            }
+        }
 
+        $seen = [];
         $rows = [];
         foreach ($data as $r) {
-            $name = trim((string) ($r[$idx['name']] ?? ''));
-            $phone = trim((string) ($idx['phone'] !== null ? ($r[$idx['phone']] ?? '') : ''));
-            $email = trim((string) ($idx['email'] !== null ? ($r[$idx['email']] ?? '') : ''));
-            $address = trim((string) ($idx['address'] !== null ? ($r[$idx['address']] ?? '') : ''));
+            $get = fn ($k) => $idx[$k] !== null ? trim((string) ($r[$idx[$k]] ?? '')) : '';
+            $name = $get('name');
+            $phone = $get('phone');
+            $email = $get('email');
+            $address = $get('address');
+            $fileBranch = $get('branch');
             $points = (int) ($idx['points'] !== null ? ($r[$idx['points']] ?? 0) : 0);
 
+            // تحديد الفرع: فرع الملف إن طابق فرعًا موجودًا، وإلا الفرع الافتراضي
+            $branchId = $defaultBranchId;
+            if ($fileBranch !== '' && isset($branchByName[$this->norm($fileBranch)])) {
+                $branchId = $branchByName[$this->norm($fileBranch)];
+            }
+            $branchDisplay = $branchId ? ($branchName[$branchId] ?? '—') : 'بدون فرع';
+
             $status = 'new';
-            $note = 'جديد';
-            $normPhone = $this->normPhone($phone);
+            $note = 'سيُضاف';
+            $targetId = null;
+            $np = $this->normPhone($phone);
+            $nn = $this->norm($name);
 
             if ($name === '') {
                 $status = 'invalid';
@@ -168,24 +202,32 @@ class CustomerImportExportController extends Controller
             } elseif ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $status = 'invalid';
                 $note = 'بريد غير صالح — يُتجاهل';
-            } elseif ($normPhone !== '' && isset($existingPhones[$normPhone])) {
-                $status = 'duplicate';
-                $note = 'مكرر (موجود مسبقًا) — يُتجاهل';
-            } elseif ($normPhone !== '' && isset($seen[$normPhone])) {
-                $status = 'duplicate';
+            } elseif ($np !== '' && isset($seen[$np])) {
+                $status = 'dup_file';
                 $note = 'مكرر داخل الملف — يُتجاهل';
+            } else {
+                // مطابقة عميل موجود => تحديث
+                if ($np !== '' && isset($byPhone[$np])) {
+                    $targetId = $byPhone[$np];
+                } elseif ($np === '' && $nn !== '' && isset($byName[$nn])) {
+                    $targetId = $byName[$nn];
+                }
+                if ($targetId) {
+                    $status = 'update';
+                    $note = 'موجود — سيُحدَّث';
+                }
             }
 
-            if ($normPhone !== '') {
-                $seen[$normPhone] = true;
+            if ($np !== '') {
+                $seen[$np] = true;
             }
 
-            $rows[] = compact('name', 'phone', 'email', 'address', 'points', 'status', 'note');
+            $rows[] = compact('name', 'phone', 'email', 'address', 'points', 'branchId', 'branchDisplay', 'status', 'note', 'targetId');
         }
 
         session()->put(self::SESSION_KEY, [
             'rows' => $rows,
-            'branch_id' => $branchId,
+            'default_branch_id' => $defaultBranchId,
             'file' => $file->getClientOriginalName(),
         ]);
 
@@ -200,19 +242,19 @@ class CustomerImportExportController extends Controller
                 ->with('toast', ['msg' => 'لا يوجد ملف للمعاينة. ارفع ملفًا أولًا.', 'type' => 'warning']);
         }
 
-        $branch = $payload['branch_id'] ? Branch::find($payload['branch_id']) : null;
+        $default = $payload['default_branch_id'] ? Branch::find($payload['default_branch_id']) : null;
         $rows = $payload['rows'];
         $counts = [
             'total' => count($rows),
             'new' => count(array_filter($rows, fn ($r) => $r['status'] === 'new')),
-            'duplicate' => count(array_filter($rows, fn ($r) => $r['status'] === 'duplicate')),
-            'invalid' => count(array_filter($rows, fn ($r) => $r['status'] === 'invalid')),
+            'update' => count(array_filter($rows, fn ($r) => $r['status'] === 'update')),
+            'skip' => count(array_filter($rows, fn ($r) => in_array($r['status'], ['invalid', 'dup_file'], true))),
         ];
 
         return view('admin.customers.import-preview', [
             'rows' => $rows,
             'counts' => $counts,
-            'branch' => $branch,
+            'defaultBranch' => $default,
             'file' => $payload['file'],
         ]);
     }
@@ -226,30 +268,42 @@ class CustomerImportExportController extends Controller
         }
 
         $bid = $this->bid();
-        $branchId = $payload['branch_id'] ?: null;
-        $imported = 0;
+        $added = 0;
+        $updated = 0;
 
         foreach ($payload['rows'] as $r) {
-            if ($r['status'] !== 'new') {
-                continue;
-            }
-            Customer::create([
-                'business_id' => $bid,
-                'branch_id' => $branchId,
+            $fields = [
                 'name' => $r['name'],
                 'phone' => $r['phone'] ?: null,
                 'email' => $r['email'] ?: null,
                 'address' => $r['address'] ?: null,
                 'points' => (int) $r['points'],
-            ]);
-            $imported++;
+            ];
+
+            if ($r['status'] === 'new') {
+                Customer::create(array_merge($fields, [
+                    'business_id' => $bid,
+                    'branch_id' => $r['branchId'] ?: null,
+                ]));
+                $added++;
+            } elseif ($r['status'] === 'update' && $r['targetId']) {
+                $customer = Customer::where('business_id', $bid)->find($r['targetId']);
+                if ($customer) {
+                    // الحفاظ على الفرع: لا نمسح الفرع الحالي إن لم يُحدَّد فرع في الاستيراد
+                    if ($r['branchId']) {
+                        $fields['branch_id'] = $r['branchId'];
+                    }
+                    $customer->update($fields);
+                    $updated++;
+                }
+            }
         }
 
         session()->forget(self::SESSION_KEY);
-        Activity::log('created', "استورد {$imported} عميلًا من ملف: " . $payload['file']);
+        Activity::log('updated', "استيراد العملاء من ملف: {$payload['file']} — أُضيف {$added}، حُدِّث {$updated}");
 
         return redirect()->route('admin.customers.index')
-            ->with('toast', ['msg' => "تم استيراد {$imported} عميلًا بنجاح", 'type' => 'success']);
+            ->with('toast', ['msg' => "تم الاستيراد: أُضيف {$added} عميلًا وحُدِّث {$updated}", 'type' => 'success']);
     }
 
     public function cancel()
@@ -266,7 +320,12 @@ class CustomerImportExportController extends Controller
         return preg_replace('/\D+/', '', $phone) ?? '';
     }
 
-    /** اكتشاف ترتيب الأعمدة من الترويسة، أو افتراض الترتيب القياسي */
+    private function norm(string $v): string
+    {
+        return trim(mb_strtolower($v));
+    }
+
+    /** اكتشاف ترتيب الأعمدة من الترويسة، أو افتراض ترتيب النشاط القياسي */
     private function detectColumns(array $firstRow): array
     {
         $norm = array_map(fn ($v) => trim((string) $v), $firstRow);
@@ -275,34 +334,53 @@ class CustomerImportExportController extends Controller
             'phone' => ['الهاتف', 'هاتف', 'الجوال', 'جوال', 'رقم', 'phone', 'mobile'],
             'email' => ['البريد', 'ايميل', 'الايميل', 'email', 'mail'],
             'address' => ['العنوان', 'عنوان', 'address'],
+            'branch' => ['الفرع', 'فرع', 'branch'],
             'points' => ['النقاط', 'نقاط', 'points'],
         ];
 
-        $index = ['name' => 0, 'phone' => 1, 'email' => 2, 'address' => 3, 'points' => 4];
+        $index = ['name' => 0, 'phone' => 1, 'email' => 2, 'address' => 3, 'branch' => 4, 'points' => 5];
+        $found = [];
         $isHeader = false;
 
         foreach ($norm as $i => $cell) {
             $low = mb_strtolower($cell);
+            if ($low === '') {
+                continue;
+            }
             foreach ($aliases as $key => $names) {
+                if (isset($found[$key])) {
+                    continue;
+                }
                 foreach ($names as $n) {
-                    if ($low !== '' && mb_strpos($low, mb_strtolower($n)) !== false) {
-                        $index[$key] = $i;
+                    if (mb_strpos($low, mb_strtolower($n)) !== false) {
+                        $found[$key] = $i;
                         $isHeader = true;
-                        break 2;
+                        break;
                     }
                 }
             }
         }
 
-        // إن لم تُكتشف ترويسة، الأعمدة الاختيارية قد لا تكون موجودة
-        if (! $isHeader) {
+        if ($isHeader) {
+            // اعتمد الأعمدة المكتشفة؛ غير الموجودة تصبح null
+            $index = [
+                'name' => $found['name'] ?? 0,
+                'phone' => $found['phone'] ?? null,
+                'email' => $found['email'] ?? null,
+                'address' => $found['address'] ?? null,
+                'branch' => $found['branch'] ?? null,
+                'points' => $found['points'] ?? null,
+            ];
+        } else {
+            // بلا ترويسة: افتراض الترتيب حسب عدد الأعمدة المتاحة
             $cols = count($norm);
             $index = [
                 'name' => 0,
                 'phone' => $cols > 1 ? 1 : null,
                 'email' => $cols > 2 ? 2 : null,
                 'address' => $cols > 3 ? 3 : null,
-                'points' => $cols > 4 ? 4 : null,
+                'branch' => $cols > 5 ? 4 : null,
+                'points' => $cols > 5 ? 5 : ($cols > 4 ? 4 : null),
             ];
         }
 

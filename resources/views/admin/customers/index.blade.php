@@ -123,24 +123,24 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1.5">ملف العملاء</label>
                 <input type="file" name="file" required accept=".csv,.xls,.xlsx,.xlsm"
                     class="block w-full text-sm text-gray-600 file:mr-0 file:ml-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-900 file:text-white hover:file:bg-black cursor-pointer border border-gray-200 rounded-xl p-2" />
-                <p class="text-xs text-gray-400 mt-1.5">الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، الهاتف، البريد، العنوان، النقاط.</p>
+                <p class="text-xs text-gray-400 mt-1.5">الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، الهاتف، البريد، العنوان، الفرع، النقاط. يمكنك تصدير ملف ثم تعديله وإعادة استيراده.</p>
             </div>
 
-            {{-- القسم الثاني: ربط الفرع --}}
+            {{-- القسم الثاني: الفرع الافتراضي --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1.5">ربط العملاء بفرع</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">الفرع الافتراضي</label>
                 <select name="branch_id" class="w-full rounded-xl border-gray-200 focus:border-primary-400 focus:ring-primary-200 text-sm">
                     <option value="">بدون فرع (عام)</option>
                     @foreach ($importBranches as $b)
                         <option value="{{ $b['id'] }}">{{ $b['name'] }}</option>
                     @endforeach
                 </select>
-                <p class="text-xs text-gray-400 mt-1.5">سيُربط كل عميل مُستورد بالفرع المختار.</p>
+                <p class="text-xs text-gray-400 mt-1.5">يُستخدم فقط للصفوف التي لا تحوي عمود «الفرع» في الملف — وإلا يُعتمد فرع الملف.</p>
             </div>
 
             <div class="flex items-start gap-2 bg-primary-50 text-primary-700 rounded-xl px-3 py-2.5 text-xs">
-                <x-icon name="eye" class="w-4 h-4 shrink-0 mt-0.5" />
-                <span>بعد الرفع ستظهر لك <strong>معاينة كاملة</strong> للبيانات قبل التأكيد النهائي — لن يُحفظ شيء قبل موافقتك.</span>
+                <x-icon name="repeat" class="w-4 h-4 shrink-0 mt-0.5" />
+                <span>العملاء الموجودون مسبقًا (بنفس الهاتف) <strong>يُحدَّثون بدل تكرارهم</strong>، مع الحفاظ على فروعهم. وستظهر <strong>معاينة كاملة</strong> قبل التأكيد.</span>
             </div>
         </form>
 

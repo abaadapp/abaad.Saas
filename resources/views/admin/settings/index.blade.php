@@ -16,7 +16,6 @@
                 @php
                     $tabs = [
                         'business' => ['label' => 'بيانات النشاط', 'icon' => 'store'],
-                        'branches' => ['label' => 'الفروع', 'icon' => 'map-pin'],
                         'taxes' => ['label' => 'الضرائب', 'icon' => 'percent'],
                         'currency' => ['label' => 'العملة', 'icon' => 'coins'],
                         'currencies' => ['label' => 'أسعار الصرف', 'icon' => 'arrow-left-right'],
@@ -42,13 +41,19 @@
                         </button>
                     @endforeach
 
-                    {{-- الموظفون — يفتح صفحة الموظفين كما هي --}}
-                    <a href="{{ route('admin.employees.index') }}"
-                       class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors text-right text-gray-600 hover:bg-gray-50">
-                        <x-icon name="user-cog" class="w-4 h-4" />
-                        الموظفون
-                        <x-icon name="chevron-left" class="w-3.5 h-3.5 lg:mr-auto text-gray-300" />
-                    </a>
+                    {{-- صفحات مستقلة تُفتح كما هي --}}
+                    @foreach ([
+                        ['label' => 'الفروع', 'icon' => 'git-branch', 'url' => route('admin.branches.index')],
+                        ['label' => 'الموظفون', 'icon' => 'user-cog', 'url' => route('admin.employees.index')],
+                        ['label' => 'سجل النشاط', 'icon' => 'history', 'url' => route('admin.activity.index')],
+                    ] as $link)
+                        <a href="{{ $link['url'] }}"
+                           class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors text-right text-gray-600 hover:bg-gray-50">
+                            <x-icon :name="$link['icon']" class="w-4 h-4" />
+                            {{ $link['label'] }}
+                            <x-icon name="chevron-left" class="w-3.5 h-3.5 lg:mr-auto text-gray-300" />
+                        </a>
+                    @endforeach
                 </nav>
             </div>
         </aside>
@@ -419,45 +424,6 @@
                 </div>
             </div>
         </form>
-
-        {{-- الفروع (نماذج مستقلة خارج نموذج الإعدادات) --}}
-        <div x-show="tab === 'branches'" x-cloak x-data="{ adding: false }" class="lg:col-span-3 lg:col-start-2 space-y-6">
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <div class="flex items-center justify-between mb-5">
-                    <h3 class="text-lg font-bold text-gray-800">الفروع</h3>
-                    <x-button variant="primary" size="sm" icon="plus" type="button" x-on:click="adding = !adding">إضافة فرع</x-button>
-                </div>
-
-                <form x-show="adding" x-cloak method="POST" action="{{ route('admin.branches.store') }}" class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end mb-6 bg-gray-50 rounded-xl p-4">
-                    @csrf
-                    <x-input label="اسم الفرع" name="name" placeholder="فرع صحار" :required="true" />
-                    <x-input label="الهاتف" name="phone" placeholder="+968 2xxxxxxx" />
-                    <x-input label="العنوان" name="address" placeholder="المدينة - الحي" />
-                    <x-button variant="primary" size="md" type="submit" icon="check">حفظ الفرع</x-button>
-                </form>
-
-                @php $branchList = \App\Support\Demo::branches(); @endphp
-                @if (count($branchList))
-                    <x-table :headers="['الفرع', 'الهاتف', 'العنوان', '']">
-                        @foreach ($branchList as $branch)
-                            <tr class="hover:bg-gray-50">
-                                <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $branch['name'] }}</td>
-                                <td class="px-4 py-3 text-gray-600 whitespace-nowrap" dir="ltr">{{ $branch['phone'] ?: '—' }}</td>
-                                <td class="px-4 py-3 text-gray-600">{{ $branch['address'] ?: '—' }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <form method="POST" action="{{ route('admin.branches.destroy', $branch['id']) }}" @submit="if(!confirm('حذف هذا الفرع؟')) $event.preventDefault()">
-                                        @csrf @method('DELETE')
-                                        <x-button variant="ghost" size="sm" type="submit" icon="trash-2" class="text-danger-600">حذف</x-button>
-                                    </form>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </x-table>
-                @else
-                    <x-empty-state icon="map-pin" title="لا توجد فروع" message="أضف أول فرع لنشاطك." />
-                @endif
-            </div>
-        </div>
 
         {{-- أسعار الصرف / تعدّد العملات (نماذج مستقلة) --}}
         <div x-show="tab === 'currencies'" x-cloak class="lg:col-span-3 lg:col-start-2 space-y-6">

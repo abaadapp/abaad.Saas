@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="{{ asset('fonts/ibm-plex-arabic.css') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="pos-scope h-screen flex flex-col overflow-hidden text-gray-900">
+<body class="pos-scope h-screen flex flex-col overflow-hidden text-gray-900" x-data>
     @php
         $nav = [
             ['label' => 'نقطة البيع', 'icon' => 'store', 'route' => 'pos.index'],

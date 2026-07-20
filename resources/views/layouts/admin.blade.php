@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ asset('fonts/ibm-plex-arabic.css') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="admin-ui">
+<body class="admin-ui" x-data>
     @php
         $menu = [
             ['label' => 'الرئيسية', 'icon' => 'layout-dashboard', 'route' => 'admin.dashboard'],

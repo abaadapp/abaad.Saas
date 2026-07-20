@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="{{ asset('fonts/ibm-plex-arabic.css') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="min-h-screen bg-gradient-to-bl from-primary-50 via-gray-50 to-secondary-50">
+<body class="min-h-screen bg-gradient-to-bl from-primary-50 via-gray-50 to-secondary-50" x-data>
     <div class="min-h-screen flex items-center justify-center p-4">
         {{ $slot }}
     </div>

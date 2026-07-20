@@ -13,11 +13,11 @@
     @php
         $menu = [
             ['label' => 'الرئيسية', 'icon' => 'layout-dashboard', 'route' => 'admin.dashboard'],
+            ['label' => 'العملاء', 'icon' => 'users', 'route' => 'admin.customers.index'],
             ['heading' => 'المتجر'],
             ['label' => 'المنتجات', 'icon' => 'package', 'route' => 'admin.products.index'],
             ['label' => 'التصنيفات', 'icon' => 'tags', 'route' => 'admin.categories.index'],
             ['label' => 'الطلبات', 'icon' => 'shopping-cart', 'route' => 'admin.orders.index'],
-            ['label' => 'العملاء', 'icon' => 'users', 'route' => 'admin.customers.index'],
             ['label' => 'التسويق والكوبونات', 'icon' => 'megaphone', 'route' => 'admin.marketing.index'],
             ['heading' => 'الإدارة'],
             ['label' => 'الفروع', 'icon' => 'git-branch', 'route' => 'admin.branches.index'],

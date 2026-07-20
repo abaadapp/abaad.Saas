@@ -41,6 +41,14 @@
                             {{ $t['label'] }}
                         </button>
                     @endforeach
+
+                    {{-- الموظفون — يفتح صفحة الموظفين كما هي --}}
+                    <a href="{{ route('admin.employees.index') }}"
+                       class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors text-right text-gray-600 hover:bg-gray-50">
+                        <x-icon name="user-cog" class="w-4 h-4" />
+                        الموظفون
+                        <x-icon name="chevron-left" class="w-3.5 h-3.5 lg:mr-auto text-gray-300" />
+                    </a>
                 </nav>
             </div>
         </aside>

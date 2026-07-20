@@ -21,7 +21,6 @@
             ['label' => 'التسويق والكوبونات', 'icon' => 'megaphone', 'route' => 'admin.marketing.index'],
             ['heading' => 'الإدارة'],
             ['label' => 'الفروع', 'icon' => 'git-branch', 'route' => 'admin.branches.index'],
-            ['label' => 'الموظفون', 'icon' => 'user-cog', 'route' => 'admin.employees.index'],
             ['label' => 'المخزون', 'icon' => 'boxes', 'route' => 'admin.inventory.index'],
             ['label' => 'المورّدون', 'icon' => 'truck', 'route' => 'admin.suppliers.index'],
             ['label' => 'أوامر الشراء', 'icon' => 'clipboard-list', 'route' => 'admin.purchases.index'],

@@ -49,7 +49,7 @@
             <h3 class="font-bold text-gray-800 mb-4">الربح حسب التصنيف</h3>
             @if (count($categories))
                 <div x-data='apexChart({
-                    chart: { type: "bar", height: 320, fontFamily: "Tajawal", toolbar: { show: false } },
+                    chart: { type: "bar", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                     series: [{ name: "الربح", data: @json(collect($categories)->pluck("profit")) }],
                     xaxis: { categories: @json(collect($categories)->pluck("name")) },
                     colors: ["#10b981"],

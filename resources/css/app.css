@@ -6,7 +6,7 @@
 
 @theme {
     /* الخطوط */
-    --font-sans: 'Tajawal', 'Cairo', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+    --font-sans: 'IBM Plex Sans Arabic', 'Tajawal', 'Cairo', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
 
     /* اللون الأساسي — بنفسجي هادئ */
     --color-primary-50: #f5f3ff;
@@ -180,8 +180,8 @@
     --ui-radius: 16px;
     background-color: var(--ui-bg);
     color: var(--ui-text);
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
-        'Segoe UI', 'Tajawal', system-ui, sans-serif;
+    font-family: 'IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+        'Segoe UI', system-ui, sans-serif;
     letter-spacing: -0.011em;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;

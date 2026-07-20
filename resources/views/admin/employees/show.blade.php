@@ -144,7 +144,7 @@
                 <div x-show="tab === 'sales'" class="p-6">
                     <h4 class="font-bold text-gray-800 mb-4">مبيعات الموظف خلال آخر 12 شهرًا</h4>
                     <div x-data='apexChart({
-                        chart: { type: "area", height: 300, fontFamily: "Tajawal", toolbar: { show: false } },
+                        chart: { type: "area", height: 300, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                         series: [{ name: "المبيعات (ر.ع)", data: [1200, 1450, 1380, 1600, 1720, 1550, 1890, 2100, 1980, 2240, 2380, 2560] }],
                         xaxis: { categories: ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"] },
                         colors: ["#7c3aed"],

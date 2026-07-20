@@ -32,11 +32,11 @@
             <h3 class="font-bold text-gray-800 mb-1">توزيع وسائل الدفع</h3>
             <p class="text-xs text-gray-400 mb-4">نسبة كل وسيلة من إجمالي المدفوعات</p>
             <div x-data='apexChart({
-                chart: { type: "donut", height: 260, fontFamily: "Tajawal" },
+                chart: { type: "donut", height: 260, fontFamily: "IBM Plex Sans Arabic" },
                 series: @json(collect($methods)->pluck('total')),
                 labels: @json(collect($methods)->pluck('name')),
                 colors: ["#10b981", "#3b82f6", "#7c3aed"],
-                legend: { position: "bottom", fontFamily: "Tajawal" },
+                legend: { position: "bottom", fontFamily: "IBM Plex Sans Arabic" },
                 dataLabels: { enabled: true, formatter: (v) => Math.round(v) + "%" },
                 stroke: { width: 0 },
                 plotOptions: { pie: { donut: { size: "62%" } } }

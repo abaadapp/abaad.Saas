@@ -50,7 +50,7 @@
             </div>
             @php $revenueSeries = \App\Support\Demo::revenueSeries(); @endphp
             <div x-data='apexChart({
-                chart: { type: "area", height: 300, fontFamily: "Tajawal", toolbar: { show: false } },
+                chart: { type: "area", height: 300, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                 series: [{ name: "الإيرادات", data: @json($revenueSeries['data']) }],
                 xaxis: { categories: @json($revenueSeries['labels']) },
                 colors: ["#7c3aed"],
@@ -67,7 +67,7 @@
             </div>
             @php $growthSeries = \App\Support\Demo::businessesGrowthSeries(); @endphp
             <div x-data='apexChart({
-                chart: { type: "bar", height: 300, fontFamily: "Tajawal", toolbar: { show: false } },
+                chart: { type: "bar", height: 300, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                 series: [{ name: "شركات جديدة", data: @json($growthSeries['data']) }],
                 xaxis: { categories: @json($growthSeries['labels']) },
                 colors: ["#db2777"],

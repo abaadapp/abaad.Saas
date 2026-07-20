@@ -43,7 +43,7 @@
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <h3 class="font-bold text-gray-800 mb-4">أفضل المنتجات مبيعًا (بالكمية)</h3>
             <div x-data='apexChart({
-                chart: { type: "bar", height: 320, fontFamily: "Tajawal", toolbar: { show: false } },
+                chart: { type: "bar", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                 series: [{ name: "الكمية المباعة", data: @json(collect($topProducts)->pluck("qty")) }],
                 xaxis: { categories: @json(collect($topProducts)->pluck("name")) },
                 colors: ["#7c3aed"],
@@ -58,7 +58,7 @@
             <h3 class="font-bold text-gray-800 mb-4">أفضل العملاء إنفاقًا</h3>
             @if (count($topCustomers))
                 <div x-data='apexChart({
-                    chart: { type: "bar", height: 320, fontFamily: "Tajawal", toolbar: { show: false } },
+                    chart: { type: "bar", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                     series: [{ name: "إجمالي الإنفاق", data: @json(collect($topCustomers)->pluck("total")) }],
                     xaxis: { categories: @json(collect($topCustomers)->pluck("name")) },
                     colors: ["#db2777"],
@@ -75,7 +75,7 @@
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <h3 class="font-bold text-gray-800 mb-4">المبيعات حسب أيام الأسبوع</h3>
             <div x-data='apexChart({
-                chart: { type: "bar", height: 300, fontFamily: "Tajawal", toolbar: { show: false } },
+                chart: { type: "bar", height: 300, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                 series: [{ name: "المبيعات", data: @json($byWeekday["data"]) }],
                 xaxis: { categories: @json($byWeekday["labels"]) },
                 colors: ["#10b981"],
@@ -89,7 +89,7 @@
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <h3 class="font-bold text-gray-800 mb-4">أوقات الذروة (حسب الساعة)</h3>
             <div x-data='apexChart({
-                chart: { type: "area", height: 300, fontFamily: "Tajawal", toolbar: { show: false } },
+                chart: { type: "area", height: 300, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                 series: [{ name: "المبيعات", data: @json($byHour["data"]) }],
                 xaxis: { categories: @json($byHour["labels"]) },
                 colors: ["#f59e0b"],
@@ -107,11 +107,11 @@
             <h3 class="font-bold text-gray-800 mb-4">المبيعات حسب التصنيف</h3>
             @if (count($byCategory['labels']))
                 <div x-data='apexChart({
-                    chart: { type: "donut", height: 320, fontFamily: "Tajawal" },
+                    chart: { type: "donut", height: 320, fontFamily: "IBM Plex Sans Arabic" },
                     series: @json($byCategory["series"]),
                     labels: @json($byCategory["labels"]),
                     colors: ["#7c3aed","#db2777","#10b981","#f59e0b","#3b82f6","#ef4444"],
-                    legend: { position: "bottom", fontFamily: "Tajawal" },
+                    legend: { position: "bottom", fontFamily: "IBM Plex Sans Arabic" },
                     dataLabels: { enabled: true },
                     plotOptions: { pie: { donut: { size: "65%" } } }
                 })'></div>

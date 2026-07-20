@@ -76,7 +76,7 @@
             <h3 class="font-bold text-gray-800 mb-4">المبيعات الشهرية</h3>
             @php $salesSeries = \App\Support\Demo::salesSeries(); @endphp
             <div x-data='apexChart({
-                chart: { type: "area", height: 320, fontFamily: "Tajawal", toolbar: { show: false } },
+                chart: { type: "area", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                 series: [{ name: "المبيعات (ر.ع)", data: @json($salesSeries['data']) }],
                 xaxis: { categories: @json($salesSeries['labels']) },
                 colors: ["#7c3aed"],
@@ -90,7 +90,7 @@
             <h3 class="font-bold text-gray-800 mb-4">وسائل الدفع</h3>
             @php $payDist = \App\Support\Demo::paymentDistribution(); @endphp
             <div x-data='apexChart({
-                chart: { type: "donut", height: 320, fontFamily: "Tajawal", toolbar: { show: false } },
+                chart: { type: "donut", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                 series: @json($payDist['series']),
                 labels: @json($payDist['labels']),
                 colors: ["#7c3aed", "#db2777", "#10b981", "#f59e0b"],

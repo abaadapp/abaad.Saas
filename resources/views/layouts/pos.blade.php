@@ -8,6 +8,7 @@
     <meta name="app-currency" content='@json(['rate' => $dc['rate'], 'symbol' => $dc['symbol'], 'decimals' => $dcDec])'>
 
     <title>{{ $title ?? 'نقطة البيع' }} — Abad POS</title>
+    <link rel="stylesheet" href="{{ asset('fonts/ibm-plex-arabic.css') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="pos-scope h-screen flex flex-col overflow-hidden text-gray-900">

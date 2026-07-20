@@ -150,7 +150,7 @@
                     <span class="text-xs text-gray-400">بالريال العماني</span>
                 </div>
                 <div x-data='apexChart({
-                    chart: { type: "area", height: 300, fontFamily: "Tajawal", toolbar: { show: false } },
+                    chart: { type: "area", height: 300, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                     series: [{ name: "المبيعات", data: [1200,1450,1300,1800,1650,2100,2400,2200,2500,2750,2900,3100] }],
                     xaxis: { categories: ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"] },
                     colors: ["#db2777"],

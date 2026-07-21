@@ -431,7 +431,7 @@ class Demo
                     'id' => $u->id,
                     'name' => $u->name,
                     'avatar' => $u->avatar ?? self::image('emp' . $u->id, 100, 100),
-                    'role' => $u->roleLabel(),
+                    'role' => $u->job_title ?: $u->roleLabel(),
                     'branch' => $u->branch ?? 'الفرع الرئيسي',
                     'phone' => $u->phone,
                     'email' => $u->email,

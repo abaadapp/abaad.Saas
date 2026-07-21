@@ -19,20 +19,10 @@
                 </h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <x-input label="الاسم الكامل" name="name" placeholder="مثال: أحمد محمد" icon="user" :required="true" />
-                    <x-select label="الوظيفة / الدور" name="role" placeholder="اختر الدور..." :options="[
-                        'manager' => 'مدير',
-                        'cashier' => 'كاشير',
-                        'sales' => 'موظف مبيعات',
-                        'accountant' => 'محاسب',
-                        'inventory' => 'مسؤول مخزون',
-                        'delivery' => 'مندوب توصيل',
-                    ]" :required="true" />
-                    <x-select label="الفرع" name="branch" :options="[
-                        'الفرع الرئيسي' => 'الفرع الرئيسي - مسقط',
-                        'فرع الخوير' => 'فرع الخوير',
-                        'فرع روي' => 'فرع روي',
-                        'فرع صحار' => 'فرع صحار',
-                    ]" selected="الفرع الرئيسي" />
+                    <x-select label="الوظيفة / الدور" name="job_title" placeholder="اختر الوظيفة..." :required="true"
+                        :options="collect(\App\Models\JobTitle::where('business_id', \App\Support\Demo::bid())->orderBy('name')->get())->pluck('name', 'name')->toArray()" />
+                    <x-select label="الفرع" name="branch"
+                        :options="collect(\App\Support\Demo::branches())->pluck('name', 'name')->toArray()" :selected="\App\Support\Demo::currentBranchName()" />
                     <x-input label="رقم الهاتف" name="phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" :required="true" />
                     <x-input label="البريد الإلكتروني" name="email" type="email" placeholder="name@example.com" icon="mail" :required="true" />
                     <x-input label="كلمة المرور" name="password" type="password" placeholder="********" icon="lock" hint="8 أحرف على الأقل" :required="true" />

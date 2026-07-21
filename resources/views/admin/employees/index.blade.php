@@ -9,7 +9,23 @@
         </x-slot:actions>
     </x-page-header>
 
-    @php $employees = \App\Support\Demo::employees(); @endphp
+    @php
+        $employees = \App\Support\Demo::employees();
+        $jobTitles = \App\Models\JobTitle::where('business_id', \App\Support\Demo::bid())->orderBy('name')->get();
+        $titleUsage = \App\Models\User::where('business_id', \App\Support\Demo::bid())
+            ->selectRaw('job_title, COUNT(*) as c')->groupBy('job_title')->pluck('c', 'job_title');
+    @endphp
+
+    <div x-data="{ tab: 'employees' }">
+    {{-- تبويبات --}}
+    <div class="flex items-center gap-1 border-b border-gray-200 mb-6">
+        <button type="button" @click="tab = 'employees'" x-bind:class="tab === 'employees' ? 'border-[#111] text-[#111]' : 'border-transparent text-gray-500 hover:text-gray-700'"
+            class="px-4 py-2.5 -mb-px text-sm font-medium border-b-2 transition">الموظفون</button>
+        <button type="button" @click="tab = 'titles'" x-bind:class="tab === 'titles' ? 'border-[#111] text-[#111]' : 'border-transparent text-gray-500 hover:text-gray-700'"
+            class="px-4 py-2.5 -mb-px text-sm font-medium border-b-2 transition">الوظائف</button>
+    </div>
+
+    <div x-show="tab === 'employees'">
 
     {{-- البطاقات الإحصائية --}}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -27,14 +43,8 @@
                     <x-input name="search" placeholder="ابحث عن موظف بالاسم أو البريد..." icon="search" x-model="q" @input="apply()" />
                 </div>
                 <div class="w-full md:w-56">
-                    <x-select name="role" placeholder="كل الأدوار" x-model="tag" @change="apply()" :options="[
-                        'مدير' => 'مدير',
-                        'كاشير' => 'كاشير',
-                        'موظف مبيعات' => 'موظف مبيعات',
-                        'محاسب' => 'محاسب',
-                        'مسؤول مخزون' => 'مسؤول مخزون',
-                        'مندوب توصيل' => 'مندوب توصيل',
-                    ]" />
+                    <x-select name="role" placeholder="كل الوظائف" x-model="tag" @change="apply()"
+                        :options="$jobTitles->pluck('name', 'name')->toArray()" />
                 </div>
                 <x-button variant="light" size="md" icon="filter" @click="apply()">تصفية</x-button>
             </div>
@@ -43,7 +53,7 @@
         {{-- قائمة الموظفين --}}
         <div x-data="{ sel: { id: '', name: '', target: 0, rate: 0 } }">
             @if (count($employees))
-                <x-table :headers="['الموظف', 'الدور', 'الفرع', 'الهاتف', 'البريد', 'هدف الشهر', 'الحالة', 'إجراءات']">
+                <x-table :headers="['الموظف', 'الوظيفة', 'الفرع', 'الهاتف', 'البريد', 'هدف الشهر', 'الحالة', 'إجراءات']">
                     @foreach ($employees as $employee)
                         <tr class="hover:bg-gray-50" data-row data-tag="{{ $employee['role'] }}"
                             data-search="{{ $employee['name'] }} {{ $employee['email'] }} {{ $employee['phone'] }}">
@@ -133,4 +143,58 @@
             </x-modal>
         </div>
     </div>
+    </div>{{-- نهاية تبويب الموظفين --}}
+
+    {{-- ===== تبويب الوظائف ===== --}}
+    <div x-show="tab === 'titles'" x-cloak>
+        <div class="flex justify-end mb-4">
+            <x-button variant="primary" size="md" icon="plus" x-on:click="$dispatch('open-modal','add-title')">إضافة وظيفة</x-button>
+        </div>
+
+        @if ($jobTitles->count())
+            <x-table :headers="['الوظيفة', 'الصلاحيات المكافئة', 'الوصف', 'الاستخدام', '']">
+                @foreach ($jobTitles as $t)
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $t->name }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <x-badge type="secondary" :text="\App\Models\JobTitle::ROLES[$t->role] ?? $t->role" />
+                        </td>
+                        <td class="px-4 py-3 text-gray-500">{{ $t->description ?: '—' }}</td>
+                        <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $titleUsage[$t->name] ?? 0 }} موظف</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-left">
+                            <form method="POST" action="{{ route('admin.jobTitles.destroy', $t->id) }}"
+                                  @submit="if(!confirm('حذف الوظيفة «{{ $t->name }}»؟')) $event.preventDefault()">
+                                @csrf @method('DELETE')
+                                <x-button variant="ghost" size="sm" type="submit" icon="trash-2" class="text-danger-600">حذف</x-button>
+                            </form>
+                        </td>
+                    </tr>
+                @endforeach
+                <x-slot:footer>
+                    <div class="px-4 py-3 text-xs text-gray-400">{{ $jobTitles->count() }} وظيفة</div>
+                </x-slot:footer>
+            </x-table>
+        @else
+            <x-empty-state icon="briefcase" title="لا توجد وظائف" message="أضِف أول وظيفة لفريق عملك." />
+        @endif
+
+        {{-- نافذة إضافة وظيفة --}}
+        <x-modal name="add-title" title="إضافة وظيفة" maxWidth="max-w-md">
+            <form id="add-title-form" method="POST" action="{{ route('admin.jobTitles.store') }}" class="space-y-4">
+                @csrf
+                <x-input label="اسم الوظيفة" name="name" placeholder="مثال: منسّق زهور" icon="briefcase" :required="true" />
+                <x-select label="الصلاحيات المكافئة" name="role" placeholder="اختر الصلاحيات..." :required="true"
+                    :options="\App\Models\JobTitle::ROLES" />
+                <p class="text-xs text-gray-500 leading-relaxed">
+                    اسم الوظيفة حرّ تمامًا، أمّا «الصلاحيات المكافئة» فتحدّد ما يستطيع الموظف الوصول إليه داخل النظام.
+                </p>
+                <x-input label="الوصف" name="description" placeholder="وصف مختصر (اختياري)" icon="sticky-note" />
+            </form>
+            <x-slot:footer>
+                <x-button variant="ghost" size="md" x-on:click="$dispatch('close-modal')">إلغاء</x-button>
+                <x-button variant="primary" size="md" icon="check" type="submit" form="add-title-form">إضافة</x-button>
+            </x-slot:footer>
+        </x-modal>
+    </div>
+    </div>{{-- نهاية غلاف التبويبات --}}
 </x-layouts::admin>

@@ -18,16 +18,24 @@ class EmployeeController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:50'],
-            'role' => ['required', 'string', 'max:50'],
+            'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
             'password' => ['nullable', 'string', 'min:4'],
         ]);
+
+        // الوظيفة اسم ظاهر — الصلاحية تُشتق منها، فلا يُحفظ دور غير معروف يمنع الموظف من الدخول
+        $title = $this->findJobTitle($data['job_title']);
+        if (! $title) {
+            return back()->withInput()->withErrors(['job_title' => 'الوظيفة المحددة غير موجودة.']);
+        }
+
         User::create([
             'business_id' => $this->bid(),
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'] ?? null,
-            'role' => $data['role'],
+            'role' => $title->role,
+            'job_title' => $title->name,
             'branch' => $data['branch'] ?? 'الفرع الرئيسي',
             'status' => 'نشط',
             'avatar' => Demo::image('emp' . uniqid()),
@@ -36,6 +44,12 @@ class EmployeeController extends Controller
         \App\Support\Activity::log('created', 'أضاف موظفًا: ' . $data['name']);
 
         return redirect()->route('admin.employees.index')->with('toast', ['msg' => 'تم إضافة الموظف بنجاح', 'type' => 'success']);
+    }
+
+    /** وظيفة تابعة للمستأجر الحالي (تحمل الصلاحية المكافئة) */
+    private function findJobTitle(string $name): ?\App\Models\JobTitle
+    {
+        return \App\Models\JobTitle::where('business_id', $this->bid())->where('name', $name)->first();
     }
 
     /** موظف تابع للمستأجر الحالي (باستثناء مدير المنصة) */
@@ -56,9 +70,17 @@ class EmployeeController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($employee->id)],
             'phone' => ['nullable', 'string', 'max:50'],
-            'role' => ['required', 'string', 'max:50'],
+            'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
         ]);
+
+        $title = $this->findJobTitle($data['job_title']);
+        if (! $title) {
+            return back()->withInput()->withErrors(['job_title' => 'الوظيفة المحددة غير موجودة.']);
+        }
+        $data['job_title'] = $title->name;
+        $data['role'] = $title->role;
+
         $employee->update($data);
         \App\Support\Activity::log('updated', 'عدّل بيانات الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
 

@@ -20,20 +20,10 @@
                 </h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <x-input label="الاسم الكامل" name="name" :value="old('name', $employee->name)" icon="user" :required="true" />
-                    <x-select label="الوظيفة / الدور" name="role" :selected="old('role', $employee->role)" :required="true" :options="[
-                        'manager' => 'مدير',
-                        'cashier' => 'كاشير',
-                        'sales' => 'موظف مبيعات',
-                        'accountant' => 'محاسب',
-                        'inventory' => 'مسؤول مخزون',
-                        'delivery' => 'مندوب توصيل',
-                    ]" />
-                    <x-select label="الفرع" name="branch" :selected="old('branch', $employee->branch)" :options="[
-                        'الفرع الرئيسي' => 'الفرع الرئيسي - مسقط',
-                        'فرع الخوير' => 'فرع الخوير',
-                        'فرع روي' => 'فرع روي',
-                        'فرع صحار' => 'فرع صحار',
-                    ]" />
+                    <x-select label="الوظيفة / الدور" name="job_title" placeholder="اختر الوظيفة..." :required="true"
+                        :options="collect(\App\Models\JobTitle::where('business_id', \App\Support\Demo::bid())->orderBy('name')->get())->pluck('name', 'name')->toArray()" :selected="old('job_title', $employee->job_title)" />
+                    <x-select label="الفرع" name="branch"
+                        :options="collect(\App\Support\Demo::branches())->pluck('name', 'name')->toArray()" :selected="old('branch', $employee->branch)" />
                     <x-input label="رقم الهاتف" name="phone" type="tel" :value="old('phone', $employee->phone)" icon="phone" />
                     <div class="sm:col-span-2">
                         <x-input label="البريد الإلكتروني" name="email" type="email" :value="old('email', $employee->email)" icon="mail" :required="true" />

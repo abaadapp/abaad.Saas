@@ -238,6 +238,23 @@ class DatabaseSeeder extends Seeder
             }
         }
 
+        // الوظائف الافتراضية لكل نشاط + ربط الموظفين الحاليين بها
+        // (كل وظيفة مرتبطة بصلاحية نظام حتى لا يفقد الموظف الدخول)
+        $roleLabels = \App\Models\JobTitle::ROLES + ['admin' => 'مدير'];
+        foreach (Business::pluck('id') as $bizId) {
+            foreach (\App\Models\JobTitle::ROLES as $roleKey => $roleLabel) {
+                \App\Models\JobTitle::firstOrCreate(
+                    ['business_id' => $bizId, 'name' => $roleLabel],
+                    ['role' => $roleKey]
+                );
+            }
+        }
+        foreach (User::whereNotNull('role')->get(['id', 'role']) as $u) {
+            if ($label = $roleLabels[$u->role] ?? null) {
+                User::where('id', $u->id)->update(['job_title' => $label]);
+            }
+        }
+
         foreach (SeedData::transactions() as $ti => $t) {
             Transaction::create([
                 'business_id' => $primary->id, 'reference' => $t['id'], 'description' => $t['description'],

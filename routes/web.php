@@ -150,6 +150,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // الموظفون
     Route::view('/employees', 'admin.employees.index')->name('employees.index');
     Route::view('/employees/create', 'admin.employees.create')->name('employees.create');
+
+    // الوظائف
+    Route::post('/job-titles', [\App\Http\Controllers\Admin\JobTitleController::class, 'store'])->name('jobTitles.store');
+    Route::delete('/job-titles/{id}', [\App\Http\Controllers\Admin\JobTitleController::class, 'destroy'])->name('jobTitles.destroy');
     Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
     Route::get('/employees/{id}/edit', [EmployeeController::class, 'edit'])->name('employees.edit');
     Route::put('/employees/{id}', [EmployeeController::class, 'update'])->name('employees.update');

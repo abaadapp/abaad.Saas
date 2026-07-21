@@ -277,10 +277,14 @@ document.addEventListener('alpine:init', () => {
     }));
 
     /* سلة نقطة البيع POS */
-    Alpine.data('posCart', () => ({
-        items: [],
-        // يُقرأ العميل من ?customer= القادم من صفحة العملاء عند اختياره
-        customer: new URLSearchParams(location.search).get('customer') || 'عميل نقدي',
+    Alpine.data('posCart', (resume = null) => ({
+        // سلة مستعادة من طلب معلّق/محفوظ (إن وُجدت)
+        items: resume?.items ?? [],
+        resumeId: resume?.id ?? null,
+        customer:
+            resume?.customer ||
+            new URLSearchParams(location.search).get('customer') ||
+            'عميل نقدي',
         discountPercent: 0,
         deliveryFee: 0,
         taxRate: 5,

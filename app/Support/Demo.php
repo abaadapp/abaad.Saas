@@ -1123,9 +1123,10 @@ class Demo
         return Order::where('business_id', self::bid())->where('is_held', true)
             ->when($name, fn ($q) => $q->where('employee_name', $name))
             ->withCount('items')->orderByDesc('id')->get()->map(fn ($o) => [
+                'order_id' => $o->id,
                 'id' => $o->number,
                 'customer' => $o->customer_name ?? 'عميل نقدي',
-                'items' => $o->items_count ?: 1,
+                'items' => $o->items_count,
                 'total' => (float) $o->total,
                 'time' => optional($o->ordered_at)->format('H:i') ?? '—',
                 'employee' => $o->employee_name ?? 'سارة حسن',

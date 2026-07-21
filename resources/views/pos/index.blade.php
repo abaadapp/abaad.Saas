@@ -5,7 +5,8 @@
         $customers = \App\Support\Demo::customers();
     @endphp
 
-    <div x-data="posCart()" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+    @php $resume = session('resume_cart'); @endphp
+    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }})" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
 
         {{-- ============ جزء المنتجات (يمين) ============ --}}
         <section class="flex-1 lg:w-2/3 flex flex-col min-h-0" x-data="{ cat: 'الكل', q: '' }">
@@ -253,7 +254,7 @@
                             fetch('{{ route('pos.checkout') }}', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
-                              body: JSON.stringify({ items: items, customer: customer, payment_method: method, discount: discountAmount, tax: taxAmount, delivery_fee: Number(deliveryFee||0), total: total })
+                              body: JSON.stringify({ items: items, customer: customer, payment_method: method, discount: discountAmount, tax: taxAmount, delivery_fee: Number(deliveryFee||0), total: total, resume_id: resumeId })
                             }).then(r => r.json()).then(d => { if (d.invoice) invoice = d.invoice; step = 'success'; }).catch(() => { step = 'success'; })
                             "
                             class="w-full py-3.5 rounded-full bg-success-600 hover:bg-success-700 text-white font-bold text-base shadow-sm transition-colors">

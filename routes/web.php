@@ -238,6 +238,8 @@ Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');
     Route::view('/orders', 'pos.orders')->name('orders');
+    Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
+    Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
     Route::view('/orders/{id}', 'pos.order-details')->name('order-details');
     Route::view('/payments', 'pos.payments')->name('payments');
     Route::view('/receipts', 'pos.receipts')->name('receipts');

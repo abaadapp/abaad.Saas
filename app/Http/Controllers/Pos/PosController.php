@@ -28,6 +28,7 @@ class PosController extends Controller
             'tax' => ['nullable', 'numeric'],
             'delivery_fee' => ['nullable', 'numeric'],
             'total' => ['nullable', 'numeric'],
+            'resume_id' => ['nullable', 'integer'],
         ]);
 
         $subtotal = collect($data['items'])->sum(fn ($i) => $i['price'] * $i['qty']);
@@ -61,6 +62,15 @@ class PosController extends Controller
             }
         }
 
+        // الطلب المعلّق الذي استُكمل لم يعد لازمًا بعد إتمام بيعه
+        if (! empty($data['resume_id'])) {
+            $held = Order::where('business_id', $this->bid())->where('is_held', true)->find($data['resume_id']);
+            if ($held) {
+                $held->items()->delete();
+                $held->delete();
+            }
+        }
+
         \App\Support\Activity::log('checkout', 'أتمّ بيعًا ' . $order->number . ' بقيمة ' . number_format($order->total, 3) . ' ر.ع', ['subject_id' => $order->id]);
 
         $this->notifyNewOrder($order);
@@ -73,6 +83,10 @@ class PosController extends Controller
     {
         $data = $request->validate([
             'items' => ['required', 'array', 'min:1'],
+            'items.*.id' => ['nullable', 'integer'],
+            'items.*.name' => ['required', 'string'],
+            'items.*.price' => ['required', 'numeric'],
+            'items.*.qty' => ['required', 'integer', 'min:1'],
             'customer' => ['nullable', 'string'],
             'total' => ['nullable', 'numeric'],
             // معلّق = بانتظار الاستكمال الآن · محفوظ = مسودّة للرجوع إليها لاحقًا
@@ -80,7 +94,7 @@ class PosController extends Controller
         ]);
         $saved = ($data['kind'] ?? 'hold') === 'save';
 
-        Order::create([
+        $order = Order::create([
             'business_id' => $this->bid(),
             'number' => ($saved ? 'SAVE-' : 'HOLD-') . random_int(300, 999),
             'customer_name' => $data['customer'] ?? 'عميل نقدي',
@@ -92,7 +106,84 @@ class PosController extends Controller
             'ordered_at' => now(),
         ]);
 
-        return response()->json(['ok' => true]);
+        // حفظ الأصناف — بدونها لا يمكن استكمال الطلب لاحقًا
+        foreach ($data['items'] as $i) {
+            $order->items()->create([
+                'product_id' => $i['id'] ?? null,
+                'name' => $i['name'],
+                'price' => $i['price'],
+                'quantity' => $i['qty'],
+                'note' => $i['note'] ?? null,
+                'total' => $i['price'] * $i['qty'],
+            ]);
+        }
+
+        return response()->json(['ok' => true, 'number' => $order->number]);
     }
 
+    /** استكمال طلب معلّق/محفوظ: يعيد أصنافه إلى السلة */
+    public function resume($id)
+    {
+        $order = Order::where('business_id', $this->bid())->where('is_held', true)
+            ->with('items')->findOrFail($id);
+
+        session()->flash('resume_cart', [
+            'id' => $order->id,
+            'customer' => $order->customer_name,
+            'items' => $order->items->map(fn ($i) => [
+                'id' => $i->product_id,
+                'name' => $i->name,
+                'price' => (float) $i->price,
+                'qty' => (int) $i->quantity,
+                'note' => $i->note ?? '',
+            ])->all(),
+        ]);
+
+        return redirect()->route('pos.index');
+    }
+
+    /** حذف طلب معلّق/محفوظ */
+    public function discard($id)
+    {
+        $order = Order::where('business_id', $this->bid())->where('is_held', true)->findOrFail($id);
+        $number = $order->number;
+        $order->items()->delete();
+        $order->delete();
+
+        return back()->with('toast', ['msg' => "تم حذف الطلب {$number}", 'type' => 'warning']);
+    }
+
+
+    /** إضافة عميل سريع من نقطة البيع */
+    public function storeCustomer(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'email' => ['nullable', 'email'],
+        ]);
+        $data['business_id'] = $this->bid();
+        \App\Models\Customer::create($data);
+        \App\Support\Activity::log('created', 'أضاف عميلًا من نقطة البيع: ' . $data['name']);
+
+        return back()->with('toast', ['msg' => 'تم إضافة العميل', 'type' => 'success']);
+    }
+
+    /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */
+    private function notifyNewOrder(Order $order): void
+    {
+        $business = \App\Models\Business::find($this->bid());
+        if (! $business || ! $business->email) {
+            return;
+        }
+        $enabled = \App\Models\Setting::where('business_id', $this->bid())->where('key', 'notify_new_order')->value('value');
+        if ($enabled === '0') {
+            return;
+        }
+        try {
+            \Illuminate\Support\Facades\Mail::to($business->email)->send(new \App\Mail\NewOrderMail($order));
+        } catch (\Throwable $e) {
+            report($e); // لا نُفشل عملية البيع بسبب البريد
+        }
+    }
 }

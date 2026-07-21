@@ -63,7 +63,15 @@
                                     <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $o['time'] }}</td>
                                     <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ $o['employee'] }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap text-left">
-                                        <x-button variant="dark" size="sm" icon="play" :href="route('pos.index')">استكمال</x-button>
+                                        <div class="flex items-center justify-end gap-1.5">
+                                            <x-button variant="dark" size="sm" icon="play"
+                                                      :href="route('pos.orders.resume', $o['order_id'])">استكمال</x-button>
+                                            <form method="POST" action="{{ route('pos.orders.discard', $o['order_id']) }}"
+                                                  @submit.prevent="if(confirm('حذف الطلب {{ $o['id'] }}؟')) $el.submit()">
+                                                @csrf @method('DELETE')
+                                                <x-button variant="ghost" size="sm" icon="trash-2" type="submit" class="text-danger-600">حذف</x-button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             @endforeach

@@ -21,75 +21,83 @@
         </x-slot:actions>
     </x-page-header>
 
-    {{-- بطاقات التقارير مصنّفة مع شرائح تصفية --}}
+    {{-- أقسام التقارير: عنوان القسم + عدّاد + بطاقات --}}
     @php
-        // group: مالية | تشغيلية | تحليلات
-        $reportCards = [
-            ['title' => 'تقرير المبيعات', 'icon' => 'shopping-bag', 'color' => 'primary', 'value' => '12,640 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['title' => 'تقرير الأرباح', 'icon' => 'piggy-bank', 'color' => 'success', 'value' => '11,400 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['title' => 'تقرير المصروفات', 'icon' => 'arrow-down-circle', 'color' => 'danger', 'value' => '1,240 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['title' => 'تقرير الضرائب', 'icon' => 'percent', 'color' => 'info', 'value' => '632 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['title' => 'وسائل الدفع', 'icon' => 'credit-card', 'color' => 'secondary', 'value' => '4 وسائل', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['title' => 'الربحية', 'icon' => 'trending-up', 'color' => 'success', 'value' => 'هوامش الربح', 'group' => 'مالية', 'url' => route('admin.profitability.index')],
-            ['title' => 'ضريبة القيمة المضافة', 'icon' => 'landmark', 'color' => 'info', 'value' => 'الإقرار الضريبي', 'group' => 'مالية', 'url' => route('admin.vat.index')],
-
-            ['title' => 'تقرير المنتجات', 'icon' => 'package', 'color' => 'info', 'value' => '151', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
-            ['title' => 'تقرير المخزون', 'icon' => 'boxes', 'color' => 'warning', 'value' => '9 تنبيهات', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
-            ['title' => 'تقرير الموظفين', 'icon' => 'users', 'color' => 'secondary', 'value' => '7', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
-
-            ['title' => 'تحليلات متقدمة', 'icon' => 'chart-line', 'color' => 'primary', 'value' => 'الاتجاهات والذروة', 'group' => 'تحليلات', 'url' => route('admin.analytics.index')],
-            ['title' => 'تقرير العملاء', 'icon' => 'user-round', 'color' => 'primary', 'value' => '214', 'group' => 'تحليلات', 'url' => route('admin.reports.pdf')],
-        ];
-        $cardColors = [
-            'primary' => 'bg-primary-50 text-primary-600',
-            'success' => 'bg-success-50 text-success-600',
-            'info' => 'bg-info-50 text-info-600',
-            'warning' => 'bg-warning-50 text-warning-600',
-            'danger' => 'bg-danger-50 text-danger-600',
-            'secondary' => 'bg-secondary-50 text-secondary-600',
-        ];
-        $chips = [
-            ['key' => 'all', 'label' => 'الكل', 'count' => count($reportCards)],
-            ['key' => 'مالية', 'label' => 'التقارير المالية', 'count' => collect($reportCards)->where('group', 'مالية')->count()],
-            ['key' => 'تشغيلية', 'label' => 'التقارير التشغيلية', 'count' => collect($reportCards)->where('group', 'تشغيلية')->count()],
-            ['key' => 'تحليلات', 'label' => 'تقارير التحليلات', 'count' => collect($reportCards)->where('group', 'تحليلات')->count()],
+        $reportSections = [
+            [
+                'title' => 'التقارير المالية',
+                'accent' => '#e2574c',
+                'tint' => '#fdecea',
+                'items' => [
+                    ['title' => 'المبيعات والإيرادات', 'desc' => 'المبيعات والإيرادات والمدفوعات والتحصيل في مكان واحد.', 'icon' => 'trending-up', 'url' => route('admin.reports.pdf')],
+                    ['title' => 'تقرير إغلاق الصندوق', 'desc' => 'تقرير شامل لنشاطات النقد والمبيعات.', 'icon' => 'wallet', 'url' => route('admin.reports.pdf')],
+                    ['title' => 'تقرير المصروفات', 'desc' => 'راجِع وتتبّع المصروفات بسهولة.', 'icon' => 'arrow-down-circle', 'url' => route('admin.expenses.index')],
+                    ['title' => 'تقرير طلبات المنتجات', 'desc' => 'تحليل مبيعات طلبات المنتجات.', 'icon' => 'boxes', 'url' => route('admin.reports.pdf')],
+                    ['title' => 'تقارير العمولات', 'desc' => 'تحليل بيانات العمولات للمنتجات والخدمات.', 'icon' => 'percent', 'url' => route('admin.reports.pdf')],
+                    ['title' => 'الكوبونات والعروض', 'desc' => 'تتبّع استخدام الكوبونات وقيمة الخصومات وسلوك العملاء.', 'icon' => 'tag', 'url' => route('admin.marketing.index')],
+                    ['title' => 'الربحية', 'desc' => 'أرباح المنتجات والتصنيفات وهوامش الربح.', 'icon' => 'piggy-bank', 'url' => route('admin.profitability.index')],
+                    ['title' => 'ضريبة القيمة المضافة', 'desc' => 'تقرير الضريبة والفواتير الضريبية.', 'icon' => 'landmark', 'url' => route('admin.vat.index')],
+                ],
+            ],
+            [
+                'title' => 'التقارير التشغيلية',
+                'accent' => '#16a34a',
+                'tint' => '#e8f6ee',
+                'items' => [
+                    ['title' => 'تقرير المخزون', 'desc' => 'أرصدة الأصناف والتنبيهات ونواقص المخزون.', 'icon' => 'package', 'url' => route('admin.inventory.index')],
+                    ['title' => 'تقرير المنتجات', 'desc' => 'حالة المنتجات وأسعارها وتكاليفها.', 'icon' => 'shopping-bag', 'url' => route('admin.products.index')],
+                    ['title' => 'تقرير الموظفين', 'desc' => 'أداء فريق العمل ومبيعات كل موظف.', 'icon' => 'users', 'url' => route('admin.employees.index')],
+                ],
+            ],
+            [
+                'title' => 'تقارير التحليلات',
+                'accent' => '#3b82f6',
+                'tint' => '#e8f1fe',
+                'items' => [
+                    ['title' => 'تحليلات متقدمة', 'desc' => 'الاتجاهات وأوقات الذروة وأفضل المنتجات والعملاء.', 'icon' => 'chart-line', 'url' => route('admin.analytics.index')],
+                    ['title' => 'تقرير العملاء', 'desc' => 'أفضل العملاء إنفاقًا وتكرار الشراء.', 'icon' => 'user-round', 'url' => route('admin.customers.index')],
+                    ['title' => 'وسائل الدفع', 'desc' => 'توزيع المبيعات حسب وسيلة الدفع.', 'icon' => 'credit-card', 'url' => route('admin.reports.pdf')],
+                ],
+            ],
         ];
     @endphp
 
-    <div x-data="{ g: 'all' }" class="mb-6">
-        {{-- شرائح التصفية --}}
-        <div class="flex flex-wrap items-center gap-2.5 mb-5">
-            @foreach ($chips as $chip)
-                <button type="button" @click="g = '{{ $chip['key'] }}'"
-                    :class="g === '{{ $chip['key'] }}'
-                        ? 'bg-[#111] text-white border-[#111]'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'"
-                    class="inline-flex items-center gap-2 h-11 px-5 rounded-full border text-sm font-medium transition-colors">
-                    {{ $chip['label'] }}
-                    <span :class="g === '{{ $chip['key'] }}' ? 'text-white/70' : 'text-gray-400'"
-                          class="text-xs font-semibold">{{ $chip['count'] }}</span>
-                </button>
-            @endforeach
-        </div>
+    @foreach ($reportSections as $section)
+        <div class="mb-10">
+            {{-- عنوان القسم + العدّاد --}}
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="flex items-center gap-2.5 text-base font-bold text-gray-800">
+                    <span class="w-2.5 h-2.5 rounded-[3px]" style="background: {{ $section['accent'] }}"></span>
+                    {{ $section['title'] }}
+                </h2>
+                <span class="inline-flex items-center justify-center min-w-8 h-8 px-2.5 rounded-full bg-white border border-gray-200 text-sm font-semibold text-gray-500">
+                    {{ count($section['items']) }}
+                </span>
+            </div>
 
-        {{-- البطاقات --}}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            @foreach ($reportCards as $card)
-                <a href="{{ $card['url'] }}" @if ($card['url'] === route('admin.reports.pdf')) target="_blank" @endif
-                   x-show="g === 'all' || g === '{{ $card['group'] }}'"
-                   class="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-300 transition">
-                    <div class="flex items-center justify-between">
-                        <span class="w-11 h-11 rounded-full flex items-center justify-center {{ $cardColors[$card['color']] }}">
-                            <x-icon :name="$card['icon']" class="w-5 h-5" />
-                        </span>
-                        <x-icon name="chevron-left" class="w-4 h-4 text-gray-300" />
+            {{-- البطاقات --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                @foreach ($section['items'] as $item)
+                    <div class="group bg-white rounded-2xl border border-gray-200 p-6 flex flex-col hover:shadow-md hover:border-gray-300 transition">
+                        <div class="flex justify-end">
+                            <span class="w-11 h-11 rounded-xl flex items-center justify-center"
+                                  style="background: {{ $section['tint'] }}; color: {{ $section['accent'] }}">
+                                <x-icon :name="$item['icon']" class="w-[22px] h-[22px]" />
+                            </span>
+                        </div>
+                        <h3 class="mt-5 text-[17px] font-bold text-gray-800">{{ $item['title'] }}</h3>
+                        <p class="mt-2 text-sm text-gray-400 leading-relaxed">{{ $item['desc'] }}</p>
+                        <a href="{{ $item['url'] }}"
+                           class="mt-6 inline-flex items-center gap-1.5 self-start text-sm font-medium transition-opacity hover:opacity-70"
+                           style="color: {{ $section['accent'] }}">
+                            فتح
+                            <x-icon name="arrow-left" class="w-4 h-4" />
+                        </a>
                     </div>
-                    <h3 class="mt-4 font-bold text-gray-800">{{ $card['title'] }}</h3>
-                    <p class="mt-2 text-xl font-bold text-gray-800">{{ $card['value'] }}</p>
-                </a>
-            @endforeach
+                @endforeach
+            </div>
         </div>
-    </div>
+    @endforeach
 
     {{-- الرسوم البيانية --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

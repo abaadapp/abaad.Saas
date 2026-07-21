@@ -22,32 +22,51 @@
             </div>
         </div>
 
-        {{-- شبكة العملاء --}}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            @foreach ($customers as $c)
-                <div x-show="'{{ $c['name'] }}'.indexOf(q) > -1 || '{{ $c['phone'] }}'.indexOf(q) > -1 || q === ''"
-                     class="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all p-4">
-                    <div class="flex items-center gap-3 mb-3">
-                        <img src="{{ $c['avatar'] }}" class="w-12 h-12 rounded-xl object-cover" alt="{{ $c['name'] }}" />
-                        <div class="min-w-0">
-                            <p class="font-semibold text-gray-800 truncate">{{ $c['name'] }}</p>
-                            <p class="text-xs text-gray-400 flex items-center gap-1"><x-icon name="phone" class="w-3 h-3" /> {{ $c['phone'] }}</p>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 mb-3">
-                        <div class="bg-gray-50 rounded-xl px-3 py-2 text-center">
-                            <p class="text-xs text-gray-400">الطلبات</p>
-                            <p class="font-bold text-gray-800">{{ $c['orders'] }}</p>
-                        </div>
-                        <div class="bg-gray-100 rounded-xl px-3 py-2 text-center">
-                            <p class="text-xs text-gray-500">النقاط</p>
-                            <p class="font-bold text-gray-900">{{ $c['points'] }}</p>
-                        </div>
-                    </div>
-                    <x-button variant="light" size="sm" icon="check" class="w-full" :href="route('pos.index')">اختيار العميل</x-button>
+        {{-- قائمة العملاء --}}
+        @if (count($customers))
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-right">
+                        <thead class="bg-gray-50 text-gray-500">
+                            <tr>
+                                <th class="px-4 py-3 font-medium">العميل</th>
+                                <th class="px-4 py-3 font-medium">الهاتف</th>
+                                <th class="px-4 py-3 font-medium">الطلبات</th>
+                                <th class="px-4 py-3 font-medium">النقاط</th>
+                                <th class="px-4 py-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            @foreach ($customers as $c)
+                                <tr class="hover:bg-gray-50"
+                                    x-show="q === '' || {{ \Illuminate\Support\Js::from(($c['name'] ?? '') . ' ' . ($c['phone'] ?? '')) }}.includes(q)">
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <div class="flex items-center gap-3">
+                                            <img src="{{ $c['avatar'] }}" class="w-9 h-9 rounded-full object-cover shrink-0" alt="{{ $c['name'] }}" />
+                                            <span class="font-medium text-gray-800">{{ $c['name'] }}</span>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-600 whitespace-nowrap" dir="ltr">{{ $c['phone'] ?: '—' }}</td>
+                                    <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $c['orders'] }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-800">{{ $c['points'] }}</span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-left">
+                                        <x-button variant="light" size="sm" icon="check"
+                                                  :href="route('pos.index', ['customer' => $c['name']])">اختيار</x-button>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
                 </div>
-            @endforeach
-        </div>
+                <div class="px-4 py-3 text-xs text-gray-400 border-t border-gray-100">{{ count($customers) }} عميل</div>
+            </div>
+        @else
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm">
+                <x-empty-state icon="users" title="لا يوجد عملاء" message="أضِف أول عميل من زر «عميل جديد»." />
+            </div>
+        @endif
 
         {{-- نافذة عميل جديد --}}
         <x-modal name="new-customer" title="إضافة عميل جديد" maxWidth="max-w-md">

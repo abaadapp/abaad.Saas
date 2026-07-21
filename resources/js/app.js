@@ -279,7 +279,8 @@ document.addEventListener('alpine:init', () => {
     /* سلة نقطة البيع POS */
     Alpine.data('posCart', () => ({
         items: [],
-        customer: 'عميل نقدي',
+        // يُقرأ العميل من ?customer= القادم من صفحة العملاء عند اختياره
+        customer: new URLSearchParams(location.search).get('customer') || 'عميل نقدي',
         discountPercent: 0,
         deliveryFee: 0,
         taxRate: 5,

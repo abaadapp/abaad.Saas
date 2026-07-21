@@ -34,36 +34,43 @@
                 @endforeach
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                @foreach ($held as $o)
-                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all p-4 flex flex-col"
-                         x-show="f === 'all' || f === '{{ $o['saved'] ? 'save' : 'hold' }}'">
-                        <div class="flex items-center justify-between mb-3">
-                            <span class="font-bold text-gray-800">{{ $o['id'] }}</span>
-                            <x-badge :type="$o['saved'] ? 'info' : 'warning'" dot>{{ $o['status'] }}</x-badge>
-                        </div>
-                        <div class="flex items-center gap-2 text-sm text-gray-600 mb-2">
-                            <x-icon name="user" class="w-4 h-4 text-gray-900" />
-                            <span>{{ $o['customer'] }}</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2 text-sm mb-3">
-                            <div class="bg-gray-50 rounded-xl px-3 py-2">
-                                <p class="text-xs text-gray-400">عدد المنتجات</p>
-                                <p class="font-semibold text-gray-800">{{ $o['items'] }}</p>
-                            </div>
-                            <div class="bg-gray-50 rounded-xl px-3 py-2">
-                                <p class="text-xs text-gray-400">المبلغ</p>
-                                <p class="font-semibold text-gray-900">{{ \App\Support\Demo::money($o['total']) }}</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center justify-between text-xs text-gray-400 mb-4">
-                            <span class="flex items-center gap-1"><x-icon name="clock" class="w-3.5 h-3.5" /> {{ $o['time'] }}</span>
-                            <span class="flex items-center gap-1"><x-icon name="user-round" class="w-3.5 h-3.5" /> {{ $o['employee'] }}</span>
-                        </div>
-                        <x-button variant="dark" size="sm" icon="play" class="w-full mt-auto" :href="route('pos.index')">استكمال الطلب</x-button>
-                    </div>
-                @endforeach
-            </div>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-right">
+                        <thead class="bg-gray-50 text-gray-500">
+                            <tr>
+                                <th class="px-4 py-3 font-medium">رقم الطلب</th>
+                                <th class="px-4 py-3 font-medium">الحالة</th>
+                                <th class="px-4 py-3 font-medium">العميل</th>
+                                <th class="px-4 py-3 font-medium">المنتجات</th>
+                                <th class="px-4 py-3 font-medium">المبلغ</th>
+                                <th class="px-4 py-3 font-medium">الوقت</th>
+                                <th class="px-4 py-3 font-medium">الموظف</th>
+                                <th class="px-4 py-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            @foreach ($held as $o)
+                                <tr class="hover:bg-gray-50"
+                                    x-show="f === 'all' || f === '{{ $o['saved'] ? 'save' : 'hold' }}'">
+                                    <td class="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{{ $o['id'] }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <x-badge :type="$o['saved'] ? 'info' : 'warning'" dot>{{ $o['status'] }}</x-badge>
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $o['customer'] }}</td>
+                                    <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $o['items'] }}</td>
+                                    <td class="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{{ \App\Support\Demo::money($o['total']) }}</td>
+                                    <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $o['time'] }}</td>
+                                    <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ $o['employee'] }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-left">
+                                        <x-button variant="dark" size="sm" icon="play" :href="route('pos.index')">استكمال</x-button>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div class="px-4 py-3 text-xs text-gray-400 border-t border-gray-100">{{ count($held) }} طلب</div>
             </div>
         @else
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm">

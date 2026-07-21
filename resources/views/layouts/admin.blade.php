@@ -16,7 +16,6 @@
             ['label' => 'العملاء', 'icon' => 'users', 'route' => 'admin.customers.index'],
             ['heading' => 'المتجر'],
             ['label' => 'المنتجات', 'icon' => 'package', 'route' => 'admin.products.index'],
-            ['label' => 'التصنيفات', 'icon' => 'tags', 'route' => 'admin.categories.index'],
             ['label' => 'الطلبات', 'icon' => 'shopping-cart', 'route' => 'admin.orders.index'],
             ['label' => 'التسويق والكوبونات', 'icon' => 'megaphone', 'route' => 'admin.marketing.index'],
             ['heading' => 'الإدارة'],

@@ -1,12 +1,14 @@
 <x-layouts::admin title="التصنيفات">
 
     <x-page-header title="التصنيفات" subtitle="تنظيم منتجاتك ضمن تصنيفات"
-        :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'التصنيفات' => '#']">
+        :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'المنتجات' => route('admin.products.index'), 'التصنيفات' => '#']">
         <x-slot:actions>
             <x-button variant="outline" icon="external-link" :href="route('admin.categories.create')">صفحة الإضافة</x-button>
             <x-button variant="primary" icon="plus" x-data @click="$dispatch('open-modal', 'add-category')">إضافة تصنيف</x-button>
         </x-slot:actions>
     </x-page-header>
+
+    @include('partials.products-tabs')
 
     @php
         $colorMap = [

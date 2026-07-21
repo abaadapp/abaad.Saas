@@ -9,6 +9,8 @@
         </x-slot:actions>
     </x-page-header>
 
+    @include('partials.products-tabs')
+
     <div x-data="{ view: 'table' }">
 
         {{-- شريط الفلاتر --}}

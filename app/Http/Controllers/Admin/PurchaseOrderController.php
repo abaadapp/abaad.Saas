@@ -17,6 +17,7 @@ class PurchaseOrderController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
+            'branch_id' => ['required', 'integer'],
             'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
@@ -24,14 +25,24 @@ class PurchaseOrderController extends Controller
             'items.*.name' => ['required', 'string', 'max:255'],
             'items.*.cost' => ['required', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+        ], [
+            'branch_id.required' => 'يجب تحديد الفرع الذي ستُستلم فيه البضاعة.',
         ]);
 
         $bid = $this->bid();
+
+        // الفرع يجب أن يخصّ نفس النشاط
+        $branch = \App\Models\Branch::where('business_id', $bid)->find($data['branch_id']);
+        if (! $branch) {
+            return back()->withInput()->withErrors(['branch_id' => 'الفرع المحدد غير صالح.']);
+        }
+
         $supplier = ! empty($data['supplier_id']) ? Supplier::where('business_id', $bid)->find($data['supplier_id']) : null;
         $total = collect($data['items'])->sum(fn ($i) => $i['cost'] * $i['quantity']);
 
         $po = PurchaseOrder::create([
             'business_id' => $bid,
+            'branch_id' => $branch->id,
             'number' => 'PO-' . random_int(10000, 99999),
             'supplier_id' => $supplier?->id,
             'supplier_name' => $supplier?->name,
@@ -48,7 +59,7 @@ class PurchaseOrderController extends Controller
                 'quantity' => $i['quantity'],
             ]);
         }
-        \App\Support\Activity::log('created', 'أنشأ أمر شراء ' . $po->number . ' بقيمة ' . number_format($total, 3) . ' ر.ع', ['subject_id' => $po->id]);
+        \App\Support\Activity::log('created', 'أنشأ أمر شراء ' . $po->number . ' لفرع ' . $branch->name . ' بقيمة ' . number_format($total, 3) . ' ر.ع', ['subject_id' => $po->id]);
 
         return redirect()->route('admin.purchases.index')->with('toast', ['msg' => 'تم إنشاء أمر الشراء ' . $po->number, 'type' => 'success']);
     }
@@ -75,6 +86,8 @@ class PurchaseOrderController extends Controller
                     $product->update(['cost' => $item->cost]);
                     InventoryMovement::create([
                         'business_id' => $bid,
+                        'branch_id' => $po->branch_id,
+                        'product_id' => $product->id,
                         'product_name' => $product->name,
                         'sku' => $product->sku,
                         'type' => 'إضافة كمية',

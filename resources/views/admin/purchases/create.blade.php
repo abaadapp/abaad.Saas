@@ -64,6 +64,14 @@
             <div class="space-y-4">
                 <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                     <h3 class="font-bold text-gray-800 mb-4">تفاصيل الأمر</h3>
+                    <label class="block text-sm text-gray-600 mb-1">الفرع <span class="text-danger-500">*</span></label>
+                    <select name="branch_id" required class="w-full rounded-lg border-gray-200 text-sm mb-4">
+                        <option value="">اختر الفرع...</option>
+                        @foreach (\App\Support\Demo::branches() as $b)
+                            <option value="{{ $b['id'] }}" @selected(\App\Support\Demo::currentBranchId() == $b['id'])>{{ $b['name'] }}</option>
+                        @endforeach
+                    </select>
+                    @error('branch_id')<p class="-mt-3 mb-3 text-xs text-danger-500">{{ $message }}</p>@enderror
                     <label class="block text-sm text-gray-600 mb-1">المورّد</label>
                     <select name="supplier_id" class="w-full rounded-lg border-gray-200 text-sm mb-4">
                         <option value="">— بدون مورّد —</option>

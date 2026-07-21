@@ -51,10 +51,11 @@
     @if (count($orders))
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-100"><h3 class="font-bold text-gray-800">أوامر الشراء</h3></div>
-            <x-table :headers="['الرقم', 'المورّد', 'الأصناف', 'الإجمالي', 'الحالة', 'تاريخ الطلب', 'إجراء']">
+            <x-table :headers="['الرقم', 'الفرع', 'المورّد', 'الأصناف', 'الإجمالي', 'الحالة', 'تاريخ الطلب', 'إجراء']">
                 @foreach ($orders as $o)
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-3 font-mono text-gray-700 whitespace-nowrap">{{ $o['number'] }}</td>
+                        <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $o['branch'] }}</td>
                         <td class="px-4 py-3 text-gray-800 whitespace-nowrap">{{ $o['supplier'] }}</td>
                         <td class="px-4 py-3 text-gray-600">{{ $o['items_count'] }}</td>
                         <td class="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{{ \App\Support\Demo::money($o['total']) }}</td>

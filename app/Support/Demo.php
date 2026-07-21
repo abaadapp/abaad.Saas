@@ -503,10 +503,13 @@ class Demo
 
     public static function purchaseOrders(): array
     {
+        $branches = \App\Models\Branch::where('business_id', self::bid())->pluck('name', 'id');
+
         return PurchaseOrder::where('business_id', self::bid())->withCount('items')
             ->orderByDesc('id')->get()->map(fn ($p) => [
                 'id' => $p->id,
                 'number' => $p->number,
+                'branch' => $branches[$p->branch_id] ?? '—',
                 'supplier' => $p->supplier_name ?? optional($p->supplier)->name ?? '—',
                 'status' => $p->status,
                 'total' => (float) $p->total,

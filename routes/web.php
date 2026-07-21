@@ -123,7 +123,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // الطلبات
     Route::get('/orders', [\App\Http\Controllers\Admin\OrderController::class, 'index'])->name('orders.index');
     Route::view('/orders/{id}', 'admin.orders.show')->name('orders.show');
-    Route::put('/orders/{id}/status', [\App\Http\Controllers\Admin\OrderController::class, 'updateStatus'])->name('orders.updateStatus');
     Route::get('/orders/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('orders.pdf');
 
     // العملات وأسعار الصرف

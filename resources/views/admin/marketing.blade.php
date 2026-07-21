@@ -1,6 +1,6 @@
 <x-layouts::admin title="التسويق والكوبونات">
 
-    <x-page-header title="التسويق والكوبونات" subtitle="أكواد الخصم وحملات واتساب لاستهداف العملاء"
+    <x-page-header title="التسويق والكوبونات" subtitle="أكواد الخصم والعروض لاستهداف العملاء"
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'التسويق' => '#']">
         <x-slot:actions>
             <x-button variant="primary" icon="plus" x-data @click="$dispatch('open-modal','add-coupon')">كوبون جديد</x-button>
@@ -20,7 +20,7 @@
         <x-stat-card label="مرات الاستخدام" value="{{ $stats['redemptions'] }}" icon="check-circle" color="info" />
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div>
         {{-- الكوبونات --}}
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -65,48 +65,6 @@
             @endif
         </div>
 
-        {{-- حملة واتساب --}}
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
-            x-data="{
-                msg: 'مرحبًا {name}، لدينا عروض مميزة في متجرنا! استخدم كود الخصم عند الشراء 🌸',
-                waLink(phone, name) {
-                    const text = encodeURIComponent(this.msg.replace('{name}', name));
-                    return `https://wa.me/${phone}?text=${text}`;
-                }
-            }">
-            <div class="flex items-center gap-2 mb-4">
-                <span class="w-9 h-9 rounded-xl bg-success-50 text-success-600 flex items-center justify-center"><x-icon name="message-circle" class="w-5 h-5" /></span>
-                <h3 class="font-bold text-gray-800">حملة واتساب</h3>
-            </div>
-
-            <div class="flex items-center gap-2 mb-3">
-                @foreach (['all' => 'كل العملاء', 'inactive' => 'غير النشطين', 'top' => 'الأكثر إنفاقًا'] as $key => $lbl)
-                    <a href="{{ route('admin.marketing.index', ['segment' => $key]) }}"
-                       class="px-3 py-1.5 rounded-lg text-xs font-medium border {{ $segment === $key ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50' }}">{{ $lbl }}</a>
-                @endforeach
-                <span class="mr-auto text-xs text-gray-400">{{ count($targets) }} عميل</span>
-            </div>
-
-            <label class="block text-sm text-gray-600 mb-1">نص الرسالة <span class="text-gray-400">(استخدم {name} لاسم العميل)</span></label>
-            <textarea x-model="msg" rows="3" class="w-full rounded-lg border-gray-200 text-sm mb-3"></textarea>
-
-            <div class="max-h-72 overflow-y-auto divide-y divide-gray-50 border border-gray-100 rounded-xl">
-                @forelse ($targets as $t)
-                    <div class="flex items-center justify-between px-3 py-2.5">
-                        <div>
-                            <p class="text-sm font-medium text-gray-800">{{ $t['name'] }}</p>
-                            <p class="text-xs text-gray-400" dir="ltr">{{ $t['phone'] }} · آخر شراء {{ $t['last_order'] }}</p>
-                        </div>
-                        <a :href="waLink('{{ $t['wa'] }}', @js($t['name']))" target="_blank" class="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-success-600 text-white hover:bg-success-700">
-                            <x-icon name="send" class="w-3.5 h-3.5" /> إرسال
-                        </a>
-                    </div>
-                @empty
-                    <div class="p-6 text-center text-gray-400 text-sm">لا يوجد عملاء بأرقام هواتف في هذه الشريحة.</div>
-                @endforelse
-            </div>
-            <p class="text-xs text-gray-400 mt-2">يفتح واتساب برسالة جاهزة لكل عميل (واتساب ويب/الهاتف).</p>
-        </div>
     </div>
 
     {{-- نافذة إنشاء كوبون --}}

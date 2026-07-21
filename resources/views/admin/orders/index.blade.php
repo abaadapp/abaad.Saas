@@ -44,7 +44,6 @@
     <form method="GET" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <x-input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="ابحث برقم الطلب أو العميل..." icon="search" />
-            <x-select name="status" :options="['جديد' => 'جديد', 'قيد التجهيز' => 'قيد التجهيز', 'جاهز' => 'جاهز', 'خرج للتوصيل' => 'خرج للتوصيل', 'مكتمل' => 'مكتمل', 'ملغي' => 'ملغي']" placeholder="كل الحالات" selected="{{ $filters['status'] ?? '' }}" />
             <x-select name="payment" :options="['نقدي' => 'نقدي', 'بطاقة' => 'بطاقة', 'تحويل بنكي' => 'تحويل بنكي', 'آجل' => 'آجل']" placeholder="كل وسائل الدفع" selected="{{ $filters['payment'] ?? '' }}" />
             <x-input name="date" type="date" value="{{ $filters['date'] ?? '' }}" />
         </div>
@@ -55,7 +54,7 @@
     </form>
 
     {{-- جدول الطلبات --}}
-    <x-table :headers="['رقم الطلب', 'العميل', 'الموظف', 'الفرع', 'المنتجات', 'الإجمالي', 'الدفع', 'الحالة', 'التاريخ', 'إجراءات']">
+    <x-table :headers="['رقم الطلب', 'العميل', 'الموظف', 'الفرع', 'المنتجات', 'الإجمالي', 'الدفع', 'التاريخ', 'إجراءات']">
         @foreach ($orders as $o)
             <tr class="hover:bg-gray-50">
                 <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $o['id'] }}</td>
@@ -65,7 +64,6 @@
                 <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $o['items_count'] }} منتج</td>
                 <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ \App\Support\Demo::money($o['total']) }}</td>
                 <td class="px-4 py-3"><x-badge :text="$o['payment']" /></td>
-                <td class="px-4 py-3"><x-badge :text="$o['status']" /></td>
                 <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ $o['date'] }}</td>
                 <td class="px-4 py-3">
                     <x-button variant="ghost" size="sm" icon="eye" :href="route('admin.orders.show', $o['id'])">عرض</x-button>

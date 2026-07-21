@@ -3,56 +3,15 @@
     @php
         $order = \App\Support\Demo::orderDetails(request()->route('id'));
         abort_if(empty($order), 404);
-
-        $steps = ['جديد', 'قيد التجهيز', 'جاهز', 'خرج للتوصيل', 'مكتمل'];
-        $currentStep = array_search($order['status'], $steps);
-        if ($currentStep === false) { $currentStep = 0; }
     @endphp
 
     <x-page-header title="الطلب {{ $order['id'] }}" subtitle="{{ $order['date'] }}"
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'الطلبات' => route('admin.orders.index'), $order['id'] => '#']">
         <x-slot:actions>
-            <x-badge :text="$order['status']" />
             <x-button variant="outline" icon="file-text" :href="route('admin.orders.pdf', $order['id'])" target="_blank">تصدير PDF</x-button>
             <x-button variant="outline" icon="landmark" :href="route('admin.orders.taxInvoice', $order['id'])" target="_blank">فاتورة ضريبية</x-button>
-            <x-dropdown align="left" width="w-48">
-                <x-slot:trigger>
-                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-full bg-primary-600 hover:bg-primary-700 text-white cursor-pointer">
-                        <x-icon name="refresh-cw" class="w-4 h-4" /> تغيير الحالة
-                    </span>
-                </x-slot:trigger>
-                @foreach (['قيد التجهيز', 'جاهز', 'خرج للتوصيل', 'مكتمل', 'ملغي'] as $st)
-                    <form method="POST" action="{{ route('admin.orders.updateStatus', $order['id']) }}">
-                        @csrf
-                        @method('PUT')
-                        <input type="hidden" name="status" value="{{ $st }}">
-                        <button type="submit" class="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ $st }}</button>
-                    </form>
-                @endforeach
-            </x-dropdown>
         </x-slot:actions>
     </x-page-header>
-
-    {{-- شريط تقدم الحالة --}}
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
-        <div x-data="{ current: {{ $currentStep }} }" class="flex items-center justify-between">
-                @foreach ($steps as $i => $step)
-                    <div class="flex items-center flex-1 last:flex-none">
-                        <div class="flex flex-col items-center gap-2">
-                            <span :class="{{ $i }} <= current ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-400'"
-                                class="w-10 h-10 rounded-full flex items-center justify-center font-bold transition">
-                                <template x-if="{{ $i }} < current"><i data-lucide="check" class="w-5 h-5"></i></template>
-                                <span x-show="{{ $i }} >= current">{{ $i + 1 }}</span>
-                            </span>
-                            <span :class="{{ $i }} <= current ? 'text-gray-800 font-medium' : 'text-gray-400'" class="text-xs whitespace-nowrap">{{ $step }}</span>
-                        </div>
-                        @if (! $loop->last)
-                            <div class="flex-1 h-0.5 mx-2 rounded" :class="{{ $i }} < current ? 'bg-primary-600' : 'bg-gray-100'"></div>
-                        @endif
-                    </div>
-                @endforeach
-            </div>
-        </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {{-- التفاصيل والملخص المالي --}}

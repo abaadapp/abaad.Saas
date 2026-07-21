@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="{{ app()->getLocale() }}" dir="{{ app()->getLocale() === 'ar' ? 'rtl' : 'ltr' }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,20 +12,20 @@
 <body class="admin-ui" x-data>
     @php
         $menu = [
-            ['label' => 'الرئيسية', 'icon' => 'layout-dashboard', 'route' => 'admin.dashboard'],
-            ['label' => 'العملاء', 'icon' => 'users', 'route' => 'admin.customers.index'],
-            ['heading' => 'المتجر'],
-            ['label' => 'المنتجات', 'icon' => 'package', 'route' => 'admin.products.index'],
-            ['label' => 'الطلبات', 'icon' => 'shopping-cart', 'route' => 'admin.orders.index'],
-            ['label' => 'التسويق والكوبونات', 'icon' => 'megaphone', 'route' => 'admin.marketing.index'],
-            ['heading' => 'الإدارة'],
-            ['label' => 'المخزون', 'icon' => 'boxes', 'route' => 'admin.inventory.index'],
-            ['label' => 'المالية', 'icon' => 'wallet', 'route' => 'admin.finance.index'],
-            ['label' => 'المصروفات', 'icon' => 'arrow-down-circle', 'route' => 'admin.expenses.index'],
-            ['label' => 'التقارير', 'icon' => 'bar-chart-3', 'route' => 'admin.reports.index'],
-            ['label' => 'الإعدادات', 'icon' => 'settings', 'route' => 'admin.settings.index'],
-            ['heading' => 'نقطة البيع'],
-            ['label' => 'فتح نقطة البيع', 'icon' => 'store', 'route' => 'pos.index'],
+            ['label' => __('ui.dashboard'), 'icon' => 'layout-dashboard', 'route' => 'admin.dashboard'],
+            ['label' => __('ui.customers'), 'icon' => 'users', 'route' => 'admin.customers.index'],
+            ['heading' => __('ui.store')],
+            ['label' => __('ui.products'), 'icon' => 'package', 'route' => 'admin.products.index'],
+            ['label' => __('ui.orders'), 'icon' => 'shopping-cart', 'route' => 'admin.orders.index'],
+            ['label' => __('ui.marketing'), 'icon' => 'megaphone', 'route' => 'admin.marketing.index'],
+            ['heading' => __('ui.management')],
+            ['label' => __('ui.inventory'), 'icon' => 'boxes', 'route' => 'admin.inventory.index'],
+            ['label' => __('ui.finance'), 'icon' => 'wallet', 'route' => 'admin.finance.index'],
+            ['label' => __('ui.expenses'), 'icon' => 'arrow-down-circle', 'route' => 'admin.expenses.index'],
+            ['label' => __('ui.reports'), 'icon' => 'bar-chart-3', 'route' => 'admin.reports.index'],
+            ['label' => __('ui.settings'), 'icon' => 'settings', 'route' => 'admin.settings.index'],
+            ['heading' => __('ui.pos')],
+            ['label' => __('ui.open_pos'), 'icon' => 'store', 'route' => 'pos.index'],
         ];
     @endphp
 
@@ -75,7 +75,7 @@
         <div class="p-3 shrink-0" style="border-top: 1px solid var(--ui-border);">
             <a href="{{ route('logout') }}" class="ui-nav-link text-[#dc2626] hover:!bg-[#fef2f2]">
                 <x-icon name="log-out" class="w-[18px] h-[18px]" />
-                <span>تسجيل الخروج</span>
+                <span>{{ __('ui.logout') }}</span>
             </a>
         </div>
     </aside>
@@ -233,14 +233,14 @@
                             <x-icon name="chevron-down" class="w-4 h-4 text-[#9ca3af] hidden sm:block" />
                         </button>
                     </x-slot:trigger>
-                    <a href="{{ route('profile.edit') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#6b7280] hover:bg-[#fafafa]"><x-icon name="user" class="w-4 h-4" /> الملف الشخصي</a>
+                    <a href="{{ route('profile.edit') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#6b7280] hover:bg-[#fafafa]"><x-icon name="user" class="w-4 h-4" /> {{ __('ui.profile') }}</a>
                     @auth
                         @if (auth()->user()->business_id && auth()->user()->allows('settings'))
                             <a href="{{ route('admin.settings.index') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#6b7280] hover:bg-[#fafafa]"><x-icon name="settings" class="w-4 h-4" /> الإعدادات</a>
                         @endif
                     @endauth
                     <div class="my-1" style="border-top:1px solid var(--ui-border);"></div>
-                    <a href="{{ route('logout') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#dc2626] hover:bg-[#fef2f2]"><x-icon name="log-out" class="w-4 h-4" /> تسجيل الخروج</a>
+                    <a href="{{ route('logout') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#dc2626] hover:bg-[#fef2f2]"><x-icon name="log-out" class="w-4 h-4" /> {{ __('ui.logout') }}</a>
                 </x-dropdown>
             </div>
         </header>

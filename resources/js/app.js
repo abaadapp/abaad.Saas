@@ -344,6 +344,30 @@ document.addEventListener('alpine:init', () => {
             }) + ' ' + window.CURRENCY.symbol;
         },
     }));
+    Alpine.data('reportViewer', () => ({
+        g: 'all',
+        showModal: false,
+        loading: false,
+        error: '',
+        report: {},
+        async open(key) {
+            this.showModal = true;
+            this.loading = true;
+            this.error = '';
+            this.report = {};
+            try {
+                const res = await fetch(`/admin/reports/data/${key}`, { headers: { Accept: 'application/json' } });
+                if (!res.ok) throw new Error('load failed');
+                this.report = await res.json();
+            } catch (e) {
+                this.error = 'تعذّر تحميل التقرير. حاول مرة أخرى.';
+            } finally {
+                this.loading = false;
+            }
+        },
+        close() { this.showModal = false; },
+    }));
 });
+
 
 Alpine.start();

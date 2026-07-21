@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\CheckRole::class,
             'ability' => \App\Http\Middleware\CheckAbility::class,
         ]);
+        $middleware->web(append: [\App\Http\Middleware\SetLocale::class]);
         $middleware->redirectGuestsTo(fn () => route('login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {

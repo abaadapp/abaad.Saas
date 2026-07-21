@@ -174,7 +174,7 @@
                             @click="items.length ? fetch('{{ route('pos.hold') }}', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
-                                body: JSON.stringify({ items: items, customer: customer, total: total })
+                                body: JSON.stringify({ items: items, customer: customer, total: total, kind: 'hold' })
                             }).then(() => { clear(); $store.toasts.add('تم تعليق الطلب', 'warning'); }) : null"
                             :disabled="items.length === 0"
                             class="flex flex-col items-center gap-1 py-2 rounded-full bg-warning-50 text-warning-600 hover:bg-warning-100 text-xs font-medium transition-colors disabled:opacity-40">
@@ -186,7 +186,11 @@
                         <x-icon name="trash-2" class="w-5 h-5" /> إلغاء
                     </button>
                     <button type="button"
-                            @click="items.length ? $store.toasts.add('تم حفظ الطلب', 'success') : null"
+                            @click="items.length ? fetch('{{ route('pos.hold') }}', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
+                                body: JSON.stringify({ items: items, customer: customer, total: total, kind: 'save' })
+                            }).then(() => { clear(); $store.toasts.add('تم حفظ الطلب', 'success'); }) : null"
                             :disabled="items.length === 0"
                             class="flex flex-col items-center gap-1 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 text-xs font-medium transition-colors disabled:opacity-40">
                         <x-icon name="save" class="w-5 h-5" /> حفظ

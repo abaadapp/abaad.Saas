@@ -14,7 +14,6 @@ use App\Models\OrderItem;
 use App\Models\Plan;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
-use App\Models\Shift;
 use App\Models\Supplier;
 use App\Models\Subscription;
 use App\Models\Transaction;
@@ -1130,6 +1129,8 @@ class Demo
                 'total' => (float) $o->total,
                 'time' => optional($o->ordered_at)->format('H:i') ?? '—',
                 'employee' => $o->employee_name ?? 'سارة حسن',
+                'status' => $o->status ?? 'معلّق',
+                'saved' => ($o->status ?? '') === 'محفوظ',
             ])->all();
     }
 
@@ -1201,57 +1202,4 @@ class Demo
         return count(self::notifications());
     }
 
-    /** بيانات وردية الموظف الحالي المحسوبة فعليًا */
-    /** سجل الورديات المغلقة (آخر 10) */
-    public static function shiftHistory(): array
-    {
-        return Shift::where('business_id', self::bid())->where('status', 'مغلقة')
-            ->orderByDesc('closed_at')->limit(10)->get()->map(fn ($s) => [
-                'employee' => $s->employee_name,
-                'opened' => optional($s->opened_at)->format('Y-m-d H:i') ?? '—',
-                'closed' => optional($s->closed_at)->format('Y-m-d H:i') ?? '—',
-                'opening' => (float) $s->opening_balance,
-                'cash_sales' => (float) $s->cash_sales,
-                'card_sales' => (float) $s->card_sales,
-                'expected' => (float) $s->expected_balance,
-                'actual' => (float) $s->actual_balance,
-                'difference' => (float) $s->difference,
-            ])->all();
-    }
-
-    public static function currentShift(): array
-    {
-        $bid = self::bid();
-        $name = auth()->user()?->name;
-        $shift = Shift::where('business_id', $bid)->where('status', 'مفتوحة')->latest('id')->first();
-
-        if (! $shift) {
-            return ['exists' => false, 'employee' => $name ?? 'الموظف', 'opened_at' => '—',
-                'opening' => 0, 'cash_sales' => 0, 'card_sales' => 0, 'returns' => 0,
-                'expenses' => 0, 'expected' => 0, 'orders_count' => 0];
-        }
-
-        $since = $shift->opened_at ?? now()->startOfDay();
-        $q = Order::where('business_id', $bid)->where('is_held', false)
-            ->when($name, fn ($x) => $x->where('employee_name', $name))
-            ->where('ordered_at', '>=', $since);
-        $cash = (float) (clone $q)->where('payment_method', 'نقدي')->sum('total');
-        $card = (float) (clone $q)->where('payment_method', 'بطاقة')->sum('total');
-        $opening = (float) $shift->opening_balance;
-        $returns = (float) $shift->returns;
-        $expenses = (float) $shift->expenses;
-
-        return [
-            'exists' => true,
-            'employee' => $shift->employee_name ?? $name,
-            'opened_at' => optional($shift->opened_at)->format('Y-m-d H:i') ?? '—',
-            'opening' => $opening,
-            'cash_sales' => $cash,
-            'card_sales' => $card,
-            'returns' => $returns,
-            'expenses' => $expenses,
-            'expected' => $opening + $cash - $returns - $expenses,
-            'orders_count' => (clone $q)->count(),
-        ];
-    }
 }

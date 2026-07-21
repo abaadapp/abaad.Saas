@@ -75,13 +75,17 @@ class PosController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'customer' => ['nullable', 'string'],
             'total' => ['nullable', 'numeric'],
+            // معلّق = بانتظار الاستكمال الآن · محفوظ = مسودّة للرجوع إليها لاحقًا
+            'kind' => ['nullable', 'in:hold,save'],
         ]);
+        $saved = ($data['kind'] ?? 'hold') === 'save';
+
         Order::create([
             'business_id' => $this->bid(),
-            'number' => 'HOLD-' . random_int(300, 999),
+            'number' => ($saved ? 'SAVE-' : 'HOLD-') . random_int(300, 999),
             'customer_name' => $data['customer'] ?? 'عميل نقدي',
             'employee_name' => auth()->user()->name,
-            'status' => 'معلّق',
+            'status' => $saved ? 'محفوظ' : 'معلّق',
             'is_held' => true,
             'subtotal' => $data['total'] ?? 0,
             'total' => $data['total'] ?? 0,
@@ -91,85 +95,4 @@ class PosController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** إغلاق الوردية */
-    /** فتح وردية جديدة برصيد افتتاحي */
-    public function openShift(Request $request)
-    {
-        $data = $request->validate(['opening_balance' => ['required', 'numeric', 'min:0']]);
-        $bid = $this->bid();
-
-        if (Shift::where('business_id', $bid)->where('status', 'مفتوحة')->exists()) {
-            return back()->with('toast', ['msg' => 'توجد وردية مفتوحة بالفعل', 'type' => 'warning']);
-        }
-
-        $shift = Shift::create([
-            'business_id' => $bid,
-            'user_id' => auth()->id(),
-            'employee_name' => auth()->user()->name,
-            'opened_at' => now(),
-            'opening_balance' => $data['opening_balance'],
-            'status' => 'مفتوحة',
-        ]);
-        \App\Support\Activity::log('shift', 'فتح وردية برصيد افتتاحي ' . number_format($data['opening_balance'], 3) . ' ر.ع', ['subject_id' => $shift->id]);
-
-        return redirect()->route('pos.shift')->with('toast', ['msg' => 'تم فتح الوردية', 'type' => 'success']);
-    }
-
-    public function closeShift(Request $request)
-    {
-        $data = $request->validate(['actual_balance' => ['required', 'numeric']]);
-        $shift = Shift::where('business_id', $this->bid())->where('status', 'مفتوحة')->latest()->first();
-        if ($shift) {
-            // لقطة القيم الحيّة المحسوبة خلال الوردية
-            $live = Demo::currentShift();
-            $expected = $live['expected'];
-            $shift->update([
-                'cash_sales' => $live['cash_sales'],
-                'card_sales' => $live['card_sales'],
-                'returns' => $live['returns'],
-                'expenses' => $live['expenses'],
-                'expected_balance' => $expected,
-                'actual_balance' => $data['actual_balance'],
-                'difference' => $data['actual_balance'] - $expected,
-                'closed_at' => now(),
-                'status' => 'مغلقة',
-            ]);
-            \App\Support\Activity::log('shift', 'أغلق الوردية — الرصيد الفعلي ' . number_format($data['actual_balance'], 3) . ' ر.ع (فرق ' . number_format($data['actual_balance'] - $expected, 3) . ')', ['subject_id' => $shift->id]);
-        }
-
-        return redirect()->route('pos.shift')->with('toast', ['msg' => 'تم إغلاق الوردية بنجاح', 'type' => 'success']);
-    }
-
-    /** إضافة عميل سريع من نقطة البيع */
-    public function storeCustomer(Request $request)
-    {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
-            'email' => ['nullable', 'email'],
-        ]);
-        $data['business_id'] = $this->bid();
-        \App\Models\Customer::create($data);
-        \App\Support\Activity::log('created', 'أضاف عميلًا من نقطة البيع: ' . $data['name']);
-
-        return back()->with('toast', ['msg' => 'تم إضافة العميل', 'type' => 'success']);
-    }
-
-    /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */
-    private function notifyNewOrder(Order $order): void
-    {
-        $business = \App\Models\Business::find($this->bid());
-        if (! $business || ! $business->email) {
-            return;
-        }
-        $enabled = \App\Models\Setting::where('business_id', $this->bid())->where('key', 'notify_new_order')->value('value');
-        if ($enabled === '0') {
-            return;
-        }
-        try {
-            \Illuminate\Support\Facades\Mail::to($business->email)->send(new \App\Mail\NewOrderMail($order));
-        } catch (\Throwable $e) {
-            report($e); // لا نُفشل عملية البيع بسبب البريد
-        }
-    }
 }

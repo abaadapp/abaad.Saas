@@ -15,10 +15,9 @@
     @php
         $nav = [
             ['label' => 'نقطة البيع', 'icon' => 'store', 'route' => 'pos.index'],
-            ['label' => 'الطلبات المعلقة', 'icon' => 'pause-circle', 'route' => 'pos.orders'],
+            ['label' => 'الطلبات', 'icon' => 'receipt-text', 'route' => 'pos.orders'],
             ['label' => 'الفواتير', 'icon' => 'receipt', 'route' => 'pos.receipts'],
             ['label' => 'العملاء', 'icon' => 'users', 'route' => 'pos.customers'],
-            ['label' => 'الوردية', 'icon' => 'clock', 'route' => 'pos.shift'],
         ];
     @endphp
 
@@ -85,7 +84,6 @@
                         <p class="text-xs text-gray-400">كاشير</p>
                     </div>
                     <a href="{{ route('profile.edit') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="user" class="w-4 h-4" /> الملف الشخصي</a>
-                    <a href="{{ route('pos.shift') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="clock" class="w-4 h-4" /> الوردية</a>
                     <div class="my-1 border-t border-gray-100"></div>
                     <a href="{{ route('logout') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger-600 hover:bg-danger-50"><x-icon name="log-out" class="w-4 h-4" /> تسجيل الخروج</a>
                 </x-dropdown>

@@ -8,8 +8,9 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * نسخ احتياطي تلقائي لكل المتاجر (أو متجر محدّد) إلى storage/app/backups.
- * يُجدول يوميًا في routes/console.php. تشغيل يدوي: php artisan backup:run
+ * نسخ احتياطي تلقائي لكل المتاجر (أو متجر محدّد) إلى storage/app/private/backups.
+ * يُجدول يوميًا في routes/console.php — ويتطلب cron على الخادم (انظر README: النشر).
+ * تشغيل يدوي: php artisan backup:run
  */
 class BackupRun extends Command
 {
@@ -41,7 +42,7 @@ class BackupRun extends Command
             $count++;
         }
 
-        $this->info("تم إنشاء {$count} نسخة احتياطية في storage/app/{$dir}");
+        $this->info("تم إنشاء {$count} نسخة احتياطية في " . Storage::disk('local')->path($dir));
 
         return self::SUCCESS;
     }

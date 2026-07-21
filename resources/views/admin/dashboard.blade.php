@@ -6,37 +6,6 @@
             <h1 class="text-[26px] md:text-[30px] font-semibold text-[#111] tracking-tight">مساء الخير 👋</h1>
             <p class="mt-1 text-[15px] text-[#6b7280]">نظرة هادئة على أداء محل الورود اليوم.</p>
         </div>
-        <div class="flex items-center gap-2 flex-wrap">
-            <span class="inline-flex items-center gap-2 text-xs text-[#6b7280] bg-white rounded-full px-3 h-9" style="border:1px solid var(--ui-border);">
-                <span class="relative flex w-1.5 h-1.5">
-                    <span class="absolute inline-flex w-full h-full rounded-full bg-[#16a34a] opacity-60 animate-ping"></span>
-                    <span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-[#16a34a]"></span>
-                </span>
-                <span data-stat-updated>مباشر</span>
-            </span>
-            <select name="period" class="ui-select w-40 h-9">
-                <option value="today">اليوم</option>
-                <option value="week">هذا الأسبوع</option>
-                <option value="month" selected>هذا الشهر</option>
-                <option value="year">هذه السنة</option>
-            </select>
-            <div class="relative" x-data="{ open: false, from: '', to: '' }" @click.outside="open = false">
-                <button type="button" @click="open = !open" class="ui-btn ui-btn-secondary ui-btn-sm">
-                    <x-icon name="calendar" class="w-4 h-4" /> تحديد التاريخ
-                </button>
-                <div x-show="open" x-cloak x-transition class="absolute left-0 mt-2 z-30 w-64 bg-white rounded-2xl p-4 space-y-3" style="border:1px solid var(--ui-border); box-shadow:0 12px 32px -12px rgba(17,17,17,0.18);">
-                    <div>
-                        <label class="block text-xs text-[#6b7280] mb-1.5">من تاريخ</label>
-                        <input type="date" x-model="from" class="ui-input h-10" />
-                    </div>
-                    <div>
-                        <label class="block text-xs text-[#6b7280] mb-1.5">إلى تاريخ</label>
-                        <input type="date" x-model="to" class="ui-input h-10" />
-                    </div>
-                    <a x-bind:href="'{{ route('admin.reports.index') }}' + (from ? ('?from=' + from + '&to=' + to) : '')" class="ui-btn ui-btn-primary w-full">عرض التقرير للفترة</a>
-                </div>
-            </div>
-        </div>
     </div>
 
     {{-- ===== بطاقات المؤشرات (تحديث لحظي + قابلة للتخصيص) ===== --}}
@@ -102,55 +71,10 @@
         @endforeach
     </div>
 
-    {{-- ===== الهدف الشهري + التنبيهات الذكية ===== --}}
-    @php $kpi = \App\Support\Demo::kpi(); $alerts = \App\Support\Demo::smartAlerts(); @endphp
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-8">
-        {{-- الهدف --}}
-        <div class="ui-card p-6" x-data="{ editing: {{ $kpi['target'] > 0 ? 'false' : 'true' }} }" data-animate style="animation-delay:.10s">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="font-semibold text-[#111] flex items-center gap-2"><x-icon name="target" class="w-[18px] h-[18px] text-[#6b7280]" /> الهدف الشهري</h3>
-                <button type="button" @click="editing = !editing" class="text-xs text-[#111] hover:text-black font-medium">
-                    <span x-text="editing ? 'إلغاء' : 'تعديل'"></span>
-                </button>
-            </div>
-
-            <form x-show="editing" x-cloak method="POST" action="{{ route('admin.goals.update') }}" class="flex items-end gap-2 mb-3">
-                @csrf
-                <div class="flex-1">
-                    <label class="block text-xs text-[#6b7280] mb-1.5">قيمة الهدف (ر.ع)</label>
-                    <input type="number" step="0.001" name="monthly_target" value="{{ $kpi['target'] }}" placeholder="0.000" class="ui-input h-10" />
-                </div>
-                <button type="submit" class="ui-btn ui-btn-primary"><x-icon name="check" class="w-4 h-4" /> حفظ</button>
-            </form>
-
-            <div x-show="!editing">
-                @if ($kpi['target'] > 0)
-                    <div class="flex items-end justify-between mb-3">
-                        <div>
-                            <p class="text-[28px] font-semibold text-[#111] tracking-tight">{{ \App\Support\Demo::money($kpi['achieved']) }}</p>
-                            <p class="text-xs text-[#9ca3af] mt-0.5">من هدف {{ \App\Support\Demo::money($kpi['target']) }}</p>
-                        </div>
-                        <span class="text-lg font-semibold" style="color: {{ $kpi['pct'] >= 100 ? '#16a34a' : '#111' }};">{{ $kpi['pct'] }}%</span>
-                    </div>
-                    <div class="h-2 rounded-full bg-[#f0f0ee] overflow-hidden">
-                        <div class="h-full rounded-full" style="width: {{ $kpi['pct'] }}%; background: {{ $kpi['pct'] >= 100 ? '#16a34a' : '#111' }};"></div>
-                    </div>
-                    <div class="mt-3.5 flex items-center justify-between text-xs">
-                        <span class="text-[#6b7280]">متبقٍ: {{ \App\Support\Demo::money($kpi['remaining']) }}</span>
-                        <span class="inline-flex items-center gap-1" style="color: {{ $kpi['on_track'] ? '#16a34a' : '#f59e0b' }};">
-                            <x-icon :name="$kpi['on_track'] ? 'trending-up' : 'trending-down'" class="w-3.5 h-3.5" />
-                            متوقّع: {{ \App\Support\Demo::money($kpi['projected']) }}
-                        </span>
-                    </div>
-                    <p class="text-[11px] text-[#9ca3af] mt-1.5">{{ $kpi['days_left'] }} يومًا متبقية في الشهر</p>
-                @else
-                    <x-empty-state icon="target" title="لم يُحدَّد هدف" message="حدّد هدف مبيعات شهري لمتابعة إنجازه." />
-                @endif
-            </div>
-        </div>
-
-        {{-- التنبيهات الذكية --}}
-        <div class="xl:col-span-2 ui-card p-6" data-animate style="animation-delay:.12s">
+    {{-- ===== التنبيهات الذكية ===== --}}
+    @php $alerts = \App\Support\Demo::smartAlerts(); @endphp
+    <div class="mb-8">
+        <div class="ui-card p-6" data-animate style="animation-delay:.12s">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="font-semibold text-[#111] flex items-center gap-2"><x-icon name="sparkles" class="w-[18px] h-[18px] text-[#6b7280]" /> تنبيهات ذكية</h3>
                 @if (count($alerts))<span class="ui-chip">{{ count($alerts) }}</span>@endif

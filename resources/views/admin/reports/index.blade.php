@@ -56,11 +56,7 @@
         ];
     @endphp
 
-    @php
-        $groupCounts = ['all' => count($reportCards)]
-            + collect($reportCards)->groupBy('group')->map->count()->all();
-    @endphp
-    <div x-data="{ g: 'all', counts: {{ \Illuminate\Support\Js::from($groupCounts) }} }" class="mb-6">
+    <div x-data="{ g: 'all' }" class="mb-6">
         {{-- شرائح التصفية --}}
         <div class="flex flex-wrap items-center gap-2.5 mb-5">
             @foreach ($chips as $chip)
@@ -76,46 +72,22 @@
             @endforeach
         </div>
 
-        {{-- قائمة التقارير --}}
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-right">
-                    <thead class="bg-gray-50 text-gray-500">
-                        <tr>
-                            <th class="px-4 py-3 font-medium">التقرير</th>
-                            <th class="px-4 py-3 font-medium">التصنيف</th>
-                            <th class="px-4 py-3 font-medium">القيمة</th>
-                            <th class="px-4 py-3"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        @foreach ($reportCards as $card)
-                            <tr class="hover:bg-gray-50" x-show="g === 'all' || g === '{{ $card['group'] }}'">
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <div class="flex items-center gap-3">
-                                        <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 {{ $cardColors[$card['color']] }}">
-                                            <x-icon :name="$card['icon']" class="w-[18px] h-[18px]" />
-                                        </span>
-                                        <span class="font-medium text-gray-800">{{ $card['title'] }}</span>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <x-badge type="secondary" :text="$card['group']" />
-                                </td>
-                                <td class="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{{ $card['value'] }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-left">
-                                    <x-button variant="light" size="sm" icon="eye"
-                                              :href="$card['url']"
-                                              :target="$card['url'] === route('admin.reports.pdf') ? '_blank' : '_self'">عرض</x-button>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-            <div class="px-4 py-3 text-xs text-gray-400 border-t border-gray-100">
-                <span x-text="counts[g] + ' تقرير'"></span>
-            </div>
+        {{-- البطاقات --}}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            @foreach ($reportCards as $card)
+                <a href="{{ $card['url'] }}" @if ($card['url'] === route('admin.reports.pdf')) target="_blank" @endif
+                   x-show="g === 'all' || g === '{{ $card['group'] }}'"
+                   class="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-300 transition">
+                    <div class="flex items-center justify-between">
+                        <span class="w-11 h-11 rounded-full flex items-center justify-center {{ $cardColors[$card['color']] }}">
+                            <x-icon :name="$card['icon']" class="w-5 h-5" />
+                        </span>
+                        <x-icon name="chevron-left" class="w-4 h-4 text-gray-300" />
+                    </div>
+                    <h3 class="mt-4 font-bold text-gray-800">{{ $card['title'] }}</h3>
+                    <p class="mt-2 text-xl font-bold text-gray-800">{{ $card['value'] }}</p>
+                </a>
+            @endforeach
         </div>
     </div>
 

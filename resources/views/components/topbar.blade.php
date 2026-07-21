@@ -2,7 +2,7 @@
 
 <header class="sticky top-0 z-20 h-16 bg-white/80 backdrop-blur border-b border-gray-100 flex items-center gap-3 px-4 lg:px-6">
     {{-- زر فتح القائمة على الجوال --}}
-    <button type="button" @click="$store.sidebar.toggle()" class="lg:hidden w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-600">
+    <button type="button" @click="$store.sidebar.toggle()" class="lg:hidden w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600">
         <x-icon name="menu" class="w-5 h-5" />
     </button>
 
@@ -53,7 +53,7 @@
             @php $branches = \App\Support\Demo::branches(); @endphp
             <x-dropdown align="left" width="w-52">
                 <x-slot:trigger>
-                    <button class="flex items-center gap-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    <button class="flex items-center gap-2 rounded-full border border-gray-200 bg-white hover:bg-gray-50 px-3 py-2 text-sm text-gray-700">
                         <x-icon name="git-branch" class="w-4 h-4 text-primary-600" />
                         <span class="hidden sm:inline max-w-24 truncate">{{ \App\Support\Demo::currentBranchName() }}</span>
                         <x-icon name="chevron-down" class="w-4 h-4 text-gray-400" />
@@ -78,7 +78,7 @@
             @if ($curList->count() > 1)
                 <x-dropdown align="left" width="w-52">
                     <x-slot:trigger>
-                        <button class="flex items-center gap-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        <button class="flex items-center gap-2 rounded-full border border-gray-200 bg-white hover:bg-gray-50 px-3 py-2 text-sm text-gray-700">
                             <x-icon name="coins" class="w-4 h-4 text-warning-500" />
                             <span class="font-medium">{{ $curNow['code'] }}</span>
                             <x-icon name="chevron-down" class="w-4 h-4 text-gray-400" />
@@ -108,7 +108,7 @@
     @endphp
     <x-dropdown align="left" width="w-80">
         <x-slot:trigger>
-            <button class="relative w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-600">
+            <button class="relative w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600">
                 <x-icon name="bell" class="w-5 h-5" />
                 <span data-notif-count class="absolute -top-0.5 -left-0.5 min-w-4 h-4 px-1 flex items-center justify-center bg-secondary-600 text-white text-[10px] font-bold rounded-full" @style(['display:none' => ! count($notifications)])>{{ count($notifications) > 9 ? '9+' : count($notifications) }}</span>
             </button>
@@ -139,7 +139,7 @@
     {{-- المستخدم --}}
     <x-dropdown align="left" width="w-56">
         <x-slot:trigger>
-            <button class="flex items-center gap-2.5 hover:bg-gray-100 rounded-xl p-1.5 pl-2.5">
+            <button class="flex items-center gap-2.5 hover:bg-gray-100 rounded-full p-1.5 pl-2.5">
                 <img src="{{ $avatar ?? 'https://picsum.photos/seed/topbaruser/80/80' }}" class="w-9 h-9 rounded-lg object-cover" alt="{{ $user }}" />
                 <div class="hidden sm:block text-right">
                     <p class="text-sm font-semibold text-gray-800 leading-tight">{{ $user }}</p>

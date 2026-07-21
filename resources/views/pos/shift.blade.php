@@ -56,7 +56,7 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1.5">الرصيد الافتتاحي (ر.ع)</label>
                 <input type="number" step="0.001" min="0" name="opening_balance" value="0" required
                     class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-lg font-bold text-gray-800 focus:border-gray-900 focus:ring-2 focus:ring-gray-200 focus:outline-none" />
-                <button type="submit" class="mt-5 w-full bg-gray-900 hover:bg-black text-white font-medium rounded-xl py-3">فتح الوردية</button>
+                <button type="submit" class="mt-5 w-full bg-gray-900 hover:bg-black text-white font-medium rounded-full py-3">فتح الوردية</button>
             </form>
         @else
         {{-- حالة الوردية --}}

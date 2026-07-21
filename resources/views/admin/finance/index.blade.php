@@ -187,7 +187,7 @@
                     @foreach (['نقدي' => 'banknote', 'تحويل بنكي' => 'landmark', 'بطاقة' => 'credit-card'] as $label => $mi)
                         <button type="button" @click="m = '{{ $label }}'"
                                 :class="m === '{{ $label }}' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
-                                class="flex flex-col items-center gap-1 border rounded-xl py-3 text-xs font-medium transition-colors">
+                                class="flex flex-col items-center gap-1 border rounded-full py-3 text-xs font-medium transition-colors">
                             <x-icon name="{{ $mi }}" class="w-5 h-5" />
                             {{ $label }}
                         </button>

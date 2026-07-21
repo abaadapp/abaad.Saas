@@ -34,7 +34,7 @@
                     @endforeach
                 </select>
             </div>
-            <button type="button" onclick="window.print()" class="inline-flex items-center gap-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 text-sm font-medium shadow-sm">
+            <button type="button" onclick="window.print()" class="inline-flex items-center gap-2 rounded-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 text-sm font-medium shadow-sm">
                 <x-icon name="printer" class="w-4 h-4" /> طباعة
             </button>
         </div>

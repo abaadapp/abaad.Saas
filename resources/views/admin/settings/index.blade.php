@@ -33,7 +33,7 @@
                         <button type="button"
                             @click="tab = '{{ $key }}'"
                             :class="tab === '{{ $key }}' ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50'"
-                            class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors text-right"
+                            class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors text-right"
                         >
                             <x-icon :name="$t['icon']" class="w-4 h-4" />
                             {{ $t['label'] }}
@@ -47,7 +47,7 @@
                         ['label' => 'سجل النشاط', 'icon' => 'history', 'url' => route('admin.activity.index')],
                     ] as $link)
                         <a href="{{ $link['url'] }}"
-                           class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors text-right text-gray-600 hover:bg-gray-50">
+                           class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors text-right text-gray-600 hover:bg-gray-50">
                             <x-icon :name="$link['icon']" class="w-4 h-4" />
                             {{ $link['label'] }}
                             <x-icon name="chevron-left" class="w-3.5 h-3.5 lg:mr-auto text-gray-300" />
@@ -390,8 +390,8 @@
                                             <td class="px-4 py-3 text-gray-700" x-text="Number(zone.fee).toFixed(3)"></td>
                                             <td class="px-4 py-3">
                                                 <div class="flex items-center gap-1">
-                                                    <button type="button" @click="edit(i)" class="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" title="تعديل"><x-icon name="pencil" class="w-4 h-4" /></button>
-                                                    <button type="button" @click="remove(i)" class="p-1.5 rounded-lg text-danger-600 hover:bg-danger-50" title="حذف"><x-icon name="trash-2" class="w-4 h-4" /></button>
+                                                    <button type="button" @click="edit(i)" class="p-1.5 rounded-full text-gray-500 hover:bg-gray-100" title="تعديل"><x-icon name="pencil" class="w-4 h-4" /></button>
+                                                    <button type="button" @click="remove(i)" class="p-1.5 rounded-full text-danger-600 hover:bg-danger-50" title="حذف"><x-icon name="trash-2" class="w-4 h-4" /></button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -410,7 +410,7 @@
                                 <label class="block text-xs text-gray-500 mb-1">الرسوم</label>
                                 <input type="number" step="0.001" min="0" x-model="form.fee" class="w-full rounded-lg border-gray-200 text-sm" />
                             </div>
-                            <button type="button" @click="save()" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg px-4 py-2 whitespace-nowrap" x-text="editIndex === null ? 'إضافة منطقة' : 'حفظ التعديل'"></button>
+                            <button type="button" @click="save()" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-full px-4 py-2 whitespace-nowrap" x-text="editIndex === null ? 'إضافة منطقة' : 'حفظ التعديل'"></button>
                         </div>
                         {{-- إرسال القيم مع النموذج --}}
                         <template x-for="(zone, i) in zones" :key="'h'+i">

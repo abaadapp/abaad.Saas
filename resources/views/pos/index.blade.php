@@ -31,7 +31,7 @@
                     <button type="button"
                             @click="cat = '{{ $c }}'"
                             :class="cat === '{{ $c }}' ? 'bg-gray-900 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-100 hover:bg-gray-50'"
-                            class="px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors">
+                            class="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors">
                         {{ $c }}
                     </button>
                 @endforeach
@@ -79,7 +79,7 @@
                 <div class="mt-3 flex items-center gap-2">
                     <x-dropdown align="right" width="w-56">
                         <x-slot:trigger>
-                            <button type="button" class="flex items-center gap-2 flex-1 bg-gray-50 hover:bg-gray-100 rounded-xl px-3 py-2 text-sm text-gray-700 w-full transition-colors">
+                            <button type="button" class="flex items-center gap-2 flex-1 bg-gray-50 hover:bg-gray-100 rounded-full px-3 py-2 text-sm text-gray-700 w-full transition-colors">
                                 <x-icon name="user" class="w-4 h-4 text-gray-900" />
                                 <span x-text="customer"></span>
                                 <x-icon name="chevron-down" class="w-4 h-4 mr-auto text-gray-400" />
@@ -91,7 +91,7 @@
                         @endforeach
                     </x-dropdown>
                     <button type="button" @click="$dispatch('open-modal','new-customer')"
-                            class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors" title="عميل جديد">
+                            class="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors" title="عميل جديد">
                         <x-icon name="user-plus" class="w-5 h-5" />
                     </button>
                 </div>
@@ -117,7 +117,7 @@
                                     <p class="text-sm font-semibold text-gray-800 truncate" x-text="item.name"></p>
                                     <p class="text-xs text-gray-900 font-medium" x-text="money(item.price)"></p>
                                 </div>
-                                <button type="button" @click="remove(item.id)" class="w-7 h-7 flex items-center justify-center rounded-lg text-danger-500 hover:bg-danger-50 transition-colors shrink-0">
+                                <button type="button" @click="remove(item.id)" class="w-7 h-7 flex items-center justify-center rounded-full text-danger-500 hover:bg-danger-50 transition-colors shrink-0">
                                     <x-icon name="trash-2" class="w-4 h-4" />
                                 </button>
                             </div>
@@ -177,24 +177,24 @@
                                 body: JSON.stringify({ items: items, customer: customer, total: total })
                             }).then(() => { clear(); $store.toasts.add('تم تعليق الطلب', 'warning'); }) : null"
                             :disabled="items.length === 0"
-                            class="flex flex-col items-center gap-1 py-2 rounded-xl bg-warning-50 text-warning-600 hover:bg-warning-100 text-xs font-medium transition-colors disabled:opacity-40">
+                            class="flex flex-col items-center gap-1 py-2 rounded-full bg-warning-50 text-warning-600 hover:bg-warning-100 text-xs font-medium transition-colors disabled:opacity-40">
                         <x-icon name="pause-circle" class="w-5 h-5" /> تعليق
                     </button>
                     <button type="button" @click="clear()"
                             :disabled="items.length === 0"
-                            class="flex flex-col items-center gap-1 py-2 rounded-xl bg-danger-50 text-danger-600 hover:bg-danger-100 text-xs font-medium transition-colors disabled:opacity-40">
+                            class="flex flex-col items-center gap-1 py-2 rounded-full bg-danger-50 text-danger-600 hover:bg-danger-100 text-xs font-medium transition-colors disabled:opacity-40">
                         <x-icon name="trash-2" class="w-5 h-5" /> إلغاء
                     </button>
                     <button type="button"
                             @click="items.length ? $store.toasts.add('تم حفظ الطلب', 'success') : null"
                             :disabled="items.length === 0"
-                            class="flex flex-col items-center gap-1 py-2 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 text-xs font-medium transition-colors disabled:opacity-40">
+                            class="flex flex-col items-center gap-1 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 text-xs font-medium transition-colors disabled:opacity-40">
                         <x-icon name="save" class="w-5 h-5" /> حفظ
                     </button>
                 </div>
                 <button type="button"
                         @click="items.length ? $dispatch('open-modal','payment') : $store.toasts.add('السلة فارغة', 'danger', 1500)"
-                        class="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-bold text-base shadow-sm transition-colors">
+                        class="w-full flex items-center justify-center gap-2 py-3.5 rounded-full bg-gray-900 hover:bg-gray-800 text-white font-bold text-base shadow-sm transition-colors">
                     <x-icon name="credit-card" class="w-5 h-5" />
                     الدفع
                     <span x-text="money(total)"></span>
@@ -237,7 +237,7 @@
                             @foreach (['نقدي' => 'banknote', 'بطاقة' => 'credit-card', 'تحويل بنكي' => 'landmark', 'دفع متعدد' => 'layers', 'آجل' => 'clock'] as $m => $mi)
                                 <button type="button" @click="method = '{{ $m }}'"
                                         :class="method === '{{ $m }}' ? 'border-gray-900 bg-gray-100 text-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
-                                        class="flex flex-col items-center gap-1 border rounded-xl py-2.5 text-xs font-medium transition-colors">
+                                        class="flex flex-col items-center gap-1 border rounded-full py-2.5 text-xs font-medium transition-colors">
                                     <x-icon name="{{ $mi }}" class="w-5 h-5" />
                                     {{ $m }}
                                 </button>
@@ -252,7 +252,7 @@
                               body: JSON.stringify({ items: items, customer: customer, payment_method: method, discount: discountAmount, tax: taxAmount, delivery_fee: Number(deliveryFee||0), total: total })
                             }).then(r => r.json()).then(d => { if (d.invoice) invoice = d.invoice; step = 'success'; }).catch(() => { step = 'success'; })
                             "
-                            class="w-full py-3.5 rounded-xl bg-success-600 hover:bg-success-700 text-white font-bold text-base shadow-sm transition-colors">
+                            class="w-full py-3.5 rounded-full bg-success-600 hover:bg-success-700 text-white font-bold text-base shadow-sm transition-colors">
                         تأكيد الدفع
                     </button>
                 </div>
@@ -274,11 +274,11 @@
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <button type="button" @click="window.print()"
-                                class="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-medium transition-colors">
+                                class="flex items-center justify-center gap-2 py-3 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-medium transition-colors">
                             <x-icon name="printer" class="w-5 h-5" /> طباعة الفاتورة
                         </button>
                         <button type="button" @click="clear(); step = 'pay'; paid = 0; open = false; $store.toasts.add('طلب جديد جاهز', 'success', 1500)"
-                                class="flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-medium transition-colors">
+                                class="flex items-center justify-center gap-2 py-3 rounded-full bg-gray-900 hover:bg-gray-800 text-white font-medium transition-colors">
                             <x-icon name="plus" class="w-5 h-5" /> طلب جديد
                         </button>
                     </div>

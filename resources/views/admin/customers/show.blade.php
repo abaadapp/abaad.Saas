@@ -143,8 +143,8 @@
                                 <p class="text-sm text-gray-600"><span x-text="addr.city"></span> - <span x-text="addr.area"></span></p>
                                 <p class="text-xs text-gray-400 mt-1" x-text="addr.street"></p>
                                 <div class="mt-3 flex items-center gap-2">
-                                    <button type="button" @click="edit(i)" class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg text-gray-600 hover:bg-gray-100"><x-icon name="pencil" class="w-3.5 h-3.5" /> تعديل</button>
-                                    <button type="button" @click="remove(i)" class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg text-danger-600 hover:bg-danger-50"><x-icon name="trash-2" class="w-3.5 h-3.5" /> حذف</button>
+                                    <button type="button" @click="edit(i)" class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full text-gray-600 hover:bg-gray-100"><x-icon name="pencil" class="w-3.5 h-3.5" /> تعديل</button>
+                                    <button type="button" @click="remove(i)" class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full text-danger-600 hover:bg-danger-50"><x-icon name="trash-2" class="w-3.5 h-3.5" /> حذف</button>
                                 </div>
                             </div>
                         </template>
@@ -163,7 +163,7 @@
                             <input type="text" x-model="form.street" placeholder="الشارع/المبنى" class="w-full rounded-lg border-gray-200 text-sm" />
                         </div>
                         <div class="mt-3 flex items-center gap-2">
-                            <button type="button" @click="save()" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg px-4 py-2">حفظ</button>
+                            <button type="button" @click="save()" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-full px-4 py-2">حفظ</button>
                             <button type="button" @click="showForm = false" class="text-sm text-gray-500 hover:text-gray-700 px-3 py-2">إلغاء</button>
                         </div>
                     </div>

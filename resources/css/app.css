@@ -245,7 +245,7 @@
 /* --- أزرار --- */
 .ui-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
-    height: 40px; padding: 0 1rem; border-radius: 12px;
+    height: 40px; padding: 0 1rem; border-radius: 999px;
     font-size: 0.875rem; font-weight: 550; line-height: 1;
     border: 1px solid transparent; cursor: pointer; white-space: nowrap;
     transition: background-color .18s ease, border-color .18s ease, transform .12s ease, box-shadow .18s ease;

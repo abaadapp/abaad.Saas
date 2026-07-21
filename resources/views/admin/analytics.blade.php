@@ -5,7 +5,7 @@
         <x-slot:actions>
             <x-dropdown align="left" width="w-56">
                 <x-slot:trigger>
-                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl bg-primary-600 hover:bg-primary-700 text-white cursor-pointer">
+                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-full bg-primary-600 hover:bg-primary-700 text-white cursor-pointer">
                         <x-icon name="download" class="w-4 h-4" /> تصدير
                     </span>
                 </x-slot:trigger>

@@ -66,12 +66,12 @@
                                 @if ($o['status'] !== 'مستلم' && $o['status'] !== 'ملغي')
                                     <form method="POST" action="{{ route('admin.purchases.receive', $o['id']) }}" onsubmit="return confirm('تأكيد استلام البضاعة ورفع المخزون؟')">
                                         @csrf
-                                        <button type="submit" class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-success-600 text-white hover:bg-success-700"><x-icon name="package-check" class="w-3.5 h-3.5" /> استلام</button>
+                                        <button type="submit" class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-success-600 text-white hover:bg-success-700"><x-icon name="package-check" class="w-3.5 h-3.5" /> استلام</button>
                                     </form>
                                 @endif
                                 <form method="POST" action="{{ route('admin.purchases.destroy', $o['id']) }}" onsubmit="return confirm('حذف أمر الشراء؟')">
                                     @csrf @method('DELETE')
-                                    <button type="submit" class="text-xs px-2 py-1 rounded-lg text-danger-600 hover:bg-danger-50"><x-icon name="trash-2" class="w-4 h-4" /></button>
+                                    <button type="submit" class="text-xs px-2 py-1 rounded-full text-danger-600 hover:bg-danger-50"><x-icon name="trash-2" class="w-4 h-4" /></button>
                                 </form>
                             </div>
                         </td>

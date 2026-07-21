@@ -85,7 +85,7 @@
         {{-- ===== الشريط العلوي ===== --}}
         <header class="sticky top-0 z-20 h-16 bg-[#f7f8f9]/80 backdrop-blur-xl flex items-center gap-3 px-4 lg:px-8"
                 style="border-bottom: 1px solid var(--ui-border);">
-            <button type="button" @click="$store.sidebar.toggle()" class="lg:hidden w-9 h-9 flex items-center justify-center rounded-xl hover:bg-black/5 text-[#111]">
+            <button type="button" @click="$store.sidebar.toggle()" class="lg:hidden w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/5 text-[#111]">
                 <x-icon name="menu" class="w-5 h-5" />
             </button>
 
@@ -139,7 +139,7 @@
                         @php $branches = \App\Support\Demo::branches(); @endphp
                         <x-dropdown align="left" width="w-52">
                             <x-slot:trigger>
-                                <button class="hidden sm:flex items-center gap-2 rounded-xl bg-white hover:bg-[#f7f7f5] px-3 h-9 text-sm text-[#111] transition" style="border:1px solid var(--ui-border-strong);">
+                                <button class="hidden sm:flex items-center gap-2 rounded-full bg-white hover:bg-[#f7f7f5] px-3 h-9 text-sm text-[#111] transition" style="border:1px solid var(--ui-border-strong);">
                                     <x-icon name="git-branch" class="w-4 h-4 text-[#6b7280]" />
                                     <span class="max-w-24 truncate">{{ \App\Support\Demo::currentBranchName() }}</span>
                                     <x-icon name="chevron-down" class="w-4 h-4 text-[#9ca3af]" />
@@ -164,7 +164,7 @@
                         @if ($curList->count() > 1)
                             <x-dropdown align="left" width="w-52">
                                 <x-slot:trigger>
-                                    <button class="hidden sm:flex items-center gap-2 rounded-xl bg-white hover:bg-[#f7f7f5] px-3 h-9 text-sm text-[#111] transition" style="border:1px solid var(--ui-border-strong);">
+                                    <button class="hidden sm:flex items-center gap-2 rounded-full bg-white hover:bg-[#f7f7f5] px-3 h-9 text-sm text-[#111] transition" style="border:1px solid var(--ui-border-strong);">
                                         <x-icon name="coins" class="w-4 h-4 text-[#6b7280]" />
                                         <span class="font-medium">{{ $curNow['code'] }}</span>
                                         <x-icon name="chevron-down" class="w-4 h-4 text-[#9ca3af]" />
@@ -194,7 +194,7 @@
                 @endphp
                 <x-dropdown align="left" width="w-80">
                     <x-slot:trigger>
-                        <button class="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-black/5 text-[#111]">
+                        <button class="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/5 text-[#111]">
                             <x-icon name="bell" class="w-[18px] h-[18px]" />
                             <span data-notif-count class="absolute top-1 left-1 min-w-4 h-4 px-1 flex items-center justify-center bg-[#111] text-white text-[10px] font-bold rounded-full" @style(['display:none' => ! count($notifications)])>{{ count($notifications) > 9 ? '9+' : count($notifications) }}</span>
                         </button>
@@ -225,7 +225,7 @@
                 {{-- المستخدم --}}
                 <x-dropdown align="left" width="w-56">
                     <x-slot:trigger>
-                        <button class="flex items-center gap-2.5 hover:bg-black/5 rounded-xl p-1 pl-2.5">
+                        <button class="flex items-center gap-2.5 hover:bg-black/5 rounded-full p-1 pl-2.5">
                             <img src="https://picsum.photos/seed/adminuser/80/80" class="w-8 h-8 rounded-full object-cover" alt="صاحب النشاط" />
                             <div class="hidden sm:block text-right leading-tight">
                                 <p class="text-[13px] font-semibold text-[#111]">صاحب النشاط</p>

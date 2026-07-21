@@ -29,7 +29,7 @@
                     </span>
                     <x-dropdown align="left" width="w-40">
                         <x-slot:trigger>
-                            <button type="button" class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-400 flex items-center justify-center">
+                            <button type="button" class="w-8 h-8 rounded-full hover:bg-gray-100 text-gray-400 flex items-center justify-center">
                                 <x-icon name="ellipsis-vertical" class="w-5 h-5" />
                             </button>
                         </x-slot:trigger>

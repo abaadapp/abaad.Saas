@@ -50,11 +50,11 @@
                                 @endif
                                 <form method="POST" action="{{ route('admin.coupons.toggle', $c['id']) }}">
                                     @csrf
-                                    <button type="submit" class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100" title="{{ $c['active'] ? 'إيقاف' : 'تفعيل' }}"><x-icon :name="$c['active'] ? 'toggle-right' : 'toggle-left'" class="w-5 h-5" /></button>
+                                    <button type="submit" class="p-1.5 rounded-full text-gray-400 hover:bg-gray-100" title="{{ $c['active'] ? 'إيقاف' : 'تفعيل' }}"><x-icon :name="$c['active'] ? 'toggle-right' : 'toggle-left'" class="w-5 h-5" /></button>
                                 </form>
                                 <form method="POST" action="{{ route('admin.coupons.destroy', $c['id']) }}" onsubmit="return confirm('حذف الكوبون؟')">
                                     @csrf @method('DELETE')
-                                    <button type="submit" class="p-1.5 rounded-lg text-danger-600 hover:bg-danger-50"><x-icon name="trash-2" class="w-4 h-4" /></button>
+                                    <button type="submit" class="p-1.5 rounded-full text-danger-600 hover:bg-danger-50"><x-icon name="trash-2" class="w-4 h-4" /></button>
                                 </form>
                             </div>
                         </div>
@@ -146,7 +146,7 @@
         </form>
         <x-slot:footer>
             <x-button variant="light" @click="$dispatch('close-modal')">إلغاء</x-button>
-            <button type="submit" form="add-coupon-form" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg px-4 py-2">إنشاء</button>
+            <button type="submit" form="add-coupon-form" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-full px-4 py-2">إنشاء</button>
         </x-slot:footer>
     </x-modal>
 

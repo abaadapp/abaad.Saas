@@ -17,7 +17,7 @@
             <x-button variant="outline" icon="landmark" :href="route('admin.orders.taxInvoice', $order['id'])" target="_blank">فاتورة ضريبية</x-button>
             <x-dropdown align="left" width="w-48">
                 <x-slot:trigger>
-                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl bg-primary-600 hover:bg-primary-700 text-white cursor-pointer">
+                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-full bg-primary-600 hover:bg-primary-700 text-white cursor-pointer">
                         <x-icon name="refresh-cw" class="w-4 h-4" /> تغيير الحالة
                     </span>
                 </x-slot:trigger>

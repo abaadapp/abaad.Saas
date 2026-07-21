@@ -31,7 +31,7 @@
                         <button type="button"
                             @click="tab = '{{ $key }}'"
                             :class="tab === '{{ $key }}' ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50'"
-                            class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-colors text-right"
+                            class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors text-right"
                         >
                             <x-icon :name="$t['icon']" class="w-4 h-4" />
                             {{ $t['label'] }}

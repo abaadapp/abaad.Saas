@@ -95,7 +95,7 @@
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <x-dropdown align="left" width="w-44">
                                     <x-slot:trigger>
-                                        <button type="button" class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500 flex items-center justify-center">
+                                        <button type="button" class="w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 flex items-center justify-center">
                                             <x-icon name="ellipsis-vertical" class="w-5 h-5" />
                                         </button>
                                     </x-slot:trigger>

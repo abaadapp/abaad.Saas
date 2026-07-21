@@ -22,13 +22,13 @@
             <div x-show="editing" x-cloak class="flex items-center gap-1.5 flex-wrap ml-auto mr-0">
                 <span class="text-xs text-gray-400">المخفية:</span>
                 <template x-for="label in hidden" :key="label">
-                    <button type="button" @click="show(label)" class="inline-flex items-center gap-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg px-2 py-1 text-gray-600">
+                    <button type="button" @click="show(label)" class="inline-flex items-center gap-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-full px-2 py-1 text-gray-600">
                         <i data-lucide="plus" class="w-3 h-3"></i><span x-text="label"></span>
                     </button>
                 </template>
                 <span x-show="!hidden.length" class="text-xs text-gray-300">لا شيء</span>
             </div>
-            <button type="button" @click="toggleEdit()" :class="editing ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200'" class="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors">
+            <button type="button" @click="toggleEdit()" :class="editing ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200'" class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors">
                 <i :data-lucide="editing ? 'check' : 'sliders-horizontal'" class="w-4 h-4"></i>
                 <span x-text="editing ? 'تم' : 'تخصيص اللوحة'"></span>
             </button>

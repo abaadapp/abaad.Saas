@@ -52,7 +52,7 @@
                                 </div>
                                 <div class="col-span-3 sm:col-span-2 flex items-center gap-1">
                                     <span class="text-xs text-gray-500 flex-1" x-text="fmt((parseFloat(item.cost)||0)*(parseInt(item.quantity)||0))"></span>
-                                    <button type="button" @click="removeRow(i)" class="p-1.5 rounded-lg text-danger-600 hover:bg-danger-50"><x-icon name="trash-2" class="w-4 h-4" /></button>
+                                    <button type="button" @click="removeRow(i)" class="p-1.5 rounded-full text-danger-600 hover:bg-danger-50"><x-icon name="trash-2" class="w-4 h-4" /></button>
                                 </div>
                             </div>
                         </template>
@@ -86,7 +86,7 @@
                         <span class="text-gray-500">الإجمالي</span>
                         <span class="text-xl font-bold text-primary-600" x-text="fmt(total)"></span>
                     </div>
-                    <button type="submit" class="mt-4 w-full bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl py-3">إنشاء أمر الشراء</button>
+                    <button type="submit" class="mt-4 w-full bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-full py-3">إنشاء أمر الشراء</button>
                     <a href="{{ route('admin.purchases.index') }}" class="mt-2 block text-center text-sm text-gray-500 hover:text-gray-700">إلغاء</a>
                 </div>
             </div>

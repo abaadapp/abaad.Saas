@@ -35,7 +35,7 @@
                 @foreach ($thumbs as $thumb)
                     <button type="button" @click="current = '{{ $thumb }}'"
                         :class="current === '{{ $thumb }}' ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-100'"
-                        class="aspect-square rounded-lg overflow-hidden border-2 transition">
+                        class="aspect-square rounded-full overflow-hidden border-2 transition">
                         <img src="{{ $thumb }}" alt="صورة مصغرة" class="w-full h-full object-cover" />
                     </button>
                 @endforeach

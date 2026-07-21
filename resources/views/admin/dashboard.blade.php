@@ -14,7 +14,7 @@
             <div x-show="editing" x-cloak class="flex items-center gap-1.5 flex-wrap ml-auto mr-0">
                 <span class="text-xs text-[#9ca3af]">المخفية:</span>
                 <template x-for="label in hidden" :key="label">
-                    <button type="button" @click="show(label)" class="inline-flex items-center gap-1 text-xs bg-[#f2f2f0] hover:bg-[#e8e8e6] rounded-lg px-2 py-1 text-[#6b7280]">
+                    <button type="button" @click="show(label)" class="inline-flex items-center gap-1 text-xs bg-[#f2f2f0] hover:bg-[#e8e8e6] rounded-full px-2 py-1 text-[#6b7280]">
                         <i data-lucide="plus" class="w-3 h-3"></i><span x-text="label"></span>
                     </button>
                 </template>

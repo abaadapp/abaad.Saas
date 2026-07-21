@@ -51,7 +51,7 @@
                 <x-product-card :product="$p">
                     <x-dropdown align="left" width="w-44">
                         <x-slot:trigger>
-                            <button type="button" class="w-9 h-9 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 flex items-center justify-center transition">
+                            <button type="button" class="w-9 h-9 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500 flex items-center justify-center transition">
                                 <x-icon name="ellipsis-vertical" class="w-5 h-5" />
                             </button>
                         </x-slot:trigger>
@@ -94,7 +94,7 @@
                         <td class="px-4 py-3">
                             <x-dropdown align="left" width="w-40">
                                 <x-slot:trigger>
-                                    <button type="button" class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500 flex items-center justify-center">
+                                    <button type="button" class="w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 flex items-center justify-center">
                                         <x-icon name="ellipsis-vertical" class="w-5 h-5" />
                                     </button>
                                 </x-slot:trigger>

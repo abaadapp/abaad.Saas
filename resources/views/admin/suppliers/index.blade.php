@@ -45,7 +45,7 @@
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <x-dropdown align="left" width="w-40">
                                     <x-slot:trigger>
-                                        <button type="button" class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-400 flex items-center justify-center">
+                                        <button type="button" class="w-8 h-8 rounded-full hover:bg-gray-100 text-gray-400 flex items-center justify-center">
                                             <x-icon name="ellipsis-vertical" class="w-5 h-5" />
                                         </button>
                                     </x-slot:trigger>
@@ -123,7 +123,7 @@
         </form>
         <x-slot:footer>
             <x-button variant="light" @click="$dispatch('close-modal')">إلغاء</x-button>
-            <button type="submit" form="add-supplier-form" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg px-4 py-2">إضافة</button>
+            <button type="submit" form="add-supplier-form" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-full px-4 py-2">إضافة</button>
         </x-slot:footer>
     </x-modal>
 

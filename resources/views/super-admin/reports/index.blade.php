@@ -18,7 +18,7 @@
                     <button type="button"
                         @click="period = opt.k"
                         :class="period === opt.k ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
-                        class="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        class="px-4 py-2 rounded-full text-sm font-medium transition-colors"
                         x-text="opt.l"
                     ></button>
                 </template>

@@ -195,6 +195,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
     // المالية والمصروفات والتقارير والإعدادات
     Route::view('/finance', 'admin.finance.index')->name('finance.index');
+    // كشف الحساب البنكي والمطابقة
+    Route::view('/finance/statement', 'admin.finance.statement')->name('finance.statement');
+    Route::post('/bank/account', [\App\Http\Controllers\Admin\BankStatementController::class, 'updateAccount'])->name('bank.account');
+    Route::post('/bank/import', [\App\Http\Controllers\Admin\BankStatementController::class, 'import'])->name('bank.import');
+    Route::post('/bank/rematch', [\App\Http\Controllers\Admin\BankStatementController::class, 'rematch'])->name('bank.rematch');
+    Route::delete('/bank/clear', [\App\Http\Controllers\Admin\BankStatementController::class, 'clear'])->name('bank.clear');
     Route::get('/finance/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'financeXlsx'])->name('finance.xlsx');
     Route::get('/finance/pdf', [\App\Http\Controllers\PdfController::class, 'financeReport'])->name('finance.pdf');
     Route::post('/finance/transactions', [FinanceController::class, 'store'])->name('finance.store');

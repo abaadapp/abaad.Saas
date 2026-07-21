@@ -1205,4 +1205,84 @@ class Demo
         return count(self::notifications());
     }
 
+
+    /* ============================ الحساب البنكي وكشف الحساب ============================ */
+
+    /** بيانات حساب الشركة البنكي */
+    public static function bankAccount(): array
+    {
+        $a = \App\Models\BankAccount::firstOrCreate(['business_id' => self::bid()]);
+
+        return [
+            'bank_name' => $a->bank_name,
+            'account_name' => $a->account_name,
+            'iban' => $a->iban,
+            'opening_balance' => (float) $a->opening_balance,
+            'opening_date' => optional($a->opening_date)->format('Y-m-d'),
+        ];
+    }
+
+    /** كشف حساب محسوب من معاملات النظام برصيد تراكمي */
+    public static function bankStatement(): array
+    {
+        $acc = self::bankAccount();
+        $balance = $acc['opening_balance'];
+
+        $rows = Transaction::where('business_id', self::bid())
+            ->orderBy('occurred_at')->orderBy('id')->get()->map(function ($t) use (&$balance) {
+                // المصروفات مخزّنة بإشارة سالبة — نوحّد على القيمة المطلقة والاتجاه من النوع
+                $in = $t->type === 'دخل';
+                $amount = abs((float) $t->amount);
+                $balance += $in ? $amount : -$amount;
+
+                return [
+                    'id' => $t->id,
+                    'reference' => $t->reference,
+                    'date' => optional($t->occurred_at)->format('Y-m-d') ?? '—',
+                    'description' => $t->description,
+                    'method' => $t->method,
+                    'debit' => $in ? 0.0 : $amount,
+                    'credit' => $in ? $amount : 0.0,
+                    'balance' => round($balance, 3),
+                ];
+            })->all();
+
+        return ['opening' => $acc['opening_balance'], 'rows' => $rows, 'closing' => round($balance, 3)];
+    }
+
+    /** أسطر كشف البنك المستوردة مع حالة المطابقة */
+    public static function bankLines(): array
+    {
+        return \App\Models\BankStatementLine::where('business_id', self::bid())
+            ->with('transaction')->orderBy('date')->get()->map(fn ($l) => [
+                'id' => $l->id,
+                'date' => optional($l->date)->format('Y-m-d') ?? '—',
+                'description' => $l->description ?: '—',
+                'reference' => $l->reference ?: '—',
+                'amount' => (float) $l->amount,
+                'status' => $l->match_status,
+                'matched' => $l->match_status === 'مطابق',
+                'transaction' => $l->transaction?->reference,
+            ])->all();
+    }
+
+    /** ملخّص المطابقة: الفروقات بين البنك والنظام */
+    public static function reconciliationSummary(): array
+    {
+        $bid = self::bid();
+        $lines = \App\Models\BankStatementLine::where('business_id', $bid)->get();
+        $matchedIds = $lines->whereNotNull('transaction_id')->pluck('transaction_id')->all();
+
+        // معاملات في النظام لا يقابلها سطر في كشف البنك
+        $unmatchedSystem = Transaction::where('business_id', $bid)
+            ->when($matchedIds, fn ($q) => $q->whereNotIn('id', $matchedIds))->count();
+
+        return [
+            'lines' => $lines->count(),
+            'matched' => $lines->where('match_status', 'مطابق')->count(),
+            'unmatched_bank' => $lines->where('match_status', '!=', 'مطابق')->count(),
+            'unmatched_system' => $lines->count() ? $unmatchedSystem : 0,
+            'bank_total' => round((float) $lines->sum('amount'), 3),
+        ];
+    }
 }

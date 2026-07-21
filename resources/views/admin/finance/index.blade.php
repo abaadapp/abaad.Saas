@@ -13,6 +13,7 @@
                    :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'المالية' => '#']">
         <x-slot:actions>
             <x-select name="finance-range" :options="['today' => 'اليوم', 'week' => 'هذا الأسبوع', 'month' => 'هذا الشهر', 'year' => 'هذه السنة']" selected="month" />
+            <x-button variant="outline" icon="landmark" :href="route('admin.finance.statement')">كشف الحساب البنكي</x-button>
             <x-dropdown align="left" width="w-56">
                 <x-slot:trigger>
                     <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-full bg-primary-600 hover:bg-primary-700 text-white cursor-pointer">

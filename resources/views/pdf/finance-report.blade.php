@@ -72,15 +72,15 @@
             <td>{{ $t['method'] }}</td>
             <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">{{ $t['type'] }}</td>
             <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">
-                {{ $t['type'] === 'دخل' ? '+' : '−' }}{{ number_format($t['amount'], 3) }} ر.ع
+                {{ $t['type'] === 'دخل' ? '+' : '−' }}{{ number_format(abs($t['amount']), 3) }} ر.ع
             </td>
         </tr>
     @endforeach
 </table>
 
 @php
-    $totalIn = collect($transactions)->where('type', 'دخل')->sum('amount');
-    $totalOut = collect($transactions)->where('type', '!=', 'دخل')->sum('amount');
+    $totalIn = collect($transactions)->where('type', 'دخل')->sum(fn ($t) => abs($t['amount']));
+    $totalOut = collect($transactions)->where('type', '!=', 'دخل')->sum(fn ($t) => abs($t['amount']));
 @endphp
 <table style="margin-top:10px;">
     <tr>

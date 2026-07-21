@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
 use App\Support\Demo;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -58,7 +59,7 @@ class ReportExportController extends Controller
         foreach ($moneyCells as $cell) {
             $sheet->getStyle($cell)->getNumberFormat()->setFormatCode('#,##0.000');
         }
-        foreach (range('A', 'C') as $col) {
+        foreach (range('A', $sheet->getHighestColumn()) as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
@@ -213,5 +214,50 @@ class ReportExportController extends Controller
         Activity::log('report', 'صدّر التحليلات المتقدمة (Excel)');
 
         return $this->download($spreadsheet, $sheet, $money, 'analytics-report-' . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    /** تصدير المنتجات كملف Excel حقيقي (xlsx) */
+    public function productsXlsx()
+    {
+        $spreadsheet = new Spreadsheet();
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, 'المنتجات');
+
+        $cols = ['المعرّف', 'الاسم', 'التصنيف', 'SKU', 'الباركود', 'السعر (ر.ع)', 'التكلفة (ر.ع)', 'الكمية', 'حد التنبيه', 'حالة المخزون', 'الحالة'];
+        $last = 'K';
+
+        // رأس الجدول
+        $r = $this->row;
+        $sheet->fromArray($cols, null, "A{$r}");
+        $sheet->getStyle("A{$r}:{$last}{$r}")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle("A{$r}:{$last}{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
+        $sheet->getStyle("A{$r}:{$last}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $this->row++;
+
+        $firstDataRow = $this->row;
+        $money = [];
+        foreach (Demo::products() as $p) {
+            $r = $this->row;
+            $sheet->setCellValue("A{$r}", (int) $p['id']);
+            $sheet->setCellValue("B{$r}", $p['name']);
+            $sheet->setCellValue("C{$r}", $p['cat']);
+            $sheet->setCellValueExplicit("D{$r}", (string) $p['sku'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("E{$r}", (string) $p['barcode'], DataType::TYPE_STRING);
+            $sheet->setCellValue("F{$r}", round((float) $p['price'], 3));
+            $sheet->setCellValue("G{$r}", round((float) $p['cost'], 3));
+            $sheet->setCellValue("H{$r}", (int) $p['qty']);
+            $sheet->setCellValue("I{$r}", (int) $p['alert']);
+            $sheet->setCellValue("J{$r}", $p['stock_status']);
+            $sheet->setCellValue("K{$r}", $p['active'] ? 'مفعّل' : 'معطّل');
+            $money[] = "F{$r}";
+            $money[] = "G{$r}";
+            $this->row++;
+        }
+
+        // تجميد الترويسة حتى تبقى أسماء الأعمدة ظاهرة عند التمرير
+        $sheet->freezePane("A{$firstDataRow}");
+
+        Activity::log('report', 'صدّر المنتجات (Excel)');
+
+        return $this->download($spreadsheet, $sheet, $money, 'products-' . now()->format('Y-m-d') . '.xlsx');
     }
 }

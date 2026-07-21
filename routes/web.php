@@ -105,6 +105,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::get('/products', [ProductController::class, 'index'])->name('products.index');
     Route::view('/products/create', 'admin.products.create')->name('products.create');
     Route::view('/products/barcodes', 'admin.products.barcodes')->name('products.barcodes');
+    // يجب أن يسبق products/{id} وإلا التقطه كمعرّف
+    Route::get('/products/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'productsXlsx'])->name('products.xlsx');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::view('/products/{id}', 'admin.products.show')->name('products.show');
     Route::view('/products/{id}/edit', 'admin.products.edit')->name('products.edit');

@@ -4,7 +4,7 @@
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'المنتجات' => '#']">
         <x-slot:actions>
             <x-button variant="outline" icon="barcode" :href="route('admin.products.barcodes')">طباعة الباركود</x-button>
-            <x-button variant="outline" icon="download" :href="route('admin.export.products')">تصدير CSV</x-button>
+            <x-button variant="outline" icon="download" :href="route('admin.products.xlsx')">تصدير Excel</x-button>
             <x-button variant="primary" icon="plus" :href="route('admin.products.create')">إضافة منتج</x-button>
         </x-slot:actions>
     </x-page-header>

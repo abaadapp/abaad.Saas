@@ -21,59 +21,24 @@
         </x-slot:actions>
     </x-page-header>
 
-    {{-- الأقسام التحليلية المدمجة --}}
+    {{-- بطاقات التقارير مصنّفة مع شرائح تصفية --}}
     @php
-        $sections = [
-            [
-                'title' => 'تحليلات متقدمة',
-                'desc' => 'رسوم بيانية معمّقة للمبيعات والاتجاهات',
-                'icon' => 'chart-line',
-                'route' => route('admin.analytics.index'),
-                'color' => 'bg-primary-50 text-primary-600',
-            ],
-            [
-                'title' => 'الربحية',
-                'desc' => 'أرباح المنتجات والتصنيفات وهوامش الربح',
-                'icon' => 'trending-up',
-                'route' => route('admin.profitability.index'),
-                'color' => 'bg-success-50 text-success-600',
-            ],
-            [
-                'title' => 'ضريبة القيمة المضافة',
-                'desc' => 'تقرير الضريبة والفواتير الضريبية',
-                'icon' => 'landmark',
-                'route' => route('admin.vat.index'),
-                'color' => 'bg-info-50 text-info-600',
-            ],
-        ];
-    @endphp
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        @foreach ($sections as $s)
-            <a href="{{ $s['route'] }}" class="group block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-300 transition">
-                <div class="flex items-center justify-between">
-                    <span class="w-11 h-11 rounded-xl flex items-center justify-center {{ $s['color'] }}">
-                        <x-icon :name="$s['icon']" class="w-5 h-5" />
-                    </span>
-                    <x-icon name="chevron-left" class="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition" />
-                </div>
-                <h3 class="mt-4 font-bold text-gray-800">{{ $s['title'] }}</h3>
-                <p class="mt-1 text-xs text-gray-500 leading-relaxed">{{ $s['desc'] }}</p>
-            </a>
-        @endforeach
-    </div>
-
-    {{-- بطاقات التقارير --}}
-    @php
+        // group: مالية | تشغيلية | تحليلات
         $reportCards = [
-            ['title' => 'تقرير المبيعات', 'icon' => 'shopping-bag', 'color' => 'primary', 'value' => '12,640 ر.ع'],
-            ['title' => 'تقرير الأرباح', 'icon' => 'piggy-bank', 'color' => 'success', 'value' => '11,400 ر.ع'],
-            ['title' => 'تقرير المنتجات', 'icon' => 'package', 'color' => 'info', 'value' => '151'],
-            ['title' => 'تقرير الموظفين', 'icon' => 'users', 'color' => 'secondary', 'value' => '7'],
-            ['title' => 'تقرير العملاء', 'icon' => 'user-round', 'color' => 'primary', 'value' => '214'],
-            ['title' => 'تقرير المخزون', 'icon' => 'boxes', 'color' => 'warning', 'value' => '9 تنبيهات'],
-            ['title' => 'تقرير المصروفات', 'icon' => 'arrow-down-circle', 'color' => 'danger', 'value' => '1,240 ر.ع'],
-            ['title' => 'تقرير الضرائب', 'icon' => 'percent', 'color' => 'info', 'value' => '632 ر.ع'],
-            ['title' => 'وسائل الدفع', 'icon' => 'credit-card', 'color' => 'secondary', 'value' => '4 وسائل'],
+            ['title' => 'تقرير المبيعات', 'icon' => 'shopping-bag', 'color' => 'primary', 'value' => '12,640 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['title' => 'تقرير الأرباح', 'icon' => 'piggy-bank', 'color' => 'success', 'value' => '11,400 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['title' => 'تقرير المصروفات', 'icon' => 'arrow-down-circle', 'color' => 'danger', 'value' => '1,240 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['title' => 'تقرير الضرائب', 'icon' => 'percent', 'color' => 'info', 'value' => '632 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['title' => 'وسائل الدفع', 'icon' => 'credit-card', 'color' => 'secondary', 'value' => '4 وسائل', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['title' => 'الربحية', 'icon' => 'trending-up', 'color' => 'success', 'value' => 'هوامش الربح', 'group' => 'مالية', 'url' => route('admin.profitability.index')],
+            ['title' => 'ضريبة القيمة المضافة', 'icon' => 'landmark', 'color' => 'info', 'value' => 'الإقرار الضريبي', 'group' => 'مالية', 'url' => route('admin.vat.index')],
+
+            ['title' => 'تقرير المنتجات', 'icon' => 'package', 'color' => 'info', 'value' => '151', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
+            ['title' => 'تقرير المخزون', 'icon' => 'boxes', 'color' => 'warning', 'value' => '9 تنبيهات', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
+            ['title' => 'تقرير الموظفين', 'icon' => 'users', 'color' => 'secondary', 'value' => '7', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
+
+            ['title' => 'تحليلات متقدمة', 'icon' => 'chart-line', 'color' => 'primary', 'value' => 'الاتجاهات والذروة', 'group' => 'تحليلات', 'url' => route('admin.analytics.index')],
+            ['title' => 'تقرير العملاء', 'icon' => 'user-round', 'color' => 'primary', 'value' => '214', 'group' => 'تحليلات', 'url' => route('admin.reports.pdf')],
         ];
         $cardColors = [
             'primary' => 'bg-primary-50 text-primary-600',
@@ -83,20 +48,47 @@
             'danger' => 'bg-danger-50 text-danger-600',
             'secondary' => 'bg-secondary-50 text-secondary-600',
         ];
+        $chips = [
+            ['key' => 'all', 'label' => 'الكل', 'count' => count($reportCards)],
+            ['key' => 'مالية', 'label' => 'التقارير المالية', 'count' => collect($reportCards)->where('group', 'مالية')->count()],
+            ['key' => 'تشغيلية', 'label' => 'التقارير التشغيلية', 'count' => collect($reportCards)->where('group', 'تشغيلية')->count()],
+            ['key' => 'تحليلات', 'label' => 'تقارير التحليلات', 'count' => collect($reportCards)->where('group', 'تحليلات')->count()],
+        ];
     @endphp
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 mb-6">
-        @foreach ($reportCards as $card)
-            <a href="{{ route('admin.reports.pdf') }}" target="_blank" class="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-primary-200 transition">
-                <div class="flex items-center justify-between">
-                    <span class="w-11 h-11 rounded-xl flex items-center justify-center {{ $cardColors[$card['color']] }}">
-                        <x-icon :name="$card['icon']" class="w-5 h-5" />
-                    </span>
-                    <x-icon name="chevron-left" class="w-4 h-4 text-gray-300" />
-                </div>
-                <h3 class="mt-4 font-bold text-gray-800">{{ $card['title'] }}</h3>
-                <p class="mt-2 text-xl font-bold text-gray-800">{{ $card['value'] }}</p>
-            </a>
-        @endforeach
+
+    <div x-data="{ g: 'all' }" class="mb-6">
+        {{-- شرائح التصفية --}}
+        <div class="flex flex-wrap items-center gap-2.5 mb-5">
+            @foreach ($chips as $chip)
+                <button type="button" @click="g = '{{ $chip['key'] }}'"
+                    :class="g === '{{ $chip['key'] }}'
+                        ? 'bg-[#111] text-white border-[#111]'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'"
+                    class="inline-flex items-center gap-2 h-11 px-5 rounded-full border text-sm font-medium transition-colors">
+                    {{ $chip['label'] }}
+                    <span :class="g === '{{ $chip['key'] }}' ? 'text-white/70' : 'text-gray-400'"
+                          class="text-xs font-semibold">{{ $chip['count'] }}</span>
+                </button>
+            @endforeach
+        </div>
+
+        {{-- البطاقات --}}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            @foreach ($reportCards as $card)
+                <a href="{{ $card['url'] }}" @if ($card['url'] === route('admin.reports.pdf')) target="_blank" @endif
+                   x-show="g === 'all' || g === '{{ $card['group'] }}'"
+                   class="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-300 transition">
+                    <div class="flex items-center justify-between">
+                        <span class="w-11 h-11 rounded-full flex items-center justify-center {{ $cardColors[$card['color']] }}">
+                            <x-icon :name="$card['icon']" class="w-5 h-5" />
+                        </span>
+                        <x-icon name="chevron-left" class="w-4 h-4 text-gray-300" />
+                    </div>
+                    <h3 class="mt-4 font-bold text-gray-800">{{ $card['title'] }}</h3>
+                    <p class="mt-2 text-xl font-bold text-gray-800">{{ $card['value'] }}</p>
+                </a>
+            @endforeach
+        </div>
     </div>
 
     {{-- الرسوم البيانية --}}

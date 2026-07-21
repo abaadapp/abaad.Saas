@@ -50,6 +50,22 @@ class PdfController extends Controller
     }
 
     /** تقرير أداء المنصة (سوبر أدمن) */
+    public function financeReport()
+    {
+        $html = view('pdf.finance-report', [
+            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'branch' => Demo::currentBranchName(),
+            'stats' => Demo::financeStats(),
+            'payments' => Demo::paymentMethods(),
+            'transactions' => Demo::transactions(),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر التقرير المالي (PDF)');
+
+        return $this->pdf($html, 'finance-report-' . now()->format('Y-m-d'));
+    }
+
     public function platformReport()
     {
         $businesses = Demo::flowerShops();

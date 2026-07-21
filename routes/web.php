@@ -195,6 +195,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
     // المالية والمصروفات والتقارير والإعدادات
     Route::view('/finance', 'admin.finance.index')->name('finance.index');
+    Route::get('/finance/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'financeXlsx'])->name('finance.xlsx');
+    Route::get('/finance/pdf', [\App\Http\Controllers\PdfController::class, 'financeReport'])->name('finance.pdf');
     Route::post('/finance/transactions', [FinanceController::class, 'store'])->name('finance.store');
     Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');

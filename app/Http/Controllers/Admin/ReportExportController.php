@@ -297,4 +297,46 @@ class ReportExportController extends Controller
 
         return $this->download($spreadsheet, $sheet, [], 'inventory-' . now()->format('Y-m-d') . '.xlsx');
     }
+
+    /** تصدير المعاملات المالية كملف Excel حقيقي (xlsx) */
+    public function financeXlsx()
+    {
+        $spreadsheet = new Spreadsheet();
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, 'المعاملات المالية');
+        $money = [];
+
+        // المؤشرات المالية
+        $title('المؤشرات المالية');
+        $head(['المؤشر', 'القيمة', 'التغيّر']);
+        foreach (Demo::financeStats() as $st) {
+            $sheet->fromArray([$st['label'], $st['value'], $st['trend'] ?? '—'], null, 'A' . $this->row);
+            $this->row++;
+        }
+        $this->row++;
+
+        // المعاملات
+        $firstDataRow = $this->tableHead($sheet, ['المرجع', 'التاريخ', 'البيان', 'الوسيلة', 'النوع', 'المبلغ (ر.ع)', 'الموظف']);
+        foreach (Demo::transactions() as $t) {
+            $r = $this->row;
+            $sheet->setCellValueExplicit("A{$r}", (string) $t['id'], DataType::TYPE_STRING);
+            $sheet->setCellValue("B{$r}", $t['date']);
+            $sheet->setCellValue("C{$r}", $t['description']);
+            $sheet->setCellValue("D{$r}", $t['method']);
+            $sheet->setCellValue("E{$r}", $t['type']);
+            $sheet->setCellValue("F{$r}", round((float) $t['amount'], 3));
+            $sheet->setCellValue("G{$r}", $t['employee']);
+            $money[] = "F{$r}";
+
+            // تمييز المصروفات بالأحمر الفاتح لتُقرأ بنظرة
+            if ($t['type'] !== 'دخل') {
+                $sheet->getStyle("A{$r}:G{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDF0F0');
+            }
+            $this->row++;
+        }
+        $sheet->freezePane("A{$firstDataRow}");
+
+        Activity::log('report', 'صدّر المعاملات المالية (Excel)');
+
+        return $this->download($spreadsheet, $sheet, $money, 'finance-' . now()->format('Y-m-d') . '.xlsx');
+    }
 }

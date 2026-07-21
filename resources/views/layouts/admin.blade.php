@@ -83,7 +83,7 @@
 
     <div class="lg:mr-64 flex flex-col min-h-screen">
         {{-- ===== الشريط العلوي ===== --}}
-        <header class="sticky top-0 z-20 h-16 bg-[#f7f7f5]/80 backdrop-blur-xl flex items-center gap-3 px-4 lg:px-8"
+        <header class="sticky top-0 z-20 h-16 bg-[#f7f8f9]/80 backdrop-blur-xl flex items-center gap-3 px-4 lg:px-8"
                 style="border-bottom: 1px solid var(--ui-border);">
             <button type="button" @click="$store.sidebar.toggle()" class="lg:hidden w-9 h-9 flex items-center justify-center rounded-xl hover:bg-black/5 text-[#111]">
                 <x-icon name="menu" class="w-5 h-5" />

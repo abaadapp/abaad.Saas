@@ -5,8 +5,19 @@
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'التقارير' => '#']"
     >
         <x-slot:actions>
-            <x-button variant="outline" size="md" icon="file-text" :href="route('admin.reports.pdf')">تصدير PDF</x-button>
-            <x-button variant="success" size="md" icon="sheet" :href="route('admin.export.orders')">تصدير Excel</x-button>
+            <x-dropdown align="left" width="w-56">
+                <x-slot:trigger>
+                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl bg-primary-600 hover:bg-primary-700 text-white cursor-pointer">
+                        <x-icon name="download" class="w-4 h-4" /> تصدير
+                    </span>
+                </x-slot:trigger>
+                <a href="{{ route('admin.reports.xlsx') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-spreadsheet" class="w-4 h-4 text-gray-400" /> تصدير كملف إكسل
+                </a>
+                <a href="{{ route('admin.reports.pdf') }}" target="_blank" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-text" class="w-4 h-4 text-gray-400" /> تصدير كملف PDF
+                </a>
+            </x-dropdown>
         </x-slot:actions>
     </x-page-header>
 

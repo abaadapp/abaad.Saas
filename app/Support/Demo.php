@@ -769,11 +769,14 @@ class Demo
 
     public static function movements(): array
     {
+        $branches = \App\Models\Branch::where('business_id', self::bid())->pluck('name', 'id');
+
         return InventoryMovement::where('business_id', self::bid())->orderByDesc('id')->get()->map(fn ($m) => [
             'product' => $m->product_name,
             'sku' => $m->sku,
             'type' => $m->type,
             'qty' => $m->quantity,
+            'branch' => $branches[$m->branch_id] ?? '—',
             'employee' => $m->employee_name,
             'date' => optional($m->created_at)->format('Y-m-d') ?? '—',
         ])->all();

@@ -42,11 +42,12 @@
             'تعديل يدوي' => 'primary',
         ];
     @endphp
-    <x-table :headers="['المنتج', 'SKU', 'نوع الحركة', 'الكمية', 'الموظف', 'التاريخ']">
+    <x-table :headers="['المنتج', 'SKU', 'الفرع', 'نوع الحركة', 'الكمية', 'الموظف', 'التاريخ']">
         @foreach (\App\Support\Demo::movements() as $movement)
-            <tr class="hover:bg-gray-50" data-row data-tag="{{ $movement['type'] }}" data-search="{{ $movement['product'] }} {{ $movement['sku'] }} {{ $movement['employee'] }}">
+            <tr class="hover:bg-gray-50" data-row data-tag="{{ $movement['type'] }}" data-search="{{ $movement['product'] }} {{ $movement['sku'] }} {{ $movement['branch'] }} {{ $movement['employee'] }}">
                 <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $movement['product'] }}</td>
                 <td class="px-4 py-3 text-gray-500 whitespace-nowrap font-mono">{{ $movement['sku'] }}</td>
+                <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $movement['branch'] }}</td>
                 <td class="px-4 py-3 whitespace-nowrap">
                     <x-badge :type="$typeColors[$movement['type']] ?? 'gray'" :text="$movement['type']" />
                 </td>
@@ -68,6 +69,9 @@
     <x-modal name="add-movement" title="إضافة حركة مخزون" maxWidth="max-w-lg">
         <form id="add-movement-form" method="POST" action="{{ route('admin.inventory.store') }}" class="space-y-4">
             @csrf
+            <x-select label="الفرع" name="branch_id" placeholder="اختر الفرع..." :required="true"
+                :options="collect(\App\Support\Demo::branches())->pluck('name', 'id')->toArray()"
+                :selected="\App\Support\Demo::currentBranchId()" />
             <x-select label="المنتج" name="product_id" placeholder="اختر المنتج..." :options="collect(\App\Support\Demo::products())->pluck('name', 'id')->toArray()" :required="true" />
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <x-select label="نوع الحركة" name="type" placeholder="اختر النوع..." :options="[

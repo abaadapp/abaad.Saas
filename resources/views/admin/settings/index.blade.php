@@ -142,7 +142,6 @@
                         ['key' => 'cash', 'label' => 'نقدي', 'desc' => 'الدفع النقدي عند الشراء', 'icon' => 'banknote', 'on' => true],
                         ['key' => 'card', 'label' => 'بطاقة (فيزا)', 'desc' => 'الدفع عبر بطاقات الصراف والائتمان', 'icon' => 'credit-card', 'on' => true],
                         ['key' => 'transfer', 'label' => 'تحويل بنكي', 'desc' => 'التحويل المباشر للحساب البنكي', 'icon' => 'arrow-left-right', 'on' => true],
-                        ['key' => 'credit', 'label' => 'آجل', 'desc' => 'البيع بالآجل للعملاء المسجلين', 'icon' => 'clock', 'on' => false],
                     ];
                 @endphp
                 <div class="space-y-3">

@@ -87,6 +87,9 @@
             <div class="rounded-xl bg-gray-50 border border-gray-100 p-3 text-sm text-gray-600">
                 المنتج: <span class="font-semibold text-gray-800" x-text="sel.name"></span> — SKU: <span class="font-mono" x-text="sel.sku"></span>
             </div>
+            <x-select label="الفرع" name="branch_id" placeholder="اختر الفرع..." :required="true"
+                :options="collect(\App\Support\Demo::branches())->pluck('name', 'id')->toArray()"
+                :selected="\App\Support\Demo::currentBranchId()" />
             <x-select label="نوع التعديل" name="type" :options="[
                 'تعديل يدوي' => 'تعيين الكمية الجديدة',
                 'إضافة كمية' => 'إضافة كمية',

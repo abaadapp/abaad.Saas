@@ -117,11 +117,15 @@
                 <h3 class="text-lg font-bold text-gray-800 mb-6">إعدادات العملة</h3>
                 <div class="space-y-5">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <x-select label="العملة" name="currency" :options="[
-                            'OMR' => 'ريال عماني (ر.ع)',
-                            'AED' => 'درهم إماراتي (د.إ)',
-                            'SAR' => 'ريال سعودي (ر.س)',
-                        ]" selected="OMR" />
+                        {{-- عملة واحدة فقط: الريال العماني --}}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1.5">العملة</label>
+                            <div class="flex items-center gap-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700">
+                                <x-icon name="coins" class="w-4 h-4 text-gray-400" />
+                                <span>ريال عماني (ر.ع)</span>
+                            </div>
+                            <input type="hidden" name="currency" value="OMR" />
+                        </div>
                         <x-select label="عدد الخانات العشرية" name="decimals" :options="['3' => '3 خانات', '2' => 'خانتان']" selected="3" />
                     </div>
                     <x-select label="موضع رمز العملة" name="symbol_pos" :options="[

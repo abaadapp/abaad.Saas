@@ -127,10 +127,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
     // العملات وأسعار الصرف
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
-    Route::post('/currencies', [\App\Http\Controllers\Admin\CurrencyController::class, 'store'])->name('currencies.store');
-    Route::put('/currencies/{id}', [\App\Http\Controllers\Admin\CurrencyController::class, 'update'])->name('currencies.update');
-    Route::post('/currencies/{id}/base', [\App\Http\Controllers\Admin\CurrencyController::class, 'setBase'])->name('currencies.setBase');
-    Route::delete('/currencies/{id}', [\App\Http\Controllers\Admin\CurrencyController::class, 'destroy'])->name('currencies.destroy');
 
     // العملاء
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');

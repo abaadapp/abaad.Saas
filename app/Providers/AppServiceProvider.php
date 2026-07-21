@@ -23,7 +23,9 @@ class AppServiceProvider extends ServiceProvider
         // إتاحة استخدام <x-layouts.xxx> للتخطيطات الموجودة في resources/views/layouts
         Blade::anonymousComponentPath(resource_path('views/layouts'), 'layouts');
 
-        // أسماء الشهور والأيام بالعربية في كل استخدامات translatedFormat (Carbon)
+        // لغة افتراضية لـ Carbon قبل معالجة الطلب (الأوامر المجدولة مثلًا).
+        // داخل الطلب يعيد SetLocale ضبطها على لغة المستخدم، وإلا بقيت التواريخ
+        // النسبية («منذ 19 دقيقة») عربية حتى في الواجهة الإنجليزية.
         \Carbon\Carbon::setLocale('ar');
         setlocale(LC_TIME, 'ar_OM.UTF-8', 'ar_SA.UTF-8', 'ar');
     }

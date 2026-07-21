@@ -36,7 +36,7 @@ class BusinessController extends Controller
         $business = Business::create($data);
         \App\Support\Activity::log('created', 'أضاف شركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 
-        return redirect()->route('super-admin.businesses.index')->with('toast', ['msg' => 'تم إضافة الشركة بنجاح', 'type' => 'success']);
+        return redirect()->route('super-admin.businesses.index')->with('toast', ['msg' => __('تم إضافة الشركة بنجاح'), 'type' => 'success']);
     }
 
     public function update(Request $request, $id)
@@ -49,7 +49,7 @@ class BusinessController extends Controller
         $business->update($data);
         \App\Support\Activity::log('updated', 'عدّل الشركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 
-        return redirect()->route('super-admin.businesses.index')->with('toast', ['msg' => 'تم تحديث الشركة بنجاح', 'type' => 'success']);
+        return redirect()->route('super-admin.businesses.index')->with('toast', ['msg' => __('تم تحديث الشركة بنجاح'), 'type' => 'success']);
     }
 
     public function destroy($id)
@@ -58,7 +58,7 @@ class BusinessController extends Controller
         $business->update(['status' => 'معطل']);
         \App\Support\Activity::log('deleted', 'عطّل الشركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 
-        return redirect()->route('super-admin.businesses.index')->with('toast', ['msg' => 'تم تعطيل الشركة', 'type' => 'warning']);
+        return redirect()->route('super-admin.businesses.index')->with('toast', ['msg' => __('تم تعطيل الشركة'), 'type' => 'warning']);
     }
 
     private function validateData(Request $request): array

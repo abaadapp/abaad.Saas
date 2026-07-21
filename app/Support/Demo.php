@@ -67,7 +67,8 @@ class Demo
     {
         $decimals = in_array($cur['code'], ['OMR', 'KWD', 'BHD']) ? 3 : 2;
 
-        return number_format($value, $decimals, '.', ',') . ' ' . $cur['symbol'];
+        // الترجمة هنا لا عند تعريف العملة، لتشمل الرمز القادم من قاعدة البيانات أيضًا
+        return number_format($value, $decimals, '.', ',') . ' ' . __($cur['symbol']);
     }
 
     /** المبلغ بعملة العرض المختارة (تحويل تلقائي حسب سعر الصرف) */
@@ -108,7 +109,7 @@ class Demo
     public static function currentBranchName(): string
     {
         $id = self::currentBranchId();
-        return $id ? (\App\Models\Branch::where('id', $id)->value('name') ?? 'كل الفروع') : 'كل الفروع';
+        return $id ? (\App\Models\Branch::where('id', $id)->value('name') ?? __('كل الفروع')) : __('كل الفروع');
     }
 
     /** فروع النشاط الحالي */
@@ -132,14 +133,14 @@ class Demo
         $yearly = (float) Subscription::sum('amount');
 
         return [
-            ['label' => 'إجمالي الشركات', 'value' => (string) $total, 'icon' => 'building-2', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
-            ['label' => 'الشركات النشطة', 'value' => (string) $active, 'icon' => 'circle-check', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
-            ['label' => 'محلات الورود', 'value' => (string) $flowers, 'icon' => 'flower', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
-            ['label' => 'المستخدمون', 'value' => (string) $users, 'icon' => 'users', 'trend' => '+18%', 'up' => true, 'color' => 'info'],
-            ['label' => 'الاشتراكات النشطة', 'value' => (string) $activeSubs, 'icon' => 'badge-check', 'trend' => '+6%', 'up' => true, 'color' => 'success'],
-            ['label' => 'الاشتراكات المنتهية', 'value' => (string) $expiredSubs, 'icon' => 'badge-x', 'trend' => '-3%', 'up' => false, 'color' => 'danger'],
-            ['label' => 'الإيرادات الشهرية', 'value' => self::money($monthly), 'icon' => 'wallet', 'trend' => '+14%', 'up' => true, 'color' => 'warning'],
-            ['label' => 'الإيرادات السنوية', 'value' => self::money($yearly), 'icon' => 'trending-up', 'trend' => '+21%', 'up' => true, 'color' => 'primary'],
+            ['label' => __('إجمالي الشركات'), 'value' => (string) $total, 'icon' => 'building-2', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
+            ['label' => __('الشركات النشطة'), 'value' => (string) $active, 'icon' => 'circle-check', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
+            ['label' => __('محلات الورود'), 'value' => (string) $flowers, 'icon' => 'flower', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
+            ['label' => __('المستخدمون'), 'value' => (string) $users, 'icon' => 'users', 'trend' => '+18%', 'up' => true, 'color' => 'info'],
+            ['label' => __('الاشتراكات النشطة'), 'value' => (string) $activeSubs, 'icon' => 'badge-check', 'trend' => '+6%', 'up' => true, 'color' => 'success'],
+            ['label' => __('الاشتراكات المنتهية'), 'value' => (string) $expiredSubs, 'icon' => 'badge-x', 'trend' => '-3%', 'up' => false, 'color' => 'danger'],
+            ['label' => __('الإيرادات الشهرية'), 'value' => self::money($monthly), 'icon' => 'wallet', 'trend' => '+14%', 'up' => true, 'color' => 'warning'],
+            ['label' => __('الإيرادات السنوية'), 'value' => self::money($yearly), 'icon' => 'trending-up', 'trend' => '+21%', 'up' => true, 'color' => 'primary'],
         ];
     }
 
@@ -225,7 +226,7 @@ class Demo
             'name' => $u->name,
             'email' => $u->email,
             'phone' => $u->phone,
-            'business' => $u->business?->name ?? 'المنصة',
+            'business' => $u->business?->name ?? __('المنصة'),
             'role' => $u->roleLabel(),
             'status' => $u->status,
             'last_login' => optional($u->last_login_at)->format('Y-m-d H:i') ?? '—',
@@ -243,7 +244,7 @@ class Demo
         }
         return $q->limit($limit)->get()->map(fn ($a) => [
             'text' => $a->user_name . ' — ' . $a->description,
-            'time' => optional($a->created_at)?->locale('ar')->diffForHumans() ?? '—',
+            'time' => optional($a->created_at)?->diffForHumans() ?? '—',
             'icon' => $a->icon,
             'color' => $a->color,
         ])->all();
@@ -269,14 +270,14 @@ class Demo
         $net = $salesMonth - $expenses;
 
         return [
-            ['label' => 'مبيعات اليوم', 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'trend' => '+9%', 'up' => true, 'color' => 'primary'],
-            ['label' => 'مبيعات الشهر', 'value' => self::money($salesMonth), 'icon' => 'trending-up', 'trend' => '+15%', 'up' => true, 'color' => 'success'],
-            ['label' => 'عدد الطلبات', 'value' => (string) $ordersCount, 'icon' => 'receipt', 'trend' => '+11%', 'up' => true, 'color' => 'info'],
-            ['label' => 'متوسط قيمة الطلب', 'value' => self::money($avg), 'icon' => 'calculator', 'trend' => '+3%', 'up' => true, 'color' => 'secondary'],
-            ['label' => 'عدد العملاء', 'value' => (string) $customers, 'icon' => 'users', 'trend' => '+7%', 'up' => true, 'color' => 'primary'],
-            ['label' => 'منتجات منخفضة المخزون', 'value' => (string) $lowStock, 'icon' => 'alert-triangle', 'trend' => 'تنبيه', 'up' => false, 'color' => 'warning'],
-            ['label' => 'المصروفات', 'value' => self::money($expenses), 'icon' => 'arrow-down-circle', 'trend' => '-5%', 'up' => false, 'color' => 'danger'],
-            ['label' => 'صافي الأرباح', 'value' => self::money($net), 'icon' => 'piggy-bank', 'trend' => '+17%', 'up' => true, 'color' => 'success'],
+            ['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'trend' => '+9%', 'up' => true, 'color' => 'primary'],
+            ['label' => __('مبيعات الشهر'), 'value' => self::money($salesMonth), 'icon' => 'trending-up', 'trend' => '+15%', 'up' => true, 'color' => 'success'],
+            ['label' => __('عدد الطلبات'), 'value' => (string) $ordersCount, 'icon' => 'receipt', 'trend' => '+11%', 'up' => true, 'color' => 'info'],
+            ['label' => __('متوسط قيمة الطلب'), 'value' => self::money($avg), 'icon' => 'calculator', 'trend' => '+3%', 'up' => true, 'color' => 'secondary'],
+            ['label' => __('عدد العملاء'), 'value' => (string) $customers, 'icon' => 'users', 'trend' => '+7%', 'up' => true, 'color' => 'primary'],
+            ['label' => __('منتجات منخفضة المخزون'), 'value' => (string) $lowStock, 'icon' => 'alert-triangle', 'trend' => __('تنبيه'), 'up' => false, 'color' => 'warning'],
+            ['label' => __('المصروفات'), 'value' => self::money($expenses), 'icon' => 'arrow-down-circle', 'trend' => '-5%', 'up' => false, 'color' => 'danger'],
+            ['label' => __('صافي الأرباح'), 'value' => self::money($net), 'icon' => 'piggy-bank', 'trend' => '+17%', 'up' => true, 'color' => 'success'],
         ];
     }
 
@@ -317,7 +318,7 @@ class Demo
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
             ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
                 'id' => $o->number,
-                'customer' => $o->customer_name ?? 'عميل نقدي',
+                'customer' => $o->customer_name ?? __('عميل نقدي'),
                 'employee' => $o->employee_name ?? '—',
                 'branch' => $o->branch,
                 'items_count' => $o->items_count,
@@ -348,9 +349,9 @@ class Demo
         return [
             'id' => $o->number,
             'db_id' => $o->id,
-            'customer' => $o->customer_name ?? 'عميل نقدي',
+            'customer' => $o->customer_name ?? __('عميل نقدي'),
             'employee' => $o->employee_name ?? '—',
-            'branch' => $o->branch ?? 'الفرع الرئيسي',
+            'branch' => $o->branch ?? __('الفرع الرئيسي'),
             'status' => $o->status,
             'payment' => $o->payment_method,
             'payment_status' => $o->payment_status ?? 'مدفوع',
@@ -431,7 +432,7 @@ class Demo
                     'name' => $u->name,
                     'avatar' => $u->avatar ?? self::image('emp' . $u->id, 100, 100),
                     'role' => $u->job_title ?: $u->roleLabel(),
-                    'branch' => $u->branch ?? 'الفرع الرئيسي',
+                    'branch' => $u->branch ?? __('الفرع الرئيسي'),
                     'phone' => $u->phone,
                     'email' => $u->email,
                     'sales' => (float) $u->sales_total,
@@ -609,7 +610,7 @@ class Demo
             'phone' => $c['phone'],
             'wa' => $c['wa'],
             'spent' => $c['spent'],
-            'last_order' => $c['last_order']?->format('Y-m-d') ?? 'لا يوجد',
+            'last_order' => $c['last_order']?->format('Y-m-d') ?? __('لا يوجد'),
         ])->values()->all();
     }
 
@@ -633,9 +634,9 @@ class Demo
         $rate = self::vatSettings()['rate'];
         $now = now();
         [$start, $end, $label] = match ($period) {
-            'month' => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth(), 'هذا الشهر'],
-            'year' => [$now->copy()->startOfYear(), $now->copy()->endOfYear(), 'هذه السنة'],
-            default => [$now->copy()->startOfQuarter(), $now->copy()->endOfQuarter(), 'هذا الربع'],
+            'month' => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth(), __('هذا الشهر')],
+            'year' => [$now->copy()->startOfYear(), $now->copy()->endOfYear(), __('هذه السنة')],
+            default => [$now->copy()->startOfQuarter(), $now->copy()->endOfQuarter(), __('هذا الربع')],
         };
 
         $orders = Order::where('business_id', $bid)->where('is_held', false)
@@ -830,10 +831,10 @@ class Demo
         $card = (float) (clone $income)->where('method', 'بطاقة')->sum('amount');
 
         return [
-            ['label' => 'إجمالي الإيرادات', 'value' => self::money($total), 'icon' => 'wallet', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
-            ['label' => 'المدفوعات النقدية', 'value' => self::money($cash), 'icon' => 'banknote', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
-            ['label' => 'التحويلات البنكية', 'value' => self::money($bank), 'icon' => 'landmark', 'trend' => '+15%', 'up' => true, 'color' => 'info'],
-            ['label' => 'مدفوعات البطاقة (فيزا)', 'value' => self::money($card), 'icon' => 'credit-card', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
+            ['label' => __('إجمالي الإيرادات'), 'value' => self::money($total), 'icon' => 'wallet', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
+            ['label' => __('المدفوعات النقدية'), 'value' => self::money($cash), 'icon' => 'banknote', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
+            ['label' => __('التحويلات البنكية'), 'value' => self::money($bank), 'icon' => 'landmark', 'trend' => '+15%', 'up' => true, 'color' => 'info'],
+            ['label' => __('مدفوعات البطاقة (فيزا)'), 'value' => self::money($card), 'icon' => 'credit-card', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
         ];
     }
 
@@ -843,9 +844,9 @@ class Demo
         $income = Transaction::where('business_id', $bid)->where('type', 'دخل');
         $grand = max(0.001, (float) (clone $income)->sum('amount'));
         $defs = [
-            ['name' => 'نقدي', 'key' => 'نقدي', 'icon' => 'banknote', 'color' => 'success'],
-            ['name' => 'تحويل بنكي', 'key' => 'تحويل بنكي', 'icon' => 'landmark', 'color' => 'info'],
-            ['name' => 'بطاقة (فيزا)', 'key' => 'بطاقة', 'icon' => 'credit-card', 'color' => 'primary'],
+            ['name' => __('نقدي'), 'key' => 'نقدي', 'icon' => 'banknote', 'color' => 'success'],
+            ['name' => __('تحويل بنكي'), 'key' => 'تحويل بنكي', 'icon' => 'landmark', 'color' => 'info'],
+            ['name' => __('بطاقة (فيزا)'), 'key' => 'بطاقة', 'icon' => 'credit-card', 'color' => 'primary'],
         ];
         return array_map(function ($d) use ($income, $grand) {
             $total = (float) (clone $income)->where('method', $d['key'])->sum('amount');
@@ -894,7 +895,7 @@ class Demo
     /** الاسم المعروض لوسيلة الدفع (المفتاح المخزّن في القاعدة يبقى كما هو) */
     public static function methodLabel(string $key): string
     {
-        return ['بطاقة' => 'بطاقة (فيزا)'][$key] ?? $key;
+        return ['بطاقة' => __('بطاقة (فيزا)')][$key] ?? $key;
     }
 
     public static function paymentDistribution(): array
@@ -962,7 +963,7 @@ class Demo
         if ($prev > 0) {
             $delta = round(($cur - $prev) / $prev * 100, 1);
             if ($delta < 0) {
-                $alerts[] = ['type' => 'تراجع المبيعات', 'text' => 'انخفضت مبيعات هذا الشهر بنسبة ' . abs($delta) . '% مقارنةً بالشهر السابق', 'icon' => 'trending-down', 'color' => 'danger', 'url' => route('admin.analytics.index')];
+                $alerts[] = ['type' => __('تراجع المبيعات'), 'text' => __('انخفضت مبيعات هذا الشهر بنسبة :pct% مقارنةً بالشهر السابق', ['pct' => abs($delta)]), 'icon' => 'trending-down', 'color' => 'danger', 'url' => route('admin.analytics.index')];
             }
         }
 
@@ -971,7 +972,7 @@ class Demo
         $stagnant = Product::where('business_id', $bid)->where('quantity', '>', 0)->whereNotIn('id', $soldIds)
             ->orderByDesc('quantity')->limit(3)->get();
         foreach ($stagnant as $p) {
-            $alerts[] = ['type' => 'منتج راكد', 'text' => 'المنتج «' . $p->name . '» لم يُبَع خلال 30 يومًا (' . $p->quantity . ' بالمخزون)', 'icon' => 'package', 'color' => 'warning', 'url' => route('admin.products.show', $p->id)];
+            $alerts[] = ['type' => __('منتج راكد'), 'text' => __('المنتج «:name» لم يُبَع خلال 30 يومًا (:qty بالمخزون)', ['name' => $p->name, 'qty' => $p->quantity]), 'icon' => 'package', 'color' => 'warning', 'url' => route('admin.products.show', $p->id)];
         }
 
         $inactive = Customer::where('business_id', $bid)->whereHas('orders')->get()
@@ -981,7 +982,7 @@ class Demo
                 return $last && \Illuminate\Support\Carbon::parse($last)->lt(now()->subDays(60));
             })->take(3);
         foreach ($inactive as $c) {
-            $alerts[] = ['type' => 'عميل متعثّر', 'text' => 'العميل «' . $c->name . '» لم يشترِ منذ أكثر من 60 يومًا', 'icon' => 'user-x', 'color' => 'info', 'url' => route('admin.customers.show', $c->id)];
+            $alerts[] = ['type' => __('عميل متعثّر'), 'text' => __('العميل «:name» لم يشترِ منذ أكثر من 60 يومًا', ['name' => $c->name]), 'icon' => 'user-x', 'color' => 'info', 'url' => route('admin.customers.show', $c->id)];
         }
 
         return $alerts;
@@ -1004,16 +1005,16 @@ class Demo
         $delta = fn ($c, $p) => $p > 0 ? round(($c - $p) / $p * 100, 1) : ($c > 0 ? 100.0 : 0.0);
 
         return [
-            ['label' => 'مبيعات الشهر', 'cur' => self::money($cur['sales']), 'prev' => self::money($prev['sales']), 'delta' => $delta($cur['sales'], $prev['sales']), 'icon' => 'trending-up'],
-            ['label' => 'عدد الطلبات', 'cur' => (string) $cur['orders'], 'prev' => (string) $prev['orders'], 'delta' => $delta($cur['orders'], $prev['orders']), 'icon' => 'receipt'],
-            ['label' => 'متوسط قيمة الطلب', 'cur' => self::money($cur['avg']), 'prev' => self::money($prev['avg']), 'delta' => $delta($cur['avg'], $prev['avg']), 'icon' => 'calculator'],
+            ['label' => __('مبيعات الشهر'), 'cur' => self::money($cur['sales']), 'prev' => self::money($prev['sales']), 'delta' => $delta($cur['sales'], $prev['sales']), 'icon' => 'trending-up'],
+            ['label' => __('عدد الطلبات'), 'cur' => (string) $cur['orders'], 'prev' => (string) $prev['orders'], 'delta' => $delta($cur['orders'], $prev['orders']), 'icon' => 'receipt'],
+            ['label' => __('متوسط قيمة الطلب'), 'cur' => self::money($cur['avg']), 'prev' => self::money($prev['avg']), 'delta' => $delta($cur['avg'], $prev['avg']), 'icon' => 'calculator'],
         ];
     }
 
     /** المبيعات حسب أيام الأسبوع */
     public static function salesByWeekday(): array
     {
-        $labels = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+        $labels = [__('الأحد'), __('الاثنين'), __('الثلاثاء'), __('الأربعاء'), __('الخميس'), __('الجمعة'), __('السبت')];
         $rows = Order::where('business_id', self::bid())->where('is_held', false)
             ->selectRaw("strftime('%w', ordered_at) as w, SUM(total) as s")->groupBy('w')->pluck('s', 'w');
         $data = [];
@@ -1091,7 +1092,7 @@ class Demo
     /** توزيع الشركات على الباقات */
     public static function planDistribution(): array
     {
-        $rows = Business::with('plan')->get()->groupBy(fn ($b) => $b->plan?->name ?? 'بدون باقة')->map->count();
+        $rows = Business::with('plan')->get()->groupBy(fn ($b) => $b->plan?->name ?? __('بدون باقة'))->map->count();
         return ['labels' => $rows->keys()->all(), 'series' => $rows->values()->all()];
     }
 
@@ -1127,7 +1128,7 @@ class Demo
             ->withCount('items')->orderByDesc('id')->get()->map(fn ($o) => [
                 'order_id' => $o->id,
                 'id' => $o->number,
-                'customer' => $o->customer_name ?? 'عميل نقدي',
+                'customer' => $o->customer_name ?? __('عميل نقدي'),
                 'items' => $o->items_count,
                 'total' => (float) $o->total,
                 'time' => optional($o->ordered_at)->format('H:i') ?? '—',
@@ -1144,7 +1145,7 @@ class Demo
             ->when($name, fn ($q) => $q->where('employee_name', $name))
             ->orderByDesc('ordered_at')->limit(12)->get()->map(fn ($o) => [
                 'number' => $o->number,
-                'customer' => $o->customer_name ?? 'عميل نقدي',
+                'customer' => $o->customer_name ?? __('عميل نقدي'),
                 'total' => (float) $o->total,
                 'payment' => $o->payment_method,
                 'time' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
@@ -1167,7 +1168,7 @@ class Demo
                 ->orderBy('ends_at')->limit(6)->get();
             foreach ($subs as $s) {
                 $items[] = [
-                    'text' => 'اشتراك «' . ($s->business?->name ?? '—') . '» ينتهي قريبًا',
+                    'text' => __('اشتراك «:name» ينتهي قريبًا', ['name' => $s->business?->name ?? '—']),
                     'time' => optional($s->ends_at)->format('Y-m-d'),
                     'icon' => 'badge-x', 'color' => 'warning',
                     'url' => route('super-admin.subscriptions.index'),
@@ -1181,8 +1182,10 @@ class Demo
             ->orderBy('quantity')->limit(6)->get();
         foreach ($low as $p) {
             $items[] = [
-                'text' => ($p->quantity <= 0 ? 'نفد المخزون: ' : 'مخزون منخفض: ') . $p->name . ' (' . $p->quantity . ' متبقٍ)',
-                'time' => 'تنبيه مخزون',
+                'text' => $p->quantity <= 0
+                    ? __('نفد المخزون: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity])
+                    : __('مخزون منخفض: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity]),
+                'time' => __('تنبيه مخزون'),
                 'icon' => 'alert-triangle', 'color' => $p->quantity <= 0 ? 'danger' : 'warning',
                 'url' => route('admin.inventory.index'),
             ];
@@ -1191,7 +1194,7 @@ class Demo
             ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit(3)->get();
         foreach ($pending as $o) {
             $items[] = [
-                'text' => 'طلب ' . $o->number . ' بانتظار التجهيز',
+                'text' => __('طلب :number بانتظار التجهيز', ['number' => $o->number]),
                 'time' => optional($o->ordered_at)->format('Y-m-d H:i'),
                 'icon' => 'receipt', 'color' => 'info',
                 'url' => route('admin.orders.show', $o->number),

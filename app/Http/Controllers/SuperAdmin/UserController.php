@@ -21,7 +21,7 @@ class UserController extends Controller
 
         $users = $q->orderByDesc('id')->paginate(10)->withQueryString()->through(fn ($u) => [
             'id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'phone' => $u->phone,
-            'business' => $u->business?->name ?? 'المنصة', 'role' => $u->roleLabel(),
+            'business' => $u->business?->name ?? __('المنصة'), 'role' => $u->roleLabel(),
             'status' => $u->status, 'last_login' => optional($u->last_login_at)->format('Y-m-d H:i') ?? '—',
             'avatar' => $u->avatar ?? Demo::image('user' . $u->id, 100, 100),
         ]);
@@ -51,7 +51,7 @@ class UserController extends Controller
         ]);
         \App\Support\Activity::log('created', 'أضاف مستخدمًا للمنصة: ' . $data['name']);
 
-        return back()->with('toast', ['msg' => 'تم إضافة المستخدم بنجاح', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم إضافة المستخدم بنجاح'), 'type' => 'success']);
     }
 
     public function update(Request $request, $id)
@@ -66,20 +66,20 @@ class UserController extends Controller
         $user->update($data);
         \App\Support\Activity::log('updated', 'عدّل بيانات المستخدم: ' . $user->name, ['subject_id' => $user->id]);
 
-        return back()->with('toast', ['msg' => 'تم تحديث بيانات المستخدم', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم تحديث بيانات المستخدم'), 'type' => 'success']);
     }
 
     public function toggleStatus($id)
     {
         $user = User::findOrFail($id);
         if ($user->id === auth()->id()) {
-            return back()->with('toast', ['msg' => 'لا يمكنك تعطيل حسابك الخاص', 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'error']);
         }
         $user->status = $user->status === 'نشط' ? 'موقوف' : 'نشط';
         $user->save();
         $on = $user->status === 'نشط';
         \App\Support\Activity::log('status', ($on ? 'فعّل' : 'أوقف') . ' حساب المستخدم: ' . $user->name, ['subject_id' => $user->id]);
 
-        return back()->with('toast', ['msg' => $on ? 'تم تفعيل الحساب' : 'تم إيقاف الحساب', 'type' => $on ? 'success' : 'warning']);
+        return back()->with('toast', ['msg' => $on ? __('تم تفعيل الحساب') : __('تم إيقاف الحساب'), 'type' => $on ? 'success' : 'warning']);
     }
 }

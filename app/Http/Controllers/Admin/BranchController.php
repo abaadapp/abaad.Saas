@@ -34,7 +34,7 @@ class BranchController extends Controller
         Branch::create($data);
         \App\Support\Activity::log('created', 'أضاف فرعًا: ' . $data['name']);
 
-        return back()->with('toast', ['msg' => 'تم إضافة الفرع', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم إضافة الفرع'), 'type' => 'success']);
     }
 
     public function destroy($id)
@@ -43,6 +43,6 @@ class BranchController extends Controller
         \App\Support\Activity::log('deleted', 'حذف الفرع: ' . $branch->name, ['subject_id' => $branch->id]);
         $branch->delete();
 
-        return back()->with('toast', ['msg' => 'تم حذف الفرع', 'type' => 'warning']);
+        return back()->with('toast', ['msg' => __('تم حذف الفرع'), 'type' => 'warning']);
     }
 }

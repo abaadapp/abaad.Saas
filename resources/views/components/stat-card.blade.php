@@ -33,7 +33,7 @@
         <div class="mt-3 flex items-center gap-1 text-xs font-medium {{ $up ? 'text-success-600' : 'text-danger-500' }}">
             <x-icon :name="$up ? 'trending-up' : 'trending-down'" class="w-4 h-4" />
             <span>{{ $trend }}</span>
-            <span class="text-gray-400 font-normal">مقارنة بالفترة السابقة</span>
+            <span class="text-gray-400 font-normal">{{ __('مقارنة بالفترة السابقة') }}</span>
         </div>
     @endif
 </div>

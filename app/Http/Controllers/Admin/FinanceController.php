@@ -33,6 +33,6 @@ class FinanceController extends Controller
 
         \App\Support\Activity::log('created', 'سجّل معاملة ' . $data['type'] . ' بقيمة ' . $data['amount']);
 
-        return redirect()->route('admin.finance.index')->with('toast', ['msg' => 'تم تسجيل المعاملة بنجاح', 'type' => 'success']);
+        return redirect()->route('admin.finance.index')->with('toast', ['msg' => __('تم تسجيل المعاملة بنجاح'), 'type' => 'success']);
     }
 }

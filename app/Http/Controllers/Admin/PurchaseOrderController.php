@@ -27,9 +27,9 @@ class PurchaseOrderController extends Controller
             'items.*.cost' => ['required', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ], [
-            'branch_id.required' => 'يجب تحديد الفرع الذي ستُستلم فيه البضاعة.',
-            'receipt.extensions' => 'الصيغ المدعومة لإيصال الدفع: JPG، PNG، PDF، WEBP، HEIC.',
-            'receipt.max' => 'أقصى حجم لإيصال الدفع 10 ميجابايت.',
+            'branch_id.required' => __('يجب تحديد الفرع الذي ستُستلم فيه البضاعة.'),
+            'receipt.extensions' => __('الصيغ المدعومة لإيصال الدفع: JPG، PNG، PDF، WEBP، HEIC.'),
+            'receipt.max' => __('أقصى حجم لإيصال الدفع 10 ميجابايت.'),
         ]);
 
         $bid = $this->bid();
@@ -37,7 +37,7 @@ class PurchaseOrderController extends Controller
         // الفرع يجب أن يخصّ نفس النشاط
         $branch = \App\Models\Branch::where('business_id', $bid)->find($data['branch_id']);
         if (! $branch) {
-            return back()->withInput()->withErrors(['branch_id' => 'الفرع المحدد غير صالح.']);
+            return back()->withInput()->withErrors(['branch_id' => __('الفرع المحدد غير صالح.')]);
         }
 
         // إيصال الدفع (اختياري)
@@ -74,7 +74,7 @@ class PurchaseOrderController extends Controller
         }
         \App\Support\Activity::log('created', 'أنشأ أمر شراء ' . $po->number . ' لفرع ' . $branch->name . ' بقيمة ' . number_format($total, 3) . ' ر.ع', ['subject_id' => $po->id]);
 
-        return redirect()->route('admin.purchases.index')->with('toast', ['msg' => 'تم إنشاء أمر الشراء ' . $po->number, 'type' => 'success']);
+        return redirect()->route('admin.purchases.index')->with('toast', ['msg' => __('تم إنشاء أمر الشراء :number', ['number' => $po->number]), 'type' => 'success']);
     }
 
     /** استلام أمر الشراء: يرفع كميات المنتجات ويسجّل حركة مخزون */
@@ -83,7 +83,7 @@ class PurchaseOrderController extends Controller
         $bid = $this->bid();
         $po = PurchaseOrder::where('business_id', $bid)->with('items')->findOrFail($id);
         if ($po->status === 'مستلم') {
-            return back()->with('toast', ['msg' => 'أمر الشراء مستلم مسبقًا', 'type' => 'info']);
+            return back()->with('toast', ['msg' => __('أمر الشراء مستلم مسبقًا'), 'type' => 'info']);
         }
 
         foreach ($po->items as $item) {
@@ -114,7 +114,7 @@ class PurchaseOrderController extends Controller
         $po->update(['status' => 'مستلم', 'received_at' => now()]);
         \App\Support\Activity::log('updated', 'استلم أمر الشراء ' . $po->number, ['subject_id' => $po->id]);
 
-        return back()->with('toast', ['msg' => 'تم استلام أمر الشراء وتحديث المخزون', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم استلام أمر الشراء وتحديث المخزون'), 'type' => 'success']);
     }
 
     /** رفع/استبدال إيصال الدفع لأمر شراء قائم */
@@ -124,9 +124,9 @@ class PurchaseOrderController extends Controller
         $request->validate([
             'receipt' => ['required', 'file', 'max:10240', 'extensions:jpg,jpeg,png,pdf,webp,heic'],
         ], [
-            'receipt.extensions' => 'الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC.',
-            'receipt.max' => 'أقصى حجم 10 ميجابايت.',
-        ], ['receipt' => 'إيصال الدفع']);
+            'receipt.extensions' => __('الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC.'),
+            'receipt.max' => __('أقصى حجم 10 ميجابايت.'),
+        ], ['receipt' => __('إيصال الدفع')]);
 
         // استبدال الإيصال القديم بدل تركه يتراكم على القرص
         if ($po->receipt) {
@@ -139,7 +139,7 @@ class PurchaseOrderController extends Controller
         ]);
         \App\Support\Activity::log('updated', 'أرفق إيصال دفع لأمر الشراء ' . $po->number, ['subject_id' => $po->id]);
 
-        return back()->with('toast', ['msg' => 'تم رفع إيصال الدفع', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم رفع إيصال الدفع'), 'type' => 'success']);
     }
 
     public function destroy($id)
@@ -152,6 +152,6 @@ class PurchaseOrderController extends Controller
         $po->delete();
         \App\Support\Activity::log('deleted', 'حذف أمر الشراء: ' . $num);
 
-        return back()->with('toast', ['msg' => 'تم حذف أمر الشراء', 'type' => 'warning']);
+        return back()->with('toast', ['msg' => __('تم حذف أمر الشراء'), 'type' => 'warning']);
     }
 }

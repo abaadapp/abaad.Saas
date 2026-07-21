@@ -18,7 +18,7 @@
         </div>
         @if (! empty($p['discount']))
             <span class="absolute top-2 left-2 bg-secondary-600 text-white text-xs font-bold px-2 py-1 rounded-lg">
-                خصم {{ $p['discount'] }}%
+                {{ __('خصم :n%', ['n' => $p['discount']]) }}
             </span>
         @endif
     </div>
@@ -29,7 +29,7 @@
         <div class="mt-3 flex items-center justify-between">
             <div>
                 <p class="text-lg font-bold text-gray-800">{{ \App\Support\Demo::money($p['price'] ?? 0) }}</p>
-                <p class="text-xs text-gray-400">الكمية: {{ $p['qty'] ?? 0 }}</p>
+                <p class="text-xs text-gray-400">{{ __('الكمية: :n', ['n' => $p['qty'] ?? 0]) }}</p>
             </div>
             {{ $slot ?? '' }}
         </div>

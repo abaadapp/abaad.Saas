@@ -20,7 +20,7 @@ class CheckAbility
         }
         $section = Permissions::sectionFromRoute($request->route()?->getName());
         if (! $user->allows($section)) {
-            abort(403, 'ليس لديك صلاحية للوصول إلى قسم «' . $section . '».');
+            abort(403, __('ليس لديك صلاحية للوصول إلى قسم «:section».', ['section' => $section]));
         }
 
         return $next($request);

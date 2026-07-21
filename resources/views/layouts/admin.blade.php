@@ -5,27 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>{{ $title ?? 'لوحة النشاط' }} — Abad POS</title>
+    <title>{{ $title ?? __('لوحة النشاط') }} — Abad POS</title>
     <link rel="stylesheet" href="{{ asset('fonts/ibm-plex-arabic.css') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="admin-ui" x-data>
     @php
         $menu = [
-            ['label' => __('ui.dashboard'), 'icon' => 'layout-dashboard', 'route' => 'admin.dashboard'],
-            ['label' => __('ui.customers'), 'icon' => 'users', 'route' => 'admin.customers.index'],
-            ['heading' => __('ui.store')],
-            ['label' => __('ui.products'), 'icon' => 'package', 'route' => 'admin.products.index'],
-            ['label' => __('ui.orders'), 'icon' => 'shopping-cart', 'route' => 'admin.orders.index'],
-            ['label' => __('ui.marketing'), 'icon' => 'megaphone', 'route' => 'admin.marketing.index'],
-            ['heading' => __('ui.management')],
-            ['label' => __('ui.inventory'), 'icon' => 'boxes', 'route' => 'admin.inventory.index'],
-            ['label' => __('ui.finance'), 'icon' => 'wallet', 'route' => 'admin.finance.index'],
-            ['label' => __('ui.expenses'), 'icon' => 'arrow-down-circle', 'route' => 'admin.expenses.index'],
-            ['label' => __('ui.reports'), 'icon' => 'bar-chart-3', 'route' => 'admin.reports.index'],
-            ['label' => __('ui.settings'), 'icon' => 'settings', 'route' => 'admin.settings.index'],
-            ['heading' => __('ui.pos')],
-            ['label' => __('ui.open_pos'), 'icon' => 'store', 'route' => 'pos.index'],
+            ['label' => __('الرئيسية'), 'icon' => 'layout-dashboard', 'route' => 'admin.dashboard'],
+            ['label' => __('العملاء'), 'icon' => 'users', 'route' => 'admin.customers.index'],
+            ['heading' => __('المتجر')],
+            ['label' => __('المنتجات'), 'icon' => 'package', 'route' => 'admin.products.index'],
+            ['label' => __('الطلبات'), 'icon' => 'shopping-cart', 'route' => 'admin.orders.index'],
+            ['label' => __('التسويق والكوبونات'), 'icon' => 'megaphone', 'route' => 'admin.marketing.index'],
+            ['heading' => __('الإدارة')],
+            ['label' => __('المخزون'), 'icon' => 'boxes', 'route' => 'admin.inventory.index'],
+            ['label' => __('المالية'), 'icon' => 'wallet', 'route' => 'admin.finance.index'],
+            ['label' => __('المصروفات'), 'icon' => 'arrow-down-circle', 'route' => 'admin.expenses.index'],
+            ['label' => __('التقارير'), 'icon' => 'bar-chart-3', 'route' => 'admin.reports.index'],
+            ['label' => __('الإعدادات'), 'icon' => 'settings', 'route' => 'admin.settings.index'],
+            ['heading' => __('نقطة البيع')],
+            ['label' => __('فتح نقطة البيع'), 'icon' => 'store', 'route' => 'pos.index'],
         ];
     @endphp
 
@@ -45,7 +45,7 @@
             </span>
             <div class="min-w-0 leading-tight">
                 <p class="text-[15px] font-semibold text-[#111] truncate">زهرة مسقط</p>
-                <p class="text-[11px] text-[#9ca3af] truncate">لوحة صاحب النشاط</p>
+                <p class="text-[11px] text-[#9ca3af] truncate">{{ __('لوحة صاحب النشاط') }}</p>
             </div>
             <button type="button" @click="$store.sidebar.open = false" class="lg:hidden mr-auto text-[#9ca3af]">
                 <x-icon name="x" class="w-5 h-5" />
@@ -75,7 +75,7 @@
         <div class="p-3 shrink-0" style="border-top: 1px solid var(--ui-border);">
             <a href="{{ route('logout') }}" class="ui-nav-link text-[#dc2626] hover:!bg-[#fef2f2]">
                 <x-icon name="log-out" class="w-[18px] h-[18px]" />
-                <span>{{ __('ui.logout') }}</span>
+                <span>{{ __('تسجيل الخروج') }}</span>
             </a>
         </div>
     </aside>
@@ -88,7 +88,7 @@
                 <x-icon name="menu" class="w-5 h-5" />
             </button>
 
-            <h1 class="text-[17px] font-semibold text-[#111] truncate min-w-0">{{ $title ?? 'لوحة النشاط' }}</h1>
+            <h1 class="text-[17px] font-semibold text-[#111] truncate min-w-0">{{ $title ?? __('لوحة النشاط') }}</h1>
 
             {{-- بحث موحّد (منتصف) --}}
             @auth
@@ -99,7 +99,7 @@
                             <x-icon name="search" class="w-4 h-4" />
                         </span>
                         <input type="text" x-model="q" @input.debounce.300ms="run()" @focus="open = results.length > 0"
-                            placeholder="ابحث في المنتجات والطلبات والعملاء…"
+                            placeholder="{{ __('ابحث في المنتجات والطلبات والعملاء…') }}"
                             class="w-full h-10 rounded-xl bg-white pr-10 pl-9 text-sm text-[#111] placeholder-[#9ca3af] focus:outline-none transition"
                             style="border: 1px solid var(--ui-border-strong);"
                             onfocus="this.style.boxShadow='0 0 0 4px rgba(17,17,17,0.06)'; this.style.borderColor='#111';"
@@ -111,7 +111,7 @@
                             class="absolute z-30 mt-2 w-96 left-1/2 -translate-x-1/2 bg-white rounded-2xl shadow-lg overflow-hidden max-h-96 overflow-y-auto"
                             style="border: 1px solid var(--ui-border);">
                             <template x-if="!loading && results.length === 0 && q.length >= 2">
-                                <div class="px-4 py-8 text-center text-sm text-[#9ca3af]">لا توجد نتائج لـ «<span x-text="q"></span>»</div>
+                                <div class="px-4 py-8 text-center text-sm text-[#9ca3af]">{{ __('لا توجد نتائج لـ') }} «<span x-text="q"></span>»</div>
                             </template>
                             <template x-for="group in results" :key="group.title">
                                 <div>
@@ -145,7 +145,7 @@
                                 </button>
                             </x-slot:trigger>
                             <a href="{{ route('admin.branch.switch', 'all') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm {{ ! \App\Support\Demo::currentBranchId() ? 'text-[#111] bg-[#f2f2f0]' : 'text-[#6b7280] hover:bg-[#fafafa]' }}">
-                                <x-icon name="layers" class="w-4 h-4" /> كل الفروع
+                                <x-icon name="layers" class="w-4 h-4" /> {{ __('كل الفروع') }}
                             </a>
                             @foreach ($branches as $br)
                                 <a href="{{ route('admin.branch.switch', $br['id']) }}" class="flex items-center gap-2 px-4 py-2.5 text-sm {{ \App\Support\Demo::currentBranchId() === $br['id'] ? 'text-[#111] bg-[#f2f2f0]' : 'text-[#6b7280] hover:bg-[#fafafa]' }}">
@@ -169,12 +169,12 @@
                                         <x-icon name="chevron-down" class="w-4 h-4 text-[#9ca3af]" />
                                     </button>
                                 </x-slot:trigger>
-                                <div class="px-4 py-2 text-xs text-[#9ca3af]" style="border-bottom:1px solid var(--ui-border);">عملة العرض</div>
+                                <div class="px-4 py-2 text-xs text-[#9ca3af]" style="border-bottom:1px solid var(--ui-border);">{{ __('عملة العرض') }}</div>
                                 @foreach ($curList as $c)
                                     <a href="{{ route('admin.currency.switch', $c['is_base'] ? 'base' : $c['code']) }}"
                                        class="flex items-center justify-between gap-2 px-4 py-2.5 text-sm {{ $curNow['code'] === $c['code'] ? 'text-[#111] bg-[#f2f2f0]' : 'text-[#6b7280] hover:bg-[#fafafa]' }}">
                                         <span class="flex items-center gap-2"><span class="font-mono text-xs">{{ $c['code'] }}</span> {{ $c['name'] }}</span>
-                                        @if ($c['is_base'])<span class="text-[10px] bg-[#f2f2f0] text-[#111] px-1.5 py-0.5 rounded">أساسية</span>@endif
+                                        @if ($c['is_base'])<span class="text-[10px] bg-[#f2f2f0] text-[#111] px-1.5 py-0.5 rounded">{{ __('أساسية') }}</span>@endif
                                     </a>
                                 @endforeach
                             </x-dropdown>
@@ -199,9 +199,9 @@
                         </button>
                     </x-slot:trigger>
                     <div class="px-4 py-2.5 flex items-center justify-between" style="border-bottom:1px solid var(--ui-border);">
-                        <p class="font-semibold text-sm text-[#111]">الإشعارات</p>
+                        <p class="font-semibold text-sm text-[#111]">{{ __('الإشعارات') }}</p>
                         <button type="button" @click="window.enableBrowserNotifications()" class="inline-flex items-center gap-1 text-xs text-[#111] hover:text-black font-medium">
-                            <x-icon name="bell-ring" class="w-3.5 h-3.5" /> تفعيل التنبيهات
+                            <x-icon name="bell-ring" class="w-3.5 h-3.5" /> {{ __('تفعيل التنبيهات') }}
                         </button>
                     </div>
                     <div class="max-h-80 overflow-y-auto">
@@ -216,7 +216,7 @@
                                 </div>
                             </a>
                         @empty
-                            <div class="px-4 py-8 text-center text-sm text-[#9ca3af]">لا توجد إشعارات جديدة</div>
+                            <div class="px-4 py-8 text-center text-sm text-[#9ca3af]">{{ __('لا توجد إشعارات جديدة') }}</div>
                         @endforelse
                     </div>
                 </x-dropdown>
@@ -225,22 +225,22 @@
                 <x-dropdown align="left" width="w-56">
                     <x-slot:trigger>
                         <button class="flex items-center gap-2.5 hover:bg-black/5 rounded-full p-1 pl-2.5">
-                            <img src="https://picsum.photos/seed/adminuser/80/80" class="w-8 h-8 rounded-full object-cover" alt="صاحب النشاط" />
+                            <img src="https://picsum.photos/seed/adminuser/80/80" class="w-8 h-8 rounded-full object-cover" alt="{{ __('صاحب النشاط') }}" />
                             <div class="hidden sm:block text-right leading-tight">
-                                <p class="text-[13px] font-semibold text-[#111]">صاحب النشاط</p>
-                                <p class="text-[11px] text-[#9ca3af]">مدير</p>
+                                <p class="text-[13px] font-semibold text-[#111]">{{ __('صاحب النشاط') }}</p>
+                                <p class="text-[11px] text-[#9ca3af]">{{ __('مدير') }}</p>
                             </div>
                             <x-icon name="chevron-down" class="w-4 h-4 text-[#9ca3af] hidden sm:block" />
                         </button>
                     </x-slot:trigger>
-                    <a href="{{ route('profile.edit') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#6b7280] hover:bg-[#fafafa]"><x-icon name="user" class="w-4 h-4" /> {{ __('ui.profile') }}</a>
+                    <a href="{{ route('profile.edit') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#6b7280] hover:bg-[#fafafa]"><x-icon name="user" class="w-4 h-4" /> {{ __('الملف الشخصي') }}</a>
                     @auth
                         @if (auth()->user()->business_id && auth()->user()->allows('settings'))
-                            <a href="{{ route('admin.settings.index') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#6b7280] hover:bg-[#fafafa]"><x-icon name="settings" class="w-4 h-4" /> الإعدادات</a>
+                            <a href="{{ route('admin.settings.index') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#6b7280] hover:bg-[#fafafa]"><x-icon name="settings" class="w-4 h-4" /> {{ __('الإعدادات') }}</a>
                         @endif
                     @endauth
                     <div class="my-1" style="border-top:1px solid var(--ui-border);"></div>
-                    <a href="{{ route('logout') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#dc2626] hover:bg-[#fef2f2]"><x-icon name="log-out" class="w-4 h-4" /> {{ __('ui.logout') }}</a>
+                    <a href="{{ route('logout') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#dc2626] hover:bg-[#fef2f2]"><x-icon name="log-out" class="w-4 h-4" /> {{ __('تسجيل الخروج') }}</a>
                 </x-dropdown>
             </div>
         </header>

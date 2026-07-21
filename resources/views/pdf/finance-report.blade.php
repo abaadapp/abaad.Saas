@@ -24,20 +24,20 @@
             <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
         </td>
         <td style="border:none; text-align:left;">
-            <div style="font-size:15px; font-weight:bold;">التقرير المالي</div>
+            <div style="font-size:15px; font-weight:bold;">{{ __('التقرير المالي') }}</div>
             <div class="muted">{{ $branch }}</div>
-            <div class="muted">تاريخ الإصدار: {{ $generatedAt }}</div>
+            <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
         </td>
     </tr></table>
 </div>
 
-<h2>المؤشرات المالية</h2>
+<h2>{{ __('المؤشرات المالية') }}</h2>
 <table class="cards">
     <tr>
         @foreach ($stats as $i => $s)
             <td>
                 <div class="card">
-                    <div class="lbl">{{ $s['label'] }}</div>
+                    <div class="lbl">{{ __($s['label']) }}</div>
                     <div class="val">{{ $s['value'] }}</div>
                 </div>
             </td>
@@ -46,33 +46,33 @@
     </tr>
 </table>
 
-<h2>وسائل الدفع</h2>
+<h2>{{ __('وسائل الدفع') }}</h2>
 <table>
-    <tr><th>الوسيلة</th><th>الإجمالي</th><th>عدد العمليات</th></tr>
+    <tr><th>{{ __('الوسيلة') }}</th><th>{{ __('الإجمالي') }}</th><th>{{ __('عدد العمليات') }}</th></tr>
     @foreach ($payments as $m)
         <tr>
-            <td>{{ $m['name'] }}</td>
-            <td>{{ number_format($m['total'], 3) }} ر.ع</td>
+            <td>{{ __($m['name']) }}</td>
+            <td>{{ number_format($m['total'], 3) }} {{ __('ر.ع') }}</td>
             <td>{{ $m['count'] }}</td>
         </tr>
     @endforeach
 </table>
 
-<h2>المعاملات المالية ({{ count($transactions) }})</h2>
+<h2>{{ __('المعاملات المالية') }} ({{ count($transactions) }})</h2>
 <table>
     <tr>
-        <th>المرجع</th><th>التاريخ</th><th>البيان</th>
-        <th>الوسيلة</th><th>النوع</th><th>المبلغ</th>
+        <th>{{ __('المرجع') }}</th><th>{{ __('التاريخ') }}</th><th>{{ __('البيان') }}</th>
+        <th>{{ __('الوسيلة') }}</th><th>{{ __('النوع') }}</th><th>{{ __('المبلغ') }}</th>
     </tr>
     @foreach ($transactions as $t)
         <tr>
             <td>{{ $t['id'] }}</td>
             <td>{{ $t['date'] }}</td>
             <td>{{ $t['description'] }}</td>
-            <td>{{ $t['method'] }}</td>
-            <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">{{ $t['type'] }}</td>
+            <td>{{ __($t['method']) }}</td>
+            <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">{{ __($t['type']) }}</td>
             <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">
-                {{ $t['type'] === 'دخل' ? '+' : '−' }}{{ number_format(abs($t['amount']), 3) }} ر.ع
+                {{ $t['type'] === 'دخل' ? '+' : '−' }}{{ number_format(abs($t['amount']), 3) }} {{ __('ر.ع') }}
             </td>
         </tr>
     @endforeach
@@ -84,15 +84,15 @@
 @endphp
 <table style="margin-top:10px;">
     <tr>
-        <th>إجمالي الدخل</th>
-        <th>إجمالي المصروفات</th>
-        <th>الصافي</th>
+        <th>{{ __('إجمالي الدخل') }}</th>
+        <th>{{ __('إجمالي المصروفات') }}</th>
+        <th>{{ __('الصافي') }}</th>
     </tr>
     <tr>
-        <td class="income">{{ number_format($totalIn, 3) }} ر.ع</td>
-        <td class="expense">{{ number_format($totalOut, 3) }} ر.ع</td>
-        <td style="font-weight:bold;">{{ number_format($totalIn - $totalOut, 3) }} ر.ع</td>
+        <td class="income">{{ number_format($totalIn, 3) }} {{ __('ر.ع') }}</td>
+        <td class="expense">{{ number_format($totalOut, 3) }} {{ __('ر.ع') }}</td>
+        <td style="font-weight:bold;">{{ number_format($totalIn - $totalOut, 3) }} {{ __('ر.ع') }}</td>
     </tr>
 </table>
 
-<div class="foot">تم إنشاء هذا التقرير آليًا من نظام Abad POS — {{ $generatedAt }}</div>
+<div class="foot">{{ __('تم إنشاء هذا التقرير آليًا من نظام Abad POS') }} — {{ $generatedAt }}</div>

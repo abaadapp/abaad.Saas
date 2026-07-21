@@ -53,9 +53,9 @@ class ExpenseController extends Controller
             'status' => ['nullable', 'string', 'max:50'],
             'attachment' => ['nullable', 'file', 'max:10240', 'extensions:jpg,jpeg,png,pdf,webp,heic'],
         ], [
-            'attachment.extensions' => 'الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC.',
-            'attachment.max' => 'أقصى حجم للمرفق 10 ميجابايت.',
-        ], ['attachment' => 'المرفق']);
+            'attachment.extensions' => __('الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC.'),
+            'attachment.max' => __('أقصى حجم للمرفق 10 ميجابايت.'),
+        ], ['attachment' => __('المرفق')]);
 
         // رفع المرفق (إن وُجد)
         $attachment = null;
@@ -78,7 +78,7 @@ class ExpenseController extends Controller
         Expense::create($data);
         \App\Support\Activity::log('created', 'سجّل مصروف ' . $data['type'] . ' بقيمة ' . $data['amount']);
 
-        return redirect()->route('admin.expenses.index')->with('toast', ['msg' => 'تم تسجيل المصروف بنجاح', 'type' => 'success']);
+        return redirect()->route('admin.expenses.index')->with('toast', ['msg' => __('تم تسجيل المصروف بنجاح'), 'type' => 'success']);
     }
 
     public function destroy($id)
@@ -92,7 +92,7 @@ class ExpenseController extends Controller
         }
         $expense->delete();
 
-        return back()->with('toast', ['msg' => 'تم حذف المصروف', 'type' => 'warning']);
+        return back()->with('toast', ['msg' => __('تم حذف المصروف'), 'type' => 'warning']);
     }
 
     /** توليد الرقم المرجعي التالي للنشاط */

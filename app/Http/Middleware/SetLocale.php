@@ -30,6 +30,10 @@ class SetLocale
 
         app()->setLocale($locale);
 
+        // Carbon لا يتبع لغة التطبيق تلقائيًا — بدون هذا تبقى «منذ 19 دقيقة»
+        // وأسماء الشهور عربية في الواجهة الإنجليزية.
+        \Carbon\Carbon::setLocale($locale);
+
         return $next($request);
     }
 }

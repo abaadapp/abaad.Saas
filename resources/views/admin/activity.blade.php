@@ -1,9 +1,9 @@
-<x-layouts::admin title="سجل النشاط">
+<x-layouts::admin :title="__('سجل النشاط')">
     @php
         $actionLabels = [
-            'created' => 'إضافة', 'updated' => 'تعديل', 'deleted' => 'حذف', 'login' => 'دخول',
-            'logout' => 'خروج', 'checkout' => 'بيع', 'status' => 'تغيير حالة', 'settings' => 'إعدادات',
-            'hold' => 'تعليق', 'shift' => 'وردية',
+            'created' => __('إضافة'), 'updated' => __('تعديل'), 'deleted' => __('حذف'), 'login' => __('دخول'),
+            'logout' => __('خروج'), 'checkout' => __('بيع'), 'status' => __('تغيير حالة'), 'settings' => __('إعدادات'),
+            'hold' => __('تعليق'), 'shift' => __('وردية'),
         ];
         $colorMap = [
             'success' => 'bg-success-50 text-success-600', 'info' => 'bg-info-50 text-info-600',
@@ -12,18 +12,18 @@
         ];
     @endphp
 
-    <x-page-header title="سجل النشاط" subtitle="سجلّ كامل بكل العمليات التي تمّت على النظام"
-        :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'سجل النشاط' => '#']" />
+    <x-page-header :title="__('سجل النشاط')" :subtitle="__('سجلّ كامل بكل العمليات التي تمّت على النظام')"
+        :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('سجل النشاط') => '#']" />
 
     <form method="GET" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div class="md:col-span-2">
-                <x-input name="q" placeholder="بحث في الوصف أو المستخدم..." icon="search" value="{{ $filters['q'] ?? '' }}" />
+                <x-input name="q" :placeholder="__('بحث في الوصف أو المستخدم...')" icon="search" value="{{ $filters['q'] ?? '' }}" />
             </div>
-            <x-select name="action" :options="['created'=>'إضافة','updated'=>'تعديل','deleted'=>'حذف','checkout'=>'بيع','status'=>'تغيير حالة','login'=>'دخول','settings'=>'إعدادات']" placeholder="كل العمليات" selected="{{ $filters['action'] ?? '' }}" />
+            <x-select name="action" :options="['created'=>__('إضافة'),'updated'=>__('تعديل'),'deleted'=>__('حذف'),'checkout'=>__('بيع'),'status'=>__('تغيير حالة'),'login'=>__('دخول'),'settings'=>__('إعدادات')]" :placeholder="__('كل العمليات')" selected="{{ $filters['action'] ?? '' }}" />
             <div class="flex items-center gap-2">
-                <x-button type="submit" icon="filter">تصفية</x-button>
-                <x-button variant="outline" :href="url()->current()">تفريغ</x-button>
+                <x-button type="submit" icon="filter">{{ __('تصفية') }}</x-button>
+                <x-button variant="outline" :href="url()->current()">{{ __('تفريغ') }}</x-button>
             </div>
         </div>
     </form>
@@ -37,14 +37,14 @@
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <p class="font-medium text-gray-800 text-sm">{{ $log['user'] }}</p>
-                        <x-badge :type="$log['color']">{{ $actionLabels[$log['action']] ?? $log['action'] }}</x-badge>
+                        <x-badge :type="$log['color']">{{ $actionLabels[$log['action']] ?? __($log['action']) }}</x-badge>
                     </div>
                     <p class="text-sm text-gray-600 mt-0.5">{{ $log['description'] }}</p>
                     <p class="text-xs text-gray-400 mt-1">{{ $log['ago'] }} · {{ $log['time'] }} · IP {{ $log['ip'] ?? '—' }}</p>
                 </div>
             </div>
         @empty
-            <x-empty-state icon="history" title="لا يوجد نشاط بعد" message="ستظهر هنا كل العمليات التي تُجرى على النظام." />
+            <x-empty-state icon="history" :title="__('لا يوجد نشاط بعد')" :message="__('ستظهر هنا كل العمليات التي تُجرى على النظام.')" />
         @endforelse
 
         @if ($logs->total())

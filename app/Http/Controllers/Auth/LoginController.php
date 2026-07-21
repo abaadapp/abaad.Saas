@@ -29,7 +29,7 @@ class LoginController extends Controller
 
         if (! Auth::attempt($credentials, $remember)) {
             throw ValidationException::withMessages([
-                'email' => 'بيانات الدخول غير صحيحة.',
+                'email' => __('بيانات الدخول غير صحيحة.'),
             ]);
         }
 
@@ -46,7 +46,7 @@ class LoginController extends Controller
         $user = $email ? User::where('email', $email)->first() : null;
 
         if (! $user) {
-            return redirect()->route('login')->withErrors(['email' => 'الحساب التجريبي غير متوفر.']);
+            return redirect()->route('login')->withErrors(['email' => __('الحساب التجريبي غير متوفر.')]);
         }
 
         Auth::login($user);

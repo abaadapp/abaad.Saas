@@ -20,6 +20,6 @@ class GoalController extends Controller
         );
         \App\Support\Activity::log('settings', 'حدّد الهدف الشهري: ' . Demo::money($data['monthly_target']));
 
-        return back()->with('toast', ['msg' => 'تم حفظ الهدف الشهري', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم حفظ الهدف الشهري'), 'type' => 'success']);
     }
 }

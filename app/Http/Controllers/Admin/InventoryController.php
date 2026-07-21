@@ -21,14 +21,14 @@ class InventoryController extends Controller
             'quantity' => ['required', 'integer'],
             'note' => ['nullable', 'string', 'max:255'],
         ], [
-            'branch_id.required' => 'يجب تحديد الفرع قبل أي إضافة أو تعديل على المخزون.',
+            'branch_id.required' => __('يجب تحديد الفرع قبل أي إضافة أو تعديل على المخزون.'),
         ]);
         $product = Product::where('business_id', $this->bid())->findOrFail($data['product_id']);
 
         // الفرع يجب أن يخصّ نفس النشاط — وإلا رُفضت الحركة
         $branch = \App\Models\Branch::where('business_id', $this->bid())->find($data['branch_id']);
         if (! $branch) {
-            return back()->withInput()->withErrors(['branch_id' => 'الفرع المحدد غير صالح.']);
+            return back()->withInput()->withErrors(['branch_id' => __('الفرع المحدد غير صالح.')]);
         }
 
         // تعديل الكمية حسب نوع الحركة
@@ -52,6 +52,6 @@ class InventoryController extends Controller
         ]);
         \App\Support\Activity::log('updated', 'حركة مخزون (' . $data['type'] . ') على: ' . $product->name . ' — فرع: ' . $branch->name, ['subject_id' => $product->id]);
 
-        return redirect()->route('admin.inventory.movements')->with('toast', ['msg' => 'تم تسجيل حركة المخزون', 'type' => 'success']);
+        return redirect()->route('admin.inventory.movements')->with('toast', ['msg' => __('تم تسجيل حركة المخزون'), 'type' => 'success']);
     }
 }

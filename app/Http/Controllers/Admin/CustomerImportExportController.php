@@ -25,7 +25,7 @@ class CustomerImportExportController extends Controller
     /** أعمدة الملف بترتيب النشاط (تُستخدم للتصدير والنموذج) */
     private function columns(): array
     {
-        return ['الاسم', 'الهاتف', 'البريد', 'العنوان', 'الفرع', 'النقاط'];
+        return [__('الاسم'), __('الهاتف'), __('البريد'), __('العنوان'), __('الفرع'), __('النقاط')];
     }
 
     private function customerRows(): array
@@ -48,7 +48,7 @@ class CustomerImportExportController extends Controller
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setRightToLeft(true);
-        $sheet->setTitle('العملاء');
+        $sheet->setTitle(__('العملاء'));
 
         $sheet->fromArray($this->columns(), null, 'A1');
 
@@ -109,12 +109,12 @@ class CustomerImportExportController extends Controller
         $request->validate([
             'file' => ['required', 'file', 'max:5120'],
             'branch_id' => ['nullable', 'integer'],
-        ], [], ['file' => 'الملف']);
+        ], [], ['file' => __('الملف')]);
 
         $file = $request->file('file');
         $ext = strtolower($file->getClientOriginalExtension());
         if (! in_array($ext, self::ALLOWED_EXT, true)) {
-            return back()->with('toast', ['msg' => 'صيغة غير مدعومة. المدعوم: ' . implode('، ', self::ALLOWED_EXT), 'type' => 'danger']);
+            return back()->with('toast', ['msg' => __('صيغة غير مدعومة. المدعوم:') . ' ' . implode('، ', self::ALLOWED_EXT), 'type' => 'danger']);
         }
 
         $bid = $this->bid();
@@ -143,12 +143,12 @@ class CustomerImportExportController extends Controller
             $spreadsheet = $reader->load($file->getRealPath());
             $data = $spreadsheet->getActiveSheet()->toArray(null, true, false, false);
         } catch (\Throwable $e) {
-            return back()->with('toast', ['msg' => 'تعذّر قراءة الملف. تأكد أنه ملف صالح.', 'type' => 'danger']);
+            return back()->with('toast', ['msg' => __('تعذّر قراءة الملف. تأكد أنه ملف صالح.'), 'type' => 'danger']);
         }
 
         $data = array_values(array_filter($data, fn ($r) => count(array_filter($r, fn ($v) => trim((string) $v) !== '')) > 0));
         if (count($data) === 0) {
-            return back()->with('toast', ['msg' => 'الملف فارغ.', 'type' => 'warning']);
+            return back()->with('toast', ['msg' => __('الملف فارغ.'), 'type' => 'warning']);
         }
 
         $map = $this->detectColumns($data[0]);
@@ -188,23 +188,23 @@ class CustomerImportExportController extends Controller
             if ($fileBranch !== '' && isset($branchByName[$this->norm($fileBranch)])) {
                 $branchId = $branchByName[$this->norm($fileBranch)];
             }
-            $branchDisplay = $branchId ? ($branchName[$branchId] ?? '—') : 'بدون فرع';
+            $branchDisplay = $branchId ? ($branchName[$branchId] ?? '—') : __('بدون فرع');
 
             $status = 'new';
-            $note = 'سيُضاف';
+            $note = __('سيُضاف');
             $targetId = null;
             $np = $this->normPhone($phone);
             $nn = $this->norm($name);
 
             if ($name === '') {
                 $status = 'invalid';
-                $note = 'بدون اسم — يُتجاهل';
+                $note = __('بدون اسم — يُتجاهل');
             } elseif ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $status = 'invalid';
-                $note = 'بريد غير صالح — يُتجاهل';
+                $note = __('بريد غير صالح — يُتجاهل');
             } elseif ($np !== '' && isset($seen[$np])) {
                 $status = 'dup_file';
-                $note = 'مكرر داخل الملف — يُتجاهل';
+                $note = __('مكرر داخل الملف — يُتجاهل');
             } else {
                 // مطابقة عميل موجود => تحديث
                 if ($np !== '' && isset($byPhone[$np])) {
@@ -214,7 +214,7 @@ class CustomerImportExportController extends Controller
                 }
                 if ($targetId) {
                     $status = 'update';
-                    $note = 'موجود — سيُحدَّث';
+                    $note = __('موجود — سيُحدَّث');
                 }
             }
 
@@ -239,7 +239,7 @@ class CustomerImportExportController extends Controller
         $payload = session(self::SESSION_KEY);
         if (! $payload) {
             return redirect()->route('admin.customers.index')
-                ->with('toast', ['msg' => 'لا يوجد ملف للمعاينة. ارفع ملفًا أولًا.', 'type' => 'warning']);
+                ->with('toast', ['msg' => __('لا يوجد ملف للمعاينة. ارفع ملفًا أولًا.'), 'type' => 'warning']);
         }
 
         $default = $payload['default_branch_id'] ? Branch::find($payload['default_branch_id']) : null;
@@ -264,7 +264,7 @@ class CustomerImportExportController extends Controller
         $payload = session(self::SESSION_KEY);
         if (! $payload) {
             return redirect()->route('admin.customers.index')
-                ->with('toast', ['msg' => 'انتهت الجلسة. أعد رفع الملف.', 'type' => 'warning']);
+                ->with('toast', ['msg' => __('انتهت الجلسة. أعد رفع الملف.'), 'type' => 'warning']);
         }
 
         $bid = $this->bid();
@@ -303,7 +303,7 @@ class CustomerImportExportController extends Controller
         Activity::log('updated', "استيراد العملاء من ملف: {$payload['file']} — أُضيف {$added}، حُدِّث {$updated}");
 
         return redirect()->route('admin.customers.index')
-            ->with('toast', ['msg' => "تم الاستيراد: أُضيف {$added} عميلًا وحُدِّث {$updated}", 'type' => 'success']);
+            ->with('toast', ['msg' => __('تم الاستيراد: أُضيف :added عميلًا وحُدِّث :updated', ['added' => $added, 'updated' => $updated]), 'type' => 'success']);
     }
 
     public function cancel()
@@ -311,7 +311,7 @@ class CustomerImportExportController extends Controller
         session()->forget(self::SESSION_KEY);
 
         return redirect()->route('admin.customers.index')
-            ->with('toast', ['msg' => 'أُلغيت عملية الاستيراد', 'type' => 'warning']);
+            ->with('toast', ['msg' => __('أُلغيت عملية الاستيراد'), 'type' => 'warning']);
     }
 
     /* ============================== أدوات ============================== */

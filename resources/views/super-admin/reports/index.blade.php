@@ -1,12 +1,12 @@
-<x-layouts::super-admin title="التقارير">
+<x-layouts::super-admin :title="__('التقارير')">
     <x-page-header
-        title="التقارير"
-        subtitle="تقارير وتحليلات شاملة لأداء المنصة"
-        :breadcrumbs="['الرئيسية' => route('super-admin.dashboard'), 'التقارير' => '#']"
+        :title="__('التقارير')"
+        :subtitle="__('تقارير وتحليلات شاملة لأداء المنصة')"
+        :breadcrumbs="[__('الرئيسية') => route('super-admin.dashboard'), __('التقارير') => '#']"
     >
         <x-slot:actions>
-            <x-button variant="outline" size="md" icon="file-text" :href="route('super-admin.reports.pdf')">تصدير PDF</x-button>
-            <x-button variant="success" size="md" icon="sheet" :href="route('super-admin.export.businesses')">تصدير Excel</x-button>
+            <x-button variant="outline" size="md" icon="file-text" :href="route('super-admin.reports.pdf')">{{ __('تصدير PDF') }}</x-button>
+            <x-button variant="success" size="md" icon="sheet" :href="route('super-admin.export.businesses')">{{ __('تصدير Excel') }}</x-button>
         </x-slot:actions>
     </x-page-header>
 
@@ -14,7 +14,7 @@
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6" x-data="{ period: 'month' }">
         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div class="inline-flex rounded-xl bg-gray-100 p-1">
-                <template x-for="opt in [{ k: 'day', l: 'اليوم' }, { k: 'week', l: 'الأسبوع' }, { k: 'month', l: 'الشهر' }, { k: 'year', l: 'السنة' }]" :key="opt.k">
+                <template x-for="opt in [{ k: 'day', l: @js(__('اليوم')) }, { k: 'week', l: @js(__('الأسبوع')) }, { k: 'month', l: @js(__('الشهر')) }, { k: 'year', l: @js(__('السنة')) }]" :key="opt.k">
                     <button type="button"
                         @click="period = opt.k"
                         :class="period === opt.k ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
@@ -24,11 +24,11 @@
                 </template>
             </div>
             <div class="flex items-center gap-2">
-                <span class="text-sm text-gray-500">فترة مخصصة:</span>
+                <span class="text-sm text-gray-500">{{ __('فترة مخصصة:') }}</span>
                 <input type="date" @click="period = 'custom'" :class="period === 'custom' ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-300'" class="rounded-xl border bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none" />
                 <span class="text-gray-400">—</span>
                 <input type="date" @click="period = 'custom'" :class="period === 'custom' ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-300'" class="rounded-xl border bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none" />
-                <x-button variant="primary" size="sm" icon="filter" @click="period = 'custom'">تطبيق</x-button>
+                <x-button variant="primary" size="sm" icon="filter" @click="period = 'custom'">{{ __('تطبيق') }}</x-button>
             </div>
         </div>
     </div>
@@ -36,11 +36,11 @@
     {{-- بطاقات التقارير القابلة للنقر --}}
     @php
         $reportCards = [
-            ['title' => 'تقرير الإيرادات', 'desc' => 'إجمالي إيرادات الاشتراكات', 'icon' => 'wallet', 'color' => 'primary', 'value' => '52,640 ر.ع'],
-            ['title' => 'تقرير الاشتراكات', 'desc' => 'الاشتراكات النشطة والمنتهية', 'icon' => 'refresh-cw', 'color' => 'success', 'value' => '120'],
-            ['title' => 'تقرير الشركات', 'desc' => 'الشركات المسجلة في المنصة', 'icon' => 'building-2', 'color' => 'info', 'value' => '128'],
-            ['title' => 'تقرير الأنشطة', 'desc' => 'سجل الأنشطة والعمليات', 'icon' => 'activity', 'color' => 'warning', 'value' => '1,284'],
-            ['title' => 'محلات الورود', 'desc' => 'أداء محلات الورود', 'icon' => 'flower', 'color' => 'secondary', 'value' => '37'],
+            ['title' => __('تقرير الإيرادات'), 'desc' => __('إجمالي إيرادات الاشتراكات'), 'icon' => 'wallet', 'color' => 'primary', 'value' => '52,640 ر.ع'],
+            ['title' => __('تقرير الاشتراكات'), 'desc' => __('الاشتراكات النشطة والمنتهية'), 'icon' => 'refresh-cw', 'color' => 'success', 'value' => '120'],
+            ['title' => __('تقرير الشركات'), 'desc' => __('الشركات المسجلة في المنصة'), 'icon' => 'building-2', 'color' => 'info', 'value' => '128'],
+            ['title' => __('تقرير الأنشطة'), 'desc' => __('سجل الأنشطة والعمليات'), 'icon' => 'activity', 'color' => 'warning', 'value' => '1,284'],
+            ['title' => __('محلات الورود'), 'desc' => __('أداء محلات الورود'), 'icon' => 'flower', 'color' => 'secondary', 'value' => '37'],
         ];
         $cardColors = [
             'primary' => 'bg-primary-50 text-primary-600',
@@ -66,11 +66,11 @@
     {{-- الرسوم البيانية --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h3 class="font-bold text-gray-800 mb-4">الإيرادات الشهرية</h3>
+            <h3 class="font-bold text-gray-800 mb-4">{{ __('الإيرادات الشهرية') }}</h3>
             @php $revenueSeries = \App\Support\Demo::revenueSeries(); @endphp
             <div x-data='apexChart({
                 chart: { type: "area", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
-                series: [{ name: "الإيرادات", data: @json($revenueSeries['data']) }],
+                series: [{ name: @json(__('الإيرادات')), data: @json($revenueSeries['data']) }],
                 xaxis: { categories: @json($revenueSeries['labels']) },
                 colors: ["#7c3aed"],
                 dataLabels: { enabled: false },
@@ -80,7 +80,7 @@
             })'></div>
         </div>
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h3 class="font-bold text-gray-800 mb-4">توزيع الباقات</h3>
+            <h3 class="font-bold text-gray-800 mb-4">{{ __('توزيع الباقات') }}</h3>
             @php $planDist = \App\Support\Demo::planDistribution(); @endphp
             <div x-data='apexChart({
                 chart: { type: "donut", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
@@ -95,7 +95,7 @@
     </div>
 
     {{-- جدول ملخص التقرير --}}
-    <x-table :headers="['الباقة', 'عدد المشتركين', 'الإيراد الشهري', 'الإيراد السنوي', 'النسبة']">
+    <x-table :headers="[__('الباقة'), __('عدد المشتركين'), __('الإيراد الشهري'), __('الإيراد السنوي'), __('النسبة')]">
         @php
             $summary = [
                 ['plan' => 'الباقة الأساسية', 'subs' => 54, 'monthly' => 534.600, 'yearly' => 5346.000, 'pct' => '32%'],

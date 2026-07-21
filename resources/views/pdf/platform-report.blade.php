@@ -27,64 +27,64 @@
     <table style="border:none;"><tr>
         <td style="border:none; width:60%;">
             <div class="brand">Abad POS</div>
-            <div class="muted">منصة نقاط البيع متعددة المتاجر</div>
+            <div class="muted">{{ __('منصة نقاط البيع متعددة المتاجر') }}</div>
         </td>
         <td style="border:none; text-align:left;">
-            <div style="font-size:15px; font-weight:bold;">تقرير أداء المنصة</div>
-            <div class="muted">تاريخ الإصدار: {{ $generatedAt }}</div>
+            <div style="font-size:15px; font-weight:bold;">{{ __('تقرير أداء المنصة') }}</div>
+            <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
         </td>
     </tr></table>
 </div>
 
-<h2>الملخّص العام</h2>
+<h2>{{ __('الملخّص العام') }}</h2>
 <table class="cards">
     @foreach (array_chunk($stats, 4) as $chunk)
         <tr>
             @foreach ($chunk as $s)
-                <td><div class="card"><div class="lbl">{{ $s['label'] }}</div><div class="val">{{ $s['value'] }}</div></div></td>
+                <td><div class="card"><div class="lbl">{{ __($s['label']) }}</div><div class="val">{{ $s['value'] }}</div></div></td>
             @endforeach
         </tr>
     @endforeach
 </table>
 
-<h2>الإيرادات (آخر 6 أشهر)</h2>
+<h2>{{ __('الإيرادات (آخر 6 أشهر)') }}</h2>
 <table>
     @foreach ($revenueSeries['labels'] as $i => $label)
         @php $val = $revenueSeries['data'][$i] ?? 0; @endphp
         <tr>
-            <td style="width:16%;">{{ $label }}</td>
+            <td style="width:16%;">{{ __($label) }}</td>
             <td style="width:60%;"><div class="barwrap"><div class="bar" style="width: {{ pbar($val / $maxRev * 100) }}%;"></div></div></td>
             <td style="width:24%; text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($val) }}</td>
         </tr>
     @endforeach
 </table>
 
-<h2>نمو الشركات (تسجيلات جديدة)</h2>
+<h2>{{ __('نمو الشركات (تسجيلات جديدة)') }}</h2>
 <table>
     @foreach ($growthSeries['labels'] as $i => $label)
         @php $val = $growthSeries['data'][$i] ?? 0; @endphp
         <tr>
-            <td style="width:16%;">{{ $label }}</td>
+            <td style="width:16%;">{{ __($label) }}</td>
             <td style="width:60%;"><div class="barwrap"><div class="bar barsec" style="width: {{ pbar($val / $maxGrow * 100) }}%;"></div></div></td>
-            <td style="width:24%; text-align:left; font-weight:bold;">{{ $val }} شركة</td>
+            <td style="width:24%; text-align:left; font-weight:bold;">{{ __(':n شركة', ['n' => $val]) }}</td>
         </tr>
     @endforeach
 </table>
 
-<h2>توزيع الشركات على الباقات</h2>
+<h2>{{ __('توزيع الشركات على الباقات') }}</h2>
 <table>
-    <tr><th>الباقة</th><th>عدد الشركات</th></tr>
+    <tr><th>{{ __('الباقة') }}</th><th>{{ __('عدد الشركات') }}</th></tr>
     @foreach ($planDistribution['labels'] as $i => $label)
         <tr><td>{{ $label }}</td><td>{{ $planDistribution['series'][$i] ?? 0 }}</td></tr>
     @endforeach
 </table>
 
-<h2>أعلى الشركات مبيعًا</h2>
+<h2>{{ __('أعلى الشركات مبيعًا') }}</h2>
 <table>
-    <tr><th>الشركة</th><th>المدينة</th><th>الباقة</th><th>المبيعات</th></tr>
+    <tr><th>{{ __('الشركة') }}</th><th>{{ __('المدينة') }}</th><th>{{ __('الباقة') }}</th><th>{{ __('المبيعات') }}</th></tr>
     @foreach ($topBusinesses as $b)
         <tr><td>{{ $b['name'] }}</td><td>{{ $b['city'] }}</td><td>{{ $b['plan'] }}</td><td>{{ \App\Support\Demo::moneyBase($b['sales']) }}</td></tr>
     @endforeach
 </table>
 
-<div class="foot">تم إنشاء هذا التقرير آليًا عبر نظام Abad POS — {{ $generatedAt }}</div>
+<div class="foot">{{ __('تم إنشاء هذا التقرير آليًا عبر نظام Abad POS') }} — {{ $generatedAt }}</div>

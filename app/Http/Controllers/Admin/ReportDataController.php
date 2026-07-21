@@ -41,8 +41,8 @@ class ReportDataController extends Controller
             $rows[] = [$label, $this->money($s['data'][$i] ?? 0)];
         }
 
-        return ['title' => 'تقرير المبيعات', 'columns' => ['الشهر', 'المبيعات'], 'rows' => $rows,
-                'summary' => 'إجمالي المبيعات: ' . $this->money(array_sum($s['data']))];
+        return ['title' => __('تقرير المبيعات'), 'columns' => [__('الشهر'), __('المبيعات')], 'rows' => $rows,
+                'summary' => __('إجمالي المبيعات') . ': ' . $this->money(array_sum($s['data']))];
     }
 
     private function profit(): array
@@ -61,8 +61,8 @@ class ReportDataController extends Controller
             $rows[] = [$p['name'], $this->money($revenue), $this->money($cost), $this->money($profit)];
         }
 
-        return ['title' => 'تقرير الأرباح', 'columns' => ['المنتج', 'الإيراد', 'التكلفة', 'الربح'], 'rows' => $rows,
-                'summary' => 'إجمالي الربح: ' . $this->money($totalProfit) . ' من إيراد ' . $this->money($totalRevenue)];
+        return ['title' => __('تقرير الأرباح'), 'columns' => [__('المنتج'), __('الإيراد'), __('التكلفة'), __('الربح')], 'rows' => $rows,
+                'summary' => __('إجمالي الربح') . ': ' . $this->money($totalProfit) . ' ' . __('من إيراد') . ' ' . $this->money($totalRevenue)];
     }
 
     private function expenses(): array
@@ -75,8 +75,8 @@ class ReportDataController extends Controller
             $rows[] = [$e['date'], $e['type'], $e['description'], $this->money($amount)];
         }
 
-        return ['title' => 'تقرير المصروفات', 'columns' => ['التاريخ', 'النوع', 'البيان', 'المبلغ'], 'rows' => $rows,
-                'summary' => 'إجمالي المصروفات: ' . $this->money($total)];
+        return ['title' => __('تقرير المصروفات'), 'columns' => [__('التاريخ'), __('النوع'), __('البيان'), __('المبلغ')], 'rows' => $rows,
+                'summary' => __('إجمالي المصروفات') . ': ' . $this->money($total)];
     }
 
     private function tax(): array
@@ -91,8 +91,8 @@ class ReportDataController extends Controller
             $rows[] = [$label, $this->money($sales), $rate . '%', $this->money($tax)];
         }
 
-        return ['title' => 'تقرير الضرائب', 'columns' => ['الشهر', 'المبيعات', 'النسبة', 'الضريبة'], 'rows' => $rows,
-                'summary' => 'إجمالي الضريبة المستحقة: ' . $this->money($totalTax)];
+        return ['title' => __('تقرير الضرائب'), 'columns' => [__('الشهر'), __('المبيعات'), __('النسبة'), __('الضريبة')], 'rows' => $rows,
+                'summary' => __('إجمالي الضريبة المستحقة') . ': ' . $this->money($totalTax)];
     }
 
     private function payments(): array
@@ -102,8 +102,8 @@ class ReportDataController extends Controller
             $rows[] = [$m['name'], $this->money($m['total']), (string) $m['count']];
         }
 
-        return ['title' => 'وسائل الدفع', 'columns' => ['الوسيلة', 'الإجمالي', 'عدد العمليات'], 'rows' => $rows,
-                'summary' => 'عدد الوسائل النشطة: ' . count($rows)];
+        return ['title' => __('وسائل الدفع'), 'columns' => [__('الوسيلة'), __('الإجمالي'), __('عدد العمليات')], 'rows' => $rows,
+                'summary' => __('عدد الوسائل النشطة') . ': ' . count($rows)];
     }
 
     private function products(): array
@@ -113,8 +113,8 @@ class ReportDataController extends Controller
             $rows[] = [$p['name'], $p['cat'], $this->money($p['price']), (string) $p['qty'], $p['stock_status']];
         }
 
-        return ['title' => 'تقرير المنتجات', 'columns' => ['المنتج', 'التصنيف', 'السعر', 'الكمية', 'حالة المخزون'], 'rows' => $rows,
-                'summary' => 'عدد المنتجات: ' . count($rows)];
+        return ['title' => __('تقرير المنتجات'), 'columns' => [__('المنتج'), __('التصنيف'), __('السعر'), __('الكمية'), __('حالة المخزون')], 'rows' => $rows,
+                'summary' => __('عدد المنتجات') . ': ' . count($rows)];
     }
 
     private function inventory(): array
@@ -128,8 +128,8 @@ class ReportDataController extends Controller
             $rows[] = [$i['name'], $i['sku'], (string) $i['qty'], (string) $i['min'], $i['status']];
         }
 
-        return ['title' => 'تقرير المخزون', 'columns' => ['المنتج', 'SKU', 'الكمية', 'الحد الأدنى', 'الحالة'], 'rows' => $rows,
-                'summary' => "أصناف تحتاج إعادة طلب: {$low} من " . count($rows)];
+        return ['title' => __('تقرير المخزون'), 'columns' => [__('المنتج'), 'SKU', __('الكمية'), __('الحد الأدنى'), __('الحالة')], 'rows' => $rows,
+                'summary' => __('أصناف تحتاج إعادة طلب') . ": {$low} " . __('من') . ' ' . count($rows)];
     }
 
     private function employees(): array
@@ -139,8 +139,8 @@ class ReportDataController extends Controller
             $rows[] = [$e['name'], $e['role'], $e['branch'], $this->money($e['achieved']), $e['status']];
         }
 
-        return ['title' => 'تقرير الموظفين', 'columns' => ['الموظف', 'الوظيفة', 'الفرع', 'مبيعات الشهر', 'الحالة'], 'rows' => $rows,
-                'summary' => 'عدد الموظفين: ' . count($rows)];
+        return ['title' => __('تقرير الموظفين'), 'columns' => [__('الموظف'), __('الوظيفة'), __('الفرع'), __('مبيعات الشهر'), __('الحالة')], 'rows' => $rows,
+                'summary' => __('عدد الموظفين') . ': ' . count($rows)];
     }
 
     private function customers(): array
@@ -150,8 +150,8 @@ class ReportDataController extends Controller
             $rows[] = [$c['name'], (string) $c['orders'], $this->money($c['total'])];
         }
 
-        return ['title' => 'تقرير العملاء', 'columns' => ['العميل', 'عدد الطلبات', 'إجمالي الإنفاق'], 'rows' => $rows,
-                'summary' => 'عدد العملاء الذين اشتروا: ' . count($rows)];
+        return ['title' => __('تقرير العملاء'), 'columns' => [__('العميل'), __('عدد الطلبات'), __('إجمالي الإنفاق')], 'rows' => $rows,
+                'summary' => __('عدد العملاء الذين اشتروا') . ': ' . count($rows)];
     }
 
     private function categories(): array
@@ -162,7 +162,7 @@ class ReportDataController extends Controller
             $rows[] = [$label, $this->money($cat['series'][$i] ?? 0)];
         }
 
-        return ['title' => 'المبيعات حسب التصنيف', 'columns' => ['التصنيف', 'المبيعات'], 'rows' => $rows,
-                'summary' => 'عدد التصنيفات: ' . count($rows)];
+        return ['title' => __('المبيعات حسب التصنيف'), 'columns' => [__('التصنيف'), __('المبيعات')], 'rows' => $rows,
+                'summary' => __('عدد التصنيفات') . ': ' . count($rows)];
     }
 }

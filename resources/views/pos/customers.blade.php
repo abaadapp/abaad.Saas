@@ -1,4 +1,4 @@
-<x-layouts::pos title="العملاء">
+<x-layouts::pos :title="__('العملاء')">
     @php $customers = \App\Support\Demo::customers(); @endphp
 
     <div class="h-full overflow-y-auto p-4 sm:p-6" x-data="{ q: '' }">
@@ -9,16 +9,16 @@
                     <x-icon name="users" class="w-6 h-6" />
                 </span>
                 <div>
-                    <h1 class="text-xl font-bold text-gray-800">العملاء</h1>
-                    <p class="text-sm text-gray-400">{{ count($customers) }} عميل مسجّل</p>
+                    <h1 class="text-xl font-bold text-gray-800">{{ __('العملاء') }}</h1>
+                    <p class="text-sm text-gray-400">{{ __(':n عميل مسجّل', ['n' => count($customers)]) }}</p>
                 </div>
             </div>
             <div class="flex items-center gap-2 w-full sm:w-auto">
                 <div class="flex-1 sm:w-64">
-                    <x-input name="cust-search" placeholder="ابحث بالاسم أو الهاتف..." icon="search" x-model="q" />
+                    <x-input name="cust-search" :placeholder="__('ابحث بالاسم أو الهاتف...')" icon="search" x-model="q" />
                 </div>
                 <x-button variant="dark" icon="user-plus" class="shrink-0"
-                          @click="$dispatch('open-modal','new-customer')">عميل جديد</x-button>
+                          @click="$dispatch('open-modal','new-customer')">{{ __('عميل جديد') }}</x-button>
             </div>
         </div>
 
@@ -29,10 +29,10 @@
                     <table class="w-full text-sm text-right">
                         <thead class="bg-gray-50 text-gray-500">
                             <tr>
-                                <th class="px-4 py-3 font-medium">العميل</th>
-                                <th class="px-4 py-3 font-medium">الهاتف</th>
-                                <th class="px-4 py-3 font-medium">الطلبات</th>
-                                <th class="px-4 py-3 font-medium">النقاط</th>
+                                <th class="px-4 py-3 font-medium">{{ __('العميل') }}</th>
+                                <th class="px-4 py-3 font-medium">{{ __('الهاتف') }}</th>
+                                <th class="px-4 py-3 font-medium">{{ __('الطلبات') }}</th>
+                                <th class="px-4 py-3 font-medium">{{ __('النقاط') }}</th>
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
@@ -53,32 +53,32 @@
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-left">
                                         <x-button variant="light" size="sm" icon="check"
-                                                  :href="route('pos.index', ['customer' => $c['name']])">اختيار</x-button>
+                                                  :href="route('pos.index', ['customer' => $c['name']])">{{ __('اختيار') }}</x-button>
                                     </td>
                                 </tr>
                             @endforeach
                         </tbody>
                     </table>
                 </div>
-                <div class="px-4 py-3 text-xs text-gray-400 border-t border-gray-100">{{ count($customers) }} عميل</div>
+                <div class="px-4 py-3 text-xs text-gray-400 border-t border-gray-100">{{ __(':n عميل', ['n' => count($customers)]) }}</div>
             </div>
         @else
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm">
-                <x-empty-state icon="users" title="لا يوجد عملاء" message="أضِف أول عميل من زر «عميل جديد»." />
+                <x-empty-state icon="users" :title="__('لا يوجد عملاء')" :message="__('أضِف أول عميل من زر «عميل جديد».')" />
             </div>
         @endif
 
         {{-- نافذة عميل جديد --}}
-        <x-modal name="new-customer" title="إضافة عميل جديد" maxWidth="max-w-md">
+        <x-modal name="new-customer" :title="__('إضافة عميل جديد')" maxWidth="max-w-md">
             <form id="pos-new-customer" method="POST" action="{{ route('pos.customers.store') }}" class="space-y-4">
                 @csrf
-                <x-input label="الاسم الكامل" name="name" placeholder="اسم العميل" icon="user" :required="true" />
-                <x-input label="رقم الهاتف" name="phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" />
-                <x-input label="البريد الإلكتروني" name="email" type="email" placeholder="example@mail.com" icon="mail" />
+                <x-input :label="__('الاسم الكامل')" name="name" :placeholder="__('اسم العميل')" icon="user" :required="true" />
+                <x-input :label="__('رقم الهاتف')" name="phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" />
+                <x-input :label="__('البريد الإلكتروني')" name="email" type="email" placeholder="example@mail.com" icon="mail" />
             </form>
             <x-slot:footer>
-                <x-button variant="outline" @click="$dispatch('close-modal')">إلغاء</x-button>
-                <x-button variant="dark" icon="user-plus" type="submit" form="pos-new-customer">حفظ العميل</x-button>
+                <x-button variant="outline" @click="$dispatch('close-modal')">{{ __('إلغاء') }}</x-button>
+                <x-button variant="dark" icon="user-plus" type="submit" form="pos-new-customer">{{ __('حفظ العميل') }}</x-button>
             </x-slot:footer>
         </x-modal>
     </div>

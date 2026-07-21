@@ -17,9 +17,9 @@
             <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
         </td>
         <td style="border:none; text-align:left;">
-            <div style="font-size:15px; font-weight:bold;">قائمة العملاء</div>
-            <div class="muted">تاريخ الإصدار: {{ $generatedAt }}</div>
-            <div class="muted">العدد: {{ $customers->count() }} عميل</div>
+            <div style="font-size:15px; font-weight:bold;">{{ __('قائمة العملاء') }}</div>
+            <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
+            <div class="muted">{{ __('العدد: :n عميل', ['n' => $customers->count()]) }}</div>
         </td>
     </tr></table>
 </div>
@@ -28,11 +28,11 @@
     <thead>
         <tr>
             <th style="width:4%;">#</th>
-            <th>الاسم</th>
-            <th>الهاتف</th>
-            <th>البريد</th>
-            <th>الفرع</th>
-            <th style="text-align:left;">النقاط</th>
+            <th>{{ __('الاسم') }}</th>
+            <th>{{ __('الهاتف') }}</th>
+            <th>{{ __('البريد') }}</th>
+            <th>{{ __('الفرع') }}</th>
+            <th style="text-align:left;">{{ __('النقاط') }}</th>
         </tr>
     </thead>
     <tbody>
@@ -46,9 +46,9 @@
                 <td style="text-align:left;">{{ $c->points }}</td>
             </tr>
         @empty
-            <tr><td colspan="6" style="text-align:center; color:#9ca3af;">لا يوجد عملاء.</td></tr>
+            <tr><td colspan="6" style="text-align:center; color:#9ca3af;">{{ __('لا يوجد عملاء.') }}</td></tr>
         @endforelse
     </tbody>
 </table>
 
-<div class="foot">قائمة عملاء آلية عبر نظام Abad POS — {{ $generatedAt }}</div>
+<div class="foot">{{ __('قائمة عملاء آلية عبر نظام Abad POS') }} — {{ $generatedAt }}</div>

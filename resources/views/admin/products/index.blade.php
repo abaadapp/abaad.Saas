@@ -1,11 +1,11 @@
-<x-layouts::admin title="المنتجات">
+<x-layouts::admin :title="__('المنتجات')">
 
-    <x-page-header title="المنتجات" subtitle="إدارة منتجات محل الورود"
-        :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'المنتجات' => '#']">
+    <x-page-header :title="__('المنتجات')" :subtitle="__('إدارة منتجات محل الورود')"
+        :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('المنتجات') => '#']">
         <x-slot:actions>
-            <x-button variant="outline" icon="barcode" :href="route('admin.products.barcodes')">طباعة الباركود</x-button>
-            <x-button variant="outline" icon="download" :href="route('admin.products.xlsx')">تصدير Excel</x-button>
-            <x-button variant="primary" icon="plus" :href="route('admin.products.create')">إضافة منتج</x-button>
+            <x-button variant="outline" icon="barcode" :href="route('admin.products.barcodes')">{{ __('طباعة الباركود') }}</x-button>
+            <x-button variant="outline" icon="download" :href="route('admin.products.xlsx')">{{ __('تصدير Excel') }}</x-button>
+            <x-button variant="primary" icon="plus" :href="route('admin.products.create')">{{ __('إضافة منتج') }}</x-button>
         </x-slot:actions>
     </x-page-header>
 
@@ -17,11 +17,11 @@
         <form method="GET" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
                 <div class="lg:col-span-2">
-                    <x-input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="ابحث بالاسم أو SKU..." icon="search" />
+                    <x-input name="q" value="{{ $filters['q'] ?? '' }}" :placeholder="__('ابحث بالاسم أو SKU...')" icon="search" />
                 </div>
-                <x-select name="category" :options="collect(\App\Support\Demo::categories())->pluck('name', 'name')->toArray()" placeholder="كل التصنيفات" selected="{{ $filters['category'] ?? '' }}" />
-                <x-select name="status" :options="['active' => 'مفعّل', 'inactive' => 'غير مفعّل']" placeholder="كل الحالات" selected="{{ $filters['status'] ?? '' }}" />
-                <x-select name="stock" :options="['متوفر' => 'متوفر', 'منخفض' => 'منخفض', 'نفد المخزون' => 'نفد المخزون']" placeholder="حالة المخزون" selected="{{ $filters['stock'] ?? '' }}" />
+                <x-select name="category" :options="collect(\App\Support\Demo::categories())->pluck('name', 'name')->toArray()" :placeholder="__('كل التصنيفات')" selected="{{ $filters['category'] ?? '' }}" />
+                <x-select name="status" :options="['active' => __('مفعّل'), 'inactive' => __('غير مفعّل')]" :placeholder="__('كل الحالات')" selected="{{ $filters['status'] ?? '' }}" />
+                <x-select name="stock" :options="['متوفر' => __('متوفر'), 'منخفض' => __('منخفض'), 'نفد المخزون' => __('نفد المخزون')]" :placeholder="__('حالة المخزون')" selected="{{ $filters['stock'] ?? '' }}" />
             </div>
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
                 {{-- مبدّل العرض على شكل تبويبات بأيقونة ونص وخط سفلي --}}
@@ -30,19 +30,19 @@
                         :class="view === 'grid' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="flex items-center gap-2 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors">
                         <x-icon name="layout-grid" class="w-4 h-4" />
-                        عرض شبكي
+                        {{ __('عرض شبكي') }}
                     </button>
                     <button type="button" @click="view = 'table'"
                         :class="view === 'table' ? 'text-primary-600 border-primary-600' : 'text-gray-500 border-transparent hover:text-gray-700'"
                         class="flex items-center gap-2 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors">
                         <x-icon name="list" class="w-4 h-4" />
-                        عرض جدول
+                        {{ __('عرض جدول') }}
                     </button>
                 </div>
                 <div class="flex items-center gap-2">
-                    <x-button type="submit" icon="filter">تصفية</x-button>
-                    <x-button variant="outline" :href="url()->current()">تفريغ</x-button>
-                    <p class="text-sm text-gray-500">{{ $products->total() }} منتج</p>
+                    <x-button type="submit" icon="filter">{{ __('تصفية') }}</x-button>
+                    <x-button variant="outline" :href="url()->current()">{{ __('تفريغ') }}</x-button>
+                    <p class="text-sm text-gray-500">{{ __(':n منتج', ['n' => $products->total()]) }}</p>
                 </div>
             </div>
         </form>
@@ -58,16 +58,16 @@
                             </button>
                         </x-slot:trigger>
                         <a href="{{ route('admin.products.show', $p['id']) }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                            <x-icon name="eye" class="w-4 h-4" /> عرض
+                            <x-icon name="eye" class="w-4 h-4" /> {{ __('عرض') }}
                         </a>
                         <a href="{{ route('admin.products.edit', $p['id']) }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                            <x-icon name="pencil" class="w-4 h-4" /> تعديل
+                            <x-icon name="pencil" class="w-4 h-4" /> {{ __('تعديل') }}
                         </a>
-                        <form method="POST" action="{{ route('admin.products.destroy', $p['id']) }}" @submit.prevent="if(confirm('حذف المنتج؟')) $el.submit()">
+                        <form method="POST" action="{{ route('admin.products.destroy', $p['id']) }}" @submit.prevent="if(confirm(@js(__('حذف المنتج؟')))) $el.submit()">
                             @csrf
                             @method('DELETE')
                             <button type="submit" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-danger-600 hover:bg-danger-50">
-                                <x-icon name="trash-2" class="w-4 h-4" /> حذف
+                                <x-icon name="trash-2" class="w-4 h-4" /> {{ __('حذف') }}
                             </button>
                         </form>
                     </x-dropdown>
@@ -77,7 +77,7 @@
 
         {{-- عرض الجدول --}}
         <div x-show="view === 'table'">
-            <x-table :headers="['الصورة', 'الاسم', 'SKU', 'التصنيف', 'السعر', 'سعر التكلفة', 'الكمية', 'المخزون', 'الحالة', 'إجراءات']">
+            <x-table :headers="[__('الصورة'), __('الاسم'), 'SKU', __('التصنيف'), __('السعر'), __('سعر التكلفة'), __('الكمية'), __('المخزون'), __('الحالة'), __('إجراءات')]">
                 @foreach ($products as $p)
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-3">
@@ -89,9 +89,9 @@
                         <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ \App\Support\Demo::money($p['price']) }}</td>
                         <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ \App\Support\Demo::money($p['cost']) }}</td>
                         <td class="px-4 py-3 text-gray-700 whitespace-nowrap">{{ $p['qty'] }}</td>
-                        <td class="px-4 py-3"><x-badge :text="$p['stock_status']" /></td>
+                        <td class="px-4 py-3"><x-badge :text="__($p['stock_status'])" /></td>
                         <td class="px-4 py-3">
-                            <x-badge :type="$p['active'] ? 'success' : 'gray'">{{ $p['active'] ? 'مفعّل' : 'غير مفعّل' }}</x-badge>
+                            <x-badge :type="$p['active'] ? 'success' : 'gray'">{{ $p['active'] ? __('مفعّل') : __('غير مفعّل') }}</x-badge>
                         </td>
                         <td class="px-4 py-3">
                             <x-dropdown align="left" width="w-40">
@@ -101,16 +101,16 @@
                                     </button>
                                 </x-slot:trigger>
                                 <a href="{{ route('admin.products.show', $p['id']) }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                    <x-icon name="eye" class="w-4 h-4" /> عرض
+                                    <x-icon name="eye" class="w-4 h-4" /> {{ __('عرض') }}
                                 </a>
                                 <a href="{{ route('admin.products.edit', $p['id']) }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                    <x-icon name="pencil" class="w-4 h-4" /> تعديل
+                                    <x-icon name="pencil" class="w-4 h-4" /> {{ __('تعديل') }}
                                 </a>
-                                <form method="POST" action="{{ route('admin.products.destroy', $p['id']) }}" @submit.prevent="if(confirm('حذف المنتج؟')) $el.submit()">
+                                <form method="POST" action="{{ route('admin.products.destroy', $p['id']) }}" @submit.prevent="if(confirm(@js(__('حذف المنتج؟')))) $el.submit()">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-danger-600 hover:bg-danger-50">
-                                        <x-icon name="trash-2" class="w-4 h-4" /> حذف
+                                        <x-icon name="trash-2" class="w-4 h-4" /> {{ __('حذف') }}
                                     </button>
                                 </form>
                             </x-dropdown>

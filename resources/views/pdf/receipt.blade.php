@@ -1,4 +1,4 @@
-@php $money = fn ($v) => number_format((float) $v, 3) . ' ر.ع'; @endphp
+@php $money = fn ($v) => number_format((float) $v, 3) . ' ' . __('ر.ع'); @endphp
 <style>
     * { font-family: sans-serif; }
     body { direction: rtl; text-align: right; font-size: 11px; color: #111; }
@@ -17,24 +17,24 @@
 
 <div class="center">
     <h1>🌹 زهرة مسقط</h1>
-    <div class="muted">نظام Abad POS — الفرع الرئيسي</div>
+    <div class="muted">{{ __('نظام Abad POS') }} — {{ __('الفرع الرئيسي') }}</div>
     <div class="muted">مسقط، سلطنة عُمان · +968 24123456</div>
 </div>
 
 <div class="dash"></div>
 
 <table>
-    <tr><td class="muted">رقم الفاتورة</td><td style="text-align:left">{{ $order->number }}</td></tr>
-    <tr><td class="muted">الموظف</td><td style="text-align:left">{{ $order->employee_name ?? '—' }}</td></tr>
-    <tr><td class="muted">العميل</td><td style="text-align:left">{{ $order->customer_name ?? 'عميل نقدي' }}</td></tr>
-    <tr><td class="muted">التاريخ</td><td style="text-align:left">{{ optional($order->ordered_at)->format('Y-m-d H:i') }}</td></tr>
+    <tr><td class="muted">{{ __('رقم الفاتورة') }}</td><td style="text-align:left">{{ $order->number }}</td></tr>
+    <tr><td class="muted">{{ __('الموظف') }}</td><td style="text-align:left">{{ $order->employee_name ?? '—' }}</td></tr>
+    <tr><td class="muted">{{ __('العميل') }}</td><td style="text-align:left">{{ $order->customer_name ?? __('عميل نقدي') }}</td></tr>
+    <tr><td class="muted">{{ __('التاريخ') }}</td><td style="text-align:left">{{ optional($order->ordered_at)->format('Y-m-d H:i') }}</td></tr>
 </table>
 
 <div class="dash"></div>
 
 <table class="items">
     <thead>
-        <tr><th>الصنف</th><th class="center">الكمية</th><th style="text-align:left">الإجمالي</th></tr>
+        <tr><th>{{ __('الصنف') }}</th><th class="center">{{ __('الكمية') }}</th><th style="text-align:left">{{ __('الإجمالي') }}</th></tr>
     </thead>
     <tbody>
         @foreach ($order->items as $it)
@@ -50,17 +50,17 @@
 <div class="dash"></div>
 
 <table class="totals">
-    <tr><td class="label">المجموع الفرعي</td><td style="text-align:left">{{ $money($order->subtotal) }}</td></tr>
-    <tr><td class="label">الخصم</td><td style="text-align:left">{{ $money($order->discount) }}</td></tr>
-    <tr><td class="label">الضريبة</td><td style="text-align:left">{{ $money($order->tax) }}</td></tr>
-    <tr><td class="label">رسوم التوصيل</td><td style="text-align:left">{{ $money($order->delivery_fee) }}</td></tr>
-    <tr><td class="grand label">الإجمالي</td><td class="grand" style="text-align:left">{{ $money($order->total) }}</td></tr>
-    <tr><td class="label">وسيلة الدفع</td><td style="text-align:left">{{ $order->payment_method }}</td></tr>
+    <tr><td class="label">{{ __('المجموع الفرعي') }}</td><td style="text-align:left">{{ $money($order->subtotal) }}</td></tr>
+    <tr><td class="label">{{ __('الخصم') }}</td><td style="text-align:left">{{ $money($order->discount) }}</td></tr>
+    <tr><td class="label">{{ __('الضريبة') }}</td><td style="text-align:left">{{ $money($order->tax) }}</td></tr>
+    <tr><td class="label">{{ __('رسوم التوصيل') }}</td><td style="text-align:left">{{ $money($order->delivery_fee) }}</td></tr>
+    <tr><td class="grand label">{{ __('الإجمالي') }}</td><td class="grand" style="text-align:left">{{ $money($order->total) }}</td></tr>
+    <tr><td class="label">{{ __('وسيلة الدفع') }}</td><td style="text-align:left">{{ __($order->payment_method) }}</td></tr>
 </table>
 
 <div class="dash"></div>
 
 <div class="center muted">
-    شكرًا لزيارتكم 🌹<br>
-    نتشرف بخدمتكم دائمًا
+    {{ __('شكرًا لزيارتكم') }} 🌹<br>
+    {{ __('نتشرف بخدمتكم دائمًا') }}
 </div>

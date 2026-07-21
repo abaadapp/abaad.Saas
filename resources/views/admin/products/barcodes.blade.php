@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>طباعة الباركود — Abad POS</title>
+    <title>{{ __('طباعة الباركود') }} — Abad POS</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <style>
         @media print {
@@ -22,11 +22,11 @@
             <a href="{{ route('admin.products.index') }}" class="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-600">
                 <x-icon name="arrow-right" class="w-5 h-5" />
             </a>
-            <h1 class="font-bold text-gray-800">ملصقات الباركود <span class="text-gray-400 font-normal">({{ $products->count() }} منتج)</span></h1>
+            <h1 class="font-bold text-gray-800">{{ __('ملصقات الباركود') }} <span class="text-gray-400 font-normal">({{ __(':n منتج', ['n' => $products->count()]) }})</span></h1>
         </div>
         <div class="flex items-center gap-2">
             <div class="flex items-center gap-2 text-sm text-gray-600" x-data>
-                <label>عدد النسخ لكل منتج:</label>
+                <label>{{ __('عدد النسخ لكل منتج:') }}</label>
                 <select x-data @change="document.querySelectorAll('[data-copies]').forEach(el => {}); location.search = '?copies=' + $event.target.value"
                         class="rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
                     @foreach ([1, 2, 3, 4] as $c)
@@ -35,7 +35,7 @@
                 </select>
             </div>
             <button type="button" onclick="window.print()" class="inline-flex items-center gap-2 rounded-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 text-sm font-medium shadow-sm">
-                <x-icon name="printer" class="w-4 h-4" /> طباعة
+                <x-icon name="printer" class="w-4 h-4" /> {{ __('طباعة') }}
             </button>
         </div>
     </div>
@@ -45,7 +45,7 @@
     @if ($products->isEmpty())
         <div class="max-w-md mx-auto mt-20 text-center text-gray-400">
             <x-icon name="package-x" class="w-12 h-12 mx-auto mb-3" />
-            <p>لا توجد منتجات مفعّلة لطباعة الباركود.</p>
+            <p>{{ __('لا توجد منتجات مفعّلة لطباعة الباركود.') }}</p>
         </div>
     @else
         <div class="p-4 lg:p-8">

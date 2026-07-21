@@ -1,10 +1,10 @@
 {{-- شريط تبويبات قسم المخزون (بنفس شكل تبويبات المصروفات) --}}
 @php
     $inventoryTabs = [
-        ['label' => 'المخزون', 'url' => route('admin.inventory.index'), 'active' => request()->routeIs('admin.inventory.index')],
-        ['label' => 'المورّدون', 'url' => route('admin.suppliers.index'), 'active' => request()->routeIs('admin.suppliers.*')],
-        ['label' => 'أوامر الشراء', 'url' => route('admin.purchases.index'), 'active' => request()->routeIs('admin.purchases.*')],
-        ['label' => 'حركات المخزون', 'url' => route('admin.inventory.movements'), 'active' => request()->routeIs('admin.inventory.movements')],
+        ['label' => __('المخزون'), 'url' => route('admin.inventory.index'), 'active' => request()->routeIs('admin.inventory.index')],
+        ['label' => __('المورّدون'), 'url' => route('admin.suppliers.index'), 'active' => request()->routeIs('admin.suppliers.*')],
+        ['label' => __('أوامر الشراء'), 'url' => route('admin.purchases.index'), 'active' => request()->routeIs('admin.purchases.*')],
+        ['label' => __('حركات المخزون'), 'url' => route('admin.inventory.movements'), 'active' => request()->routeIs('admin.inventory.movements')],
     ];
 @endphp
 

@@ -21,46 +21,46 @@
             <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
         </td>
         <td style="border:none; text-align:left;">
-            <div style="font-size:15px; font-weight:bold;">كشف عمولة موظف</div>
-            <div class="muted">الفترة: {{ $month }}</div>
-            <div class="muted">تاريخ الإصدار: {{ $generatedAt }}</div>
+            <div style="font-size:15px; font-weight:bold;">{{ __('كشف عمولة موظف') }}</div>
+            <div class="muted">{{ __('الفترة:') }} {{ $month }}</div>
+            <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
         </td>
     </tr></table>
 </div>
 
 <table class="info">
     <tr>
-        <td style="width:50%;"><strong>الموظف:</strong> {{ $employee->name }}</td>
-        <td style="width:50%;"><strong>الدور:</strong> {{ $employee->roleLabel() }}</td>
+        <td style="width:50%;"><strong>{{ __('الموظف:') }}</strong> {{ $employee->name }}</td>
+        <td style="width:50%;"><strong>{{ __('الدور:') }}</strong> {{ __($employee->roleLabel()) }}</td>
     </tr>
     <tr>
-        <td><strong>الفرع:</strong> {{ $employee->branch ?: '—' }}</td>
-        <td><strong>الهاتف:</strong> {{ $employee->phone ?: '—' }}</td>
+        <td><strong>{{ __('الفرع:') }}</strong> {{ $employee->branch ?: '—' }}</td>
+        <td><strong>{{ __('الهاتف:') }}</strong> {{ $employee->phone ?: '—' }}</td>
     </tr>
 </table>
 
-<h2>طلبات الشهر ({{ $orders_count }})</h2>
+<h2>{{ __('طلبات الشهر') }} ({{ $orders_count }})</h2>
 <table>
-    <tr><th>رقم الطلب</th><th>التاريخ</th><th>الحالة</th><th>وسيلة الدفع</th><th>الإجمالي</th></tr>
+    <tr><th>{{ __('رقم الطلب') }}</th><th>{{ __('التاريخ') }}</th><th>{{ __('الحالة') }}</th><th>{{ __('وسيلة الدفع') }}</th><th>{{ __('الإجمالي') }}</th></tr>
     @forelse ($orders as $o)
         <tr>
             <td>{{ $o->number }}</td>
             <td>{{ optional($o->ordered_at)->format('Y-m-d') }}</td>
-            <td><span class="pill">{{ $o->status }}</span></td>
-            <td>{{ $o->payment_method }}</td>
+            <td><span class="pill">{{ __($o->status) }}</span></td>
+            <td>{{ __($o->payment_method) }}</td>
             <td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($o->total) }}</td>
         </tr>
     @empty
-        <tr><td colspan="5" style="text-align:center; color:#9ca3af;">لا توجد طلبات لهذا الموظف خلال الشهر.</td></tr>
+        <tr><td colspan="5" style="text-align:center; color:#9ca3af;">{{ __('لا توجد طلبات لهذا الموظف خلال الشهر.') }}</td></tr>
     @endforelse
 </table>
 
-<h2>احتساب العمولة</h2>
+<h2>{{ __('احتساب العمولة') }}</h2>
 <table class="totals">
-    <tr><td style="color:#6b7280;">إجمالي المبيعات المحقّقة</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($achieved) }}</td></tr>
-    <tr><td style="color:#6b7280;">الهدف الشهري</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($target) }} ({{ $pct }}%)</td></tr>
-    <tr><td style="color:#6b7280;">نسبة العمولة</td><td style="text-align:left;">{{ $rate }}%</td></tr>
-    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">العمولة المستحقّة</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($commission) }}</td></tr>
+    <tr><td style="color:#6b7280;">{{ __('إجمالي المبيعات المحقّقة') }}</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($achieved) }}</td></tr>
+    <tr><td style="color:#6b7280;">{{ __('الهدف الشهري') }}</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($target) }} ({{ $pct }}%)</td></tr>
+    <tr><td style="color:#6b7280;">{{ __('نسبة العمولة') }}</td><td style="text-align:left;">{{ $rate }}%</td></tr>
+    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">{{ __('العمولة المستحقّة') }}</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($commission) }}</td></tr>
 </table>
 
-<div class="foot">كشف عمولة آلي عبر نظام Abad POS — {{ $generatedAt }} — القيم بالريال العماني</div>
+<div class="foot">{{ __('كشف عمولة آلي عبر نظام Abad POS') }} — {{ $generatedAt }} — {{ __('القيم بالريال العماني') }}</div>

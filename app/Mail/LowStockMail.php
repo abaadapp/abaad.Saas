@@ -13,7 +13,7 @@ class LowStockMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'تنبيه انخفاض المخزون — ' . $this->businessName);
+        return new Envelope(subject: __('تنبيه انخفاض المخزون — :business', ['business' => $this->businessName]));
     }
 
     public function content(): Content

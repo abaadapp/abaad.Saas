@@ -17,35 +17,35 @@
         <td style="border:none; width:60%;">
             <div class="brand">{{ $business['name'] ?? 'Abad POS' }}</div>
             <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
-            @if (!empty($vat['number']))<div class="muted">الرقم الضريبي (TRN): {{ $vat['number'] }}</div>@endif
+            @if (!empty($vat['number']))<div class="muted">{{ __('الرقم الضريبي (TRN):') }} {{ $vat['number'] }}</div>@endif
         </td>
         <td style="border:none; text-align:left;">
-            <div style="font-size:15px; font-weight:bold;">إقرار ضريبة القيمة المضافة</div>
-            <div class="muted">{{ $report['label'] }} ({{ $report['from'] }} — {{ $report['to'] }})</div>
-            <div class="muted">تاريخ الإصدار: {{ $generatedAt }}</div>
+            <div style="font-size:15px; font-weight:bold;">{{ __('إقرار ضريبة القيمة المضافة') }}</div>
+            <div class="muted">{{ __($report['label']) }} ({{ $report['from'] }} — {{ $report['to'] }})</div>
+            <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
         </td>
     </tr></table>
 </div>
 
-<h2>التفصيل الشهري</h2>
+<h2>{{ __('التفصيل الشهري') }}</h2>
 <table>
-    <tr><th>الشهر</th><th>المبيعات الخاضعة</th><th>ضريبة المخرجات</th></tr>
+    <tr><th>{{ __('الشهر') }}</th><th>{{ __('المبيعات الخاضعة') }}</th><th>{{ __('ضريبة المخرجات') }}</th></tr>
     @foreach ($report['months'] as $m)
         <tr>
-            <td>{{ $m['label'] }}</td>
+            <td>{{ __($m['label']) }}</td>
             <td>{{ \App\Support\Demo::moneyBase($m['taxable']) }}</td>
             <td style="text-align:left;">{{ \App\Support\Demo::moneyBase($m['vat']) }}</td>
         </tr>
     @endforeach
 </table>
 
-<h2>ملخّص الإقرار (نسبة {{ rtrim(rtrim(number_format($report['rate'],2,'.',''),'0'),'.') }}%)</h2>
+<h2>{{ __('ملخّص الإقرار') }} ({{ __('نسبة') }} {{ rtrim(rtrim(number_format($report['rate'],2,'.',''),'0'),'.') }}%)</h2>
 <table class="totals">
-    <tr><td style="color:#6b7280;">إجمالي المبيعات الخاضعة للضريبة</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($report['taxable_sales']) }}</td></tr>
-    <tr><td style="color:#059669;">ضريبة المخرجات (على المبيعات)</td><td style="text-align:left; font-weight:bold; color:#059669;">{{ \App\Support\Demo::moneyBase($report['output_vat']) }}</td></tr>
-    <tr><td style="color:#6b7280;">مشتريات مستلمة (أساس المدخلات)</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($report['input_base']) }}</td></tr>
-    <tr><td style="color:#d97706;">ضريبة المدخلات (على المشتريات)</td><td style="text-align:left; font-weight:bold; color:#d97706;">- {{ \App\Support\Demo::moneyBase($report['input_vat']) }}</td></tr>
-    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">صافي الضريبة المستحقّة للسداد</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($report['net_vat']) }}</td></tr>
+    <tr><td style="color:#6b7280;">{{ __('إجمالي المبيعات الخاضعة للضريبة') }}</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($report['taxable_sales']) }}</td></tr>
+    <tr><td style="color:#059669;">{{ __('ضريبة المخرجات (على المبيعات)') }}</td><td style="text-align:left; font-weight:bold; color:#059669;">{{ \App\Support\Demo::moneyBase($report['output_vat']) }}</td></tr>
+    <tr><td style="color:#6b7280;">{{ __('مشتريات مستلمة (أساس المدخلات)') }}</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($report['input_base']) }}</td></tr>
+    <tr><td style="color:#d97706;">{{ __('ضريبة المدخلات (على المشتريات)') }}</td><td style="text-align:left; font-weight:bold; color:#d97706;">- {{ \App\Support\Demo::moneyBase($report['input_vat']) }}</td></tr>
+    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">{{ __('صافي الضريبة المستحقّة للسداد') }}</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($report['net_vat']) }}</td></tr>
 </table>
 
-<div class="foot">إقرار ضريبي آلي عبر نظام Abad POS — {{ $generatedAt }} — القيم بالريال العماني — للاسترشاد فقط</div>
+<div class="foot">{{ __('إقرار ضريبي آلي عبر نظام Abad POS') }} — {{ $generatedAt }} — {{ __('القيم بالريال العماني') }} — {{ __('للاسترشاد فقط') }}</div>

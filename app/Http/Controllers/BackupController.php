@@ -54,7 +54,7 @@ class BackupController extends Controller
 
         $data = json_decode(file_get_contents($request->file('backup')->getRealPath()), true);
         if (! is_array($data) || (($data['meta']['app'] ?? null) !== 'AbadPOS')) {
-            return back()->with('toast', ['msg' => 'ملف النسخة الاحتياطية غير صالح', 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('ملف النسخة الاحتياطية غير صالح'), 'type' => 'error']);
         }
 
         $bid = $this->bid();
@@ -160,6 +160,6 @@ class BackupController extends Controller
 
         Activity::log('restore', 'استعاد بيانات المتجر من نسخة احتياطية');
 
-        return back()->with('toast', ['msg' => 'تمت استعادة البيانات بنجاح', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تمت استعادة البيانات بنجاح'), 'type' => 'success']);
     }
 }

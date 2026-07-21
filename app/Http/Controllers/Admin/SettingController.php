@@ -22,6 +22,6 @@ class SettingController extends Controller
 
         \App\Support\Activity::log('settings', 'حدّث إعدادات النشاط');
 
-        return back()->with('toast', ['msg' => 'تم حفظ الإعدادات بنجاح', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم حفظ الإعدادات بنجاح'), 'type' => 'success']);
     }
 }

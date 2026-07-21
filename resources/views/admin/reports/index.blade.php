@@ -1,21 +1,21 @@
-<x-layouts::admin title="التقارير">
+<x-layouts::admin :title="__('التقارير')">
     <x-page-header
-        title="التقارير"
-        subtitle="تحليلات شاملة لأداء المحل ومبيعاته وأرباحه"
-        :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'التقارير' => '#']"
+        :title="__('التقارير')"
+        :subtitle="__('تحليلات شاملة لأداء المحل ومبيعاته وأرباحه')"
+        :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('التقارير') => '#']"
     >
         <x-slot:actions>
             <x-dropdown align="left" width="w-56">
                 <x-slot:trigger>
                     <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-full bg-primary-600 hover:bg-primary-700 text-white cursor-pointer">
-                        <x-icon name="download" class="w-4 h-4" /> تصدير
+                        <x-icon name="download" class="w-4 h-4" /> {{ __('تصدير') }}
                     </span>
                 </x-slot:trigger>
                 <a href="{{ route('admin.reports.xlsx') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
-                    <x-icon name="file-spreadsheet" class="w-4 h-4 text-gray-400" /> تصدير كملف إكسل
+                    <x-icon name="file-spreadsheet" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف إكسل') }}
                 </a>
                 <a href="{{ route('admin.reports.pdf') }}" target="_blank" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
-                    <x-icon name="file-text" class="w-4 h-4 text-gray-400" /> تصدير كملف PDF
+                    <x-icon name="file-text" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف PDF') }}
                 </a>
             </x-dropdown>
         </x-slot:actions>
@@ -25,20 +25,20 @@
     @php
         // group: مالية | تشغيلية | تحليلات
         $reportCards = [
-            ['key' => 'sales', 'title' => 'تقرير المبيعات', 'icon' => 'shopping-bag', 'color' => 'primary', 'value' => '12,640 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'profit', 'title' => 'تقرير الأرباح', 'icon' => 'piggy-bank', 'color' => 'success', 'value' => '11,400 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'expenses', 'title' => 'تقرير المصروفات', 'icon' => 'arrow-down-circle', 'color' => 'danger', 'value' => '1,240 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'tax', 'title' => 'تقرير الضرائب', 'icon' => 'percent', 'color' => 'info', 'value' => '632 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'payments', 'title' => 'وسائل الدفع', 'icon' => 'credit-card', 'color' => 'secondary', 'value' => '4 وسائل', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'profit', 'title' => 'الربحية', 'icon' => 'trending-up', 'color' => 'success', 'value' => 'هوامش الربح', 'group' => 'مالية', 'url' => route('admin.profitability.index')],
-            ['key' => 'tax', 'title' => 'ضريبة القيمة المضافة', 'icon' => 'landmark', 'color' => 'info', 'value' => 'الإقرار الضريبي', 'group' => 'مالية', 'url' => route('admin.vat.index')],
+            ['key' => 'sales', 'title' => __('تقرير المبيعات'), 'icon' => 'shopping-bag', 'color' => 'primary', 'value' => '12,640 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'profit', 'title' => __('تقرير الأرباح'), 'icon' => 'piggy-bank', 'color' => 'success', 'value' => '11,400 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'expenses', 'title' => __('تقرير المصروفات'), 'icon' => 'arrow-down-circle', 'color' => 'danger', 'value' => '1,240 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'tax', 'title' => __('تقرير الضرائب'), 'icon' => 'percent', 'color' => 'info', 'value' => '632 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'payments', 'title' => __('وسائل الدفع'), 'icon' => 'credit-card', 'color' => 'secondary', 'value' => __('4 وسائل'), 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'profit', 'title' => __('الربحية'), 'icon' => 'trending-up', 'color' => 'success', 'value' => __('هوامش الربح'), 'group' => 'مالية', 'url' => route('admin.profitability.index')],
+            ['key' => 'tax', 'title' => __('ضريبة القيمة المضافة'), 'icon' => 'landmark', 'color' => 'info', 'value' => __('الإقرار الضريبي'), 'group' => 'مالية', 'url' => route('admin.vat.index')],
 
-            ['key' => 'products', 'title' => 'تقرير المنتجات', 'icon' => 'package', 'color' => 'info', 'value' => '151', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'inventory', 'title' => 'تقرير المخزون', 'icon' => 'boxes', 'color' => 'warning', 'value' => '9 تنبيهات', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'employees', 'title' => 'تقرير الموظفين', 'icon' => 'users', 'color' => 'secondary', 'value' => '7', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'products', 'title' => __('تقرير المنتجات'), 'icon' => 'package', 'color' => 'info', 'value' => '151', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'inventory', 'title' => __('تقرير المخزون'), 'icon' => 'boxes', 'color' => 'warning', 'value' => __('9 تنبيهات'), 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'employees', 'title' => __('تقرير الموظفين'), 'icon' => 'users', 'color' => 'secondary', 'value' => '7', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
 
-            ['key' => 'categories', 'title' => 'تحليلات متقدمة', 'icon' => 'chart-line', 'color' => 'primary', 'value' => 'الاتجاهات والذروة', 'group' => 'تحليلات', 'url' => route('admin.analytics.index')],
-            ['key' => 'customers', 'title' => 'تقرير العملاء', 'icon' => 'user-round', 'color' => 'primary', 'value' => '214', 'group' => 'تحليلات', 'url' => route('admin.reports.pdf')],
+            ['key' => 'categories', 'title' => __('تحليلات متقدمة'), 'icon' => 'chart-line', 'color' => 'primary', 'value' => __('الاتجاهات والذروة'), 'group' => 'تحليلات', 'url' => route('admin.analytics.index')],
+            ['key' => 'customers', 'title' => __('تقرير العملاء'), 'icon' => 'user-round', 'color' => 'primary', 'value' => '214', 'group' => 'تحليلات', 'url' => route('admin.reports.pdf')],
         ];
         $cardColors = [
             'primary' => 'bg-primary-50 text-primary-600',
@@ -49,10 +49,10 @@
             'secondary' => 'bg-secondary-50 text-secondary-600',
         ];
         $chips = [
-            ['key' => 'all', 'label' => 'الكل', 'count' => count($reportCards)],
-            ['key' => 'مالية', 'label' => 'التقارير المالية', 'count' => collect($reportCards)->where('group', 'مالية')->count()],
-            ['key' => 'تشغيلية', 'label' => 'التقارير التشغيلية', 'count' => collect($reportCards)->where('group', 'تشغيلية')->count()],
-            ['key' => 'تحليلات', 'label' => 'تقارير التحليلات', 'count' => collect($reportCards)->where('group', 'تحليلات')->count()],
+            ['key' => 'all', 'label' => __('الكل'), 'count' => count($reportCards)],
+            ['key' => 'مالية', 'label' => __('التقارير المالية'), 'count' => collect($reportCards)->where('group', 'مالية')->count()],
+            ['key' => 'تشغيلية', 'label' => __('التقارير التشغيلية'), 'count' => collect($reportCards)->where('group', 'تشغيلية')->count()],
+            ['key' => 'تحليلات', 'label' => __('تقارير التحليلات'), 'count' => collect($reportCards)->where('group', 'تحليلات')->count()],
         ];
     @endphp
 
@@ -104,7 +104,7 @@
 
                 <div class="flex-1 overflow-auto px-6 py-4">
                     <template x-if="loading">
-                        <p class="py-10 text-center text-sm text-gray-400">جارٍ تحميل التقرير…</p>
+                        <p class="py-10 text-center text-sm text-gray-400">{{ __('جارٍ تحميل التقرير…') }}</p>
                     </template>
                     <template x-if="!loading && error">
                         <p class="py-10 text-center text-sm text-danger-500" x-text="error"></p>
@@ -131,14 +131,14 @@
                                     </tbody>
                                 </table>
                             </div>
-                            <p x-show="!report.rows.length" class="py-8 text-center text-sm text-gray-400">لا توجد بيانات لهذا التقرير.</p>
+                            <p x-show="!report.rows.length" class="py-8 text-center text-sm text-gray-400">{{ __('لا توجد بيانات لهذا التقرير.') }}</p>
                         </div>
                     </template>
                 </div>
 
                 <div class="flex items-center justify-between px-6 py-4 border-t border-gray-100">
                     <span class="text-sm text-gray-500" x-text="report.summary || ''"></span>
-                    <x-button variant="outline" size="md" x-on:click="close()">إغلاق</x-button>
+                    <x-button variant="outline" size="md" x-on:click="close()">{{ __('إغلاق') }}</x-button>
                 </div>
             </div>
         </div>
@@ -147,12 +147,12 @@
     {{-- الرسوم البيانية --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h3 class="font-bold text-gray-800 mb-4">المبيعات الشهرية</h3>
+            <h3 class="font-bold text-gray-800 mb-4">{{ __('المبيعات الشهرية') }}</h3>
             @php $salesSeries = \App\Support\Demo::salesSeries(); @endphp
             <div x-data='apexChart({
                 chart: { type: "area", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
-                series: [{ name: "المبيعات (ر.ع)", data: @json($salesSeries['data']) }],
-                xaxis: { categories: @json($salesSeries['labels']) },
+                series: [{ name: "{{ __('المبيعات (ر.ع)') }}", data: @json($salesSeries['data']) }],
+                xaxis: { categories: @json(collect($salesSeries['labels'])->map(fn ($l) => __($l))) },
                 colors: ["#7c3aed"],
                 dataLabels: { enabled: false },
                 stroke: { curve: "smooth", width: 2 },
@@ -161,12 +161,12 @@
             })'></div>
         </div>
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h3 class="font-bold text-gray-800 mb-4">وسائل الدفع</h3>
+            <h3 class="font-bold text-gray-800 mb-4">{{ __('وسائل الدفع') }}</h3>
             @php $payDist = \App\Support\Demo::paymentDistribution(); @endphp
             <div x-data='apexChart({
                 chart: { type: "donut", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },
                 series: @json($payDist['series']),
-                labels: @json($payDist['labels']),
+                labels: @json(collect($payDist['labels'])->map(fn ($l) => __($l))),
                 colors: ["#7c3aed", "#db2777", "#10b981", "#f59e0b"],
                 dataLabels: { enabled: true },
                 legend: { position: "bottom" },
@@ -178,9 +178,9 @@
     {{-- جدول أفضل المنتجات --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-100">
-            <h3 class="font-bold text-gray-800">أفضل المنتجات مبيعًا</h3>
+            <h3 class="font-bold text-gray-800">{{ __('أفضل المنتجات مبيعًا') }}</h3>
         </div>
-        <x-table :headers="['المنتج', 'الفئة', 'الكمية المباعة', 'الإيراد', 'نسبة المبيعات']">
+        <x-table :headers="[__('المنتج'), __('الفئة'), __('الكمية المباعة'), __('الإيراد'), __('نسبة المبيعات')]">
             @php
                 $topProducts = [
                     ['name' => 'باقة ورد أحمر', 'cat' => 'باقات ورد', 'sold' => 320, 'revenue' => 4000.000, 'pct' => '28%'],
@@ -194,7 +194,7 @@
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $product['name'] }}</td>
                     <td class="px-4 py-3 whitespace-nowrap"><x-badge type="secondary" :text="$product['cat']" /></td>
-                    <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $product['sold'] }} وحدة</td>
+                    <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ __(':n وحدة', ['n' => $product['sold']]) }}</td>
                     <td class="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{{ \App\Support\Demo::money($product['revenue']) }}</td>
                     <td class="px-4 py-3 whitespace-nowrap"><x-badge type="primary" :text="$product['pct']" /></td>
                 </tr>

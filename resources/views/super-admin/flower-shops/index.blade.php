@@ -1,9 +1,9 @@
-<x-layouts::super-admin title="محلات الورود">
+<x-layouts::super-admin :title="__('محلات الورود')">
 
-    <x-page-header title="محلات الورود" subtitle="إدارة محلات الورود المسجلة في المنصة"
-        :breadcrumbs="['الرئيسية' => route('super-admin.dashboard'), 'محلات الورود' => '#']">
+    <x-page-header :title="__('محلات الورود')" :subtitle="__('إدارة محلات الورود المسجلة في المنصة')"
+        :breadcrumbs="[__('الرئيسية') => route('super-admin.dashboard'), __('محلات الورود') => '#']">
         <x-slot:actions>
-            <x-button variant="secondary" icon="plus" :href="route('super-admin.flower-shops.create')">إضافة محل ورود</x-button>
+            <x-button variant="secondary" icon="plus" :href="route('super-admin.flower-shops.create')">{{ __('إضافة محل ورود') }}</x-button>
         </x-slot:actions>
     </x-page-header>
 
@@ -11,16 +11,16 @@
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
         <form class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
             <div class="lg:col-span-2">
-                <x-input label="بحث" name="search" icon="search" placeholder="ابحث عن محل ورود..." />
+                <x-input :label="__('بحث')" name="search" icon="search" :placeholder="__('ابحث عن محل ورود...')" />
             </div>
-            <x-select label="المدينة" name="city" placeholder="كل المدن"
-                :options="['مسقط' => 'مسقط', 'صلالة' => 'صلالة', 'صحار' => 'صحار', 'نزوى' => 'نزوى', 'صور' => 'صور']" />
+            <x-select :label="__('المدينة')" name="city" :placeholder="__('كل المدن')"
+                :options="['مسقط' => __('مسقط'), 'صلالة' => __('صلالة'), 'صحار' => __('صحار'), 'نزوى' => __('نزوى'), 'صور' => __('صور')]" />
             <div class="flex items-end gap-2">
                 <div class="flex-1">
-                    <x-select label="الحالة" name="status" placeholder="كل الحالات"
-                        :options="['نشط' => 'نشط', 'منتهي' => 'منتهي']" />
+                    <x-select :label="__('الحالة')" name="status" :placeholder="__('كل الحالات')"
+                        :options="['نشط' => __('نشط'), 'منتهي' => __('منتهي')]" />
                 </div>
-                <x-button variant="secondary" type="submit" icon="filter">تصفية</x-button>
+                <x-button variant="secondary" type="submit" icon="filter">{{ __('تصفية') }}</x-button>
             </div>
         </form>
     </div>
@@ -32,7 +32,7 @@
                 <div class="relative h-32 bg-gradient-to-l from-secondary-100 to-primary-50">
                     <img src="{{ $shop['logo'] }}" alt="{{ $shop['name'] }}" class="w-full h-full object-cover opacity-90" />
                     <div class="absolute top-3 right-3">
-                        <x-badge :text="$shop['status']" />
+                        <x-badge :text="__($shop['status'])" />
                     </div>
                 </div>
                 <div class="p-5 flex-1 flex flex-col">
@@ -44,7 +44,7 @@
                             </p>
                         </div>
                         <span class="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-secondary-700 bg-secondary-50 px-2 py-1 rounded-lg">
-                            <x-icon name="layers" class="w-3.5 h-3.5" /> {{ $shop['plan'] }}
+                            <x-icon name="layers" class="w-3.5 h-3.5" /> {{ __($shop['plan']) }}
                         </span>
                     </div>
 
@@ -56,28 +56,28 @@
                     <div class="mt-4 grid grid-cols-4 gap-2 text-center">
                         <div class="rounded-xl bg-gray-50 py-2">
                             <p class="text-sm font-bold text-gray-800">{{ $shop['branches'] }}</p>
-                            <p class="text-[11px] text-gray-400">فروع</p>
+                            <p class="text-[11px] text-gray-400">{{ __('فروع') }}</p>
                         </div>
                         <div class="rounded-xl bg-gray-50 py-2">
                             <p class="text-sm font-bold text-gray-800">{{ $shop['employees'] }}</p>
-                            <p class="text-[11px] text-gray-400">موظفين</p>
+                            <p class="text-[11px] text-gray-400">{{ __('موظفين') }}</p>
                         </div>
                         <div class="rounded-xl bg-gray-50 py-2">
                             <p class="text-sm font-bold text-gray-800">{{ $shop['products'] }}</p>
-                            <p class="text-[11px] text-gray-400">منتجات</p>
+                            <p class="text-[11px] text-gray-400">{{ __('منتجات') }}</p>
                         </div>
                         <div class="rounded-xl bg-gray-50 py-2">
                             <p class="text-sm font-bold text-gray-800">{{ $shop['orders'] }}</p>
-                            <p class="text-[11px] text-gray-400">طلبات</p>
+                            <p class="text-[11px] text-gray-400">{{ __('طلبات') }}</p>
                         </div>
                     </div>
 
                     <div class="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between">
-                        <span class="text-sm text-gray-500">المبيعات: <span class="font-bold text-gray-800">{{ \App\Support\Demo::money($shop['sales']) }}</span></span>
+                        <span class="text-sm text-gray-500">{{ __('المبيعات:') }} <span class="font-bold text-gray-800">{{ \App\Support\Demo::money($shop['sales']) }}</span></span>
                     </div>
 
                     <div class="mt-4">
-                        <x-button variant="light" size="sm" icon="arrow-left" :href="route('super-admin.flower-shops.show', $shop['id'])" class="w-full">عرض التفاصيل</x-button>
+                        <x-button variant="light" size="sm" icon="arrow-left" :href="route('super-admin.flower-shops.show', $shop['id'])" class="w-full">{{ __('عرض التفاصيل') }}</x-button>
                     </div>
                 </div>
             </div>

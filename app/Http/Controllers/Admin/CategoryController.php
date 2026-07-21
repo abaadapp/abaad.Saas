@@ -24,7 +24,7 @@ class CategoryController extends Controller
         Category::create($data);
         \App\Support\Activity::log('created', 'أضاف تصنيفًا: ' . $data['name']);
 
-        return redirect()->route('admin.categories.index')->with('toast', ['msg' => 'تم إضافة التصنيف بنجاح', 'type' => 'success']);
+        return redirect()->route('admin.categories.index')->with('toast', ['msg' => __('تم إضافة التصنيف بنجاح'), 'type' => 'success']);
     }
 
     public function update(Request $request, $id)
@@ -42,7 +42,7 @@ class CategoryController extends Controller
         ]);
         \App\Support\Activity::log('updated', 'عدّل التصنيف: ' . $category->name, ['subject_id' => $category->id]);
 
-        return redirect()->route('admin.categories.index')->with('toast', ['msg' => 'تم تحديث التصنيف', 'type' => 'success']);
+        return redirect()->route('admin.categories.index')->with('toast', ['msg' => __('تم تحديث التصنيف'), 'type' => 'success']);
     }
 
     public function destroy($id)
@@ -53,13 +53,13 @@ class CategoryController extends Controller
         $used = $category->products()->count();
         if ($used > 0) {
             return back()->with('toast', [
-                'msg' => "لا يمكن حذف «{$category->name}» لأنه مرتبط بـ {$used} منتج. غيّر تصنيفها أولًا.",
+                'msg' => __('لا يمكن حذف «:name» لأنه مرتبط بـ :count منتج. غيّر تصنيفها أولًا.', ['name' => $category->name, 'count' => $used]),
                 'type' => 'error',
             ]);
         }
         \App\Support\Activity::log('deleted', 'حذف التصنيف: ' . $category->name);
         $category->delete();
 
-        return redirect()->route('admin.categories.index')->with('toast', ['msg' => 'تم حذف التصنيف', 'type' => 'success']);
+        return redirect()->route('admin.categories.index')->with('toast', ['msg' => __('تم حذف التصنيف'), 'type' => 'success']);
     }
 }

@@ -21,6 +21,6 @@ class CheckRole
         if ($user->role === 'super_admin' || in_array($user->role, $roles, true)) {
             return $next($request);
         }
-        abort(403, 'ليس لديك صلاحية الوصول إلى هذه الصفحة.');
+        abort(403, __('ليس لديك صلاحية الوصول إلى هذه الصفحة.'));
     }
 }

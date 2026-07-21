@@ -34,7 +34,7 @@ class SearchController extends Controller
         $orders = Order::where('business_id', $bid)->where('is_held', false)
             ->where(fn ($w) => $w->where('number', 'like', $like)->orWhere('customer_name', 'like', $like))
             ->orderByDesc('id')->limit(5)->get()->map(fn ($o) => [
-                'label' => $o->number, 'meta' => $o->customer_name ?? 'عميل نقدي',
+                'label' => $o->number, 'meta' => $o->customer_name ?? __('عميل نقدي'),
                 'url' => route('admin.orders.show', $o->number),
             ]);
 
@@ -46,9 +46,9 @@ class SearchController extends Controller
             ]);
 
         return response()->json(['groups' => array_values(array_filter([
-            $this->group('المنتجات', 'package', $products),
-            $this->group('الطلبات', 'shopping-cart', $orders),
-            $this->group('العملاء', 'users', $customers),
+            $this->group(__('المنتجات'), 'package', $products),
+            $this->group(__('الطلبات'), 'shopping-cart', $orders),
+            $this->group(__('العملاء'), 'users', $customers),
         ]))]);
     }
 
@@ -73,8 +73,8 @@ class SearchController extends Controller
             ]);
 
         return response()->json(['groups' => array_values(array_filter([
-            $this->group('الشركات', 'building-2', $businesses),
-            $this->group('المستخدمون', 'users', $users),
+            $this->group(__('الشركات'), 'building-2', $businesses),
+            $this->group(__('المستخدمون'), 'users', $users),
         ]))]);
     }
 

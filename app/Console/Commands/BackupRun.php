@@ -27,7 +27,7 @@ class BackupRun extends Command
 
         $businesses = $query->get();
         if ($businesses->isEmpty()) {
-            $this->warn('لا توجد متاجر للنسخ.');
+            $this->warn(__('لا توجد متاجر للنسخ.'));
 
             return self::SUCCESS;
         }
@@ -42,7 +42,7 @@ class BackupRun extends Command
             $count++;
         }
 
-        $this->info("تم إنشاء {$count} نسخة احتياطية في " . Storage::disk('local')->path($dir));
+        $this->info(__('تم إنشاء :count نسخة احتياطية في :path', ['count' => $count, 'path' => Storage::disk('local')->path($dir)]));
 
         return self::SUCCESS;
     }

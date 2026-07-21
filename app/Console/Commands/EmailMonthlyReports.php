@@ -41,12 +41,12 @@ class EmailMonthlyReports extends Command
             $topItem = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $b->id)->where('is_held', false)->whereBetween('ordered_at', [$start, $end]))
                 ->selectRaw('name, SUM(quantity) as q')->groupBy('name')->orderByDesc('q')->first();
 
-            $money = fn ($v) => number_format((float) $v, 3, '.', ',') . ' ر.ع';
+            $money = fn ($v) => number_format((float) $v, 3, '.', ',') . ' ' . __('ر.ع');
             $stats = [
-                ['label' => 'إجمالي المبيعات', 'value' => $money($sales)],
-                ['label' => 'عدد الطلبات', 'value' => (string) $orders],
-                ['label' => 'متوسط قيمة الطلب', 'value' => $money($orders ? $sales / $orders : 0)],
-                ['label' => 'المنتج الأكثر مبيعًا', 'value' => $topItem->name ?? '—'],
+                ['label' => __('إجمالي المبيعات'), 'value' => $money($sales)],
+                ['label' => __('عدد الطلبات'), 'value' => (string) $orders],
+                ['label' => __('متوسط قيمة الطلب'), 'value' => $money($orders ? $sales / $orders : 0)],
+                ['label' => __('المنتج الأكثر مبيعًا'), 'value' => $topItem->name ?? '—'],
             ];
 
             Mail::to($b->email)->send(new MonthlyReportMail($b->name, $period, $stats));
@@ -54,7 +54,7 @@ class EmailMonthlyReports extends Command
             $sent++;
         });
 
-        $this->info($sent ? "تم إرسال {$sent} تقرير عن {$period}." : 'لا توجد متاجر ذات نشاط لإرسال تقارير.');
+        $this->info($sent ? __('تم إرسال :count تقرير عن :period.', ['count' => $sent, 'period' => $period]) : __('لا توجد متاجر ذات نشاط لإرسال تقارير.'));
 
         return self::SUCCESS;
     }

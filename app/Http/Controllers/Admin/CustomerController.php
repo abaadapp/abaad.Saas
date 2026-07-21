@@ -63,7 +63,7 @@ class CustomerController extends Controller
         Customer::create($data);
         \App\Support\Activity::log('created', 'أضاف عميلًا: ' . $data['name']);
 
-        return redirect()->route('admin.customers.index')->with('toast', ['msg' => 'تم إضافة العميل بنجاح', 'type' => 'success']);
+        return redirect()->route('admin.customers.index')->with('toast', ['msg' => __('تم إضافة العميل بنجاح'), 'type' => 'success']);
     }
 
     public function saveNote(Request $request, $id)
@@ -73,7 +73,7 @@ class CustomerController extends Controller
         $customer->update(['notes' => $data['notes'] ?? null]);
         \App\Support\Activity::log('updated', 'حدّث ملاحظات العميل: ' . $customer->name, ['subject_id' => $customer->id]);
 
-        return back()->with('toast', ['msg' => 'تم حفظ الملاحظة', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم حفظ الملاحظة'), 'type' => 'success']);
     }
 
     public function redeem(Request $request, $id)
@@ -82,11 +82,11 @@ class CustomerController extends Controller
         $points = (int) $request->input('points', $customer->points);
         $points = max(0, min($points, (int) $customer->points));
         if ($points <= 0) {
-            return back()->with('toast', ['msg' => 'لا توجد نقاط كافية للصرف', 'type' => 'warning']);
+            return back()->with('toast', ['msg' => __('لا توجد نقاط كافية للصرف'), 'type' => 'warning']);
         }
         $customer->decrement('points', $points);
         \App\Support\Activity::log('updated', "صرف {$points} نقطة للعميل: {$customer->name}", ['subject_id' => $customer->id]);
 
-        return back()->with('toast', ['msg' => "تم صرف {$points} نقطة (خصم " . Demo::money($points / 100) . ')', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم صرف :points نقطة (خصم :amount)', ['points' => $points, 'amount' => Demo::money($points / 100)]), 'type' => 'success']);
     }
 }

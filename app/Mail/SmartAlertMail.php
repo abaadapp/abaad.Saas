@@ -12,7 +12,7 @@ class SmartAlertMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'تنبيهات ذكية — ' . $this->businessName);
+        return new Envelope(subject: __('تنبيهات ذكية — :business', ['business' => $this->businessName]));
     }
 
     public function content(): Content

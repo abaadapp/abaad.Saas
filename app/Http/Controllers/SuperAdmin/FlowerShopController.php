@@ -18,7 +18,7 @@ class FlowerShopController extends Controller
         $business = Business::create($this->mapped($request, true));
         \App\Support\Activity::log('created', 'أضاف محل ورود: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 
-        return redirect()->route('super-admin.flower-shops.index')->with('toast', ['msg' => 'تم حفظ محل الورود بنجاح', 'type' => 'success']);
+        return redirect()->route('super-admin.flower-shops.index')->with('toast', ['msg' => __('تم حفظ محل الورود بنجاح'), 'type' => 'success']);
     }
 
     public function update(Request $request, $id)
@@ -27,7 +27,7 @@ class FlowerShopController extends Controller
         $business->update($this->mapped($request, false));
         \App\Support\Activity::log('updated', 'عدّل محل الورود: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 
-        return redirect()->route('super-admin.flower-shops.show', $business->id)->with('toast', ['msg' => 'تم حفظ التعديلات بنجاح', 'type' => 'success']);
+        return redirect()->route('super-admin.flower-shops.show', $business->id)->with('toast', ['msg' => __('تم حفظ التعديلات بنجاح'), 'type' => 'success']);
     }
 
     private function mapped(Request $request, bool $creating): array

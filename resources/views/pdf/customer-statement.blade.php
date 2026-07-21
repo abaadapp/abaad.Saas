@@ -21,43 +21,43 @@
             <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
         </td>
         <td style="border:none; text-align:left;">
-            <div style="font-size:15px; font-weight:bold;">كشف حساب عميل</div>
-            <div class="muted">تاريخ الإصدار: {{ $generatedAt }}</div>
+            <div style="font-size:15px; font-weight:bold;">{{ __('كشف حساب عميل') }}</div>
+            <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
         </td>
     </tr></table>
 </div>
 
 <table class="info">
     <tr>
-        <td style="width:50%;"><strong>العميل:</strong> {{ $customer->name }}</td>
-        <td style="width:50%;"><strong>الهاتف:</strong> {{ $customer->phone ?: '—' }}</td>
+        <td style="width:50%;"><strong>{{ __('العميل:') }}</strong> {{ $customer->name }}</td>
+        <td style="width:50%;"><strong>{{ __('الهاتف:') }}</strong> {{ $customer->phone ?: '—' }}</td>
     </tr>
     <tr>
-        <td><strong>البريد:</strong> {{ $customer->email ?: '—' }}</td>
-        <td><strong>نقاط الولاء:</strong> {{ $customer->points }}</td>
+        <td><strong>{{ __('البريد:') }}</strong> {{ $customer->email ?: '—' }}</td>
+        <td><strong>{{ __('نقاط الولاء:') }}</strong> {{ $customer->points }}</td>
     </tr>
 </table>
 
-<h2>سجل الطلبات</h2>
+<h2>{{ __('سجل الطلبات') }}</h2>
 <table>
-    <tr><th>رقم الطلب</th><th>التاريخ</th><th>الحالة</th><th>وسيلة الدفع</th><th>الإجمالي</th></tr>
+    <tr><th>{{ __('رقم الطلب') }}</th><th>{{ __('التاريخ') }}</th><th>{{ __('الحالة') }}</th><th>{{ __('وسيلة الدفع') }}</th><th>{{ __('الإجمالي') }}</th></tr>
     @forelse ($orders as $o)
         <tr>
             <td>{{ $o->number }}</td>
             <td>{{ optional($o->ordered_at)->format('Y-m-d') }}</td>
-            <td><span class="pill">{{ $o->status }}</span></td>
-            <td>{{ $o->payment_method }}</td>
+            <td><span class="pill">{{ __($o->status) }}</span></td>
+            <td>{{ __($o->payment_method) }}</td>
             <td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($o->total) }}</td>
         </tr>
     @empty
-        <tr><td colspan="5" style="text-align:center; color:#9ca3af;">لا توجد طلبات لهذا العميل.</td></tr>
+        <tr><td colspan="5" style="text-align:center; color:#9ca3af;">{{ __('لا توجد طلبات لهذا العميل.') }}</td></tr>
     @endforelse
 </table>
 
-<h2>الملخّص</h2>
+<h2>{{ __('الملخّص') }}</h2>
 <table class="totals">
-    <tr><td style="color:#6b7280;">إجمالي المشتريات</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($totalSpent) }}</td></tr>
-    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">صافي الإنفاق</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($net) }}</td></tr>
+    <tr><td style="color:#6b7280;">{{ __('إجمالي المشتريات') }}</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($totalSpent) }}</td></tr>
+    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">{{ __('صافي الإنفاق') }}</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($net) }}</td></tr>
 </table>
 
-<div class="foot">كشف حساب آلي عبر نظام Abad POS — {{ $generatedAt }} — القيم بالريال العماني</div>
+<div class="foot">{{ __('كشف حساب آلي عبر نظام Abad POS') }} — {{ $generatedAt }} — {{ __('القيم بالريال العماني') }}</div>

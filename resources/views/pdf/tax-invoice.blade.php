@@ -18,29 +18,29 @@
         <td style="border:none; width:60%;">
             <div class="brand">{{ $business['name'] ?? 'Abad POS' }}</div>
             <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
-            @if (!empty($vat['number']))<div class="muted">الرقم الضريبي (TRN): {{ $vat['number'] }}</div>@endif
+            @if (!empty($vat['number']))<div class="muted">{{ __('الرقم الضريبي (TRN):') }} {{ $vat['number'] }}</div>@endif
         </td>
         <td style="border:none; text-align:left;">
-            <div class="title">فاتورة ضريبية</div>
-            <div class="muted">رقم: {{ $order->number }}</div>
-            <div class="muted">التاريخ: {{ optional($order->ordered_at)->format('Y-m-d H:i') ?? $generatedAt }}</div>
+            <div class="title">{{ __('فاتورة ضريبية') }}</div>
+            <div class="muted">{{ __('رقم:') }} {{ $order->number }}</div>
+            <div class="muted">{{ __('التاريخ:') }} {{ optional($order->ordered_at)->format('Y-m-d H:i') ?? $generatedAt }}</div>
         </td>
     </tr></table>
 </div>
 
 <table class="info">
     <tr>
-        <td style="width:50%;"><strong>العميل:</strong> {{ $order->customer_name ?: 'عميل نقدي' }}</td>
-        <td style="width:50%;"><strong>وسيلة الدفع:</strong> {{ $order->payment_method }}</td>
+        <td style="width:50%;"><strong>{{ __('العميل:') }}</strong> {{ $order->customer_name ?: __('عميل نقدي') }}</td>
+        <td style="width:50%;"><strong>{{ __('وسيلة الدفع:') }}</strong> {{ __($order->payment_method) }}</td>
     </tr>
     <tr>
-        <td><strong>الفرع:</strong> {{ $order->branch }}</td>
-        <td><strong>الموظف:</strong> {{ $order->employee_name ?: '—' }}</td>
+        <td><strong>{{ __('الفرع:') }}</strong> {{ $order->branch }}</td>
+        <td><strong>{{ __('الموظف:') }}</strong> {{ $order->employee_name ?: '—' }}</td>
     </tr>
 </table>
 
 <table>
-    <tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>
+    <tr><th>{{ __('الصنف') }}</th><th>{{ __('الكمية') }}</th><th>{{ __('السعر') }}</th><th>{{ __('الإجمالي') }}</th></tr>
     @foreach ($order->items as $it)
         <tr>
             <td>{{ $it->name }}</td>
@@ -58,12 +58,12 @@
     $delivery = (float) $order->delivery_fee;
 @endphp
 <table class="totals" style="margin-top:12px; width:55%; float:left;">
-    <tr><td style="color:#6b7280;">المجموع الفرعي (قبل الضريبة)</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($subtotal) }}</td></tr>
-    @if ($discount > 0)<tr><td style="color:#6b7280;">الخصم</td><td style="text-align:left; color:#dc2626;">- {{ \App\Support\Demo::moneyBase($discount) }}</td></tr>@endif
-    @if ($delivery > 0)<tr><td style="color:#6b7280;">رسوم التوصيل</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($delivery) }}</td></tr>@endif
-    <tr><td style="color:#6b7280;">ضريبة القيمة المضافة ({{ rtrim(rtrim(number_format($vat['rate'],2,'.',''),'0'),'.') }}%)</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($vatAmount) }}</td></tr>
-    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">الإجمالي المستحقّ</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($order->total) }}</td></tr>
+    <tr><td style="color:#6b7280;">{{ __('المجموع الفرعي (قبل الضريبة)') }}</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($subtotal) }}</td></tr>
+    @if ($discount > 0)<tr><td style="color:#6b7280;">{{ __('الخصم') }}</td><td style="text-align:left; color:#dc2626;">- {{ \App\Support\Demo::moneyBase($discount) }}</td></tr>@endif
+    @if ($delivery > 0)<tr><td style="color:#6b7280;">{{ __('رسوم التوصيل') }}</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($delivery) }}</td></tr>@endif
+    <tr><td style="color:#6b7280;">{{ __('ضريبة القيمة المضافة') }} ({{ rtrim(rtrim(number_format($vat['rate'],2,'.',''),'0'),'.') }}%)</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($vatAmount) }}</td></tr>
+    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">{{ __('الإجمالي المستحقّ') }}</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($order->total) }}</td></tr>
 </table>
 <div style="clear:both;"></div>
 
-<div class="foot">فاتورة ضريبية صادرة آليًا عبر نظام Abad POS — {{ $generatedAt }} — القيم بالريال العماني</div>
+<div class="foot">{{ __('فاتورة ضريبية صادرة آليًا عبر نظام Abad POS') }} — {{ $generatedAt }} — {{ __('القيم بالريال العماني') }}</div>

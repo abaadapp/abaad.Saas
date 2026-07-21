@@ -13,7 +13,7 @@ class NewOrderMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'طلب جديد ' . $this->order->number . ' — Abad POS');
+        return new Envelope(subject: __('طلب جديد :number — Abad POS', ['number' => $this->order->number]));
     }
 
     public function content(): Content

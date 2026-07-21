@@ -22,57 +22,57 @@
             <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
         </td>
         <td style="border:none; text-align:left;">
-            <div style="font-size:15px; font-weight:bold;">تقرير التحليلات المتقدمة</div>
-            <div class="muted">تاريخ الإصدار: {{ $generatedAt }}</div>
+            <div style="font-size:15px; font-weight:bold;">{{ __('تقرير التحليلات المتقدمة') }}</div>
+            <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
         </td>
     </tr></table>
 </div>
 
-<h2>مقارنة الأداء (هذا الشهر مقابل السابق)</h2>
+<h2>{{ __('مقارنة الأداء (هذا الشهر مقابل السابق)') }}</h2>
 <table class="cards"><tr>
     @foreach ($comparison as $m)
         <td><div class="card">
-            <div class="lbl">{{ $m['label'] }}</div>
+            <div class="lbl">{{ __($m['label']) }}</div>
             <div class="val">{{ $m['cur'] }}</div>
-            <div class="muted">السابق: {{ $m['prev'] }} ({{ $m['delta'] >= 0 ? '+' : '' }}{{ $m['delta'] }}%)</div>
+            <div class="muted">{{ __('السابق:') }} {{ $m['prev'] }} ({{ $m['delta'] >= 0 ? '+' : '' }}{{ $m['delta'] }}%)</div>
         </div></td>
     @endforeach
 </tr></table>
 
-<h2>أفضل المنتجات مبيعًا</h2>
+<h2>{{ __('أفضل المنتجات مبيعًا') }}</h2>
 <table>
-    <tr><th>المنتج</th><th>الكمية المباعة</th><th>الإيراد</th></tr>
+    <tr><th>{{ __('المنتج') }}</th><th>{{ __('الكمية المباعة') }}</th><th>{{ __('الإيراد') }}</th></tr>
     @forelse ($topProducts as $p)
-        <tr><td>{{ $p['name'] }}</td><td>{{ $p['qty'] }} وحدة</td><td>{{ \App\Support\Demo::moneyBase($p['total']) }}</td></tr>
+        <tr><td>{{ $p['name'] }}</td><td>{{ __(':n وحدة', ['n' => $p['qty']]) }}</td><td>{{ \App\Support\Demo::moneyBase($p['total']) }}</td></tr>
     @empty
-        <tr><td colspan="3" style="text-align:center; color:#9ca3af;">لا توجد بيانات.</td></tr>
+        <tr><td colspan="3" style="text-align:center; color:#9ca3af;">{{ __('لا توجد بيانات.') }}</td></tr>
     @endforelse
 </table>
 
-<h2>أفضل العملاء إنفاقًا</h2>
+<h2>{{ __('أفضل العملاء إنفاقًا') }}</h2>
 <table>
-    <tr><th>العميل</th><th>عدد الطلبات</th><th>إجمالي الإنفاق</th></tr>
+    <tr><th>{{ __('العميل') }}</th><th>{{ __('عدد الطلبات') }}</th><th>{{ __('إجمالي الإنفاق') }}</th></tr>
     @forelse ($topCustomers as $c)
         <tr><td>{{ $c['name'] }}</td><td>{{ $c['orders'] }}</td><td>{{ \App\Support\Demo::moneyBase($c['total']) }}</td></tr>
     @empty
-        <tr><td colspan="3" style="text-align:center; color:#9ca3af;">لا توجد بيانات.</td></tr>
+        <tr><td colspan="3" style="text-align:center; color:#9ca3af;">{{ __('لا توجد بيانات.') }}</td></tr>
     @endforelse
 </table>
 
-<h2>المبيعات حسب التصنيف</h2>
+<h2>{{ __('المبيعات حسب التصنيف') }}</h2>
 <table>
-    <tr><th>التصنيف</th><th>المبيعات</th></tr>
+    <tr><th>{{ __('التصنيف') }}</th><th>{{ __('المبيعات') }}</th></tr>
     @foreach ($categorySales['labels'] as $i => $label)
         <tr><td>{{ $label }}</td><td>{{ \App\Support\Demo::moneyBase($categorySales['series'][$i] ?? 0) }}</td></tr>
     @endforeach
 </table>
 
-<h2>المبيعات حسب أيام الأسبوع</h2>
+<h2>{{ __('المبيعات حسب أيام الأسبوع') }}</h2>
 <table>
-    <tr><th>اليوم</th><th>المبيعات</th></tr>
+    <tr><th>{{ __('اليوم') }}</th><th>{{ __('المبيعات') }}</th></tr>
     @foreach ($byWeekday['labels'] as $i => $label)
-        <tr><td>{{ $label }}</td><td>{{ \App\Support\Demo::moneyBase($byWeekday['data'][$i] ?? 0) }}</td></tr>
+        <tr><td>{{ __($label) }}</td><td>{{ \App\Support\Demo::moneyBase($byWeekday['data'][$i] ?? 0) }}</td></tr>
     @endforeach
 </table>
 
-<div class="foot">تقرير آلي عبر نظام Abad POS — {{ $generatedAt }} — القيم بالريال العماني</div>
+<div class="foot">{{ __('تقرير آلي عبر نظام Abad POS') }} — {{ $generatedAt }} — {{ __('القيم بالريال العماني') }}</div>

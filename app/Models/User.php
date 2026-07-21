@@ -62,14 +62,14 @@ class User extends Authenticatable
     public function roleLabel(): string
     {
         return [
-            'super_admin' => 'مدير المنصة',
-            'admin' => 'مدير',
-            'manager' => 'مدير',
-            'cashier' => 'كاشير',
-            'sales' => 'موظف مبيعات',
-            'accountant' => 'محاسب',
-            'inventory' => 'مسؤول مخزون',
-            'delivery' => 'مندوب توصيل',
+            'super_admin' => __('مدير المنصة'),
+            'admin' => __('مدير'),
+            'manager' => __('مدير'),
+            'cashier' => __('كاشير'),
+            'sales' => __('موظف مبيعات'),
+            'accountant' => __('محاسب'),
+            'inventory' => __('مسؤول مخزون'),
+            'delivery' => __('مندوب توصيل'),
         ][$this->role] ?? $this->role;
     }
 }

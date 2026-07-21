@@ -65,7 +65,7 @@ class ProductController extends Controller
         Product::create($data);
         \App\Support\Activity::log('created', 'أضاف منتجًا: ' . $data['name']);
 
-        return redirect()->route('admin.products.index')->with('toast', ['msg' => 'تم إضافة المنتج بنجاح', 'type' => 'success']);
+        return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم إضافة المنتج بنجاح'), 'type' => 'success']);
     }
 
     public function update(Request $request, $id)
@@ -94,7 +94,7 @@ class ProductController extends Controller
         $product->update($data);
         \App\Support\Activity::log('updated', 'عدّل المنتج: ' . $product->name, ['subject_id' => $product->id]);
 
-        return redirect()->route('admin.products.index')->with('toast', ['msg' => 'تم تحديث المنتج بنجاح', 'type' => 'success']);
+        return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم تحديث المنتج بنجاح'), 'type' => 'success']);
     }
 
     public function destroy($id)
@@ -103,6 +103,6 @@ class ProductController extends Controller
         \App\Support\Activity::log('deleted', 'حذف المنتج: ' . $product->name, ['subject_id' => $product->id]);
         $product->delete();
 
-        return redirect()->route('admin.products.index')->with('toast', ['msg' => 'تم حذف المنتج', 'type' => 'success']);
+        return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم حذف المنتج'), 'type' => 'success']);
     }
 }

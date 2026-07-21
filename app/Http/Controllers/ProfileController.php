@@ -30,7 +30,7 @@ class ProfileController extends Controller
             'current_password' => ['nullable', 'required_with:password', 'current_password'],
             'password' => ['nullable', 'confirmed', 'min:6'],
         ], [
-            'current_password.current_password' => 'كلمة المرور الحالية غير صحيحة.',
+            'current_password.current_password' => __('كلمة المرور الحالية غير صحيحة.'),
         ]);
 
         $user->name = $data['name'];
@@ -47,6 +47,6 @@ class ProfileController extends Controller
 
         Activity::log('updated', 'حدّث ملفه الشخصي', ['subject_id' => $user->id]);
 
-        return back()->with('toast', ['msg' => 'تم تحديث الملف الشخصي بنجاح', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم تحديث الملف الشخصي بنجاح'), 'type' => 'success']);
     }
 }

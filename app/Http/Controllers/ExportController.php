@@ -20,7 +20,7 @@ class ExportController extends Controller
             number_format($o['total'], 3, '.', ''), $o['payment'], $o['status'], $o['date'],
         ], Demo::orders());
 
-        return $this->stream('orders', ['رقم الطلب', 'العميل', 'الموظف', 'الفرع', 'عدد الأصناف', 'الإجمالي', 'الدفع', 'الحالة', 'التاريخ'], $rows);
+        return $this->stream('orders', [__('رقم الطلب'), __('العميل'), __('الموظف'), __('الفرع'), __('عدد الأصناف'), __('الإجمالي'), __('الدفع'), __('الحالة'), __('التاريخ')], $rows);
     }
 
     public function products()
@@ -28,10 +28,10 @@ class ExportController extends Controller
         $rows = array_map(fn ($p) => [
             $p['id'], $p['name'], $p['cat'], $p['sku'], $p['barcode'],
             number_format($p['price'], 3, '.', ''), number_format($p['cost'], 3, '.', ''),
-            $p['qty'], $p['alert'], $p['stock_status'], $p['active'] ? 'مفعّل' : 'معطّل',
+            $p['qty'], $p['alert'], $p['stock_status'], $p['active'] ? __('مفعّل') : __('معطّل'),
         ], Demo::products());
 
-        return $this->stream('products', ['المعرّف', 'الاسم', 'التصنيف', 'SKU', 'الباركود', 'السعر', 'التكلفة', 'الكمية', 'حد التنبيه', 'حالة المخزون', 'الحالة'], $rows);
+        return $this->stream('products', [__('المعرّف'), __('الاسم'), __('التصنيف'), 'SKU', __('الباركود'), __('السعر'), __('التكلفة'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')], $rows);
     }
 
     public function customers()
@@ -41,7 +41,7 @@ class ExportController extends Controller
             number_format($c['total_spent'], 3, '.', ''), $c['points'], $c['last_order'],
         ], Demo::customers());
 
-        return $this->stream('customers', ['المعرّف', 'الاسم', 'الهاتف', 'البريد', 'عدد الطلبات', 'إجمالي الإنفاق', 'النقاط', 'آخر طلب'], $rows);
+        return $this->stream('customers', [__('المعرّف'), __('الاسم'), __('الهاتف'), __('البريد'), __('عدد الطلبات'), __('إجمالي الإنفاق'), __('النقاط'), __('آخر طلب')], $rows);
     }
 
     public function transactions()
@@ -51,31 +51,31 @@ class ExportController extends Controller
             number_format($t['amount'], 3, '.', ''), $t['employee'],
         ], Demo::transactions());
 
-        return $this->stream('transactions', ['المرجع', 'التاريخ', 'الوصف', 'الطريقة', 'النوع', 'المبلغ', 'الموظف'], $rows);
+        return $this->stream('transactions', [__('المرجع'), __('التاريخ'), __('الوصف'), __('الطريقة'), __('النوع'), __('المبلغ'), __('الموظف')], $rows);
     }
 
     public function analytics()
     {
         $rows = [];
-        $rows[] = ['— أفضل المنتجات —', '', ''];
-        $rows[] = ['المنتج', 'الكمية المباعة', 'الإيراد'];
+        $rows[] = [__('— أفضل المنتجات —'), '', ''];
+        $rows[] = [__('المنتج'), __('الكمية المباعة'), __('الإيراد')];
         foreach (Demo::topProducts() as $p) {
             $rows[] = [$p['name'], $p['qty'], number_format($p['total'], 3, '.', '')];
         }
         $rows[] = ['', '', ''];
-        $rows[] = ['— أفضل العملاء —', '', ''];
-        $rows[] = ['العميل', 'عدد الطلبات', 'إجمالي الإنفاق'];
+        $rows[] = [__('— أفضل العملاء —'), '', ''];
+        $rows[] = [__('العميل'), __('عدد الطلبات'), __('إجمالي الإنفاق')];
         foreach (Demo::topCustomers() as $c) {
             $rows[] = [$c['name'], $c['orders'], number_format($c['total'], 3, '.', '')];
         }
         $rows[] = ['', '', ''];
-        $rows[] = ['— المبيعات حسب التصنيف —', '', ''];
+        $rows[] = [__('— المبيعات حسب التصنيف —'), '', ''];
         $cat = Demo::categorySales();
         foreach ($cat['labels'] as $i => $label) {
             $rows[] = [$label, number_format($cat['series'][$i] ?? 0, 3, '.', ''), ''];
         }
 
-        return $this->stream('analytics', ['العنصر', 'القيمة 1', 'القيمة 2'], $rows);
+        return $this->stream('analytics', [__('العنصر'), __('القيمة 1'), __('القيمة 2')], $rows);
     }
 
     public function expenses()
@@ -85,7 +85,7 @@ class ExportController extends Controller
             number_format($e['amount'], 3, '.', ''), $e['method'], $e['employee'],
         ], Demo::expenses());
 
-        return $this->stream('expenses', ['التاريخ', 'النوع', 'الوصف', 'المبلغ', 'الطريقة', 'الموظف'], $rows);
+        return $this->stream('expenses', [__('التاريخ'), __('النوع'), __('الوصف'), __('المبلغ'), __('الطريقة'), __('الموظف')], $rows);
     }
 
     public function inventory()
@@ -94,7 +94,7 @@ class ExportController extends Controller
             $p['id'], $p['name'], $p['sku'], $p['qty'], $p['min'], $p['status'], $p['updated'],
         ], Demo::inventory());
 
-        return $this->stream('inventory', ['المعرّف', 'المنتج', 'SKU', 'الكمية الحالية', 'الحد الأدنى', 'حالة المخزون', 'آخر تحديث'], $rows);
+        return $this->stream('inventory', [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('حالة المخزون'), __('آخر تحديث')], $rows);
     }
 
     /* ------------------------------ لوحة المنصة ------------------------------ */
@@ -106,7 +106,7 @@ class ExportController extends Controller
             $b['city'], $b['plan'], $b['status'], $b['branches'], $b['registered'],
         ], Demo::businesses());
 
-        return $this->stream('businesses', ['المعرّف', 'الشركة', 'النوع', 'المالك', 'الهاتف', 'البريد', 'المدينة', 'الباقة', 'الحالة', 'الفروع', 'التسجيل'], $rows);
+        return $this->stream('businesses', [__('المعرّف'), __('الشركة'), __('النوع'), __('المالك'), __('الهاتف'), __('البريد'), __('المدينة'), __('الباقة'), __('الحالة'), __('الفروع'), __('التسجيل')], $rows);
     }
 
     public function invoices()
@@ -116,7 +116,7 @@ class ExportController extends Controller
             number_format($i['amount'], 3, '.', ''), $i['date'], $i['status'],
         ], Demo::invoices());
 
-        return $this->stream('invoices', ['رقم الفاتورة', 'الشركة', 'الباقة', 'المبلغ', 'التاريخ', 'الحالة'], $rows);
+        return $this->stream('invoices', [__('رقم الفاتورة'), __('الشركة'), __('الباقة'), __('المبلغ'), __('التاريخ'), __('الحالة')], $rows);
     }
 
     /* ------------------------------ المولّد ------------------------------ */

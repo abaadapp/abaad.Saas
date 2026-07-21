@@ -42,7 +42,7 @@ class BankStatementController extends Controller
         $this->account()->update($data);
         Activity::log('updated', 'حدّث بيانات الحساب البنكي');
 
-        return back()->with('toast', ['msg' => 'تم حفظ بيانات الحساب البنكي', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم حفظ بيانات الحساب البنكي'), 'type' => 'success']);
     }
 
     /** استيراد كشف البنك (xlsx/xls/csv) ثم مطابقته تلقائيًا */
@@ -51,20 +51,20 @@ class BankStatementController extends Controller
         $request->validate([
             'statement' => ['required', 'file', 'max:10240', 'extensions:xlsx,xls,xlsm,csv'],
         ], [
-            'statement.extensions' => 'الصيغ المدعومة: XLSX، XLS، XLSM، CSV.',
-        ], ['statement' => 'ملف الكشف']);
+            'statement.extensions' => __('الصيغ المدعومة: XLSX، XLS، XLSM، CSV.'),
+        ], ['statement' => __('ملف الكشف')]);
 
         $rows = IOFactory::load($request->file('statement')->getRealPath())
             ->getActiveSheet()->toArray(null, true, true, false);
 
         if (count($rows) < 2) {
-            return back()->with('toast', ['msg' => 'الملف فارغ أو لا يحتوي بيانات.', 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('الملف فارغ أو لا يحتوي بيانات.'), 'type' => 'error']);
         }
 
         $cols = $this->detectColumns($rows[0]);
         if ($cols['date'] === null || $cols['amount'] === null) {
             return back()->with('toast', [
-                'msg' => 'تعذّر التعرّف على الأعمدة. يجب أن يحتوي الملف على عمودَي «التاريخ» و«المبلغ».',
+                'msg' => __('تعذّر التعرّف على الأعمدة. يجب أن يحتوي الملف على عمودَي «التاريخ» و«المبلغ».'),
                 'type' => 'error',
             ]);
         }
@@ -100,7 +100,7 @@ class BankStatementController extends Controller
         Activity::log('created', "استورد كشف البنك ({$imported} سطرًا) وطابَق {$matched}");
 
         return back()->with('toast', [
-            'msg' => "تم استيراد {$imported} سطرًا · مطابَق تلقائيًا: {$matched}",
+            'msg' => __('تم استيراد :imported سطرًا · مطابَق تلقائيًا: :matched', ['imported' => $imported, 'matched' => $matched]),
             'type' => 'success',
         ]);
     }
@@ -110,7 +110,7 @@ class BankStatementController extends Controller
     {
         $matched = $this->reconcile();
 
-        return back()->with('toast', ['msg' => "أُعيدت المطابقة — مطابَق: {$matched}", 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('أُعيدت المطابقة — مطابَق: :matched', ['matched' => $matched]), 'type' => 'success']);
     }
 
     public function clear()
@@ -118,7 +118,7 @@ class BankStatementController extends Controller
         BankStatementLine::where('business_id', $this->bid())->delete();
         Activity::log('deleted', 'حذف كشف البنك المستورد');
 
-        return back()->with('toast', ['msg' => 'تم حذف الكشف المستورد', 'type' => 'warning']);
+        return back()->with('toast', ['msg' => __('تم حذف الكشف المستورد'), 'type' => 'warning']);
     }
 
     /**

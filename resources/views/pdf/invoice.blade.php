@@ -1,4 +1,4 @@
-@php $money = fn ($v) => number_format((float) $v, 3) . ' ر.ع'; @endphp
+@php $money = fn ($v) => number_format((float) $v, 3) . ' ' . __('ر.ع'); @endphp
 <style>
     * { font-family: sans-serif; }
     body { direction: rtl; text-align: right; color: #1f2937; font-size: 13px; }
@@ -23,32 +23,32 @@
 <div class="header">
     <table>
         <tr>
-            <td><div class="brand">🌸 Abad POS</div><div class="muted">منصة إدارة نقاط البيع</div></td>
+            <td><div class="brand">🌸 Abad POS</div><div class="muted">{{ __('منصة إدارة نقاط البيع') }}</div></td>
             <td style="text-align:left">
-                <div class="title">فاتورة اشتراك</div>
-                <div class="muted">رقم: {{ $invoice->number }}</div>
-                <div class="muted">التاريخ: {{ optional($invoice->issued_at)->format('Y-m-d') }}</div>
+                <div class="title">{{ __('فاتورة اشتراك') }}</div>
+                <div class="muted">{{ __('رقم:') }} {{ $invoice->number }}</div>
+                <div class="muted">{{ __('التاريخ:') }} {{ optional($invoice->issued_at)->format('Y-m-d') }}</div>
             </td>
         </tr>
     </table>
 </div>
 
 <table class="info">
-    <tr><td class="k">الشركة</td><td>{{ $invoice->business?->name ?? '—' }}</td></tr>
-    <tr><td class="k">المالك</td><td>{{ $invoice->business?->owner_name ?? '—' }}</td></tr>
-    <tr><td class="k">البريد الإلكتروني</td><td>{{ $invoice->business?->email ?? '—' }}</td></tr>
-    <tr><td class="k">حالة الدفع</td><td>
-        <span class="badge {{ $invoice->status === 'مدفوعة' ? 'paid' : 'unpaid' }}">{{ $invoice->status }}</span>
+    <tr><td class="k">{{ __('الشركة') }}</td><td>{{ $invoice->business?->name ?? '—' }}</td></tr>
+    <tr><td class="k">{{ __('المالك') }}</td><td>{{ $invoice->business?->owner_name ?? '—' }}</td></tr>
+    <tr><td class="k">{{ __('البريد الإلكتروني') }}</td><td>{{ $invoice->business?->email ?? '—' }}</td></tr>
+    <tr><td class="k">{{ __('حالة الدفع') }}</td><td>
+        <span class="badge {{ $invoice->status === 'مدفوعة' ? 'paid' : 'unpaid' }}">{{ __($invoice->status) }}</span>
     </td></tr>
 </table>
 
 <table class="items">
     <thead>
-        <tr><th>الوصف</th><th>الباقة</th><th style="text-align:left">المبلغ</th></tr>
+        <tr><th>{{ __('الوصف') }}</th><th>{{ __('الباقة') }}</th><th style="text-align:left">{{ __('المبلغ') }}</th></tr>
     </thead>
     <tbody>
         <tr>
-            <td>اشتراك في منصة Abad POS</td>
+            <td>{{ __('اشتراك في منصة Abad POS') }}</td>
             <td>{{ $invoice->plan?->name ?? '—' }}</td>
             <td style="text-align:left">{{ $money($invoice->amount) }}</td>
         </tr>
@@ -58,12 +58,12 @@
 <div class="total-box">
     <table>
         <tr>
-            <td class="muted">الإجمالي المستحق</td>
+            <td class="muted">{{ __('الإجمالي المستحق') }}</td>
             <td class="grand" style="text-align:left">{{ $money($invoice->amount) }}</td>
         </tr>
     </table>
 </div>
 
 <div class="footer">
-    شكرًا لاشتراككم في Abad POS · هذه فاتورة إلكترونية ولا تحتاج إلى توقيع
+    {{ __('شكرًا لاشتراككم في Abad POS · هذه فاتورة إلكترونية ولا تحتاج إلى توقيع') }}
 </div>

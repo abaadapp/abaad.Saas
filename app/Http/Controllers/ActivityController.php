@@ -19,7 +19,7 @@ class ActivityController extends Controller
             'user' => $l->user_name, 'action' => $l->action, 'description' => $l->description,
             'icon' => $l->icon, 'color' => $l->color, 'ip' => $l->ip,
             'time' => optional($l->created_at)->format('Y-m-d H:i'),
-            'ago' => optional($l->created_at)?->locale('ar')->diffForHumans(),
+            'ago' => optional($l->created_at)?->diffForHumans(),
         ]);
     }
 

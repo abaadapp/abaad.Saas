@@ -28,7 +28,7 @@ class ReportExportController extends Controller
         $sheet->setCellValue('A1', $business['name'] ?? 'Abad POS');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
         $sheet->setCellValue('A2', $reportTitle . ' — ' . now()->format('Y-m-d H:i'));
-        $sheet->setCellValue('A3', 'الفرع: ' . Demo::currentBranchName());
+        $sheet->setCellValue('A3', __('الفرع') . ': ' . Demo::currentBranchName());
 
         $this->row = 5;
         $title = function (string $text) use ($sheet) {
@@ -90,12 +90,12 @@ class ReportExportController extends Controller
     public function xlsx()
     {
         $spreadsheet = new Spreadsheet();
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, 'تقرير المبيعات');
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تقرير المبيعات'));
         $money = [];
 
         // المؤشرات
-        $title('المؤشرات الرئيسية');
-        $head(['المؤشر', 'القيمة', 'التغيّر']);
+        $title(__('المؤشرات الرئيسية'));
+        $head([__('المؤشر'), __('القيمة'), __('التغيّر')]);
         foreach (Demo::adminStats() as $s) {
             $sheet->fromArray([$s['label'], $s['value'], $s['trend'] ?? '—'], null, 'A' . $this->row);
             $this->row++;
@@ -104,8 +104,8 @@ class ReportExportController extends Controller
 
         // المبيعات الشهرية
         $series = Demo::salesSeries();
-        $title('المبيعات الشهرية');
-        $head(['الشهر', 'المبيعات (ر.ع)']);
+        $title(__('المبيعات الشهرية'));
+        $head([__('الشهر'), __('المبيعات (ر.ع)')]);
         foreach ($series['labels'] as $i => $label) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $label);
@@ -116,8 +116,8 @@ class ReportExportController extends Controller
         $this->row++;
 
         // وسائل الدفع
-        $title('وسائل الدفع');
-        $head(['الوسيلة', 'الإجمالي (ر.ع)', 'عدد العمليات']);
+        $title(__('وسائل الدفع'));
+        $head([__('الوسيلة'), __('الإجمالي (ر.ع)'), __('عدد العمليات')]);
         foreach (Demo::paymentMethods() as $m) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $m['name']);
@@ -129,8 +129,8 @@ class ReportExportController extends Controller
         $this->row++;
 
         // أفضل المنتجات
-        $title('أفضل المنتجات مبيعًا');
-        $head(['المنتج', 'الكمية المباعة', 'الإيراد (ر.ع)']);
+        $title(__('أفضل المنتجات مبيعًا'));
+        $head([__('المنتج'), __('الكمية المباعة'), __('الإيراد (ر.ع)')]);
         foreach (Demo::topProducts() as $p) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $p['name']);
@@ -149,12 +149,12 @@ class ReportExportController extends Controller
     public function analyticsXlsx()
     {
         $spreadsheet = new Spreadsheet();
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, 'تحليلات متقدمة');
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تحليلات متقدمة'));
         $money = [];
 
         // مقارنة الفترات
-        $title('مقارنة الفترات (هذا الشهر مقابل السابق)');
-        $head(['المؤشر', 'الشهر الحالي', 'الشهر السابق']);
+        $title(__('مقارنة الفترات (هذا الشهر مقابل السابق)'));
+        $head([__('المؤشر'), __('الشهر الحالي'), __('الشهر السابق')]);
         foreach (Demo::periodComparison() as $m) {
             $sheet->fromArray([$m['label'], $m['cur'], $m['prev']], null, 'A' . $this->row);
             $this->row++;
@@ -162,8 +162,8 @@ class ReportExportController extends Controller
         $this->row++;
 
         // أفضل المنتجات
-        $title('أفضل المنتجات مبيعًا');
-        $head(['المنتج', 'الكمية المباعة', 'الإيراد (ر.ع)']);
+        $title(__('أفضل المنتجات مبيعًا'));
+        $head([__('المنتج'), __('الكمية المباعة'), __('الإيراد (ر.ع)')]);
         foreach (Demo::topProducts() as $p) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $p['name']);
@@ -175,8 +175,8 @@ class ReportExportController extends Controller
         $this->row++;
 
         // أفضل العملاء
-        $title('أفضل العملاء إنفاقًا');
-        $head(['العميل', 'عدد الطلبات', 'إجمالي الإنفاق (ر.ع)']);
+        $title(__('أفضل العملاء إنفاقًا'));
+        $head([__('العميل'), __('عدد الطلبات'), __('إجمالي الإنفاق (ر.ع)')]);
         foreach (Demo::topCustomers() as $c) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $c['name']);
@@ -189,8 +189,8 @@ class ReportExportController extends Controller
 
         // المبيعات حسب التصنيف
         $cat = Demo::categorySales();
-        $title('المبيعات حسب التصنيف');
-        $head(['التصنيف', 'المبيعات (ر.ع)']);
+        $title(__('المبيعات حسب التصنيف'));
+        $head([__('التصنيف'), __('المبيعات (ر.ع)')]);
         foreach ($cat['labels'] as $i => $label) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $label);
@@ -202,8 +202,8 @@ class ReportExportController extends Controller
 
         // المبيعات حسب أيام الأسبوع
         $wd = Demo::salesByWeekday();
-        $title('المبيعات حسب أيام الأسبوع');
-        $head(['اليوم', 'المبيعات (ر.ع)']);
+        $title(__('المبيعات حسب أيام الأسبوع'));
+        $head([__('اليوم'), __('المبيعات (ر.ع)')]);
         foreach ($wd['labels'] as $i => $label) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $label);
@@ -215,8 +215,8 @@ class ReportExportController extends Controller
 
         // أوقات الذروة
         $hr = Demo::salesByHour();
-        $title('أوقات الذروة (حسب الساعة)');
-        $head(['الساعة', 'المبيعات (ر.ع)']);
+        $title(__('أوقات الذروة (حسب الساعة)'));
+        $head([__('الساعة'), __('المبيعات (ر.ع)')]);
         foreach ($hr['labels'] as $i => $label) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $label);
@@ -234,9 +234,9 @@ class ReportExportController extends Controller
     public function productsXlsx()
     {
         $spreadsheet = new Spreadsheet();
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, 'المنتجات');
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('المنتجات'));
 
-        $firstDataRow = $this->tableHead($sheet, ['المعرّف', 'الاسم', 'التصنيف', 'SKU', 'الباركود', 'السعر (ر.ع)', 'التكلفة (ر.ع)', 'الكمية', 'حد التنبيه', 'حالة المخزون', 'الحالة']);
+        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الاسم'), __('التصنيف'), 'SKU', __('الباركود'), __('السعر (ر.ع)'), __('التكلفة (ر.ع)'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')]);
         $money = [];
         foreach (Demo::products() as $p) {
             $r = $this->row;
@@ -250,7 +250,7 @@ class ReportExportController extends Controller
             $sheet->setCellValue("H{$r}", (int) $p['qty']);
             $sheet->setCellValue("I{$r}", (int) $p['alert']);
             $sheet->setCellValue("J{$r}", $p['stock_status']);
-            $sheet->setCellValue("K{$r}", $p['active'] ? 'مفعّل' : 'معطّل');
+            $sheet->setCellValue("K{$r}", $p['active'] ? __('مفعّل') : __('معطّل'));
             $money[] = "F{$r}";
             $money[] = "G{$r}";
             $this->row++;
@@ -268,9 +268,9 @@ class ReportExportController extends Controller
     public function inventoryXlsx()
     {
         $spreadsheet = new Spreadsheet();
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, 'جرد المخزون');
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('جرد المخزون'));
 
-        $firstDataRow = $this->tableHead($sheet, ['المعرّف', 'المنتج', 'SKU', 'الكمية الحالية', 'الحد الأدنى', 'حالة المخزون', 'آخر تحديث']);
+        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('حالة المخزون'), __('آخر تحديث')]);
 
         foreach (Demo::inventory() as $i) {
             $r = $this->row;
@@ -302,12 +302,12 @@ class ReportExportController extends Controller
     public function financeXlsx()
     {
         $spreadsheet = new Spreadsheet();
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, 'المعاملات المالية');
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('المعاملات المالية'));
         $money = [];
 
         // المؤشرات المالية
-        $title('المؤشرات المالية');
-        $head(['المؤشر', 'القيمة', 'التغيّر']);
+        $title(__('المؤشرات المالية'));
+        $head([__('المؤشر'), __('القيمة'), __('التغيّر')]);
         foreach (Demo::financeStats() as $st) {
             $sheet->fromArray([$st['label'], $st['value'], $st['trend'] ?? '—'], null, 'A' . $this->row);
             $this->row++;
@@ -315,7 +315,7 @@ class ReportExportController extends Controller
         $this->row++;
 
         // المعاملات
-        $firstDataRow = $this->tableHead($sheet, ['المرجع', 'التاريخ', 'البيان', 'الوسيلة', 'النوع', 'المبلغ (ر.ع)', 'الموظف']);
+        $firstDataRow = $this->tableHead($sheet, [__('المرجع'), __('التاريخ'), __('البيان'), __('الوسيلة'), __('النوع'), __('المبلغ (ر.ع)'), __('الموظف')]);
         foreach (Demo::transactions() as $t) {
             $r = $this->row;
             $sheet->setCellValueExplicit("A{$r}", (string) $t['id'], DataType::TYPE_STRING);

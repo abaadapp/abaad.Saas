@@ -1,8 +1,8 @@
 {{-- شريط تبويبات قسم المنتجات (بنفس شكل تبويبات المخزون) --}}
 @php
     $productTabs = [
-        ['label' => 'المنتجات', 'url' => route('admin.products.index'), 'active' => request()->routeIs('admin.products.*')],
-        ['label' => 'التصنيفات', 'url' => route('admin.categories.index'), 'active' => request()->routeIs('admin.categories.*')],
+        ['label' => __('المنتجات'), 'url' => route('admin.products.index'), 'active' => request()->routeIs('admin.products.*')],
+        ['label' => __('التصنيفات'), 'url' => route('admin.categories.index'), 'active' => request()->routeIs('admin.categories.*')],
     ];
 @endphp
 

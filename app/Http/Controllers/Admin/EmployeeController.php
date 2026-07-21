@@ -26,7 +26,7 @@ class EmployeeController extends Controller
         // الوظيفة اسم ظاهر — الصلاحية تُشتق منها، فلا يُحفظ دور غير معروف يمنع الموظف من الدخول
         $title = $this->findJobTitle($data['job_title']);
         if (! $title) {
-            return back()->withInput()->withErrors(['job_title' => 'الوظيفة المحددة غير موجودة.']);
+            return back()->withInput()->withErrors(['job_title' => __('الوظيفة المحددة غير موجودة.')]);
         }
 
         User::create([
@@ -43,7 +43,7 @@ class EmployeeController extends Controller
         ]);
         \App\Support\Activity::log('created', 'أضاف موظفًا: ' . $data['name']);
 
-        return redirect()->route('admin.employees.index')->with('toast', ['msg' => 'تم إضافة الموظف بنجاح', 'type' => 'success']);
+        return redirect()->route('admin.employees.index')->with('toast', ['msg' => __('تم إضافة الموظف بنجاح'), 'type' => 'success']);
     }
 
     /** وظيفة تابعة للمستأجر الحالي (تحمل الصلاحية المكافئة) */
@@ -76,7 +76,7 @@ class EmployeeController extends Controller
 
         $title = $this->findJobTitle($data['job_title']);
         if (! $title) {
-            return back()->withInput()->withErrors(['job_title' => 'الوظيفة المحددة غير موجودة.']);
+            return back()->withInput()->withErrors(['job_title' => __('الوظيفة المحددة غير موجودة.')]);
         }
         $data['job_title'] = $title->name;
         $data['role'] = $title->role;
@@ -84,7 +84,7 @@ class EmployeeController extends Controller
         $employee->update($data);
         \App\Support\Activity::log('updated', 'عدّل بيانات الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
 
-        return redirect()->route('admin.employees.show', $employee->id)->with('toast', ['msg' => 'تم تحديث بيانات الموظف', 'type' => 'success']);
+        return redirect()->route('admin.employees.show', $employee->id)->with('toast', ['msg' => __('تم تحديث بيانات الموظف'), 'type' => 'success']);
     }
 
     /** حفظ الهدف الشهري ونسبة العمولة للموظف */
@@ -98,34 +98,34 @@ class EmployeeController extends Controller
         $employee->update($data);
         \App\Support\Activity::log('settings', 'حدّد هدف/عمولة الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
 
-        return back()->with('toast', ['msg' => 'تم حفظ هدف وعمولة الموظف', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم حفظ هدف وعمولة الموظف'), 'type' => 'success']);
     }
 
     public function toggleStatus($id)
     {
         $employee = $this->findEmployee($id);
         if ($employee->id === auth()->id()) {
-            return back()->with('toast', ['msg' => 'لا يمكنك تعطيل حسابك الخاص', 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'error']);
         }
         $employee->status = $employee->status === 'نشط' ? 'معطل' : 'نشط';
         $employee->save();
         $on = $employee->status === 'نشط';
         \App\Support\Activity::log('status', ($on ? 'فعّل' : 'عطّل') . ' حساب الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
 
-        return back()->with('toast', ['msg' => $on ? 'تم تفعيل الحساب' : 'تم تعطيل الحساب', 'type' => $on ? 'success' : 'warning']);
+        return back()->with('toast', ['msg' => $on ? __('تم تفعيل الحساب') : __('تم تعطيل الحساب'), 'type' => $on ? 'success' : 'warning']);
     }
 
     public function resetPassword($id)
     {
         $employee = $this->findEmployee($id);
         if ($employee->id === auth()->id()) {
-            return back()->with('toast', ['msg' => 'استخدم صفحة «الملف الشخصي» لتغيير كلمة مرورك', 'type' => 'warning']);
+            return back()->with('toast', ['msg' => __('استخدم صفحة «الملف الشخصي» لتغيير كلمة مرورك'), 'type' => 'warning']);
         }
         $temp = 'Ab' . random_int(1000, 9999);
         $employee->password = Hash::make($temp);
         $employee->save();
         \App\Support\Activity::log('updated', 'أعاد تعيين كلمة مرور الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
 
-        return back()->with('toast', ['msg' => 'كلمة المرور الجديدة: ' . $temp, 'type' => 'info']);
+        return back()->with('toast', ['msg' => __('كلمة المرور الجديدة: :password', ['password' => $temp]), 'type' => 'info']);
     }
 }

@@ -12,7 +12,7 @@ class MonthlyReportMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'تقرير أداء ' . $this->period . ' — ' . $this->businessName);
+        return new Envelope(subject: __('تقرير أداء :period — :business', ['period' => $this->period, 'business' => $this->businessName]));
     }
 
     public function content(): Content

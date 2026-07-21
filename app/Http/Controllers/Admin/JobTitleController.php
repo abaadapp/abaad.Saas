@@ -26,9 +26,9 @@ class JobTitleController extends Controller
             'role' => ['required', 'string', Rule::in(array_keys(JobTitle::ROLES))],
             'description' => ['nullable', 'string', 'max:255'],
         ], [
-            'name.unique' => 'هذه الوظيفة موجودة مسبقًا.',
-            'role.required' => 'حدّد الصلاحيات المكافئة للوظيفة.',
-        ], ['name' => 'اسم الوظيفة']);
+            'name.unique' => __('هذه الوظيفة موجودة مسبقًا.'),
+            'role.required' => __('حدّد الصلاحيات المكافئة للوظيفة.'),
+        ], ['name' => __('اسم الوظيفة')]);
 
         JobTitle::create([
             'business_id' => $bid,
@@ -38,7 +38,7 @@ class JobTitleController extends Controller
         ]);
         Activity::log('created', 'أضاف وظيفة: ' . $data['name']);
 
-        return back()->with('toast', ['msg' => 'تم إضافة الوظيفة', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم إضافة الوظيفة'), 'type' => 'success']);
     }
 
     public function destroy($id)
@@ -49,7 +49,7 @@ class JobTitleController extends Controller
         $used = User::where('business_id', $this->bid())->where('job_title', $title->name)->count();
         if ($used > 0) {
             return back()->with('toast', [
-                'msg' => "لا يمكن حذف «{$title->name}» لأنها مستخدمة لدى {$used} موظف. غيّر وظيفتهم أولًا.",
+                'msg' => __('لا يمكن حذف «:name» لأنها مستخدمة لدى :count موظف. غيّر وظيفتهم أولًا.', ['name' => $title->name, 'count' => $used]),
                 'type' => 'error',
             ]);
         }
@@ -57,6 +57,6 @@ class JobTitleController extends Controller
         Activity::log('deleted', 'حذف الوظيفة: ' . $title->name, ['subject_id' => $title->id]);
         $title->delete();
 
-        return back()->with('toast', ['msg' => 'تم حذف الوظيفة', 'type' => 'warning']);
+        return back()->with('toast', ['msg' => __('تم حذف الوظيفة'), 'type' => 'warning']);
     }
 }

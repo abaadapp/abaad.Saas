@@ -35,7 +35,7 @@ class CouponController extends Controller
         ]);
         \App\Support\Activity::log('created', 'أنشأ كوبون خصم: ' . strtoupper($data['code']));
 
-        return back()->with('toast', ['msg' => 'تم إنشاء الكوبون', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم إنشاء الكوبون'), 'type' => 'success']);
     }
 
     public function toggle($id)
@@ -43,7 +43,7 @@ class CouponController extends Controller
         $coupon = Coupon::where('business_id', $this->bid())->findOrFail($id);
         $coupon->update(['active' => ! $coupon->active]);
 
-        return back()->with('toast', ['msg' => $coupon->active ? 'تم تفعيل الكوبون' : 'تم إيقاف الكوبون', 'type' => $coupon->active ? 'success' : 'warning']);
+        return back()->with('toast', ['msg' => $coupon->active ? __('تم تفعيل الكوبون') : __('تم إيقاف الكوبون'), 'type' => $coupon->active ? 'success' : 'warning']);
     }
 
     public function destroy($id)
@@ -53,6 +53,6 @@ class CouponController extends Controller
         $coupon->delete();
         \App\Support\Activity::log('deleted', 'حذف الكوبون: ' . $code);
 
-        return back()->with('toast', ['msg' => 'تم حذف الكوبون', 'type' => 'warning']);
+        return back()->with('toast', ['msg' => __('تم حذف الكوبون'), 'type' => 'warning']);
     }
 }

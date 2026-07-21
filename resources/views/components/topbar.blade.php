@@ -1,4 +1,4 @@
-@props(['title' => '', 'user' => 'أحمد محمد', 'role' => 'مدير النظام', 'avatar' => null])
+@props(['title' => '', 'user' => 'أحمد محمد', 'role' => __('مدير النظام'), 'avatar' => null])
 
 <header class="sticky top-0 z-20 h-16 bg-white/80 backdrop-blur border-b border-gray-100 flex items-center gap-3 px-4 lg:px-6">
     {{-- زر فتح القائمة على الجوال --}}
@@ -18,7 +18,7 @@
                 <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 pointer-events-none">
                     <x-icon name="search" class="w-4 h-4" />
                 </span>
-                <input type="text" x-model="q" @input.debounce.300ms="run()" @focus="open = results.length > 0" placeholder="ابحث في المنتجات والطلبات والعملاء…"
+                <input type="text" x-model="q" @input.debounce.300ms="run()" @focus="open = results.length > 0" placeholder="{{ __('ابحث في المنتجات والطلبات والعملاء…') }}"
                     class="w-full rounded-xl border border-gray-200 bg-gray-50 pr-9 pl-8 py-2 text-sm focus:bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 focus:outline-none transition" />
                 <span x-show="loading" x-cloak class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
                     <x-icon name="loader-circle" class="w-4 h-4 animate-spin" />
@@ -27,7 +27,7 @@
                 <div x-show="open" x-cloak x-transition
                     class="absolute z-30 mt-2 w-96 -left-24 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden max-h-96 overflow-y-auto">
                     <template x-if="!loading && results.length === 0 && q.length >= 2">
-                        <div class="px-4 py-8 text-center text-sm text-gray-400">لا توجد نتائج لـ «<span x-text="q"></span>»</div>
+                        <div class="px-4 py-8 text-center text-sm text-gray-400">{{ __('لا توجد نتائج لـ') }} «<span x-text="q"></span>»</div>
                     </template>
                     <template x-for="group in results" :key="group.title">
                         <div>
@@ -60,7 +60,7 @@
                     </button>
                 </x-slot:trigger>
                 <a href="{{ route('admin.branch.switch', 'all') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm {{ ! \App\Support\Demo::currentBranchId() ? 'text-primary-600 bg-primary-50' : 'text-gray-600 hover:bg-gray-50' }}">
-                    <x-icon name="layers" class="w-4 h-4" /> كل الفروع
+                    <x-icon name="layers" class="w-4 h-4" /> {{ __('كل الفروع') }}
                 </a>
                 @foreach ($branches as $br)
                     <a href="{{ route('admin.branch.switch', $br['id']) }}" class="flex items-center gap-2 px-4 py-2.5 text-sm {{ \App\Support\Demo::currentBranchId() === $br['id'] ? 'text-primary-600 bg-primary-50' : 'text-gray-600 hover:bg-gray-50' }}">
@@ -84,12 +84,12 @@
                             <x-icon name="chevron-down" class="w-4 h-4 text-gray-400" />
                         </button>
                     </x-slot:trigger>
-                    <div class="px-4 py-2 text-xs text-gray-400 border-b border-gray-50">عملة العرض</div>
+                    <div class="px-4 py-2 text-xs text-gray-400 border-b border-gray-50">{{ __('عملة العرض') }}</div>
                     @foreach ($curList as $c)
                         <a href="{{ route('admin.currency.switch', $c['is_base'] ? 'base' : $c['code']) }}"
                            class="flex items-center justify-between gap-2 px-4 py-2.5 text-sm {{ $curNow['code'] === $c['code'] ? 'text-primary-600 bg-primary-50' : 'text-gray-600 hover:bg-gray-50' }}">
-                            <span class="flex items-center gap-2"><span class="font-mono text-xs">{{ $c['code'] }}</span> {{ $c['name'] }}</span>
-                            @if ($c['is_base'])<span class="text-[10px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded">أساسية</span>@endif
+                            <span class="flex items-center gap-2"><span class="font-mono text-xs">{{ $c['code'] }}</span> {{ __($c['name']) }}</span>
+                            @if ($c['is_base'])<span class="text-[10px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded">{{ __('أساسية') }}</span>@endif
                         </a>
                     @endforeach
                 </x-dropdown>
@@ -114,9 +114,9 @@
             </button>
         </x-slot:trigger>
         <div class="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
-            <p class="font-semibold text-sm text-gray-800">الإشعارات</p>
+            <p class="font-semibold text-sm text-gray-800">{{ __('الإشعارات') }}</p>
             <button type="button" @click="window.enableBrowserNotifications()" class="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium">
-                <x-icon name="bell-ring" class="w-3.5 h-3.5" /> تفعيل إشعارات المتصفح
+                <x-icon name="bell-ring" class="w-3.5 h-3.5" /> {{ __('تفعيل إشعارات المتصفح') }}
             </button>
         </div>
         <div class="max-h-80 overflow-y-auto">
@@ -131,7 +131,7 @@
                     </div>
                 </a>
             @empty
-                <div class="px-4 py-8 text-center text-sm text-gray-400">لا توجد إشعارات جديدة</div>
+                <div class="px-4 py-8 text-center text-sm text-gray-400">{{ __('لا توجد إشعارات جديدة') }}</div>
             @endforelse
         </div>
     </x-dropdown>
@@ -143,20 +143,20 @@
                 <img src="{{ $avatar ?? 'https://picsum.photos/seed/topbaruser/80/80' }}" class="w-9 h-9 rounded-lg object-cover" alt="{{ $user }}" />
                 <div class="hidden sm:block text-right">
                     <p class="text-sm font-semibold text-gray-800 leading-tight">{{ $user }}</p>
-                    <p class="text-xs text-gray-400">{{ $role }}</p>
+                    <p class="text-xs text-gray-400">{{ __($role) }}</p>
                 </div>
                 <x-icon name="chevron-down" class="w-4 h-4 text-gray-400 hidden sm:block" />
             </button>
         </x-slot:trigger>
-        <a href="{{ route('profile.edit') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="user" class="w-4 h-4" /> الملف الشخصي</a>
+        <a href="{{ route('profile.edit') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="user" class="w-4 h-4" /> {{ __('الملف الشخصي') }}</a>
         @auth
             @if (auth()->user()->isSuperAdmin())
-                <a href="{{ route('super-admin.settings.index') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="settings" class="w-4 h-4" /> الإعدادات</a>
+                <a href="{{ route('super-admin.settings.index') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="settings" class="w-4 h-4" /> {{ __('الإعدادات') }}</a>
             @elseif (auth()->user()->business_id && auth()->user()->allows('settings'))
-                <a href="{{ route('admin.settings.index') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="settings" class="w-4 h-4" /> الإعدادات</a>
+                <a href="{{ route('admin.settings.index') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="settings" class="w-4 h-4" /> {{ __('الإعدادات') }}</a>
             @endif
         @endauth
         <div class="my-1 border-t border-gray-100"></div>
-        <a href="{{ route('logout') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger-600 hover:bg-danger-50"><x-icon name="log-out" class="w-4 h-4" /> تسجيل الخروج</a>
+        <a href="{{ route('logout') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger-600 hover:bg-danger-50"><x-icon name="log-out" class="w-4 h-4" /> {{ __('تسجيل الخروج') }}</a>
     </x-dropdown>
 </header>

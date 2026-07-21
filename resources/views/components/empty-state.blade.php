@@ -1,7 +1,7 @@
 @props([
     'icon' => 'inbox',
-    'title' => 'لا توجد بيانات',
-    'message' => 'لم يتم العثور على أي عناصر لعرضها هنا حتى الآن.',
+    'title' => __('لا توجد بيانات'),
+    'message' => __('لم يتم العثور على أي عناصر لعرضها هنا حتى الآن.'),
 ])
 
 <div {{ $attributes->merge(['class' => 'flex flex-col items-center justify-center text-center py-16 px-6']) }}>

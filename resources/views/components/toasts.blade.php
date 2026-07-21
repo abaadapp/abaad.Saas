@@ -1,6 +1,6 @@
 {{-- تنبيه من جلسة السيرفر (بعد الحفظ/التعديل) --}}
 @if (session('toast'))
-    <div x-data x-init="$nextTick(() => $store.toasts.add(@js(session('toast')['msg'] ?? 'تم بنجاح'), @js(session('toast')['type'] ?? 'success')))"></div>
+    <div x-data x-init="$nextTick(() => $store.toasts.add(@js(__(session('toast')['msg'] ?? 'تم بنجاح')), @js(session('toast')['type'] ?? 'success')))"></div>
 @endif
 
 {{-- حاوية التنبيهات العائمة (Toasts) — تعتمد على $store.toasts --}}

@@ -23,8 +23,8 @@ class ExpenseTypeController extends Controller
             ],
             'description' => ['nullable', 'string', 'max:255'],
         ], [
-            'name.unique' => 'هذا النوع موجود مسبقًا.',
-        ], ['name' => 'اسم النوع']);
+            'name.unique' => __('هذا النوع موجود مسبقًا.'),
+        ], ['name' => __('اسم النوع')]);
 
         ExpenseType::create([
             'business_id' => $bid,
@@ -33,7 +33,7 @@ class ExpenseTypeController extends Controller
         ]);
         Activity::log('created', 'أضاف نوع مصروف: ' . $data['name']);
 
-        return back()->with('toast', ['msg' => 'تم إضافة نوع المصروف', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم إضافة نوع المصروف'), 'type' => 'success']);
     }
 
     public function destroy($id)
@@ -42,6 +42,6 @@ class ExpenseTypeController extends Controller
         Activity::log('deleted', 'حذف نوع المصروف: ' . $type->name, ['subject_id' => $type->id]);
         $type->delete();
 
-        return back()->with('toast', ['msg' => 'تم حذف نوع المصروف', 'type' => 'warning']);
+        return back()->with('toast', ['msg' => __('تم حذف نوع المصروف'), 'type' => 'warning']);
     }
 }

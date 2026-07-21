@@ -36,11 +36,11 @@ class SmartAlerts extends Command
             }
 
             Mail::to($business->email)->send(new SmartAlertMail($business->name, $alerts));
-            $this->line("✓ {$business->name} — " . count($alerts) . " تنبيه → {$business->email}");
+            $this->line(__('✓ :name — :count تنبيه → :email', ['name' => $business->name, 'count' => count($alerts), 'email' => $business->email]));
             $sent++;
         });
 
-        $this->info($sent ? "تم إرسال {$sent} رسالة تنبيهات." : 'لا توجد تنبيهات لإرسالها.');
+        $this->info($sent ? __('تم إرسال :count رسالة تنبيهات.', ['count' => $sent]) : __('لا توجد تنبيهات لإرسالها.'));
 
         return self::SUCCESS;
     }

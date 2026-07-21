@@ -20,22 +20,22 @@ class SettingController extends Controller
 
         \App\Support\Activity::log('settings', 'حدّث إعدادات المنصة');
 
-        return back()->with('toast', ['msg' => 'تم حفظ إعدادات المنصة بنجاح', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم حفظ إعدادات المنصة بنجاح'), 'type' => 'success']);
     }
 
     public function testEmail(Request $request)
     {
         $to = $request->input('to', auth()->user()->email);
         try {
-            \Illuminate\Support\Facades\Mail::raw('هذه رسالة اختبار من نظام Abad POS. إذا وصلتك فإن إعدادات البريد تعمل بنجاح.', function ($m) use ($to) {
-                $m->to($to)->subject('اختبار البريد — Abad POS');
+            \Illuminate\Support\Facades\Mail::raw(__('هذه رسالة اختبار من نظام Abad POS. إذا وصلتك فإن إعدادات البريد تعمل بنجاح.'), function ($m) use ($to) {
+                $m->to($to)->subject(__('اختبار البريد — Abad POS'));
             });
 
-            return back()->with('toast', ['msg' => 'تم إرسال بريد تجريبي إلى ' . $to, 'type' => 'success']);
+            return back()->with('toast', ['msg' => __('تم إرسال بريد تجريبي إلى :email', ['email' => $to]), 'type' => 'success']);
         } catch (\Throwable $e) {
             report($e);
 
-            return back()->with('toast', ['msg' => 'تعذّر إرسال البريد التجريبي', 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('تعذّر إرسال البريد التجريبي'), 'type' => 'error']);
         }
     }
 }

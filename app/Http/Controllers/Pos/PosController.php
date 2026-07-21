@@ -150,7 +150,7 @@ class PosController extends Controller
         $order->items()->delete();
         $order->delete();
 
-        return back()->with('toast', ['msg' => "تم حذف الطلب {$number}", 'type' => 'warning']);
+        return back()->with('toast', ['msg' => __('تم حذف الطلب :number', ['number' => $number]), 'type' => 'warning']);
     }
 
 
@@ -166,7 +166,7 @@ class PosController extends Controller
         \App\Models\Customer::create($data);
         \App\Support\Activity::log('created', 'أضاف عميلًا من نقطة البيع: ' . $data['name']);
 
-        return back()->with('toast', ['msg' => 'تم إضافة العميل', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم إضافة العميل'), 'type' => 'success']);
     }
 
     /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */

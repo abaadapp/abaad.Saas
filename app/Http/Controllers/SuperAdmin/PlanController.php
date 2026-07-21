@@ -28,6 +28,6 @@ class PlanController extends Controller
         ]);
         \App\Support\Activity::log('created', 'أضاف باقة جديدة: ' . $data['name']);
 
-        return back()->with('toast', ['msg' => 'تمت إضافة الباقة بنجاح', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تمت إضافة الباقة بنجاح'), 'type' => 'success']);
     }
 }

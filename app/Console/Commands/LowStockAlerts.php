@@ -32,11 +32,11 @@ class LowStockAlerts extends Command
             }
 
             Mail::to($business->email)->send(new LowStockMail($business->name, $low));
-            $this->line("✓ {$business->name} — {$low->count()} منتج → {$business->email}");
+            $this->line(__('✓ :name — :count منتج → :email', ['name' => $business->name, 'count' => $low->count(), 'email' => $business->email]));
             $sent++;
         });
 
-        $this->info($sent ? "تم إرسال {$sent} تنبيه." : 'لا توجد متاجر بحاجة لتنبيه.');
+        $this->info($sent ? __('تم إرسال :count تنبيه.', ['count' => $sent]) : __('لا توجد متاجر بحاجة لتنبيه.'));
 
         return self::SUCCESS;
     }

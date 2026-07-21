@@ -23,7 +23,7 @@ class SupplierController extends Controller
         Supplier::create(array_merge($data, ['business_id' => $this->bid()]));
         \App\Support\Activity::log('created', 'أضاف مورّدًا: ' . $data['name']);
 
-        return back()->with('toast', ['msg' => 'تم إضافة المورّد بنجاح', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم إضافة المورّد بنجاح'), 'type' => 'success']);
     }
 
     public function update(Request $request, $id)
@@ -39,7 +39,7 @@ class SupplierController extends Controller
         $supplier->update($data);
         \App\Support\Activity::log('updated', 'عدّل المورّد: ' . $supplier->name, ['subject_id' => $supplier->id]);
 
-        return back()->with('toast', ['msg' => 'تم تحديث بيانات المورّد', 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم تحديث بيانات المورّد'), 'type' => 'success']);
     }
 
     public function destroy($id)
@@ -49,6 +49,6 @@ class SupplierController extends Controller
         $supplier->delete();
         \App\Support\Activity::log('deleted', 'حذف المورّد: ' . $name);
 
-        return back()->with('toast', ['msg' => 'تم حذف المورّد', 'type' => 'warning']);
+        return back()->with('toast', ['msg' => __('تم حذف المورّد'), 'type' => 'warning']);
     }
 }

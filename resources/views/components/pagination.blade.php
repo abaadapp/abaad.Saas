@@ -20,9 +20,11 @@
 
 <div {{ $attributes->merge(['class' => 'flex flex-col sm:flex-row items-center justify-between gap-3']) }}>
     <p class="text-sm text-gray-500">
-        عرض <span class="font-medium text-gray-700">{{ $from }}</span>
-        إلى <span class="font-medium text-gray-700">{{ $to }}</span>
-        من <span class="font-medium text-gray-700">{{ $total }}</span> نتيجة
+        {!! __('عرض :from إلى :to من :total نتيجة', [
+            'from' => '<span class="font-medium text-gray-700">' . e($from) . '</span>',
+            'to' => '<span class="font-medium text-gray-700">' . e($to) . '</span>',
+            'total' => '<span class="font-medium text-gray-700">' . e($total) . '</span>',
+        ]) !!}
     </p>
     <nav class="flex items-center gap-1">
         {{-- السابق --}}

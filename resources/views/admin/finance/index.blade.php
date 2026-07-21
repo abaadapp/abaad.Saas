@@ -177,7 +177,7 @@
             </div>
             <x-input label="الوصف" name="description" placeholder="وصف المعاملة أو المصدر" icon="file-text" :required="true" />
             <div class="grid grid-cols-2 gap-3">
-                <x-select label="وسيلة الدفع" name="method" :options="['نقدي' => 'نقدي (كاش)', 'تحويل بنكي' => 'تحويل بنكي', 'بطاقة' => 'بطاقة (شبكة)']" />
+                <x-select label="وسيلة الدفع" name="method" :options="['نقدي' => 'نقدي', 'تحويل بنكي' => 'تحويل بنكي', 'بطاقة' => 'بطاقة (فيزا)']" />
                 <x-input label="التاريخ" name="occurred_at" type="date" value="2026-07-18" />
             </div>
             {{-- اختيار سريع لوسيلة الدفع --}}

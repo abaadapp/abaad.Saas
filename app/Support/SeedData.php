@@ -366,9 +366,9 @@ class SeedData
     {
         return [
             ['label' => 'إجمالي الإيرادات', 'value' => '14,280.000 ر.ع', 'icon' => 'wallet', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
-            ['label' => 'المدفوعات النقدية (كاش)', 'value' => '6,120.000 ر.ع', 'icon' => 'banknote', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
+            ['label' => 'المدفوعات النقدية', 'value' => '6,120.000 ر.ع', 'icon' => 'banknote', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
             ['label' => 'التحويلات البنكية', 'value' => '4,340.000 ر.ع', 'icon' => 'landmark', 'trend' => '+15%', 'up' => true, 'color' => 'info'],
-            ['label' => 'مدفوعات البطاقة (شبكة)', 'value' => '3,820.000 ر.ع', 'icon' => 'credit-card', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
+            ['label' => 'مدفوعات البطاقة (فيزا)', 'value' => '3,820.000 ر.ع', 'icon' => 'credit-card', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
         ];
     }
 
@@ -376,9 +376,9 @@ class SeedData
     public static function paymentMethods(): array
     {
         return [
-            ['name' => 'نقدي (كاش)', 'key' => 'نقدي', 'icon' => 'banknote', 'color' => 'success', 'total' => 6120.000, 'count' => 184, 'percent' => 43],
+            ['name' => 'نقدي', 'key' => 'نقدي', 'icon' => 'banknote', 'color' => 'success', 'total' => 6120.000, 'count' => 184, 'percent' => 43],
             ['name' => 'تحويل بنكي', 'key' => 'تحويل بنكي', 'icon' => 'landmark', 'color' => 'info', 'total' => 4340.000, 'count' => 96, 'percent' => 30],
-            ['name' => 'بطاقة (شبكة)', 'key' => 'بطاقة', 'icon' => 'credit-card', 'color' => 'primary', 'total' => 3820.000, 'count' => 128, 'percent' => 27],
+            ['name' => 'بطاقة (فيزا)', 'key' => 'بطاقة', 'icon' => 'credit-card', 'color' => 'primary', 'total' => 3820.000, 'count' => 128, 'percent' => 27],
         ];
     }
 

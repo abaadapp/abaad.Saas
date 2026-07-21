@@ -824,9 +824,9 @@ class Demo
 
         return [
             ['label' => 'إجمالي الإيرادات', 'value' => self::money($total), 'icon' => 'wallet', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
-            ['label' => 'المدفوعات النقدية (كاش)', 'value' => self::money($cash), 'icon' => 'banknote', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
+            ['label' => 'المدفوعات النقدية', 'value' => self::money($cash), 'icon' => 'banknote', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
             ['label' => 'التحويلات البنكية', 'value' => self::money($bank), 'icon' => 'landmark', 'trend' => '+15%', 'up' => true, 'color' => 'info'],
-            ['label' => 'مدفوعات البطاقة (شبكة)', 'value' => self::money($card), 'icon' => 'credit-card', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
+            ['label' => 'مدفوعات البطاقة (فيزا)', 'value' => self::money($card), 'icon' => 'credit-card', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
         ];
     }
 
@@ -836,9 +836,9 @@ class Demo
         $income = Transaction::where('business_id', $bid)->where('type', 'دخل');
         $grand = max(0.001, (float) (clone $income)->sum('amount'));
         $defs = [
-            ['name' => 'نقدي (كاش)', 'key' => 'نقدي', 'icon' => 'banknote', 'color' => 'success'],
+            ['name' => 'نقدي', 'key' => 'نقدي', 'icon' => 'banknote', 'color' => 'success'],
             ['name' => 'تحويل بنكي', 'key' => 'تحويل بنكي', 'icon' => 'landmark', 'color' => 'info'],
-            ['name' => 'بطاقة (شبكة)', 'key' => 'بطاقة', 'icon' => 'credit-card', 'color' => 'primary'],
+            ['name' => 'بطاقة (فيزا)', 'key' => 'بطاقة', 'icon' => 'credit-card', 'color' => 'primary'],
         ];
         return array_map(function ($d) use ($income, $grand) {
             $total = (float) (clone $income)->where('method', $d['key'])->sum('amount');
@@ -884,11 +884,20 @@ class Demo
     }
 
     /** توزيع المبيعات حسب وسيلة الدفع للنشاط الحالي */
+    /** الاسم المعروض لوسيلة الدفع (المفتاح المخزّن في القاعدة يبقى كما هو) */
+    public static function methodLabel(string $key): string
+    {
+        return ['بطاقة' => 'بطاقة (فيزا)'][$key] ?? $key;
+    }
+
     public static function paymentDistribution(): array
     {
         $rows = Order::where('business_id', self::bid())->where('is_held', false)
             ->selectRaw('payment_method, SUM(total) as s')->groupBy('payment_method')->pluck('s', 'payment_method');
-        return ['labels' => $rows->keys()->all(), 'series' => $rows->map(fn ($v) => round((float) $v, 3))->values()->all()];
+        return [
+            'labels' => $rows->keys()->map(fn ($k) => self::methodLabel((string) $k))->all(),
+            'series' => $rows->map(fn ($v) => round((float) $v, 3))->values()->all(),
+        ];
     }
 
     /** أفضل 5 منتجات مبيعًا للنشاط الحالي */

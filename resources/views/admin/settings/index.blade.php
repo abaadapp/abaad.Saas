@@ -18,7 +18,6 @@
                         'business' => ['label' => 'بيانات النشاط', 'icon' => 'store'],
                         'taxes' => ['label' => 'الضرائب', 'icon' => 'percent'],
                         'currency' => ['label' => 'العملة', 'icon' => 'coins'],
-                        'currencies' => ['label' => 'أسعار الصرف', 'icon' => 'arrow-left-right'],
                         'payments' => ['label' => 'طرق الدفع', 'icon' => 'credit-card'],
                         'invoices' => ['label' => 'الفواتير', 'icon' => 'file-text'],
                         'printing' => ['label' => 'الطباعة', 'icon' => 'printer'],
@@ -141,7 +140,7 @@
                 @php
                     $methods = [
                         ['key' => 'cash', 'label' => 'نقدي', 'desc' => 'الدفع النقدي عند الشراء', 'icon' => 'banknote', 'on' => true],
-                        ['key' => 'card', 'label' => 'بطاقة', 'desc' => 'الدفع عبر بطاقات الصراف والائتمان', 'icon' => 'credit-card', 'on' => true],
+                        ['key' => 'card', 'label' => 'بطاقة (فيزا)', 'desc' => 'الدفع عبر بطاقات الصراف والائتمان', 'icon' => 'credit-card', 'on' => true],
                         ['key' => 'transfer', 'label' => 'تحويل بنكي', 'desc' => 'التحويل المباشر للحساب البنكي', 'icon' => 'arrow-left-right', 'on' => true],
                         ['key' => 'credit', 'label' => 'آجل', 'desc' => 'البيع بالآجل للعملاء المسجلين', 'icon' => 'clock', 'on' => false],
                     ];
@@ -425,81 +424,6 @@
             </div>
         </form>
 
-        {{-- أسعار الصرف / تعدّد العملات (نماذج مستقلة) --}}
-        <div x-show="tab === 'currencies'" x-cloak class="lg:col-span-3 lg:col-start-2 space-y-6">
-            @php $currencies = \App\Support\Demo::currencies(); $base = collect($currencies)->firstWhere('is_base', true); @endphp
-
-            {{-- إضافة عملة --}}
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <div class="flex items-center gap-2 mb-5">
-                    <span class="w-9 h-9 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center"><x-icon name="plus" class="w-5 h-5" /></span>
-                    <h3 class="text-lg font-bold text-gray-800">إضافة عملة</h3>
-                </div>
-                <form method="POST" action="{{ route('admin.currencies.store') }}" class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-                    @csrf
-                    <x-input label="الرمز" name="code" placeholder="USD" :required="true" />
-                    <x-input label="الاسم" name="name" placeholder="دولار أمريكي" :required="true" />
-                    <x-input label="العلامة" name="symbol" placeholder="$" />
-                    <x-input label="سعر الصرف (لكل 1 {{ $base['code'] ?? 'أساسية' }})" name="rate" type="number" step="0.000001" placeholder="2.600000" :required="true" />
-                    <div class="sm:col-span-4 flex justify-end">
-                        <x-button variant="primary" size="md" type="submit" icon="plus">إضافة العملة</x-button>
-                    </div>
-                </form>
-                @error('code')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
-                @if (! $base)<p class="mt-3 text-xs text-gray-400">أول عملة تُضاف تصبح العملة الأساسية تلقائيًا بسعر 1.</p>@endif
-            </div>
-
-            {{-- قائمة العملات --}}
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div class="px-5 py-4 border-b border-gray-100">
-                    <h3 class="font-bold text-gray-800">العملات وأسعار الصرف</h3>
-                    @if ($base)<p class="text-xs text-gray-400 mt-0.5">العملة الأساسية: <strong>{{ $base['code'] }}</strong> — الأسعار نسبةً إليها.</p>@endif
-                </div>
-                @if (count($currencies))
-                    <x-table :headers="['العملة', 'الرمز', 'سعر الصرف', 'الحالة', '']">
-                        @foreach ($currencies as $c)
-                            <tr class="hover:bg-gray-50">
-                                <td class="px-4 py-3">
-                                    <span class="font-medium text-gray-800">{{ $c['name'] }}</span>
-                                    @if ($c['is_base'])<x-badge type="primary" text="أساسية" class="mr-2" />@endif
-                                </td>
-                                <td class="px-4 py-3 font-mono text-gray-600">{{ $c['code'] }} {{ $c['symbol'] }}</td>
-                                <td class="px-4 py-3">
-                                    @if ($c['is_base'])
-                                        <span class="text-gray-400">1.000000</span>
-                                    @else
-                                        <form method="POST" action="{{ route('admin.currencies.update', $c['id']) }}" class="flex items-center gap-2">
-                                            @csrf @method('PUT')
-                                            <input type="number" step="0.000001" name="rate" value="{{ rtrim(rtrim(number_format($c['rate'], 6, '.', ''), '0'), '.') }}" class="w-32 rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
-                                            <x-button variant="ghost" size="sm" type="submit" icon="check">حفظ</x-button>
-                                        </form>
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3">
-                                    <x-badge :type="$c['active'] ? 'success' : 'secondary'" :text="$c['active'] ? 'مفعّلة' : 'معطّلة'" />
-                                </td>
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center gap-1">
-                                        @unless ($c['is_base'])
-                                            <form method="POST" action="{{ route('admin.currencies.setBase', $c['id']) }}">
-                                                @csrf
-                                                <x-button variant="ghost" size="sm" type="submit" icon="star">أساسية</x-button>
-                                            </form>
-                                            <form method="POST" action="{{ route('admin.currencies.destroy', $c['id']) }}" @submit="if(!confirm('حذف هذه العملة؟')) $event.preventDefault()">
-                                                @csrf @method('DELETE')
-                                                <x-button variant="ghost" size="sm" type="submit" icon="trash-2" class="text-danger-600">حذف</x-button>
-                                            </form>
-                                        @endunless
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </x-table>
-                @else
-                    <x-empty-state icon="coins" title="لا توجد عملات" message="أضف عملتك الأساسية أولًا ثم عملات إضافية بأسعار صرفها." />
-                @endif
-            </div>
-        </div>
 
         {{-- النسخ الاحتياطي والاستعادة (نماذج مستقلة خارج نموذج الإعدادات) --}}
         <div x-show="tab === 'backup'" x-cloak class="lg:col-span-3 lg:col-start-2 space-y-6">

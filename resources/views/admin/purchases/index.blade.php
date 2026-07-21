@@ -51,7 +51,7 @@
     @if (count($orders))
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-100"><h3 class="font-bold text-gray-800">أوامر الشراء</h3></div>
-            <x-table :headers="['الرقم', 'الفرع', 'المورّد', 'الأصناف', 'الإجمالي', 'الحالة', 'تاريخ الطلب', 'إجراء']">
+            <x-table :headers="['الرقم', 'الفرع', 'المورّد', 'الأصناف', 'الإجمالي', 'الحالة', 'إيصال الدفع', 'تاريخ الطلب', 'إجراء']">
                 @foreach ($orders as $o)
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-3 font-mono text-gray-700 whitespace-nowrap">{{ $o['number'] }}</td>
@@ -60,6 +60,25 @@
                         <td class="px-4 py-3 text-gray-600">{{ $o['items_count'] }}</td>
                         <td class="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{{ \App\Support\Demo::money($o['total']) }}</td>
                         <td class="px-4 py-3"><x-badge :type="$statusColors[$o['status']] ?? 'gray'" :text="$o['status']" /></td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            @if ($o['receipt'])
+                                <a href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($o['receipt']) }}" target="_blank"
+                                   class="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 hover:underline"
+                                   title="{{ $o['receipt_name'] }}">
+                                    <x-icon name="paperclip" class="w-4 h-4 text-gray-400" /> عرض
+                                </a>
+                            @else
+                                <form method="POST" action="{{ route('admin.purchases.receipt', $o['id']) }}" enctype="multipart/form-data" x-data>
+                                    @csrf
+                                    <label class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 cursor-pointer">
+                                        <x-icon name="upload" class="w-4 h-4" /> رفع
+                                        <input type="file" name="receipt" class="hidden"
+                                               accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
+                                               @change="$el.form.submit()" />
+                                    </label>
+                                </form>
+                            @endif
+                        </td>
                         <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $o['ordered'] }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">
                             <div class="flex items-center gap-1.5">

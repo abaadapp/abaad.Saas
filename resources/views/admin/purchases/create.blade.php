@@ -11,7 +11,7 @@
             : collect([['product_id' => '', 'name' => '', 'cost' => 0, 'quantity' => 1]]);
     @endphp
 
-    <form method="POST" action="{{ route('admin.purchases.store') }}"
+    <form method="POST" action="{{ route('admin.purchases.store') }}" enctype="multipart/form-data"
         x-data='{
             items: @json($prefill),
             products: @json(collect($products)->map(fn($p) => ["id" => $p["id"], "name" => $p["name"], "cost" => $p["cost"]])->values()),
@@ -81,6 +81,18 @@
                     </select>
                     <label class="block text-sm text-gray-600 mb-1">ملاحظات</label>
                     <textarea name="notes" rows="2" class="w-full rounded-lg border-gray-200 text-sm"></textarea>
+
+                    <label class="block text-sm text-gray-600 mt-4 mb-1">إيصال الدفع</label>
+                    <label class="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-gray-200 rounded-xl p-4 text-center cursor-pointer hover:border-gray-300 transition"
+                           x-data="{ fileName: '' }">
+                        <x-icon name="upload-cloud" class="w-6 h-6 text-gray-400" />
+                        <span class="text-xs text-gray-500" x-text="fileName || 'اختر ملف الإيصال'"></span>
+                        <span class="text-[11px] text-gray-400">JPG · PNG · PDF · WEBP · HEIC — حتى 10 ميجابايت</span>
+                        <input type="file" name="receipt" class="hidden"
+                               accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
+                               @change="fileName = $event.target.files[0]?.name || ''" />
+                    </label>
+                    @error('receipt')<p class="mt-1.5 text-xs text-danger-500">{{ $message }}</p>@enderror
 
                     <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
                         <span class="text-gray-500">الإجمالي</span>

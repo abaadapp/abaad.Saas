@@ -513,6 +513,8 @@ class Demo
                 'status' => $p->status,
                 'total' => (float) $p->total,
                 'items_count' => $p->items_count,
+                'receipt' => $p->receipt,
+                'receipt_name' => $p->receipt_name,
                 'ordered' => optional($p->ordered_at)->format('Y-m-d') ?? '—',
                 'received' => optional($p->received_at)->format('Y-m-d'),
             ])->all();

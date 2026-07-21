@@ -20,6 +20,7 @@ class PurchaseOrderController extends Controller
             'branch_id' => ['required', 'integer'],
             'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'receipt' => ['nullable', 'file', 'max:10240', 'extensions:jpg,jpeg,png,pdf,webp,heic'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['nullable', 'integer'],
             'items.*.name' => ['required', 'string', 'max:255'],
@@ -27,6 +28,8 @@ class PurchaseOrderController extends Controller
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ], [
             'branch_id.required' => 'يجب تحديد الفرع الذي ستُستلم فيه البضاعة.',
+            'receipt.extensions' => 'الصيغ المدعومة لإيصال الدفع: JPG، PNG، PDF، WEBP، HEIC.',
+            'receipt.max' => 'أقصى حجم لإيصال الدفع 10 ميجابايت.',
         ]);
 
         $bid = $this->bid();
@@ -35,6 +38,14 @@ class PurchaseOrderController extends Controller
         $branch = \App\Models\Branch::where('business_id', $bid)->find($data['branch_id']);
         if (! $branch) {
             return back()->withInput()->withErrors(['branch_id' => 'الفرع المحدد غير صالح.']);
+        }
+
+        // إيصال الدفع (اختياري)
+        $receipt = $receiptName = null;
+        if ($request->hasFile('receipt')) {
+            $file = $request->file('receipt');
+            $receiptName = $file->getClientOriginalName();
+            $receipt = $file->store("purchase-receipts/{$bid}", 'public');
         }
 
         $supplier = ! empty($data['supplier_id']) ? Supplier::where('business_id', $bid)->find($data['supplier_id']) : null;
@@ -49,6 +60,8 @@ class PurchaseOrderController extends Controller
             'status' => 'مُرسل',
             'total' => $total,
             'notes' => $data['notes'] ?? null,
+            'receipt' => $receipt,
+            'receipt_name' => $receiptName,
             'ordered_at' => now(),
         ]);
         foreach ($data['items'] as $i) {
@@ -104,10 +117,38 @@ class PurchaseOrderController extends Controller
         return back()->with('toast', ['msg' => 'تم استلام أمر الشراء وتحديث المخزون', 'type' => 'success']);
     }
 
+    /** رفع/استبدال إيصال الدفع لأمر شراء قائم */
+    public function uploadReceipt(Request $request, $id)
+    {
+        $po = PurchaseOrder::where('business_id', $this->bid())->findOrFail($id);
+        $request->validate([
+            'receipt' => ['required', 'file', 'max:10240', 'extensions:jpg,jpeg,png,pdf,webp,heic'],
+        ], [
+            'receipt.extensions' => 'الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC.',
+            'receipt.max' => 'أقصى حجم 10 ميجابايت.',
+        ], ['receipt' => 'إيصال الدفع']);
+
+        // استبدال الإيصال القديم بدل تركه يتراكم على القرص
+        if ($po->receipt) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($po->receipt);
+        }
+        $file = $request->file('receipt');
+        $po->update([
+            'receipt' => $file->store('purchase-receipts/' . $this->bid(), 'public'),
+            'receipt_name' => $file->getClientOriginalName(),
+        ]);
+        \App\Support\Activity::log('updated', 'أرفق إيصال دفع لأمر الشراء ' . $po->number, ['subject_id' => $po->id]);
+
+        return back()->with('toast', ['msg' => 'تم رفع إيصال الدفع', 'type' => 'success']);
+    }
+
     public function destroy($id)
     {
         $po = PurchaseOrder::where('business_id', $this->bid())->findOrFail($id);
         $num = $po->number;
+        if ($po->receipt) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($po->receipt);
+        }
         $po->delete();
         \App\Support\Activity::log('deleted', 'حذف أمر الشراء: ' . $num);
 

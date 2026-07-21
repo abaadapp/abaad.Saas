@@ -162,6 +162,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
     // المخزون
     Route::view('/inventory', 'admin.inventory.index')->name('inventory.index');
+    Route::get('/inventory/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'inventoryXlsx'])->name('inventory.xlsx');
     Route::view('/inventory/movements', 'admin.inventory.movements')->name('inventory.movements');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 

@@ -12,7 +12,7 @@
         :breadcrumbs="['الرئيسية' => route('admin.dashboard'), 'المخزون' => '#']"
     >
         <x-slot:actions>
-            <x-button variant="outline" size="md" icon="clipboard-list" :href="route('admin.export.inventory')">جرد المخزون (CSV)</x-button>
+            <x-button variant="outline" size="md" icon="clipboard-list" :href="route('admin.inventory.xlsx')">جرد المخزون (Excel)</x-button>
             <x-button variant="primary" size="md" icon="repeat" :href="route('admin.inventory.movements')">حركة مخزون جديدة</x-button>
         </x-slot:actions>
     </x-page-header>

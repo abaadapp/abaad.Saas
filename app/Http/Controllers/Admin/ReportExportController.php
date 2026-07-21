@@ -52,6 +52,20 @@ class ReportExportController extends Controller
         return [$sheet, $title, $head];
     }
 
+    /** رأس جدول مسطّح بخلفية سوداء — يُرجع رقم أول صف بيانات */
+    private function tableHead($sheet, array $cols): int
+    {
+        $r = $this->row;
+        $last = chr(ord('A') + count($cols) - 1);
+        $sheet->fromArray($cols, null, "A{$r}");
+        $sheet->getStyle("A{$r}:{$last}{$r}")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle("A{$r}:{$last}{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
+        $sheet->getStyle("A{$r}:{$last}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $this->row++;
+
+        return $this->row;
+    }
+
     /** إنهاء الورقة: تنسيق المبالغ + عرض تلقائي + تنزيل */
     private function download(Spreadsheet $spreadsheet, $sheet, array $moneyCells, string $filename)
     {
@@ -222,18 +236,7 @@ class ReportExportController extends Controller
         $spreadsheet = new Spreadsheet();
         [$sheet, $title, $head] = $this->sheet($spreadsheet, 'المنتجات');
 
-        $cols = ['المعرّف', 'الاسم', 'التصنيف', 'SKU', 'الباركود', 'السعر (ر.ع)', 'التكلفة (ر.ع)', 'الكمية', 'حد التنبيه', 'حالة المخزون', 'الحالة'];
-        $last = 'K';
-
-        // رأس الجدول
-        $r = $this->row;
-        $sheet->fromArray($cols, null, "A{$r}");
-        $sheet->getStyle("A{$r}:{$last}{$r}")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
-        $sheet->getStyle("A{$r}:{$last}{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
-        $sheet->getStyle("A{$r}:{$last}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-        $this->row++;
-
-        $firstDataRow = $this->row;
+        $firstDataRow = $this->tableHead($sheet, ['المعرّف', 'الاسم', 'التصنيف', 'SKU', 'الباركود', 'السعر (ر.ع)', 'التكلفة (ر.ع)', 'الكمية', 'حد التنبيه', 'حالة المخزون', 'الحالة']);
         $money = [];
         foreach (Demo::products() as $p) {
             $r = $this->row;
@@ -259,5 +262,39 @@ class ReportExportController extends Controller
         Activity::log('report', 'صدّر المنتجات (Excel)');
 
         return $this->download($spreadsheet, $sheet, $money, 'products-' . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    /** تصدير جرد المخزون كملف Excel حقيقي (xlsx) */
+    public function inventoryXlsx()
+    {
+        $spreadsheet = new Spreadsheet();
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, 'جرد المخزون');
+
+        $firstDataRow = $this->tableHead($sheet, ['المعرّف', 'المنتج', 'SKU', 'الكمية الحالية', 'الحد الأدنى', 'حالة المخزون', 'آخر تحديث']);
+
+        foreach (Demo::inventory() as $i) {
+            $r = $this->row;
+            $sheet->setCellValue("A{$r}", (int) $i['id']);
+            $sheet->setCellValue("B{$r}", $i['name']);
+            $sheet->setCellValueExplicit("C{$r}", (string) $i['sku'], DataType::TYPE_STRING);
+            $sheet->setCellValue("D{$r}", (int) $i['qty']);
+            $sheet->setCellValue("E{$r}", (int) $i['min']);
+            $sheet->setCellValue("F{$r}", $i['status']);
+            $sheet->setCellValue("G{$r}", $i['updated']);
+
+            // إبراز الأصناف المنخفضة أو المنتهية بلون تحذيري
+            if ((int) $i['qty'] <= 0) {
+                $sheet->getStyle("A{$r}:G{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDE8E8');
+            } elseif ((int) $i['qty'] <= (int) $i['min']) {
+                $sheet->getStyle("A{$r}:G{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEF3E2');
+            }
+            $this->row++;
+        }
+
+        $sheet->freezePane("A{$firstDataRow}");
+
+        Activity::log('report', 'صدّر جرد المخزون (Excel)');
+
+        return $this->download($spreadsheet, $sheet, [], 'inventory-' . now()->format('Y-m-d') . '.xlsx');
     }
 }

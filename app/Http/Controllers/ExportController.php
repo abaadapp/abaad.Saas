@@ -88,17 +88,6 @@ class ExportController extends Controller
         return $this->stream('expenses', ['التاريخ', 'النوع', 'الوصف', 'المبلغ', 'الطريقة', 'الموظف'], $rows);
     }
 
-    public function employees()
-    {
-        $rows = array_map(fn ($u) => [
-            $u['id'], $u['name'], $u['role'], $u['branch'], $u['phone'], $u['email'],
-            number_format($u['achieved'], 3, '.', ''), number_format($u['target'], 3, '.', ''),
-            $u['pct'] . '%', $u['commission_rate'] . '%', number_format($u['commission'], 3, '.', ''), $u['status'],
-        ], Demo::employees());
-
-        return $this->stream('employees', ['المعرّف', 'الاسم', 'الدور', 'الفرع', 'الهاتف', 'البريد', 'مبيعات الشهر', 'الهدف', 'الإنجاز', 'نسبة العمولة', 'العمولة', 'الحالة'], $rows);
-    }
-
     public function inventory()
     {
         $rows = array_map(fn ($p) => [

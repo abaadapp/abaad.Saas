@@ -156,7 +156,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::post('/employees/{id}/toggle', [EmployeeController::class, 'toggleStatus'])->name('employees.toggle');
     Route::post('/employees/{id}/reset-password', [EmployeeController::class, 'resetPassword'])->name('employees.resetPassword');
     Route::post('/employees/{id}/goal', [EmployeeController::class, 'updateGoal'])->name('employees.goal');
-    Route::view('/employees-performance', 'admin.employees.performance')->name('employees.performance');
     Route::get('/employees/{id}/commission-pdf', [\App\Http\Controllers\PdfController::class, 'commissionStatement'])->name('employees.commission');
     Route::view('/employees/{id}', 'admin.employees.show')->name('employees.show');
 
@@ -224,7 +223,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::get('/export/transactions', [\App\Http\Controllers\ExportController::class, 'transactions'])->name('export.transactions');
     Route::get('/export/analytics', [\App\Http\Controllers\ExportController::class, 'analytics'])->name('export.analytics');
     Route::get('/export/expenses', [\App\Http\Controllers\ExportController::class, 'expenses'])->name('export.expenses');
-    Route::get('/export/employees', [\App\Http\Controllers\ExportController::class, 'employees'])->name('export.employees');
     Route::get('/export/inventory', [\App\Http\Controllers\ExportController::class, 'inventory'])->name('export.inventory');
 
     Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'adminIndex'])->name('activity.index');

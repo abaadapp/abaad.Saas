@@ -20,8 +20,14 @@
                             class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none transition"></textarea>
                     </div>
                     <x-select :label="__('القسم')" name="category_id" :options="collect(\App\Support\Demo::categories())->pluck('name', 'id')->toArray()" :placeholder="__('اختر القسم')" />
-                    <x-input :label="__('رمز المنتج SKU')" name="sku" placeholder="FLW-0001" />
-                    <x-input :label="__('الباركود')" name="barcode" placeholder="628..." icon="scan-barcode" />
+                    <div>
+                        <x-input :label="__('رمز المنتج SKU')" name="sku" :placeholder="__('يُولّد تلقائيًا')" />
+                        <p class="mt-1 text-xs text-gray-400">{{ __('اتركه فارغًا ليُولَّد تلقائيًا') }}</p>
+                    </div>
+                    <div>
+                        <x-input :label="__('الباركود')" name="barcode" :placeholder="__('يُولّد تلقائيًا')" icon="scan-barcode" />
+                        <p class="mt-1 text-xs text-gray-400">{{ __('اتركه فارغًا ليُولَّد تلقائيًا') }}</p>
+                    </div>
                 </div>
             </div>
 

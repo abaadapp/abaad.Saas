@@ -413,7 +413,7 @@
                             </div>
                             <div class="w-full sm:w-40">
                                 <label class="block text-xs text-gray-500 mb-1">{{ __('الرسوم') }}</label>
-                                <input type="number" step="0.001" min="0" x-model="form.fee" class="w-full rounded-lg border-gray-200 text-sm" />
+                                <input type="text" inputmode="decimal" data-money min="0" x-model="form.fee" class="w-full rounded-lg border-gray-200 text-sm" />
                             </div>
                             <button type="button" @click="save()" class="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-full px-4 py-2 whitespace-nowrap" x-text="editIndex === null ? @js(__('إضافة منطقة')) : @js(__('حفظ التعديل'))"></button>
                         </div>

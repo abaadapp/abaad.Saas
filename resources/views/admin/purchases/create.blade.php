@@ -44,7 +44,7 @@
                                 </div>
                                 <div class="col-span-5 sm:col-span-3">
                                     <label class="block text-xs text-gray-500 mb-1" x-show="i===0">{{ __('تكلفة الوحدة') }}</label>
-                                    <input type="number" step="0.001" min="0" :name="`items[${i}][cost]`" x-model="item.cost" class="w-full rounded-lg border-gray-200 text-sm" required />
+                                    <input type="text" inputmode="decimal" data-money min="0" :name="`items[${i}][cost]`" x-model="item.cost" class="w-full rounded-lg border-gray-200 text-sm" required />
                                 </div>
                                 <div class="col-span-4 sm:col-span-2">
                                     <label class="block text-xs text-gray-500 mb-1" x-show="i===0">{{ __('الكمية') }}</label>

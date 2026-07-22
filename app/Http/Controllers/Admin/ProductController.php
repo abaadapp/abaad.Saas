@@ -11,6 +11,26 @@ class ProductController extends Controller
 {
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
+    /** رمز منتج تلقائي فريد داخل النشاط: FLW-#### */
+    private function generateSku(): string
+    {
+        do {
+            $sku = 'FLW-' . str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT);
+        } while (Product::where('business_id', $this->bid())->where('sku', $sku)->exists());
+
+        return $sku;
+    }
+
+    /** باركود تلقائي فريد (يشبه EAN-13): 628 + ١٠ أرقام */
+    private function generateBarcode(): string
+    {
+        do {
+            $barcode = '628' . str_pad((string) random_int(0, 9999999999), 10, '0', STR_PAD_LEFT);
+        } while (Product::where('business_id', $this->bid())->where('barcode', $barcode)->exists());
+
+        return $barcode;
+    }
+
     public function index(Request $request)
     {
         $q = Product::where('business_id', $this->bid())->with('category');
@@ -58,6 +78,9 @@ class ProductController extends Controller
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
         $data['business_id'] = $this->bid();
+        // توليد رمز المنتج والباركود تلقائيًا إن تُركا فارغين
+        $data['sku'] = ! empty($data['sku']) ? $data['sku'] : $this->generateSku();
+        $data['barcode'] = ! empty($data['barcode']) ? $data['barcode'] : $this->generateBarcode();
         $data['active'] = $request->boolean('active', true);
         $data['image'] = $request->hasFile('image')
             ? $request->file('image')->store('products', 'public')

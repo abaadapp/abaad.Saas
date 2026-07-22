@@ -43,11 +43,53 @@ window.renderBarcodes = () => {
     });
 };
 document.addEventListener('DOMContentLoaded', () => window.renderBarcodes());
+
+/* ====== قبول كل الفواصل في حقول المبالغ ======
+   يحوّل حقول المبالغ إلى نص يقبل الفاصلة (,) والنقطة (.) والأرقام العربية،
+   ثم يوحّدها إلى نقطة عشرية لحظيًا في طور الالتقاط (قبل أن تقرأها Alpine). */
+const MONEY_NAMES = new Set([
+    'price', 'cost', 'amount', 'discount', 'tax', 'total', 'subtotal',
+    'delivery_fee', 'deliveryfee', 'opening_balance', 'monthly', 'yearly',
+    'monthly_price', 'yearly_price', 'free_threshold', 'fee', 'discountpercent',
+    'paid', 'unit_price', 'salary', 'monthly_target', 'value', 'balance', 'min_order',
+]);
+const AR_DIGITS = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9', '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+window.normalizeMoney = (v) => {
+    v = String(v).replace(/[٠-٩۰-۹]/g, (d) => AR_DIGITS[d] ?? d); // أرقام عربية → إنجليزية
+    v = v.replace(/٫/g, '.').replace(/[،٬\s]/g, ''); // فاصلة عشرية عربية + حذف فواصل الآلاف والمسافات
+    v = v.replace(/,/g, '.'); // الفاصلة → نقطة عشرية
+    v = v.replace(/[^0-9.]/g, ''); // إبقاء الأرقام والنقطة فقط
+    const i = v.indexOf('.');
+    if (i !== -1) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, ''); // نقطة عشرية واحدة
+    return v;
+};
+const isMoneyInput = (el) => {
+    if (!el || el.tagName !== 'INPUT') return false;
+    if (el.hasAttribute('data-money')) return true;
+    const name = el.getAttribute('name');
+    if (!name) return false;
+    const key = name.toLowerCase().replace(/\]$/, '').split(/[.[]/).pop();
+    return MONEY_NAMES.has(key);
+};
+window.upgradeMoneyInputs = (root = document) => {
+    (root.querySelectorAll ? root.querySelectorAll('input') : []).forEach((el) => {
+        if (el._moneyUpgraded || !isMoneyInput(el)) return;
+        el._moneyUpgraded = true;
+        if (el.type === 'number') el.type = 'text';
+        el.setAttribute('inputmode', 'decimal');
+        // طور الالتقاط: نوحّد القيمة قبل أن تقرأها مستمعات Alpine في طور الفقاعة
+        el.addEventListener('input', () => {
+            const s = window.normalizeMoney(el.value);
+            if (s !== el.value) el.value = s;
+        }, true);
+    });
+};
+document.addEventListener('DOMContentLoaded', () => window.upgradeMoneyInputs());
 /* إعادة الرسم بعد أي تحديث من Alpine (عناصر ديناميكية مثل السلة) */
 document.addEventListener('alpine:initialized', () => window.renderIcons());
 _iconObserver = new MutationObserver(() => {
     clearTimeout(_iconTimer);
-    _iconTimer = setTimeout(() => window.renderIcons(), 120);
+    _iconTimer = setTimeout(() => { window.renderIcons(); window.upgradeMoneyInputs(); }, 120);
 });
 document.addEventListener('DOMContentLoaded', () => {
     _iconObserver.observe(document.body, { childList: true, subtree: true });

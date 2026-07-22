@@ -152,7 +152,7 @@
                 <div class="flex items-center justify-between text-sm text-gray-600">
                     <span class="flex items-center gap-1">{{ __('الخصم') }} <span class="text-xs text-gray-400">%</span></span>
                     <div class="flex items-center gap-2">
-                        <input type="number" min="0" max="100" x-model.number="discountPercent"
+                        <input type="text" inputmode="decimal" data-money min="0" max="100" x-model.number="discountPercent"
                                class="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm text-left focus:border-gray-900 focus:ring-1 focus:ring-gray-200 focus:outline-none" />
                         <span class="text-danger-500 text-xs w-16 text-left" x-text="'- ' + money(discountAmount)"></span>
                     </div>
@@ -163,7 +163,7 @@
                 </div>
                 <div class="flex items-center justify-between text-sm text-gray-600">
                     <span>{{ __('رسوم التوصيل') }}</span>
-                    <input type="number" min="0" step="0.5" x-model.number="deliveryFee"
+                    <input type="text" inputmode="decimal" data-money min="0" x-model.number="deliveryFee"
                            class="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm text-left focus:border-gray-900 focus:ring-1 focus:ring-gray-200 focus:outline-none" />
                 </div>
                 <div class="flex items-center justify-between pt-2 border-t border-dashed border-gray-200">
@@ -223,7 +223,7 @@
 
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('المبلغ المدفوع') }}</label>
-                        <input type="number" min="0" step="0.001" x-model.number="paid" placeholder="0.000"
+                        <input type="text" inputmode="decimal" data-money min="0" x-model.number="paid" placeholder="0.000"
                                class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-lg font-bold text-gray-800 focus:border-gray-900 focus:ring-2 focus:ring-gray-200 focus:outline-none" />
                     </div>
 

@@ -51,9 +51,9 @@
         </div>
 
         {{-- قائمة الموظفين --}}
-        <div x-data="{ sel: { id: '', name: '', target: 0, rate: 0 } }">
+        <div x-data="{ sel: { id: '', name: '', rate: 0 } }">
             @if (count($employees))
-                <x-table :headers="[__('الموظف'), __('الوظيفة'), __('الفرع'), __('الهاتف'), __('البريد'), __('هدف الشهر'), __('الحالة'), __('إجراءات')]">
+                <x-table :headers="[__('الموظف'), __('الوظيفة'), __('الفرع'), __('الهاتف'), __('البريد'), __('العمولة'), __('الحالة'), __('إجراءات')]">
                     @foreach ($employees as $employee)
                         <tr class="hover:bg-gray-50" data-row data-tag="{{ $employee['role'] }}"
                             data-search="{{ $employee['name'] }} {{ $employee['email'] }} {{ $employee['phone'] }}">
@@ -71,22 +71,13 @@
                             <td class="px-4 py-3 text-gray-600 whitespace-nowrap" dir="ltr">{{ $employee['phone'] }}</td>
                             <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $employee['email'] }}</td>
 
-                            {{-- هدف الشهر --}}
-                            <td class="px-4 py-3 min-w-[190px]">
-                                @if ($employee['target'] > 0)
-                                    <div class="flex items-center justify-between text-xs mb-1">
-                                        <span class="font-semibold text-gray-800">{{ \App\Support\Demo::money($employee['achieved']) }}</span>
-                                        <span class="text-gray-400">{{ __('من :amount', ['amount' => \App\Support\Demo::money($employee['target'])]) }}</span>
-                                    </div>
-                                    <div class="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                                        <div class="h-1.5 rounded-full {{ $employee['pct'] >= 100 ? 'bg-success-500' : ($employee['pct'] >= 60 ? 'bg-primary-500' : 'bg-warning-500') }}" style="width: {{ $employee['pct'] }}%"></div>
-                                    </div>
-                                    <div class="flex items-center justify-between mt-1 text-[11px]">
-                                        <span class="text-gray-400">{{ $employee['pct'] }}%</span>
-                                        <span class="text-secondary-600 font-medium">{{ __('عمولة :amount', ['amount' => \App\Support\Demo::money($employee['commission'])]) }}</span>
-                                    </div>
+                            {{-- العمولة --}}
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                @if ($employee['commission_rate'] > 0)
+                                    <span class="text-secondary-600 font-semibold text-sm">{{ __('عمولة :amount', ['amount' => \App\Support\Demo::money($employee['commission'])]) }}</span>
+                                    <div class="text-[11px] text-gray-400 mt-0.5">{{ __('نسبة :rate% من مبيعات :amount', ['rate' => $employee['commission_rate'], 'amount' => \App\Support\Demo::money($employee['achieved'])]) }}</div>
                                 @else
-                                    <span class="text-xs text-gray-400">{{ __('لا يوجد هدف') }}</span>
+                                    <span class="text-xs text-gray-400">{{ __('بدون عمولة') }}</span>
                                 @endif
                             </td>
 
@@ -106,8 +97,8 @@
                                         <x-icon name="pencil" class="w-4 h-4" /> {{ __('تعديل') }}
                                     </a>
                                     <button type="button" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                        x-on:click="sel = { id: {{ $employee['id'] }}, name: @js($employee['name']), target: {{ $employee['target'] }}, rate: {{ $employee['commission_rate'] }} }; $dispatch('open-modal','edit-goal')">
-                                        <x-icon name="target" class="w-4 h-4" /> {{ __('الهدف والعمولة') }}
+                                        x-on:click="sel = { id: {{ $employee['id'] }}, name: @js($employee['name']), rate: {{ $employee['commission_rate'] }} }; $dispatch('open-modal','edit-goal')">
+                                        <x-icon name="percent" class="w-4 h-4" /> {{ __('العمولة') }}
                                     </button>
                                 </x-dropdown>
                             </td>
@@ -118,17 +109,12 @@
                 <x-empty-state icon="users" :title="__('لا يوجد موظفون')" :message="__('أضِف أول موظف لفريق عملك.')" />
             @endif
 
-            {{-- نافذة تعديل الهدف والعمولة --}}
-            <x-modal name="edit-goal" :title="__('الهدف الشهري والعمولة')" maxWidth="max-w-md">
+            {{-- نافذة تعديل العمولة --}}
+            <x-modal name="edit-goal" :title="__('عمولة الموظف')" maxWidth="max-w-md">
                 <form id="goal-form" method="POST" :action="'{{ url('admin/employees') }}/' + sel.id + '/goal'" class="space-y-4">
                     @csrf
                     <div class="rounded-xl bg-gray-50 border border-gray-100 p-3 text-sm text-gray-600">
                         {{ __('الموظف:') }} <span class="font-semibold text-gray-800" x-text="sel.name"></span>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">{{ __('الهدف الشهري (ر.ع)') }}</label>
-                        <input type="number" step="0.001" min="0" name="monthly_target" x-bind:value="sel.target"
-                            class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
                     </div>
                     <div>
                         <label class="block text-sm text-gray-600 mb-1">{{ __('نسبة العمولة %') }}</label>

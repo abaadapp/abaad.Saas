@@ -87,18 +87,17 @@ class EmployeeController extends Controller
         return redirect()->route('admin.employees.show', $employee->id)->with('toast', ['msg' => __('تم تحديث بيانات الموظف'), 'type' => 'success']);
     }
 
-    /** حفظ الهدف الشهري ونسبة العمولة للموظف */
+    /** حفظ نسبة عمولة الموظف */
     public function updateGoal(Request $request, $id)
     {
         $employee = $this->findEmployee($id);
         $data = $request->validate([
-            'monthly_target' => ['required', 'numeric', 'min:0'],
             'commission_rate' => ['required', 'numeric', 'min:0', 'max:100'],
         ]);
         $employee->update($data);
-        \App\Support\Activity::log('settings', 'حدّد هدف/عمولة الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
+        \App\Support\Activity::log('settings', 'حدّد عمولة الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
 
-        return back()->with('toast', ['msg' => __('تم حفظ هدف وعمولة الموظف'), 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('تم حفظ عمولة الموظف'), 'type' => 'success']);
     }
 
     public function toggleStatus($id)

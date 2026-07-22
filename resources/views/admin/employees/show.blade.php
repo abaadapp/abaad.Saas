@@ -91,15 +91,6 @@
                 <div class="space-y-4">
                     <div>
                         <div class="flex items-center justify-between text-sm mb-1.5">
-                            <span class="text-gray-500">{{ __('تحقيق الهدف الشهري') }}</span>
-                            <span class="font-semibold text-gray-800">82%</span>
-                        </div>
-                        <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
-                            <div class="h-full bg-primary-600 rounded-full" style="width: 82%"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex items-center justify-between text-sm mb-1.5">
                             <span class="text-gray-500">{{ __('رضا العملاء') }}</span>
                             <span class="font-semibold text-gray-800">94%</span>
                         </div>

@@ -1,6 +1,6 @@
 <x-layouts::admin :title="__('تحليلات الربحية')">
 
-    <x-page-header :title="__('تحليلات الربحية')" :subtitle="__('هامش الربح الحقيقي لكل منتج وتصنيف — بناءً على سعر التكلفة')"
+    <x-page-header :title="__('تحليلات الربحية')" :subtitle="__('هامش الربح الحقيقي لكل منتج وقسم — بناءً على سعر التكلفة')"
         :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('الربحية') => '#']" />
 
     @php
@@ -44,9 +44,9 @@
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {{-- ربحية التصنيفات --}}
+        {{-- ربحية الأقسام --}}
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h3 class="font-bold text-gray-800 mb-4">{{ __('الربح حسب التصنيف') }}</h3>
+            <h3 class="font-bold text-gray-800 mb-4">{{ __('الربح حسب القسم') }}</h3>
             @if (count($categories))
                 <div x-data='apexChart({
                     chart: { type: "bar", height: 320, fontFamily: "IBM Plex Sans Arabic", toolbar: { show: false } },

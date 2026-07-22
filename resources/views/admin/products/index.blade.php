@@ -4,7 +4,22 @@
         :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('المنتجات') => '#']">
         <x-slot:actions>
             <x-button variant="outline" icon="barcode" :href="route('admin.products.barcodes')">{{ __('طباعة الباركود') }}</x-button>
-            <x-button variant="outline" icon="download" :href="route('admin.products.xlsx')">{{ __('تصدير Excel') }}</x-button>
+            <x-dropdown align="left" width="w-56">
+                <x-slot:trigger>
+                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer">
+                        <x-icon name="download" class="w-4 h-4" /> {{ __('تصدير') }}
+                    </span>
+                </x-slot:trigger>
+                <a href="{{ route('admin.products.xlsx') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-spreadsheet" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف إكسل') }}
+                </a>
+                <a href="{{ route('admin.products.exportPdf') }}" target="_blank" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-text" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف PDF') }}
+                </a>
+                <a href="{{ route('admin.export.products') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-down" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف CSV') }}
+                </a>
+            </x-dropdown>
             <x-button variant="primary" icon="plus" :href="route('admin.products.create')">{{ __('إضافة منتج') }}</x-button>
         </x-slot:actions>
     </x-page-header>
@@ -19,7 +34,7 @@
                 <div class="lg:col-span-2">
                     <x-input name="q" value="{{ $filters['q'] ?? '' }}" :placeholder="__('ابحث بالاسم أو SKU...')" icon="search" />
                 </div>
-                <x-select name="category" :options="collect(\App\Support\Demo::categories())->pluck('name', 'name')->toArray()" :placeholder="__('كل التصنيفات')" selected="{{ $filters['category'] ?? '' }}" />
+                <x-select name="category" :options="collect(\App\Support\Demo::categories())->pluck('name', 'name')->toArray()" :placeholder="__('كل الأقسام')" selected="{{ $filters['category'] ?? '' }}" />
                 <x-select name="status" :options="['active' => __('مفعّل'), 'inactive' => __('غير مفعّل')]" :placeholder="__('كل الحالات')" selected="{{ $filters['status'] ?? '' }}" />
                 <x-select name="stock" :options="['متوفر' => __('متوفر'), 'منخفض' => __('منخفض'), 'نفد المخزون' => __('نفد المخزون')]" :placeholder="__('حالة المخزون')" selected="{{ $filters['stock'] ?? '' }}" />
             </div>
@@ -77,7 +92,7 @@
 
         {{-- عرض الجدول --}}
         <div x-show="view === 'table'">
-            <x-table :headers="[__('الصورة'), __('الاسم'), 'SKU', __('التصنيف'), __('السعر'), __('سعر التكلفة'), __('الكمية'), __('المخزون'), __('الحالة'), __('إجراءات')]">
+            <x-table :headers="[__('الصورة'), __('الاسم'), 'SKU', __('القسم'), __('السعر'), __('سعر التكلفة'), __('الكمية'), __('المخزون'), __('الحالة'), __('إجراءات')]">
                 @foreach ($products as $p)
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-3">

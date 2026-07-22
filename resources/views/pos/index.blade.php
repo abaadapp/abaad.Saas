@@ -27,7 +27,7 @@
                 </div>
             </div>
 
-            {{-- تبويبات التصنيفات --}}
+            {{-- تبويبات الأقسام --}}
             <div class="flex items-center gap-2 mb-4 overflow-x-auto pb-1 shrink-0">
                 @foreach ($categories as $c)
                     <button type="button"

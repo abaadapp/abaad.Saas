@@ -2,7 +2,7 @@
 @php
     $productTabs = [
         ['label' => __('المنتجات'), 'url' => route('admin.products.index'), 'active' => request()->routeIs('admin.products.*')],
-        ['label' => __('التصنيفات'), 'url' => route('admin.categories.index'), 'active' => request()->routeIs('admin.categories.*')],
+        ['label' => __('الأقسام'), 'url' => route('admin.categories.index'), 'active' => request()->routeIs('admin.categories.*')],
     ];
 @endphp
 

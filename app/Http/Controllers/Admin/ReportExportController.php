@@ -187,10 +187,10 @@ class ReportExportController extends Controller
         }
         $this->row++;
 
-        // المبيعات حسب التصنيف
+        // المبيعات حسب القسم
         $cat = Demo::categorySales();
-        $title(__('المبيعات حسب التصنيف'));
-        $head([__('التصنيف'), __('المبيعات (ر.ع)')]);
+        $title(__('المبيعات حسب القسم'));
+        $head([__('القسم'), __('المبيعات (ر.ع)')]);
         foreach ($cat['labels'] as $i => $label) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $label);
@@ -236,7 +236,7 @@ class ReportExportController extends Controller
         $spreadsheet = new Spreadsheet();
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('المنتجات'));
 
-        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الاسم'), __('التصنيف'), 'SKU', __('الباركود'), __('السعر (ر.ع)'), __('التكلفة (ر.ع)'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')]);
+        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الاسم'), __('القسم'), 'SKU', __('الباركود'), __('السعر (ر.ع)'), __('التكلفة (ر.ع)'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')]);
         $money = [];
         foreach (Demo::products() as $p) {
             $r = $this->row;

@@ -1015,7 +1015,7 @@ class Demo
             ->map(fn ($r) => ['name' => $r->customer_name, 'total' => round((float) $r->t, 3), 'orders' => (int) $r->c])->all();
     }
 
-    /** المبيعات حسب التصنيف */
+    /** المبيعات حسب القسم */
     public static function categorySales(): array
     {
         $rows = \Illuminate\Support\Facades\DB::table('order_items')

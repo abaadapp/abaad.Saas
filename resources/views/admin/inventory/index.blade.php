@@ -12,7 +12,22 @@
         :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('المخزون') => '#']"
     >
         <x-slot:actions>
-            <x-button variant="outline" size="md" icon="clipboard-list" :href="route('admin.inventory.xlsx')">{{ __('جرد المخزون (Excel)') }}</x-button>
+            <x-dropdown align="left" width="w-56">
+                <x-slot:trigger>
+                    <span class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer">
+                        <x-icon name="clipboard-list" class="w-4 h-4" /> {{ __('تصدير الجرد') }}
+                    </span>
+                </x-slot:trigger>
+                <a href="{{ route('admin.inventory.xlsx') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-spreadsheet" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف إكسل') }}
+                </a>
+                <a href="{{ route('admin.inventory.exportPdf') }}" target="_blank" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-text" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف PDF') }}
+                </a>
+                <a href="{{ route('admin.export.inventory') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-down" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف CSV') }}
+                </a>
+            </x-dropdown>
             <x-button variant="primary" size="md" icon="repeat" :href="route('admin.inventory.movements')">{{ __('حركة مخزون جديدة') }}</x-button>
         </x-slot:actions>
     </x-page-header>

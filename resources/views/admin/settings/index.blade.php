@@ -471,7 +471,7 @@
             {{-- تنزيل نسخة احتياطية --}}
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                 <h3 class="text-lg font-bold text-gray-800 mb-6">{{ __('تنزيل نسخة احتياطية') }}</h3>
-                <p class="text-sm text-gray-500 mb-5">{{ __('يشمل الملف كامل بيانات متجرك: المنتجات، التصنيفات، العملاء، الطلبات، المصروفات، المعاملات، حركات المخزون، والإعدادات — بصيغة JSON.') }}</p>
+                <p class="text-sm text-gray-500 mb-5">{{ __('يشمل الملف كامل بيانات متجرك: المنتجات، الأقسام، العملاء، الطلبات، المصروفات، المعاملات، حركات المخزون، والإعدادات — بصيغة JSON.') }}</p>
                 <div class="flex justify-end">
                     <x-button variant="primary" size="md" icon="database-backup" :href="route('admin.backup.download')">{{ __('تنزيل النسخة الآن') }}</x-button>
                 </div>

@@ -107,6 +107,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::view('/products/barcodes', 'admin.products.barcodes')->name('products.barcodes');
     // يجب أن يسبق products/{id} وإلا التقطه كمعرّف
     Route::get('/products/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'productsXlsx'])->name('products.xlsx');
+    Route::get('/products/export-pdf', [\App\Http\Controllers\PdfController::class, 'productsReport'])->name('products.exportPdf');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::view('/products/{id}', 'admin.products.show')->name('products.show');
     Route::view('/products/{id}/edit', 'admin.products.edit')->name('products.edit');
@@ -163,6 +164,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // المخزون
     Route::view('/inventory', 'admin.inventory.index')->name('inventory.index');
     Route::get('/inventory/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'inventoryXlsx'])->name('inventory.xlsx');
+    Route::get('/inventory/export-pdf', [\App\Http\Controllers\PdfController::class, 'inventoryReport'])->name('inventory.exportPdf');
     Route::view('/inventory/movements', 'admin.inventory.movements')->name('inventory.movements');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
@@ -229,6 +231,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
     // تصدير CSV
     Route::get('/export/products', [\App\Http\Controllers\ExportController::class, 'products'])->name('export.products');
+    Route::get('/export/orders', [\App\Http\Controllers\ExportController::class, 'orders'])->name('export.orders');
     Route::get('/export/customers', [\App\Http\Controllers\ExportController::class, 'customers'])->name('export.customers');
     Route::get('/export/transactions', [\App\Http\Controllers\ExportController::class, 'transactions'])->name('export.transactions');
     Route::get('/export/analytics', [\App\Http\Controllers\ExportController::class, 'analytics'])->name('export.analytics');

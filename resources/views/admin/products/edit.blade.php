@@ -22,7 +22,7 @@
                         <textarea id="description" name="description" rows="4"
                             class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none transition">{{ __('باقة أنيقة من الورود الطبيعية الطازجة مناسبة لجميع المناسبات، منسّقة بعناية بأيدي خبراء التنسيق لدينا.') }}</textarea>
                     </div>
-                    <x-select :label="__('التصنيف')" name="category_id" :options="collect(\App\Support\Demo::categories())->pluck('name', 'id')->toArray()" :selected="collect(\App\Support\Demo::categories())->firstWhere('name', $product['cat'])['id'] ?? ''" />
+                    <x-select :label="__('القسم')" name="category_id" :options="collect(\App\Support\Demo::categories())->pluck('name', 'id')->toArray()" :selected="collect(\App\Support\Demo::categories())->firstWhere('name', $product['cat'])['id'] ?? ''" />
                     <x-input :label="__('رمز المنتج SKU')" name="sku" :value="$product['sku']" />
                     <x-input :label="__('الباركود')" name="barcode" :value="$product['barcode']" icon="scan-barcode" />
                 </div>

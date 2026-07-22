@@ -86,7 +86,7 @@
                 <h3 class="font-bold text-gray-800 mb-4">{{ __('حالة الدفع') }}</h3>
                 <div class="flex items-center justify-between mb-3">
                     <span class="text-sm text-gray-500">{{ __('وسيلة الدفع') }}</span>
-                    <x-badge :text="__($order['payment'])" />
+                    <x-badge :text="$order['payment'] === 'بطاقة' ? 'فيزا' : $order['payment']" />
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-sm text-gray-500">{{ __('حالة الدفع') }}</span>

@@ -59,9 +59,9 @@
     @endforelse
 </table>
 
-<h2>{{ __('المبيعات حسب التصنيف') }}</h2>
+<h2>{{ __('المبيعات حسب القسم') }}</h2>
 <table>
-    <tr><th>{{ __('التصنيف') }}</th><th>{{ __('المبيعات') }}</th></tr>
+    <tr><th>{{ __('القسم') }}</th><th>{{ __('المبيعات') }}</th></tr>
     @foreach ($categorySales['labels'] as $i => $label)
         <tr><td>{{ $label }}</td><td>{{ \App\Support\Demo::moneyBase($categorySales['series'][$i] ?? 0) }}</td></tr>
     @endforeach

@@ -16,7 +16,7 @@
         'نشط' => 'success', 'مكتمل' => 'success', 'مدفوع' => 'success', 'مدفوعة' => 'success', 'متوفر' => 'success', 'جاهز' => 'success',
         'منتهي' => 'danger', 'ملغي' => 'danger', 'معطل' => 'danger', 'موقوف' => 'danger', 'نفد المخزون' => 'danger', 'غير مدفوع' => 'danger', 'غير مدفوعة' => 'danger',
         'منخفض' => 'warning', 'قيد التجهيز' => 'warning', 'آجل' => 'warning', 'تنبيه' => 'warning',
-        'جديد' => 'info', 'خرج للتوصيل' => 'info',
+        'جديد' => 'info', 'خرج للتوصيل' => 'info', 'فيزا' => 'info', 'بطاقة' => 'info', 'نقدي' => 'success', 'تحويل بنكي' => 'primary',
     ];
     $label = $text ?? trim($slot);
     $resolved = $statusMap[$label] ?? $type;

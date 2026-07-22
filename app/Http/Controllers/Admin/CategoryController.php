@@ -22,9 +22,9 @@ class CategoryController extends Controller
         $data['icon'] = $data['icon'] ?? 'tag';
         $data['color'] = $data['color'] ?? 'primary';
         Category::create($data);
-        \App\Support\Activity::log('created', 'أضاف تصنيفًا: ' . $data['name']);
+        \App\Support\Activity::log('created', 'أضاف قسمًا: ' . $data['name']);
 
-        return redirect()->route('admin.categories.index')->with('toast', ['msg' => __('تم إضافة التصنيف بنجاح'), 'type' => 'success']);
+        return redirect()->route('admin.categories.index')->with('toast', ['msg' => __('تم إضافة القسم بنجاح'), 'type' => 'success']);
     }
 
     public function update(Request $request, $id)
@@ -40,26 +40,26 @@ class CategoryController extends Controller
             'icon' => $data['icon'] ?: $category->icon,
             'color' => $data['color'] ?: $category->color,
         ]);
-        \App\Support\Activity::log('updated', 'عدّل التصنيف: ' . $category->name, ['subject_id' => $category->id]);
+        \App\Support\Activity::log('updated', 'عدّل القسم: ' . $category->name, ['subject_id' => $category->id]);
 
-        return redirect()->route('admin.categories.index')->with('toast', ['msg' => __('تم تحديث التصنيف'), 'type' => 'success']);
+        return redirect()->route('admin.categories.index')->with('toast', ['msg' => __('تم تحديث القسم'), 'type' => 'success']);
     }
 
     public function destroy($id)
     {
         $category = Category::where('business_id', $this->bid())->findOrFail($id);
 
-        // لا يُحذف تصنيف مرتبط بمنتجات — وإلا بقيت منتجات بتصنيف لا وجود له
+        // لا يُحذف قسم مرتبط بمنتجات — وإلا بقيت منتجات بقسم لا وجود له
         $used = $category->products()->count();
         if ($used > 0) {
             return back()->with('toast', [
-                'msg' => __('لا يمكن حذف «:name» لأنه مرتبط بـ :count منتج. غيّر تصنيفها أولًا.', ['name' => $category->name, 'count' => $used]),
+                'msg' => __('لا يمكن حذف «:name» لأنه مرتبط بـ :count منتج. غيّر قسمها أولًا.', ['name' => $category->name, 'count' => $used]),
                 'type' => 'error',
             ]);
         }
-        \App\Support\Activity::log('deleted', 'حذف التصنيف: ' . $category->name);
+        \App\Support\Activity::log('deleted', 'حذف القسم: ' . $category->name);
         $category->delete();
 
-        return redirect()->route('admin.categories.index')->with('toast', ['msg' => __('تم حذف التصنيف'), 'type' => 'success']);
+        return redirect()->route('admin.categories.index')->with('toast', ['msg' => __('تم حذف القسم'), 'type' => 'success']);
     }
 }

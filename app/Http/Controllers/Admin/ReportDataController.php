@@ -113,7 +113,7 @@ class ReportDataController extends Controller
             $rows[] = [$p['name'], $p['cat'], $this->money($p['price']), (string) $p['qty'], $p['stock_status']];
         }
 
-        return ['title' => __('تقرير المنتجات'), 'columns' => [__('المنتج'), __('التصنيف'), __('السعر'), __('الكمية'), __('حالة المخزون')], 'rows' => $rows,
+        return ['title' => __('تقرير المنتجات'), 'columns' => [__('المنتج'), __('القسم'), __('السعر'), __('الكمية'), __('حالة المخزون')], 'rows' => $rows,
                 'summary' => __('عدد المنتجات') . ': ' . count($rows)];
     }
 
@@ -162,7 +162,7 @@ class ReportDataController extends Controller
             $rows[] = [$label, $this->money($cat['series'][$i] ?? 0)];
         }
 
-        return ['title' => __('المبيعات حسب التصنيف'), 'columns' => [__('التصنيف'), __('المبيعات')], 'rows' => $rows,
-                'summary' => __('عدد التصنيفات') . ': ' . count($rows)];
+        return ['title' => __('المبيعات حسب القسم'), 'columns' => [__('القسم'), __('المبيعات')], 'rows' => $rows,
+                'summary' => __('عدد الأقسام') . ': ' . count($rows)];
     }
 }

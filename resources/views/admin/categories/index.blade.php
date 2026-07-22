@@ -1,10 +1,10 @@
-<x-layouts::admin :title="__('التصنيفات')">
+<x-layouts::admin :title="__('الأقسام')">
 
-    <x-page-header :title="__('التصنيفات')" :subtitle="__('تنظيم منتجاتك ضمن تصنيفات')"
-        :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('المنتجات') => route('admin.products.index'), __('التصنيفات') => '#']">
+    <x-page-header :title="__('الأقسام')" :subtitle="__('تنظيم منتجاتك ضمن أقسام')"
+        :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('المنتجات') => route('admin.products.index'), __('الأقسام') => '#']">
         <x-slot:actions>
             <x-button variant="outline" icon="external-link" :href="route('admin.categories.create')">{{ __('صفحة الإضافة') }}</x-button>
-            <x-button variant="primary" icon="plus" x-data @click="$dispatch('open-modal', 'add-category')">{{ __('إضافة تصنيف') }}</x-button>
+            <x-button variant="primary" icon="plus" x-data @click="$dispatch('open-modal', 'add-category')">{{ __('إضافة قسم') }}</x-button>
         </x-slot:actions>
     </x-page-header>
 
@@ -19,8 +19,11 @@
             'danger' => 'bg-danger-50 text-danger-600',
             'info' => 'bg-info-50 text-info-600',
         ];
-        $colorHex = ['primary' => '#7c3aed', 'secondary' => '#db2777', 'success' => '#10b981', 'warning' => '#f59e0b', 'info' => '#3b82f6'];
+        $colorHex = ['primary' => '#7c3aed', 'secondary' => '#db2777', 'success' => '#10b981', 'warning' => '#f59e0b', 'info' => '#3b82f6', 'danger' => '#ef4444'];
         $colorNames = ['primary' => __('بنفسجي'), 'secondary' => __('وردي'), 'success' => __('أخضر'), 'warning' => __('برتقالي'), 'info' => __('أزرق'), 'danger' => __('أحمر')];
+        // لوحة ألوان كاملة + محوّل لأي لون مخزّن (مفتاح دلالي أو hex مخصص)
+        $palette = ['#7c3aed', '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9', '#06b6d4', '#14b8a6', '#10b981', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#f97316', '#ef4444', '#e11d48', '#db2777', '#d946ef', '#a855f7', '#64748b', '#78716c'];
+        $resolveHex = fn ($c) => str_starts_with((string) $c, '#') ? $c : ($colorHex[$c] ?? $colorHex['primary']);
         $iconOptions = ['flower' => __('زهرة'), 'gift' => __('هدية'), 'party-popper' => __('مناسبات'), 'candy' => __('شوكولاتة'), 'sprout' => __('نبتة'), 'sparkles' => __('تنسيق'), 'tag' => __('وسم')];
         // أضِف أي أيقونة مستخدمة فعلًا وغير مدرجة، وإلا غيّرها التعديل بصمت
         foreach (\App\Support\Demo::categories() as $c) {
@@ -32,15 +35,16 @@
 
     @php $categories = \App\Support\Demo::categories(); @endphp
 
-    {{-- قائمة التصنيفات --}}
+    {{-- قائمة الأقسام --}}
     <div x-data="{ sel: { id: '', name: '', icon: '', color: '' } }">
         @if (count($categories))
-            <x-table :headers="[__('التصنيف'), __('الأيقونة'), __('اللون'), __('عدد المنتجات'), '']">
+            <x-table :headers="[__('القسم'), __('الأيقونة'), __('اللون'), __('عدد المنتجات'), '']">
                 @foreach ($categories as $cat)
                     <tr class="hover:bg-gray-50">
+                        @php $chex = $resolveHex($cat['color']); @endphp
                         <td class="px-4 py-3 whitespace-nowrap">
                             <div class="flex items-center gap-3">
-                                <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 {{ $colorMap[$cat['color']] ?? $colorMap['primary'] }}">
+                                <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style="background: {{ $chex }}1a; color: {{ $chex }};">
                                     <x-icon :name="$cat['icon']" class="w-[18px] h-[18px]" />
                                 </span>
                                 <span class="font-medium text-gray-800">{{ $cat['name'] }}</span>
@@ -49,7 +53,7 @@
                         <td class="px-4 py-3 text-gray-500 whitespace-nowrap font-mono text-xs">{{ $cat['icon'] }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">
                             <span class="inline-flex items-center gap-2 text-sm text-gray-600">
-                                <span class="w-4 h-4 rounded-full" style="background: {{ $colorHex[$cat['color']] ?? $colorHex['primary'] }}"></span>
+                                <span class="w-4 h-4 rounded-full" style="background: {{ $chex }}"></span>
                                 {{ $colorNames[$cat['color']] ?? $cat['color'] }}
                             </span>
                         </td>
@@ -62,10 +66,10 @@
                                     </button>
                                 </x-slot:trigger>
                                 <button type="button" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                    x-on:click="sel = { id: {{ $cat['id'] }}, name: {{ \Illuminate\Support\Js::from($cat['name']) }}, icon: {{ \Illuminate\Support\Js::from($cat['icon']) }}, color: {{ \Illuminate\Support\Js::from($cat['color']) }} }; $dispatch('open-modal','edit-category')">
+                                    x-on:click="sel = { id: {{ $cat['id'] }}, name: {{ \Illuminate\Support\Js::from($cat['name']) }}, icon: {{ \Illuminate\Support\Js::from($cat['icon']) }}, color: {{ \Illuminate\Support\Js::from($resolveHex($cat['color'])) }} }; $dispatch('open-modal','edit-category')">
                                     <x-icon name="pencil" class="w-4 h-4" /> {{ __('تعديل') }}
                                 </button>
-                                <form method="POST" action="{{ route('admin.categories.destroy', $cat['id']) }}" @submit.prevent="if(confirm(@js(__('حذف التصنيف «:name»؟', ['name' => $cat['name']])))) $el.submit()">
+                                <form method="POST" action="{{ route('admin.categories.destroy', $cat['id']) }}" @submit.prevent="if(confirm(@js(__('حذف القسم «:name»؟', ['name' => $cat['name']])))) $el.submit()">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-danger-600 hover:bg-danger-50">
                                         <x-icon name="trash-2" class="w-4 h-4" /> {{ __('حذف') }}
@@ -76,18 +80,18 @@
                     </tr>
                 @endforeach
                 <x-slot:footer>
-                    <div class="px-4 py-3 text-xs text-gray-400">{{ __(':n تصنيف', ['n' => count($categories)]) }}</div>
+                    <div class="px-4 py-3 text-xs text-gray-400">{{ __(':n قسم', ['n' => count($categories)]) }}</div>
                 </x-slot:footer>
             </x-table>
         @else
-            <x-empty-state icon="tags" :title="__('لا توجد تصنيفات')" :message="__('أضِف أول تصنيف لتنظيم منتجاتك.')" />
+            <x-empty-state icon="tags" :title="__('لا توجد أقسام')" :message="__('أضِف أول قسم لتنظيم منتجاتك.')" />
         @endif
 
-        {{-- نافذة تعديل تصنيف (مشتركة) --}}
-        <x-modal name="edit-category" :title="__('تعديل التصنيف')" maxWidth="max-w-lg">
+        {{-- نافذة تعديل قسم (مشتركة) --}}
+        <x-modal name="edit-category" :title="__('تعديل القسم')" maxWidth="max-w-lg">
             <form id="edit-category-form" method="POST" x-bind:action="'{{ url('admin/categories') }}/' + sel.id" class="space-y-4">
                 @csrf @method('PUT')
-                <x-input :label="__('اسم التصنيف')" name="name" x-bind:value="sel.name" :required="true" />
+                <x-input :label="__('اسم القسم')" name="name" x-bind:value="sel.name" :required="true" />
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('الأيقونة') }}</label>
                     <select name="icon" x-model="sel.icon" class="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm">
@@ -98,13 +102,16 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('اللون') }}</label>
-                    <div class="flex items-center gap-3">
-                        @foreach ($colorHex as $key => $hex)
-                            <label class="cursor-pointer">
-                                <input type="radio" name="color" value="{{ $key }}" class="sr-only peer" x-model="sel.color" />
-                                <span class="block w-8 h-8 rounded-full ring-2 ring-transparent peer-checked:ring-gray-800 peer-checked:ring-offset-2 transition" style="background: {{ $hex }}"></span>
-                            </label>
+                    <input type="hidden" name="color" x-model="sel.color" />
+                    <div class="flex flex-wrap items-center gap-2">
+                        @foreach ($palette as $hex)
+                            <button type="button" @click="sel.color = '{{ $hex }}'"
+                                class="w-8 h-8 rounded-full ring-2 ring-offset-2 transition"
+                                :class="sel.color === '{{ $hex }}' ? 'ring-gray-800' : 'ring-transparent'"
+                                style="background: {{ $hex }}"></button>
                         @endforeach
+                        <input type="color" x-model="sel.color" title="{{ __('لون مخصص') }}"
+                            class="w-8 h-8 rounded-full cursor-pointer border border-gray-200 bg-transparent p-0.5" />
                     </div>
                 </div>
             </form>
@@ -115,21 +122,24 @@
         </x-modal>
     </div>
 
-    {{-- نافذة إضافة تصنيف --}}
-    <x-modal name="add-category" :title="__('إضافة تصنيف')" maxWidth="max-w-lg">
+    {{-- نافذة إضافة قسم --}}
+    <x-modal name="add-category" :title="__('إضافة قسم')" maxWidth="max-w-lg">
         <form id="add-category-form" method="POST" action="{{ route('admin.categories.store') }}" class="space-y-4">
             @csrf
-            <x-input :label="__('اسم التصنيف')" name="name" :placeholder="__('مثال: باقات ورد')" :required="true" />
+            <x-input :label="__('اسم القسم')" name="name" :placeholder="__('مثال: باقات ورد')" :required="true" />
             <x-select :label="__('الأيقونة')" name="icon" :options="$iconOptions" :placeholder="__('اختر أيقونة')" />
-            <div>
+            <div x-data="{ color: '{{ $palette[0] }}' }">
                 <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('اللون') }}</label>
-                <div class="flex items-center gap-3">
-                    @foreach ($colorHex as $key => $hex)
-                        <label class="cursor-pointer">
-                            <input type="radio" name="color" value="{{ $key }}" class="sr-only peer" @checked($loop->first) />
-                            <span class="block w-8 h-8 rounded-full ring-2 ring-transparent peer-checked:ring-gray-800 peer-checked:ring-offset-2 transition" style="background: {{ $hex }}"></span>
-                        </label>
+                <input type="hidden" name="color" x-model="color" />
+                <div class="flex flex-wrap items-center gap-2">
+                    @foreach ($palette as $hex)
+                        <button type="button" @click="color = '{{ $hex }}'"
+                            class="w-8 h-8 rounded-full ring-2 ring-offset-2 transition"
+                            :class="color === '{{ $hex }}' ? 'ring-gray-800' : 'ring-transparent'"
+                            style="background: {{ $hex }}"></button>
                     @endforeach
+                    <input type="color" x-model="color" title="{{ __('لون مخصص') }}"
+                        class="w-8 h-8 rounded-full cursor-pointer border border-gray-200 bg-transparent p-0.5" />
                 </div>
             </div>
             <button type="submit" class="hidden"></button>

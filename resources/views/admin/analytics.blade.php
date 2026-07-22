@@ -112,10 +112,10 @@
         </div>
     </div>
 
-    {{-- المبيعات حسب التصنيف + جدول أفضل المنتجات --}}
+    {{-- المبيعات حسب القسم + جدول أفضل المنتجات --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <h3 class="font-bold text-gray-800 mb-4">{{ __('المبيعات حسب التصنيف') }}</h3>
+            <h3 class="font-bold text-gray-800 mb-4">{{ __('المبيعات حسب القسم') }}</h3>
             @if (count($byCategory['labels']))
                 <div x-data='apexChart({
                     chart: { type: "donut", height: 320, fontFamily: "IBM Plex Sans Arabic" },

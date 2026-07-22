@@ -151,6 +151,38 @@ class PdfController extends Controller
         return $this->pdf($html, 'orders-report-' . now()->format('Y-m-d'));
     }
 
+    /** تقرير المنتجات (PDF) */
+    public function productsReport()
+    {
+        $products = Demo::products();
+        $html = view('pdf.products-report', [
+            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'branch' => Demo::currentBranchName(),
+            'products' => $products,
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر قائمة المنتجات (PDF)');
+
+        return $this->pdf($html, 'products-report-' . now()->format('Y-m-d'));
+    }
+
+    /** تقرير جرد المخزون (PDF) */
+    public function inventoryReport()
+    {
+        $inventory = Demo::inventory();
+        $html = view('pdf.inventory-report', [
+            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'branch' => Demo::currentBranchName(),
+            'inventory' => $inventory,
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر جرد المخزون (PDF)');
+
+        return $this->pdf($html, 'inventory-report-' . now()->format('Y-m-d'));
+    }
+
     public function vatReport(Request $request)
     {
         $bid = auth()->user()->business_id ?? Demo::bid();

@@ -22,7 +22,19 @@ class ExportController extends Controller
             $p['qty'], $p['alert'], $p['stock_status'], $p['active'] ? __('مفعّل') : __('معطّل'),
         ], Demo::products());
 
-        return $this->stream('products', [__('المعرّف'), __('الاسم'), __('التصنيف'), 'SKU', __('الباركود'), __('السعر'), __('التكلفة'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')], $rows);
+        return $this->stream('products', [__('المعرّف'), __('الاسم'), __('القسم'), 'SKU', __('الباركود'), __('السعر'), __('التكلفة'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')], $rows);
+    }
+
+    public function orders()
+    {
+        $rows = array_map(fn ($o) => [
+            $o['id'], $o['customer'], $o['employee'], $o['branch'], $o['items_count'],
+            number_format($o['total'], 3, '.', ''),
+            $o['payment'] === 'بطاقة' ? __('فيزا') : __($o['payment']),
+            __($o['status']), $o['date'],
+        ], Demo::orders());
+
+        return $this->stream('orders', [__('رقم الطلب'), __('العميل'), __('الموظف'), __('الفرع'), __('عدد الأصناف'), __('الإجمالي'), __('الدفع'), __('الحالة'), __('التاريخ')], $rows);
     }
 
     public function customers()
@@ -60,7 +72,7 @@ class ExportController extends Controller
             $rows[] = [$c['name'], $c['orders'], number_format($c['total'], 3, '.', '')];
         }
         $rows[] = ['', '', ''];
-        $rows[] = [__('— المبيعات حسب التصنيف —'), '', ''];
+        $rows[] = [__('— المبيعات حسب القسم —'), '', ''];
         $cat = Demo::categorySales();
         foreach ($cat['labels'] as $i => $label) {
             $rows[] = [$label, number_format($cat['series'][$i] ?? 0, 3, '.', ''), ''];

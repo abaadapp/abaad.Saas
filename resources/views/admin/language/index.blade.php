@@ -1,15 +1,16 @@
 <x-layouts::admin :title="__('اللغة')">
     <x-page-header
-        :title="__('لغة النظام')"
+        :title="__('اللغة')"
         :subtitle="__('تُطبَّق على واجهة لوحة التحكم ويتغيّر معها اتجاه الصفحة')"
         :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('الإعدادات') => route('admin.settings.index'), __('اللغة') => '#']"
     />
 
-    <div class="max-w-2xl">
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-            @php $currentLocale = app()->getLocale(); @endphp
-            <form method="POST" action="{{ route('admin.language.update') }}" class="space-y-4">
-                @csrf
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <h3 class="text-lg font-bold text-gray-800 mb-6">{{ __('لغة النظام') }}</h3>
+        @php $currentLocale = app()->getLocale(); @endphp
+        <form method="POST" action="{{ route('admin.language.update') }}">
+            @csrf
+            <div class="space-y-5">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {{-- اسم اللغة يبقى بلغته، أمّا وصف الاتجاه فيتبع لغة الواجهة --}}
                     @foreach ([['ar', 'العربية', __('من اليمين إلى اليسار (RTL)')], ['en', 'English', __('من اليسار إلى اليمين (LTR)')]] as [$code, $label, $hint])
@@ -29,10 +30,10 @@
                         </label>
                     @endforeach
                 </div>
-                <div class="flex justify-end">
-                    <x-button variant="primary" size="md" icon="save" type="submit">{{ __('حفظ اللغة') }}</x-button>
-                </div>
-            </form>
-        </div>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <x-button variant="primary" size="md" icon="save" type="submit">{{ __('حفظ اللغة') }}</x-button>
+            </div>
+        </form>
     </div>
 </x-layouts::admin>

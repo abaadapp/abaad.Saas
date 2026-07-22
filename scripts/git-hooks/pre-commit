@@ -1,0 +1,19 @@
+#!/bin/sh
+#
+# يمنع الإيداع إذا وُجد أي نص __() بلا ترجمة إنجليزية في lang/en.json.
+# يضمن أن كل تحديث أو إضافة تُترجَم قبل حفظها.
+#
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+# نفحص فقط إن تغيّر كود PHP/Blade أو ملف الترجمة (تسريع الإيداعات الأخرى)
+if git diff --cached --name-only | grep -qE '\.(php|blade\.php)$|lang/en\.json'; then
+    if ! php artisan translations:check; then
+        echo ""
+        echo "✘ الإيداع مُوقَف: توجد نصوص بلا ترجمة إنجليزية."
+        echo "  ترجِمها في lang/en.json ثم أعِد المحاولة."
+        echo "  (أو: php artisan translations:check --stub لإضافتها ثم ترجمتها)"
+        exit 1
+    fi
+fi
+
+exit 0

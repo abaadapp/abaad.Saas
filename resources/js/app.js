@@ -16,8 +16,18 @@ window.CURRENCY = (() => {
     }
 })() || { rate: 1, symbol: 'ر.ع', decimals: 3 };
 
-/* رسم أيقونات Lucide الموجودة في الصفحة */
-window.renderIcons = () => createIcons({ icons });
+/* رسم أيقونات Lucide الموجودة في الصفحة.
+   نفصل المراقب أثناء الرسم حتى لا يُطلق تحديثُنا نفسَه حلقةً لا نهائية،
+   وحتى لا تُستبدل أيقونة يجري النقر عليها فتضيع الضغطة. */
+let _iconTimer = null;
+let _iconObserver = null;
+window.renderIcons = () => {
+    _iconObserver?.disconnect();
+    createIcons({ icons });
+    if (_iconObserver && document.body) {
+        _iconObserver.observe(document.body, { childList: true, subtree: true });
+    }
+};
 document.addEventListener('DOMContentLoaded', () => window.renderIcons());
 
 /* رسم الباركود على كل عنصر <svg class="barcode" data-code="..."> */
@@ -35,10 +45,9 @@ window.renderBarcodes = () => {
 document.addEventListener('DOMContentLoaded', () => window.renderBarcodes());
 /* إعادة الرسم بعد أي تحديث من Alpine (عناصر ديناميكية مثل السلة) */
 document.addEventListener('alpine:initialized', () => window.renderIcons());
-let _iconTimer = null;
-const _iconObserver = new MutationObserver(() => {
+_iconObserver = new MutationObserver(() => {
     clearTimeout(_iconTimer);
-    _iconTimer = setTimeout(() => window.renderIcons(), 60);
+    _iconTimer = setTimeout(() => window.renderIcons(), 120);
 });
 document.addEventListener('DOMContentLoaded', () => {
     _iconObserver.observe(document.body, { childList: true, subtree: true });

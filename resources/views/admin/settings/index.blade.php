@@ -24,6 +24,7 @@
                         'printing' => ['label' => __('الطباعة'), 'icon' => 'printer'],
                         'permissions' => ['label' => __('صلاحيات الموظفين'), 'icon' => 'shield-check'],
                         'notifications' => ['label' => __('الإشعارات'), 'icon' => 'bell'],
+                        'notifications-log' => ['label' => __('التنبيهات المرسلة'), 'icon' => 'bell-ring'],
                         'orders' => ['label' => __('الطلبات'), 'icon' => 'shopping-cart'],
                         'delivery' => ['label' => __('التوصيل'), 'icon' => 'truck'],
                         'backup' => ['label' => __('النسخ الاحتياطي'), 'icon' => 'database-backup'],
@@ -498,6 +499,49 @@
                         <x-button variant="danger" size="md" icon="database" type="submit">{{ __('استعادة البيانات') }}</x-button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        {{-- التنبيهات المرسلة (عرض كامل قائمة التنبيهات) --}}
+        @php
+            $allNotifications = \App\Support\Demo::allNotifications();
+            $notifColors = [
+                'danger' => 'bg-danger-50 text-danger-600',
+                'warning' => 'bg-warning-50 text-warning-600',
+                'info' => 'bg-info-50 text-info-600',
+                'success' => 'bg-success-50 text-success-600',
+            ];
+        @endphp
+        <div x-show="tab === 'notifications-log'" x-cloak>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">{{ __('التنبيهات المرسلة') }}</h3>
+                        <p class="text-sm text-gray-500 mt-1">{{ __('جميع التنبيهات التي أُرسلت إليك — مخزون منخفض وطلبات بانتظار التجهيز.') }}</p>
+                    </div>
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 text-gray-700 text-sm font-medium shrink-0">
+                        <x-icon name="bell-ring" class="w-4 h-4" /> {{ __(':n تنبيه', ['n' => count($allNotifications)]) }}
+                    </span>
+                </div>
+
+                @if (count($allNotifications))
+                    <div class="divide-y divide-gray-100">
+                        @foreach ($allNotifications as $n)
+                            <a href="{{ $n['url'] ?? '#' }}" class="flex items-start gap-3 py-3 -mx-2 px-2 rounded-xl hover:bg-gray-50 transition">
+                                <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 {{ $notifColors[$n['color']] ?? $notifColors['info'] }}">
+                                    <x-icon :name="$n['icon']" class="w-[18px] h-[18px]" />
+                                </span>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm text-gray-800">{{ $n['text'] }}</p>
+                                    <p class="text-xs text-gray-400 mt-0.5">{{ $n['time'] }}</p>
+                                </div>
+                                <x-icon name="chevron-left" class="w-4 h-4 text-gray-300 shrink-0 mt-2.5" />
+                            </a>
+                        @endforeach
+                    </div>
+                @else
+                    <x-empty-state icon="bell-off" :title="__('لا توجد تنبيهات')" :message="__('لا توجد تنبيهات مُرسلة حاليًا. ستظهر هنا عند انخفاض المخزون أو ورود طلبات جديدة.')" />
+                @endif
             </div>
         </div>
         </div>{{-- نهاية عمود المحتوى --}}

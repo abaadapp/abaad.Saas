@@ -1186,6 +1186,54 @@ class Demo
         return count(self::notifications());
     }
 
+    /** كامل قائمة التنبيهات المرسلة (بلا اختصار) — لعرضها في الإعدادات */
+    public static function allNotifications(): array
+    {
+        $u = auth()->user();
+        $items = [];
+
+        if ($u && $u->isSuperAdmin()) {
+            $subs = Subscription::with('business')
+                ->whereNotNull('ends_at')->whereDate('ends_at', '>=', now())
+                ->whereDate('ends_at', '<=', now()->addDays(30))
+                ->orderBy('ends_at')->limit(100)->get();
+            foreach ($subs as $s) {
+                $items[] = [
+                    'text' => __('اشتراك «:name» ينتهي قريبًا', ['name' => $s->business?->name ?? '—']),
+                    'time' => optional($s->ends_at)->format('Y-m-d'),
+                    'icon' => 'badge-x', 'color' => 'warning',
+                    'url' => route('super-admin.subscriptions.index'),
+                ];
+            }
+            return $items;
+        }
+
+        $bid = self::bid();
+        $low = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')
+            ->orderBy('quantity')->limit(100)->get();
+        foreach ($low as $p) {
+            $items[] = [
+                'text' => $p->quantity <= 0
+                    ? __('نفد المخزون: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity])
+                    : __('مخزون منخفض: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity]),
+                'time' => __('تنبيه مخزون'),
+                'icon' => 'alert-triangle', 'color' => $p->quantity <= 0 ? 'danger' : 'warning',
+                'url' => route('admin.inventory.index'),
+            ];
+        }
+        $pending = Order::where('business_id', $bid)->where('is_held', false)
+            ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit(100)->get();
+        foreach ($pending as $o) {
+            $items[] = [
+                'text' => __('طلب :number بانتظار التجهيز', ['number' => $o->number]),
+                'time' => optional($o->ordered_at)->format('Y-m-d H:i'),
+                'icon' => 'receipt', 'color' => 'info',
+                'url' => route('admin.orders.show', $o->number),
+            ];
+        }
+        return $items;
+    }
+
 
     /* ============================ الحساب البنكي وكشف الحساب ============================ */
 

@@ -24,7 +24,7 @@ class AddonController extends Controller
         ]);
         $data['business_id'] = $this->bid();
         $data['price'] = $data['price'] ?? 0;
-        $data['icon'] = $data['icon'] ?: 'plus';
+        $data['icon'] = $data['icon'] ?: '🎁';
         $data['active'] = $request->boolean('active');
         Addon::create($data);
         \App\Support\Activity::log('created', 'أضاف إضافة: ' . $data['name']);

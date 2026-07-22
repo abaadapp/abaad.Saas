@@ -212,11 +212,11 @@ class SeedData
     public static function addons(): array
     {
         return [
-            ['name' => 'تغليف هدية', 'price' => 1.500, 'icon' => 'gift'],
-            ['name' => 'بطاقة إهداء', 'price' => 0.500, 'icon' => 'sticky-note'],
-            ['name' => 'شريط تزيين', 'price' => 0.750, 'icon' => 'ribbon'],
-            ['name' => 'توصيل سريع', 'price' => 2.000, 'icon' => 'truck'],
-            ['name' => 'تنسيق خاص', 'price' => 3.000, 'icon' => 'sparkles'],
+            ['name' => 'تغليف هدية', 'price' => 1.500, 'icon' => '🎁'],
+            ['name' => 'بطاقة إهداء', 'price' => 0.500, 'icon' => '💌'],
+            ['name' => 'شريط تزيين', 'price' => 0.750, 'icon' => '🎀'],
+            ['name' => 'توصيل سريع', 'price' => 2.000, 'icon' => '🚚'],
+            ['name' => 'تنسيق خاص', 'price' => 3.000, 'icon' => '✨'],
         ];
     }
 

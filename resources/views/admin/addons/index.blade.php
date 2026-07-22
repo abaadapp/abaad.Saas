@@ -10,13 +10,9 @@
     @include('partials.products-tabs')
 
     @php
-        $iconOptions = ['plus' => __('عام'), 'gift' => __('تغليف هدية'), 'sticky-note' => __('بطاقة إهداء'), 'ribbon' => __('شريط'), 'sparkles' => __('تنسيق'), 'truck' => __('توصيل'), 'candy' => __('شوكولاتة'), 'flower' => __('زهرة')];
         $addons = \App\Support\Demo::addons();
-        foreach ($addons as $a) {
-            if ($a['icon'] && ! isset($iconOptions[$a['icon']])) {
-                $iconOptions[$a['icon']] = $a['icon'];
-            }
-        }
+        // رمز الإضافة قد يكون إيموجي (رموز آيفون) أو اسم أيقونة قديمة — نميّزهما عند العرض
+        $isEmoji = fn ($icon) => $icon && preg_match('/[^\x00-\x7F]/', $icon);
     @endphp
 
     <div x-data="{ sel: { id: '', name: '', price: 0, icon: '', active: true } }">
@@ -26,8 +22,12 @@
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-3 whitespace-nowrap">
                             <div class="flex items-center gap-3">
-                                <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary-50 text-primary-600">
-                                    <x-icon :name="$a['icon']" class="w-[18px] h-[18px]" />
+                                <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary-50 text-primary-600 text-lg leading-none">
+                                    @if ($isEmoji($a['icon']))
+                                        {{ $a['icon'] }}
+                                    @else
+                                        <x-icon :name="$a['icon'] ?: 'plus'" class="w-[18px] h-[18px]" />
+                                    @endif
                                 </span>
                                 <span class="font-medium text-gray-800">{{ $a['name'] }}</span>
                             </div>
@@ -71,14 +71,7 @@
                 @csrf @method('PUT')
                 <x-input :label="__('اسم العنصر')" name="name" x-bind:value="sel.name" :required="true" />
                 <x-input :label="__('السعر') . ' (' . __('ر.ع') . ')'" name="price" type="number" step="0.001" min="0" x-bind:value="sel.price" />
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('الأيقونة') }}</label>
-                    <select name="icon" x-model="sel.icon" class="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm">
-                        @foreach ($iconOptions as $val => $label)
-                            <option value="{{ $val }}">{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </div>
+                @include('partials.emoji-picker', ['model' => 'sel.icon'])
                 <label class="flex items-center gap-2 text-sm text-gray-700">
                     <input type="checkbox" name="active" value="1" x-model="sel.active" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                     {{ __('مفعّل') }}
@@ -97,7 +90,9 @@
             @csrf
             <x-input :label="__('اسم العنصر')" name="name" :placeholder="__('مثال: تغليف هدية')" :required="true" />
             <x-input :label="__('السعر') . ' (' . __('ر.ع') . ')'" name="price" type="number" step="0.001" min="0" placeholder="0.000" />
-            <x-select :label="__('الأيقونة')" name="icon" :options="$iconOptions" :placeholder="__('اختر أيقونة')" />
+            <div x-data="{ icon: '🎁' }">
+                @include('partials.emoji-picker', ['model' => 'icon'])
+            </div>
             <label class="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" name="active" value="1" checked class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                 {{ __('مفعّل') }}

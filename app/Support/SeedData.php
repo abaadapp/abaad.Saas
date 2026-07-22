@@ -209,6 +209,17 @@ class SeedData
         ];
     }
 
+    public static function addons(): array
+    {
+        return [
+            ['name' => 'تغليف هدية', 'price' => 1.500, 'icon' => 'gift'],
+            ['name' => 'بطاقة إهداء', 'price' => 0.500, 'icon' => 'sticky-note'],
+            ['name' => 'شريط تزيين', 'price' => 0.750, 'icon' => 'ribbon'],
+            ['name' => 'توصيل سريع', 'price' => 2.000, 'icon' => 'truck'],
+            ['name' => 'تنسيق خاص', 'price' => 3.000, 'icon' => 'sparkles'],
+        ];
+    }
+
     public static function products(): array
     {
         $items = [

@@ -144,6 +144,13 @@ class DatabaseSeeder extends Seeder
             $catByName[$c['name']] = $cat->id;
         }
 
+        foreach (SeedData::addons() as $a) {
+            \App\Models\Addon::create([
+                'business_id' => $primary->id, 'name' => $a['name'],
+                'price' => $a['price'], 'icon' => $a['icon'], 'active' => true,
+            ]);
+        }
+
         $products = [];
         foreach (SeedData::products() as $p) {
             $products[] = Product::create([

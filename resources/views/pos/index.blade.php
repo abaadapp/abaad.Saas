@@ -241,12 +241,12 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('وسيلة الدفع') }}</label>
                         <div class="grid grid-cols-3 gap-2">
-                            @foreach (['نقدي' => 'banknote', 'بطاقة' => 'credit-card', 'تحويل بنكي' => 'landmark', 'دفع متعدد' => 'layers', 'آجل' => 'clock'] as $m => $mi)
+                            @foreach (['نقدي' => 'banknote', 'بطاقة' => 'credit-card', 'تحويل بنكي' => 'landmark'] as $m => $mi)
                                 <button type="button" @click="method = '{{ $m }}'"
                                         :class="method === '{{ $m }}' ? 'border-gray-900 bg-gray-100 text-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
                                         class="flex flex-col items-center gap-1 border rounded-full py-2.5 text-xs font-medium transition-colors">
                                     <x-icon name="{{ $mi }}" class="w-5 h-5" />
-                                    {{ __($m) }}
+                                    {{ $m === 'بطاقة' ? __('فيزا') : __($m) }}
                                 </button>
                             @endforeach
                         </div>
@@ -276,7 +276,7 @@
                     <div class="bg-gray-50 rounded-2xl p-4 text-right space-y-2 text-sm">
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('رقم الفاتورة') }}</span><span class="font-bold text-gray-800" x-text="invoice"></span></div>
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('المبلغ') }}</span><span class="font-bold text-gray-800" x-text="money(total)"></span></div>
-                        <div class="flex justify-between"><span class="text-gray-500">{{ __('وسيلة الدفع') }}</span><span class="font-bold text-gray-800" x-text="method"></span></div>
+                        <div class="flex justify-between"><span class="text-gray-500">{{ __('وسيلة الدفع') }}</span><span class="font-bold text-gray-800" x-text="method === 'بطاقة' ? @js(__('فيزا')) : method"></span></div>
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('العميل') }}</span><span class="font-bold text-gray-800" x-text="customer"></span></div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">

@@ -292,6 +292,18 @@ class Demo
         ])->all();
     }
 
+    /** الإضافات (خدمات/عناصر تُضاف على المنتج مثل التغليف والبطاقة) */
+    public static function addons(): array
+    {
+        return \App\Models\Addon::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($a) => [
+            'id' => $a->id,
+            'name' => $a->name,
+            'price' => (float) $a->price,
+            'icon' => $a->icon,
+            'active' => (bool) $a->active,
+        ])->all();
+    }
+
     public static function products(): array
     {
         return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(fn ($p) => [

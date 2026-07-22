@@ -1,28 +1,7 @@
 <x-layouts::pos :title="__('الفواتير')">
     @php
-        $receipts = \App\Support\Demo::receipts();
-        $products = \App\Support\Demo::products();
-        $data = [];
-        foreach ($receipts as $i => $r) {
-            $lines = [];
-            $count = ($i % 3) + 2;
-            for ($j = 0; $j < $count; $j++) {
-                $p = $products[($i + $j) % count($products)];
-                $qty = ($j % 2) + 1;
-                $lines[] = ['name' => $p['name'], 'qty' => $qty, 'price' => $p['price'], 'total' => round($p['price'] * $qty, 3)];
-            }
-            $subtotal = array_sum(array_column($lines, 'total'));
-            $discount = round($subtotal * ($i % 3 === 0 ? 0.10 : 0), 3);
-            $tax = round(($subtotal - $discount) * 0.05, 3);
-            $total = round($subtotal - $discount + $tax, 3);
-            $data[] = array_merge($r, [
-                'lines' => $lines,
-                'subtotal' => $subtotal,
-                'discount' => $discount,
-                'tax' => $tax,
-                'total' => $total,
-            ]);
-        }
+        // فواتير حقيقية بأصنافها الفعلية كما اشتراها العميل (بلا اختلاق بيانات)
+        $data = \App\Support\Demo::receipts();
         $pdfBase = route('pos.receipt.pdf', '__NUMBER__');
     @endphp
 

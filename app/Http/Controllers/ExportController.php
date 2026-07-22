@@ -57,6 +57,37 @@ class ExportController extends Controller
         return $this->stream('transactions', [__('المرجع'), __('التاريخ'), __('الوصف'), __('الطريقة'), __('النوع'), __('المبلغ'), __('الموظف')], $rows);
     }
 
+    public function reports()
+    {
+        $rows = [];
+        $rows[] = [__('— المؤشرات الرئيسية —'), '', ''];
+        $rows[] = [__('المؤشر'), __('القيمة'), __('التغيّر')];
+        foreach (Demo::adminStats() as $s) {
+            $rows[] = [$s['label'], $s['value'], $s['trend'] ?? '—'];
+        }
+        $rows[] = ['', '', ''];
+        $rows[] = [__('— المبيعات الشهرية —'), '', ''];
+        $rows[] = [__('الشهر'), __('المبيعات'), ''];
+        $series = Demo::salesSeries();
+        foreach ($series['labels'] as $i => $label) {
+            $rows[] = [$label, number_format((float) ($series['data'][$i] ?? 0), 3, '.', ''), ''];
+        }
+        $rows[] = ['', '', ''];
+        $rows[] = [__('— وسائل الدفع —'), '', ''];
+        $rows[] = [__('الوسيلة'), __('الإجمالي'), __('عدد العمليات')];
+        foreach (Demo::paymentMethods() as $m) {
+            $rows[] = [$m['name'], number_format((float) $m['total'], 3, '.', ''), $m['count']];
+        }
+        $rows[] = ['', '', ''];
+        $rows[] = [__('— أفضل المنتجات مبيعًا —'), '', ''];
+        $rows[] = [__('المنتج'), __('الكمية المباعة'), __('الإيراد')];
+        foreach (Demo::topProducts() as $p) {
+            $rows[] = [$p['name'], $p['qty'], number_format((float) $p['total'], 3, '.', '')];
+        }
+
+        return $this->stream('sales-report', [__('العنصر'), __('القيمة 1'), __('القيمة 2')], $rows);
+    }
+
     public function analytics()
     {
         $rows = [];

@@ -241,6 +241,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::get('/export/customers', [\App\Http\Controllers\ExportController::class, 'customers'])->name('export.customers');
     Route::get('/export/transactions', [\App\Http\Controllers\ExportController::class, 'transactions'])->name('export.transactions');
     Route::get('/export/analytics', [\App\Http\Controllers\ExportController::class, 'analytics'])->name('export.analytics');
+    Route::get('/export/reports', [\App\Http\Controllers\ExportController::class, 'reports'])->name('export.reports');
     Route::get('/export/expenses', [\App\Http\Controllers\ExportController::class, 'expenses'])->name('export.expenses');
     Route::get('/export/inventory', [\App\Http\Controllers\ExportController::class, 'inventory'])->name('export.inventory');
 

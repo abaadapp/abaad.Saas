@@ -1528,12 +1528,16 @@
     "يُرسل إلى بريد صاحب النشاط عند إتمام أي عملية بيع.": "Sent to the business owner's email whenever a sale is completed.",
     "يُستخدم فقط للصفوف التي لا تحوي عمود «الفرع» في الملف — وإلا يُعتمد فرع الملف.": "Used only for rows without a «Branch» column in the file — otherwise the file's branch is used.",
     "— أفضل العملاء —": "— Top customers —",
+    "— أفضل المنتجات مبيعًا —": "— Top-Selling Products —",
     "— أفضل المنتجات —": "— Top products —",
+    "— المؤشرات الرئيسية —": "— Key Metrics —",
+    "— المبيعات الشهرية —": "— Monthly Sales —",
     "— المبيعات حسب التصنيف —": "— Sales by category —",
     "— المبيعات حسب القسم —": "— Sales by section —",
     "— المنصة —": "— Platform —",
     "— بدون مورّد —": "— No supplier —",
     "— صنف يدوي —": "— Manual item —",
+    "— وسائل الدفع —": "— Payment Methods —",
     "✓ :name — :count تنبيه → :email": "✓ :name — :count alerts → :email",
     "✓ :name — :count منتج → :email": "✓ :name — :count products → :email"
 }

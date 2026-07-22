@@ -1120,14 +1120,26 @@ class Demo
     {
         $name = auth()->user()?->name;
         return Order::where('business_id', self::bid())->where('is_held', false)
-            ->when($name, fn ($q) => $q->where('employee_name', $name))
-            ->orderByDesc('ordered_at')->limit(12)->get()->map(fn ($o) => [
+            ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
+            ->with('items')
+            ->orderByDesc('ordered_at')->limit(30)->get()->map(fn ($o) => [
                 'number' => $o->number,
                 'customer' => $o->customer_name ?? __('عميل نقدي'),
                 'total' => (float) $o->total,
+                'subtotal' => (float) $o->subtotal,
+                'discount' => (float) $o->discount,
+                'tax' => (float) $o->tax,
+                'delivery_fee' => (float) $o->delivery_fee,
                 'payment' => $o->payment_method,
                 'time' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
-                'employee' => $o->employee_name ?? 'سارة حسن',
+                'employee' => $o->employee_name ?? '—',
+                'lines' => $o->items->map(fn ($it) => [
+                    'name' => $it->name,
+                    'qty' => $it->quantity,
+                    'price' => (float) $it->price,
+                    'total' => (float) $it->total,
+                    'note' => $it->note,
+                ])->all(),
             ])->all();
     }
 

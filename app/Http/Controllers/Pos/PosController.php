@@ -13,6 +13,19 @@ class PosController extends Controller
 {
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
+    /** فرع الطلب: الفرع المختار حاليًا، وإلا أول فرع للنشاط — حتى يظهر الطلب تحت فلتر الفروع */
+    private function branch(): array
+    {
+        $branch = Demo::currentBranchId()
+            ? \App\Models\Branch::where('business_id', $this->bid())->find(Demo::currentBranchId())
+            : \App\Models\Branch::where('business_id', $this->bid())->orderBy('id')->first();
+
+        return [
+            'id' => $branch?->id,
+            'name' => $branch?->name ?? 'الفرع الرئيسي',
+        ];
+    }
+
     /** إتمام البيع وحفظ الطلب */
     public function checkout(Request $request)
     {
@@ -33,12 +46,14 @@ class PosController extends Controller
         ]);
 
         $subtotal = collect($data['items'])->sum(fn ($i) => $i['price'] * $i['qty']);
+        $branch = $this->branch();
         $order = Order::create([
             'business_id' => $this->bid(),
             'number' => 'INV-' . random_int(78900, 99999),
             'customer_name' => $data['customer'] ?? 'عميل نقدي',
             'employee_name' => auth()->user()->name,
-            'branch' => 'الفرع الرئيسي',
+            'branch_id' => $branch['id'],
+            'branch' => $branch['name'],
             'status' => 'مكتمل',
             'payment_method' => $data['payment_method'] ?? 'نقدي',
             'payment_status' => 'مدفوع',
@@ -101,6 +116,8 @@ class PosController extends Controller
             'number' => ($saved ? 'SAVE-' : 'HOLD-') . random_int(300, 999),
             'customer_name' => $data['customer'] ?? 'عميل نقدي',
             'employee_name' => auth()->user()->name,
+            'branch_id' => $this->branch()['id'],
+            'branch' => $this->branch()['name'],
             'status' => $saved ? 'محفوظ' : 'معلّق',
             'is_held' => true,
             'subtotal' => $data['total'] ?? 0,

@@ -280,7 +280,7 @@
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('العميل') }}</span><span class="font-bold text-gray-800" x-text="customer"></span></div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
-                        <button type="button" @click="window.print()"
+                        <button type="button" @click="window.open('{{ url('pos/receipt') }}/' + encodeURIComponent(invoice) + '/pdf', '_blank')"
                                 class="flex items-center justify-center gap-2 py-3 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-medium transition-colors">
                             <x-icon name="printer" class="w-5 h-5" /> {{ __('طباعة الفاتورة') }}
                         </button>

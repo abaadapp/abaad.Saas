@@ -22,6 +22,7 @@ class PosController extends Controller
             'items.*.name' => ['required', 'string'],
             'items.*.price' => ['required', 'numeric'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
+            'items.*.note' => ['nullable', 'string', 'max:255'],
             'customer' => ['nullable', 'string'],
             'payment_method' => ['nullable', 'string'],
             'discount' => ['nullable', 'numeric'],
@@ -87,6 +88,7 @@ class PosController extends Controller
             'items.*.name' => ['required', 'string'],
             'items.*.price' => ['required', 'numeric'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
+            'items.*.note' => ['nullable', 'string', 'max:255'],
             'customer' => ['nullable', 'string'],
             'total' => ['nullable', 'numeric'],
             // معلّق = بانتظار الاستكمال الآن · محفوظ = مسودّة للرجوع إليها لاحقًا

@@ -97,7 +97,7 @@
             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col">
                 <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                     <h3 class="font-bold text-gray-800" x-text="report.title || '…'"></h3>
-                    <button type="button" @click="close()" class="w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 flex items-center justify-center">
+                    <button type="button" @click="close()" aria-label="{{ __('إغلاق') }}" class="-mr-2 w-10 h-10 shrink-0 rounded-full hover:bg-gray-100 text-gray-500 flex items-center justify-center transition-colors">
                         <x-icon name="x" class="w-5 h-5" />
                     </button>
                 </div>

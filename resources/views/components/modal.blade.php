@@ -25,14 +25,16 @@
         @if ($title)
             <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                 <h3 class="text-lg font-bold text-gray-800">{{ $title }}</h3>
-                <button type="button" @click="open = false" aria-label="{{ __('إغلاق') }}" class="text-gray-400 hover:text-gray-600">
+                {{-- هدف لمس مريح (40×40) بدل أيقونة 20px صغيرة يصعب إصابتها على الجوال --}}
+                <button type="button" @click="open = false" aria-label="{{ __('إغلاق') }}"
+                        class="-mr-2 w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
                     <x-icon name="x" class="w-5 h-5" />
                 </button>
             </div>
         @else
             {{-- نافذة بلا عنوان: زر إغلاق عائم حتى لا تبقى نافذة بلا وسيلة إغلاق واضحة --}}
             <button type="button" @click="open = false" aria-label="{{ __('إغلاق') }}"
-                    class="absolute top-3 left-3 z-10 w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+                    class="absolute top-2.5 left-2.5 z-10 w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
                 <x-icon name="x" class="w-5 h-5" />
             </button>
         @endif

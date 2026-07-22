@@ -134,6 +134,22 @@ class PdfController extends Controller
         return $this->pdf($html, 'statement-' . $customer->id . '-' . now()->format('Y-m-d'));
     }
 
+    /** تقرير قائمة الطلبات (PDF) */
+    public function ordersReport()
+    {
+        $orders = Demo::orders();
+        $html = view('pdf.orders-report', [
+            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'branch' => Demo::currentBranchName(),
+            'orders' => $orders,
+            'total' => array_sum(array_map(fn ($o) => (float) $o['total'], $orders)),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر قائمة الطلبات (PDF)');
+
+        return $this->pdf($html, 'orders-report-' . now()->format('Y-m-d'));
+    }
 
     public function vatReport(Request $request)
     {

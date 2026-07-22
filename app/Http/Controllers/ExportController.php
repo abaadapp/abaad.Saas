@@ -13,15 +13,6 @@ class ExportController extends Controller
 {
     /* ------------------------------ النشاط التجاري ------------------------------ */
 
-    public function orders()
-    {
-        $rows = array_map(fn ($o) => [
-            $o['id'], $o['customer'], $o['employee'], $o['branch'], $o['items_count'],
-            number_format($o['total'], 3, '.', ''), $o['payment'], $o['status'], $o['date'],
-        ], Demo::orders());
-
-        return $this->stream('orders', [__('رقم الطلب'), __('العميل'), __('الموظف'), __('الفرع'), __('عدد الأصناف'), __('الإجمالي'), __('الدفع'), __('الحالة'), __('التاريخ')], $rows);
-    }
 
     public function products()
     {

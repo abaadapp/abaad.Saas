@@ -339,4 +339,47 @@ class ReportExportController extends Controller
 
         return $this->download($spreadsheet, $sheet, $money, 'finance-' . now()->format('Y-m-d') . '.xlsx');
     }
+
+    /** تصدير قائمة الطلبات كملف Excel حقيقي (xlsx) */
+    public function ordersXlsx()
+    {
+        $spreadsheet = new Spreadsheet();
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('الطلبات'));
+        $money = [];
+
+        $orders = Demo::orders();
+
+        // ملخّص سريع
+        $title(__('ملخّص الطلبات'));
+        $head([__('عدد الطلبات'), __('إجمالي القيمة (ر.ع)')]);
+        $sheet->setCellValue('A' . $this->row, count($orders));
+        $sheet->setCellValue('B' . $this->row, round(array_sum(array_map(fn ($o) => (float) $o['total'], $orders)), 3));
+        $money[] = 'B' . $this->row;
+        $this->row += 2;
+
+        // جدول الطلبات
+        $firstDataRow = $this->tableHead($sheet, [
+            __('رقم الطلب'), __('العميل'), __('الموظف'), __('الفرع'),
+            __('عدد الأصناف'), __('الإجمالي (ر.ع)'), __('الدفع'), __('الحالة'), __('التاريخ'),
+        ]);
+        foreach ($orders as $o) {
+            $r = $this->row;
+            $sheet->setCellValueExplicit("A{$r}", (string) $o['id'], DataType::TYPE_STRING);
+            $sheet->setCellValue("B{$r}", $o['customer']);
+            $sheet->setCellValue("C{$r}", $o['employee']);
+            $sheet->setCellValue("D{$r}", $o['branch']);
+            $sheet->setCellValue("E{$r}", (int) $o['items_count']);
+            $sheet->setCellValue("F{$r}", round((float) $o['total'], 3));
+            $sheet->setCellValue("G{$r}", $o['payment']);
+            $sheet->setCellValue("H{$r}", $o['status']);
+            $sheet->setCellValue("I{$r}", $o['date']);
+            $money[] = "F{$r}";
+            $this->row++;
+        }
+        $sheet->freezePane("A{$firstDataRow}");
+
+        Activity::log('report', 'صدّر قائمة الطلبات (Excel)');
+
+        return $this->download($spreadsheet, $sheet, $money, 'orders-' . now()->format('Y-m-d') . '.xlsx');
+    }
 }

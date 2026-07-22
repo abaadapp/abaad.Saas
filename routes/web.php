@@ -230,6 +230,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
     // إشعارات المتصفح (Polling)
     Route::get('/notifications/feed', [\App\Http\Controllers\NotificationController::class, 'feed'])->name('notifications.feed');
+    Route::post('/notifications/dismiss', [\App\Http\Controllers\NotificationController::class, 'dismiss'])->name('notifications.dismiss');
+    Route::post('/notifications/clear', [\App\Http\Controllers\NotificationController::class, 'clear'])->name('notifications.clear');
 
     // النسخ الاحتياطي والاستعادة
     Route::get('/backup/download', [\App\Http\Controllers\BackupController::class, 'download'])->name('backup.download');

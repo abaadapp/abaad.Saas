@@ -512,22 +512,45 @@
                 'success' => 'bg-success-50 text-success-600',
             ];
         @endphp
-        <div x-show="tab === 'notifications-log'" x-cloak>
+        <div x-show="tab === 'notifications-log'" x-cloak
+             x-data="{
+                count: {{ count($allNotifications) }},
+                dismiss(key, row) {
+                    fetch('{{ route('admin.notifications.dismiss') }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
+                        body: JSON.stringify({ key })
+                    }).then(() => { row.remove(); this.count--; $store.toasts?.add(@js(__('تم حذف التنبيه')), 'success', 1500); });
+                },
+                clearAll() {
+                    if (!confirm(@js(__('حذف جميع التنبيهات المرسلة؟')))) return;
+                    fetch('{{ route('admin.notifications.clear') }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' }
+                    }).then(() => { this.$refs.list?.replaceChildren(); this.count = 0; $store.toasts?.add(@js(__('تم حذف جميع التنبيهات')), 'success', 1500); });
+                }
+             }">
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center justify-between mb-6 gap-3">
                     <div>
                         <h3 class="text-lg font-bold text-gray-800">{{ __('التنبيهات المرسلة') }}</h3>
                         <p class="text-sm text-gray-500 mt-1">{{ __('جميع التنبيهات التي أُرسلت إليك — مخزون منخفض وطلبات بانتظار التجهيز.') }}</p>
                     </div>
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 text-gray-700 text-sm font-medium shrink-0">
-                        <x-icon name="bell-ring" class="w-4 h-4" /> {{ __(':n تنبيه', ['n' => count($allNotifications)]) }}
-                    </span>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 text-gray-700 text-sm font-medium">
+                            <x-icon name="bell-ring" class="w-4 h-4" /> <span x-text="count"></span> {{ __('تنبيه') }}
+                        </span>
+                        <button type="button" x-show="count > 0" @click="clearAll()"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-danger-200 text-danger-600 hover:bg-danger-50 text-sm font-medium transition">
+                            <x-icon name="trash-2" class="w-4 h-4" /> {{ __('حذف الكل') }}
+                        </button>
+                    </div>
                 </div>
 
-                @if (count($allNotifications))
-                    <div class="divide-y divide-gray-100">
-                        @foreach ($allNotifications as $n)
-                            <a href="{{ $n['url'] ?? '#' }}" class="flex items-start gap-3 py-3 -mx-2 px-2 rounded-xl hover:bg-gray-50 transition">
+                <div x-ref="list" x-show="count > 0" class="divide-y divide-gray-100">
+                    @foreach ($allNotifications as $n)
+                        <div data-notif class="flex items-start gap-3 py-3 -mx-2 px-2 rounded-xl hover:bg-gray-50 transition">
+                            <a href="{{ $n['url'] ?? '#' }}" class="flex items-start gap-3 flex-1 min-w-0">
                                 <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 {{ $notifColors[$n['color']] ?? $notifColors['info'] }}">
                                     <x-icon :name="$n['icon']" class="w-[18px] h-[18px]" />
                                 </span>
@@ -535,13 +558,18 @@
                                     <p class="text-sm text-gray-800">{{ $n['text'] }}</p>
                                     <p class="text-xs text-gray-400 mt-0.5">{{ $n['time'] }}</p>
                                 </div>
-                                <x-icon name="chevron-left" class="w-4 h-4 text-gray-300 shrink-0 mt-2.5" />
                             </a>
-                        @endforeach
-                    </div>
-                @else
+                            <button type="button" title="{{ __('حذف') }}"
+                                    @click="dismiss(@js($n['key']), $el.closest('[data-notif]'))"
+                                    class="w-8 h-8 rounded-full text-gray-300 hover:text-danger-600 hover:bg-danger-50 flex items-center justify-center shrink-0 transition">
+                                <x-icon name="trash-2" class="w-4 h-4" />
+                            </button>
+                        </div>
+                    @endforeach
+                </div>
+                <div x-show="count === 0" x-cloak>
                     <x-empty-state icon="bell-off" :title="__('لا توجد تنبيهات')" :message="__('لا توجد تنبيهات مُرسلة حاليًا. ستظهر هنا عند انخفاض المخزون أو ورود طلبات جديدة.')" />
-                @endif
+                </div>
             </div>
         </div>
         </div>{{-- نهاية عمود المحتوى --}}

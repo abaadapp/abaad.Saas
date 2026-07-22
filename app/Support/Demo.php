@@ -1146,51 +1146,79 @@ class Demo
     /* ============================ الإشعارات والوردية ============================ */
 
     /** إشعارات حقيقية حسب الدور (مخزون منخفض / طلبات / اشتراكات) */
-    public static function notifications(): array
+    /** مفاتيح التنبيهات التي أخفاها المستخدم الحالي (حذفها) */
+    public static function dismissedNotificationKeys(): array
     {
         $u = auth()->user();
+        if (! $u) {
+            return [];
+        }
+
+        return \App\Models\DismissedNotification::where('user_id', $u->id)->pluck('notif_key')->all();
+    }
+
+    /**
+     * يبني قائمة التنبيهات مع مفتاح ثابت لكل تنبيه، بعد استبعاد ما حذفه المستخدم.
+     * المفتاح ثابت لكل مصدر (منتج/طلب/اشتراك) حتى يبقى محذوفًا بعد إعادة التحميل.
+     */
+    private static function buildNotifications(int $limit): array
+    {
+        $u = auth()->user();
+        $dismissed = self::dismissedNotificationKeys();
         $items = [];
+        $add = function (string $key, array $item) use (&$items, $dismissed) {
+            if (! in_array($key, $dismissed, true)) {
+                $items[] = array_merge(['key' => $key], $item);
+            }
+        };
 
         if ($u && $u->isSuperAdmin()) {
             $subs = Subscription::with('business')
                 ->whereNotNull('ends_at')->whereDate('ends_at', '>=', now())
                 ->whereDate('ends_at', '<=', now()->addDays(30))
-                ->orderBy('ends_at')->limit(6)->get();
+                ->orderBy('ends_at')->limit($limit)->get();
             foreach ($subs as $s) {
-                $items[] = [
+                $add('sub-' . $s->id, [
                     'text' => __('اشتراك «:name» ينتهي قريبًا', ['name' => $s->business?->name ?? '—']),
                     'time' => optional($s->ends_at)->format('Y-m-d'),
                     'icon' => 'badge-x', 'color' => 'warning',
                     'url' => route('super-admin.subscriptions.index'),
-                ];
+                ]);
             }
+
             return $items;
         }
 
         $bid = self::bid();
         $low = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')
-            ->orderBy('quantity')->limit(6)->get();
+            ->orderBy('quantity')->limit($limit)->get();
         foreach ($low as $p) {
-            $items[] = [
+            $add('low-' . $p->id, [
                 'text' => $p->quantity <= 0
                     ? __('نفد المخزون: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity])
                     : __('مخزون منخفض: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity]),
                 'time' => __('تنبيه مخزون'),
                 'icon' => 'alert-triangle', 'color' => $p->quantity <= 0 ? 'danger' : 'warning',
                 'url' => route('admin.inventory.index'),
-            ];
+            ]);
         }
         $pending = Order::where('business_id', $bid)->where('is_held', false)
-            ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit(3)->get();
+            ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit($limit)->get();
         foreach ($pending as $o) {
-            $items[] = [
+            $add('order-' . $o->number, [
                 'text' => __('طلب :number بانتظار التجهيز', ['number' => $o->number]),
                 'time' => optional($o->ordered_at)->format('Y-m-d H:i'),
                 'icon' => 'receipt', 'color' => 'info',
                 'url' => route('admin.orders.show', $o->number),
-            ];
+            ]);
         }
+
         return $items;
+    }
+
+    public static function notifications(): array
+    {
+        return self::buildNotifications(6);
     }
 
     public static function notificationsCount(): int
@@ -1201,49 +1229,7 @@ class Demo
     /** كامل قائمة التنبيهات المرسلة (بلا اختصار) — لعرضها في الإعدادات */
     public static function allNotifications(): array
     {
-        $u = auth()->user();
-        $items = [];
-
-        if ($u && $u->isSuperAdmin()) {
-            $subs = Subscription::with('business')
-                ->whereNotNull('ends_at')->whereDate('ends_at', '>=', now())
-                ->whereDate('ends_at', '<=', now()->addDays(30))
-                ->orderBy('ends_at')->limit(100)->get();
-            foreach ($subs as $s) {
-                $items[] = [
-                    'text' => __('اشتراك «:name» ينتهي قريبًا', ['name' => $s->business?->name ?? '—']),
-                    'time' => optional($s->ends_at)->format('Y-m-d'),
-                    'icon' => 'badge-x', 'color' => 'warning',
-                    'url' => route('super-admin.subscriptions.index'),
-                ];
-            }
-            return $items;
-        }
-
-        $bid = self::bid();
-        $low = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')
-            ->orderBy('quantity')->limit(100)->get();
-        foreach ($low as $p) {
-            $items[] = [
-                'text' => $p->quantity <= 0
-                    ? __('نفد المخزون: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity])
-                    : __('مخزون منخفض: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity]),
-                'time' => __('تنبيه مخزون'),
-                'icon' => 'alert-triangle', 'color' => $p->quantity <= 0 ? 'danger' : 'warning',
-                'url' => route('admin.inventory.index'),
-            ];
-        }
-        $pending = Order::where('business_id', $bid)->where('is_held', false)
-            ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit(100)->get();
-        foreach ($pending as $o) {
-            $items[] = [
-                'text' => __('طلب :number بانتظار التجهيز', ['number' => $o->number]),
-                'time' => optional($o->ordered_at)->format('Y-m-d H:i'),
-                'icon' => 'receipt', 'color' => 'info',
-                'url' => route('admin.orders.show', $o->number),
-            ];
-        }
-        return $items;
+        return self::buildNotifications(100);
     }
 
 

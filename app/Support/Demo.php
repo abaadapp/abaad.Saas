@@ -423,10 +423,6 @@ class Demo
 
         return User::where('business_id', $bid)->where('role', '!=', 'super_admin')
             ->orderBy('id')->get()->map(function ($u) use ($monthly) {
-                $target = (float) $u->monthly_target;
-                $rate = (float) $u->commission_rate;
-                $achieved = (float) ($monthly[$u->id] ?? 0);
-
                 return [
                     'id' => $u->id,
                     'name' => $u->name,
@@ -437,11 +433,8 @@ class Demo
                     'email' => $u->email,
                     'sales' => (float) $u->sales_total,
                     'status' => $u->status,
-                    'target' => $target,
-                    'commission_rate' => $rate,
-                    'achieved' => $achieved,
-                    'pct' => $target > 0 ? min(100, round($achieved / $target * 100, 1)) : 0,
-                    'commission' => round($achieved * $rate / 100, 3),
+                    // يُستخدم لترتيب لوحة الأداء
+                    'achieved' => (float) ($monthly[$u->id] ?? 0),
                 ];
             })->all();
     }
@@ -457,33 +450,6 @@ class Demo
 
             return $e;
         })->all();
-    }
-
-    /** بيانات كشف العمولة لموظف: طلباته خلال الشهر + الإجماليات */
-    public static function employeeCommission($id): array
-    {
-        $bid = self::bid();
-        $u = User::where('business_id', $bid)->where('role', '!=', 'super_admin')->findOrFail($id);
-
-        $orders = Order::where('business_id', $bid)->where('is_held', false)->where('user_id', $u->id)
-            ->whereBetween('ordered_at', [now()->startOfMonth(), now()->endOfMonth()])
-            ->orderBy('ordered_at')->get();
-
-        $achieved = (float) $orders->sum('total');
-        $rate = (float) $u->commission_rate;
-        $target = (float) $u->monthly_target;
-
-        return [
-            'employee' => $u,
-            'orders' => $orders,
-            'achieved' => $achieved,
-            'orders_count' => $orders->count(),
-            'target' => $target,
-            'pct' => $target > 0 ? min(100, round($achieved / $target * 100, 1)) : 0,
-            'rate' => $rate,
-            'commission' => round($achieved * $rate / 100, 3),
-            'month' => now()->translatedFormat('F Y'),
-        ];
     }
 
     /* ============================ المورّدون والمشتريات ============================ */

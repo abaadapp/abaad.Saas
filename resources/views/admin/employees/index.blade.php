@@ -51,9 +51,9 @@
         </div>
 
         {{-- قائمة الموظفين --}}
-        <div x-data="{ sel: { id: '', name: '', rate: 0 } }">
+        <div>
             @if (count($employees))
-                <x-table :headers="[__('الموظف'), __('الوظيفة'), __('الفرع'), __('الهاتف'), __('البريد'), __('العمولة'), __('الحالة'), __('إجراءات')]">
+                <x-table :headers="[__('الموظف'), __('الوظيفة'), __('الفرع'), __('الهاتف'), __('البريد'), __('الحالة'), __('إجراءات')]">
                     @foreach ($employees as $employee)
                         <tr class="hover:bg-gray-50" data-row data-tag="{{ $employee['role'] }}"
                             data-search="{{ $employee['name'] }} {{ $employee['email'] }} {{ $employee['phone'] }}">
@@ -71,16 +71,6 @@
                             <td class="px-4 py-3 text-gray-600 whitespace-nowrap" dir="ltr">{{ $employee['phone'] }}</td>
                             <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $employee['email'] }}</td>
 
-                            {{-- العمولة --}}
-                            <td class="px-4 py-3 whitespace-nowrap">
-                                @if ($employee['commission_rate'] > 0)
-                                    <span class="text-secondary-600 font-semibold text-sm">{{ __('عمولة :amount', ['amount' => \App\Support\Demo::money($employee['commission'])]) }}</span>
-                                    <div class="text-[11px] text-gray-400 mt-0.5">{{ __('نسبة :rate% من مبيعات :amount', ['rate' => $employee['commission_rate'], 'amount' => \App\Support\Demo::money($employee['achieved'])]) }}</div>
-                                @else
-                                    <span class="text-xs text-gray-400">{{ __('بدون عمولة') }}</span>
-                                @endif
-                            </td>
-
                             <td class="px-4 py-3 whitespace-nowrap"><x-badge :text="__($employee['status'])" /></td>
 
                             <td class="px-4 py-3 whitespace-nowrap">
@@ -96,10 +86,6 @@
                                     <a href="{{ route('admin.employees.edit', $employee['id']) }}" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                         <x-icon name="pencil" class="w-4 h-4" /> {{ __('تعديل') }}
                                     </a>
-                                    <button type="button" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                        x-on:click="sel = { id: {{ $employee['id'] }}, name: @js($employee['name']), rate: {{ $employee['commission_rate'] }} }; $dispatch('open-modal','edit-goal')">
-                                        <x-icon name="percent" class="w-4 h-4" /> {{ __('العمولة') }}
-                                    </button>
                                 </x-dropdown>
                             </td>
                         </tr>
@@ -108,25 +94,6 @@
             @else
                 <x-empty-state icon="users" :title="__('لا يوجد موظفون')" :message="__('أضِف أول موظف لفريق عملك.')" />
             @endif
-
-            {{-- نافذة تعديل العمولة --}}
-            <x-modal name="edit-goal" :title="__('عمولة الموظف')" maxWidth="max-w-md">
-                <form id="goal-form" method="POST" :action="'{{ url('admin/employees') }}/' + sel.id + '/goal'" class="space-y-4">
-                    @csrf
-                    <div class="rounded-xl bg-gray-50 border border-gray-100 p-3 text-sm text-gray-600">
-                        {{ __('الموظف:') }} <span class="font-semibold text-gray-800" x-text="sel.name"></span>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-600 mb-1">{{ __('نسبة العمولة %') }}</label>
-                        <input type="number" step="0.01" min="0" max="100" name="commission_rate" x-bind:value="sel.rate"
-                            class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200" />
-                    </div>
-                </form>
-                <x-slot:footer>
-                    <x-button variant="ghost" size="md" x-on:click="$dispatch('close-modal')">{{ __('إلغاء') }}</x-button>
-                    <x-button variant="primary" size="md" icon="check" type="submit" form="goal-form">{{ __('حفظ') }}</x-button>
-                </x-slot:footer>
-            </x-modal>
         </div>
     </div>
     </div>{{-- نهاية تبويب الموظفين --}}

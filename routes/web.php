@@ -155,8 +155,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::put('/employees/{id}', [EmployeeController::class, 'update'])->name('employees.update');
     Route::post('/employees/{id}/toggle', [EmployeeController::class, 'toggleStatus'])->name('employees.toggle');
     Route::post('/employees/{id}/reset-password', [EmployeeController::class, 'resetPassword'])->name('employees.resetPassword');
-    Route::post('/employees/{id}/goal', [EmployeeController::class, 'updateGoal'])->name('employees.goal');
-    Route::get('/employees/{id}/commission-pdf', [\App\Http\Controllers\PdfController::class, 'commissionStatement'])->name('employees.commission');
     Route::view('/employees/{id}', 'admin.employees.show')->name('employees.show');
 
     // المخزون

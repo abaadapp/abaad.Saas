@@ -18,6 +18,7 @@
                         'business' => ['label' => __('بيانات النشاط'), 'icon' => 'store'],
                         'taxes' => ['label' => __('الضرائب'), 'icon' => 'percent'],
                         'currency' => ['label' => __('العملة'), 'icon' => 'coins'],
+                        'language' => ['label' => __('اللغة'), 'icon' => 'languages'],
                         'payments' => ['label' => __('طرق الدفع'), 'icon' => 'credit-card'],
                         'invoices' => ['label' => __('الفواتير'), 'icon' => 'file-text'],
                         'printing' => ['label' => __('الطباعة'), 'icon' => 'printer'],
@@ -25,6 +26,7 @@
                         'notifications' => ['label' => __('الإشعارات'), 'icon' => 'bell'],
                         'orders' => ['label' => __('الطلبات'), 'icon' => 'shopping-cart'],
                         'delivery' => ['label' => __('التوصيل'), 'icon' => 'truck'],
+                        'backup' => ['label' => __('النسخ الاحتياطي'), 'icon' => 'database-backup'],
                     ];
                 @endphp
                 <nav class="flex lg:flex-col gap-1 overflow-x-auto">
@@ -41,8 +43,6 @@
 
                     {{-- صفحات مستقلة تُفتح كما هي --}}
                     @foreach ([
-                        ['label' => __('اللغة'), 'icon' => 'languages', 'url' => route('admin.language.index')],
-                        ['label' => __('النسخ الاحتياطي'), 'icon' => 'database-backup', 'url' => route('admin.backup.index')],
                         ['label' => __('الفروع'), 'icon' => 'git-branch', 'url' => route('admin.branches.index')],
                         ['label' => __('الموظفون'), 'icon' => 'user-cog', 'url' => route('admin.employees.index')],
                         ['label' => __('سجل النشاط'), 'icon' => 'history', 'url' => route('admin.activity.index')],
@@ -58,8 +58,10 @@
             </div>
         </aside>
 
+        {{-- عمود المحتوى: يضمّ نموذج الإعدادات ولوحتَي اللغة والنسخ الاحتياطي معًا --}}
+        <div class="lg:col-span-3">
         {{-- محتوى التبويبات --}}
-        <form method="POST" action="{{ route('admin.settings.update') }}" class="lg:col-span-3">
+        <form method="POST" action="{{ route('admin.settings.update') }}">
             @csrf
             {{-- بيانات النشاط --}}
             <div x-show="tab === 'business'" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
@@ -429,6 +431,75 @@
             </div>
         </form>
 
+        {{-- اللغة (نموذج مستقل بنفس شكل بيانات النشاط) --}}
+        <div x-show="tab === 'language'" x-cloak>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-6">{{ __('لغة النظام') }}</h3>
+                @php $currentLocale = app()->getLocale(); @endphp
+                <form method="POST" action="{{ route('admin.language.update') }}">
+                    @csrf
+                    <div class="space-y-5">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {{-- اسم اللغة يبقى بلغته، أمّا وصف الاتجاه فيتبع لغة الواجهة --}}
+                            @foreach ([['ar', 'العربية', __('من اليمين إلى اليسار (RTL)')], ['en', 'English', __('من اليسار إلى اليمين (LTR)')]] as [$code, $label, $hint])
+                                <label class="flex items-center justify-between rounded-xl border px-4 py-3.5 cursor-pointer transition
+                                              {{ $currentLocale === $code ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:bg-gray-50' }}">
+                                    <span class="flex items-center gap-3">
+                                        <span class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center font-bold text-xs">
+                                            {{ strtoupper($code) }}
+                                        </span>
+                                        <span>
+                                            <span class="block text-sm font-medium text-gray-800">{{ $label }}</span>
+                                            <span class="block text-xs text-gray-400">{{ $hint }}</span>
+                                        </span>
+                                    </span>
+                                    <input type="radio" name="locale" value="{{ $code }}" @checked($currentLocale === $code)
+                                           class="w-5 h-5 text-gray-900 focus:ring-gray-300 border-gray-300" />
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-end">
+                        <x-button variant="primary" size="md" icon="save" type="submit">{{ __('حفظ اللغة') }}</x-button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
+        {{-- النسخ الاحتياطي (نماذج مستقلة بنفس شكل بيانات النشاط) --}}
+        <div x-show="tab === 'backup'" x-cloak class="space-y-6">
+            {{-- تنزيل نسخة احتياطية --}}
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-6">{{ __('تنزيل نسخة احتياطية') }}</h3>
+                <p class="text-sm text-gray-500 mb-5">{{ __('يشمل الملف كامل بيانات متجرك: المنتجات، التصنيفات، العملاء، الطلبات، المصروفات، المعاملات، حركات المخزون، والإعدادات — بصيغة JSON.') }}</p>
+                <div class="flex justify-end">
+                    <x-button variant="primary" size="md" icon="database-backup" :href="route('admin.backup.download')">{{ __('تنزيل النسخة الآن') }}</x-button>
+                </div>
+            </div>
+
+            {{-- استعادة من نسخة --}}
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-6">{{ __('استعادة من نسخة احتياطية') }}</h3>
+                <div class="flex items-start gap-2 bg-danger-50 text-danger-700 text-sm rounded-xl p-3 mb-5">
+                    <x-icon name="alert-triangle" class="w-5 h-5 shrink-0 mt-0.5" />
+                    <span>{{ __('تحذير: ستحل بيانات النسخة محل بيانات متجرك الحالية بالكامل. لا يمكن التراجع — نوصي بتنزيل نسخة حديثة أولًا.') }}</span>
+                </div>
+                <form method="POST" action="{{ route('admin.backup.restore') }}" enctype="multipart/form-data"
+                      x-data="{ fileName: '' }" @submit="if(!fileName){ $event.preventDefault(); $store.toasts.add(@js(__('اختر ملف النسخة أولًا')),'warning'); }">
+                    @csrf
+                    <label class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-2xl p-6 text-center cursor-pointer hover:border-danger-300 transition">
+                        <x-icon name="upload-cloud" class="w-8 h-8 text-gray-400" />
+                        <span class="text-sm font-medium text-gray-700" x-text="fileName || @js(__('اختر ملف النسخة الاحتياطية (JSON)'))"></span>
+                        <input type="file" name="backup" accept=".json,application/json" class="hidden"
+                               @change="fileName = $event.target.files[0]?.name || ''" />
+                    </label>
+                    @error('backup')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
+                    <div class="mt-6 flex justify-end">
+                        <x-button variant="danger" size="md" icon="database" type="submit">{{ __('استعادة البيانات') }}</x-button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        </div>{{-- نهاية عمود المحتوى --}}
     </div>
 </x-layouts::admin>

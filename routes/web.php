@@ -224,7 +224,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::get('/notifications/feed', [\App\Http\Controllers\NotificationController::class, 'feed'])->name('notifications.feed');
 
     // النسخ الاحتياطي والاستعادة
-    Route::view('/backup', 'admin.backup.index')->name('backup.index');
     Route::get('/backup/download', [\App\Http\Controllers\BackupController::class, 'download'])->name('backup.download');
     Route::post('/backup/restore', [\App\Http\Controllers\BackupController::class, 'restore'])->name('backup.restore');
 
@@ -238,7 +237,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
     Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'adminIndex'])->name('activity.index');
     Route::view('/settings', 'admin.settings.index')->name('settings.index');
-    Route::view('/language', 'admin.language.index')->name('language.index');
     Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
     Route::post('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'update'])->name('settings.update');
 });

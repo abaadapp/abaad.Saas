@@ -14,9 +14,9 @@
                     class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none transition"></textarea>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <x-select :label="__('الأيقونة')" name="icon" :options="['flower' => __('زهرة'), 'gift' => __('هدية'), 'party-popper' => __('مناسبات'), 'candy' => __('شوكولاتة'), 'sprout' => __('نبتة'), 'sparkles' => __('تنسيق')]" :placeholder="__('اختر أيقونة')" />
-                <x-select :label="__('القسم الأب')" name="parent" :options="collect(\App\Support\Demo::categories())->pluck('name', 'id')->toArray()" :placeholder="__('بدون (قسم رئيسي)')" />
+            <x-select :label="__('القسم الأب')" name="parent" :options="collect(\App\Support\Demo::categories())->pluck('name', 'id')->toArray()" :placeholder="__('بدون (قسم رئيسي)')" />
+            <div x-data="{ icon: '🌷' }">
+                @include('partials.emoji-picker', ['model' => 'icon'])
             </div>
 
             @php $palette = ['#7c3aed', '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9', '#06b6d4', '#14b8a6', '#10b981', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#f97316', '#ef4444', '#e11d48', '#db2777', '#d946ef', '#a855f7', '#64748b', '#78716c']; @endphp

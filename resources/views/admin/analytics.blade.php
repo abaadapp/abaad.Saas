@@ -15,6 +15,9 @@
                 <a href="{{ route('admin.analytics.pdf') }}" target="_blank" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
                     <x-icon name="file-text" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف PDF') }}
                 </a>
+                <a href="{{ route('admin.export.analytics') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-down" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف CSV') }}
+                </a>
             </x-dropdown>
         </x-slot:actions>
     </x-page-header>

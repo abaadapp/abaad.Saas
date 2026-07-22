@@ -40,6 +40,9 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 
     // الشركات
     Route::get('/businesses', [BusinessController::class, 'index'])->name('businesses.index');
+    // تصدير الشركات (قبل businesses/{id} حتى لا يبتلعها نمط المعرّف)
+    Route::get('/businesses/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'businessesXlsx'])->name('businesses.xlsx');
+    Route::get('/businesses/export-pdf', [\App\Http\Controllers\PdfController::class, 'businessesReport'])->name('businesses.exportPdf');
     Route::view('/businesses/create', 'super-admin.businesses.create')->name('businesses.create');
     Route::post('/businesses', [BusinessController::class, 'store'])->name('businesses.store');
     Route::view('/businesses/{id}', 'super-admin.businesses.show')->name('businesses.show');
@@ -60,6 +63,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::view('/subscriptions/plans', 'super-admin.subscriptions.plans')->name('subscriptions.plans');
     Route::view('/subscriptions/invoices', 'super-admin.subscriptions.invoices')->name('subscriptions.invoices');
     Route::get('/invoices/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'platformInvoice'])->name('invoices.pdf');
+    Route::get('/subscriptions/invoices/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'invoicesXlsx'])->name('invoices.xlsx');
+    Route::get('/subscriptions/invoices/pdf', [\App\Http\Controllers\PdfController::class, 'invoicesReport'])->name('invoices.exportPdf');
 
     // تصدير CSV
     Route::get('/export/businesses', [\App\Http\Controllers\ExportController::class, 'businesses'])->name('export.businesses');
@@ -200,6 +205,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // ضريبة القيمة المضافة
     Route::view('/vat', 'admin.vat')->name('vat.index');
     Route::get('/vat/pdf', [\App\Http\Controllers\PdfController::class, 'vatReport'])->name('vat.pdf');
+    Route::get('/vat/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'vatXlsx'])->name('vat.xlsx');
+    Route::get('/vat/csv', [\App\Http\Controllers\ExportController::class, 'vat'])->name('vat.csv');
     Route::get('/orders/{id}/tax-invoice', [\App\Http\Controllers\PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
 
     // المالية والمصروفات والتقارير والإعدادات
@@ -214,6 +221,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::get('/finance/pdf', [\App\Http\Controllers\PdfController::class, 'financeReport'])->name('finance.pdf');
     Route::post('/finance/transactions', [FinanceController::class, 'store'])->name('finance.store');
     Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
+    Route::get('/expenses/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'expensesXlsx'])->name('expenses.xlsx');
+    Route::get('/expenses/export-pdf', [\App\Http\Controllers\PdfController::class, 'expensesReport'])->name('expenses.exportPdf');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
     Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
     // أنواع المصروفات

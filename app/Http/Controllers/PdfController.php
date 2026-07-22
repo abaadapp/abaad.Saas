@@ -183,6 +183,52 @@ class PdfController extends Controller
         return $this->pdf($html, 'inventory-report-' . now()->format('Y-m-d'));
     }
 
+    /** تقرير المصروفات (PDF) */
+    public function expensesReport()
+    {
+        $expenses = Demo::expenses();
+        $html = view('pdf.expenses-report', [
+            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'branch' => Demo::currentBranchName(),
+            'expenses' => $expenses,
+            'total' => array_sum(array_map(fn ($e) => (float) $e['amount'], $expenses)),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر المصروفات (PDF)');
+
+        return $this->pdf($html, 'expenses-report-' . now()->format('Y-m-d'));
+    }
+
+    /** تقرير الشركات (PDF) — لوحة المنصة */
+    public function businessesReport()
+    {
+        $businesses = Demo::businesses();
+        $html = view('pdf.businesses-report', [
+            'businesses' => $businesses,
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر الشركات (PDF)');
+
+        return $this->pdf($html, 'businesses-report-' . now()->format('Y-m-d'));
+    }
+
+    /** تقرير فواتير الاشتراكات (PDF) — لوحة المنصة */
+    public function invoicesReport()
+    {
+        $invoices = Demo::invoices();
+        $html = view('pdf.invoices-report', [
+            'invoices' => $invoices,
+            'total' => array_sum(array_map(fn ($i) => (float) $i['amount'], $invoices)),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر فواتير الاشتراكات (PDF)');
+
+        return $this->pdf($html, 'invoices-report-' . now()->format('Y-m-d'));
+    }
+
     public function vatReport(Request $request)
     {
         $bid = auth()->user()->business_id ?? Demo::bid();

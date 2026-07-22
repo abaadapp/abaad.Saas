@@ -6,7 +6,7 @@
     >
         <x-slot:actions>
             <x-button variant="outline" size="md" icon="refresh-cw" :href="route('super-admin.subscriptions.index')">{{ __('الاشتراكات') }}</x-button>
-            <x-button variant="primary" size="md" icon="download" :href="route('super-admin.export.invoices')">{{ __('تصدير CSV') }}</x-button>
+            @include('partials.export-menu', ['xlsx' => route('super-admin.invoices.xlsx'), 'pdf' => route('super-admin.invoices.exportPdf'), 'csv' => route('super-admin.export.invoices')])
         </x-slot:actions>
     </x-page-header>
 

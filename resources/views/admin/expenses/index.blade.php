@@ -38,7 +38,7 @@
                         </div>
                         <x-button variant="outline" size="md" icon="sliders-horizontal" type="button" x-on:click="showFilter = !showFilter">{{ __('تصفية') }}</x-button>
                     </div>
-                    <x-button variant="outline" size="md" icon="download" :href="route('admin.export.expenses')">{{ __('تصدير بصيغة إكسل') }}</x-button>
+                    @include('partials.export-menu', ['xlsx' => route('admin.expenses.xlsx'), 'pdf' => route('admin.expenses.exportPdf'), 'csv' => route('admin.export.expenses')])
                 </div>
 
                 {{-- لوحة التصفية --}}

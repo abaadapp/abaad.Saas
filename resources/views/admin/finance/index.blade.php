@@ -26,6 +26,9 @@
                 <a href="{{ route('admin.finance.pdf') }}" target="_blank" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
                     <x-icon name="file-text" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف PDF') }}
                 </a>
+                <a href="{{ route('admin.export.transactions') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                    <x-icon name="file-down" class="w-4 h-4 text-gray-400" /> {{ __('تصدير كملف CSV') }}
+                </a>
             </x-dropdown>
             <x-button variant="primary" icon="plus" @click="$dispatch('open-modal','add-transaction')">{{ __('تسجيل معاملة') }}</x-button>
         </x-slot:actions>

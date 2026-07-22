@@ -382,4 +382,106 @@ class ReportExportController extends Controller
 
         return $this->download($spreadsheet, $sheet, $money, 'orders-' . now()->format('Y-m-d') . '.xlsx');
     }
+
+    /** تصدير المصروفات كملف Excel */
+    public function expensesXlsx()
+    {
+        $spreadsheet = new Spreadsheet();
+        [$sheet] = $this->sheet($spreadsheet, __('المصروفات'));
+        $firstDataRow = $this->tableHead($sheet, [__('التاريخ'), __('النوع'), __('الوصف'), __('المبلغ (ر.ع)'), __('الطريقة'), __('الموظف')]);
+        $money = [];
+        foreach (Demo::expenses() as $e) {
+            $r = $this->row;
+            $sheet->setCellValue("A{$r}", $e['date']);
+            $sheet->setCellValue("B{$r}", $e['type']);
+            $sheet->setCellValue("C{$r}", $e['description']);
+            $sheet->setCellValue("D{$r}", round((float) $e['amount'], 3));
+            $sheet->setCellValue("E{$r}", $e['method']);
+            $sheet->setCellValue("F{$r}", $e['employee']);
+            $money[] = "D{$r}";
+            $this->row++;
+        }
+        $sheet->freezePane("A{$firstDataRow}");
+        Activity::log('report', 'صدّر المصروفات (Excel)');
+
+        return $this->download($spreadsheet, $sheet, $money, 'expenses-' . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    /** تصدير إقرار ضريبة القيمة المضافة كملف Excel */
+    public function vatXlsx(\Illuminate\Http\Request $request)
+    {
+        $report = Demo::vatReport($request->query('period', 'quarter'));
+        $spreadsheet = new Spreadsheet();
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('إقرار ضريبة القيمة المضافة'));
+        $money = [];
+        $head([__('البند'), __('القيمة (ر.ع)'), '']);
+        $lines = [
+            [__('المبيعات الخاضعة للضريبة'), $report['taxable_sales'] ?? 0],
+            [__('ضريبة المخرجات'), $report['output_vat'] ?? 0],
+            [__('المشتريات الخاضعة للضريبة'), $report['input_base'] ?? 0],
+            [__('ضريبة المدخلات'), $report['input_vat'] ?? 0],
+            [__('صافي الضريبة المستحقة'), $report['net_vat'] ?? 0],
+        ];
+        foreach ($lines as $ln) {
+            $r = $this->row;
+            $sheet->setCellValue("A{$r}", $ln[0]);
+            $sheet->setCellValue("B{$r}", round((float) $ln[1], 3));
+            $money[] = "B{$r}";
+            $this->row++;
+        }
+        Activity::log('report', 'صدّر إقرار الضريبة (Excel)');
+
+        return $this->download($spreadsheet, $sheet, $money, 'vat-' . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    /** تصدير الشركات كملف Excel (لوحة المنصة) */
+    public function businessesXlsx()
+    {
+        $spreadsheet = new Spreadsheet();
+        [$sheet] = $this->sheet($spreadsheet, __('الشركات'));
+        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الشركة'), __('النوع'), __('المالك'), __('الهاتف'), __('البريد'), __('المدينة'), __('الباقة'), __('الحالة'), __('الفروع'), __('التسجيل')]);
+        foreach (Demo::businesses() as $b) {
+            $r = $this->row;
+            $sheet->setCellValue("A{$r}", (int) $b['id']);
+            $sheet->setCellValue("B{$r}", $b['name']);
+            $sheet->setCellValue("C{$r}", $b['type']);
+            $sheet->setCellValue("D{$r}", $b['owner']);
+            $sheet->setCellValueExplicit("E{$r}", (string) $b['phone'], DataType::TYPE_STRING);
+            $sheet->setCellValue("F{$r}", $b['email']);
+            $sheet->setCellValue("G{$r}", $b['city']);
+            $sheet->setCellValue("H{$r}", $b['plan']);
+            $sheet->setCellValue("I{$r}", $b['status']);
+            $sheet->setCellValue("J{$r}", (int) $b['branches']);
+            $sheet->setCellValue("K{$r}", $b['registered']);
+            $this->row++;
+        }
+        $sheet->freezePane("A{$firstDataRow}");
+        Activity::log('report', 'صدّر الشركات (Excel)');
+
+        return $this->download($spreadsheet, $sheet, [], 'businesses-' . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    /** تصدير فواتير الاشتراكات كملف Excel (لوحة المنصة) */
+    public function invoicesXlsx()
+    {
+        $spreadsheet = new Spreadsheet();
+        [$sheet] = $this->sheet($spreadsheet, __('فواتير الاشتراكات'));
+        $firstDataRow = $this->tableHead($sheet, [__('رقم الفاتورة'), __('الشركة'), __('الباقة'), __('المبلغ (ر.ع)'), __('التاريخ'), __('الحالة')]);
+        $money = [];
+        foreach (Demo::invoices() as $i) {
+            $r = $this->row;
+            $sheet->setCellValueExplicit("A{$r}", (string) $i['number'], DataType::TYPE_STRING);
+            $sheet->setCellValue("B{$r}", $i['business']);
+            $sheet->setCellValue("C{$r}", $i['plan']);
+            $sheet->setCellValue("D{$r}", round((float) $i['amount'], 3));
+            $sheet->setCellValue("E{$r}", $i['date']);
+            $sheet->setCellValue("F{$r}", $i['status']);
+            $money[] = "D{$r}";
+            $this->row++;
+        }
+        $sheet->freezePane("A{$firstDataRow}");
+        Activity::log('report', 'صدّر فواتير الاشتراكات (Excel)');
+
+        return $this->download($spreadsheet, $sheet, $money, 'invoices-' . now()->format('Y-m-d') . '.xlsx');
+    }
 }

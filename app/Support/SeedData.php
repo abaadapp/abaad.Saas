@@ -199,13 +199,13 @@ class SeedData
     public static function categories(): array
     {
         return [
-            ['id' => 1, 'name' => 'باقات ورد', 'products' => 42, 'icon' => 'flower', 'color' => 'secondary'],
-            ['id' => 2, 'name' => 'مناسبات', 'products' => 28, 'icon' => 'party-popper', 'color' => 'primary'],
-            ['id' => 3, 'name' => 'هدايا', 'products' => 19, 'icon' => 'gift', 'color' => 'info'],
-            ['id' => 4, 'name' => 'شوكولاتة', 'products' => 15, 'icon' => 'candy', 'color' => 'warning'],
-            ['id' => 5, 'name' => 'نباتات', 'products' => 23, 'icon' => 'sprout', 'color' => 'success'],
-            ['id' => 6, 'name' => 'إضافات', 'products' => 11, 'icon' => 'plus-circle', 'color' => 'primary'],
-            ['id' => 7, 'name' => 'خدمات تنسيق', 'products' => 8, 'icon' => 'sparkles', 'color' => 'secondary'],
+            ['id' => 1, 'name' => 'باقات ورد', 'products' => 42, 'icon' => '🌹', 'color' => 'secondary'],
+            ['id' => 2, 'name' => 'مناسبات', 'products' => 28, 'icon' => '🎉', 'color' => 'primary'],
+            ['id' => 3, 'name' => 'هدايا', 'products' => 19, 'icon' => '🎁', 'color' => 'info'],
+            ['id' => 4, 'name' => 'شوكولاتة', 'products' => 15, 'icon' => '🍫', 'color' => 'warning'],
+            ['id' => 5, 'name' => 'نباتات', 'products' => 23, 'icon' => '🌱', 'color' => 'success'],
+            ['id' => 6, 'name' => 'إضافات', 'products' => 11, 'icon' => '➕', 'color' => 'primary'],
+            ['id' => 7, 'name' => 'خدمات تنسيق', 'products' => 8, 'icon' => '✨', 'color' => 'secondary'],
         ];
     }
 

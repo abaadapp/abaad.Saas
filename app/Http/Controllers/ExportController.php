@@ -112,6 +112,20 @@ class ExportController extends Controller
         return $this->stream('analytics', [__('العنصر'), __('القيمة 1'), __('القيمة 2')], $rows);
     }
 
+    public function vat()
+    {
+        $report = Demo::vatReport(request()->query('period', 'quarter'));
+        $rows = [
+            [__('المبيعات الخاضعة للضريبة'), number_format((float) $report['taxable_sales'], 3, '.', '')],
+            [__('ضريبة المخرجات'), number_format((float) $report['output_vat'], 3, '.', '')],
+            [__('المشتريات الخاضعة للضريبة'), number_format((float) $report['input_base'], 3, '.', '')],
+            [__('ضريبة المدخلات'), number_format((float) $report['input_vat'], 3, '.', '')],
+            [__('صافي الضريبة المستحقة'), number_format((float) $report['net_vat'], 3, '.', '')],
+        ];
+
+        return $this->stream('vat', [__('البند'), __('القيمة')], $rows);
+    }
+
     public function expenses()
     {
         $rows = array_map(fn ($e) => [

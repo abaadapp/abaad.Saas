@@ -3,7 +3,7 @@
     <x-page-header :title="__('الشركات')" :subtitle="__('إدارة جميع الشركات المسجلة في المنصة')"
         :breadcrumbs="[__('الرئيسية') => route('super-admin.dashboard'), __('الشركات') => '#']">
         <x-slot:actions>
-            <x-button variant="outline" icon="download" :href="route('super-admin.export.businesses')">{{ __('تصدير CSV') }}</x-button>
+            @include('partials.export-menu', ['xlsx' => route('super-admin.businesses.xlsx'), 'pdf' => route('super-admin.businesses.exportPdf'), 'csv' => route('super-admin.export.businesses')])
             <x-button variant="primary" icon="plus" :href="route('super-admin.businesses.create')">{{ __('إضافة شركة جديدة') }}</x-button>
         </x-slot:actions>
     </x-page-header>

@@ -24,13 +24,8 @@
         // لوحة ألوان كاملة + محوّل لأي لون مخزّن (مفتاح دلالي أو hex مخصص)
         $palette = ['#7c3aed', '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9', '#06b6d4', '#14b8a6', '#10b981', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#f97316', '#ef4444', '#e11d48', '#db2777', '#d946ef', '#a855f7', '#64748b', '#78716c'];
         $resolveHex = fn ($c) => str_starts_with((string) $c, '#') ? $c : ($colorHex[$c] ?? $colorHex['primary']);
-        $iconOptions = ['flower' => __('زهرة'), 'gift' => __('هدية'), 'party-popper' => __('مناسبات'), 'candy' => __('شوكولاتة'), 'sprout' => __('نبتة'), 'sparkles' => __('تنسيق'), 'tag' => __('وسم')];
-        // أضِف أي أيقونة مستخدمة فعلًا وغير مدرجة، وإلا غيّرها التعديل بصمت
-        foreach (\App\Support\Demo::categories() as $c) {
-            if ($c['icon'] && ! isset($iconOptions[$c['icon']])) {
-                $iconOptions[$c['icon']] = $c['icon'];
-            }
-        }
+        // رمز القسم قد يكون إيموجي (رموز آيفون) أو اسم أيقونة قديمة — نميّزهما عند العرض
+        $isEmoji = fn ($icon) => $icon && preg_match('/[^\x00-\x7F]/', $icon);
     @endphp
 
     @php $categories = \App\Support\Demo::categories(); @endphp
@@ -44,8 +39,12 @@
                         @php $chex = $resolveHex($cat['color']); @endphp
                         <td class="px-4 py-3 whitespace-nowrap">
                             <div class="flex items-center gap-3">
-                                <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style="background: {{ $chex }}1a; color: {{ $chex }};">
-                                    <x-icon :name="$cat['icon']" class="w-[18px] h-[18px]" />
+                                <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-lg leading-none" style="background: {{ $chex }}1a; color: {{ $chex }};">
+                                    @if ($isEmoji($cat['icon']))
+                                        {{ $cat['icon'] }}
+                                    @else
+                                        <x-icon :name="$cat['icon'] ?: 'tag'" class="w-[18px] h-[18px]" />
+                                    @endif
                                 </span>
                                 <span class="font-medium text-gray-800">{{ $cat['name'] }}</span>
                             </div>
@@ -92,14 +91,7 @@
             <form id="edit-category-form" method="POST" x-bind:action="'{{ url('admin/categories') }}/' + sel.id" class="space-y-4">
                 @csrf @method('PUT')
                 <x-input :label="__('اسم القسم')" name="name" x-bind:value="sel.name" :required="true" />
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('الأيقونة') }}</label>
-                    <select name="icon" x-model="sel.icon" class="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm">
-                        @foreach ($iconOptions as $val => $label)
-                            <option value="{{ $val }}">{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </div>
+                @include('partials.emoji-picker', ['model' => 'sel.icon'])
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('اللون') }}</label>
                     <input type="hidden" name="color" x-model="sel.color" />
@@ -127,7 +119,9 @@
         <form id="add-category-form" method="POST" action="{{ route('admin.categories.store') }}" class="space-y-4">
             @csrf
             <x-input :label="__('اسم القسم')" name="name" :placeholder="__('مثال: باقات ورد')" :required="true" />
-            <x-select :label="__('الأيقونة')" name="icon" :options="$iconOptions" :placeholder="__('اختر أيقونة')" />
+            <div x-data="{ icon: '🌷' }">
+                @include('partials.emoji-picker', ['model' => 'icon'])
+            </div>
             <div x-data="{ color: '{{ $palette[0] }}' }">
                 <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('اللون') }}</label>
                 <input type="hidden" name="color" x-model="color" />

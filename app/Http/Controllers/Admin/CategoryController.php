@@ -19,7 +19,7 @@ class CategoryController extends Controller
             'color' => ['nullable', 'string', 'max:50'],
         ]);
         $data['business_id'] = $this->bid();
-        $data['icon'] = $data['icon'] ?? 'tag';
+        $data['icon'] = $data['icon'] ?: '🏷️';
         $data['color'] = $data['color'] ?? 'primary';
         Category::create($data);
         \App\Support\Activity::log('created', 'أضاف قسمًا: ' . $data['name']);

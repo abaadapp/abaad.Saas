@@ -9,7 +9,7 @@
     <x-page-header :title="__('ضريبة القيمة المضافة')" :subtitle="__('إقرار VAT — :label (:from — :to)', ['label' => __($report['label']), 'from' => $report['from'], 'to' => $report['to']])"
         :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('ضريبة القيمة المضافة') => '#']">
         <x-slot:actions>
-            <x-button variant="outline" icon="file-text" :href="route('admin.vat.pdf', ['period' => $period])" target="_blank">{{ __('تصدير الإقرار PDF') }}</x-button>
+            @include('partials.export-menu', ['xlsx' => route('admin.vat.xlsx', ['period' => $period]), 'pdf' => route('admin.vat.pdf', ['period' => $period]), 'csv' => route('admin.vat.csv', ['period' => $period])])
         </x-slot:actions>
     </x-page-header>
 

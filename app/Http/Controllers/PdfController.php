@@ -16,7 +16,10 @@ class PdfController extends Controller
         $bid = auth()->user()->business_id ?? Demo::bid();
         $order = Order::where('business_id', $bid)->where('number', $id)->with('items')->firstOrFail();
 
-        $html = view('pdf.receipt', ['order' => $order])->render();
+        $html = view('pdf.receipt', [
+            'order' => $order,
+            'qr' => \App\Support\EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
+        ])->render();
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
             'format' => [80, 200],
@@ -252,10 +255,14 @@ class PdfController extends Controller
         $bid = auth()->user()->business_id ?? Demo::bid();
         $order = Order::where('business_id', $bid)->where('number', $id)->with('items')->firstOrFail();
 
+        $vat = Demo::vatSettings();
+        $business = Demo::business($bid);
+
         $html = view('pdf.tax-invoice', [
             'order' => $order,
-            'vat' => Demo::vatSettings(),
-            'business' => Demo::business($bid),
+            'vat' => $vat,
+            'business' => $business,
+            'qr' => \App\Support\EInvoice::forOrder($order, $vat, $business),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 

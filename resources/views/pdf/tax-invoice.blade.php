@@ -64,6 +64,12 @@
     <tr><td style="color:#6b7280;">{{ __('ضريبة القيمة المضافة') }} ({{ rtrim(rtrim(number_format($vat['rate'],2,'.',''),'0'),'.') }}%)</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($vatAmount) }}</td></tr>
     <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">{{ __('الإجمالي المستحقّ') }}</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($order->total) }}</td></tr>
 </table>
+@if (!empty($qr))
+    <div style="float:right; width:42%; text-align:center; margin-top:12px;">
+        <barcode code="{{ $qr }}" type="QR" class="barcode" size="1.0" error="M" />
+        <div class="muted" style="margin-top:4px;">{{ __('رمز الفوترة الإلكترونية — امسحه للتحقق من الفاتورة') }}</div>
+    </div>
+@endif
 <div style="clear:both;"></div>
 
 <div class="foot">{{ __('فاتورة ضريبية صادرة آليًا عبر نظام Abad POS') }} — {{ $generatedAt }} — {{ __('القيم بالريال العماني') }}</div>

@@ -77,6 +77,14 @@
 
 <div class="dash"></div>
 
+@if (!empty($qr))
+    <div class="center" style="margin: 6px 0;">
+        <barcode code="{{ $qr }}" type="QR" class="barcode" size="0.9" error="M" />
+        <div class="muted" style="font-size:8px; margin-top:2px;">{{ __('رمز الفوترة الإلكترونية') }}</div>
+    </div>
+    <div class="dash"></div>
+@endif
+
 <div class="center muted">
     {{ __('شكرًا لزيارتكم') }} 🌹<br>
     {{ __('نتشرف بخدمتكم دائمًا') }}

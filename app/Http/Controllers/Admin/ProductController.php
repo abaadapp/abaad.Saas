@@ -11,6 +11,13 @@ class ProductController extends Controller
 {
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
+    /** الفرع الافتراضي لإسناد كميات المنتجات: المختار حاليًا وإلا أول فرع */
+    private function defaultBranchId(): ?int
+    {
+        return Demo::currentBranchId()
+            ?? \App\Models\Branch::where('business_id', $this->bid())->orderBy('id')->value('id');
+    }
+
     /** رمز منتج تلقائي فريد داخل النشاط: FLW-#### */
     private function generateSku(): string
     {
@@ -85,7 +92,9 @@ class ProductController extends Controller
         $data['image'] = $request->hasFile('image')
             ? $request->file('image')->store('products', 'public')
             : Demo::image('prod' . uniqid());
-        Product::create($data);
+        $product = Product::create($data);
+        // إسناد الكمية الافتتاحية إلى الفرع الحالي/الأول ليبقى مجموع الفروع = كمية المنتج
+        \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) ($data['quantity'] ?? 0));
         \App\Support\Activity::log('created', 'أضاف منتجًا: ' . $data['name']);
 
         return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم إضافة المنتج بنجاح'), 'type' => 'success']);
@@ -114,7 +123,10 @@ class ProductController extends Controller
         } else {
             unset($data['image']);
         }
+        $oldQty = (int) $product->quantity;
         $product->update($data);
+        // مزامنة رصيد الفرع بفارق الكمية إن عُدّلت يدويًا من نموذج المنتج
+        \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) $product->quantity - $oldQty);
         \App\Support\Activity::log('updated', 'عدّل المنتج: ' . $product->name, ['subject_id' => $product->id]);
 
         return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم تحديث المنتج بنجاح'), 'type' => 'success']);

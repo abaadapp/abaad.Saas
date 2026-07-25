@@ -2,6 +2,8 @@
 @php
     $inventoryTabs = [
         ['label' => __('المخزون'), 'url' => route('admin.inventory.index'), 'active' => request()->routeIs('admin.inventory.index')],
+        ['label' => __('إعادة الطلب'), 'url' => route('admin.inventory.reorder'), 'active' => request()->routeIs('admin.inventory.reorder')],
+        ['label' => __('الجرد الفعلي'), 'url' => route('admin.inventory.stocktake'), 'active' => request()->routeIs('admin.inventory.stocktake')],
         ['label' => __('المورّدون'), 'url' => route('admin.suppliers.index'), 'active' => request()->routeIs('admin.suppliers.*')],
         ['label' => __('أوامر الشراء'), 'url' => route('admin.purchases.index'), 'active' => request()->routeIs('admin.purchases.*')],
         ['label' => __('حركات المخزون'), 'url' => route('admin.inventory.movements'), 'active' => request()->routeIs('admin.inventory.movements')],

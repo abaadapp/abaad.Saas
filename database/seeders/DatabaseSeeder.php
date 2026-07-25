@@ -162,6 +162,14 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
+        // رصيد افتتاحي لكل منتج على الفرع الرئيسي (يبقى مجموع الفروع = كمية المنتج)
+        foreach ($products as $p) {
+            \App\Models\BranchStock::create([
+                'business_id' => $primary->id, 'branch_id' => $branches[0]->id,
+                'product_id' => $p->id, 'quantity' => (int) $p->quantity,
+            ]);
+        }
+
         $customersByName = [];
         foreach (SeedData::customers() as $c) {
             $cust = Customer::create([

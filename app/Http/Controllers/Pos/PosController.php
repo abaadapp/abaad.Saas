@@ -74,7 +74,22 @@ class PosController extends Controller
                 'total' => $i['price'] * $i['qty'],
             ]);
             if (! empty($i['id'])) {
-                Product::where('business_id', $this->bid())->where('id', $i['id'])->decrement('quantity', $i['qty']);
+                $product = Product::where('business_id', $this->bid())->where('id', $i['id'])->first();
+                if ($product) {
+                    $product->decrement('quantity', $i['qty']);
+                    \App\Models\BranchStock::adjust($this->bid(), $branch['id'], $product->id, -(int) $i['qty']);
+                    // تسجيل البيع كحركة مخزون ليكتمل سجل التدقيق (كم نقص ولماذا)
+                    \App\Models\InventoryMovement::create([
+                        'business_id' => $this->bid(),
+                        'branch_id' => $branch['id'],
+                        'product_id' => $product->id,
+                        'product_name' => $product->name,
+                        'sku' => $product->sku,
+                        'type' => 'بيع',
+                        'quantity' => '-' . (int) $i['qty'],
+                        'employee_name' => auth()->user()->name,
+                    ]);
+                }
             }
         }
 

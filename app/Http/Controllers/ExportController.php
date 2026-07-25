@@ -139,10 +139,11 @@ class ExportController extends Controller
     public function inventory()
     {
         $rows = array_map(fn ($p) => [
-            $p['id'], $p['name'], $p['sku'], $p['qty'], $p['min'], $p['status'], $p['updated'],
+            $p['id'], $p['name'], $p['sku'], $p['qty'], $p['min'],
+            number_format($p['value'], 3, '.', ''), $p['status'], $p['updated'],
         ], Demo::inventory());
 
-        return $this->stream('inventory', [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('حالة المخزون'), __('آخر تحديث')], $rows);
+        return $this->stream('inventory', [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('القيمة'), __('حالة المخزون'), __('آخر تحديث')], $rows);
     }
 
     /* ------------------------------ لوحة المنصة ------------------------------ */

@@ -739,6 +739,9 @@ class Demo
 
     public static function inventory(): array
     {
+        $branchNames = \App\Models\Branch::where('business_id', self::bid())->pluck('name', 'id');
+        $stocks = \App\Models\BranchStock::where('business_id', self::bid())->get()->groupBy('product_id');
+
         return Product::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($p) => [
             'id' => $p->id,
             'name' => $p->name,
@@ -746,7 +749,12 @@ class Demo
             'qty' => $p->quantity,
             'min' => $p->alert_qty,
             'status' => $p->stock_status,
+            'cost' => (float) $p->cost,
+            'value' => round((float) $p->cost * (int) $p->quantity, 3),
             'updated' => optional($p->updated_at)->format('Y-m-d') ?? '—',
+            'branches' => ($stocks[$p->id] ?? collect())
+                ->map(fn ($s) => ['name' => $branchNames[$s->branch_id] ?? '—', 'qty' => (int) $s->quantity])
+                ->filter(fn ($b) => $b['qty'] > 0)->values()->all(),
         ])->all();
     }
 

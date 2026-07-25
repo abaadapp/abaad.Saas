@@ -270,7 +270,8 @@ class ReportExportController extends Controller
         $spreadsheet = new Spreadsheet();
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('جرد المخزون'));
 
-        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('حالة المخزون'), __('آخر تحديث')]);
+        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('القيمة (ر.ع)'), __('حالة المخزون'), __('آخر تحديث')]);
+        $money = [];
 
         foreach (Demo::inventory() as $i) {
             $r = $this->row;
@@ -279,14 +280,16 @@ class ReportExportController extends Controller
             $sheet->setCellValueExplicit("C{$r}", (string) $i['sku'], DataType::TYPE_STRING);
             $sheet->setCellValue("D{$r}", (int) $i['qty']);
             $sheet->setCellValue("E{$r}", (int) $i['min']);
-            $sheet->setCellValue("F{$r}", $i['status']);
-            $sheet->setCellValue("G{$r}", $i['updated']);
+            $sheet->setCellValue("F{$r}", round((float) $i['value'], 3));
+            $sheet->setCellValue("G{$r}", $i['status']);
+            $sheet->setCellValue("H{$r}", $i['updated']);
+            $money[] = "F{$r}";
 
             // إبراز الأصناف المنخفضة أو المنتهية بلون تحذيري
             if ((int) $i['qty'] <= 0) {
-                $sheet->getStyle("A{$r}:G{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDE8E8');
+                $sheet->getStyle("A{$r}:H{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDE8E8');
             } elseif ((int) $i['qty'] <= (int) $i['min']) {
-                $sheet->getStyle("A{$r}:G{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEF3E2');
+                $sheet->getStyle("A{$r}:H{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEF3E2');
             }
             $this->row++;
         }
@@ -295,7 +298,7 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر جرد المخزون (Excel)');
 
-        return $this->download($spreadsheet, $sheet, [], 'inventory-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'inventory-' . now()->format('Y-m-d') . '.xlsx');
     }
 
     /** تصدير المعاملات المالية كملف Excel حقيقي (xlsx) */

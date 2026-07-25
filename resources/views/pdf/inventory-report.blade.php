@@ -20,6 +20,7 @@
 @php
     $low = collect($inventory)->where('status', 'منخفض')->count();
     $out = collect($inventory)->where('status', 'نفد المخزون')->count();
+    $stockValue = collect($inventory)->sum('value');
 @endphp
 
 <div class="head">
@@ -59,6 +60,17 @@
     </tr>
 </table>
 
+<table class="cards" style="margin-top:6px;">
+    <tr>
+        <td style="width:100%;">
+            <div class="card">
+                <div class="lbl">{{ __('قيمة المخزون') }}</div>
+                <div class="val">{{ number_format($stockValue, 3) }} {{ __('ر.ع') }}</div>
+            </div>
+        </td>
+    </tr>
+</table>
+
 <h2>{{ __('الأصناف') }} ({{ count($inventory) }})</h2>
 <table>
     <tr>
@@ -66,6 +78,7 @@
         <th>SKU</th>
         <th>{{ __('الكمية الحالية') }}</th>
         <th>{{ __('الحد الأدنى') }}</th>
+        <th>{{ __('القيمة') }}</th>
         <th>{{ __('حالة المخزون') }}</th>
         <th>{{ __('آخر تحديث') }}</th>
     </tr>
@@ -75,6 +88,7 @@
             <td>{{ $i['sku'] }}</td>
             <td>{{ $i['qty'] }}</td>
             <td>{{ $i['min'] }}</td>
+            <td>{{ number_format((float) $i['value'], 3) }} {{ __('ر.ع') }}</td>
             <td>{{ __($i['status']) }}</td>
             <td>{{ $i['updated'] }}</td>
         </tr>

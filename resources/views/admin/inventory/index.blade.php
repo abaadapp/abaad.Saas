@@ -3,6 +3,7 @@
     $available = collect($inventory)->where('status', 'متوفر')->count();
     $low = collect($inventory)->where('status', 'منخفض')->count();
     $out = collect($inventory)->where('status', 'نفد المخزون')->count();
+    $stockValue = collect($inventory)->sum('value');
 @endphp
 
 <x-layouts::admin :title="__('المخزون')">
@@ -35,10 +36,11 @@
     @include('partials.inventory-tabs')
 
     {{-- بطاقات الحالة --}}
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <x-stat-card :label="__('منتجات متوفرة')" :value="$available" icon="package-check" color="success" />
         <x-stat-card :label="__('مخزون منخفض')" :value="$low" icon="alert-triangle" color="warning" />
         <x-stat-card :label="__('نفد المخزون')" :value="$out" icon="package-x" color="danger" />
+        <x-stat-card :label="__('قيمة المخزون')" :value="\App\Support\Demo::money($stockValue)" icon="wallet" color="primary" />
     </div>
 
     {{-- تنبيه المخزون --}}
@@ -73,16 +75,28 @@
 
     {{-- جدول المخزون --}}
     <div x-data="{ sel: { id: '', name: '', sku: '', qty: 0 } }">
-    <x-table :headers="[__('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('حالة المخزون'), __('آخر تحديث'), __('إجراء')]">
+    <x-table :headers="[__('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('القيمة'), __('حالة المخزون'), __('آخر تحديث'), __('إجراء')]">
         @foreach ($inventory as $item)
             <tr class="hover:bg-gray-50" data-row data-tag="{{ $item['status'] }}" data-search="{{ $item['name'] }} {{ $item['sku'] }}">
-                <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $item['name'] }}</td>
+                <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
+                    {{ $item['name'] }}
+                    @if (!empty($item['branches']) && count($item['branches']) > 0)
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            @foreach ($item['branches'] as $b)
+                                <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                                    <x-icon name="git-branch" class="w-2.5 h-2.5" /> {{ $b['name'] }}: {{ $b['qty'] }}
+                                </span>
+                            @endforeach
+                        </div>
+                    @endif
+                </td>
                 <td class="px-4 py-3 text-gray-500 whitespace-nowrap font-mono">{{ $item['sku'] }}</td>
                 <td class="px-4 py-3 whitespace-nowrap">
                     <span class="font-semibold {{ $item['qty'] === 0 ? 'text-danger-600' : ($item['qty'] < $item['min'] ? 'text-warning-600' : 'text-gray-800') }}">{{ $item['qty'] }}</span>
                     <span class="text-xs text-gray-400">{{ __('وحدة') }}</span>
                 </td>
                 <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ $item['min'] }}</td>
+                <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ \App\Support\Demo::money($item['value']) }}</td>
                 <td class="px-4 py-3 whitespace-nowrap"><x-badge :text="__($item['status'])" /></td>
                 <td class="px-4 py-3 text-gray-500 whitespace-nowrap" dir="ltr">{{ $item['updated'] }}</td>
                 <td class="px-4 py-3 whitespace-nowrap">

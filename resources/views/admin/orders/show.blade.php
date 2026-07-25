@@ -1,7 +1,7 @@
 <x-layouts::admin :title="__('تفاصيل الطلب')">
 
     @php
-        $order = \App\Support\Demo::orderDetails(request()->route('id'));
+        $order = \App\Support\Demo::orderDetails(request()->route('id')); abort_if(empty($order), 404);
         abort_if(empty($order), 404);
     @endphp
 

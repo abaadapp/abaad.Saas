@@ -1,7 +1,7 @@
 <x-layouts::super-admin :title="__('ملف الشركة')">
 
     @php
-        $b = \App\Support\Demo::business(request()->route('id'));
+        $b = \App\Support\Demo::business(request()->route('id')); abort_if(empty($b), 404);
         $sub = collect(\App\Support\Demo::subscriptions())->firstWhere('business', $b['name']);
     @endphp
 

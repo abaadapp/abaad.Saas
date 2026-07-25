@@ -1,7 +1,7 @@
 <x-layouts::admin :title="__('تفاصيل المنتج')">
 
     @php
-        $product = \App\Support\Demo::product(request()->route('id'));
+        $product = \App\Support\Demo::product(request()->route('id')); abort_if(empty($product), 404);
         $margin = $product['price'] - $product['cost'];
         $marginPct = $product['price'] > 0 ? round(($margin / $product['price']) * 100) : 0;
         $thumbs = [

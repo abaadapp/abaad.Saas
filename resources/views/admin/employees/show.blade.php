@@ -1,4 +1,4 @@
-@php $employee = \App\Support\Demo::employee(request()->route('id')); @endphp
+@php $employee = \App\Support\Demo::employee(request()->route('id')); abort_if(empty($employee), 404); @endphp
 
 <x-layouts::admin :title="$employee['name']">
     <x-page-header

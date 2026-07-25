@@ -1,6 +1,6 @@
 <x-layouts::super-admin :title="__('تعديل الشركة')">
 
-    @php $b = \App\Support\Demo::business(request()->route('id')); @endphp
+    @php $b = \App\Support\Demo::business(request()->route('id')); abort_if(empty($b), 404); @endphp
 
     <x-page-header :title="__('تعديل الشركة')" :subtitle="__('تعديل بيانات: :name', ['name' => $b['name']])"
         :breadcrumbs="[__('الرئيسية') => route('super-admin.dashboard'), __('الشركات') => route('super-admin.businesses.index'), $b['name'] => '#']">

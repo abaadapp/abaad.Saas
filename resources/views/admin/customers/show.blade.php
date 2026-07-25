@@ -1,4 +1,4 @@
-@php $customer = \App\Support\Demo::customer(request()->route('id')); @endphp
+@php $customer = \App\Support\Demo::customer(request()->route('id')); abort_if(empty($customer), 404); @endphp
 
 <x-layouts::admin :title="$customer['name']">
     <x-page-header

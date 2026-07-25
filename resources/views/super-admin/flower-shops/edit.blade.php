@@ -1,6 +1,6 @@
 <x-layouts::super-admin :title="__('تعديل محل الورود')">
 
-    @php $shop = \App\Support\Demo::flowerShop(request()->route('id')); @endphp
+    @php $shop = \App\Support\Demo::flowerShop(request()->route('id')); abort_if(empty($shop), 404); @endphp
 
     <x-page-header :title="__('تعديل محل الورود')" :subtitle="__('تعديل بيانات: :name', ['name' => $shop['name']])"
         :breadcrumbs="[__('الرئيسية') => route('super-admin.dashboard'), __('محلات الورود') => route('super-admin.flower-shops.index'), $shop['name'] => '#']">

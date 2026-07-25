@@ -1,4 +1,4 @@
-@php $user = \App\Support\Demo::platformUser(request()->route('id')); @endphp
+@php $user = \App\Support\Demo::platformUser(request()->route('id')); abort_if(empty($user), 404); @endphp
 
 <x-layouts::super-admin :title="$user['name']">
     <x-page-header

@@ -1,6 +1,6 @@
 <x-layouts::admin :title="__('تعديل المنتج')">
 
-    @php $product = \App\Support\Demo::product(request()->route('id')); @endphp
+    @php $product = \App\Support\Demo::product(request()->route('id')); abort_if(empty($product), 404); @endphp
 
     <x-page-header :title="__('تعديل المنتج')" :subtitle="__('تعديل بيانات: :name', ['name' => $product['name']])"
         :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('المنتجات') => route('admin.products.index'), __('تعديل المنتج') => '#']" />

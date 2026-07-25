@@ -1,7 +1,7 @@
 <x-layouts::super-admin :title="__('تفاصيل محل الورود')">
 
     @php
-        $shop = \App\Support\Demo::flowerShop(request()->route('id'));
+        $shop = \App\Support\Demo::flowerShop(request()->route('id')); abort_if(empty($shop), 404);
         $sub = collect(\App\Support\Demo::subscriptions())->firstWhere('business', $shop['name']);
     @endphp
 

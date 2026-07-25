@@ -6,7 +6,7 @@
     @endphp
 
     @php $resume = session('resume_cart'); @endphp
-    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }})" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
 
         {{-- ============ جزء المنتجات (يمين) ============ --}}
         <section class="flex-1 lg:w-2/3 flex flex-col min-h-0" x-data="{ cat: 'الكل', q: '' }">
@@ -51,12 +51,12 @@
                                 <img src="{{ $p['image'] }}" alt="{{ $p['name'] }}" loading="lazy"
                                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                 <div class="absolute top-2 right-2">
-                                    <x-badge :text="__($p['stock_status'])" />
+                                    <x-badge :text="__($p['stock_status'])" :data-pos-status="$p['id']" />
                                 </div>
                             </div>
                             <div class="p-3">
                                 <h3 class="font-semibold text-sm text-gray-800 truncate">{{ $p['name'] }}</h3>
-                                <p class="text-xs text-gray-400 mt-0.5">{{ __('المتوفر: :n', ['n' => $p['qty']]) }}</p>
+                                <p class="text-xs text-gray-400 mt-0.5">{{ __('المتوفر:') }} <span data-pos-qty="{{ $p['id'] }}">{{ $p['qty'] }}</span></p>
                                 <div class="mt-2 flex items-center justify-between gap-1">
                                     <p class="font-bold text-gray-900 text-sm">{{ \App\Support\Demo::money($p['price']) }}</p>
                                     <span class="w-8 h-8 rounded-lg bg-gray-100 text-gray-900 flex items-center justify-center group-hover:bg-gray-900 group-hover:text-white transition-colors shrink-0">

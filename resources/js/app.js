@@ -126,6 +126,46 @@ window.liveStats = (root, url, intervalMs = 15000) => {
 };
 
 /**
+ * تحديث حيّ لكميات المنتجات في شاشة نقطة البيع (Polling) — يعكس الجرد/الحركات فورًا دون إعادة تحميل.
+ * الاستخدام: <div ... x-init="startPosStock('<url>')">
+ * يحدّث [data-pos-qty="<id>"] (المتوفر) و[data-pos-status="<id>"] (شارة الحالة ولونها).
+ */
+const POS_STATUS_CLASSES = {
+    'متوفر': ['bg-success-50', 'text-success-700'],
+    'منخفض': ['bg-warning-50', 'text-warning-600'],
+    'نفد المخزون': ['bg-danger-50', 'text-danger-600'],
+};
+const POS_STATUS_ALL = ['bg-success-50', 'text-success-700', 'bg-warning-50', 'text-warning-600', 'bg-danger-50', 'text-danger-600'];
+window.startPosStock = (url, intervalMs = 10000) => {
+    const tick = async () => {
+        try {
+            const res = await fetch(url, { headers: { Accept: 'application/json' } });
+            if (!res.ok) return;
+            const { products } = await res.json();
+            (products || []).forEach((p) => {
+                const q = document.querySelector(`[data-pos-qty="${p.id}"]`);
+                if (q && q.textContent.trim() !== String(p.qty)) {
+                    q.textContent = p.qty;
+                    q.classList.add('text-primary-600', 'font-bold');
+                    setTimeout(() => q.classList.remove('text-primary-600', 'font-bold'), 1500);
+                }
+                const s = document.querySelector(`[data-pos-status="${p.id}"]`);
+                if (s && s.textContent.trim() !== p.status) {
+                    s.textContent = p.status;
+                    s.classList.remove(...POS_STATUS_ALL);
+                    s.classList.add(...(POS_STATUS_CLASSES[p.status] || []));
+                }
+            });
+        } catch (e) {
+            /* تجاهل أخطاء الشبكة العابرة */
+        }
+    };
+    const id = setInterval(tick, intervalMs);
+    document.addEventListener('turbo:before-visit', () => clearInterval(id), { once: true });
+    return id;
+};
+
+/**
  * إشعارات المتصفح للطلبات الجديدة — يستطلع نقطة feed ويُظهر إشعارًا فوريًا عند ورود طلب جديد.
  * يبدأ تلقائيًا من التخطيط عبر startOrderAlerts(url). زر التفعيل يطلب الإذن.
  */

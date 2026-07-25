@@ -26,6 +26,21 @@ class PosController extends Controller
         ];
     }
 
+    /** تغذية حيّة لكميات المنتجات وحالاتها — تستطلعها شاشة نقطة البيع لتحديث "المتوفر" تلقائيًا دون إعادة تحميل */
+    public function stockFeed()
+    {
+        $products = collect(Demo::products())->map(fn ($p) => [
+            'id' => $p['id'],
+            'qty' => $p['qty'],
+            'status' => $p['stock_status'],
+        ])->values();
+
+        return response()->json([
+            'products' => $products,
+            'updated_at' => now()->format('H:i:s'),
+        ]);
+    }
+
     /** إتمام البيع وحفظ الطلب */
     public function checkout(Request $request)
     {

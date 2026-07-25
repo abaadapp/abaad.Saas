@@ -268,6 +268,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 /* -------------------------------- POS ------------------------------ */
 Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
     Route::view('/', 'pos.index')->name('index');
+    Route::get('/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');

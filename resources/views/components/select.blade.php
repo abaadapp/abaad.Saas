@@ -16,9 +16,10 @@
     >
         @if ($placeholder)<option value="">{{ $placeholder }}</option>@endif
         @if (count($options))
+            @php $isList = array_is_list($options); @endphp
             @foreach ($options as $key => $val)
-                @php $optValue = is_int($key) ? $val : $key; @endphp
-                <option value="{{ $optValue }}" @selected($selected == $optValue)>{{ $val }}</option>
+                @php $optValue = $isList ? $val : $key; @endphp
+                <option value="{{ $optValue }}" @selected((string) $selected === (string) $optValue)>{{ $val }}</option>
             @endforeach
         @else
             {{ $slot }}

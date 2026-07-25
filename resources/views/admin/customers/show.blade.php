@@ -29,6 +29,12 @@
                         <span class="text-gray-500 flex items-center gap-2"><x-icon name="mail" class="w-4 h-4" /> {{ __('البريد') }}</span>
                         <span class="text-gray-800" dir="ltr">{{ $customer['email'] }}</span>
                     </li>
+                    @if (!empty($customer['tax_number']))
+                        <li class="flex items-center justify-between">
+                            <span class="text-gray-500 flex items-center gap-2"><x-icon name="hash" class="w-4 h-4" /> {{ __('الرقم الضريبي (TRN)') }}</span>
+                            <span class="text-gray-800 font-mono" dir="ltr">{{ $customer['tax_number'] }}</span>
+                        </li>
+                    @endif
                     <li class="flex items-center justify-between">
                         <span class="text-gray-500 flex items-center gap-2"><x-icon name="calendar" class="w-4 h-4" /> {{ __('آخر طلب') }}</span>
                         <span class="text-gray-800" dir="ltr">{{ $customer['last_order'] }}</span>

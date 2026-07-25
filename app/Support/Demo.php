@@ -385,6 +385,7 @@ class Demo
             'name' => $c->name,
             'phone' => $c->phone,
             'email' => $c->email,
+            'tax_number' => $c->tax_number,
             'orders' => $c->orders_count,
             'total_spent' => (float) Order::where('customer_id', $c->id)->sum('total'),
             'last_order' => optional(Order::where('customer_id', $c->id)->max('ordered_at'))

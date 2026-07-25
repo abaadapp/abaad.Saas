@@ -262,6 +262,7 @@ class PdfController extends Controller
             'order' => $order,
             'vat' => $vat,
             'business' => $business,
+            'customerTax' => $order->customer_id ? optional(\App\Models\Customer::find($order->customer_id))->tax_number : null,
             'qr' => \App\Support\EInvoice::forOrder($order, $vat, $business),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();

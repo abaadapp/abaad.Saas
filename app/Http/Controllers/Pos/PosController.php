@@ -210,6 +210,7 @@ class PosController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email'],
+            'tax_number' => ['nullable', 'string', 'max:50'],
         ]);
         $data['business_id'] = $this->bid();
         \App\Models\Customer::create($data);

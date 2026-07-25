@@ -282,6 +282,7 @@
     "اختيار": "Select",
     "اختيار سريع لوسيلة الدفع": "Quick payment method select",
     "اختياري — لإرسال الفواتير والعروض": "Optional — for sending invoices and offers",
+    "اختياري — لفواتير الشركات (B2B)": "Optional — for business invoices (B2B)",
     "اختياري — يُربط العميل بالفرع المحدد.": "Optional — links the customer to the selected branch.",
     "ارفع ملف الكشف من بنكك ليطابقه النظام تلقائيًا مع معاملاته.": "Upload the statement file from your bank so the system matches it automatically against its transactions.",
     "ارفع ملف كشف الحساب من بنكك ليطابقه النظام تلقائيًا مع معاملاته ويُظهر الفروقات.": "Upload the statement from your bank so the system matches it automatically against its transactions and shows the differences.",

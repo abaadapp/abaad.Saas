@@ -300,6 +300,7 @@
                 <x-input :label="__('الاسم الكامل')" name="name" :placeholder="__('اسم العميل')" icon="user" :required="true" />
                 <x-input :label="__('رقم الهاتف')" name="phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" />
                 <x-input :label="__('البريد الإلكتروني')" name="email" type="email" placeholder="example@mail.com" icon="mail" />
+                <x-input :label="__('الرقم الضريبي (TRN)')" name="tax_number" placeholder="OM1100XXXXXX" icon="hash" :hint="__('اختياري — لفواتير الشركات (B2B)')" />
             </form>
             <x-slot:footer>
                 <x-button variant="outline" @click="$dispatch('close-modal')">{{ __('إلغاء') }}</x-button>

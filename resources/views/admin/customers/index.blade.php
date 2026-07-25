@@ -103,6 +103,7 @@
             <x-input :label="__('اسم العميل')" name="name" :placeholder="__('مثال: محمد سالم')" icon="user" :required="true" />
             <x-input :label="__('رقم الهاتف')" name="phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" :required="true" />
             <x-input :label="__('البريد الإلكتروني')" name="email" type="email" placeholder="name@example.com" icon="mail" :hint="__('اختياري — لإرسال الفواتير والعروض')" />
+            <x-input :label="__('الرقم الضريبي (TRN)')" name="tax_number" placeholder="OM1100XXXXXX" icon="hash" :hint="__('اختياري — لفواتير الشركات (B2B)')" />
             <x-input :label="__('العنوان')" name="address" :placeholder="__('مثال: مسقط، السيب')" icon="map-pin" />
 
             {{-- الفرع (اختياري) --}}

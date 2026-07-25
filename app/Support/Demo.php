@@ -905,6 +905,51 @@ class Demo
             ->map(fn ($r) => ['name' => $r->name, 'qty' => (int) $r->q, 'total' => round((float) $r->t, 3)])->all();
     }
 
+    /** ملخّص أرقام بطاقات التقارير — كلها محسوبة فعليًا من قاعدة البيانات (صفر عند فراغها) */
+    public static function reportSummary(): array
+    {
+        $bid = self::bid();
+        $ordersQ = Order::where('business_id', $bid)->where('is_held', false);
+        $sales = (float) (clone $ordersQ)->sum('total');
+        $tax = (float) (clone $ordersQ)->sum('tax');
+        $expenses = (float) Expense::where('business_id', $bid)->sum('amount');
+
+        return [
+            'sales' => $sales,
+            'profit' => $sales - $expenses,
+            'expenses' => $expenses,
+            'tax' => $tax,
+            'products' => Product::where('business_id', $bid)->count(),
+            'inventory_alerts' => Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')->count(),
+            'employees' => User::where('business_id', $bid)->where('role', '!=', 'super_admin')->count(),
+            'customers' => Customer::where('business_id', $bid)->count(),
+            'payment_methods' => (int) (clone $ordersQ)->distinct('payment_method')->count('payment_method'),
+        ];
+    }
+
+    /** أفضل المنتجات مبيعًا (بيانات حقيقية من الطلبات) — مع الفئة ونسبة المبيعات */
+    public static function topSellingProducts(int $limit = 5): array
+    {
+        $bid = self::bid();
+        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
+            ->selectRaw('name, SUM(quantity) as sold, SUM(total) as revenue')
+            ->groupBy('name')->orderByDesc('revenue')->limit($limit)->get();
+        $totalRev = (float) $rows->sum('revenue');
+
+        return $rows->map(function ($r) use ($bid, $totalRev) {
+            $catId = Product::where('business_id', $bid)->where('name', $r->name)->value('category_id');
+            $catName = $catId ? (Category::where('id', $catId)->value('name') ?? '—') : '—';
+
+            return [
+                'name' => $r->name,
+                'cat' => $catName,
+                'sold' => (int) $r->sold,
+                'revenue' => round((float) $r->revenue, 3),
+                'pct' => $totalRev > 0 ? round($r->revenue / $totalRev * 100) . '%' : '0%',
+            ];
+        })->all();
+    }
+
     /** مؤشرات الأهداف (KPI): الهدف الشهري مقابل المحقّق */
     public static function kpi(): array
     {

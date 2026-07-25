@@ -26,22 +26,24 @@
 
     {{-- بطاقات التقارير مصنّفة مع شرائح تصفية --}}
     @php
+        // أرقام حقيقية من قاعدة البيانات (صفر عند فراغها)
+        $rs = \App\Support\Demo::reportSummary();
         // group: مالية | تشغيلية | تحليلات
         $reportCards = [
-            ['key' => 'sales', 'title' => __('تقرير المبيعات'), 'icon' => 'shopping-bag', 'color' => 'primary', 'value' => '12,640 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'profit', 'title' => __('تقرير الأرباح'), 'icon' => 'piggy-bank', 'color' => 'success', 'value' => '11,400 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'expenses', 'title' => __('تقرير المصروفات'), 'icon' => 'arrow-down-circle', 'color' => 'danger', 'value' => '1,240 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'tax', 'title' => __('تقرير الضرائب'), 'icon' => 'percent', 'color' => 'info', 'value' => '632 ر.ع', 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'payments', 'title' => __('وسائل الدفع'), 'icon' => 'credit-card', 'color' => 'secondary', 'value' => __('4 وسائل'), 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'sales', 'title' => __('تقرير المبيعات'), 'icon' => 'shopping-bag', 'color' => 'primary', 'value' => \App\Support\Demo::money($rs['sales']), 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'profit', 'title' => __('تقرير الأرباح'), 'icon' => 'piggy-bank', 'color' => 'success', 'value' => \App\Support\Demo::money($rs['profit']), 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'expenses', 'title' => __('تقرير المصروفات'), 'icon' => 'arrow-down-circle', 'color' => 'danger', 'value' => \App\Support\Demo::money($rs['expenses']), 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'tax', 'title' => __('تقرير الضرائب'), 'icon' => 'percent', 'color' => 'info', 'value' => \App\Support\Demo::money($rs['tax']), 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'payments', 'title' => __('وسائل الدفع'), 'icon' => 'credit-card', 'color' => 'secondary', 'value' => __(':n وسائل', ['n' => $rs['payment_methods']]), 'group' => 'مالية', 'url' => route('admin.reports.pdf')],
             ['key' => 'profit', 'title' => __('الربحية'), 'icon' => 'trending-up', 'color' => 'success', 'value' => __('هوامش الربح'), 'group' => 'مالية', 'url' => route('admin.profitability.index')],
             ['key' => 'tax', 'title' => __('ضريبة القيمة المضافة'), 'icon' => 'landmark', 'color' => 'info', 'value' => __('الإقرار الضريبي'), 'group' => 'مالية', 'url' => route('admin.vat.index')],
 
-            ['key' => 'products', 'title' => __('تقرير المنتجات'), 'icon' => 'package', 'color' => 'info', 'value' => '151', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'inventory', 'title' => __('تقرير المخزون'), 'icon' => 'boxes', 'color' => 'warning', 'value' => __('9 تنبيهات'), 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
-            ['key' => 'employees', 'title' => __('تقرير الموظفين'), 'icon' => 'users', 'color' => 'secondary', 'value' => '7', 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'products', 'title' => __('تقرير المنتجات'), 'icon' => 'package', 'color' => 'info', 'value' => (string) $rs['products'], 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'inventory', 'title' => __('تقرير المخزون'), 'icon' => 'boxes', 'color' => 'warning', 'value' => __(':n تنبيهات', ['n' => $rs['inventory_alerts']]), 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
+            ['key' => 'employees', 'title' => __('تقرير الموظفين'), 'icon' => 'users', 'color' => 'secondary', 'value' => (string) $rs['employees'], 'group' => 'تشغيلية', 'url' => route('admin.reports.pdf')],
 
             ['key' => 'categories', 'title' => __('تحليلات متقدمة'), 'icon' => 'chart-line', 'color' => 'primary', 'value' => __('الاتجاهات والذروة'), 'group' => 'تحليلات', 'url' => route('admin.analytics.index')],
-            ['key' => 'customers', 'title' => __('تقرير العملاء'), 'icon' => 'user-round', 'color' => 'primary', 'value' => '214', 'group' => 'تحليلات', 'url' => route('admin.reports.pdf')],
+            ['key' => 'customers', 'title' => __('تقرير العملاء'), 'icon' => 'user-round', 'color' => 'primary', 'value' => (string) $rs['customers'], 'group' => 'تحليلات', 'url' => route('admin.reports.pdf')],
         ];
         $cardColors = [
             'primary' => 'bg-primary-50 text-primary-600',
@@ -184,16 +186,7 @@
             <h3 class="font-bold text-gray-800">{{ __('أفضل المنتجات مبيعًا') }}</h3>
         </div>
         <x-table :headers="[__('المنتج'), __('الفئة'), __('الكمية المباعة'), __('الإيراد'), __('نسبة المبيعات')]">
-            @php
-                $topProducts = [
-                    ['name' => 'باقة ورد أحمر', 'cat' => 'باقات ورد', 'sold' => 320, 'revenue' => 4000.000, 'pct' => '28%'],
-                    ['name' => 'صندوق ورد وشوكولاتة', 'cat' => 'هدايا', 'sold' => 180, 'revenue' => 4500.000, 'pct' => '22%'],
-                    ['name' => 'بوكيه زفاف', 'cat' => 'مناسبات', 'sold' => 64, 'revenue' => 2880.000, 'pct' => '16%'],
-                    ['name' => 'وردة مفردة', 'cat' => 'باقات ورد', 'sold' => 640, 'revenue' => 1600.000, 'pct' => '14%'],
-                    ['name' => 'صندوق شوكولاتة فاخر', 'cat' => 'شوكولاتة', 'sold' => 96, 'revenue' => 1488.000, 'pct' => '12%'],
-                ];
-            @endphp
-            @foreach ($topProducts as $product)
+            @forelse (\App\Support\Demo::topSellingProducts() as $product)
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $product['name'] }}</td>
                     <td class="px-4 py-3 whitespace-nowrap"><x-badge type="secondary" :text="$product['cat']" /></td>
@@ -201,7 +194,9 @@
                     <td class="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{{ \App\Support\Demo::money($product['revenue']) }}</td>
                     <td class="px-4 py-3 whitespace-nowrap"><x-badge type="primary" :text="$product['pct']" /></td>
                 </tr>
-            @endforeach
+            @empty
+                <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-gray-400">{{ __('لا توجد مبيعات بعد') }}</td></tr>
+            @endforelse
         </x-table>
     </div>
 </x-layouts::admin>

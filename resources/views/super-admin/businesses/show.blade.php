@@ -2,7 +2,7 @@
 
     @php
         $b = \App\Support\Demo::business(request()->route('id'));
-        $sub = \App\Support\Demo::subscriptions()[0];
+        $sub = collect(\App\Support\Demo::subscriptions())->firstWhere('business', $b['name']);
     @endphp
 
     <x-page-header :title="__('ملف الشركة')" :subtitle="$b['name']"
@@ -37,10 +37,11 @@
 
     {{-- بطاقات إحصائية سريعة --}}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        @php $bc = \App\Support\Demo::businessCounts($b['id']); @endphp
         <x-stat-card :label="__('الفروع')" :value="$b['branches']" icon="git-branch" color="primary" />
-        <x-stat-card :label="__('الموظفون')" value="14" icon="users" color="info" />
-        <x-stat-card :label="__('المنتجات')" value="128" icon="package" color="secondary" />
-        <x-stat-card :label="__('الطلبات')" value="642" icon="shopping-bag" color="success" />
+        <x-stat-card :label="__('الموظفون')" :value="(string) $bc['employees']" icon="users" color="info" />
+        <x-stat-card :label="__('المنتجات')" :value="(string) $bc['products']" icon="package" color="secondary" />
+        <x-stat-card :label="__('الطلبات')" :value="(string) $bc['orders']" icon="shopping-bag" color="success" />
     </div>
 
     {{-- بطاقات المعلومات --}}
@@ -65,6 +66,7 @@
         </div>
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <h3 class="font-bold text-gray-800 mb-4">{{ __('الاشتراك الحالي') }}</h3>
+            @if ($sub)
             <dl class="space-y-3 text-sm">
                 <div class="flex justify-between gap-3"><dt class="text-gray-500">{{ __('الباقة') }}</dt><dd class="font-medium text-gray-800">{{ $sub['plan'] }}</dd></div>
                 <div class="flex justify-between gap-3"><dt class="text-gray-500">{{ __('تاريخ البداية') }}</dt><dd class="font-medium text-gray-800">{{ $sub['start'] }}</dd></div>
@@ -72,6 +74,9 @@
                 <div class="flex justify-between gap-3"><dt class="text-gray-500">{{ __('المبلغ') }}</dt><dd class="font-medium text-gray-800">{{ \App\Support\Demo::money($sub['amount']) }}</dd></div>
                 <div class="flex justify-between gap-3"><dt class="text-gray-500">{{ __('حالة الدفع') }}</dt><dd><x-badge :text="__($sub['payment'])" /></dd></div>
             </dl>
+            @else
+                <p class="py-6 text-center text-sm text-gray-400">{{ __('لا يوجد اشتراك') }}</p>
+            @endif
         </div>
     </div>
 

@@ -2,7 +2,7 @@
 
     @php
         $shop = \App\Support\Demo::flowerShop(request()->route('id'));
-        $sub = \App\Support\Demo::subscriptions()[0];
+        $sub = collect(\App\Support\Demo::subscriptions())->firstWhere('business', $shop['name']);
     @endphp
 
     <x-page-header :title="__('تفاصيل محل الورود')" :subtitle="$shop['name']"
@@ -68,9 +68,13 @@
             <h3 class="font-bold text-gray-800 mb-4">{{ __('الاشتراك الحالي') }}</h3>
             <dl class="space-y-3 text-sm">
                 <div class="flex justify-between gap-3"><dt class="text-gray-500">{{ __('الباقة') }}</dt><dd class="font-medium text-gray-800">{{ $shop['plan'] }}</dd></div>
+                @if ($sub)
                 <div class="flex justify-between gap-3"><dt class="text-gray-500">{{ __('تاريخ البداية') }}</dt><dd class="font-medium text-gray-800">{{ $sub['start'] }}</dd></div>
                 <div class="flex justify-between gap-3"><dt class="text-gray-500">{{ __('تاريخ الانتهاء') }}</dt><dd class="font-medium text-gray-800">{{ $sub['end'] }}</dd></div>
                 <div class="flex justify-between gap-3"><dt class="text-gray-500">{{ __('حالة الدفع') }}</dt><dd><x-badge :text="__($sub['payment'])" /></dd></div>
+                @else
+                <p class="text-center text-sm text-gray-400">{{ __('لا يوجد اشتراك') }}</p>
+                @endif
             </dl>
         </div>
     </div>

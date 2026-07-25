@@ -13,10 +13,11 @@
 
     {{-- بطاقات إحصائية --}}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <x-stat-card :label="__('اشتراكات نشطة')" value="96" icon="badge-check" trend="+6%" :up="true" color="success" />
-        <x-stat-card :label="__('اشتراكات منتهية')" value="24" icon="badge-x" trend="-3%" :up="false" color="danger" />
-        <x-stat-card :label="__('الإيراد الشهري')" value="4,820.000 ر.ع" icon="wallet" trend="+14%" :up="true" color="warning" />
-        <x-stat-card :label="__('الإيراد السنوي')" value="52,640.000 ر.ع" icon="trending-up" trend="+21%" :up="true" color="primary" />
+        @php $ss = \App\Support\Demo::subscriptionStats(); @endphp
+        <x-stat-card :label="__('اشتراكات نشطة')" :value="(string) $ss['active']" icon="badge-check" color="success" />
+        <x-stat-card :label="__('اشتراكات منتهية')" :value="(string) $ss['expired']" icon="badge-x" color="danger" />
+        <x-stat-card :label="__('الإيراد الشهري')" :value="\App\Support\Demo::money($ss['monthly_revenue'])" icon="wallet" color="warning" />
+        <x-stat-card :label="__('الإيراد السنوي')" :value="\App\Support\Demo::money($ss['yearly_revenue'])" icon="trending-up" color="primary" />
     </div>
 
     {{-- شريط الفلاتر --}}

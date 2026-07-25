@@ -173,12 +173,12 @@ class Demo
                 'owner' => $b->owner_name,
                 'city' => $b->city,
                 'branches' => $b->branches_count,
-                'employees' => $b->users_count ?: (($b->id * 3) % 12 + 3),
-                'products' => $b->products_count ?: (($b->id * 7) % 180 + 40),
-                'orders' => $b->orders_count ?: (($b->id * 13) % 800 + 120),
+                'employees' => (int) $b->users_count,
+                'products' => (int) $b->products_count,
+                'orders' => (int) $b->orders_count,
                 'status' => $b->status,
                 'plan' => $b->plan?->name ?? '—',
-                'sales' => (float) Order::where('business_id', $b->id)->sum('total') ?: (($b->id * 137) % 19000 + 3000),
+                'sales' => (float) Order::where('business_id', $b->id)->where('is_held', false)->sum('total'),
             ])->all();
     }
 
@@ -903,6 +903,66 @@ class Demo
             ->selectRaw('name, SUM(quantity) as q, SUM(total) as t')
             ->groupBy('name')->orderByDesc('q')->limit(5)->get()
             ->map(fn ($r) => ['name' => $r->name, 'qty' => (int) $r->q, 'total' => round((float) $r->t, 3)])->all();
+    }
+
+    /** أرقام بطاقات صفحة العملاء — محسوبة فعليًا من قاعدة البيانات (صفر عند فراغها) */
+    public static function customerStats(): array
+    {
+        $bid = self::bid();
+        $total = Customer::where('business_id', $bid)->count();
+        $newThisMonth = Customer::where('business_id', $bid)
+            ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->count();
+        $totalPurchases = (float) Order::where('business_id', $bid)->where('is_held', false)
+            ->whereNotNull('customer_id')->sum('total');
+
+        return [
+            'total' => $total,
+            'new_this_month' => $newThisMonth,
+            'total_purchases' => $totalPurchases,
+            'avg_spend' => $total > 0 ? $totalPurchases / $total : 0,
+        ];
+    }
+
+    /** إجمالي الكمية المباعة من منتج معيّن (حقيقي) */
+    public static function productSold(int $productId): int
+    {
+        return (int) OrderItem::where('product_id', $productId)
+            ->whereHas('order', fn ($q) => $q->where('is_held', false))->sum('quantity');
+    }
+
+    /** عدد طلبات موظف معيّن (حقيقي) */
+    public static function employeeOrderCount(int $userId): int
+    {
+        return (int) Order::where('user_id', $userId)->where('is_held', false)->count();
+    }
+
+    /** أعداد نشاط معيّن للوحة المشرف (حقيقية) */
+    public static function businessCounts(int $businessId): array
+    {
+        return [
+            'employees' => User::where('business_id', $businessId)->where('role', '!=', 'super_admin')->count(),
+            'products' => Product::where('business_id', $businessId)->count(),
+            'orders' => Order::where('business_id', $businessId)->where('is_held', false)->count(),
+        ];
+    }
+
+    /** أرقام بطاقات الاشتراكات (حقيقية) */
+    public static function subscriptionStats(): array
+    {
+        $active = Subscription::where('status', 'نشط')->count();
+        $expired = Subscription::where('status', '!=', 'نشط')->count();
+        $monthly = (float) Subscription::where('status', 'نشط')->sum('amount');
+
+        return ['active' => $active, 'expired' => $expired, 'monthly_revenue' => $monthly, 'yearly_revenue' => $monthly * 12];
+    }
+
+    /** أرقام بطاقات فواتير الاشتراكات (حقيقية) */
+    public static function invoiceStats(): array
+    {
+        $paid = (float) Invoice::where('status', 'مدفوعة')->sum('amount');
+        $unpaid = (float) Invoice::where('status', '!=', 'مدفوعة')->sum('amount');
+
+        return ['paid' => $paid, 'unpaid' => $unpaid, 'count' => Invoice::count()];
     }
 
     /** ملخّص أرقام بطاقات التقارير — كلها محسوبة فعليًا من قاعدة البيانات (صفر عند فراغها) */

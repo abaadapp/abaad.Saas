@@ -106,10 +106,11 @@
         <div class="lg:col-span-2 space-y-6">
             {{-- الإحصائيات --}}
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                @php $empOrders = \App\Support\Demo::employeeOrderCount($employee['id']); @endphp
                 <x-stat-card :label="__('إجمالي المبيعات')" :value="\App\Support\Demo::money($employee['sales'])" icon="trending-up" color="success" />
-                <x-stat-card :label="__('عدد الطلبات')" value="128" icon="shopping-bag" color="primary" />
-                <x-stat-card :label="__('متوسط الطلب')" :value="\App\Support\Demo::money($employee['sales'] / 128)" icon="calculator" color="info" />
-                <x-stat-card :label="__('التقييم')" value="4.7 / 5" icon="star" color="warning" />
+                <x-stat-card :label="__('عدد الطلبات')" :value="(string) $empOrders" icon="shopping-bag" color="primary" />
+                <x-stat-card :label="__('متوسط الطلب')" :value="\App\Support\Demo::money($empOrders > 0 ? $employee['sales'] / $empOrders : 0)" icon="calculator" color="info" />
+                <x-stat-card :label="__('الفرع')" :value="$employee['branch']" icon="git-branch" color="warning" />
             </div>
 
             {{-- التبويبات --}}

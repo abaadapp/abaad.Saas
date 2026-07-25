@@ -84,7 +84,7 @@
     {{-- البطاقات الإحصائية --}}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <x-stat-card :label="__('الكمية المتوفرة')" :value="__(':n قطعة', ['n' => $product['qty']])" icon="package" color="primary" />
-        <x-stat-card :label="__('إجمالي المبيعات')" :value="__(':n قطعة', ['n' => 342])" icon="shopping-cart" trend="+12%" :up="true" color="success" />
+        <x-stat-card :label="__('إجمالي المبيعات')" :value="__(':n قطعة', ['n' => \App\Support\Demo::productSold($product['id'])])" icon="shopping-cart" color="success" />
         <x-stat-card :label="__('سعر التكلفة')" :value="\App\Support\Demo::money($product['cost'])" icon="tag" color="info" />
         <x-stat-card :label="__('هامش الربح')" :value="$marginPct . '%'" :trend="\App\Support\Demo::money($margin)" :up="true" color="secondary" />
     </div>

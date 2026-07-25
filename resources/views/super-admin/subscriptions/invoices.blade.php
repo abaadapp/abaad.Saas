@@ -12,9 +12,10 @@
 
     {{-- بطاقات الملخص --}}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <x-stat-card :label="__('إجمالي المدفوع')" value="41,280.000 ر.ع" icon="circle-check" trend="+12%" :up="true" color="success" />
-        <x-stat-card :label="__('إجمالي غير المدفوع')" value="6,940.000 ر.ع" icon="circle-alert" trend="-4%" :up="false" color="danger" />
-        <x-stat-card :label="__('عدد الفواتير')" value="128" icon="file-text" trend="+9%" :up="true" color="primary" />
+        @php $is = \App\Support\Demo::invoiceStats(); @endphp
+        <x-stat-card :label="__('إجمالي المدفوع')" :value="\App\Support\Demo::money($is['paid'])" icon="circle-check" color="success" />
+        <x-stat-card :label="__('إجمالي غير المدفوع')" :value="\App\Support\Demo::money($is['unpaid'])" icon="circle-alert" color="danger" />
+        <x-stat-card :label="__('عدد الفواتير')" :value="(string) $is['count']" icon="file-text" color="primary" />
     </div>
 
     {{-- جدول الفواتير --}}

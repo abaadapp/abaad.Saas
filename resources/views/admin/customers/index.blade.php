@@ -36,12 +36,13 @@
         </x-slot:actions>
     </x-page-header>
 
-    {{-- البطاقات الإحصائية --}}
+    {{-- البطاقات الإحصائية (بيانات حقيقية من قاعدة البيانات) --}}
+    @php $cs = \App\Support\Demo::customerStats(); @endphp
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <x-stat-card :label="__('إجمالي العملاء')" value="214" icon="users" trend="+7%" :up="true" color="primary" />
-        <x-stat-card :label="__('عملاء جدد هذا الشهر')" value="28" icon="user-plus" trend="+12%" :up="true" color="success" />
-        <x-stat-card :label="__('إجمالي المشتريات')" value="{{ \App\Support\Demo::money(48260.500) }}" icon="wallet" trend="+15%" :up="true" color="info" />
-        <x-stat-card :label="__('متوسط الإنفاق')" value="{{ \App\Support\Demo::money(225.500) }}" icon="calculator" trend="+3%" :up="true" color="secondary" />
+        <x-stat-card :label="__('إجمالي العملاء')" :value="(string) $cs['total']" icon="users" color="primary" />
+        <x-stat-card :label="__('عملاء جدد هذا الشهر')" :value="(string) $cs['new_this_month']" icon="user-plus" color="success" />
+        <x-stat-card :label="__('إجمالي المشتريات')" :value="\App\Support\Demo::money($cs['total_purchases'])" icon="wallet" color="info" />
+        <x-stat-card :label="__('متوسط الإنفاق')" :value="\App\Support\Demo::money($cs['avg_spend'])" icon="calculator" color="secondary" />
     </div>
 
     {{-- شريط الفلاتر --}}

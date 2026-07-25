@@ -110,7 +110,7 @@
                     </li>
                     <li class="flex items-center justify-between">
                         <span class="text-gray-500">{{ __('تاريخ الإنشاء') }}</span>
-                        <span class="text-gray-800" dir="ltr">2025-01-12</span>
+                        <span class="text-gray-800" dir="ltr">{{ $user['created'] }}</span>
                     </li>
                     <li class="flex items-center justify-between">
                         <span class="text-gray-500">{{ __('رقم المستخدم') }}</span>

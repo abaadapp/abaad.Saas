@@ -74,7 +74,7 @@
                     </li>
                     <li class="flex items-center justify-between">
                         <span class="text-gray-500">{{ __('تاريخ الالتحاق') }}</span>
-                        <span class="text-gray-800" dir="ltr">2025-03-01</span>
+                        <span class="text-gray-800" dir="ltr">{{ $employee['joined'] }}</span>
                     </li>
                     <li class="flex items-center justify-between">
                         <span class="text-gray-500">{{ __('رقم الموظف') }}</span>
@@ -83,23 +83,6 @@
                 </ul>
             </div>
 
-            {{-- ملخص الأداء --}}
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <h3 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <x-icon name="target" class="w-4 h-4 text-primary-600" /> {{ __('ملخص الأداء') }}
-                </h3>
-                <div class="space-y-4">
-                    <div>
-                        <div class="flex items-center justify-between text-sm mb-1.5">
-                            <span class="text-gray-500">{{ __('رضا العملاء') }}</span>
-                            <span class="font-semibold text-gray-800">94%</span>
-                        </div>
-                        <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
-                            <div class="h-full bg-success-600 rounded-full" style="width: 94%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         {{-- المحتوى --}}

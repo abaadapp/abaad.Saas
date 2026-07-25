@@ -230,6 +230,7 @@ class Demo
             'role' => $u->roleLabel(),
             'status' => $u->status,
             'last_login' => optional($u->last_login_at)->format('Y-m-d H:i') ?? '—',
+            'created' => optional($u->created_at)->format('Y-m-d') ?? '—',
             'avatar' => $u->avatar ?? self::image('user' . $u->id, 100, 100),
         ])->all();
     }
@@ -446,6 +447,7 @@ class Demo
                     'email' => $u->email,
                     'sales' => (float) $u->sales_total,
                     'status' => $u->status,
+                    'joined' => optional($u->created_at)->format('Y-m-d') ?? '—',
                     // يُستخدم لترتيب لوحة الأداء
                     'achieved' => (float) ($monthly[$u->id] ?? 0),
                 ];

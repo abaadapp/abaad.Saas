@@ -61,6 +61,7 @@ class CustomerController extends Controller
             ? $branchId
             : null;
 
+        $data = \App\Support\Customers::localizeName($data);
         Customer::create($data);
         \App\Support\Activity::log('created', 'أضاف عميلًا: ' . $data['name']);
 

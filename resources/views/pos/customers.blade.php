@@ -39,11 +39,11 @@
                         <tbody class="divide-y divide-gray-100">
                             @foreach ($customers as $c)
                                 <tr class="hover:bg-gray-50"
-                                    x-show="q === '' || {{ \Illuminate\Support\Js::from(($c['name'] ?? '') . ' ' . ($c['phone'] ?? '')) }}.includes(q)">
+                                    x-show="q === '' || {{ \Illuminate\Support\Js::from(($c['name'] ?? '') . ' ' . ($c['name_en'] ?? '') . ' ' . ($c['phone'] ?? '')) }}.includes(q)">
                                     <td class="px-4 py-3 whitespace-nowrap">
                                         <div class="flex items-center gap-3">
-                                            <img src="{{ $c['avatar'] }}" class="w-9 h-9 rounded-full object-cover shrink-0" alt="{{ $c['name'] }}" />
-                                            <span class="font-medium text-gray-800">{{ $c['name'] }}</span>
+                                            <img src="{{ $c['avatar'] }}" class="w-9 h-9 rounded-full object-cover shrink-0" alt="{{ $c['label'] }}" />
+                                            <span class="font-medium text-gray-800">{{ $c['label'] }}</span>
                                         </div>
                                     </td>
                                     <td class="px-4 py-3 text-gray-600 whitespace-nowrap" dir="ltr">{{ $c['phone'] ?: '—' }}</td>

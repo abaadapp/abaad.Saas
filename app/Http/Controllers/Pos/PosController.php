@@ -213,6 +213,7 @@ class PosController extends Controller
             'tax_number' => ['nullable', 'string', 'max:50'],
         ]);
         $data['business_id'] = $this->bid();
+        $data = \App\Support\Customers::localizeName($data);
         \App\Models\Customer::create($data);
         \App\Support\Activity::log('created', 'أضاف عميلًا من نقطة البيع: ' . $data['name']);
 

@@ -389,6 +389,8 @@ class Demo
         return Customer::where('business_id', self::bid())->withCount('orders')->orderBy('id')->get()->map(fn ($c) => [
             'id' => $c->id,
             'name' => $c->name,
+            'name_en' => $c->name_en,
+            'label' => self::ln($c->name, $c->name_en),
             'phone' => $c->phone,
             'email' => $c->email,
             'tax_number' => $c->tax_number,

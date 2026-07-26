@@ -110,7 +110,7 @@
                         </x-slot:trigger>
                         <button type="button" @click="customer = 'عميل نقدي'" class="block w-full text-right px-4 py-2 text-sm hover:bg-gray-50">{{ __('عميل نقدي') }}</button>
                         @foreach ($customers as $cust)
-                            <button type="button" @click="customer = '{{ $cust['name'] }}'" class="block w-full text-right px-4 py-2 text-sm hover:bg-gray-50">{{ $cust['name'] }}</button>
+                            <button type="button" @click="customer = {{ \Illuminate\Support\Js::from($cust['name']) }}" class="block w-full text-right px-4 py-2 text-sm hover:bg-gray-50">{{ $cust['label'] }}</button>
                         @endforeach
                     </x-dropdown>
                     <button type="button" @click="$dispatch('open-modal','new-customer')"

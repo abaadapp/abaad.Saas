@@ -376,8 +376,6 @@ document.addEventListener('alpine:init', () => {
             resume?.customer ||
             new URLSearchParams(location.search).get('customer') ||
             'عميل نقدي',
-        discountPercent: 0,
-        deliveryFee: 0,
         taxRate: 5,
         // الكوبون
         couponCode: '',
@@ -450,8 +448,6 @@ document.addEventListener('alpine:init', () => {
         },
         clear() {
             this.items = [];
-            this.discountPercent = 0;
-            this.deliveryFee = 0;
             this.removeCoupon();
         },
         get count() {
@@ -460,19 +456,15 @@ document.addEventListener('alpine:init', () => {
         get subtotal() {
             return this.items.reduce((s, i) => s + i.price * i.qty, 0);
         },
-        // خصم يدوي (%) — نصف المبلغ فقط دون الكوبون
-        get manualDiscount() {
-            return (this.subtotal * this.discountPercent) / 100;
-        },
-        // إجمالي الخصم = اليدوي + الكوبون (لا يتجاوز المجموع الفرعي)
+        // الخصم = الكوبون فقط (لا يتجاوز المجموع الفرعي)
         get discountAmount() {
-            return Math.min(this.manualDiscount + this.couponDiscount, this.subtotal);
+            return Math.min(this.couponDiscount, this.subtotal);
         },
         get taxAmount() {
             return ((this.subtotal - this.discountAmount) * this.taxRate) / 100;
         },
         get total() {
-            return this.subtotal - this.discountAmount + this.taxAmount + Number(this.deliveryFee || 0);
+            return this.subtotal - this.discountAmount + this.taxAmount;
         },
         // الإجمالي بعملة العرض (للعرض فقط — التخزين يبقى بالأساسية)
         get displayTotal() {

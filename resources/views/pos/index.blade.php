@@ -174,14 +174,6 @@
                     <span>{{ __('المجموع الفرعي') }}</span>
                     <span class="font-medium text-gray-800" x-text="money(subtotal)"></span>
                 </div>
-                <div class="flex items-center justify-between text-sm text-gray-600">
-                    <span class="flex items-center gap-1">{{ __('الخصم') }} <span class="text-xs text-gray-400">%</span></span>
-                    <div class="flex items-center gap-2">
-                        <input type="text" inputmode="decimal" data-money min="0" max="100" x-model.number="discountPercent"
-                               class="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm text-left focus:border-gray-900 focus:ring-1 focus:ring-gray-200 focus:outline-none" />
-                        <span class="text-danger-500 text-xs w-16 text-left" x-text="'- ' + money(discountAmount)"></span>
-                    </div>
-                </div>
                 {{-- كود الخصم (كوبون) --}}
                 <div>
                     <div class="flex items-center gap-2" x-show="!coupon">
@@ -216,11 +208,6 @@
                 <div class="flex items-center justify-between text-sm text-gray-600">
                     <span>{{ __('الضريبة (5%)') }}</span>
                     <span class="font-medium text-gray-800" x-text="money(taxAmount)"></span>
-                </div>
-                <div class="flex items-center justify-between text-sm text-gray-600">
-                    <span>{{ __('رسوم التوصيل') }}</span>
-                    <input type="text" inputmode="decimal" data-money min="0" x-model.number="deliveryFee"
-                           class="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm text-left focus:border-gray-900 focus:ring-1 focus:ring-gray-200 focus:outline-none" />
                 </div>
                 <div class="flex items-center justify-between pt-2 border-t border-dashed border-gray-200">
                     <span class="font-bold text-gray-800">{{ __('الإجمالي') }}</span>
@@ -312,7 +299,7 @@
                             fetch('{{ route('pos.checkout') }}', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
-                              body: JSON.stringify({ items: items, customer: customer, payment_method: method, discount: discountAmount, tax: taxAmount, delivery_fee: Number(deliveryFee||0), total: total, resume_id: resumeId, coupon_code: coupon?.code ?? null })
+                              body: JSON.stringify({ items: items, customer: customer, payment_method: method, discount: discountAmount, tax: taxAmount, delivery_fee: 0, total: total, resume_id: resumeId, coupon_code: coupon?.code ?? null })
                             }).then(r => r.json()).then(d => { if (d.invoice) invoice = d.invoice; step = 'success'; }).catch(() => { step = 'success'; })
                             "
                             class="w-full py-3.5 rounded-full bg-success-600 hover:bg-success-700 text-white font-bold text-base shadow-sm transition-colors">

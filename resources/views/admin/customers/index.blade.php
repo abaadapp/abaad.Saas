@@ -52,7 +52,7 @@
                 <x-input name="q" value="{{ $filters['q'] ?? '' }}" :placeholder="__('ابحث بالاسم أو رقم الهاتف أو البريد...')" icon="search" />
             </div>
             <div class="w-full md:w-56">
-                <x-select-menu name="sort" icon="arrow-up-down" :options="[
+                <x-select name="sort" icon="arrow-up-down" :options="[
                     'recent' => __('الأحدث تسجيلًا'),
                     'spent' => __('الأعلى إنفاقًا'),
                     'orders' => __('الأكثر طلبات'),
@@ -111,12 +111,9 @@
             @php $addBranches = \App\Support\Demo::branches(); @endphp
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('الفرع') }}</label>
-                <select name="branch_id" class="w-full rounded-xl border-gray-200 focus:border-primary-400 focus:ring-primary-200 text-sm">
-                    <option value="">{{ __('بدون فرع (عام)') }}</option>
-                    @foreach ($addBranches as $b)
-                        <option value="{{ $b['id'] }}" @selected(\App\Support\Demo::currentBranchId() == $b['id'])>{{ $b['name'] }}</option>
-                    @endforeach
-                </select>
+                <x-select name="branch_id" :placeholder="__('بدون فرع (عام)')"
+                    :options="collect($addBranches)->pluck('name', 'id')->toArray()"
+                    :selected="\App\Support\Demo::currentBranchId()" />
                 <p class="text-xs text-gray-400 mt-1.5">{{ __('اختياري — يُربط العميل بالفرع المحدد.') }}</p>
             </div>
         </form>
@@ -144,12 +141,8 @@
             {{-- القسم الثاني: الفرع الافتراضي --}}
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('الفرع الافتراضي') }}</label>
-                <select name="branch_id" class="w-full rounded-xl border-gray-200 focus:border-primary-400 focus:ring-primary-200 text-sm">
-                    <option value="">{{ __('بدون فرع (عام)') }}</option>
-                    @foreach ($importBranches as $b)
-                        <option value="{{ $b['id'] }}">{{ $b['name'] }}</option>
-                    @endforeach
-                </select>
+                <x-select name="branch_id" :placeholder="__('بدون فرع (عام)')"
+                    :options="collect($importBranches)->pluck('name', 'id')->toArray()" />
                 <p class="text-xs text-gray-400 mt-1.5">{{ __('يُستخدم فقط للصفوف التي لا تحوي عمود «الفرع» في الملف — وإلا يُعتمد فرع الملف.') }}</p>
             </div>
 

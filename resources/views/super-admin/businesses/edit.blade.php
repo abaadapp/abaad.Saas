@@ -56,11 +56,9 @@
                 <h3 class="font-bold text-gray-800">{{ __('الاشتراك والباقة') }}</h3>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <x-select :label="__('الباقة')" name="plan_id" :placeholder="__('اختر الباقة...')">
-                    @foreach (\App\Models\Plan::pluck('name', 'id')->toArray() as $planId => $planName)
-                        <option value="{{ $planId }}" @selected($b['plan'] === $planName)>{{ __($planName) }}</option>
-                    @endforeach
-                </x-select>
+                <x-select :label="__('الباقة')" name="plan_id" :placeholder="__('اختر الباقة...')"
+                    :options="\App\Models\Plan::pluck('name', 'id')->map(fn ($n) => __($n))->toArray()"
+                    :selected="\App\Models\Plan::where('name', $b['plan'])->value('id')" />
                 <x-select :label="__('حالة الحساب')" name="status" :selected="$b['status']"
                     :options="['نشط' => __('نشط'), 'منتهي' => __('منتهي'), 'معطل' => __('معطل')]" />
                 <x-input :label="__('تاريخ البداية')" name="starts_at" type="date" value="2025-01-01" />

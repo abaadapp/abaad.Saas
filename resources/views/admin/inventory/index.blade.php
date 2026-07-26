@@ -55,7 +55,7 @@
         </div>
     @endif
 
-    <div x-data="listFilter()" x-ref="list">
+    <div x-data="listFilter()" x-ref="list" @filter-change="tag = $event.detail; apply()">
     {{-- شريط الفلاتر --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
         <div class="flex flex-col md:flex-row md:items-center gap-3">
@@ -63,7 +63,7 @@
                 <x-input name="search" :placeholder="__('ابحث باسم المنتج أو رمز SKU...')" icon="search" x-model="q" @input="apply()" />
             </div>
             <div class="w-full md:w-56">
-                <x-select name="status" :placeholder="__('كل الحالات')" x-model="tag" @change="apply()" :options="[
+                <x-select name="status" :placeholder="__('كل الحالات')" on-select="$dispatch('filter-change', value)" :options="[
                     'متوفر' => __('متوفر'),
                     'منخفض' => __('منخفض'),
                     'نفد المخزون' => __('نفد المخزون'),

@@ -12,7 +12,7 @@
 
     @include('partials.inventory-tabs')
 
-    <div x-data="listFilter()" x-ref="list">
+    <div x-data="listFilter()" x-ref="list" @filter-change="tag = $event.detail; apply()">
     {{-- شريط الفلاتر --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
         <div class="flex flex-col md:flex-row md:items-center gap-3">
@@ -20,7 +20,7 @@
                 <x-input name="search" :placeholder="__('ابحث باسم المنتج أو رمز SKU...')" icon="search" x-model="q" @input="apply()" />
             </div>
             <div class="w-full md:w-56">
-                <x-select name="type" :placeholder="__('كل أنواع الحركات')" x-model="tag" @change="apply()" :options="[
+                <x-select name="type" :placeholder="__('كل أنواع الحركات')" on-select="$dispatch('filter-change', value)" :options="[
                     'إضافة كمية' => __('إضافة كمية'),
                     'خصم كمية' => __('خصم كمية'),
                     'مرتجع' => __('مرتجع'),

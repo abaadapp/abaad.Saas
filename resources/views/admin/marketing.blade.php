@@ -78,7 +78,7 @@
                 </div>
                 <div>
                     <label class="block text-sm text-gray-600 mb-1">{{ __('النوع') }}</label>
-                    <select name="type" class="w-full rounded-lg border-gray-200"><option value="نسبة">{{ __('نسبة %') }}</option><option value="مبلغ">{{ __('مبلغ ثابت') }}</option></select>
+                    <x-select name="type" selected="نسبة" :options="['نسبة' => __('نسبة %'), 'مبلغ' => __('مبلغ ثابت')]" />
                 </div>
             </div>
             <div class="grid grid-cols-2 gap-3">

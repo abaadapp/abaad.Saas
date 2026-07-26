@@ -14,7 +14,7 @@
     <x-page-header :title="__('المالية')" :subtitle="__('نظرة عامة على الإيرادات ووسائل الدفع والمعاملات')"
                    :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('المالية') => '#']">
         <x-slot:actions>
-            <x-select name="finance-range" onchange="location.href='{{ route('admin.finance.index') }}?range='+this.value"
+            <x-select name="finance-range" on-select="location.href='{{ route('admin.finance.index') }}?range='+value"
                 :options="['today' => __('اليوم'), 'week' => __('هذا الأسبوع'), 'month' => __('هذا الشهر'), 'year' => __('هذه السنة')]" :selected="$range" />
             <x-button variant="outline" icon="landmark" :href="route('admin.finance.statement')">{{ __('كشف الحساب البنكي') }}</x-button>
             <x-dropdown align="left" width="w-56">

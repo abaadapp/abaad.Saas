@@ -34,7 +34,7 @@
                             <div class="grid grid-cols-12 gap-2 items-end">
                                 <div class="col-span-12 sm:col-span-5">
                                     <label class="block text-xs text-gray-500 mb-1" x-show="i===0">{{ __('المنتج') }}</label>
-                                    <select :name="`items[${i}][product_id]`" x-model="item.product_id" @change="onProduct(i)" class="w-full rounded-lg border-gray-200 text-sm">
+                                    <select :name="`items[${i}][product_id]`" x-model="item.product_id" @change="onProduct(i)" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 focus:outline-none transition">
                                         <option value="">{{ __('— صنف يدوي —') }}</option>
                                         <template x-for="p in products" :key="p.id">
                                             <option :value="p.id" x-text="p.name"></option>
@@ -65,20 +65,17 @@
                 <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                     <h3 class="font-bold text-gray-800 mb-4">{{ __('تفاصيل الأمر') }}</h3>
                     <label class="block text-sm text-gray-600 mb-1">{{ __('الفرع') }} <span class="text-danger-500">*</span></label>
-                    <select name="branch_id" required class="w-full rounded-lg border-gray-200 text-sm mb-4">
-                        <option value="">{{ __('اختر الفرع...') }}</option>
-                        @foreach (\App\Support\Demo::branches() as $b)
-                            <option value="{{ $b['id'] }}" @selected(\App\Support\Demo::currentBranchId() == $b['id'])>{{ $b['name'] }}</option>
-                        @endforeach
-                    </select>
+                    <div class="mb-4">
+                        <x-select name="branch_id" :required="true" :placeholder="__('اختر الفرع...')"
+                            :options="collect(\App\Support\Demo::branches())->pluck('name', 'id')->toArray()"
+                            :selected="\App\Support\Demo::currentBranchId()" />
+                    </div>
                     @error('branch_id')<p class="-mt-3 mb-3 text-xs text-danger-500">{{ $message }}</p>@enderror
                     <label class="block text-sm text-gray-600 mb-1">{{ __('المورّد') }}</label>
-                    <select name="supplier_id" class="w-full rounded-lg border-gray-200 text-sm mb-4">
-                        <option value="">{{ __('— بدون مورّد —') }}</option>
-                        @foreach ($suppliers as $s)
-                            <option value="{{ $s['id'] }}">{{ $s['name'] }}</option>
-                        @endforeach
-                    </select>
+                    <div class="mb-4">
+                        <x-select name="supplier_id" :placeholder="__('— بدون مورّد —')"
+                            :options="collect($suppliers)->pluck('name', 'id')->toArray()" />
+                    </div>
                     <label class="block text-sm text-gray-600 mb-1">{{ __('ملاحظات') }}</label>
                     <textarea name="notes" rows="2" class="w-full rounded-lg border-gray-200 text-sm"></textarea>
 

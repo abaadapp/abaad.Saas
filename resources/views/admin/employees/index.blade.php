@@ -35,7 +35,7 @@
         <x-stat-card :label="__('إجمالي المبيعات')" value="{{ \App\Support\Demo::money(collect($employees)->sum('achieved')) }}" icon="trending-up" color="info" />
     </div>
 
-    <div x-data="listFilter()" x-ref="list">
+    <div x-data="listFilter()" x-ref="list" @filter-change="tag = $event.detail; apply()">
         {{-- شريط الفلاتر --}}
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
             <div class="flex flex-col md:flex-row md:items-center gap-3">
@@ -43,7 +43,7 @@
                     <x-input name="search" :placeholder="__('ابحث عن موظف بالاسم أو البريد...')" icon="search" x-model="q" @input="apply()" />
                 </div>
                 <div class="w-full md:w-56">
-                    <x-select name="role" :placeholder="__('كل الوظائف')" x-model="tag" @change="apply()"
+                    <x-select name="role" :placeholder="__('كل الوظائف')" on-select="$dispatch('filter-change', value)"
                         :options="$jobTitles->mapWithKeys(fn ($jt) => [$jt->name => __($jt->name)])->toArray()" />
                 </div>
                 <x-button variant="light" size="md" icon="filter" @click="apply()">{{ __('تصفية') }}</x-button>

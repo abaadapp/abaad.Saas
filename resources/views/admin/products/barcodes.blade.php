@@ -27,12 +27,8 @@
         <div class="flex items-center gap-2">
             <div class="flex items-center gap-2 text-sm text-gray-600" x-data>
                 <label>{{ __('عدد النسخ لكل منتج:') }}</label>
-                <select x-data @change="document.querySelectorAll('[data-copies]').forEach(el => {}); location.search = '?copies=' + $event.target.value"
-                        class="rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
-                    @foreach ([1, 2, 3, 4] as $c)
-                        <option value="{{ $c }}" @selected((int) request('copies', 1) === $c)>{{ $c }}</option>
-                    @endforeach
-                </select>
+                <x-select name="copies" class="w-24" on-select="location.search = '?copies=' + value"
+                          :options="[1, 2, 3, 4]" selected="{{ (int) request('copies', 1) }}" />
             </div>
             <button type="button" onclick="window.print()" class="inline-flex items-center gap-2 rounded-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 text-sm font-medium shadow-sm">
                 <x-icon name="printer" class="w-4 h-4" /> {{ __('طباعة') }}

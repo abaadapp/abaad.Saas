@@ -30,23 +30,13 @@
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm text-gray-600 mb-1">{{ __('الدور') }} <span class="text-danger-500">*</span></label>
-                    <select name="role" required class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200">
-                        <option value="super_admin">{{ __('مدير المنصة') }}</option>
-                        <option value="admin">{{ __('مدير نشاط') }}</option>
-                        <option value="manager">{{ __('مدير فرع') }}</option>
-                        <option value="cashier">{{ __('كاشير') }}</option>
-                        <option value="sales">{{ __('موظف مبيعات') }}</option>
-                        <option value="accountant">{{ __('محاسب') }}</option>
-                    </select>
+                    <x-select name="role" :required="true" :placeholder="__('اختر الدور...')"
+                        :options="['super_admin' => __('مدير المنصة'), 'admin' => __('مدير نشاط'), 'manager' => __('مدير فرع'), 'cashier' => __('كاشير'), 'sales' => __('موظف مبيعات'), 'accountant' => __('محاسب')]" />
                 </div>
                 <div>
                     <label class="block text-sm text-gray-600 mb-1">{{ __('النشاط التجاري') }}</label>
-                    <select name="business_id" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200">
-                        <option value="">{{ __('— المنصة —') }}</option>
-                        @foreach (\App\Support\Demo::businesses() as $biz)
-                            <option value="{{ $biz['id'] }}">{{ $biz['name'] }}</option>
-                        @endforeach
-                    </select>
+                    <x-select name="business_id" :placeholder="__('— المنصة —')"
+                        :options="collect(\App\Support\Demo::businesses())->pluck('name', 'id')->toArray()" />
                 </div>
             </div>
             <div>

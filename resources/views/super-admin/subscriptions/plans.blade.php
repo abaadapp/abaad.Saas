@@ -30,10 +30,7 @@
             </div>
             <div>
                 <label class="block text-sm text-gray-600 mb-1">{{ __('اللون') }}</label>
-                <select name="color" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200">
-                    <option value="primary">{{ __('أساسي') }}</option>
-                    <option value="secondary">{{ __('ثانوي') }}</option>
-                </select>
+                <x-select name="color" selected="primary" :options="['primary' => __('أساسي'), 'secondary' => __('ثانوي')]" />
             </div>
             <div>
                 <label class="block text-sm text-gray-600 mb-1">{{ __('المزايا (ميزة في كل سطر)') }}</label>

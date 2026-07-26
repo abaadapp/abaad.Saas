@@ -33,11 +33,8 @@
             </div>
             <div>
                 <label class="block text-sm text-gray-600 mb-1">{{ __('الدور') }}</label>
-                <select name="role" class="w-full rounded-lg border-gray-200 focus:border-primary-400 focus:ring-primary-200">
-                    @foreach (['super_admin' => __('مدير المنصة'), 'admin' => __('مدير نشاط'), 'manager' => __('مدير فرع'), 'cashier' => __('كاشير'), 'sales' => __('موظف مبيعات'), 'accountant' => __('محاسب')] as $val => $label)
-                        <option value="{{ $val }}" @selected(($userModel->role ?? '') === $val)>{{ $label }}</option>
-                    @endforeach
-                </select>
+                <x-select name="role" :selected="$userModel->role ?? ''"
+                    :options="['super_admin' => __('مدير المنصة'), 'admin' => __('مدير نشاط'), 'manager' => __('مدير فرع'), 'cashier' => __('كاشير'), 'sales' => __('موظف مبيعات'), 'accountant' => __('محاسب')]" />
             </div>
         </form>
         <x-slot:footer>

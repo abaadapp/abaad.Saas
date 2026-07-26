@@ -1642,5 +1642,8 @@
     "لا نشاط اليوم — لم يُرسَل شيء.": "No activity today — nothing sent.",
     "ملخّص الأداء اليومي": "Daily performance summary",
     "مبيعات اليوم والطلبات وصافي الأرباح والأكثر مبيعًا — بريد نهاية كل يوم وبطاقة في جرس الإشعارات.": "Today's sales, orders, net profit and best seller — an end-of-day email plus a card in the notification bell.",
-    "ملخّص اليوم: :sales · :orders طلب · صافي :net": "Today's summary: :sales · :orders orders · net :net"
+    "ملخّص اليوم: :sales · :orders طلب · صافي :net": "Today's summary: :sales · :orders orders · net :net",
+    "لا اتصال — البيع مستمر ويُحفَظ محليًا": "No connection — sales continue and are saved locally",
+    "جارٍ مزامنة الطلبات المعلّقة": "Syncing pending orders",
+    "لا يوجد اتصال — حُفظ البيع وسيُرسَل تلقائيًا عند عودة الاتصال": "No connection — the sale was saved and will be sent automatically once back online"
 }

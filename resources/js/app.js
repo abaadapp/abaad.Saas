@@ -377,6 +377,109 @@ document.addEventListener('alpine:init', () => {
             new URLSearchParams(location.search).get('customer') ||
             'عميل نقدي',
         taxRate: 5,
+        // ====== صمود الانقطاع (Outbox) ======
+        // البيع يُكتب محليًا أولًا ثم يُرفع للخادم؛ عند انقطاع الشبكة تبقى الطلبات
+        // في طابور localStorage وتُرفع تلقائيًا عند عودة الاتصال (بلا تكرار عبر client_uuid).
+        online: navigator.onLine,
+        pending: [],
+        _flushing: false,
+        outboxKey: 'abadpos:pos:outbox',
+        // Alpine يستدعيها تلقائيًا عند تهيئة المكوّن
+        init() {
+            try {
+                this.pending = JSON.parse(localStorage.getItem(this.outboxKey) || '[]');
+            } catch (e) {
+                this.pending = [];
+            }
+            window.addEventListener('online', () => { this.online = true; this.flushOutbox(); });
+            window.addEventListener('offline', () => { this.online = false; });
+            // نبض مزامنة: يلتقط عودة الاتصال حتى لو لم يُطلَق حدث online، ويعيد المحاولة دوريًا
+            setInterval(() => { this.online = navigator.onLine; this.flushOutbox(); }, 8000);
+            if (this.pending.length) this.flushOutbox();
+        },
+        get pendingCount() {
+            return this.pending.length;
+        },
+        _savePending() {
+            localStorage.setItem(this.outboxKey, JSON.stringify(this.pending));
+        },
+        _uuid() {
+            try {
+                if (crypto?.randomUUID) return crypto.randomUUID();
+            } catch (e) { /* بيئة غير آمنة — نلجأ للبديل */ }
+            return 'cuid-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+        },
+        // يرفع طلبًا واحدًا للخادم. النتيجة: {ok, invoice} أو {ok:false} (نبقيه) أو {ok:false, drop:true} (نتجاهله)
+        async _sendOne(payload) {
+            try {
+                const res = await fetch('/pos/checkout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        Accept: 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
+                if (res.ok) {
+                    const d = await res.json();
+                    return { ok: true, invoice: d.invoice };
+                }
+                // 419 = انتهاء الجلسة/رمز CSRF، 422 = بيانات مرفوضة → لا فائدة من إعادة المحاولة
+                if (res.status === 422 || res.status === 419) return { ok: false, drop: true };
+                return { ok: false };
+            } catch (e) {
+                return { ok: false }; // خطأ شبكة → نُبقيه في الطابور
+            }
+        },
+        // يُستدعى من نافذة الدفع: يحفظ البيع محليًا ثم يحاول رفعه فورًا
+        async checkoutSale(method) {
+            const uuid = this._uuid();
+            const payload = {
+                client_uuid: uuid,
+                items: this.items.map((i) => ({
+                    id: i.id ?? null, name: i.name, price: i.price, qty: i.qty, note: i.note ?? '',
+                })),
+                customer: this.customer,
+                payment_method: method,
+                discount: this.discountAmount,
+                tax: this.taxAmount,
+                delivery_fee: 0,
+                total: this.total,
+                resume_id: this.resumeId,
+                coupon_code: this.coupon?.code ?? null,
+            };
+            // اكتب محليًا أولًا — لا تنتظر الشبكة لإتمام البيع
+            this.pending.push({ uuid, payload, at: Date.now() });
+            this._savePending();
+
+            const res = await this._sendOne(payload);
+            if (res.ok || res.drop) {
+                this.pending = this.pending.filter((p) => p.uuid !== uuid);
+                this._savePending();
+            }
+            this.online = navigator.onLine;
+            return { synced: res.ok, invoice: res.invoice ?? null };
+        },
+        // يفرّغ الطابور تباعًا؛ يتوقف عند أول فشل شبكة ليعيد لاحقًا (يمنع التوازي المتكرر)
+        async flushOutbox() {
+            if (this._flushing || !navigator.onLine || !this.pending.length) return;
+            this._flushing = true;
+            try {
+                for (const p of [...this.pending]) {
+                    const res = await this._sendOne(p.payload);
+                    if (res.ok || res.drop) {
+                        this.pending = this.pending.filter((x) => x.uuid !== p.uuid);
+                        this._savePending();
+                        if (res.ok) Alpine.store('toasts').add('تمت مزامنة طلب مُعلّق ✓', 'success', 2000);
+                    } else {
+                        break; // ما زالت الشبكة منقطعة — نوقف ونعيد لاحقًا
+                    }
+                }
+            } finally {
+                this._flushing = false;
+            }
+        },
         // الكوبون
         couponCode: '',
         coupon: null, // { code, type, value } عند التطبيق

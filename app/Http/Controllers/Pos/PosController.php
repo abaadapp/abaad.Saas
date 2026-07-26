@@ -106,7 +106,18 @@ class PosController extends Controller
             'total' => ['nullable', 'numeric'],
             'resume_id' => ['nullable', 'integer'],
             'coupon_code' => ['nullable', 'string', 'max:40'],
+            'client_uuid' => ['nullable', 'string', 'max:64'],
         ]);
+
+        // صمود الانقطاع: لو أُعيد رفع نفس الطلب (بعد عودة الاتصال) نعيد الفاتورة الأصلية بدل تكراره
+        if (! empty($data['client_uuid'])) {
+            $existing = Order::where('business_id', $this->bid())
+                ->where('client_uuid', $data['client_uuid'])
+                ->first();
+            if ($existing) {
+                return response()->json(['ok' => true, 'invoice' => $existing->number, 'duplicate' => true]);
+            }
+        }
 
         $subtotal = collect($data['items'])->sum(fn ($i) => $i['price'] * $i['qty']);
         $branch = $this->branch();
@@ -120,6 +131,7 @@ class PosController extends Controller
         $order = Order::create([
             'business_id' => $this->bid(),
             'number' => 'INV-' . random_int(78900, 99999),
+            'client_uuid' => $data['client_uuid'] ?? null,
             'customer_name' => $data['customer'] ?? 'عميل نقدي',
             'employee_name' => auth()->user()->name,
             'branch_id' => $branch['id'],

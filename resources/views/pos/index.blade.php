@@ -10,6 +10,15 @@
     @php $resume = session('resume_cart'); @endphp
     <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
 
+        {{-- مؤشّر صمود الانقطاع: يظهر عند انقطاع الشبكة أو وجود طلبات بانتظار المزامنة --}}
+        <div x-cloak x-show="!online || pendingCount"
+             class="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold shadow-lg"
+             :class="online ? 'bg-warning-50 text-warning-700 border border-warning-200' : 'bg-danger-600 text-white'">
+            <span x-show="!online">{{ __('لا اتصال — البيع مستمر ويُحفَظ محليًا') }}</span>
+            <span x-show="online && pendingCount" x-cloak
+                  x-text="{{ \Illuminate\Support\Js::from(__('جارٍ مزامنة الطلبات المعلّقة')) }} + ' (' + pendingCount + ')'"></span>
+        </div>
+
         {{-- ============ جزء المنتجات (يمين) ============ --}}
         <section class="flex-1 lg:w-2/3 flex flex-col min-h-0" x-data="{ cat: 'الكل', q: '' }">
 
@@ -271,7 +280,7 @@
 
         {{-- ============ نافذة الدفع ============ --}}
         <x-modal name="payment" :title="__('إتمام الدفع')" maxWidth="max-w-lg">
-            <div x-data="{ step: 'pay', paid: 0, method: 'نقدي', invoice: 'INV-' + Math.floor(78900 + Math.random() * 99) }"
+            <div x-data="{ step: 'pay', paid: 0, method: 'نقدي', invoice: 'INV-' + Math.floor(78900 + Math.random() * 99), synced: true }"
                  @close-modal.window="step = 'pay'; paid = 0">
 
                 {{-- خطوة الدفع --}}
@@ -313,11 +322,11 @@
                     </div>
 
                     <button type="button" @click="
-                            fetch('{{ route('pos.checkout') }}', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
-                              body: JSON.stringify({ items: items, customer: customer, payment_method: method, discount: discountAmount, tax: taxAmount, delivery_fee: 0, total: total, resume_id: resumeId, coupon_code: coupon?.code ?? null })
-                            }).then(r => r.json()).then(d => { if (d.invoice) invoice = d.invoice; step = 'success'; }).catch(() => { step = 'success'; })
+                            checkoutSale(method).then(res => {
+                              synced = res.synced;
+                              if (res.invoice) invoice = res.invoice;
+                              step = 'success';
+                            })
                             "
                             class="w-full py-3.5 rounded-full bg-success-600 hover:bg-success-700 text-white font-bold text-base shadow-sm transition-colors">
                         {{ __('تأكيد الدفع') }}
@@ -331,16 +340,17 @@
                     </div>
                     <div>
                         <h3 class="text-xl font-bold text-gray-800">{{ __('تم الدفع بنجاح') }}</h3>
-                        <p class="text-sm text-gray-400 mt-1">{{ __('تمت معالجة الطلب وإصدار الفاتورة') }}</p>
+                        <p class="text-sm text-gray-400 mt-1" x-show="synced">{{ __('تمت معالجة الطلب وإصدار الفاتورة') }}</p>
+                        <p class="text-sm text-warning-600 mt-1" x-show="!synced" x-cloak>{{ __('لا يوجد اتصال — حُفظ البيع وسيُرسَل تلقائيًا عند عودة الاتصال') }}</p>
                     </div>
                     <div class="bg-gray-50 rounded-2xl p-4 text-right space-y-2 text-sm">
-                        <div class="flex justify-between"><span class="text-gray-500">{{ __('رقم الفاتورة') }}</span><span class="font-bold text-gray-800" x-text="invoice"></span></div>
+                        <div class="flex justify-between" x-show="synced"><span class="text-gray-500">{{ __('رقم الفاتورة') }}</span><span class="font-bold text-gray-800" x-text="invoice"></span></div>
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('المبلغ') }}</span><span class="font-bold text-gray-800" x-text="money(total)"></span></div>
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('وسيلة الدفع') }}</span><span class="font-bold text-gray-800" x-text="method === 'بطاقة' ? @js(__('فيزا')) : method"></span></div>
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('العميل') }}</span><span class="font-bold text-gray-800" x-text="customer"></span></div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
-                        <button type="button" @click="window.open('{{ url('pos/receipt') }}/' + encodeURIComponent(invoice) + '/pdf', '_blank')"
+                        <button type="button" x-show="synced" @click="window.open('{{ url('pos/receipt') }}/' + encodeURIComponent(invoice) + '/pdf', '_blank')"
                                 class="flex items-center justify-center gap-2 py-3 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-medium transition-colors">
                             <x-icon name="printer" class="w-5 h-5" /> {{ __('طباعة الفاتورة') }}
                         </button>

@@ -123,24 +123,47 @@ class Demo
 
     public static function superStats(): array
     {
+        $mStart = now()->startOfMonth();
+        $lmStart = now()->subMonthNoOverflow()->startOfMonth();
+        $yStart = now()->startOfYear();
+        $lyStart = now()->subYear()->startOfYear();
+
+        // القيم (إجمالي)
         $total = Business::count();
         $active = Business::where('status', 'نشط')->count();
         $flowers = Business::where('type', 'محل ورود')->count();
         $users = User::count();
         $activeSubs = Subscription::where('status', 'نشط')->count();
         $expiredSubs = Subscription::where('status', '!=', 'نشط')->count();
-        $monthly = (float) Invoice::where('status', 'مدفوعة')->sum('amount');
-        $yearly = (float) Subscription::sum('amount');
+
+        // اتجاهات حقيقية = نمو التسجيلات (هذا الشهر مقابل الشهر السابق)
+        $bizNew = Business::where('starts_at', '>=', $mStart)->count();
+        $bizNewLast = Business::whereBetween('starts_at', [$lmStart, $mStart])->count();
+        $activeNew = Business::where('status', 'نشط')->where('starts_at', '>=', $mStart)->count();
+        $activeNewLast = Business::where('status', 'نشط')->whereBetween('starts_at', [$lmStart, $mStart])->count();
+        $flowNew = Business::where('type', 'محل ورود')->where('starts_at', '>=', $mStart)->count();
+        $flowNewLast = Business::where('type', 'محل ورود')->whereBetween('starts_at', [$lmStart, $mStart])->count();
+        $usersNew = User::where('created_at', '>=', $mStart)->count();
+        $usersNewLast = User::whereBetween('created_at', [$lmStart, $mStart])->count();
+        $subsNew = Subscription::where('status', 'نشط')->where('created_at', '>=', $mStart)->count();
+        $subsNewLast = Subscription::where('status', 'نشط')->whereBetween('created_at', [$lmStart, $mStart])->count();
+
+        // الإيرادات: الشهر مقابل السابق، والسنة مقابل السابقة (فواتير مدفوعة فعليًا)
+        $paid = fn () => Invoice::where('status', 'مدفوعة');
+        $monthly = (float) $paid()->where('issued_at', '>=', $mStart)->sum('amount');
+        $monthlyLast = (float) $paid()->whereBetween('issued_at', [$lmStart, $mStart])->sum('amount');
+        $yearly = (float) $paid()->where('issued_at', '>=', $yStart)->sum('amount');
+        $yearlyLast = (float) $paid()->whereBetween('issued_at', [$lyStart, $yStart])->sum('amount');
 
         return [
-            ['label' => __('إجمالي الشركات'), 'value' => (string) $total, 'icon' => 'building-2', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
-            ['label' => __('الشركات النشطة'), 'value' => (string) $active, 'icon' => 'circle-check', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
-            ['label' => __('محلات الورود'), 'value' => (string) $flowers, 'icon' => 'flower', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
-            ['label' => __('المستخدمون'), 'value' => (string) $users, 'icon' => 'users', 'trend' => '+18%', 'up' => true, 'color' => 'info'],
-            ['label' => __('الاشتراكات النشطة'), 'value' => (string) $activeSubs, 'icon' => 'badge-check', 'trend' => '+6%', 'up' => true, 'color' => 'success'],
-            ['label' => __('الاشتراكات المنتهية'), 'value' => (string) $expiredSubs, 'icon' => 'badge-x', 'trend' => '-3%', 'up' => false, 'color' => 'danger'],
-            ['label' => __('الإيرادات الشهرية'), 'value' => self::money($monthly), 'icon' => 'wallet', 'trend' => '+14%', 'up' => true, 'color' => 'warning'],
-            ['label' => __('الإيرادات السنوية'), 'value' => self::money($yearly), 'icon' => 'trending-up', 'trend' => '+21%', 'up' => true, 'color' => 'primary'],
+            array_merge(['label' => __('إجمالي الشركات'), 'value' => (string) $total, 'icon' => 'building-2', 'color' => 'primary'], self::trend($bizNew, $bizNewLast)),
+            array_merge(['label' => __('الشركات النشطة'), 'value' => (string) $active, 'icon' => 'circle-check', 'color' => 'success'], self::trend($activeNew, $activeNewLast)),
+            array_merge(['label' => __('محلات الورود'), 'value' => (string) $flowers, 'icon' => 'flower', 'color' => 'secondary'], self::trend($flowNew, $flowNewLast)),
+            array_merge(['label' => __('المستخدمون'), 'value' => (string) $users, 'icon' => 'users', 'color' => 'info'], self::trend($usersNew, $usersNewLast)),
+            array_merge(['label' => __('الاشتراكات النشطة'), 'value' => (string) $activeSubs, 'icon' => 'badge-check', 'color' => 'success'], self::trend($subsNew, $subsNewLast)),
+            ['label' => __('الاشتراكات المنتهية'), 'value' => (string) $expiredSubs, 'icon' => 'badge-x', 'trend' => null, 'up' => false, 'color' => 'danger'],
+            array_merge(['label' => __('الإيرادات الشهرية'), 'value' => self::money($monthly), 'icon' => 'wallet', 'color' => 'warning'], self::trend($monthly, $monthlyLast)),
+            array_merge(['label' => __('الإيرادات السنوية'), 'value' => self::money($yearly), 'icon' => 'trending-up', 'color' => 'primary'], self::trend($yearly, $yearlyLast)),
         ];
     }
 
@@ -256,29 +279,53 @@ class Demo
     public static function adminStats(): array
     {
         $bid = self::bid();
-        $ordersQ = Order::where('business_id', $bid)->where('is_held', false)
+        $mStart = now()->startOfMonth();
+        $lmStart = now()->subMonthNoOverflow()->startOfMonth();
+
+        $orders = fn () => Order::where('business_id', $bid)->where('is_held', false)
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()));
-        $ordersCount = (clone $ordersQ)->count();
-        $salesMonth = (float) (clone $ordersQ)->sum('total');
-        $salesToday = (float) (clone $ordersQ)->whereDate('ordered_at', today())->sum('total');
-        if ($salesToday <= 0) {
-            $salesToday = round($salesMonth * 0.06, 3);
-        }
-        $avg = $ordersCount ? $salesMonth / $ordersCount : 0;
-        $customers = Customer::where('business_id', $bid)->count();
+
+        // المبيعات: اليوم/أمس، والشهر/الشهر السابق (بيانات حقيقية بلا تلفيق)
+        $salesToday = (float) $orders()->whereDate('ordered_at', today())->sum('total');
+        $salesYesterday = (float) $orders()->whereDate('ordered_at', today()->subDay())->sum('total');
+        $salesMonth = (float) $orders()->where('ordered_at', '>=', $mStart)->sum('total');
+        $salesLastMonth = (float) $orders()->whereBetween('ordered_at', [$lmStart, $mStart])->sum('total');
+
+        // الطلبات: الإجمالي (القيمة) + نمو الشهر (الاتجاه)
+        $ordersTotal = $orders()->count();
+        $ordersMonth = $orders()->where('ordered_at', '>=', $mStart)->count();
+        $ordersLastMonth = $orders()->whereBetween('ordered_at', [$lmStart, $mStart])->count();
+
+        // متوسط قيمة الطلب: هذا الشهر مقابل السابق
+        $avg = $ordersMonth ? $salesMonth / $ordersMonth : 0;
+        $avgLast = $ordersLastMonth ? $salesLastMonth / $ordersLastMonth : 0;
+
+        // العملاء: الإجمالي (القيمة) + الجدد هذا الشهر مقابل السابق (الاتجاه)
+        $customersTotal = Customer::where('business_id', $bid)->count();
+        $customersMonth = Customer::where('business_id', $bid)->where('created_at', '>=', $mStart)->count();
+        $customersLastMonth = Customer::where('business_id', $bid)->whereBetween('created_at', [$lmStart, $mStart])->count();
+
         $lowStock = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')->count();
-        $expenses = (float) Expense::where('business_id', $bid)->sum('amount');
-        $net = $salesMonth - $expenses;
+
+        // المصروفات وصافي الأرباح: هذا الشهر مقابل السابق
+        $expMonth = (float) Expense::where('business_id', $bid)->where('spent_at', '>=', $mStart)->sum('amount');
+        $expLastMonth = (float) Expense::where('business_id', $bid)->whereBetween('spent_at', [$lmStart, $mStart])->sum('amount');
+        $net = $salesMonth - $expMonth;
+        $netLast = $salesLastMonth - $expLastMonth;
+
+        // اتجاه المصروفات معكوس: زيادتها اتجاه سلبي (أحمر)
+        $expTrend = self::trend($expMonth, $expLastMonth);
+        $expTrend['up'] = ! $expTrend['up'];
 
         return [
-            ['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'trend' => '+9%', 'up' => true, 'color' => 'primary'],
-            ['label' => __('مبيعات الشهر'), 'value' => self::money($salesMonth), 'icon' => 'trending-up', 'trend' => '+15%', 'up' => true, 'color' => 'success'],
-            ['label' => __('عدد الطلبات'), 'value' => (string) $ordersCount, 'icon' => 'receipt', 'trend' => '+11%', 'up' => true, 'color' => 'info'],
-            ['label' => __('متوسط قيمة الطلب'), 'value' => self::money($avg), 'icon' => 'calculator', 'trend' => '+3%', 'up' => true, 'color' => 'secondary'],
-            ['label' => __('عدد العملاء'), 'value' => (string) $customers, 'icon' => 'users', 'trend' => '+7%', 'up' => true, 'color' => 'primary'],
+            array_merge(['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'color' => 'primary'], self::trend($salesToday, $salesYesterday)),
+            array_merge(['label' => __('مبيعات الشهر'), 'value' => self::money($salesMonth), 'icon' => 'trending-up', 'color' => 'success'], self::trend($salesMonth, $salesLastMonth)),
+            array_merge(['label' => __('عدد الطلبات'), 'value' => (string) $ordersTotal, 'icon' => 'receipt', 'color' => 'info'], self::trend($ordersMonth, $ordersLastMonth)),
+            array_merge(['label' => __('متوسط قيمة الطلب'), 'value' => self::money($avg), 'icon' => 'calculator', 'color' => 'secondary'], self::trend($avg, $avgLast)),
+            array_merge(['label' => __('عدد العملاء'), 'value' => (string) $customersTotal, 'icon' => 'users', 'color' => 'primary'], self::trend($customersMonth, $customersLastMonth)),
             ['label' => __('منتجات منخفضة المخزون'), 'value' => (string) $lowStock, 'icon' => 'alert-triangle', 'trend' => __('تنبيه'), 'up' => false, 'color' => 'warning'],
-            ['label' => __('المصروفات'), 'value' => self::money($expenses), 'icon' => 'arrow-down-circle', 'trend' => '-5%', 'up' => false, 'color' => 'danger'],
-            ['label' => __('صافي الأرباح'), 'value' => self::money($net), 'icon' => 'piggy-bank', 'trend' => '+17%', 'up' => true, 'color' => 'success'],
+            array_merge(['label' => __('المصروفات'), 'value' => self::money($expMonth), 'icon' => 'arrow-down-circle', 'color' => 'danger'], $expTrend),
+            array_merge(['label' => __('صافي الأرباح'), 'value' => self::money($net), 'icon' => 'piggy-bank', 'color' => 'success'], self::trend($net, $netLast)),
         ];
     }
 

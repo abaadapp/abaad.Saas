@@ -379,6 +379,53 @@ document.addEventListener('alpine:init', () => {
         discountPercent: 0,
         deliveryFee: 0,
         taxRate: 5,
+        // الكوبون
+        couponCode: '',
+        coupon: null, // { code, type, value } عند التطبيق
+        couponError: '',
+        couponLoading: false,
+        async applyCoupon() {
+            const code = (this.couponCode || '').trim();
+            if (!code) return;
+            this.couponLoading = true;
+            this.couponError = '';
+            try {
+                const res = await fetch('/pos/coupon', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        Accept: 'application/json',
+                    },
+                    body: JSON.stringify({ code, subtotal: this.subtotal }),
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    this.coupon = null;
+                    this.couponError = data.error || 'تعذّر تطبيق الكوبون';
+                    return;
+                }
+                this.coupon = { code: data.code, type: data.type, value: data.value };
+                this.couponCode = data.code;
+                Alpine.store('toasts').add(data.message || 'تم تطبيق الكوبون', 'success', 2000);
+            } catch (e) {
+                this.couponError = 'تعذّر الاتصال. حاول مرة أخرى.';
+            } finally {
+                this.couponLoading = false;
+            }
+        },
+        removeCoupon() {
+            this.coupon = null;
+            this.couponCode = '';
+            this.couponError = '';
+        },
+        get couponDiscount() {
+            if (!this.coupon) return 0;
+            const d = this.coupon.type === 'نسبة'
+                ? (this.subtotal * Number(this.coupon.value)) / 100
+                : Number(this.coupon.value);
+            return Math.min(d, this.subtotal);
+        },
         add(product) {
             // مفتاح السلة: 'p'+معرّف المنتج، أو المفتاح المُمرَّر (مثل 'a'+معرّف الإضافة)
             const key = product.key ?? ('p' + product.id);
@@ -405,6 +452,7 @@ document.addEventListener('alpine:init', () => {
             this.items = [];
             this.discountPercent = 0;
             this.deliveryFee = 0;
+            this.removeCoupon();
         },
         get count() {
             return this.items.reduce((s, i) => s + i.qty, 0);
@@ -412,8 +460,13 @@ document.addEventListener('alpine:init', () => {
         get subtotal() {
             return this.items.reduce((s, i) => s + i.price * i.qty, 0);
         },
-        get discountAmount() {
+        // خصم يدوي (%) — نصف المبلغ فقط دون الكوبون
+        get manualDiscount() {
             return (this.subtotal * this.discountPercent) / 100;
+        },
+        // إجمالي الخصم = اليدوي + الكوبون (لا يتجاوز المجموع الفرعي)
+        get discountAmount() {
+            return Math.min(this.manualDiscount + this.couponDiscount, this.subtotal);
         },
         get taxAmount() {
             return ((this.subtotal - this.discountAmount) * this.taxRate) / 100;

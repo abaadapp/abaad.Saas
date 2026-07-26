@@ -273,6 +273,7 @@ Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
     Route::get('/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
+    Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');
     Route::view('/orders', 'pos.orders')->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');

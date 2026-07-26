@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
+use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Shift;
@@ -42,6 +43,52 @@ class PosController extends Controller
     }
 
     /** إتمام البيع وحفظ الطلب */
+    /** كوبون النشاط بالكود (غير حسّاس لحالة الأحرف) */
+    private function findCoupon(?string $code): ?Coupon
+    {
+        if (empty($code)) {
+            return null;
+        }
+
+        return Coupon::where('business_id', $this->bid())
+            ->whereRaw('UPPER(code) = ?', [strtoupper(trim($code))])
+            ->first();
+    }
+
+    /** التحقق من كود الخصم وتطبيقه (يُستدعى من السلة قبل الدفع) */
+    public function applyCoupon(Request $request)
+    {
+        $data = $request->validate([
+            'code' => ['required', 'string', 'max:40'],
+            'subtotal' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $coupon = $this->findCoupon($data['code']);
+        $subtotal = (float) $data['subtotal'];
+
+        $error = match (true) {
+            ! $coupon => __('كود الخصم غير صحيح'),
+            ! $coupon->active => __('هذا الكوبون موقوف'),
+            $coupon->expires_at && $coupon->expires_at->isPast() => __('انتهت صلاحية الكوبون'),
+            $coupon->max_uses !== null && $coupon->used_count >= $coupon->max_uses => __('انتهت مرات استخدام الكوبون'),
+            $subtotal < (float) $coupon->min_order => __('الحد الأدنى للطلب :amount', ['amount' => Demo::money($coupon->min_order)]),
+            default => null,
+        };
+
+        if ($error) {
+            return response()->json(['ok' => false, 'error' => $error], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'code' => $coupon->code,
+            'type' => $coupon->type,
+            'value' => (float) $coupon->value,
+            'discount' => $coupon->discountFor($subtotal),
+            'message' => __('تم تطبيق الكوبون: :code', ['code' => $coupon->code]),
+        ]);
+    }
+
     public function checkout(Request $request)
     {
         $data = $request->validate([
@@ -58,10 +105,18 @@ class PosController extends Controller
             'delivery_fee' => ['nullable', 'numeric'],
             'total' => ['nullable', 'numeric'],
             'resume_id' => ['nullable', 'integer'],
+            'coupon_code' => ['nullable', 'string', 'max:40'],
         ]);
 
         $subtotal = collect($data['items'])->sum(fn ($i) => $i['price'] * $i['qty']);
         $branch = $this->branch();
+
+        // احتساب استخدام الكوبون إن كان صالحًا فعلًا (إعادة تحقق خادمية)
+        $coupon = $this->findCoupon($data['coupon_code'] ?? null);
+        $couponApplied = $coupon && $coupon->isValid() && $subtotal >= (float) $coupon->min_order;
+        if ($couponApplied) {
+            $coupon->increment('used_count');
+        }
         $order = Order::create([
             'business_id' => $this->bid(),
             'number' => 'INV-' . random_int(78900, 99999),
@@ -74,6 +129,7 @@ class PosController extends Controller
             'payment_status' => 'مدفوع',
             'subtotal' => $subtotal,
             'discount' => $data['discount'] ?? 0,
+            'coupon_code' => $couponApplied ? $coupon->code : null,
             'tax' => $data['tax'] ?? 0,
             'delivery_fee' => $data['delivery_fee'] ?? 0,
             'total' => $data['total'] ?? $subtotal,

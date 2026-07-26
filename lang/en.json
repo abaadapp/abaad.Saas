@@ -1622,5 +1622,12 @@
     "أنا هنا — متابعة": "I'm here — continue",
     "يمكنك تحديث صورتك ورقم هاتفك": "You can update your photo and phone number",
     "لا يمكن تغيير الاسم — راجع صاحب النشاط": "Name cannot be changed — contact the business owner",
-    "البريد يعدّله صاحب النشاط فقط": "Email can only be changed by the business owner"
+    "البريد يعدّله صاحب النشاط فقط": "Email can only be changed by the business owner",
+    "كود الخصم": "Discount code",
+    "كود الخصم غير صحيح": "Invalid discount code",
+    "هذا الكوبون موقوف": "This coupon is disabled",
+    "انتهت صلاحية الكوبون": "This coupon has expired",
+    "انتهت مرات استخدام الكوبون": "This coupon has reached its usage limit",
+    "الحد الأدنى للطلب :amount": "Minimum order is :amount",
+    "تم تطبيق الكوبون: :code": "Coupon applied: :code"
 }

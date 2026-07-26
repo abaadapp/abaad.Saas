@@ -182,6 +182,37 @@
                         <span class="text-danger-500 text-xs w-16 text-left" x-text="'- ' + money(discountAmount)"></span>
                     </div>
                 </div>
+                {{-- كود الخصم (كوبون) --}}
+                <div>
+                    <div class="flex items-center gap-2" x-show="!coupon">
+                        <div class="relative flex-1">
+                            <span class="absolute inset-y-0 right-2.5 flex items-center text-gray-400 pointer-events-none">
+                                <x-icon name="ticket-percent" class="w-4 h-4" />
+                            </span>
+                            <input type="text" x-model="couponCode" @keydown.enter.prevent="applyCoupon()"
+                                   placeholder="{{ __('كود الخصم') }}" autocomplete="off"
+                                   class="w-full rounded-lg border border-gray-200 pr-8 pl-2 py-1.5 text-sm uppercase focus:border-gray-900 focus:ring-1 focus:ring-gray-200 focus:outline-none" />
+                        </div>
+                        <button type="button" @click="applyCoupon()" :disabled="!couponCode.trim() || couponLoading"
+                                class="shrink-0 rounded-lg bg-gray-900 text-white text-xs font-semibold px-3 py-2 hover:bg-gray-800 transition disabled:opacity-40">
+                            <span x-show="!couponLoading">{{ __('تطبيق') }}</span>
+                            <span x-show="couponLoading" x-cloak>…</span>
+                        </button>
+                    </div>
+                    {{-- كوبون مُطبَّق --}}
+                    <div x-show="coupon" x-cloak class="flex items-center justify-between rounded-lg bg-success-50 border border-success-500/20 px-3 py-2">
+                        <span class="flex items-center gap-1.5 text-sm text-success-700 font-medium">
+                            <x-icon name="badge-check" class="w-4 h-4" />
+                            <span x-text="coupon?.code"></span>
+                            <span class="text-xs text-success-600" x-text="'(- ' + money(couponDiscount) + ')'"></span>
+                        </span>
+                        <button type="button" @click="removeCoupon()" class="text-gray-400 hover:text-danger-500">
+                            <x-icon name="x" class="w-4 h-4" />
+                        </button>
+                    </div>
+                    <p x-show="couponError" x-cloak class="mt-1 text-xs text-danger-500" x-text="couponError"></p>
+                </div>
+
                 <div class="flex items-center justify-between text-sm text-gray-600">
                     <span>{{ __('الضريبة (5%)') }}</span>
                     <span class="font-medium text-gray-800" x-text="money(taxAmount)"></span>
@@ -281,7 +312,7 @@
                             fetch('{{ route('pos.checkout') }}', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
-                              body: JSON.stringify({ items: items, customer: customer, payment_method: method, discount: discountAmount, tax: taxAmount, delivery_fee: Number(deliveryFee||0), total: total, resume_id: resumeId })
+                              body: JSON.stringify({ items: items, customer: customer, payment_method: method, discount: discountAmount, tax: taxAmount, delivery_fee: Number(deliveryFee||0), total: total, resume_id: resumeId, coupon_code: coupon?.code ?? null })
                             }).then(r => r.json()).then(d => { if (d.invoice) invoice = d.invoice; step = 'success'; }).catch(() => { step = 'success'; })
                             "
                             class="w-full py-3.5 rounded-full bg-success-600 hover:bg-success-700 text-white font-bold text-base shadow-sm transition-colors">

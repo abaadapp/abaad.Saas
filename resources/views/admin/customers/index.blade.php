@@ -52,7 +52,7 @@
                 <x-input name="q" value="{{ $filters['q'] ?? '' }}" :placeholder="__('ابحث بالاسم أو رقم الهاتف أو البريد...')" icon="search" />
             </div>
             <div class="w-full md:w-56">
-                <x-select name="sort" :options="[
+                <x-select-menu name="sort" icon="arrow-up-down" :options="[
                     'recent' => __('الأحدث تسجيلًا'),
                     'spent' => __('الأعلى إنفاقًا'),
                     'orders' => __('الأكثر طلبات'),

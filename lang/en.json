@@ -1629,5 +1629,7 @@
     "انتهت صلاحية الكوبون": "This coupon has expired",
     "انتهت مرات استخدام الكوبون": "This coupon has reached its usage limit",
     "الحد الأدنى للطلب :amount": "Minimum order is :amount",
-    "تم تطبيق الكوبون: :code": "Coupon applied: :code"
+    "تم تطبيق الكوبون: :code": "Coupon applied: :code",
+    "المتاح": "Available",
+    "بلا حد أدنى": "No minimum"
 }

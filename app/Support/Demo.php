@@ -557,6 +557,22 @@ class Demo
         ])->all();
     }
 
+    /** الكوبونات الصالحة للاستخدام الآن (مفعّلة، غير منتهية، لم تُستنفد) — لعرضها في نقطة البيع */
+    public static function activeCoupons(): array
+    {
+        return \App\Models\Coupon::where('business_id', self::bid())
+            ->where('active', true)
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', now()))
+            ->whereRaw('(max_uses IS NULL OR used_count < max_uses)')
+            ->orderByDesc('id')->get()->map(fn ($c) => [
+                'code' => $c->code,
+                'min_order' => (float) $c->min_order,
+                'display' => $c->type === 'نسبة'
+                    ? rtrim(rtrim(number_format($c->value, 2, '.', ''), '0'), '.') . '%'
+                    : self::money($c->value),
+            ])->all();
+    }
+
     public static function couponStats(): array
     {
         $bid = self::bid();

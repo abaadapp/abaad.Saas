@@ -4,6 +4,7 @@
         $categories = \App\Support\Demo::posCategories();
         $customers = \App\Support\Demo::customers();
         $addons = collect(\App\Support\Demo::addons())->where('active', true)->values()->all();
+        $activeCoupons = \App\Support\Demo::activeCoupons();
     @endphp
 
     @php $resume = session('resume_cart'); @endphp
@@ -191,6 +192,22 @@
                             <span x-show="couponLoading" x-cloak>…</span>
                         </button>
                     </div>
+                    {{-- الكوبونات المفعّلة (اضغط لتطبيقها) --}}
+                    @if (count($activeCoupons))
+                        <div class="flex flex-wrap items-center gap-1.5 mt-2" x-show="!coupon">
+                            <span class="text-[11px] text-gray-400">{{ __('المتاح') }}:</span>
+                            @foreach ($activeCoupons as $ac)
+                                <button type="button"
+                                        @click="couponCode = {{ \Illuminate\Support\Js::from($ac['code']) }}; applyCoupon()"
+                                        class="inline-flex items-center gap-1 rounded-full border border-dashed border-primary-300 bg-primary-50/50 px-2.5 py-1 text-[11px] font-medium text-primary-700 hover:bg-primary-100 transition"
+                                        title="{{ $ac['min_order'] > 0 ? __('الحد الأدنى للطلب :amount', ['amount' => \App\Support\Demo::money($ac['min_order'])]) : __('بلا حد أدنى') }}">
+                                    <x-icon name="ticket-percent" class="w-3 h-3" />
+                                    <span class="font-mono uppercase">{{ $ac['code'] }}</span>
+                                    <span class="text-primary-500">{{ $ac['display'] }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    @endif
                     {{-- كوبون مُطبَّق --}}
                     <div x-show="coupon" x-cloak class="flex items-center justify-between rounded-lg bg-success-50 border border-success-500/20 px-3 py-2">
                         <span class="flex items-center gap-1.5 text-sm text-success-700 font-medium">

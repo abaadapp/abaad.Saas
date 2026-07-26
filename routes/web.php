@@ -24,6 +24,8 @@ use Illuminate\Support\Facades\Route;
 Route::view('/', 'auth.login')->name('login');
 Route::view('/login', 'auth.login')->name('login.form');
 Route::post('/login', [LoginController::class, 'attempt'])->name('login.attempt');
+Route::get('/pin-login', [LoginController::class, 'pinForm'])->name('pin.form');
+Route::post('/pin-login', [LoginController::class, 'pinAttempt'])->name('pin.attempt');
 Route::get('/demo-login/{role}', [LoginController::class, 'demo'])->name('demo.login');
 Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->name('logout');
 

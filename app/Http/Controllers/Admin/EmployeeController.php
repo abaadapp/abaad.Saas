@@ -21,12 +21,18 @@ class EmployeeController extends Controller
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
             'password' => ['nullable', 'string', 'min:4'],
+            'pin' => ['nullable', 'digits:4'],
         ]);
 
         // الوظيفة اسم ظاهر — الصلاحية تُشتق منها، فلا يُحفظ دور غير معروف يمنع الموظف من الدخول
         $title = $this->findJobTitle($data['job_title']);
         if (! $title) {
             return back()->withInput()->withErrors(['job_title' => __('الوظيفة المحددة غير موجودة.')]);
+        }
+
+        // رمز الدخول السريع: يجب أن يكون فريدًا على مستوى النظام
+        if (! empty($data['pin']) && $this->pinTaken($data['pin'])) {
+            return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
         }
 
         User::create([
@@ -40,10 +46,20 @@ class EmployeeController extends Controller
             'status' => 'نشط',
             'avatar' => Demo::image('emp' . uniqid()),
             'password' => Hash::make($data['password'] ?? 'password'),
+            'pin' => ! empty($data['pin']) ? $data['pin'] : null,
         ]);
         \App\Support\Activity::log('created', 'أضاف موظفًا: ' . $data['name']);
 
         return redirect()->route('admin.employees.index')->with('toast', ['msg' => __('تم إضافة الموظف بنجاح'), 'type' => 'success']);
+    }
+
+    /** هل رمز الدخول (٤ أرقام) مستخدم من مستخدم آخر؟ (فريد على مستوى النظام) */
+    private function pinTaken(string $pin, ?int $exceptId = null): bool
+    {
+        return User::whereNotNull('pin')
+            ->when($exceptId, fn ($q) => $q->where('id', '!=', $exceptId))
+            ->get()
+            ->contains(fn ($u) => Hash::check($pin, $u->getRawOriginal('pin')));
     }
 
     /** وظيفة تابعة للمستأجر الحالي (تحمل الصلاحية المكافئة) */
@@ -72,6 +88,7 @@ class EmployeeController extends Controller
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
+            'pin' => ['nullable', 'digits:4'],
         ]);
 
         $title = $this->findJobTitle($data['job_title']);
@@ -80,6 +97,16 @@ class EmployeeController extends Controller
         }
         $data['job_title'] = $title->name;
         $data['role'] = $title->role;
+
+        // رمز الدخول السريع: يُحدَّث فقط إذا أُدخل، ويجب أن يكون فريدًا
+        $pin = $data['pin'] ?? null;
+        unset($data['pin']);
+        if (! empty($pin)) {
+            if ($this->pinTaken($pin, $employee->id)) {
+                return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
+            }
+            $data['pin'] = $pin; // يُجزَّأ تلقائيًا عبر cast
+        }
 
         $employee->update($data);
         \App\Support\Activity::log('updated', 'عدّل بيانات الموظف: ' . $employee->name, ['subject_id' => $employee->id]);

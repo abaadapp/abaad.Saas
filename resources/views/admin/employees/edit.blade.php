@@ -28,7 +28,13 @@
                     <div class="sm:col-span-2">
                         <x-input :label="__('البريد الإلكتروني')" name="email" type="email" :value="old('email', $employee->email)" icon="mail" :required="true" />
                     </div>
+                    <div class="sm:col-span-2">
+                        <x-input :label="__('رمز الدخول السريع (٤ أرقام)')" name="pin" type="text" inputmode="numeric" maxlength="4" pattern="\d{4}"
+                            :placeholder="$employee->hasPin() ? __('رمز محفوظ — اتركه فارغًا للإبقاء عليه') : __('مثال: 1234')"
+                            icon="scan-barcode" :hint="__('يدخل به الموظف نقطة البيع مباشرة بلا بريد أو كلمة مرور')" />
+                    </div>
                 </div>
+                @error('pin')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
                 @error('email')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
                 @error('name')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
                 <div class="mt-6 flex justify-end gap-2">

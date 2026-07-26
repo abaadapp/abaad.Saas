@@ -1596,5 +1596,19 @@
     "— وسائل الدفع —": "— Payment Methods —",
     "✓ :name — :count تنبيه → :email": "✓ :name — :count alerts → :email",
     "✓ :name — :count منتج → :email": "✓ :name — :count products → :email",
-    "إعدادات نقطة البيع": "Point of sale settings"
+    "إعدادات نقطة البيع": "Point of sale settings",
+    "دخول الموظف": "Employee login",
+    "أدخل رمز الدخول المكوّن من ٤ أرقام": "Enter your 4-digit access code",
+    "الدخول بالبريد وكلمة المرور": "Sign in with email and password",
+    "دخول الموظف بالرمز": "Employee code login",
+    "رمز الدخول السريع (٤ أرقام)": "Quick access code (4 digits)",
+    "رمز محفوظ — اتركه فارغًا للإبقاء عليه": "Code saved — leave blank to keep it",
+    "مثال: 1234": "e.g. 1234",
+    "يدخل به الموظف نقطة البيع مباشرة بلا بريد أو كلمة مرور": "Lets the employee enter the POS directly without email or password",
+    "أدخل رمز الدخول.": "Enter your access code.",
+    "رمز الدخول يجب أن يكون ٤ أرقام.": "The access code must be 4 digits.",
+    "محاولات كثيرة. حاول بعد :seconds ثانية.": "Too many attempts. Try again in :seconds seconds.",
+    "رمز الدخول غير صحيح.": "Incorrect access code.",
+    "هذا الحساب معطّل. راجع صاحب النشاط.": "This account is disabled. Contact the business owner.",
+    "رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.": "This access code is already in use, please choose another."
 }

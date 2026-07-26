@@ -57,6 +57,12 @@
                 </x-button>
             </form>
 
+            {{-- دخول الموظف بالرمز --}}
+            <a href="{{ route('pin.form') }}"
+               class="mt-4 flex items-center justify-center gap-2 w-full rounded-xl border border-primary-200 bg-primary-50/50 py-2.5 text-sm font-semibold text-primary-700 hover:bg-primary-50 transition">
+                <x-icon name="scan-barcode" class="w-5 h-5" /> {{ __('دخول الموظف بالرمز') }}
+            </a>
+
             {{-- دخول تجريبي --}}
             <div class="mt-6">
                 <div class="relative flex items-center">

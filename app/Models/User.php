@@ -13,7 +13,7 @@ class User extends Authenticatable
 
     protected $guarded = [];
 
-    protected $hidden = ['password', 'remember_token'];
+    protected $hidden = ['password', 'remember_token', 'pin'];
 
     protected function casts(): array
     {
@@ -21,8 +21,15 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'password' => 'hashed',
+            'pin' => 'hashed',
             'sales_total' => 'decimal:3',
         ];
+    }
+
+    /** هل لدى المستخدم رمز دخول سريع (٤ أرقام) */
+    public function hasPin(): bool
+    {
+        return ! empty($this->getRawOriginal('pin'));
     }
 
     public function business(): BelongsTo

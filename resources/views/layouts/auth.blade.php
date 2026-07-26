@@ -12,5 +12,6 @@
         {{ $slot }}
     </div>
     <x-toasts />
+    @stack('scripts')
 </body>
 </html>

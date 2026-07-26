@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 
 class LoginController extends Controller
@@ -37,6 +39,56 @@ class LoginController extends Controller
         $this->markLogin(Auth::user());
 
         return redirect()->intended($this->homeFor(Auth::user()));
+    }
+
+    /** شاشة الدخول بالرمز (لوحة أرقام) */
+    public function pinForm()
+    {
+        return view('auth.pin');
+    }
+
+    /** دخول الموظف برمز من ٤ أرقام — بلا بريد أو كلمة مرور */
+    public function pinAttempt(Request $request)
+    {
+        $data = $request->validate([
+            'pin' => ['required', 'digits:4'],
+        ], [
+            'pin.required' => __('أدخل رمز الدخول.'),
+            'pin.digits' => __('رمز الدخول يجب أن يكون ٤ أرقام.'),
+        ]);
+
+        // تحديد المعدل: ٥ محاولات لكل عنوان IP في الدقيقة
+        $key = 'pin-login:' . $request->ip();
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            $seconds = RateLimiter::availableIn($key);
+            throw ValidationException::withMessages([
+                'pin' => __('محاولات كثيرة. حاول بعد :seconds ثانية.', ['seconds' => $seconds]),
+            ]);
+        }
+
+        // البحث عن مستخدم يطابق رمزه المُجزّأ (بين من لديهم رمز فقط)
+        $user = User::whereNotNull('pin')->get()
+            ->first(fn ($u) => Hash::check($data['pin'], $u->getRawOriginal('pin')));
+
+        if (! $user) {
+            RateLimiter::hit($key, 60);
+            throw ValidationException::withMessages([
+                'pin' => __('رمز الدخول غير صحيح.'),
+            ]);
+        }
+
+        if ($user->status !== 'نشط') {
+            throw ValidationException::withMessages([
+                'pin' => __('هذا الحساب معطّل. راجع صاحب النشاط.'),
+            ]);
+        }
+
+        RateLimiter::clear($key);
+        Auth::login($user);
+        $request->session()->regenerate();
+        $this->markLogin($user);
+
+        return redirect($this->homeFor($user));
     }
 
     /** دخول تجريبي سريع بدور محدّد */

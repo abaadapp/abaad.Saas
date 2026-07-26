@@ -26,7 +26,10 @@
                     <x-input :label="__('رقم الهاتف')" name="phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" :required="true" />
                     <x-input :label="__('البريد الإلكتروني')" name="email" type="email" placeholder="name@example.com" icon="mail" :required="true" />
                     <x-input :label="__('كلمة المرور')" name="password" type="password" placeholder="********" icon="lock" :hint="__('8 أحرف على الأقل')" :required="true" />
+                    <x-input :label="__('رمز الدخول السريع (٤ أرقام)')" name="pin" type="text" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="مثال: 1234" icon="scan-barcode" :hint="__('يدخل به الموظف نقطة البيع مباشرة بلا بريد أو كلمة مرور')" />
                 </div>
+                @error('pin')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
+                @error('email')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
             </div>
 
             {{-- الصلاحيات --}}

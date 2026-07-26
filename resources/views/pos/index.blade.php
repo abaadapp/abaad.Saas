@@ -41,6 +41,25 @@
                 @endforeach
             </div>
 
+            {{-- الإضافات (فوق، شرائح قابلة للضغط — تُضاف للسلة كبنود بلا مخزون) --}}
+            @if (count($addons))
+                <div class="flex items-center gap-2 mb-4 overflow-x-auto pb-1 shrink-0">
+                    <span class="inline-flex items-center gap-1 text-xs font-bold text-primary-600 whitespace-nowrap shrink-0">
+                        <x-icon name="plus-circle" class="w-4 h-4" /> {{ __('الإضافات') }}:
+                    </span>
+                    @foreach ($addons as $a)
+                        @php $emoji = preg_match('/[^\x00-\x7F]/', $a['icon']) ? $a['icon'] : '🎁'; @endphp
+                        <button type="button"
+                            @click="add({ key: 'a{{ $a['id'] }}', id: null, name: {{ \Illuminate\Support\Js::from($a['name']) }}, price: {{ $a['price'] }}, icon: {{ \Illuminate\Support\Js::from($emoji) }}, image: null })"
+                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium whitespace-nowrap bg-white text-gray-700 border border-gray-200 hover:border-primary-300 hover:bg-primary-50 transition-colors shrink-0">
+                            <span class="text-base leading-none">{{ $emoji }}</span>
+                            <span>{{ $a['name'] }}</span>
+                            <span class="text-xs font-bold text-primary-600">{{ \App\Support\Demo::money($a['price']) }}</span>
+                        </button>
+                    @endforeach
+                </div>
+            @endif
+
             {{-- شبكة المنتجات --}}
             <div class="flex-1 overflow-y-auto -mx-1 px-1">
                 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -68,30 +87,6 @@
                         </div>
                     @endforeach
                 </div>
-
-                {{-- الإضافات (تُضاف للسلة كبنود بلا مخزون) --}}
-                @if (count($addons))
-                    <div class="mt-5">
-                        <div class="flex items-center gap-2 mb-2">
-                            <x-icon name="plus-circle" class="w-4 h-4 text-primary-600" />
-                            <h3 class="text-sm font-bold text-gray-700">{{ __('الإضافات') }}</h3>
-                        </div>
-                        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
-                            @foreach ($addons as $a)
-                                @php $emoji = preg_match('/[^\x00-\x7F]/', $a['icon']) ? $a['icon'] : '🎁'; @endphp
-                                <button type="button"
-                                    @click="add({ key: 'a{{ $a['id'] }}', id: null, name: {{ \Illuminate\Support\Js::from($a['name']) }}, price: {{ $a['price'] }}, icon: {{ \Illuminate\Support\Js::from($emoji) }}, image: null })"
-                                    class="flex items-center gap-2 bg-white rounded-xl border border-gray-100 shadow-sm hover:border-primary-300 hover:shadow-md transition p-2.5 text-right">
-                                    <span class="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center text-xl shrink-0">{{ $emoji }}</span>
-                                    <span class="flex-1 min-w-0">
-                                        <span class="block text-xs font-semibold text-gray-800 truncate">{{ $a['name'] }}</span>
-                                        <span class="block text-xs font-bold text-primary-600">{{ \App\Support\Demo::money($a['price']) }}</span>
-                                    </span>
-                                </button>
-                            @endforeach
-                        </div>
-                    </div>
-                @endif
             </div>
         </section>
 

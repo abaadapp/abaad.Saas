@@ -25,12 +25,16 @@
 
     {{-- شريط الفلاتر --}}
     <form method="GET" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            <x-input name="q" value="{{ $filters['q'] ?? '' }}" :placeholder="__('ابحث برقم الطلب أو العميل...')" icon="search" />
-            <x-select name="payment" :options="['نقدي' => __('نقدي'), 'بطاقة' => __('فيزا'), 'تحويل بنكي' => __('تحويل بنكي')]" :placeholder="__('كل وسائل الدفع')" selected="{{ $filters['payment'] ?? '' }}" />
-            <x-input name="date" type="date" value="{{ $filters['date'] ?? '' }}" />
-        </div>
-        <div class="flex items-center gap-2 mt-4">
+        <div class="flex flex-col md:flex-row md:items-center gap-3">
+            <div class="flex-1">
+                <x-input name="q" value="{{ $filters['q'] ?? '' }}" :placeholder="__('ابحث برقم الطلب أو العميل...')" icon="search" />
+            </div>
+            <div class="w-full md:w-52">
+                <x-select name="payment" :options="['نقدي' => __('نقدي'), 'بطاقة' => __('فيزا'), 'تحويل بنكي' => __('تحويل بنكي')]" :placeholder="__('كل وسائل الدفع')" selected="{{ $filters['payment'] ?? '' }}" />
+            </div>
+            <div class="w-full md:w-44">
+                <x-input name="date" type="date" value="{{ $filters['date'] ?? '' }}" />
+            </div>
             <x-button type="submit" icon="filter">{{ __('تصفية') }}</x-button>
             <x-button variant="outline" :href="url()->current()">{{ __('عرض الكل') }}</x-button>
         </div>

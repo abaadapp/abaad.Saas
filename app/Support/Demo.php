@@ -276,6 +276,43 @@ class Demo
 
     /* ============================ Admin ============================ */
 
+    /** ملخّص أداء يوم واحد لنشاط (يُستخدم في الملخّص اليومي التلقائي) */
+    public static function dailySummaryFor(int $bid, ?\Illuminate\Support\Carbon $date = null): array
+    {
+        $date = $date ? $date->copy() : now();
+        $start = $date->copy()->startOfDay();
+        $end = $date->copy()->endOfDay();
+
+        $orders = fn () => Order::where('business_id', $bid)->where('is_held', false)
+            ->whereBetween('ordered_at', [$start, $end]);
+        $sales = (float) $orders()->sum('total');
+        $count = $orders()->count();
+        $avg = $count ? $sales / $count : 0;
+        $newCustomers = Customer::where('business_id', $bid)->whereBetween('created_at', [$start, $end])->count();
+        $expenses = (float) Expense::where('business_id', $bid)->whereBetween('spent_at', [$start, $end])->sum('amount');
+
+        $top = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $bid)->where('is_held', false)
+            ->whereBetween('ordered_at', [$start, $end]))
+            ->selectRaw('name, SUM(quantity) as q')->groupBy('name')->orderByDesc('q')->first();
+
+        // مقارنة بأمس (لاتجاه المبيعات)
+        $prevSales = (float) Order::where('business_id', $bid)->where('is_held', false)
+            ->whereBetween('ordered_at', [$start->copy()->subDay(), $end->copy()->subDay()])->sum('total');
+
+        return [
+            'date' => $start->format('Y-m-d'),
+            'sales' => round($sales, 3),
+            'orders' => $count,
+            'avg' => round($avg, 3),
+            'new_customers' => $newCustomers,
+            'expenses' => round($expenses, 3),
+            'net' => round($sales - $expenses, 3),
+            'top_product' => $top?->name,
+            'top_qty' => (int) ($top->q ?? 0),
+            'trend' => self::trend($sales, $prevSales),
+        ];
+    }
+
     public static function adminStats(): array
     {
         $bid = self::bid();

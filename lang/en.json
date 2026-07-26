@@ -1631,5 +1631,13 @@
     "الحد الأدنى للطلب :amount": "Minimum order is :amount",
     "تم تطبيق الكوبون: :code": "Coupon applied: :code",
     "المتاح": "Available",
-    "بلا حد أدنى": "No minimum"
+    "بلا حد أدنى": "No minimum",
+    "ملخّص اليوم": "Today's summary",
+    "مقارنة بالأمس": "vs yesterday",
+    "عملاء جدد": "New customers",
+    "الأكثر مبيعًا": "Best seller",
+    "ملخّص آلي يُرسَل نهاية كل يوم من نظام Abad POS": "An automated summary sent at the end of each day by Abad POS",
+    "ملخّص اليوم — :business": "Today's summary — :business",
+    "تم إرسال :count ملخّص يومي.": "Sent :count daily summaries.",
+    "لا نشاط اليوم — لم يُرسَل شيء.": "No activity today — nothing sent."
 }

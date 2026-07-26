@@ -19,3 +19,6 @@ Schedule::command('reports:email')->monthlyOn(1, '07:00')->withoutOverlapping();
 
 // تنبيهات ذكية فورية بالبريد (تراجع مبيعات/منتجات راكدة/عملاء متعثرون) يوميًا 08:30
 Schedule::command('alerts:smart')->dailyAt('08:30')->withoutOverlapping();
+
+// ملخّص الأداء اليومي بالبريد لصاحب النشاط نهاية كل يوم (23:55)
+Schedule::command('report:daily-summary')->dailyAt('23:55')->withoutOverlapping();

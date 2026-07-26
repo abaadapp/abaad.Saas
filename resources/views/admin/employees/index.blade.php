@@ -61,7 +61,14 @@
                                 <div class="flex items-center gap-3">
                                     <img src="{{ $employee['avatar'] }}" alt="{{ $employee['name'] }}" class="w-9 h-9 rounded-full object-cover ring-2 ring-gray-100" />
                                     <div class="min-w-0">
-                                        <p class="font-medium text-gray-800">{{ $employee['name'] }}</p>
+                                        <p class="font-medium text-gray-800 flex items-center gap-1.5">
+                                            {{ $employee['name'] }}
+                                            @if (! empty($employee['has_pin']))
+                                                <span class="inline-flex items-center gap-1 text-[10px] font-medium text-success-700 bg-success-50 px-1.5 py-0.5 rounded-full" title="{{ __('لديه رمز دخول سريع') }}">
+                                                    <x-icon name="scan-barcode" class="w-3 h-3" /> {{ __('رمز') }}
+                                                </span>
+                                            @endif
+                                        </p>
                                         <p class="text-xs text-gray-400 font-mono">#{{ $employee['id'] }}</p>
                                     </div>
                                 </div>

@@ -18,9 +18,14 @@
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
                 <img src="{{ $employee['avatar'] }}" alt="{{ $employee['name'] }}" class="w-24 h-24 rounded-full object-cover mx-auto ring-4 ring-primary-50" />
                 <h2 class="mt-4 text-lg font-bold text-gray-800">{{ $employee['name'] }}</h2>
-                <div class="mt-2 flex items-center justify-center gap-2">
+                <div class="mt-2 flex flex-wrap items-center justify-center gap-2">
                     <x-badge type="primary" :text="__($employee['role'])" />
                     <x-badge :text="__($employee['status'])" />
+                    @if (! empty($employee['has_pin']))
+                        <span class="inline-flex items-center gap-1 text-xs font-medium text-success-700 bg-success-50 px-2.5 py-1 rounded-full" title="{{ __('يدخل نقطة البيع برمز سريع') }}">
+                            <x-icon name="scan-barcode" class="w-3.5 h-3.5" /> {{ __('رمز دخول سريع مفعّل') }}
+                        </span>
+                    @endif
                 </div>
                 <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
                     <x-button variant="light" size="sm" icon="mail" :href="'mailto:' . $employee['email']">{{ __('مراسلة') }}</x-button>

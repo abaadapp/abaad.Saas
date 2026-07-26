@@ -1610,5 +1610,9 @@
     "محاولات كثيرة. حاول بعد :seconds ثانية.": "Too many attempts. Try again in :seconds seconds.",
     "رمز الدخول غير صحيح.": "Incorrect access code.",
     "هذا الحساب معطّل. راجع صاحب النشاط.": "This account is disabled. Contact the business owner.",
-    "رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.": "This access code is already in use, please choose another."
+    "رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.": "This access code is already in use, please choose another.",
+    "لديه رمز دخول سريع": "Has a quick access code",
+    "رمز": "Code",
+    "يدخل نقطة البيع برمز سريع": "Enters the POS with a quick code",
+    "رمز دخول سريع مفعّل": "Quick access code enabled"
 }

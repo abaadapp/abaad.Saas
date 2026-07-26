@@ -1,9 +1,14 @@
-@php $isPos = ($layout ?? '') === 'layouts::pos'; @endphp
+@php
+    $isPos = ($layout ?? '') === 'layouts::pos';
+    // الكاشير: صلاحيات محدودة (الهاتف والصورة فقط)
+    $isCashier = $user->role === 'cashier';
+@endphp
 <x-dynamic-component :component="$layout" :title="__('الملف الشخصي')">
 <div class="{{ $isPos ? 'h-full overflow-y-auto px-3 sm:px-4 py-4' : '' }}">
 <div class="{{ $isPos ? 'max-w-5xl mx-auto' : '' }}">
 
-    <x-page-header :title="__('الملف الشخصي')" :subtitle="__('إدارة بياناتك الشخصية وكلمة المرور')" />
+    <x-page-header :title="__('الملف الشخصي')"
+        :subtitle="$isCashier ? __('يمكنك تحديث صورتك ورقم هاتفك') : __('إدارة بياناتك الشخصية وكلمة المرور')" />
 
     <form method="POST" action="{{ route('profile.update') }}" enctype="multipart/form-data"
           x-data="{ avatarUrl: '{{ $user->avatar }}' }" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -32,26 +37,41 @@
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                 <h3 class="font-bold text-gray-800 mb-4">{{ __('البيانات الشخصية') }}</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <x-input :label="__('الاسم')" name="name" :value="old('name', $user->name)" :required="true" />
-                    <x-input :label="__('رقم الهاتف')" name="phone" icon="phone" :value="old('phone', $user->phone)" />
-                    <div class="md:col-span-2">
-                        <x-input :label="__('البريد الإلكتروني')" name="email" type="email" icon="mail" :value="old('email', $user->email)" :required="true" />
-                    </div>
+                    @if ($isCashier)
+                        {{-- الاسم مقفول: لا يملك الكاشير صلاحية تغييره --}}
+                        <x-input :label="__('الاسم')" name="name_locked" :value="$user->name" readonly icon="lock"
+                                 class="bg-gray-50 text-gray-500 cursor-not-allowed" :hint="__('لا يمكن تغيير الاسم — راجع صاحب النشاط')" />
+                        {{-- الهاتف: قابل للتعديل --}}
+                        <x-input :label="__('رقم الهاتف')" name="phone" icon="phone" :value="old('phone', $user->phone)" />
+                        {{-- البريد مقفول: يعدّله صاحب النشاط فقط --}}
+                        <div class="md:col-span-2">
+                            <x-input :label="__('البريد الإلكتروني')" name="email_locked" type="email" icon="lock" :value="$user->email" readonly
+                                     class="bg-gray-50 text-gray-500 cursor-not-allowed" :hint="__('البريد يعدّله صاحب النشاط فقط')" />
+                        </div>
+                    @else
+                        <x-input :label="__('الاسم')" name="name" :value="old('name', $user->name)" :required="true" />
+                        <x-input :label="__('رقم الهاتف')" name="phone" icon="phone" :value="old('phone', $user->phone)" />
+                        <div class="md:col-span-2">
+                            <x-input :label="__('البريد الإلكتروني')" name="email" type="email" icon="mail" :value="old('email', $user->email)" :required="true" />
+                        </div>
+                    @endif
                 </div>
                 @error('email')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
             </div>
 
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <h3 class="font-bold text-gray-800 mb-1">{{ __('تغيير كلمة المرور') }}</h3>
-                <p class="text-xs text-gray-400 mb-4">{{ __('اتركها فارغة إن لم ترغب بتغييرها.') }}</p>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <x-input :label="__('كلمة المرور الحالية')" name="current_password" type="password" />
-                    <x-input :label="__('كلمة المرور الجديدة')" name="password" type="password" />
-                    <x-input :label="__('تأكيد كلمة المرور')" name="password_confirmation" type="password" />
+            @unless ($isCashier)
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 class="font-bold text-gray-800 mb-1">{{ __('تغيير كلمة المرور') }}</h3>
+                    <p class="text-xs text-gray-400 mb-4">{{ __('اتركها فارغة إن لم ترغب بتغييرها.') }}</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <x-input :label="__('كلمة المرور الحالية')" name="current_password" type="password" />
+                        <x-input :label="__('كلمة المرور الجديدة')" name="password" type="password" />
+                        <x-input :label="__('تأكيد كلمة المرور')" name="password_confirmation" type="password" />
+                    </div>
+                    @error('current_password')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
+                    @error('password')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
                 </div>
-                @error('current_password')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
-                @error('password')<p class="mt-2 text-xs text-danger-500">{{ $message }}</p>@enderror
-            </div>
+            @endunless
 
             <div class="flex justify-end gap-3">
                 <x-button variant="outline" type="button" :href="url()->previous()">{{ __('إلغاء') }}</x-button>

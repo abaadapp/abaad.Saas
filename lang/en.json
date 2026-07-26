@@ -1620,5 +1620,8 @@
     "هل ما زلت هنا؟": "Are you still there?",
     "سيتم تسجيل خروجك تلقائيًا خلال": "You will be logged out automatically in",
     "ثانية": "seconds",
-    "أنا هنا — متابعة": "I'm here — continue"
+    "أنا هنا — متابعة": "I'm here — continue",
+    "يمكنك تحديث صورتك ورقم هاتفك": "You can update your photo and phone number",
+    "لا يمكن تغيير الاسم — راجع صاحب النشاط": "Name cannot be changed — contact the business owner",
+    "البريد يعدّله صاحب النشاط فقط": "Email can only be changed by the business owner"
 }

@@ -28,6 +28,24 @@ class ProfileController extends Controller
     {
         $user = auth()->user();
 
+        // الكاشير: صلاحيات محدودة — الهاتف والصورة فقط (الاسم والبريد وكلمة المرور محجوبة)
+        if ($user->role === 'cashier') {
+            $data = $request->validate([
+                'phone' => ['nullable', 'string', 'max:50'],
+                'avatar' => ['nullable', 'image', 'max:2048'],
+            ]);
+
+            $user->phone = $data['phone'] ?? $user->phone;
+            if ($request->hasFile('avatar')) {
+                $user->avatar = $request->file('avatar')->store('avatars', 'public');
+            }
+            $user->save();
+
+            \App\Support\Activity::log('updated', 'حدّث ملفه الشخصي', ['subject_id' => $user->id]);
+
+            return back()->with('toast', ['msg' => __('تم تحديث الملف الشخصي بنجاح'), 'type' => 'success']);
+        }
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],

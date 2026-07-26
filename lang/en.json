@@ -1595,5 +1595,6 @@
     "— صنف يدوي —": "— Manual item —",
     "— وسائل الدفع —": "— Payment Methods —",
     "✓ :name — :count تنبيه → :email": "✓ :name — :count alerts → :email",
-    "✓ :name — :count منتج → :email": "✓ :name — :count products → :email"
+    "✓ :name — :count منتج → :email": "✓ :name — :count products → :email",
+    "إعدادات نقطة البيع": "Point of sale settings"
 }

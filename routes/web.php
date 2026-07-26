@@ -281,4 +281,6 @@ Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
     Route::get('/receipt/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');
     Route::view('/customers', 'pos.customers')->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
+    Route::view('/settings', 'pos.settings')->name('settings');
+    Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
 });

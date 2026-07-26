@@ -72,18 +72,24 @@
                     <x-icon name="bell" class="w-5 h-5" />
                     <span class="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
                 </button>
+                @php $posUser = auth()->user(); @endphp
                 <x-dropdown align="left" width="w-56">
                     <x-slot:trigger>
                         <button class="flex items-center gap-1.5 pr-1 pl-1.5 py-1 rounded-full hover:bg-gray-50 transition-colors">
-                            <img src="https://picsum.photos/seed/posuser/80/80" class="w-8 h-8 rounded-full object-cover ring-1 ring-gray-100" alt="{{ __('الموظف') }}" />
+                            @if ($posUser?->avatar)
+                                <img src="{{ $posUser->avatar }}" class="w-8 h-8 rounded-full object-cover ring-1 ring-gray-100" alt="{{ $posUser->name }}" />
+                            @else
+                                <span class="w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center text-xs font-bold ring-1 ring-gray-100">{{ mb_substr($posUser?->name ?? '؟', 0, 1) }}</span>
+                            @endif
                             <x-icon name="chevron-down" class="w-4 h-4 text-gray-400" />
                         </button>
                     </x-slot:trigger>
                     <div class="px-4 py-2.5 border-b border-gray-100">
-                        <p class="text-sm font-semibold text-gray-800 leading-tight">سارة حسن</p>
-                        <p class="text-xs text-gray-400">{{ __('كاشير') }}</p>
+                        <p class="text-sm font-semibold text-gray-800 leading-tight">{{ $posUser?->name ?? '—' }}</p>
+                        <p class="text-xs text-gray-400">{{ __($posUser?->roleLabel() ?? 'كاشير') }}</p>
                     </div>
                     <a href="{{ route('profile.edit') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="user" class="w-4 h-4" /> {{ __('الملف الشخصي') }}</a>
+                    <a href="{{ route('pos.settings') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"><x-icon name="settings" class="w-4 h-4" /> {{ __('الإعدادات') }}</a>
                     <div class="my-1 border-t border-gray-100"></div>
                     <a href="{{ route('logout') }}" class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger-600 hover:bg-danger-50"><x-icon name="log-out" class="w-4 h-4" /> {{ __('تسجيل الخروج') }}</a>
                 </x-dropdown>

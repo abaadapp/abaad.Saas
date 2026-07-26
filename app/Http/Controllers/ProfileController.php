@@ -12,9 +12,15 @@ class ProfileController extends Controller
     {
         $user = auth()->user();
 
+        $layout = match (true) {
+            $user->isSuperAdmin() => 'layouts::super-admin',
+            $user->role === 'cashier' => 'layouts::pos',
+            default => 'layouts::admin',
+        };
+
         return view('profile.edit', [
             'user' => $user,
-            'layout' => $user->isSuperAdmin() ? 'layouts::super-admin' : 'layouts::admin',
+            'layout' => $layout,
         ]);
     }
 

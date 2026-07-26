@@ -1,4 +1,7 @@
+@php $isPos = ($layout ?? '') === 'layouts::pos'; @endphp
 <x-dynamic-component :component="$layout" :title="__('الملف الشخصي')">
+<div class="{{ $isPos ? 'h-full overflow-y-auto px-3 sm:px-4 py-4' : '' }}">
+<div class="{{ $isPos ? 'max-w-5xl mx-auto' : '' }}">
 
     <x-page-header :title="__('الملف الشخصي')" :subtitle="__('إدارة بياناتك الشخصية وكلمة المرور')" />
 
@@ -57,4 +60,6 @@
         </div>
     </form>
 
+</div>
+</div>
 </x-dynamic-component>

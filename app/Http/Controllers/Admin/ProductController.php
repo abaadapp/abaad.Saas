@@ -85,6 +85,12 @@ class ProductController extends Controller
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
         $data['business_id'] = $this->bid();
+        // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL؛ الفراغ يُحوَّل إلى null فيفشل)
+        $data['cost'] = $data['cost'] ?? 0;
+        $data['quantity'] = $data['quantity'] ?? 0;
+        $data['alert_qty'] = $data['alert_qty'] ?? 10;
+        $data['tax'] = $data['tax'] ?? 0;
+        $data['discount'] = $data['discount'] ?? 0;
         // توليد رمز المنتج والباركود تلقائيًا إن تُركا فارغين
         $data['sku'] = ! empty($data['sku']) ? $data['sku'] : $this->generateSku();
         $data['barcode'] = ! empty($data['barcode']) ? $data['barcode'] : $this->generateBarcode();
@@ -118,6 +124,12 @@ class ProductController extends Controller
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
         $data['active'] = $request->boolean('active', true);
+        // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL)
+        $data['cost'] = $data['cost'] ?? 0;
+        $data['quantity'] = $data['quantity'] ?? 0;
+        $data['alert_qty'] = $data['alert_qty'] ?? 10;
+        $data['tax'] = $data['tax'] ?? 0;
+        $data['discount'] = $data['discount'] ?? 0;
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('products', 'public');
         } else {

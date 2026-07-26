@@ -822,6 +822,31 @@ class Demo
         };
     }
 
+    /** حدود الفترة السابقة المكافئة [البداية، النهاية) — null إذا لا مقارنة (كل الفترات) */
+    public static function rangePrev(string $range): ?array
+    {
+        return match ($range) {
+            'today' => [now()->subDay()->startOfDay(), now()->startOfDay()],
+            'week' => [now()->subWeek()->startOfWeek(), now()->startOfWeek()],
+            'year' => [now()->subYear()->startOfYear(), now()->startOfYear()],
+            'month' => [now()->subMonthNoOverflow()->startOfMonth(), now()->startOfMonth()],
+            default => null,
+        };
+    }
+
+    /** نسبة اتجاه حقيقية مقارنةً بالفترة السابقة */
+    private static function trend(float $curr, float $prev): array
+    {
+        if ($prev <= 0.0) {
+            return $curr > 0.0
+                ? ['trend' => '+100%', 'up' => true]
+                : ['trend' => '0%', 'up' => true];
+        }
+        $pct = ($curr - $prev) / $prev * 100;
+        $up = $pct >= 0;
+        return ['trend' => ($up ? '+' : '−') . round(abs($pct)) . '%', 'up' => $up];
+    }
+
     public static function financeStats(string $range = 'month'): array
     {
         $bid = self::bid();
@@ -833,11 +858,23 @@ class Demo
         $bank = (float) (clone $income)->where('method', 'تحويل بنكي')->sum('amount');
         $card = (float) (clone $income)->where('method', 'بطاقة')->sum('amount');
 
+        // الفترة السابقة المكافئة لحساب الاتجاه الحقيقي
+        $prev = self::rangePrev($range);
+        $pTotal = $pCash = $pBank = $pCard = 0.0;
+        if ($prev) {
+            $pIncome = Transaction::where('business_id', $bid)->where('type', 'دخل')
+                ->whereBetween('occurred_at', $prev);
+            $pTotal = (float) (clone $pIncome)->sum('amount');
+            $pCash = (float) (clone $pIncome)->where('method', 'نقدي')->sum('amount');
+            $pBank = (float) (clone $pIncome)->where('method', 'تحويل بنكي')->sum('amount');
+            $pCard = (float) (clone $pIncome)->where('method', 'بطاقة')->sum('amount');
+        }
+
         return [
-            ['label' => __('إجمالي الإيرادات'), 'value' => self::money($total), 'icon' => 'wallet', 'trend' => '+12%', 'up' => true, 'color' => 'primary'],
-            ['label' => __('المدفوعات النقدية'), 'value' => self::money($cash), 'icon' => 'banknote', 'trend' => '+8%', 'up' => true, 'color' => 'success'],
-            ['label' => __('التحويلات البنكية'), 'value' => self::money($bank), 'icon' => 'landmark', 'trend' => '+15%', 'up' => true, 'color' => 'info'],
-            ['label' => __('مدفوعات البطاقة (فيزا)'), 'value' => self::money($card), 'icon' => 'credit-card', 'trend' => '+5%', 'up' => true, 'color' => 'secondary'],
+            array_merge(['label' => __('إجمالي الإيرادات'), 'value' => self::money($total), 'icon' => 'wallet', 'color' => 'primary'], self::trend($total, $pTotal)),
+            array_merge(['label' => __('المدفوعات النقدية'), 'value' => self::money($cash), 'icon' => 'banknote', 'color' => 'success'], self::trend($cash, $pCash)),
+            array_merge(['label' => __('التحويلات البنكية'), 'value' => self::money($bank), 'icon' => 'landmark', 'color' => 'info'], self::trend($bank, $pBank)),
+            array_merge(['label' => __('مدفوعات البطاقة (فيزا)'), 'value' => self::money($card), 'icon' => 'credit-card', 'color' => 'secondary'], self::trend($card, $pCard)),
         ];
     }
 

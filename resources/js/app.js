@@ -369,8 +369,8 @@ document.addEventListener('alpine:init', () => {
 
     /* سلة نقطة البيع POS */
     Alpine.data('posCart', (resume = null) => ({
-        // سلة مستعادة من طلب معلّق/محفوظ (إن وُجدت)
-        items: resume?.items ?? [],
+        // سلة مستعادة من طلب معلّق/محفوظ (إن وُجدت) — نضمن مفتاح سلة فريدًا لكل بند
+        items: (resume?.items ?? []).map((i, idx) => ({ ...i, key: i.key ?? ('r' + idx) })),
         resumeId: resume?.id ?? null,
         customer:
             resume?.customer ||
@@ -380,24 +380,26 @@ document.addEventListener('alpine:init', () => {
         deliveryFee: 0,
         taxRate: 5,
         add(product) {
-            const existing = this.items.find((i) => i.id === product.id);
+            // مفتاح السلة: 'p'+معرّف المنتج، أو المفتاح المُمرَّر (مثل 'a'+معرّف الإضافة)
+            const key = product.key ?? ('p' + product.id);
+            const existing = this.items.find((i) => i.key === key);
             if (existing) {
                 existing.qty++;
             } else {
-                this.items.push({ ...product, qty: 1, note: '' });
+                this.items.push({ ...product, key, qty: 1, note: '' });
             }
             Alpine.store('toasts').add('تمت الإضافة إلى السلة', 'success', 1500);
         },
-        inc(id) {
-            const it = this.items.find((i) => i.id === id);
+        inc(key) {
+            const it = this.items.find((i) => i.key === key);
             if (it) it.qty++;
         },
-        dec(id) {
-            const it = this.items.find((i) => i.id === id);
+        dec(key) {
+            const it = this.items.find((i) => i.key === key);
             if (it && it.qty > 1) it.qty--;
         },
-        remove(id) {
-            this.items = this.items.filter((i) => i.id !== id);
+        remove(key) {
+            this.items = this.items.filter((i) => i.key !== key);
         },
         clear() {
             this.items = [];

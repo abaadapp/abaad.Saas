@@ -3,6 +3,7 @@
         $products = \App\Support\Demo::products();
         $categories = \App\Support\Demo::posCategories();
         $customers = \App\Support\Demo::customers();
+        $addons = collect(\App\Support\Demo::addons())->where('active', true)->values()->all();
     @endphp
 
     @php $resume = session('resume_cart'); @endphp
@@ -46,7 +47,7 @@
                     @foreach ($products as $p)
                         <div x-show="(cat === 'الكل' || cat === '{{ $p['cat'] }}') && ('{{ $p['name'] }}'.indexOf(q) > -1 || q === '')"
                              class="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-300 transition-all overflow-hidden cursor-pointer select-none text-right"
-                             @click="add({ id: {{ $p['id'] }}, name: '{{ $p['name'] }}', price: {{ $p['price'] }}, image: '{{ $p['image'] }}' })">
+                             @click="add({ key: 'p{{ $p['id'] }}', id: {{ $p['id'] }}, name: {{ \Illuminate\Support\Js::from($p['name']) }}, price: {{ $p['price'] }}, image: '{{ $p['image'] }}' })">
                             <div class="relative aspect-square bg-gray-50 overflow-hidden">
                                 <img src="{{ $p['image'] }}" alt="{{ $p['name'] }}" loading="lazy"
                                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -67,6 +68,30 @@
                         </div>
                     @endforeach
                 </div>
+
+                {{-- الإضافات (تُضاف للسلة كبنود بلا مخزون) --}}
+                @if (count($addons))
+                    <div class="mt-5">
+                        <div class="flex items-center gap-2 mb-2">
+                            <x-icon name="plus-circle" class="w-4 h-4 text-primary-600" />
+                            <h3 class="text-sm font-bold text-gray-700">{{ __('الإضافات') }}</h3>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
+                            @foreach ($addons as $a)
+                                @php $emoji = preg_match('/[^\x00-\x7F]/', $a['icon']) ? $a['icon'] : '🎁'; @endphp
+                                <button type="button"
+                                    @click="add({ key: 'a{{ $a['id'] }}', id: null, name: {{ \Illuminate\Support\Js::from($a['name']) }}, price: {{ $a['price'] }}, icon: {{ \Illuminate\Support\Js::from($emoji) }}, image: null })"
+                                    class="flex items-center gap-2 bg-white rounded-xl border border-gray-100 shadow-sm hover:border-primary-300 hover:shadow-md transition p-2.5 text-right">
+                                    <span class="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center text-xl shrink-0">{{ $emoji }}</span>
+                                    <span class="flex-1 min-w-0">
+                                        <span class="block text-xs font-semibold text-gray-800 truncate">{{ $a['name'] }}</span>
+                                        <span class="block text-xs font-bold text-primary-600">{{ \App\Support\Demo::money($a['price']) }}</span>
+                                    </span>
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
             </div>
         </section>
 
@@ -112,25 +137,30 @@
                 </div>
 
                 <div class="space-y-2" x-show="items.length > 0">
-                    <template x-for="item in items" :key="item.id">
+                    <template x-for="item in items" :key="item.key">
                         <div class="bg-gray-50 rounded-xl p-2.5">
                             <div class="flex items-center gap-2.5">
-                                <img :src="item.image" :alt="item.name" class="w-12 h-12 rounded-lg object-cover shrink-0" />
+                                <template x-if="item.image">
+                                    <img :src="item.image" :alt="item.name" class="w-12 h-12 rounded-lg object-cover shrink-0" />
+                                </template>
+                                <template x-if="!item.image">
+                                    <span class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-2xl shrink-0" x-text="item.icon || '🎁'"></span>
+                                </template>
                                 <div class="flex-1 min-w-0">
                                     <p class="text-sm font-semibold text-gray-800 truncate" x-text="item.name"></p>
                                     <p class="text-xs text-gray-900 font-medium" x-text="money(item.price)"></p>
                                 </div>
-                                <button type="button" @click="remove(item.id)" class="w-7 h-7 flex items-center justify-center rounded-full text-danger-500 hover:bg-danger-50 transition-colors shrink-0">
+                                <button type="button" @click="remove(item.key)" class="w-7 h-7 flex items-center justify-center rounded-full text-danger-500 hover:bg-danger-50 transition-colors shrink-0">
                                     <x-icon name="trash-2" class="w-4 h-4" />
                                 </button>
                             </div>
                             <div class="flex items-center justify-between gap-2 mt-2">
                                 <div class="flex items-center gap-1 bg-white rounded-lg border border-gray-200">
-                                    <button type="button" @click="dec(item.id)" class="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-gray-900">
+                                    <button type="button" @click="dec(item.key)" class="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-gray-900">
                                         <x-icon name="minus" class="w-4 h-4" />
                                     </button>
                                     <span class="w-7 text-center text-sm font-bold text-gray-800" x-text="item.qty"></span>
-                                    <button type="button" @click="inc(item.id)" class="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-gray-900">
+                                    <button type="button" @click="inc(item.key)" class="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-gray-900">
                                         <x-icon name="plus" class="w-4 h-4" />
                                     </button>
                                 </div>

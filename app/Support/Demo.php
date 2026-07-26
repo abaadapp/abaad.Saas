@@ -1484,6 +1484,25 @@ class Demo
         }
 
         $bid = self::bid();
+
+        // ملخّص اليوم (بطاقة في الجرس) — يظهر فقط إذا كان مفعّلًا في الإعدادات وهناك نشاط اليوم
+        $dailyPref = \App\Models\Setting::where('business_id', $bid)->where('key', 'notify_daily_summary')->value('value');
+        if ($dailyPref !== '0') {
+            $sum = self::dailySummaryFor($bid);
+            if ($sum['orders'] > 0 || $sum['sales'] > 0) {
+                $add('daily-' . $sum['date'], [
+                    'text' => __('ملخّص اليوم: :sales · :orders طلب · صافي :net', [
+                        'sales' => self::money($sum['sales']),
+                        'orders' => $sum['orders'],
+                        'net' => self::money($sum['net']),
+                    ]),
+                    'time' => __('ملخّص اليوم'),
+                    'icon' => 'bar-chart-3', 'color' => 'success',
+                    'url' => route('admin.dashboard'),
+                ]);
+            }
+        }
+
         $low = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')
             ->orderBy('quantity')->limit($limit)->get();
         foreach ($low as $p) {

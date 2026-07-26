@@ -277,7 +277,7 @@
 
                 {{-- التنبيهات الذكية بالبريد (فعّالة عبر أمر alerts:smart المجدول) --}}
                 @php $notifySmart = \App\Models\Setting::where('business_id', auth()->user()->business_id)->where('key', 'notify_smart_alerts')->value('value'); @endphp
-                <label class="flex items-center justify-between rounded-xl border border-secondary-100 bg-secondary-50/40 px-4 py-3.5 cursor-pointer mb-5">
+                <label class="flex items-center justify-between rounded-xl border border-secondary-100 bg-secondary-50/40 px-4 py-3.5 cursor-pointer mb-3">
                     <div class="flex items-center gap-3">
                         <span class="w-9 h-9 rounded-xl bg-secondary-100 text-secondary-600 flex items-center justify-center"><x-icon name="sparkles" class="w-5 h-5" /></span>
                         <div>
@@ -288,6 +288,22 @@
                     <span>
                         <input type="hidden" name="notify_smart_alerts" value="0" />
                         <input type="checkbox" name="notify_smart_alerts" value="1" @checked($notifySmart !== '0') class="w-5 h-5 rounded text-secondary-600 focus:ring-secondary-500 border-gray-300" />
+                    </span>
+                </label>
+
+                {{-- الملخّص اليومي (بريد نهاية اليوم + بطاقة في جرس الإشعارات) --}}
+                @php $notifyDaily = \App\Models\Setting::where('business_id', auth()->user()->business_id)->where('key', 'notify_daily_summary')->value('value'); @endphp
+                <label class="flex items-center justify-between rounded-xl border border-success-100 bg-success-50/40 px-4 py-3.5 cursor-pointer mb-5">
+                    <div class="flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-xl bg-success-100 text-success-600 flex items-center justify-center"><x-icon name="bar-chart-3" class="w-5 h-5" /></span>
+                        <div>
+                            <span class="text-sm font-semibold text-gray-800">{{ __('ملخّص الأداء اليومي') }}</span>
+                            <p class="text-xs text-gray-500">{{ __('مبيعات اليوم والطلبات وصافي الأرباح والأكثر مبيعًا — بريد نهاية كل يوم وبطاقة في جرس الإشعارات.') }}</p>
+                        </div>
+                    </div>
+                    <span>
+                        <input type="hidden" name="notify_daily_summary" value="0" />
+                        <input type="checkbox" name="notify_daily_summary" value="1" @checked($notifyDaily !== '0') class="w-5 h-5 rounded text-success-600 focus:ring-success-500 border-gray-300" />
                     </span>
                 </label>
 

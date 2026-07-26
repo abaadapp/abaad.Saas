@@ -97,7 +97,7 @@
     <x-toasts />
 
     {{-- مؤقّت الخمول: يُخرج الموظف تلقائيًا عند عدم النشاط ويعيده لشاشة الرمز --}}
-    @php $idleTimeout = 180; $idleWarn = 30; @endphp
+    @php $idleTimeout = 900; $idleWarn = 60; @endphp
     <div x-data="posIdle({{ $idleTimeout }}, {{ $idleWarn }}, '{{ route('logout') }}?to=pin')" x-cloak>
         <div x-show="warning" x-transition.opacity
              class="fixed inset-0 z-[100] bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4">

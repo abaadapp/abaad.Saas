@@ -65,13 +65,6 @@
                         @endforeach
                     </x-dropdown>
                 @endif
-                <button class="w-9 h-9 flex items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors" title="{{ __('بحث') }}">
-                    <x-icon name="search" class="w-5 h-5" />
-                </button>
-                <button class="relative w-9 h-9 flex items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors" title="{{ __('الإشعارات') }}">
-                    <x-icon name="bell" class="w-5 h-5" />
-                    <span class="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
-                </button>
                 @php $posUser = auth()->user(); @endphp
                 <x-dropdown align="left" width="w-56">
                     <x-slot:trigger>

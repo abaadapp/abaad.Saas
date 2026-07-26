@@ -13,7 +13,11 @@ class SettingController extends Controller
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
         foreach ($request->except(['_token', '_method', 'tab']) as $key => $value) {
-            if (is_array($value)) { $value = implode(',', $value); }
+            if (is_array($value)) {
+                // مصفوفة متداخلة (مثل مناطق التوصيل) → JSON، ومصفوفة بسيطة → قيم مفصولة بفواصل
+                $nested = collect($value)->contains(fn ($v) => is_array($v));
+                $value = $nested ? json_encode(array_values($value), JSON_UNESCAPED_UNICODE) : implode(',', $value);
+            }
             Setting::updateOrCreate(
                 ['business_id' => $bid, 'key' => $key],
                 ['value' => $value]

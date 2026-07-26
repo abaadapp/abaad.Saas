@@ -536,11 +536,30 @@ document.addEventListener('alpine:init', () => {
             } else {
                 this.items.push({ ...product, key, qty: 1, note: '' });
             }
-            Alpine.store('toasts').add('تمت الإضافة إلى السلة', 'success', 1500);
+            if (!this._warnStock(key)) {
+                Alpine.store('toasts').add('تمت الإضافة إلى السلة', 'success', 1500);
+            }
         },
         inc(key) {
             const it = this.items.find((i) => i.key === key);
-            if (it) it.qty++;
+            if (it) { it.qty++; this._warnStock(key); }
+        },
+        // تجاوز المتوفر؟ (المخزون لقطة عند الإضافة؛ مهم في وضع الانقطاع حيث لا يتحدّث لحظيًا)
+        overStock(it) {
+            return it && it.stock != null && it.qty > it.stock;
+        },
+        get hasStockWarning() {
+            return this.items.some((i) => this.overStock(i));
+        },
+        // ينبّه الكاشير عند تجاوز المتوفر ويُرجِع true إن حدث تحذير
+        _warnStock(key) {
+            const it = this.items.find((i) => i.key === key);
+            if (!this.overStock(it)) return false;
+            Alpine.store('toasts').add(
+                (it.stock <= 0 ? 'صنف نفد مخزونه: ' : 'الكمية تتجاوز المتوفر (' + it.stock + '): ') + it.name,
+                'warning', 3000,
+            );
+            return true;
         },
         dec(key) {
             const it = this.items.find((i) => i.key === key);

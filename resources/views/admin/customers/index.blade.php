@@ -61,7 +61,7 @@
                 ]" selected="{{ $filters['sort'] ?? 'recent' }}" />
             </div>
             <x-button type="submit" icon="filter">{{ __('تصفية') }}</x-button>
-            <x-button variant="outline" :href="url()->current()">{{ __('تفريغ') }}</x-button>
+            <x-button variant="outline" :href="url()->current()">{{ __('عرض الكل') }}</x-button>
         </div>
     </form>
 

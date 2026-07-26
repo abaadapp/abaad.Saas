@@ -56,7 +56,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <x-button type="submit" icon="filter">{{ __('تصفية') }}</x-button>
-                    <x-button variant="outline" :href="url()->current()">{{ __('تفريغ') }}</x-button>
+                    <x-button variant="outline" :href="url()->current()">{{ __('عرض الكل') }}</x-button>
                     <p class="text-sm text-gray-500">{{ __(':n منتج', ['n' => $products->total()]) }}</p>
                 </div>
             </div>

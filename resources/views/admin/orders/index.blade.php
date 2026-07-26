@@ -32,7 +32,7 @@
         </div>
         <div class="flex items-center gap-2 mt-4">
             <x-button type="submit" icon="filter">{{ __('تصفية') }}</x-button>
-            <x-button variant="outline" :href="url()->current()">{{ __('تفريغ') }}</x-button>
+            <x-button variant="outline" :href="url()->current()">{{ __('عرض الكل') }}</x-button>
         </div>
     </form>
 

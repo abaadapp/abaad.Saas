@@ -22,7 +22,7 @@
                 :options="['نشط' => __('نشط'), 'منتهي' => __('منتهي'), 'معطل' => __('معطل')]" />
             <div class="flex items-end gap-2">
                 <x-button variant="primary" type="submit" icon="filter">{{ __('تصفية') }}</x-button>
-                <x-button variant="outline" :href="url()->current()">{{ __('تفريغ') }}</x-button>
+                <x-button variant="outline" :href="url()->current()">{{ __('عرض الكل') }}</x-button>
             </div>
         </form>
     </div>

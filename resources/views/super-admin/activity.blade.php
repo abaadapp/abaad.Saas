@@ -23,7 +23,7 @@
             <x-select name="action" :options="['created'=>__('إضافة'),'updated'=>__('تعديل'),'deleted'=>__('حذف'),'checkout'=>__('بيع'),'status'=>__('تغيير حالة'),'login'=>__('دخول'),'settings'=>__('إعدادات')]" :placeholder="__('كل العمليات')" selected="{{ $filters['action'] ?? '' }}" />
             <div class="flex items-center gap-2">
                 <x-button type="submit" icon="filter">{{ __('تصفية') }}</x-button>
-                <x-button variant="outline" :href="url()->current()">{{ __('تفريغ') }}</x-button>
+                <x-button variant="outline" :href="url()->current()">{{ __('عرض الكل') }}</x-button>
             </div>
         </div>
     </form>

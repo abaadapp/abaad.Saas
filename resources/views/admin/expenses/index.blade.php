@@ -48,7 +48,7 @@
                         <x-select name="status" :placeholder="__('كل الحالات')" :options="['مدفوع' => __('مدفوع'), 'غير مدفوع' => __('غير مدفوع')]" selected="{{ $filters['status'] ?? '' }}" :label="__('الحالة')" />
                         <div class="flex items-center gap-2">
                             <x-button type="submit" size="md" icon="filter">{{ __('تطبيق') }}</x-button>
-                            <x-button variant="outline" size="md" :href="route('admin.expenses.index')">{{ __('تفريغ') }}</x-button>
+                            <x-button variant="outline" size="md" :href="route('admin.expenses.index')">{{ __('عرض الكل') }}</x-button>
                         </div>
                     </div>
                 </div>

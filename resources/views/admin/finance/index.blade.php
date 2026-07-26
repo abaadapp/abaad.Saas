@@ -1,8 +1,10 @@
 <x-layouts::admin :title="__('المالية')">
     @php
-        $stats = \App\Support\Demo::financeStats();
-        $methods = \App\Support\Demo::paymentMethods();
-        $transactions = \App\Support\Demo::transactions();
+        $range = in_array(request('range'), ['today', 'week', 'month', 'year']) ? request('range') : 'month';
+        $rangeLabel = ['today' => __('اليوم'), 'week' => __('هذا الأسبوع'), 'month' => __('هذا الشهر'), 'year' => __('هذه السنة')][$range];
+        $stats = \App\Support\Demo::financeStats($range);
+        $methods = \App\Support\Demo::paymentMethods($range);
+        $transactions = \App\Support\Demo::transactions($range);
         $totalIn = 0; $totalOut = 0;
         foreach ($transactions as $t) {
             if ($t['amount'] >= 0) { $totalIn += $t['amount']; } else { $totalOut += abs($t['amount']); }
@@ -12,7 +14,8 @@
     <x-page-header :title="__('المالية')" :subtitle="__('نظرة عامة على الإيرادات ووسائل الدفع والمعاملات')"
                    :breadcrumbs="[__('الرئيسية') => route('admin.dashboard'), __('المالية') => '#']">
         <x-slot:actions>
-            <x-select name="finance-range" :options="['today' => __('اليوم'), 'week' => __('هذا الأسبوع'), 'month' => __('هذا الشهر'), 'year' => __('هذه السنة')]" selected="month" />
+            <x-select name="finance-range" onchange="location.href='{{ route('admin.finance.index') }}?range='+this.value"
+                :options="['today' => __('اليوم'), 'week' => __('هذا الأسبوع'), 'month' => __('هذا الشهر'), 'year' => __('هذه السنة')]" :selected="$range" />
             <x-button variant="outline" icon="landmark" :href="route('admin.finance.statement')">{{ __('كشف الحساب البنكي') }}</x-button>
             <x-dropdown align="left" width="w-56">
                 <x-slot:trigger>
@@ -136,7 +139,7 @@
                 </div>
                 <h3 class="mt-4 font-bold text-gray-800">{{ $m['name'] }}</h3>
                 <p class="text-2xl font-extrabold text-gray-800 mt-1">{{ \App\Support\Demo::money($m['total']) }}</p>
-                <p class="text-xs text-gray-400 mt-1">{{ __(':count عملية هذا الشهر', ['count' => $m['count']]) }}</p>
+                <p class="text-xs text-gray-400 mt-1">{{ __(':count عملية', ['count' => $m['count']]) }} · {{ $rangeLabel }}</p>
             </div>
         @endforeach
     </div>

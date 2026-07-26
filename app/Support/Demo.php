@@ -810,10 +810,24 @@ class Demo
 
     /* ============================ المالية ============================ */
 
-    public static function financeStats(): array
+    /** بداية الفترة المختارة (اليوم/الأسبوع/الشهر/السنة) — null تعني كل الفترات */
+    public static function rangeStart(string $range): ?\Illuminate\Support\Carbon
+    {
+        return match ($range) {
+            'today' => now()->startOfDay(),
+            'week' => now()->startOfWeek(),
+            'year' => now()->startOfYear(),
+            'month' => now()->startOfMonth(),
+            default => null,
+        };
+    }
+
+    public static function financeStats(string $range = 'month'): array
     {
         $bid = self::bid();
-        $income = Transaction::where('business_id', $bid)->where('type', 'دخل');
+        $start = self::rangeStart($range);
+        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
+            ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $total = (float) (clone $income)->sum('amount');
         $cash = (float) (clone $income)->where('method', 'نقدي')->sum('amount');
         $bank = (float) (clone $income)->where('method', 'تحويل بنكي')->sum('amount');
@@ -827,10 +841,12 @@ class Demo
         ];
     }
 
-    public static function paymentMethods(): array
+    public static function paymentMethods(string $range = 'month'): array
     {
         $bid = self::bid();
-        $income = Transaction::where('business_id', $bid)->where('type', 'دخل');
+        $start = self::rangeStart($range);
+        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
+            ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $grand = max(0.001, (float) (clone $income)->sum('amount'));
         $defs = [
             ['name' => __('نقدي'), 'key' => 'نقدي', 'icon' => 'banknote', 'color' => 'success'],
@@ -848,9 +864,12 @@ class Demo
         }, $defs);
     }
 
-    public static function transactions(): array
+    public static function transactions(string $range = 'all'): array
     {
-        return Transaction::where('business_id', self::bid())->orderByDesc('occurred_at')->get()->map(fn ($t) => [
+        $start = self::rangeStart($range);
+        return Transaction::where('business_id', self::bid())
+            ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start))
+            ->orderByDesc('occurred_at')->get()->map(fn ($t) => [
             'id' => $t->reference,
             'date' => optional($t->occurred_at)->format('Y-m-d H:i') ?? '—',
             'description' => $t->description,

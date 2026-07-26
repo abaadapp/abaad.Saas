@@ -95,5 +95,52 @@
     </main>
 
     <x-toasts />
+
+    {{-- مؤقّت الخمول: يُخرج الموظف تلقائيًا عند عدم النشاط ويعيده لشاشة الرمز --}}
+    @php $idleTimeout = 180; $idleWarn = 30; @endphp
+    <div x-data="posIdle({{ $idleTimeout }}, {{ $idleWarn }}, '{{ route('logout') }}?to=pin')" x-cloak>
+        <div x-show="warning" x-transition.opacity
+             class="fixed inset-0 z-[100] bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+                <div class="w-14 h-14 mx-auto rounded-full bg-warning-50 text-warning-600 flex items-center justify-center mb-4">
+                    <x-icon name="clock" class="w-7 h-7" />
+                </div>
+                <h3 class="text-lg font-bold text-gray-800">{{ __('هل ما زلت هنا؟') }}</h3>
+                <p class="text-sm text-gray-500 mt-2">
+                    {{ __('سيتم تسجيل خروجك تلقائيًا خلال') }}
+                    <span class="font-bold text-danger-600 text-base" x-text="remaining"></span>
+                    {{ __('ثانية') }}
+                </p>
+                <button type="button" @click="stay()"
+                        class="mt-5 w-full rounded-xl bg-gray-900 text-white py-2.5 text-sm font-semibold hover:bg-gray-800 transition">
+                    {{ __('أنا هنا — متابعة') }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function posIdle(timeout, warn, logoutUrl) {
+            return {
+                idle: 0,
+                warning: false,
+                remaining: warn,
+                timer: null,
+                init() {
+                    const reset = () => { if (!this.warning) this.idle = 0; };
+                    ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(
+                        (e) => window.addEventListener(e, reset, { passive: true })
+                    );
+                    this.timer = setInterval(() => {
+                        this.idle++;
+                        const left = timeout - this.idle;
+                        if (left <= warn) { this.warning = true; this.remaining = Math.max(0, left); }
+                        if (this.idle >= timeout) { clearInterval(this.timer); window.location.href = logoutUrl; }
+                    }, 1000);
+                },
+                stay() { this.idle = 0; this.warning = false; this.remaining = warn; },
+            };
+        }
+    </script>
 </body>
 </html>

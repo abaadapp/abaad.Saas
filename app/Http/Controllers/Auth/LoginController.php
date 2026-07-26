@@ -41,15 +41,19 @@ class LoginController extends Controller
         return redirect()->intended($this->homeFor(Auth::user()));
     }
 
-    /** شاشة الدخول بالرمز (لوحة أرقام) */
+    /** شاشة الدخول بالرمز (لوحة أرقام) — بالإنجليزية دائمًا */
     public function pinForm()
     {
+        app()->setLocale('en');
+
         return view('auth.pin');
     }
 
     /** دخول الموظف برمز من ٤ أرقام — بلا بريد أو كلمة مرور */
     public function pinAttempt(Request $request)
     {
+        app()->setLocale('en');
+
         $data = $request->validate([
             'pin' => ['required', 'digits:4'],
         ], [
@@ -111,12 +115,15 @@ class LoginController extends Controller
     /** تسجيل الخروج */
     public function logout(Request $request)
     {
-        \App\Support\Activity::log('logout', 'سجّل الخروج من النظام');
+        // خروج بسبب الخمول → يعود الموظف لشاشة الرمز مباشرةً
+        $toPin = $request->query('to') === 'pin';
+
+        \App\Support\Activity::log('logout', $toPin ? 'خروج تلقائي بسبب الخمول' : 'سجّل الخروج من النظام');
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login');
+        return redirect()->route($toPin ? 'pin.form' : 'login');
     }
 
     private function markLogin(User $user): void

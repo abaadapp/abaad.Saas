@@ -29,14 +29,14 @@
             <div class="flex-1">
                 <x-input name="q" value="{{ $filters['q'] ?? '' }}" :placeholder="__('ابحث برقم الطلب أو العميل...')" icon="search" />
             </div>
-            <div class="w-full md:w-40">
+            <div class="w-full md:w-52">
                 <x-select name="payment" :options="['نقدي' => __('نقدي'), 'بطاقة' => __('فيزا'), 'تحويل بنكي' => __('تحويل بنكي')]" :placeholder="__('كل وسائل الدفع')" selected="{{ $filters['payment'] ?? '' }}" />
             </div>
-            <div class="w-full md:w-36">
+            <div class="w-full md:w-44">
                 <x-input name="date" type="date" value="{{ $filters['date'] ?? '' }}" />
             </div>
             <x-button type="submit" icon="filter">{{ __('تصفية') }}</x-button>
-            <x-button :href="url()->current()">{{ __('عرض الكل') }}</x-button>
+            <x-button variant="outline" :href="url()->current()">{{ __('عرض الكل') }}</x-button>
         </div>
     </form>
 

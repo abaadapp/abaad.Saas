@@ -31,7 +31,7 @@
     @php $categories = \App\Support\Demo::categories(); @endphp
 
     {{-- قائمة الأقسام --}}
-    <div x-data="{ sel: { id: '', name: '', icon: '', color: '' } }">
+    <div x-data="{ sel: { id: '', name: '', name_en: '', icon: '', color: '' } }">
         @if (count($categories))
             <x-table :headers="[__('القسم'), __('الأيقونة'), __('اللون'), __('عدد المنتجات'), '']">
                 @foreach ($categories as $cat)
@@ -65,7 +65,7 @@
                                     </button>
                                 </x-slot:trigger>
                                 <button type="button" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                    x-on:click="sel = { id: {{ $cat['id'] }}, name: {{ \Illuminate\Support\Js::from($cat['name']) }}, icon: {{ \Illuminate\Support\Js::from($cat['icon']) }}, color: {{ \Illuminate\Support\Js::from($resolveHex($cat['color'])) }} }; $dispatch('open-modal','edit-category')">
+                                    x-on:click="sel = { id: {{ $cat['id'] }}, name: {{ \Illuminate\Support\Js::from($cat['name']) }}, name_en: {{ \Illuminate\Support\Js::from($cat['name_en'] ?? '') }}, icon: {{ \Illuminate\Support\Js::from($cat['icon']) }}, color: {{ \Illuminate\Support\Js::from($resolveHex($cat['color'])) }} }; $dispatch('open-modal','edit-category')">
                                     <x-icon name="pencil" class="w-4 h-4" /> {{ __('تعديل') }}
                                 </button>
                                 <form method="POST" action="{{ route('admin.categories.destroy', $cat['id']) }}" @submit.prevent="if(confirm(@js(__('حذف القسم «:name»؟', ['name' => $cat['name']])))) $el.submit()">
@@ -91,6 +91,7 @@
             <form id="edit-category-form" method="POST" x-bind:action="'{{ url('admin/categories') }}/' + sel.id" class="space-y-4">
                 @csrf @method('PUT')
                 <x-input :label="__('اسم القسم')" name="name" x-bind:value="sel.name" :required="true" />
+                <x-input :label="__('الاسم بالإنجليزية (اختياري)')" name="name_en" x-bind:value="sel.name_en" placeholder="e.g. Bouquets" dir="ltr" />
                 @include('partials.emoji-picker', ['model' => 'sel.icon'])
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('اللون') }}</label>
@@ -119,6 +120,7 @@
         <form id="add-category-form" method="POST" action="{{ route('admin.categories.store') }}" class="space-y-4">
             @csrf
             <x-input :label="__('اسم القسم')" name="name" :placeholder="__('مثال: باقات ورد')" :required="true" />
+            <x-input :label="__('الاسم بالإنجليزية (اختياري)')" name="name_en" placeholder="e.g. Bouquets" dir="ltr" />
             <div x-data="{ icon: '🌷' }">
                 @include('partials.emoji-picker', ['model' => 'icon'])
             </div>

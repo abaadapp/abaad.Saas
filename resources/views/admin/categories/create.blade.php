@@ -7,6 +7,7 @@
         @csrf
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
             <x-input :label="__('اسم القسم')" name="name" :placeholder="__('مثال: باقات ورد')" :required="true" />
+            <x-input :label="__('الاسم بالإنجليزية (اختياري)')" name="name_en" placeholder="e.g. Bouquets" dir="ltr" :hint="__('يظهر تلقائيًا عند تشغيل الواجهة بالإنجليزية')" />
 
             <div>
                 <label for="description" class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('الوصف') }}</label>

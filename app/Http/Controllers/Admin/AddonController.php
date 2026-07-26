@@ -18,6 +18,7 @@ class AddonController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'icon' => ['nullable', 'string', 'max:50'],
             'active' => ['nullable', 'boolean'],
@@ -37,12 +38,14 @@ class AddonController extends Controller
         $addon = Addon::where('business_id', $this->bid())->findOrFail($id);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'icon' => ['nullable', 'string', 'max:50'],
             'active' => ['nullable', 'boolean'],
         ]);
         $addon->update([
             'name' => $data['name'],
+            'name_en' => $data['name_en'] ?? null,
             'price' => $data['price'] ?? 0,
             'icon' => $data['icon'] ?: $addon->icon,
             'active' => $request->boolean('active'),

@@ -1614,5 +1614,7 @@
     "لديه رمز دخول سريع": "Has a quick access code",
     "رمز": "Code",
     "يدخل نقطة البيع برمز سريع": "Enters the POS with a quick code",
-    "رمز دخول سريع مفعّل": "Quick access code enabled"
+    "رمز دخول سريع مفعّل": "Quick access code enabled",
+    "الاسم بالإنجليزية (اختياري)": "English name (optional)",
+    "يظهر تلقائيًا عند تشغيل الواجهة بالإنجليزية": "Shown automatically when the interface is in English"
 }

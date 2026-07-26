@@ -16,6 +16,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2">
                         <x-input :label="__('اسم المنتج')" name="name" :value="$product['name']" :required="true" />
+                        <x-input :label="__('الاسم بالإنجليزية (اختياري)')" name="name_en" :value="$product['name_en'] ?? ''" placeholder="e.g. Red Rose Bouquet" dir="ltr" :hint="__('يظهر تلقائيًا عند تشغيل الواجهة بالإنجليزية')" />
                     </div>
                     <div class="md:col-span-2">
                         <label for="description" class="block text-sm font-medium text-gray-700 mb-1.5">{{ __('الوصف') }}</label>

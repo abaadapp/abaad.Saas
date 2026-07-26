@@ -287,6 +287,7 @@ class Demo
         return Category::where('business_id', self::bid())->withCount('products')->orderBy('id')->get()->map(fn ($c) => [
             'id' => $c->id,
             'name' => $c->name,
+            'name_en' => $c->name_en,
             'products' => $c->products_count,
             'icon' => $c->icon,
             'color' => $c->color,
@@ -299,6 +300,8 @@ class Demo
         return \App\Models\Addon::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($a) => [
             'id' => $a->id,
             'name' => $a->name,
+            'name_en' => $a->name_en,
+            'label' => self::ln($a->name, $a->name_en),
             'price' => (float) $a->price,
             'icon' => $a->icon,
             'active' => (bool) $a->active,
@@ -310,6 +313,8 @@ class Demo
         return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(fn ($p) => [
             'id' => $p->id,
             'name' => $p->name,
+            'name_en' => $p->name_en,
+            'label' => self::ln($p->name, $p->name_en),
             'cat' => $p->category?->name ?? '—',
             'price' => (float) $p->price,
             'cost' => (float) $p->cost,
@@ -1265,10 +1270,24 @@ class Demo
 
     /* ============================ POS ============================ */
 
+    /** الاسم المعروض حسب اللغة: الإنجليزي إن وُجد والواجهة إنجليزية، وإلا العربي */
+    public static function ln(?string $ar, ?string $en): string
+    {
+        return (app()->getLocale() === 'en' && filled($en)) ? $en : (string) $ar;
+    }
+
+    /**
+     * أقسام نقطة البيع: القيمة تبقى الاسم العربي (لمطابقة الفلترة)،
+     * والتسمية المعروضة تُترجَم حسب اللغة.
+     */
     public static function posCategories(): array
     {
-        $names = Category::where('business_id', self::bid())->orderBy('id')->pluck('name')->all();
-        return array_merge(['الكل'], $names);
+        $cats = Category::where('business_id', self::bid())->orderBy('id')->get(['name', 'name_en']);
+        $list = [['value' => 'الكل', 'label' => __('الكل')]];
+        foreach ($cats as $c) {
+            $list[] = ['value' => $c->name, 'label' => self::ln($c->name, $c->name_en)];
+        }
+        return $list;
     }
 
     public static function heldOrders(): array

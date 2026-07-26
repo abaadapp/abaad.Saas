@@ -32,11 +32,11 @@
             <div class="flex items-center gap-2 mb-4 overflow-x-auto pb-1 shrink-0">
                 @foreach ($categories as $c)
                     <button type="button"
-                            @click="cat = '{{ $c }}'"
-                            :class="cat === '{{ $c }}' ? 'bg-gray-900 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-100 hover:bg-gray-50'"
+                            @click="cat = {{ \Illuminate\Support\Js::from($c['value']) }}"
+                            :class="cat === {{ \Illuminate\Support\Js::from($c['value']) }} ? 'bg-gray-900 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-100 hover:bg-gray-50'"
                             class="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors">
-                        {{-- القيمة تبقى عربية لأن Alpine يقارنها بـ cat، والمترجَم هو النص المعروض فقط --}}
-                        {{ __($c) }}
+                        {{-- القيمة تبقى عربية لأن Alpine يقارنها بـ cat، والمعروض هو التسمية المترجَمة --}}
+                        {{ $c['label'] }}
                     </button>
                 @endforeach
             </div>
@@ -50,10 +50,10 @@
                     @foreach ($addons as $a)
                         @php $emoji = preg_match('/[^\x00-\x7F]/', $a['icon']) ? $a['icon'] : '🎁'; @endphp
                         <button type="button"
-                            @click="add({ key: 'a{{ $a['id'] }}', id: null, name: {{ \Illuminate\Support\Js::from($a['name']) }}, price: {{ $a['price'] }}, icon: {{ \Illuminate\Support\Js::from($emoji) }}, image: null })"
+                            @click="add({ key: 'a{{ $a['id'] }}', id: null, name: {{ \Illuminate\Support\Js::from($a['label']) }}, price: {{ $a['price'] }}, icon: {{ \Illuminate\Support\Js::from($emoji) }}, image: null })"
                             class="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium whitespace-nowrap bg-white text-gray-700 border border-gray-200 hover:border-primary-300 hover:bg-primary-50 transition-colors shrink-0">
                             <span class="text-base leading-none">{{ $emoji }}</span>
-                            <span>{{ $a['name'] }}</span>
+                            <span>{{ $a['label'] }}</span>
                             <span class="text-xs font-bold text-primary-600">{{ \App\Support\Demo::money($a['price']) }}</span>
                         </button>
                     @endforeach
@@ -64,18 +64,18 @@
             <div class="flex-1 overflow-y-auto -mx-1 px-1">
                 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                     @foreach ($products as $p)
-                        <div x-show="(cat === 'الكل' || cat === '{{ $p['cat'] }}') && ('{{ $p['name'] }}'.indexOf(q) > -1 || q === '')"
+                        <div x-show="(cat === 'الكل' || cat === {{ \Illuminate\Support\Js::from($p['cat']) }}) && ({{ \Illuminate\Support\Js::from($p['name'].' '.$p['label']) }}.indexOf(q) > -1 || q === '')"
                              class="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-300 transition-all overflow-hidden cursor-pointer select-none text-right"
-                             @click="add({ key: 'p{{ $p['id'] }}', id: {{ $p['id'] }}, name: {{ \Illuminate\Support\Js::from($p['name']) }}, price: {{ $p['price'] }}, image: '{{ $p['image'] }}' })">
+                             @click="add({ key: 'p{{ $p['id'] }}', id: {{ $p['id'] }}, name: {{ \Illuminate\Support\Js::from($p['label']) }}, price: {{ $p['price'] }}, image: '{{ $p['image'] }}' })">
                             <div class="relative aspect-square bg-gray-50 overflow-hidden">
-                                <img src="{{ $p['image'] }}" alt="{{ $p['name'] }}" loading="lazy"
+                                <img src="{{ $p['image'] }}" alt="{{ $p['label'] }}" loading="lazy"
                                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                 <div class="absolute top-2 right-2">
                                     <x-badge :text="__($p['stock_status'])" :data-pos-status="$p['id']" />
                                 </div>
                             </div>
                             <div class="p-3">
-                                <h3 class="font-semibold text-sm text-gray-800 truncate">{{ $p['name'] }}</h3>
+                                <h3 class="font-semibold text-sm text-gray-800 truncate">{{ $p['label'] }}</h3>
                                 <p class="text-xs text-gray-400 mt-0.5">{{ __('المتوفر:') }} <span data-pos-qty="{{ $p['id'] }}">{{ $p['qty'] }}</span></p>
                                 <div class="mt-2 flex items-center justify-between gap-1">
                                     <p class="font-bold text-gray-900 text-sm">{{ \App\Support\Demo::money($p['price']) }}</p>

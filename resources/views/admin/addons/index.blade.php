@@ -15,7 +15,7 @@
         $isEmoji = fn ($icon) => $icon && preg_match('/[^\x00-\x7F]/', $icon);
     @endphp
 
-    <div x-data="{ sel: { id: '', name: '', price: 0, icon: '', active: true } }">
+    <div x-data="{ sel: { id: '', name: '', name_en: '', price: 0, icon: '', active: true } }">
         @if (count($addons))
             <x-table :headers="[__('العنصر'), __('السعر'), __('الحالة'), '']">
                 @foreach ($addons as $a)
@@ -44,7 +44,7 @@
                                     </button>
                                 </x-slot:trigger>
                                 <button type="button" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                    x-on:click="sel = { id: {{ $a['id'] }}, name: {{ \Illuminate\Support\Js::from($a['name']) }}, price: {{ (float) $a['price'] }}, icon: {{ \Illuminate\Support\Js::from($a['icon']) }}, active: {{ $a['active'] ? 'true' : 'false' }} }; $dispatch('open-modal','edit-addon')">
+                                    x-on:click="sel = { id: {{ $a['id'] }}, name: {{ \Illuminate\Support\Js::from($a['name']) }}, name_en: {{ \Illuminate\Support\Js::from($a['name_en'] ?? '') }}, price: {{ (float) $a['price'] }}, icon: {{ \Illuminate\Support\Js::from($a['icon']) }}, active: {{ $a['active'] ? 'true' : 'false' }} }; $dispatch('open-modal','edit-addon')">
                                     <x-icon name="pencil" class="w-4 h-4" /> {{ __('تعديل') }}
                                 </button>
                                 <form method="POST" action="{{ route('admin.addons.destroy', $a['id']) }}" @submit.prevent="if(confirm(@js(__('حذف الإضافة «:name»؟', ['name' => $a['name']])))) $el.submit()">
@@ -70,6 +70,7 @@
             <form id="edit-addon-form" method="POST" x-bind:action="'{{ url('admin/addons') }}/' + sel.id" class="space-y-4">
                 @csrf @method('PUT')
                 <x-input :label="__('اسم العنصر')" name="name" x-bind:value="sel.name" :required="true" />
+                <x-input :label="__('الاسم بالإنجليزية (اختياري)')" name="name_en" x-bind:value="sel.name_en" placeholder="e.g. Gift Wrap" dir="ltr" />
                 <x-input :label="__('السعر') . ' (' . __('ر.ع') . ')'" name="price" type="number" step="0.001" min="0" x-bind:value="sel.price" />
                 @include('partials.emoji-picker', ['model' => 'sel.icon'])
                 <label class="flex items-center gap-2 text-sm text-gray-700">
@@ -89,6 +90,7 @@
         <form id="add-addon-form" method="POST" action="{{ route('admin.addons.store') }}" class="space-y-4">
             @csrf
             <x-input :label="__('اسم العنصر')" name="name" :placeholder="__('مثال: تغليف هدية')" :required="true" />
+            <x-input :label="__('الاسم بالإنجليزية (اختياري)')" name="name_en" placeholder="e.g. Gift Wrap" dir="ltr" />
             <x-input :label="__('السعر') . ' (' . __('ر.ع') . ')'" name="price" type="number" step="0.001" min="0" placeholder="0.000" />
             <div x-data="{ icon: '🎁' }">
                 @include('partials.emoji-picker', ['model' => 'icon'])

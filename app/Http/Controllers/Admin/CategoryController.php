@@ -15,6 +15,7 @@ class CategoryController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             'icon' => ['nullable', 'string', 'max:50'],
             'color' => ['nullable', 'string', 'max:50'],
         ]);
@@ -32,11 +33,13 @@ class CategoryController extends Controller
         $category = Category::where('business_id', $this->bid())->findOrFail($id);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             'icon' => ['nullable', 'string', 'max:50'],
             'color' => ['nullable', 'string', 'max:50'],
         ]);
         $category->update([
             'name' => $data['name'],
+            'name_en' => $data['name_en'] ?? null,
             'icon' => $data['icon'] ?: $category->icon,
             'color' => $data['color'] ?: $category->color,
         ]);

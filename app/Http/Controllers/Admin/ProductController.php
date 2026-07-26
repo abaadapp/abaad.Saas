@@ -72,6 +72,7 @@ class ProductController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'category_id' => ['nullable', 'integer'],
             'sku' => ['nullable', 'string', 'max:100'],
@@ -111,6 +112,7 @@ class ProductController extends Controller
         $product = Product::where('business_id', $this->bid())->findOrFail($id);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'category_id' => ['nullable', 'integer'],
             'sku' => ['nullable', 'string', 'max:100'],
@@ -123,6 +125,7 @@ class ProductController extends Controller
             'discount' => ['nullable', 'numeric', 'min:0'],
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
+        $data['name_en'] = $data['name_en'] ?? null;
         $data['active'] = $request->boolean('active', true);
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL)
         $data['cost'] = $data['cost'] ?? 0;

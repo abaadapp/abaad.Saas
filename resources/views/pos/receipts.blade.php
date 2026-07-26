@@ -3,6 +3,9 @@
         // فواتير حقيقية بأصنافها الفعلية كما اشتراها العميل (بلا اختلاق بيانات)
         $data = \App\Support\Demo::receipts();
         $pdfBase = route('pos.receipt.pdf', '__NUMBER__');
+        // ترويسة الفاتورة من إعدادات النشاط الفعلية (بلا بيانات ثابتة)
+        $biz = \App\Models\Business::find(\App\Support\Demo::bid());
+        $branchName = \App\Support\Demo::currentBranchName();
     @endphp
 
     <div class="h-full flex flex-col lg:flex-row"
@@ -62,9 +65,9 @@
                     <div class="w-14 h-14 mx-auto rounded-full bg-gray-200 text-gray-700 flex items-center justify-center mb-2">
                         <x-icon name="flower" class="w-8 h-8" />
                     </div>
-                    <h2 class="text-lg font-extrabold">زهرة مسقط</h2>
-                    <p class="text-xs text-gray-500">متجر الورود والهدايا</p>
-                    <p class="text-xs text-gray-500">الفرع الرئيسي — مسقط</p>
+                    <h2 class="text-lg font-extrabold">{{ $biz->name ?? __('نظام Abad POS') }}</h2>
+                    @if ($biz?->type)<p class="text-xs text-gray-500">{{ $biz->type }}</p>@endif
+                    <p class="text-xs text-gray-500">{{ $branchName }}@if ($biz?->city) — {{ $biz->city }}@endif</p>
                 </div>
 
                 {{-- بيانات الفاتورة --}}
@@ -108,8 +111,8 @@
 
                 {{-- التذييل --}}
                 <div class="text-center text-xs text-gray-500 pt-3 border-t border-dashed border-gray-300 space-y-1">
-                    <p class="flex items-center justify-center gap-1"><x-icon name="phone" class="w-3 h-3" /> +968 24123456</p>
-                    <p class="flex items-center justify-center gap-1"><x-icon name="map-pin" class="w-3 h-3" /> مسقط — الخوير</p>
+                    @if ($biz?->phone)<p class="flex items-center justify-center gap-1"><x-icon name="phone" class="w-3 h-3" /> {{ $biz->phone }}</p>@endif
+                    @if ($biz?->address)<p class="flex items-center justify-center gap-1"><x-icon name="map-pin" class="w-3 h-3" /> {{ $biz->address }}</p>@endif
                     <p class="font-bold text-gray-700 pt-2">{{ __('شكرًا لزيارتكم') }} 🌹</p>
                     <p class="text-[10px] text-gray-400">Abad POS — {{ __('نظام نقاط البيع') }}</p>
                 </div>

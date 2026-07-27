@@ -368,7 +368,7 @@ document.addEventListener('alpine:init', () => {
     }));
 
     /* سلة نقطة البيع POS */
-    Alpine.data('posCart', (resume = null, initialCustomers = [], initialProducts = [], redeemMaxPct = 50, earnRate = 5) => ({
+    Alpine.data('posCart', (resume = null, initialCustomers = [], initialProducts = [], redeemMaxPct = 50, earnRate = 5, redeemMin = 100) => ({
         // سلة مستعادة من طلب معلّق/محفوظ (إن وُجدت) — نضمن مفتاح سلة فريدًا لكل بند
         items: (resume?.items ?? []).map((i, idx) => ({ ...i, key: i.key ?? ('r' + idx) })),
         resumeId: resume?.id ?? null,
@@ -405,6 +405,16 @@ document.addEventListener('alpine:init', () => {
         redeemActive: false,
         redeemMaxPct: Math.min(100, Math.max(0, Number(redeemMaxPct) || 0)),
         earnRate: Math.max(0, Number(earnRate) || 0),
+        // الحد الأدنى لبدء الاستبدال: تحته تتراكم النقاط فقط ولا يُتاح الخصم
+        redeemMin: Math.max(0, Number(redeemMin) || 0),
+        // هل بلغ العميل الحد الأدنى المسموح به لبدء الاستبدال؟
+        get canRedeem() {
+            return this.selectedPoints > 0 && this.selectedPoints >= this.redeemMin;
+        },
+        // كم نقطة باقية على العميل ليبلغ حد الاستبدال (للعرض التحفيزي)
+        get pointsToThreshold() {
+            return Math.max(0, this.redeemMin - this.selectedPoints);
+        },
         // النقاط المتوقّع اكتسابها من هذا الشراء (على الإجمالي بعد الخصم) — للعملاء المسجّلين فقط
         get pointsToEarn() {
             if (this.earnRate <= 0 || !this.selectedCustomer) return 0;
@@ -423,7 +433,7 @@ document.addEventListener('alpine:init', () => {
             return Math.min(byPct, afterCoupon);
         },
         get redeemDiscount() {
-            if (!this.redeemActive || this.selectedPoints <= 0) return 0;
+            if (!this.redeemActive || !this.canRedeem) return 0;
             return Math.min(this.selectedPoints / 100, this.redeemCap);
         },
         get redeemPointsUsed() {

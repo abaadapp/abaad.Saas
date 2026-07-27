@@ -1685,5 +1685,9 @@
     "اكتساب": "Earned",
     "استبدال": "Redeemed",
     "اضغط «استخدم النقاط» لخصمها من الفاتورة": "Tap \"Use points\" to deduct them from the invoice",
-    "سيُخصم تلقائيًا عند الدفع — اضغط «إلغاء» للتراجع": "Applied automatically at payment — tap \"Cancel\" to undo"
+    "سيُخصم تلقائيًا عند الدفع — اضغط «إلغاء» للتراجع": "Applied automatically at payment — tap \"Cancel\" to undo",
+    "الحد الأدنى لبدء الاستبدال (نقطة)": "Minimum points to start redeeming",
+    "تتراكم النقاط حتى تبلغ هذا الحد ثم يُتاح خصمها · مثال: 100 نقطة = 1 ر.ع": "Points accumulate until they reach this threshold, then can be redeemed · e.g. 100 points = 1 OMR",
+    "تتراكم النقاط — يبدأ الاستبدال من": "Points are accumulating — redemption starts at",
+    "نقطة (باقٍ": "points (remaining"
 }

@@ -382,9 +382,11 @@ class PosController extends Controller
             return ['earned' => 0, 'redeemed' => 0]; // البرنامج معطّل صراحةً
         }
 
-        // 1) استبدال النقاط (لا يتجاوز رصيد العميل، ولا سقف الاستبدال المنطقي لكل فاتورة)
+        // 1) استبدال النقاط (لا يتجاوز رصيد العميل، ولا سقف الفاتورة، ويشترط بلوغ الحد الأدنى)
         $redeemed = 0;
-        if ($requestedRedeem > 0) {
+        // الحد الأدنى لبدء الاستبدال: تحته تتراكم النقاط فقط
+        $redeemMin = (int) (\App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_redeem_min')->value('value') ?? 100);
+        if ($requestedRedeem > 0 && (int) $customer->points >= max(0, $redeemMin)) {
             // سقف منطقي: أقصى نقاط = نسبة من قيمة الشراء (100 نقطة = 1 ر.ع)
             $maxPct = (int) (\App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_redeem_max_pct')->value('value') ?? 50);
             $maxPct = max(0, min(100, $maxPct));

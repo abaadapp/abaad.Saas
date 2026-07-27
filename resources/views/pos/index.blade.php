@@ -16,6 +16,7 @@
         $loyaltyEnabled = \App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_enabled')->value('value') !== '0';
         $redeemMaxPct = (int) (\App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_redeem_max_pct')->value('value') ?? 50);
         $earnRate = (float) (\App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_earn_rate')->value('value') ?? 5);
+        $redeemMin = (int) (\App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_redeem_min')->value('value') ?? 100);
     @endphp
     @php
         $productsForJs = collect($products)->map(fn ($p) => [
@@ -23,7 +24,7 @@
             'sku' => $p['sku'] ?? '', 'barcode' => $p['barcode'] ?? '', 'stock' => (int) $p['qty'],
         ])->values()->all();
     @endphp
-    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }}, {{ \Illuminate\Support\Js::from($productsForJs) }}, {{ $redeemMaxPct }}, {{ $earnRate }})" x-init="startPosStock('{{ route('pos.stock-feed') }}'); window.POS_POINTS_URL = '{{ route('pos.customers.points', ['id' => '__ID__']) }}'" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }}, {{ \Illuminate\Support\Js::from($productsForJs) }}, {{ $redeemMaxPct }}, {{ $earnRate }}, {{ $redeemMin }})" x-init="startPosStock('{{ route('pos.stock-feed') }}'); window.POS_POINTS_URL = '{{ route('pos.customers.points', ['id' => '__ID__']) }}'" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
 
         {{-- مؤشّر صمود الانقطاع: يظهر عند انقطاع الشبكة أو وجود طلبات بانتظار المزامنة --}}
         <div x-cloak x-show="!online || pendingCount"
@@ -286,7 +287,8 @@
                                 <span class="truncate" x-text="{{ \Illuminate\Support\Js::from(__('نقاط العميل:')) }} + ' ' + selectedPoints"></span>
                                 <span class="text-secondary-500 shrink-0" x-text="'(' + money(selectedPoints / 100) + ')'"></span>
                             </span>
-                            <button type="button" @click="redeemActive = !redeemActive"
+                            {{-- زر الاستبدال يظهر فقط بعد بلوغ الحد الأدنى --}}
+                            <button type="button" x-show="canRedeem" @click="redeemActive = !redeemActive"
                                     :class="redeemActive ? 'bg-secondary-600 text-white' : 'bg-white text-secondary-700 border border-secondary-300'"
                                     class="shrink-0 text-[11px] font-semibold rounded-full px-3 py-1 transition">
                                 <span x-show="!redeemActive">{{ __('استخدم النقاط') }}</span>
@@ -294,10 +296,15 @@
                             </button>
                         </div>
                         {{-- سطر تلميح دائم يُرشد الكاشير للخطوة التالية --}}
-                        <p class="mt-1.5 flex items-center gap-1 text-[11px] text-secondary-600">
+                        <p x-show="canRedeem" class="mt-1.5 flex items-center gap-1 text-[11px] text-secondary-600">
                             <x-icon name="lightbulb" class="w-3.5 h-3.5 shrink-0" />
                             <span x-show="!redeemActive">{{ __('اضغط «استخدم النقاط» لخصمها من الفاتورة') }}</span>
                             <span x-show="redeemActive" x-cloak>{{ __('سيُخصم تلقائيًا عند الدفع — اضغط «إلغاء» للتراجع') }}</span>
+                        </p>
+                        {{-- تحت الحد الأدنى: تتراكم النقاط ولا يُتاح الاستبدال بعد --}}
+                        <p x-show="!canRedeem" x-cloak class="mt-1.5 flex items-center gap-1 text-[11px] text-secondary-600">
+                            <x-icon name="trending-up" class="w-3.5 h-3.5 shrink-0" />
+                            <span x-text="{{ \Illuminate\Support\Js::from(__('تتراكم النقاط — يبدأ الاستبدال من')) }} + ' ' + redeemMin + ' ' + {{ \Illuminate\Support\Js::from(__('نقطة (باقٍ')) }} + ' ' + pointsToThreshold + ')'"></span>
                         </p>
                         <p x-show="redeemActive && redeemPointsUsed > 0" x-cloak class="mt-1 text-[11px] font-semibold text-secondary-700"
                            x-text="'− ' + money(redeemDiscount) + ' (' + redeemPointsUsed + ' ' + {{ \Illuminate\Support\Js::from(__('نقطة')) }} + ')'"></p>

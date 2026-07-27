@@ -282,8 +282,21 @@ class PosController extends Controller
         ]);
         $data['business_id'] = $this->bid();
         $data = \App\Support\Customers::localizeName($data);
-        \App\Models\Customer::create($data);
+        $customer = \App\Models\Customer::create($data);
         \App\Support\Activity::log('created', 'أضاف عميلًا من نقطة البيع: ' . $data['name']);
+
+        // طلب AJAX من السلة: نُعيد العميل ليُحدَّد تلقائيًا للطلب الجاري بلا إعادة تحميل
+        if ($request->wantsJson()) {
+            return response()->json([
+                'ok' => true,
+                'customer' => [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'label' => (app()->getLocale() === 'en' && filled($customer->name_en)) ? $customer->name_en : $customer->name,
+                    'phone' => $customer->phone ?? '',
+                ],
+            ]);
+        }
 
         return back()->with('toast', ['msg' => __('تم إضافة العميل'), 'type' => 'success']);
     }

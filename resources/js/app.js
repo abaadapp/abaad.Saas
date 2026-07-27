@@ -368,7 +368,7 @@ document.addEventListener('alpine:init', () => {
     }));
 
     /* سلة نقطة البيع POS */
-    Alpine.data('posCart', (resume = null) => ({
+    Alpine.data('posCart', (resume = null, initialCustomers = []) => ({
         // سلة مستعادة من طلب معلّق/محفوظ (إن وُجدت) — نضمن مفتاح سلة فريدًا لكل بند
         items: (resume?.items ?? []).map((i, idx) => ({ ...i, key: i.key ?? ('r' + idx) })),
         resumeId: resume?.id ?? null,
@@ -377,6 +377,58 @@ document.addEventListener('alpine:init', () => {
             new URLSearchParams(location.search).get('customer') ||
             'عميل نقدي',
         taxRate: 5,
+        // ====== العملاء: بحث + إضافة سريعة مع تحديد تلقائي ======
+        customers: (initialCustomers ?? []).map((c) => ({
+            id: c.id, name: c.name, label: c.label || c.name, phone: c.phone || '',
+        })),
+        customerSearch: '',
+        get filteredCustomers() {
+            const q = this.customerSearch.trim().toLowerCase();
+            const list = q
+                ? this.customers.filter((c) =>
+                    (c.label || '').toLowerCase().includes(q) ||
+                    (c.name || '').toLowerCase().includes(q) ||
+                    (c.phone || '').toLowerCase().includes(q))
+                : this.customers;
+            return list.slice(0, 50);
+        },
+        selectCustomer(name) {
+            this.customer = name;
+            this.customerSearch = '';
+        },
+        // إضافة عميل عبر AJAX ثم تحديده تلقائيًا للطلب الجاري (دون إعادة تحميل تُفقد السلة)
+        async addCustomer(form) {
+            const fd = new FormData(form);
+            const name = (fd.get('name') || '').toString().trim();
+            if (!name) {
+                Alpine.store('toasts').add('أدخل اسم العميل', 'warning', 2000);
+                return;
+            }
+            try {
+                const res = await fetch(form.action, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        Accept: 'application/json',
+                    },
+                    body: fd,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.ok) {
+                    Alpine.store('toasts').add(data.message || 'تعذّر إضافة العميل', 'danger', 2500);
+                    return;
+                }
+                const c = data.customer;
+                this.customers.unshift({ id: c.id, name: c.name, label: c.label || c.name, phone: c.phone || '' });
+                this.customer = c.name; // تحديد تلقائي للطلب الحالي
+                this.customerSearch = '';
+                form.reset();
+                this.$dispatch('close-modal');
+                Alpine.store('toasts').add('تم إضافة العميل وتحديده للطلب', 'success', 2200);
+            } catch (e) {
+                Alpine.store('toasts').add('تعذّر الاتصال. حاول مرة أخرى.', 'danger', 2500);
+            }
+        },
         // ====== صمود الانقطاع (Outbox) ======
         // البيع يُكتب محليًا أولًا ثم يُرفع للخادم؛ عند انقطاع الشبكة تبقى الطلبات
         // في طابور localStorage وتُرفع تلقائيًا عند عودة الاتصال (بلا تكرار عبر client_uuid).

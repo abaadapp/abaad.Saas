@@ -7,8 +7,13 @@
         $activeCoupons = \App\Support\Demo::activeCoupons();
     @endphp
 
-    @php $resume = session('resume_cart'); @endphp
-    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+    @php
+        $resume = session('resume_cart');
+        $customersForJs = collect($customers)->map(fn ($c) => [
+            'id' => $c['id'], 'name' => $c['name'], 'label' => $c['label'], 'phone' => $c['phone'] ?? '',
+        ])->values()->all();
+    @endphp
+    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
 
         {{-- مؤشّر صمود الانقطاع: يظهر عند انقطاع الشبكة أو وجود طلبات بانتظار المزامنة --}}
         <div x-cloak x-show="!online || pendingCount"
@@ -110,18 +115,45 @@
                     <span class="text-xs text-gray-400" x-text="count + ' ' + @js(__('عنصر'))"></span>
                 </div>
                 <div class="mt-3 flex items-center gap-2">
-                    <x-dropdown align="right" width="w-56">
+                    <x-dropdown align="right" width="w-72">
                         <x-slot:trigger>
                             <button type="button" class="flex items-center gap-2 flex-1 bg-gray-50 hover:bg-gray-100 rounded-full px-3 py-2 text-sm text-gray-700 w-full transition-colors">
                                 <x-icon name="user" class="w-4 h-4 text-gray-900" />
-                                <span x-text="customer"></span>
+                                <span class="truncate" x-text="customer"></span>
                                 <x-icon name="chevron-down" class="w-4 h-4 mr-auto text-gray-400" />
                             </button>
                         </x-slot:trigger>
-                        <button type="button" @click="customer = 'عميل نقدي'" class="block w-full text-right px-4 py-2 text-sm hover:bg-gray-50">{{ __('عميل نقدي') }}</button>
-                        @foreach ($customers as $cust)
-                            <button type="button" @click="customer = {{ \Illuminate\Support\Js::from($cust['name']) }}" class="block w-full text-right px-4 py-2 text-sm hover:bg-gray-50">{{ $cust['label'] }}</button>
-                        @endforeach
+                        {{-- بحث عن عميل بالاسم أو رقم الهاتف --}}
+                        <div class="px-2 pt-1 pb-2">
+                            <div class="relative">
+                                <span class="absolute inset-y-0 right-2.5 flex items-center text-gray-400 pointer-events-none">
+                                    <x-icon name="search" class="w-4 h-4" />
+                                </span>
+                                <input type="text" x-model="customerSearch"
+                                       placeholder="{{ __('ابحث بالاسم أو رقم الهاتف...') }}" autocomplete="off"
+                                       class="w-full rounded-lg border border-gray-200 pr-8 pl-2 py-2 text-sm focus:border-gray-900 focus:ring-1 focus:ring-gray-200 focus:outline-none" />
+                            </div>
+                        </div>
+                        <div class="max-h-60 overflow-y-auto">
+                            <button type="button" @click="selectCustomer('عميل نقدي'); open = false"
+                                    class="block w-full text-right px-4 py-2 text-sm hover:bg-gray-50">{{ __('عميل نقدي') }}</button>
+                            <template x-for="c in filteredCustomers" :key="c.id">
+                                <button type="button" @click="selectCustomer(c.name); open = false"
+                                        class="w-full text-right px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between gap-2">
+                                    <span class="truncate" x-text="c.label"></span>
+                                    <span class="text-xs text-gray-400 font-mono shrink-0" dir="ltr" x-show="c.phone" x-text="c.phone"></span>
+                                </button>
+                            </template>
+                            <p x-show="customerSearch.trim() && filteredCustomers.length === 0" x-cloak
+                               class="px-4 py-3 text-center text-xs text-gray-400">{{ __('لا نتائج') }}</p>
+                        </div>
+                        {{-- إضافة عميل جديد من داخل القائمة --}}
+                        <div class="border-t border-gray-100 mt-1 pt-1">
+                            <button type="button" @click="open = false; $dispatch('open-modal','new-customer')"
+                                    class="w-full text-right px-4 py-2 text-sm text-primary-600 hover:bg-primary-50 flex items-center gap-2">
+                                <x-icon name="user-plus" class="w-4 h-4" /> {{ __('عميل جديد') }}
+                            </button>
+                        </div>
                     </x-dropdown>
                     <button type="button" @click="$dispatch('open-modal','new-customer')"
                             class="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors" title="{{ __('عميل جديد') }}">
@@ -373,7 +405,7 @@
 
         {{-- ============ نافذة عميل جديد ============ --}}
         <x-modal name="new-customer" :title="__('إضافة عميل جديد')" maxWidth="max-w-md">
-            <form id="pos-new-customer" method="POST" action="{{ route('pos.customers.store') }}" class="space-y-4">
+            <form id="pos-new-customer" method="POST" action="{{ route('pos.customers.store') }}" @submit.prevent="addCustomer($event.target)" class="space-y-4">
                 @csrf
                 <x-input :label="__('الاسم الكامل')" name="name" :placeholder="__('اسم العميل')" icon="user" :required="true" />
                 <x-input :label="__('رقم الهاتف')" name="phone" type="tel" placeholder="+968 9xxxxxxx" icon="phone" />

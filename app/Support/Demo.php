@@ -1077,10 +1077,11 @@ class Demo
         $bid = self::bid();
         $labels = [];
         $data = [];
-        for ($i = 5; $i >= 0; $i--) {
+        for ($i = 11; $i >= 0; $i--) {
             $m = now()->subMonths($i);
             $labels[] = self::AR_MONTHS[$m->month];
             $data[] = round((float) Order::where('business_id', $bid)->where('is_held', false)
+                ->where('status', '!=', 'ملغي')
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
         }
         return ['labels' => $labels, 'data' => $data];

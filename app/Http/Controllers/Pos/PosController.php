@@ -27,6 +27,17 @@ class PosController extends Controller
         ];
     }
 
+    /** بحث خادمي في كل فواتير المتجر (رقم/عميل/هاتف) — يغطّي كامل التاريخ لا آخر 30 فقط */
+    public function searchReceipts(Request $request)
+    {
+        $q = trim((string) $request->query('q', ''));
+        if (mb_strlen($q) < 2) {
+            return response()->json(['receipts' => []]);
+        }
+
+        return response()->json(['receipts' => Demo::receipts($q, 50)]);
+    }
+
     /** تغذية حيّة لكميات المنتجات وحالاتها — تستطلعها شاشة نقطة البيع لتحديث "المتوفر" تلقائيًا دون إعادة تحميل */
     public function stockFeed()
     {

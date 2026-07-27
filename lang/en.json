@@ -1651,5 +1651,8 @@
     "ابحث بالاسم أو رقم الهاتف...": "Search by name or phone number...",
     "جاهز للمسح — وجّه الماسح نحو الباركود": "Ready to scan — point the scanner at the barcode",
     "ابحث برقم الفاتورة أو العميل أو الهاتف...": "Search by invoice number, customer, or phone...",
-    "لا نتائج مطابقة": "No matching results"
+    "لا نتائج مطابقة": "No matching results",
+    "نتائج البحث في كل الفواتير": "Search results across all invoices",
+    "أحدث الفواتير": "Latest invoices",
+    "جارٍ البحث...": "Searching..."
 }

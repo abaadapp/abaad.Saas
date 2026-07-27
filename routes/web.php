@@ -281,6 +281,7 @@ Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
     Route::view('/orders/{id}', 'pos.order-details')->name('order-details');
     Route::view('/payments', 'pos.payments')->name('payments');
     Route::view('/receipts', 'pos.receipts')->name('receipts');
+    Route::get('/receipts/search', [PosController::class, 'searchReceipts'])->name('receipts.search');
     Route::get('/receipt/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');
     Route::view('/customers', 'pos.customers')->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');

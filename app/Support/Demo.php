@@ -1410,17 +1410,36 @@ class Demo
             ])->all();
     }
 
-    public static function receipts(): array
+    /**
+     * فواتير المتجر. بلا بحث: أحدث $limit فاتورة. مع $search: يبحث في كل الفواتير
+     * (بلا حدّ الأحدث) برقم الفاتورة أو اسم العميل أو رقم هاتفه.
+     */
+    public static function receipts(?string $search = null, int $limit = 30): array
     {
-        $name = auth()->user()?->name;
-        // خريطة الاسم → الهاتف لعملاء النشاط (لتمكين البحث برقم الهاتف في الفواتير)
-        $phones = \App\Models\Customer::where('business_id', self::bid())
+        $bid = self::bid();
+        // خريطة الاسم → الهاتف لعملاء النشاط (لعرض الهاتف والبحث به)
+        $phones = \App\Models\Customer::where('business_id', $bid)
             ->whereNotNull('phone')->pluck('phone', 'name');
 
-        return Order::where('business_id', self::bid())->where('is_held', false)
+        $query = Order::where('business_id', $bid)->where('is_held', false)
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
-            ->with('items')
-            ->orderByDesc('ordered_at')->limit(30)->get()->map(fn ($o) => [
+            ->with('items');
+
+        $term = $search !== null ? trim($search) : '';
+        if ($term !== '') {
+            // أسماء العملاء الذين يطابق هاتفهم كلمة البحث (للبحث برقم الهاتف)
+            $namesByPhone = \App\Models\Customer::where('business_id', $bid)
+                ->where('phone', 'like', "%{$term}%")->pluck('name')->all();
+            $query->where(function ($w) use ($term, $namesByPhone) {
+                $w->where('number', 'like', "%{$term}%")
+                    ->orWhere('customer_name', 'like', "%{$term}%");
+                if ($namesByPhone) {
+                    $w->orWhereIn('customer_name', $namesByPhone);
+                }
+            });
+        }
+
+        return $query->orderByDesc('ordered_at')->limit($limit)->get()->map(fn ($o) => [
                 'number' => $o->number,
                 'customer' => $o->customer_name ?? __('عميل نقدي'),
                 'phone' => $phones[$o->customer_name] ?? '',

@@ -12,17 +12,29 @@
          x-data="{
             q: '',
             list: @js($data),
+            results: [],
+            searching: false,
+            loading: false,
             sel: 0,
+            _t: null,
             money(v) { return Number(v).toFixed(3) + ' ' + @js(__('ر.ع')); },
-            get filtered() {
-                const t = this.q.trim().toLowerCase();
-                if (!t) return this.list;
-                return this.list.filter((r) =>
-                    (r.number || '').toLowerCase().includes(t) ||
-                    (r.customer || '').toLowerCase().includes(t) ||
-                    (r.phone || '').toLowerCase().includes(t));
+            onSearch() {
+                clearTimeout(this._t);
+                this.sel = 0;
+                const term = this.q.trim();
+                if (term.length < 2) { this.searching = false; this.results = []; this.loading = false; return; }
+                this.loading = true;
+                this._t = setTimeout(async () => {
+                    try {
+                        const res = await fetch('{{ route('pos.receipts.search') }}?q=' + encodeURIComponent(term), { headers: { Accept: 'application/json' } });
+                        const data = await res.json();
+                        this.results = data.receipts || [];
+                    } catch (e) { this.results = []; }
+                    finally { this.searching = true; this.loading = false; }
+                }, 300);
             },
-            get current() { return this.filtered[this.sel] || this.filtered[0] || {}; },
+            get shown() { return this.searching ? this.results : this.list; },
+            get current() { return this.shown[this.sel] || this.shown[0] || {}; },
          }">
 
         {{-- ======= قائمة الفواتير (يمين) ======= --}}
@@ -38,10 +50,12 @@
                     </div>
                 </div>
                 <x-input name="rec-search" :placeholder="__('ابحث برقم الفاتورة أو العميل أو الهاتف...')" icon="search"
-                         x-model="q" @input="sel = 0" />
+                         x-model="q" @input="onSearch()" />
+                <p class="text-[11px] text-gray-400 mt-1.5" x-text="searching ? {{ \Illuminate\Support\Js::from(__('نتائج البحث في كل الفواتير')) }} : {{ \Illuminate\Support\Js::from(__('أحدث الفواتير')) }}"></p>
             </div>
             <div class="flex-1 overflow-y-auto p-3 space-y-2">
-                <template x-for="(rec, idx) in filtered" :key="rec.number">
+                <p x-show="loading" x-cloak class="text-center text-sm text-gray-400 py-6">{{ __('جارٍ البحث...') }}</p>
+                <template x-for="(rec, idx) in shown" :key="rec.number">
                     <div @click="sel = idx"
                             :class="sel === idx ? 'border-gray-900 bg-gray-100' : 'border-gray-100 bg-white hover:bg-gray-50'"
                             class="w-full text-right border rounded-xl p-3 transition-colors cursor-pointer">
@@ -68,7 +82,7 @@
                         </div>
                     </div>
                 </template>
-                <p x-show="!filtered.length" x-cloak class="text-center text-sm text-gray-400 py-10">{{ __('لا نتائج مطابقة') }}</p>
+                <p x-show="!shown.length && !loading" x-cloak class="text-center text-sm text-gray-400 py-10">{{ __('لا نتائج مطابقة') }}</p>
             </div>
         </div>
 
@@ -78,7 +92,7 @@
                 <x-button variant="dark" icon="printer" onclick="window.print()">{{ __('طباعة الفاتورة') }}</x-button>
             </div>
 
-            <div x-show="filtered.length" class="thermal-receipt bg-white shadow-lg rounded-lg p-5 text-gray-800" style="width: 300px; font-family: 'Tajawal', monospace;">
+            <div x-show="shown.length" class="thermal-receipt bg-white shadow-lg rounded-lg p-5 text-gray-800" style="width: 300px; font-family: 'Tajawal', monospace;">
                 {{-- الترويسة --}}
                 <div class="text-center border-b border-dashed border-gray-300 pb-3">
                     <div class="w-14 h-14 mx-auto rounded-full bg-gray-200 text-gray-700 flex items-center justify-center mb-2">

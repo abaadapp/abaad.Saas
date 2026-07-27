@@ -1654,5 +1654,7 @@
     "لا نتائج مطابقة": "No matching results",
     "نتائج البحث في كل الفواتير": "Search results across all invoices",
     "أحدث الفواتير": "Latest invoices",
-    "جارٍ البحث...": "Searching..."
+    "جارٍ البحث...": "Searching...",
+    "صافي الإيرادات (بلا ضريبة)": "Net revenue (excl. VAT)",
+    "ضريبة القيمة المضافة المحصّلة": "VAT collected"
 }

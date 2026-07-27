@@ -961,28 +961,28 @@ class Demo
         $start = self::rangeStart($range);
         $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
-        $total = (float) (clone $income)->sum('amount');
+        $total = (float) (clone $income)->sum('amount');       // إجمالي المقبوض (شامل الضريبة)
+        $tax = (float) (clone $income)->sum('tax_amount');     // ضريبة القيمة المضافة المحصّلة (التزام)
+        $net = $total - $tax;                                  // صافي الإيرادات (بلا ضريبة)
         $cash = (float) (clone $income)->where('method', 'نقدي')->sum('amount');
-        $bank = (float) (clone $income)->where('method', 'تحويل بنكي')->sum('amount');
-        $card = (float) (clone $income)->where('method', 'بطاقة')->sum('amount');
 
         // الفترة السابقة المكافئة لحساب الاتجاه الحقيقي
         $prev = self::rangePrev($range);
-        $pTotal = $pCash = $pBank = $pCard = 0.0;
+        $pTotal = $pTax = $pNet = $pCash = 0.0;
         if ($prev) {
             $pIncome = Transaction::where('business_id', $bid)->where('type', 'دخل')
                 ->whereBetween('occurred_at', $prev);
             $pTotal = (float) (clone $pIncome)->sum('amount');
+            $pTax = (float) (clone $pIncome)->sum('tax_amount');
+            $pNet = $pTotal - $pTax;
             $pCash = (float) (clone $pIncome)->where('method', 'نقدي')->sum('amount');
-            $pBank = (float) (clone $pIncome)->where('method', 'تحويل بنكي')->sum('amount');
-            $pCard = (float) (clone $pIncome)->where('method', 'بطاقة')->sum('amount');
         }
 
         return [
-            array_merge(['label' => __('إجمالي الإيرادات'), 'value' => self::money($total), 'icon' => 'wallet', 'color' => 'primary'], self::trend($total, $pTotal)),
-            array_merge(['label' => __('المدفوعات النقدية'), 'value' => self::money($cash), 'icon' => 'banknote', 'color' => 'success'], self::trend($cash, $pCash)),
-            array_merge(['label' => __('التحويلات البنكية'), 'value' => self::money($bank), 'icon' => 'landmark', 'color' => 'info'], self::trend($bank, $pBank)),
-            array_merge(['label' => __('مدفوعات البطاقة (فيزا)'), 'value' => self::money($card), 'icon' => 'credit-card', 'color' => 'secondary'], self::trend($card, $pCard)),
+            array_merge(['label' => __('إجمالي المبيعات (شامل الضريبة)'), 'value' => self::money($total), 'icon' => 'wallet', 'color' => 'primary'], self::trend($total, $pTotal)),
+            array_merge(['label' => __('صافي الإيرادات (بلا ضريبة)'), 'value' => self::money($net), 'icon' => 'trending-up', 'color' => 'success'], self::trend($net, $pNet)),
+            array_merge(['label' => __('ضريبة القيمة المضافة المحصّلة'), 'value' => self::money($tax), 'icon' => 'receipt', 'color' => 'warning'], self::trend($tax, $pTax)),
+            array_merge(['label' => __('المدفوعات النقدية'), 'value' => self::money($cash), 'icon' => 'banknote', 'color' => 'info'], self::trend($cash, $pCash)),
         ];
     }
 

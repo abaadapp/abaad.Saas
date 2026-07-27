@@ -196,6 +196,7 @@ class PosController extends Controller
             'method' => $order->payment_method ?? 'نقدي',
             'type' => 'دخل',
             'amount' => $order->total,
+            'tax_amount' => $order->tax ?? 0,
             'employee_name' => auth()->user()->name,
             'occurred_at' => $order->ordered_at ?? now(),
         ]);

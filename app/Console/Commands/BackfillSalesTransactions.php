@@ -35,6 +35,7 @@ class BackfillSalesTransactions extends Command
                         'method' => $order->payment_method ?? 'نقدي',
                         'type' => 'دخل',
                         'amount' => $order->total,
+                        'tax_amount' => $order->tax ?? 0,
                         'employee_name' => $order->employee_name ?? '—',
                         'occurred_at' => $order->ordered_at ?? $order->created_at,
                     ]);

@@ -1656,5 +1656,10 @@
     "أحدث الفواتير": "Latest invoices",
     "جارٍ البحث...": "Searching...",
     "صافي الإيرادات (بلا ضريبة)": "Net revenue (excl. VAT)",
-    "ضريبة القيمة المضافة المحصّلة": "VAT collected"
+    "ضريبة القيمة المضافة المحصّلة": "VAT collected",
+    "صورة الربح": "Profit breakdown",
+    "تقديري بناءً على تكلفة المنتجات الحالية": "Estimated based on current product costs",
+    "مجمل الربح": "Gross profit",
+    "المصروفات التشغيلية": "Operating expenses",
+    "هامش صافي الربح": "Net profit margin"
 }

@@ -3,6 +3,7 @@
         $range = in_array(request('range'), ['today', 'week', 'month', 'year']) ? request('range') : 'month';
         $rangeLabel = ['today' => __('اليوم'), 'week' => __('هذا الأسبوع'), 'month' => __('هذا الشهر'), 'year' => __('هذه السنة')][$range];
         $stats = \App\Support\Demo::financeStats($range);
+        $profit = \App\Support\Demo::profitStats($range);
         $methods = \App\Support\Demo::paymentMethods($range);
         $transactions = \App\Support\Demo::transactions($range);
         $totalIn = 0; $totalOut = 0;
@@ -42,6 +43,51 @@
         @foreach ($stats as $s)
             <x-stat-card :label="$s['label']" :value="$s['value']" :icon="$s['icon']" :trend="$s['trend']" :up="$s['up']" :color="$s['color']" />
         @endforeach
+    </div>
+
+    {{-- صورة الربح: صافي الإيرادات − تكلفة البضاعة − المصروفات = صافي الربح --}}
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-gray-800 flex items-center gap-2">
+                    <x-icon name="trending-up" class="w-5 h-5 text-primary-600" /> {{ __('صورة الربح') }} — {{ $rangeLabel }}
+                </h3>
+                <span class="text-xs text-gray-400">{{ __('تقديري بناءً على تكلفة المنتجات الحالية') }}</span>
+            </div>
+            <div class="space-y-2.5 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-gray-600">{{ __('صافي الإيرادات (بلا ضريبة)') }}</span>
+                    <span class="font-semibold text-gray-800">{{ \App\Support\Demo::money($profit['net_revenue']) }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">− {{ __('تكلفة البضاعة المباعة') }}</span>
+                    <span class="font-semibold text-danger-600">{{ \App\Support\Demo::money($profit['cogs']) }}</span>
+                </div>
+                <div class="flex justify-between pt-2 border-t border-dashed border-gray-200">
+                    <span class="font-medium text-gray-700">= {{ __('مجمل الربح') }}</span>
+                    <span class="font-bold text-gray-800">{{ \App\Support\Demo::money($profit['gross_profit']) }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">− {{ __('المصروفات التشغيلية') }}</span>
+                    <span class="font-semibold text-danger-600">{{ \App\Support\Demo::money($profit['expenses']) }}</span>
+                </div>
+                <div class="flex justify-between pt-2.5 border-t-2 border-gray-200">
+                    <span class="font-bold text-gray-800">= {{ __('صافي الربح') }}</span>
+                    <span class="text-lg font-extrabold {{ $profit['net_profit'] >= 0 ? 'text-success-600' : 'text-danger-600' }}">{{ \App\Support\Demo::money($profit['net_profit']) }}</span>
+                </div>
+            </div>
+        </div>
+        {{-- صافي الربح البارز + الهامش --}}
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col items-center justify-center text-center">
+            <span class="w-12 h-12 rounded-2xl flex items-center justify-center mb-3 {{ $profit['net_profit'] >= 0 ? 'bg-success-50 text-success-600' : 'bg-danger-50 text-danger-600' }}">
+                <x-icon name="{{ $profit['net_profit'] >= 0 ? 'trending-up' : 'trending-down' }}" class="w-6 h-6" />
+            </span>
+            <p class="text-sm text-gray-400">{{ __('صافي الربح') }} — {{ $rangeLabel }}</p>
+            <p class="text-3xl font-extrabold mt-1 {{ $profit['net_profit'] >= 0 ? 'text-gray-900' : 'text-danger-600' }}">{{ \App\Support\Demo::money($profit['net_profit']) }}</p>
+            <p class="mt-2 text-xs {{ $profit['net_profit'] >= 0 ? 'text-success-600' : 'text-danger-600' }} font-semibold">
+                {{ __('هامش صافي الربح') }}: {{ $profit['margin'] }}%
+            </p>
+        </div>
     </div>
 
     {{-- توزيع وسائل الدفع + الرسم البياني --}}

@@ -830,6 +830,48 @@ class Demo
         return $rows;
     }
 
+    /**
+     * صورة الربح الكاملة لفترة: صافي الإيرادات − تكلفة البضاعة المباعة − المصروفات = صافي الربح.
+     * صافي الإيراد من معاملات الدخل (بلا ضريبة)، والتكلفة من تكلفة المنتجات × الكميات المباعة.
+     */
+    public static function profitStats(string $range = 'month'): array
+    {
+        $bid = self::bid();
+        $start = self::rangeStart($range);
+
+        // صافي الإيرادات (بلا ضريبة) من معاملات الدخل في الفترة
+        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
+            ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
+        $netRevenue = (float) (clone $income)->sum('amount') - (float) (clone $income)->sum('tax_amount');
+
+        // تكلفة البضاعة المباعة (COGS) = تكلفة المنتج × الكمية المباعة في الفترة
+        $costs = Product::where('business_id', $bid)->pluck('cost', 'id');
+        $cogs = 0.0;
+        OrderItem::whereHas('order', function ($q) use ($bid, $start) {
+            $q->where('business_id', $bid)->where('is_held', false)
+                ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start));
+        })->selectRaw('product_id, SUM(quantity) as qty')->groupBy('product_id')->get()
+            ->each(function ($r) use (&$cogs, $costs) {
+                $cogs += (float) ($costs[$r->product_id] ?? 0) * (int) $r->qty;
+            });
+
+        // المصروفات التشغيلية في الفترة
+        $expenses = (float) Expense::where('business_id', $bid)
+            ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount');
+
+        $grossProfit = $netRevenue - $cogs;
+        $netProfit = $grossProfit - $expenses;
+
+        return [
+            'net_revenue' => round($netRevenue, 3),
+            'cogs' => round($cogs, 3),
+            'gross_profit' => round($grossProfit, 3),
+            'expenses' => round($expenses, 3),
+            'net_profit' => round($netProfit, 3),
+            'margin' => $netRevenue > 0 ? round($netProfit / $netRevenue * 100, 1) : 0,
+        ];
+    }
+
     public static function profitSummary(): array
     {
         $prods = self::productProfitability();

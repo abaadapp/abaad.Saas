@@ -443,24 +443,28 @@
                         </template>
                     </div>
                 </div>
-                {{-- برنامج الولاء --}}
-                @php $loyaltyEnabled = $sget('loyalty_enabled', '1'); $earnRate = $sget('loyalty_earn_rate', '1'); @endphp
-                <div x-show="tab === 'loyalty'" x-cloak class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                    <h3 class="text-lg font-bold text-gray-800 mb-2">{{ __('برنامج الولاء') }}</h3>
-                    <p class="text-sm text-gray-400 mb-6">{{ __('امنح عملاءك نقاطًا عند الشراء يستبدلونها كخصم لاحقًا') }}</p>
+                <div class="mt-6 flex justify-end">
+                    <x-button variant="primary" size="md" icon="save" type="submit">{{ __('حفظ التغييرات') }}</x-button>
+                </div>
+            </div>
 
-                    <label class="flex items-center justify-between py-3 border-b border-gray-100">
-                        <span class="text-sm font-medium text-gray-700">{{ __('تفعيل نقاط الولاء عند الشراء') }}</span>
-                        <span>
-                            <input type="hidden" name="loyalty_enabled" value="0" />
-                            <input type="checkbox" name="loyalty_enabled" value="1" @checked($loyaltyEnabled !== '0') class="w-5 h-5 rounded text-secondary-600 focus:ring-secondary-500 border-gray-300" />
-                        </span>
-                    </label>
+            {{-- برنامج الولاء --}}
+            @php $loyaltyEnabled = $sget('loyalty_enabled', '1'); $earnRate = $sget('loyalty_earn_rate', '1'); @endphp
+            <div x-show="tab === 'loyalty'" x-cloak class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-2">{{ __('برنامج الولاء') }}</h3>
+                <p class="text-sm text-gray-400 mb-6">{{ __('امنح عملاءك نقاطًا عند الشراء يستبدلونها كخصم لاحقًا') }}</p>
 
-                    <div class="mt-5 max-w-xs">
-                        <x-input :label="__('نقاط لكل 1 ر.ع من قيمة الشراء')" name="loyalty_earn_rate" data-money value="{{ $earnRate }}" icon="award"
-                                 :hint="__('مثال: 1 = نقطة لكل ريال · الاستبدال: 100 نقطة = 1 ر.ع خصم')" />
-                    </div>
+                <label class="flex items-center justify-between py-3 border-b border-gray-100">
+                    <span class="text-sm font-medium text-gray-700">{{ __('تفعيل نقاط الولاء عند الشراء') }}</span>
+                    <span>
+                        <input type="hidden" name="loyalty_enabled" value="0" />
+                        <input type="checkbox" name="loyalty_enabled" value="1" @checked($loyaltyEnabled !== '0') class="w-5 h-5 rounded text-secondary-600 focus:ring-secondary-500 border-gray-300" />
+                    </span>
+                </label>
+
+                <div class="mt-5 max-w-xs">
+                    <x-input :label="__('نقاط لكل 1 ر.ع من قيمة الشراء')" name="loyalty_earn_rate" data-money value="{{ $earnRate }}" icon="award"
+                             :hint="__('مثال: 1 = نقطة لكل ريال · الاستبدال: 100 نقطة = 1 ر.ع خصم')" />
                 </div>
 
                 <div class="mt-6 flex justify-end">

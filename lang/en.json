@@ -961,7 +961,6 @@
     "جارٍ الدخول…": "Signing in…",
     "جارٍ تحميل التقرير…": "Loading report…",
     "جاهز": "Ready",
-    "جاهز لمسح الباركود": "Ready to scan barcode",
     "جديد": "New",
     "جرد المخزون": "Stocktake",
     "جرد المخزون (Excel)": "Stocktake (Excel)",
@@ -1649,5 +1648,6 @@
     "يتجاوز المتوفر": "Exceeds available",
     "بعض الأصناف تتجاوز المخزون المتوفر — تأكّد قبل الدفع": "Some items exceed available stock — please verify before payment",
     "اختر الدور...": "Select role...",
-    "ابحث بالاسم أو رقم الهاتف...": "Search by name or phone number..."
+    "ابحث بالاسم أو رقم الهاتف...": "Search by name or phone number...",
+    "جاهز للمسح — وجّه الماسح نحو الباركود": "Ready to scan — point the scanner at the barcode"
 }

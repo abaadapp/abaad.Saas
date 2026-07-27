@@ -368,7 +368,7 @@ document.addEventListener('alpine:init', () => {
     }));
 
     /* سلة نقطة البيع POS */
-    Alpine.data('posCart', (resume = null, initialCustomers = []) => ({
+    Alpine.data('posCart', (resume = null, initialCustomers = [], initialProducts = []) => ({
         // سلة مستعادة من طلب معلّق/محفوظ (إن وُجدت) — نضمن مفتاح سلة فريدًا لكل بند
         items: (resume?.items ?? []).map((i, idx) => ({ ...i, key: i.key ?? ('r' + idx) })),
         resumeId: resume?.id ?? null,
@@ -377,6 +377,24 @@ document.addEventListener('alpine:init', () => {
             new URLSearchParams(location.search).get('customer') ||
             'عميل نقدي',
         taxRate: 5,
+        // ====== الباركود: مسح المنتج بالكود وإضافته للسلة ======
+        barcode: '',
+        products: initialProducts ?? [],
+        // يُستدعى عند الضغط Enter في حقل الباركود (الماسح يُدخل الكود ثم Enter)
+        scanBarcode(code) {
+            code = (code || '').toString().trim();
+            if (!code) return;
+            const p = this.products.find((x) =>
+                (x.barcode && String(x.barcode) === code) ||
+                (x.sku && String(x.sku).toLowerCase() === code.toLowerCase()));
+            if (!p) {
+                Alpine.store('toasts').add('لا يوجد منتج بهذا الباركود: ' + code, 'warning', 2500);
+                this.barcode = '';
+                return;
+            }
+            this.add({ key: 'p' + p.id, id: p.id, name: p.label, price: p.price, image: p.image, stock: p.stock });
+            this.barcode = '';
+        },
         // ====== العملاء: بحث + إضافة سريعة مع تحديد تلقائي ======
         customers: (initialCustomers ?? []).map((c) => ({
             id: c.id, name: c.name, label: c.label || c.name, phone: c.phone || '',

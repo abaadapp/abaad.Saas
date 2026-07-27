@@ -12,8 +12,12 @@
         $customersForJs = collect($customers)->map(fn ($c) => [
             'id' => $c['id'], 'name' => $c['name'], 'label' => $c['label'], 'phone' => $c['phone'] ?? '',
         ])->values()->all();
+        $productsForJs = collect($products)->map(fn ($p) => [
+            'id' => $p['id'], 'label' => $p['label'], 'price' => $p['price'], 'image' => $p['image'],
+            'sku' => $p['sku'] ?? '', 'barcode' => $p['barcode'] ?? '', 'stock' => (int) $p['qty'],
+        ])->values()->all();
     @endphp
-    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }}, {{ \Illuminate\Support\Js::from($productsForJs) }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
 
         {{-- مؤشّر صمود الانقطاع: يظهر عند انقطاع الشبكة أو وجود طلبات بانتظار المزامنة --}}
         <div x-cloak x-show="!online || pendingCount"
@@ -35,11 +39,13 @@
                 </div>
                 <div class="flex gap-2">
                     <div class="w-44">
-                        <x-input name="pos-barcode" :placeholder="__('امسح الباركود')" icon="scan-barcode" />
+                        <x-input name="pos-barcode" :placeholder="__('امسح الباركود')" icon="scan-barcode"
+                                 x-ref="barcodeInput" x-model="barcode"
+                                 @keydown.enter.prevent="scanBarcode(barcode)" />
                     </div>
+                    {{-- يركّز حقل الباركود ليبدأ الماسح الضوئي بالإدخال (الماسح يعمل كلوحة مفاتيح ثم Enter) --}}
                     <x-button variant="dark" icon="scan-line" class="shrink-0"
-                              {{-- Js::from لا @js: التوجيهات لا تُترجَم داخل سمات المكوّنات، والإخراج مهرَّب من الفواصل العليا --}}
-                              @click="$store.toasts.add({{ Js::from(__('جاهز لمسح الباركود')) }}, 'info', 1500)">{{ __('مسح') }}</x-button>
+                              @click="$refs.barcodeInput?.focus(); $store.toasts.add({{ Js::from(__('جاهز للمسح — وجّه الماسح نحو الباركود')) }}, 'info', 1500)">{{ __('مسح') }}</x-button>
                 </div>
             </div>
 

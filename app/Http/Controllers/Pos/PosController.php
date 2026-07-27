@@ -187,6 +187,19 @@ class PosController extends Controller
             }
         }
 
+        // تسجيل البيع كمعاملة دخل في المالية تلقائيًا (لتظهر المبيعات في لوحات المالية فورًا)
+        \App\Models\Transaction::create([
+            'business_id' => $this->bid(),
+            'order_id' => $order->id,
+            'reference' => $order->number,
+            'description' => 'مبيعات نقطة البيع — ' . ($order->customer_name ?? 'عميل نقدي'),
+            'method' => $order->payment_method ?? 'نقدي',
+            'type' => 'دخل',
+            'amount' => $order->total,
+            'employee_name' => auth()->user()->name,
+            'occurred_at' => $order->ordered_at ?? now(),
+        ]);
+
         // الطلب المعلّق الذي استُكمل لم يعد لازمًا بعد إتمام بيعه
         if (! empty($data['resume_id'])) {
             $held = Order::where('business_id', $this->bid())->where('is_held', true)->find($data['resume_id']);

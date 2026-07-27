@@ -1668,5 +1668,9 @@
     "نقاط لكل 1 ر.ع من قيمة الشراء": "Points per 1 OMR of the purchase",
     "مثال: 1 = نقطة لكل ريال · الاستبدال: 100 نقطة = 1 ر.ع خصم": "e.g. 1 = one point per OMR · Redemption: 100 points = 1 OMR discount",
     "نقاط ولاء مكتسبة:": "Loyalty points earned:",
-    "نقاط ولاء مكتسبة": "Loyalty points earned"
+    "نقاط ولاء مكتسبة": "Loyalty points earned",
+    "نقاط العميل:": "Customer points:",
+    "استخدم النقاط": "Use points",
+    "نقطة": "points",
+    "خصم نقاط الولاء": "Loyalty points discount"
 }

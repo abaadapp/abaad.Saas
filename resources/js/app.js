@@ -397,9 +397,25 @@ document.addEventListener('alpine:init', () => {
         },
         // ====== العملاء: بحث + إضافة سريعة مع تحديد تلقائي ======
         customers: (initialCustomers ?? []).map((c) => ({
-            id: c.id, name: c.name, label: c.label || c.name, phone: c.phone || '',
+            id: c.id, name: c.name, label: c.label || c.name, phone: c.phone || '', points: c.points || 0,
         })),
         customerSearch: '',
+        // ====== استبدال نقاط الولاء كخصم (100 نقطة = 1 ر.ع) ======
+        redeemActive: false,
+        get selectedCustomer() {
+            return this.customers.find((c) => c.name === this.customer) || null;
+        },
+        get selectedPoints() {
+            return this.selectedCustomer ? (this.selectedCustomer.points || 0) : 0;
+        },
+        get redeemDiscount() {
+            if (!this.redeemActive || this.selectedPoints <= 0) return 0;
+            const cap = Math.max(0, this.subtotal - this.couponDiscount);
+            return Math.min(this.selectedPoints / 100, cap);
+        },
+        get redeemPointsUsed() {
+            return Math.round(this.redeemDiscount * 100);
+        },
         get filteredCustomers() {
             const q = this.customerSearch.trim().toLowerCase();
             const list = q
@@ -437,7 +453,7 @@ document.addEventListener('alpine:init', () => {
                     return;
                 }
                 const c = data.customer;
-                this.customers.unshift({ id: c.id, name: c.name, label: c.label || c.name, phone: c.phone || '' });
+                this.customers.unshift({ id: c.id, name: c.name, label: c.label || c.name, phone: c.phone || '', points: 0 });
                 this.customer = c.name; // تحديد تلقائي للطلب الحالي
                 this.customerSearch = '';
                 form.reset();
@@ -518,6 +534,7 @@ document.addEventListener('alpine:init', () => {
                 total: this.total,
                 resume_id: this.resumeId,
                 coupon_code: this.coupon?.code ?? null,
+                redeem_points: this.redeemPointsUsed,
             };
             // اكتب محليًا أولًا — لا تنتظر الشبكة لإتمام البيع
             this.pending.push({ uuid, payload, at: Date.now() });
@@ -641,6 +658,7 @@ document.addEventListener('alpine:init', () => {
         clear() {
             this.items = [];
             this.removeCoupon();
+            this.redeemActive = false;
         },
         get count() {
             return this.items.reduce((s, i) => s + i.qty, 0);
@@ -648,9 +666,9 @@ document.addEventListener('alpine:init', () => {
         get subtotal() {
             return this.items.reduce((s, i) => s + i.price * i.qty, 0);
         },
-        // الخصم = الكوبون فقط (لا يتجاوز المجموع الفرعي)
+        // الخصم = الكوبون + نقاط الولاء المستبدلة (لا يتجاوز المجموع الفرعي)
         get discountAmount() {
-            return Math.min(this.couponDiscount, this.subtotal);
+            return Math.min(this.couponDiscount + this.redeemDiscount, this.subtotal);
         },
         get taxAmount() {
             return ((this.subtotal - this.discountAmount) * this.taxRate) / 100;

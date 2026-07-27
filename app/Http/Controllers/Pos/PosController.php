@@ -118,6 +118,7 @@ class PosController extends Controller
             'resume_id' => ['nullable', 'integer'],
             'coupon_code' => ['nullable', 'string', 'max:40'],
             'client_uuid' => ['nullable', 'string', 'max:64'],
+            'redeem_points' => ['nullable', 'integer', 'min:0'],
         ]);
 
         // صمود الانقطاع: لو أُعيد رفع نفس الطلب (بعد عودة الاتصال) نعيد الفاتورة الأصلية بدل تكراره
@@ -210,14 +211,19 @@ class PosController extends Controller
             }
         }
 
-        // نقاط الولاء: تُمنح للعميل المسجّل (لا للعميل النقدي) حسب إعدادات النشاط
-        $pointsEarned = $this->awardLoyaltyPoints($order);
+        // نقاط الولاء: استبدال (خصم) ثم اكتساب — للعميل المسجّل حسب إعدادات النشاط
+        $loyalty = $this->applyLoyalty($order, (int) ($data['redeem_points'] ?? 0));
 
         \App\Support\Activity::log('checkout', 'أتمّ بيعًا ' . $order->number . ' بقيمة ' . number_format($order->total, 3) . ' ر.ع', ['subject_id' => $order->id]);
 
         $this->notifyNewOrder($order);
 
-        return response()->json(['ok' => true, 'invoice' => $order->number, 'points_earned' => $pointsEarned]);
+        return response()->json([
+            'ok' => true,
+            'invoice' => $order->number,
+            'points_earned' => $loyalty['earned'],
+            'points_redeemed' => $loyalty['redeemed'],
+        ]);
     }
 
     /** تعليق الطلب */
@@ -330,41 +336,55 @@ class PosController extends Controller
     }
 
     /**
-     * منح نقاط الولاء للعميل المسجّل عند الشراء (يحترم إعدادات التفعيل والمعدّل).
-     * المعدّل = نقاط لكل 1 ر.ع من إجمالي الطلب (افتراضي 1). يُرجِع عدد النقاط الممنوحة.
+     * نقاط الولاء للعميل المسجّل: تستبدل النقاط المطلوبة (خصم) ثم تمنح نقاط الشراء.
+     * تحترم إعداد التفعيل والمعدّل، وتربط الطلب بالعميل. تُرجِع ['earned'=>x, 'redeemed'=>y].
      */
-    private function awardLoyaltyPoints(Order $order): int
+    private function applyLoyalty(Order $order, int $requestedRedeem): array
     {
         $walkIn = 'عميل نقدي';
         if (empty($order->customer_name) || $order->customer_name === $walkIn) {
-            return 0;
+            return ['earned' => 0, 'redeemed' => 0];
         }
 
         $bid = $this->bid();
-        $enabled = \App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_enabled')->value('value');
-        if ($enabled === '0') {
-            return 0; // معطّل صراحةً (مفعّل افتراضيًا)
-        }
-
-        $rate = (float) (\App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_earn_rate')->value('value') ?? 1);
-        if ($rate <= 0) {
-            return 0;
-        }
-
         $customer = \App\Models\Customer::where('business_id', $bid)->where('name', $order->customer_name)->first();
         if (! $customer) {
-            return 0;
+            return ['earned' => 0, 'redeemed' => 0];
         }
 
-        $points = (int) floor((float) $order->total * $rate);
-        if ($points <= 0) {
-            return 0;
+        $order->customer_id = $customer->id; // ربط الطلب بالعميل دائمًا
+
+        $enabled = \App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_enabled')->value('value');
+        if ($enabled === '0') {
+            $order->save();
+
+            return ['earned' => 0, 'redeemed' => 0]; // البرنامج معطّل صراحةً
         }
 
-        $customer->increment('points', $points);
-        $order->update(['customer_id' => $customer->id, 'points_earned' => $points]);
+        // 1) استبدال النقاط (لا يتجاوز رصيد العميل)
+        $redeemed = 0;
+        if ($requestedRedeem > 0) {
+            $redeemed = min($requestedRedeem, (int) $customer->points);
+            if ($redeemed > 0) {
+                $customer->decrement('points', $redeemed);
+            }
+        }
 
-        return $points;
+        // 2) اكتساب نقاط الشراء (على الإجمالي بعد الخصم)
+        $earned = 0;
+        $rate = (float) (\App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_earn_rate')->value('value') ?? 1);
+        if ($rate > 0) {
+            $earned = (int) floor((float) $order->total * $rate);
+            if ($earned > 0) {
+                $customer->increment('points', $earned);
+            }
+        }
+
+        $order->points_earned = $earned;
+        $order->redeemed_points = $redeemed;
+        $order->save();
+
+        return ['earned' => $earned, 'redeemed' => $redeemed];
     }
 
     /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */

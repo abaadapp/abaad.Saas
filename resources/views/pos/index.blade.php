@@ -11,7 +11,11 @@
         $resume = session('resume_cart');
         $customersForJs = collect($customers)->map(fn ($c) => [
             'id' => $c['id'], 'name' => $c['name'], 'label' => $c['label'], 'phone' => $c['phone'] ?? '',
+            'points' => (int) ($c['points'] ?? 0),
         ])->values()->all();
+        $loyaltyEnabled = \App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_enabled')->value('value') !== '0';
+    @endphp
+    @php
         $productsForJs = collect($products)->map(fn ($p) => [
             'id' => $p['id'], 'label' => $p['label'], 'price' => $p['price'], 'image' => $p['image'],
             'sku' => $p['sku'] ?? '', 'barcode' => $p['barcode'] ?? '', 'stock' => (int) $p['qty'],
@@ -271,6 +275,31 @@
                     <p x-show="couponError" x-cloak class="mt-1 text-xs text-danger-500" x-text="couponError"></p>
                 </div>
 
+                @if ($loyaltyEnabled)
+                    {{-- استبدال نقاط ولاء العميل (تظهر فقط لعميل مسجّل لديه نقاط) --}}
+                    <div x-show="selectedPoints > 0" x-cloak class="rounded-xl border border-secondary-200 bg-secondary-50/60 p-2.5">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="flex items-center gap-1.5 text-xs font-medium text-secondary-700 min-w-0">
+                                <x-icon name="award" class="w-4 h-4 shrink-0" />
+                                <span class="truncate" x-text="{{ \Illuminate\Support\Js::from(__('نقاط العميل:')) }} + ' ' + selectedPoints"></span>
+                                <span class="text-secondary-500 shrink-0" x-text="'(' + money(selectedPoints / 100) + ')'"></span>
+                            </span>
+                            <button type="button" @click="redeemActive = !redeemActive"
+                                    :class="redeemActive ? 'bg-secondary-600 text-white' : 'bg-white text-secondary-700 border border-secondary-300'"
+                                    class="shrink-0 text-[11px] font-semibold rounded-full px-3 py-1 transition">
+                                <span x-show="!redeemActive">{{ __('استخدم النقاط') }}</span>
+                                <span x-show="redeemActive" x-cloak>{{ __('إلغاء') }}</span>
+                            </button>
+                        </div>
+                        <p x-show="redeemActive && redeemPointsUsed > 0" x-cloak class="mt-1.5 text-[11px] text-secondary-700"
+                           x-text="'− ' + money(redeemDiscount) + ' (' + redeemPointsUsed + ' ' + {{ \Illuminate\Support\Js::from(__('نقطة')) }} + ')'"></p>
+                    </div>
+                @endif
+
+                <div x-show="redeemDiscount > 0" x-cloak class="flex items-center justify-between text-sm text-secondary-700">
+                    <span>{{ __('خصم نقاط الولاء') }}</span>
+                    <span class="font-medium" x-text="'- ' + money(redeemDiscount)"></span>
+                </div>
                 <div class="flex items-center justify-between text-sm text-gray-600">
                     <span>{{ __('الضريبة (5%)') }}</span>
                     <span class="font-medium text-gray-800" x-text="money(taxAmount)"></span>

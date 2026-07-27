@@ -9,7 +9,21 @@
     @endphp
 
     <div class="h-full flex flex-col lg:flex-row"
-         x-data="{ list: @js($data), sel: 0, money(v) { return Number(v).toFixed(3) + ' ' + @js(__('ر.ع')); } }">
+         x-data="{
+            q: '',
+            list: @js($data),
+            sel: 0,
+            money(v) { return Number(v).toFixed(3) + ' ' + @js(__('ر.ع')); },
+            get filtered() {
+                const t = this.q.trim().toLowerCase();
+                if (!t) return this.list;
+                return this.list.filter((r) =>
+                    (r.number || '').toLowerCase().includes(t) ||
+                    (r.customer || '').toLowerCase().includes(t) ||
+                    (r.phone || '').toLowerCase().includes(t));
+            },
+            get current() { return this.filtered[this.sel] || this.filtered[0] || {}; },
+         }">
 
         {{-- ======= قائمة الفواتير (يمين) ======= --}}
         <div class="lg:w-2/5 xl:w-1/3 border-l border-gray-100 flex flex-col min-h-0 no-print">
@@ -23,10 +37,11 @@
                         <p class="text-xs text-gray-400">{{ __('اختر فاتورة لمعاينتها وطباعتها') }}</p>
                     </div>
                 </div>
-                <x-input name="rec-search" :placeholder="__('ابحث برقم الفاتورة أو العميل...')" icon="search" />
+                <x-input name="rec-search" :placeholder="__('ابحث برقم الفاتورة أو العميل أو الهاتف...')" icon="search"
+                         x-model="q" @input="sel = 0" />
             </div>
             <div class="flex-1 overflow-y-auto p-3 space-y-2">
-                <template x-for="(rec, idx) in list" :key="rec.number">
+                <template x-for="(rec, idx) in filtered" :key="rec.number">
                     <div @click="sel = idx"
                             :class="sel === idx ? 'border-gray-900 bg-gray-100' : 'border-gray-100 bg-white hover:bg-gray-50'"
                             class="w-full text-right border rounded-xl p-3 transition-colors cursor-pointer">
@@ -35,8 +50,11 @@
                             <span class="text-sm font-bold text-gray-700" x-text="money(rec.total)"></span>
                         </div>
                         <div class="flex items-center justify-between mt-1 text-xs text-gray-400">
-                            <span x-text="rec.customer"></span>
-                            <span x-text="rec.time"></span>
+                            <span class="flex items-center gap-1.5 min-w-0">
+                                <span class="truncate" x-text="rec.customer"></span>
+                                <span x-show="rec.phone" class="font-mono text-gray-400 shrink-0" dir="ltr" x-text="rec.phone"></span>
+                            </span>
+                            <span class="shrink-0" x-text="rec.time"></span>
                         </div>
                         <div class="mt-2 flex justify-end gap-3">
                             <a :href="'{{ route('pos.order-details', '__NUMBER__') }}'.replace('__NUMBER__', rec.number)" @click.stop
@@ -50,6 +68,7 @@
                         </div>
                     </div>
                 </template>
+                <p x-show="!filtered.length" x-cloak class="text-center text-sm text-gray-400 py-10">{{ __('لا نتائج مطابقة') }}</p>
             </div>
         </div>
 
@@ -59,7 +78,7 @@
                 <x-button variant="dark" icon="printer" onclick="window.print()">{{ __('طباعة الفاتورة') }}</x-button>
             </div>
 
-            <div class="thermal-receipt bg-white shadow-lg rounded-lg p-5 text-gray-800" style="width: 300px; font-family: 'Tajawal', monospace;">
+            <div x-show="filtered.length" class="thermal-receipt bg-white shadow-lg rounded-lg p-5 text-gray-800" style="width: 300px; font-family: 'Tajawal', monospace;">
                 {{-- الترويسة --}}
                 <div class="text-center border-b border-dashed border-gray-300 pb-3">
                     <div class="w-14 h-14 mx-auto rounded-full bg-gray-200 text-gray-700 flex items-center justify-center mb-2">
@@ -72,10 +91,10 @@
 
                 {{-- بيانات الفاتورة --}}
                 <div class="text-xs py-2 border-b border-dashed border-gray-300 space-y-1">
-                    <div class="flex justify-between"><span class="text-gray-500">{{ __('رقم الفاتورة') }}</span><span class="font-bold" x-text="list[sel].number"></span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">{{ __('التاريخ/الوقت') }}</span><span x-text="list[sel].time"></span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">{{ __('العميل') }}</span><span x-text="list[sel].customer"></span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">{{ __('الموظف') }}</span><span x-text="list[sel].employee"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">{{ __('رقم الفاتورة') }}</span><span class="font-bold" x-text="current.number"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">{{ __('التاريخ/الوقت') }}</span><span x-text="current.time"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">{{ __('العميل') }}</span><span x-text="current.customer"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">{{ __('الموظف') }}</span><span x-text="current.employee"></span></div>
                 </div>
 
                 {{-- المنتجات --}}
@@ -88,7 +107,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="line in list[sel].lines" :key="line.name">
+                        <template x-for="line in (current.lines || [])" :key="line.name">
                             <tr class="border-b border-dashed border-gray-100">
                                 <td class="py-1.5 text-right" x-text="line.name"></td>
                                 <td class="py-1.5 text-center" x-text="line.qty"></td>
@@ -100,13 +119,13 @@
 
                 {{-- الإجماليات --}}
                 <div class="text-xs py-2 border-t border-dashed border-gray-300 space-y-1">
-                    <div class="flex justify-between"><span class="text-gray-500">{{ __('المجموع الفرعي') }}</span><span x-text="money(list[sel].subtotal)"></span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">{{ __('الخصم') }}</span><span x-text="'- ' + money(list[sel].discount)"></span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">{{ __('الضريبة (5%)') }}</span><span x-text="money(list[sel].tax)"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">{{ __('المجموع الفرعي') }}</span><span x-text="money(current.subtotal)"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">{{ __('الخصم') }}</span><span x-text="'- ' + money(current.discount)"></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">{{ __('الضريبة (5%)') }}</span><span x-text="money(current.tax)"></span></div>
                     <div class="flex justify-between text-sm font-extrabold pt-1.5 border-t border-gray-300 mt-1">
-                        <span>{{ __('الإجمالي') }}</span><span x-text="money(list[sel].total)"></span>
+                        <span>{{ __('الإجمالي') }}</span><span x-text="money(current.total)"></span>
                     </div>
-                    <div class="flex justify-between pt-1"><span class="text-gray-500">{{ __('وسيلة الدفع') }}</span><span class="font-medium" x-text="list[sel].payment"></span></div>
+                    <div class="flex justify-between pt-1"><span class="text-gray-500">{{ __('وسيلة الدفع') }}</span><span class="font-medium" x-text="current.payment"></span></div>
                 </div>
 
                 {{-- التذييل --}}

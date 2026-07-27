@@ -1413,12 +1413,17 @@ class Demo
     public static function receipts(): array
     {
         $name = auth()->user()?->name;
+        // خريطة الاسم → الهاتف لعملاء النشاط (لتمكين البحث برقم الهاتف في الفواتير)
+        $phones = \App\Models\Customer::where('business_id', self::bid())
+            ->whereNotNull('phone')->pluck('phone', 'name');
+
         return Order::where('business_id', self::bid())->where('is_held', false)
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
             ->with('items')
             ->orderByDesc('ordered_at')->limit(30)->get()->map(fn ($o) => [
                 'number' => $o->number,
                 'customer' => $o->customer_name ?? __('عميل نقدي'),
+                'phone' => $phones[$o->customer_name] ?? '',
                 'total' => (float) $o->total,
                 'subtotal' => (float) $o->subtotal,
                 'discount' => (float) $o->discount,

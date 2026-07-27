@@ -14,6 +14,7 @@
             'points' => (int) ($c['points'] ?? 0),
         ])->values()->all();
         $loyaltyEnabled = \App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_enabled')->value('value') !== '0';
+        $redeemMaxPct = (int) (\App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_redeem_max_pct')->value('value') ?? 50);
     @endphp
     @php
         $productsForJs = collect($products)->map(fn ($p) => [
@@ -21,7 +22,7 @@
             'sku' => $p['sku'] ?? '', 'barcode' => $p['barcode'] ?? '', 'stock' => (int) $p['qty'],
         ])->values()->all();
     @endphp
-    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }}, {{ \Illuminate\Support\Js::from($productsForJs) }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }}, {{ \Illuminate\Support\Js::from($productsForJs) }}, {{ $redeemMaxPct }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
 
         {{-- مؤشّر صمود الانقطاع: يظهر عند انقطاع الشبكة أو وجود طلبات بانتظار المزامنة --}}
         <div x-cloak x-show="!online || pendingCount"
@@ -293,6 +294,9 @@
                         </div>
                         <p x-show="redeemActive && redeemPointsUsed > 0" x-cloak class="mt-1.5 text-[11px] text-secondary-700"
                            x-text="'− ' + money(redeemDiscount) + ' (' + redeemPointsUsed + ' ' + {{ \Illuminate\Support\Js::from(__('نقطة')) }} + ')'"></p>
+                        {{-- توضيح السقف: حين لا يُغطّي الاستبدال كامل رصيد العميل بسبب سقف نسبة الفاتورة --}}
+                        <p x-show="redeemActive && (selectedPoints / 100) > redeemCap" x-cloak class="mt-1 text-[10px] text-secondary-500"
+                           x-text="{{ \Illuminate\Support\Js::from(__('الحد الأقصى لهذه الفاتورة')) }} + ' ' + redeemMaxPct + '% (' + money(redeemCap) + ')'"></p>
                     </div>
                 @endif
 

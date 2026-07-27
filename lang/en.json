@@ -1672,5 +1672,8 @@
     "نقاط العميل:": "Customer points:",
     "استخدم النقاط": "Use points",
     "نقطة": "points",
-    "خصم نقاط الولاء": "Loyalty points discount"
+    "خصم نقاط الولاء": "Loyalty points discount",
+    "أقصى نسبة يُغطّيها الاستبدال من كل فاتورة (%)": "Max share of each invoice covered by redemption (%)",
+    "يبقى العميل يدفع الباقي نقدًا · مثال: 50% تعني ألا يخصم بالنقاط أكثر من نصف الفاتورة": "The customer still pays the rest in cash · e.g. 50% means points cannot discount more than half the invoice",
+    "الحد الأقصى لهذه الفاتورة": "Maximum for this invoice"
 }

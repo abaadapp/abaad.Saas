@@ -368,7 +368,7 @@ document.addEventListener('alpine:init', () => {
     }));
 
     /* سلة نقطة البيع POS */
-    Alpine.data('posCart', (resume = null, initialCustomers = [], initialProducts = []) => ({
+    Alpine.data('posCart', (resume = null, initialCustomers = [], initialProducts = [], redeemMaxPct = 50) => ({
         // سلة مستعادة من طلب معلّق/محفوظ (إن وُجدت) — نضمن مفتاح سلة فريدًا لكل بند
         items: (resume?.items ?? []).map((i, idx) => ({ ...i, key: i.key ?? ('r' + idx) })),
         resumeId: resume?.id ?? null,
@@ -401,17 +401,24 @@ document.addEventListener('alpine:init', () => {
         })),
         customerSearch: '',
         // ====== استبدال نقاط الولاء كخصم (100 نقطة = 1 ر.ع) ======
+        // سقف منطقي: لا يُغطّي الاستبدال أكثر من نسبة محدّدة من قيمة الشراء (يبقى العميل يدفع نقدًا)
         redeemActive: false,
+        redeemMaxPct: Math.min(100, Math.max(0, Number(redeemMaxPct) || 0)),
         get selectedCustomer() {
             return this.customers.find((c) => c.name === this.customer) || null;
         },
         get selectedPoints() {
             return this.selectedCustomer ? (this.selectedCustomer.points || 0) : 0;
         },
+        // أقصى قيمة قابلة للاستبدال في هذه الفاتورة (نسبة من المجموع الفرعي، ولا تتجاوز المتبقّي بعد الكوبون)
+        get redeemCap() {
+            const byPct = (this.subtotal * this.redeemMaxPct) / 100;
+            const afterCoupon = Math.max(0, this.subtotal - this.couponDiscount);
+            return Math.min(byPct, afterCoupon);
+        },
         get redeemDiscount() {
             if (!this.redeemActive || this.selectedPoints <= 0) return 0;
-            const cap = Math.max(0, this.subtotal - this.couponDiscount);
-            return Math.min(this.selectedPoints / 100, cap);
+            return Math.min(this.selectedPoints / 100, this.redeemCap);
         },
         get redeemPointsUsed() {
             return Math.round(this.redeemDiscount * 100);

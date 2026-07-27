@@ -210,11 +210,14 @@ class PosController extends Controller
             }
         }
 
+        // نقاط الولاء: تُمنح للعميل المسجّل (لا للعميل النقدي) حسب إعدادات النشاط
+        $pointsEarned = $this->awardLoyaltyPoints($order);
+
         \App\Support\Activity::log('checkout', 'أتمّ بيعًا ' . $order->number . ' بقيمة ' . number_format($order->total, 3) . ' ر.ع', ['subject_id' => $order->id]);
 
         $this->notifyNewOrder($order);
 
-        return response()->json(['ok' => true, 'invoice' => $order->number]);
+        return response()->json(['ok' => true, 'invoice' => $order->number, 'points_earned' => $pointsEarned]);
     }
 
     /** تعليق الطلب */
@@ -324,6 +327,44 @@ class PosController extends Controller
         }
 
         return back()->with('toast', ['msg' => __('تم إضافة العميل'), 'type' => 'success']);
+    }
+
+    /**
+     * منح نقاط الولاء للعميل المسجّل عند الشراء (يحترم إعدادات التفعيل والمعدّل).
+     * المعدّل = نقاط لكل 1 ر.ع من إجمالي الطلب (افتراضي 1). يُرجِع عدد النقاط الممنوحة.
+     */
+    private function awardLoyaltyPoints(Order $order): int
+    {
+        $walkIn = 'عميل نقدي';
+        if (empty($order->customer_name) || $order->customer_name === $walkIn) {
+            return 0;
+        }
+
+        $bid = $this->bid();
+        $enabled = \App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_enabled')->value('value');
+        if ($enabled === '0') {
+            return 0; // معطّل صراحةً (مفعّل افتراضيًا)
+        }
+
+        $rate = (float) (\App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_earn_rate')->value('value') ?? 1);
+        if ($rate <= 0) {
+            return 0;
+        }
+
+        $customer = \App\Models\Customer::where('business_id', $bid)->where('name', $order->customer_name)->first();
+        if (! $customer) {
+            return 0;
+        }
+
+        $points = (int) floor((float) $order->total * $rate);
+        if ($points <= 0) {
+            return 0;
+        }
+
+        $customer->increment('points', $points);
+        $order->update(['customer_id' => $customer->id, 'points_earned' => $points]);
+
+        return $points;
     }
 
     /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */

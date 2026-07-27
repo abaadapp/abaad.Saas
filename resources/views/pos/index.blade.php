@@ -326,7 +326,7 @@
 
         {{-- ============ نافذة الدفع ============ --}}
         <x-modal name="payment" :title="__('إتمام الدفع')" maxWidth="max-w-lg">
-            <div x-data="{ step: 'pay', paid: 0, method: 'نقدي', invoice: 'INV-' + Math.floor(78900 + Math.random() * 99), synced: true }"
+            <div x-data="{ step: 'pay', paid: 0, method: 'نقدي', invoice: 'INV-' + Math.floor(78900 + Math.random() * 99), synced: true, pointsEarned: 0 }"
                  @close-modal.window="step = 'pay'; paid = 0">
 
                 {{-- خطوة الدفع --}}
@@ -371,6 +371,7 @@
                             checkoutSale(method).then(res => {
                               synced = res.synced;
                               if (res.invoice) invoice = res.invoice;
+                              pointsEarned = res.points || 0;
                               step = 'success';
                             })
                             "
@@ -394,6 +395,11 @@
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('المبلغ') }}</span><span class="font-bold text-gray-800" x-text="money(total)"></span></div>
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('وسيلة الدفع') }}</span><span class="font-bold text-gray-800" x-text="method === 'بطاقة' ? @js(__('فيزا')) : method"></span></div>
                         <div class="flex justify-between"><span class="text-gray-500">{{ __('العميل') }}</span><span class="font-bold text-gray-800" x-text="customer"></span></div>
+                    </div>
+                    {{-- نقاط الولاء المكتسبة --}}
+                    <div x-show="pointsEarned > 0" x-cloak class="flex items-center justify-center gap-2 rounded-xl bg-secondary-50 text-secondary-700 px-3 py-2 text-sm font-bold">
+                        <x-icon name="award" class="w-4 h-4" />
+                        <span x-text="{{ \Illuminate\Support\Js::from(__('نقاط ولاء مكتسبة:')) }} + ' ' + pointsEarned"></span>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <button type="button" x-show="synced" @click="window.open('{{ url('pos/receipt') }}/' + encodeURIComponent(invoice) + '/pdf', '_blank')"

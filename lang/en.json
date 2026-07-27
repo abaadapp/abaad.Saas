@@ -1661,5 +1661,12 @@
     "تقديري بناءً على تكلفة المنتجات الحالية": "Estimated based on current product costs",
     "مجمل الربح": "Gross profit",
     "المصروفات التشغيلية": "Operating expenses",
-    "هامش صافي الربح": "Net profit margin"
+    "هامش صافي الربح": "Net profit margin",
+    "برنامج الولاء": "Loyalty program",
+    "امنح عملاءك نقاطًا عند الشراء يستبدلونها كخصم لاحقًا": "Reward customers with points on purchase, redeemable later as a discount",
+    "تفعيل نقاط الولاء عند الشراء": "Award loyalty points on purchase",
+    "نقاط لكل 1 ر.ع من قيمة الشراء": "Points per 1 OMR of the purchase",
+    "مثال: 1 = نقطة لكل ريال · الاستبدال: 100 نقطة = 1 ر.ع خصم": "e.g. 1 = one point per OMR · Redemption: 100 points = 1 OMR discount",
+    "نقاط ولاء مكتسبة:": "Loyalty points earned:",
+    "نقاط ولاء مكتسبة": "Loyalty points earned"
 }

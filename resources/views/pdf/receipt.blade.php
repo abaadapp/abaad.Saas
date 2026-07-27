@@ -73,6 +73,9 @@
     <tr><td class="label">{{ __('رسوم التوصيل') }}</td><td style="text-align:left">{{ $money($order->delivery_fee) }}</td></tr>
     <tr><td class="grand label">{{ __('الإجمالي') }}</td><td class="grand" style="text-align:left">{{ $money($order->total) }}</td></tr>
     <tr><td class="label">{{ __('وسيلة الدفع') }}</td><td style="text-align:left">{{ $order->payment_method === 'بطاقة' ? __('فيزا') : __($order->payment_method) }}</td></tr>
+    @if (($order->points_earned ?? 0) > 0)
+        <tr><td class="label">{{ __('نقاط ولاء مكتسبة') }}</td><td style="text-align:left">{{ $order->points_earned }}</td></tr>
+    @endif
 </table>
 
 <div class="dash"></div>

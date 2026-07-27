@@ -493,7 +493,7 @@ document.addEventListener('alpine:init', () => {
                 });
                 if (res.ok) {
                     const d = await res.json();
-                    return { ok: true, invoice: d.invoice };
+                    return { ok: true, invoice: d.invoice, points: d.points_earned || 0 };
                 }
                 // 419 = انتهاء الجلسة/رمز CSRF، 422 = بيانات مرفوضة → لا فائدة من إعادة المحاولة
                 if (res.status === 422 || res.status === 419) return { ok: false, drop: true };
@@ -529,7 +529,7 @@ document.addEventListener('alpine:init', () => {
                 this._savePending();
             }
             this.online = navigator.onLine;
-            return { synced: res.ok, invoice: res.invoice ?? null };
+            return { synced: res.ok, invoice: res.invoice ?? null, points: res.points ?? 0 };
         },
         // يفرّغ الطابور تباعًا؛ يتوقف عند أول فشل شبكة ليعيد لاحقًا (يمنع التوازي المتكرر)
         async flushOutbox() {

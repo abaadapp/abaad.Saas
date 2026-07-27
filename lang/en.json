@@ -1689,14 +1689,5 @@
     "الحد الأدنى لبدء الاستبدال (نقطة)": "Minimum points to start redeeming",
     "تتراكم النقاط حتى تبلغ هذا الحد ثم يُتاح خصمها · مثال: 100 نقطة = 1 ر.ع": "Points accumulate until they reach this threshold, then can be redeemed · e.g. 100 points = 1 OMR",
     "تتراكم النقاط — يبدأ الاستبدال من": "Points are accumulating — redemption starts at",
-    "نقطة (باقٍ": "points (remaining",
-    "تعذّر التنفيذ": "Action failed",
-    "تعذّر الاتصال. حاول مرة أخرى.": "Connection failed. Please try again.",
-    "جرّب التنبيهات الآن دون انتظار الإرسال الصباحي.": "Try the alerts now without waiting for the morning send.",
-    "جارٍ الإرسال...": "Sending...",
-    "إرسال تنبيهات الآن": "Send alerts now",
-    "لا يوجد بريد إلكتروني للنشاط. أضِفه من بيانات النشاط أولًا.": "No business email set. Add it in business details first.",
-    "لا توجد تنبيهات حاليًا — كل المؤشّرات جيدة 👍": "No alerts right now — all metrics look good 👍",
-    "تعذّر إرسال البريد. تحقّق من إعدادات البريد.": "Could not send the email. Check your mail settings.",
-    "تم إرسال :count تنبيه إلى :email": "Sent :count alert(s) to :email"
+    "نقطة (باقٍ": "points (remaining"
 }

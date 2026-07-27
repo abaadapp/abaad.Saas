@@ -58,4 +58,34 @@ class NotificationController extends Controller
 
         return response()->json(['ok' => true]);
     }
+
+    /** إرسال التنبيهات الذكية فورًا لصاحب النشاط الحالي (تشغيل يدوي من الإعدادات) */
+    public function sendSmart()
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $business = \App\Models\Business::find($bid);
+
+        if (! $business || ! $business->email) {
+            return response()->json(['ok' => false, 'message' => __('لا يوجد بريد إلكتروني للنشاط. أضِفه من بيانات النشاط أولًا.')], 422);
+        }
+
+        $alerts = Demo::smartAlertsFor($bid);
+        if (empty($alerts)) {
+            return response()->json(['ok' => true, 'count' => 0, 'message' => __('لا توجد تنبيهات حاليًا — كل المؤشّرات جيدة 👍')]);
+        }
+
+        try {
+            \Illuminate\Support\Facades\Mail::to($business->email)->send(new \App\Mail\SmartAlertMail($business->name, $alerts));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['ok' => false, 'message' => __('تعذّر إرسال البريد. تحقّق من إعدادات البريد.')], 500);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'count' => count($alerts),
+            'message' => __('تم إرسال :count تنبيه إلى :email', ['count' => count($alerts), 'email' => $business->email]),
+        ]);
+    }
 }

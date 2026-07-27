@@ -292,6 +292,32 @@
                     </span>
                 </label>
 
+                {{-- تشغيل يدوي فوري للتنبيهات الذكية (لا ينتظر الجدولة الصباحية) --}}
+                <div x-data="{ sending: false,
+                        async send() {
+                            this.sending = true;
+                            try {
+                                const res = await fetch('{{ route('admin.notifications.send-smart') }}', {
+                                    method: 'POST',
+                                    headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Accept': 'application/json' },
+                                });
+                                const data = await res.json().catch(() => ({}));
+                                $store.toasts.add(data.message || @js(__('تعذّر التنفيذ')), data.ok ? (data.count ? 'success' : 'info') : 'danger', 4000);
+                            } catch (e) {
+                                $store.toasts.add(@js(__('تعذّر الاتصال. حاول مرة أخرى.')), 'danger', 3000);
+                            }
+                            this.sending = false;
+                        } }"
+                     class="flex items-center justify-between gap-3 rounded-xl border border-dashed border-secondary-200 px-4 py-3 mb-5">
+                    <p class="text-xs text-gray-500">{{ __('جرّب التنبيهات الآن دون انتظار الإرسال الصباحي.') }}</p>
+                    <button type="button" @click="send()" :disabled="sending"
+                            class="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-secondary-600 hover:bg-secondary-700 text-white text-xs font-semibold px-4 py-2 transition disabled:opacity-50">
+                        <x-icon name="send" class="w-3.5 h-3.5" x-show="!sending" />
+                        <x-icon name="loader-circle" class="w-3.5 h-3.5 animate-spin" x-show="sending" x-cloak />
+                        <span x-text="sending ? @js(__('جارٍ الإرسال...')) : @js(__('إرسال تنبيهات الآن'))"></span>
+                    </button>
+                </div>
+
                 {{-- الملخّص اليومي (بريد نهاية اليوم + بطاقة في جرس الإشعارات) --}}
                 @php $notifyDaily = \App\Models\Setting::where('business_id', auth()->user()->business_id)->where('key', 'notify_daily_summary')->value('value'); @endphp
                 <label class="flex items-center justify-between rounded-xl border border-success-100 bg-success-50/40 px-4 py-3.5 cursor-pointer mb-5">

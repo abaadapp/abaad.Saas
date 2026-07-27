@@ -110,6 +110,7 @@
             <x-pagination :total="count($inventory)" :perPage="10" :current="1" />
         </x-slot:footer>
     </x-table>
+    <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
 
     {{-- نافذة تعديل الكمية --}}
     <x-modal name="edit-qty" :title="__('تعديل كمية المنتج')" maxWidth="max-w-md">

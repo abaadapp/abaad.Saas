@@ -42,12 +42,19 @@
             </div>
 
             {{-- قائمة الفروع --}}
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <h3 class="text-lg font-bold text-gray-800 mb-5">{{ __('قائمة الفروع') }}</h3>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6" x-data="listFilter()" x-ref="list">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                    <h3 class="text-lg font-bold text-gray-800">{{ __('قائمة الفروع') }}</h3>
+                    @if (count($branchList))
+                        <div class="w-full sm:w-64">
+                            <x-input name="branch-search" :placeholder="__('ابحث بالاسم أو الهاتف أو العنوان...')" icon="search" x-model="q" @input="apply()" />
+                        </div>
+                    @endif
+                </div>
                 @if (count($branchList))
                     <x-table :headers="[__('الفرع'), __('الهاتف'), __('العنوان'), '']">
                         @foreach ($branchList as $branch)
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-gray-50" data-row data-search="{{ $branch['name'] }} {{ $branch['phone'] }} {{ $branch['address'] }}">
                                 <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
                                     <div class="flex items-center gap-3">
                                         <span class="w-9 h-9 rounded-xl bg-gray-100 text-gray-600 flex items-center justify-center shrink-0">
@@ -67,6 +74,7 @@
                             </tr>
                         @endforeach
                     </x-table>
+                    <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
                 @else
                     <x-empty-state icon="git-branch" :title="__('لا توجد فروع')" :message="__('أضف أول فرع لنشاطك من زر «إضافة فرع» بالأعلى.')" />
                 @endif

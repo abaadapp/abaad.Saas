@@ -158,6 +158,7 @@
                         <p class="text-sm text-gray-500">{{ __('أنواع المصروفات: :count', ['count' => count($types)]) }}</p>
                     </x-slot:footer>
                 </x-table>
+                <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
             @else
                 <div class="bg-white rounded-2xl border border-gray-100 shadow-sm">
                     <x-empty-state icon="tags" :title="__('لا توجد أنواع')" :message="__('أضف أول نوع مصروف')">

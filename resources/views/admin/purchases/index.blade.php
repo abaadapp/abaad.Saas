@@ -49,11 +49,21 @@
 
     {{-- قائمة أوامر الشراء --}}
     @if (count($orders))
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-100"><h3 class="font-bold text-gray-800">{{ __('أوامر الشراء') }}</h3></div>
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" x-data="listFilter()" x-ref="list" @filter-change="setTag($event.detail.key, $event.detail.value)">
+            <div class="px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h3 class="font-bold text-gray-800">{{ __('أوامر الشراء') }}</h3>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <div class="w-full sm:w-56">
+                        <x-input name="po-search" :placeholder="__('ابحث بالرقم أو المورّد...')" icon="search" x-model="q" @input="apply()" />
+                    </div>
+                    <div class="w-full sm:w-44">
+                        <x-select name="po-status" :placeholder="__('كل الحالات')" :options="['مسودة' => __('مسودة'), 'مُرسل' => __('مُرسل'), 'مستلم جزئيًا' => __('مستلم جزئيًا'), 'مستلم' => __('مستلم'), 'ملغي' => __('ملغي')]" on-select="$dispatch('filter-change', {key:'status', value})" icon="filter" />
+                    </div>
+                </div>
+            </div>
             <x-table :headers="[__('الرقم'), __('الفرع'), __('المورّد'), __('الأصناف'), __('الإجمالي'), __('الحالة'), __('إيصال الدفع'), __('تاريخ الطلب'), __('إجراء')]">
                 @foreach ($orders as $o)
-                    <tr class="hover:bg-gray-50">
+                    <tr class="hover:bg-gray-50" data-row data-search="{{ $o['number'] }} {{ $o['supplier'] }} {{ $o['branch'] }}" data-tag-status="{{ $o['status'] }}">
                         <td class="px-4 py-3 font-mono text-gray-700 whitespace-nowrap">{{ $o['number'] }}</td>
                         <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ $o['branch'] }}</td>
                         <td class="px-4 py-3 text-gray-800 whitespace-nowrap">{{ $o['supplier'] }}</td>
@@ -97,6 +107,7 @@
                     </tr>
                 @endforeach
             </x-table>
+            <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
         </div>
     @else
         <x-empty-state icon="clipboard-list" :title="__('لا توجد أوامر شراء بعد')" :message="__('أنشئ أول أمر شراء لتزويد مخزونك من المورّدين.')">

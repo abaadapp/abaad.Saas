@@ -31,11 +31,17 @@
     @php $categories = \App\Support\Demo::categories(); @endphp
 
     {{-- قائمة الأقسام --}}
+    <div x-data="listFilter()" x-ref="list">
+        @if (count($categories))
+            <div class="mb-4 max-w-xs">
+                <x-input name="cat-search" :placeholder="__('ابحث باسم القسم...')" icon="search" x-model="q" @input="apply()" />
+            </div>
+        @endif
     <div x-data="{ sel: { id: '', name: '', name_en: '', icon: '', color: '' } }">
         @if (count($categories))
             <x-table :headers="[__('القسم'), __('الأيقونة'), __('اللون'), __('عدد المنتجات'), '']">
                 @foreach ($categories as $cat)
-                    <tr class="hover:bg-gray-50">
+                    <tr class="hover:bg-gray-50" data-row data-search="{{ $cat['name'] }} {{ $cat['name_en'] ?? '' }}">
                         @php $chex = $resolveHex($cat['color']); @endphp
                         <td class="px-4 py-3 whitespace-nowrap">
                             <div class="flex items-center gap-3">
@@ -82,6 +88,7 @@
                     <div class="px-4 py-3 text-xs text-gray-400">{{ __(':n قسم', ['n' => count($categories)]) }}</div>
                 </x-slot:footer>
             </x-table>
+            <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
         @else
             <x-empty-state icon="tags" :title="__('لا توجد أقسام')" :message="__('أضِف أول قسم لتنظيم منتجاتك.')" />
         @endif
@@ -113,6 +120,7 @@
                 <x-button variant="primary" type="submit" form="edit-category-form" icon="check">{{ __('حفظ') }}</x-button>
             </x-slot:footer>
         </x-modal>
+    </div>
     </div>
 
     {{-- نافذة إضافة قسم --}}

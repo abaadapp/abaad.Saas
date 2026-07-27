@@ -20,20 +20,21 @@
         <x-stat-card :label="__('الإيراد السنوي')" :value="\App\Support\Demo::money($ss['yearly_revenue'])" icon="trending-up" color="primary" />
     </div>
 
-    {{-- شريط الفلاتر --}}
+    <div x-data="listFilter()" x-ref="list" @filter-change="setTag($event.detail.key, $event.detail.value)">
+    {{-- شريط الفلاتر (تصفية لحظية) --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            <x-input name="search" :placeholder="__('ابحث باسم الشركة...')" icon="search" />
-            <x-select name="plan" :placeholder="__('كل الباقات')" :options="['أساسية' => __('أساسية'), 'احترافية' => __('احترافية'), 'مؤسسات' => __('مؤسسات')]" />
-            <x-select name="payment" :placeholder="__('كل حالات الدفع')" :options="['مدفوع' => __('مدفوع'), 'غير مدفوع' => __('غير مدفوع')]" />
-            <x-select name="status" :placeholder="__('كل الحالات')" :options="['نشط' => __('نشط'), 'منتهي' => __('منتهي'), 'معطل' => __('معطل')]" />
+            <x-input name="search" :placeholder="__('ابحث باسم الشركة...')" icon="search" x-model="q" @input="apply()" />
+            <x-select name="plan" :placeholder="__('كل الباقات')" :options="['أساسية' => __('أساسية'), 'احترافية' => __('احترافية'), 'مؤسسات' => __('مؤسسات')]" on-select="$dispatch('filter-change', {key:'plan', value})" />
+            <x-select name="payment" :placeholder="__('كل حالات الدفع')" :options="['مدفوع' => __('مدفوع'), 'غير مدفوع' => __('غير مدفوع')]" on-select="$dispatch('filter-change', {key:'payment', value})" />
+            <x-select name="status" :placeholder="__('كل الحالات')" :options="['نشط' => __('نشط'), 'منتهي' => __('منتهي'), 'معطل' => __('معطل')]" on-select="$dispatch('filter-change', {key:'status', value})" />
         </div>
     </div>
 
     {{-- جدول الاشتراكات --}}
     <x-table :headers="[__('الشركة'), __('الباقة'), __('تاريخ البداية'), __('تاريخ الانتهاء'), __('المبلغ'), __('حالة الدفع'), __('حالة الاشتراك')]">
         @foreach (\App\Support\Demo::subscriptions() as $sub)
-            <tr class="hover:bg-gray-50">
+            <tr class="hover:bg-gray-50" data-row data-search="{{ $sub['business'] }}" data-tag-plan="{{ $sub['plan'] }}" data-tag-payment="{{ $sub['payment'] }}" data-tag-status="{{ $sub['status'] }}">
                 <td class="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{{ $sub['business'] }}</td>
                 <td class="px-4 py-3 text-gray-600 whitespace-nowrap">
                     <x-badge type="primary" :text="__($sub['plan'])" />
@@ -45,9 +46,7 @@
                 <td class="px-4 py-3 whitespace-nowrap"><x-badge :text="__($sub['status'])" /></td>
             </tr>
         @endforeach
-
-        <x-slot:footer>
-            <x-pagination :total="128" :perPage="12" :current="1" />
-        </x-slot:footer>
     </x-table>
+    <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
+    </div>
 </x-layouts::super-admin>

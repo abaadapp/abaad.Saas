@@ -15,11 +15,22 @@
         $isEmoji = fn ($icon) => $icon && preg_match('/[^\x00-\x7F]/', $icon);
     @endphp
 
+    <div x-data="listFilter()" x-ref="list" @filter-change="setTag($event.detail.key, $event.detail.value)">
+        @if (count($addons))
+            <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                <div class="flex-1">
+                    <x-input name="addon-search" :placeholder="__('ابحث باسم العنصر...')" icon="search" x-model="q" @input="apply()" />
+                </div>
+                <div class="w-full sm:w-48">
+                    <x-select name="addon-status" :placeholder="__('كل الحالات')" :options="['active' => __('مفعّل'), 'inactive' => __('معطّل')]" on-select="$dispatch('filter-change', {key:'status', value})" icon="filter" />
+                </div>
+            </div>
+        @endif
     <div x-data="{ sel: { id: '', name: '', name_en: '', price: 0, icon: '', active: true } }">
         @if (count($addons))
             <x-table :headers="[__('العنصر'), __('السعر'), __('الحالة'), '']">
                 @foreach ($addons as $a)
-                    <tr class="hover:bg-gray-50">
+                    <tr class="hover:bg-gray-50" data-row data-search="{{ $a['name'] }} {{ $a['name_en'] ?? '' }}" data-tag-status="{{ $a['active'] ? 'active' : 'inactive' }}">
                         <td class="px-4 py-3 whitespace-nowrap">
                             <div class="flex items-center gap-3">
                                 <span class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary-50 text-primary-600 text-lg leading-none">
@@ -61,6 +72,7 @@
                     <div class="px-4 py-3 text-xs text-gray-400">{{ __(':n عنصر', ['n' => count($addons)]) }}</div>
                 </x-slot:footer>
             </x-table>
+            <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
         @else
             <x-empty-state icon="plus-circle" :title="__('لا توجد إضافات')" :message="__('أضِف أول عنصر يُضاف على المنتجات (مثل التغليف أو بطاقة الإهداء).')" />
         @endif
@@ -83,6 +95,7 @@
                 <x-button variant="primary" type="submit" form="edit-addon-form" icon="check">{{ __('حفظ') }}</x-button>
             </x-slot:footer>
         </x-modal>
+    </div>
     </div>
 
     {{-- نافذة إضافة عنصر --}}

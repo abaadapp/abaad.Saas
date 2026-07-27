@@ -98,6 +98,7 @@
                         </tr>
                     @endforeach
                 </x-table>
+                <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
             @else
                 <x-empty-state icon="users" :title="__('لا يوجد موظفون')" :message="__('أضِف أول موظف لفريق عملك.')" />
             @endif

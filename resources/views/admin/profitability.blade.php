@@ -83,6 +83,7 @@
                         <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">{{ __('لا توجد مبيعات لحساب ربحيتها بعد.') }}</td></tr>
                     @endforelse
                 </x-table>
+                <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
             </div>
         </div>
     </div>

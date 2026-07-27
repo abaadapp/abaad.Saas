@@ -63,6 +63,7 @@
             <x-pagination :total="count(\App\Support\Demo::movements())" :perPage="10" :current="1" />
         </x-slot:footer>
     </x-table>
+    <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
     </div>
 
     {{-- نافذة إضافة حركة --}}

@@ -247,17 +247,30 @@ document.addEventListener('alpine:init', () => {
        وكل صف يحمل data-row مع data-search (نص البحث) و data-tag (قيمة الفلتر). */
     Alpine.data('listFilter', () => ({
         q: '',
-        tag: '',
+        tag: '',      // فلتر مفرد (توافق قديم): يقابله data-tag على الصف
+        tags: {},     // فلاتر متعددة مسمّاة: يقابلها data-tag-<key> على الصف
+        // ضبط فلتر مسمّى ثم إعادة التطبيق — يُستدعى من on-select في x-select
+        setTag(key, value) {
+            this.tags[key] = value;
+            this.apply();
+        },
         apply() {
             const box = this.$refs.list;
             if (!box) return;
             const q = this.q.trim().toLowerCase();
             const tag = this.tag;
+            const tags = this.tags;
             let shown = 0;
             box.querySelectorAll('[data-row]').forEach((row) => {
                 const text = (row.getAttribute('data-search') || row.textContent || '').toLowerCase();
                 const rowTag = row.getAttribute('data-tag') || '';
-                const ok = (!q || text.includes(q)) && (!tag || rowTag === tag);
+                let ok = (!q || text.includes(q)) && (!tag || rowTag === tag);
+                if (ok) {
+                    for (const key in tags) {
+                        const val = tags[key];
+                        if (val && row.getAttribute('data-tag-' + key) !== val) { ok = false; break; }
+                    }
+                }
                 row.style.display = ok ? '' : 'none';
                 if (ok) shown++;
             });

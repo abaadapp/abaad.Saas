@@ -7,28 +7,25 @@
         </x-slot:actions>
     </x-page-header>
 
-    {{-- شريط البحث والفلترة --}}
+    <div x-data="listFilter()" x-ref="list" @filter-change="setTag($event.detail.key, $event.detail.value)">
+    {{-- شريط البحث والفلترة (تصفية لحظية) --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6">
-        <form class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
             <div class="lg:col-span-2">
-                <x-input :label="__('بحث')" name="search" icon="search" :placeholder="__('ابحث عن محل ورود...')" />
+                <x-input :label="__('بحث')" name="search" icon="search" :placeholder="__('ابحث عن محل ورود...')" x-model="q" @input="apply()" />
             </div>
             <x-select :label="__('المدينة')" name="city" :placeholder="__('كل المدن')"
-                :options="['مسقط' => __('مسقط'), 'صلالة' => __('صلالة'), 'صحار' => __('صحار'), 'نزوى' => __('نزوى'), 'صور' => __('صور')]" />
-            <div class="flex items-end gap-2">
-                <div class="flex-1">
-                    <x-select :label="__('الحالة')" name="status" :placeholder="__('كل الحالات')"
-                        :options="['نشط' => __('نشط'), 'منتهي' => __('منتهي')]" />
-                </div>
-                <x-button variant="secondary" type="submit" icon="filter">{{ __('تصفية') }}</x-button>
-            </div>
-        </form>
+                :options="['مسقط' => __('مسقط'), 'صلالة' => __('صلالة'), 'صحار' => __('صحار'), 'نزوى' => __('نزوى'), 'صور' => __('صور')]" on-select="$dispatch('filter-change', {key:'city', value})" />
+            <x-select :label="__('الحالة')" name="status" :placeholder="__('كل الحالات')"
+                :options="['نشط' => __('نشط'), 'منتهي' => __('منتهي')]" on-select="$dispatch('filter-change', {key:'status', value})" />
+        </div>
     </div>
 
     {{-- بطاقات المحلات --}}
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         @foreach (\App\Support\Demo::flowerShops() as $shop)
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col"
+                 data-row data-search="{{ $shop['name'] }} {{ $shop['owner'] }} {{ $shop['city'] }}" data-tag-city="{{ $shop['city'] }}" data-tag-status="{{ $shop['status'] }}">
                 <div class="relative h-32 bg-gradient-to-l from-secondary-100 to-primary-50">
                     <img src="{{ $shop['logo'] }}" alt="{{ $shop['name'] }}" class="w-full h-full object-cover opacity-90" />
                     <div class="absolute top-3 right-3">
@@ -82,6 +79,8 @@
                 </div>
             </div>
         @endforeach
+    </div>
+    <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-12">{{ __('لا نتائج مطابقة') }}</div>
     </div>
 
 </x-layouts::super-admin>

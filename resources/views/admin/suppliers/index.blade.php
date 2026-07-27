@@ -69,6 +69,7 @@
                         </tr>
                     @endforeach
                 </x-table>
+                <div x-ref="empty" style="display:none" class="text-center text-sm text-gray-400 py-8">{{ __('لا نتائج مطابقة') }}</div>
             @else
                 <x-empty-state icon="truck" :title="__('لا يوجد مورّدون بعد')" :message="__('أضِف أول مورّد لبدء إنشاء أوامر الشراء.')">
                     <x-button variant="primary" icon="plus" x-data @click="$dispatch('open-modal','add-supplier')">{{ __('مورّد جديد') }}</x-button>

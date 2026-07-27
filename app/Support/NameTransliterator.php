@@ -50,6 +50,10 @@ class NameTransliterator
                     }
                     $out[] = $prefix . $val;
                     $any = true;
+                } elseif ($prefix === '' && ($glued = self::gluedPrefix($key, $map)) !== null) {
+                    // بادئة ملتصقة داخل كلمة واحدة: Abdulrahim → عبدالرحيم، Alharthi → الحارثي
+                    $out[] = $glued;
+                    $any = true;
                 } else {
                     // كلمة غير معروفة: تبقى كما أُدخلت (بلا بادئة)
                     $out[] = $part;
@@ -63,6 +67,30 @@ class NameTransliterator
         }
 
         return trim(implode(' ', $out));
+    }
+
+    /**
+     * يحاول فكّ بادئة ملتصقة (عبدال…/ال…) داخل كلمة واحدة ثم يترجم الباقي إن كان معروفًا.
+     * لا يُفعّل إلا حين يفشل التطابق المباشر — فلا يمسّ أسماءً كاملة مثل «Ali» أو «Alaa».
+     */
+    private static function gluedPrefix(string $key, array $map): ?string
+    {
+        // الأطول أولًا حتى لا يُلتقط «abd» قبل «abdul»
+        $prefixes = ['abdul' => 'عبدال', 'abdel' => 'عبدال', 'abdal' => 'عبدال', 'al' => 'ال', 'el' => 'ال'];
+        foreach ($prefixes as $pfx => $ar) {
+            if (str_starts_with($key, $pfx) && strlen($key) > strlen($pfx)) {
+                $rest = substr($key, strlen($pfx));
+                if (isset($map[$rest])) {
+                    $val = $map[$rest];
+                    if (str_ends_with($ar, 'ال') && str_starts_with($val, 'ال')) {
+                        $val = mb_substr($val, 2);
+                    }
+                    return $ar . $val;
+                }
+            }
+        }
+
+        return null;
     }
 
     /** قاموس الأسماء الشائعة (تهجئات متعددة → العربية الصحيحة) */
@@ -450,6 +478,29 @@ class NameTransliterator
             'antonio' => 'أنطونيو', 'angel' => 'أنجل', 'cristina' => 'كريستينا', 'rowena' => 'روينا',
             'jenny' => 'جيني', 'joy' => 'جوي', 'ramon' => 'رامون', 'jerome' => 'جيروم',
             'melvin' => 'ميلفين', 'jayson' => 'جيسون', 'cherry' => 'تشيري',
+
+            // ===== توسعة عربية إضافية: أسماء رجال (تهجئات وأسماء ناقصة) =====
+            'bashir' => 'بشير', 'basheer' => 'بشير', 'muneeb' => 'منيب', 'areeb' => 'أريب',
+            'uzair' => 'عزير', 'zohaib' => 'زهيب', 'anees' => 'أنيس', 'faizan' => 'فيزان',
+            'rehan' => 'ريحان', 'talib' => 'طالب', 'wajahat' => 'وجاهت', 'zeeshan' => 'زيشان',
+            'junaid' => 'جنيد', 'aqib' => 'عاقب', 'owais' => 'أويس', 'huzaifa' => 'حذيفة',
+            'muddassir' => 'مدثر', 'ubaidah' => 'عبيدة', 'muadh' => 'معاذ', 'aymen' => 'أيمن',
+            'hammam' => 'همام', 'khubaib' => 'خبيب', 'sabeeh' => 'صبيح', 'muhaimin' => 'مهيمن',
+            'rabee' => 'ربيع', 'aoun' => 'عون', 'awn' => 'عون', 'ghadanfar' => 'غضنفر',
+            'muhsin' => 'محسن', 'majeed' => 'مجيد', 'bari' => 'الباري',
+            'nabih' => 'نبيه', 'sabih' => 'صبيح', 'raji' => 'راجي', 'wasfi' => 'وصفي',
+            'suroor' => 'سرور', 'mahmud' => 'محمود', 'tameem' => 'تميم',
+
+            // ===== توسعة عربية إضافية: أسماء نساء ومواليد حديثة =====
+            'nusaiba' => 'نسيبة', 'ruqayyah' => 'رقية', 'sumayyah' => 'سمية', 'juwairiya' => 'جويرية',
+            'umaima' => 'أميمة', 'khansa' => 'خنساء', 'rufaida' => 'رفيدة', 'maimuna' => 'ميمونة',
+            'safiyyah' => 'صفية', 'kulthum' => 'كلثوم', 'asiya' => 'آسية', 'barah' => 'باره',
+            'retal' => 'رتال', 'lamar' => 'لمار', 'elaf' => 'إيلاف', 'ilaf' => 'إيلاف',
+            'wateen' => 'وتين', 'tuqa' => 'تقى', 'renad' => 'رناد', 'judi' => 'جودي',
+            'sila' => 'سيلا', 'tuleen' => 'تولين', 'sham' => 'شام', 'massa' => 'ماسة',
+            'rital' => 'ريتال', 'balsam' => 'بلسم', 'karam' => 'كرم', 'diala' => 'ديالا',
+            'rasil' => 'راسيل', 'rovan' => 'روفان', 'reetal' => 'ريتال', 'wjdan' => 'وجدان',
+            'joana' => 'جوانا', 'liana' => 'ليانا', 'celine' => 'سيلين',
         ];
     }
 }

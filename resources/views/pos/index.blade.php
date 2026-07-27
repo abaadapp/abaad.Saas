@@ -15,6 +15,7 @@
         ])->values()->all();
         $loyaltyEnabled = \App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_enabled')->value('value') !== '0';
         $redeemMaxPct = (int) (\App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_redeem_max_pct')->value('value') ?? 50);
+        $earnRate = (float) (\App\Models\Setting::where('business_id', \App\Support\Demo::bid())->where('key', 'loyalty_earn_rate')->value('value') ?? 5);
     @endphp
     @php
         $productsForJs = collect($products)->map(fn ($p) => [
@@ -22,7 +23,7 @@
             'sku' => $p['sku'] ?? '', 'barcode' => $p['barcode'] ?? '', 'stock' => (int) $p['qty'],
         ])->values()->all();
     @endphp
-    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }}, {{ \Illuminate\Support\Js::from($productsForJs) }}, {{ $redeemMaxPct }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }}, {{ \Illuminate\Support\Js::from($productsForJs) }}, {{ $redeemMaxPct }}, {{ $earnRate }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
 
         {{-- مؤشّر صمود الانقطاع: يظهر عند انقطاع الشبكة أو وجود طلبات بانتظار المزامنة --}}
         <div x-cloak x-show="!online || pendingCount"
@@ -312,6 +313,15 @@
                     <span class="font-bold text-gray-800">{{ __('الإجمالي') }}</span>
                     <span class="text-xl font-extrabold text-gray-900" x-text="money(total)"></span>
                 </div>
+
+                @if ($loyaltyEnabled)
+                    {{-- النقاط المتوقّع اكتسابها من هذا الشراء (للعملاء المسجّلين) --}}
+                    <div x-show="pointsToEarn > 0" x-cloak
+                         class="flex items-center justify-center gap-1.5 rounded-xl bg-secondary-50 text-secondary-700 px-3 py-1.5 text-xs font-semibold">
+                        <x-icon name="award" class="w-4 h-4 shrink-0" />
+                        <span x-text="{{ \Illuminate\Support\Js::from(__('سيكسب العميل')) }} + ' ' + pointsToEarn + ' ' + {{ \Illuminate\Support\Js::from(__('نقطة من هذا الشراء')) }}"></span>
+                    </div>
+                @endif
 
                 {{-- تنبيه تجاوز المخزون (مهم بوجه خاص أثناء الانقطاع حين لا يتحدّث المتوفر لحظيًا) --}}
                 <div x-show="hasStockWarning" x-cloak class="flex items-center gap-2 rounded-xl bg-danger-50 text-danger-700 px-3 py-2 text-xs font-bold">

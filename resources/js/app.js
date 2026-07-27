@@ -368,7 +368,7 @@ document.addEventListener('alpine:init', () => {
     }));
 
     /* سلة نقطة البيع POS */
-    Alpine.data('posCart', (resume = null, initialCustomers = [], initialProducts = [], redeemMaxPct = 50) => ({
+    Alpine.data('posCart', (resume = null, initialCustomers = [], initialProducts = [], redeemMaxPct = 50, earnRate = 5) => ({
         // سلة مستعادة من طلب معلّق/محفوظ (إن وُجدت) — نضمن مفتاح سلة فريدًا لكل بند
         items: (resume?.items ?? []).map((i, idx) => ({ ...i, key: i.key ?? ('r' + idx) })),
         resumeId: resume?.id ?? null,
@@ -404,6 +404,12 @@ document.addEventListener('alpine:init', () => {
         // سقف منطقي: لا يُغطّي الاستبدال أكثر من نسبة محدّدة من قيمة الشراء (يبقى العميل يدفع نقدًا)
         redeemActive: false,
         redeemMaxPct: Math.min(100, Math.max(0, Number(redeemMaxPct) || 0)),
+        earnRate: Math.max(0, Number(earnRate) || 0),
+        // النقاط المتوقّع اكتسابها من هذا الشراء (على الإجمالي بعد الخصم) — للعملاء المسجّلين فقط
+        get pointsToEarn() {
+            if (this.earnRate <= 0 || !this.selectedCustomer) return 0;
+            return Math.floor(this.total * this.earnRate);
+        },
         get selectedCustomer() {
             return this.customers.find((c) => c.name === this.customer) || null;
         },

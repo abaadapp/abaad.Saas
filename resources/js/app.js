@@ -274,7 +274,9 @@ document.addEventListener('alpine:init', () => {
                 row.style.display = ok ? '' : 'none';
                 if (ok) shown++;
             });
-            if (this.$refs.empty) this.$refs.empty.style.display = shown ? 'none' : '';
+            // عنصر «لا نتائج»: نبحث عنه داخل الحاوية عبر DOM (مستقل عن نطاق Alpine المتداخل)
+            const emptyEl = this.$refs.empty || box.querySelector('[x-ref="empty"]');
+            if (emptyEl) emptyEl.style.display = shown ? 'none' : '';
         },
     }));
 

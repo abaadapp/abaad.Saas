@@ -12,4 +12,5 @@ class Customer extends Model
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
     public function branch(): BelongsTo { return $this->belongsTo(Branch::class); }
     public function orders(): HasMany { return $this->hasMany(Order::class); }
+    public function pointTransactions(): HasMany { return $this->hasMany(PointTransaction::class); }
 }

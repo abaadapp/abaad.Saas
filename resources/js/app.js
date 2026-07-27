@@ -442,6 +442,32 @@ document.addEventListener('alpine:init', () => {
         selectCustomer(name) {
             this.customer = name;
             this.customerSearch = '';
+            this.showPointsLog = false;
+            this.pointsLog.loadedFor = null; // إعادة الجلب للعميل الجديد
+        },
+        // ====== سجل حركات نقاط الولاء ======
+        showPointsLog: false,
+        pointsLog: { loading: false, movements: [], loadedFor: null },
+        togglePointsLog() {
+            this.showPointsLog = !this.showPointsLog;
+            if (this.showPointsLog) this.loadPointsLog();
+        },
+        async loadPointsLog() {
+            const c = this.selectedCustomer;
+            if (!c || !c.id || !window.POS_POINTS_URL) { this.pointsLog.movements = []; return; }
+            if (this.pointsLog.loadedFor === c.id) return; // مُحمَّل مسبقًا
+            this.pointsLog.loading = true;
+            try {
+                const url = window.POS_POINTS_URL.replace('__ID__', c.id);
+                const res = await fetch(url, { headers: { Accept: 'application/json' } });
+                const data = await res.json();
+                this.pointsLog.movements = data.movements || [];
+                if (typeof data.balance === 'number') c.points = data.balance; // مزامنة الرصيد
+                this.pointsLog.loadedFor = c.id;
+            } catch (e) {
+                this.pointsLog.movements = [];
+            }
+            this.pointsLog.loading = false;
         },
         // إضافة عميل عبر AJAX ثم تحديده تلقائيًا للطلب الجاري (دون إعادة تحميل تُفقد السلة)
         async addCustomer(form) {
@@ -672,6 +698,8 @@ document.addEventListener('alpine:init', () => {
             this.items = [];
             this.removeCoupon();
             this.redeemActive = false;
+            this.showPointsLog = false;
+            this.pointsLog.loadedFor = null; // تغيّر الرصيد بعد البيع → أعد الجلب لاحقًا
         },
         get count() {
             return this.items.reduce((s, i) => s + i.qty, 0);

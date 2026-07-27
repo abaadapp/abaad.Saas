@@ -23,7 +23,7 @@
             'sku' => $p['sku'] ?? '', 'barcode' => $p['barcode'] ?? '', 'stock' => (int) $p['qty'],
         ])->values()->all();
     @endphp
-    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }}, {{ \Illuminate\Support\Js::from($productsForJs) }}, {{ $redeemMaxPct }}, {{ $earnRate }})" x-init="startPosStock('{{ route('pos.stock-feed') }}')" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+    <div x-data="posCart({{ \Illuminate\Support\Js::from($resume) }}, {{ \Illuminate\Support\Js::from($customersForJs) }}, {{ \Illuminate\Support\Js::from($productsForJs) }}, {{ $redeemMaxPct }}, {{ $earnRate }})" x-init="startPosStock('{{ route('pos.stock-feed') }}'); window.POS_POINTS_URL = '{{ route('pos.customers.points', ['id' => '__ID__']) }}'" class="h-full flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
 
         {{-- مؤشّر صمود الانقطاع: يظهر عند انقطاع الشبكة أو وجود طلبات بانتظار المزامنة --}}
         <div x-cloak x-show="!online || pendingCount"
@@ -298,6 +298,38 @@
                         {{-- توضيح السقف: حين لا يُغطّي الاستبدال كامل رصيد العميل بسبب سقف نسبة الفاتورة --}}
                         <p x-show="redeemActive && (selectedPoints / 100) > redeemCap" x-cloak class="mt-1 text-[10px] text-secondary-500"
                            x-text="{{ \Illuminate\Support\Js::from(__('الحد الأقصى لهذه الفاتورة')) }} + ' ' + redeemMaxPct + '% (' + money(redeemCap) + ')'"></p>
+                    </div>
+
+                    {{-- سجل حركات نقاط العميل (يظهر لأي عميل مسجّل) --}}
+                    <div x-show="selectedCustomer" x-cloak class="text-xs">
+                        <button type="button" @click="togglePointsLog()"
+                                class="flex items-center gap-1.5 text-secondary-600 hover:text-secondary-800 font-medium">
+                            <x-icon name="history" class="w-3.5 h-3.5" />
+                            <span>{{ __('سجل النقاط') }}</span>
+                            <x-icon name="chevron-down" class="w-3.5 h-3.5 transition-transform" ::class="showPointsLog && 'rotate-180'" />
+                        </button>
+                        <div x-show="showPointsLog" x-cloak class="mt-2 rounded-xl border border-gray-100 bg-gray-50/70 divide-y divide-gray-100 overflow-hidden">
+                            <template x-if="pointsLog.loading">
+                                <div class="px-3 py-3 text-center text-gray-400">{{ __('جارٍ التحميل...') }}</div>
+                            </template>
+                            <template x-if="!pointsLog.loading && pointsLog.movements.length === 0">
+                                <div class="px-3 py-3 text-center text-gray-400">{{ __('لا توجد حركات نقاط بعد') }}</div>
+                            </template>
+                            <template x-for="(m, i) in pointsLog.movements" :key="i">
+                                <div class="flex items-center justify-between gap-2 px-3 py-2">
+                                    <span class="flex items-center gap-1.5 min-w-0">
+                                        <span :class="m.type === 'earn' ? 'bg-success-100 text-success-700' : 'bg-warning-100 text-warning-700'"
+                                              class="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                                              x-text="m.type === 'earn' ? '+' : '−'"></span>
+                                        <span class="truncate text-gray-600" x-text="m.note || (m.type === 'earn' ? {{ \Illuminate\Support\Js::from(__('اكتساب')) }} : {{ \Illuminate\Support\Js::from(__('استبدال')) }})"></span>
+                                    </span>
+                                    <span class="shrink-0 text-left">
+                                        <span :class="m.type === 'earn' ? 'text-success-700' : 'text-warning-700'" class="font-bold" x-text="(m.points > 0 ? '+' : '') + m.points"></span>
+                                        <span class="block text-[10px] text-gray-400" x-text="m.at"></span>
+                                    </span>
+                                </div>
+                            </template>
+                        </div>
                     </div>
                 @endif
 

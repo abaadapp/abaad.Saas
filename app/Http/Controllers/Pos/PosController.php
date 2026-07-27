@@ -38,27 +38,6 @@ class PosController extends Controller
         return response()->json(['receipts' => Demo::receipts($q, 50)]);
     }
 
-    /** سجل آخر حركات نقاط الولاء لعميل — يُعرَض في شاشة الكاشير عند اختياره */
-    public function pointHistory(Request $request, $id)
-    {
-        $customer = \App\Models\Customer::where('business_id', $this->bid())->find($id);
-        if (! $customer) {
-            return response()->json(['balance' => 0, 'movements' => []]);
-        }
-
-        $movements = \App\Models\PointTransaction::where('customer_id', $customer->id)
-            ->latest('id')->limit(8)->get()
-            ->map(fn ($m) => [
-                'type' => $m->type,
-                'points' => (int) $m->points,
-                'balance_after' => (int) $m->balance_after,
-                'note' => $m->note,
-                'at' => optional($m->created_at)->format('Y-m-d H:i'),
-            ])->all();
-
-        return response()->json(['balance' => (int) $customer->points, 'movements' => $movements]);
-    }
-
     /** تغذية حيّة لكميات المنتجات وحالاتها — تستطلعها شاشة نقطة البيع لتحديث "المتوفر" تلقائيًا دون إعادة تحميل */
     public function stockFeed()
     {

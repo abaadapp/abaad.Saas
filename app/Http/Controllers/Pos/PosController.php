@@ -376,7 +376,7 @@ class PosController extends Controller
 
         // 2) اكتساب نقاط الشراء (على الإجمالي بعد الخصم)
         $earned = 0;
-        $rate = (float) (\App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_earn_rate')->value('value') ?? 1);
+        $rate = (float) (\App\Models\Setting::where('business_id', $bid)->where('key', 'loyalty_earn_rate')->value('value') ?? 5);
         if ($rate > 0) {
             $earned = (int) floor((float) $order->total * $rate);
             if ($earned > 0) {

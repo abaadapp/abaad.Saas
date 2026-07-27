@@ -1675,5 +1675,6 @@
     "خصم نقاط الولاء": "Loyalty points discount",
     "أقصى نسبة يُغطّيها الاستبدال من كل فاتورة (%)": "Max share of each invoice covered by redemption (%)",
     "يبقى العميل يدفع الباقي نقدًا · مثال: 50% تعني ألا يخصم بالنقاط أكثر من نصف الفاتورة": "The customer still pays the rest in cash · e.g. 50% means points cannot discount more than half the invoice",
-    "الحد الأقصى لهذه الفاتورة": "Maximum for this invoice"
+    "الحد الأقصى لهذه الفاتورة": "Maximum for this invoice",
+    "مثال: 5 = خمس نقاط لكل ريال · الاستبدال: 100 نقطة = 1 ر.ع خصم": "e.g. 5 = five points per Rial · Redemption: 100 points = 1 OMR discount"
 }

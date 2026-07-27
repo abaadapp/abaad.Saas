@@ -449,7 +449,7 @@
             </div>
 
             {{-- برنامج الولاء --}}
-            @php $loyaltyEnabled = $sget('loyalty_enabled', '1'); $earnRate = $sget('loyalty_earn_rate', '1'); $redeemMaxPct = $sget('loyalty_redeem_max_pct', '50'); @endphp
+            @php $loyaltyEnabled = $sget('loyalty_enabled', '1'); $earnRate = $sget('loyalty_earn_rate', '5'); $redeemMaxPct = $sget('loyalty_redeem_max_pct', '50'); @endphp
             <div x-show="tab === 'loyalty'" x-cloak class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                 <h3 class="text-lg font-bold text-gray-800 mb-2">{{ __('برنامج الولاء') }}</h3>
                 <p class="text-sm text-gray-400 mb-6">{{ __('امنح عملاءك نقاطًا عند الشراء يستبدلونها كخصم لاحقًا') }}</p>
@@ -464,7 +464,7 @@
 
                 <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
                     <x-input :label="__('نقاط لكل 1 ر.ع من قيمة الشراء')" name="loyalty_earn_rate" data-money value="{{ $earnRate }}" icon="award"
-                             :hint="__('مثال: 1 = نقطة لكل ريال · الاستبدال: 100 نقطة = 1 ر.ع خصم')" />
+                             :hint="__('مثال: 5 = خمس نقاط لكل ريال · الاستبدال: 100 نقطة = 1 ر.ع خصم')" />
                     <x-input :label="__('أقصى نسبة يُغطّيها الاستبدال من كل فاتورة (%)')" name="loyalty_redeem_max_pct" type="number" min="0" max="100" value="{{ $redeemMaxPct }}" icon="percent"
                              :hint="__('يبقى العميل يدفع الباقي نقدًا · مثال: 50% تعني ألا يخصم بالنقاط أكثر من نصف الفاتورة')" />
                 </div>

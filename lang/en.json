@@ -1683,5 +1683,7 @@
     "جارٍ التحميل...": "Loading...",
     "لا توجد حركات نقاط بعد": "No points activity yet",
     "اكتساب": "Earned",
-    "استبدال": "Redeemed"
+    "استبدال": "Redeemed",
+    "اضغط «استخدم النقاط» لخصمها من الفاتورة": "Tap \"Use points\" to deduct them from the invoice",
+    "سيُخصم تلقائيًا عند الدفع — اضغط «إلغاء» للتراجع": "Applied automatically at payment — tap \"Cancel\" to undo"
 }

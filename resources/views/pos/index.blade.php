@@ -293,7 +293,13 @@
                                 <span x-show="redeemActive" x-cloak>{{ __('إلغاء') }}</span>
                             </button>
                         </div>
-                        <p x-show="redeemActive && redeemPointsUsed > 0" x-cloak class="mt-1.5 text-[11px] text-secondary-700"
+                        {{-- سطر تلميح دائم يُرشد الكاشير للخطوة التالية --}}
+                        <p class="mt-1.5 flex items-center gap-1 text-[11px] text-secondary-600">
+                            <x-icon name="lightbulb" class="w-3.5 h-3.5 shrink-0" />
+                            <span x-show="!redeemActive">{{ __('اضغط «استخدم النقاط» لخصمها من الفاتورة') }}</span>
+                            <span x-show="redeemActive" x-cloak>{{ __('سيُخصم تلقائيًا عند الدفع — اضغط «إلغاء» للتراجع') }}</span>
+                        </p>
+                        <p x-show="redeemActive && redeemPointsUsed > 0" x-cloak class="mt-1 text-[11px] font-semibold text-secondary-700"
                            x-text="'− ' + money(redeemDiscount) + ' (' + redeemPointsUsed + ' ' + {{ \Illuminate\Support\Js::from(__('نقطة')) }} + ')'"></p>
                         {{-- توضيح السقف: حين لا يُغطّي الاستبدال كامل رصيد العميل بسبب سقف نسبة الفاتورة --}}
                         <p x-show="redeemActive && (selectedPoints / 100) > redeemCap" x-cloak class="mt-1 text-[10px] text-secondary-500"

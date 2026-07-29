@@ -9,11 +9,13 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { initials, money, number } from '@/lib/format';
+import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Employee } from '@/types/models';
 
 export default function EmployeesIndex() {
     const { employees, context } = usePage<PageProps<{ employees: Employee[] }>>().props;
+    const t = useTranslate();
     const currency = context!.currency;
 
     const columns: Column<Employee>[] = [
@@ -87,7 +89,7 @@ export default function EmployeesIndex() {
                     <Button asChild>
                         <SmartLink routeName={'admin.employees.create'} href={route('admin.employees.create')}>
                             <Plus />
-                            موظف جديد
+                            {t('موظف جديد')}
                         </SmartLink>
                     </Button>
                 }

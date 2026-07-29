@@ -35,9 +35,9 @@
          x-transition:enter="transition-opacity duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"></div>
 
     {{-- ===== الشريط الجانبي ===== --}}
-    <aside class="fixed z-40 inset-y-0 right-0 w-64 bg-white border-l flex flex-col transition-transform duration-300 lg:translate-x-0"
+    <aside class="fixed z-40 inset-y-0 left-0 w-64 bg-white border-r flex flex-col transition-transform duration-300 lg:translate-x-0"
            style="border-color: var(--ui-border);"
-           :class="$store.sidebar.open ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'">
+           :class="$store.sidebar.open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'">
         {{-- الشعار --}}
         <div class="h-16 flex items-center gap-3 px-5 shrink-0">
             <span class="w-8 h-8 rounded-[10px] bg-[#111] text-white flex items-center justify-center shrink-0">
@@ -80,7 +80,7 @@
         </div>
     </aside>
 
-    <div class="lg:mr-64 flex flex-col min-h-screen">
+    <div class="lg:ml-64 flex flex-col min-h-screen">
         {{-- ===== الشريط العلوي ===== --}}
         <header class="sticky top-0 z-20 h-16 bg-[#f7f8f9]/80 backdrop-blur-xl flex items-center gap-3 px-4 lg:px-8"
                 style="border-bottom: 1px solid var(--ui-border);">
@@ -179,6 +179,35 @@
                                 @endforeach
                             </x-dropdown>
                         @endif
+                    @endif
+                @endauth
+
+                {{-- مبدّل اللغة — نفس زر لوحة React ليتطابق الشريطان --}}
+                @auth
+                    @if (auth()->user()->business_id)
+                        <x-dropdown align="left" width="w-44">
+                            <x-slot:trigger>
+                                <button aria-label="{{ app()->getLocale() === 'en' ? 'Change language' : 'تغيير اللغة' }}"
+                                        class="hidden sm:flex items-center gap-2 rounded-full bg-white hover:bg-[#f7f7f5] px-3 h-9 text-sm text-[#111] transition" style="border:1px solid var(--ui-border-strong);">
+                                    <x-icon name="languages" class="w-4 h-4 text-[#6b7280]" />
+                                    <span class="font-medium">{{ app()->getLocale() === 'en' ? 'EN' : 'ع' }}</span>
+                                    <x-icon name="chevron-down" class="w-4 h-4 text-[#9ca3af]" />
+                                </button>
+                            </x-slot:trigger>
+                            @foreach (['ar' => 'العربية', 'en' => 'English'] as $code => $label)
+                                <form method="POST" action="{{ route('admin.language.update') }}">
+                                    @csrf
+                                    <input type="hidden" name="locale" value="{{ $code }}">
+                                    <button type="submit"
+                                            class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-start {{ app()->getLocale() === $code ? 'text-[#111] bg-[#f2f2f0]' : 'text-[#6b7280] hover:bg-[#fafafa]' }}">
+                                        @if (app()->getLocale() === $code)
+                                            <x-icon name="check" class="w-4 h-4" />
+                                        @endif
+                                        {{ $label }}
+                                    </button>
+                                </form>
+                            @endforeach
+                        </x-dropdown>
                     @endif
                 @endauth
 

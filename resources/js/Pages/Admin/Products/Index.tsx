@@ -8,6 +8,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
+import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Category, Product } from '@/types/models';
 
@@ -18,6 +19,7 @@ interface Props {
 
 export default function ProductsIndex() {
     const { products, categories, context } = usePage<PageProps<Props>>().props;
+    const t = useTranslate();
     const currency = context!.currency;
 
     const columns: Column<Product>[] = [
@@ -109,19 +111,19 @@ export default function ProductsIndex() {
                         <Button variant="outline" asChild>
                             <a href={route('admin.products.xlsx')}>
                                 <FileSpreadsheet />
-                                تصدير
+                                {t('تصدير')}
                             </a>
                         </Button>
                         <Button variant="outline" asChild>
                             <SmartLink routeName={'admin.products.barcodes'} href={route('admin.products.barcodes')}>
                                 <Barcode />
-                                الباركود
+                                {t('الباركود')}
                             </SmartLink>
                         </Button>
                         <Button asChild>
                             <SmartLink routeName={'admin.products.create'} href={route('admin.products.create')}>
                                 <Plus />
-                                منتج جديد
+                                {t('منتج جديد')}
                             </SmartLink>
                         </Button>
                     </>

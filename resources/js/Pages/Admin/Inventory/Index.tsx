@@ -8,6 +8,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
+import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Branch } from '@/types';
 import type { InventoryItem } from '@/types/models';
@@ -20,6 +21,7 @@ interface Props {
 
 export default function InventoryIndex() {
     const { inventory, context } = usePage<PageProps<Props>>().props;
+    const t = useTranslate();
     const currency = context!.currency;
 
     const totalValue = inventory.reduce((sum, item) => sum + item.value, 0);
@@ -93,13 +95,13 @@ export default function InventoryIndex() {
                         <Button variant="outline" asChild>
                             <a href={route('admin.inventory.xlsx')}>
                                 <FileSpreadsheet />
-                                تصدير
+                                {t('تصدير')}
                             </a>
                         </Button>
                         <Button variant="outline" asChild>
                             <SmartLink routeName={'admin.inventory.movements'} href={route('admin.inventory.movements')}>
                                 <ArrowLeftRight />
-                                الحركات
+                                {t('الحركات')}
                             </SmartLink>
                         </Button>
                     </>

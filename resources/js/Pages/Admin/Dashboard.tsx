@@ -19,6 +19,7 @@ import {
     TableRow,
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
+import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
 interface Order {
@@ -64,6 +65,7 @@ export default function Dashboard() {
     const { stats, salesSeries, paymentDistribution, smartAlerts, recentOrders, topProducts, topEmployees, context } =
         usePage<PageProps<DashboardProps>>().props;
 
+    const t = useTranslate();
     const currency = context!.currency;
     const fmt = (value: number) => money(value, currency);
 
@@ -74,7 +76,7 @@ export default function Dashboard() {
                 subtitle={`نظرة عامة على أداء ${context?.businessName ?? 'متجرك'}`}
                 actions={
                     <Button asChild>
-                        <SmartLink routeName={'pos.index'} href={route('pos.index')}>فتح نقطة البيع</SmartLink>
+                        <SmartLink routeName={'pos.index'} href={route('pos.index')}>{t('فتح نقطة البيع')}</SmartLink>
                     </Button>
                 }
             />
@@ -103,7 +105,7 @@ export default function Dashboard() {
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="lg:col-span-2">
                     <CardHeader>
-                        <CardTitle>المبيعات خلال 12 شهرًا</CardTitle>
+                        <CardTitle>{t('المبيعات خلال 12 شهرًا')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <AreaChart
@@ -116,7 +118,7 @@ export default function Dashboard() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>طرق الدفع</CardTitle>
+                        <CardTitle>{t('طرق الدفع')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <BarChart
@@ -131,10 +133,10 @@ export default function Dashboard() {
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="lg:col-span-2">
                     <CardHeader className="flex-row items-center justify-between">
-                        <CardTitle>أحدث الطلبات</CardTitle>
+                        <CardTitle>{t('أحدث الطلبات')}</CardTitle>
                         <Button variant="ghost" size="sm" asChild>
                             <SmartLink routeName={'admin.orders.index'} href={route('admin.orders.index')}>
-                                الكل
+                                {t('الكل')}
                                 <ArrowLeft className="size-4" />
                             </SmartLink>
                         </Button>
@@ -143,15 +145,15 @@ export default function Dashboard() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>الطلب</TableHead>
-                                    <TableHead>العميل</TableHead>
-                                    <TableHead>الحالة</TableHead>
-                                    <TableHead className="text-end">الإجمالي</TableHead>
+                                    <TableHead>{t('الطلب')}</TableHead>
+                                    <TableHead>{t('العميل')}</TableHead>
+                                    <TableHead>{t('الحالة')}</TableHead>
+                                    <TableHead className="text-end">{t('الإجمالي')}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {recentOrders.length === 0 ? (
-                                    <TableEmpty colSpan={4}>لا توجد طلبات بعد</TableEmpty>
+                                    <TableEmpty colSpan={4}>{t('لا توجد طلبات بعد')}</TableEmpty>
                                 ) : (
                                     recentOrders.map((order) => (
                                         <TableRow key={order.id}>
@@ -180,12 +182,12 @@ export default function Dashboard() {
                 <div className="flex flex-col gap-4">
                     <Card>
                         <CardHeader>
-                            <CardTitle>أفضل المنتجات</CardTitle>
+                            <CardTitle>{t('أفضل المنتجات')}</CardTitle>
                         </CardHeader>
                         <CardContent className="flex flex-col gap-3">
                             {topProducts.length === 0 ? (
                                 <p className="py-6 text-center text-[13px] text-[#9ca3af]">
-                                    لا توجد منتجات بعد
+                                    {t('لا توجد منتجات بعد')}
                                 </p>
                             ) : (
                                 topProducts.map((product) => (
@@ -202,12 +204,12 @@ export default function Dashboard() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>أداء الموظفين</CardTitle>
+                            <CardTitle>{t('أداء الموظفين')}</CardTitle>
                         </CardHeader>
                         <CardContent className="flex flex-col gap-3">
                             {topEmployees.length === 0 ? (
                                 <p className="py-6 text-center text-[13px] text-[#9ca3af]">
-                                    لا يوجد موظفون بعد
+                                    {t('لا يوجد موظفون بعد')}
                                 </p>
                             ) : (
                                 topEmployees.map((employee) => (

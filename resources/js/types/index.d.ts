@@ -67,6 +67,8 @@ export interface SharedProps {
     };
     locale: string;
     dir: 'rtl' | 'ltr';
+    /** قاموس عربي→إنجليزي؛ null في العربية لأن المفتاح هو النص */
+    translations: Record<string, string> | null;
 }
 
 export type PageProps<T = Record<string, unknown>> = InertiaPageProps & SharedProps & T;

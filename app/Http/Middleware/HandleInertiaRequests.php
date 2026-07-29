@@ -68,6 +68,23 @@ class HandleInertiaRequests extends Middleware
 
             'locale' => fn () => app()->getLocale(),
             'dir' => fn () => app()->getLocale() === 'en' ? 'ltr' : 'rtl',
+
+            // قاموس الترجمة — نفس lang/en.json الذي يقرأه __() في Blade.
+            // يُرسل فقط عند الإنجليزية: في العربية المفتاح هو النص نفسه فلا لزوم له.
+            'translations' => fn () => app()->getLocale() === 'en' ? self::translations() : null,
         ];
+    }
+
+    /** يُقرأ الملف مرة واحدة لكل طلب لا مرة لكل مفتاح */
+    private static function translations(): array
+    {
+        static $cache = null;
+
+        if ($cache === null) {
+            $path = lang_path('en.json');
+            $cache = is_file($path) ? (json_decode(file_get_contents($path), true) ?: []) : [];
+        }
+
+        return $cache;
     }
 }

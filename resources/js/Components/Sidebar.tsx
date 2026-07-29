@@ -2,6 +2,7 @@ import { usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Flower } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
+import { useTranslate } from '@/lib/i18n';
 import { NAV } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -13,6 +14,7 @@ interface SidebarProps {
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
     const { auth, context } = usePage<PageProps>().props;
+    const t = useTranslate();
     const current = route().current();
 
     const can = (section: string) => auth?.abilities.includes(section) ?? false;
@@ -59,7 +61,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                             <div key={gi} className="mb-1">
                                 {group.heading && (
                                     <p className="px-3 pb-1.5 pt-4 text-[11px] font-semibold uppercase tracking-wide text-[#9ca3af]">
-                                        {group.heading}
+                                        {t(group.heading)}
                                     </p>
                                 )}
                                 {visible.map((item) => {
@@ -75,7 +77,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                                             className={cn('ui-nav-link', active && 'is-active')}
                                         >
                                             <Icon className="size-[18px] shrink-0" />
-                                            <span className="truncate">{item.label}</span>
+                                            <span className="truncate">{t(item.label)}</span>
                                         </SmartLink>
                                     );
                                 })}

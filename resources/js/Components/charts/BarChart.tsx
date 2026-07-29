@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 interface BarChartProps {
@@ -20,13 +21,14 @@ const CATEGORICAL = ['#7c3aed', '#059669', '#2563eb', '#d97706', '#ec4899', '#08
  * (زوج الأزرق/الأخضر متقارب في عمى اللون الثلاثي).
  */
 export default function BarChart({ labels, series, format = String, className }: BarChartProps) {
+    const t = useTranslate();
     const max = Math.max(...series, 1);
     const total = series.reduce((sum, value) => sum + value, 0);
 
     if (series.length === 0) {
         return (
             <p className={cn('py-12 text-center text-sm text-[#9ca3af]', className)}>
-                لا توجد بيانات بعد
+                {t('لا توجد بيانات بعد')}
             </p>
         );
     }

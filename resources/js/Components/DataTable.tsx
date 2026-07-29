@@ -11,6 +11,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
+import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export interface Column<T> {
@@ -63,6 +64,7 @@ export default function DataTable<T>({
     toolbar,
     pageSize = 25,
 }: DataTableProps<T>) {
+    const t = useTranslate();
     const [query, setQuery] = useState('');
     const [active, setActive] = useState<Record<number, string>>({});
     const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
@@ -124,7 +126,7 @@ export default function DataTable<T>({
                                     setQuery(e.target.value);
                                     setPage(0);
                                 }}
-                                placeholder={searchPlaceholder}
+                                placeholder={t(searchPlaceholder)}
                                 className="ps-9"
                             />
                         </div>
@@ -140,10 +142,10 @@ export default function DataTable<T>({
                             }}
                             className="ui-select h-10 appearance-none rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 text-sm text-[#111] focus:outline-none"
                         >
-                            <option value="">{filter.label}</option>
+                            <option value="">{t(filter.label)}</option>
                             {filter.options.map((option) => (
                                 <option key={option.value} value={option.value}>
-                                    {option.label}
+                                    {t(option.label)}
                                 </option>
                             ))}
                         </select>
@@ -168,7 +170,7 @@ export default function DataTable<T>({
                                 onClick={column.sortable ? () => toggleSort(column.key) : undefined}
                             >
                                 <span className="inline-flex items-center gap-1">
-                                    {column.header}
+                                    {t(column.header)}
                                     {column.sortable &&
                                         sort?.key === column.key &&
                                         (sort.dir === 'asc' ? (
@@ -185,7 +187,7 @@ export default function DataTable<T>({
                 <TableBody>
                     {visible.length === 0 ? (
                         <TableEmpty colSpan={columns.length}>
-                            {isFiltering ? 'لا نتائج مطابقة للبحث أو التصفية' : empty}
+                            {isFiltering ? t('لا نتائج مطابقة للبحث أو التصفية') : empty}
                         </TableEmpty>
                     ) : (
                         visible.map((row, i) => (
@@ -219,7 +221,7 @@ export default function DataTable<T>({
             {pageCount > 1 && (
                 <div className="flex items-center justify-between gap-3 border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3">
                     <p className="text-[12px] text-[#6b7280]">
-                        {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filtered.length)} من{' '}
+                        {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filtered.length)} {t('من')}{' '}
                         {filtered.length}
                     </p>
                     <div className="flex gap-1.5">
@@ -228,14 +230,14 @@ export default function DataTable<T>({
                             disabled={page === 0}
                             className="rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-3 py-1.5 text-[13px] transition-colors hover:bg-[#fafafa] disabled:opacity-40"
                         >
-                            السابق
+                            {t('السابق')}
                         </button>
                         <button
                             onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                             disabled={page >= pageCount - 1}
                             className="rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-3 py-1.5 text-[13px] transition-colors hover:bg-[#fafafa] disabled:opacity-40"
                         >
-                            التالي
+                            {t('التالي')}
                         </button>
                     </div>
                 </div>

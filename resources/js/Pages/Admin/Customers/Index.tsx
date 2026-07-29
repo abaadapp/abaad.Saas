@@ -8,6 +8,7 @@ import StatCard, { type Stat } from '@/Components/StatCard';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
+import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Customer } from '@/types/models';
 
@@ -18,6 +19,7 @@ interface Props {
 
 export default function CustomersIndex() {
     const { customers, stats, context } = usePage<PageProps<Props>>().props;
+    const t = useTranslate();
     const currency = context!.currency;
 
     const columns: Column<Customer>[] = [
@@ -73,19 +75,19 @@ export default function CustomersIndex() {
                         <Button variant="outline" asChild>
                             <a href={route('admin.customers.export.xlsx')}>
                                 <FileSpreadsheet />
-                                تصدير
+                                {t('تصدير')}
                             </a>
                         </Button>
                         <Button variant="outline" asChild>
                             <SmartLink routeName={'admin.customers.import.form'} href={route('admin.customers.import.form')}>
                                 <Upload />
-                                استيراد
+                                {t('استيراد')}
                             </SmartLink>
                         </Button>
                         <Button asChild>
                             <SmartLink routeName={'admin.customers.create'} href={route('admin.customers.create')}>
                                 <Plus />
-                                عميل جديد
+                                {t('عميل جديد')}
                             </SmartLink>
                         </Button>
                     </>

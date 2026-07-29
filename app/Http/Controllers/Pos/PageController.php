@@ -1,0 +1,79 @@
+<?php
+
+namespace App\Http\Controllers\Pos;
+
+use App\Http\Controllers\Controller;
+use App\Support\Demo;
+use Inertia\Inertia;
+use Inertia\Response;
+
+/**
+ * صفحات عرض نقطة البيع — نُقل جلب البيانات من القوالب إلى هنا.
+ */
+class PageController extends Controller
+{
+    public function index(): Response
+    {
+        return Inertia::render('Pos/Index', [
+            'products' => Demo::products(),
+            'categories' => Demo::posCategories(),
+            'customers' => Demo::customers(),
+            'addons' => Demo::addons(),
+            'coupons' => Demo::activeCoupons(),
+            // سلة مستعادة من طلب معلّق (تُمرَّر عبر الجلسة من PosController::resume)
+            'resumeCart' => session('resume_cart'),
+            'settings' => [
+                'redeemMaxPct' => (float) (Demo::businessSettings()['loyalty_redeem_max_pct'] ?? 50),
+                'earnRate' => (float) (Demo::businessSettings()['loyalty_earn_rate'] ?? 1),
+                'redeemMin' => (float) (Demo::businessSettings()['loyalty_redeem_min'] ?? 100),
+            ],
+        ]);
+    }
+
+    public function orders(): Response
+    {
+        return Inertia::render('Pos/Orders', [
+            'heldOrders' => Demo::heldOrders(),
+        ]);
+    }
+
+    public function orderDetails(string $id): Response
+    {
+        $order = Demo::orderDetails($id);
+        abort_if(empty($order), 404);
+
+        return Inertia::render('Pos/OrderDetails', [
+            'order' => $order,
+        ]);
+    }
+
+    public function payments(): Response
+    {
+        return Inertia::render('Pos/Payments', [
+            'receipts' => Demo::receipts(),
+        ]);
+    }
+
+    public function receipts(): Response
+    {
+        return Inertia::render('Pos/Receipts', [
+            'receipts' => Demo::receipts(),
+            'branchName' => Demo::currentBranchName(),
+        ]);
+    }
+
+    public function customers(): Response
+    {
+        return Inertia::render('Pos/Customers', [
+            'customers' => Demo::customers(),
+        ]);
+    }
+
+    public function settings(): Response
+    {
+        return Inertia::render('Pos/Settings', [
+            'settings' => Demo::businessSettings(),
+            'branchName' => Demo::currentBranchName(),
+        ]);
+    }
+}

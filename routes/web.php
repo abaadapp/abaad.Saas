@@ -122,7 +122,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
 
     // التصنيفات
-    Route::view('/categories', 'admin.categories.index')->name('categories.index');
+    Route::get('/categories', [\App\Http\Controllers\Admin\PageController::class, 'categoriesIndex'])->name('categories.index');
     Route::view('/categories/create', 'admin.categories.create')->name('categories.create');
     Route::post('/categories', [CategoryController::class, 'store'])->name('categories.store');
     Route::put('/categories/{id}', [CategoryController::class, 'update'])->name('categories.update');
@@ -161,7 +161,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::view('/customers/{id}', 'admin.customers.show')->name('customers.show');
 
     // الموظفون
-    Route::view('/employees', 'admin.employees.index')->name('employees.index');
+    Route::get('/employees', [\App\Http\Controllers\Admin\PageController::class, 'employeesIndex'])->name('employees.index');
     Route::view('/employees/create', 'admin.employees.create')->name('employees.create');
 
     // الوظائف
@@ -175,7 +175,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::view('/employees/{id}', 'admin.employees.show')->name('employees.show');
 
     // المخزون
-    Route::view('/inventory', 'admin.inventory.index')->name('inventory.index');
+    Route::get('/inventory', [\App\Http\Controllers\Admin\PageController::class, 'inventoryIndex'])->name('inventory.index');
     Route::get('/inventory/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'inventoryXlsx'])->name('inventory.xlsx');
     Route::get('/inventory/export-pdf', [\App\Http\Controllers\PdfController::class, 'inventoryReport'])->name('inventory.exportPdf');
     Route::get('/inventory/reorder', [InventoryController::class, 'reorder'])->name('inventory.reorder');
@@ -185,7 +185,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
     // المورّدون
-    Route::view('/suppliers', 'admin.suppliers.index')->name('suppliers.index');
+    Route::get('/suppliers', [\App\Http\Controllers\Admin\PageController::class, 'suppliersIndex'])->name('suppliers.index');
     Route::post('/suppliers', [\App\Http\Controllers\Admin\SupplierController::class, 'store'])->name('suppliers.store');
     Route::put('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'update'])->name('suppliers.update');
     Route::delete('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'destroy'])->name('suppliers.destroy');

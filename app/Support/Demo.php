@@ -125,6 +125,18 @@ class Demo
             ?? __('متجري');
     }
 
+    /**
+     * كل إعدادات النشاط كخريطة مفتاح→قيمة.
+     * (القوالب كانت تقرأ كل مفتاح باستعلام منفصل، وأغلب الحقول كانت قيمها
+     * مكتوبة يدويًا فلا تعرض ما حُفظ فعلًا. هذه تُرجع المحفوظ لتربطه الواجهة.)
+     */
+    public static function businessSettings(): array
+    {
+        return \App\Models\Setting::where('business_id', self::bid())
+            ->pluck('value', 'key')
+            ->all();
+    }
+
     /** فروع النشاط الحالي */
     public static function branches(): array
     {

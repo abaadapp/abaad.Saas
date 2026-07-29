@@ -52,7 +52,7 @@ const DialogContent = React.forwardRef<
                     )}
                 >
                     <X className="size-4" />
-                    <span className="sr-only">إغلاق</span>
+                    <span className="sr-only">Close</span>
                 </DialogPrimitive.Close>
             )}
         </DialogPrimitive.Content>

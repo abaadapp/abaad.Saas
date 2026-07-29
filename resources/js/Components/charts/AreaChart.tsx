@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 interface AreaChartProps {
@@ -24,6 +25,7 @@ export default function AreaChart({
     className,
     height = 260,
 }: AreaChartProps) {
+    const t = useTranslate();
     const gradientId = useId();
     const [hover, setHover] = useState<number | null>(null);
 
@@ -170,7 +172,7 @@ export default function AreaChart({
                         {format(points[hover].value)}
                     </>
                 ) : (
-                    <span className="text-[#c7c7c7]">مرّر المؤشر لعرض التفاصيل</span>
+                    <span className="text-[#c7c7c7]">{t('مرّر المؤشر لعرض التفاصيل')}</span>
                 )}
             </p>
         </div>

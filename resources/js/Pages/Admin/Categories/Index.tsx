@@ -7,11 +7,13 @@ import SmartLink from '@/Components/SmartLink';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { number } from '@/lib/format';
+import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Category } from '@/types/models';
 
 export default function CategoriesIndex() {
     const { categories } = usePage<PageProps<{ categories: Category[] }>>().props;
+    const t = useTranslate();
 
     return (
         <AdminLayout title="التصنيفات">
@@ -26,14 +28,14 @@ export default function CategoriesIndex() {
                     <Button asChild>
                         <SmartLink routeName={'admin.categories.create'} href={route('admin.categories.create')}>
                             <Plus />
-                            تصنيف جديد
+                            {t('تصنيف جديد')}
                         </SmartLink>
                     </Button>
                 }
             />
 
             {categories.length === 0 ? (
-                <Card className="p-14 text-center text-sm text-[#9ca3af]">لا توجد تصنيفات بعد</Card>
+                <Card className="p-14 text-center text-sm text-[#9ca3af]">{t('لا توجد تصنيفات بعد')}</Card>
             ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {categories.map((category, i) => (

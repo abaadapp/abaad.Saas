@@ -1,5 +1,15 @@
 import { router, usePage } from '@inertiajs/react';
-import { Bell, Check, ChevronDown, GitBranch, LogOut, Menu, Search, User as UserIcon } from 'lucide-react';
+import {
+    Bell,
+    Check,
+    ChevronDown,
+    GitBranch,
+    Languages,
+    LogOut,
+    Menu,
+    Search,
+    User as UserIcon,
+} from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
 import { Button } from '@/Components/ui/button';
 import {
@@ -11,16 +21,33 @@ import {
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { initials } from '@/lib/format';
+import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
-    const { auth, context, notifications } = usePage<PageProps>().props;
+    const { auth, context, notifications, locale } = usePage<PageProps>().props;
+    const t = useTranslate();
+
+    /**
+     * تبديل اللغة. الخادم يحفظها في الجلسة وفي إعدادات النشاط ثم يعيد
+     * التوجيه، لكن اتجاه الصفحة (dir) يُحسم في قالب الجذر — فلا يكفي تحديث
+     * Inertia الجزئي، نحتاج إعادة تحميل كاملة ليُعاد بناء الصفحة بالاتجاه الصحيح.
+     */
+    const switchLocale = (next: 'ar' | 'en') => {
+        if (next === locale) return;
+
+        router.post(
+            route('admin.language.update'),
+            { locale: next },
+            { onSuccess: () => window.location.reload() },
+        );
+    };
 
     return (
         <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-[var(--ui-border,#e8e8e8)] bg-white/80 px-4 backdrop-blur-md lg:px-6">
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick}>
                 <Menu />
-                <span className="sr-only">القائمة</span>
+                <span className="sr-only">{t('القائمة')}</span>
             </Button>
 
             {auth?.user.businessId && (
@@ -28,7 +55,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                     className="hidden items-center gap-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-sm text-[#9ca3af] transition-colors hover:bg-[#fafafa] sm:flex sm:w-64"
                 >
                     <Search className="size-4" />
-                    <span>بحث…</span>
+                    <span>{t('بحث…')}</span>
                 </a>
             )}
 
@@ -47,7 +74,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                             <DropdownMenuItem asChild>
                                 <a href={route('admin.branch.switch', 'all')}>
                                     {!context.branchId && <Check className="size-4" />}
-                                    كل الفروع
+                                    {t('كل الفروع')}
                                 </a>
                             </DropdownMenuItem>
                             {context.branches.map((branch) => (
@@ -84,6 +111,32 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                     </DropdownMenu>
                 )}
 
+                {/* تبديل اللغة */}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5"
+                            aria-label={locale === 'en' ? 'Change language' : 'تغيير اللغة'}
+                        >
+                            <Languages className="size-4" />
+                            <span className="font-medium">{locale === 'en' ? 'EN' : 'ع'}</span>
+                            <ChevronDown className="size-3.5" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => switchLocale('ar')}>
+                            {locale === 'ar' && <Check className="size-4" />}
+                            العربية
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => switchLocale('en')}>
+                            {locale === 'en' && <Check className="size-4" />}
+                            English
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+
                 {/* الإشعارات */}
                 {notifications && (
                     <DropdownMenu>
@@ -95,15 +148,15 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                         {notifications.count > 9 ? '9+' : notifications.count}
                                     </span>
                                 )}
-                                <span className="sr-only">الإشعارات</span>
+                                <span className="sr-only">{t('الإشعارات')}</span>
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-80">
-                            <DropdownMenuLabel>الإشعارات</DropdownMenuLabel>
+                            <DropdownMenuLabel>{t('الإشعارات')}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             {notifications.items.length === 0 ? (
                                 <p className="px-3 py-8 text-center text-[13px] text-[#9ca3af]">
-                                    لا توجد إشعارات
+                                    {t('لا توجد إشعارات')}
                                 </p>
                             ) : (
                                 notifications.items.slice(0, 6).map((item) => (
@@ -143,13 +196,13 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                         <DropdownMenuItem asChild>
                             <a href={route('profile.edit')}>
                                 <UserIcon />
-                                الملف الشخصي
+                                {t('الملف الشخصي')}
                             </a>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem destructive onSelect={() => router.post(route('logout'))}>
                             <LogOut />
-                            تسجيل الخروج
+                            {t('تسجيل الخروج')}
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>

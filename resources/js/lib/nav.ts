@@ -26,7 +26,10 @@ export interface NavGroup {
     items: NavItem[];
 }
 
-/** القائمة الجانبية — منقولة عن $menu في layouts/admin.blade.php */
+/**
+ * القائمة الجانبية — منقولة عن $menu في layouts/admin.blade.php.
+ * التسميات بالعربية لأنها مفاتيح الترجمة نفسها (كما في __() داخل Blade).
+ */
 export const NAV: NavGroup[] = [
     {
         items: [

@@ -37,9 +37,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
             <aside
                 className={cn(
-                    'fixed inset-y-0 end-0 z-40 flex w-64 flex-col border-s border-[var(--ui-border,#e8e8e8)] bg-white',
+                    // start = يمين في العربية، يسار في الإنجليزية — يتبع اتجاه المستند
+                    'fixed inset-y-0 start-0 z-40 flex w-64 flex-col border-e border-[var(--ui-border,#e8e8e8)] bg-white',
                     'transition-transform duration-300 lg:translate-x-0',
-                    open ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
+                    // الإزاحة على الجوال فقط (max-lg): متغيّرات dir محدِّدها أقوى من lg،
+                    // فلو تُركت عامة لبقي الشريط مدفوعًا خارج الشاشة على سطح المكتب.
+                    open
+                        ? 'translate-x-0'
+                        : 'max-lg:rtl:translate-x-full max-lg:ltr:-translate-x-full',
                 )}
             >
                 {/* الشعار واسم المتجر — يُقرأ من الخادم لا مكتوبًا في القالب */}

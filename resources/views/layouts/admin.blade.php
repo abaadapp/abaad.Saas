@@ -35,19 +35,19 @@
          x-transition:enter="transition-opacity duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"></div>
 
     {{-- ===== الشريط الجانبي ===== --}}
-    <aside class="fixed z-40 inset-y-0 left-0 w-64 bg-white border-r flex flex-col transition-transform duration-300 lg:translate-x-0"
+    <aside class="fixed z-40 inset-y-0 start-0 w-64 bg-white border-e flex flex-col transition-transform duration-300 lg:translate-x-0"
            style="border-color: var(--ui-border);"
-           :class="$store.sidebar.open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'">
+           :class="$store.sidebar.open ? 'translate-x-0' : 'max-lg:rtl:translate-x-full max-lg:ltr:-translate-x-full'">
         {{-- الشعار --}}
         <div class="h-16 flex items-center gap-3 px-5 shrink-0">
             <span class="w-8 h-8 rounded-[10px] bg-[#111] text-white flex items-center justify-center shrink-0">
                 <x-icon name="flower" class="w-[18px] h-[18px]" />
             </span>
             <div class="min-w-0 leading-tight">
-                <p class="text-[15px] font-semibold text-[#111] truncate">زهرة مسقط</p>
+                <p class="text-[15px] font-semibold text-[#111] truncate">{{ \App\Support\Demo::businessName() }}</p>
                 <p class="text-[11px] text-[#9ca3af] truncate">{{ __('لوحة صاحب النشاط') }}</p>
             </div>
-            <button type="button" @click="$store.sidebar.open = false" class="lg:hidden mr-auto text-[#9ca3af]">
+            <button type="button" @click="$store.sidebar.open = false" class="lg:hidden ms-auto text-[#9ca3af]">
                 <x-icon name="x" class="w-5 h-5" />
             </button>
         </div>
@@ -80,7 +80,7 @@
         </div>
     </aside>
 
-    <div class="lg:ml-64 flex flex-col min-h-screen">
+    <div class="lg:ms-64 flex flex-col min-h-screen">
         {{-- ===== الشريط العلوي ===== --}}
         <header class="sticky top-0 z-20 h-16 bg-[#f7f8f9]/80 backdrop-blur-xl flex items-center gap-3 px-4 lg:px-8"
                 style="border-bottom: 1px solid var(--ui-border);">
@@ -95,16 +95,16 @@
                 @php $searchUrl = auth()->user()->business_id ? route('admin.search') : null; @endphp
                 @if ($searchUrl)
                     <div class="hidden md:block relative w-full max-w-sm mx-auto" x-data="unifiedSearch('{{ $searchUrl }}')" @click.outside="open = false">
-                        <span class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-[#9ca3af] pointer-events-none">
+                        <span class="absolute inset-y-0 start-0 flex items-center ps-3.5 text-[#9ca3af] pointer-events-none">
                             <x-icon name="search" class="w-4 h-4" />
                         </span>
                         <input type="text" x-model="q" @input.debounce.300ms="run()" @focus="open = results.length > 0"
                             placeholder="{{ __('ابحث في المنتجات والطلبات والعملاء…') }}"
-                            class="w-full h-10 rounded-xl bg-white pr-10 pl-9 text-sm text-[#111] placeholder-[#9ca3af] focus:outline-none transition"
+                            class="w-full h-10 rounded-xl bg-white ps-10 pe-9 text-sm text-[#111] placeholder-[#9ca3af] focus:outline-none transition"
                             style="border: 1px solid var(--ui-border-strong);"
                             onfocus="this.style.boxShadow='0 0 0 4px rgba(17,17,17,0.06)'; this.style.borderColor='#111';"
                             onblur="this.style.boxShadow='none'; this.style.borderColor='var(--ui-border-strong)';" />
-                        <span x-show="loading" x-cloak class="absolute inset-y-0 left-0 flex items-center pl-3 text-[#9ca3af]">
+                        <span x-show="loading" x-cloak class="absolute inset-y-0 end-0 flex items-center pe-3 text-[#9ca3af]">
                             <x-icon name="loader-circle" class="w-4 h-4 animate-spin" />
                         </span>
                         <div x-show="open" x-cloak x-transition

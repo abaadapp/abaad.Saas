@@ -1103,8 +1103,13 @@ class Demo
         $labels = [];
         $data = [];
         for ($i = 11; $i >= 0; $i--) {
-            $m = now()->subMonths($i);
-            $labels[] = self::AR_MONTHS[$m->month];
+            // startOfMonth أولًا: الطرح من يوم 29/30/31 يتخطّى الأشهر القصيرة
+            // (الطرح من 29 يوليو يقفز فوق فبراير فيتكرّر مارس ويختفي شهر).
+            $m = now()->startOfMonth()->subMonths($i);
+            // اسم الشهر بلغة الواجهة — SetLocale يضبط لغة Carbon لكل طلب
+            $labels[] = app()->getLocale() === 'ar'
+                ? self::AR_MONTHS[$m->month]
+                : $m->translatedFormat('F');
             $data[] = round((float) Order::where('business_id', $bid)->where('is_held', false)
                 ->where('status', '!=', 'ملغي')
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);

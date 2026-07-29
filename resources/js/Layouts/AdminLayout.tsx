@@ -33,8 +33,8 @@ export default function AdminLayout({ title, children }: AdminLayoutProps) {
 
             <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-            {/* الهامش من جهة البداية لأن الشريط الجانبي على اليمين في RTL */}
-            <div className="lg:me-64">
+            {/* الهامش من جهة الشريط نفسه: يمينًا في العربية ويسارًا في الإنجليزية */}
+            <div className="lg:ms-64">
                 <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
                 <motion.main

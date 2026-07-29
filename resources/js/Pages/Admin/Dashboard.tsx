@@ -73,7 +73,7 @@ export default function Dashboard() {
         <AdminLayout title="لوحة التحكم">
             <PageHeader
                 title="لوحة التحكم"
-                subtitle={`نظرة عامة على أداء ${context?.businessName ?? 'متجرك'}`}
+                subtitle={t('نظرة عامة على أداء :name', { name: context?.businessName ?? t('متجرك') })}
                 actions={
                     <Button asChild>
                         <SmartLink routeName={'pos.index'} href={route('pos.index')}>{t('فتح نقطة البيع')}</SmartLink>
@@ -137,7 +137,8 @@ export default function Dashboard() {
                         <Button variant="ghost" size="sm" asChild>
                             <SmartLink routeName={'admin.orders.index'} href={route('admin.orders.index')}>
                                 {t('الكل')}
-                                <ArrowLeft className="size-4" />
+                                {/* يقلب في LTR ليشير للأمام في الاتجاهين */}
+                                <ArrowLeft className="size-4 ltr:rotate-180" />
                             </SmartLink>
                         </Button>
                     </CardHeader>

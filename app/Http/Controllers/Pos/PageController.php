@@ -12,6 +12,19 @@ use Inertia\Response;
  */
 class PageController extends Controller
 {
+    /** إعدادات الولاء بنفس الافتراضيات التي كانت في القالب */
+    private function loyaltySettings(): array
+    {
+        $s = Demo::businessSettings();
+
+        return [
+            'loyaltyEnabled' => ($s['loyalty_enabled'] ?? '1') !== '0',
+            'redeemMaxPct' => (float) ($s['loyalty_redeem_max_pct'] ?? 50),
+            'earnRate' => (float) ($s['loyalty_earn_rate'] ?? 5),
+            'redeemMin' => (float) ($s['loyalty_redeem_min'] ?? 100),
+        ];
+    }
+
     public function index(): Response
     {
         return Inertia::render('Pos/Index', [
@@ -22,11 +35,7 @@ class PageController extends Controller
             'coupons' => Demo::activeCoupons(),
             // سلة مستعادة من طلب معلّق (تُمرَّر عبر الجلسة من PosController::resume)
             'resumeCart' => session('resume_cart'),
-            'settings' => [
-                'redeemMaxPct' => (float) (Demo::businessSettings()['loyalty_redeem_max_pct'] ?? 50),
-                'earnRate' => (float) (Demo::businessSettings()['loyalty_earn_rate'] ?? 1),
-                'redeemMin' => (float) (Demo::businessSettings()['loyalty_redeem_min'] ?? 100),
-            ],
+            'settings' => $this->loyaltySettings(),
         ]);
     }
 

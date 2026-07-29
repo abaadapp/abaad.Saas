@@ -1,7 +1,8 @@
-import { Link, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SmartLink from '@/Components/SmartLink';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import AreaChart from '@/Components/charts/AreaChart';
 import BarChart from '@/Components/charts/BarChart';
@@ -73,7 +74,7 @@ export default function Dashboard() {
                 subtitle={`نظرة عامة على أداء ${context?.businessName ?? 'متجرك'}`}
                 actions={
                     <Button asChild>
-                        <Link href={route('pos.index')}>فتح نقطة البيع</Link>
+                        <SmartLink routeName={'pos.index'} href={route('pos.index')}>فتح نقطة البيع</SmartLink>
                     </Button>
                 }
             />
@@ -132,10 +133,10 @@ export default function Dashboard() {
                     <CardHeader className="flex-row items-center justify-between">
                         <CardTitle>أحدث الطلبات</CardTitle>
                         <Button variant="ghost" size="sm" asChild>
-                            <Link href={route('admin.orders.index')}>
+                            <SmartLink routeName={'admin.orders.index'} href={route('admin.orders.index')}>
                                 الكل
                                 <ArrowLeft className="size-4" />
-                            </Link>
+                            </SmartLink>
                         </Button>
                     </CardHeader>
                     <CardContent className="px-0">
@@ -155,12 +156,11 @@ export default function Dashboard() {
                                     recentOrders.map((order) => (
                                         <TableRow key={order.id}>
                                             <TableCell className="font-medium">
-                                                <Link
-                                                    href={route('admin.orders.show', order.id)}
+                                                <SmartLink routeName={'admin.orders.show'} href={route('admin.orders.show', order.id)}
                                                     className="hover:underline"
                                                 >
                                                     {order.id}
-                                                </Link>
+                                                </SmartLink>
                                             </TableCell>
                                             <TableCell className="text-[#6b7280]">{order.customer}</TableCell>
                                             <TableCell>

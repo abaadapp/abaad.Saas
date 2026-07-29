@@ -1,6 +1,7 @@
-import { Link, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Flower } from 'lucide-react';
+import SmartLink from '@/Components/SmartLink';
 import { NAV } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -66,15 +67,16 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                                     const active = current === item.route || current?.startsWith(item.route.replace(/\.index$/, '.'));
 
                                     return (
-                                        <Link
+                                        <SmartLink
                                             key={item.route}
+                                            routeName={item.route}
                                             href={route(item.route)}
                                             onClick={onClose}
                                             className={cn('ui-nav-link', active && 'is-active')}
                                         >
                                             <Icon className="size-[18px] shrink-0" />
                                             <span className="truncate">{item.label}</span>
-                                        </Link>
+                                        </SmartLink>
                                     );
                                 })}
                             </div>

@@ -269,22 +269,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
 /* -------------------------------- POS ------------------------------ */
 Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
-    Route::view('/', 'pos.index')->name('index');
+    Route::get('/', [\App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
     Route::get('/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
     Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');
-    Route::view('/orders', 'pos.orders')->name('orders');
+    Route::get('/orders', [\App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
-    Route::view('/orders/{id}', 'pos.order-details')->name('order-details');
-    Route::view('/payments', 'pos.payments')->name('payments');
-    Route::view('/receipts', 'pos.receipts')->name('receipts');
+    Route::get('/orders/{id}', [\App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
+    Route::get('/payments', [\App\Http\Controllers\Pos\PageController::class, 'payments'])->name('payments');
+    Route::get('/receipts', [\App\Http\Controllers\Pos\PageController::class, 'receipts'])->name('receipts');
     Route::get('/receipts/search', [PosController::class, 'searchReceipts'])->name('receipts.search');
     Route::get('/receipt/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');
-    Route::view('/customers', 'pos.customers')->name('customers');
+    Route::get('/customers', [\App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
-    Route::view('/settings', 'pos.settings')->name('settings');
+    Route::get('/settings', [\App\Http\Controllers\Pos\PageController::class, 'settings'])->name('settings');
     Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
 });

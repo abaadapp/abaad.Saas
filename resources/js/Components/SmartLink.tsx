@@ -16,6 +16,13 @@ export const INERTIA_ROUTES = new Set<string>([
     'admin.suppliers.index',
     'admin.categories.index',
     'admin.inventory.index',
+    'pos.index',
+    'pos.orders',
+    'pos.order-details',
+    'pos.payments',
+    'pos.receipts',
+    'pos.customers',
+    'pos.settings',
 ]);
 
 export function isInertiaRoute(name: string): boolean {

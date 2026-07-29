@@ -96,7 +96,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 
 /* ------------------------------- Admin ----------------------------- */
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,accountant,inventory,sales,delivery', 'ability'])->group(function () {
-    Route::view('/dashboard', 'admin.dashboard')->name('dashboard');
+    Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'admin'])->name('dashboard');
     Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'adminStats'])->name('dashboard.stats');
 
     // الفروع

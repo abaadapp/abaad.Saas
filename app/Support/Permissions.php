@@ -18,6 +18,19 @@ class Permissions
         'delivery' => ['dashboard', 'orders', 'pos'],
     ];
 
+    /** كل الأقسام التي تظهر في لوحة النشاط — مصدر واحد تقرأ منه الواجهة */
+    public const SECTIONS = [
+        'dashboard', 'customers', 'products', 'orders', 'marketing',
+        'inventory', 'finance', 'expenses', 'reports', 'settings',
+        'categories', 'suppliers', 'purchases', 'profitability', 'vat',
+        'employees', 'pos', 'branch',
+    ];
+
+    public static function sections(): array
+    {
+        return self::SECTIONS;
+    }
+
     public static function abilities(?string $role): array
     {
         return self::MAP[$role] ?? ['*'];

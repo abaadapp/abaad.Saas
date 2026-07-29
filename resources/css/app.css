@@ -333,3 +333,62 @@ i[data-lucide] {
     background-position: left 0.75rem center;
     padding-left: 2rem;
 }
+
+/* =====================================================================
+   رموز shadcn/ui — مربوطة بلوحة .admin-ui القائمة
+   الهدف: مكوّنات React تبدو مطابقة تمامًا للتصميم الحالي بلا ثيمة موازية.
+   ===================================================================== */
+@theme {
+    --radius-ui: 16px;
+}
+
+:root,
+.admin-ui,
+.pos-scope {
+    --background: #f7f8f9;
+    --foreground: #111111;
+
+    --card: #ffffff;
+    --card-foreground: #111111;
+    --popover: #ffffff;
+    --popover-foreground: #111111;
+
+    /* اللكنة سوداء كما في التصميم الحالي، لا بنفسجية */
+    --primary: #111111;
+    --primary-foreground: #ffffff;
+
+    --secondary: #f2f2f0;
+    --secondary-foreground: #111111;
+
+    --muted: #f2f2f0;
+    --muted-foreground: #6b7280;
+
+    --accent: #f2f2f0;
+    --accent-foreground: #111111;
+
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+
+    --border: #e8e8e8;
+    --input: #e8e8e8;
+    --ring: rgba(17, 17, 17, 0.12);
+
+    --radius: 12px;
+}
+
+@layer base {
+    * {
+        border-color: var(--border);
+    }
+}
+
+/* حركة Framer Motion تحترم تفضيل تقليل الحركة في النظام */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

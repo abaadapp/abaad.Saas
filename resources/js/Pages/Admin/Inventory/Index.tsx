@@ -1,7 +1,8 @@
-import { Link, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { ArrowLeftRight, FileSpreadsheet } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -96,10 +97,10 @@ export default function InventoryIndex() {
                             </a>
                         </Button>
                         <Button variant="outline" asChild>
-                            <Link href={route('admin.inventory.movements')}>
+                            <SmartLink routeName={'admin.inventory.movements'} href={route('admin.inventory.movements')}>
                                 <ArrowLeftRight />
                                 الحركات
-                            </Link>
+                            </SmartLink>
                         </Button>
                     </>
                 }

@@ -1,7 +1,8 @@
-import { Link, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
 import { Badge } from '@/Components/ui/badge';
@@ -28,12 +29,11 @@ export default function EmployeesIndex() {
                         <AvatarFallback>{initials(e.name)}</AvatarFallback>
                     </Avatar>
                     <span className="min-w-0">
-                        <Link
-                            href={route('admin.employees.show', e.id)}
+                        <SmartLink routeName={'admin.employees.show'} href={route('admin.employees.show', e.id)}
                             className="block truncate font-medium hover:underline"
                         >
                             {e.name}
-                        </Link>
+                        </SmartLink>
                         <span className="block text-[11px] text-[#9ca3af]">{e.email}</span>
                     </span>
                 </div>
@@ -85,10 +85,10 @@ export default function EmployeesIndex() {
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الموظفون' }]}
                 actions={
                     <Button asChild>
-                        <Link href={route('admin.employees.create')}>
+                        <SmartLink routeName={'admin.employees.create'} href={route('admin.employees.create')}>
                             <Plus />
                             موظف جديد
-                        </Link>
+                        </SmartLink>
                     </Button>
                 }
             />

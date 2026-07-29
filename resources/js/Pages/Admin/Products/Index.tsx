@@ -1,7 +1,8 @@
-import { Link, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { Barcode, FileSpreadsheet, Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -38,12 +39,11 @@ export default function ProductsIndex() {
                         <span className="size-9 shrink-0 rounded-[8px] bg-[#f2f2f0]" />
                     )}
                     <span className="min-w-0">
-                        <Link
-                            href={route('admin.products.show', p.id)}
+                        <SmartLink routeName={'admin.products.show'} href={route('admin.products.show', p.id)}
                             className="block truncate font-medium hover:underline"
                         >
                             {p.label ?? p.name}
-                        </Link>
+                        </SmartLink>
                         <span className="block text-[11px] text-[#9ca3af]">{p.sku}</span>
                     </span>
                 </div>
@@ -113,16 +113,16 @@ export default function ProductsIndex() {
                             </a>
                         </Button>
                         <Button variant="outline" asChild>
-                            <Link href={route('admin.products.barcodes')}>
+                            <SmartLink routeName={'admin.products.barcodes'} href={route('admin.products.barcodes')}>
                                 <Barcode />
                                 الباركود
-                            </Link>
+                            </SmartLink>
                         </Button>
                         <Button asChild>
-                            <Link href={route('admin.products.create')}>
+                            <SmartLink routeName={'admin.products.create'} href={route('admin.products.create')}>
                                 <Plus />
                                 منتج جديد
-                            </Link>
+                            </SmartLink>
                         </Button>
                     </>
                 }

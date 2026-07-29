@@ -1,8 +1,9 @@
-import { Link, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SmartLink from '@/Components/SmartLink';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { number } from '@/lib/format';
@@ -23,10 +24,10 @@ export default function CategoriesIndex() {
                 ]}
                 actions={
                     <Button asChild>
-                        <Link href={route('admin.categories.create')}>
+                        <SmartLink routeName={'admin.categories.create'} href={route('admin.categories.create')}>
                             <Plus />
                             تصنيف جديد
-                        </Link>
+                        </SmartLink>
                     </Button>
                 }
             />

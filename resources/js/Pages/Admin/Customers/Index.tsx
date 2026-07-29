@@ -1,7 +1,8 @@
-import { Link, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { FileSpreadsheet, Plus, Upload } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column } from '@/Components/DataTable';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import { Button } from '@/Components/ui/button';
@@ -26,12 +27,11 @@ export default function CustomersIndex() {
             sortable: true,
             value: (c) => c.label ?? c.name,
             cell: (c) => (
-                <Link
-                    href={route('admin.customers.show', c.id)}
+                <SmartLink routeName={'admin.customers.show'} href={route('admin.customers.show', c.id)}
                     className="font-medium hover:underline"
                 >
                     {c.label ?? c.name}
-                </Link>
+                </SmartLink>
             ),
         },
         { key: 'phone', header: 'الهاتف', cell: (c) => c.phone || '—' },
@@ -77,16 +77,16 @@ export default function CustomersIndex() {
                             </a>
                         </Button>
                         <Button variant="outline" asChild>
-                            <Link href={route('admin.customers.import.form')}>
+                            <SmartLink routeName={'admin.customers.import.form'} href={route('admin.customers.import.form')}>
                                 <Upload />
                                 استيراد
-                            </Link>
+                            </SmartLink>
                         </Button>
                         <Button asChild>
-                            <Link href={route('admin.customers.create')}>
+                            <SmartLink routeName={'admin.customers.create'} href={route('admin.customers.create')}>
                                 <Plus />
                                 عميل جديد
-                            </Link>
+                            </SmartLink>
                         </Button>
                     </>
                 }

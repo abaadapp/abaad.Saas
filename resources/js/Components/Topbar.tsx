@@ -1,4 +1,4 @@
-import { Link, router, usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { Bell, Check, ChevronDown, GitBranch, LogOut, Menu, Search, User as UserIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
 import { Button } from '@/Components/ui/button';
@@ -24,13 +24,12 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
             </Button>
 
             {auth?.user.businessId && (
-                <Link
-                    href={route('admin.search')}
+                <a href={route('admin.search')}
                     className="hidden items-center gap-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-sm text-[#9ca3af] transition-colors hover:bg-[#fafafa] sm:flex sm:w-64"
                 >
                     <Search className="size-4" />
                     <span>بحث…</span>
-                </Link>
+                </a>
             )}
 
             <div className="ms-auto flex items-center gap-1.5">
@@ -46,17 +45,17 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem asChild>
-                                <Link href={route('admin.branch.switch', 'all')}>
+                                <a href={route('admin.branch.switch', 'all')}>
                                     {!context.branchId && <Check className="size-4" />}
                                     كل الفروع
-                                </Link>
+                                </a>
                             </DropdownMenuItem>
                             {context.branches.map((branch) => (
                                 <DropdownMenuItem key={branch.id} asChild>
-                                    <Link href={route('admin.branch.switch', branch.id)}>
+                                    <a href={route('admin.branch.switch', branch.id)}>
                                         {context.branchId === branch.id && <Check className="size-4" />}
                                         {branch.name}
-                                    </Link>
+                                    </a>
                                 </DropdownMenuItem>
                             ))}
                         </DropdownMenuContent>
@@ -75,10 +74,10 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                         <DropdownMenuContent align="end">
                             {context.currencies.map((currency) => (
                                 <DropdownMenuItem key={currency.code} asChild>
-                                    <Link href={route('admin.currency.switch', currency.code)}>
+                                    <a href={route('admin.currency.switch', currency.code)}>
                                         {context.currency.code === currency.code && <Check className="size-4" />}
                                         {currency.name}
-                                    </Link>
+                                    </a>
                                 </DropdownMenuItem>
                             ))}
                         </DropdownMenuContent>
@@ -142,10 +141,10 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                         <DropdownMenuLabel>{auth?.user.email}</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild>
-                            <Link href={route('profile.edit')}>
+                            <a href={route('profile.edit')}>
                                 <UserIcon />
                                 الملف الشخصي
-                            </Link>
+                            </a>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem destructive onSelect={() => router.post(route('logout'))}>

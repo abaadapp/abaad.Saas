@@ -32,12 +32,25 @@ class ExpenseController extends Controller
         $expenses = $q->orderByDesc('spent_at')->orderByDesc('id')
             ->paginate((int) $request->query('per_page', 10))->withQueryString();
 
-        return view('admin.expenses.index', [
-            'expenses' => $expenses,
+        return \Inertia\Inertia::render('Admin/Expenses/Index', [
+            'expenses' => collect($expenses->items())->map(fn ($e) => [
+                'id' => $e->id,
+                'reference' => $e->reference,
+                'due_date' => optional($e->due_date)->format('Y-m-d'),
+                'type' => $e->type,
+                'amount' => (float) $e->amount,
+                'status' => $e->status,
+                // رابط المرفق يُبنى هنا؛ المسار وحده لا يفتحه المتصفح
+                'attachment' => $e->attachment ? \Illuminate\Support\Facades\Storage::url($e->attachment) : null,
+                'attachment_name' => $e->attachment_name,
+                'description' => $e->description,
+            ])->all(),
+            'pagination' => \App\Support\Pagination::meta($expenses),
             'types' => Demo::expenseTypes(),
             'filters' => $request->only('q', 'type', 'status', 'tab'),
             'totalAmount' => (float) Expense::where('business_id', $bid)->sum('amount'),
             'totalCount' => Expense::where('business_id', $bid)->count(),
+            'today' => now()->format('Y-m-d'),
         ]);
     }
 

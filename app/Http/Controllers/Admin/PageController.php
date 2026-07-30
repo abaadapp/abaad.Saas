@@ -76,7 +76,19 @@ class PageController extends Controller
     {
         return Inertia::render('Admin/Addons/Index', [
             'addons' => Demo::addons(),
+            'emojiGroups' => self::emojiGroups(),
         ]);
+    }
+
+    /** مجموعات الإيموجي بصيغة منتقي الواجهة — مصدرها App\Support\Emojis وحدها */
+    private static function emojiGroups(): array
+    {
+        $out = [];
+        foreach (\App\Support\Emojis::groups() as $label => $items) {
+            $out[__($label)] = array_map(fn ($it) => ['e' => $it[0], 'k' => mb_strtolower($it[1])], $items);
+        }
+
+        return $out;
     }
 
     /* ------------------------------- الفروع ------------------------------- */
@@ -173,10 +185,24 @@ class PageController extends Controller
 
     public function purchasesIndex(): Response
     {
+        $s = Demo::purchaseOrderStats();
+
         return Inertia::render('Admin/Purchases/Index', [
-            'stats' => Demo::purchaseOrderStats(),
-            'purchaseOrders' => Demo::purchaseOrders(),
-            'reorderSuggestions' => Demo::reorderSuggestions(),
+            'stats' => [
+                ['label' => __('إجمالي الأوامر'), 'value' => (string) $s['total'], 'icon' => 'clipboard-list', 'color' => 'primary'],
+                ['label' => __('قيد التنفيذ'), 'value' => (string) $s['pending'], 'icon' => 'clock', 'color' => 'warning'],
+                ['label' => __('مستلمة'), 'value' => (string) $s['received'], 'icon' => 'package-check', 'color' => 'success'],
+                ['label' => __('قيمة قيد الاستلام'), 'value' => Demo::money($s['value']), 'icon' => 'wallet', 'color' => 'info'],
+            ],
+            // رابط الإيصال يُبنى هنا: المسار وحده لا يكفي المتصفح لفتحه
+            'orders' => array_map(function ($o) {
+                $o['receipt'] = $o['receipt']
+                    ? \Illuminate\Support\Facades\Storage::disk('public')->url($o['receipt'])
+                    : null;
+
+                return $o;
+            }, Demo::purchaseOrders()),
+            'reorder' => Demo::reorderSuggestions(),
         ]);
     }
 

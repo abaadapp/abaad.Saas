@@ -137,7 +137,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::delete('/categories/{id}', [CategoryController::class, 'destroy'])->name('categories.destroy');
 
     // الإضافات
-    Route::view('/addons', 'admin.addons.index')->name('addons.index');
+    Route::get('/addons', [\App\Http\Controllers\Admin\PageController::class, 'addonsIndex'])->name('addons.index');
     Route::post('/addons', [\App\Http\Controllers\Admin\AddonController::class, 'store'])->name('addons.store');
     Route::put('/addons/{id}', [\App\Http\Controllers\Admin\AddonController::class, 'update'])->name('addons.update');
     Route::delete('/addons/{id}', [\App\Http\Controllers\Admin\AddonController::class, 'destroy'])->name('addons.destroy');
@@ -199,7 +199,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::delete('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'destroy'])->name('suppliers.destroy');
 
     // أوامر الشراء
-    Route::view('/purchases', 'admin.purchases.index')->name('purchases.index');
+    Route::get('/purchases', [\App\Http\Controllers\Admin\PageController::class, 'purchasesIndex'])->name('purchases.index');
     Route::view('/purchases/create', 'admin.purchases.create')->name('purchases.create');
     Route::post('/purchases', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'store'])->name('purchases.store');
     Route::post('/purchases/{id}/receipt', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');

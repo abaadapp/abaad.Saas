@@ -21,13 +21,13 @@ class InventoryController extends Controller
             ->values()
             ->all();
 
-        return view('admin.inventory.reorder', ['items' => $items]);
+        return \Inertia\Inertia::render('Admin/Inventory/Reorder', ['items' => $items]);
     }
 
     /** شاشة الجرد الفعلي — إدخال الكمية المعدودة ومقارنتها بالدفترية */
     public function stocktake()
     {
-        return view('admin.inventory.stocktake', [
+        return \Inertia\Inertia::render('Admin/Inventory/Stocktake', [
             'items' => Demo::inventory(),
             'branches' => Demo::branches(),
             'currentBranch' => Demo::currentBranchId(),

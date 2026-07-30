@@ -306,10 +306,11 @@ class PageController extends Controller
         ]);
     }
 
-    public function vat(): Response
+    public function vat(\Illuminate\Http\Request $request): Response
     {
         return Inertia::render('Admin/Vat', [
-            'report' => Demo::vatReport(),
+            // الفترة تأتي من الرابط كما كانت في القالب (شهر/ربع/سنة)
+            'report' => Demo::vatReport($request->query('period', 'quarter')),
             'settings' => Demo::vatSettings(),
         ]);
     }

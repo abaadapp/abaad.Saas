@@ -166,7 +166,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
     Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');
     Route::get('/customers/{id}/statement', [\App\Http\Controllers\PdfController::class, 'customerStatement'])->name('customers.statement');
-    Route::view('/customers/{id}', 'admin.customers.show')->name('customers.show');
+    Route::get('/customers/{id}', [\App\Http\Controllers\Admin\PageController::class, 'customersShow'])->name('customers.show');
 
     // الموظفون
     Route::get('/employees', [\App\Http\Controllers\Admin\PageController::class, 'employeesIndex'])->name('employees.index');
@@ -223,9 +223,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::get('/orders/{id}/tax-invoice', [\App\Http\Controllers\PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
 
     // المالية والمصروفات والتقارير والإعدادات
-    Route::view('/finance', 'admin.finance.index')->name('finance.index');
+    Route::get('/finance', [\App\Http\Controllers\Admin\PageController::class, 'financeIndex'])->name('finance.index');
     // كشف الحساب البنكي والمطابقة
-    Route::view('/finance/statement', 'admin.finance.statement')->name('finance.statement');
+    Route::get('/finance/statement', [\App\Http\Controllers\Admin\PageController::class, 'financeStatement'])->name('finance.statement');
     Route::post('/bank/account', [\App\Http\Controllers\Admin\BankStatementController::class, 'updateAccount'])->name('bank.account');
     Route::post('/bank/import', [\App\Http\Controllers\Admin\BankStatementController::class, 'import'])->name('bank.import');
     Route::post('/bank/rematch', [\App\Http\Controllers\Admin\BankStatementController::class, 'rematch'])->name('bank.rematch');

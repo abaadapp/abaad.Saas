@@ -7,6 +7,8 @@ export interface CartItem {
     /** مفتاح فريد للبند: 'p'+معرّف المنتج أو 'a'+معرّف الإضافة */
     key: string;
     id: number | null;
+    /** معرّف الإضافة حين لا يكون البند منتجًا — الخادم يُسعّر به بدل الوثوق بالسعر المُرسَل */
+    addon_id?: number | null;
     name: string;
     price: number;
     qty: number;
@@ -63,6 +65,8 @@ export interface CheckoutResult {
     synced: boolean;
     invoice: string | null;
     points: number;
+    /** رفضه الخادم (مخزون غير كافٍ أو صنف غير معروف) — لا يُعاد إلى الطابور */
+    rejected?: boolean;
 }
 
 const OUTBOX_KEY = 'abadpos:pos:outbox';
@@ -386,7 +390,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
     }, []);
 
     const sendOne = useCallback(
-        async (payload: Record<string, unknown>): Promise<{ ok: boolean; drop?: boolean; invoice?: string; points?: number }> => {
+        async (payload: Record<string, unknown>): Promise<{ ok: boolean; drop?: boolean; invoice?: string; points?: number; error?: string }> => {
             try {
                 const res = await fetch('/pos/checkout', {
                     method: 'POST',
@@ -401,8 +405,19 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                     const d = await res.json();
                     return { ok: true, invoice: d.invoice, points: d.points_earned || 0 };
                 }
-                // 419 جلسة منتهية و422 بيانات مرفوضة — إعادة المحاولة بلا فائدة
-                if (res.status === 422 || res.status === 419) return { ok: false, drop: true };
+                // 419 جلسة منتهية و422 بيانات مرفوضة — إعادة المحاولة بلا فائدة.
+                // نستخرج السبب: الخادم يرفض هنا نقص المخزون وصنفًا غير معروف،
+                // وإسقاط البيع صامتًا يترك الكاشير بلا تفسير.
+                if (res.status === 422 || res.status === 419) {
+                    let error = '';
+                    try {
+                        const d = await res.json();
+                        error = Object.values(d?.errors ?? {}).flat().join(' · ') || d?.message || '';
+                    } catch {
+                        /* رد بلا JSON — نكتفي برسالة عامة */
+                    }
+                    return { ok: false, drop: true, error: error || 'تعذّر إتمام البيع' };
+                }
                 return { ok: false };
             } catch {
                 return { ok: false }; // خطأ شبكة → يبقى في الطابور
@@ -424,7 +439,12 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 if (res.ok || res.drop) {
                     remaining = remaining.filter((x) => x.uuid !== entry.uuid);
                     savePending(remaining);
-                    if (res.ok) onToast('تمت مزامنة طلب مُعلّق ✓', 'success');
+                    if (res.ok) {
+                        onToast('تمت مزامنة طلب مُعلّق ✓', 'success');
+                    } else if (res.error) {
+                        // رُفض بعد عودة الاتصال (نفد المخزون مثلًا) — يجب أن يُعلَم لا أن يختفي
+                        onToast('طلب مُعلّق رُفض: ' + res.error, 'danger');
+                    }
                 } else {
                     break; // الشبكة ما زالت منقطعة — نعيد لاحقًا
                 }
@@ -464,6 +484,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 client_uuid: id,
                 items: items.map((i) => ({
                     id: i.id ?? null,
+                    addon_id: i.addon_id ?? null,
                     name: i.name,
                     price: i.price,
                     qty: i.qty,
@@ -471,10 +492,9 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 })),
                 customer,
                 payment_method: method,
-                discount: discountAmount,
-                tax: taxAmount,
+                // الخصم والضريبة والإجمالي تُحتسب خادميًا من أسعار القاعدة؛
+                // ما يلي معروض للمستخدم فقط ولا يُقيَّد كما هو
                 delivery_fee: 0,
-                total,
                 resume_id: resumeId,
                 coupon_code: coupon?.code ?? null,
                 redeem_points: redeemPointsUsed,
@@ -487,11 +507,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
             if (res.ok || res.drop) {
                 savePending(queue.filter((p) => p.uuid !== id));
             }
+            if (res.drop && res.error) {
+                onToast(res.error, 'danger');
+            }
             setOnline(navigator.onLine);
 
-            return { synced: !!res.ok, invoice: res.invoice ?? null, points: res.points ?? 0 };
+            return { synced: !!res.ok, invoice: res.invoice ?? null, points: res.points ?? 0, rejected: !!res.drop };
         },
-        [items, customer, discountAmount, taxAmount, total, resumeId, coupon, redeemPointsUsed, savePending, sendOne],
+        [items, customer, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */
@@ -505,7 +528,17 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                     'X-CSRF-TOKEN': csrf(),
                     Accept: 'application/json',
                 },
-                body: JSON.stringify({ items, customer, total, kind }),
+                body: JSON.stringify({
+                    items: items.map((i) => ({
+                        id: i.id ?? null,
+                        addon_id: i.addon_id ?? null,
+                        name: i.name,
+                        qty: i.qty,
+                        note: i.note ?? '',
+                    })),
+                    customer,
+                    kind,
+                }),
             });
             clear();
             onToast(kind === 'hold' ? 'تم تعليق الطلب' : 'تم حفظ الطلب', kind === 'hold' ? 'warning' : 'success');

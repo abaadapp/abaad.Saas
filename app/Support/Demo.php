@@ -1429,10 +1429,15 @@ class Demo
 
     /* ============================ باحثات مفردة (حسب المعرّف) ============================ */
 
+    /**
+     * السجل المطابق للمعرّف، أو [] إن لم يوجد.
+     *
+     * لا ترجع أبدًا إلى $rows[0] عند الإخفاق: المستدعون يحرسون بـ abort_if(empty(...), 404)،
+     * فالرجوع لأول سجل كان يُبطل كل تلك الحراسات ويعرض سجلًا آخر تحت معرّف غير موجود.
+     */
     private static function findById(array $rows, $id, string $key = 'id'): array
     {
-        $found = collect($rows)->firstWhere($key, is_numeric($id) ? (int) $id : $id);
-        return $found ?? ($rows[0] ?? []);
+        return collect($rows)->firstWhere($key, is_numeric($id) ? (int) $id : $id) ?? [];
     }
 
     public static function product($id): array { return self::findById(self::products(), $id); }

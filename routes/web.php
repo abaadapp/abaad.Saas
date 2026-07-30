@@ -26,7 +26,15 @@ Route::view('/login', 'auth.login')->name('login.form');
 Route::post('/login', [LoginController::class, 'attempt'])->name('login.attempt');
 Route::get('/pin-login', [LoginController::class, 'pinForm'])->name('pin.form');
 Route::post('/pin-login', [LoginController::class, 'pinAttempt'])->name('pin.attempt');
-Route::get('/demo-login/{role}', [LoginController::class, 'demo'])->name('demo.login');
+/*
+ * الدخول التجريبي: يمنح جلسة كاملة بلا كلمة مرور، فلا يُسجَّل إلا حيث يُسمح به صراحةً.
+ * تركُه مفتوحًا يعني أن أي زائر مجهول يصير مدير منصة بطلب GET واحد.
+ * يُفعَّل محليًا افتراضيًا، ولا يُسجَّل في الإنتاج مهما كانت قيمة المتغيّر.
+ */
+if (config('app.demo_login')) {
+    Route::get('/demo-login/{role}', [LoginController::class, 'demo'])->name('demo.login');
+}
+
 Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->name('logout');
 
 /* ------------------------- الملف الشخصي (كل الأدوار) ------------------------- */

@@ -95,9 +95,13 @@ class LoginController extends Controller
         return redirect($this->homeFor($user));
     }
 
-    /** دخول تجريبي سريع بدور محدّد */
+    /** دخول تجريبي سريع بدور محدّد — محليًا فقط */
     public function demo(Request $request, string $role)
     {
+        // حارس ثانٍ إلى جانب حارس التسجيل في routes/web.php:
+        // لو أُعيد تسجيل المسار يومًا بغير قصد، يبقى الباب مقفلًا.
+        abort_unless(config('app.demo_login'), 404);
+
         $email = $this->demoAccounts[$role] ?? null;
         $user = $email ? User::where('email', $email)->first() : null;
 

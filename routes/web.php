@@ -189,7 +189,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::get('/inventory/reorder', [InventoryController::class, 'reorder'])->name('inventory.reorder');
     Route::get('/inventory/stocktake', [InventoryController::class, 'stocktake'])->name('inventory.stocktake');
     Route::post('/inventory/stocktake', [InventoryController::class, 'applyStocktake'])->name('inventory.stocktake.apply');
-    Route::view('/inventory/movements', 'admin.inventory.movements')->name('inventory.movements');
+    Route::get('/inventory/movements', [\App\Http\Controllers\Admin\PageController::class, 'inventoryMovements'])->name('inventory.movements');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
     // المورّدون

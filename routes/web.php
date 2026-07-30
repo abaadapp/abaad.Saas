@@ -207,16 +207,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     Route::delete('/purchases/{id}', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
 
     // تحليلات الربحية
-    Route::view('/profitability', 'admin.profitability')->name('profitability.index');
+    Route::get('/profitability', [\App\Http\Controllers\Admin\PageController::class, 'profitability'])->name('profitability.index');
 
     // التسويق والكوبونات
-    Route::view('/marketing', 'admin.marketing')->name('marketing.index');
+    Route::get('/marketing', [\App\Http\Controllers\Admin\PageController::class, 'marketing'])->name('marketing.index');
     Route::post('/coupons', [\App\Http\Controllers\Admin\CouponController::class, 'store'])->name('coupons.store');
     Route::post('/coupons/{id}/toggle', [\App\Http\Controllers\Admin\CouponController::class, 'toggle'])->name('coupons.toggle');
     Route::delete('/coupons/{id}', [\App\Http\Controllers\Admin\CouponController::class, 'destroy'])->name('coupons.destroy');
 
     // ضريبة القيمة المضافة
-    Route::view('/vat', 'admin.vat')->name('vat.index');
+    Route::get('/vat', [\App\Http\Controllers\Admin\PageController::class, 'vat'])->name('vat.index');
     Route::get('/vat/pdf', [\App\Http\Controllers\PdfController::class, 'vatReport'])->name('vat.pdf');
     Route::get('/vat/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'vatXlsx'])->name('vat.xlsx');
     Route::get('/vat/csv', [\App\Http\Controllers\ExportController::class, 'vat'])->name('vat.csv');

@@ -29,10 +29,26 @@ class PageController extends Controller
         $product = Demo::product($id);
         abort_if(empty($product), 404);
 
+        $margin = $product['price'] - $product['cost'];
+        $marginPct = $product['price'] > 0 ? round(($margin / $product['price']) * 100) : 0;
+
         return Inertia::render('Admin/Products/Show', [
             'product' => $product,
-            'sold' => Demo::productSold($id),
-            'movements' => Demo::movements(),
+            'stats' => [
+                ['label' => __('الكمية المتوفرة'), 'value' => __(':n قطعة', ['n' => $product['qty']]), 'icon' => 'package', 'color' => 'primary'],
+                ['label' => __('إجمالي المبيعات'), 'value' => __(':n قطعة', ['n' => Demo::productSold($id)]), 'icon' => 'shopping-cart', 'color' => 'success'],
+                ['label' => __('سعر التكلفة'), 'value' => Demo::money($product['cost']), 'icon' => 'wallet', 'color' => 'info'],
+                ['label' => __('هامش الربح'), 'value' => $marginPct . '%', 'icon' => 'trending-up', 'color' => 'primary',
+                    'trend' => Demo::money($margin), 'up' => true],
+            ],
+            // حركات هذا المنتج وحده، لا كل حركات المتجر
+            'movements' => array_slice(array_values(array_filter(
+                Demo::movements(),
+                fn ($m) => $m['product'] === $product['name'],
+            )), 0, 6),
+            'thumbs' => array_values(array_filter([$product['image']])),
+            'description' => $product['description']
+                ?? __('باقة أنيقة من الورود الطبيعية الطازجة مناسبة لجميع المناسبات، منسّقة بعناية بأيدي خبراء التنسيق لدينا لتمنح لمسة جمالية مميزة.'),
         ]);
     }
 

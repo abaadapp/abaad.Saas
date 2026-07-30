@@ -254,7 +254,7 @@ class PageController extends Controller
         ]);
     }
 
-    public function purchasesCreate(): Response
+    public function purchasesCreate(\Illuminate\Http\Request $request): Response
     {
         return Inertia::render('Admin/Purchases/Create', [
             'suppliers' => Demo::suppliers(),
@@ -262,6 +262,8 @@ class PageController extends Controller
             'reorderSuggestions' => Demo::reorderSuggestions(),
             'branches' => Demo::branches(),
             'currentBranchId' => Demo::currentBranchId(),
+            // القدوم من شاشة إعادة الطلب يملأ الأصناف المقترحة مسبقًا
+            'fromReorder' => $request->query('from') === 'reorder',
         ]);
     }
 

@@ -251,10 +251,10 @@ class CustomerImportExportController extends Controller
             'skip' => count(array_filter($rows, fn ($r) => in_array($r['status'], ['invalid', 'dup_file'], true))),
         ];
 
-        return view('admin.customers.import-preview', [
+        return \Inertia\Inertia::render('Admin/Customers/ImportPreview', [
             'rows' => $rows,
             'counts' => $counts,
-            'defaultBranch' => $default,
+            'defaultBranchName' => $default?->name,
             'file' => $payload['file'],
         ]);
     }

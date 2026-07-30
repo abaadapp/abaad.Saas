@@ -25,7 +25,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn () => route('login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        /*
+         * لا توجد مسارات api/* في هذا التطبيق، فقصرُ JSON عليها كان يعني أن
+         * كل نداءات fetch (نقطة البيع خصوصًا) تتلقّى تحويلة 302 إلى صفحة HTML
+         * بدل 422 بأخطائها — فتُبتلع رسالة الخطأ ويبدو الطلب وكأنه نجح.
+         * expectsJson() لا يشمل طلبات Inertia (تقبل text/html)، فتبقى
+         * تحويلاتها ورسائلها في الجلسة كما هي.
+         */
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
     })->create();

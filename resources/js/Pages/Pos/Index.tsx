@@ -199,7 +199,7 @@ export default function PosIndex() {
                                         key={a.id}
                                         type="button"
                                         onClick={() =>
-                                            cart.add({ key: `a${a.id}`, id: null, name: a.label, price: a.price, icon: emoji, image: null })
+                                            cart.add({ key: `a${a.id}`, id: null, addon_id: a.id, name: a.label, price: a.price, icon: emoji, image: null })
                                         }
                                         className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#c4b5fd] hover:bg-[#f5f3ff]"
                                     >

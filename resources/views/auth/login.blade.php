@@ -63,7 +63,8 @@
                 <x-icon name="scan-barcode" class="w-5 h-5" /> {{ __('دخول الموظف بالرمز') }}
             </a>
 
-            {{-- دخول تجريبي --}}
+            {{-- دخول تجريبي — لا يظهر إلا حيث يكون المسار مسجّلًا فعلًا (محليًا) --}}
+            @if (config('app.demo_login'))
             <div class="mt-6">
                 <div class="relative flex items-center">
                     <div class="flex-grow border-t border-gray-100"></div>
@@ -97,6 +98,7 @@
                     </a>
                 </div>
             </div>
+            @endif
         </div>
 
         <p class="text-center text-xs text-gray-400 mt-6">© 2026 Abad POS — {{ __('جميع الحقوق محفوظة') }}</p>

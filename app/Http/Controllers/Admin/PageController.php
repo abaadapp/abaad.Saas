@@ -60,6 +60,7 @@ class PageController extends Controller
         return Inertia::render('Admin/Products/Edit', [
             'product' => $product,
             'categories' => Demo::categories(),
+            'description' => $product['description'] ?? '',
         ]);
     }
 
@@ -83,8 +84,18 @@ class PageController extends Controller
     {
         return Inertia::render('Admin/Categories/Create', [
             'categories' => Demo::categories(),
+            'emojiGroups' => self::emojiGroups(),
+            'palette' => self::PALETTE,
         ]);
     }
+
+    /** ألوان الأقسام — نفس اللوحة التي كانت مضمّنة في القالب */
+    private const PALETTE = [
+        '#7c3aed', '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9',
+        '#06b6d4', '#14b8a6', '#10b981', '#22c55e', '#84cc16',
+        '#eab308', '#f59e0b', '#f97316', '#ef4444', '#e11d48',
+        '#db2777', '#d946ef', '#a855f7', '#64748b', '#78716c',
+    ];
 
     /* ------------------------------ الإضافات ------------------------------ */
 

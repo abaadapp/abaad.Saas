@@ -1,23 +1,28 @@
 import { usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Flower } from 'lucide-react';
+import Logo from '@/Components/Logo';
 import SmartLink from '@/Components/SmartLink';
 import { useTranslate } from '@/lib/i18n';
-import { NAV } from '@/lib/nav';
+import { NAV, type NavGroup } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface SidebarProps {
     open: boolean;
     onClose: () => void;
+    /** قائمة التنقّل — لوحة التاجر افتراضًا، ولوحة المنصة تمرّر قائمتها */
+    nav?: NavGroup[];
+    /** السطر تحت الشعار — اسم المتجر افتراضًا، ولوحة المنصة تسمّي نفسها */
+    subtitle?: string;
 }
 
-export default function Sidebar({ open, onClose }: SidebarProps) {
+export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarProps) {
     const { auth, context } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
 
-    const can = (section: string) => auth?.abilities.includes(section) ?? false;
+    // بلا قسم صلاحية يظهر العنصر دائمًا — انظر NavItem.section
+    const can = (section?: string) => !section || (auth?.abilities.includes(section) ?? false);
 
     return (
         <>
@@ -47,18 +52,24 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                         : 'max-lg:rtl:translate-x-full max-lg:ltr:-translate-x-full',
                 )}
             >
-                {/* الشعار واسم المتجر — يُقرأ من الخادم لا مكتوبًا في القالب */}
-                <div className="flex h-16 shrink-0 items-center gap-3 px-5">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-[#111] text-white">
-                        <Flower className="size-[18px]" />
-                    </span>
-                    <p className="truncate text-[15px] font-semibold text-[#111]">
-                        {context?.businessName ?? 'Abad POS'}
-                    </p>
+                {/* شعار أبعاد ثم اسم المتجر — الاسم يُقرأ من الخادم لا مكتوبًا في القالب.
+                    self-start يُلصق الشعار بحافة البداية: يمينًا في العربية ويسارًا في الإنجليزية. */}
+                <div className="flex h-16 shrink-0 flex-col justify-center gap-1 px-5">
+                    <Logo className="h-5 w-auto self-start text-[#111]" />
+                    {/* اسم المتجر يُعرض كما هو؛ الترجمة للتسمية الثابتة وحدها */}
+                    {subtitle ? (
+                        <p className="truncate text-[12px] font-medium text-[#6b7280]">{t(subtitle)}</p>
+                    ) : (
+                        context?.businessName && (
+                            <p className="truncate text-[12px] font-medium text-[#6b7280]">
+                                {context.businessName}
+                            </p>
+                        )
+                    )}
                 </div>
 
                 <nav className="flex-1 overflow-y-auto px-3 pb-4">
-                    {NAV.map((group, gi) => {
+                    {nav.map((group, gi) => {
                         const visible = group.items.filter((item) => can(item.section));
                         if (visible.length === 0) return null;
 

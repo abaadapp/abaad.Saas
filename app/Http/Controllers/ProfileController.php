@@ -8,19 +8,27 @@ use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
 {
-    public function edit()
+    public function edit(): \Inertia\Response
     {
         $user = auth()->user();
 
-        $layout = match (true) {
-            $user->isSuperAdmin() => 'layouts::super-admin',
-            $user->role === 'cashier' => 'layouts::pos',
-            default => 'layouts::admin',
+        // القشرة تتبع الدور: لكل لوحة قائمتها، فلا تُعرض لمدير المنصة قائمة متجر
+        $shell = match (true) {
+            $user->isSuperAdmin() => 'platform',
+            $user->role === 'cashier' => 'pos',
+            default => 'admin',
         };
 
-        return view('profile.edit', [
-            'user' => $user,
-            'layout' => $layout,
+        return \Inertia\Inertia::render('Profile/Edit', [
+            'profile' => [
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'avatar' => $user->avatar,
+                'roleLabel' => $user->roleLabel(),
+            ],
+            'shell' => $shell,
+            'limited' => $user->role === 'cashier',
         ]);
     }
 

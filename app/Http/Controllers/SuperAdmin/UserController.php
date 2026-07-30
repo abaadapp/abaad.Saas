@@ -26,7 +26,14 @@ class UserController extends Controller
             'avatar' => $u->avatar ?? Demo::image('user' . $u->id, 100, 100),
         ]);
 
-        return view('super-admin.users.index', ['users' => $users, 'filters' => $request->only('q', 'role', 'status')]);
+        return \Inertia\Inertia::render('Platform/Users/Index', [
+            'users' => $users->items(),
+            'pagination' => \App\Support\Pagination::meta($users),
+            'filters' => $request->only('q', 'role', 'status'),
+            'roles' => PageController::roles(),
+            'businesses' => \App\Models\Business::orderBy('name')->get()
+                ->map(fn ($b) => ['label' => $b->name, 'value' => $b->id])->all(),
+        ]);
     }
 
     public function store(Request $request)

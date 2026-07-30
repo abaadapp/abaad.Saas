@@ -38,6 +38,12 @@ const STATUS_VARIANT: Record<string, VariantProps<typeof badgeVariants>['variant
     متوقف: 'danger',
     نفد: 'danger',
     مغلقة: 'neutral',
+    // حالات لوحة المنصة — بنفس ألوان x-badge القديمة
+    مدفوعة: 'success',
+    'غير مدفوعة': 'danger',
+    منتهي: 'danger',
+    معطل: 'danger',
+    موقوف: 'danger',
 };
 
 export interface BadgeProps

@@ -33,15 +33,28 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
      * التوجيه، لكن اتجاه الصفحة (dir) يُحسم في قالب الجذر — فلا يكفي تحديث
      * Inertia الجزئي، نحتاج إعادة تحميل كاملة ليُعاد بناء الصفحة بالاتجاه الصحيح.
      */
+    const isPlatform = auth?.user.role === 'super_admin';
+
     const switchLocale = (next: 'ar' | 'en') => {
         if (next === locale) return;
 
+        // لكل لوحة مسارها: مسار لوحة التاجر يحرسه middleware الأدوار،
+        // فمدير المنصة يُرفض عليه بـ403 ولا تتغيّر لغته.
         router.post(
-            route('admin.language.update'),
+            route(isPlatform ? 'super-admin.language.update' : 'admin.language.update'),
             { locale: next },
             { onSuccess: () => window.location.reload() },
         );
     };
+
+    /**
+     * البحث الموحّد — لكل لوحة مسارها. مدير المنصة لا يملك business_id،
+     * فربط الزر به وحده كان يخفي بحث المنصة رغم وجود مساره.
+     */
+    const searchUrl =
+        isPlatform ? route('super-admin.search')
+        : auth?.user.businessId ? route('admin.search')
+        : null;
 
     return (
         <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-[var(--ui-border,#e8e8e8)] bg-white/80 px-4 backdrop-blur-md lg:px-6">
@@ -50,8 +63,8 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                 <span className="sr-only">{t('القائمة')}</span>
             </Button>
 
-            {auth?.user.businessId && (
-                <a href={route('admin.search')}
+            {searchUrl && (
+                <a href={searchUrl}
                     className="hidden items-center gap-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-sm text-[#9ca3af] transition-colors hover:bg-[#fafafa] sm:flex sm:w-64"
                 >
                     <Search className="size-4" />

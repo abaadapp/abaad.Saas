@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
+use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -45,7 +46,7 @@ Route::middleware('auth')->group(function () {
 
 /* --------------------------- Super Admin --------------------------- */
 Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:super_admin'])->group(function () {
-    Route::view('/dashboard', 'super-admin.dashboard')->name('dashboard');
+    Route::get('/dashboard', [SuperAdminPageController::class, 'dashboard'])->name('dashboard');
     Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'superStats'])->name('dashboard.stats');
 
     // الشركات
@@ -53,25 +54,25 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // تصدير الشركات (قبل businesses/{id} حتى لا يبتلعها نمط المعرّف)
     Route::get('/businesses/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'businessesXlsx'])->name('businesses.xlsx');
     Route::get('/businesses/export-pdf', [\App\Http\Controllers\PdfController::class, 'businessesReport'])->name('businesses.exportPdf');
-    Route::view('/businesses/create', 'super-admin.businesses.create')->name('businesses.create');
+    Route::get('/businesses/create', [SuperAdminPageController::class, 'businessesCreate'])->name('businesses.create');
     Route::post('/businesses', [BusinessController::class, 'store'])->name('businesses.store');
-    Route::view('/businesses/{id}', 'super-admin.businesses.show')->name('businesses.show');
-    Route::view('/businesses/{id}/edit', 'super-admin.businesses.edit')->name('businesses.edit');
+    Route::get('/businesses/{id}', [SuperAdminPageController::class, 'businessesShow'])->name('businesses.show');
+    Route::get('/businesses/{id}/edit', [SuperAdminPageController::class, 'businessesEdit'])->name('businesses.edit');
     Route::put('/businesses/{id}', [BusinessController::class, 'update'])->name('businesses.update');
     Route::delete('/businesses/{id}', [BusinessController::class, 'destroy'])->name('businesses.destroy');
 
     // محلات الورود
-    Route::view('/flower-shops', 'super-admin.flower-shops.index')->name('flower-shops.index');
-    Route::view('/flower-shops/create', 'super-admin.flower-shops.create')->name('flower-shops.create');
+    Route::get('/flower-shops', [SuperAdminPageController::class, 'flowerShopsIndex'])->name('flower-shops.index');
+    Route::get('/flower-shops/create', [SuperAdminPageController::class, 'flowerShopsCreate'])->name('flower-shops.create');
     Route::post('/flower-shops', [\App\Http\Controllers\SuperAdmin\FlowerShopController::class, 'store'])->name('flower-shops.store');
-    Route::view('/flower-shops/{id}', 'super-admin.flower-shops.show')->name('flower-shops.show');
-    Route::view('/flower-shops/{id}/edit', 'super-admin.flower-shops.edit')->name('flower-shops.edit');
+    Route::get('/flower-shops/{id}', [SuperAdminPageController::class, 'flowerShopsShow'])->name('flower-shops.show');
+    Route::get('/flower-shops/{id}/edit', [SuperAdminPageController::class, 'flowerShopsEdit'])->name('flower-shops.edit');
     Route::put('/flower-shops/{id}', [\App\Http\Controllers\SuperAdmin\FlowerShopController::class, 'update'])->name('flower-shops.update');
 
     // الاشتراكات والباقات
-    Route::view('/subscriptions', 'super-admin.subscriptions.index')->name('subscriptions.index');
-    Route::view('/subscriptions/plans', 'super-admin.subscriptions.plans')->name('subscriptions.plans');
-    Route::view('/subscriptions/invoices', 'super-admin.subscriptions.invoices')->name('subscriptions.invoices');
+    Route::get('/subscriptions', [SuperAdminPageController::class, 'subscriptionsIndex'])->name('subscriptions.index');
+    Route::get('/subscriptions/plans', [SuperAdminPageController::class, 'plans'])->name('subscriptions.plans');
+    Route::get('/subscriptions/invoices', [SuperAdminPageController::class, 'invoices'])->name('subscriptions.invoices');
     Route::get('/invoices/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'platformInvoice'])->name('invoices.pdf');
     Route::get('/subscriptions/invoices/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'invoicesXlsx'])->name('invoices.xlsx');
     Route::get('/subscriptions/invoices/pdf', [\App\Http\Controllers\PdfController::class, 'invoicesReport'])->name('invoices.exportPdf');
@@ -88,16 +89,20 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/users', [\App\Http\Controllers\SuperAdmin\UserController::class, 'store'])->name('users.store');
     Route::put('/users/{id}', [\App\Http\Controllers\SuperAdmin\UserController::class, 'update'])->name('users.update');
     Route::post('/users/{id}/toggle', [\App\Http\Controllers\SuperAdmin\UserController::class, 'toggleStatus'])->name('users.toggle');
-    Route::view('/users/{id}', 'super-admin.users.show')->name('users.show');
+    Route::get('/users/{id}', [SuperAdminPageController::class, 'usersShow'])->name('users.show');
 
-    // إنشاء باقة
+    // الباقات
     Route::post('/plans', [\App\Http\Controllers\SuperAdmin\PlanController::class, 'store'])->name('plans.store');
+    Route::put('/plans/{id}', [\App\Http\Controllers\SuperAdmin\PlanController::class, 'update'])->name('plans.update');
+
+    // اللغة — مسار المنصة، فمسار لوحة التاجر يحرسه middleware أدوار لا يشمل مدير المنصة
+    Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
 
     // التقارير والإعدادات وسجل النشاط
-    Route::view('/reports', 'super-admin.reports.index')->name('reports.index');
+    Route::get('/reports', [SuperAdminPageController::class, 'reports'])->name('reports.index');
     Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'platformReport'])->name('reports.pdf');
     Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'superIndex'])->name('activity.index');
-    Route::view('/settings', 'super-admin.settings.index')->name('settings.index');
+    Route::get('/settings', [SuperAdminPageController::class, 'settings'])->name('settings.index');
     Route::post('/settings', [\App\Http\Controllers\SuperAdmin\SettingController::class, 'update'])->name('settings.update');
     Route::post('/settings/test-email', [\App\Http\Controllers\SuperAdmin\SettingController::class, 'testEmail'])->name('settings.testEmail');
 });

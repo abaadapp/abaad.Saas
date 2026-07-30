@@ -12,6 +12,9 @@ class SettingController extends Controller
     {
         foreach ($request->except(['_token', '_method', 'tab']) as $key => $value) {
             if (is_array($value)) { $value = implode(',', $value); }
+            // المفاتيح المنطقية تُخزَّن '1'/'0' لا true/false: القراءة تقارن بالنص،
+            // و false يُكتب سلسلة فارغة فتُقرأ لاحقًا على أنها «مفعّل».
+            if (is_bool($value)) { $value = $value ? '1' : '0'; }
             Setting::updateOrCreate(
                 ['business_id' => null, 'key' => $key],
                 ['value' => $value]

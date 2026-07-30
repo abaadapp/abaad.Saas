@@ -27,7 +27,11 @@ class ActivityController extends Controller
     {
         $logs = $this->shape(ActivityLog::query(), $request);
 
-        return view('super-admin.activity', ['logs' => $logs, 'filters' => $request->only('q', 'action')]);
+        return \Inertia\Inertia::render('Platform/Activity', [
+            'logs' => $logs->items(),
+            'pagination' => \App\Support\Pagination::meta($logs),
+            'filters' => $request->only('q', 'action'),
+        ]);
     }
 
     public function adminIndex(Request $request)

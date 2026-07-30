@@ -76,7 +76,21 @@ class EmployeeController extends Controller
 
     public function edit($id)
     {
-        return view('admin.employees.edit', ['employee' => $this->findEmployee($id)]);
+        $employee = $this->findEmployee($id);
+
+        return \Inertia\Inertia::render('Admin/Employees/Edit', [
+            'employee' => [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'job_title' => $employee->job_title,
+                'branch' => $employee->branch,
+                'phone' => $employee->phone,
+                'email' => $employee->email,
+                'pin' => $employee->pin,
+            ],
+            'branches' => Demo::branches(),
+            'jobTitles' => \App\Models\JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all(),
+        ]);
     }
 
     public function update(Request $request, $id)

@@ -165,6 +165,7 @@ class PageController extends Controller
     {
         return Inertia::render('Admin/Employees/Create', [
             'branches' => Demo::branches(),
+            'jobTitles' => self::jobTitles(),
             'currentBranchName' => Demo::currentBranchName(),
         ]);
     }
@@ -177,7 +178,27 @@ class PageController extends Controller
         return Inertia::render('Admin/Employees/Show', [
             'employee' => $employee,
             'orderCount' => Demo::employeeOrderCount($id),
+            'salesSeries' => Demo::employeeSalesSeries($id),
+            // الصلاحيات معروضة للاسترشاد؛ الفرض الفعلي يتم بدور الموظف عبر middleware
+            'permissions' => [
+                'فتح نقطة البيع' => true,
+                'إنشاء طلب جديد' => true,
+                'تطبيق خصومات' => true,
+                'إلغاء طلب' => false,
+                'إدارة المنتجات' => false,
+                'إدارة المخزون' => true,
+                'عرض التقارير' => true,
+                'إدارة الموظفين' => false,
+                'إدارة المصروفات' => false,
+                'تعديل الإعدادات' => false,
+            ],
         ]);
+    }
+
+    /** مسمّيات الوظائف المعرّفة للنشاط */
+    private static function jobTitles(): array
+    {
+        return \App\Models\JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all();
     }
 
     /* ------------------------------ المخزون ------------------------------ */

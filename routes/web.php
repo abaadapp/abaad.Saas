@@ -241,11 +241,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // أنواع المصروفات
     Route::post('/expense-types', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'store'])->name('expenseTypes.store');
     Route::delete('/expense-types/{id}', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'destroy'])->name('expenseTypes.destroy');
-    Route::view('/reports', 'admin.reports.index')->name('reports.index');
+    Route::get('/reports', [\App\Http\Controllers\Admin\PageController::class, 'reportsIndex'])->name('reports.index');
     Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'salesReport'])->name('reports.pdf');
     Route::get('/reports/data/{key}', [\App\Http\Controllers\Admin\ReportDataController::class, 'show'])->name('reports.data');
     Route::get('/reports/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'xlsx'])->name('reports.xlsx');
-    Route::view('/analytics', 'admin.analytics')->name('analytics.index');
+    Route::get('/analytics', [\App\Http\Controllers\Admin\PageController::class, 'analytics'])->name('analytics.index');
     Route::get('/analytics/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'analyticsXlsx'])->name('analytics.xlsx');
     Route::get('/analytics/pdf', [\App\Http\Controllers\PdfController::class, 'analyticsReport'])->name('analytics.pdf');
     Route::post('/goals', [\App\Http\Controllers\Admin\GoalController::class, 'update'])->name('goals.update');

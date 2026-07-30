@@ -35,6 +35,8 @@ export const INERTIA_ROUTES = new Set<string>([
     'admin.vat.index',
     'admin.profitability.index',
     'admin.marketing.index',
+    'admin.reports.index',
+    'admin.analytics.index',
     'pos.index',
     'pos.orders',
     'pos.order-details',

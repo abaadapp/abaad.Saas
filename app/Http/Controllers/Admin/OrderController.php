@@ -30,7 +30,11 @@ class OrderController extends Controller
             'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
         ]);
 
-        return view('admin.orders.index', ['orders' => $orders, 'filters' => $request->only('q', 'payment', 'date')]);
+        return \Inertia\Inertia::render('Admin/Orders/Index', [
+            'orders' => $orders->items(),
+            'pagination' => \App\Support\Pagination::meta($orders),
+            'filters' => $request->only('q', 'payment', 'date'),
+        ]);
     }
 
 }

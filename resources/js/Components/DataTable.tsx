@@ -1,4 +1,5 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { router } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import { ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { Input } from '@/Components/ui/input';
@@ -28,9 +29,32 @@ export interface Column<T> {
 
 export interface Filter<T> {
     label: string;
-    options: { label: string; value: string }[];
-    /** يُرجع true إن كان الصف مطابقًا للقيمة المختارة */
-    match: (row: T, value: string) => boolean;
+    /** حقل تاريخ بدل قائمة اختيار */
+    type?: 'select' | 'date';
+    options?: { label: string; value: string }[];
+    /** الوضع المحلي: يُرجع true إن كان الصف مطابقًا للقيمة المختارة */
+    match?: (row: T, value: string) => boolean;
+    /** الوضع الخادمي: اسم معامل الرابط الذي تُرسل فيه القيمة */
+    param?: string;
+}
+
+/** شكل الترقيم كما يُصدره paginate() في Laravel */
+export interface ServerPagination {
+    current_page: number;
+    last_page: number;
+    from: number | null;
+    to: number | null;
+    total: number;
+    prev_page_url: string | null;
+    next_page_url: string | null;
+}
+
+interface ServerMode {
+    pagination: ServerPagination;
+    /** قيم المعاملات الحالية كما أعادها الخادم */
+    params: Record<string, string | null | undefined>;
+    /** اسم معامل البحث (افتراضيًا q) */
+    searchParam?: string;
 }
 
 interface DataTableProps<T> {
@@ -38,13 +62,25 @@ interface DataTableProps<T> {
     columns: Column<T>[];
     rowKey: (row: T) => string | number;
     searchPlaceholder?: string;
-    /** الحقول التي يشملها البحث النصّي */
+    /** الحقول التي يشملها البحث النصّي (الوضع المحلي) */
     searchable?: (row: T) => string;
     filters?: Filter<T>[];
     empty?: ReactNode;
     /** يُعرض بين شريط البحث والجدول */
     toolbar?: ReactNode;
     pageSize?: number;
+    /**
+     * وضع خادمي: البحث والتصفية والترقيم تمرّ بالخادم عبر معاملات الرابط.
+     *
+     * لازم للقوائم التي تُرقّم على الخادم (المنتجات والعملاء): تمرير الصفحة
+     * الحالية فقط إلى الوضع المحلي كان سيجعل البحث يرى 12 صفًا لا الجدول كله.
+     */
+    server?: ServerMode;
+    /**
+     * يستبدل الجدول بعرض آخر (بطاقات مثلًا) مع إبقاء شريط البحث والتصفية
+     * والترقيم كما هو — فلا يفقد العرض الشبكي أدوات التصفية.
+     */
+    renderBody?: (rows: T[]) => ReactNode;
 }
 
 /**
@@ -63,14 +99,52 @@ export default function DataTable<T>({
     empty = 'لا توجد بيانات بعد',
     toolbar,
     pageSize = 25,
+    server,
+    renderBody,
 }: DataTableProps<T>) {
     const t = useTranslate();
-    const [query, setQuery] = useState('');
-    const [active, setActive] = useState<Record<number, string>>({});
+    const searchParam = server?.searchParam ?? 'q';
+    const [query, setQuery] = useState(server ? String(server.params[searchParam] ?? '') : '');
+    const [active, setActive] = useState<Record<number, string>>(() =>
+        server
+            ? Object.fromEntries(
+                  filters.map((f, i) => [i, f.param ? String(server.params[f.param] ?? '') : '']),
+              )
+            : {},
+    );
     const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
     const [page, setPage] = useState(0);
 
+    /** يزور الرابط بالمعاملات الجديدة — يحذف الفارغ منها حتى يبقى الرابط نظيفًا */
+    const go = (patch: Record<string, string | number | null>) => {
+        const next: Record<string, string | number> = {};
+        const merged = { ...server?.params, [searchParam]: query, ...patch };
+        Object.entries(merged).forEach(([k, v]) => {
+            if (v !== null && v !== undefined && v !== '') next[k] = v as string | number;
+        });
+        router.get(window.location.pathname, next, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
+
+    // البحث الخادمي يُمهَل قليلًا: طلب لكل حرف يُغرق الخادم ويجعل الحقل يتلعثم
+    const first = useRef(true);
+    useEffect(() => {
+        if (!server) return;
+        if (first.current) {
+            first.current = false;
+            return;
+        }
+        const id = setTimeout(() => go({ page: null }), 350);
+        return () => clearTimeout(id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query]);
+
     const filtered = useMemo(() => {
+        if (server) return rows; // الخادم رشَّح ورتّب ورقّم بالفعل
+
         let result = rows;
 
         if (query.trim() && searchable) {
@@ -80,7 +154,7 @@ export default function DataTable<T>({
 
         filters.forEach((filter, i) => {
             const value = active[i];
-            if (value) result = result.filter((row) => filter.match(row, value));
+            if (value && filter.match) result = result.filter((row) => filter.match!(row, value));
         });
 
         if (sort) {
@@ -99,10 +173,10 @@ export default function DataTable<T>({
         }
 
         return result;
-    }, [rows, query, active, sort, columns, filters, searchable]);
+    }, [rows, query, active, sort, columns, filters, searchable, server]);
 
-    const pageCount = Math.ceil(filtered.length / pageSize);
-    const visible = filtered.slice(page * pageSize, (page + 1) * pageSize);
+    const pageCount = server ? server.pagination.last_page : Math.ceil(filtered.length / pageSize);
+    const visible = server ? filtered : filtered.slice(page * pageSize, (page + 1) * pageSize);
     const isFiltering = query.trim() !== '' || Object.values(active).some(Boolean);
 
     const toggleSort = (key: string) => {
@@ -132,29 +206,54 @@ export default function DataTable<T>({
                         </div>
                     )}
 
-                    {filters.map((filter, i) => (
-                        <select
-                            key={i}
-                            value={active[i] ?? ''}
-                            onChange={(e) => {
-                                setActive((prev) => ({ ...prev, [i]: e.target.value }));
-                                setPage(0);
-                            }}
-                            className="ui-select h-10 appearance-none rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 text-sm text-[#111] focus:outline-none"
-                        >
-                            <option value="">{t(filter.label)}</option>
-                            {filter.options.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {t(option.label)}
-                                </option>
-                            ))}
-                        </select>
-                    ))}
+                    {filters.map((filter, i) => {
+                        const onPick = (value: string) => {
+                            setActive((prev) => ({ ...prev, [i]: value }));
+                            setPage(0);
+                            if (server && filter.param) go({ [filter.param]: value || null, page: null });
+                        };
+
+                        return filter.type === 'date' ? (
+                            <Input
+                                key={i}
+                                type="date"
+                                aria-label={t(filter.label)}
+                                value={active[i] ?? ''}
+                                onChange={(e) => onPick(e.target.value)}
+                                className="sm:w-44"
+                            />
+                        ) : (
+                            <select
+                                key={i}
+                                value={active[i] ?? ''}
+                                onChange={(e) => onPick(e.target.value)}
+                                className="ui-select h-10 appearance-none rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 text-sm text-[#111] focus:outline-none"
+                            >
+                                <option value="">{t(filter.label)}</option>
+                                {(filter.options ?? []).map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {t(option.label)}
+                                    </option>
+                                ))}
+                            </select>
+                        );
+                    })}
 
                     {toolbar && <div className="sm:ms-auto">{toolbar}</div>}
                 </div>
             )}
 
+            {renderBody ? (
+                <div className="px-4 pb-4">
+                    {visible.length === 0 ? (
+                        <p className="py-12 text-center text-sm text-[#6b7280]">
+                            {isFiltering ? t('لا نتائج مطابقة للبحث أو التصفية') : empty}
+                        </p>
+                    ) : (
+                        renderBody(visible)
+                    )}
+                </div>
+            ) : (
             <Table>
                 <TableHeader>
                     <TableRow className="hover:bg-transparent">
@@ -217,24 +316,39 @@ export default function DataTable<T>({
                     )}
                 </TableBody>
             </Table>
+            )}
 
             {pageCount > 1 && (
                 <div className="flex items-center justify-between gap-3 border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3">
                     <p className="text-[12px] text-[#6b7280]">
-                        {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filtered.length)} {t('من')}{' '}
-                        {filtered.length}
+                        {server
+                            ? `${server.pagination.from ?? 0}–${server.pagination.to ?? 0}`
+                            : `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, filtered.length)}`}{' '}
+                        {t('من')} {server ? server.pagination.total : filtered.length}
                     </p>
                     <div className="flex gap-1.5">
                         <button
-                            onClick={() => setPage((p) => Math.max(0, p - 1))}
-                            disabled={page === 0}
+                            onClick={() =>
+                                server
+                                    ? go({ page: server.pagination.current_page - 1 })
+                                    : setPage((p) => Math.max(0, p - 1))
+                            }
+                            disabled={server ? server.pagination.current_page <= 1 : page === 0}
                             className="rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-3 py-1.5 text-[13px] transition-colors hover:bg-[#fafafa] disabled:opacity-40"
                         >
                             {t('السابق')}
                         </button>
                         <button
-                            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                            disabled={page >= pageCount - 1}
+                            onClick={() =>
+                                server
+                                    ? go({ page: server.pagination.current_page + 1 })
+                                    : setPage((p) => Math.min(pageCount - 1, p + 1))
+                            }
+                            disabled={
+                                server
+                                    ? server.pagination.current_page >= server.pagination.last_page
+                                    : page >= pageCount - 1
+                            }
                             className="rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-3 py-1.5 text-[13px] transition-colors hover:bg-[#fafafa] disabled:opacity-40"
                         >
                             {t('التالي')}

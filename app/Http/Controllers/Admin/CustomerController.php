@@ -40,7 +40,21 @@ class CustomerController extends Controller
             'points' => $c->points, 'avatar' => Demo::image('cust' . $c->id, 100, 100),
         ]);
 
-        return view('admin.customers.index', ['customers' => $customers, 'filters' => $request->only('q', 'sort')]);
+        $stats = Demo::customerStats();
+
+        return \Inertia\Inertia::render('Admin/Customers/Index', [
+            'customers' => $customers->items(),
+            'pagination' => \App\Support\Pagination::meta($customers),
+            'filters' => $request->only('q', 'sort'),
+            'stats' => [
+                ['label' => __('إجمالي العملاء'), 'value' => (string) $stats['total'], 'icon' => 'users', 'color' => 'primary'],
+                ['label' => __('عملاء جدد هذا الشهر'), 'value' => (string) $stats['new_this_month'], 'icon' => 'user-plus', 'color' => 'success'],
+                ['label' => __('إجمالي المشتريات'), 'value' => Demo::money($stats['total_purchases']), 'icon' => 'wallet', 'color' => 'info'],
+                ['label' => __('متوسط الإنفاق'), 'value' => Demo::money($stats['avg_spend']), 'icon' => 'calculator', 'color' => 'primary'],
+            ],
+            'branches' => Demo::branches(),
+            'currentBranchId' => Demo::currentBranchId(),
+        ]);
     }
 
     public function store(Request $request)

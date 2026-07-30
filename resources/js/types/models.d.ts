@@ -154,6 +154,35 @@ export interface Movement {
     date: string;
 }
 
+export interface Branch {
+    id: number;
+    name: string;
+    phone: string | null;
+    address: string | null;
+}
+
+export interface Order {
+    /** رقم الفاتورة لا معرّف الصف — وهو ما تستقبله مسارات الطلب */
+    id: string;
+    customer: string;
+    employee: string;
+    branch: string | null;
+    items_count: number;
+    total: number;
+    payment: string;
+    status: string;
+    date: string;
+}
+
+export interface Expense {
+    type: string;
+    description: string;
+    amount: number;
+    date: string;
+    employee: string | null;
+    method: string | null;
+}
+
 export interface HeldOrder {
     order_id: number;
     id: string;

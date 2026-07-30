@@ -65,7 +65,13 @@ class ProductController extends Controller
             'alert' => $p->alert_qty, 'tax' => (float) $p->tax, 'discount' => (float) $p->discount,
         ]);
 
-        return view('admin.products.index', ['products' => $products, 'filters' => $request->only('q', 'category', 'status', 'stock')]);
+        return \Inertia\Inertia::render('Admin/Products/Index', [
+            'products' => $products->items(),
+            // الترقيم يبقى خادميًا: DataTable في وضعه الخادمي يقرأ هذه الحقول
+            'pagination' => \App\Support\Pagination::meta($products),
+            'categories' => Demo::categories(),
+            'filters' => $request->only('q', 'category', 'status', 'stock'),
+        ]);
     }
 
     public function store(Request $request)

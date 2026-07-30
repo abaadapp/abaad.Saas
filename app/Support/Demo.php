@@ -1117,6 +1117,34 @@ class Demo
         return ['labels' => $labels, 'data' => $data];
     }
 
+    /**
+     * مبيعات موظف بعينه خلال آخر ١٢ شهرًا.
+     *
+     * القالب القديم كان يرسم أرقامًا ثابتة مكتوبة يدويًا لكل موظف — فتُظهر
+     * لموظف لم يبع شيئًا منحنى صاعدًا. هذه تقرأ طلباته الحقيقية.
+     */
+    public static function employeeSalesSeries($id): array
+    {
+        $bid = self::bid();
+        $name = \App\Models\User::where('business_id', $bid)->whereKey($id)->value('name');
+
+        $labels = [];
+        $data = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $m = now()->startOfMonth()->subMonths($i);
+            $labels[] = app()->getLocale() === 'ar'
+                ? self::AR_MONTHS[$m->month]
+                : $m->translatedFormat('F');
+            $data[] = $name === null ? 0 : round((float) Order::where('business_id', $bid)
+                ->where('is_held', false)->where('status', '!=', 'ملغي')
+                ->where('employee_name', $name)
+                ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)
+                ->sum('total'), 3);
+        }
+
+        return ['labels' => $labels, 'data' => $data];
+    }
+
     /** توزيع المبيعات حسب وسيلة الدفع للنشاط الحالي */
     /** الاسم المعروض لوسيلة الدفع (المفتاح المخزّن في القاعدة يبقى كما هو) */
     public static function methodLabel(string $key): string

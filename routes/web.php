@@ -119,7 +119,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // المنتجات
     Route::get('/products', [ProductController::class, 'index'])->name('products.index');
     Route::get('/products/create', [\App\Http\Controllers\Admin\PageController::class, 'productsCreate'])->name('products.create');
-    Route::view('/products/barcodes', 'admin.products.barcodes')->name('products.barcodes');
+    Route::get('/products/barcodes', [\App\Http\Controllers\Admin\PageController::class, 'productsBarcodes'])->name('products.barcodes');
     // يجب أن يسبق products/{id} وإلا التقطه كمعرّف
     Route::get('/products/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'productsXlsx'])->name('products.xlsx');
     Route::get('/products/export-pdf', [\App\Http\Controllers\PdfController::class, 'productsReport'])->name('products.exportPdf');
@@ -200,7 +200,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 
     // أوامر الشراء
     Route::get('/purchases', [\App\Http\Controllers\Admin\PageController::class, 'purchasesIndex'])->name('purchases.index');
-    Route::view('/purchases/create', 'admin.purchases.create')->name('purchases.create');
+    Route::get('/purchases/create', [\App\Http\Controllers\Admin\PageController::class, 'purchasesCreate'])->name('purchases.create');
     Route::post('/purchases', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'store'])->name('purchases.store');
     Route::post('/purchases/{id}/receipt', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');
     Route::post('/purchases/{id}/receive', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'receive'])->name('purchases.receive');

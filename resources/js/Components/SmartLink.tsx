@@ -44,6 +44,7 @@ export const INERTIA_ROUTES = new Set<string>([
     'admin.finance.index',
     'admin.finance.statement',
     'admin.purchases.create',
+    'admin.settings.index',
     'pos.index',
     'pos.orders',
     'pos.order-details',

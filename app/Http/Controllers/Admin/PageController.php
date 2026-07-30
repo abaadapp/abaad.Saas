@@ -342,9 +342,16 @@ class PageController extends Controller
 
     public function settingsIndex(): Response
     {
+        $b = \App\Models\Business::find(Demo::bid());
+
         return Inertia::render('Admin/Settings/Index', [
-            'notifications' => Demo::allNotifications(),
             'settings' => Demo::businessSettings(),
+            'business' => [
+                'name' => $b?->name ?? '',
+                'phone' => $b?->phone,
+                'email' => $b?->email,
+                'address' => $b?->address,
+            ],
         ]);
     }
 }

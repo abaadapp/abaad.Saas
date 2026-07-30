@@ -35,6 +35,10 @@ class ActivityController extends Controller
         $bid = auth()->user()->business_id ?? Demo::bid();
         $logs = $this->shape(ActivityLog::where('business_id', $bid), $request);
 
-        return view('admin.activity', ['logs' => $logs, 'filters' => $request->only('q', 'action')]);
+        return \Inertia\Inertia::render('Admin/Activity', [
+            'logs' => $logs->items(),
+            'pagination' => \App\Support\Pagination::meta($logs),
+            'filters' => $request->only('q', 'action'),
+        ]);
     }
 }

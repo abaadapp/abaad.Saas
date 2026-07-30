@@ -3,9 +3,14 @@ import {
     ArrowDownCircle,
     BarChart3,
     Boxes,
+    Building2,
+    Flower,
+    History,
+    Layers,
     LayoutDashboard,
     Megaphone,
     Package,
+    RefreshCw,
     Settings,
     ShoppingCart,
     Store,
@@ -17,8 +22,12 @@ export interface NavItem {
     label: string;
     icon: LucideIcon;
     route: string;
-    /** قسم الصلاحية — يُخفى العنصر إن لم يملكه المستخدم */
-    section: string;
+    /**
+     * قسم الصلاحية — يُخفى العنصر إن لم يملكه المستخدم.
+     * بلا قيمة يظهر دائمًا: قائمة المنصة يحرسها middleware الدور نفسه
+     * (role:super_admin) لا صلاحيات الأقسام، فلا معنى لتصفيتها هنا.
+     */
+    section?: string;
 }
 
 export interface NavGroup {
@@ -58,5 +67,33 @@ export const NAV: NavGroup[] = [
     {
         heading: 'نقطة البيع',
         items: [{ label: 'فتح نقطة البيع', icon: Store, route: 'pos.index', section: 'pos' }],
+    },
+];
+
+/**
+ * القائمة الجانبية للوحة المنصة — منقولة عن $menu في layouts/super-admin.blade.php.
+ * تمرّ على نفس مكوّن Sidebar، فتُعرض بنفس ثيمة لوحة التاجر حرفيًا.
+ */
+export const PLATFORM_NAV: NavGroup[] = [
+    {
+        items: [{ label: 'الرئيسية', icon: LayoutDashboard, route: 'super-admin.dashboard' }],
+    },
+    {
+        heading: 'الإدارة',
+        items: [
+            { label: 'الشركات', icon: Building2, route: 'super-admin.businesses.index' },
+            { label: 'محلات الورود', icon: Flower, route: 'super-admin.flower-shops.index' },
+            { label: 'الاشتراكات', icon: RefreshCw, route: 'super-admin.subscriptions.index' },
+            { label: 'الباقات', icon: Layers, route: 'super-admin.subscriptions.plans' },
+            { label: 'المستخدمون', icon: Users, route: 'super-admin.users.index' },
+        ],
+    },
+    {
+        heading: 'أخرى',
+        items: [
+            { label: 'التقارير', icon: BarChart3, route: 'super-admin.reports.index' },
+            { label: 'سجل النشاط', icon: History, route: 'super-admin.activity.index' },
+            { label: 'الإعدادات', icon: Settings, route: 'super-admin.settings.index' },
+        ],
     },
 ];

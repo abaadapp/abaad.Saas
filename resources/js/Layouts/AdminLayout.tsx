@@ -4,14 +4,19 @@ import { motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
 import Sidebar from '@/Components/Sidebar';
 import Topbar from '@/Components/Topbar';
+import type { NavGroup } from '@/lib/nav';
 import type { PageProps } from '@/types';
 
 interface AdminLayoutProps {
     title: string;
     children: ReactNode;
+    /** قائمة الشريط الجانبي — تمرّرها لوحة المنصة عبر PlatformLayout */
+    nav?: NavGroup[];
+    /** السطر تحت الشعار في الشريط الجانبي */
+    sidebarSubtitle?: string;
 }
 
-export default function AdminLayout({ title, children }: AdminLayoutProps) {
+export default function AdminLayout({ title, children, nav, sidebarSubtitle }: AdminLayoutProps) {
     const { flash } = usePage<PageProps>().props;
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -31,7 +36,12 @@ export default function AdminLayout({ title, children }: AdminLayoutProps) {
         <div className="admin-ui min-h-screen">
             <Head title={title} />
 
-            <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+            <Sidebar
+                open={sidebarOpen}
+                onClose={() => setSidebarOpen(false)}
+                nav={nav}
+                subtitle={sidebarSubtitle}
+            />
 
             {/* الهامش من جهة الشريط نفسه: يمينًا في العربية ويسارًا في الإنجليزية */}
             <div className="lg:ms-64">

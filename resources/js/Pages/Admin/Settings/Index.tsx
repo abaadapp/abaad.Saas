@@ -4,6 +4,7 @@ import { AlertTriangle, Download, Save, Upload } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
+import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
@@ -34,35 +35,6 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
-
-/** مفتاح تبديل — يعتمد الخصائص المنطقية فينعكس في RTL تلقائيًا */
-function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
-    const t = useTranslate();
-
-    return (
-        <div className="flex items-center justify-between gap-3 py-2">
-            <div>
-                <p className="text-sm font-medium text-[#111]">{t(label)}</p>
-                {hint && <p className="mt-0.5 text-[12px] text-[#9ca3af]">{t(hint)}</p>}
-            </div>
-            <button
-                type="button"
-                role="switch"
-                aria-checked={on}
-                aria-label={t(label)}
-                onClick={() => onChange(!on)}
-                className={cn('relative h-6 w-12 shrink-0 rounded-full transition-colors', on ? 'bg-[#111]' : 'bg-[#d1d5db]')}
-            >
-                <span
-                    className={cn(
-                        'absolute top-0.5 size-5 rounded-full bg-white shadow transition-[inset-inline-start]',
-                        on ? 'start-[26px]' : 'start-0.5',
-                    )}
-                />
-            </button>
-        </div>
-    );
-}
 
 export default function SettingsIndex() {
     const { settings, business, locale } = usePage<PageProps<Props>>().props;

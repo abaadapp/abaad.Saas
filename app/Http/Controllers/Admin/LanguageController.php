@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Middleware\SetLocale;
 use App\Models\Setting;
 use App\Support\Activity;
-use App\Support\Demo;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -18,10 +17,12 @@ class LanguageController extends Controller
             'locale' => ['required', Rule::in(SetLocale::SUPPORTED)],
         ]);
 
-        // تُحفظ في الجلسة (فورية) وفي إعدادات النشاط (تبقى بعد الخروج)
+        // تُحفظ في الجلسة (فورية) وفي الإعدادات (تبقى بعد الخروج).
+        // مدير المنصة بلا business_id فتُحفظ لغته في إعدادات المنصة (business_id = null)
+        // كما تُحفظ بقية إعداداتها؛ الرجوع إلى أول نشاط كان يكتب تفضيله في إعدادات تاجر.
         session(['locale' => $data['locale']]);
         Setting::updateOrCreate(
-            ['business_id' => auth()->user()->business_id ?? Demo::bid(), 'key' => 'locale'],
+            ['business_id' => auth()->user()->business_id, 'key' => 'locale'],
             ['value' => $data['locale']]
         );
         app()->setLocale($data['locale']);

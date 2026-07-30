@@ -23,10 +23,17 @@ class BusinessController extends Controller
             'id' => $b->id, 'name' => $b->name, 'type' => $b->type, 'owner' => $b->owner_name,
             'phone' => $b->phone, 'email' => $b->email, 'plan' => $b->plan?->name ?? '—',
             'status' => $b->status, 'registered' => optional($b->starts_at)->format('Y-m-d') ?? '—',
-            'branches' => $b->branches_count, 'logo' => $b->logo, 'city' => $b->city, 'country' => $b->country,
+            'branches' => $b->branches_count, 'city' => $b->city, 'country' => $b->country,
+            // مسار مخزَّن أو رابط مطلق — المحوّل يميّز بينهما
+            'logo' => PageController::logoUrl($b->logo),
         ]);
 
-        return view('super-admin.businesses.index', ['businesses' => $businesses, 'filters' => $request->only('q', 'type', 'plan', 'status')]);
+        return \Inertia\Inertia::render('Platform/Businesses/Index', [
+            'businesses' => $businesses->items(),
+            'pagination' => \App\Support\Pagination::meta($businesses),
+            'filters' => $request->only('q', 'type', 'plan', 'status'),
+            'options' => PageController::filterOptions($request),
+        ]);
     }
 
     public function store(Request $request)
@@ -65,7 +72,9 @@ class BusinessController extends Controller
     {
         return $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'type' => ['nullable', 'string', 'max:100'],
+            // النوع والحالة عمودان NOT NULL لهما قيم افتراضية؛ إرسال null صراحةً
+            // يتخطّى الافتراضي ويكسر القيد بخطأ 500 بدل رسالة حقل مفقود.
+            'type' => ['required', 'string', 'max:100'],
             'owner_name' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email'],
@@ -74,7 +83,7 @@ class BusinessController extends Controller
             'address' => ['nullable', 'string', 'max:255'],
             'plan_id' => ['nullable', 'integer'],
             'logo' => ['nullable', 'image', 'max:2048'],
-            'status' => ['nullable', 'string', 'max:50'],
+            'status' => ['required', 'string', 'max:50'],
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date'],
         ]);

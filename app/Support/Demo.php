@@ -1213,6 +1213,123 @@ class Demo
         ];
     }
 
+    /* ------------------- بيانات شركة بعينها في لوحة المنصة -------------------
+     |
+     | مدير المنصة بلا business_id، فـbid() ترجع أول نشاط. لذلك كانت صفحات
+     | ملف الشركة ومحل الورود تعرض طلبات وموظفي ومنتجات نشاط آخر تحت اسم
+     | الشركة المفتوحة. هذه الدوال تأخذ المعرّف صراحةً فلا تخمّنه.
+     */
+
+    /**
+     * فروع الشركة الحقيقية — القالب كان يولّدها بحلقة وهمية بأسماء مديرين
+     * ثابتة وعدد موظفين من rand().
+     *
+     * users.branch اسم نصّي لا مفتاح أجنبي، فالعدّ بالاسم؛ ويُجمع في استعلام
+     * واحد لا واحد لكل فرع.
+     */
+    public static function businessBranches(int $businessId): array
+    {
+        $staff = User::where('business_id', $businessId)->where('role', '!=', 'super_admin')
+            ->whereNotNull('branch')
+            ->selectRaw('branch, COUNT(*) as c')->groupBy('branch')->pluck('c', 'branch');
+
+        return \App\Models\Branch::where('business_id', $businessId)->orderBy('id')->get()
+            ->map(fn ($b) => [
+                'id' => $b->id,
+                'name' => $b->name,
+                'phone' => $b->phone,
+                'address' => $b->address,
+                'employees' => (int) ($staff[$b->name] ?? 0),
+            ])->all();
+    }
+
+    /** موظفو الشركة */
+    public static function businessEmployees(int $businessId): array
+    {
+        return User::where('business_id', $businessId)->where('role', '!=', 'super_admin')
+            ->orderBy('id')->get()
+            ->map(fn ($u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'role' => $u->roleLabel(),
+                'branch' => $u->branch,
+                'phone' => $u->phone,
+                'status' => $u->status,
+            ])->all();
+    }
+
+    /** منتجات الشركة */
+    public static function businessProducts(int $businessId, int $limit = 12): array
+    {
+        return Product::where('business_id', $businessId)->with('category')
+            ->orderBy('id')->limit($limit)->get()
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'category' => $p->category?->name ?? '—',
+                'price' => (float) $p->price,
+                'qty' => (int) $p->quantity,
+                'image' => $p->image,
+            ])->all();
+    }
+
+    /** آخر طلبات الشركة */
+    public static function businessOrders(int $businessId, int $limit = 8): array
+    {
+        return Order::where('business_id', $businessId)->where('is_held', false)
+            ->withCount('items')->orderByDesc('ordered_at')->limit($limit)->get()
+            ->map(fn ($o) => [
+                'id' => $o->number,
+                'customer' => $o->customer_name ?? __('عميل نقدي'),
+                'items_count' => (int) $o->items_count,
+                'total' => (float) $o->total,
+                'payment' => $o->payment_method,
+                'status' => $o->status,
+                'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
+            ])->all();
+    }
+
+    /** أرقام «نظرة عامة» للشركة — كانت ثلاثة أرقام مكتوبة يدويًا في القالب */
+    public static function businessOverview(int $businessId): array
+    {
+        $q = Order::where('business_id', $businessId)->where('is_held', false);
+        $count = (clone $q)->count();
+        $sales = (float) (clone $q)->sum('total');
+
+        return [
+            'sales' => $sales,
+            'orders' => $count,
+            'average' => $count > 0 ? round($sales / $count, 3) : 0.0,
+        ];
+    }
+
+    /** مبيعات الشركة آخر 12 شهرًا — كانت سلسلة أرقام ثابتة في القالب */
+    public static function businessSalesSeries(int $businessId): array
+    {
+        $labels = [];
+        $data = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $m = now()->subMonths($i);
+            $labels[] = self::AR_MONTHS[$m->month];
+            $data[] = round((float) Order::where('business_id', $businessId)->where('is_held', false)
+                ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
+        }
+
+        return ['labels' => $labels, 'data' => $data];
+    }
+
+    /** نشاط مستخدم بعينه — صفحة المستخدم كانت تعرض نشاط المنصة كله */
+    public static function userActivities(int $userId, int $limit = 10): array
+    {
+        return ActivityLog::where('user_id', $userId)->latest('id')->limit($limit)->get()
+            ->map(fn ($a) => [
+                'text' => $a->description,
+                'time' => optional($a->created_at)?->diffForHumans() ?? '—',
+                'icon' => $a->icon,
+                'color' => $a->color,
+            ])->all();
+    }
+
     /** أرقام بطاقات الاشتراكات (حقيقية) */
     public static function subscriptionStats(): array
     {

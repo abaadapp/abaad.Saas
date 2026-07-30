@@ -11,6 +11,7 @@ import {
     Boxes,
     Calculator,
     CircleCheck,
+    ClipboardList,
     Clock,
     Coins,
     CreditCard,
@@ -19,6 +20,7 @@ import {
     Landmark,
     type LucideIcon,
     Package,
+    PackageCheck,
     Percent,
     PiggyBank,
     Receipt,
@@ -88,6 +90,8 @@ const ICONS: Record<string, LucideIcon> = {
     'file-text': FileText,
     clock: Clock,
     star: Star,
+    'clipboard-list': ClipboardList,
+    'package-check': PackageCheck,
 };
 
 function iconFor(name: string): LucideIcon {

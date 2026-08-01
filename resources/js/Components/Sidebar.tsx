@@ -12,12 +12,12 @@ interface SidebarProps {
     onClose: () => void;
     /** قائمة التنقّل — لوحة التاجر افتراضًا، ولوحة المنصة تمرّر قائمتها */
     nav?: NavGroup[];
-    /** السطر تحت الشعار — اسم المتجر افتراضًا، ولوحة المنصة تسمّي نفسها */
+    /** سطر اختياري تحت الشعار — لوحة المنصة وحدها تمرّره */
     subtitle?: string;
 }
 
 export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarProps) {
-    const { auth, context } = usePage<PageProps>().props;
+    const { auth } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
 
@@ -52,19 +52,16 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
                         : 'max-lg:rtl:translate-x-full max-lg:ltr:-translate-x-full',
                 )}
             >
-                {/* شعار أبعاد ثم اسم المتجر — الاسم يُقرأ من الخادم لا مكتوبًا في القالب.
-                    self-start يُلصق الشعار بحافة البداية: يمينًا في العربية ويسارًا في الإنجليزية. */}
-                <div className="flex h-16 shrink-0 flex-col justify-center gap-1 px-5">
-                    <Logo className="h-5 w-auto self-start text-[#111]" />
-                    {/* اسم المتجر يُعرض كما هو؛ الترجمة للتسمية الثابتة وحدها */}
-                    {subtitle ? (
+                {/* الشعار وحده في منتصف رأس الشريط. كان مُلصقًا بحافة البداية
+                    وتحته اسم المتجر — والاسم حاضر أصلًا في عنوان اللوحة وفي
+                    مبدّل الفروع، فكان تكرارًا يزاحم الشعار.
+                    justify-center أفقي هنا لأن الاتجاه عمودي في هذه الكتلة. */}
+                <div className="flex h-16 shrink-0 flex-col items-center justify-center gap-1 px-5">
+                    <Logo className="h-5 w-auto text-[#111]" />
+                    {/* لوحة المنصة وحدها تسمّي نفسها — بلا هذا السطر يتعذّر
+                        تمييز لوحتها من لوحة التاجر: القائمتان بالشعار نفسه */}
+                    {subtitle && (
                         <p className="truncate text-[12px] font-medium text-[#6b7280]">{t(subtitle)}</p>
-                    ) : (
-                        context?.businessName && (
-                            <p className="truncate text-[12px] font-medium text-[#6b7280]">
-                                {context.businessName}
-                            </p>
-                        )
                     )}
                 </div>
 

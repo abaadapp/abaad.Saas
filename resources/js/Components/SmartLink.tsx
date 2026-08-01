@@ -1,86 +1,33 @@
 import type { ComponentProps, ReactNode } from 'react';
 import { Link } from '@inertiajs/react';
 
-/**
- * أسماء المسارات التي صارت صفحات Inertia.
- *
- * ما ليس هنا ما زال Blade، ويجب زيارته بتنقّل كامل لا عبر <Link>:
- * رابط Inertia إلى وجهة Blade يستقبل HTML بدل JSON، فيُجبر المتصفح على
- * انتقال صلب تفشل فيه الأصول — وهو ما يجعل الرابط يبدو معطّلًا تمامًا.
- *
- * احذف الاسم من هنا فقط بعد أن تُحوَّل صفحته فعلًا.
- */
-export const INERTIA_ROUTES = new Set<string>([
-    'admin.dashboard',
-    'admin.employees.index',
-    'admin.suppliers.index',
-    'admin.categories.index',
-    'admin.inventory.index',
-    'admin.products.index',
-    'admin.customers.index',
-    'admin.orders.index',
-    'admin.activity.index',
-    'admin.branches.index',
-    'admin.addons.index',
-    'admin.purchases.index',
-    'admin.expenses.index',
-    'admin.products.show',
-    'admin.orders.show',
-    'admin.products.create',
-    'admin.products.edit',
-    'admin.categories.create',
-    'admin.inventory.movements',
-    'admin.inventory.reorder',
-    'admin.inventory.stocktake',
-    'admin.vat.index',
-    'admin.profitability.index',
-    'admin.marketing.index',
-    'admin.reports.index',
-    'admin.analytics.index',
-    'admin.employees.create',
-    'admin.employees.edit',
-    'admin.employees.show',
-    'admin.customers.show',
-    'admin.finance.index',
-    'admin.finance.statement',
-    'admin.purchases.create',
-    'admin.settings.index',
-    'pos.index',
-    'pos.orders',
-    'pos.order-details',
-    'pos.payments',
-    'pos.receipts',
-    'pos.customers',
-    'pos.settings',
-]);
-
-export function isInertiaRoute(name: string): boolean {
-    return INERTIA_ROUTES.has(name);
-}
-
 interface SmartLinkProps extends Omit<ComponentProps<'a'>, 'href'> {
-    /** اسم المسار (لا عنوانه) حتى نعرف أمحوَّل هو أم لا */
+    /** اسم المسار — يُمرَّر للتوثيق ولتسهيل البحث عن روابط صفحة بعينها */
     routeName: string;
     href: string;
     children: ReactNode;
 }
 
-/** يختار تلقائيًا بين تنقّل Inertia وتنقّل كامل حسب حالة الصفحة الهدف. */
-export default function SmartLink({ routeName, href, children, ...props }: SmartLinkProps) {
-    if (isInertiaRoute(routeName)) {
-        // توقيع onClick في <Link> أعمّ منه في <a>؛ نوسّعه هنا بدل تضييق نوع الوسيط
-        const linkProps = props as ComponentProps<typeof Link>;
-
-        return (
-            <Link href={href} {...linkProps}>
-                {children}
-            </Link>
-        );
-    }
+/**
+ * رابط تنقّل داخل اللوحة — تنقّل Inertia دائمًا.
+ *
+ * كان يقرّر بقائمة بيضاء اسمها INERTIA_ROUTES تُسرد فيها الصفحات المحوَّلة،
+ * وما ليس فيها يهبط إلى <a> بتنقّل كامل. كان ذلك صحيحًا يوم بقيت صفحات Blade،
+ * لكنه صار فخًّا: لوحة المنصة حين تحوّلت إلى React لم يُضَف أيٌّ من مساراتها
+ * (super-admin.*) إلى القائمة، فظلّ كل ضغط فيها يعيد تحميل الصفحة كاملة —
+ * ٥٧ طلبًا و~٧٠٠ مللي ثانية بدل طلب واحد و~٣٠. والأسوأ أن السقوط صامت: لا خطأ
+ * ولا تحذير، فقط بطء يبدو وكأنه من الخادم.
+ *
+ * كل صفحات النظام اليوم Inertia، فالقائمة حُذفت. ولو أُضيفت وجهة غير Inertia
+ * لاحقًا (تنزيل مثلًا) فلا تمرّرها من هنا — استعمل <a> صراحةً.
+ */
+export default function SmartLink({ routeName: _routeName, href, children, ...props }: SmartLinkProps) {
+    // توقيع onClick في <Link> أعمّ منه في <a>؛ نوسّعه هنا بدل تضييق نوع الوسيط
+    const linkProps = props as ComponentProps<typeof Link>;
 
     return (
-        <a href={href} {...props}>
+        <Link href={href} {...linkProps}>
             {children}
-        </a>
+        </Link>
     );
 }

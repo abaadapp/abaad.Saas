@@ -89,6 +89,32 @@ class PageController extends Controller
         ]);
     }
 
+    public function categoriesEdit(string $id): Response
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $category = \App\Models\Category::where('business_id', $bid)->findOrFail($id);
+
+        return Inertia::render('Admin/Categories/Edit', [
+            'category' => [
+                'id' => $category->id,
+                'name' => $category->name,
+                'name_en' => $category->name_en,
+                'icon' => $category->icon,
+                // اللون قد يكون اسم رمز في الصفوف القديمة، ومنتقي الألوان
+                // لا يقبل إلا سداسيًّا — فيُوحَّد قبل أن يصل النموذج
+                'color' => Demo::categoryColor($category->color),
+                'parent_id' => $category->parent_id,
+            ],
+            // القسم لا يصلح أبًا لنفسه، فيُستبعَد من القائمة
+            'categories' => array_values(array_filter(
+                Demo::categories(),
+                fn ($c) => $c['id'] !== $category->id,
+            )),
+            'emojiGroups' => self::emojiGroups(),
+            'palette' => self::PALETTE,
+        ]);
+    }
+
     /** ألوان الأقسام — نفس اللوحة التي كانت مضمّنة في القالب */
     private const PALETTE = [
         '#7c3aed', '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9',

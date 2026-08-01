@@ -11,6 +11,25 @@ use Illuminate\Validation\Rule;
 
 class LanguageController extends Controller
 {
+    /**
+     * تبديل اللغة قبل تسجيل الدخول.
+     *
+     * منفصل عن update لأن ذاك يكتب في إعدادات النشاط ويسجّل النشاط باسم
+     * المستخدم — وكلاهما يفترض جلسة مصادَقة. الزائر ليس له نشاط يُحفظ فيه
+     * تفضيله، فتكفيه الجلسة: SetLocale يقرأها أولًا قبل الإعدادات.
+     */
+    public function guest(Request $request)
+    {
+        $data = $request->validate([
+            'locale' => ['required', Rule::in(SetLocale::SUPPORTED)],
+        ]);
+
+        session(['locale' => $data['locale']]);
+        app()->setLocale($data['locale']);
+
+        return back();
+    }
+
     public function update(Request $request)
     {
         $data = $request->validate([

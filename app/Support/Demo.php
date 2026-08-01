@@ -391,6 +391,32 @@ class Demo
         ];
     }
 
+    /**
+     * ألوان الأقسام المخزَّنة كأسماء رموز → القيمة السداسية المقابلة من نظام
+     * التصميم (الدرجة 600). البذور القديمة تكتب 'primary' ونموذج الإضافة يكتب
+     * '#7c3aed'، والواجهة تركّب اللون نصًّا (color + '1a') لتشتقّ خلفية شفافة —
+     * فكان الاسم يخرج 'primary1a' وهي قيمة CSS باطلة تُسقَط بلا خطأ، فتظهر
+     * أيقونة القسم بلا خلفية. التوحيد هنا لا في الواجهة كي يُصلح كل مستهلك.
+     */
+    private const CATEGORY_COLORS = [
+        'primary' => '#7c3aed',
+        'secondary' => '#db2777',
+        'success' => '#059669',
+        'warning' => '#d97706',
+        'danger' => '#dc2626',
+        'info' => '#2563eb',
+    ];
+
+    /** يمرّر السداسي كما هو ويترجم الاسم؛ وما جهلناه يأخذ لون الأساس */
+    public static function categoryColor(?string $color): string
+    {
+        if ($color && str_starts_with($color, '#')) {
+            return $color;
+        }
+
+        return self::CATEGORY_COLORS[$color] ?? self::CATEGORY_COLORS['primary'];
+    }
+
     public static function categories(): array
     {
         return Category::where('business_id', self::bid())->withCount('products')->orderBy('id')->get()->map(fn ($c) => [
@@ -399,7 +425,7 @@ class Demo
             'name_en' => $c->name_en,
             'products' => $c->products_count,
             'icon' => $c->icon,
-            'color' => $c->color,
+            'color' => self::categoryColor($c->color),
         ])->all();
     }
 
@@ -1309,7 +1335,9 @@ class Demo
         $labels = [];
         $data = [];
         for ($i = 11; $i >= 0; $i--) {
-            $m = now()->subMonths($i);
+            // startOfMonth أولًا: بدونه يفيض subMonths في أيام 29–31
+            // (٣٠ يوليو ناقص ٥ أشهر = ٣٠ فبراير → ٢ مارس) فيتكرّر شهر ويسقط آخر
+            $m = now()->startOfMonth()->subMonths($i);
             $labels[] = self::AR_MONTHS[$m->month];
             $data[] = round((float) Order::where('business_id', $businessId)->where('is_held', false)
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
@@ -1417,15 +1445,13 @@ class Demo
         ];
     }
 
-    /** تنبيهات ذكية للمستأجر الحالي (للعرض في الداشبورد) */
-    public static function smartAlerts(): array
-    {
-        return self::smartAlertsFor(self::bid());
-    }
-
     /**
-     * تنبيهات ذكية لمتجر محدّد: تراجع المبيعات، منتجات راكدة، عملاء غير نشطين.
+     * تنبيهات ذكية لمتجر محدّد: تراجع المبيعات وعملاء غير نشطين.
      * مستقلّة عن الجلسة كي يستخدمها أمر البريد المجدول.
+     *
+     * كان فيها «منتج راكد» (لم يُبَع خلال 30 يومًا) وأُزيل بطلب المالك: الركود
+     * حالة طبيعية في أصناف الموسم والهدايا، فكان يملأ اللوحة بثلاثة تنبيهات
+     * دائمة لا تحتاج تدخّلًا. تقرير المخزون يبقى مرجعه لمن أراده.
      */
     public static function smartAlertsFor(int $bid): array
     {
@@ -1441,14 +1467,6 @@ class Demo
             if ($delta < 0) {
                 $alerts[] = ['type' => __('تراجع المبيعات'), 'text' => __('انخفضت مبيعات هذا الشهر بنسبة :pct% مقارنةً بالشهر السابق', ['pct' => abs($delta)]), 'icon' => 'trending-down', 'color' => 'danger', 'url' => route('admin.analytics.index')];
             }
-        }
-
-        $soldIds = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('ordered_at', '>=', now()->subDays(30)))
-            ->pluck('product_id')->filter()->unique();
-        $stagnant = Product::where('business_id', $bid)->where('quantity', '>', 0)->whereNotIn('id', $soldIds)
-            ->orderByDesc('quantity')->limit(3)->get();
-        foreach ($stagnant as $p) {
-            $alerts[] = ['type' => __('منتج راكد'), 'text' => __('المنتج «:name» لم يُبَع خلال 30 يومًا (:qty بالمخزون)', ['name' => $p->name, 'qty' => $p->quantity]), 'icon' => 'package', 'color' => 'warning', 'url' => route('admin.products.show', $p->id)];
         }
 
         $inactive = Customer::where('business_id', $bid)->whereHas('orders')->get()
@@ -1545,7 +1563,8 @@ class Demo
         $labels = [];
         $data = [];
         for ($i = 5; $i >= 0; $i--) {
-            $m = now()->subMonths($i);
+            // انظر التعليق في businessSalesSeries — بدون startOfMonth يتكرّر شهر
+            $m = now()->startOfMonth()->subMonths($i);
             $labels[] = self::AR_MONTHS[$m->month];
             $data[] = round((float) Invoice::whereYear('issued_at', $m->year)->whereMonth('issued_at', $m->month)->sum('amount'), 3);
         }
@@ -1558,7 +1577,8 @@ class Demo
         $labels = [];
         $data = [];
         for ($i = 5; $i >= 0; $i--) {
-            $m = now()->subMonths($i);
+            // انظر التعليق في businessSalesSeries — بدون startOfMonth يتكرّر شهر
+            $m = now()->startOfMonth()->subMonths($i);
             $labels[] = self::AR_MONTHS[$m->month];
             $data[] = Business::whereYear('starts_at', $m->year)->whereMonth('starts_at', $m->month)->count();
         }

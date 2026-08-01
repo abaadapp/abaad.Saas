@@ -41,12 +41,23 @@ class LoginController extends Controller
         return redirect()->intended($this->homeFor(Auth::user()));
     }
 
+    /** شاشة الدخول بالبريد وكلمة المرور — أول ما يراه المستخدم */
+    public function showLogin(): \Inertia\Response
+    {
+        return \Inertia\Inertia::render('Auth/Login', [
+            // رمز الموظف مسار حقيقي لا زخرفة؛ يُمرَّر جاهزًا فلا تبنيه الواجهة
+            'pinUrl' => route('pin.form'),
+            'supportEmail' => config('mail.from.address', 'support@abaad.app'),
+            'year' => (int) now()->format('Y'),
+        ]);
+    }
+
     /** شاشة الدخول بالرمز (لوحة أرقام) — بالإنجليزية دائمًا */
-    public function pinForm()
+    public function pinForm(): \Inertia\Response
     {
         app()->setLocale('en');
 
-        return view('auth.pin');
+        return \Inertia\Inertia::render('Auth/Pin');
     }
 
     /** دخول الموظف برمز من ٤ أرقام — بلا بريد أو كلمة مرور */

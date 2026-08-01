@@ -3,40 +3,41 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import { type EmojiGroups } from '@/Components/EmojiPicker';
 import CategoryForm from './partials/CategoryForm';
-import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Category } from '@/types/models';
 
 interface Props {
+    category: Category & { parent_id: number | null };
+    /** الأقسام الصالحة أبًا — بلا القسم نفسه */
     categories: Category[];
     emojiGroups: EmojiGroups;
     palette: string[];
 }
 
-export default function CategoryCreate() {
-    const { categories, emojiGroups, palette } = usePage<PageProps<Props>>().props;
-    const t = useTranslate();
+export default function CategoryEdit() {
+    const { category, categories, emojiGroups, palette } = usePage<PageProps<Props>>().props;
 
     return (
-        <AdminLayout title="إضافة قسم">
+        <AdminLayout title="تعديل القسم">
             <PageHeader
-                title="إضافة قسم"
-                subtitle={t('أنشئ قسمًا جديدًا لتنظيم منتجاتك')}
+                title="تعديل القسم"
+                subtitle={category.name}
                 breadcrumbs={[
                     { label: 'الرئيسية', href: route('admin.dashboard') },
                     { label: 'الأقسام', href: route('admin.categories.index') },
-                    { label: 'إضافة قسم' },
+                    { label: 'تعديل القسم' },
                 ]}
             />
 
             <CategoryForm
-                action={route('admin.categories.store')}
+                action={route('admin.categories.update', category.id)}
+                method="put"
                 initial={{
-                    name: '',
-                    name_en: '',
-                    parent: '',
-                    icon: '🌷',
-                    color: palette[0] ?? '#7c3aed',
+                    name: category.name,
+                    name_en: category.name_en ?? '',
+                    parent: category.parent_id ? String(category.parent_id) : '',
+                    icon: category.icon,
+                    color: category.color,
                 }}
                 categories={categories}
                 emojiGroups={emojiGroups}

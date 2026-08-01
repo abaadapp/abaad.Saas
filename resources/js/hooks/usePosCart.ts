@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { csrfHeaders } from '@/lib/csrf';
 import type { Currency } from '@/types';
 
 /* ------------------------------- الأنواع ------------------------------- */
@@ -75,10 +76,6 @@ const TAX_RATE = 5;
 const POINTS_PER_UNIT = 100;
 const CASH_CUSTOMER = 'عميل نقدي';
 
-function csrf(): string {
-    return document.querySelector<HTMLMetaElement>('meta[name=csrf-token]')?.content ?? '';
-}
-
 function uuid(): string {
     try {
         if (crypto?.randomUUID) return crypto.randomUUID();
@@ -106,6 +103,14 @@ interface Options {
     resume: ResumeCart | null;
     currency: Currency;
     onToast: (msg: string, type?: 'success' | 'warning' | 'danger' | 'info') => void;
+    /**
+     * يُستدعى بعد كل بيع يصل الخادم بنجاح — لتحديث «المتوفر» المعروض.
+     *
+     * بدونه يبقى الرقم على قيمته الأولى طوال الوردية: الكاشير يبيع عشر
+     * قطع والشاشة ما زالت تقول ٣٤، وتحذير «تتجاوز المتوفر» يُحسب على رقم
+     * قديم. الخادم يرفض البيع الزائد فعلًا، لكن ما يراه الكاشير خاطئ.
+     */
+    onSynced?: () => void;
 }
 
 /**
@@ -113,7 +118,7 @@ interface Options {
  * بنفس المعادلات والسلوك: الخصم، الضريبة، سقف نقاط الولاء، وطابور
  * الانقطاع (outbox) الذي يكتب البيع محليًا أولًا ثم يرفعه.
  */
-export function usePosCart({ products, customers: initialCustomers, loyalty, resume, currency, onToast }: Options) {
+export function usePosCart({ products, customers: initialCustomers, loyalty, resume, currency, onToast, onSynced }: Options) {
     const [items, setItems] = useState<CartItem[]>(() =>
         (resume?.items ?? []).map((i, idx) => ({
             ...i,
@@ -141,6 +146,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
     const [online, setOnline] = useState(() => navigator.onLine);
     const [pending, setPending] = useState<OutboxEntry[]>(readOutbox);
     const flushing = useRef(false);
+    /** معرّفات البيوع الجارية الآن — يتخطّاها النبض فلا يعيد إرسالها */
+    const inFlight = useRef(new Set<string>());
 
     const redeemMaxPct = Math.min(100, Math.max(0, Number(loyalty.redeemMaxPct) || 0));
     const earnRate = Math.max(0, Number(loyalty.earnRate) || 0);
@@ -314,7 +321,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrf(),
+                        ...csrfHeaders(),
                         Accept: 'application/json',
                     },
                     body: JSON.stringify({ code, subtotal }),
@@ -356,7 +363,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
             try {
                 const res = await fetch(form.action, {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': csrf(), Accept: 'application/json' },
+                    headers: { ...csrfHeaders(), Accept: 'application/json' },
                     body: fd,
                 });
                 const data = await res.json().catch(() => ({}));
@@ -396,7 +403,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrf(),
+                        ...csrfHeaders(),
                         Accept: 'application/json',
                     },
                     body: JSON.stringify(payload),
@@ -428,12 +435,16 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
 
     const flushOutbox = useCallback(async () => {
         if (flushing.current || !navigator.onLine) return;
-        const queue = readOutbox();
+        // بيعة قيد الإرسال الآن ليست بيعة عالقة: البيع يُكتب في الطابور قبل
+        // إرساله (حتى لا يضيع لو انطفأ الجهاز)، فلو صادف النبض تلك النافذة
+        // أعاد إرسال الطلب نفسه — يردّه الخادم مقبولًا لتكرّر المعرّف، فيظهر
+        // للكاشير «تمت مزامنة طلب مُعلّق» في بيعة عادية متصلة.
+        const queue = readOutbox().filter((e) => !inFlight.current.has(e.uuid));
         if (!queue.length) return;
 
         flushing.current = true;
         try {
-            let remaining = [...queue];
+            let remaining = readOutbox();
             for (const entry of queue) {
                 const res = await sendOne(entry.payload);
                 if (res.ok || res.drop) {
@@ -441,6 +452,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                     savePending(remaining);
                     if (res.ok) {
                         onToast('تمت مزامنة طلب مُعلّق ✓', 'success');
+                        onSynced?.();
                     } else if (res.error) {
                         // رُفض بعد عودة الاتصال (نفد المخزون مثلًا) — يجب أن يُعلَم لا أن يختفي
                         onToast('طلب مُعلّق رُفض: ' + res.error, 'danger');
@@ -452,7 +464,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
         } finally {
             flushing.current = false;
         }
-    }, [sendOne, savePending, onToast]);
+    }, [sendOne, savePending, onToast, onSynced]);
 
     useEffect(() => {
         const goOnline = () => {
@@ -503,9 +515,20 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
             const queue = [...readOutbox(), { uuid: id, payload, at: Date.now() }];
             savePending(queue);
 
-            const res = await sendOne(payload);
+            // مُعلَّم كجارٍ حتى لا يلتقطه نبض الطابور ويُرسله مرّة ثانية
+            inFlight.current.add(id);
+            let res: Awaited<ReturnType<typeof sendOne>>;
+            try {
+                res = await sendOne(payload);
+            } finally {
+                inFlight.current.delete(id);
+            }
+
             if (res.ok || res.drop) {
-                savePending(queue.filter((p) => p.uuid !== id));
+                savePending(readOutbox().filter((p) => p.uuid !== id));
+            }
+            if (res.ok) {
+                onSynced?.();
             }
             if (res.drop && res.error) {
                 onToast(res.error, 'danger');
@@ -514,7 +537,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
 
             return { synced: !!res.ok, invoice: res.invoice ?? null, points: res.points ?? 0, rejected: !!res.drop };
         },
-        [items, customer, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast],
+        [items, customer, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */
@@ -525,7 +548,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrf(),
+                    ...csrfHeaders(),
                     Accept: 'application/json',
                 },
                 body: JSON.stringify({

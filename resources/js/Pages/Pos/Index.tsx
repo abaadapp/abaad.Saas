@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
     AlertTriangle,
@@ -75,6 +75,10 @@ export default function PosIndex() {
             const fn = type === 'success' ? toast.success : type === 'danger' ? toast.error : type === 'warning' ? toast.warning : toast;
             fn(msg);
         },
+        // إعادة جلب قائمة المنتجات وحدها بعد البيع: يصحّح «المتوفر» دون
+        // إعادة تحميل الصفحة — reload يحافظ على حالة المكوّن والتمرير أصلًا،
+        // فتبقى السلة والفلاتر كما هي
+        onSynced: () => router.reload({ only: ['products'] }),
     });
 
     /** القيمة أصلًا بالعملة الأساسية → تُحوَّل للعرض */

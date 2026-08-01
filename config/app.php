@@ -77,9 +77,15 @@ return [
     | will be used by the PHP date and date-time functions. The timezone
     | is set to "UTC" by default as it is suitable for most use cases.
     |
+    | كانت القيمة مثبّتة على UTC ولا تقرأ .env، فتُطبع أوقات الفواتير والورديات
+    | والتقارير بفارق أربع ساعات عن توقيت عُمان. تُضبط الآن من APP_TIMEZONE.
+    |
+    | تحذير: غيّرها قبل إدخال بيانات حقيقية. الأوقات المحفوظة سابقًا كُتبت
+    | بالمنطقة القديمة، وتغييرها لاحقًا يُزيح قراءتها كلها.
+    |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------

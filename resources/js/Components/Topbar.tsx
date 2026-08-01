@@ -1,4 +1,4 @@
-import { router, usePage } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import {
     Bell,
     Check,
@@ -22,10 +22,11 @@ import {
 } from '@/Components/ui/dropdown-menu';
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { logout } from '@/lib/logout';
 import type { PageProps } from '@/types';
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
-    const { auth, context, notifications, locale } = usePage<PageProps>().props;
+    const { auth, context, notifications, locale, csrf } = usePage<PageProps>().props;
     const t = useTranslate();
 
     /**
@@ -207,13 +208,13 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                         <DropdownMenuLabel>{auth?.user.email}</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild>
-                            <a href={route('profile.edit')}>
+                            <Link href={route('profile.edit')}>
                                 <UserIcon />
                                 {t('الملف الشخصي')}
-                            </a>
+                            </Link>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem destructive onSelect={() => router.post(route('logout'))}>
+                        <DropdownMenuItem destructive onSelect={() => logout(route('logout'), csrf)}>
                             <LogOut />
                             {t('تسجيل الخروج')}
                         </DropdownMenuItem>

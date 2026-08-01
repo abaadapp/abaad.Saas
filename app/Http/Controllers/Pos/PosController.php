@@ -178,21 +178,6 @@ class PosController extends Controller
         return response()->json(['receipts' => Demo::receipts($q, 50)]);
     }
 
-    /** تغذية حيّة لكميات المنتجات وحالاتها — تستطلعها شاشة نقطة البيع لتحديث "المتوفر" تلقائيًا دون إعادة تحميل */
-    public function stockFeed()
-    {
-        $products = collect(Demo::products())->map(fn ($p) => [
-            'id' => $p['id'],
-            'qty' => $p['qty'],
-            'status' => $p['stock_status'],
-        ])->values();
-
-        return response()->json([
-            'products' => $products,
-            'updated_at' => now()->format('H:i:s'),
-        ]);
-    }
-
     /** إتمام البيع وحفظ الطلب */
     /** كوبون النشاط بالكود (غير حسّاس لحالة الأحرف) */
     private function findCoupon(?string $code): ?Coupon

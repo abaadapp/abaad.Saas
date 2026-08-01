@@ -5,6 +5,7 @@ namespace App\Http\Controllers\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\Plan;
 use App\Models\Setting;
+use App\Support\BusinessTypes;
 use App\Support\Demo;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,9 +19,11 @@ use Inertia\Response;
  */
 class PageController extends Controller
 {
-    /** أنواع الأنشطة ومدنها — كانت مكرّرة نصًّا في أربعة قوالب */
-    private const TYPES = ['محل ورود', 'مطعم', 'كافيه', 'بقالة', 'صيدلية', 'متجر ملابس'];
-
+    /**
+     * مدن القائمة. أنواع الأنشطة لم تعد هنا: النوع صار يقرّر تصنيفات البداية
+     * التي يُجهَّز بها المتجر، فمصدره الوحيد BusinessTypes::TYPES كي لا تفترق
+     * قائمة الاختيار عن القائمة التي لها بذور.
+     */
     private const CITIES = ['مسقط', 'صلالة', 'صحار', 'نزوى', 'صور'];
 
     private const STATUSES = ['نشط', 'منتهي', 'معطل'];
@@ -411,7 +414,7 @@ class PageController extends Controller
     private function businessOptions(): array
     {
         return [
-            'types' => self::TYPES,
+            'types' => BusinessTypes::TYPES,
             'cities' => self::CITIES,
             'statuses' => self::STATUSES,
             'plans' => Plan::orderBy('id')->get()->map(fn ($p) => ['label' => $p->name, 'value' => $p->id])->all(),
@@ -450,7 +453,7 @@ class PageController extends Controller
     public static function filterOptions(Request $request): array
     {
         return [
-            'types' => self::TYPES,
+            'types' => BusinessTypes::TYPES,
             'statuses' => self::STATUSES,
             'plans' => Plan::orderBy('id')->pluck('name')->all(),
         ];

@@ -65,6 +65,8 @@ export interface SharedProps {
         toast: Toast | null;
         status: string | null;
     };
+    /** رمز CSRF الخام — يتجدّد مع كل استجابة، بخلاف وسم <meta> */
+    csrf: string;
     locale: string;
     dir: 'rtl' | 'ltr';
     /** قاموس عربي→إنجليزي؛ null في العربية لأن المفتاح هو النص */

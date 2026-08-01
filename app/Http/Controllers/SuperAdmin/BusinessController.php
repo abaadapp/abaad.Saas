@@ -41,9 +41,16 @@ class BusinessController extends Controller
         $data = $this->validateData($request);
         $data['logo'] = $request->hasFile('logo') ? $request->file('logo')->store('logos', 'public') : null;
         $business = Business::create($data);
+        // بذرة تصنيفات حسب النوع — لئلا يفتح التاجر لوحته على صفحة بيضاء
+        $seeded = \App\Support\BusinessTypes::provision($business);
         \App\Support\Activity::log('created', 'أضاف شركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 
-        return redirect()->route('super-admin.businesses.index')->with('toast', ['msg' => __('تم إضافة الشركة بنجاح'), 'type' => 'success']);
+        return redirect()->route('super-admin.businesses.index')->with('toast', [
+            'msg' => $seeded
+                ? __('تم إضافة الشركة، وجُهّزت بـ:count تصنيفات حسب نشاطها', ['count' => $seeded])
+                : __('تم إضافة الشركة بنجاح'),
+            'type' => 'success',
+        ]);
     }
 
     public function update(Request $request, $id)

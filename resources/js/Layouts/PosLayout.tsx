@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect } from 'react';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { Check, ChevronDown, Languages, LogOut, Receipt, ReceiptText, Settings, Store, User, Users } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { Toaster, toast } from 'sonner';
@@ -15,6 +15,7 @@ import {
 } from '@/Components/ui/dropdown-menu';
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { logout } from '@/lib/logout';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
@@ -33,7 +34,7 @@ interface PosLayoutProps {
 }
 
 export default function PosLayout({ title, children, fill = false }: PosLayoutProps) {
-    const { auth, context, flash, locale } = usePage<PageProps>().props;
+    const { auth, context, flash, locale, csrf } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
 
@@ -67,7 +68,7 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                         const Icon = item.icon;
                         const active = current === item.route;
                         return (
-                            <a
+                            <Link
                                 key={item.route}
                                 href={route(item.route)}
                                 className={cn(
@@ -79,7 +80,7 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                             >
                                 <Icon className="size-4" />
                                 {t(item.label)}
-                            </a>
+                            </Link>
                         );
                     })}
                 </nav>
@@ -151,19 +152,19 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-52">
                             <DropdownMenuItem asChild>
-                                <a href={route('profile.edit')}>
+                                <Link href={route('profile.edit')}>
                                     <User />
                                     {t('الملف الشخصي')}
-                                </a>
+                                </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
-                                <a href={route('pos.settings')}>
+                                <Link href={route('pos.settings')}>
                                     <Settings />
                                     {t('الإعدادات')}
-                                </a>
+                                </Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem destructive onSelect={() => router.post(route('logout'))}>
+                            <DropdownMenuItem destructive onSelect={() => logout(route('logout'), csrf)}>
                                 <LogOut />
                                 {t('تسجيل الخروج')}
                             </DropdownMenuItem>

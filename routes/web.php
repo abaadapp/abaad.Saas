@@ -22,8 +22,8 @@ use Illuminate\Support\Facades\Route;
 */
 
 /* ----------------------------- المصادقة ----------------------------- */
-Route::view('/', 'auth.login')->name('login');
-Route::view('/login', 'auth.login')->name('login.form');
+Route::get('/', [LoginController::class, 'showLogin'])->name('login');
+Route::get('/login', [LoginController::class, 'showLogin'])->name('login.form');
 Route::post('/login', [LoginController::class, 'attempt'])->name('login.attempt');
 Route::get('/pin-login', [LoginController::class, 'pinForm'])->name('pin.form');
 Route::post('/pin-login', [LoginController::class, 'pinAttempt'])->name('pin.attempt');
@@ -35,6 +35,9 @@ Route::post('/pin-login', [LoginController::class, 'pinAttempt'])->name('pin.att
 if (config('app.demo_login')) {
     Route::get('/demo-login/{role}', [LoginController::class, 'demo'])->name('demo.login');
 }
+
+// تبديل لغة شاشة الدخول — متاح للزائر، ويكتب في الجلسة فقط
+Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'guest'])->name('language.guest');
 
 Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->name('logout');
 
@@ -137,6 +140,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
     // التصنيفات
     Route::get('/categories', [\App\Http\Controllers\Admin\PageController::class, 'categoriesIndex'])->name('categories.index');
     Route::get('/categories/create', [\App\Http\Controllers\Admin\PageController::class, 'categoriesCreate'])->name('categories.create');
+    Route::get('/categories/{id}/edit', [\App\Http\Controllers\Admin\PageController::class, 'categoriesEdit'])->name('categories.edit');
     Route::post('/categories', [CategoryController::class, 'store'])->name('categories.store');
     Route::put('/categories/{id}', [CategoryController::class, 'update'])->name('categories.update');
     Route::delete('/categories/{id}', [CategoryController::class, 'destroy'])->name('categories.destroy');
@@ -283,7 +287,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 /* -------------------------------- POS ------------------------------ */
 Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
     Route::get('/', [\App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
-    Route::get('/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
     Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');

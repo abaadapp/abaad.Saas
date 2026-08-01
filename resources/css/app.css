@@ -93,28 +93,11 @@
  * السبب: مراقب DOM يعيد رسم الأيقونات (يستبدل عنصرها) عند أي تغيير في الصفحة،
  * فلو بدأت النقرة على الأيقونة واستُبدلت قبل رفع الفأرة تضيع ضغطة الإغلاق.
  * بتمرير النقر إلى الزر (وهو عنصر ثابت لا يُستبدل) تبقى الضغطة مضمونة دائمًا.
- * ملاحظة: نستثني svg.lucide فقط — رسوم ApexCharts تحتاج النقر لتلميحاتها.
+ * ملاحظة: الاستثناء لأيقونات lucide وحدها — مخططات الواجهة SVG يدوية وتحتاج النقر لتلميحاتها.
  */
 svg.lucide,
 i[data-lucide] {
     pointer-events: none;
-}
-
-/* ===== اللوحة القابلة للتخصيص ===== */
-.dash-hide {
-    display: none;
-}
-.dash-editing .dash-hide {
-    display: flex;
-}
-.dash-editing [data-card] {
-    cursor: move;
-    outline: 2px dashed var(--color-primary-300, #c4b5fd);
-    outline-offset: 2px;
-    border-radius: 1rem;
-}
-.sortable-ghost {
-    opacity: 0.4;
 }
 
 /* إخفاء شريط التمرير مع إبقاء إمكانية التمرير */
@@ -204,41 +187,8 @@ i[data-lucide] {
     text-rendering: optimizeLegibility;
 }
 .admin-ui h1, .admin-ui h2, .admin-ui h3 { letter-spacing: -0.021em; }
-
-/* --- إعادة تلوين محايدة: إسكات الألوان الزاهية داخل اللوحة (الأسود هو اللكنة) --- */
-.admin-ui .bg-primary-600, .admin-ui .bg-primary-500,
-.admin-ui .bg-secondary-600, .admin-ui .bg-secondary-500 { background-color: #111 !important; }
-.admin-ui .hover\:bg-primary-700:hover, .admin-ui .hover\:bg-secondary-700:hover { background-color: #000 !important; }
-.admin-ui .text-primary-600, .admin-ui .text-primary-700, .admin-ui .text-primary-500,
-.admin-ui .text-secondary-600, .admin-ui .text-secondary-700 { color: #111 !important; }
-.admin-ui .hover\:text-primary-700:hover { color: #000 !important; }
-.admin-ui .bg-primary-50, .admin-ui .bg-secondary-50 { background-color: #f2f2f0 !important; }
-.admin-ui .border-primary-100, .admin-ui .border-primary-200,
-.admin-ui .border-secondary-100, .admin-ui .border-secondary-200 { border-color: #e5e5e3 !important; }
-.admin-ui .focus\:border-primary-500:focus,
-.admin-ui .focus\:border-primary-400:focus { border-color: #111 !important; }
-.admin-ui .focus\:ring-primary-200:focus, .admin-ui .focus\:ring-primary-100:focus,
-.admin-ui .focus\:ring-primary-300:focus { --tw-ring-color: rgba(17,17,17,0.10) !important; }
-.admin-ui .ring-primary-50, .admin-ui .ring-primary-100 { --tw-ring-color: #f0f0ee !important; }
-
-/* إغلاق التسرّبات المتبقية: كل درجات primary/secondary تصبح محايدة داخل اللوحة */
-.admin-ui .bg-primary-100, .admin-ui .bg-secondary-100 { background-color: #ebebe9 !important; }
-.admin-ui .text-secondary-500 { color: #111 !important; }
-.admin-ui .border-primary-300, .admin-ui .border-primary-400,
-.admin-ui .border-primary-500, .admin-ui .border-primary-600,
-.admin-ui .border-secondary-300, .admin-ui .border-secondary-400,
-.admin-ui .border-secondary-500, .admin-ui .border-secondary-600 { border-color: #111 !important; }
-.admin-ui .focus\:ring-primary-500:focus, .admin-ui .focus\:ring-secondary-500:focus,
-.admin-ui .focus\:ring-primary-400:focus { --tw-ring-color: rgba(17,17,17,0.14) !important; }
-.admin-ui .ring-primary-200, .admin-ui .ring-primary-300,
-.admin-ui .ring-secondary-200 { --tw-ring-color: rgba(17,17,17,0.12) !important; }
-.admin-ui .focus\:border-primary-300:focus, .admin-ui .focus\:border-primary-600:focus,
-.admin-ui .focus\:border-secondary-400:focus, .admin-ui .focus\:border-secondary-500:focus { border-color: #111 !important; }
-/* تدرّجات لونية داخل اللوحة → محايدة */
-.admin-ui .from-primary-50, .admin-ui .from-secondary-50 { --tw-gradient-from: #f6f6f4 !important; }
-.admin-ui .to-primary-50, .admin-ui .to-secondary-50 { --tw-gradient-to: #f6f6f4 !important; }
-.admin-ui .via-primary-50, .admin-ui .via-secondary-50 { --tw-gradient-via: #f6f6f4 !important; }
-
+/* طبقة إعادة تلوين primary/secondary القديمة حُذفت: لم يبقَ داخل .admin-ui
+   أي عنصر يستعمل تلك الصفوف بعد تحويل الواجهة إلى React. */
 /* --- تنعيم الأسطح: حدود أرقّ، ظلال أخفت، زوايا ألطف عبر كل صفحات اللوحة --- */
 .admin-ui .border-gray-100, .admin-ui .border-gray-200 { border-color: var(--ui-border) !important; }
 .admin-ui .shadow-sm { box-shadow: 0 1px 2px rgba(17,17,17,0.035) !important; }

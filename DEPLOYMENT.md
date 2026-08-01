@@ -91,13 +91,53 @@ php artisan backup:run --business=1    # متجر واحد
 
 ## قائمة تحقق قبل النشر
 
-- [ ] `APP_ENV=production` و `APP_DEBUG=false`
-- [ ] `APP_KEY` مولّد (`php artisan key:generate`)
+**افحص آليًا بدل المراجعة بالعين:**
+
+```bash
+php artisan abaad:preflight
+```
+
+يقرأ الحالة الفعلية — لا يفترض — ويخرج بـ`1` عند أي مانع، فيصلح لخط نشر آلي.
+يفحص: بيئة الإنتاج، `APP_DEBUG`، `APP_KEY`، نطاق `https`، كوكي جلسة آمن،
+غياب مسار الدخول التجريبي، كلمات المرور الافتراضية، وجود المتجر التجريبي،
+بناء الأصول، رابط التخزين، والذاكرة المؤقتة.
+
+### الخطوات
+
+```bash
+cp .env.production.example .env      # ثم املأ القيم المُعلَّمة (حرج)
+php artisan key:generate
+composer install --no-dev --optimize-autoloader
+npm ci && npm run build
+php artisan migrate --force --seed   # البذرة تُنشئ أول حسابين من SEED_*
+php artisan storage:link
+php artisan abaad:test-store --drop  # إن كنت جرّبت المتجر التجريبي
+php artisan config:cache && php artisan route:cache && php artisan view:cache
+php artisan abaad:preflight          # يجب أن يخرج ✓ جاهز للإطلاق
+```
+
+### ما لا يفحصه preflight — تحقّق منه بنفسك
+
 - [ ] سطر cron مضاف ومُتحقَّق منه بـ `schedule:list`
-- [ ] إعدادات `MAIL_*` صحيحة (وإلا تفشل مهام التنبيهات بصمت)
-- [ ] `php artisan migrate --force`
-- [ ] `npm run build`
-- [ ] `php artisan storage:link` (لعرض الشعارات ومرفقات المصروفات)
+- [ ] `APP_TIMEZONE` مضبوط **قبل** إدخال أي بيانات حقيقية — القيمة الافتراضية
+      `UTC`، وتغييرها لاحقًا يُزيح قراءة كل الأوقات المحفوظة سابقًا
 - [ ] صلاحيات الكتابة على `storage/` و `bootstrap/cache`
 - [ ] نسخ `storage/app/public` ضمن خطة النسخ الاحتياطي
 - [ ] نقل النسخ إلى تخزين خارج الخادم
+- [ ] شهادة TLS فعّالة وإعادة توجيه http → https على مستوى الخادم
+
+---
+
+## المتجر التجريبي
+
+متجر واحد ببيانات وهمية كاملة (منتجات، عملاء، طلبات، فواتير، موظفون) لتجربة
+اللوحات الثلاث دون تلويث بيانات عميل:
+
+```bash
+php artisan abaad:test-store          # إنشاء (أو إعادة إنشاء نظيفة)
+php artisan abaad:test-store --drop   # حذفه وكل صفوفه — قبل الإطلاق
+```
+
+الحذف يمرّ على كل جدول فيه عمود `business_id` بدل قائمة يدوية، فلا يتخلّف جدول
+جديد ويترك بيانات تجريبية معلّقة في نظام حيّ. و`preflight` يرفض الإطلاق ما دام
+المتجر موجودًا.

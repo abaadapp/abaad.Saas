@@ -29,7 +29,8 @@ createInertiaApp({
     },
 
     progress: {
-        color: '#7c3aed',
+        // أسود أبعاد لا بنفسجي القالب القديم
+        color: '#111111',
         showSpinner: false,
     },
 });

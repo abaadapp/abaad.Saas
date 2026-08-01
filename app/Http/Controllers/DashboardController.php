@@ -28,7 +28,6 @@ class DashboardController extends Controller
             'stats' => Demo::adminStats(),
             'salesSeries' => Demo::salesSeries(),
             'paymentDistribution' => Demo::paymentDistribution(),
-            'smartAlerts' => Demo::smartAlerts(),
             // أحدث 6 طلبات وأفضل 5 منتجات وموظفين — ما تعرضه اللوحة فقط
             'recentOrders' => collect(Demo::orders())->take(6)->values()->all(),
             'topProducts' => collect(Demo::products())->take(5)->values()->all(),

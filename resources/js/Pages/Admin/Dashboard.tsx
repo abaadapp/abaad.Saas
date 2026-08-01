@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { AlertTriangle, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Globe, Store } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
@@ -45,24 +45,22 @@ interface Employee {
     avatar?: string;
 }
 
-interface SmartAlert {
-    title: string;
-    body?: string;
-    color?: string;
-}
-
+/**
+ * لا تنبيهات في اللوحة بطلب المالك: كانت تتصدّر الصفحة بما لا يحتاج تدخّلًا
+ * فورًا («عميل متعثّر» مثلًا)، فتزاحم الأرقام التي جاء التاجر ليقرأها.
+ * المصدر Demo::smartAlertsFor باقٍ لأمر البريد المجدول abaad:smart-alerts.
+ */
 interface DashboardProps {
     stats: Stat[];
     salesSeries: { labels: string[]; data: number[] };
     paymentDistribution: { labels: string[]; series: number[] };
-    smartAlerts: SmartAlert[];
     recentOrders: Order[];
     topProducts: Product[];
     topEmployees: Employee[];
 }
 
 export default function Dashboard() {
-    const { stats, salesSeries, paymentDistribution, smartAlerts, recentOrders, topProducts, topEmployees, context } =
+    const { stats, salesSeries, paymentDistribution, recentOrders, topProducts, topEmployees, context } =
         usePage<PageProps<DashboardProps>>().props;
 
     const t = useTranslate();
@@ -75,26 +73,24 @@ export default function Dashboard() {
                 title="لوحة التحكم"
                 subtitle={t('نظرة عامة على أداء :name', { name: context?.businessName ?? t('متجرك') })}
                 actions={
-                    <Button asChild>
-                        <SmartLink routeName={'pos.index'} href={route('pos.index')}>{t('فتح نقطة البيع')}</SmartLink>
-                    </Button>
+                    <>
+                        {/* أبيض على أسود ↔ أسود على أبيض: نفس المقاس، لون معاكس.
+                            بلا وجهة بعد — الزر معروض ولا يفعل شيئًا حتى تُحدَّد
+                            جهته. type=button صراحةً كي لا يرث submit لو وُضع
+                            يومًا داخل نموذج. */}
+                        <Button type="button" variant="outline">
+                            <Globe />
+                            {t('الموقع الإلكتروني')}
+                        </Button>
+                        <Button asChild>
+                            <SmartLink routeName={'pos.index'} href={route('pos.index')}>
+                                <Store />
+                                {t('فتح نقطة البيع')}
+                            </SmartLink>
+                        </Button>
+                    </>
                 }
             />
-
-            {/* التنبيهات الذكية أولًا — ما يحتاج تدخّلًا لا يُدفن أسفل الصفحة */}
-            {smartAlerts.length > 0 && (
-                <div className="mb-5 flex flex-col gap-2">
-                    {smartAlerts.slice(0, 3).map((alert, i) => (
-                        <Card key={i} className="flex items-start gap-3 border-[#fde68a] bg-[#fffbeb] p-3.5">
-                            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[#d97706]" />
-                            <div className="min-w-0">
-                                <p className="text-[13px] font-medium text-[#111]">{alert.title}</p>
-                                {alert.body && <p className="text-[12px] text-[#6b7280]">{alert.body}</p>}
-                            </div>
-                        </Card>
-                    ))}
-                </div>
-            )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map((stat, i) => (

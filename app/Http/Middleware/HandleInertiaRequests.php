@@ -66,6 +66,10 @@ class HandleInertiaRequests extends Middleware
                 'status' => $request->session()->get('status'),
             ],
 
+            // الرمز الخام مع كل استجابة: وسم <meta> يُطبع مرّة عند أول تحميل
+            // ويتقادم فور تجديد الجلسة عند الدخول، فتُردّ النماذج التي تقرأه بـ419
+            'csrf' => fn () => csrf_token(),
+
             'locale' => fn () => app()->getLocale(),
             'dir' => fn () => app()->getLocale() === 'en' ? 'ltr' : 'rtl',
 

@@ -16,6 +16,8 @@ class FlowerShopController extends Controller
     public function store(Request $request)
     {
         $business = Business::create($this->mapped($request, true));
+        // نفس بذرة التصنيفات التي تأخذها الشركة المضافة من صفحة الشركات
+        \App\Support\BusinessTypes::provision($business);
         \App\Support\Activity::log('created', 'أضاف محل ورود: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 
         return redirect()->route('super-admin.flower-shops.index')->with('toast', ['msg' => __('تم حفظ محل الورود بنجاح'), 'type' => 'success']);

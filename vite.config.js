@@ -8,9 +8,10 @@ import path from 'node:path';
 export default defineConfig({
     plugins: [
         laravel({
-            // app.js يبقى لصفحات Blade المتبقّية (لوحة المنصة)
-            // app.tsx هو نقطة دخول Inertia للوحة المتجر ونقاط البيع
-            input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/app.tsx'],
+            // نقطة دخول واحدة: كل الصفحات صارت Inertia بما فيها الدخول والرمز.
+            // حزمة app.js القديمة (Alpine + ApexCharts + Sortable) لم يبقَ لها
+            // مستهلك بعد تحويل صفحتَي المصادقة، فحُذفت.
+            input: ['resources/css/app.css', 'resources/js/app.tsx'],
             refresh: true,
             fonts: [
                 bunny('Tajawal', {

@@ -301,7 +301,7 @@ export default function PosIndex() {
                                     className="flex w-full items-center gap-2 rounded-full bg-gray-50 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100"
                                 >
                                     <User className="size-4 text-gray-900" />
-                                    <span className="truncate">{cart.customer}</span>
+                                    <span className="truncate">{cart.customerLabel || t('عميل نقدي')}</span>
                                     <ChevronDown className="ms-auto size-4 text-gray-400" />
                                 </button>
 

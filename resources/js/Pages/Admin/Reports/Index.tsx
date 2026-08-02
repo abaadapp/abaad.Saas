@@ -16,6 +16,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
+import useLiveFeed from '@/hooks/useLiveFeed';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -48,8 +49,13 @@ interface Props {
 }
 
 export default function ReportsIndex() {
-    const { summary, salesSeries, paymentDistribution, topSellingProducts, context } =
-        usePage<PageProps<Props>>().props;
+    const { context, ...server } = usePage<PageProps<Props>>().props;
+
+    /* التقرير يُحتسب لحظة الفتح ثم يتجمّد. صفحة تُترك مفتوحة على مكتب التاجر
+       كانت تعرض أرقام الصباح بعد يوم بيع كامل — وعليها يُبنى قرار. */
+    const { data: live, updatedAt } = useLiveFeed<Props>(route('admin.reports.feed'));
+    const { summary, salesSeries, paymentDistribution, topSellingProducts } = live ?? server;
+
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -100,6 +106,12 @@ export default function ReportsIndex() {
                     />
                 }
             />
+
+            {updatedAt && (
+                <p className="mb-3 text-[12px] text-[#9ca3af]">
+                    {t('الأرقام محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
+                </p>
+            )}
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {stats.map((s, i) => (

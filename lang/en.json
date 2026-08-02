@@ -1870,5 +1870,6 @@
     "أدخل عنوان موقع صحيح مثل example.com": "Enter a valid website address, e.g. example.com",
     "اسم المتجر": "Store name",
     "تأكيد الإجراء": "Confirm action",
-    "الكميات محدّثة حتى": "Quantities as of"
+    "الكميات محدّثة حتى": "Quantities as of",
+    "الأرقام محدّثة حتى": "Figures as of"
 }

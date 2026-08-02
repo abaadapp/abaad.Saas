@@ -15,6 +15,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
+import useLiveFeed from '@/hooks/useLiveFeed';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -38,8 +39,13 @@ interface Props {
 }
 
 export default function Analytics() {
-    const { periodComparison, topProducts, topCustomers, salesByWeekday, salesByHour, categorySales, context } =
-        usePage<PageProps<Props>>().props;
+    const { context, ...server } = usePage<PageProps<Props>>().props;
+
+    /* تُحتسب لحظة الفتح ثم تتجمّد — وصفحة تُترك مفتوحة تعرض أرقام الصباح */
+    const { data: live, updatedAt } = useLiveFeed<Props>(route('admin.analytics.feed'));
+    const { periodComparison, topProducts, topCustomers, salesByWeekday, salesByHour, categorySales } =
+        live ?? server;
+
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -58,6 +64,12 @@ export default function Analytics() {
                     />
                 }
             />
+
+            {updatedAt && (
+                <p className="mb-3 text-[12px] text-[#9ca3af]">
+                    {t('الأرقام محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
+                </p>
+            )}
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 {periodComparison.map((c) => (

@@ -199,6 +199,29 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
         return Math.floor(total * earnRate);
     }, [earnRate, selectedCustomer, total]);
 
+    /**
+     * لقطة المخزون في السلة تتقادم: الكاشير يضيف 5 قطع وهي متاحة، ثم يبيعها
+     * زميله على جهاز آخر قبل أن يُنهي هو الدفع. `products` تصل محدَّثة من
+     * التغذية الحيّة، فنُزامن معها بنود السلة ليصدق تحذير «يتجاوز المتوفر».
+     *
+     * الإضافات (addons) بلا مخزون فلا تُمسّ، والبند الذي لم يعد له منتج
+     * مطابق يبقى بلقطته بدل أن يُصفَّر.
+     */
+    useEffect(() => {
+        const stockById = new Map(products.map((p) => [p.id, p.stock]));
+        setItems((prev) => {
+            let changed = false;
+            const next = prev.map((i) => {
+                if (i.id == null || !stockById.has(i.id)) return i;
+                const stock = stockById.get(i.id)!;
+                if (i.stock === stock) return i;
+                changed = true;
+                return { ...i, stock };
+            });
+            return changed ? next : prev;
+        });
+    }, [products]);
+
     const overStock = useCallback(
         (it: CartItem) => it != null && it.stock != null && it.qty > it.stock,
         [],

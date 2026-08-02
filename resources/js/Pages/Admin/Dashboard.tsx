@@ -1,6 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import {
-    ArrowLeft, BarChart3, ClipboardList, Globe, PackagePlus, Store, Users,
+    ArrowLeft, BarChart3, ClipboardList, PackagePlus, Store, Users,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -87,14 +87,9 @@ export default function Dashboard() {
                 subtitle={t('نظرة عامة على أداء :name', { name: context?.businessName ?? t('متجرك') })}
                 actions={
                     <>
-                        {/* أبيض على أسود ↔ أسود على أبيض: نفس المقاس، لون معاكس.
-                            بلا وجهة بعد — الزر معروض ولا يفعل شيئًا حتى تُحدَّد
-                            جهته. type=button صراحةً كي لا يرث submit لو وُضع
-                            يومًا داخل نموذج. */}
-                        <Button type="button" variant="outline">
-                            <Globe />
-                            {t('الموقع الإلكتروني')}
-                        </Button>
+                        {/* حُذف زر «الموقع الإلكتروني»: كان معروضًا بلا وجهة ولا
+                            يفعل شيئًا. زر لا يستجيب يقرأه التاجر عطلًا لا ميزة
+                            قادمة — يُعاد يوم تُحدَّد وجهته. */}
                         <Button asChild>
                             <SmartLink routeName={'pos.index'} href={route('pos.index')}>
                                 <Store />

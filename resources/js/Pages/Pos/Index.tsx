@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -67,6 +67,16 @@ export default function PosIndex() {
     const [newCustomerOpen, setNewCustomerOpen] = useState(false);
     const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
     const barcodeRef = useRef<HTMLInputElement>(null);
+
+    /* قائمة العميل مكتوبة يدويًا لا Radix، فلا تُغلق بـEscape كبقية قوائم
+       النظام. وطبقتها الشفافة (fixed inset-0) تبتلع أول نقرة بعدها، فالكاشير
+       الذي يضغط Escape ثم «تعليق» لا يحدث شيء ويظنّ الزر معطّلًا. */
+    useEffect(() => {
+        if (!customerMenuOpen) return;
+        const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setCustomerMenuOpen(false);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [customerMenuOpen]);
 
     /* مرجع ثابت ما لم تتغيّر المنتجات فعلًا — usePosCart يزامن مخزون السلة
        عند كل تغيّر لهذه القائمة، فمصفوفة جديدة كل تصيير تعني عملًا بلا سبب */

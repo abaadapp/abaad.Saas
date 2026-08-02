@@ -40,6 +40,16 @@ class DemoSeeder extends Seeder
      */
     public function run(): void
     {
+        // البذرة تُنشئ 13 نشاطًا وملّاكها دفعةً واحدة، فلا معنى لتشغيلها فوق
+        // قاعدة عامرة: تنفجر عند أول بريد مكرّر بأثر مكدّس لا يشرح السبب.
+        // المعاملة تُرجع الأثر، لكن الرسالة تبقى غامضة — فتُقال صراحةً.
+        if (Business::exists()) {
+            throw new \RuntimeException(
+                'قاعدة البيانات ليست فارغة. بيانات العرض تُبذر على قاعدة نظيفة: '
+                .'php artisan migrate:fresh --force && php artisan db:seed --class=DemoSeeder --force'
+            );
+        }
+
         \Illuminate\Support\Facades\DB::transaction(fn () => $this->seed());
     }
 

@@ -11,6 +11,14 @@ class SettingController extends Controller
 {
     public function update(Request $request)
     {
+        // الحفظ حرّ المفاتيح، لكن الموقع يُعرض كزرّ قابل للنقر في اللوحة
+        // فيُتحقَّق منه هنا ليُصحّح التاجر خطأه فورًا لا أن يكتشفه رابطًا معطّلًا
+        $request->validate([
+            'website' => ['nullable', 'string', 'max:255', 'regex:#^(https?://)?[^\s:/]+\.[^\s:/]+(/\S*)?$#i'],
+        ], [
+            'website.regex' => __('أدخل عنوان موقع صحيح مثل example.com'),
+        ]);
+
         $bid = auth()->user()->business_id ?? Demo::bid();
         foreach ($request->except(['_token', '_method', 'tab']) as $key => $value) {
             if (is_array($value)) {

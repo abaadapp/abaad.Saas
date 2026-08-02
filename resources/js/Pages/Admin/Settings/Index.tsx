@@ -130,6 +130,7 @@ export default function SettingsIndex() {
         phone: business.phone ?? '',
         email: business.email ?? '',
         address: business.address ?? '',
+        website: get('website'),
 
         vat_enabled: on('vat_enabled'),
         vat_rate: get('vat_rate', '5'),
@@ -433,6 +434,18 @@ export default function SettingsIndex() {
                                     </Field>
                                     <Field label="البريد الإلكتروني" error={form.errors.email}>
                                         <Input type="email" dir="ltr" value={form.data.email} onChange={(e) => form.setData('email', e.target.value)} />
+                                    </Field>
+                                    <Field
+                                        label="الموقع الإلكتروني"
+                                        hint="يظهر كزرّ في الرئيسية بجانب «فتح نقطة البيع»"
+                                        error={form.errors.website}
+                                    >
+                                        <Input
+                                            dir="ltr"
+                                            value={form.data.website}
+                                            onChange={(e) => form.setData('website', e.target.value)}
+                                            placeholder="example.com"
+                                        />
                                     </Field>
                                     <Field label="العنوان" className="sm:col-span-2" error={form.errors.address}>
                                         <Textarea rows={2} value={form.data.address} onChange={(e) => form.setData('address', e.target.value)} />

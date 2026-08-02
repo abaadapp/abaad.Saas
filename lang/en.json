@@ -1864,5 +1864,8 @@
     "— صنف يدوي —": "— Manual item —",
     "— وسائل الدفع —": "— Payment Methods —",
     "✓ :name — :count تنبيه → :email": "✓ :name — :count alerts → :email",
-    "✓ :name — :count منتج → :email": "✓ :name — :count products → :email"
+    "✓ :name — :count منتج → :email": "✓ :name — :count products → :email",
+    "أضف الموقع الإلكتروني": "Add website",
+    "يظهر كزرّ في الرئيسية بجانب «فتح نقطة البيع»": "Shown as a button on the dashboard next to “Open POS”",
+    "أدخل عنوان موقع صحيح مثل example.com": "Enter a valid website address, e.g. example.com"
 }

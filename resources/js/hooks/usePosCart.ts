@@ -23,6 +23,7 @@ export interface CartItem {
 export interface PosCustomer {
     id: number;
     name: string;
+    name_en?: string | null;
     label: string;
     phone: string;
     points: number;
@@ -166,7 +167,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
     }, [coupon, subtotal]);
 
     const selectedCustomer = useMemo(
-        () => customers.find((c) => c.name === customer) ?? null,
+        // الاسم المختار قد يكون العربي أو الإنجليزي حسب لغة الكاشير
+        () => customers.find((c) => c.name === customer || c.name_en === customer) ?? null,
         [customers, customer],
     );
     const selectedPoints = selectedCustomer?.points ?? 0;
@@ -373,7 +375,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 }
                 const c = data.customer;
                 setCustomers((prev) => [
-                    { id: c.id, name: c.name, label: c.label || c.name, phone: c.phone || '', points: 0 },
+                    { id: c.id, name: c.name, name_en: c.name_en ?? null, label: c.label || c.name, phone: c.phone || '', points: 0 },
                     ...prev,
                 ]);
                 setCustomer(c.name);

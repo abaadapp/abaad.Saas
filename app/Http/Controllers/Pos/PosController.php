@@ -287,7 +287,8 @@ class PosController extends Controller
             $order = $this->createNumbered([
                 'business_id' => $bid,
                 'client_uuid' => $data['client_uuid'] ?? null,
-                'customer_name' => $data['customer'] ?? 'عميل نقدي',
+                'customer_name' => $customer?->name ?? $data['customer'] ?? 'عميل نقدي',
+                'customer_name_en' => $customer?->name_en,
                 'customer_id' => $customer?->id,
                 'employee_name' => auth()->user()->name,
                 'branch_id' => $branch['id'],
@@ -469,6 +470,7 @@ class PosController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email'],
             'tax_number' => ['nullable', 'string', 'max:50'],
@@ -505,7 +507,11 @@ class PosController extends Controller
             return null;
         }
 
-        return \App\Models\Customer::where('business_id', $this->bid())->where('name', $name)->first();
+        // الكاشير الإنجليزي يرى name_en ويرسله، فنطابق العمودين معًا:
+        // المطابقة بالعربي وحده كانت تُسقط ربط العميل ونقاط ولائه.
+        return \App\Models\Customer::where('business_id', $this->bid())
+            ->where(fn ($q) => $q->where('name', $name)->orWhere('name_en', $name))
+            ->first();
     }
 
     /**

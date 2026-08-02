@@ -471,7 +471,7 @@ class Demo
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
             ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
                 'id' => $o->number,
-                'customer' => $o->customer_name ?? __('عميل نقدي'),
+                'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
                 'employee' => $o->employee_name ?? '—',
                 'branch' => $o->branch,
                 'items_count' => $o->items_count,
@@ -502,7 +502,7 @@ class Demo
         return [
             'id' => $o->number,
             'db_id' => $o->id,
-            'customer' => $o->customer_name ?? __('عميل نقدي'),
+            'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
             'employee' => $o->employee_name ?? '—',
             'branch' => $o->branch ?? __('الفرع الرئيسي'),
             'status' => $o->status,
@@ -1306,7 +1306,7 @@ class Demo
             ->withCount('items')->orderByDesc('ordered_at')->limit($limit)->get()
             ->map(fn ($o) => [
                 'id' => $o->number,
-                'customer' => $o->customer_name ?? __('عميل نقدي'),
+                'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
                 'items_count' => (int) $o->items_count,
                 'total' => (float) $o->total,
                 'payment' => $o->payment_method,
@@ -1643,7 +1643,7 @@ class Demo
             ->withCount('items')->orderByDesc('id')->get()->map(fn ($o) => [
                 'order_id' => $o->id,
                 'id' => $o->number,
-                'customer' => $o->customer_name ?? __('عميل نقدي'),
+                'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
                 'items' => $o->items_count,
                 'total' => (float) $o->total,
                 'time' => optional($o->ordered_at)->format('H:i') ?? '—',
@@ -1684,7 +1684,7 @@ class Demo
 
         return $query->orderByDesc('ordered_at')->limit($limit)->get()->map(fn ($o) => [
                 'number' => $o->number,
-                'customer' => $o->customer_name ?? __('عميل نقدي'),
+                'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
                 'phone' => $phones[$o->customer_name] ?? '',
                 'total' => (float) $o->total,
                 'subtotal' => (float) $o->subtotal,

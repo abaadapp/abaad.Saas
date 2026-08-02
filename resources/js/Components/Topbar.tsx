@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link, router, usePage } from '@inertiajs/react';
 import {
     Bell,
@@ -27,6 +28,35 @@ import type { PageProps } from '@/types';
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
     const { auth, context, notifications, locale, csrf } = usePage<PageProps>().props;
+
+    /**
+     * تغذية الجرس الحيّة — بديل استطلاع admin.notifications.feed الذي كان في
+     * التخطيط القديم. يبدأ مما أرسله الخادم مع الصفحة ثم يستطلع كل 30 ثانية،
+     * فيظهر الطلب الجديد بلا إعادة تحميل. يتوقف عند إخفاء التبويب.
+     */
+    const [feed, setFeed] = useState(notifications);
+    useEffect(() => setFeed(notifications), [notifications]);
+    useEffect(() => {
+        if (!notifications) return;
+        let alive = true;
+        const id = setInterval(async () => {
+            if (document.hidden) return;
+            try {
+                const res = await fetch('/admin/notifications/feed', {
+                    headers: { Accept: 'application/json' },
+                });
+                if (!res.ok || !alive) return;
+                const data = await res.json();
+                if (alive) setFeed({ items: data.items ?? [], count: data.count ?? 0 });
+            } catch {
+                // أخطاء الشبكة العابرة تُتجاهل
+            }
+        }, 30000);
+        return () => {
+            alive = false;
+            clearInterval(id);
+        };
+    }, [notifications]);
     const t = useTranslate();
 
     /**
@@ -152,14 +182,14 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                 </DropdownMenu>
 
                 {/* الإشعارات */}
-                {notifications && (
+                {feed && (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="relative">
                                 <Bell />
-                                {notifications.count > 0 && (
+                                {feed.count > 0 && (
                                     <span className="absolute end-1.5 top-1.5 flex size-4 items-center justify-center rounded-full bg-[#dc2626] text-[10px] font-semibold text-white">
-                                        {notifications.count > 9 ? '9+' : notifications.count}
+                                        {feed.count > 9 ? '9+' : feed.count}
                                     </span>
                                 )}
                                 <span className="sr-only">{t('الإشعارات')}</span>
@@ -168,12 +198,12 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                         <DropdownMenuContent align="end" className="w-80">
                             <DropdownMenuLabel>{t('الإشعارات')}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            {notifications.items.length === 0 ? (
+                            {feed.items.length === 0 ? (
                                 <p className="px-3 py-8 text-center text-[13px] text-[#9ca3af]">
                                     {t('لا توجد إشعارات')}
                                 </p>
                             ) : (
-                                notifications.items.slice(0, 6).map((item) => (
+                                feed.items.slice(0, 6).map((item) => (
                                     <DropdownMenuItem key={item.key} className="flex-col items-start gap-0.5" asChild>
                                         <Link href={item.url ?? '#'}>
                                             <span className="text-[13px] font-medium">{item.text}</span>

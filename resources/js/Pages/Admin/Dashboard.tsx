@@ -18,6 +18,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
+import useLiveStats from '@/hooks/useLiveStats';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -66,6 +67,7 @@ export default function Dashboard() {
     const t = useTranslate();
     const currency = context!.currency;
     const fmt = (value: number) => money(value, currency);
+    const { stats: liveStats, updatedAt } = useLiveStats(route('admin.dashboard.stats'), stats);
 
     return (
         <AdminLayout title="لوحة التحكم">
@@ -93,10 +95,15 @@ export default function Dashboard() {
             />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {stats.map((stat, i) => (
+                {liveStats.map((stat, i) => (
                     <StatCard key={stat.label} stat={stat} index={i} />
                 ))}
             </div>
+            {updatedAt && (
+                <p className="mt-2 text-[12px] text-[#9ca3af]">
+                    {t('آخر تحديث')}: <span dir="ltr">{updatedAt}</span>
+                </p>
+            )}
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="lg:col-span-2">

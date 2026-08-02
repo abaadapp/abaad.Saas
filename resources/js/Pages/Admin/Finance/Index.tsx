@@ -1,13 +1,18 @@
-import { usePage } from '@inertiajs/react';
+import { useState } from 'react';
+import { useForm, usePage } from '@inertiajs/react';
+import { Banknote, CreditCard, Landmark, Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
+import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -40,11 +45,33 @@ interface Props {
     transactions: Transaction[];
 }
 
+/** وسائل الدفع المتاحة للتسجيل اليدوي — القيم هي ما يقبله المتحكّم حرفيًا */
+const METHODS = [
+    { value: 'نقدي', label: 'نقدي', icon: Banknote },
+    { value: 'تحويل بنكي', label: 'تحويل بنكي', icon: Landmark },
+    { value: 'بطاقة', label: 'بطاقة (فيزا)', icon: CreditCard },
+] as const;
+
 export default function FinanceIndex() {
     const { financeStats, profitStats, paymentMethods, transactions, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
+    const [adding, setAdding] = useState(false);
+
+    const form = useForm({
+        type: 'دخل',
+        amount: '',
+        description: '',
+        method: 'نقدي',
+        occurred_at: '',
+    });
+
+    const close = () => {
+        setAdding(false);
+        form.reset();
+        form.clearErrors();
+    };
 
     const pl = [
         { label: 'صافي الإيراد', value: profitStats.net_revenue },
@@ -118,6 +145,10 @@ export default function FinanceIndex() {
                             pdf={route('admin.finance.pdf')}
                             csv={route('admin.export.transactions')}
                         />
+                        <Button onClick={() => setAdding(true)}>
+                            <Plus />
+                            {t('تسجيل معاملة')}
+                        </Button>
                     </>
                 }
             />
@@ -200,6 +231,96 @@ export default function FinanceIndex() {
                     empty="لا توجد حركات مالية بعد"
                 />
             </Card>
+
+            <Dialog open={adding} onOpenChange={(o) => !o && close()}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{t('تسجيل معاملة مالية')}</DialogTitle>
+                    </DialogHeader>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            form.post(route('admin.finance.store'), {
+                                preserveScroll: true,
+                                onSuccess: close,
+                            });
+                        }}
+                        className="space-y-4"
+                    >
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <Field label="نوع المعاملة" error={form.errors.type}>
+                                <Select
+                                    value={form.data.type}
+                                    onChange={(e) => form.setData('type', e.target.value)}
+                                    options={[
+                                        { label: 'دخل', value: 'دخل' },
+                                        { label: 'مصروف', value: 'مصروف' },
+                                    ]}
+                                />
+                            </Field>
+                            <Field label="المبلغ" required error={form.errors.amount}>
+                                <Input
+                                    type="number"
+                                    step="0.001"
+                                    min="0"
+                                    dir="ltr"
+                                    placeholder="0.000"
+                                    value={form.data.amount}
+                                    onChange={(e) => form.setData('amount', e.target.value)}
+                                    required
+                                />
+                            </Field>
+                        </div>
+
+                        <Field label="الوصف" error={form.errors.description}>
+                            <Input
+                                value={form.data.description}
+                                onChange={(e) => form.setData('description', e.target.value)}
+                                placeholder={t('وصف المعاملة أو المصدر')}
+                            />
+                        </Field>
+
+                        <Field label="التاريخ" error={form.errors.occurred_at}>
+                            <Input
+                                type="date"
+                                dir="ltr"
+                                value={form.data.occurred_at}
+                                onChange={(e) => form.setData('occurred_at', e.target.value)}
+                            />
+                        </Field>
+
+                        <Field label="وسيلة الدفع" error={form.errors.method}>
+                            <div className="grid grid-cols-3 gap-2">
+                                {METHODS.map((x) => (
+                                    <button
+                                        key={x.value}
+                                        type="button"
+                                        onClick={() => form.setData('method', x.value)}
+                                        className={cn(
+                                            'flex flex-col items-center gap-1 rounded-[12px] border py-3 text-[12px] font-medium transition-colors',
+                                            form.data.method === x.value
+                                                ? 'border-[#111] bg-[#fafafa] text-[#111]'
+                                                : 'border-[var(--ui-border,#e8e8e8)] text-[#6b7280] hover:bg-[#fafafa]',
+                                        )}
+                                    >
+                                        <x.icon className="size-5" />
+                                        {t(x.label)}
+                                    </button>
+                                ))}
+                            </div>
+                        </Field>
+
+                        <div className="flex justify-end gap-2 pt-2">
+                            <Button type="button" variant="ghost" onClick={close}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button type="submit" disabled={form.processing}>
+                                {form.processing ? '…' : t('حفظ المعاملة')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </AdminLayout>
     );
 }

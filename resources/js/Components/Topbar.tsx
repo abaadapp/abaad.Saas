@@ -74,7 +74,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
         router.post(
             route(isPlatform ? 'super-admin.language.update' : 'admin.language.update'),
             { locale: next },
-            { onSuccess: () => window.location.reload() },
+            { preserveScroll: true },
         );
     };
 

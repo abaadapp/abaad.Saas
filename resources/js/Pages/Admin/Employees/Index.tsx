@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { Briefcase, Plus } from 'lucide-react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import { Briefcase, Lock, LockOpen, Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
@@ -130,6 +130,30 @@ export default function EmployeesIndex() {
             cell: (e) => <span className="tabular-nums">{number(e.achieved)}%</span>,
         },
         { key: 'status', header: 'الحالة', cell: (e) => <Badge status={e.status} /> },
+        {
+            /**
+             * إجراءات الصف — كانت في القائمة القديمة ولم تُنقل: الطريق الوحيد
+             * للتعديل صار المرور بملف الموظف. والتعطيل موجود على الخادم منذ
+             * البداية بلا مدخل من القائمة.
+             */
+            key: 'actions',
+            header: '',
+            align: 'end',
+            cell: (e) => (
+                <RowActions
+                    show={{ href: route('admin.employees.show', e.id), routeName: 'admin.employees.show' }}
+                    edit={{ href: route('admin.employees.edit', e.id), routeName: 'admin.employees.edit' }}
+                    extra={[
+                        {
+                            label: e.status === 'نشط' ? 'تعطيل الحساب' : 'تفعيل الحساب',
+                            icon: e.status === 'نشط' ? <Lock className="size-4" /> : <LockOpen className="size-4" />,
+                            onSelect: () =>
+                                router.post(route('admin.employees.toggle', e.id), {}, { preserveScroll: true }),
+                        },
+                    ]}
+                />
+            ),
+        },
     ];
 
     const filters: Filter<Employee>[] = [

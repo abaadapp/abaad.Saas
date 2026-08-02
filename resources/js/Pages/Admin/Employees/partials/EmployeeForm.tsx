@@ -16,6 +16,8 @@ export interface EmployeeFormValues {
     phone: string | null;
     email: string;
     pin: string | null;
+    /** هل للموظف رمز دخول محفوظ؟ الرمز نفسه لا يصل أبدًا (مخزَّن مشفّرًا) */
+    has_pin?: boolean;
 }
 
 interface Props {
@@ -113,7 +115,11 @@ export default function EmployeeForm({ branches, jobTitles, employee, defaultBra
 
                     <Field
                         label="رمز الدخول السريع (4 أرقام)"
-                        hint="يُستخدم لدخول نقطة البيع بلا كلمة مرور"
+                        hint={
+                            employee?.has_pin
+                                ? 'اتركه فارغًا للإبقاء على الرمز الحالي'
+                                : 'يُستخدم لدخول نقطة البيع بلا كلمة مرور'
+                        }
                         error={form.errors.pin}
                     >
                         <Input

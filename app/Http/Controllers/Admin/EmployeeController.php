@@ -86,7 +86,16 @@ class EmployeeController extends Controller
                 'branch' => $employee->branch,
                 'phone' => $employee->phone,
                 'email' => $employee->email,
-                'pin' => $employee->pin,
+                /**
+                 * الرمز لا يُرسل أبدًا — وهو مخزَّن مشفّرًا أصلًا فلا يُقرأ.
+                 *
+                 * كان يُرسل `$employee->pin` فيصل الهاش إلى المتصفح ويُملأ به
+                 * الحقل، فيسقط التحقق («يجب أن يتكون من 4 أرقام») عند كل حفظ:
+                 * تعديل أي موظف له رمز دخول كان مستحيلًا. نرسل علمًا فقط:
+                 * هل له رمز؟ ليقول النموذج «اتركه فارغًا للإبقاء عليه».
+                 */
+                'pin' => '',
+                'has_pin' => filled($employee->pin),
             ],
             'branches' => Demo::branches(),
             'jobTitles' => \App\Models\JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all(),

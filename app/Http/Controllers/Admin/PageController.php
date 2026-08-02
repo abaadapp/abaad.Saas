@@ -378,6 +378,8 @@ class PageController extends Controller
                 'email' => $b?->email,
                 'address' => $b?->address,
             ],
+            // القائمة الكاملة — تبويب «التنبيهات المرسلة» يعرضها بلا اختصار
+            'notificationsAll' => Demo::allNotifications(),
         ]);
     }
 }

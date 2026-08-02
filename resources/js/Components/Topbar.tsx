@@ -174,11 +174,13 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                 </p>
                             ) : (
                                 notifications.items.slice(0, 6).map((item) => (
-                                    <DropdownMenuItem key={item.id} className="flex-col items-start gap-0.5">
-                                        <span className="text-[13px] font-medium">{item.title}</span>
-                                        {item.body && (
-                                            <span className="text-[12px] text-[#6b7280]">{item.body}</span>
-                                        )}
+                                    <DropdownMenuItem key={item.key} className="flex-col items-start gap-0.5" asChild>
+                                        <Link href={item.url ?? '#'}>
+                                            <span className="text-[13px] font-medium">{item.text}</span>
+                                            {item.time && (
+                                                <span className="text-[12px] text-[#6b7280]">{item.time}</span>
+                                            )}
+                                        </Link>
                                     </DropdownMenuItem>
                                 ))
                             )}

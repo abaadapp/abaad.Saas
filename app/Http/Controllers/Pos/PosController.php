@@ -469,8 +469,8 @@ class PosController extends Controller
     public function storeCustomer(Request $request)
     {
         $data = $request->validate([
+            // لا name_en: localizeName أدناه يشتقّه من الاسم المُدخَل
             'name' => ['required', 'string', 'max:255'],
-            'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email'],
             'tax_number' => ['nullable', 'string', 'max:50'],

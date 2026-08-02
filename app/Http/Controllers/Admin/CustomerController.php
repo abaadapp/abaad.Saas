@@ -63,8 +63,9 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
+            // لا name_en هنا: Customers::localizeName هو من يملأه من الاسم
+            // نفسه، فأي قيمة واردة تُكتب فوقها.
             'name' => ['required', 'string', 'max:255'],
-            'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email'],
             'tax_number' => ['nullable', 'string', 'max:50'],

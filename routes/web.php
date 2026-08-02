@@ -259,6 +259,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
     Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'salesReport'])->name('reports.pdf');
     Route::get('/reports/data/{key}', [\App\Http\Controllers\Admin\ReportDataController::class, 'show'])->name('reports.data');
     Route::get('/reports/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'xlsx'])->name('reports.xlsx');
+
+    // تغذية التقارير (Polling) — صفحة تُترك مفتوحة لا يجوز أن تتجمّد على أرقام الصباح
+    Route::get('/reports/feed', [\App\Http\Controllers\Admin\ReportFeedController::class, 'reports'])->name('reports.feed');
+    Route::get('/analytics/feed', [\App\Http\Controllers\Admin\ReportFeedController::class, 'analytics'])->name('analytics.feed');
+    Route::get('/profitability/feed', [\App\Http\Controllers\Admin\ReportFeedController::class, 'profitability'])->name('profitability.feed');
+
     Route::get('/analytics', [\App\Http\Controllers\Admin\PageController::class, 'analytics'])->name('analytics.index');
     Route::get('/analytics/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'analyticsXlsx'])->name('analytics.xlsx');
     Route::get('/analytics/pdf', [\App\Http\Controllers\PdfController::class, 'analyticsReport'])->name('analytics.pdf');

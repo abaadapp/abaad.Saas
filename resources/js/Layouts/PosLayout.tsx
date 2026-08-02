@@ -19,13 +19,19 @@ import { logout } from '@/lib/logout';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
+/**
+ * `ability` هنا اختيارية: الرابط بلا صلاحية يظهر للجميع، والرابط الذي
+ * يحملها يظهر لمن يملكها فقط. الحارس الفعلي على الخادم (middleware
+ * ability على المسار) — وهذا إخفاءٌ للواجهة لا حماية.
+ */
 const POS_NAV = [
     { label: 'نقطة البيع', icon: Store, route: 'pos.index' },
     { label: 'الطلبات', icon: ReceiptText, route: 'pos.orders' },
     { label: 'الفواتير', icon: Receipt, route: 'pos.receipts' },
-    { label: 'المدفوعات', icon: CreditCard, route: 'pos.payments' },
+    // حصيلة الصندوق وطرق الدفع — لصاحب النشاط لا للكاشير
+    { label: 'المدفوعات', icon: CreditCard, route: 'pos.payments', ability: 'finance' },
     { label: 'العملاء', icon: Users, route: 'pos.customers' },
-];
+] as const;
 
 interface PosLayoutProps {
     title: string;
@@ -38,6 +44,10 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
     const { auth, context, flash, locale, csrf } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
+
+    // الأقسام المسموح بها تصل من الخادم — لا نُخمّنها من الدور في الواجهة
+    const abilities = auth?.abilities ?? [];
+    const navItems = POS_NAV.filter((i) => !('ability' in i) || abilities.includes(i.ability));
 
     useEffect(() => {
         if (!flash?.toast) return;
@@ -65,7 +75,7 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                 </span>
 
                 <nav className="flex items-center gap-1 overflow-x-auto">
-                    {POS_NAV.map((item) => {
+                    {navItems.map((item) => {
                         const Icon = item.icon;
                         const active = current === item.route;
                         return (

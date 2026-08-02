@@ -31,7 +31,19 @@ class DemoSeeder extends Seeder
         'مندوب توصيل' => 'delivery',
     ];
 
+    /**
+     * البذر عملية واحدة: إمّا أن تكتمل أو لا تترك أثرًا.
+     *
+     * كان `db:seed` على قاعدة فيها بيانات ينفجر عند مدير المنصة
+     * (users.email فريد) بعد أن يكون قد أنشأ 13 نشاطًا — فتبقى القاعدة
+     * نصف مبذورة ولا تُعرف حالتها. المعاملة تُرجع كل شيء عند أي فشل.
+     */
     public function run(): void
+    {
+        \Illuminate\Support\Facades\DB::transaction(fn () => $this->seed());
+    }
+
+    private function seed(): void
     {
         /* ---------------- الباقات ---------------- */
         $planByName = [];
@@ -88,12 +100,16 @@ class DemoSeeder extends Seeder
         $primary = $bizByName['زهرة مسقط'];
 
         /* ---------------- المستخدمون ---------------- */
-        // مدير المنصة
-        User::create([
-            'business_id' => null, 'name' => 'مدير المنصة', 'email' => 'super@abadpos.com',
-            'role' => 'super_admin', 'password' => Hash::make('password'), 'status' => 'نشط',
-            'avatar' => SeedData::image('superadmin', 100, 100), 'last_login_at' => now(),
-        ]);
+        // مدير المنصة — بالبريد لا بالإنشاء الأعمى: البريد فريد، فإعادة
+        // البذر على قاعدة قائمة كانت تنفجر هنا تحديدًا
+        User::updateOrCreate(
+            ['email' => 'super@abadpos.com'],
+            [
+                'business_id' => null, 'name' => 'مدير المنصة',
+                'role' => 'super_admin', 'password' => Hash::make('password'), 'status' => 'نشط',
+                'avatar' => SeedData::image('superadmin', 100, 100), 'last_login_at' => now(),
+            ]
+        );
 
         // مالك لكل نشاط
         foreach ($bizByName as $name => $biz) {

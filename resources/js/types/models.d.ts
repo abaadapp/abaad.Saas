@@ -81,6 +81,19 @@ export interface InventoryItem {
     branches: { name: string; quantity: number }[];
 }
 
+/**
+ * ما ترسله Demo::activeCoupons إلى شاشة البيع — ثلاثة حقول لا أكثر.
+ *
+ * كانت الشاشة تستعمل نوع Coupon الكامل، فيمرّ `key={c.id}` من TypeScript
+ * بينما `id` غير مُرسَل أصلًا: المفتاح undefined لكل كوبون. النوع الذي
+ * يَعِد بأكثر مما يصل يُعمي الفحص بدل أن يحرسه.
+ */
+export interface PosCoupon {
+    code: string;
+    min_order: number;
+    display: string;
+}
+
 export interface Coupon {
     id: number;
     code: string;

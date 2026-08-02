@@ -37,14 +37,14 @@ import { cn } from '@/lib/utils';
 import useLiveStock from '@/hooks/useLiveStock';
 import { usePosCart, type LoyaltySettings, type PosCustomer, type ResumeCart } from '@/hooks/usePosCart';
 import type { PageProps } from '@/types';
-import type { Addon, Coupon, Product } from '@/types/models';
+import type { Addon, PosCoupon, Product } from '@/types/models';
 
 interface Props {
     products: Product[];
     categories: { value: string; label: string }[];
     customers: (PosCustomer & { avatar?: string | null })[];
     addons: Addon[];
-    coupons: Coupon[];
+    coupons: PosCoupon[];
     resumeCart: ResumeCart | null;
     settings: LoyaltySettings & { loyaltyEnabled?: boolean };
 }
@@ -486,7 +486,7 @@ export default function PosIndex() {
                                             <span className="text-[11px] text-gray-400">{t('المتاح')}:</span>
                                             {coupons.map((c) => (
                                                 <button
-                                                    key={c.id}
+                                                    key={c.code}
                                                     type="button"
                                                     onClick={() => { cart.setCouponCode(c.code); void cart.applyCoupon(c.code); }}
                                                     title={c.min_order > 0 ? `${t('الحد الأدنى للطلب')} ${money(c.min_order)}` : t('بلا حد أدنى')}

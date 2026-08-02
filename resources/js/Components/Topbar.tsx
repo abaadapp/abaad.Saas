@@ -8,9 +8,9 @@ import {
     Languages,
     LogOut,
     Menu,
-    Search,
     User as UserIcon,
 } from 'lucide-react';
+import UnifiedSearch from '@/Components/UnifiedSearch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
 import { Button } from '@/Components/ui/button';
 import {
@@ -94,14 +94,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                 <span className="sr-only">{t('القائمة')}</span>
             </Button>
 
-            {searchUrl && (
-                <a href={searchUrl}
-                    className="hidden items-center gap-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-sm text-[#9ca3af] transition-colors hover:bg-[#fafafa] sm:flex sm:w-64"
-                >
-                    <Search className="size-4" />
-                    <span>{t('بحث…')}</span>
-                </a>
-            )}
+            {searchUrl && <UnifiedSearch url={searchUrl} />}
 
             <div className="ms-auto flex items-center gap-1.5">
                 {/* مبدّل الفرع */}

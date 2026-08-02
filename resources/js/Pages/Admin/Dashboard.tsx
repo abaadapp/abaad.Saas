@@ -43,6 +43,10 @@ interface Product {
 }
 
 interface Employee {
+    // الرقم يصل من Demo::employees لكن الواجهة لم تكن تعلنه، فاضطرّ العرض
+    // إلى التمييز بالاسم — وموظفان باسم واحد أمر عادي في متجر حقيقي،
+    // فتتصادم مفاتيح React وتُحذف صفوف أو تتكرّر.
+    id: number;
     name: string;
     role: string;
     sales: number;
@@ -234,7 +238,7 @@ export default function Dashboard() {
                                 </p>
                             ) : (
                                 topEmployees.map((employee) => (
-                                    <div key={employee.name} className="flex items-center justify-between gap-3">
+                                    <div key={employee.id} className="flex items-center justify-between gap-3">
                                         <span className="min-w-0">
                                             <span className="block truncate text-[13px] text-[#111]">
                                                 {employee.name}

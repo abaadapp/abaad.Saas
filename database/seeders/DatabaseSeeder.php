@@ -23,7 +23,12 @@ use Illuminate\Support\Facades\Hash;
  * لا منتجات ولا طلبات ولا عملاء ولا معاملات ولا موردين — تُدخلها بنفسك.
  *
  * لاستعادة بيانات العرض الكاملة (12 متجرًا ومنتجات وطلبات):
- *   php artisan db:seed --class=DemoSeeder
+ *   php artisan migrate:fresh --force
+ *   php artisan db:seed --class=DemoSeeder --force
+ *
+ * لاحظ `migrate:fresh` أولًا: البذرتان تُنشئان كلتاهما super@abadpos.com
+ * و users.email فريد، فتشغيل DemoSeeder فوق هذه البذرة يفشل. كان الأمر
+ * الموثّق هنا سطرًا واحدًا بلا التفريغ، فلم يكن ينجح أبدًا.
  */
 class DatabaseSeeder extends Seeder
 {

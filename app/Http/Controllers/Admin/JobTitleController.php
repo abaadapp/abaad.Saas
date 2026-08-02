@@ -41,6 +41,52 @@ class JobTitleController extends Controller
         return back()->with('toast', ['msg' => __('تم إضافة الوظيفة'), 'type' => 'success']);
     }
 
+    /**
+     * تعديل وظيفة.
+     *
+     * والفخّ هنا أن الموظفين مرتبطون بالوظيفة **بالاسم لا بالمعرّف**
+     * (users.job_title نصّ). فتغييرُ الاسم وحده يترك موظفين معلَّقين على
+     * وظيفة لا وجود لها: لا تظهر في قائمة التعديل، وأوّل حفظٍ لبياناتهم
+     * يُرفض بـ«الوظيفة المحددة غير موجودة». ولذلك يُنقل الاسم إليهم.
+     *
+     * وتغييرُ الصلاحية المكافئة يجب أن يصل حامليها فورًا، وإلا بقي «كاشير»
+     * يملك صلاحيات المدير حتى يُعاد حفظ كل موظف يدويًا.
+     */
+    public function update(Request $request, $id)
+    {
+        $bid = $this->bid();
+        $title = JobTitle::where('business_id', $bid)->findOrFail($id);
+
+        $data = $request->validate([
+            'name' => [
+                'required', 'string', 'max:255',
+                Rule::unique('job_titles', 'name')
+                    ->where(fn ($q) => $q->where('business_id', $bid))
+                    ->ignore($title->id),
+            ],
+            'role' => ['required', 'string', Rule::in(array_keys(JobTitle::ROLES))],
+            'description' => ['nullable', 'string', 'max:255'],
+        ], [
+            'name.unique' => __('هذه الوظيفة موجودة مسبقًا.'),
+            'role.required' => __('حدّد الصلاحيات المكافئة للوظيفة.'),
+        ], ['name' => __('اسم الوظيفة')]);
+
+        $oldName = $title->name;
+        $title->update($data);
+
+        $affected = User::where('business_id', $bid)->where('job_title', $oldName)
+            ->update(['job_title' => $data['name'], 'role' => $data['role']]);
+
+        Activity::log('updated', "عدّل الوظيفة: {$oldName} → {$data['name']} (تأثّر {$affected} موظفًا)", ['subject_id' => $title->id]);
+
+        $msg = __('تم تحديث الوظيفة');
+        if ($affected > 0) {
+            $msg .= ' · ' . __('حُدِّث :n موظفًا يحملها', ['n' => $affected]);
+        }
+
+        return back()->with('toast', ['msg' => $msg, 'type' => 'success']);
+    }
+
     public function destroy($id)
     {
         $title = JobTitle::where('business_id', $this->bid())->findOrFail($id);

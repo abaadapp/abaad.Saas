@@ -2,13 +2,26 @@
     $money = fn ($v) => number_format((float) $v, 3) . ' ' . __('ر.ع');
     $business = $order->business;
     $itemsCount = $order->items->sum('quantity');
+
+    /**
+     * قالب الإيصال من إعدادات «قوالب». كان الإيصال ثابتًا لا يقبل تعديلًا:
+     * التاجر الذي يريد إخفاء اسم الموظف أو إضافة سطر ترحيب لا سبيل له.
+     *
+     * والافتراضات هي شكل الإيصال السابق حرفيًّا — تاجرٌ لم يفتح «قوالب» قطّ
+     * يجب أن يطبع اليوم ما كان يطبعه أمس.
+     */
+    $tpl = $tpl ?? [];
+    $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
+    $line = fn (string $k, string $default = '') => trim((string) ($tpl[$k] ?? $default));
+    $scale = ['صغير' => 0.85, 'كبير' => 1.15][$tpl['tpl_font'] ?? ''] ?? 1.0;
+    $px = fn (float $base) => round($base * $scale, 1) . 'px';
 @endphp
 <style>
     * { font-family: sans-serif; }
-    body { direction: rtl; text-align: right; font-size: 11px; color: #111; }
+    body { direction: rtl; text-align: right; font-size: {{ $px(11) }}; color: #111; }
     .center { text-align: center; }
     .muted { color: #666; }
-    h1 { font-size: 15px; margin: 0; }
+    h1 { font-size: {{ $px(15) }}; margin: 0; }
     table { width: 100%; border-collapse: collapse; }
     .items th, .items td { padding: 3px 0; font-size: 10px; }
     .items th { border-bottom: 1px solid #000; text-align: right; }
@@ -20,18 +33,35 @@
 </style>
 
 <div class="center">
+    @if ($show('tpl_show_logo', false) && ($business->logo ?? null))
+        <img src="{{ $business->logo }}" style="max-height:{{ $px(46) }}; margin-bottom:4px;" alt="">
+    @endif
     <h1>{{ $business->name ?? __('نظام Abad POS') }}</h1>
-    <div class="muted">{{ __('نظام Abad POS') }} — {{ $order->branch ?? __('الفرع الرئيسي') }}</div>
+    @if ($line('tpl_header') !== '')
+        <div class="muted">{{ $line('tpl_header') }}</div>
+    @endif
+    @if ($show('tpl_show_branch'))
+        <div class="muted">{{ __('نظام Abad POS') }} — {{ $order->branch ?? __('الفرع الرئيسي') }}</div>
+    @endif
     <div class="muted">{{ $business->city ?? '' }}@if($business && $business->phone) · {{ $business->phone }}@endif</div>
+    @if ($show('tpl_show_vat_no', false) && $line('vat_number') !== '')
+        <div class="muted">{{ __('الرقم الضريبي') }}: {{ $line('vat_number') }}</div>
+    @endif
 </div>
 
 <div class="dash"></div>
 
 <table>
     <tr><td class="muted">{{ __('رقم الفاتورة') }}</td><td style="text-align:left">{{ $order->number }}</td></tr>
-    <tr><td class="muted">{{ __('الموظف') }}</td><td style="text-align:left">{{ $order->employee_name ?? '—' }}</td></tr>
-    <tr><td class="muted">{{ __('العميل') }}</td><td style="text-align:left">{{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}</td></tr>
-    <tr><td class="muted">{{ __('التاريخ') }}</td><td style="text-align:left">{{ optional($order->ordered_at)->format('Y-m-d H:i') }}</td></tr>
+    @if ($show('tpl_show_employee'))
+        <tr><td class="muted">{{ __('الموظف') }}</td><td style="text-align:left">{{ $order->employee_name ?? '—' }}</td></tr>
+    @endif
+    @if ($show('tpl_show_customer'))
+        <tr><td class="muted">{{ __('العميل') }}</td><td style="text-align:left">{{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}</td></tr>
+    @endif
+    @if ($show('tpl_show_datetime'))
+        <tr><td class="muted">{{ __('التاريخ') }}</td><td style="text-align:left">{{ optional($order->ordered_at)->format('Y-m-d H:i') }}</td></tr>
+    @endif
 </table>
 
 <div class="dash"></div>
@@ -62,7 +92,9 @@
     </tbody>
 </table>
 
-<div class="muted" style="margin-top:4px; font-size:9px">{{ __('عدد الأصناف') }}: {{ $itemsCount }}</div>
+@if ($show('tpl_show_items_count'))
+    <div class="muted" style="margin-top:4px; font-size:{{ $px(9) }}">{{ __('عدد الأصناف') }}: {{ $itemsCount }}</div>
+@endif
 
 <div class="dash"></div>
 
@@ -80,7 +112,7 @@
 
 <div class="dash"></div>
 
-@if (!empty($qr))
+@if (!empty($qr) && $show('tpl_show_qr'))
     <div class="center" style="margin: 6px 0;">
         <barcode code="{{ $qr }}" type="QR" class="barcode" size="0.9" error="M" />
         <div class="muted" style="font-size:8px; margin-top:2px;">{{ __('رمز الفوترة الإلكترونية') }}</div>
@@ -88,7 +120,9 @@
     <div class="dash"></div>
 @endif
 
+{{-- التذييل نصّ التاجر: أسطره تُحترم كما كتبها --}}
 <div class="center muted">
-    {{ __('شكرًا لزيارتكم') }} 🌹<br>
-    {{ __('نتشرف بخدمتكم دائمًا') }}
+    @foreach (preg_split('/\r\n|\r|\n/', $line('tpl_footer', __('شكرًا لزيارتكم') . " 🌹\n" . __('نتشرف بخدمتكم دائمًا'))) as $l)
+        {{ $l }}@if (! $loop->last)<br>@endif
+    @endforeach
 </div>

@@ -49,6 +49,7 @@ const TABS = [
     { key: 'payments', label: 'طرق الدفع' },
     { key: 'invoices', label: 'الفواتير' },
     { key: 'printing', label: 'الطباعة' },
+    { key: 'templates', label: 'قوالب' },
     { key: 'permissions', label: 'صلاحيات الموظفين' },
     { key: 'notifications', label: 'الإشعارات' },
     { key: 'notifications-log', label: 'التنبيهات المرسلة' },
@@ -106,6 +107,18 @@ const LINKS = [
     { label: 'الموظفون', icon: UserCog, route: 'admin.employees.index' },
     { label: 'سجل النشاط', icon: History, route: 'admin.activity.index' },
 ] as const;
+
+/** صفوف قالب الإيصال — كلٌّ منها يُظهر شيئًا أو يُخفيه */
+const TEMPLATE_ROWS: { key: string; label: string; hint?: string }[] = [
+    { key: 'tpl_show_logo', label: 'شعار المتجر', hint: 'يظهر فقط إن كان للنشاط شعار محفوظ' },
+    { key: 'tpl_show_branch', label: 'اسم الفرع' },
+    { key: 'tpl_show_employee', label: 'اسم الموظف' },
+    { key: 'tpl_show_customer', label: 'اسم العميل' },
+    { key: 'tpl_show_datetime', label: 'التاريخ والوقت' },
+    { key: 'tpl_show_items_count', label: 'عدد الأصناف' },
+    { key: 'tpl_show_vat_no', label: 'الرقم الضريبي' },
+    { key: 'tpl_show_qr', label: 'رمز الفوترة الإلكترونية (QR)', hint: 'إخفاؤه قد يخالف متطلبات الفوترة' },
+];
 
 const NOTIF_COLORS: Record<string, string> = {
     danger: 'bg-[#fef2f2] text-[#dc2626]',
@@ -181,6 +194,20 @@ export default function SettingsIndex() {
         loyalty_earn_rate: get('loyalty_earn_rate', '5'),
         loyalty_redeem_max_pct: get('loyalty_redeem_max_pct', '50'),
         loyalty_redeem_min: get('loyalty_redeem_min', '100'),
+
+        /* قوالب الطباعة — الافتراضات هي شكل الإيصال قبل وجود هذا القسم
+           حرفيًّا: تاجرٌ لم يفتحه قطّ يطبع اليوم ما كان يطبعه أمس. */
+        tpl_header: get('tpl_header'),
+        tpl_footer: get('tpl_footer', 'شكرًا لزيارتكم 🌹\nنتشرف بخدمتكم دائمًا'),
+        tpl_font: get('tpl_font', 'عادي'),
+        tpl_show_logo: on('tpl_show_logo', '0'),
+        tpl_show_branch: on('tpl_show_branch'),
+        tpl_show_employee: on('tpl_show_employee'),
+        tpl_show_customer: on('tpl_show_customer'),
+        tpl_show_datetime: on('tpl_show_datetime'),
+        tpl_show_items_count: on('tpl_show_items_count'),
+        tpl_show_vat_no: on('tpl_show_vat_no', '0'),
+        tpl_show_qr: on('tpl_show_qr'),
     });
 
     const submit = (e: React.FormEvent) => {
@@ -579,6 +606,144 @@ export default function SettingsIndex() {
                                         onChange={(v) => form.setData('invoice_show_logo', v)}
                                         label="إظهار الشعار في الفاتورة"
                                     />
+                                </div>
+                            </>
+                        )}
+
+                        {tab === 'templates' && (
+                            <>
+                                <h3 className="mb-1 font-bold text-[#111]">{t('قالب الإيصال')}</h3>
+                                <p className="mb-4 text-[12px] text-[#9ca3af]">
+                                    {t('ما يظهر على الإيصال المطبوع بعد كل بيع — والمعاينة على اليمين تتبع كل تغيير.')}
+                                </p>
+
+                                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_260px]">
+                                    <div className="space-y-4">
+                                        <Field
+                                            label="سطر تحت اسم المتجر"
+                                            hint="شعار أو عبارة ترحيب — يُترك فارغًا فلا يظهر"
+                                            error={form.errors.tpl_header}
+                                        >
+                                            <Input
+                                                value={form.data.tpl_header}
+                                                onChange={(e) => form.setData('tpl_header', e.target.value)}
+                                                placeholder={t('مثال: أجمل الورود منذ 1998')}
+                                            />
+                                        </Field>
+
+                                        <Field
+                                            label="نص التذييل"
+                                            hint="يظهر أسفل الإيصال — كل سطر كما كتبته"
+                                            error={form.errors.tpl_footer}
+                                        >
+                                            <Textarea
+                                                rows={3}
+                                                value={form.data.tpl_footer}
+                                                onChange={(e) => form.setData('tpl_footer', e.target.value)}
+                                            />
+                                        </Field>
+
+                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                            <Field label="حجم الخط" error={form.errors.tpl_font}>
+                                                <Select
+                                                    value={form.data.tpl_font}
+                                                    onChange={(e) => form.setData('tpl_font', e.target.value)}
+                                                    options={['صغير', 'عادي', 'كبير'].map((x) => ({
+                                                        label: t(x),
+                                                        value: x,
+                                                    }))}
+                                                />
+                                            </Field>
+                                            <Field
+                                                label="مقاس الورق"
+                                                hint="نفس إعداد قسم «الطباعة»"
+                                                error={form.errors.paper}
+                                            >
+                                                <Select
+                                                    value={form.data.paper}
+                                                    onChange={(e) => form.setData('paper', e.target.value)}
+                                                    options={[
+                                                        { label: '80mm', value: '80mm' },
+                                                        { label: '58mm', value: '58mm' },
+                                                        { label: 'A4', value: 'A4' },
+                                                    ]}
+                                                />
+                                            </Field>
+                                        </div>
+
+                                        <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-4">
+                                            <p className="mb-2 text-[13px] font-semibold text-[#111]">
+                                                {t('ما يظهر على الإيصال')}
+                                            </p>
+                                            {TEMPLATE_ROWS.map((r) => (
+                                                <Toggle
+                                                    key={r.key}
+                                                    on={form.data[r.key as keyof typeof form.data] as boolean}
+                                                    onChange={(v) => form.setData(r.key as 'tpl_show_qr', v)}
+                                                    label={r.label}
+                                                    hint={r.hint}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* معاينة حيّة — محرّر قالبٍ بلا معاينة تخمين،
+                                        ولا يُكتشف خطؤه إلا على ورقٍ أمام الزبون */}
+                                    <div className="lg:sticky lg:top-4 lg:self-start">
+                                        <p className="mb-2 text-[12px] text-[#9ca3af]">{t('معاينة')}</p>
+                                        <div
+                                            dir="rtl"
+                                            className="rounded-[12px] border border-dashed border-[#d1d5db] bg-white p-4 font-mono leading-relaxed text-[#111]"
+                                            style={{
+                                                fontSize:
+                                                    form.data.tpl_font === 'صغير'
+                                                        ? '9px'
+                                                        : form.data.tpl_font === 'كبير'
+                                                          ? '12px'
+                                                          : '10.5px',
+                                            }}
+                                        >
+                                            <div className="text-center">
+                                                {form.data.tpl_show_logo && (
+                                                    <div className="mx-auto mb-1 h-6 w-14 rounded bg-[#f3f4f6]" />
+                                                )}
+                                                <p className="font-bold">{form.data.shop_name || t('اسم المتجر')}</p>
+                                                {form.data.tpl_header && (
+                                                    <p className="text-[#6b7280]">{form.data.tpl_header}</p>
+                                                )}
+                                                {form.data.tpl_show_branch && (
+                                                    <p className="text-[#6b7280]">{t('الفرع الرئيسي')}</p>
+                                                )}
+                                                {form.data.tpl_show_vat_no && form.data.vat_number && (
+                                                    <p className="text-[#6b7280]">
+                                                        {t('الرقم الضريبي')}: {form.data.vat_number}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
+                                            <p>{t('رقم الفاتورة')}: {form.data.inv_prefix}000001</p>
+                                            {form.data.tpl_show_employee && <p>{t('الموظف')}: {t('أحمد')}</p>}
+                                            {form.data.tpl_show_customer && <p>{t('العميل')}: {t('عميل نقدي')}</p>}
+                                            {form.data.tpl_show_datetime && <p dir="ltr" className="text-end">2026-08-02 10:15</p>}
+                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
+                                            <p>{t('باقة ورد')} × 2 — 21.000</p>
+                                            {form.data.tpl_show_items_count && (
+                                                <p className="text-[#6b7280]">{t('عدد الأصناف')}: 2</p>
+                                            )}
+                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
+                                            <p className="font-bold">{t('الإجمالي')}: 22.050</p>
+                                            {form.data.tpl_show_qr && (
+                                                <div className="mx-auto my-2 size-12 rounded bg-[#f3f4f6]" />
+                                            )}
+                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
+                                            <div className="whitespace-pre-line text-center text-[#6b7280]">
+                                                {form.data.tpl_footer}
+                                            </div>
+                                        </div>
+                                        <p className="mt-2 text-[11px] text-[#9ca3af]">
+                                            {t('معاينة تقريبية — الشكل النهائي على ورق')} {form.data.paper}
+                                        </p>
+                                    </div>
                                 </div>
                             </>
                         )}

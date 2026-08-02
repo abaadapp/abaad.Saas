@@ -96,6 +96,10 @@ class EmployeeController extends Controller
                  */
                 'pin' => '',
                 'has_pin' => filled($employee->pin),
+                'avatar' => $employee->avatar,
+                'status' => $employee->status,
+                'monthly_target' => $employee->monthly_target,
+                'commission_rate' => $employee->commission_rate,
             ],
             'branches' => Demo::branches(),
             'jobTitles' => \App\Models\JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all(),
@@ -112,6 +116,12 @@ class EmployeeController extends Controller
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
             'pin' => ['nullable', 'digits:4'],
+            // كان النموذج يعرض حقل كلمة مرور والتحقق لا يقبله: كل محاولة
+            // تغيير كانت تُبتلع بصمت ويظنّ المدير أنه غيّرها.
+            'password' => ['nullable', 'string', 'min:4'],
+            'status' => ['nullable', 'boolean'],
+            'monthly_target' => ['nullable', 'numeric', 'min:0'],
+            'commission_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         $title = $this->findJobTitle($data['job_title']);
@@ -129,6 +139,30 @@ class EmployeeController extends Controller
                 return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
             }
             $data['pin'] = $pin; // يُجزَّأ تلقائيًا عبر cast
+        }
+
+        // كلمة المرور تُغيَّر فقط إن أُدخلت — والفراغ يعني «أبقِها»
+        $password = $data['password'] ?? null;
+        unset($data['password']);
+        if (! empty($password)) {
+            $data['password'] = $password; // يُجزَّأ تلقائيًا عبر cast، كما الرمز
+        }
+
+        // الحالة: لا يُعطّل المستخدم حسابه بنفسه فيُقفل خارج النظام
+        $wantsActive = $request->has('status') ? $request->boolean('status') : null;
+        unset($data['status']);
+        if ($wantsActive !== null) {
+            if (! $wantsActive && $employee->id === auth()->id()) {
+                return back()->withInput()->withErrors(['status' => __('لا يمكنك تعطيل حسابك الخاص')]);
+            }
+            $data['status'] = $wantsActive ? 'نشط' : 'معطل';
+        }
+
+        // الأرقام الفارغة تعني «بلا هدف/عمولة» لا صفرًا مفروضًا
+        foreach (['monthly_target', 'commission_rate'] as $numeric) {
+            if (array_key_exists($numeric, $data)) {
+                $data[$numeric] = $data[$numeric] === null || $data[$numeric] === '' ? 0 : $data[$numeric];
+            }
         }
 
         $employee->update($data);

@@ -51,14 +51,14 @@ export default function CustomerShow() {
     ];
 
     return (
-        <AdminLayout title={customer.name}>
+        <AdminLayout title={customer.label || customer.name}>
             <PageHeader
                 title="ملف العميل"
                 subtitle={t('سجل مشتريات العميل ونقاط ولائه')}
                 breadcrumbs={[
                     { label: 'الرئيسية', href: route('admin.dashboard') },
                     { label: 'العملاء', href: route('admin.customers.index') },
-                    { label: customer.name },
+                    { label: customer.label || customer.name },
                 ]}
                 actions={
                     <>
@@ -92,10 +92,13 @@ export default function CustomerShow() {
                             <img src={customer.avatar} alt="" className="mx-auto size-24 rounded-full object-cover ring-4 ring-[#f5f3ff]" />
                         ) : (
                             <span className="mx-auto flex size-24 items-center justify-center rounded-full bg-[#f5f3ff] text-[28px] font-bold text-[#6d28d9]">
-                                {customer.name.slice(0, 1)}
+                                {(customer.label || customer.name).slice(0, 1)}
                             </span>
                         )}
-                        <h2 className="mt-4 text-[17px] font-bold text-[#111]">{customer.name}</h2>
+                        <h2 className="mt-4 text-[17px] font-bold text-[#111]">{customer.label || customer.name}</h2>
+                        {customer.name_en && customer.label !== customer.name && (
+                            <p className="text-[12px] text-[#9ca3af]">{customer.name}</p>
+                        )}
                         <p className="mt-1 font-mono text-[12px] text-[#9ca3af]">#{customer.id}</p>
                         {customer.points > 0 && (
                             <Badge variant="warning" className="mt-3">

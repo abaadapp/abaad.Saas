@@ -30,7 +30,7 @@
 
 <table class="info">
     <tr>
-        <td style="width:50%;"><strong>{{ __('العميل:') }}</strong> {{ $order->customer_name ?: __('عميل نقدي') }}@if (!empty($customerTax))<br><span class="muted">{{ __('الرقم الضريبي (TRN):') }} {{ $customerTax }}</span>@endif</td>
+        <td style="width:50%;"><strong>{{ __('العميل:') }}</strong> {{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}@if (!empty($customerTax))<br><span class="muted">{{ __('الرقم الضريبي (TRN):') }} {{ $customerTax }}</span>@endif</td>
         <td style="width:50%;"><strong>{{ __('وسيلة الدفع:') }}</strong> {{ __($order->payment_method) }}</td>
     </tr>
     <tr>

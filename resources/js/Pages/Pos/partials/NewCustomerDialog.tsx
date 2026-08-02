@@ -41,6 +41,11 @@ export default function NewCustomerDialog({ open, onOpenChange, onSubmit }: Prop
                         <Label htmlFor="c-name" required className="mb-1.5">{t('الاسم الكامل')}</Label>
                         <Input id="c-name" name="name" placeholder={t('اسم العميل')} required />
                     </div>
+
+                    <div>
+                        <Label htmlFor="c-name-en" className="mb-1.5">{t('الاسم بالإنجليزية')}</Label>
+                        <Input id="c-name-en" name="name_en" placeholder="e.g. Mohammed Salem" dir="ltr" />
+                    </div>
                     <div>
                         <Label htmlFor="c-phone" className="mb-1.5">{t('رقم الهاتف')}</Label>
                         <Input id="c-phone" name="phone" type="tel" placeholder="+968 9xxxxxxx" dir="ltr" />

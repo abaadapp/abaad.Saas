@@ -19,7 +19,8 @@ class CustomerController extends Controller
             ->withMax('orders', 'ordered_at');
 
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('phone', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
+            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('name_en', 'like', "%{$s}%")
+                ->orWhere('phone', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
         }
 
         // الترتيب — الافتراضي: الأحدث تسجيلًا (حتى يظهر العميل المُضاف حديثًا في الأعلى)
@@ -32,7 +33,9 @@ class CustomerController extends Controller
         };
 
         $customers = $q->paginate(10)->withQueryString()->through(fn ($c) => [
-            'id' => $c->id, 'name' => $c->name, 'phone' => $c->phone, 'email' => $c->email,
+            'id' => $c->id, 'name' => $c->name, 'name_en' => $c->name_en,
+            'label' => Demo::ln($c->name, $c->name_en),
+            'phone' => $c->phone, 'email' => $c->email,
             'orders' => $c->orders_count,
             'total_spent' => (float) ($c->orders_sum_total ?? 0),
             'last_order' => $c->orders_max_ordered_at
@@ -61,6 +64,7 @@ class CustomerController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email'],
             'tax_number' => ['nullable', 'string', 'max:50'],

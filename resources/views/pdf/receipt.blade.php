@@ -30,7 +30,7 @@
 <table>
     <tr><td class="muted">{{ __('رقم الفاتورة') }}</td><td style="text-align:left">{{ $order->number }}</td></tr>
     <tr><td class="muted">{{ __('الموظف') }}</td><td style="text-align:left">{{ $order->employee_name ?? '—' }}</td></tr>
-    <tr><td class="muted">{{ __('العميل') }}</td><td style="text-align:left">{{ $order->customer_name ?? __('عميل نقدي') }}</td></tr>
+    <tr><td class="muted">{{ __('العميل') }}</td><td style="text-align:left">{{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}</td></tr>
     <tr><td class="muted">{{ __('التاريخ') }}</td><td style="text-align:left">{{ optional($order->ordered_at)->format('Y-m-d H:i') }}</td></tr>
 </table>
 

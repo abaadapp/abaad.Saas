@@ -44,6 +44,7 @@ export default function CustomersIndex() {
 
     const add = useForm({
         name: '',
+        name_en: '',
         phone: '',
         email: '',
         tax_number: '',
@@ -83,7 +84,10 @@ export default function CustomersIndex() {
                         <span className="size-9 rounded-full bg-[#f2f2f0]" />
                     )}
                     <span className="min-w-0">
-                        <span className="block truncate font-medium text-[#111]">{c.name}</span>
+                        <span className="block truncate font-medium text-[#111]">{c.label || c.name}</span>
+                        {c.name_en && c.label !== c.name && (
+                            <span className="block truncate text-[11px] text-[#9ca3af]">{c.name}</span>
+                        )}
                         <span className="block font-mono text-[11px] text-[#9ca3af]">#{c.id}</span>
                     </span>
                 </div>
@@ -237,6 +241,18 @@ export default function CustomersIndex() {
                                 onChange={(e) => add.setData('name', e.target.value)}
                                 placeholder={t('مثال: محمد سالم')}
                                 required
+                            />
+                        </Field>
+                        <Field
+                            label="الاسم بالإنجليزية"
+                            hint="يظهر للكاشير حين تكون لغته الإنجليزية."
+                            error={add.errors.name_en}
+                        >
+                            <Input
+                                dir="ltr"
+                                value={add.data.name_en}
+                                onChange={(e) => add.setData('name_en', e.target.value)}
+                                placeholder="e.g. Mohammed Salem"
                             />
                         </Field>
                         <Field label="رقم الهاتف" required error={add.errors.phone}>

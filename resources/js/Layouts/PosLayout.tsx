@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, Languages, LogOut, Receipt, ReceiptText, Settings, Store, User, Users } from 'lucide-react';
+import { Check, ChevronDown, CreditCard, Languages, LogOut, Receipt, ReceiptText, Settings, Store, User, Users } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { Toaster, toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
@@ -23,6 +23,7 @@ const POS_NAV = [
     { label: 'نقطة البيع', icon: Store, route: 'pos.index' },
     { label: 'الطلبات', icon: ReceiptText, route: 'pos.orders' },
     { label: 'الفواتير', icon: Receipt, route: 'pos.receipts' },
+    { label: 'المدفوعات', icon: CreditCard, route: 'pos.payments' },
     { label: 'العملاء', icon: Users, route: 'pos.customers' },
 ];
 

@@ -1,6 +1,6 @@
-import { usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
-import { PauseCircle, Play } from 'lucide-react';
+import { PauseCircle, Play, Trash2 } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -56,12 +56,29 @@ export default function PosOrders() {
                                         {o.items_count != null && ` · ${o.items_count} ${t('عنصر')}`}
                                     </p>
 
-                                    <Button className="mt-3 w-full rounded-full" asChild>
-                                        <a href={route('pos.orders.resume', o.order_id)}>
-                                            <Play />
-                                            {t('استكمال')}
-                                        </a>
-                                    </Button>
+                                    <div className="mt-3 flex items-center gap-2">
+                                        <Button className="flex-1 rounded-full" asChild>
+                                            <a href={route('pos.orders.resume', o.order_id)}>
+                                                <Play />
+                                                {t('استكمال')}
+                                            </a>
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="shrink-0 rounded-full text-[#b91c1c]"
+                                            title={t('حذف الطلب')}
+                                            onClick={() => {
+                                                if (!confirm(t('حذف الطلب المعلّق نهائيًا؟'))) return;
+                                                router.delete(route('pos.orders.discard', o.order_id), {
+                                                    preserveScroll: true,
+                                                });
+                                            }}
+                                        >
+                                            <Trash2 />
+                                        </Button>
+                                    </div>
                                 </Card>
                             </motion.div>
                         ))}

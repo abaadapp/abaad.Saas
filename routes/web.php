@@ -299,7 +299,11 @@ Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
     Route::get('/orders/{id}', [\App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
-    Route::get('/payments', [\App\Http\Controllers\Pos\PageController::class, 'payments'])->name('payments');
+    // «ability» وحدها هنا: تُسقط المدفوعات على صلاحية finance فيراها صاحب
+    // النشاط والمدير والمحاسب، ويُمنع منها الكاشير. إخفاء الرابط من الشريط
+    // لا يكفي — بدون هذا الحارس يفتحها الكاشير بكتابة العنوان.
+    Route::get('/payments', [\App\Http\Controllers\Pos\PageController::class, 'payments'])
+        ->middleware('ability')->name('payments');
     Route::get('/receipts', [\App\Http\Controllers\Pos\PageController::class, 'receipts'])->name('receipts');
     Route::get('/receipts/search', [PosController::class, 'searchReceipts'])->name('receipts.search');
     Route::get('/receipt/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');

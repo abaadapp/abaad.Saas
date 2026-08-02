@@ -57,6 +57,12 @@ class Permissions
         if (! $route) {
             return 'dashboard';
         }
+        // شاشة المدفوعات داخل نقطة البيع شاشة مالية لا شاشة بيع: تعرض
+        // تحصيلات اليوم وطرق الدفع. الكاشير يبيع ولا يطّلع على حصيلة
+        // الصندوق، فتتبع صلاحية «finance» لا صلاحية «pos» المفتوحة للجميع.
+        if ($route === 'pos.payments') {
+            return 'finance';
+        }
         if (str_starts_with($route, 'pos.')) {
             return 'pos';
         }

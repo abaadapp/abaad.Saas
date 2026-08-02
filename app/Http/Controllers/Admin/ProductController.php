@@ -11,11 +11,36 @@ class ProductController extends Controller
 {
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
-    /** الفرع الافتراضي لإسناد كميات المنتجات: المختار حاليًا وإلا أول فرع */
+    /**
+     * تغذية كميات لجداول اللوحة.
+     *
+     * كانت بطاقة «منتجات منخفضة المخزون» تتحدّث كل 15 ثانية بينما جدول
+     * المنتجات تحتها مجمَّد على لقطة لحظة الفتح — فيقرأ التاجر «6 منتجات
+     * منخفضة» وجدولًا يقول إن كل شيء متوفر.
+     *
+     * بإجمالي الشركة لا برصيد فرع، لأن هذا ما تعرضه هذه الجداول أصلًا.
+     * تغذيةٌ تقيس غير ما عُرض تجعل الرقم يقفز بلا سبب ظاهر.
+     */
+    public function stockFeed()
+    {
+        $products = \App\Models\Product::where('business_id', $this->bid())
+            ->orderBy('id')->get(['id', 'quantity', 'alert_qty'])
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'qty' => (int) $p->quantity,
+                'stock_status' => $p->stock_status,
+            ])->values();
+
+        return response()->json([
+            'products' => $products,
+            'updated_at' => now()->format('H:i:s'),
+        ]);
+    }
+
+    /** مصدر واحد لتحديد الفرع — كان مكرّرًا هنا وفي PosController بصياغتين */
     private function defaultBranchId(): ?int
     {
-        return Demo::currentBranchId()
-            ?? \App\Models\Branch::where('business_id', $this->bid())->orderBy('id')->value('id');
+        return Demo::activeBranchId();
     }
 
     /** رمز منتج تلقائي فريد داخل النشاط: FLW-#### */
@@ -145,6 +170,7 @@ class ProductController extends Controller
             unset($data['image']);
         }
         $oldQty = (int) $product->quantity;
+        \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, $oldQty);
         $product->update($data);
         // مزامنة رصيد الفرع بفارق الكمية إن عُدّلت يدويًا من نموذج المنتج
         \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) $product->quantity - $oldQty);

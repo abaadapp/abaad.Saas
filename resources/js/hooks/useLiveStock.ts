@@ -27,6 +27,9 @@ interface HasStock {
  * 2. بيانات الخادم مع كل تنقّل هي المرجع، فتُمسح اللقطة القديمة.
  * 3. المنتج الذي لا يرد في التغذية يبقى بكميته الأخيرة لا بصفر — استجابة
  *    ناقصة يجب ألّا تُظهر المتجر فارغًا.
+ *
+ * ويعيد وقت آخر استطلاع: رقمٌ يتحرّك بلا أن يُعرف عمرُه يُقرأ على أنه
+ * لحظيّ، فيَعِد الكاشير الزبونَ بصنف نفد قبل عشرين ثانية.
  */
 export default function useLiveStock<T extends HasStock>(
     url: string,
@@ -34,9 +37,13 @@ export default function useLiveStock<T extends HasStock>(
     intervalMs = 20000,
 ) {
     const [live, setLive] = useState<Record<number, StockRow> | null>(null);
+    const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
     // كل تنقّل يجلب منتجات جديدة من الخادم — أحدث مما استطلعناه
-    useEffect(() => setLive(null), [products]);
+    useEffect(() => {
+        setLive(null);
+        setUpdatedAt(null);
+    }, [products]);
 
     useEffect(() => {
         let alive = true;
@@ -46,9 +53,10 @@ export default function useLiveStock<T extends HasStock>(
             try {
                 const res = await fetch(url, { headers: { Accept: 'application/json' } });
                 if (!res.ok || !alive) return;
-                const data: { products?: StockRow[] } = await res.json();
+                const data: { products?: StockRow[]; updated_at?: string } = await res.json();
                 if (!alive || !Array.isArray(data.products)) return;
                 setLive(Object.fromEntries(data.products.map((r) => [r.id, r])));
+                if (data.updated_at) setUpdatedAt(data.updated_at);
             } catch {
                 // انقطاع عابر — المحاولة التالية بعد الفترة نفسها، واللقطة الأخيرة تبقى
             }
@@ -61,7 +69,7 @@ export default function useLiveStock<T extends HasStock>(
         };
     }, [url, intervalMs]);
 
-    return useMemo(
+    const merged = useMemo(
         () =>
             live === null
                 ? products
@@ -71,4 +79,6 @@ export default function useLiveStock<T extends HasStock>(
                   }),
         [products, live],
     );
+
+    return { products: merged, updatedAt };
 }

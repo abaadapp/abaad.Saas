@@ -13,6 +13,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
+import useLiveStock from '@/hooks/useLiveStock';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -26,9 +27,14 @@ interface Props {
 }
 
 export default function ProductsIndex() {
-    const { products, pagination, categories, filters, context } = usePage<PageProps<Props>>().props;
+    const { products: serverProducts, pagination, categories, filters, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
+
+    /* بطاقة «منتجات منخفضة المخزون» في اللوحة كانت تتحدّث كل 15 ثانية وهذا
+       الجدول مجمّد على لقطة لحظة الفتح — فيقرأ التاجر رقمين متناقضين عن
+       الشيء نفسه. التغذية بإجمالي الشركة كما يعرض هذا الجدول. */
+    const { products, updatedAt } = useLiveStock(route('admin.products.stockFeed'), serverProducts);
     const [view, setView] = useState<'table' | 'grid'>('table');
 
     const actionsFor = (p: Product) => (
@@ -176,6 +182,12 @@ export default function ProductsIndex() {
             </div>
 
             <Card className="overflow-hidden">
+                {updatedAt && (
+                    <p className="mb-2 text-[12px] text-[#9ca3af]">
+                        {t('الكميات محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
+                    </p>
+                )}
+
                 <DataTable
                     rows={products}
                     columns={columns}

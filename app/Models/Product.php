@@ -19,8 +19,23 @@ class Product extends Model
     public function getCatAttribute() { return $this->category?->name; }
     public function getStockStatusAttribute(): string
     {
-        if ($this->quantity <= 0) return 'نفد المخزون';
-        return $this->quantity < $this->alert_qty ? 'منخفض' : 'متوفر';
+        return self::statusFor((int) $this->quantity, (int) $this->alert_qty);
+    }
+
+    /**
+     * حالة المخزون لأي كمية — لا لكمية المنتج الإجمالية وحدها.
+     *
+     * نقطة البيع تحكم على رصيد الفرع لا على مجموع الشركة، فتحتاج القاعدة
+     * نفسها مطبَّقة على رقم آخر. تركُها مكرّرة في موضعين يعني أن تغيير حدّ
+     * التنبيه يومًا ما يُطبَّق في أحدهما فقط.
+     */
+    public static function statusFor(int $quantity, int $alertQty): string
+    {
+        if ($quantity <= 0) {
+            return 'نفد المخزون';
+        }
+
+        return $quantity < $alertQty ? 'منخفض' : 'متوفر';
     }
 
     /** رابط الصورة: يدعم الروابط الخارجية والملفات المرفوعة */

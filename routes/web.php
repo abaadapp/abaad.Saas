@@ -131,6 +131,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
     // يجب أن يسبق products/{id} وإلا التقطه كمعرّف
     Route::get('/products/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'productsXlsx'])->name('products.xlsx');
     Route::get('/products/export-pdf', [\App\Http\Controllers\PdfController::class, 'productsReport'])->name('products.exportPdf');
+    // تغذية كميات للوحة — بإجمالي الشركة كما تعرضه جداولها، لا برصيد فرع
+    Route::get('/products/stock-feed', [ProductController::class, 'stockFeed'])->name('products.stockFeed');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::get('/products/{id}', [\App\Http\Controllers\Admin\PageController::class, 'productsShow'])->name('products.show');
     Route::get('/products/{id}/edit', [\App\Http\Controllers\Admin\PageController::class, 'productsEdit'])->name('products.edit');

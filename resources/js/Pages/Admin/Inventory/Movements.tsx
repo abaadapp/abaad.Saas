@@ -129,7 +129,7 @@ export default function Movements() {
                 <DataTable
                     rows={movements}
                     columns={columns}
-                    rowKey={(m) => `${m.product}-${m.date}-${m.qty}`}
+                    rowKey={(m) => m.id}
                     searchPlaceholder="ابحث باسم المنتج أو رمز SKU…"
                     searchable={(m) => `${m.product} ${m.sku} ${m.branch ?? ''} ${m.employee}`}
                     filters={filters}

@@ -224,7 +224,7 @@ export default function FinanceIndex() {
                 <DataTable
                     rows={transactions}
                     columns={columns}
-                    rowKey={(x) => x.id}
+                    rowKey={(x) => x.key}
                     searchPlaceholder="ابحث بالمرجع أو الوصف…"
                     searchable={(x) => `${x.id} ${x.description} ${x.employee} ${x.method}`}
                     filters={filters}

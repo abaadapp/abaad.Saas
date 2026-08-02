@@ -64,6 +64,7 @@ class InventoryController extends Controller
             if ($delta === 0) {
                 continue;
             }
+            \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, (int) $product->quantity);
             $product->quantity = $counted;
             $product->save();
             \App\Models\BranchStock::adjust($this->bid(), $branch->id, $product->id, $delta);
@@ -108,6 +109,7 @@ class InventoryController extends Controller
 
         // تعديل الكمية حسب نوع الحركة
         $old = (int) $product->quantity;
+        \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, $old);
         $delta = in_array($data['type'], ['إضافة كمية', 'مرتجع']) ? abs($data['quantity']) : -abs($data['quantity']);
         if ($data['type'] === 'تعديل يدوي') {
             $product->quantity = abs($data['quantity']);

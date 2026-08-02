@@ -119,6 +119,9 @@ export interface Addon {
 }
 
 export interface Transaction {
+    /** المفتاح الأساسي — للهوية في React لا للعرض */
+    key: number;
+    /** المرجع المعروض (رقم فاتورة مثلًا) وقد يتكرّر */
     id: string;
     date: string;
     description: string;
@@ -158,6 +161,7 @@ export interface PurchaseOrder {
 }
 
 export interface Movement {
+    id: number;
     product: string;
     sku: string;
     type: string;

@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Shift;
 use App\Support\Demo;
+use App\Support\Stock;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,13 +49,21 @@ class PosController extends Controller
      */
     public function stockFeed()
     {
+        // نفس مصدر الشاشة عند فتحها: رصيد الفرع النشط. تغذيةٌ تقيس شيئًا
+        // آخر غير ما عُرض أول مرّة تجعل الرقم يقفز بلا سبب ظاهر.
+        $available = Stock::availabilityResolver($this->bid(), Demo::activeBranchId());
+
         $products = Product::where('business_id', $this->bid())
             ->orderBy('id')->get(['id', 'quantity', 'alert_qty'])
-            ->map(fn ($p) => [
-                'id' => $p->id,
-                'qty' => $p->quantity,
-                'stock_status' => $p->stock_status,
-            ])->values();
+            ->map(function ($p) use ($available) {
+                $qty = $available($p->id, (int) $p->quantity);
+
+                return [
+                    'id' => $p->id,
+                    'qty' => $qty,
+                    'stock_status' => Product::statusFor($qty, (int) $p->alert_qty),
+                ];
+            })->values();
 
         return response()->json([
             'products' => $products,
@@ -132,7 +141,7 @@ class PosController extends Controller
     }
 
     /** يمنع البيع بما يتجاوز المتوفر — إلا إذا سمح النشاط بالمخزون السالب صراحةً */
-    private function assertStock(array $lines): void
+    private function assertStock(array $lines, ?int $branchId = null): void
     {
         if ((string) $this->setting('allow_negative_stock', '0') === '1') {
             return;
@@ -148,9 +157,15 @@ class PosController extends Controller
             }
         }
 
+        // الحكم على رصيد الفرع الذي سيُخصم منه. الحكم على مجموع الشركة كان
+        // يُجيز بيع خمس قطع من صلالة ورصيدها صفر لأن في مسقط عشرًا.
+        $available = Stock::availabilityResolver(
+            $this->bid(), $branchId, array_keys($needed), lock: true,
+        );
+
         $short = [];
         foreach ($needed as $pid => $want) {
-            $have = (int) $byId[$pid]->quantity;
+            $have = $available($pid, (int) $byId[$pid]->quantity);
             if ($have < $want) {
                 $short[] = __(':name — المتوفر :have والمطلوب :want', [
                     'name' => $byId[$pid]->name, 'have' => $have, 'want' => $want,
@@ -213,9 +228,8 @@ class PosController extends Controller
     /** فرع الطلب: الفرع المختار حاليًا، وإلا أول فرع للنشاط — حتى يظهر الطلب تحت فلتر الفروع */
     private function branch(): array
     {
-        $branch = Demo::currentBranchId()
-            ? \App\Models\Branch::where('business_id', $this->bid())->find(Demo::currentBranchId())
-            : \App\Models\Branch::where('business_id', $this->bid())->orderBy('id')->first();
+        $branch = \App\Models\Branch::where('business_id', $this->bid())
+            ->find(Demo::activeBranchId());
 
         return [
             'id' => $branch?->id,
@@ -318,9 +332,10 @@ class PosController extends Controller
             $bid = $this->bid();
             $branch = $this->branch();
 
-            // بقفل: الفحص والخصم يجب أن يقعا على كمية لا تتغيّر تحتهما
+            // بقفل: الفحص والخصم يجب أن يقعا على كمية لا تتغيّر تحتهما،
+            // وعلى رصيد الفرع الذي سيُخصم منه لا على مجموع الشركة
             $lines = $this->priceItems($data['items'], lock: true);
-            $this->assertStock($lines);
+            $this->assertStock($lines, $branch['id']);
 
             $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty']), 3);
 
@@ -376,6 +391,8 @@ class PosController extends Controller
                     continue;
                 }
                 $product = $l['product'];
+                // التوزيع أولًا ثم الخصم — وإلا بدأ صفّ الفرع من صفر فصار سالبًا
+                \App\Models\BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
                 $product->decrement('quantity', $l['qty']);
                 \App\Models\BranchStock::adjust($bid, $branch['id'], $product->id, -$l['qty']);
                 // تسجيل البيع كحركة مخزون ليكتمل سجل التدقيق (كم نقص ولماذا)

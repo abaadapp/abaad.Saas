@@ -1,6 +1,18 @@
 import { useState } from 'react';
-import { router, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, Download, Save, Upload } from 'lucide-react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
+import {
+    AlertTriangle,
+    BellOff,
+    BellRing,
+    ChevronLeft,
+    Download,
+    GitBranch,
+    History,
+    Save,
+    Trash2,
+    Upload,
+    UserCog,
+} from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
@@ -14,9 +26,19 @@ import type { PageProps } from '@/types';
 
 type Settings = Record<string, string>;
 
+interface NotificationRow {
+    key: string;
+    text: string;
+    time?: string;
+    icon?: string;
+    color?: string;
+    url?: string;
+}
+
 interface Props {
     settings: Settings;
     business: { name: string; phone: string | null; email: string | null; address: string | null };
+    notificationsAll: NotificationRow[];
     locale: string;
 }
 
@@ -24,9 +46,12 @@ const TABS = [
     { key: 'business', label: 'بيانات النشاط' },
     { key: 'taxes', label: 'الضرائب' },
     { key: 'currency', label: 'العملة' },
+    { key: 'payments', label: 'طرق الدفع' },
     { key: 'invoices', label: 'الفواتير' },
     { key: 'printing', label: 'الطباعة' },
+    { key: 'permissions', label: 'صلاحيات الموظفين' },
     { key: 'notifications', label: 'الإشعارات' },
+    { key: 'notifications-log', label: 'التنبيهات المرسلة' },
     { key: 'orders', label: 'الطلبات' },
     { key: 'delivery', label: 'التوصيل' },
     { key: 'loyalty', label: 'الولاء' },
@@ -36,12 +61,66 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]['key'];
 
+/** طرق الدفع المتاحة — المفاتيح تطابق ما كان يحفظه القالب السابق (pay_*) */
+const PAYMENT_METHODS = [
+    { key: 'pay_cash', label: 'نقدي', hint: 'الدفع النقدي عند الشراء' },
+    { key: 'pay_card', label: 'بطاقة (فيزا)', hint: 'الدفع عبر بطاقات الصراف والائتمان' },
+    { key: 'pay_transfer', label: 'تحويل بنكي', hint: 'التحويل المباشر للحساب البنكي' },
+] as const;
+
+/**
+ * صلاحيات الأدوار الافتراضية.
+ * مفتاح كل صلاحية `perm_<دور>_<صلاحية>` بترتيب المصفوفة نفسه الذي اعتمده القالب
+ * السابق، حتى تبقى القيم المحفوظة سابقًا مقروءة.
+ */
+const ROLE_PERMISSIONS = [
+    {
+        role: 'كاشير',
+        perms: [
+            { key: 'perm_0_0', label: 'فتح نقطة البيع' },
+            { key: 'perm_0_1', label: 'إنشاء طلب' },
+            { key: 'perm_0_2', label: 'طباعة فاتورة' },
+        ],
+    },
+    {
+        role: 'موظف مبيعات',
+        perms: [
+            { key: 'perm_1_0', label: 'إنشاء طلب' },
+            { key: 'perm_1_1', label: 'إدارة العملاء' },
+            { key: 'perm_1_2', label: 'تطبيق خصومات' },
+        ],
+    },
+    {
+        role: 'مسؤول مخزون',
+        perms: [
+            { key: 'perm_2_0', label: 'إدارة المخزون' },
+            { key: 'perm_2_1', label: 'حركات المخزون' },
+            { key: 'perm_2_2', label: 'الجرد' },
+        ],
+    },
+] as const;
+
+/** صفحات مستقلة يصل إليها المستخدم من الإعدادات */
+const LINKS = [
+    { label: 'الفروع', icon: GitBranch, route: 'admin.branches.index' },
+    { label: 'الموظفون', icon: UserCog, route: 'admin.employees.index' },
+    { label: 'سجل النشاط', icon: History, route: 'admin.activity.index' },
+] as const;
+
+const NOTIF_COLORS: Record<string, string> = {
+    danger: 'bg-[#fef2f2] text-[#dc2626]',
+    warning: 'bg-[#fffbeb] text-[#d97706]',
+    info: 'bg-[#eff6ff] text-[#2563eb]',
+    success: 'bg-[#f0fdf4] text-[#16a34a]',
+};
+
 export default function SettingsIndex() {
-    const { settings, business, locale } = usePage<PageProps<Props>>().props;
+    const { settings, business, notificationsAll, locale } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState<TabKey>('business');
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
     const [backupFile, setBackupFile] = useState<File | null>(null);
+    const [notifs, setNotifs] = useState<NotificationRow[]>(notificationsAll ?? []);
 
     const get = (k: string, fallback = '') => settings[k] ?? fallback;
     const on = (k: string, fallback = '1') => (settings[k] ?? fallback) === '1';
@@ -60,6 +139,20 @@ export default function SettingsIndex() {
         currency: get('currency', 'OMR'),
         decimals: get('decimals', '3'),
         symbol_pos: get('symbol_pos', 'after'),
+
+        pay_cash: on('pay_cash'),
+        pay_card: on('pay_card'),
+        pay_transfer: on('pay_transfer'),
+
+        perm_0_0: on('perm_0_0'),
+        perm_0_1: on('perm_0_1'),
+        perm_0_2: on('perm_0_2'),
+        perm_1_0: on('perm_1_0'),
+        perm_1_1: on('perm_1_1'),
+        perm_1_2: on('perm_1_2'),
+        perm_2_0: on('perm_2_0'),
+        perm_2_1: on('perm_2_1'),
+        perm_2_2: on('perm_2_2'),
 
         inv_prefix: get('inv_prefix', 'INV-'),
         inv_start: get('inv_start', '1'),
@@ -129,6 +222,21 @@ export default function SettingsIndex() {
                 ))}
             </div>
 
+            {/* صفحات مستقلة — ليست تبويبات، تُفتح كصفحات كاملة */}
+            <div className="mb-6 flex flex-wrap items-center gap-2">
+                {LINKS.map((l) => (
+                    <Link
+                        key={l.label}
+                        href={route(l.route)}
+                        className="inline-flex items-center gap-2 rounded-full border border-[var(--ui-border,#e8e8e8)] px-3.5 py-2 text-sm font-medium text-[#374151] transition-colors hover:bg-[#fafafa]"
+                    >
+                        <l.icon className="size-4" />
+                        {t(l.label)}
+                        <ChevronLeft className="size-3.5 text-[#d1d5db] rtl:rotate-0 ltr:rotate-180" />
+                    </Link>
+                ))}
+            </div>
+
             {tab === 'language' ? (
                 <Card className="max-w-2xl p-6">
                     <h3 className="mb-4 font-bold text-[#111]">{t('لغة النظام')}</h3>
@@ -175,6 +283,93 @@ export default function SettingsIndex() {
                             {t('حفظ اللغة')}
                         </Button>
                     </div>
+                </Card>
+            ) : tab === 'notifications-log' ? (
+                <Card className="max-w-3xl p-6">
+                    <div className="mb-6 flex items-start justify-between gap-3">
+                        <div>
+                            <h3 className="font-bold text-[#111]">{t('التنبيهات المرسلة')}</h3>
+                            <p className="mt-1 text-[13px] text-[#6b7280]">
+                                {t('جميع التنبيهات التي أُرسلت إليك — مخزون منخفض وطلبات بانتظار التجهيز.')}
+                            </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f3f4f6] px-3 py-1.5 text-sm font-medium text-[#374151]">
+                                <BellRing className="size-4" />
+                                {notifs.length} {t('تنبيه')}
+                            </span>
+                            {notifs.length > 0 && (
+                                <Button
+                                    type="button"
+                                    variant="danger"
+                                    onClick={() => {
+                                        if (!confirm(t('حذف جميع التنبيهات المرسلة؟'))) return;
+                                        router.post(
+                                            route('admin.notifications.clear'),
+                                            {},
+                                            { preserveScroll: true, onSuccess: () => setNotifs([]) },
+                                        );
+                                    }}
+                                >
+                                    <Trash2 />
+                                    {t('حذف الكل')}
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+
+                    {notifs.length === 0 ? (
+                        <div className="py-12 text-center">
+                            <BellOff className="mx-auto mb-3 size-8 text-[#d1d5db]" />
+                            <p className="font-medium text-[#374151]">{t('لا توجد تنبيهات')}</p>
+                            <p className="mt-1 text-[13px] text-[#9ca3af]">
+                                {t('ستظهر هنا عند انخفاض المخزون أو ورود طلبات جديدة.')}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                            {notifs.map((n) => (
+                                <div key={n.key} className="flex items-start gap-3 py-3">
+                                    <span
+                                        className={cn(
+                                            'flex size-9 shrink-0 items-center justify-center rounded-full',
+                                            NOTIF_COLORS[n.color ?? 'info'] ?? NOTIF_COLORS.info,
+                                        )}
+                                    >
+                                        <BellRing className="size-[18px]" />
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        {n.url ? (
+                                            <Link href={n.url} className="text-sm text-[#111] hover:underline">
+                                                {n.text}
+                                            </Link>
+                                        ) : (
+                                            <p className="text-sm text-[#111]">{n.text}</p>
+                                        )}
+                                        {n.time && <p className="mt-0.5 text-[12px] text-[#9ca3af]">{n.time}</p>}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        title={t('حذف')}
+                                        onClick={() =>
+                                            router.post(
+                                                route('admin.notifications.dismiss'),
+                                                { key: n.key },
+                                                {
+                                                    preserveScroll: true,
+                                                    onSuccess: () =>
+                                                        setNotifs((prev) => prev.filter((x) => x.key !== n.key)),
+                                                },
+                                            )
+                                        }
+                                        className="flex size-8 shrink-0 items-center justify-center rounded-full text-[#d1d5db] transition-colors hover:bg-[#fef2f2] hover:text-[#dc2626]"
+                                    >
+                                        <Trash2 className="size-4" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </Card>
             ) : tab === 'backup' ? (
                 <div className="grid max-w-3xl grid-cols-1 gap-6">
@@ -300,6 +495,56 @@ export default function SettingsIndex() {
                                             ]}
                                         />
                                     </Field>
+                                </div>
+                            </>
+                        )}
+
+                        {tab === 'payments' && (
+                            <>
+                                <h3 className="mb-4 font-bold text-[#111]">{t('طرق الدفع')}</h3>
+                                {PAYMENT_METHODS.map((m) => (
+                                    <Toggle
+                                        key={m.key}
+                                        on={form.data[m.key]}
+                                        onChange={(v) => form.setData(m.key, v)}
+                                        label={m.label}
+                                        hint={m.hint}
+                                    />
+                                ))}
+                            </>
+                        )}
+
+                        {tab === 'permissions' && (
+                            <>
+                                <h3 className="mb-2 font-bold text-[#111]">{t('صلاحيات الموظفين الافتراضية')}</h3>
+                                <p className="mb-5 text-[13px] text-[#6b7280]">
+                                    {t('حدد الصلاحيات الافتراضية للموظفين الجدد حسب الدور.')}
+                                </p>
+                                <div className="space-y-4">
+                                    {ROLE_PERMISSIONS.map((r) => (
+                                        <div
+                                            key={r.role}
+                                            className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4"
+                                        >
+                                            <h4 className="mb-3 text-sm font-semibold text-[#111]">{t(r.role)}</h4>
+                                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                                {r.perms.map((p) => (
+                                                    <label
+                                                        key={p.key}
+                                                        className="flex cursor-pointer items-center gap-2.5"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={form.data[p.key]}
+                                                            onChange={(e) => form.setData(p.key, e.target.checked)}
+                                                            className="size-4 rounded border-[#d1d5db] accent-[#111]"
+                                                        />
+                                                        <span className="text-sm text-[#374151]">{t(p.label)}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </>
                         )}

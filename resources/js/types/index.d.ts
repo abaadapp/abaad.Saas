@@ -29,9 +29,9 @@ export interface Currency {
 }
 
 export interface Notification {
-    id: string | number;
-    title: string;
-    body?: string;
+    /** مفتاح ثابت لكل مصدر — يُستخدم في الحذف حتى يبقى مخفيًا بعد إعادة التحميل */
+    key: string;
+    text: string;
     icon?: string;
     color?: string;
     time?: string;

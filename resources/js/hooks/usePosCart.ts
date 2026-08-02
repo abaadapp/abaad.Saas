@@ -55,6 +55,8 @@ export interface ResumeCart {
     id: number | null;
     customer: string | null;
     items: Omit<CartItem, 'key' | 'note'>[];
+    /** كود الخصم الذي كان مطبَّقًا وقت التعليق — يُعاد تطبيقه لا استعادة قيمته */
+    coupon_code?: string | null;
 }
 
 interface OutboxEntry {
@@ -369,6 +371,21 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
         [couponCode, subtotal, onToast],
     );
 
+    /**
+     * إعادة تطبيق كوبون الطلب المستأنف — مرة واحدة عند فتح السلة.
+     *
+     * التعليق يحفظ الكود لا قيمة الخصم، فنسأل الخادم من جديد: الكوبون قد
+     * يكون انتهى أو نفدت مرات استخدامه بين التعليق والاستكمال. وإن رُفض
+     * ظهر سبب الرفض للكاشير بدل أن يختفي الخصم صامتًا.
+     */
+    const resumedCoupon = useRef(false);
+    useEffect(() => {
+        const code = resume?.coupon_code;
+        if (!code || resumedCoupon.current || items.length === 0) return;
+        resumedCoupon.current = true;
+        void applyCoupon(code);
+    }, [resume, items.length, applyCoupon]);
+
     /* ------------------------------ العملاء ------------------------------ */
 
     const selectCustomer = useCallback((name: string) => {
@@ -585,13 +602,17 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                         note: i.note ?? '',
                     })),
                     customer,
+                    // الكوبون يُعلَّق مع الطلب: بدونه كان الكاشير يطبّق خصمًا،
+                    // يعلّق الطلب، ثم يستكمله فيدفع الزبون السعر كاملًا بلا
+                    // أن ينتبه أحد. الخادم يُعيد التحقق منه عند الدفع دائمًا.
+                    coupon_code: coupon?.code ?? null,
                     kind,
                 }),
             });
             clear();
             onToast(kind === 'hold' ? 'تم تعليق الطلب' : 'تم حفظ الطلب', kind === 'hold' ? 'warning' : 'success');
         },
-        [items, customer, total, clear, onToast],
+        [items, customer, coupon, clear, onToast],
     );
 
     return {

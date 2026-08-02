@@ -418,6 +418,7 @@ class PosController extends Controller
             'items.*.note' => ['nullable', 'string', 'max:255'],
             'customer' => ['nullable', 'string'],
             'total' => ['nullable', 'numeric'],
+            'coupon_code' => ['nullable', 'string', 'max:40'],
             // معلّق = بانتظار الاستكمال الآن · محفوظ = مسودّة للرجوع إليها لاحقًا
             'kind' => ['nullable', 'in:hold,save'],
         ]);
@@ -440,6 +441,10 @@ class PosController extends Controller
                 'is_held' => true,
                 'subtotal' => $subtotal,
                 'total' => $subtotal,
+                // الكود وحده يُحفظ لا قيمة خصمه: الطلب قد يُستكمل غدًا وقد
+                // يكون الكوبون انتهى أو نفدت مرات استخدامه، فيُعاد التحقق
+                // منه وقت الدفع لا وقت التعليق.
+                'coupon_code' => $data['coupon_code'] ?? null,
                 'ordered_at' => now(),
             ], $saved ? 'SAVE-' : 'HOLD-');
 
@@ -475,6 +480,9 @@ class PosController extends Controller
                 'qty' => (int) $i->quantity,
                 'note' => $i->note ?? '',
             ])->all(),
+            // يعود الكود إلى السلة لتُعيد الواجهة تطبيقه، فيراه الكاشير
+            // ويُحتسب عند الدفع. لا نُعيد قيمة الخصم — تُحسب من جديد.
+            'coupon_code' => $order->coupon_code,
         ]);
 
         return redirect()->route('pos.index');

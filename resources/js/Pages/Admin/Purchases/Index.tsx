@@ -269,7 +269,7 @@ export default function PurchasesIndex() {
                         rows={orders}
                         columns={columns}
                         rowKey={(o) => o.id}
-                        searchPlaceholder="ابحث بالرقم أو المورّد..."
+                        searchPlaceholder="ابحث بالرقم أو المورّد…"
                         searchable={(o) => `${o.number} ${o.supplier} ${o.branch ?? ''}`}
                         filters={filters}
                         empty="لا توجد أوامر شراء بعد"

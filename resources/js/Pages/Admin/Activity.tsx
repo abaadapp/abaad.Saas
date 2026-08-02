@@ -116,7 +116,7 @@ export default function Activity() {
                         <Input
                             value={q}
                             onChange={(e) => setQ(e.target.value)}
-                            placeholder={t('بحث في الوصف أو المستخدم...')}
+                            placeholder={t('بحث في الوصف أو المستخدم…')}
                         />
                     </Field>
                     <Field>

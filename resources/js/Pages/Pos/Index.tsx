@@ -136,7 +136,7 @@ export default function PosIndex() {
                             <Input
                                 value={q}
                                 onChange={(e) => setQ(e.target.value)}
-                                placeholder={t('ابحث عن منتج بالاسم أو الرمز...')}
+                                placeholder={t('ابحث عن منتج بالاسم أو الرمز…')}
                                 className="ps-9"
                             />
                         </div>
@@ -299,7 +299,7 @@ export default function PosIndex() {
                                                 <Input
                                                     value={cart.customerSearch}
                                                     onChange={(e) => cart.setCustomerSearch(e.target.value)}
-                                                    placeholder={t('ابحث بالاسم أو رقم الهاتف...')}
+                                                    placeholder={t('ابحث بالاسم أو رقم الهاتف…')}
                                                     className="ps-9"
                                                     autoComplete="off"
                                                 />
@@ -422,7 +422,7 @@ export default function PosIndex() {
                                             <Input
                                                 value={item.note}
                                                 onChange={(e) => cart.setNote(item.key, e.target.value)}
-                                                placeholder={t('ملاحظة...')}
+                                                placeholder={t('ملاحظة…')}
                                                 className="mt-2 h-8 text-xs"
                                             />
                                         </motion.div>

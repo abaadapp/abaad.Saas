@@ -204,7 +204,7 @@ function AddUserDialog({
                                 value={form.data.role}
                                 onChange={(e) => form.setData('role', e.target.value)}
                                 options={roles}
-                                placeholder="اختر الدور..."
+                                placeholder="اختر الدور…"
                                 required
                             />
                         </Field>

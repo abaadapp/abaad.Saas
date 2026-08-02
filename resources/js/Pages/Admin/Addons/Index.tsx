@@ -160,7 +160,7 @@ export default function AddonsIndex() {
                         rows={addons}
                         columns={columns}
                         rowKey={(a) => a.id}
-                        searchPlaceholder="ابحث باسم العنصر..."
+                        searchPlaceholder="ابحث باسم العنصر…"
                         searchable={(a) => `${a.name} ${a.name_en ?? ''}`}
                         filters={filters}
                         empty="لا توجد إضافات"

@@ -84,7 +84,7 @@ export default function PosCustomers() {
                         rows={customers}
                         columns={columns}
                         rowKey={(c) => c.id}
-                        searchPlaceholder="ابحث بالاسم أو رقم الهاتف..."
+                        searchPlaceholder="ابحث بالاسم أو رقم الهاتف…"
                         searchable={(c) => `${c.name} ${c.name_en ?? ''} ${c.phone} ${c.email ?? ''}`}
                         empty={t('لا يوجد عملاء بعد')}
                     />

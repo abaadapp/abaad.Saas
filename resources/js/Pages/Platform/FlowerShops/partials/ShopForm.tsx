@@ -88,7 +88,7 @@ export default function ShopForm({ options, initial, logoUrl, action, method, su
                             value={form.data.city}
                             onChange={(e) => form.setData('city', e.target.value)}
                             options={options.cities.map((c) => ({ label: c, value: c }))}
-                            placeholder="اختر المدينة..."
+                            placeholder="اختر المدينة…"
                         />
                     </Field>
                     <Field label="رقم الهاتف" error={form.errors.phone}>
@@ -130,7 +130,7 @@ export default function ShopForm({ options, initial, logoUrl, action, method, su
                             value={form.data.plan}
                             onChange={(e) => form.setData('plan', e.target.value)}
                             options={options.plans.map((p) => ({ label: p, value: p }))}
-                            placeholder="اختر الباقة..."
+                            placeholder="اختر الباقة…"
                         />
                     </Field>
                     <Field label="حالة الحساب" error={form.errors.status}>
@@ -138,7 +138,7 @@ export default function ShopForm({ options, initial, logoUrl, action, method, su
                             value={form.data.status}
                             onChange={(e) => form.setData('status', e.target.value)}
                             options={options.statuses.map((s) => ({ label: s, value: s }))}
-                            placeholder="اختر الحالة..."
+                            placeholder="اختر الحالة…"
                         />
                     </Field>
                     <Field label="تاريخ البداية" error={form.errors.start}>

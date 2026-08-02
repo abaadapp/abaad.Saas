@@ -140,7 +140,7 @@ export default function BranchesIndex() {
                         rows={branches}
                         columns={columns}
                         rowKey={(b) => b.id}
-                        searchPlaceholder="ابحث بالاسم أو الهاتف أو العنوان..."
+                        searchPlaceholder="ابحث بالاسم أو الهاتف أو العنوان…"
                         searchable={(b) => `${b.name} ${b.phone ?? ''} ${b.address ?? ''}`}
                         empty="لا توجد فروع — أضف أول فرع من زر «إضافة فرع» بالأعلى."
                     />

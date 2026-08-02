@@ -108,7 +108,7 @@ export default function OrdersIndex() {
                     rows={orders}
                     columns={columns}
                     rowKey={(o) => o.id}
-                    searchPlaceholder="ابحث برقم الطلب أو العميل..."
+                    searchPlaceholder="ابحث برقم الطلب أو العميل…"
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا توجد طلبات بعد"

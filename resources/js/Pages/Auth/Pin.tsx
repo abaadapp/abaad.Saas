@@ -79,7 +79,7 @@ export default function Pin() {
             <div className="w-full max-w-[360px]">
                 <div className="mb-8 flex flex-col items-center gap-3">
                     <Logo className="h-14 w-auto text-[#111]" />
-                    <p className="text-[13px] text-[#6b7280]">{t('أدخل رمز الدخول المكوّن من ٤ أرقام')}</p>
+                    <p className="text-[13px] text-[#6b7280]">{t('أدخل رمز الدخول المكوّن من 4 أرقام')}</p>
                 </div>
 
                 <Card className="p-7">

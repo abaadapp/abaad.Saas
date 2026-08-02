@@ -63,7 +63,7 @@ export default function EmployeeForm({ branches, jobTitles, employee, defaultBra
                             value={form.data.job_title}
                             onChange={(e) => form.setData('job_title', e.target.value)}
                             options={jobTitles.map((j) => ({ label: j, value: j }))}
-                            placeholder="اختر الوظيفة..."
+                            placeholder="اختر الوظيفة…"
                         />
                     </Field>
 
@@ -72,7 +72,7 @@ export default function EmployeeForm({ branches, jobTitles, employee, defaultBra
                             value={form.data.branch}
                             onChange={(e) => form.setData('branch', e.target.value)}
                             options={branches.map((b) => ({ label: b.name, value: b.name }))}
-                            placeholder="اختر الفرع..."
+                            placeholder="اختر الفرع…"
                         />
                     </Field>
 
@@ -112,7 +112,7 @@ export default function EmployeeForm({ branches, jobTitles, employee, defaultBra
                     </Field>
 
                     <Field
-                        label="رمز الدخول السريع (٤ أرقام)"
+                        label="رمز الدخول السريع (4 أرقام)"
                         hint="يُستخدم لدخول نقطة البيع بلا كلمة مرور"
                         error={form.errors.pin}
                     >

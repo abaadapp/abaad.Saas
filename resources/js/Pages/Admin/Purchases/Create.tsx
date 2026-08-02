@@ -192,7 +192,7 @@ export default function PurchaseCreate() {
                                 value={form.data.branch_id}
                                 onChange={(e) => form.setData('branch_id', e.target.value)}
                                 options={branches.map((b) => ({ label: b.name, value: b.id }))}
-                                placeholder="اختر الفرع..."
+                                placeholder="اختر الفرع…"
                                 required
                             />
                         </Field>

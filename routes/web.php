@@ -197,6 +197,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
 
     // الوظائف
     Route::post('/job-titles', [\App\Http\Controllers\Admin\JobTitleController::class, 'store'])->name('jobTitles.store');
+    Route::put('/job-titles/{id}', [\App\Http\Controllers\Admin\JobTitleController::class, 'update'])->name('jobTitles.update');
     Route::delete('/job-titles/{id}', [\App\Http\Controllers\Admin\JobTitleController::class, 'destroy'])->name('jobTitles.destroy');
     Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
     Route::get('/employees/{id}/edit', [EmployeeController::class, 'edit'])->name('employees.edit');

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Briefcase, Lock, LockOpen, Plus } from 'lucide-react';
+import { AlertTriangle, Briefcase, Lock, LockOpen, Pencil, Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
@@ -46,14 +46,37 @@ export default function EmployeesIndex() {
     const t = useTranslate();
     const currency = context!.currency;
     const [tab, setTab] = useState<TabKey>('employees');
-    const [addingTitle, setAddingTitle] = useState(false);
+
+    /**
+     * نافذة واحدة للإضافة والتعديل: `null` مغلقة، و`{}` إضافة، ووظيفةٌ تعديل.
+     * نافذتان متطابقتان بنصوصٍ مختلفة تفترقان عند أوّل تعديل على إحداهما.
+     */
+    const [titleDialog, setTitleDialog] = useState<JobTitle | Record<string, never> | null>(null);
+    const editingTitle = titleDialog && 'id' in titleDialog ? (titleDialog as JobTitle) : null;
 
     const titleForm = useForm({ name: '', role: '', description: '' });
 
+    const openTitle = (x?: JobTitle) => {
+        titleForm.clearErrors();
+        titleForm.setData({
+            name: x?.name ?? '',
+            role: x?.role ?? '',
+            description: x?.description ?? '',
+        });
+        setTitleDialog(x ?? {});
+    };
+
     const closeTitle = () => {
-        setAddingTitle(false);
+        setTitleDialog(null);
         titleForm.reset();
         titleForm.clearErrors();
+    };
+
+    const submitTitle = (e: React.FormEvent) => {
+        e.preventDefault();
+        const opts = { preserveScroll: true, onSuccess: closeTitle };
+        if (editingTitle) titleForm.put(route('admin.jobTitles.update', editingTitle.id), opts);
+        else titleForm.post(route('admin.jobTitles.store'), opts);
     };
 
     const titleColumns: Column<JobTitle>[] = [
@@ -78,6 +101,13 @@ export default function EmployeesIndex() {
             align: 'end',
             cell: (x) => (
                 <RowActions
+                    extra={[
+                        {
+                            label: 'تعديل الوظيفة',
+                            icon: <Pencil className="size-4" />,
+                            onSelect: () => openTitle(x),
+                        },
+                    ]}
                     destroy={{
                         url: route('admin.jobTitles.destroy', x.id),
                         message: `حذف الوظيفة «${x.name}»؟`,
@@ -187,7 +217,7 @@ export default function EmployeesIndex() {
                             </SmartLink>
                         </Button>
                     ) : (
-                        <Button onClick={() => setAddingTitle(true)}>
+                        <Button onClick={() => openTitle()}>
                             <Plus />
                             {t('إضافة وظيفة')}
                         </Button>
@@ -238,22 +268,19 @@ export default function EmployeesIndex() {
                 </Card>
             )}
 
-            <Dialog open={addingTitle} onOpenChange={(o) => !o && closeTitle()}>
-                <DialogContent>
+            <Dialog open={titleDialog !== null} onOpenChange={(o) => !o && closeTitle()}>
+                <DialogContent className="max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>{t('إضافة وظيفة')}</DialogTitle>
+                        <DialogTitle>{t(editingTitle ? 'تعديل الوظيفة' : 'إضافة وظيفة')}</DialogTitle>
                     </DialogHeader>
-                    <form
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            titleForm.post(route('admin.jobTitles.store'), {
-                                preserveScroll: true,
-                                onSuccess: closeTitle,
-                            });
-                        }}
-                        className="space-y-4"
-                    >
-                        <Field label="اسم الوظيفة" required error={titleForm.errors.name}>
+
+                    <form onSubmit={submitTitle} className="space-y-4 px-5 pb-5">
+                        <Field
+                            label="اسم الوظيفة"
+                            hint="اسمٌ حرّ يظهر في بطاقة الموظف — «منسّق زهور»، «مشرف وردية»."
+                            required
+                            error={titleForm.errors.name}
+                        >
                             <Input
                                 value={titleForm.data.name}
                                 onChange={(e) => titleForm.setData('name', e.target.value)}
@@ -262,7 +289,12 @@ export default function EmployeesIndex() {
                             />
                         </Field>
 
-                        <Field label="الصلاحيات المكافئة" required error={titleForm.errors.role}>
+                        <Field
+                            label="الصلاحيات المكافئة"
+                            hint="هذه وحدها تحدّد ما يستطيع الموظف فتحه داخل النظام — لا اسم الوظيفة."
+                            required
+                            error={titleForm.errors.role}
+                        >
                             <Select
                                 value={titleForm.data.role}
                                 onChange={(e) => titleForm.setData('role', e.target.value)}
@@ -272,12 +304,6 @@ export default function EmployeesIndex() {
                             />
                         </Field>
 
-                        <p className="text-[12px] leading-relaxed text-[#6b7280]">
-                            {t(
-                                'اسم الوظيفة حرّ تمامًا، أمّا «الصلاحيات المكافئة» فتحدّد ما يستطيع الموظف الوصول إليه داخل النظام.',
-                            )}
-                        </p>
-
                         <Field label="الوصف" error={titleForm.errors.description}>
                             <Input
                                 value={titleForm.data.description}
@@ -286,13 +312,24 @@ export default function EmployeesIndex() {
                             />
                         </Field>
 
-                        <div className="flex justify-end gap-2 pt-2">
+                        {/* أثرٌ يمتدّ إلى موظفين قائمين — يُقال قبل الحفظ لا بعده */}
+                        {editingTitle && editingTitle.usage > 0 && (
+                            <p className="flex items-start gap-2 rounded-[12px] bg-[#fffbeb] px-3 py-2.5 text-[12px] text-[#b45309]">
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                                <span>
+                                    {t('يحمل هذه الوظيفة')} {number(editingTitle.usage)} {t('موظفًا')} —{' '}
+                                    {t('سيُحدَّث اسمها وصلاحياتها عندهم فورًا.')}
+                                </span>
+                            </p>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-1">
                             <Button type="button" variant="ghost" onClick={closeTitle}>
                                 {t('إلغاء')}
                             </Button>
                             <Button type="submit" disabled={titleForm.processing}>
                                 <Briefcase />
-                                {titleForm.processing ? '…' : t('إضافة')}
+                                {titleForm.processing ? '…' : t(editingTitle ? 'حفظ التغييرات' : 'إضافة')}
                             </Button>
                         </div>
                     </form>

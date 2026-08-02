@@ -16,13 +16,24 @@ class PdfController extends Controller
         $bid = auth()->user()->business_id ?? Demo::bid();
         $order = Order::where('business_id', $bid)->where('number', $id)->with('items')->firstOrFail();
 
+        $tpl = \App\Support\ReceiptTemplate::forBusiness($bid);
+
         $html = view('pdf.receipt', [
             'order' => $order,
             'qr' => \App\Support\EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
+            'tpl' => $tpl,
         ])->render();
+
+        // «A4» فاتورة كاملة و«58mm» شريط أضيق — ورقٌ لا يطابق الطابعة يخرج مقصوصًا
+        $format = match ($tpl['paper'] ?? '80mm') {
+            'A4' => 'A4',
+            '58mm' => [58, 200],
+            default => [80, 200],
+        };
+
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
-            'format' => [80, 200],
+            'format' => $format,
             'margin_left' => 4, 'margin_right' => 4, 'margin_top' => 6, 'margin_bottom' => 6,
             'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
         ]);

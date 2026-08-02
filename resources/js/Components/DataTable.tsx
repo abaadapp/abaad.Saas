@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import { ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { Select } from '@/Components/Field';
 import { Input } from '@/Components/ui/input';
 import {
     Table,
@@ -223,19 +224,16 @@ export default function DataTable<T>({
                                 className="sm:w-44"
                             />
                         ) : (
-                            <select
+                            <Select
                                 key={i}
                                 value={active[i] ?? ''}
                                 onChange={(e) => onPick(e.target.value)}
-                                className="ui-select h-10 appearance-none rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 text-sm text-[#111] focus:outline-none"
-                            >
-                                <option value="">{t(filter.label)}</option>
-                                {(filter.options ?? []).map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {t(option.label)}
-                                    </option>
-                                ))}
-                            </select>
+                                // التسمية هي خيار «الكل»: تظهر في الزر بلا تصفية وتبقى قابلة للاختيار للرجوع
+                                placeholder={filter.label}
+                                options={filter.options ?? []}
+                                aria-label={t(filter.label)}
+                                className="sm:w-48"
+                            />
                         );
                     })}
 

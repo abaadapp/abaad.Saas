@@ -14,6 +14,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import StatCard from '@/Components/StatCard';
 import SmartLink from '@/Components/SmartLink';
+import ActivityFeed, { type ActivityItem } from '@/Components/ActivityFeed';
 import AreaChart from '@/Components/charts/AreaChart';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -30,15 +31,17 @@ interface Props {
     orderCount: number;
     salesSeries: { labels: string[]; data: number[] };
     permissions: Record<string, boolean>;
+    activities: ActivityItem[];
 }
 
 export default function EmployeeShow() {
-    const { employee, orderCount, salesSeries, permissions, context } = usePage<PageProps<Props>>().props;
+    const { employee, orderCount, salesSeries, permissions, activities, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
-    const [tab, setTab] = useState<'sales' | 'permissions'>('sales');
+    const [tab, setTab] = useState<'sales' | 'activity' | 'permissions'>('sales');
     const [resetting, setResetting] = useState(false);
     const [perms, setPerms] = useState(permissions);
 
@@ -188,6 +191,7 @@ export default function EmployeeShow() {
                         <div className="flex items-center gap-1 border-b border-[var(--ui-border,#e8e8e8)] px-5">
                             {([
                                 { key: 'sales', label: 'المبيعات' },
+                                { key: 'activity', label: 'سجل النشاط' },
                                 { key: 'permissions', label: 'الصلاحيات' },
                             ] as const).map(({ key, label }) => (
                                 <button
@@ -206,14 +210,22 @@ export default function EmployeeShow() {
                             ))}
                         </div>
 
-                        {tab === 'sales' ? (
+                        {tab === 'sales' && (
                             <div className="p-6">
                                 <h4 className="mb-4 font-bold text-[#111]">
                                     {t('مبيعات الموظف خلال آخر 12 شهرًا')}
                                 </h4>
                                 <AreaChart labels={salesSeries.labels} data={salesSeries.data} format={m} />
                             </div>
-                        ) : (
+                        )}
+
+                        {tab === 'activity' && (
+                            <div className="p-6">
+                                <ActivityFeed items={activities} empty="لا يوجد نشاط لهذا الموظف بعد" />
+                            </div>
+                        )}
+
+                        {tab === 'permissions' && (
                             <div className="p-6">
                                 <p className="mb-4 text-sm text-[#6b7280]">
                                     {t('تحكم في صلاحيات هذا الموظف داخل النظام.')}

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Award, ArrowRight, Mail, MapPin, Phone, Save, Receipt } from 'lucide-react';
+import {
+    Award, ArrowRight, Mail, MapPin, Pencil, Phone, Plus, Save, Receipt, Star, Trash2,
+} from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import StatCard from '@/Components/StatCard';
@@ -9,28 +11,67 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
-import { Textarea } from '@/Components/ui/input';
+import Field from '@/Components/Field';
+import { Input, Textarea } from '@/Components/ui/input';
 import {
     Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import type { Customer, Order } from '@/types/models';
+
+interface Address {
+    id: number;
+    label: string;
+    city: string;
+    area: string | null;
+    street: string | null;
+    is_default: boolean;
+}
 
 interface Props {
     customer: Customer & { address?: string | null; notes?: string | null };
     orders: Order[];
+    addresses: Address[];
 }
 
+const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
+
 export default function CustomerShow() {
-    const { customer, orders, context } = usePage<PageProps<Props>>().props;
+    const { customer, orders, addresses, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
     const [redeeming, setRedeeming] = useState(false);
+    const [tab, setTab] = useState<'orders' | 'addresses'>('orders');
 
     const notes = useForm({ notes: customer.notes ?? '' });
+
+    /** نموذج واحد للإضافة والتعديل: address_id فارغ = عنوان جديد */
+    const [editing, setEditing] = useState(false);
+    const address = useForm({ ...BLANK });
+
+    const openAdd = () => { address.setData({ ...BLANK }); address.clearErrors(); setEditing(true); };
+    const openEdit = (a: Address) => {
+        address.setData({
+            address_id: String(a.id),
+            label: a.label,
+            city: a.city,
+            area: a.area ?? '',
+            street: a.street ?? '',
+        });
+        address.clearErrors();
+        setEditing(true);
+    };
+    const submitAddress = (e: React.FormEvent) => {
+        e.preventDefault();
+        address.post(route('admin.customers.addresses.save', customer.id), {
+            preserveScroll: true,
+            onSuccess: () => setEditing(false),
+        });
+    };
 
     const stats = [
         { label: t('عدد الطلبات'), value: String(customer.orders), icon: 'shopping-bag', color: 'primary' },
@@ -136,9 +177,94 @@ export default function CustomerShow() {
                 </div>
 
                 <Card className="overflow-hidden lg:col-span-2">
-                    <div className="border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
-                        <h3 className="font-bold text-[#111]">{t('سجل الطلبات')}</h3>
+                    <div className="flex items-center gap-1 border-b border-[var(--ui-border,#e8e8e8)] px-5">
+                        {([
+                            { key: 'orders', label: 'سجل الطلبات' },
+                            { key: 'addresses', label: 'العناوين' },
+                        ] as const).map(({ key, label }) => (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setTab(key)}
+                                className={cn(
+                                    '-mb-px border-b-2 px-4 py-3.5 text-sm font-medium transition-colors',
+                                    tab === key
+                                        ? 'border-[#111] text-[#111]'
+                                        : 'border-transparent text-[#6b7280] hover:text-[#374151]',
+                                )}
+                            >
+                                {t(label)}
+                                {key === 'addresses' && addresses.length > 0 && (
+                                    <span className="ms-1.5 text-[12px] text-[#9ca3af]">{number(addresses.length)}</span>
+                                )}
+                            </button>
+                        ))}
                     </div>
+
+                    {tab === 'addresses' ? (
+                        <div className="p-5">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                {addresses.map((a) => (
+                                    <div
+                                        key={a.id}
+                                        className="rounded-[14px] border border-[var(--ui-border,#e8e8e8)] p-4 transition-colors hover:border-[#c4b5fd]"
+                                    >
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <span className="flex min-w-0 items-center gap-2 font-semibold text-[#111]">
+                                                <MapPin className="size-4 shrink-0 text-[#6d28d9]" />
+                                                <span className="truncate">{a.label}</span>
+                                            </span>
+                                            {a.is_default && <Badge variant="success">{t('افتراضي')}</Badge>}
+                                        </div>
+                                        <p className="text-sm text-[#4b4b4b]">
+                                            {[a.city, a.area].filter(Boolean).join(' - ')}
+                                        </p>
+                                        {a.street && <p className="mt-1 text-[12px] text-[#9ca3af]">{a.street}</p>}
+
+                                        <div className="mt-3 flex flex-wrap items-center gap-1">
+                                            <Button variant="ghost" size="sm" onClick={() => openEdit(a)}>
+                                                <Pencil />{t('تعديل')}
+                                            </Button>
+                                            {!a.is_default && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => router.post(
+                                                        route('admin.customers.addresses.default', [customer.id, a.id]),
+                                                        {}, { preserveScroll: true },
+                                                    )}
+                                                >
+                                                    <Star />{t('تعيين افتراضي')}
+                                                </Button>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-[#b91c1c]"
+                                                onClick={() => {
+                                                    if (!confirm(t('حذف هذا العنوان؟'))) return;
+                                                    router.delete(
+                                                        route('admin.customers.addresses.delete', [customer.id, a.id]),
+                                                        { preserveScroll: true },
+                                                    );
+                                                }}
+                                            >
+                                                <Trash2 />{t('حذف')}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                <button
+                                    type="button"
+                                    onClick={openAdd}
+                                    className="flex min-h-[120px] items-center justify-center gap-2 rounded-[14px] border-2 border-dashed border-[var(--ui-border,#e8e8e8)] text-sm text-[#6b7280] transition-colors hover:border-[#c4b5fd] hover:text-[#6d28d9]"
+                                >
+                                    <Plus className="size-5" />{t('إضافة عنوان جديد')}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
                     <Table>
                         <TableHeader>
                             <TableRow className="hover:bg-transparent">
@@ -165,8 +291,58 @@ export default function CustomerShow() {
                             ))}
                         </TableBody>
                     </Table>
+                    )}
                 </Card>
             </div>
+
+            {/* إضافة/تعديل عنوان */}
+            <Dialog open={editing} onOpenChange={setEditing}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t(address.data.address_id ? 'تعديل العنوان' : 'عنوان جديد')}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitAddress} className="space-y-4 px-5 pb-5">
+                        <Field label="التسمية" required hint="المنزل / العمل" error={address.errors.label}>
+                            <Input
+                                value={address.data.label}
+                                onChange={(e) => address.setData('label', e.target.value)}
+                                placeholder={t('المنزل')}
+                                required
+                            />
+                        </Field>
+                        <Field label="المدينة" required error={address.errors.city}>
+                            <Input
+                                value={address.data.city}
+                                onChange={(e) => address.setData('city', e.target.value)}
+                                placeholder={t('مسقط')}
+                                required
+                            />
+                        </Field>
+                        <Field label="المنطقة" error={address.errors.area}>
+                            <Input
+                                value={address.data.area}
+                                onChange={(e) => address.setData('area', e.target.value)}
+                                placeholder={t('الخوير')}
+                            />
+                        </Field>
+                        <Field label="الشارع/المبنى" error={address.errors.street}>
+                            <Input
+                                value={address.data.street}
+                                onChange={(e) => address.setData('street', e.target.value)}
+                                placeholder={t('شارع 18 نوفمبر، مبنى 220')}
+                            />
+                        </Field>
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="outline" onClick={() => setEditing(false)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button type="submit" disabled={address.processing}>
+                                <Save />{address.processing ? '…' : t('حفظ')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={redeeming} onOpenChange={setRedeeming}>
                 <DialogContent className="max-w-sm">

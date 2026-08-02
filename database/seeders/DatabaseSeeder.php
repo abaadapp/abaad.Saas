@@ -157,7 +157,6 @@ class DatabaseSeeder extends Seeder
             [null, 'currency', 'ريال عماني'],
             [null, 'currency_decimals', '3'],
             [null, 'vat_rate', '5'],
-            [$business->id, 'business_name', $business->name],
             [$business->id, 'vat_rate', '5'],
         ];
         foreach ($settings as [$businessId, $key, $value]) {

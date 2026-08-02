@@ -1,17 +1,38 @@
 import { useState } from 'react';
-import { usePage } from '@inertiajs/react';
+import { useForm, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
-import { Barcode, LayoutGrid, List, Plus } from 'lucide-react';
+import {
+    Barcode,
+    Eye,
+    FileDown,
+    FileSpreadsheet,
+    FileText,
+    LayoutGrid,
+    List,
+    MoreVertical,
+    Plus,
+    Upload,
+} from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PRODUCT_TABS } from '@/Components/SectionTabs';
-import ExportMenu from '@/Components/ExportMenu';
 import RowActions from '@/Components/RowActions';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
+import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/Components/ui/dropdown-menu';
+import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import useLiveStock from '@/hooks/useLiveStock';
 import { useTranslate } from '@/lib/i18n';
@@ -24,12 +45,26 @@ interface Props {
     pagination: ServerPagination;
     categories: Category[];
     filters: Record<string, string | null>;
+    branches: { id: number; name: string }[];
+    currentBranchId: number | null;
 }
 
 export default function ProductsIndex() {
-    const { products: serverProducts, pagination, categories, filters, context } = usePage<PageProps<Props>>().props;
+    const { products: serverProducts, pagination, categories, filters, branches, currentBranchId, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
+    const [importing, setImporting] = useState(false);
+
+    const upload = useForm<{ file: File | null; branch_id: string }>({
+        file: null,
+        branch_id: currentBranchId ? String(currentBranchId) : '',
+    });
+
+    const submitImport = (e: React.FormEvent) => {
+        e.preventDefault();
+        upload.post(route('admin.products.import.upload'), { forceFormData: true });
+    };
 
     /* بطاقة «منتجات منخفضة المخزون» في اللوحة كانت تتحدّث كل 15 ثانية وهذا
        الجدول مجمّد على لقطة لحظة الفتح — فيقرأ التاجر رقمين متناقضين عن
@@ -138,11 +173,57 @@ export default function ProductsIndex() {
                                 {t('طباعة الباركود')}
                             </SmartLink>
                         </Button>
-                        <ExportMenu
-                            xlsx={route('admin.products.xlsx')}
-                            pdf={route('admin.products.exportPdf')}
-                            csv={route('admin.export.products')}
-                        />
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="icon" aria-label={t('المزيد')}>
+                                    <MoreVertical />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-72">
+                                <DropdownMenuLabel>{t('تصدير')}</DropdownMenuLabel>
+                                {/* الأول بيانات تدور: أعمدته هي أعمدة الاستيراد نفسها.
+                                    والثاني تقريرٌ للطباعة فيه عنوان ومعرّف وحالة محسوبة —
+                                    لا يعود من حيث خرج، فلا يُسمَّى باسمه. */}
+                                <DropdownMenuItem asChild>
+                                    <a href={route('admin.products.export.xlsx')}>
+                                        <FileSpreadsheet className="text-[#059669]" />
+                                        {t('تصدير Excel (xlsx)')}
+                                    </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                    <a href={route('admin.products.export.pdf')} target="_blank" rel="noreferrer">
+                                        <FileText className="text-[#dc2626]" />
+                                        {t('تصدير PDF')}
+                                    </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                    <a href={route('admin.export.products')}>
+                                        <FileDown className="text-[#6b7280]" />
+                                        {t('تصدير CSV')}
+                                    </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>{t('تقارير للطباعة')}</DropdownMenuLabel>
+                                <DropdownMenuItem asChild>
+                                    <a href={route('admin.products.xlsx')}>
+                                        <FileSpreadsheet className="text-[#9ca3af]" />
+                                        {t('تقرير المنتجات (Excel)')}
+                                    </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                    <a href={route('admin.products.exportPdf')} target="_blank" rel="noreferrer">
+                                        <FileText className="text-[#9ca3af]" />
+                                        {t('تقرير المنتجات (PDF)')}
+                                    </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>{t('استيراد')}</DropdownMenuLabel>
+                                <DropdownMenuItem onSelect={() => setImporting(true)}>
+                                    <Upload className="text-[#6d28d9]" />
+                                    {t('استيراد من ملف…')}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button asChild>
                             <SmartLink routeName="admin.products.create" href={route('admin.products.create')}>
                                 <Plus />
@@ -246,6 +327,58 @@ export default function ProductsIndex() {
                     }
                 />
             </Card>
+
+            {/* استيراد المنتجات */}
+            <Dialog open={importing} onOpenChange={setImporting}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{t('استيراد المنتجات من ملف')}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitImport} className="space-y-4 px-5 pb-5">
+                        <Field
+                            label="ملف المنتجات"
+                            hint="الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، القسم، SKU، الباركود، السعر، التكلفة، الكمية، حد التنبيه، الضريبة %، الخصم %، الحالة. يمكنك تصدير ملف ثم تعديله وإعادة استيراده."
+                            error={upload.errors.file}
+                            required
+                        >
+                            <Input
+                                type="file"
+                                accept=".csv,.xls,.xlsx,.xlsm"
+                                required
+                                onChange={(e) => upload.setData('file', e.target.files?.[0] ?? null)}
+                                className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
+                            />
+                        </Field>
+
+                        <Field
+                            label="فرع الكميات"
+                            hint="الكميات المستوردة تُودَع في هذا الفرع — وهو ما يُباع منه لاحقًا."
+                            error={upload.errors.branch_id}
+                        >
+                            <Select
+                                value={upload.data.branch_id}
+                                onChange={(e) => upload.setData('branch_id', e.target.value)}
+                                options={branches.map((b) => ({ label: b.name, value: b.id }))}
+                                placeholder="الفرع الحالي"
+                            />
+                        </Field>
+
+                        <p className="rounded-[12px] bg-[#f5f3ff] px-3 py-2.5 text-[12px] text-[#6d28d9]">
+                            {t('المنتجات الموجودة (بنفس SKU أو الباركود) تُحدَّث بدل تكرارها، والأقسام غير الموجودة تُنشأ تلقائيًا. وستظهر معاينة كاملة قبل التأكيد.')}
+                        </p>
+
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="ghost" onClick={() => setImporting(false)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button type="submit" disabled={upload.processing}>
+                                <Eye />
+                                {upload.processing ? '…' : t('معاينة الملف')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </AdminLayout>
     );
 }

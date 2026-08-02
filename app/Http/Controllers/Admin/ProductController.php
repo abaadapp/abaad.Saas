@@ -96,6 +96,11 @@ class ProductController extends Controller
             'pagination' => \App\Support\Pagination::meta($products),
             'categories' => Demo::categories(),
             'filters' => $request->only('q', 'category', 'status', 'stock'),
+            // لاستيراد ملف: الكميات المستوردة يجب أن تُودَع في فرع محدّد،
+            // وإلا اختلّ التوازن «مجموع الفروع = كمية المنتج»
+            'branches' => \App\Models\Branch::where('business_id', $this->bid())
+                ->orderBy('id')->get(['id', 'name']),
+            'currentBranchId' => Demo::activeBranchId(),
         ]);
     }
 

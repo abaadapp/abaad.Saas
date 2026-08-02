@@ -133,6 +133,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
     Route::get('/products/export-pdf', [\App\Http\Controllers\PdfController::class, 'productsReport'])->name('products.exportPdf');
     // تغذية كميات للوحة — بإجمالي الشركة كما تعرضه جداولها، لا برصيد فرع
     Route::get('/products/stock-feed', [ProductController::class, 'stockFeed'])->name('products.stockFeed');
+    // تصدير/استيراد المنتجات — بيانات قابلة للدوران، لنقل التاجر من نظامه السابق
+    Route::get('/products/export/xlsx', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'exportXlsx'])->name('products.export.xlsx');
+    Route::get('/products/export/pdf', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'exportPdf'])->name('products.export.pdf');
+    Route::post('/products/import', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'upload'])->name('products.import.upload');
+    Route::get('/products/import/preview', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'preview'])->name('products.import.preview');
+    Route::post('/products/import/confirm', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'confirm'])->name('products.import.confirm');
+    Route::post('/products/import/cancel', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'cancel'])->name('products.import.cancel');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::get('/products/{id}', [\App\Http\Controllers\Admin\PageController::class, 'productsShow'])->name('products.show');
     Route::get('/products/{id}/edit', [\App\Http\Controllers\Admin\PageController::class, 'productsEdit'])->name('products.edit');

@@ -1,0 +1,119 @@
+name: CI
+
+# البوابة كانت تعيش في خطّاف Claude على جهاز واحد: أي تعديل من جهاز آخر
+# أو من واجهة GitHub كان يمرّ بلا فحص. هنا تُفرض على كل دفعة وكل PR.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # دفعة جديدة تُلغي فحص الدفعة السابقة لنفس الفرع — لا داعي لانتظار القديم
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------
+  # الاختبارات على SQLite — سريعة، وهي محرّك التطوير الحالي
+  # ---------------------------------------------------------------------
+  tests-sqlite:
+    name: الاختبارات (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, mbstring, intl, bcmath, gd, zip
+          coverage: none
+
+      - name: تثبيت اعتماديات PHP
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: تجهيز البيئة
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: الاختبارات
+        run: php artisan test
+
+  # ---------------------------------------------------------------------
+  # الاختبارات على PostgreSQL — محرّك الإنتاج المقصود.
+  #
+  # SQLite يقفل القاعدة كاملة عند كل كتابة، وهذا لا يصلح لصناديق بيع
+  # متزامنة. والانتقال يكسر SQL خاصًّا بـSQLite (strftime، النصوص بعلامات
+  # مزدوجة) بصمت — فيُكتشف عند التاجر لا عندنا. هذه الوظيفة تمنع ذلك.
+  # ---------------------------------------------------------------------
+  tests-postgres:
+    name: الاختبارات (PostgreSQL)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: testing
+          POSTGRES_USER: abaad
+          POSTGRES_PASSWORD: secret
+        ports: ['5432:5432']
+        # لا نبدأ الاختبارات قبل أن تجهز القاعدة فعلًا
+        options: >-
+          --health-cmd="pg_isready -U abaad"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: testing
+      DB_USERNAME: abaad
+      DB_PASSWORD: secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, mbstring, intl, bcmath, gd, zip
+          coverage: none
+
+      - name: تثبيت اعتماديات PHP
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: تجهيز البيئة
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: الهجرات تعمل على PostgreSQL
+        run: php artisan migrate --force
+
+      - name: الاختبارات
+        run: php artisan test
+
+  # ---------------------------------------------------------------------
+  # الواجهة: أنواع TypeScript والبناء
+  # ---------------------------------------------------------------------
+  frontend:
+    name: الواجهة (أنواع + بناء)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: فحص الأنواع
+        run: npx tsc --noEmit
+
+      - name: البناء
+        run: npx vite build

@@ -1505,12 +1505,42 @@ class Demo
         ];
     }
 
+    /**
+     * استخراج جزء من تاريخ بلغة المحرّك الحالي.
+     *
+     * strftime() دالة SQLite وحدها: تنفجر على PostgreSQL وMySQL. وهذا
+     * الاستعلام لا يُغطّيه اختبار، فالانتقال كان سيكسر تقريرين بصمت لا
+     * يُكتشفان إلا حين يفتحهما التاجر.
+     *
+     * $part: 'dow' يوم الأسبوع (0=الأحد)، 'hour' الساعة (0-23).
+     * النتيجة نصّية في المحرّكات الثلاثة كي يبقى مفتاح pluck موحّدًا.
+     */
+    private static function datePartSql(string $part, string $column): string
+    {
+        $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+
+        return match ($driver) {
+            'pgsql' => $part === 'dow'
+                // EXTRACT يعيد رقمًا عشريًا — نقصّه ثم نحوّله نصًّا
+                ? "LPAD(EXTRACT(DOW FROM {$column})::int::text, 1, '0')"
+                : "LPAD(EXTRACT(HOUR FROM {$column})::int::text, 2, '0')",
+            'mysql', 'mariadb' => $part === 'dow'
+                // DAYOFWEEK يبدأ من 1=الأحد، فنطرح 1 ليوافق strftime
+                ? "CAST(DAYOFWEEK({$column}) - 1 AS CHAR)"
+                : "LPAD(HOUR({$column}), 2, '0')",
+            default => $part === 'dow'
+                ? "strftime('%w', {$column})"
+                : "strftime('%H', {$column})",
+        };
+    }
+
     /** المبيعات حسب أيام الأسبوع */
     public static function salesByWeekday(): array
     {
         $labels = [__('الأحد'), __('الاثنين'), __('الثلاثاء'), __('الأربعاء'), __('الخميس'), __('الجمعة'), __('السبت')];
+        $expr = self::datePartSql('dow', 'ordered_at');
         $rows = Order::where('business_id', self::bid())->where('is_held', false)
-            ->selectRaw("strftime('%w', ordered_at) as w, SUM(total) as s")->groupBy('w')->pluck('s', 'w');
+            ->selectRaw("{$expr} as w, SUM(total) as s")->groupBy('w')->pluck('s', 'w');
         $data = [];
         for ($i = 0; $i < 7; $i++) {
             $data[] = round((float) ($rows[(string) $i] ?? 0), 3);
@@ -1522,8 +1552,9 @@ class Demo
     /** المبيعات حسب ساعات اليوم */
     public static function salesByHour(): array
     {
+        $expr = self::datePartSql('hour', 'ordered_at');
         $rows = Order::where('business_id', self::bid())->where('is_held', false)
-            ->selectRaw("strftime('%H', ordered_at) as h, SUM(total) as s")->groupBy('h')->pluck('s', 'h');
+            ->selectRaw("{$expr} as h, SUM(total) as s")->groupBy('h')->pluck('s', 'h');
         $labels = [];
         $data = [];
         for ($i = 8; $i <= 22; $i++) {
@@ -1551,7 +1582,10 @@ class Demo
             ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
             ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
             ->where('orders.business_id', self::bid())->where('orders.is_held', false)
-            ->selectRaw('COALESCE(categories.name, "غير مصنّف") as cat, SUM(order_items.total) as s')
+            // علامة تنصيص مفردة لا مزدوجة: SQLite يتساهل ويعدّ "..." نصًّا،
+            // أما PostgreSQL فيعدّها اسم عمود ويفشل بـ«column does not exist».
+            // ومربوطة كمعامل لا مدموجة في النص أصلًا.
+            ->selectRaw('COALESCE(categories.name, ?) as cat, SUM(order_items.total) as s', [__('غير مصنّف')])
             ->groupBy('cat')->orderByDesc('s')->get();
 
         return ['labels' => $rows->pluck('cat')->all(), 'series' => $rows->pluck('s')->map(fn ($v) => round((float) $v, 3))->all()];

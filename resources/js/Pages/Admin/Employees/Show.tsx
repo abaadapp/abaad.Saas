@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import {
     ArrowRight,
+    Check,
     Contact,
     KeyRound,
     Lock,
@@ -9,6 +10,7 @@ import {
     Mail,
     Pencil,
     ScanBarcode,
+    X,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -43,7 +45,6 @@ export default function EmployeeShow() {
 
     const [tab, setTab] = useState<'sales' | 'activity' | 'permissions'>('sales');
     const [resetting, setResetting] = useState(false);
-    const [perms, setPerms] = useState(permissions);
 
     const active = employee.status === 'نشط';
 
@@ -225,29 +226,41 @@ export default function EmployeeShow() {
                             </div>
                         )}
 
+                        {/*
+                            للقراءة فقط عن قصد. كانت هنا مربّعات اختيار تُؤشَّر
+                            ولا تُحفظ ولا تُفرض — فيظن التاجر أنه منع الكاشير من
+                            إلغاء الطلبات وهو لم يمنعه. أمان زائف حول المال أسوأ
+                            من لا شيء. ما يُفرض فعلًا هو الدور عبر middleware،
+                            فنعرضه كما هو ونوجّه التغيير إلى مكانه الحقيقي.
+                        */}
                         {tab === 'permissions' && (
                             <div className="p-6">
                                 <p className="mb-4 text-sm text-[#6b7280]">
-                                    {t('تحكم في صلاحيات هذا الموظف داخل النظام.')}
+                                    {t('ما يسمح به دور «:role» — يُفرض على الخادم.', { role: t(employee.role) })}
                                 </p>
                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    {Object.entries(perms).map(([name, granted]) => (
-                                        <label
+                                    {Object.entries(permissions).map(([name, granted]) => (
+                                        <div
                                             key={name}
-                                            className="flex cursor-pointer items-center justify-between rounded-[12px] border border-[var(--ui-border,#e8e8e8)] px-4 py-3 hover:bg-[#fafafa]"
+                                            className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] px-4 py-3"
                                         >
                                             <span className="text-sm font-medium text-[#4b4b4b]">{t(name)}</span>
-                                            <input
-                                                type="checkbox"
-                                                checked={granted}
-                                                onChange={(e) => setPerms({ ...perms, [name]: e.target.checked })}
-                                                className="size-5 rounded border-[#d1d5db]"
-                                            />
-                                        </label>
+                                            {granted ? (
+                                                <span className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-[#047857]">
+                                                    <Check className="size-4" />
+                                                    {t('مسموح')}
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-[#9ca3af]">
+                                                    <X className="size-4" />
+                                                    {t('ممنوع')}
+                                                </span>
+                                            )}
+                                        </div>
                                     ))}
                                 </div>
                                 <p className="mt-5 text-[12px] text-[#9ca3af]">
-                                    {t('عرض استرشادي — تُدار الصلاحيات فعليًا عبر دور الموظف.')}
+                                    {t('لتغيير الصلاحيات، غيّر دور الموظف من صفحة التعديل.')}
                                 </p>
                             </div>
                         )}

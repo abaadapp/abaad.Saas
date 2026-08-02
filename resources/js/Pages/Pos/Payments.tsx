@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { Banknote, CreditCard, Landmark, Wallet } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
@@ -38,7 +38,17 @@ export default function PosPayments() {
     const grandTotal = receipts.reduce((s, r) => s + r.total, 0);
 
     const columns: Column<Receipt>[] = [
-        { key: 'number', header: 'رقم الفاتورة', sortable: true, value: (r) => r.number },
+        {
+            key: 'number',
+            header: 'رقم الفاتورة',
+            sortable: true,
+            value: (r) => r.number,
+            cell: (r) => (
+                <Link href={route('pos.order-details', r.number)} className="font-medium hover:underline">
+                    {r.number}
+                </Link>
+            ),
+        },
         { key: 'customer', header: 'العميل', cell: (r) => r.customer || '—' },
         {
             key: 'payment',

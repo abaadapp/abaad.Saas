@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Printer, Receipt as ReceiptIcon } from 'lucide-react';
+import { Printer, Receipt as ReceiptIcon, Search } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
 import DataTable, { type Column } from '@/Components/DataTable';
 import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { money } from '@/lib/format';
@@ -22,6 +23,45 @@ export default function PosReceipts() {
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
     const [open, setOpen] = useState<Receipt | null>(null);
+
+    /**
+     * بحث من الخادم. الصفحة تحمّل آخر 30 فاتورة فقط، فالبحث داخلها وحدها
+     * لا يجد الأقدم منها — pos.receipts.search يبحث في الطلبات كلها ويعيد
+     * حتى 50. أقل من حرفين يعود إلى القائمة الأصلية بلا طلب.
+     */
+    const [q, setQ] = useState('');
+    const [found, setFound] = useState<Receipt[] | null>(null);
+    const [searching, setSearching] = useState(false);
+
+    useEffect(() => {
+        const term = q.trim();
+        if (term.length < 2) {
+            setFound(null);
+            return;
+        }
+        let alive = true;
+        setSearching(true);
+        const id = setTimeout(async () => {
+            try {
+                const res = await fetch(`${route('pos.receipts.search')}?q=${encodeURIComponent(term)}`, {
+                    headers: { Accept: 'application/json' },
+                });
+                if (!res.ok || !alive) return;
+                const data = await res.json();
+                if (alive) setFound(data.receipts ?? []);
+            } catch {
+                // تعذّر الاتصال — نُبقي آخر نتيجة ظاهرة بدل إفراغ الجدول
+            } finally {
+                if (alive) setSearching(false);
+            }
+        }, 300);
+        return () => {
+            alive = false;
+            clearTimeout(id);
+        };
+    }, [q]);
+
+    const rows = found ?? receipts;
 
     const columns: Column<Receipt>[] = [
         {
@@ -69,14 +109,31 @@ export default function PosReceipts() {
                     <span className="text-sm text-gray-500">{branchName}</span>
                 </div>
 
+                <Card className="mb-3 p-3">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute top-1/2 size-4 -translate-y-1/2 text-[#9ca3af] start-3" />
+                        <Input
+                            value={q}
+                            onChange={(e) => setQ(e.target.value)}
+                            placeholder={t('ابحث برقم الفاتورة أو العميل أو الهاتف…')}
+                            className="ps-9"
+                        />
+                    </div>
+                    {found !== null && (
+                        <p className="mt-2 text-[12px] text-[#9ca3af]">
+                            {searching
+                                ? t('جارٍ البحث…')
+                                : `${t('نتائج البحث')}: ${found.length}`}
+                        </p>
+                    )}
+                </Card>
+
                 <Card className="overflow-hidden">
                     <DataTable
-                        rows={receipts}
+                        rows={rows}
                         columns={columns}
                         rowKey={(r) => r.number}
-                        searchPlaceholder="ابحث برقم الفاتورة أو العميل…"
-                        searchable={(r) => `${r.number} ${r.customer} ${r.phone ?? ''} ${r.employee}`}
-                        empty={t('لا توجد فواتير بعد')}
+                        empty={found !== null ? t('لا نتائج مطابقة') : t('لا توجد فواتير بعد')}
                     />
                 </Card>
             </div>

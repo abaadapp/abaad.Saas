@@ -12,6 +12,17 @@ msg() { printf '{"systemMessage":%s,"suppressOutput":true}\n' "$(printf '%s' "$1
 branch=$(git rev-parse --abbrev-ref HEAD)
 [ "$branch" = "HEAD" ] && { msg "دفع تلقائي: متوقف — HEAD منفصل"; exit 0; }
 
+# بوابة الجودة: لا يُدفع كود يكسر الاختبارات.
+# نتخطاها فقط إذا لم يتغيّر أي ملف يؤثر على السلوك الخلفي.
+if git status --porcelain | grep -qE '\.(php|json)$|^.. (app|routes|config|database|tests|lang)/'; then
+  if ! test_out=$(php artisan test 2>&1); then
+    failed=$(printf '%s' "$test_out" | grep -oE '"failed":[0-9]+' | head -1 | cut -d: -f2)
+    culprit=$(printf '%s' "$test_out" | grep -oE '"test":"[^"]+"' | head -1 | cut -d'"' -f4 | sed 's/.*\\\\//')
+    msg "دفع تلقائي: متوقف — فشل ${failed:-?} اختبار (${culprit:-غير معروف}). شغّل: php artisan test"
+    exit 0
+  fi
+fi
+
 files=$(git status --porcelain | wc -l | tr -d ' ')
 first=$(git status --porcelain | head -1 | awk '{print $NF}')
 subject="تحديث تلقائي: $first"

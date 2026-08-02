@@ -18,6 +18,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
+import useLiveStats from '@/hooks/useLiveStats';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency, PageProps } from '@/types';
@@ -73,6 +74,7 @@ export default function PlatformDashboard() {
     const { stats, revenueSeries, growthSeries, latestBusinesses, activities, expiringSubscriptions, currency } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    const { stats: liveStats, updatedAt } = useLiveStats(route('super-admin.dashboard.stats'), stats);
 
     return (
         <PlatformLayout title="لوحة التحكم">
@@ -92,11 +94,18 @@ export default function PlatformDashboard() {
                 }
             />
 
-            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {stats.map((s, i) => (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {liveStats.map((s, i) => (
                     <StatCard key={s.label} stat={s} index={i} />
                 ))}
             </div>
+            <p className="mb-6 mt-2 min-h-[18px] text-[12px] text-[#9ca3af]">
+                {updatedAt && (
+                    <>
+                        {t('آخر تحديث')}: <span dir="ltr">{updatedAt}</span>
+                    </>
+                )}
+            </p>
 
             <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card className="p-5">

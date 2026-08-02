@@ -182,8 +182,24 @@ class PageController extends Controller
 
     public function employeesIndex(): Response
     {
+        $bid = Demo::bid();
+        // كم موظفًا يشغل كل مسمّى — عمود «الاستخدام» في تبويب الوظائف
+        $usage = \App\Models\User::where('business_id', $bid)
+            ->selectRaw('job_title, COUNT(*) as c')->groupBy('job_title')->pluck('c', 'job_title');
+
         return Inertia::render('Admin/Employees/Index', [
             'employees' => Demo::employees(),
+            'jobTitles' => \App\Models\JobTitle::where('business_id', $bid)->orderBy('name')->get()
+                ->map(fn ($t) => [
+                    'id' => $t->id,
+                    'name' => $t->name,
+                    'role' => $t->role,
+                    'roleLabel' => \App\Models\JobTitle::ROLES[$t->role] ?? $t->role,
+                    'description' => $t->description,
+                    'usage' => (int) ($usage[$t->name] ?? 0),
+                ])->all(),
+            'roleOptions' => collect(\App\Models\JobTitle::ROLES)
+                ->map(fn ($label, $key) => ['value' => $key, 'label' => $label])->values()->all(),
         ]);
     }
 

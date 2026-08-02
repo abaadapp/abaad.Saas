@@ -1,7 +1,8 @@
 import { usePage } from '@inertiajs/react';
-import { ArrowLeftRight, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeftRight } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import ExportMenu from '@/Components/ExportMenu';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
 import { Badge } from '@/Components/ui/badge';
@@ -92,12 +93,11 @@ export default function InventoryIndex() {
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'المخزون' }]}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <a href={route('admin.inventory.xlsx')}>
-                                <FileSpreadsheet />
-                                {t('تصدير')}
-                            </a>
-                        </Button>
+                        <ExportMenu
+                            xlsx={route('admin.inventory.xlsx')}
+                            pdf={route('admin.inventory.exportPdf')}
+                            csv={route('admin.export.inventory')}
+                        />
                         <Button variant="outline" asChild>
                             <SmartLink routeName={'admin.inventory.movements'} href={route('admin.inventory.movements')}>
                                 <ArrowLeftRight />

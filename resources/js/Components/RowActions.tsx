@@ -30,8 +30,14 @@ export interface RowAction {
 interface Props {
     show?: { href: string; routeName: string };
     edit?: { href: string; routeName: string };
-    /** الحذف يمرّ بتأكيد قبل الإرسال */
-    destroy?: { url: string; message?: string };
+    /**
+     * الحذف يمرّ بتأكيد قبل الإرسال.
+     *
+     * `label` لأن الإجراء ليس حذفًا دائمًا: تعطيل شركة في لوحة المنصة يغيّر
+     * حالتها ولا يمحو سجلّها. كانت القائمة تقول «حذف» بينما تقول صفحة الشركة
+     * نفسها «تعطيل» عن العملية عينها — فيتردّد المشغّل أو يُبلّغ بغير الواقع.
+     */
+    destroy?: { url: string; message?: string; label?: string };
     extra?: RowAction[];
 }
 
@@ -113,7 +119,7 @@ export default function RowActions({ show, edit, destroy, extra = [] }: Props) {
                                 className="text-[#b91c1c]"
                             >
                                 <Trash2 />
-                                {t('حذف')}
+                                {t(destroy.label ?? 'حذف')}
                             </DropdownMenuItem>
                         </>
                     )}
@@ -123,7 +129,7 @@ export default function RowActions({ show, edit, destroy, extra = [] }: Props) {
             <Dialog open={confirming} onOpenChange={setConfirming}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
-                        <DialogTitle>{t('تأكيد الحذف')}</DialogTitle>
+                        <DialogTitle>{t(destroy?.label ? 'تأكيد الإجراء' : 'تأكيد الحذف')}</DialogTitle>
                     </DialogHeader>
                     <div className="px-5 pb-5">
                         <p className="text-sm text-[#4b4b4b]">
@@ -134,7 +140,7 @@ export default function RowActions({ show, edit, destroy, extra = [] }: Props) {
                                 {t('إلغاء')}
                             </Button>
                             <Button variant="danger" onClick={remove} disabled={busy}>
-                                {busy ? '…' : t('حذف')}
+                                {busy ? '…' : t(destroy?.label ?? 'حذف')}
                             </Button>
                         </div>
                     </div>

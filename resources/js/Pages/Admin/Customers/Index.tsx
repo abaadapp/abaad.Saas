@@ -42,9 +42,13 @@ export default function CustomersIndex() {
     const [adding, setAdding] = useState(false);
     const [importing, setImporting] = useState(false);
 
+    /**
+     * حقل اسم واحد بلا مقابل إنجليزي: Customers::localizeName يكتشف لغة
+     * المُدخَل — اللاتيني يُنقل إلى العربية في name ويُحفظ الأصل في name_en،
+     * والعربي يبقى كما هو. أي name_en يُرسل يدويًا يُكتب فوقه.
+     */
     const add = useForm({
         name: '',
-        name_en: '',
         phone: '',
         email: '',
         tax_number: '',
@@ -241,18 +245,6 @@ export default function CustomersIndex() {
                                 onChange={(e) => add.setData('name', e.target.value)}
                                 placeholder={t('مثال: محمد سالم')}
                                 required
-                            />
-                        </Field>
-                        <Field
-                            label="الاسم بالإنجليزية"
-                            hint="يظهر للكاشير حين تكون لغته الإنجليزية."
-                            error={add.errors.name_en}
-                        >
-                            <Input
-                                dir="ltr"
-                                value={add.data.name_en}
-                                onChange={(e) => add.setData('name_en', e.target.value)}
-                                placeholder="e.g. Mohammed Salem"
                             />
                         </Field>
                         <Field label="رقم الهاتف" required error={add.errors.phone}>

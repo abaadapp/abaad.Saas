@@ -101,6 +101,10 @@ class ProductController extends Controller
             'branches' => \App\Models\Branch::where('business_id', $this->bid())
                 ->orderBy('id')->get(['id', 'name']),
             'currentBranchId' => Demo::activeBranchId(),
+            // زرّ التراجع لا يظهر إلا حين يكون له ما يتراجع عنه
+            'lastImport' => \App\Models\ImportBatch::lastUndoable($this->bid())?->only(
+                ['file', 'added', 'updated', 'created_at'],
+            ),
         ]);
     }
 

@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Category;
+use App\Models\ImportBatch;
+use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
 use Illuminate\Http\Request;
@@ -36,6 +39,13 @@ class ProductImportExportController extends Controller
 {
     private const SESSION_KEY = 'product_import';
     private const ALLOWED_EXT = ['csv', 'xls', 'xlsx', 'xlsm'];
+
+    /**
+     * سقف صفوف الملف الواحد. الصفوف الخام تُحفظ في الجلسة ليمكن إعادة إسناد
+     * الأعمدة بلا رفعٍ ثانٍ — وجلسةٌ بلا سقف تنفجر عند ملفٍ بعشرين ألف صنف.
+     * وما يُقتطع يُعلَن في المعاينة: اقتطاعٌ صامت يُقرأ على أنه استيراد كامل.
+     */
+    private const MAX_ROWS = 2000;
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
@@ -143,11 +153,21 @@ class ProductImportExportController extends Controller
     }
 
     /* ==================== استيراد: رفع الملف ثم المعاينة ==================== */
+
+    /** الحقول التي يمكن للتاجر إسنادها يدويًا في المعاينة */
+    private const FIELDS = [
+        'name' => 'الاسم', 'category' => 'القسم', 'sku' => 'SKU', 'barcode' => 'الباركود',
+        'price' => 'السعر', 'cost' => 'التكلفة', 'quantity' => 'الكمية', 'alert_qty' => 'حد التنبيه',
+        'tax' => 'الضريبة %', 'discount' => 'الخصم %', 'status' => 'الحالة',
+    ];
+
     public function upload(Request $request)
     {
         $request->validate([
             'file' => ['required', 'file', 'max:5120'],
             'branch_id' => ['nullable', 'integer'],
+            'prices_include_tax' => ['nullable', 'boolean'],
+            'branch_mode' => ['nullable', 'in:single,columns'],
         ], [], ['file' => __('الملف')]);
 
         $file = $request->file('file');
@@ -169,6 +189,7 @@ class ProductImportExportController extends Controller
             $reader = IOFactory::createReaderForFile($file->getRealPath());
             $reader->setReadDataOnly(true);
             $spreadsheet = $reader->load($file->getRealPath());
+            $sheets = $spreadsheet->getSheetNames();
             $data = $spreadsheet->getActiveSheet()->toArray(null, true, false, false);
         } catch (\Throwable $e) {
             return back()->with('toast', ['msg' => __('تعذّر قراءة الملف. تأكد أنه ملف صالح.'), 'type' => 'danger']);
@@ -180,16 +201,367 @@ class ProductImportExportController extends Controller
         }
 
         $map = $this->detectColumns($data[0]);
-        if ($map['isHeader']) {
-            array_shift($data);
-        }
-        $idx = $map['index'];
 
-        // أقسام النشاط بالاسم — ما لا يُطابق منها يُنشأ عند التأكيد
+        // كل الصفوف تُحفظ بما فيها المرشَّح للترويسة: ملفٌ عناوينه غير معروفة
+        // («عمود أول») لا يُكتشف أنه ترويسة، والتاجر وحده يستطيع أن يقول ذلك.
+        session()->put(self::SESSION_KEY, [
+            'all' => array_slice($data, 0, self::MAX_ROWS + 1),
+            'truncated' => max(0, count($data) - (self::MAX_ROWS + 1)),
+            'has_header' => $map['isHeader'],
+            'index' => $map['index'],
+            'branch_id' => $branchId,
+            'options' => [
+                'prices_include_tax' => $request->boolean('prices_include_tax'),
+                'branch_mode' => $request->input('branch_mode', 'single') === 'columns' ? 'columns' : 'single',
+            ],
+            'file' => $file->getClientOriginalName(),
+            // ورقةٌ ثانية تُقرأ الأولى وحدها بصمت — يُقال لا يُخبَّأ
+            'sheets' => $sheets,
+        ]);
+
+        return redirect()->route('admin.products.import.preview');
+    }
+
+    /**
+     * إعادة إسناد الأعمدة يدويًا.
+     *
+     * الكاشف يُصيب المعروف ويخطئ الغريب، وخطؤه صامت: عمودٌ اسمه «سعر البيع
+     * للجملة» يُسنَد إلى السعر فتدخل أسعار الجملة أسعارَ تجزئة. فالإسناد
+     * يبقى بيد التاجر، والكشف اقتراحٌ أوّليّ لا حكم.
+     */
+    public function remap(Request $request)
+    {
+        $payload = session(self::SESSION_KEY);
+        if (! $payload) {
+            return redirect()->route('admin.products.index')
+                ->with('toast', ['msg' => __('انتهت الجلسة. أعد رفع الملف.'), 'type' => 'warning']);
+        }
+
+        $request->validate([
+            'mapping' => ['required', 'array'],
+            'prices_include_tax' => ['nullable', 'boolean'],
+            'branch_mode' => ['nullable', 'in:single,columns'],
+            'has_header' => ['nullable', 'boolean'],
+        ]);
+
+        // مفتاحٌ غائب يعني «لم يُغيَّر»، لا «لا ترويسة»: قلبُه يُدخل صفّ
+        // العناوين منتجًا اسمه «الاسم» وسعره صفر.
+        $payload['has_header'] = $request->has('has_header')
+            ? $request->boolean('has_header')
+            : $payload['has_header'];
+        $count = max(array_map('count', array_slice($payload['all'], 0, 5) ?: [[]]));
+        $index = [];
+        foreach (array_keys(self::FIELDS) as $field) {
+            $v = $request->input("mapping.{$field}");
+            $index[$field] = ($v === null || $v === '' || (int) $v < 0 || (int) $v >= $count) ? null : (int) $v;
+        }
+
+        $payload['index'] = $index;
+        $payload['options'] = [
+            'prices_include_tax' => $request->boolean('prices_include_tax'),
+            'branch_mode' => $request->input('branch_mode', 'single') === 'columns' ? 'columns' : 'single',
+        ];
+        session()->put(self::SESSION_KEY, $payload);
+
+        return redirect()->route('admin.products.import.preview');
+    }
+
+    public function preview()
+    {
+        $payload = session(self::SESSION_KEY);
+        if (! $payload) {
+            return redirect()->route('admin.products.index')
+                ->with('toast', ['msg' => __('لا يوجد ملف للمعاينة. ارفع ملفًا أولًا.'), 'type' => 'warning']);
+        }
+
+        $analysis = $this->analyze($payload);
+        [$header, $raw] = $this->split($payload);
+
+        $rows = $analysis['rows'];
+        $counts = [
+            'total' => count($rows),
+            'new' => count(array_filter($rows, fn ($r) => $r['status'] === 'new')),
+            'update' => count(array_filter($rows, fn ($r) => $r['status'] === 'update')),
+            'skip' => count(array_filter($rows, fn ($r) => in_array($r['status'], ['invalid', 'dup_file'], true))),
+        ];
+
+        // عناوين أعمدة الملف كما هي، ليُسندها التاجر بنفسه
+        $width = max(count($header), ...array_map('count', array_slice($raw, 0, 5) ?: [[]]));
+        $fileColumns = [];
+        for ($i = 0; $i < $width; $i++) {
+            $label = trim((string) ($header[$i] ?? ''));
+            $sample = trim((string) ($raw[0][$i] ?? ''));
+            $fileColumns[] = [
+                'index' => $i,
+                'label' => $label !== '' ? $label : __('العمود') . ' ' . ($i + 1),
+                'sample' => mb_substr($sample, 0, 24),
+            ];
+        }
+
+        return \Inertia\Inertia::render('Admin/Products/ImportPreview', [
+            'rows' => $rows,
+            'counts' => $counts,
+            'branchName' => $payload['branch_id'] ? Branch::find($payload['branch_id'])?->name : null,
+            'newCategories' => $analysis['new_categories'],
+            'file' => $payload['file'],
+            'fileColumns' => $fileColumns,
+            'mapping' => $payload['index'],
+            'fields' => collect(self::FIELDS)->map(fn ($ar, $k) => ['key' => $k, 'label' => $ar])->values(),
+            'options' => $payload['options'],
+            'hasHeader' => $payload['has_header'],
+            'branchColumns' => $analysis['branch_columns'],
+            'branchNames' => Branch::where('business_id', $this->bid())->orderBy('id')->pluck('name', 'id'),
+            'taxRate' => $this->taxRate(),
+            'truncated' => $payload['truncated'],
+            'sheets' => count($payload['sheets']) > 1 ? $payload['sheets'] : [],
+        ]);
+    }
+
+    public function confirm()
+    {
+        $payload = session(self::SESSION_KEY);
+        if (! $payload) {
+            return redirect()->route('admin.products.index')
+                ->with('toast', ['msg' => __('انتهت الجلسة. أعد رفع الملف.'), 'type' => 'warning']);
+        }
+
+        $bid = $this->bid();
+        $branchId = $payload['branch_id'];
+        $analysis = $this->analyze($payload);
+        $added = 0;
+        $updated = 0;
+        // لقطة ما قبل الكتابة — بها وحدها يصير التراجع ممكنًا
+        $undo = ['created' => [], 'created_categories' => [], 'updated' => [], 'created_branch' => []];
+
+        // ملف بمئة صنف يجب أن يدخل كاملًا أو لا يدخل: نصفُ كتالوجٍ مستورَد
+        // أسوأ من لا شيء، لأن التاجر لا يعرف أين توقّف.
+        DB::transaction(function () use ($analysis, $bid, $branchId, &$added, &$updated, &$undo) {
+            $categoryId = [];
+
+            foreach ($analysis['rows'] as $r) {
+                if (! in_array($r['status'], ['new', 'update'], true)) {
+                    continue;
+                }
+
+                // القسم: يُطابَق، وإلا يُنشأ مرّة واحدة ويُعاد استعماله
+                $catId = $r['categoryId'];
+                if (! $catId && $r['category'] !== '') {
+                    $key = $this->norm($r['category']);
+                    if (! isset($categoryId[$key])) {
+                        $category = Category::create(['business_id' => $bid, 'name' => $r['category']]);
+                        $categoryId[$key] = $category->id;
+                        $undo['created_categories'][] = $category->id;
+                    }
+                    $catId = $categoryId[$key];
+                }
+
+                $fields = [
+                    'name' => $r['name'],
+                    'category_id' => $catId,
+                    'sku' => $r['sku'] ?: null,
+                    'barcode' => $r['barcode'] ?: null,
+                    'price' => $r['price'],
+                    'cost' => $r['cost'],
+                    'alert_qty' => $r['alertQty'],
+                    'tax' => $r['tax'],
+                    'discount' => $r['discount'],
+                    'active' => $r['active'],
+                ];
+
+                if ($r['status'] === 'new') {
+                    $product = Product::create($fields + [
+                        'business_id' => $bid,
+                        'quantity' => $r['quantity'],
+                        'image' => Demo::image('prod' . uniqid()),
+                    ]);
+                    foreach ($this->allocation($r, $branchId) as $branch => $qty) {
+                        BranchStock::adjust($bid, $branch, $product->id, $qty);
+                        $undo['created_branch'][] = ['product_id' => $product->id, 'branch_id' => $branch, 'qty' => $qty];
+                    }
+                    $undo['created'][] = $product->id;
+                    $added++;
+
+                    continue;
+                }
+
+                $product = Product::where('business_id', $bid)->find($r['targetId']);
+                if (! $product) {
+                    continue;
+                }
+
+                $before = $product->only(array_merge(array_keys($fields), ['quantity']));
+
+                // الفرق لا الكمية: كتابة 50 فوق منتجٍ رصيده 30 موزّع على فرعين
+                // تجعل مجموع الفروع 30 وكمية المنتج 50 — وهو الخلل الذي كان
+                // يُجيز البيع من فرعٍ فارغ.
+                $oldQty = (int) $product->quantity;
+                $product->update($fields + ['quantity' => $r['quantity']]);
+
+                $deltas = [];
+                if ($r['quantity'] !== $oldQty) {
+                    BranchStock::ensureAllocated($bid, $product->id, $oldQty);
+                    foreach ($this->allocation($r, $branchId) as $branch => $qty) {
+                        // في وضع الفرع الواحد الفارق كلّه إلى الفرع المختار؛
+                        // وفي وضع الأعمدة كل فرع يُكتب رصيدُه المعلن
+                        $delta = $analysis['branch_columns']
+                            ? $qty - (int) BranchStock::where('branch_id', $branch)
+                                ->where('product_id', $product->id)->value('quantity')
+                            : $r['quantity'] - $oldQty;
+                        if ($delta !== 0) {
+                            BranchStock::adjust($bid, $branch, $product->id, $delta);
+                            $deltas[$branch] = $delta;
+                        }
+                    }
+                }
+
+                $undo['updated'][] = ['id' => $product->id, 'before' => $before, 'deltas' => $deltas];
+                $updated++;
+            }
+
+            if ($added || $updated) {
+                ImportBatch::create([
+                    'business_id' => $bid,
+                    'user_id' => auth()->id(),
+                    'type' => 'products',
+                    'file' => $analysis['file'],
+                    'added' => $added,
+                    'updated' => $updated,
+                    'payload' => $undo,
+                ]);
+            }
+        });
+
+        session()->forget(self::SESSION_KEY);
+        Activity::log('updated', "استيراد المنتجات من ملف: {$payload['file']} — أُضيف {$added}، حُدِّث {$updated}");
+
+        return redirect()->route('admin.products.index')
+            ->with('toast', ['msg' => __('تم الاستيراد: أُضيف :added منتجًا وحُدِّث :updated', ['added' => $added, 'updated' => $updated]), 'type' => 'success']);
+    }
+
+    /**
+     * تراجُع عن آخر استيراد.
+     *
+     * أهمّ ما في الأداة كلّها: مع وجوده يصير أي خطأ في ملفٍ قابلًا للإصلاح،
+     * ومن دونه يصير نهائيًّا. وهو تراجعٌ خطوةً واحدة لا سجلّ: استيرادٌ ثانٍ
+     * فوق الأول يجعل «قبل» الأولى لا تصف الواقع.
+     *
+     * ومنتجٌ بِيع بعد استيراده لا يُحذف: حذفُه يُفقد فواتيرَ صدرت صنفَها.
+     */
+    public function undo()
+    {
+        $bid = $this->bid();
+        $batch = ImportBatch::lastUndoable($bid);
+
+        if (! $batch) {
+            return back()->with('toast', ['msg' => __('لا يوجد استيراد يمكن التراجع عنه.'), 'type' => 'warning']);
+        }
+
+        $removed = 0;
+        $restored = 0;
+        $blocked = [];
+
+        DB::transaction(function () use ($batch, $bid, &$removed, &$restored, &$blocked) {
+            $payload = $batch->payload;
+
+            foreach ($payload['updated'] ?? [] as $u) {
+                $product = Product::where('business_id', $bid)->find($u['id']);
+                if (! $product) {
+                    continue;
+                }
+                $product->update($u['before']);
+                foreach ($u['deltas'] ?? [] as $branch => $delta) {
+                    BranchStock::adjust($bid, (int) $branch, $product->id, -$delta);
+                }
+                $restored++;
+            }
+
+            foreach ($payload['created'] ?? [] as $id) {
+                $product = Product::where('business_id', $bid)->find($id);
+                if (! $product) {
+                    continue;
+                }
+                if (OrderItem::where('product_id', $id)->exists()) {
+                    $blocked[] = $product->name;
+
+                    continue;
+                }
+                BranchStock::where('product_id', $id)->delete();
+                $product->delete();
+                $removed++;
+            }
+
+            foreach ($payload['created_categories'] ?? [] as $id) {
+                $category = Category::where('business_id', $bid)->find($id);
+                if ($category && ! Product::where('category_id', $id)->exists()) {
+                    $category->delete();
+                }
+            }
+
+            $batch->update(['undone_at' => now()]);
+        });
+
+        Activity::log('updated', "تراجع عن استيراد المنتجات: {$batch->file} — حُذف {$removed}، أُعيد {$restored}");
+
+        $msg = __('تم التراجع: حُذف :removed منتجًا وأُعيد :restored', ['removed' => $removed, 'restored' => $restored]);
+        if ($blocked) {
+            $msg .= ' · ' . __('بقي :n لوجود مبيعات عليه:', ['n' => count($blocked)]) . ' ' . implode('، ', array_slice($blocked, 0, 3));
+        }
+
+        return redirect()->route('admin.products.index')
+            ->with('toast', ['msg' => $msg, 'type' => $blocked ? 'warning' : 'success']);
+    }
+
+    public function cancel()
+    {
+        session()->forget(self::SESSION_KEY);
+
+        return redirect()->route('admin.products.index')
+            ->with('toast', ['msg' => __('أُلغيت عملية الاستيراد'), 'type' => 'warning']);
+    }
+
+    /* ============================== التحليل ============================== */
+
+    /**
+     * يحوّل صفوف الملف الخام إلى صفوف معاينة — بلا أي كتابة.
+     *
+     * يُستدعى في المعاينة وفي التأكيد معًا عن قصد: تخزين نتيجة التحليل ثم
+     * الكتابة منها يجعل ما يراه التاجر وما يُحفظ شيئين قد يفترقان بعد إعادة
+     * إسناد الأعمدة. المصدر واحد: الملف الخام + الإسناد الحالي.
+     */
+    /** يفصل الترويسة عن الصفوف حسب ما أقرّه التاجر — لا حسب تخمينٍ متجمّد */
+    private function split(array $payload): array
+    {
+        $all = $payload['all'];
+
+        return $payload['has_header']
+            ? [array_map(fn ($v) => trim((string) $v), $all[0] ?? []), array_slice($all, 1)]
+            : [[], $all];
+    }
+
+    private function analyze(array $payload): array
+    {
+        $bid = $this->bid();
+        [$header, $raw] = $this->split($payload);
+        $idx = $payload['index'];
+        $opts = $payload['options'];
+        $rate = $this->taxRate();
+
+        // أعمدة الفروع: عمودٌ عنوانه اسم فرع = رصيد ذلك الفرع
+        $branchColumns = [];
+        if (($opts['branch_mode'] ?? 'single') === 'columns') {
+            $branches = Branch::where('business_id', $bid)->get();
+            foreach ($header as $i => $cell) {
+                foreach ($branches as $b) {
+                    if ($this->norm((string) $cell) === $this->norm((string) $b->name)) {
+                        $branchColumns[$i] = $b->id;
+                    }
+                }
+            }
+        }
+
         $categoryByName = Category::where('business_id', $bid)->get()
             ->mapWithKeys(fn ($c) => [$this->norm((string) $c->name) => $c->id])->all();
 
-        // المنتجات الحالية: للمطابقة (تحديث بدل تكرار)
         $existing = Product::where('business_id', $bid)->get(['id', 'name', 'sku', 'barcode', 'quantity']);
         $bySku = [];
         $byBarcode = [];
@@ -216,19 +588,37 @@ class ProductImportExportController extends Controller
         $newCategories = [];
         $rows = [];
 
-        foreach ($data as $r) {
+        foreach ($raw as $r) {
             $get = fn ($k) => $idx[$k] !== null ? trim((string) ($r[$idx[$k]] ?? '')) : '';
             $name = $get('name');
             $category = $get('category');
             $sku = $get('sku');
             $barcode = $get('barcode');
             $priceRaw = $get('price');
-            $price = $this->num($priceRaw);
+            $grossPrice = $this->num($priceRaw);
             $cost = $this->num($get('cost'));
-            $quantity = (int) $this->num($get('quantity'));
-            $alertQty = $idx['alert_qty'] !== null && $get('alert_qty') !== '' ? (int) $this->num($get('alert_qty')) : 10;
-            $tax = $this->num($get('tax'));
+            $tax = $idx['tax'] !== null && $get('tax') !== '' ? $this->num($get('tax')) : 0.0;
             $discount = $this->num($get('discount'));
+
+            // سعرٌ شامل الضريبة يدخل صافيًا وإلا ارتفعت أسعار المتجر كلّها
+            // بنسبة الضريبة — خطأٌ لا يظهر إلا في تقرير الأرباح بعد شهر.
+            $appliedRate = $tax > 0 ? $tax : $rate;
+            $price = ($opts['prices_include_tax'] ?? false) && $appliedRate > 0
+                ? round($grossPrice / (1 + $appliedRate / 100), 3)
+                : $grossPrice;
+
+            // الكمية: مجموع أعمدة الفروع إن وُجدت، وإلا عمود الكمية الواحد
+            $branchQty = [];
+            if ($branchColumns) {
+                foreach ($branchColumns as $col => $branch) {
+                    $branchQty[$branch] = ($branchQty[$branch] ?? 0) + (int) $this->num(trim((string) ($r[$col] ?? '')));
+                }
+                $quantity = array_sum($branchQty);
+            } else {
+                $quantity = (int) $this->num($get('quantity'));
+            }
+
+            $alertQty = $idx['alert_qty'] !== null && $get('alert_qty') !== '' ? (int) $this->num($get('alert_qty')) : 10;
             $active = ! in_array($this->norm($get('status')), ['معطل', 'معطّل', 'غير مفعل', 'غير مفعّل', 'inactive', 'disabled', '0', 'لا'], true);
 
             $categoryId = $category !== '' ? ($categoryByName[$this->norm($category)] ?? null) : null;
@@ -249,6 +639,9 @@ class ProductImportExportController extends Controller
             if ($name === '') {
                 $status = 'invalid';
                 $note = __('بدون اسم — يُتجاهل');
+            } elseif ($idx['price'] === null) {
+                $status = 'invalid';
+                $note = __('لم يُسنَد عمود السعر — يُتجاهل');
             } elseif ($priceRaw === '' || ! $this->looksNumeric($priceRaw)) {
                 $status = 'invalid';
                 $note = __('سعر غير صالح — يُتجاهل');
@@ -284,134 +677,36 @@ class ProductImportExportController extends Controller
 
             $rows[] = compact(
                 'name', 'category', 'categoryDisplay', 'categoryNew', 'categoryId', 'sku', 'barcode',
-                'price', 'cost', 'quantity', 'alertQty', 'tax', 'discount', 'active',
+                'price', 'cost', 'quantity', 'branchQty', 'alertQty', 'tax', 'discount', 'active',
                 'status', 'note', 'targetId',
-            ) + ['currentQty' => $targetId ? ($qtyOf[$targetId] ?? 0) : null];
+            ) + [
+                'grossPrice' => $grossPrice,
+                'currentQty' => $targetId ? ($qtyOf[$targetId] ?? 0) : null,
+            ];
         }
 
-        session()->put(self::SESSION_KEY, [
+        return [
             'rows' => $rows,
-            'branch_id' => $branchId,
             'new_categories' => array_values($newCategories),
-            'file' => $file->getClientOriginalName(),
-        ]);
-
-        return redirect()->route('admin.products.import.preview');
-    }
-
-    public function preview()
-    {
-        $payload = session(self::SESSION_KEY);
-        if (! $payload) {
-            return redirect()->route('admin.products.index')
-                ->with('toast', ['msg' => __('لا يوجد ملف للمعاينة. ارفع ملفًا أولًا.'), 'type' => 'warning']);
-        }
-
-        $rows = $payload['rows'];
-        $counts = [
-            'total' => count($rows),
-            'new' => count(array_filter($rows, fn ($r) => $r['status'] === 'new')),
-            'update' => count(array_filter($rows, fn ($r) => $r['status'] === 'update')),
-            'skip' => count(array_filter($rows, fn ($r) => in_array($r['status'], ['invalid', 'dup_file'], true))),
-        ];
-
-        return \Inertia\Inertia::render('Admin/Products/ImportPreview', [
-            'rows' => $rows,
-            'counts' => $counts,
-            'branchName' => $payload['branch_id'] ? Branch::find($payload['branch_id'])?->name : null,
-            'newCategories' => $payload['new_categories'],
+            'branch_columns' => $branchColumns,
             'file' => $payload['file'],
-        ]);
+        ];
     }
 
-    public function confirm()
+    /** توزيع كمية صفٍّ على الفروع: أعمدة الفروع إن وُجدت، وإلا الفرع المختار */
+    private function allocation(array $row, ?int $branchId): array
     {
-        $payload = session(self::SESSION_KEY);
-        if (! $payload) {
-            return redirect()->route('admin.products.index')
-                ->with('toast', ['msg' => __('انتهت الجلسة. أعد رفع الملف.'), 'type' => 'warning']);
+        if (! empty($row['branchQty'])) {
+            return $row['branchQty'];
         }
 
-        $bid = $this->bid();
-        $branchId = $payload['branch_id'];
-        $added = 0;
-        $updated = 0;
-
-        // ملف بمئة صنف يجب أن يدخل كاملًا أو لا يدخل: نصفُ كتالوجٍ مستورَد
-        // أسوأ من لا شيء، لأن التاجر لا يعرف أين توقّف.
-        DB::transaction(function () use ($payload, $bid, $branchId, &$added, &$updated) {
-            $categoryId = [];
-
-            foreach ($payload['rows'] as $r) {
-                if (! in_array($r['status'], ['new', 'update'], true)) {
-                    continue;
-                }
-
-                // القسم: يُطابَق، وإلا يُنشأ مرّة واحدة ويُعاد استعماله
-                $catId = $r['categoryId'];
-                if (! $catId && $r['category'] !== '') {
-                    $key = $this->norm($r['category']);
-                    $catId = $categoryId[$key] ??= Category::firstOrCreate(
-                        ['business_id' => $bid, 'name' => $r['category']],
-                    )->id;
-                }
-
-                $fields = [
-                    'name' => $r['name'],
-                    'category_id' => $catId,
-                    'sku' => $r['sku'] ?: null,
-                    'barcode' => $r['barcode'] ?: null,
-                    'price' => $r['price'],
-                    'cost' => $r['cost'],
-                    'alert_qty' => $r['alertQty'],
-                    'tax' => $r['tax'],
-                    'discount' => $r['discount'],
-                    'active' => $r['active'],
-                ];
-
-                if ($r['status'] === 'new') {
-                    $product = Product::create($fields + [
-                        'business_id' => $bid,
-                        'quantity' => $r['quantity'],
-                        'image' => Demo::image('prod' . uniqid()),
-                    ]);
-                    BranchStock::adjust($bid, $branchId, $product->id, $r['quantity']);
-                    $added++;
-
-                    continue;
-                }
-
-                $product = Product::where('business_id', $bid)->find($r['targetId']);
-                if (! $product) {
-                    continue;
-                }
-
-                // الفرق لا الكمية: كتابة 50 فوق منتجٍ رصيده 30 موزّع على فرعين
-                // تجعل مجموع الفروع 30 وكمية المنتج 50 — وهو الخلل الذي كان
-                // يُجيز البيع من فرعٍ فارغ.
-                $delta = $r['quantity'] - (int) $product->quantity;
-                $product->update($fields + ['quantity' => $r['quantity']]);
-                if ($delta !== 0) {
-                    BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity - $delta);
-                    BranchStock::adjust($bid, $branchId, $product->id, $delta);
-                }
-                $updated++;
-            }
-        });
-
-        session()->forget(self::SESSION_KEY);
-        Activity::log('updated', "استيراد المنتجات من ملف: {$payload['file']} — أُضيف {$added}، حُدِّث {$updated}");
-
-        return redirect()->route('admin.products.index')
-            ->with('toast', ['msg' => __('تم الاستيراد: أُضيف :added منتجًا وحُدِّث :updated', ['added' => $added, 'updated' => $updated]), 'type' => 'success']);
+        return $branchId ? [$branchId => $row['quantity']] : [];
     }
 
-    public function cancel()
+    private function taxRate(): float
     {
-        session()->forget(self::SESSION_KEY);
-
-        return redirect()->route('admin.products.index')
-            ->with('toast', ['msg' => __('أُلغيت عملية الاستيراد'), 'type' => 'warning']);
+        return (float) (Setting::where('business_id', $this->bid())
+            ->where('key', 'vat_rate')->value('value') ?? 5);
     }
 
     /* ============================== أدوات ============================== */
@@ -433,6 +728,7 @@ class ProductImportExportController extends Controller
             '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
             '٫' => '.', '،' => '', ',' => '',
         ]);
+
         // أوّل عددٍ في النصّ لا كلّ ما يشبه العدد: «12.500 ر.ع» تحمل نقطة
         // ثانية في رمز العملة، وتنظيفٌ ساذج يخرج بـ«12.500.» فتصير صفرًا.
         return preg_match('/-?\d+(?:\.\d+)?/', $v, $m) === 1 ? (float) $m[0] : 0.0;
@@ -496,7 +792,7 @@ class ProductImportExportController extends Controller
         }
         $isHeader = $found !== [] && ! $hasNumber;
 
-        $order = ['name', 'category', 'sku', 'barcode', 'price', 'cost', 'quantity', 'alert_qty', 'tax', 'discount', 'status'];
+        $order = array_keys(self::FIELDS);
 
         if ($isHeader) {
             $index = [];

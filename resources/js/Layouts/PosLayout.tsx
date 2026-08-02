@@ -60,9 +60,14 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
         fn(msg);
     }, [flash?.toast]);
 
+    /**
+     * لا إعادة تحميل: الاتجاه يُزامَن من خاصية `dir` في app.tsx مع كل
+     * استجابة، والترجمات تُعاد حسابها في كل رد. الاعتماد على reload كان
+     * يترك الواجهة عربية داخل تخطيط LTR إن تعثّر.
+     */
     const switchLocale = (next: 'ar' | 'en') => {
         if (next === locale) return;
-        router.post(route('pos.language.update'), { locale: next }, { onSuccess: () => window.location.reload() });
+        router.post(route('pos.language.update'), { locale: next }, { preserveScroll: true });
     };
 
     return (

@@ -113,15 +113,17 @@ class Demo
     }
 
     /**
-     * اسم النشاط الحالي — من إعداداته أولًا ثم من سجلّه.
+     * اسم النشاط الحالي من سجلّه.
      * (كان مكتوبًا يدويًا في القالب، فكان كل مستأجر يرى اسم المتجر الأول.)
      */
     public static function businessName(): string
     {
         $bid = self::bid();
 
-        return \App\Models\Setting::where('business_id', $bid)->where('key', 'business_name')->value('value')
-            ?? \App\Models\Business::where('id', $bid)->value('name')
+        // مصدر واحد: جدول businesses. كان إعداد business_name يسبقه فيحجبه،
+        // ونموذج الإعدادات لا يكتبه أصلًا — فيتغيّر الاسم في الحقل ولا يتغيّر
+        // في الترويسة، أو العكس.
+        return \App\Models\Business::where('id', $bid)->value('name')
             ?? __('متجري');
     }
 

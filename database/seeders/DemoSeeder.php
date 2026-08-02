@@ -339,7 +339,6 @@ class DemoSeeder extends Seeder
             [null, 'currency', 'ريال عماني'],
             [null, 'currency_decimals', '3'],
             [null, 'vat_rate', '5'],
-            [$primary->id, 'business_name', 'زهرة مسقط'],
             [$primary->id, 'vat_number', 'OM100234567'],
             [$primary->id, 'delivery_fee', '2.000'],
         ];

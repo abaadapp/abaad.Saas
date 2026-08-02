@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
+import { router, useForm, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import {
     Barcode,
@@ -11,6 +11,7 @@ import {
     List,
     MoreVertical,
     Plus,
+    Undo2,
     Upload,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -47,18 +48,29 @@ interface Props {
     filters: Record<string, string | null>;
     branches: { id: number; name: string }[];
     currentBranchId: number | null;
+    lastImport: { file: string; added: number; updated: number; created_at: string } | null;
 }
 
 export default function ProductsIndex() {
-    const { products: serverProducts, pagination, categories, filters, branches, currentBranchId, context } =
+    const { products: serverProducts, pagination, categories, filters, branches, currentBranchId, lastImport, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const [importing, setImporting] = useState(false);
+    const [undoing, setUndoing] = useState(false);
 
-    const upload = useForm<{ file: File | null; branch_id: string }>({
+    const upload = useForm<{
+        file: File | null;
+        branch_id: string;
+        prices_include_tax: boolean;
+        branch_mode: 'single' | 'columns';
+    }>({
         file: null,
         branch_id: currentBranchId ? String(currentBranchId) : '',
+        // سؤالان جوابهما ليس في الملف: سعرٌ شامل الضريبة يبدو كأي سعر،
+        // وعمودُ كميةٍ واحد يبدو كعمود فرع. الخطأ فيهما صامت.
+        prices_include_tax: false,
+        branch_mode: 'single',
     });
 
     const submitImport = (e: React.FormEvent) => {
@@ -222,6 +234,12 @@ export default function ProductsIndex() {
                                     <Upload className="text-[#6d28d9]" />
                                     {t('استيراد من ملف…')}
                                 </DropdownMenuItem>
+                                {lastImport && (
+                                    <DropdownMenuItem onSelect={() => setUndoing(true)}>
+                                        <Undo2 className="text-[#b45309]" />
+                                        {t('تراجع عن آخر استيراد')}
+                                    </DropdownMenuItem>
+                                )}
                             </DropdownMenuContent>
                         </DropdownMenu>
                         <Button asChild>
@@ -351,17 +369,49 @@ export default function ProductsIndex() {
                         </Field>
 
                         <Field
-                            label="فرع الكميات"
-                            hint="الكميات المستوردة تُودَع في هذا الفرع — وهو ما يُباع منه لاحقًا."
-                            error={upload.errors.branch_id}
+                            label="هل الأسعار في الملف شاملة الضريبة؟"
+                            hint="جوابه ليس في الملف: عمود «السعر» يبدو واحدًا في الحالتين. وإدخال سعرٍ شامل على أنه صافٍ يرفع أسعار المتجر كلها — ولا يظهر إلا في تقرير الأرباح بعد شهر."
                         >
                             <Select
-                                value={upload.data.branch_id}
-                                onChange={(e) => upload.setData('branch_id', e.target.value)}
-                                options={branches.map((b) => ({ label: b.name, value: b.id }))}
-                                placeholder="الفرع الحالي"
+                                value={upload.data.prices_include_tax ? '1' : '0'}
+                                onChange={(e) => upload.setData('prices_include_tax', e.target.value === '1')}
+                                options={[
+                                    { label: 'صافية (بلا ضريبة)', value: '0' },
+                                    { label: 'شاملة الضريبة — تُخصم عند الاستيراد', value: '1' },
+                                ]}
                             />
                         </Field>
+
+                        <Field
+                            label="الكميات في الملف"
+                            hint="إن كان لكل فرع عمودٌ باسمه، اختر الثاني — وإلا ستُودَع الكميات كلها في فرع واحد."
+                        >
+                            <Select
+                                value={upload.data.branch_mode}
+                                onChange={(e) =>
+                                    upload.setData('branch_mode', e.target.value as 'single' | 'columns')
+                                }
+                                options={[
+                                    { label: 'عمود كمية واحد — لفرع واحد', value: 'single' },
+                                    { label: 'عمود لكل فرع (باسم الفرع)', value: 'columns' },
+                                ]}
+                            />
+                        </Field>
+
+                        {upload.data.branch_mode === 'single' && (
+                            <Field
+                                label="فرع الكميات"
+                                hint="الكميات المستوردة تُودَع في هذا الفرع — وهو ما يُباع منه لاحقًا."
+                                error={upload.errors.branch_id}
+                            >
+                                <Select
+                                    value={upload.data.branch_id}
+                                    onChange={(e) => upload.setData('branch_id', e.target.value)}
+                                    options={branches.map((b) => ({ label: b.name, value: b.id }))}
+                                    placeholder="الفرع الحالي"
+                                />
+                            </Field>
+                        )}
 
                         <p className="rounded-[12px] bg-[#f5f3ff] px-3 py-2.5 text-[12px] text-[#6d28d9]">
                             {t('المنتجات الموجودة (بنفس SKU أو الباركود) تُحدَّث بدل تكرارها، والأقسام غير الموجودة تُنشأ تلقائيًا. وستظهر معاينة كاملة قبل التأكيد.')}
@@ -377,6 +427,47 @@ export default function ProductsIndex() {
                             </Button>
                         </div>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* تراجع عن آخر استيراد */}
+            <Dialog open={undoing} onOpenChange={setUndoing}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t('تراجع عن آخر استيراد')}</DialogTitle>
+                    </DialogHeader>
+                    <div className="px-5 pb-5">
+                        <p className="text-sm text-[#4b4b4b]">
+                            {t('سيُحذف ما أُضيف وتُعاد المنتجات المحدَّثة إلى قيمها السابقة.')}
+                        </p>
+                        {lastImport && (
+                            <p className="mt-2 text-[12px] text-[#9ca3af]">
+                                {lastImport.file} · {t('أُضيف')} {number(lastImport.added)} · {t('حُدِّث')}{' '}
+                                {number(lastImport.updated)}
+                            </p>
+                        )}
+                        <p className="mt-3 rounded-[12px] bg-[#fffbeb] px-3 py-2.5 text-[12px] text-[#b45309]">
+                            {t('المنتجات التي بِيعت بعد استيرادها لا تُحذف — حذفها يُفقد فواتير صدرت بها.')}
+                        </p>
+                        <div className="mt-5 flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setUndoing(false)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button
+                                variant="danger"
+                                onClick={() =>
+                                    router.post(
+                                        route('admin.products.import.undo'),
+                                        {},
+                                        { onFinish: () => setUndoing(false) },
+                                    )
+                                }
+                            >
+                                <Undo2 />
+                                {t('تراجع')}
+                            </Button>
+                        </div>
+                    </div>
                 </DialogContent>
             </Dialog>
         </AdminLayout>

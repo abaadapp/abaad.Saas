@@ -138,6 +138,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
     Route::get('/products/export/pdf', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'exportPdf'])->name('products.export.pdf');
     Route::post('/products/import', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'upload'])->name('products.import.upload');
     Route::get('/products/import/preview', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'preview'])->name('products.import.preview');
+    Route::post('/products/import/remap', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'remap'])->name('products.import.remap');
+    Route::post('/products/import/undo', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'undo'])->name('products.import.undo');
     Route::post('/products/import/confirm', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'confirm'])->name('products.import.confirm');
     Route::post('/products/import/cancel', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'cancel'])->name('products.import.cancel');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');

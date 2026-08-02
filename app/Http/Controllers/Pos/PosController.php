@@ -68,13 +68,30 @@ class PosController extends Controller
      * سعر العميل مُدخَل غير موثوق: قبولُه كما يأتي كان يسمح ببيع منتج حقيقي
      * بـ0.001 أو بسعر سالب يقيّد "دخلًا" سالبًا في المالية. كل بند هنا يجب أن
      * يطابق منتجًا أو إضافة ضمن نفس النشاط، وإلا رُفض الطلب كله.
+     *
+     * @param  bool  $lock  يقفل صفوف المنتجات حتى نهاية المعاملة.
+     *
+     * الكمية كانت تُقرأ بلا قفل ثم يُحكم عليها في assertStock ثم تُخصم —
+     * وبين القراءة والخصم نافذة. كاشيران يبيعان آخر قطعة في اللحظة نفسها
+     * يقرآن كلاهما «المتوفر 1»، فيمرّان معًا ويصير المخزون سالبًا وقد بيعت
+     * قطعة لا وجود لها.
+     *
+     * لم يظهر ذلك على SQLite لأنها تقفل القاعدة كلها عند الكتابة فتُسلسِل
+     * العمليات — القفل من المحرّك لا من الكود. وعلى PostgreSQL (وجهة النقل)
+     * القراءات لا تتعارض، فالنافذة مفتوحة على مصراعيها.
      */
-    private function priceItems(array $items): array
+    private function priceItems(array $items, bool $lock = false): array
     {
         $bid = $this->bid();
-        $products = Product::where('business_id', $bid)
-            ->whereIn('id', collect($items)->pluck('id')->filter()->unique()->all())
-            ->get()->keyBy('id');
+        $query = Product::where('business_id', $bid)
+            ->whereIn('id', collect($items)->pluck('id')->filter()->unique()->all());
+
+        if ($lock) {
+            // ترتيب ثابت: قفل الصفوف بترتيب مختلف بين عمليتين يُنتج تعارضًا دائريًا
+            $query->orderBy('id')->lockForUpdate();
+        }
+
+        $products = $query->get()->keyBy('id');
         $addons = \App\Models\Addon::where('business_id', $bid)->get();
 
         $lines = [];
@@ -155,9 +172,21 @@ class PosController extends Controller
     private function nextNumber(string $prefix): string
     {
         $offset = strlen($prefix) + 1; // عدد صحيح من strlen، فلا خطر حقن هنا
+
+        // SQLite تتساهل مع CAST لنصّ غير رقمي فتُرجع 0، أما PostgreSQL فترفع
+        // «invalid input syntax for type integer». ولأن هذا السطر يجري مع كل
+        // بيعة، رقمٌ واحد شاذّ — من نسخة مستعادة أو إدخال يدوي — كان يكفي
+        // لتعطيل الصندوق كلّه بعد النقل إلى PostgreSQL.
+        $driver = DB::connection()->getDriverName();
+        $suffix = match ($driver) {
+            'pgsql' => "NULLIF(regexp_replace(SUBSTRING(number FROM {$offset}), '\\D', '', 'g'), '')::bigint",
+            'mysql', 'mariadb' => "CAST(SUBSTRING(number, {$offset}) AS UNSIGNED)",
+            default => "CAST(SUBSTR(number, {$offset}) AS INTEGER)",
+        };
+
         $last = Order::where('business_id', $this->bid())
             ->where('number', 'like', $prefix . '%')
-            ->orderByRaw("CAST(SUBSTR(number, $offset) AS INTEGER) DESC")
+            ->orderByRaw("{$suffix} DESC")
             ->value('number');
 
         $n = $last ? (int) substr($last, strlen($prefix)) : 0;
@@ -289,7 +318,8 @@ class PosController extends Controller
             $bid = $this->bid();
             $branch = $this->branch();
 
-            $lines = $this->priceItems($data['items']);
+            // بقفل: الفحص والخصم يجب أن يقعا على كمية لا تتغيّر تحتهما
+            $lines = $this->priceItems($data['items'], lock: true);
             $this->assertStock($lines);
 
             $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty']), 3);

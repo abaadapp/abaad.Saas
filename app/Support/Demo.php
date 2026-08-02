@@ -33,6 +33,20 @@ class Demo
     private static $baseCur = null;
     private static $displayCur = null;
 
+    /**
+     * تفريغ ذاكرة العملة المؤقّتة.
+     *
+     * الذاكرة ساكنة (static) وتعيش ما عاش العمليّة. تحت `php artisan serve`
+     * تموت مع كل طلب فلا فرق، لكن تحت Octane أو عامل طابور تبقى — فتُخدَم
+     * عملة مستأجرٍ لمستأجرٍ آخر. تُستدعى هنا عند تبديل العملة وفي الاختبارات
+     * التي تبدّلها داخل العمليّة نفسها.
+     */
+    public static function flushCurrency(): void
+    {
+        self::$baseCur = null;
+        self::$displayCur = null;
+    }
+
     /** العملة الأساسية للنشاط (الافتراضي: ريال عماني) */
     public static function baseCurrency(): array
     {

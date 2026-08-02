@@ -20,6 +20,9 @@ class CurrencyController extends Controller
             $request->session()->put('display_currency', strtoupper($code));
         }
 
+        // الذاكرة الساكنة قد تكون امتلأت بالعملة القديمة في هذا الطلب نفسه
+        Demo::flushCurrency();
+
         return back();
     }
 

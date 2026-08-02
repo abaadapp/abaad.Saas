@@ -111,7 +111,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 });
 
 /* ------------------------------- Admin ----------------------------- */
-Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,accountant,inventory,sales,delivery', 'ability'])->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:admin,manager,accountant,inventory,sales,delivery', 'ability'])->group(function () {
     Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'admin'])->name('dashboard');
     Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'adminStats'])->name('dashboard.stats');
 
@@ -288,7 +288,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin,manager,
 });
 
 /* -------------------------------- POS ------------------------------ */
-Route::prefix('pos')->name('pos.')->middleware('auth')->group(function () {
+Route::prefix('pos')->name('pos.')->middleware(['auth', 'business'])->group(function () {
     Route::get('/', [\App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');

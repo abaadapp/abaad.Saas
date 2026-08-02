@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
             'ability' => \App\Http\Middleware\CheckAbility::class,
+            'business' => \App\Http\Middleware\RequiresBusiness::class,
         ]);
         $middleware->web(append: [
             \App\Http\Middleware\SetLocale::class,

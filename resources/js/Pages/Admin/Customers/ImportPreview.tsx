@@ -72,7 +72,8 @@ export default function ImportPreview() {
                 ]}
                 actions={
                     <>
-                        <Button variant="outline" onClick={() => router.get(route('admin.customers.import.cancel'))}>
+                        {/* المسار POST — router.get كان يردّ 405 فيبقى الملف معلّقًا في الجلسة */}
+                        <Button variant="outline" onClick={() => router.post(route('admin.customers.import.cancel'))}>
                             <X />
                             {t('إلغاء')}
                         </Button>

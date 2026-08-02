@@ -3,7 +3,8 @@ import { Activity as ActivityIcon, Eye, Plus } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
-import StatCard, { type Stat } from '@/Components/StatCard';
+import StatGrid from '@/Components/StatGrid';
+import { type Stat } from '@/Components/StatCard';
 import AreaChart from '@/Components/charts/AreaChart';
 import BarChart from '@/Components/charts/BarChart';
 import { Badge } from '@/Components/ui/badge';
@@ -94,11 +95,7 @@ export default function PlatformDashboard() {
                 }
             />
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {liveStats.map((s, i) => (
-                    <StatCard key={s.label} stat={s} index={i} />
-                ))}
-            </div>
+            <StatGrid stats={liveStats} storageKey="platform" />
             <p className="mb-6 mt-2 min-h-[18px] text-[12px] text-[#9ca3af]">
                 {updatedAt && (
                     <>

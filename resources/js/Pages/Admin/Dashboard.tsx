@@ -1,9 +1,12 @@
 import { usePage } from '@inertiajs/react';
-import { ArrowLeft, Globe, Store } from 'lucide-react';
+import {
+    ArrowLeft, BarChart3, ClipboardList, Globe, PackagePlus, Store, Users,
+} from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
-import StatCard, { type Stat } from '@/Components/StatCard';
+import StatGrid from '@/Components/StatGrid';
+import { type Stat } from '@/Components/StatCard';
 import AreaChart from '@/Components/charts/AreaChart';
 import BarChart from '@/Components/charts/BarChart';
 import { Badge } from '@/Components/ui/badge';
@@ -51,6 +54,14 @@ interface Employee {
  * فورًا («عميل متعثّر» مثلًا)، فتزاحم الأرقام التي جاء التاجر ليقرأها.
  * المصدر Demo::smartAlertsFor باقٍ لأمر البريد المجدول abaad:smart-alerts.
  */
+const QUICK = [
+    { label: 'منتج جديد', icon: PackagePlus, routeName: 'admin.products.create' },
+    { label: 'فتح نقطة البيع', icon: Store, routeName: 'pos.index' },
+    { label: 'أمر شراء', icon: ClipboardList, routeName: 'admin.purchases.create' },
+    { label: 'العملاء', icon: Users, routeName: 'admin.customers.index' },
+    { label: 'التقارير', icon: BarChart3, routeName: 'admin.reports.index' },
+] as const;
+
 interface DashboardProps {
     stats: Stat[];
     salesSeries: { labels: string[]; data: number[] };
@@ -94,11 +105,22 @@ export default function Dashboard() {
                 }
             />
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {liveStats.map((stat, i) => (
-                    <StatCard key={stat.label} stat={stat} index={i} />
+            {/* مداخل سريعة لأكثر ما يُفتح يوميًا — كانت في لوحة النسخة القديمة */}
+            <div className="mb-5 flex flex-wrap gap-2.5">
+                {QUICK.map(({ label, icon: Icon, routeName }) => (
+                    <SmartLink
+                        key={label}
+                        routeName={routeName}
+                        href={route(routeName)}
+                        className="flex h-11 items-center gap-2.5 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-white px-4 text-sm font-medium text-[#111] transition-colors hover:bg-[#fafafa]"
+                    >
+                        <Icon className="size-[18px] text-[#6b7280]" />
+                        {t(label)}
+                    </SmartLink>
                 ))}
             </div>
+
+            <StatGrid stats={liveStats} storageKey="admin" />
             {updatedAt && (
                 <p className="mt-2 text-[12px] text-[#9ca3af]">
                     {t('آخر تحديث')}: <span dir="ltr">{updatedAt}</span>

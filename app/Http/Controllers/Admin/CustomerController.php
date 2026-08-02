@@ -111,4 +111,72 @@ class CustomerController extends Controller
 
         return back()->with('toast', ['msg' => __('تم صرف :points نقطة (خصم :amount)', ['points' => $points, 'amount' => Demo::money($points / 100)]), 'type' => 'success']);
     }
+
+    /* ------------------------- عناوين العميل ------------------------- */
+
+    /**
+     * العنوان يُنشأ ويُعدَّل بالمسار نفسه: id فارغ = إضافة، وإلا تعديل.
+     * أول عنوان للعميل يصير الافتراضي تلقائيًا — فلا يبقى العميل بلا
+     * عنوان افتراضي بعد أن أضاف واحدًا.
+     */
+    public function saveAddress(Request $request, $id)
+    {
+        $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
+
+        $data = $request->validate([
+            'label' => ['required', 'string', 'max:60'],
+            'city' => ['required', 'string', 'max:80'],
+            'area' => ['nullable', 'string', 'max:80'],
+            'street' => ['nullable', 'string', 'max:160'],
+        ]);
+
+        $addressId = $request->input('address_id');
+        if ($addressId) {
+            $address = $customer->addresses()->findOrFail($addressId);
+            $address->update($data);
+            $msg = 'عدّل عنوان العميل: ' . $customer->name;
+        } else {
+            $data['is_default'] = $customer->addresses()->count() === 0;
+            $address = $customer->addresses()->create($data);
+            $msg = 'أضاف عنوانًا للعميل: ' . $customer->name;
+        }
+
+        \App\Support\Activity::log('updated', $msg, ['subject_id' => $customer->id]);
+
+        return back()->with('toast', ['msg' => __('تم حفظ العنوان'), 'type' => 'success']);
+    }
+
+    /**
+     * الافتراضي واحد لا أكثر: نُنزل العَلَم عن الباقي في المعاملة نفسها،
+     * وإلا ظهر عنوانان افتراضيان لو نُقر عليهما بسرعة.
+     */
+    public function defaultAddress($id, $addressId)
+    {
+        $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
+        $address = $customer->addresses()->findOrFail($addressId);
+
+        \DB::transaction(function () use ($customer, $address) {
+            $customer->addresses()->update(['is_default' => false]);
+            $address->update(['is_default' => true]);
+        });
+
+        return back()->with('toast', ['msg' => __('تم تعيين العنوان الافتراضي'), 'type' => 'success']);
+    }
+
+    public function deleteAddress($id, $addressId)
+    {
+        $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
+        $address = $customer->addresses()->findOrFail($addressId);
+        $wasDefault = $address->is_default;
+        $address->delete();
+
+        // لا نترك العميل بعناوين بلا افتراضي — يرث الأقدم
+        if ($wasDefault && ($next = $customer->addresses()->oldest('id')->first())) {
+            $next->update(['is_default' => true]);
+        }
+
+        \App\Support\Activity::log('deleted', 'حذف عنوانًا للعميل: ' . $customer->name, ['subject_id' => $customer->id]);
+
+        return back()->with('toast', ['msg' => __('تم حذف العنوان'), 'type' => 'success']);
+    }
 }

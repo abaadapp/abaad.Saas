@@ -175,6 +175,17 @@ class PageController extends Controller
         return Inertia::render('Admin/Customers/Show', [
             'customer' => $customer,
             'orders' => Demo::customerOrders($id),
+            // الافتراضي أولًا ثم الأقدم — ترتيب ثابت لا يقفز بين التحميلات
+            'addresses' => \App\Models\CustomerAddress::where('customer_id', $id)
+                ->orderByDesc('is_default')->orderBy('id')->get()
+                ->map(fn ($a) => [
+                    'id' => $a->id,
+                    'label' => $a->label,
+                    'city' => $a->city,
+                    'area' => $a->area,
+                    'street' => $a->street,
+                    'is_default' => $a->is_default,
+                ])->all(),
         ]);
     }
 
@@ -221,6 +232,9 @@ class PageController extends Controller
             'employee' => $employee,
             'orderCount' => Demo::employeeOrderCount($id),
             'salesSeries' => Demo::employeeSalesSeries($id),
+            // سجل نشاط حقيقي من ActivityLog — القالب القديم كان يعرض قائمة
+            // مكتوبة يدويًا («أتمّ طلب بيع بقيمة 45.000») لا تخص أحدًا.
+            'activities' => Demo::userActivities((int) $id, 20),
             // الصلاحيات معروضة للاسترشاد؛ الفرض الفعلي يتم بدور الموظف عبر middleware
             'permissions' => [
                 'فتح نقطة البيع' => true,

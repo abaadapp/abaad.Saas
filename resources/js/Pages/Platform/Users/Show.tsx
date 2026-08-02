@@ -1,7 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
-    Activity as ActivityIcon,
     ArrowRight,
     Building2,
     Check,
@@ -16,6 +15,7 @@ import {
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
+import ActivityFeed, { type ActivityItem } from '@/Components/ActivityFeed';
 import Tabs from '@/Components/Tabs';
 import Field, { Select, type SelectOption } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
@@ -25,7 +25,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { Input } from '@/Components/ui/input';
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface PlatformUser {
@@ -44,19 +43,10 @@ interface PlatformUser {
 
 interface Props {
     user: PlatformUser;
-    activities: { text: string; time: string; icon: string; color: string }[];
+    activities: ActivityItem[];
     roles: SelectOption[];
     permissions: { label: string; granted: boolean }[];
 }
-
-const TONE: Record<string, string> = {
-    primary: 'bg-[#f5f3ff] text-[#6d28d9]',
-    success: 'bg-[#ecfdf5] text-[#047857]',
-    warning: 'bg-[#fffbeb] text-[#d97706]',
-    danger: 'bg-[#fef2f2] text-[#b91c1c]',
-    info: 'bg-[#eff6ff] text-[#2563eb]',
-    gray: 'bg-[#f2f2f0] text-[#6b7280]',
-};
 
 const TABS = [
     { key: 'activities', label: 'النشاطات' },
@@ -198,30 +188,7 @@ export default function UserShow() {
 
                         {tab === 'activities' && (
                             <div className="p-6">
-                                {activities.length === 0 ? (
-                                    <p className="py-10 text-center text-sm text-[#9ca3af]">
-                                        {t('لا يوجد نشاط لهذا المستخدم بعد')}
-                                    </p>
-                                ) : (
-                                    <ul className="space-y-5">
-                                        {activities.map((a, i) => (
-                                            <li key={i} className="flex items-start gap-3">
-                                                <span
-                                                    className={cn(
-                                                        'flex size-9 shrink-0 items-center justify-center rounded-[12px]',
-                                                        TONE[a.color] ?? TONE.primary,
-                                                    )}
-                                                >
-                                                    <ActivityIcon className="size-4" />
-                                                </span>
-                                                <div className="min-w-0">
-                                                    <p className="text-sm text-[#4b4b4b]">{a.text}</p>
-                                                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">{a.time}</p>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
+                                <ActivityFeed items={activities} empty="لا يوجد نشاط لهذا المستخدم بعد" />
                             </div>
                         )}
 

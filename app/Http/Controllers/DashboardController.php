@@ -32,6 +32,8 @@ class DashboardController extends Controller
             'recentOrders' => collect(Demo::orders())->take(6)->values()->all(),
             'topProducts' => collect(Demo::products())->take(5)->values()->all(),
             'topEmployees' => collect(Demo::employees())->take(5)->values()->all(),
+            // null حين لا موقع مضبوطًا — فيدلّ الزر على الإعدادات بدل أن يقف بلا وجهة
+            'website' => Demo::websiteUrl(),
         ]);
     }
 

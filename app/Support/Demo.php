@@ -137,6 +137,32 @@ class Demo
             ->all();
     }
 
+    /**
+     * موقع النشاط الإلكتروني كرابط صالح للفتح، أو null إن لم يُضبط.
+     *
+     * التاجر يكتب «abaad.om» بلا بروتوكول عادةً، والمتصفح يقرأ ذلك مسارًا
+     * نسبيًا داخل اللوحة فيهبط على صفحة 404 بدل موقعه. وما عدا http/https
+     * يُرفض: القيمة تصل من نموذج الإعدادات، وزرٌّ يفتح «javascript:» ثغرة
+     * لا ميزة.
+     */
+    public static function websiteUrl(): ?string
+    {
+        $raw = trim((string) (self::businessSettings()['website'] ?? ''));
+
+        if ($raw === '') {
+            return null;
+        }
+
+        if (! preg_match('#^https?://#i', $raw)) {
+            if (str_contains($raw, ':')) {
+                return null;
+            }
+            $raw = 'https://'.$raw;
+        }
+
+        return filter_var($raw, FILTER_VALIDATE_URL) ? $raw : null;
+    }
+
     /** فروع النشاط الحالي */
     public static function branches(): array
     {

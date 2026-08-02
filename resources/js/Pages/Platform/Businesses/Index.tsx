@@ -110,7 +110,9 @@ export default function BusinessesIndex() {
                     edit={{ routeName: 'super-admin.businesses.edit', href: route('super-admin.businesses.edit', b.id) }}
                     destroy={{
                         url: route('super-admin.businesses.destroy', b.id),
-                        // التسمية «تعطيل» لا «حذف»: المتحكّم يغيّر الحالة ولا يمحو السجل
+                        // «تعطيل» لا «حذف»: المتحكّم يغيّر الحالة ولا يمحو السجل،
+                        // وصفحة الشركة تسمّيه كذلك — فلا تختلف التسميتان للفعل نفسه
+                        label: 'تعطيل',
                         message: 'سيُنقل هذا النشاط إلى حالة «معطل». هل تريد المتابعة؟',
                     }}
                 />

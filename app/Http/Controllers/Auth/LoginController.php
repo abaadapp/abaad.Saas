@@ -69,7 +69,7 @@ class LoginController extends Controller
             'pin' => ['required', 'digits:4'],
         ], [
             'pin.required' => __('أدخل رمز الدخول.'),
-            'pin.digits' => __('رمز الدخول يجب أن يكون ٤ أرقام.'),
+            'pin.digits' => __('رمز الدخول يجب أن يكون 4 أرقام.'),
         ]);
 
         // تحديد المعدل: ٥ محاولات لكل عنوان IP في الدقيقة

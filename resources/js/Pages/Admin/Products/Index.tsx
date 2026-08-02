@@ -180,7 +180,7 @@ export default function ProductsIndex() {
                     rows={products}
                     columns={columns}
                     rowKey={(p) => p.id}
-                    searchPlaceholder="ابحث بالاسم أو SKU..."
+                    searchPlaceholder="ابحث بالاسم أو SKU…"
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا توجد منتجات بعد — أضف أول منتج"

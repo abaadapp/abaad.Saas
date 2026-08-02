@@ -123,7 +123,7 @@ export default function CustomerShow() {
                                 rows={4}
                                 value={notes.data.notes}
                                 onChange={(e) => notes.setData('notes', e.target.value)}
-                                placeholder={t('ملاحظات داخلية عن العميل...')}
+                                placeholder={t('ملاحظات داخلية عن العميل…')}
                             />
                             <Button type="submit" size="sm" className="mt-3" disabled={notes.processing}>
                                 <Save />{notes.processing ? '…' : t('حفظ الملاحظة')}

@@ -92,7 +92,7 @@ export default function ProductForm({ categories, product, description, currency
                                     rows={4}
                                     value={form.data.description}
                                     onChange={(e) => form.setData('description', e.target.value)}
-                                    placeholder={t('اكتب وصفًا مختصرًا للمنتج...')}
+                                    placeholder={t('اكتب وصفًا مختصرًا للمنتج…')}
                                 />
                             </Field>
                         </div>

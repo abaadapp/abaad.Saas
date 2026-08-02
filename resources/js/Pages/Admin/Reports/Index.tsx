@@ -1,4 +1,5 @@
-import { usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
+import { ChartLine, ChevronLeft, Landmark, TrendingUp } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
@@ -73,6 +74,18 @@ export default function ReportsIndex() {
         { label: 'وسائل الدفع', value: summary.payment_methods },
     ];
 
+    /** تقارير لها صفحاتها الخاصة — لا يبلغها المستخدم إلا من هنا */
+    const deepReports = [
+        {
+            title: 'تحليلات متقدمة',
+            hint: 'الاتجاهات والذروة',
+            icon: ChartLine,
+            route: 'admin.analytics.index',
+        },
+        { title: 'الربحية', hint: 'هوامش الربح', icon: TrendingUp, route: 'admin.profitability.index' },
+        { title: 'ضريبة القيمة المضافة', hint: 'الإقرار الضريبي', icon: Landmark, route: 'admin.vat.index' },
+    ] as const;
+
     return (
         <AdminLayout title="التقارير">
             <PageHeader
@@ -97,7 +110,7 @@ export default function ReportsIndex() {
             <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <Card className="lg:col-span-2">
                     <CardHeader>
-                        <CardTitle>{t('المبيعات خلال آخر ١٢ شهرًا')}</CardTitle>
+                        <CardTitle>{t('المبيعات خلال آخر 12 شهرًا')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <AreaChart labels={salesSeries.labels} data={salesSeries.data} format={m} />
@@ -116,6 +129,25 @@ export default function ReportsIndex() {
                         />
                     </CardContent>
                 </Card>
+            </div>
+
+            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {deepReports.map((r) => (
+                    <Link
+                        key={r.route}
+                        href={route(r.route)}
+                        className="flex items-center gap-3 rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white p-4 transition-colors hover:bg-[#fafafa]"
+                    >
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-[#f3f4f6] text-[#111]">
+                            <r.icon className="size-5" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold text-[#111]">{t(r.title)}</span>
+                            <span className="block text-[12px] text-[#9ca3af]">{t(r.hint)}</span>
+                        </span>
+                        <ChevronLeft className="size-4 shrink-0 text-[#d1d5db] ltr:rotate-180" />
+                    </Link>
+                ))}
             </div>
 
             <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">

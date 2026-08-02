@@ -677,7 +677,7 @@ export default function SettingsIndex() {
                                     on={form.data.loyalty_enabled}
                                     onChange={(v) => form.setData('loyalty_enabled', v)}
                                     label="تفعيل برنامج الولاء"
-                                    hint="١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال"
+                                    hint="100 نقطة = وحدة عملة واحدة عند الاستبدال"
                                 />
                                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
                                     <Field label="نقاط لكل وحدة شراء" error={form.errors.loyalty_earn_rate}>

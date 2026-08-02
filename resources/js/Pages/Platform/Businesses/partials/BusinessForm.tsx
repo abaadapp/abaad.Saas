@@ -103,7 +103,7 @@ export default function BusinessForm({
                             value={form.data.type}
                             onChange={(e) => form.setData('type', e.target.value)}
                             options={options.types.map((v) => ({ label: v, value: v }))}
-                            placeholder="اختر النوع..."
+                            placeholder="اختر النوع…"
                             required
                         />
                     </Field>
@@ -118,7 +118,7 @@ export default function BusinessForm({
                             value={form.data.city}
                             onChange={(e) => form.setData('city', e.target.value)}
                             options={options.cities.map((v) => ({ label: v, value: v }))}
-                            placeholder="اختر المدينة..."
+                            placeholder="اختر المدينة…"
                         />
                     </Field>
                     <Field label="العنوان" className="md:col-span-2" error={form.errors.address}>
@@ -172,7 +172,7 @@ export default function BusinessForm({
                             value={form.data.plan_id}
                             onChange={(e) => form.setData('plan_id', e.target.value)}
                             options={options.plans}
-                            placeholder="اختر الباقة..."
+                            placeholder="اختر الباقة…"
                         />
                     </Field>
                     <Field label="حالة الحساب" required error={form.errors.status}>
@@ -180,7 +180,7 @@ export default function BusinessForm({
                             value={form.data.status}
                             onChange={(e) => form.setData('status', e.target.value)}
                             options={options.statuses.map((v) => ({ label: v, value: v }))}
-                            placeholder="اختر الحالة..."
+                            placeholder="اختر الحالة…"
                             required
                         />
                     </Field>

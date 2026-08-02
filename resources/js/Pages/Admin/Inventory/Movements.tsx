@@ -130,7 +130,7 @@ export default function Movements() {
                     rows={movements}
                     columns={columns}
                     rowKey={(m) => `${m.product}-${m.date}-${m.qty}`}
-                    searchPlaceholder="ابحث باسم المنتج أو رمز SKU..."
+                    searchPlaceholder="ابحث باسم المنتج أو رمز SKU…"
                     searchable={(m) => `${m.product} ${m.sku} ${m.branch ?? ''} ${m.employee}`}
                     filters={filters}
                     empty="لا توجد حركات مخزون بعد"
@@ -149,7 +149,7 @@ export default function Movements() {
                                 value={form.data.branch_id}
                                 onChange={(e) => form.setData('branch_id', e.target.value)}
                                 options={branches.map((b) => ({ label: b.name, value: b.id }))}
-                                placeholder="اختر الفرع..."
+                                placeholder="اختر الفرع…"
                                 required
                             />
                         </Field>
@@ -158,7 +158,7 @@ export default function Movements() {
                                 value={form.data.product_id}
                                 onChange={(e) => form.setData('product_id', e.target.value)}
                                 options={products.map((p) => ({ label: p.name, value: p.id }))}
-                                placeholder="اختر المنتج..."
+                                placeholder="اختر المنتج…"
                                 required
                             />
                         </Field>
@@ -168,7 +168,7 @@ export default function Movements() {
                                     value={form.data.type}
                                     onChange={(e) => form.setData('type', e.target.value)}
                                     options={TYPES.map((x) => ({ label: x, value: x }))}
-                                    placeholder="اختر النوع..."
+                                    placeholder="اختر النوع…"
                                     required
                                 />
                             </Field>
@@ -188,7 +188,7 @@ export default function Movements() {
                                 rows={2}
                                 value={form.data.note}
                                 onChange={(e) => form.setData('note', e.target.value)}
-                                placeholder={t('سبب الحركة أو أي تفاصيل إضافية...')}
+                                placeholder={t('سبب الحركة أو أي تفاصيل إضافية…')}
                             />
                         </Field>
                         <div className="flex justify-end gap-2 pt-1">

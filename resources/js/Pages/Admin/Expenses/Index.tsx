@@ -306,7 +306,7 @@ export default function ExpensesIndex() {
                                     value={expense.data.type}
                                     onChange={(e) => expense.setData('type', e.target.value)}
                                     options={typeOptions}
-                                    placeholder="اختر النوع..."
+                                    placeholder="اختر النوع…"
                                     required
                                 />
                             </Field>

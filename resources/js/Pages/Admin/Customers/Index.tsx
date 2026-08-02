@@ -216,7 +216,7 @@ export default function CustomersIndex() {
                     rows={customers}
                     columns={columns}
                     rowKey={(c) => c.id}
-                    searchPlaceholder="ابحث بالاسم أو رقم الهاتف أو البريد..."
+                    searchPlaceholder="ابحث بالاسم أو رقم الهاتف أو البريد…"
                     searchable={() => ''}
                     filters={sortFilter}
                     empty="لا يوجد عملاء بعد"

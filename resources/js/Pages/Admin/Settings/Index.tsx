@@ -1,15 +1,28 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     BellOff,
     BellRing,
     ChevronLeft,
+    Coins,
+    CreditCard,
+    DatabaseBackup,
     Download,
+    FileText,
+    Gift,
     GitBranch,
     History,
+    Languages,
+    LayoutTemplate,
+    Percent,
+    Printer,
     Save,
+    ShieldCheck,
+    ShoppingCart,
+    Store,
     Trash2,
+    Truck,
     Upload,
     UserCog,
 } from 'lucide-react';
@@ -42,25 +55,60 @@ interface Props {
     locale: string;
 }
 
-const TABS = [
-    { key: 'business', label: 'بيانات النشاط' },
-    { key: 'taxes', label: 'الضرائب' },
-    { key: 'currency', label: 'العملة' },
-    { key: 'payments', label: 'طرق الدفع' },
-    { key: 'invoices', label: 'الفواتير' },
-    { key: 'printing', label: 'الطباعة' },
-    { key: 'templates', label: 'قوالب' },
-    { key: 'permissions', label: 'صلاحيات الموظفين' },
-    { key: 'notifications', label: 'الإشعارات' },
-    { key: 'notifications-log', label: 'التنبيهات المرسلة' },
-    { key: 'orders', label: 'الطلبات' },
-    { key: 'delivery', label: 'التوصيل' },
-    { key: 'loyalty', label: 'الولاء' },
-    { key: 'language', label: 'اللغة' },
-    { key: 'backup', label: 'النسخ الاحتياطي' },
+/**
+ * أقسام الإعدادات في عمود جانبي مجمَّع.
+ *
+ * كانت شريطًا أفقيًّا من ستة عشر تبويبًا يتمرّر أفقيًّا: ما بعد التاسع منها
+ * خارج الشاشة لا يُرى إلا بالتمرير، فلا يُعرف أنه موجود أصلًا. والعمود
+ * الجانبي يُظهرها كلّها دفعةً واحدة، والتجميع يجعل موضع كلٍّ منها متوقَّعًا.
+ */
+const NAV = [
+    {
+        group: 'المتجر',
+        items: [
+            { key: 'business', label: 'بيانات النشاط', icon: Store },
+            { key: 'language', label: 'اللغة', icon: Languages },
+        ],
+    },
+    {
+        group: 'المالية',
+        items: [
+            { key: 'taxes', label: 'الضرائب', icon: Percent },
+            { key: 'currency', label: 'العملة', icon: Coins },
+            { key: 'payments', label: 'طرق الدفع', icon: CreditCard },
+            { key: 'loyalty', label: 'الولاء', icon: Gift },
+        ],
+    },
+    {
+        group: 'المبيعات',
+        items: [
+            { key: 'invoices', label: 'الفواتير', icon: FileText },
+            { key: 'orders', label: 'الطلبات', icon: ShoppingCart },
+            { key: 'delivery', label: 'التوصيل', icon: Truck },
+        ],
+    },
+    {
+        group: 'الطباعة',
+        items: [
+            { key: 'printing', label: 'الطباعة', icon: Printer },
+            { key: 'templates', label: 'قوالب', icon: LayoutTemplate },
+        ],
+    },
+    {
+        group: 'الفريق والتنبيهات',
+        items: [
+            { key: 'permissions', label: 'صلاحيات الموظفين', icon: ShieldCheck },
+            { key: 'notifications', label: 'الإشعارات', icon: BellRing },
+            { key: 'notifications-log', label: 'التنبيهات المرسلة', icon: BellOff },
+        ],
+    },
+    {
+        group: 'النظام',
+        items: [{ key: 'backup', label: 'النسخ الاحتياطي', icon: DatabaseBackup }],
+    },
 ] as const;
 
-type TabKey = (typeof TABS)[number]['key'];
+type TabKey = (typeof NAV)[number]['items'][number]['key'];
 
 /** طرق الدفع المتاحة — المفاتيح تطابق ما كان يحفظه القالب السابق (pay_*) */
 const PAYMENT_METHODS = [
@@ -134,6 +182,20 @@ export default function SettingsIndex() {
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
     const [backupFile, setBackupFile] = useState<File | null>(null);
     const [notifs, setNotifs] = useState<NotificationRow[]>(notificationsAll ?? []);
+
+    /**
+     * على الجوال يقف العمود فوق المحتوى، فاختيار قسمٍ يترك المستخدم أمام
+     * القائمة نفسها ولا يرى أنّ شيئًا تغيّر — ما لم يمرّر خمسة عشر بندًا.
+     */
+    const contentRef = useRef<HTMLDivElement>(null);
+    const pick = (key: TabKey) => {
+        setTab(key);
+        if (window.innerWidth < 1024) {
+            requestAnimationFrame(() =>
+                contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+            );
+        }
+    };
 
     const get = (k: string, fallback = '') => settings[k] ?? fallback;
     const on = (k: string, fallback = '1') => (settings[k] ?? fallback) === '1';
@@ -232,41 +294,62 @@ export default function SettingsIndex() {
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الإعدادات' }]}
             />
 
-            <div className="mb-6 flex items-center gap-1 overflow-x-auto border-b border-[var(--ui-border,#e8e8e8)]">
-                {TABS.map((x) => (
-                    <button
-                        key={x.key}
-                        type="button"
-                        onClick={() => setTab(x.key)}
-                        className={cn(
-                            '-mb-px whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                            tab === x.key
-                                ? 'border-[#111] text-[#111]'
-                                : 'border-transparent text-[#6b7280] hover:text-[#374151]',
-                        )}
-                    >
-                        {t(x.label)}
-                    </button>
-                ))}
-            </div>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[232px_1fr]">
+                <aside className="lg:sticky lg:top-4 lg:self-start">
+                    <Card className="p-2">
+                        <nav className="space-y-3">
+                            {NAV.map((g) => (
+                                <div key={g.group}>
+                                    <p className="px-3 pb-1 pt-2 text-[11px] font-semibold tracking-wide text-[#9ca3af]">
+                                        {t(g.group)}
+                                    </p>
+                                    {g.items.map((x) => (
+                                        <button
+                                            key={x.key}
+                                            type="button"
+                                            onClick={() => pick(x.key)}
+                                            aria-current={tab === x.key ? 'page' : undefined}
+                                            className={cn(
+                                                'flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-start text-sm font-medium transition-colors',
+                                                tab === x.key
+                                                    ? 'bg-[#111] text-white'
+                                                    : 'text-[#4b4b4b] hover:bg-[#f5f5f4]',
+                                            )}
+                                        >
+                                            <x.icon className="size-4 shrink-0" />
+                                            <span className="min-w-0 truncate">{t(x.label)}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ))}
 
-            {/* صفحات مستقلة — ليست تبويبات، تُفتح كصفحات كاملة */}
-            <div className="mb-6 flex flex-wrap items-center gap-2">
-                {LINKS.map((l) => (
-                    <Link
-                        key={l.label}
-                        href={route(l.route)}
-                        className="inline-flex items-center gap-2 rounded-full border border-[var(--ui-border,#e8e8e8)] px-3.5 py-2 text-sm font-medium text-[#374151] transition-colors hover:bg-[#fafafa]"
-                    >
-                        <l.icon className="size-4" />
-                        {t(l.label)}
-                        <ChevronLeft className="size-3.5 text-[#d1d5db] rtl:rotate-0 ltr:rotate-180" />
-                    </Link>
-                ))}
-            </div>
+                            {/* صفحات مستقلة — ليست أقسامًا، تُفتح كصفحات كاملة.
+                                تُفصل بخطّ حتى لا تُقرأ كأقسامٍ تُفتح في مكانها. */}
+                            <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-2">
+                                <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-[#9ca3af]">
+                                    {t('صفحات أخرى')}
+                                </p>
+                                {LINKS.map((l) => (
+                                    <Link
+                                        key={l.label}
+                                        href={route(l.route)}
+                                        className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium text-[#4b4b4b] transition-colors hover:bg-[#f5f5f4]"
+                                    >
+                                        <l.icon className="size-4 shrink-0" />
+                                        <span className="min-w-0 flex-1 truncate">{t(l.label)}</span>
+                                        <ChevronLeft className="size-3.5 shrink-0 text-[#d1d5db] ltr:rotate-180" />
+                                    </Link>
+                                ))}
+                            </div>
+                        </nav>
+                    </Card>
+                </aside>
 
+                {/* سقفٌ للعرض: سطرٌ يمتدّ عبر الشاشة كاملةً يصعب تتبّعه،
+                    وحقلان متباعدان بفراغٍ عريض يبدوان غير مرتبطين */}
+                <div ref={contentRef} className="min-w-0 max-w-4xl scroll-mt-4">
             {tab === 'language' ? (
-                <Card className="max-w-2xl p-6">
+                <Card className="p-6">
                     <h3 className="mb-4 font-bold text-[#111]">{t('لغة النظام')}</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         {[
@@ -313,7 +396,7 @@ export default function SettingsIndex() {
                     </div>
                 </Card>
             ) : tab === 'notifications-log' ? (
-                <Card className="max-w-3xl p-6">
+                <Card className="p-6">
                     <div className="mb-6 flex items-start justify-between gap-3">
                         <div>
                             <h3 className="font-bold text-[#111]">{t('التنبيهات المرسلة')}</h3>
@@ -400,7 +483,7 @@ export default function SettingsIndex() {
                     )}
                 </Card>
             ) : tab === 'backup' ? (
-                <div className="grid max-w-3xl grid-cols-1 gap-6">
+                <div className="grid grid-cols-1 gap-6">
                     <Card className="p-6">
                         <h3 className="mb-2 font-bold text-[#111]">{t('تنزيل نسخة احتياطية')}</h3>
                         <p className="mb-4 text-[13px] text-[#6b7280]">
@@ -447,7 +530,7 @@ export default function SettingsIndex() {
                     </Card>
                 </div>
             ) : (
-                <form onSubmit={submit} className="max-w-3xl">
+                <form onSubmit={submit}>
                     <Card className="p-6">
                         {tab === 'business' && (
                             <>
@@ -875,6 +958,8 @@ export default function SettingsIndex() {
                     </Card>
                 </form>
             )}
+                </div>
+            </div>
         </AdminLayout>
     );
 }

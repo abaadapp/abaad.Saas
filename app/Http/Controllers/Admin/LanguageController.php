@@ -36,14 +36,16 @@ class LanguageController extends Controller
             'locale' => ['required', Rule::in(SetLocale::SUPPORTED)],
         ]);
 
-        // تُحفظ في الجلسة (فورية) وفي الإعدادات (تبقى بعد الخروج).
-        // مدير المنصة بلا business_id فتُحفظ لغته في إعدادات المنصة (business_id = null)
-        // كما تُحفظ بقية إعداداتها؛ الرجوع إلى أول نشاط كان يكتب تفضيله في إعدادات تاجر.
+        /**
+         * تفضيل شخصي لا إعداد متجر.
+         *
+         * كانت تُكتب في settings[business_id,'locale'] المشترك: فالكاشير
+         * الذي يبدّل إلى الإنجليزية يسلب المالكَ عربيتَه، والمالك حين
+         * يعيدها يسلب الكاشير إنجليزيته. الآن لكلٍّ لغته، وإعداد النشاط
+         * يبقى افتراضًا لمن لم يختر بعد (يُضبط من تبويب اللغة في الإعدادات).
+         */
         session(['locale' => $data['locale']]);
-        Setting::updateOrCreate(
-            ['business_id' => auth()->user()->business_id, 'key' => 'locale'],
-            ['value' => $data['locale']]
-        );
+        auth()->user()->update(['locale' => $data['locale']]);
         app()->setLocale($data['locale']);
         Activity::log('updated', 'غيّر لغة النظام إلى: ' . $data['locale']);
 

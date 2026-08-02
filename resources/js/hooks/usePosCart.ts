@@ -202,6 +202,17 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
     }, [earnRate, selectedCustomer, total]);
 
     /**
+     * الاسم المعروض للعميل — غير القيمة المرسلة للخادم.
+     *
+     * `customer` قيمةٌ تُطابَق بها السجلات، وقيمتها الافتراضية النص العربي
+     * «عميل نقدي». عرضها خامًا كان يُبقيها عربية في واجهة إنجليزية بينما
+     * بقية الشاشة مترجمة. أسماء العملاء الحقيقيين لا تُترجَم بالطبع — تُؤخذ
+     * من label الذي يختار العربي أو الإنجليزي حسب لغة الكاشير.
+     */
+    const isWalkIn = customer === CASH_CUSTOMER;
+    const customerLabel = selectedCustomer?.label || (isWalkIn ? '' : customer);
+
+    /**
      * لقطة المخزون في السلة تتقادم: الكاشير يضيف 5 قطع وهي متاحة، ثم يبيعها
      * زميله على جهاز آخر قبل أن يُنهي هو الدفع. `products` تصل محدَّثة من
      * التغذية الحيّة، فنُزامن معها بنود السلة ليصدق تحذير «يتجاوز المتوفر».
@@ -620,6 +631,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
         items, customer, customers, customerSearch, barcode,
         couponCode, coupon, couponError, couponLoading,
         redeemActive, online, pendingCount: pending.length,
+        customerLabel, isWalkIn,
         // المحسوبات
         count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal,
         selectedCustomer, selectedPoints, canRedeem, pointsToThreshold,

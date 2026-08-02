@@ -58,7 +58,7 @@ export default function PosIndex() {
      * الكميات الحيّة تحلّ محلّ لقطة الخادم في كل مكان يقرأ `products` —
      * الشبكة والبحث والسلة — فلا يبقى مصدران للحقيقة في الشاشة نفسها.
      */
-    const products = useLiveStock(route('pos.stock-feed'), serverProducts);
+    const { products, updatedAt: stockAt } = useLiveStock(route('pos.stock-feed'), serverProducts);
     const currency = context!.currency;
 
     const [cat, setCat] = useState('الكل');
@@ -195,6 +195,14 @@ export default function PosIndex() {
                             </Button>
                         </div>
                     </div>
+
+                    {/* عمر الأرقام المعروضة: «المتوفر» يُستطلَع كل 20 ثانية، ورقمٌ
+                        لا يُعرف عمرُه يُقرأ على أنه لحظيّ */}
+                    {stockAt && (
+                        <p className="mb-2 shrink-0 text-[11px] text-gray-400">
+                            {t('الكميات محدّثة حتى')} <span dir="ltr">{stockAt}</span>
+                        </p>
+                    )}
 
                     {/* تبويبات الأقسام */}
                     <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1">

@@ -28,7 +28,8 @@ class PageController extends Controller
     public function index(): Response
     {
         return Inertia::render('Pos/Index', [
-            'products' => Demo::products(),
+            // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة
+            'products' => Demo::products(Demo::activeBranchId()),
             'categories' => Demo::posCategories(),
             'customers' => Demo::customers(),
             'addons' => Demo::addons(),

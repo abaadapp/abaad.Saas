@@ -1869,5 +1869,6 @@
     "يظهر كزرّ في الرئيسية بجانب «فتح نقطة البيع»": "Shown as a button on the dashboard next to “Open POS”",
     "أدخل عنوان موقع صحيح مثل example.com": "Enter a valid website address, e.g. example.com",
     "اسم المتجر": "Store name",
-    "تأكيد الإجراء": "Confirm action"
+    "تأكيد الإجراء": "Confirm action",
+    "الكميات محدّثة حتى": "Quantities as of"
 }

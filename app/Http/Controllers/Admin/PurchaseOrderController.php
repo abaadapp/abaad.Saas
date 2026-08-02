@@ -94,6 +94,7 @@ class PurchaseOrderController extends Controller
             if ($item->product_id) {
                 $product = Product::where('business_id', $bid)->find($item->product_id);
                 if ($product) {
+                    \App\Models\BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
                     $product->increment('quantity', $remaining);
                     \App\Models\BranchStock::adjust($bid, $po->branch_id, $product->id, (int) $remaining);
                     // تحديث تكلفة المنتج بآخر تكلفة شراء

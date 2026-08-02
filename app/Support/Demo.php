@@ -120,6 +120,20 @@ class Demo
         return session('current_branch') ? (int) session('current_branch') : null;
     }
 
+    /**
+     * الفرع الذي تجري عليه العمليات فعليًا.
+     *
+     * currentBranchId() تُرجع null عند «كل الفروع» — وهو عرضٌ لا موضع بيع.
+     * البيع لا بدّ أن يقع في فرعٍ بعينه، فيُختار أوّل فرع حين لا اختيار.
+     * كان هذا المنطق مكرّرًا في PosController وProductController بصياغتين،
+     * فيمكن أن يعرض أحدهما رصيد فرعٍ ويخصم الآخر من فرعٍ آخر.
+     */
+    public static function activeBranchId(): ?int
+    {
+        return self::currentBranchId()
+            ?? \App\Models\Branch::where('business_id', self::bid())->orderBy('id')->value('id');
+    }
+
     public static function currentBranchName(): string
     {
         $id = self::currentBranchId();
@@ -494,26 +508,39 @@ class Demo
         ])->all();
     }
 
-    public static function products(): array
+    /**
+     * @param  int|null  $branchId  رصيد هذا الفرع بدل مجموع الشركة.
+     *
+     * بلا معرّف فرع تعود الكمية الإجمالية — وهذا ما تريده التقارير والتصدير
+     * ولوحة المنتجات. أما نقطة البيع فتبيع من فرعٍ بعينه، فلا يجوز أن تعرض
+     * لكاشير صلالة بضاعةً في مسقط.
+     */
+    public static function products(?int $branchId = null): array
     {
-        return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(fn ($p) => [
-            'id' => $p->id,
-            'name' => $p->name,
-            'name_en' => $p->name_en,
-            'label' => self::ln($p->name, $p->name_en),
-            'cat' => $p->category?->name ?? '—',
-            'price' => (float) $p->price,
-            'cost' => (float) $p->cost,
-            'qty' => $p->quantity,
-            'sku' => $p->sku,
-            'barcode' => $p->barcode,
-            'image' => $p->image,
-            'stock_status' => $p->stock_status,
-            'active' => (bool) $p->active,
-            'alert' => $p->alert_qty,
-            'tax' => (float) $p->tax,
-            'discount' => (float) $p->discount,
-        ])->all();
+        $available = Stock::availabilityResolver(self::bid(), $branchId);
+
+        return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(function ($p) use ($branchId, $available) {
+            $qty = $branchId ? $available($p->id, (int) $p->quantity) : (int) $p->quantity;
+
+            return [
+                'id' => $p->id,
+                'name' => $p->name,
+                'name_en' => $p->name_en,
+                'label' => self::ln($p->name, $p->name_en),
+                'cat' => $p->category?->name ?? '—',
+                'price' => (float) $p->price,
+                'cost' => (float) $p->cost,
+                'qty' => $qty,
+                'sku' => $p->sku,
+                'barcode' => $p->barcode,
+                'image' => $p->image,
+                'stock_status' => Product::statusFor($qty, (int) $p->alert_qty),
+                'active' => (bool) $p->active,
+                'alert' => $p->alert_qty,
+                'tax' => (float) $p->tax,
+                'discount' => (float) $p->discount,
+            ];
+        })->all();
     }
 
     public static function orders(): array
@@ -1018,6 +1045,9 @@ class Demo
         $branches = \App\Models\Branch::where('business_id', self::bid())->pluck('name', 'id');
 
         return InventoryMovement::where('business_id', self::bid())->orderByDesc('id')->get()->map(fn ($m) => [
+            // المفتاح الحقيقي: الواجهة كانت تركّب مفتاحًا من (الصنف+التاريخ+الكمية)
+            // وهو يتكرّر بمجرّد بيع قطعة من الصنف نفسه مرّتين في اليوم
+            'id' => $m->id,
             'product' => $m->product_name,
             'sku' => $m->sku,
             'type' => $m->type,
@@ -1159,6 +1189,9 @@ class Demo
         return Transaction::where('business_id', self::bid())
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start))
             ->orderByDesc('occurred_at')->get()->map(fn ($t) => [
+            // المرجع للعرض، والمفتاح للهوية: مرجعان متطابقان (تصحيح يشير
+            // لفاتورة أصلية مثلًا) كانا يجعلان React يُسقط صفًّا من دفتر مالي
+            'key' => $t->id,
             'id' => $t->reference,
             'date' => optional($t->occurred_at)->format('Y-m-d H:i') ?? '—',
             'description' => $t->description,

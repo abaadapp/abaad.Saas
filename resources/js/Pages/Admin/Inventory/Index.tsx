@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { usePage } from '@inertiajs/react';
 import { ArrowLeftRight } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -9,6 +10,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
+import useLiveStock from '@/hooks/useLiveStock';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Branch } from '@/types';
@@ -21,9 +23,29 @@ interface Props {
 }
 
 export default function InventoryIndex() {
-    const { inventory, context } = usePage<PageProps<Props>>().props;
+    const { inventory: serverInventory, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
+
+    /* الجدول كان مجمّدًا على لقطة لحظة الفتح بينما بطاقات اللوحة تتحدّث.
+       الحقل هنا اسمه status لا stock_status، فيُترجَم ذهابًا وإيابًا.
+
+       والـuseMemo ليس تحسينًا: useLiveStock يمسح لقطته كلما تغيّر مرجع
+       المصفوفة (ليَغلب دائمًا ما جاء من الخادم مع كل تنقّل). مصفوفةٌ جديدة
+       مع كل تصيير تعني مسحًا دائمًا فلا يظهر أي تحديث أبدًا. */
+    const mapped = useMemo(
+        () => serverInventory.map((i) => ({ ...i, stock_status: i.status })),
+        [serverInventory],
+    );
+    const { products: live, updatedAt } = useLiveStock(route('admin.products.stockFeed'), mapped);
+
+    // القيمة تتبع الكمية: تركُها كما جاءت من الخادم يعني صفًّا يقول
+    // «الكمية 2» و«القيمة 240» في آن واحد
+    const inventory = live.map((i) => ({
+        ...i,
+        status: i.stock_status,
+        value: Math.round(i.cost * i.qty * 1000) / 1000,
+    }));
 
     const totalValue = inventory.reduce((sum, item) => sum + item.value, 0);
 
@@ -107,6 +129,12 @@ export default function InventoryIndex() {
                     </>
                 }
             />
+
+            {updatedAt && (
+                <p className="mb-2 text-[12px] text-[#9ca3af]">
+                    {t('الكميات محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
+                </p>
+            )}
 
             <Card className="overflow-hidden">
                 <DataTable

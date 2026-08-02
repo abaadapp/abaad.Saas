@@ -34,6 +34,7 @@ import { Input } from '@/Components/ui/input';
 import { decimalsFor, money as fmtMoney } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import useLiveStock from '@/hooks/useLiveStock';
 import { usePosCart, type LoyaltySettings, type PosCustomer, type ResumeCart } from '@/hooks/usePosCart';
 import type { PageProps } from '@/types';
 import type { Addon, Coupon, Product } from '@/types/models';
@@ -49,9 +50,15 @@ interface Props {
 }
 
 export default function PosIndex() {
-    const { products, categories, customers, addons, coupons, resumeCart, settings, context } =
+    const { products: serverProducts, categories, customers, addons, coupons, resumeCart, settings, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+
+    /**
+     * الكميات الحيّة تحلّ محلّ لقطة الخادم في كل مكان يقرأ `products` —
+     * الشبكة والبحث والسلة — فلا يبقى مصدران للحقيقة في الشاشة نفسها.
+     */
+    const products = useLiveStock(route('pos.stock-feed'), serverProducts);
     const currency = context!.currency;
 
     const [cat, setCat] = useState('الكل');
@@ -61,11 +68,19 @@ export default function PosIndex() {
     const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
     const barcodeRef = useRef<HTMLInputElement>(null);
 
+    /* مرجع ثابت ما لم تتغيّر المنتجات فعلًا — usePosCart يزامن مخزون السلة
+       عند كل تغيّر لهذه القائمة، فمصفوفة جديدة كل تصيير تعني عملًا بلا سبب */
+    const cartProducts = useMemo(
+        () =>
+            products.map((p) => ({
+                id: p.id, label: p.label, price: p.price, image: p.image,
+                sku: p.sku, barcode: p.barcode, stock: p.qty,
+            })),
+        [products],
+    );
+
     const cart = usePosCart({
-        products: products.map((p) => ({
-            id: p.id, label: p.label, price: p.price, image: p.image,
-            sku: p.sku, barcode: p.barcode, stock: p.qty,
-        })),
+        products: cartProducts,
         customers,
         coupons,
         loyalty: settings,

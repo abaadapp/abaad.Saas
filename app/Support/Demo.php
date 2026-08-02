@@ -109,7 +109,16 @@ class Demo
     public static function currentBranchName(): string
     {
         $id = self::currentBranchId();
-        return $id ? (\App\Models\Branch::where('id', $id)->value('name') ?? __('كل الفروع')) : __('كل الفروع');
+        if (! $id) {
+            return __('كل الفروع');
+        }
+
+        // مقيّد بالنشاط: الحارس على مسار التبديل يمنع الدخول أصلًا، لكن قيمة
+        // عالقة في جلسة قديمة (أو تغيّر مالك الفرع) كانت تكفي لعرض اسم فرع
+        // من متجر آخر في الترويسة.
+        return \App\Models\Branch::where('id', $id)
+            ->where('business_id', self::bid())
+            ->value('name') ?? __('كل الفروع');
     }
 
     /**

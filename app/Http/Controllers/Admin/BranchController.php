@@ -16,9 +16,20 @@ class BranchController extends Controller
     {
         if ($id === 'all') {
             $request->session()->forget('current_branch');
-        } else {
-            $request->session()->put('current_branch', (int) $id);
+
+            return back();
         }
+
+        // المعرّف يصل من شريط العنوان، وكان يُخزَّن كما هو. فرعُ متجرٍ آخر
+        // كان يمرّ: الاستعلامات تُرجع فراغًا (لأنها مقيّدة بـbusiness_id)
+        // لكن اسم الفرع يُعرض في الترويسة — تسريب اسم من متجر الجار.
+        $belongs = Branch::where('id', (int) $id)
+            ->where('business_id', $this->bid())
+            ->exists();
+
+        abort_unless($belongs, 404);
+
+        $request->session()->put('current_branch', (int) $id);
 
         return back();
     }

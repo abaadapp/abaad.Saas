@@ -3,6 +3,7 @@ import { usePage } from '@inertiajs/react';
 import { ArrowLeftRight } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
 import ExportMenu from '@/Components/ExportMenu';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
@@ -20,10 +21,12 @@ interface Props {
     inventory: InventoryItem[];
     branches: Branch[];
     currentBranchId: number | null;
+    /** حالة المخزون القادمة في الرابط (?stock=) — يرسلها تنبيه النظرة العامة */
+    stockFilter: string | null;
 }
 
 export default function InventoryIndex() {
-    const { inventory: serverInventory, context } = usePage<PageProps<Props>>().props;
+    const { inventory: serverInventory, stockFilter, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
 
@@ -101,9 +104,12 @@ export default function InventoryIndex() {
             options: [
                 { label: 'متوفر', value: 'متوفر' },
                 { label: 'منخفض', value: 'منخفض' },
-                { label: 'نفد', value: 'نفد' },
+                // القيمة هي ما يُرجعه Product::statusFor حرفيًا — كانت «نفد»
+                // فلا تطابق «نفد المخزون» أبدًا، فيُرجع الخيار قائمة فارغة دائمًا
+                { label: 'نفد', value: 'نفد المخزون' },
             ],
             match: (i, value) => i.status === value,
+            initial: stockFilter ?? undefined,
         },
     ];
 
@@ -129,6 +135,8 @@ export default function InventoryIndex() {
                     </>
                 }
             />
+
+            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.index" />
 
             {updatedAt && (
                 <p className="mb-3 text-[12px] text-[#9ca3af]">

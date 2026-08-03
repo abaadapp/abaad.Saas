@@ -37,6 +37,14 @@ export interface Filter<T> {
     match?: (row: T, value: string) => boolean;
     /** الوضع الخادمي: اسم معامل الرابط الذي تُرسل فيه القيمة */
     param?: string;
+    /**
+     * قيمة مُفعَّلة عند أول عرض (الوضع المحلي).
+     *
+     * تخدم الوصول من تنبيه يحمل فلتره في الرابط: تصل الصفحة مفلترة فعلًا،
+     * وتُظهر القائمةُ المنسدلة الفلترَ المطبَّق بدل أن تقول «كل الحالات»
+     * فيظنّ المستخدم أنه يرى القائمة كاملة.
+     */
+    initial?: string;
 }
 
 /** شكل الترقيم كما يُصدره paginate() في Laravel */
@@ -107,11 +115,12 @@ export default function DataTable<T>({
     const searchParam = server?.searchParam ?? 'q';
     const [query, setQuery] = useState(server ? String(server.params[searchParam] ?? '') : '');
     const [active, setActive] = useState<Record<number, string>>(() =>
-        server
-            ? Object.fromEntries(
-                  filters.map((f, i) => [i, f.param ? String(server.params[f.param] ?? '') : '']),
-              )
-            : {},
+        Object.fromEntries(
+            filters.map((f, i) => [
+                i,
+                server ? (f.param ? String(server.params[f.param] ?? '') : '') : (f.initial ?? ''),
+            ]),
+        ),
     );
     const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
     const [page, setPage] = useState(0);

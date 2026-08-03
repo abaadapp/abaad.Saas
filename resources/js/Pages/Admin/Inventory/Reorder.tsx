@@ -45,7 +45,9 @@ export default function InventoryReorder() {
                 }
             />
 
-            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.reorder" />
+            {/* «إعادة الطلب» لم تعد تبويبًا مستقلًا — هي عرضٌ مفلتر للمنتجات،
+                فيبقى تبويبها مضيئًا بدل أن يخلو الشريط من أي نشط */}
+            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.index" />
 
             {items.length === 0 ? (
                 <Card className="px-5 py-16 text-center">

@@ -1,15 +1,18 @@
 import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
+import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
  * الأنماط منقولة حرفيًا عن <x-button> في Blade حتى لا يتغيّر شكل الواجهة.
  */
 const buttonVariants = cva(
-    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium transition-all ' +
-        'disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 ' +
-        'focus-visible:ring-[var(--ring)] [&_svg]:pointer-events-none [&_svg]:shrink-0',
+    // transition-colors لا transition-all: الثانية تُحرّك خصائص التخطيط (العرض
+    // والحشو) فيبدو الزر مهتزًّا عند المرور عليه.
+    'relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium ' +
+        'transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none ' +
+        'focus-visible:ring-2 focus-visible:ring-[var(--ring)] [&_svg]:pointer-events-none [&_svg]:shrink-0',
     {
         variants: {
             variant: {
@@ -40,17 +43,43 @@ export interface ButtonProps
     extends React.ButtonHTMLAttributes<HTMLButtonElement>,
         VariantProps<typeof buttonVariants> {
     asChild?: boolean;
+    /**
+     * حالة الإرسال. المحتوى يبقى في مكانه ويُخفى بصريًا فقط، والمؤشّر يُركَّب
+     * فوقه بالإحداثيات المطلقة — فلا يتغيّر عرض الزر ولا يقفز ما حوله.
+     *
+     * تُعطّل الزر أيضًا، فتمنع الضغط المكرّر وإرسال النموذج مرّتين.
+     */
+    loading?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-    ({ className, variant, size, asChild = false, ...props }, ref) => {
+    (
+        { className, variant, size, asChild = false, loading = false, disabled, children, ...props },
+        ref,
+    ) => {
         const Comp = asChild ? Slot : 'button';
+
+        // Slot يشترط ابنًا واحدًا، فلا يُغلَّف محتواه — والروابط لا تُرسِل نماذج أصلًا
+        const content =
+            loading && !asChild ? (
+                <>
+                    <span className="inline-flex items-center gap-2 opacity-0">{children}</span>
+                    <Loader2 className="absolute animate-spin" aria-hidden="true" />
+                </>
+            ) : (
+                children
+            );
+
         return (
             <Comp
                 ref={ref}
                 className={cn(buttonVariants({ variant, size }), className)}
+                disabled={asChild ? disabled : disabled || loading}
+                aria-busy={loading || undefined}
                 {...props}
-            />
+            >
+                {content}
+            </Comp>
         );
     },
 );

@@ -209,9 +209,9 @@ export default function ProfileEdit() {
                         <Button type="button" variant="outline" onClick={() => window.history.back()}>
                             {t('إلغاء')}
                         </Button>
-                        <Button type="submit" disabled={form.processing}>
+                        <Button type="submit" loading={form.processing}>
                             <Check />
-                            {form.processing ? '…' : t('حفظ التغييرات')}
+                            {t('حفظ التغييرات')}
                         </Button>
                     </div>
                 </div>

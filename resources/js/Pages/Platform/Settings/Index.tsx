@@ -106,9 +106,9 @@ export default function PlatformSettings() {
 
     const saveBar = (
         <div className="mt-6 flex justify-end">
-            <Button type="submit" disabled={form.processing}>
+            <Button type="submit" loading={form.processing}>
                 <Save />
-                {form.processing ? '…' : t('حفظ التغييرات')}
+                {t('حفظ التغييرات')}
             </Button>
         </div>
     );
@@ -337,9 +337,9 @@ export default function PlatformSettings() {
                                 <Send />
                                 {t('اختبار الإرسال')}
                             </Button>
-                            <Button type="submit" disabled={form.processing}>
+                            <Button type="submit" loading={form.processing}>
                                 <Save />
-                                {form.processing ? '…' : t('حفظ التغييرات')}
+                                {t('حفظ التغييرات')}
                             </Button>
                         </div>
                     </Card>

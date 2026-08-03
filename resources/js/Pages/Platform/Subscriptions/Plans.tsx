@@ -246,8 +246,8 @@ function PlanDialog({ plan, onClose }: { plan: Plan | null; onClose: () => void 
                         <Button type="button" variant="outline" onClick={onClose}>
                             {t('إلغاء')}
                         </Button>
-                        <Button type="submit" disabled={form.processing}>
-                            {form.processing ? '…' : t(plan ? 'حفظ التغييرات' : 'إضافة الباقة')}
+                        <Button type="submit" loading={form.processing}>
+                            {t(plan ? 'حفظ التغييرات' : 'إضافة الباقة')}
                         </Button>
                     </div>
                 </form>

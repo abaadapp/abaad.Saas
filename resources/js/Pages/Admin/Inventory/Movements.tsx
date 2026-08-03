@@ -195,9 +195,9 @@ export default function Movements() {
                             <Button type="button" variant="ghost" onClick={() => setAdding(false)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={form.processing}>
+                            <Button type="submit" loading={form.processing}>
                                 <Check />
-                                {form.processing ? '…' : t('تسجيل الحركة')}
+                                {t('تسجيل الحركة')}
                             </Button>
                         </div>
                     </form>

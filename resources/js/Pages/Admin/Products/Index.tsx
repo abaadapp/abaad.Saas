@@ -280,13 +280,15 @@ export default function ProductsIndex() {
                 </span>
             </div>
 
-            <Card className="overflow-hidden">
-                {updatedAt && (
-                    <p className="mb-2 text-[12px] text-[#9ca3af]">
-                        {t('الكميات محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
-                    </p>
-                )}
+            {/* خارج البطاقة: Card بلا حشو داخلي (الحشو في CardHeader/CardContent)،
+                فالفقرة داخله تلتصق بالحد و overflow-hidden يقصّها */}
+            {updatedAt && (
+                <p className="mb-3 text-[12px] text-[#9ca3af]">
+                    {t('الكميات محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
+                </p>
+            )}
 
+            <Card className="overflow-hidden">
                 <DataTable
                     rows={products}
                     columns={columns}
@@ -421,9 +423,9 @@ export default function ProductsIndex() {
                             <Button type="button" variant="ghost" onClick={() => setImporting(false)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={upload.processing}>
+                            <Button type="submit" loading={upload.processing}>
                                 <Eye />
-                                {upload.processing ? '…' : t('معاينة الملف')}
+                                {t('معاينة الملف')}
                             </Button>
                         </div>
                     </form>

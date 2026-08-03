@@ -131,7 +131,7 @@ export default function InventoryIndex() {
             />
 
             {updatedAt && (
-                <p className="mb-2 text-[12px] text-[#9ca3af]">
+                <p className="mb-3 text-[12px] text-[#9ca3af]">
                     {t('الكميات محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
                 </p>
             )}

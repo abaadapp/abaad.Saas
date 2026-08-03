@@ -302,8 +302,8 @@ export default function CustomersIndex() {
                             <Button type="button" variant="ghost" onClick={() => setAdding(false)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={add.processing}>
-                                {add.processing ? '…' : t('حفظ العميل')}
+                            <Button type="submit" loading={add.processing}>
+                                {t('حفظ العميل')}
                             </Button>
                         </div>
                     </form>
@@ -353,9 +353,9 @@ export default function CustomersIndex() {
                             <Button type="button" variant="ghost" onClick={() => setImporting(false)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={upload.processing}>
+                            <Button type="submit" loading={upload.processing}>
                                 <Eye />
-                                {upload.processing ? '…' : t('معاينة الملف')}
+                                {t('معاينة الملف')}
                             </Button>
                         </div>
                     </form>

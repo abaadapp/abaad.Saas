@@ -148,8 +148,8 @@ export default function Login() {
                             </a>
                         </div>
 
-                        <Button type="submit" size="lg" className="w-full" disabled={form.processing}>
-                            {form.processing ? t('جارٍ الدخول…') : t('تسجيل الدخول')}
+                        <Button type="submit" size="lg" className="w-full" loading={form.processing}>
+                            {t('تسجيل الدخول')}
                         </Button>
                     </form>
 

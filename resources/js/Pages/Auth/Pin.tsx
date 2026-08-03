@@ -69,7 +69,12 @@ export default function Pin() {
         return () => clearTimeout(id);
     }, [errors.pin]);
 
-    const key = 'flex h-16 items-center justify-center rounded-[14px] bg-[#f7f7f5] text-2xl font-bold text-[#111] transition-all hover:bg-[#efefec] active:scale-95';
+    /* الضغط يُعبَّر عنه بلون أغمق لا بـ active:scale — التصغير يُزيح المفتاح
+       تحت الإصبع فيبدو النقر كأنه أخطأ هدفه، ويكسر ثبات أبعاد لوحة المفاتيح. */
+    const key =
+        'flex h-16 items-center justify-center rounded-[14px] bg-[#f7f7f5] text-2xl font-bold text-[#111] ' +
+        'transition-colors hover:bg-[#efefec] active:bg-[#e4e4e0] focus-visible:outline-none ' +
+        'focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
 
     return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-[#f7f8f9] px-4 py-10">

@@ -425,9 +425,9 @@ export default function FinanceStatement() {
                         </div>
 
                         <div className="flex justify-end">
-                            <Button type="submit" disabled={accountForm.processing}>
+                            <Button type="submit" loading={accountForm.processing}>
                                 <Save />
-                                {accountForm.processing ? '…' : t('حفظ البيانات')}
+                                {t('حفظ البيانات')}
                             </Button>
                         </div>
                     </form>

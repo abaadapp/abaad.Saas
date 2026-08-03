@@ -60,11 +60,36 @@
         direction: rtl;
     }
 
+    /*
+     * scrollbar-gutter يحجز مكان الشريط دائمًا، فلا تنزلق الصفحة أفقيًا حين
+     * ينتقل المستخدم من صفحة طويلة (فيها شريط) إلى قصيرة (بلا شريط).
+     */
+    html {
+        scrollbar-gutter: stable;
+    }
+
     body {
         font-family: var(--font-sans);
         background-color: #f4f5f7;
         color: #1f2937;
         -webkit-font-smoothing: antialiased;
+        /* لا تمرير أفقي غير مقصود مهما فاض عنصر داخلي */
+        overflow-x: hidden;
+    }
+
+    /*
+     * حلقة تركيز موحّدة لكل عنصر تفاعلي لا يعرّف حلقته بنفسه — outline تُرسم
+     * خارج الصندوق فلا تُزيح شيئًا، بخلاف border الذي يغيّر الأبعاد.
+     *
+     * مكوّن Button يضبط focus-visible:outline-none وحلقته الخاصة، وطبقة
+     * utilities تسبق base فتفوز عليها — فلا ازدواج.
+     */
+    button:focus-visible,
+    a:focus-visible,
+    [role='button']:focus-visible,
+    [tabindex]:focus-visible {
+        outline: 2px solid var(--ring, rgba(17, 17, 17, 0.35));
+        outline-offset: 2px;
     }
 
     ::-webkit-scrollbar {

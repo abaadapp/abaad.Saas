@@ -262,9 +262,9 @@ export default function ProductForm({ categories, product, description, currency
                 </Card>
 
                 <Card className="space-y-3 p-6">
-                    <Button type="submit" className="w-full" disabled={form.processing}>
+                    <Button type="submit" className="w-full" loading={form.processing}>
                         <Check />
-                        {form.processing ? '…' : editing ? t('حفظ التغييرات') : t('حفظ المنتج')}
+                        {editing ? t('حفظ التغييرات') : t('حفظ المنتج')}
                     </Button>
                     <Button variant="outline" className="w-full" asChild>
                         <SmartLink routeName="admin.products.index" href={route('admin.products.index')}>

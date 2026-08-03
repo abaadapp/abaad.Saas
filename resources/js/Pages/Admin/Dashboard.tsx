@@ -1,6 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import {
-    ArrowLeft, BarChart3, ClipboardList, ExternalLink, Globe, PackagePlus, Store, Users,
+    ArrowLeft, ExternalLink, Globe, Store,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -58,14 +58,6 @@ interface Employee {
  * فورًا («عميل متعثّر» مثلًا)، فتزاحم الأرقام التي جاء التاجر ليقرأها.
  * المصدر Demo::smartAlertsFor باقٍ لأمر البريد المجدول abaad:smart-alerts.
  */
-const QUICK = [
-    { label: 'منتج جديد', icon: PackagePlus, routeName: 'admin.products.create' },
-    { label: 'فتح نقطة البيع', icon: Store, routeName: 'pos.index' },
-    { label: 'أمر شراء', icon: ClipboardList, routeName: 'admin.purchases.create' },
-    { label: 'العملاء', icon: Users, routeName: 'admin.customers.index' },
-    { label: 'التقارير', icon: BarChart3, routeName: 'admin.reports.index' },
-] as const;
-
 interface DashboardProps {
     stats: Stat[];
     salesSeries: { labels: string[]; data: number[] };
@@ -125,21 +117,6 @@ export default function Dashboard() {
                     </>
                 }
             />
-
-            {/* مداخل سريعة لأكثر ما يُفتح يوميًا — كانت في لوحة النسخة القديمة */}
-            <div className="mb-5 flex flex-wrap gap-2.5">
-                {QUICK.map(({ label, icon: Icon, routeName }) => (
-                    <SmartLink
-                        key={label}
-                        routeName={routeName}
-                        href={route(routeName)}
-                        className="flex h-11 items-center gap-2.5 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-white px-4 text-sm font-medium text-[#111] transition-colors hover:bg-[#fafafa]"
-                    >
-                        <Icon className="size-[18px] text-[#6b7280]" />
-                        {t(label)}
-                    </SmartLink>
-                ))}
-            </div>
 
             <StatGrid stats={liveStats} storageKey="admin" />
             {updatedAt && (

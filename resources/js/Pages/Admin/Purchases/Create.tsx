@@ -235,9 +235,9 @@ export default function PurchaseCreate() {
                                 {money(total, currency)}
                             </span>
                         </div>
-                        <Button type="submit" className="mt-5 w-full" disabled={form.processing}>
+                        <Button type="submit" className="mt-5 w-full" loading={form.processing}>
                             <Check />
-                            {form.processing ? '…' : t('إنشاء أمر الشراء')}
+                            {t('إنشاء أمر الشراء')}
                         </Button>
                         <Button variant="outline" className="mt-3 w-full" asChild>
                             <SmartLink routeName="admin.purchases.index" href={route('admin.purchases.index')}>

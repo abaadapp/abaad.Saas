@@ -200,8 +200,8 @@ export default function SuppliersIndex() {
                             <Button type="button" variant="ghost" onClick={close}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={form.processing}>
-                                {form.processing ? '…' : t(editing ? 'حفظ' : 'إضافة')}
+                            <Button type="submit" loading={form.processing}>
+                                {t(editing ? 'حفظ' : 'إضافة')}
                             </Button>
                         </div>
                     </form>

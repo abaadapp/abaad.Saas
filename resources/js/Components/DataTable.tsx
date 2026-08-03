@@ -332,7 +332,7 @@ export default function DataTable<T>({
                                     : setPage((p) => Math.max(0, p - 1))
                             }
                             disabled={server ? server.pagination.current_page <= 1 : page === 0}
-                            className="rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-3 py-1.5 text-[13px] transition-colors hover:bg-[#fafafa] disabled:opacity-40"
+                            className="inline-flex h-8 items-center rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-3 text-[13px] transition-colors hover:bg-[#fafafa] disabled:pointer-events-none disabled:opacity-50"
                         >
                             {t('السابق')}
                         </button>
@@ -347,7 +347,7 @@ export default function DataTable<T>({
                                     ? server.pagination.current_page >= server.pagination.last_page
                                     : page >= pageCount - 1
                             }
-                            className="rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-3 py-1.5 text-[13px] transition-colors hover:bg-[#fafafa] disabled:opacity-40"
+                            className="inline-flex h-8 items-center rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-3 text-[13px] transition-colors hover:bg-[#fafafa] disabled:pointer-events-none disabled:opacity-50"
                         >
                             {t('التالي')}
                         </button>

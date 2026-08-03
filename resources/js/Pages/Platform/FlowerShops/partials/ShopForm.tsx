@@ -207,9 +207,9 @@ export default function ShopForm({ options, initial, logoUrl, action, method, su
                         {t('إلغاء')}
                     </SmartLink>
                 </Button>
-                <Button type="submit" disabled={form.processing}>
+                <Button type="submit" loading={form.processing}>
                     <Check />
-                    {form.processing ? '…' : t(submitLabel)}
+                    {t(submitLabel)}
                 </Button>
             </div>
         </form>

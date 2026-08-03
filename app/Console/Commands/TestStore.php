@@ -52,11 +52,11 @@ class TestStore extends Command
      * العلامة التي يُعرَف بها المتجر — بريد المالك لا الاسم: الاسم نصّ معروض
      * قابل للتغيير من اللوحة، فلو تغيّر لم يعد --drop يجد ما يحذفه.
      */
-    private const OWNER_EMAIL = 'test@abaad.app';
+    private const OWNER_EMAIL = 'Demo@abaadapp.om';
 
     private const CASHIER_EMAIL = 'test-cashier@abaad.app';
 
-    private const PASSWORD = 'test1234';
+    private const PASSWORD = 'abaad@12345';
 
     private const PIN = '4321';
 

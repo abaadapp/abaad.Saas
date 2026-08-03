@@ -381,9 +381,9 @@ export default function ExpensesIndex() {
                             <Button type="button" variant="ghost" onClick={() => setAddingExpense(false)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={expense.processing}>
+                            <Button type="submit" loading={expense.processing}>
                                 <Check />
-                                {expense.processing ? '…' : t('حفظ المصروف')}
+                                {t('حفظ المصروف')}
                             </Button>
                         </div>
                     </form>
@@ -416,9 +416,9 @@ export default function ExpensesIndex() {
                             <Button type="button" variant="ghost" onClick={() => setAddingType(false)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={typeForm.processing}>
+                            <Button type="submit" loading={typeForm.processing}>
                                 <Check />
-                                {typeForm.processing ? '…' : t('حفظ')}
+                                {t('حفظ')}
                             </Button>
                         </div>
                     </form>

@@ -327,9 +327,9 @@ export default function EmployeesIndex() {
                             <Button type="button" variant="ghost" onClick={closeTitle}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={titleForm.processing}>
+                            <Button type="submit" loading={titleForm.processing}>
                                 <Briefcase />
-                                {titleForm.processing ? '…' : t(editingTitle ? 'حفظ التغييرات' : 'إضافة')}
+                                {t(editingTitle ? 'حفظ التغييرات' : 'إضافة')}
                             </Button>
                         </div>
                     </form>

@@ -199,7 +199,7 @@ export default function PosIndex() {
                     {/* عمر الأرقام المعروضة: «المتوفر» يُستطلَع كل 20 ثانية، ورقمٌ
                         لا يُعرف عمرُه يُقرأ على أنه لحظيّ */}
                     {stockAt && (
-                        <p className="mb-2 shrink-0 text-[11px] text-gray-400">
+                        <p className="mb-3 shrink-0 text-[12px] text-[#9ca3af]">
                             {t('الكميات محدّثة حتى')} <span dir="ltr">{stockAt}</span>
                         </p>
                     )}
@@ -264,7 +264,7 @@ export default function PosIndex() {
                                         onClick={() =>
                                             cart.add({ key: `p${p.id}`, id: p.id, name: p.label, price: p.price, image: p.image, stock: p.qty })
                                         }
-                                        className="group select-none overflow-hidden rounded-2xl border border-gray-100 bg-white text-start shadow-sm transition-all hover:border-gray-300 hover:shadow-md"
+                                        className="group select-none overflow-hidden rounded-2xl border border-gray-100 bg-white text-start shadow-sm transition-[border-color,box-shadow] hover:border-gray-300 hover:shadow-md"
                                     >
                                         <div className="relative aspect-square overflow-hidden bg-gray-50">
                                             {p.image ? (

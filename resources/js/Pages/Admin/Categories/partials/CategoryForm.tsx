@@ -127,9 +127,9 @@ export default function CategoryForm({
             </Card>
 
             <div className="mt-5 flex items-center gap-3">
-                <Button type="submit" disabled={form.processing}>
+                <Button type="submit" loading={form.processing}>
                     <Check />
-                    {form.processing ? '…' : t('حفظ القسم')}
+                    {t('حفظ القسم')}
                 </Button>
                 <Button variant="outline" asChild>
                     <SmartLink routeName="admin.categories.index" href={route('admin.categories.index')}>

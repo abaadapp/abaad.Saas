@@ -256,9 +256,9 @@ export default function EmployeeForm({ branches, jobTitles, employee, defaultBra
             </Section>
 
             <div className="flex items-center gap-3">
-                <Button type="submit" disabled={form.processing}>
+                <Button type="submit" loading={form.processing}>
                     <Check />
-                    {form.processing ? '…' : editing ? t('حفظ التغييرات') : t('حفظ الموظف')}
+                    {editing ? t('حفظ التغييرات') : t('حفظ الموظف')}
                 </Button>
                 <Button variant="outline" asChild>
                     <SmartLink routeName="admin.employees.index" href={route('admin.employees.index')}>

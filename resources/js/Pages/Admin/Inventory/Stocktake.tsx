@@ -142,9 +142,9 @@ export default function Stocktake() {
                 </Card>
 
                 <div className="mt-5 flex items-center gap-3">
-                    <Button type="submit" disabled={form.processing}>
+                    <Button type="submit" loading={form.processing}>
                         <CheckCheck />
-                        {form.processing ? '…' : t('تطبيق الجرد والتسوية')}
+                        {t('تطبيق الجرد والتسوية')}
                     </Button>
                     <Button variant="outline" asChild>
                         <SmartLink routeName="admin.inventory.index" href={route('admin.inventory.index')}>

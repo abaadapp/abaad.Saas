@@ -124,9 +124,9 @@ export default function BranchesIndex() {
                                     placeholder={t('المدينة - الحي')}
                                 />
                             </Field>
-                            <Button type="submit" disabled={form.processing}>
+                            <Button type="submit" loading={form.processing}>
                                 <Check />
-                                {form.processing ? '…' : t('حفظ الفرع')}
+                                {t('حفظ الفرع')}
                             </Button>
                         </form>
                     </Card>

@@ -231,8 +231,8 @@ function AddUserDialog({
                         <Button type="button" variant="outline" onClick={onClose}>
                             {t('إلغاء')}
                         </Button>
-                        <Button type="submit" disabled={form.processing}>
-                            {form.processing ? '…' : t('إضافة')}
+                        <Button type="submit" loading={form.processing}>
+                            {t('إضافة')}
                         </Button>
                     </div>
                 </form>

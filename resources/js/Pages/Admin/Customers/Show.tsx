@@ -169,8 +169,8 @@ export default function CustomerShow() {
                                 onChange={(e) => notes.setData('notes', e.target.value)}
                                 placeholder={t('ملاحظات داخلية عن العميل…')}
                             />
-                            <Button type="submit" size="sm" className="mt-3" disabled={notes.processing}>
-                                <Save />{notes.processing ? '…' : t('حفظ الملاحظة')}
+                            <Button type="submit" size="sm" className="mt-3" loading={notes.processing}>
+                                <Save />{t('حفظ الملاحظة')}
                             </Button>
                         </form>
                     </Card>
@@ -336,8 +336,8 @@ export default function CustomerShow() {
                             <Button type="button" variant="outline" onClick={() => setEditing(false)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={address.processing}>
-                                <Save />{address.processing ? '…' : t('حفظ')}
+                            <Button type="submit" loading={address.processing}>
+                                <Save />{t('حفظ')}
                             </Button>
                         </div>
                     </form>

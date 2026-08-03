@@ -314,8 +314,8 @@ export default function FinanceIndex() {
                             <Button type="button" variant="ghost" onClick={close}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={form.processing}>
-                                {form.processing ? '…' : t('حفظ المعاملة')}
+                            <Button type="submit" loading={form.processing}>
+                                {t('حفظ المعاملة')}
                             </Button>
                         </div>
                     </form>

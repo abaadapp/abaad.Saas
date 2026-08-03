@@ -228,8 +228,8 @@ export default function Marketing() {
                             <Button type="button" variant="outline" onClick={() => setAdding(false)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={form.processing}>
-                                {form.processing ? '…' : t('إنشاء')}
+                            <Button type="submit" loading={form.processing}>
+                                {t('إنشاء')}
                             </Button>
                         </div>
                     </form>

@@ -227,9 +227,9 @@ export default function AddonsIndex() {
                             <Button type="button" variant="outline" onClick={close}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={form.processing}>
+                            <Button type="submit" loading={form.processing}>
                                 <Check />
-                                {form.processing ? '…' : t('حفظ')}
+                                {t('حفظ')}
                             </Button>
                         </div>
                     </form>

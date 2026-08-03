@@ -25,12 +25,27 @@ interface Props {
 export default function SectionTabs({ tabs, current, className }: Props) {
     const t = useTranslate();
 
+    /*
+     * تبويب نشط واحد لا أكثر.
+     *
+     * المطابقة بالعائلة وحدها كانت تُضيء أربعة تبويبات معًا: عائلة
+     * admin.inventory.overview و.index و.stocktake و.movements واحدة هي
+     * admin.inventory، فكل صفحة مخزون تُطابقها جميعًا.
+     *
+     * فالمطابقة الحرفية تُقدَّم أولًا، ولا يُلجأ إلى العائلة إلا حين لا يطابق
+     * أيُّ تبويب حرفيًا (صفحات فرعية مثل admin.products.create) — ويؤخذ عندها
+     * أطولُ مسارٍ مطابق فيبقى الاختيار محدَّدًا لا عشوائيًا.
+     */
+    const activeRoute =
+        tabs.find((tb) => tb.routeName === current)?.routeName ??
+        tabs
+            .filter((tb) => current.startsWith(tb.routeName.replace(/\.[^.]+$/, '') + '.'))
+            .sort((a, b) => b.routeName.length - a.routeName.length)[0]?.routeName;
+
     return (
         <div className={cn('mb-6 flex items-center gap-1 overflow-x-auto border-b border-[var(--ui-border,#e8e8e8)]', className)}>
             {tabs.map((tab) => {
-                // "admin.products.index" ينشط أيضًا على "admin.products.create"
-                const family = tab.routeName.replace(/\.[^.]+$/, '');
-                const active = current === tab.routeName || current.startsWith(family + '.');
+                const active = tab.routeName === activeRoute;
 
                 return (
                     <SmartLink
@@ -60,11 +75,16 @@ export const PRODUCT_TABS: SectionTab[] = [
 ];
 
 /** تبويبات قسم المخزون */
+/*
+ * ستة مداخل لا أكثر. «إعادة الطلب» لم تعد تبويبًا: هي تنبيه في النظرة العامة
+ * يقود إلى المنتجات مفلترة على «منخفض» — مدخل واحد للقائمة نفسها بدل مدخلين
+ * يعرضان الشيء ذاته بترتيب مختلف.
+ */
 export const INVENTORY_TABS: SectionTab[] = [
-    { label: 'المخزون', routeName: 'admin.inventory.index' },
-    { label: 'إعادة الطلب', routeName: 'admin.inventory.reorder' },
-    { label: 'الجرد الفعلي', routeName: 'admin.inventory.stocktake' },
-    { label: 'المورّدون', routeName: 'admin.suppliers.index' },
+    { label: 'نظرة عامة', routeName: 'admin.inventory.overview' },
+    { label: 'المنتجات والكميات', routeName: 'admin.inventory.index' },
     { label: 'أوامر الشراء', routeName: 'admin.purchases.index' },
+    { label: 'الجرد', routeName: 'admin.inventory.stocktake' },
+    { label: 'المورّدون', routeName: 'admin.suppliers.index' },
     { label: 'حركات المخزون', routeName: 'admin.inventory.movements' },
 ];

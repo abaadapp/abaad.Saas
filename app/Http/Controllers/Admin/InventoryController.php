@@ -12,6 +12,65 @@ class InventoryController extends Controller
 {
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
+    /**
+     * نظرة عامة على المخزون — أرقام وتنبيهات وآخر الحركات في شاشة واحدة.
+     *
+     * كل رقم هنا محسوب من الجداول القائمة (products وpurchase_orders
+     * وinventory_movements) بلا عمود جديد ولا جدول جديد. ما لا تسنده البنية
+     * الحالية — المحجوز وقيد التوريد وجلسات الجرد والتحويلات — غائب عمدًا
+     * بدل عرض صفر مضلّل يقرأه التاجر على أنه واقع.
+     */
+    public function overview()
+    {
+        $bid = $this->bid();
+        $products = Product::where('business_id', $bid)->get();
+
+        $out = $products->filter(fn ($p) => (int) $p->quantity <= 0);
+        $low = $products->filter(
+            fn ($p) => (int) $p->quantity > 0 && (int) $p->quantity < (int) $p->alert_qty,
+        );
+
+        // «المفتوح» = كل ما لم يُستلم ولم يُلغَ
+        $openOrders = \App\Models\PurchaseOrder::where('business_id', $bid)
+            ->whereNotIn('status', ['مستلم', 'ملغي'])
+            ->count();
+
+        return \Inertia\Inertia::render('Admin/Inventory/Overview', [
+            'stats' => [
+                'value' => round($products->sum(fn ($p) => (float) $p->cost * (int) $p->quantity), 3),
+                'inStock' => $products->filter(fn ($p) => (int) $p->quantity > 0)->count(),
+                'low' => $low->count(),
+                'out' => $out->count(),
+                'openOrders' => $openOrders,
+            ],
+            // كل تنبيه يحمل وجهته وفلترها، فالضغط عليه يصل إلى الصفّ المقصود
+            'alerts' => array_values(array_filter([
+                $out->isNotEmpty() ? [
+                    'key' => 'out',
+                    'label' => 'منتجات نفد مخزونها',
+                    'count' => $out->count(),
+                    'tone' => 'danger',
+                    'href' => route('admin.inventory.index', ['stock' => 'نفد المخزون']),
+                ] : null,
+                $low->isNotEmpty() ? [
+                    'key' => 'low',
+                    'label' => 'منتجات تحت الحد الأدنى',
+                    'count' => $low->count(),
+                    'tone' => 'warning',
+                    'href' => route('admin.inventory.index', ['stock' => 'منخفض']),
+                ] : null,
+                $openOrders > 0 ? [
+                    'key' => 'orders',
+                    'label' => 'أوامر شراء مفتوحة لم تُستلم',
+                    'count' => $openOrders,
+                    'tone' => 'info',
+                    'href' => route('admin.purchases.index'),
+                ] : null,
+            ])),
+            'recent' => array_slice(Demo::movements(), 0, 8),
+        ]);
+    }
+
     /** الأصناف التي تحتاج إعادة طلب (الكمية ≤ حد التنبيه) */
     public function reorder()
     {

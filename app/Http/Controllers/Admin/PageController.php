@@ -261,10 +261,15 @@ class PageController extends Controller
 
     public function inventoryIndex(): Response
     {
+        // الحالات المسموحة فقط — أي قيمة أخرى في الرابط تُهمَل بدل أن تُمرَّر
+        $stock = request('stock');
+        $allowed = ['متوفر', 'منخفض', 'نفد المخزون'];
+
         return Inertia::render('Admin/Inventory/Index', [
             'inventory' => Demo::inventory(),
             'branches' => Demo::branches(),
             'currentBranchId' => Demo::currentBranchId(),
+            'stockFilter' => in_array($stock, $allowed, true) ? $stock : null,
         ]);
     }
 

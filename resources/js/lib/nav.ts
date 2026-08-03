@@ -57,7 +57,7 @@ export const NAV: NavGroup[] = [
     {
         heading: 'الإدارة',
         items: [
-            { label: 'المخزون', icon: Boxes, route: 'admin.inventory.index', section: 'inventory' },
+            { label: 'المخزون', icon: Boxes, route: 'admin.inventory.overview', section: 'inventory' },
             { label: 'المالية', icon: Wallet, route: 'admin.finance.index', section: 'finance' },
             { label: 'المصروفات', icon: ArrowDownCircle, route: 'admin.expenses.index', section: 'expenses' },
             { label: 'التقارير', icon: BarChart3, route: 'admin.reports.index', section: 'reports' },

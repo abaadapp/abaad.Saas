@@ -207,6 +207,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
     Route::get('/employees/{id}', [\App\Http\Controllers\Admin\PageController::class, 'employeesShow'])->name('employees.show');
 
     // المخزون
+    // نظرة عامة على المخزون — لا تسبق inventory.index في المطابقة لأن مسارها أخصّ
+    Route::get('/inventory/overview', [InventoryController::class, 'overview'])->name('inventory.overview');
     Route::get('/inventory', [\App\Http\Controllers\Admin\PageController::class, 'inventoryIndex'])->name('inventory.index');
     Route::get('/inventory/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'inventoryXlsx'])->name('inventory.xlsx');
     Route::get('/inventory/export-pdf', [\App\Http\Controllers\PdfController::class, 'inventoryReport'])->name('inventory.exportPdf');

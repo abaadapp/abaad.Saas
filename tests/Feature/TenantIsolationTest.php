@@ -76,7 +76,9 @@ class TenantIsolationTest extends TestCase
 
         $this->actingAs($this->me)->delete(route($route, $id));
 
-        $this->assertDatabaseHas($table, ['id' => $id], 'sqlite');
+        // بلا اسم اتصال: تثبيت 'sqlite' هنا كان يجعل الاختبار يستعلم محرّكًا
+        // غير الذي يعمل عليه، فينهار على PostgreSQL ولا يفحص شيئًا.
+        $this->assertDatabaseHas($table, ['id' => $id]);
     }
 
     /* ------------------------ التعديل عبر المتاجر ------------------------ */

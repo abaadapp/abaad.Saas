@@ -21,6 +21,17 @@ use Illuminate\Support\Facades\Route;
 | عبر App\Support\Demo (حسب المستأجر). أفعال الحفظ/التعديل/الحذف عبر Controllers.
 */
 
+/*
+ * كل {id} في هذا الملف مفتاحٌ أساسيٌّ صحيح. بلا هذا القيد يصل نصٌّ مثل
+ * "HOLD-JAR-1" إلى findOrFail، فيبتلعه SQLite صامتًا (يحوّله إلى 0 فيرجع 404)
+ * بينما PostgreSQL يرمي 22P02 فيصير 500 — أي أن عنوانًا معطوبًا واحدًا يُظهر
+ * صفحة خطأ للتاجر في الإنتاج بدل «غير موجود». القيد يجعل السلوك واحدًا على
+ * المحرّكين: المسار لا يُطابَق أصلًا، فيرجع 404 كما ينبغي.
+ * ونتيجةً جانبية: /products/export ونظائرها لم تعد تُبتلع كمعرّفات.
+ */
+Route::pattern('id', '[0-9]+');
+Route::pattern('addressId', '[0-9]+');
+
 /* ----------------------------- المصادقة ----------------------------- */
 Route::get('/', [LoginController::class, 'showLogin'])->name('login');
 Route::get('/login', [LoginController::class, 'showLogin'])->name('login.form');
@@ -167,8 +178,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
     // تصدير قائمة الطلبات (قبل /orders/{id} حتى لا يبتلعها نمط المعرّف)
     Route::get('/orders/export-xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'ordersXlsx'])->name('orders.xlsx');
     Route::get('/orders/export-pdf', [\App\Http\Controllers\PdfController::class, 'ordersReport'])->name('orders.exportPdf');
-    Route::get('/orders/{id}', [\App\Http\Controllers\Admin\PageController::class, 'ordersShow'])->name('orders.show');
-    Route::get('/orders/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('orders.pdf');
+    Route::get('/orders/{number}', [\App\Http\Controllers\Admin\PageController::class, 'ordersShow'])->name('orders.show');
+    Route::get('/orders/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('orders.pdf');
 
     // العملات وأسعار الصرف
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
@@ -246,7 +257,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
     Route::get('/vat/pdf', [\App\Http\Controllers\PdfController::class, 'vatReport'])->name('vat.pdf');
     Route::get('/vat/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'vatXlsx'])->name('vat.xlsx');
     Route::get('/vat/csv', [\App\Http\Controllers\ExportController::class, 'vat'])->name('vat.csv');
-    Route::get('/orders/{id}/tax-invoice', [\App\Http\Controllers\PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
+    Route::get('/orders/{number}/tax-invoice', [\App\Http\Controllers\PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
 
     // المالية والمصروفات والتقارير والإعدادات
     Route::get('/finance', [\App\Http\Controllers\Admin\PageController::class, 'financeIndex'])->name('finance.index');
@@ -318,7 +329,7 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'business'])->group(func
     Route::get('/orders', [\App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
-    Route::get('/orders/{id}', [\App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
+    Route::get('/orders/{number}', [\App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
     // «ability» وحدها هنا: تُسقط المدفوعات على صلاحية finance فيراها صاحب
     // النشاط والمدير والمحاسب، ويُمنع منها الكاشير. إخفاء الرابط من الشريط
     // لا يكفي — بدون هذا الحارس يفتحها الكاشير بكتابة العنوان.
@@ -326,7 +337,7 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'business'])->group(func
         ->middleware('ability')->name('payments');
     Route::get('/receipts', [\App\Http\Controllers\Pos\PageController::class, 'receipts'])->name('receipts');
     Route::get('/receipts/search', [PosController::class, 'searchReceipts'])->name('receipts.search');
-    Route::get('/receipt/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');
+    Route::get('/receipt/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');
     Route::get('/customers', [\App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
     Route::get('/settings', [\App\Http\Controllers\Pos\PageController::class, 'settings'])->name('settings');

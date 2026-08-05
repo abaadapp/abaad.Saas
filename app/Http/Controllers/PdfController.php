@@ -11,10 +11,10 @@ use Mpdf\Mpdf;
 class PdfController extends Controller
 {
     /** فاتورة طلب (نقطة البيع / لوحة النشاط) */
-    public function orderReceipt($id)
+    public function orderReceipt($number)
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
-        $order = Order::where('business_id', $bid)->where('number', $id)->with('items')->firstOrFail();
+        $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
         $tpl = \App\Support\ReceiptTemplate::forBusiness($bid);
 
@@ -261,10 +261,10 @@ class PdfController extends Controller
         return $this->pdf($html, 'vat-' . $period . '-' . now()->format('Y-m-d'));
     }
 
-    public function taxInvoice($id)
+    public function taxInvoice($number)
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
-        $order = Order::where('business_id', $bid)->where('number', $id)->with('items')->firstOrFail();
+        $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
         $vat = Demo::vatSettings();
         $business = Demo::business($bid);

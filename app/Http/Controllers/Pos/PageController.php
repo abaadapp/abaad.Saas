@@ -47,9 +47,9 @@ class PageController extends Controller
         ]);
     }
 
-    public function orderDetails(string $id): Response
+    public function orderDetails(string $number): Response
     {
-        $order = Demo::orderDetails($id);
+        $order = Demo::orderDetails($number);
         abort_if(empty($order), 404);
 
         return Inertia::render('Pos/OrderDetails', [

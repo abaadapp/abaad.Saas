@@ -155,9 +155,9 @@ class PageController extends Controller
 
     /* ------------------------------ الطلبات ------------------------------ */
 
-    public function ordersShow(string $id): Response
+    public function ordersShow(string $number): Response
     {
-        $order = Demo::orderDetails($id);
+        $order = Demo::orderDetails($number);
         abort_if(empty($order), 404);
 
         return Inertia::render('Admin/Orders/Show', [

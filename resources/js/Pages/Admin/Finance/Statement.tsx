@@ -3,6 +3,8 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import { ArrowRight, Landmark, RefreshCw, Save, Trash2, Upload, UploadCloud } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
+import Tabs from '@/Components/Tabs';
 import SmartLink from '@/Components/SmartLink';
 import StatCard from '@/Components/StatCard';
 import Field from '@/Components/Field';
@@ -119,23 +121,20 @@ export default function FinanceStatement() {
                 }
             />
 
-            <div className="mb-6 flex items-center gap-1 overflow-x-auto border-b border-[var(--ui-border,#e8e8e8)]">
-                {TABS.map((x) => (
-                    <button
-                        key={x.key}
-                        type="button"
-                        onClick={() => setTab(x.key)}
-                        className={cn(
-                            '-mb-px whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                            tab === x.key
-                                ? 'border-[#111] text-[#111]'
-                                : 'border-transparent text-[#6b7280] hover:text-[#374151]',
-                        )}
-                    >
-                        {t(x.label)}
-                    </button>
-                ))}
-            </div>
+            <SectionTabs
+                tabs={FINANCE_TABS}
+                current="admin.finance.statement"
+                variant="segmented"
+            />
+
+            {/* تبويبات داخل الصفحة — بالخطّ السفلي لا المقسَّم، فيبقى مستوياها
+                متمايزين: المقسَّم ينقل بين صفحات القسم وهذا يبدّل جزءًا منها */}
+            <Tabs
+                tabs={TABS.map((x) => ({ key: x.key, label: x.label }))}
+                current={tab}
+                onChange={(k) => setTab(k as TabKey)}
+                className="px-0"
+            />
 
             {/* ===== كشف الحساب المحسوب ===== */}
             {tab === 'statement' && (

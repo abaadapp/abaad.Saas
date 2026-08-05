@@ -3,6 +3,8 @@ import { useForm, usePage } from '@inertiajs/react';
 import { Check, FolderOpen, Paperclip, Plus, Tags } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
+import Tabs from '@/Components/Tabs';
 import ExportMenu from '@/Components/ExportMenu';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
@@ -14,7 +16,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface ExpenseRow {
@@ -204,26 +205,18 @@ export default function ExpensesIndex() {
                 }
             />
 
-            <div className="mb-6 flex items-center gap-1 border-b border-[var(--ui-border,#e8e8e8)]">
-                {([
+            <SectionTabs tabs={FINANCE_TABS} current="admin.expenses.index" variant="segmented" />
+
+            {/* تبويبات داخل الصفحة — بالخطّ السفلي فيتمايز مستواها عن شريط القسم */}
+            <Tabs
+                tabs={[
                     { key: 'expenses', label: 'المصروفات' },
                     { key: 'types', label: 'أنواع المصروفات' },
-                ] as const).map(({ key, label }) => (
-                    <button
-                        key={key}
-                        type="button"
-                        onClick={() => setTab(key)}
-                        className={cn(
-                            '-mb-px border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                            tab === key
-                                ? 'border-[#111] text-[#111]'
-                                : 'border-transparent text-[#6b7280] hover:text-[#374151]',
-                        )}
-                    >
-                        {t(label)}
-                    </button>
-                ))}
-            </div>
+                ]}
+                current={tab}
+                onChange={(k) => setTab(k as 'expenses' | 'types')}
+                className="px-0"
+            />
 
             {tab === 'expenses' ? (
                 expenses.length === 0 && !filters.q && !filters.type && !filters.status ? (

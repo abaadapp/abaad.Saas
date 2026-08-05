@@ -41,6 +41,20 @@ jobs:
           cp .env.example .env
           php artisan key:generate
 
+      # اختباراتٌ تفتح صفحات Inertia تُصيّر app.blade.php، و@vite يرمي
+      # ViteManifestNotFoundException بلا public/build/manifest.json —
+      # وهو مجلّد متجاهَل في git فلا يصل الخادم أبدًا. البناء هنا شرطُ
+      # تشغيلها، لا تحسينٌ اختياري.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: بناء الواجهة (لازم لبيان Vite)
+        run: |
+          npm ci
+          npx vite build
+
       - name: الاختبارات
         run: php artisan test
 
@@ -95,8 +109,29 @@ jobs:
           cp .env.example .env
           php artisan key:generate
 
+      # phpunit.xml يثبّت DB_CONNECTION=sqlite، وقيمُ <env> فيه تسبق متغيّرات
+      # الوظيفة — فكانت هذه الوظيفة تُشغّل على SQLite وتُسمّى «PostgreSQL».
+      # تظهر خضراء يومًا فيُظنّ المحرّك مبرهَنًا وهو لم يُلمس. تُنزع القيمتان
+      # هنا فقط، ويبقى الملف كما هو للتشغيل المحلي.
+      - name: توجيه الاختبارات إلى PostgreSQL فعلًا
+        run: |
+          php -r '$f="phpunit.xml"; $s=file_get_contents($f);
+                  $s=preg_replace("/^\s*<env name=\"DB_(CONNECTION|DATABASE|URL)\".*\R/m", "", $s);
+                  file_put_contents($f, $s);'
+          grep -q 'DB_CONNECTION' phpunit.xml && { echo "لم تُنزع القيمة"; exit 1; } || true
+
       - name: الهجرات تعمل على PostgreSQL
         run: php artisan migrate --force
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: بناء الواجهة (لازم لبيان Vite)
+        run: |
+          npm ci
+          npx vite build
 
       - name: الاختبارات
         run: php artisan test

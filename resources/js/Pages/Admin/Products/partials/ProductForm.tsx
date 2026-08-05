@@ -92,7 +92,7 @@ export default function ProductForm({ categories, product, description, currency
      * الشريط العلوي قد يخرج عن الشاشة بعد التمرير داخل قسم طويل، فالقفزُ إليه
      * يُبقي التبويبات في المشهد ويُظهر أن القسم تبدّل فعلًا.
      */
-    const contentRef = useRef<HTMLDivElement>(null);
+    const contentRef = useRef<HTMLFormElement>(null);
     const pick = (key: TabKey) => {
         setTab(key);
         requestAnimationFrame(() =>

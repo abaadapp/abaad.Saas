@@ -324,7 +324,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'panel',
 });
 
 /* -------------------------------- POS ------------------------------ */
-Route::prefix('pos')->name('pos.')->middleware(['auth', 'business'])->group(function () {
+/*
+ * «ability» على المجموعة كلها.
+ *
+ * كانت على شاشة المدفوعات وحدها، لأن نقطة البيع كانت مفتوحة للجميع. وحين
+ * صارت صلاحيةً تُمنح، بقي المربّع بلا حارس: يرفع صاحب النشاط علامة «نقطة
+ * البيع» عن موظف فلا يتغيّر شيء — يكتب العنوان فتُفتح له.
+ */
+Route::prefix('pos')->name('pos.')->middleware(['auth', 'business', 'ability'])->group(function () {
     Route::get('/', [\App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
 
     // اختيار الموظف الواقف على الصندوق. ليس دخولًا ولا خروجًا — الصلاحيات
@@ -341,11 +348,10 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'business'])->group(func
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
     Route::get('/orders/{number}', [\App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
-    // «ability» وحدها هنا: تُسقط المدفوعات على صلاحية finance فيراها صاحب
-    // النشاط والمدير والمحاسب، ويُمنع منها الكاشير. إخفاء الرابط من الشريط
-    // لا يكفي — بدون هذا الحارس يفتحها الكاشير بكتابة العنوان.
-    Route::get('/payments', [\App\Http\Controllers\Pos\PageController::class, 'payments'])
-        ->middleware('ability')->name('payments');
+    // المدفوعات تسقط على صلاحية finance لا pos (انظر sectionFromRoute):
+    // شاشةٌ مالية تعرض حصيلة الصندوق، فيراها صاحب النشاط والمدير والمحاسب
+    // ويُمنع منها الكاشير — وإن كان يملك نقطة البيع.
+    Route::get('/payments', [\App\Http\Controllers\Pos\PageController::class, 'payments'])->name('payments');
     Route::get('/receipts', [\App\Http\Controllers\Pos\PageController::class, 'receipts'])->name('receipts');
     Route::get('/receipts/search', [PosController::class, 'searchReceipts'])->name('receipts.search');
     // تفصيل فاتورة واحدة — تُطلب عند النقر، فلا تُرسَل مبالغ الثلاثين دفعةً

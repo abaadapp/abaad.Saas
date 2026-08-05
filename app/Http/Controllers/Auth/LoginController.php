@@ -147,13 +147,9 @@ class LoginController extends Controller
         \App\Support\Activity::log('login', 'سجّل الدخول إلى النظام');
     }
 
-    /** الصفحة الرئيسية حسب الدور */
+    /** الصفحة الرئيسية حسب ما يملكه المستخدم فعلًا لا حسب دوره */
     private function homeFor(User $user): string
     {
-        return match (true) {
-            $user->isSuperAdmin() => route('super-admin.dashboard'),
-            $user->isAdmin() => route('admin.dashboard'),
-            default => route('pos.index'),
-        };
+        return \App\Support\Permissions::homeFor($user);
     }
 }

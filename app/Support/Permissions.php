@@ -79,6 +79,56 @@ class Permissions
             ->isNotEmpty();
     }
 
+    /** القسم → مساره. مصدرٌ واحد يقرؤه التوجيه بعد الدخول وروابط التنبيهات */
+    public const ROUTES = [
+        'dashboard' => 'admin.dashboard', 'customers' => 'admin.customers.index',
+        'products' => 'admin.products.index', 'orders' => 'admin.orders.index',
+        'marketing' => 'admin.marketing.index', 'inventory' => 'admin.inventory.index',
+        'finance' => 'admin.finance.index', 'expenses' => 'admin.expenses.index',
+        'reports' => 'admin.reports.index', 'settings' => 'admin.settings.index',
+        'categories' => 'admin.categories.index', 'suppliers' => 'admin.suppliers.index',
+        'purchases' => 'admin.purchases.index', 'profitability' => 'admin.profitability.index',
+        'vat' => 'admin.vat.index', 'employees' => 'admin.employees.index',
+        'pos' => 'pos.index', 'branch' => 'admin.branches.index',
+    ];
+
+    /**
+     * أوّل صفحة يراها المستخدم بعد الدخول.
+     *
+     * كانت تُختار بالدور وحده، فتُرسل كلّ من ليس مديرًا إلى نقطة البيع. ومنذ
+     * صارت الصلاحيات تُخصَّص، صار ذلك يعني دخولًا ناجحًا ينتهي إلى 403: موظفٌ
+     * مُنح المخزون ولم يُمنح نقطة البيع يُدفع إلى بابٍ مغلق في وجهه. فيُختار
+     * القسم من صلاحياته: لوحته إن ملكها، ثمّ نقطة البيع، ثمّ أوّل ما مُنح.
+     *
+     * وبابان يجب أن يتّفقا هنا: صلاحية القسم، ودخول اللوحة. الكاشير يملك
+     * صلاحية «لوحة التحكم» بحكم دوره ولا يدخل اللوحة — فإرساله إليها دخولٌ
+     * ينتهي إلى 403. فلا يُقترح قسمٌ من اللوحة على من لا يدخلها.
+     */
+    public static function homeFor(User $user): string
+    {
+        if ($user->isSuperAdmin()) {
+            return route('super-admin.dashboard');
+        }
+
+        $panel = self::entersPanel($user);
+
+        if ($panel && $user->allows('dashboard')) {
+            return route(self::ROUTES['dashboard']);
+        }
+
+        if ($user->allows('pos')) {
+            return route(self::ROUTES['pos']);
+        }
+
+        $first = $panel
+            ? collect(self::SECTIONS)->reject(fn ($s) => in_array($s, self::OUTSIDE_PANEL, true))
+                ->first(fn ($s) => $user->allows($s))
+            : null;
+
+        // بلا صلاحية واحدة: تُرفض الآن عند الحفظ، لكن حسابًا قديمًا قد يسبقها
+        return $first ? route(self::ROUTES[$first]) : route('login');
+    }
+
     /** أسماء الأقسام كما تُعرض للتاجر — الواجهة لا تخمّنها من المفتاح */
     public static function sectionLabels(): array
     {

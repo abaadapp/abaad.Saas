@@ -128,7 +128,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
 
     // الفروع
     Route::get('/branches', [\App\Http\Controllers\Admin\PageController::class, 'branchesIndex'])->name('branches.index');
-    Route::get('/branch/{id}/switch', [\App\Http\Controllers\Admin\BranchController::class, 'switch'])->name('branch.switch');
+    Route::get('/branch/{branch}/switch', [\App\Http\Controllers\Admin\BranchController::class, 'switch'])->name('branch.switch');
     Route::post('/branches', [\App\Http\Controllers\Admin\BranchController::class, 'store'])->name('branches.store');
     Route::delete('/branches/{id}', [\App\Http\Controllers\Admin\BranchController::class, 'destroy'])->name('branches.destroy');
 

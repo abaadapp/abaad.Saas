@@ -186,4 +186,25 @@ class TenantIsolationTest extends TestCase
         $this->assertSame($mine, session('current_branch'));
         $this->assertSame('فرعي', \App\Support\Demo::currentBranchName());
     }
+
+    /**
+     * «كل الفروع» تمرّ كقيمة نصّية 'all' لا كمعرّف. حين قُيّد {id} برقمٍ صرف
+     * صار المسار لا يُطابَق، فرمى Ziggy في المتصفّح ومنع React من التركيب:
+     * صفحةٌ بيضاء تمامًا بعد الدخول — لا شيء في الخادم يكشفها، لأن الانهيار
+     * في العميل وحده. هذا الاختبار يمسك انكسار المسار قبل أن يصل الشاشة.
+     */
+    public function test_switching_to_all_branches_is_not_broken_by_the_numeric_id_pattern(): void
+    {
+        $mine = \DB::table('branches')->insertGetId([
+            'business_id' => $this->mine->id, 'name' => 'فرعي',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->actingAs($this->me);
+        session(['current_branch' => $mine]);
+
+        $this->get(route('admin.branch.switch', 'all'))->assertRedirect();
+
+        $this->assertNull(session('current_branch'), 'لم يُمسح الفرع الحالي');
+    }
 }

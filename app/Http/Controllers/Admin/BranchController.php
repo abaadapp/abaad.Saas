@@ -12,9 +12,9 @@ class BranchController extends Controller
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     /** تبديل الفرع الحالي (يُحفظ في الجلسة) */
-    public function switch(Request $request, $id)
+    public function switch(Request $request, $branch)
     {
-        if ($id === 'all') {
+        if ($branch === 'all') {
             $request->session()->forget('current_branch');
 
             return back();
@@ -23,13 +23,13 @@ class BranchController extends Controller
         // المعرّف يصل من شريط العنوان، وكان يُخزَّن كما هو. فرعُ متجرٍ آخر
         // كان يمرّ: الاستعلامات تُرجع فراغًا (لأنها مقيّدة بـbusiness_id)
         // لكن اسم الفرع يُعرض في الترويسة — تسريب اسم من متجر الجار.
-        $belongs = Branch::where('id', (int) $id)
+        $belongs = Branch::where('id', (int) $branch)
             ->where('business_id', $this->bid())
             ->exists();
 
         abort_unless($belongs, 404);
 
-        $request->session()->put('current_branch', (int) $id);
+        $request->session()->put('current_branch', (int) $branch);
 
         return back();
     }

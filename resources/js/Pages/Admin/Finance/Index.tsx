@@ -3,6 +3,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { Banknote, CreditCard, Landmark, Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
 import ExportMenu from '@/Components/ExportMenu';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import SmartLink from '@/Components/SmartLink';
@@ -152,6 +153,8 @@ export default function FinanceIndex() {
                     </>
                 }
             />
+
+            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.index" variant="segmented" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {financeStats.map((s, i) => (

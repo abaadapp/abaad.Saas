@@ -136,8 +136,11 @@ export default function ProductForm({ categories, product, description, currency
         if (file) setPreview(URL.createObjectURL(file));
     };
 
+    /* سقفٌ للعرض مع توسيط: سطرٌ يمتدّ عبر الشاشة كاملةً يصعب تتبّعه، وحقلان
+       متباعدان بفراغٍ عريض يبدوان غير مرتبطين. نفس حدّ صفحة الإعدادات
+       (max-w-4xl) فيتّسق النموذجان. */
     return (
-        <form onSubmit={submit} ref={contentRef} className="min-w-0 scroll-mt-4">
+        <form onSubmit={submit} ref={contentRef} className="mx-auto min-w-0 max-w-4xl scroll-mt-4">
             <Tabs
                 tabs={NAV.map((x) => ({
                     key: x.key,

@@ -117,7 +117,10 @@ export default function InventoryIndex() {
         <AdminLayout title="المخزون">
             <PageHeader
                 title="المخزون"
-                subtitle={`${number(inventory.length)} صنف · القيمة الإجمالية ${money(totalValue, currency)}`}
+                subtitle={t(':n صنف · القيمة الإجمالية :total', {
+                    n: number(inventory.length),
+                    total: money(totalValue, currency),
+                })}
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'المخزون' }]}
                 actions={
                     <>

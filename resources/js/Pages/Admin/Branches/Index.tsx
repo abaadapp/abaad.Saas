@@ -3,6 +3,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { Check, GitBranch, Plus, Store } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SettingsNav from '../Settings/partials/SettingsNav';
 import DataTable, { type Column } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
 import Field from '@/Components/Field';
@@ -78,6 +79,13 @@ export default function BranchesIndex() {
                 }
             />
 
+            {/* قشرة الإعدادات: هذه الصفحة تُبلَغ من الإعدادات وحدها،
+                فبقاء عمودها يمنع فقدان الموضع عند فتحها. */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[232px_1fr]">
+                <SettingsNav current="branches" />
+
+                <div className="min-w-0">
+
             <div className="space-y-6">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <Card className="flex items-center gap-4 p-5">
@@ -145,6 +153,8 @@ export default function BranchesIndex() {
                         empty="لا توجد فروع — أضف أول فرع من زر «إضافة فرع» بالأعلى."
                     />
                 </Card>
+            </div>
+                </div>
             </div>
         </AdminLayout>
     );

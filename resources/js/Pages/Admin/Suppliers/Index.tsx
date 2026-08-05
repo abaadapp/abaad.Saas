@@ -193,13 +193,18 @@ export default function SuppliersIndex() {
             </Card>
 
             <Dialog open={adding || editing !== null} onOpenChange={(o) => !o && close()}>
-                <DialogContent>
+                {/*
+                    نفس قياسات نافذة «إضافة حركة مخزون» حرفيًّا: max-w-lg على
+                    الحاوية، و px-5 pb-5 على النموذج. بدونهما كانت الحقول تلتصق
+                    بحافّتَي النافذة وتتمدّد النافذة بلا سقف — والمحتوى كما هو.
+                */}
+                <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle>{t(editing ? 'تعديل بيانات المورّد' : 'إضافة مورّد جديد')}</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={submit}>
+                    <form onSubmit={submit} className="space-y-4 px-5 pb-5">
                         {fields}
-                        <div className="mt-6 flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 pt-1">
                             <Button type="button" variant="ghost" onClick={close}>
                                 {t('إلغاء')}
                             </Button>

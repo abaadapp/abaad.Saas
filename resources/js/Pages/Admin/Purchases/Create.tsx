@@ -8,7 +8,7 @@ import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
-import { money } from '@/lib/format';
+import { currencyLabel, money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Branch, Product, Supplier } from '@/types/models';
@@ -133,7 +133,7 @@ export default function PurchaseCreate() {
                                     />
                                 </Field>
                                 <Field
-                                    label={i === 0 ? `${t('تكلفة الوحدة')} (${currency.symbol ?? t('ر.ع')})` : undefined}
+                                    label={i === 0 ? `${t('تكلفة الوحدة')} (${currencyLabel(currency)})` : undefined}
                                     className="sm:col-span-2"
                                 >
                                     <Input

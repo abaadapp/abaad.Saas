@@ -4,27 +4,10 @@ import {
     AlertTriangle,
     BellOff,
     BellRing,
-    ChevronLeft,
-    Coins,
-    CreditCard,
-    DatabaseBackup,
     Download,
-    FileText,
-    Gift,
-    GitBranch,
-    History,
-    Languages,
-    LayoutTemplate,
-    Percent,
-    Printer,
     Save,
-    ShieldCheck,
-    ShoppingCart,
-    Store,
     Trash2,
-    Truck,
     Upload,
-    UserCog,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -33,6 +16,11 @@ import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
+import CustomAlerts, {
+    type AlertMetric,
+    type CustomAlertRow,
+} from './partials/CustomAlerts';
+import SettingsNav, { SETTINGS_NAV } from './partials/SettingsNav';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -52,6 +40,10 @@ interface Props {
     settings: Settings;
     business: { name: string; phone: string | null; email: string | null; address: string | null };
     notificationsAll: NotificationRow[];
+    customAlerts: CustomAlertRow[];
+    staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
+    alertMetrics: AlertMetric[];
+    alertSections: Record<string, string>;
     locale: string;
 }
 
@@ -62,53 +54,27 @@ interface Props {
  * خارج الشاشة لا يُرى إلا بالتمرير، فلا يُعرف أنه موجود أصلًا. والعمود
  * الجانبي يُظهرها كلّها دفعةً واحدة، والتجميع يجعل موضع كلٍّ منها متوقَّعًا.
  */
-const NAV = [
-    {
-        group: 'المتجر',
-        items: [
-            { key: 'business', label: 'بيانات النشاط', icon: Store },
-            { key: 'language', label: 'اللغة', icon: Languages },
-        ],
-    },
-    {
-        group: 'المالية',
-        items: [
-            { key: 'taxes', label: 'الضرائب', icon: Percent },
-            { key: 'currency', label: 'العملة', icon: Coins },
-            { key: 'payments', label: 'طرق الدفع', icon: CreditCard },
-            { key: 'loyalty', label: 'الولاء', icon: Gift },
-        ],
-    },
-    {
-        group: 'المبيعات',
-        items: [
-            { key: 'invoices', label: 'الفواتير', icon: FileText },
-            { key: 'orders', label: 'الطلبات', icon: ShoppingCart },
-            { key: 'delivery', label: 'التوصيل', icon: Truck },
-        ],
-    },
-    {
-        group: 'الطباعة',
-        items: [
-            { key: 'printing', label: 'الطباعة', icon: Printer },
-            { key: 'templates', label: 'قوالب', icon: LayoutTemplate },
-        ],
-    },
-    {
-        group: 'الفريق والتنبيهات',
-        items: [
-            { key: 'permissions', label: 'صلاحيات الموظفين', icon: ShieldCheck },
-            { key: 'notifications', label: 'الإشعارات', icon: BellRing },
-            { key: 'notifications-log', label: 'التنبيهات المرسلة', icon: BellOff },
-        ],
-    },
-    {
-        group: 'النظام',
-        items: [{ key: 'backup', label: 'النسخ الاحتياطي', icon: DatabaseBackup }],
-    },
-] as const;
+const NAV = SETTINGS_NAV;
 
 type TabKey = (typeof NAV)[number]['items'][number]['key'];
+
+const TAB_KEYS = NAV.flatMap((g) => g.items.map((i) => i.key)) as readonly TabKey[];
+
+/**
+ * القسم المطلوب من عنوان الصفحة: /admin/settings#taxes.
+ *
+ * بدون هذا كانت الصفحة تفتح على «بيانات النشاط» دائمًا، فرابطٌ مثل «أضِف
+ * الرقم الضريبي من الإعدادات» في صفحة الضريبة يُنزل المستخدم في القسم
+ * الخطأ ويتركه يبحث بين خمسة عشر بندًا عمّا وُعد به.
+ *
+ * المفتاح يُتحقَّق منه: قيمةٌ غريبة في العنوان تعود إلى الافتراضي بدل أن
+ * تُظهر صفحةً فارغة.
+ */
+function tabFromHash(): TabKey {
+    if (typeof window === 'undefined') return 'business';
+    const key = window.location.hash.replace(/^#/, '');
+    return (TAB_KEYS as readonly string[]).includes(key) ? (key as TabKey) : 'business';
+}
 
 /** طرق الدفع المتاحة — المفاتيح تطابق ما كان يحفظه القالب السابق (pay_*) */
 const PAYMENT_METHODS = [
@@ -117,44 +83,8 @@ const PAYMENT_METHODS = [
     { key: 'pay_transfer', label: 'تحويل بنكي', hint: 'التحويل المباشر للحساب البنكي' },
 ] as const;
 
-/**
- * صلاحيات الأدوار الافتراضية.
- * مفتاح كل صلاحية `perm_<دور>_<صلاحية>` بترتيب المصفوفة نفسه الذي اعتمده القالب
- * السابق، حتى تبقى القيم المحفوظة سابقًا مقروءة.
- */
-const ROLE_PERMISSIONS = [
-    {
-        role: 'كاشير',
-        perms: [
-            { key: 'perm_0_0', label: 'فتح نقطة البيع' },
-            { key: 'perm_0_1', label: 'إنشاء طلب' },
-            { key: 'perm_0_2', label: 'طباعة فاتورة' },
-        ],
-    },
-    {
-        role: 'موظف مبيعات',
-        perms: [
-            { key: 'perm_1_0', label: 'إنشاء طلب' },
-            { key: 'perm_1_1', label: 'إدارة العملاء' },
-            { key: 'perm_1_2', label: 'تطبيق خصومات' },
-        ],
-    },
-    {
-        role: 'مسؤول مخزون',
-        perms: [
-            { key: 'perm_2_0', label: 'إدارة المخزون' },
-            { key: 'perm_2_1', label: 'حركات المخزون' },
-            { key: 'perm_2_2', label: 'الجرد' },
-        ],
-    },
-] as const;
 
 /** صفحات مستقلة يصل إليها المستخدم من الإعدادات */
-const LINKS = [
-    { label: 'الفروع', icon: GitBranch, route: 'admin.branches.index' },
-    { label: 'الموظفون', icon: UserCog, route: 'admin.employees.index' },
-    { label: 'سجل النشاط', icon: History, route: 'admin.activity.index' },
-] as const;
 
 /** صفوف قالب الإيصال — كلٌّ منها يُظهر شيئًا أو يُخفيه */
 const TEMPLATE_ROWS: { key: string; label: string; hint?: string }[] = [
@@ -176,9 +106,10 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, notificationsAll, locale } = usePage<PageProps<Props>>().props;
+    const { settings, business, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const [tab, setTab] = useState<TabKey>('business');
+    const [tab, setTab] = useState<TabKey>(tabFromHash);
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
     const [backupFile, setBackupFile] = useState<File | null>(null);
     const [notifs, setNotifs] = useState<NotificationRow[]>(notificationsAll ?? []);
@@ -188,8 +119,14 @@ export default function SettingsIndex() {
      * القائمة نفسها ولا يرى أنّ شيئًا تغيّر — ما لم يمرّر خمسة عشر بندًا.
      */
     const contentRef = useRef<HTMLDivElement>(null);
-    const pick = (key: TabKey) => {
-        setTab(key);
+    const pick = (key: string) => {
+        // العمود المشترك لا يعرف الأنواع الضيّقة؛ والمفاتيح تأتي منه وحده
+        const tabKey = key as TabKey;
+        setTab(tabKey);
+        // العنوان يتبع القسم المفتوح، فيبقى قابلًا للنسخ والمشاركة وإعادة
+        // التحميل. replaceState لا pushState: التنقّل بين الأقسام ليس تصفّحًا
+        // يستحقّ أن يمتلئ به زرّ الرجوع.
+        window.history.replaceState(null, '', `#${key}`);
         if (window.innerWidth < 1024) {
             requestAnimationFrame(() =>
                 contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
@@ -295,55 +232,7 @@ export default function SettingsIndex() {
             />
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[232px_1fr]">
-                <aside className="lg:sticky lg:top-4 lg:self-start">
-                    <Card className="p-2">
-                        <nav className="space-y-3">
-                            {NAV.map((g) => (
-                                <div key={g.group}>
-                                    <p className="px-3 pb-1 pt-2 text-[11px] font-semibold tracking-wide text-[#9ca3af]">
-                                        {t(g.group)}
-                                    </p>
-                                    {g.items.map((x) => (
-                                        <button
-                                            key={x.key}
-                                            type="button"
-                                            onClick={() => pick(x.key)}
-                                            aria-current={tab === x.key ? 'page' : undefined}
-                                            className={cn(
-                                                'flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-start text-sm font-medium transition-colors',
-                                                tab === x.key
-                                                    ? 'bg-[#111] text-white'
-                                                    : 'text-[#4b4b4b] hover:bg-[#f5f5f4]',
-                                            )}
-                                        >
-                                            <x.icon className="size-4 shrink-0" />
-                                            <span className="min-w-0 truncate">{t(x.label)}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            ))}
-
-                            {/* صفحات مستقلة — ليست أقسامًا، تُفتح كصفحات كاملة.
-                                تُفصل بخطّ حتى لا تُقرأ كأقسامٍ تُفتح في مكانها. */}
-                            <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-2">
-                                <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-[#9ca3af]">
-                                    {t('صفحات أخرى')}
-                                </p>
-                                {LINKS.map((l) => (
-                                    <Link
-                                        key={l.label}
-                                        href={route(l.route)}
-                                        className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium text-[#4b4b4b] transition-colors hover:bg-[#f5f5f4]"
-                                    >
-                                        <l.icon className="size-4 shrink-0" />
-                                        <span className="min-w-0 flex-1 truncate">{t(l.label)}</span>
-                                        <ChevronLeft className="size-3.5 shrink-0 text-[#d1d5db] ltr:rotate-180" />
-                                    </Link>
-                                ))}
-                            </div>
-                        </nav>
-                    </Card>
-                </aside>
+                <SettingsNav current={tab} onPick={pick} />
 
                 {/* سقفٌ للعرض: سطرٌ يمتدّ عبر الشاشة كاملةً يصعب تتبّعه،
                     وحقلان متباعدان بفراغٍ عريض يبدوان غير مرتبطين */}
@@ -395,6 +284,12 @@ export default function SettingsIndex() {
                         </Button>
                     </div>
                 </Card>
+            ) : tab === 'custom-alerts' ? (
+                <CustomAlerts
+                    alerts={customAlerts ?? []}
+                    metrics={alertMetrics ?? []}
+                    sections={alertSections ?? {}}
+                />
             ) : tab === 'notifications-log' ? (
                 <Card className="p-6">
                     <div className="mb-6 flex items-start justify-between gap-3">
@@ -639,36 +534,46 @@ export default function SettingsIndex() {
 
                         {tab === 'permissions' && (
                             <>
-                                <h3 className="mb-2 font-bold text-[#111]">{t('صلاحيات الموظفين الافتراضية')}</h3>
+                                <h3 className="mb-2 font-bold text-[#111]">{t('صلاحيات الموظفين')}</h3>
                                 <p className="mb-5 text-[13px] text-[#6b7280]">
-                                    {t('حدد الصلاحيات الافتراضية للموظفين الجدد حسب الدور.')}
+                                    {t('الصلاحية تُحدَّد لكل موظف على حدة من ملفه — ولا قسم يُفتح ما لم يُمنح.')}
                                 </p>
-                                <div className="space-y-4">
-                                    {ROLE_PERMISSIONS.map((r) => (
-                                        <div
-                                            key={r.role}
-                                            className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4"
-                                        >
-                                            <h4 className="mb-3 text-sm font-semibold text-[#111]">{t(r.role)}</h4>
-                                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                                                {r.perms.map((p) => (
-                                                    <label
-                                                        key={p.key}
-                                                        className="flex cursor-pointer items-center gap-2.5"
-                                                    >
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={form.data[p.key]}
-                                                            onChange={(e) => form.setData(p.key, e.target.checked)}
-                                                            className="size-4 rounded border-[#d1d5db] accent-[#111]"
-                                                        />
-                                                        <span className="text-sm text-[#374151]">{t(p.label)}</span>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+
+                                {/*
+                                    كان هنا جدول مربّعات لكل دور يحفظ مفاتيح perm_*
+                                    لا يقرؤها أي كود: تُبدَّل فلا يتغيّر شيء. استُبدل
+                                    بقائمة الموظفين الفعليين وحالة صلاحية كلٍّ منهم،
+                                    ومنها يُفتح ملفه حيث تُحدَّد فعلًا.
+                                */}
+                                {(staffPermissions ?? []).length === 0 ? (
+                                    <p className="py-8 text-center text-[13px] text-[#9ca3af]">
+                                        {t('لا يوجد موظفون بعد')}
+                                    </p>
+                                ) : (
+                                    <ul className="space-y-2">
+                                        {(staffPermissions ?? []).map((e) => (
+                                            <li
+                                                key={e.id}
+                                                className="flex items-center gap-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-3"
+                                            >
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-sm font-medium text-[#111]">{e.name}</p>
+                                                    <p className="truncate text-[12px] text-[#9ca3af]">
+                                                        {e.job_title} ·{' '}
+                                                        {e.manual
+                                                            ? t(':n قسم مخصّص', { n: e.count })
+                                                            : t('لم تُحدَّد بعد')}
+                                                    </p>
+                                                </div>
+                                                <Button variant="outline" size="sm" asChild>
+                                                    <Link href={route('admin.employees.edit', e.id)}>
+                                                        {t('تحديد الصلاحيات')}
+                                                    </Link>
+                                                </Button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </>
                         )}
 

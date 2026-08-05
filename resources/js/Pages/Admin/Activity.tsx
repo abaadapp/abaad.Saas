@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SettingsNav from './Settings/partials/SettingsNav';
 import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -104,6 +105,13 @@ export default function Activity() {
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'سجل النشاط' }]}
             />
 
+            {/* قشرة الإعدادات: هذه الصفحة تُبلَغ من الإعدادات وحدها،
+                فبقاء عمودها يمنع فقدان الموضع عند فتحها. */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[232px_1fr]">
+                <SettingsNav current="activity" />
+
+                <div className="min-w-0">
+
             <Card className="mb-6 p-4">
                 <form
                     onSubmit={(e) => {
@@ -138,7 +146,9 @@ export default function Activity() {
                             ]}
                         />
                     </Field>
-                    <div className="flex items-center gap-2">
+                    {/* flex-wrap: الزرّان في خانةٍ واحدة من أربع، وضاق العمود
+                        بعد إضافة عمود الإعدادات — فكانا يخرجان عن الشاشة */}
+                    <div className="flex flex-wrap items-center gap-2">
                         <Button type="submit">{t('تصفية')}</Button>
                         <Button
                             type="button"
@@ -235,6 +245,8 @@ export default function Activity() {
                     </div>
                 )}
             </Card>
+                </div>
+            </div>
         </AdminLayout>
     );
 }

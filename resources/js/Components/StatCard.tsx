@@ -42,6 +42,7 @@ import {
     Wallet,
 } from 'lucide-react';
 import { Card } from '@/Components/ui/card';
+import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export interface Stat {
@@ -112,6 +113,7 @@ function iconFor(name: string): LucideIcon {
 
 export default function StatCard({ stat, index = 0 }: { stat: Stat; index?: number }) {
     const Icon = iconFor(stat.icon);
+    const t = useTranslate();
 
     return (
         <motion.div
@@ -122,7 +124,14 @@ export default function StatCard({ stat, index = 0 }: { stat: Stat; index?: numb
             <Card className="p-4">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                        <p className="truncate text-[13px] text-[#6b7280]">{stat.label}</p>
+                        {/*
+                            الترجمة هنا لا في كل صفحة: أكثر الشاشات تمرّر العنوان
+                            عربيًّا خامًا، فكانت بطاقات الإحصاء تبقى عربية في
+                            الوضع الإنجليزي رغم وجود ترجماتها في en.json. ومن
+                            يمرّر نصًّا مترجمًا مسبقًا لا يتأثّر: المفتاح غير
+                            الموجود في القاموس يعود كما هو.
+                        */}
+                        <p className="truncate text-[13px] text-[#6b7280]">{t(stat.label)}</p>
                         <p className="mt-1.5 text-[20px] font-bold tracking-tight text-[#111]">
                             {stat.value}
                         </p>
@@ -149,7 +158,7 @@ export default function StatCard({ stat, index = 0 }: { stat: Stat; index?: numb
                         ) : (
                             <ArrowDownRight className="size-3.5" />
                         )}
-                        {stat.trend}
+                        {t(stat.trend)}
                     </p>
                 )}
             </Card>

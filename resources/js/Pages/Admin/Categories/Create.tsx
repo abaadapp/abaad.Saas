@@ -5,16 +5,14 @@ import { type EmojiGroups } from '@/Components/EmojiPicker';
 import CategoryForm from './partials/CategoryForm';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
-import type { Category } from '@/types/models';
 
 interface Props {
-    categories: Category[];
     emojiGroups: EmojiGroups;
     palette: string[];
 }
 
 export default function CategoryCreate() {
-    const { categories, emojiGroups, palette } = usePage<PageProps<Props>>().props;
+    const { emojiGroups, palette } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     return (
@@ -34,11 +32,9 @@ export default function CategoryCreate() {
                 initial={{
                     name: '',
                     name_en: '',
-                    parent: '',
                     icon: '🌷',
                     color: palette[0] ?? '#7c3aed',
                 }}
-                categories={categories}
                 emojiGroups={emojiGroups}
                 palette={palette}
             />

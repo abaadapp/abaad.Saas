@@ -48,6 +48,8 @@ export interface SharedProps {
     auth: {
         user: User;
         abilities: string[];
+        /** هل يدخل هذا المستخدم لوحة النشاط؟ الكاشير لا يدخلها */
+        entersPanel: boolean;
     } | null;
     context: {
         businessName: string;
@@ -57,6 +59,8 @@ export interface SharedProps {
         currency: Currency;
         currencies: Currency[];
     } | null;
+    /** الموظف الواقف على الصندوق — غير الحساب المسجَّل دخوله */
+    posCashier: { id: number; name: string } | null;
     notifications: {
         items: Notification[];
         count: number;

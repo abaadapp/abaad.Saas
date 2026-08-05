@@ -7,15 +7,13 @@ import type { PageProps } from '@/types';
 import type { Category } from '@/types/models';
 
 interface Props {
-    category: Category & { parent_id: number | null };
-    /** الأقسام الصالحة أبًا — بلا القسم نفسه */
-    categories: Category[];
+    category: Category;
     emojiGroups: EmojiGroups;
     palette: string[];
 }
 
 export default function CategoryEdit() {
-    const { category, categories, emojiGroups, palette } = usePage<PageProps<Props>>().props;
+    const { category, emojiGroups, palette } = usePage<PageProps<Props>>().props;
 
     return (
         <AdminLayout title="تعديل القسم">
@@ -35,11 +33,9 @@ export default function CategoryEdit() {
                 initial={{
                     name: category.name,
                     name_en: category.name_en ?? '',
-                    parent: category.parent_id ? String(category.parent_id) : '',
                     icon: category.icon,
                     color: category.color,
                 }}
-                categories={categories}
                 emojiGroups={emojiGroups}
                 palette={palette}
             />

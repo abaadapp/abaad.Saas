@@ -39,9 +39,14 @@ class LocalePreferenceTest extends TestCase
         ]);
     }
 
+    /**
+     * صفحة الطلبات لا شاشة البيع: شاشة البيع تسأل صاحب النشاط «من على
+     * الصندوق؟» متى وُجد موظف، فتُرجع تحويلًا لا صفحة. اللغة مشتركة بين
+     * صفحات نقطة البيع كلها، فأيّ صفحة منها تكفي لفحصها.
+     */
     private function localeOf(User $user): string
     {
-        return $this->actingAs($user)->get(route('pos.index'))->viewData('page')['props']['locale'];
+        return $this->actingAs($user)->get(route('pos.orders'))->viewData('page')['props']['locale'];
     }
 
     public function test_arabic_is_the_default_when_nobody_chose(): void

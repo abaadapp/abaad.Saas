@@ -38,6 +38,9 @@ class HandleInertiaRequests extends Middleware
                     'branch' => $user->branch,
                     'businessId' => $user->business_id,
                 ],
+                // هل يدخل هذا المستخدم لوحة النشاط؟ من نفس مصدر حارس المسار،
+                // فلا يظهر في نقطة البيع زرُّ عودةٍ يقود إلى 403
+                'entersPanel' => Permissions::entersPanel($user),
                 // الأقسام المسموح بها — الواجهة تخفي ما لا يُسمح به بدل تخمينه
                 'abilities' => collect(Permissions::sections())
                     ->filter(fn ($section) => $user->allows($section))
@@ -54,6 +57,12 @@ class HandleInertiaRequests extends Middleware
                 'currency' => Demo::displayCurrency(),
                 'currencies' => collect(Demo::currencies())->where('active', true)->values()->all(),
             ] : null,
+
+            // الموظف الواقف على الصندوق — تعرضه ترويسة نقطة البيع، وهو غير
+            // الحساب المسجَّل دخوله (انظر App\Support\PosCashier)
+            'posCashier' => fn () => $user?->business_id
+                ? (\App\Support\PosCashier::current()?->only(['id', 'name']))
+                : null,
 
             'notifications' => fn () => $user?->business_id ? [
                 'items' => Demo::notifications(),

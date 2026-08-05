@@ -22,18 +22,21 @@ class JobTitleController extends Controller
                 'required', 'string', 'max:255',
                 Rule::unique('job_titles', 'name')->where(fn ($q) => $q->where('business_id', $bid)),
             ],
-            // الصلاحية المكافئة إلزامية: بدونها يُحفظ دور غير معروف فيفقد الموظف الدخول للنظام
-            'role' => ['required', 'string', Rule::in(array_keys(JobTitle::ROLES))],
+            /*
+             * الصلاحية المكافئة اختيارية: صلاحيات الموظف تُحدَّد يدويًّا في
+             * شاشته، فلم تعد الوظيفة تقرّرها. وحين تُترك، يُحفظ أدنى دور
+             * معروف — لا قيمة فارغة تُسقط صاحبها خارج النظام.
+             */
+            'role' => ['nullable', 'string', Rule::in(array_keys(JobTitle::ROLES))],
             'description' => ['nullable', 'string', 'max:255'],
         ], [
             'name.unique' => __('هذه الوظيفة موجودة مسبقًا.'),
-            'role.required' => __('حدّد الصلاحيات المكافئة للوظيفة.'),
         ], ['name' => __('اسم الوظيفة')]);
 
         JobTitle::create([
             'business_id' => $bid,
             'name' => $data['name'],
-            'role' => $data['role'],
+            'role' => ($data['role'] ?? null) ?: 'cashier',
             'description' => $data['description'] ?? null,
         ]);
         Activity::log('created', 'أضاف وظيفة: ' . $data['name']);
@@ -49,8 +52,8 @@ class JobTitleController extends Controller
      * وظيفة لا وجود لها: لا تظهر في قائمة التعديل، وأوّل حفظٍ لبياناتهم
      * يُرفض بـ«الوظيفة المحددة غير موجودة». ولذلك يُنقل الاسم إليهم.
      *
-     * وتغييرُ الصلاحية المكافئة يجب أن يصل حامليها فورًا، وإلا بقي «كاشير»
-     * يملك صلاحيات المدير حتى يُعاد حفظ كل موظف يدويًا.
+     * والدور لم يعد يُطلب في الشاشة — الصلاحيات تُحدَّد لكل موظف على حدة —
+     * فيبقى دور الوظيفة كما هو ولا يُمسّ دور حامليها عند تغيير الاسم.
      */
     public function update(Request $request, $id)
     {
@@ -64,18 +67,19 @@ class JobTitleController extends Controller
                     ->where(fn ($q) => $q->where('business_id', $bid))
                     ->ignore($title->id),
             ],
-            'role' => ['required', 'string', Rule::in(array_keys(JobTitle::ROLES))],
+            'role' => ['nullable', 'string', Rule::in(array_keys(JobTitle::ROLES))],
             'description' => ['nullable', 'string', 'max:255'],
         ], [
             'name.unique' => __('هذه الوظيفة موجودة مسبقًا.'),
-            'role.required' => __('حدّد الصلاحيات المكافئة للوظيفة.'),
         ], ['name' => __('اسم الوظيفة')]);
 
         $oldName = $title->name;
+        $data['role'] = ($data['role'] ?? null) ?: $title->role;
         $title->update($data);
 
+        // الاسم وحده هو ما يربط الموظف بوظيفته، فهو وحده ما يُنقل إليه
         $affected = User::where('business_id', $bid)->where('job_title', $oldName)
-            ->update(['job_title' => $data['name'], 'role' => $data['role']]);
+            ->update(['job_title' => $data['name']]);
 
         Activity::log('updated', "عدّل الوظيفة: {$oldName} → {$data['name']} (تأثّر {$affected} موظفًا)", ['subject_id' => $title->id]);
 

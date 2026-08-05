@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Shift;
 use App\Support\Demo;
+use App\Support\PosCashier;
 use App\Support\Stock;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
@@ -245,7 +246,26 @@ class PosController extends Controller
             return response()->json(['receipts' => []]);
         }
 
-        return response()->json(['receipts' => Demo::receipts($q, 50)]);
+        // نفس التجريد المطبَّق على القائمة: البحث بلا هذا يُبطل الحجب كلّه،
+        // لأنه يتجاوز الثلاثين إلى تاريخ الفرع كلّه
+        return response()->json([
+            'receipts' => \App\Support\ReceiptVisibility::filter(Demo::receipts($q, 50)),
+        ]);
+    }
+
+    /**
+     * فاتورة واحدة بتفاصيلها — تُفتح بالنقر على رقمها.
+     *
+     * تفصيلُ فاتورةٍ بعينها متاح للجميع: الزبون يستلمها مطبوعة على أي حال،
+     * والكاشير يحتاجها عند الإرجاع. الممنوع هو الاطّلاع بالجملة.
+     */
+    public function showReceipt(string $number)
+    {
+        $receipt = collect(Demo::receipts($number, 50))->firstWhere('number', $number);
+
+        abort_if($receipt === null, 404);
+
+        return response()->json(['receipt' => $receipt]);
     }
 
     /** إتمام البيع وحفظ الطلب */
@@ -362,7 +382,10 @@ class PosController extends Controller
                 'customer_name' => $customer?->name ?? $data['customer'] ?? 'عميل نقدي',
                 'customer_name_en' => $customer?->name_en,
                 'customer_id' => $customer?->id,
-                'employee_name' => auth()->user()->name,
+                'employee_name' => PosCashier::name(),
+                // المعرّف لا الاسم وحده: لوحة أداء الموظفين تجمع المبيعات
+                // على user_id، وكان لا يُكتب أصلًا فتظهر الأرقام أصفارًا
+                'user_id' => PosCashier::id(),
                 'branch_id' => $branch['id'],
                 'branch' => $branch['name'],
                 'status' => 'مكتمل',
@@ -404,7 +427,7 @@ class PosController extends Controller
                     'sku' => $product->sku,
                     'type' => 'بيع',
                     'quantity' => '-' . $l['qty'],
-                    'employee_name' => auth()->user()->name,
+                    'employee_name' => PosCashier::name(),
                 ]);
             }
 
@@ -418,7 +441,7 @@ class PosController extends Controller
                 'type' => 'دخل',
                 'amount' => $order->total,
                 'tax_amount' => $order->tax ?? 0,
-                'employee_name' => auth()->user()->name,
+                'employee_name' => PosCashier::name(),
                 'occurred_at' => $order->ordered_at ?? now(),
             ]);
 
@@ -481,7 +504,10 @@ class PosController extends Controller
             $order = $this->createNumbered([
                 'business_id' => $this->bid(),
                 'customer_name' => $data['customer'] ?? 'عميل نقدي',
-                'employee_name' => auth()->user()->name,
+                'employee_name' => PosCashier::name(),
+                // المعرّف لا الاسم وحده: لوحة أداء الموظفين تجمع المبيعات
+                // على user_id، وكان لا يُكتب أصلًا فتظهر الأرقام أصفارًا
+                'user_id' => PosCashier::id(),
                 'branch_id' => $branch['id'],
                 'branch' => $branch['name'],
                 'status' => $saved ? 'محفوظ' : 'معلّق',

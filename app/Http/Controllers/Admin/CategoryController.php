@@ -52,7 +52,12 @@ class CategoryController extends Controller
     {
         $category = Category::where('business_id', $this->bid())->findOrFail($id);
         $data = $request->validate($this->rules());
-        $parent = $data['parent'] ?? null;
+        // حقل «القسم الأب» حُذف من النموذج، فلم يعد يصل في الطلب. الفرق بين
+        // «لم يُرسَل» و«أُرسل فارغًا» يهمّ هنا: القراءة بـ?? كانت ستُفرغ
+        // parent_id في كل حفظ، فتفقد الأقسامُ القديمة آباءها بلا أن يطلب
+        // أحدٌ ذلك — وحمايةُ الحذف مبنيّة على وجود الأبناء.
+        $parent = $request->has('parent') ? ($data['parent'] ?? null) : $category->parent_id;
+
         // قسم أبًا لنفسه يصنع حلقة لا نهائية في أي عرض شجريّ
         if ((int) $parent === (int) $category->id) {
             $parent = null;
@@ -60,8 +65,11 @@ class CategoryController extends Controller
         $category->update([
             'name' => $data['name'],
             'name_en' => $data['name_en'] ?? null,
-            'icon' => $data['icon'] ?: $category->icon,
-            'color' => $data['color'] ?: $category->color,
+            // `??` لا `?:` وحده: الحقلان nullable، فطلبٌ لا يرسلهما لا يضع
+            // المفتاح في المصفوفة أصلًا — وكان ذلك يرمي «Undefined array key»
+            // فيخرج 500 بدل أن يُبقي القيمة القديمة كما هو مقصود.
+            'icon' => ($data['icon'] ?? null) ?: $category->icon,
+            'color' => ($data['color'] ?? null) ?: $category->color,
             'parent_id' => $parent,
         ]);
         \App\Support\Activity::log('updated', 'عدّل القسم: ' . $category->name, ['subject_id' => $category->id]);

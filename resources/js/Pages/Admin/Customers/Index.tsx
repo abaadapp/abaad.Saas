@@ -51,8 +51,6 @@ export default function CustomersIndex() {
         name: '',
         phone: '',
         email: '',
-        tax_number: '',
-        address: '',
         branch_id: currentBranchId ? String(currentBranchId) : '',
     });
 
@@ -268,25 +266,6 @@ export default function CustomersIndex() {
                                 value={add.data.email}
                                 onChange={(e) => add.setData('email', e.target.value)}
                                 placeholder="name@example.com"
-                            />
-                        </Field>
-                        <Field
-                            label="الرقم الضريبي (TRN)"
-                            hint="اختياري — لفواتير الشركات (B2B)"
-                            error={add.errors.tax_number}
-                        >
-                            <Input
-                                dir="ltr"
-                                value={add.data.tax_number}
-                                onChange={(e) => add.setData('tax_number', e.target.value)}
-                                placeholder="OM1100XXXXXX"
-                            />
-                        </Field>
-                        <Field label="العنوان" error={add.errors.address}>
-                            <Input
-                                value={add.data.address}
-                                onChange={(e) => add.setData('address', e.target.value)}
-                                placeholder={t('مثال: مسقط، السيب')}
                             />
                         </Field>
                         <Field label="الفرع" hint="اختياري — يُربط العميل بالفرع المحدد." error={add.errors.branch_id}>

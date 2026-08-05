@@ -11,6 +11,22 @@ export function decimalsFor(code: string): number {
  * تنسيق المبلغ بعملة العرض — يطابق Demo::money حرفيًا:
  * يضرب في سعر الصرف، ثم يفصل الآلاف بفاصلة، ثم يلحق الرمز.
  */
+/**
+ * الرمز المعروض بجانب المبلغ.
+ *
+ * رمز الريال «ر.ع» عربيٌّ، وكان يُطبع كما هو في الواجهة الإنجليزية — فيرى
+ * الموظف الذي لا يقرأ العربية حرفين لا يفهمهما بجانب كل رقم في النظام، وهو
+ * نقضٌ لغرض الواجهة الإنجليزية من أصله. في الإنجليزية يُستبدل بالرمز الدولي
+ * (OMR). أما الرموز اللاتينية ($ و€) فتبقى كما هي: مفهومة في اللغتين.
+ */
+export function currencyLabel(currency: Currency): string {
+    const symbol = currency.symbol || currency.code;
+    const arabic = /[\u0600-\u06FF]/.test(symbol);
+    const english = typeof document !== 'undefined' && document.documentElement.lang === 'en';
+
+    return arabic && english ? currency.code : symbol;
+}
+
 export function money(value: number | string | null | undefined, currency: Currency): string {
     const amount = Number(value ?? 0) * (currency.rate ?? 1);
     const decimals = decimalsFor(currency.code);
@@ -18,7 +34,7 @@ export function money(value: number | string | null | undefined, currency: Curre
     return `${amount.toLocaleString('en-US', {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-    })} ${currency.symbol || currency.code}`;
+    })} ${currencyLabel(currency)}`;
 }
 
 /** رقم بلا عملة، بفاصلة آلاف */

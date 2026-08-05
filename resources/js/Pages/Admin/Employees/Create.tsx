@@ -10,10 +10,12 @@ interface Props {
     branches: Branch[];
     jobTitles: string[];
     currentBranchName: string | null;
+    sections: Record<string, string>;
 }
 
 export default function EmployeeCreate() {
-    const { branches, jobTitles, currentBranchName } = usePage<PageProps<Props>>().props;
+    const { branches, jobTitles, currentBranchName, sections } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     return (
@@ -27,7 +29,12 @@ export default function EmployeeCreate() {
                     { label: 'إضافة موظف' },
                 ]}
             />
-            <EmployeeForm branches={branches} jobTitles={jobTitles} defaultBranch={currentBranchName} />
+            <EmployeeForm
+                branches={branches}
+                jobTitles={jobTitles}
+                defaultBranch={currentBranchName}
+                sections={sections}
+            />
         </AdminLayout>
     );
 }

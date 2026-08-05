@@ -109,13 +109,25 @@ export const PRODUCT_TABS: SectionTab[] = [
  * يعرضان الشيء ذاته بترتيب مختلف.
  */
 /*
- * قسم المالية. الربحية والضريبة خارجه عمدًا: تُفتحان من صفحة التقارير فهما
- * تابعتان لها، وإقحامهما هنا يعطي للصفحة الواحدة مدخلين من قسمين مختلفين.
+ * قسم المالية. الربحية والضريبة خارجه عمدًا: تابعتان للتقارير، ولهما
+ * شريطهما في REPORTS_TABS أدناه.
  */
 export const FINANCE_TABS: SectionTab[] = [
     { label: 'المالية', routeName: 'admin.finance.index' },
     { label: 'المصروفات', routeName: 'admin.expenses.index' },
     { label: 'كشف الحساب البنكي', routeName: 'admin.finance.statement' },
+];
+
+/*
+ * قسم التقارير. كانت الثلاثة الأخيرة بطاقاتٍ في وسط صفحة التقارير: تُفتح
+ * بنقرة، ثم لا سبيل للانتقال بينها إلا بالرجوع إلى التقارير أولًا — نقرتان
+ * لكل تنقّل. الشريط يجعلها كالمالية: نقرة واحدة من أي صفحة إلى أختها.
+ */
+export const REPORTS_TABS: SectionTab[] = [
+    { label: 'التقارير', routeName: 'admin.reports.index' },
+    { label: 'تحليلات متقدمة', routeName: 'admin.analytics.index' },
+    { label: 'الربحية', routeName: 'admin.profitability.index' },
+    { label: 'ضريبة القيمة المضافة', routeName: 'admin.vat.index' },
 ];
 
 export const INVENTORY_TABS: SectionTab[] = [

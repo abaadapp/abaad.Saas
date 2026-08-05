@@ -10,10 +10,12 @@ interface Props {
     employee: EmployeeFormValues;
     branches: Branch[];
     jobTitles: string[];
+    sections: Record<string, string>;
 }
 
 export default function EmployeeEdit() {
-    const { employee, branches, jobTitles } = usePage<PageProps<Props>>().props;
+    const { employee, branches, jobTitles, sections, auth } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     return (
@@ -27,7 +29,13 @@ export default function EmployeeEdit() {
                     { label: 'تعديل' },
                 ]}
             />
-            <EmployeeForm employee={employee} branches={branches} jobTitles={jobTitles} />
+            <EmployeeForm
+                employee={employee}
+                branches={branches}
+                jobTitles={jobTitles}
+                sections={sections}
+                canEditPermissions={auth?.user.id !== employee.id}
+            />
         </AdminLayout>
     );
 }

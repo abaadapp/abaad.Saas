@@ -22,6 +22,15 @@ class EmployeeController extends Controller
             'branch' => ['nullable', 'string', 'max:100'],
             'password' => ['nullable', 'string', 'min:4'],
             'pin' => ['nullable', 'digits:4'],
+            /*
+             * الصلاحيات إلزامية: قسمٌ واحد على الأقل. موظفٌ بلا صلاحية حسابٌ
+             * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
+             */
+            'permissions' => ['required_with:manual_permissions', 'array', 'min:1'],
+            'permissions.*' => ['string', \Illuminate\Validation\Rule::in(\App\Support\Permissions::sections())],
+        ], [
+            'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
+            'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
         ]);
 
         // الوظيفة اسم ظاهر — الصلاحية تُشتق منها، فلا يُحفظ دور غير معروف يمنع الموظف من الدخول
@@ -47,6 +56,14 @@ class EmployeeController extends Controller
             'avatar' => Demo::image('emp' . uniqid()),
             'password' => Hash::make($data['password'] ?? 'password'),
             'pin' => ! empty($data['pin']) ? $data['pin'] : null,
+            /*
+             * الوظيفة تُقترح ولا تُلزم: صاحب النشاط يحدّد ما يفتحه الموظف منذ
+             * لحظة إضافته. NULL تعني «اتبع الوظيفة» فتتغيّر صلاحياته معها،
+             * والقائمة اليدوية تعني ما اختير هنا لا غير.
+             */
+            'permissions' => $request->boolean('manual_permissions')
+                ? array_values(array_unique($data['permissions'] ?? []))
+                : null,
         ]);
         \App\Support\Activity::log('created', 'أضاف موظفًا: ' . $data['name']);
 
@@ -100,7 +117,13 @@ class EmployeeController extends Controller
                 'status' => $employee->status,
                 'monthly_target' => $employee->monthly_target,
                 'commission_rate' => $employee->commission_rate,
+                // null تعني «اتبع الدور»؛ مصفوفة تعني قائمة يدوية
+                'permissions' => $employee->permissions,
+                'role_permissions' => collect(\App\Support\Permissions::sections())
+                    ->filter(fn ($s) => \App\Support\Permissions::allows($employee->role, $s))
+                    ->values()->all(),
             ],
+            'sections' => \App\Support\Permissions::sectionLabels(),
             'branches' => Demo::branches(),
             'jobTitles' => \App\Models\JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all(),
         ]);
@@ -122,6 +145,15 @@ class EmployeeController extends Controller
             'status' => ['nullable', 'boolean'],
             'monthly_target' => ['nullable', 'numeric', 'min:0'],
             'commission_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            /*
+             * الصلاحيات إلزامية: قسمٌ واحد على الأقل. موظفٌ بلا صلاحية حسابٌ
+             * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
+             */
+            'permissions' => ['required_with:manual_permissions', 'array', 'min:1'],
+            'permissions.*' => ['string', \Illuminate\Validation\Rule::in(\App\Support\Permissions::sections())],
+        ], [
+            'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
+            'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
         ]);
 
         $title = $this->findJobTitle($data['job_title']);
@@ -164,6 +196,30 @@ class EmployeeController extends Controller
                 $data[$numeric] = $data[$numeric] === null || $data[$numeric] === '' ? 0 : $data[$numeric];
             }
         }
+
+        /*
+         * الصلاحيات اليدوية.
+         *
+         * التمييز بين «لم يُرسَل» و«أُرسل فارغًا» جوهري هنا: النموذج يرسل
+         * manual_permissions=0 حين يختار المدير «اتبع الدور»، فتعود القيمة
+         * إلى null. ولو قرأناها بـ?? null لصار كل حفظٍ لموظفٍ من شاشة أخرى
+         * يمحو صلاحياته المخصَّصة بلا أن يطلب أحدٌ ذلك.
+         *
+         * ولا يُخصّص أحدٌ صلاحيات نفسه: مديرٌ ينزع عن نفسه قسمًا بالخطأ يقفل
+         * الباب على نفسه ولا يجد من يعيده.
+         */
+        if ($request->has('manual_permissions')) {
+            if ($employee->id === auth()->id()) {
+                return back()->withInput()->withErrors([
+                    'permissions' => __('لا يمكنك تعديل صلاحيات حسابك الخاص.'),
+                ]);
+            }
+
+            $employee->permissions = $request->boolean('manual_permissions')
+                ? array_values(array_unique($data['permissions'] ?? []))
+                : null;
+        }
+        unset($data['permissions']);
 
         $employee->update($data);
         \App\Support\Activity::log('updated', 'عدّل بيانات الموظف: ' . $employee->name, ['subject_id' => $employee->id]);

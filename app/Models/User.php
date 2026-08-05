@@ -23,6 +23,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'pin' => 'hashed',
             'sales_total' => 'decimal:3',
+            'permissions' => 'array',
         ];
     }
 
@@ -59,10 +60,34 @@ class User extends Authenticatable
         return in_array($this->role, ['admin', 'manager']);
     }
 
-    /** هل يملك المستخدم صلاحية القسم؟ */
+    /**
+     * هل يملك المستخدم صلاحية القسم؟
+     *
+     * قائمةٌ يدوية على الموظف تسبق دوره. NULL تعني «اتبع الدور» — وهو
+     * الافتراضي، فالموظفون الذين لم تُخصَّص لهم صلاحيات يبقون كما كانوا.
+     *
+     * ولا استثناء: القائمة اليدوية هي كل ما يملكه صاحبها. حتى لوحة التحكم
+     * ونقطة البيع والفروع تُمنح صراحةً — ما لم يُعلَّم لا يُفتح.
+     */
     public function allows(string $section): bool
     {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $manual = $this->permissions;
+
+        if (is_array($manual)) {
+            return in_array($section, $manual, true);
+        }
+
         return \App\Support\Permissions::allows($this->role, $section);
+    }
+
+    /** هل صلاحياته مخصَّصة يدويًّا أم موروثة من الدور؟ */
+    public function hasManualPermissions(): bool
+    {
+        return is_array($this->permissions);
     }
 
     /** الاسم العربي للدور */

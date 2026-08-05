@@ -53,11 +53,6 @@ export default function NewCustomerDialog({ open, onOpenChange, onSubmit }: Prop
                         <Label htmlFor="c-email" className="mb-1.5">{t('البريد الإلكتروني')}</Label>
                         <Input id="c-email" name="email" type="email" placeholder="example@mail.com" dir="ltr" />
                     </div>
-                    <div>
-                        <Label htmlFor="c-tax" className="mb-1.5">{t('الرقم الضريبي (TRN)')}</Label>
-                        <Input id="c-tax" name="tax_number" placeholder="OM1100XXXXXX" dir="ltr" />
-                        <p className="mt-1 text-[11px] text-gray-400">{t('اختياري — لفواتير الشركات (B2B)')}</p>
-                    </div>
                 </form>
 
                 <DialogFooter>

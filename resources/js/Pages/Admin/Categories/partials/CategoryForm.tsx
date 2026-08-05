@@ -2,18 +2,16 @@ import { useForm } from '@inertiajs/react';
 import { Check } from 'lucide-react';
 import EmojiPicker, { type EmojiGroups } from '@/Components/EmojiPicker';
 import SmartLink from '@/Components/SmartLink';
-import Field, { Select } from '@/Components/Field';
+import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import type { Category } from '@/types/models';
 
 export interface CategoryValues {
     name: string;
     name_en: string;
-    parent: string;
     icon: string;
     color: string;
 }
@@ -23,8 +21,6 @@ interface Props {
     /** put للتعديل — Inertia يرسله عبر حقل _method */
     method?: 'post' | 'put';
     initial: CategoryValues;
-    /** الأقسام المتاحة أبًا؛ القسم قيد التعديل مستبعَد منها */
-    categories: Category[];
     emojiGroups: EmojiGroups;
     palette: string[];
 }
@@ -39,7 +35,6 @@ export default function CategoryForm({
     action,
     method = 'post',
     initial,
-    categories,
     emojiGroups,
     palette,
 }: Props) {
@@ -81,16 +76,11 @@ export default function CategoryForm({
 
                 {/* كان هنا حقل «الوصف» — ولا عمود له في جدول الأقسام، فكان
                     ما يكتبه التاجر يُرمى عند الحفظ بلا رسالة. حُذف الحقل بدل
-                    إضافة عمود لا تعرضه أي شاشة. */}
+                    إضافة عمود لا تعرضه أي شاشة.
 
-                <Field label="القسم الأب" error={form.errors.parent}>
-                    <Select
-                        value={form.data.parent}
-                        onChange={(e) => form.setData('parent', e.target.value)}
-                        options={categories.map((c) => ({ label: c.name, value: String(c.id) }))}
-                        placeholder="بدون (قسم رئيسي)"
-                    />
-                </Field>
+                    وكان هنا «القسم الأب» — يُحفَظ في parent_id ولا تعرضه أي
+                    شاشة: لا جدول الأقسام ولا نقطة البيع ولا التقارير. حقلٌ
+                    يطلب قرارًا من التاجر ثم لا يُغيّر شيئًا يراه. */}
 
                 <EmojiPicker
                     value={form.data.icon}

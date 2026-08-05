@@ -135,15 +135,20 @@ export interface Receipt {
     number: string;
     customer: string;
     phone: string | null;
-    total: number;
-    subtotal: number;
-    discount: number;
-    tax: number;
-    delivery_fee: number;
     payment: string;
     time: string;
     employee: string;
-    lines: { name: string; qty: number; price: number; total: number }[];
+    /*
+     * اختيارية لأن الخادم ينزعها عمّن لا يملك صلاحية `finance` — انظر
+     * App\Support\ReceiptVisibility. الاختيارية هنا مقصودة: تُجبر كل شاشة
+     * تعرض مبلغًا على التعامل مع غيابه بدل أن تطبع undefined.
+     */
+    total?: number;
+    subtotal?: number;
+    discount?: number;
+    tax?: number;
+    delivery_fee?: number;
+    lines?: { name: string; qty: number; price: number; total: number }[];
 }
 
 export interface PurchaseOrder {

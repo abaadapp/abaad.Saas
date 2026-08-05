@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
+import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 /** شارات الحالة — نفس ألوان <x-badge> الحالية (مكتمل/معلّق/ملغي…) */
@@ -55,10 +56,17 @@ export interface BadgeProps
 
 function Badge({ className, variant, status, children, ...props }: BadgeProps) {
     const resolved = variant ?? (status ? (STATUS_VARIANT[status] ?? 'neutral') : 'neutral');
+    const t = useTranslate();
 
+    /*
+     * الحالة نصٌّ من قاموس النظام لا من إدخال التاجر («نشط»، «متوفر»،
+     * «مكتمل»…) وترجماتها موجودة في en.json، لكنها كانت تُطبع خامًا فتبقى
+     * عربية في الوضع الإنجليزي. اللون يُشتقّ من القيمة العربية قبل الترجمة،
+     * فلا يتأثّر.
+     */
     return (
         <span className={cn(badgeVariants({ variant: resolved }), className)} {...props}>
-            {children ?? status}
+            {children ?? (status ? t(status) : status)}
         </span>
     );
 }

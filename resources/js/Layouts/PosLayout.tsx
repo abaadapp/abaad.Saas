@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, CreditCard, Languages, LogOut, Receipt, ReceiptText, Settings, Store, User, Users } from 'lucide-react';
+import { Check, ChevronDown, CreditCard, Languages, LayoutDashboard, LogOut, Receipt, ReceiptText, Settings, Store, User, UserRound, Users } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { Toaster, toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
@@ -41,7 +41,7 @@ interface PosLayoutProps {
 }
 
 export default function PosLayout({ title, children, fill = false }: PosLayoutProps) {
-    const { auth, context, flash, locale, csrf } = usePage<PageProps>().props;
+    const { auth, context, flash, locale, csrf, posCashier } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
 
@@ -102,6 +102,36 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                 </nav>
 
                 <div className="ms-auto flex items-center gap-1.5">
+                    {/*
+                     * العودة إلى لوحة النشاط. تظهر لمن يدخلها فعلًا — الإشارة
+                     * من الخادم لا من الدور، فلا يرى الكاشير زرًّا يقوده إلى 403.
+                     */}
+                    {auth?.entersPanel && (
+                        <Button variant="ghost" size="sm" className="gap-1.5" asChild>
+                            <Link href={route('admin.dashboard')}>
+                                <LayoutDashboard className="size-4" />
+                                <span className="hidden sm:inline">{t('لوحة النشاط')}</span>
+                            </Link>
+                        </Button>
+                    )}
+
+                    {/*
+                     * اسم من تُنسب إليه البيعة، لا اسم الحساب المسجَّل. عرضه
+                     * دائمًا مقصود: الخطأ الذي يكلّف هو أن يبيع موظفٌ باسم
+                     * زميله ساعةً كاملة لأن أحدًا لم ينتبه لمن اختير.
+                     */}
+                    {posCashier && (
+                        <button
+                            type="button"
+                            onClick={() => router.post(route('pos.cashier.leave'))}
+                            className="flex items-center gap-1.5 rounded-full border border-gray-200 px-2.5 py-1 text-[13px] font-medium text-[#111] transition-colors hover:bg-gray-50"
+                            title={t('تبديل الموظف')}
+                        >
+                            <UserRound className="size-3.5 text-gray-400" />
+                            <span className="max-w-28 truncate">{posCashier.name}</span>
+                        </button>
+                    )}
+
                     {context && context.currencies.length > 1 && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>

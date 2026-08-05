@@ -15,10 +15,12 @@ import type { Receipt } from '@/types/models';
 interface Props {
     receipts: Receipt[];
     branchName: string;
+    /** هل تصل المبالغ في صفوف القائمة؟ الخادم ينزعها عن الكاشير */
+    showsAmounts: boolean;
 }
 
 export default function PosReceipts() {
-    const { receipts, branchName, context } = usePage<PageProps<Props>>().props;
+    const { receipts, branchName, showsAmounts, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -63,6 +65,31 @@ export default function PosReceipts() {
 
     const rows = found ?? receipts;
 
+    /**
+     * صفوف الكاشير تصل بلا مبالغ، فتفصيل الفاتورة يُطلب عند النقر وحده.
+     * فاتورةٌ واحدة في الطلب الواحد: يكفي للإرجاع، ولا يُمكّن من جمع اليوم.
+     */
+    const [loading, setLoading] = useState<string | null>(null);
+
+    const reveal = async (r: Receipt) => {
+        if (r.total !== undefined) {
+            setOpen(r);
+            return;
+        }
+        setLoading(r.number);
+        try {
+            const res = await fetch(route('pos.receipts.show', r.number), {
+                headers: { Accept: 'application/json' },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setOpen(data.receipt as Receipt);
+            }
+        } finally {
+            setLoading(null);
+        }
+    };
+
     const columns: Column<Receipt>[] = [
         {
             key: 'number',
@@ -70,7 +97,12 @@ export default function PosReceipts() {
             sortable: true,
             value: (r) => r.number,
             cell: (r) => (
-                <button type="button" onClick={() => setOpen(r)} className="font-medium hover:underline">
+                <button
+                    type="button"
+                    onClick={() => reveal(r)}
+                    disabled={loading === r.number}
+                    className="font-medium hover:underline disabled:opacity-50"
+                >
                     {r.number}
                 </button>
             ),
@@ -79,14 +111,22 @@ export default function PosReceipts() {
         { key: 'employee', header: 'الكاشير', cell: (r) => r.employee || '—' },
         { key: 'payment', header: 'وسيلة الدفع', cell: (r) => t(r.payment) },
         { key: 'time', header: 'الوقت', sortable: true, value: (r) => r.time },
-        {
-            key: 'total',
-            header: 'الإجمالي',
-            align: 'end',
-            sortable: true,
-            value: (r) => r.total,
-            cell: (r) => <span className="tabular-nums font-medium">{m(r.total)}</span>,
-        },
+        // عمود الإجمالي لمن يملك صلاحية finance. الحجب على الخادم لا هنا:
+        // إخفاء العمود وحده يترك الأرقام في الاستجابة لمن يفتح أدوات المتصفّح.
+        ...(showsAmounts
+            ? [
+                  {
+                      key: 'total',
+                      header: 'الإجمالي',
+                      align: 'end' as const,
+                      sortable: true,
+                      value: (r: Receipt) => r.total ?? 0,
+                      cell: (r: Receipt) => (
+                          <span className="tabular-nums font-medium">{m(r.total ?? 0)}</span>
+                      ),
+                  },
+              ]
+            : []),
         {
             key: 'print',
             header: '',
@@ -166,7 +206,7 @@ export default function PosReceipts() {
                             </div>
 
                             <div className="space-y-1.5 border-y border-dashed border-gray-200 py-2.5 text-[13px]">
-                                {open.lines.map((l, i) => (
+                                {(open.lines ?? []).map((l, i) => (
                                     <div key={i} className="flex justify-between gap-2">
                                         <span className="min-w-0 truncate">
                                             {l.qty} × {l.name}
@@ -179,27 +219,27 @@ export default function PosReceipts() {
                             <div className="mt-2.5 space-y-1 text-[13px]">
                                 <div className="flex justify-between">
                                     <span className="text-gray-500">{t('المجموع الفرعي')}</span>
-                                    <span className="tabular-nums">{m(open.subtotal)}</span>
+                                    <span className="tabular-nums">{m(open.subtotal ?? 0)}</span>
                                 </div>
-                                {open.discount > 0 && (
+                                {(open.discount ?? 0) > 0 && (
                                     <div className="flex justify-between text-[#b91c1c]">
                                         <span>{t('الخصم')}</span>
-                                        <span className="tabular-nums">- {m(open.discount)}</span>
+                                        <span className="tabular-nums">- {m(open.discount ?? 0)}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between">
                                     <span className="text-gray-500">{t('الضريبة')}</span>
-                                    <span className="tabular-nums">{m(open.tax)}</span>
+                                    <span className="tabular-nums">{m(open.tax ?? 0)}</span>
                                 </div>
-                                {open.delivery_fee > 0 && (
+                                {(open.delivery_fee ?? 0) > 0 && (
                                     <div className="flex justify-between">
                                         <span className="text-gray-500">{t('التوصيل')}</span>
-                                        <span className="tabular-nums">{m(open.delivery_fee)}</span>
+                                        <span className="tabular-nums">{m(open.delivery_fee ?? 0)}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between border-t border-dashed border-gray-200 pt-1.5 font-bold">
                                     <span>{t('الإجمالي')}</span>
-                                    <span className="tabular-nums">{m(open.total)}</span>
+                                    <span className="tabular-nums">{m(open.total ?? 0)}</span>
                                 </div>
                             </div>
 

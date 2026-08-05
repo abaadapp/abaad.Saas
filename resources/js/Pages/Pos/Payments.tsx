@@ -26,7 +26,7 @@ export default function PosPayments() {
     /** تجميع المقبوضات حسب وسيلة الدفع */
     const byMethod = useMemo(() => {
         const map = new Map<string, number>();
-        receipts.forEach((r) => map.set(r.payment, (map.get(r.payment) ?? 0) + r.total));
+        receipts.forEach((r) => map.set(r.payment, (map.get(r.payment) ?? 0) + (r.total ?? 0)));
         const entries = [...map.entries()].sort((a, b) => b[1] - a[1]);
         return {
             labels: entries.map(([k]) => t(k)),
@@ -35,7 +35,9 @@ export default function PosPayments() {
         };
     }, [receipts, t]);
 
-    const grandTotal = receipts.reduce((s, r) => s + r.total, 0);
+    // الصفحة محروسة بصلاحية finance، فالمبالغ واصلة دائمًا. الاحتياط هنا
+    // لأن النوع صار اختياريًا بعد حجبها عن الكاشير في شاشة الفواتير.
+    const grandTotal = receipts.reduce((s, r) => s + (r.total ?? 0), 0);
 
     const columns: Column<Receipt>[] = [
         {
@@ -70,8 +72,8 @@ export default function PosPayments() {
             header: 'المبلغ',
             align: 'end',
             sortable: true,
-            value: (r) => r.total,
-            cell: (r) => <span className="tabular-nums font-medium">{m(r.total)}</span>,
+            value: (r) => r.total ?? 0,
+            cell: (r) => <span className="tabular-nums font-medium">{m(r.total ?? 0)}</span>,
         },
     ];
 

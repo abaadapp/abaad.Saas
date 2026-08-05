@@ -25,8 +25,19 @@ class PageController extends Controller
         ];
     }
 
-    public function index(): Response
+    /**
+     * شاشة البيع لا تُفتح قبل أن يُعرف من يقف على الصندوق.
+     *
+     * البوابة هنا لا في middleware عام: بقيّة صفحات نقطة البيع (الطلبات،
+     * الفواتير، العملاء) عرضٌ لا بيع، وحصرُها خلف الاختيار يجعل صاحب النشاط
+     * يختار موظفًا لمجرّد أن يطالع الفواتير — وهو عكس المقصود.
+     */
+    public function index(): Response|\Illuminate\Http\RedirectResponse
     {
+        if (\App\Support\PosCashier::required()) {
+            return redirect()->route('pos.cashier');
+        }
+
         return Inertia::render('Pos/Index', [
             // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة
             'products' => Demo::products(Demo::activeBranchId()),
@@ -67,7 +78,9 @@ class PageController extends Controller
     public function receipts(): Response
     {
         return Inertia::render('Pos/Receipts', [
-            'receipts' => Demo::receipts(),
+            // المبالغ تُنزع للكاشير من الحمولة نفسها، لا من الجدول فقط
+            'receipts' => \App\Support\ReceiptVisibility::filter(Demo::receipts()),
+            'showsAmounts' => \App\Support\ReceiptVisibility::showsAmounts(),
             'branchName' => Demo::currentBranchName(),
         ]);
     }

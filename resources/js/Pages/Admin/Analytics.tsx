@@ -2,6 +2,7 @@ import { usePage } from '@inertiajs/react';
 import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { REPORTS_TABS } from '@/Components/SectionTabs';
 import ExportMenu from '@/Components/ExportMenu';
 import AreaChart from '@/Components/charts/AreaChart';
 import BarChart from '@/Components/charts/BarChart';
@@ -64,6 +65,8 @@ export default function Analytics() {
                     />
                 }
             />
+
+            <SectionTabs tabs={REPORTS_TABS} current="admin.analytics.index" variant="segmented" />
 
             {updatedAt && (
                 <p className="mb-3 text-[12px] text-[#9ca3af]">

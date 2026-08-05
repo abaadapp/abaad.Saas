@@ -181,16 +181,37 @@ class EmployeesAndTemplatesTest extends TestCase
         $this->assertSame('أمين صندوق', $e->fresh()->job_title, 'بقي الموظف على وظيفة لا وجود لها');
     }
 
-    public function test_changing_the_permission_reaches_its_holders_immediately(): void
+    /**
+     * الوظيفة مسمًّى لا صلاحية.
+     *
+     * كانت تحمل «صلاحية مكافئة» تُفرَض على كل حاملٍ لها، فتعديل اسمها يقلب
+     * صلاحيات موظفين لم يُقصدوا. وصار لكل موظف صلاحياته في شاشته، فلا يمسّ
+     * تعديلُ الوظيفة أحدًا سوى اسمها.
+     */
+    public function test_renaming_a_title_does_not_touch_its_holders_permissions(): void
     {
         $title = $this->title('كاشير', 'cashier');
         $e = $this->employee('كاشير', 'cashier');
+        $e->update(['permissions' => ['inventory']]);
 
         $this->actingAs($this->owner)->put(route('admin.jobTitles.update', $title->id), [
-            'name' => 'كاشير', 'role' => 'manager',
-        ]);
+            'name' => 'أمين صندوق',
+        ])->assertRedirect();
 
-        $this->assertSame('manager', $e->fresh()->role, 'بقيت الصلاحية القديمة حتى يُحفظ كل موظف يدويًا');
+        $e = $e->fresh();
+        $this->assertSame('أمين صندوق', $e->job_title);
+        $this->assertSame('cashier', $e->role, 'تبدّل الدور بلا طلب');
+        $this->assertTrue($e->allows('inventory'), 'ضاعت صلاحية مُنحت يدويًا');
+    }
+
+    /** وتُضاف الوظيفة باسمها وحده — لا حقل ثانٍ يسأل عن صلاحية تُحدَّد لاحقًا */
+    public function test_a_title_can_be_created_with_just_a_name(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.jobTitles.store'), [
+            'name' => 'مشرف الصالة',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('job_titles', ['name' => 'مشرف الصالة']);
     }
 
     public function test_a_renamed_title_is_still_accepted_when_saving_the_employee(): void

@@ -42,7 +42,13 @@ export default function PageHeader({ title, subtitle, breadcrumbs, actions }: Pa
                 {subtitle && <p className="mt-0.5 text-[13px] text-[#6b7280]">{subtitle}</p>}
             </div>
 
-            {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+            {/*
+                flex-wrap: shrink-0 وحده يمنع الانضغاط على الشاشات الواسعة —
+                وهو مطلوب — لكنه على الجوّال يدفع الأزرار خارج الشاشة فيظهر
+                تمريرٌ أفقي للصفحة كلّها ويُقصّ آخر زرّ. الالتفاف ينقلها إلى
+                سطر ثانٍ بدل ذلك. ظهر هذا في «المالية» حيث الأزرار أربعة.
+            */}
+            {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
         </div>
     );
 }

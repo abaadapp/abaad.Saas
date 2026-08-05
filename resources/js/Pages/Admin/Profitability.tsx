@@ -2,6 +2,7 @@ import { usePage } from '@inertiajs/react';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { REPORTS_TABS } from '@/Components/SectionTabs';
 import StatCard from '@/Components/StatCard';
 import DataTable, { type Column } from '@/Components/DataTable';
 import { Card } from '@/Components/ui/card';
@@ -138,6 +139,8 @@ export default function Profitability() {
                 subtitle={t('تحليل الإيرادات والتكاليف وهوامش الربح لكل منتج وقسم')}
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الربحية' }]}
             />
+
+            <SectionTabs tabs={REPORTS_TABS} current="admin.profitability.index" variant="segmented" />
 
             {updatedAt && (
                 <p className="mb-3 text-[12px] text-[#9ca3af]">

@@ -2,6 +2,7 @@ import { router, usePage } from '@inertiajs/react';
 import { AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { REPORTS_TABS } from '@/Components/SectionTabs';
 import ExportMenu from '@/Components/ExportMenu';
 import StatCard from '@/Components/StatCard';
 import SmartLink from '@/Components/SmartLink';
@@ -91,6 +92,8 @@ export default function Vat() {
                 }
             />
 
+            <SectionTabs tabs={REPORTS_TABS} current="admin.vat.index" variant="segmented" />
+
             <div className="mb-6 flex flex-wrap items-center gap-2">
                 {PERIODS.map((p) => (
                     <Button
@@ -112,7 +115,9 @@ export default function Vat() {
                 ) : (
                     <SmartLink
                         routeName="admin.settings.index"
-                        href={route('admin.settings.index')}
+                        // #taxes: الإعدادات تفتح على «بيانات النشاط» افتراضيًا،
+                        // وكان الرابط يُنزل المستخدم هناك لا عند حقل الرقم الضريبي
+                        href={`${route('admin.settings.index')}#taxes`}
                         className="ms-auto flex items-center gap-1 text-sm text-[#d97706] hover:underline"
                     >
                         <AlertTriangle className="size-4" />

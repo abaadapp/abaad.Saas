@@ -3,10 +3,11 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import { AlertTriangle, Briefcase, Lock, LockOpen, Pencil, Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SettingsNav from '../Settings/partials/SettingsNav';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
-import Field, { Select } from '@/Components/Field';
+import Field from '@/Components/Field';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -31,7 +32,6 @@ interface JobTitle {
 interface Props {
     employees: Employee[];
     jobTitles: JobTitle[];
-    roleOptions: { value: string; label: string }[];
 }
 
 const TABS = [
@@ -42,7 +42,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 export default function EmployeesIndex() {
-    const { employees, jobTitles, roleOptions, context } = usePage<PageProps<Props>>().props;
+    const { employees, jobTitles, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const [tab, setTab] = useState<TabKey>('employees');
@@ -54,13 +54,12 @@ export default function EmployeesIndex() {
     const [titleDialog, setTitleDialog] = useState<JobTitle | Record<string, never> | null>(null);
     const editingTitle = titleDialog && 'id' in titleDialog ? (titleDialog as JobTitle) : null;
 
-    const titleForm = useForm({ name: '', role: '', description: '' });
+    const titleForm = useForm({ name: '', description: '' });
 
     const openTitle = (x?: JobTitle) => {
         titleForm.clearErrors();
         titleForm.setData({
             name: x?.name ?? '',
-            role: x?.role ?? '',
             description: x?.description ?? '',
         });
         setTitleDialog(x ?? {});
@@ -81,7 +80,6 @@ export default function EmployeesIndex() {
 
     const titleColumns: Column<JobTitle>[] = [
         { key: 'name', header: 'الوظيفة', sortable: true, value: (x) => x.name },
-        { key: 'role', header: 'الصلاحيات المكافئة', cell: (x) => <Badge>{t(x.roleLabel)}</Badge> },
         { key: 'description', header: 'الوصف', cell: (x) => x.description || '—' },
         {
             key: 'usage',
@@ -206,7 +204,7 @@ export default function EmployeesIndex() {
         <AdminLayout title="الموظفون">
             <PageHeader
                 title="الموظفون"
-                subtitle={`${number(employees.length)} موظف`}
+                subtitle={t(':n موظف', { n: number(employees.length) })}
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الموظفون' }]}
                 actions={
                     tab === 'employees' ? (
@@ -224,6 +222,13 @@ export default function EmployeesIndex() {
                     )
                 }
             />
+
+            {/* قشرة الإعدادات: هذه الصفحة تُبلَغ من الإعدادات وحدها،
+                فبقاء عمودها يمنع فقدان الموضع عند فتحها. */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[232px_1fr]">
+                <SettingsNav current="employees" />
+
+                <div className="min-w-0">
 
             <div className="mb-6 flex items-center gap-1 border-b border-[var(--ui-border,#e8e8e8)]">
                 {TABS.map((x) => (
@@ -262,7 +267,7 @@ export default function EmployeesIndex() {
                         columns={titleColumns}
                         rowKey={(x) => x.id}
                         searchPlaceholder="ابحث باسم الوظيفة…"
-                        searchable={(x) => `${x.name} ${x.roleLabel} ${x.description ?? ''}`}
+                        searchable={(x) => `${x.name} ${x.description ?? ''}`}
                         empty="أضِف أول وظيفة لفريق عملك."
                     />
                 </Card>
@@ -289,21 +294,6 @@ export default function EmployeesIndex() {
                             />
                         </Field>
 
-                        <Field
-                            label="الصلاحيات المكافئة"
-                            hint="هذه وحدها تحدّد ما يستطيع الموظف فتحه داخل النظام — لا اسم الوظيفة."
-                            required
-                            error={titleForm.errors.role}
-                        >
-                            <Select
-                                value={titleForm.data.role}
-                                onChange={(e) => titleForm.setData('role', e.target.value)}
-                                placeholder="اختر الصلاحيات…"
-                                options={roleOptions.map((r) => ({ label: r.label, value: r.value }))}
-                                required
-                            />
-                        </Field>
-
                         <Field label="الوصف" error={titleForm.errors.description}>
                             <Input
                                 value={titleForm.data.description}
@@ -318,7 +308,7 @@ export default function EmployeesIndex() {
                                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                                 <span>
                                     {t('يحمل هذه الوظيفة')} {number(editingTitle.usage)} {t('موظفًا')} —{' '}
-                                    {t('سيُحدَّث اسمها وصلاحياتها عندهم فورًا.')}
+                                    {t('سيُحدَّث اسمها عندهم فورًا.')}
                                 </span>
                             </p>
                         )}
@@ -335,6 +325,8 @@ export default function EmployeesIndex() {
                     </form>
                 </DialogContent>
             </Dialog>
+                </div>
+            </div>
         </AdminLayout>
     );
 }

@@ -243,7 +243,7 @@ export default function Dashboard() {
                                                 {employee.name}
                                             </span>
                                             <span className="block text-[11px] text-[#9ca3af]">
-                                                {employee.role}
+                                                {t(employee.role)}
                                             </span>
                                         </span>
                                         <span className="shrink-0 text-[12px] tabular-nums text-[#6b7280]">

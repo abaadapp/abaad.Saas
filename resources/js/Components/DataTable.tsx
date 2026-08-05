@@ -189,6 +189,13 @@ export default function DataTable<T>({
     const visible = server ? filtered : filtered.slice(page * pageSize, (page + 1) * pageSize);
     const isFiltering = query.trim() !== '' || Object.values(active).some(Boolean);
 
+    /*
+     * أكثر الشاشات تمرّر رسالة الفراغ عربيةً خامًا، فكانت تبقى عربية في الوضع
+     * الإنجليزي رغم وجود ترجمتها في en.json. الترجمة هنا تُصلحها كلّها دفعةً
+     * واحدة. وما لم يكن نصًّا (عنصر React) يُترك كما هو.
+     */
+    const emptyText = typeof empty === 'string' ? t(empty) : empty;
+
     const toggleSort = (key: string) => {
         setSort((prev) =>
             prev?.key === key
@@ -254,7 +261,7 @@ export default function DataTable<T>({
                 <div className="px-4 pb-4">
                     {visible.length === 0 ? (
                         <p className="py-12 text-center text-sm text-[#6b7280]">
-                            {isFiltering ? t('لا نتائج مطابقة للبحث أو التصفية') : empty}
+                            {isFiltering ? t('لا نتائج مطابقة للبحث أو التصفية') : emptyText}
                         </p>
                     ) : (
                         renderBody(visible)
@@ -293,7 +300,7 @@ export default function DataTable<T>({
                 <TableBody>
                     {visible.length === 0 ? (
                         <TableEmpty colSpan={columns.length}>
-                            {isFiltering ? t('لا نتائج مطابقة للبحث أو التصفية') : empty}
+                            {isFiltering ? t('لا نتائج مطابقة للبحث أو التصفية') : emptyText}
                         </TableEmpty>
                     ) : (
                         visible.map((row, i) => (

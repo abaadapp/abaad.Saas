@@ -209,8 +209,6 @@ class PageController extends Controller
                     'description' => $t->description,
                     'usage' => (int) ($usage[$t->name] ?? 0),
                 ])->all(),
-            'roleOptions' => collect(\App\Models\JobTitle::ROLES)
-                ->map(fn ($label, $key) => ['value' => $key, 'label' => $label])->values()->all(),
         ]);
     }
 
@@ -220,6 +218,7 @@ class PageController extends Controller
             'branches' => Demo::branches(),
             'jobTitles' => self::jobTitles(),
             'currentBranchName' => Demo::currentBranchName(),
+            'sections' => \App\Support\Permissions::sectionLabels(),
         ]);
     }
 
@@ -415,6 +414,33 @@ class PageController extends Controller
             ],
             // القائمة الكاملة — تبويب «التنبيهات المرسلة» يعرضها بلا اختصار
             'notificationsAll' => Demo::allNotifications(),
+            'customAlerts' => \App\Models\CustomAlert::where('business_id', Demo::bid())
+                ->orderByDesc('id')->get()->map(fn ($a) => [
+                    'id' => $a->id,
+                    'type' => $a->type,
+                    'message' => $a->message,
+                    'section' => $a->section,
+                    'metric' => $a->metric,
+                    'operator' => $a->operator,
+                    'threshold' => $a->threshold === null ? null : (float) $a->threshold,
+                    'color' => $a->color,
+                    'due_at' => optional($a->due_at)->format('Y-m-d\\TH:i'),
+                    'active' => $a->active,
+                ])->all(),
+            'alertMetrics' => collect(\App\Models\CustomAlert::METRICS)
+                ->map(fn ($m, $k) => ['key' => $k, 'label' => __($m['label']), 'unit' => $m['unit'], 'section' => $m['section']])
+                ->values()->all(),
+            'alertSections' => \App\Support\Permissions::sectionLabels(),
+            // قسم «صلاحيات الموظفين»: الموظفون الفعليون وحالة صلاحية كلٍّ منهم
+            'staffPermissions' => \App\Models\User::where('business_id', Demo::bid())
+                ->where('role', '!=', 'super_admin')->orderBy('name')->get()
+                ->map(fn ($u) => [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'job_title' => $u->job_title ?: $u->roleLabel(),
+                    'manual' => $u->hasManualPermissions(),
+                    'count' => count($u->permissions ?? []),
+                ])->all(),
         ]);
     }
 }

@@ -1900,6 +1900,50 @@ class Demo
                 'url' => route('admin.inventory.index'),
             ]);
         }
+        /*
+         * العميل الراكد: اشترى يومًا ثم انقطع. من لم يشترِ قطّ ليس راكدًا بل
+         * لم يبدأ — انظر AlertMetrics::dormantCustomers. المدّة تُضبط من
+         * الإعدادات (dormant_customer_days) وافتراضها ٦٠ يومًا.
+         */
+        $dormantPref = \App\Models\Setting::where('business_id', $bid)
+            ->where('key', 'notify_dormant_customers')->value('value');
+        if ($dormantPref !== '0') {
+            $days = \App\Support\AlertMetrics::dormantDays($bid);
+            foreach (\App\Support\AlertMetrics::dormantCustomers($bid, $days)->take($limit) as $c) {
+                $since = \Illuminate\Support\Carbon::parse($c->last_at);
+                $add('dormant-' . $c->id, [
+                    'text' => __('عميل راكد: :name — آخر شراء قبل :days يومًا', [
+                        'name' => self::ln($c->name, $c->name_en),
+                        'days' => $since->diffInDays(now()),
+                    ]),
+                    'time' => $since->format('Y-m-d'),
+                    'icon' => 'user-x', 'color' => 'warning',
+                    'url' => route('admin.customers.show', $c->id),
+                ]);
+            }
+        }
+
+        // تنبيهات عرّفها صاحب النشاط بنفسه — قواعد تُفحص الآن، وتذكيرات بموعد
+        foreach (\App\Models\CustomAlert::where('business_id', $bid)->where('active', true)->get() as $alert) {
+            $due = $alert->type === 'reminder'
+                ? ($alert->due_at !== null && $alert->due_at->lte(now()))
+                : \App\Support\AlertMetrics::triggered($alert, $bid);
+
+            if (! $due) {
+                continue;
+            }
+
+            $add('custom-' . $alert->id, [
+                'text' => $alert->message,
+                'time' => $alert->type === 'reminder'
+                    ? optional($alert->due_at)->format('Y-m-d')
+                    : __('تنبيه مخصّص'),
+                'icon' => $alert->type === 'reminder' ? 'bell-ring' : 'target',
+                'color' => $alert->color ?: 'warning',
+                'url' => $alert->url(),
+            ]);
+        }
+
         $pending = Order::where('business_id', $bid)->where('is_held', false)
             ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit($limit)->get();
         foreach ($pending as $o) {

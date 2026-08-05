@@ -122,7 +122,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 });
 
 /* ------------------------------- Admin ----------------------------- */
-Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:admin,manager,accountant,inventory,sales,delivery', 'ability'])->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'panel', 'ability'])->group(function () {
     Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'admin'])->name('dashboard');
     Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'adminStats'])->name('dashboard.stats');
 
@@ -316,11 +316,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'role:ad
     Route::get('/settings', [\App\Http\Controllers\Admin\PageController::class, 'settingsIndex'])->name('settings.index');
     Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
     Route::post('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'update'])->name('settings.update');
+
+    // تنبيهات يعرّفها صاحب النشاط — قواعد على مقاييس النظام، وتذكيرات بموعد
+    Route::post('/alerts', [\App\Http\Controllers\Admin\CustomAlertController::class, 'store'])->name('alerts.store');
+    Route::put('/alerts/{id}', [\App\Http\Controllers\Admin\CustomAlertController::class, 'update'])->name('alerts.update');
+    Route::delete('/alerts/{id}', [\App\Http\Controllers\Admin\CustomAlertController::class, 'destroy'])->name('alerts.destroy');
 });
 
 /* -------------------------------- POS ------------------------------ */
 Route::prefix('pos')->name('pos.')->middleware(['auth', 'business'])->group(function () {
     Route::get('/', [\App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
+
+    // اختيار الموظف الواقف على الصندوق. ليس دخولًا ولا خروجًا — الصلاحيات
+    // تبقى للمستخدم المسجَّل، وهذا يحدّد من تُنسب إليه البيعة فقط.
+    Route::get('/cashier', [\App\Http\Controllers\Pos\CashierController::class, 'choose'])->name('cashier');
+    Route::post('/cashier', [\App\Http\Controllers\Pos\CashierController::class, 'select'])->name('cashier.select');
+    Route::post('/cashier/leave', [\App\Http\Controllers\Pos\CashierController::class, 'leave'])->name('cashier.leave');
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
     Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');
@@ -337,6 +348,8 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'business'])->group(func
         ->middleware('ability')->name('payments');
     Route::get('/receipts', [\App\Http\Controllers\Pos\PageController::class, 'receipts'])->name('receipts');
     Route::get('/receipts/search', [PosController::class, 'searchReceipts'])->name('receipts.search');
+    // تفصيل فاتورة واحدة — تُطلب عند النقر، فلا تُرسَل مبالغ الثلاثين دفعةً
+    Route::get('/receipts/{number}', [PosController::class, 'showReceipt'])->name('receipts.show');
     Route::get('/receipt/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');
     Route::get('/customers', [\App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');

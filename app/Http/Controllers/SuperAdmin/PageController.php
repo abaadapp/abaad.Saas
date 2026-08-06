@@ -71,9 +71,15 @@ class PageController extends Controller
 
         $counts = Demo::businessCounts($business['id']);
         $overview = Demo::businessOverview($business['id']);
+        $model = \App\Models\Business::with('plan')->findOrFail($business['id']);
 
         return $this->page('Platform/Businesses/Show', [
-            'business' => [...$business, 'logo' => self::logoUrl($business['logo'])],
+            'business' => [
+                ...$business,
+                'logo' => self::logoUrl($business['logo']),
+                // بريد الدخول — أوّل ما يُسأل عنه حين يتصل التاجر
+                'owner_email' => \App\Support\MerchantAccount::owner($model)?->email,
+            ],
             'subscription' => collect(Demo::subscriptions())->firstWhere('business', $business['name']),
             'stats' => [
                 ['label' => __('الفروع'), 'value' => (string) $business['branches'], 'icon' => 'git-branch', 'color' => 'primary'],
@@ -89,6 +95,18 @@ class PageController extends Controller
             // مقيّدة بمعرّف هذه الشركة لا بالنشاط الحالي — انظر Demo::businessOrders
             'branches' => Demo::businessBranches($business['id']),
             'orders' => Demo::businessOrders($business['id']),
+            /*
+             * الاستهلاك مقابل سقف الباقة.
+             *
+             * حدٌّ يُفرض عند الإنشاء يجب أن يُرى قبل أن يُصطدَم به: من بلغ
+             * سقفه هو المرشَّح للترقية، ولا سبيل لمعرفته إن لم يُعرض.
+             */
+            'usage' => \App\Support\PlanLimits::usage($model),
+            'renewal' => [
+                'monthly' => \App\Support\Billing::price($model, 'monthly'),
+                'yearly' => \App\Support\Billing::price($model, 'yearly'),
+                'endsAt' => optional($model->ends_at)->format('Y-m-d'),
+            ],
         ]);
     }
 
@@ -108,78 +126,10 @@ class PageController extends Controller
                 'starts_at' => optional($model?->starts_at)->format('Y-m-d'),
                 'ends_at' => optional($model?->ends_at)->format('Y-m-d'),
                 'logo_url' => self::logoUrl($model?->logo),
+                // حساب الدخول يُعرض ولا يُعاد إنشاؤه من هنا
+                'owner_email' => $model ? \App\Support\MerchantAccount::owner($model)?->email : null,
             ],
             'options' => $this->businessOptions(),
-        ]);
-    }
-
-    /* ---------------------------- محلات الورود ---------------------------- */
-
-    public function flowerShopsIndex(): Response
-    {
-        return $this->page('Platform/FlowerShops/Index', [
-            'shops' => array_map(
-                fn ($s) => [...$s, 'logo' => self::logoUrl($s['logo'])],
-                Demo::flowerShops(),
-            ),
-            'cities' => self::CITIES,
-        ]);
-    }
-
-    public function flowerShopsCreate(): Response
-    {
-        return $this->page('Platform/FlowerShops/Create', [
-            'options' => $this->shopOptions(),
-        ]);
-    }
-
-    public function flowerShopsShow(string $id): Response
-    {
-        $shop = Demo::flowerShop($id);
-        abort_if(empty($shop), 404);
-
-        $model = \App\Models\Business::find($shop['id']);
-
-        return $this->page('Platform/FlowerShops/Show', [
-            'shop' => [
-                ...$shop,
-                // كانا نصّين ثابتين في القالب: +968 91234567 و info@flower.com
-                'phone' => $model?->phone,
-                'email' => $model?->email,
-                'logo_url' => self::logoUrl($shop['logo']),
-            ],
-            'subscription' => collect(Demo::subscriptions())->firstWhere('business', $shop['name']),
-            'stats' => [
-                ['label' => __('الفروع'), 'value' => (string) $shop['branches'], 'icon' => 'git-branch', 'color' => 'primary'],
-                ['label' => __('الموظفون'), 'value' => (string) $shop['employees'], 'icon' => 'users', 'color' => 'info'],
-                ['label' => __('المنتجات'), 'value' => (string) $shop['products'], 'icon' => 'flower', 'color' => 'secondary'],
-                ['label' => __('الطلبات'), 'value' => (string) $shop['orders'], 'icon' => 'shopping-bag', 'color' => 'success'],
-            ],
-            'branches' => Demo::businessBranches($shop['id']),
-            'employees' => Demo::businessEmployees($shop['id']),
-            'products' => Demo::businessProducts($shop['id']),
-            'orders' => Demo::businessOrders($shop['id']),
-            'salesSeries' => Demo::businessSalesSeries($shop['id']),
-        ]);
-    }
-
-    public function flowerShopsEdit(string $id): Response
-    {
-        $shop = Demo::flowerShop($id);
-        abort_if(empty($shop), 404);
-
-        $model = \App\Models\Business::find($shop['id']);
-
-        return $this->page('Platform/FlowerShops/Edit', [
-            'shop' => [
-                ...$shop,
-                'phone' => $model?->phone,
-                'email' => $model?->email,
-                'start' => optional($model?->starts_at)->format('Y-m-d'),
-                'end' => optional($model?->ends_at)->format('Y-m-d'),
-                'logo_url' => self::logoUrl($shop['logo']),
-            ],
-            'options' => $this->shopOptions(),
         ]);
     }
 
@@ -198,6 +148,7 @@ class PageController extends Controller
             ],
             'subscriptions' => Demo::subscriptions(),
             'planNames' => Plan::orderBy('id')->pluck('name')->all(),
+            'planOptions' => SubscriptionController::planOptions(),
         ]);
     }
 
@@ -421,15 +372,6 @@ class PageController extends Controller
         ];
     }
 
-    private function shopOptions(): array
-    {
-        return [
-            'cities' => self::CITIES,
-            'statuses' => self::STATUSES,
-            'plans' => Plan::orderBy('id')->pluck('name')->all(),
-        ];
-    }
-
     /** الأدوار المعروضة في نماذج المستخدمين */
     private function roleOptions(): array
     {
@@ -452,8 +394,17 @@ class PageController extends Controller
     /** تُستدعى من BusinessController@index لتوحيد قوائم التصفية */
     public static function filterOptions(Request $request): array
     {
+        /*
+         * أنواع التصفية من المسجَّل فعلًا لا من القائمة المعروفة وحدها.
+         *
+         * النوع صار كتابةً حرّة، فقصرُ المرشّح على الستّة المعروفة يعني أن
+         * «مغسلة» تُسجَّل ثمّ لا سبيل إلى تصفيتها — مدخلٌ يقبل ما لا يستطيع
+         * البحث عنه.
+         */
+        $types = \App\Models\Business::whereNotNull('type')->distinct()->orderBy('type')->pluck('type')->all();
+
         return [
-            'types' => BusinessTypes::TYPES,
+            'types' => collect(BusinessTypes::TYPES)->merge($types)->unique()->values()->all(),
             'statuses' => self::STATUSES,
             'plans' => Plan::orderBy('id')->pluck('name')->all(),
         ];

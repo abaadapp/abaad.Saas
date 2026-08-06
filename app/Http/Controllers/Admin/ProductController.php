@@ -126,6 +126,7 @@ class ProductController extends Controller
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
         $data['business_id'] = $this->bid();
+        \App\Support\PlanLimits::enforce(auth()->user()->business, 'products');
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL؛ الفراغ يُحوَّل إلى null فيفشل)
         $data['cost'] = $data['cost'] ?? 0;
         $data['quantity'] = $data['quantity'] ?? 0;

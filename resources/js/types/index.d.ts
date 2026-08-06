@@ -50,6 +50,8 @@ export interface SharedProps {
         abilities: string[];
         /** هل يدخل هذا المستخدم لوحة النشاط؟ الكاشير لا يدخلها */
         entersPanel: boolean;
+        /** جلسة انتحالٍ من لوحة المنصة — تُعلَن في كل صفحة */
+        impersonating: boolean;
     } | null;
     context: {
         businessName: string;
@@ -58,6 +60,8 @@ export interface SharedProps {
         branches: Branch[];
         currency: Currency;
         currencies: Currency[];
+        /** اشتراك المتجر — null لمن لا مدّة محدَّدة له */
+        subscription: { endsAt: string; daysLeft: number } | null;
     } | null;
     /** الموظف الواقف على الصندوق — غير الحساب المسجَّل دخوله */
     posCashier: { id: number; name: string } | null;

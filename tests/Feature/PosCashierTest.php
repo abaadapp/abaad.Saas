@@ -202,6 +202,8 @@ class PosCashierTest extends TestCase
 
     public function test_the_owner_is_not_in_the_list_of_employees(): void
     {
+        // بمستخدمٍ صراحةً: Demo::bid() لم تعد تخمّن متجرًا لمن لا متجر له
+        $this->actingAs($this->owner);
         $names = collect(\App\Support\PosCashier::selectable())->pluck('name')->all();
 
         $this->assertContains('أحمد', $names);

@@ -41,6 +41,13 @@ class HandleInertiaRequests extends Middleware
                 // هل يدخل هذا المستخدم لوحة النشاط؟ من نفس مصدر حارس المسار،
                 // فلا يظهر في نقطة البيع زرُّ عودةٍ يقود إلى 403
                 'entersPanel' => Permissions::entersPanel($user),
+                /*
+                 * هل هذه جلسة انتحالٍ من لوحة المنصة؟
+                 *
+                 * تُعلَن في كل صفحة لا في صفحةٍ واحدة: من ينسى أنه في حساب
+                 * غيره يعدّل بيانات تاجرٍ ظنًّا أنها بياناته.
+                 */
+                'impersonating' => $request->session()->has('impersonator_id'),
                 // الأقسام المسموح بها — الواجهة تخفي ما لا يُسمح به بدل تخمينه
                 'abilities' => collect(Permissions::sections())
                     ->filter(fn ($section) => $user->allows($section))
@@ -56,6 +63,19 @@ class HandleInertiaRequests extends Middleware
                 'branches' => Demo::branches(),
                 'currency' => Demo::displayCurrency(),
                 'currencies' => collect(Demo::currencies())->where('active', true)->values()->all(),
+                /*
+                 * الاشتراك: كم بقي من أيامه.
+                 *
+                 * الانتهاء كان يقع بلا سابق إنذار — يفتح التاجر لوحته صباحًا
+                 * فيجدها مقفلة. والتجديد يحدث حين يُذكَّر به قبل الموعد، لا
+                 * حين تُقفل الأبواب.
+                 */
+                'subscription' => ($ends = $user->business?->ends_at)
+                    ? [
+                        'endsAt' => $ends->format('Y-m-d'),
+                        'daysLeft' => \App\Support\Tenancy::daysLeft($user->business),
+                    ]
+                    : null,
             ] : null,
 
             // الموظف الواقف على الصندوق — تعرضه ترويسة نقطة البيع، وهو غير

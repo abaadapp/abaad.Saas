@@ -52,6 +52,16 @@ Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class,
 
 Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->name('logout');
 
+/*
+ * الخروج من انتحال التاجر — خارج حارس role:super_admin عمدًا.
+ *
+ * المنتحِل يحمل أثناء الانتحال دور التاجر لا دور المنصة، فوضعُ هذا المسار
+ * داخل مجموعة المنصة كان يعني بابًا لا يُفتح من الداخل: يدخل ولا يخرج إلا
+ * بتسجيل خروجٍ كامل. والحارس هنا مفتاح الجلسة نفسه.
+ */
+Route::post('/stop-impersonating', [\App\Http\Controllers\SuperAdmin\ImpersonationController::class, 'stop'])
+    ->middleware('auth')->name('impersonate.stop');
+
 /* ------------------------- الملف الشخصي (كل الأدوار) ------------------------- */
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [\App\Http\Controllers\ProfileController::class, 'edit'])->name('profile.edit');
@@ -75,13 +85,24 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::put('/businesses/{id}', [BusinessController::class, 'update'])->name('businesses.update');
     Route::delete('/businesses/{id}', [BusinessController::class, 'destroy'])->name('businesses.destroy');
 
-    // محلات الورود
-    Route::get('/flower-shops', [SuperAdminPageController::class, 'flowerShopsIndex'])->name('flower-shops.index');
-    Route::get('/flower-shops/create', [SuperAdminPageController::class, 'flowerShopsCreate'])->name('flower-shops.create');
-    Route::post('/flower-shops', [\App\Http\Controllers\SuperAdmin\FlowerShopController::class, 'store'])->name('flower-shops.store');
-    Route::get('/flower-shops/{id}', [SuperAdminPageController::class, 'flowerShopsShow'])->name('flower-shops.show');
-    Route::get('/flower-shops/{id}/edit', [SuperAdminPageController::class, 'flowerShopsEdit'])->name('flower-shops.edit');
-    Route::put('/flower-shops/{id}', [\App\Http\Controllers\SuperAdmin\FlowerShopController::class, 'update'])->name('flower-shops.update');
+    // دخول كتاجر — الخروج منه خارج هذه المجموعة (انظر أسفل الملف)
+    Route::post('/businesses/{id}/impersonate', [\App\Http\Controllers\SuperAdmin\ImpersonationController::class, 'start'])->name('businesses.impersonate');
+
+    /*
+     * محلات الورود = شركات نوعها «محل ورود».
+     *
+     * كانت شاشات كاملة تكرّر شاشات الشركات على الجدول نفسه — ونوعُ النشاط
+     * صار كتابةً حرّة، فهي حالةٌ خاصّة لواحدٍ من أنواعٍ لا تُحصى. وثمنُ
+     * التكرار ظهر عند أوّل تعديل: قائمة المدن المغلقة أُصلحت في نموذجٍ
+     * ونُسيت في الآخر.
+     *
+     * والمسارات تبقى تحويلات لا حذفًا: روابط محفوظة ومرجعيّات قديمة تصل
+     * إلى وجهتها الجديدة بدل 404.
+     */
+    Route::get('/flower-shops', fn () => redirect()->route('super-admin.businesses.index', ['type' => 'محل ورود']))->name('flower-shops.index');
+    Route::get('/flower-shops/create', fn () => redirect()->route('super-admin.businesses.create'))->name('flower-shops.create');
+    Route::get('/flower-shops/{id}', fn ($id) => redirect()->route('super-admin.businesses.show', $id))->name('flower-shops.show');
+    Route::get('/flower-shops/{id}/edit', fn ($id) => redirect()->route('super-admin.businesses.edit', $id))->name('flower-shops.edit');
 
     // الاشتراكات والباقات
     Route::get('/subscriptions', [SuperAdminPageController::class, 'subscriptionsIndex'])->name('subscriptions.index');
@@ -90,6 +111,11 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/invoices/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'platformInvoice'])->name('invoices.pdf');
     Route::get('/subscriptions/invoices/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'invoicesXlsx'])->name('invoices.xlsx');
     Route::get('/subscriptions/invoices/pdf', [\App\Http\Controllers\PdfController::class, 'invoicesReport'])->name('invoices.exportPdf');
+    // التجديد وتسجيل السداد — الجدولان كانا يُقرآن ولا يُكتب فيهما
+    Route::post('/businesses/{id}/renew', [\App\Http\Controllers\SuperAdmin\BillingController::class, 'renew'])->name('businesses.renew');
+    Route::post('/invoices/{id}/pay', [\App\Http\Controllers\SuperAdmin\BillingController::class, 'pay'])->name('invoices.pay');
+    Route::put('/subscriptions/{id}', [\App\Http\Controllers\SuperAdmin\SubscriptionController::class, 'update'])->name('subscriptions.update');
+    Route::delete('/subscriptions/{id}', [\App\Http\Controllers\SuperAdmin\SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
 
     // تصدير CSV
     Route::get('/export/businesses', [\App\Http\Controllers\ExportController::class, 'businesses'])->name('export.businesses');
@@ -122,7 +148,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 });
 
 /* ------------------------------- Admin ----------------------------- */
-Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'panel', 'ability'])->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business', 'panel', 'ability'])->group(function () {
     Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'admin'])->name('dashboard');
     Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'adminStats'])->name('dashboard.stats');
 
@@ -333,7 +359,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'panel',
  * صارت صلاحيةً تُمنح، بقي المربّع بلا حارس: يرفع صاحب النشاط علامة «نقطة
  * البيع» عن موظف فلا يتغيّر شيء — يكتب العنوان فتُفتح له.
  */
-Route::prefix('pos')->name('pos.')->middleware(['auth', 'business', 'ability'])->group(function () {
+Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'ability'])->group(function () {
     Route::get('/', [\App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
 
     // اختيار الموظف الواقف على الصندوق. ليس دخولًا ولا خروجًا — الصلاحيات

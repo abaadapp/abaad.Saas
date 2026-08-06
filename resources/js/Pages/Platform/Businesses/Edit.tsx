@@ -20,6 +20,7 @@ interface EditableBusiness {
     starts_at: string | null;
     ends_at: string | null;
     logo_url: string | null;
+    owner_email: string | null;
 }
 
 export default function BusinessEdit() {
@@ -56,6 +57,7 @@ export default function BusinessEdit() {
                     ends_at: business.ends_at ?? '',
                 }}
                 logoUrl={business.logo_url}
+                ownerEmail={business.owner_email}
                 action={route('super-admin.businesses.update', business.id)}
                 method="put"
                 submitLabel="حفظ التعديلات"

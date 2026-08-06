@@ -12,7 +12,6 @@ import type { PageProps } from '@/types';
 interface Props {
     /** رابط شاشة رمز الموظف — تُخفى إن لم تكن متاحة */
     pinUrl: string | null;
-    supportEmail: string;
     year: number;
 }
 
@@ -23,7 +22,7 @@ interface Props {
  * سلفًا ببيانات الحساب التجريبي — وهو ما كان سيُشحن إلى العملاء كما هو.
  */
 export default function Login() {
-    const { pinUrl, supportEmail, year, locale, errors } = usePage<PageProps<Props>>().props;
+    const { pinUrl, year, locale, errors } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [reveal, setReveal] = useState(false);
 
@@ -130,23 +129,21 @@ export default function Login() {
                             </span>
                         </Field>
 
-                        <div className="flex items-center justify-between">
-                            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#4b4b4b]">
-                                <input
-                                    type="checkbox"
-                                    checked={form.data.remember}
-                                    onChange={(e) => form.setData('remember', e.target.checked)}
-                                    className="size-4 rounded-[4px] border-[#d1d5db] text-[#111] accent-[#111] focus:ring-0"
-                                />
-                                {t('تذكرني')}
-                            </label>
-                            <a
-                                href={`mailto:${supportEmail}?subject=${encodeURIComponent(t('إعادة تعيين كلمة المرور'))}`}
-                                className="text-[13px] text-[#6b7280] underline-offset-4 hover:text-[#111] hover:underline"
-                            >
-                                {t('نسيت كلمة المرور؟')}
-                            </a>
-                        </div>
+                        {/*
+                            «نسيت كلمة المرور» حُذف: كان رابط بريدٍ إلى الدعم لا
+                            استعادةً فعلية — وعدٌ بباب لا يفتحه إلا إنسان. ومن
+                            نسي كلمته يطلبها من صاحب النشاط، وهو يعيد تعيينها من
+                            صفحة الموظف.
+                        */}
+                        <label className="flex w-fit cursor-pointer items-center gap-2 text-[13px] text-[#4b4b4b]">
+                            <input
+                                type="checkbox"
+                                checked={form.data.remember}
+                                onChange={(e) => form.setData('remember', e.target.checked)}
+                                className="size-4 rounded-[4px] border-[#d1d5db] text-[#111] accent-[#111] focus:ring-0"
+                            />
+                            {t('تذكرني')}
+                        </label>
 
                         <Button type="submit" size="lg" className="w-full" loading={form.processing}>
                             {t('تسجيل الدخول')}

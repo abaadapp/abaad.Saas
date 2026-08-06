@@ -8,6 +8,9 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// قلبُ الاشتراكات المنتهية إلى «منتهي» أول كل يوم — قبل أن يفتح أحد لوحته
+Schedule::command('subscriptions:expire')->dailyAt('00:10')->withoutOverlapping();
+
 // نسخ احتياطي تلقائي يومي لكل المتاجر (الساعة 02:00)
 Schedule::command('backup:run')->dailyAt('02:00')->withoutOverlapping();
 

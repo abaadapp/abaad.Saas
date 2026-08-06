@@ -260,23 +260,31 @@ export default function EmployeeForm({
             <Section
                 icon={KeyRound}
                 title="الدخول والأمان"
-                hint="البريد لدخول اللوحة، والرمز لدخول نقطة البيع بلا كلمة مرور"
+                hint="البريد لدخول اللوحة، والرمز لدخول نقطة البيع. واحدٌ منهما يكفي."
             >
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <Field label="البريد الإلكتروني" required error={form.errors.email}>
+                    {/*
+                        اختياري: الكاشير يدخل برمزه لا ببريده. وإلزامُه كان
+                        يدفع التاجر إلى اختراع بريدٍ وهميّ لا يقرأه أحد —
+                        والبريد فريدٌ على المنصة كلّها، فأوّل متجرين يريدان
+                        `cashier@` يصطدمان.
+                    */}
+                    <Field
+                        label="البريد الإلكتروني"
+                        hint="اختياري لمن يدخل بالرمز وحده"
+                        error={form.errors.email}
+                    >
                         <Input
                             type="email"
                             dir="ltr"
                             value={form.data.email}
                             onChange={(e) => form.setData('email', e.target.value)}
-                            required
                         />
                     </Field>
 
                     <Field
                         label={editing ? 'كلمة مرور جديدة' : 'كلمة المرور'}
                         hint={editing ? 'اتركها فارغة للإبقاء على الحالية' : 'أربعة أحرف على الأقل'}
-                        required={!editing}
                         error={form.errors.password}
                     >
                         <Input
@@ -285,7 +293,6 @@ export default function EmployeeForm({
                             autoComplete="new-password"
                             value={form.data.password}
                             onChange={(e) => form.setData('password', e.target.value)}
-                            required={!editing}
                         />
                     </Field>
 
@@ -294,7 +301,7 @@ export default function EmployeeForm({
                         hint={
                             employee?.has_pin
                                 ? 'اتركه فارغًا للإبقاء على الرمز الحالي'
-                                : 'اختياري — لدخول نقطة البيع'
+                                : 'يلزم إن تُرك البريد فارغًا'
                         }
                         error={form.errors.pin}
                     >

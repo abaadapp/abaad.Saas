@@ -1,5 +1,5 @@
-import { usePage } from '@inertiajs/react';
-import { Download, Eye, RefreshCw } from 'lucide-react';
+import { router, usePage } from '@inertiajs/react';
+import { CircleCheck, Download, Eye, RefreshCw } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
@@ -13,6 +13,7 @@ import { useTranslate } from '@/lib/i18n';
 import type { Currency, PageProps } from '@/types';
 
 interface Invoice {
+    id: number;
     number: string;
     business: string;
     plan: string;
@@ -73,6 +74,18 @@ export default function Invoices() {
                             <Download />
                         </a>
                     </Button>
+                    {/* السداد يُسجَّل يدويًّا: التحصيل الإلكتروني يحتاج بوّابة دفع */}
+                    {i.status !== 'مدفوعة' && (
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t('تسجيل السداد')}
+                            title={t('تسجيل السداد')}
+                            onClick={() => router.post(route('super-admin.invoices.pay', i.id))}
+                        >
+                            <CircleCheck className="text-[#047857]" />
+                        </Button>
+                    )}
                 </span>
             ),
         },

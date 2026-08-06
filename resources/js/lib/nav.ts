@@ -11,7 +11,6 @@ import {
     BarChart3,
     Boxes,
     Building2,
-    Flower,
     History,
     Layers,
     LayoutDashboard,
@@ -130,7 +129,6 @@ export const PLATFORM_NAV: NavGroup[] = [
         heading: 'الإدارة',
         items: [
             { label: 'الشركات', icon: Building2, route: 'super-admin.businesses.index' },
-            { label: 'محلات الورود', icon: Flower, route: 'super-admin.flower-shops.index' },
             { label: 'الاشتراكات', icon: RefreshCw, route: 'super-admin.subscriptions.index' },
             { label: 'الباقات', icon: Layers, route: 'super-admin.subscriptions.plans' },
             { label: 'المستخدمون', icon: Users, route: 'super-admin.users.index' },

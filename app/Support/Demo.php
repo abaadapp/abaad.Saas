@@ -105,13 +105,32 @@ class Demo
     }
 
     /** معرّف المستأجر الحالي (أو النشاط الأساسي احتياطيًا) */
+    /**
+     * المتجر الذي تجري عليه هذه الطلبية.
+     *
+     * كان يخمّن حين لا يجد: يُرجع «زهرة مسقط» أو أوّل متجرٍ في القاعدة. وهذا
+     * أخطر سطرٍ في الملف — لأنه لا يفشل، بل ينجح على بيانات شخصٍ آخر. أيّ
+     * مسارٍ جديد يُكتب خارج حارس RequiresBusiness كان سيعرض متجرَ غيره
+     * بلا أن يطلبه أحد، وبلا أي علامةٍ على الشاشة.
+     *
+     * فصار يُرجع صفرًا: لا يطابق متجرًا، فتخرج الاستعلامات فارغة. الفشل
+     * ظاهرٌ ومغلق، لا صامتٌ ومفتوح.
+     *
+     * ويبقى للطرفية استثناء صريح: أدوات التطوير والبذر تعمل على أوّل متجر
+     * عمدًا — ولا يشمل الاستثناءُ الاختبارات، وإلا لخبّأ عنها ما نحرسه.
+     */
     public static function bid(): int
     {
         $u = auth()->user();
         if ($u && $u->business_id) {
             return (int) $u->business_id;
         }
-        return (int) (Business::where('name', 'زهرة مسقط')->value('id') ?? Business::min('id') ?? 0);
+
+        if (app()->runningInConsole() && ! app()->runningUnitTests()) {
+            return (int) (Business::min('id') ?? 0);
+        }
+
+        return 0;
     }
 
     /** الفرع الحالي المختار (من الجلسة) — null = كل الفروع */
@@ -310,6 +329,9 @@ class Demo
     public static function subscriptions(): array
     {
         return Subscription::with('business', 'plan')->orderByDesc('id')->get()->map(fn ($s) => [
+            'id' => $s->id,
+            'business_id' => $s->business_id,
+            'plan_id' => $s->plan_id,
             'business' => $s->business?->name ?? '—',
             'plan' => $s->plan?->name ?? '—',
             'start' => optional($s->starts_at)->format('Y-m-d') ?? '—',
@@ -323,6 +345,7 @@ class Demo
     public static function invoices(): array
     {
         return Invoice::with('business', 'plan')->orderByDesc('id')->get()->map(fn ($i) => [
+            'id' => $i->id,
             'number' => $i->number,
             'business' => $i->business?->name ?? '—',
             'plan' => $i->plan?->name ?? '—',
@@ -1206,6 +1229,18 @@ class Demo
 
     private const AR_MONTHS = [1 => 'يناير', 2 => 'فبراير', 3 => 'مارس', 4 => 'أبريل', 5 => 'مايو', 6 => 'يونيو', 7 => 'يوليو', 8 => 'أغسطس', 9 => 'سبتمبر', 10 => 'أكتوبر', 11 => 'نوفمبر', 12 => 'ديسمبر'];
 
+    /**
+     * اسم الشهر بلغة الواجهة.
+     *
+     * كانت ثلاثة مخططات تقرأ AR_MONTHS مباشرةً بلا فحص اللغة، فتظهر «مارس»
+     * و«يوليو» على لوحةٍ إنجليزية كاملة — ومن لا يقرأ العربية لا يعرف أيّ
+     * عمودٍ أيّ شهر، فيقرأ المخطط بالعكس ولا يشكّ.
+     */
+    private static function monthLabel(\Carbon\Carbon|\Illuminate\Support\Carbon $m): string
+    {
+        return app()->getLocale() === 'ar' ? self::AR_MONTHS[$m->month] : $m->translatedFormat('F');
+    }
+
     /** مبيعات آخر 6 أشهر للنشاط الحالي */
     public static function salesSeries(): array
     {
@@ -1217,9 +1252,7 @@ class Demo
             // (الطرح من 29 يوليو يقفز فوق فبراير فيتكرّر مارس ويختفي شهر).
             $m = now()->startOfMonth()->subMonths($i);
             // اسم الشهر بلغة الواجهة — SetLocale يضبط لغة Carbon لكل طلب
-            $labels[] = app()->getLocale() === 'ar'
-                ? self::AR_MONTHS[$m->month]
-                : $m->translatedFormat('F');
+            $labels[] = self::monthLabel($m);
             $data[] = round((float) Order::where('business_id', $bid)->where('is_held', false)
                 ->where('status', '!=', 'ملغي')
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
@@ -1242,9 +1275,7 @@ class Demo
         $data = [];
         for ($i = 11; $i >= 0; $i--) {
             $m = now()->startOfMonth()->subMonths($i);
-            $labels[] = app()->getLocale() === 'ar'
-                ? self::AR_MONTHS[$m->month]
-                : $m->translatedFormat('F');
+            $labels[] = self::monthLabel($m);
             $data[] = $name === null ? 0 : round((float) Order::where('business_id', $bid)
                 ->where('is_held', false)->where('status', '!=', 'ملغي')
                 ->where('employee_name', $name)
@@ -1422,7 +1453,7 @@ class Demo
             // startOfMonth أولًا: بدونه يفيض subMonths في أيام 29–31
             // (٣٠ يوليو ناقص ٥ أشهر = ٣٠ فبراير → ٢ مارس) فيتكرّر شهر ويسقط آخر
             $m = now()->startOfMonth()->subMonths($i);
-            $labels[] = self::AR_MONTHS[$m->month];
+            $labels[] = self::monthLabel($m);
             $data[] = round((float) Order::where('business_id', $businessId)->where('is_held', false)
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
         }
@@ -1687,7 +1718,7 @@ class Demo
         for ($i = 5; $i >= 0; $i--) {
             // انظر التعليق في businessSalesSeries — بدون startOfMonth يتكرّر شهر
             $m = now()->startOfMonth()->subMonths($i);
-            $labels[] = self::AR_MONTHS[$m->month];
+            $labels[] = self::monthLabel($m);
             $data[] = round((float) Invoice::whereYear('issued_at', $m->year)->whereMonth('issued_at', $m->month)->sum('amount'), 3);
         }
         return ['labels' => $labels, 'data' => $data];
@@ -1701,7 +1732,7 @@ class Demo
         for ($i = 5; $i >= 0; $i--) {
             // انظر التعليق في businessSalesSeries — بدون startOfMonth يتكرّر شهر
             $m = now()->startOfMonth()->subMonths($i);
-            $labels[] = self::AR_MONTHS[$m->month];
+            $labels[] = self::monthLabel($m);
             $data[] = Business::whereYear('starts_at', $m->year)->whereMonth('starts_at', $m->month)->count();
         }
         return ['labels' => $labels, 'data' => $data];

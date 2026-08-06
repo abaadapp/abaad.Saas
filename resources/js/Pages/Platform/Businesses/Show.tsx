@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { usePage } from '@inertiajs/react';
-import { Layers, Pencil, Phone, User } from 'lucide-react';
+import { router, usePage } from '@inertiajs/react';
+import { Layers, LogIn, Pencil, Phone, User } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import DeleteButton from '@/Components/DeleteButton';
@@ -37,6 +37,7 @@ interface Business {
     city: string | null;
     country: string | null;
     logo: string | null;
+    owner_email: string | null;
 }
 
 interface Subscription {
@@ -65,9 +66,19 @@ interface OrderRow {
     date: string;
 }
 
+interface UsageRow {
+    key: string;
+    label: string;
+    used: number;
+    /** null = لا سقف: متجرٌ بلا باقة لا يُقيَّد */
+    cap: number | null;
+}
+
 interface Props {
     business: Business;
     subscription: Subscription | null;
+    usage: UsageRow[];
+    renewal: { monthly: number; yearly: number; endsAt: string | null };
     stats: Stat[];
     overview: { sales: string; orders: number; average: string };
     branches: BranchRow[];
@@ -82,7 +93,7 @@ const TABS = [
 ];
 
 export default function BusinessShow() {
-    const { business, subscription, stats, overview, branches, orders, currency } =
+    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('overview');
@@ -99,6 +110,8 @@ export default function BusinessShow() {
         { label: 'الاسم', value: business.owner },
         { label: 'الهاتف', value: business.phone, ltr: true },
         { label: 'البريد', value: business.email, ltr: true },
+        // بريد الدخول لا بريد التواصل — أوّل ما يُسأل عنه حين يتصل التاجر
+        { label: 'حساب الدخول', value: business.owner_email, ltr: true },
     ];
 
     return (
@@ -113,6 +126,16 @@ export default function BusinessShow() {
                 ]}
                 actions={
                     <>
+                        {/* الدعم يحتاج أن يرى الشاشة التي يشكو منها التاجر لا وصفها */}
+                        <Button
+                            variant="outline"
+                            onClick={() =>
+                                router.post(route('super-admin.businesses.impersonate', business.id))
+                            }
+                        >
+                            <LogIn />
+                            {t('دخول كتاجر')}
+                        </Button>
                         <Button variant="outline" asChild>
                             <SmartLink
                                 routeName="super-admin.businesses.edit"
@@ -265,6 +288,79 @@ export default function BusinessShow() {
                             {business.city && ` · ${business.city}`} · {number(business.branches)} {t('فرعًا')} ·{' '}
                             {t('باقة')} {t(business.plan)}
                         </p>
+
+                        {/*
+                            الاستهلاك مقابل السقف — من بلغ حدّه هو المرشَّح
+                            للترقية، ولا سبيل لمعرفته إن لم يُعرض.
+                        */}
+                        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            {usage.map((u) => {
+                                const full = u.cap !== null && u.used >= u.cap;
+                                const pct = u.cap ? Math.min(100, (u.used / u.cap) * 100) : 0;
+
+                                return (
+                                    <div
+                                        key={u.key}
+                                        className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4"
+                                    >
+                                        <div className="flex items-baseline justify-between gap-2">
+                                            <span className="text-sm text-[#6b7280]">{u.label}</span>
+                                            <span
+                                                className={
+                                                    'tabular-nums text-sm font-semibold ' +
+                                                    (full ? 'text-[#b91c1c]' : 'text-[#111]')
+                                                }
+                                            >
+                                                {number(u.used)}
+                                                {u.cap !== null && ` / ${number(u.cap)}`}
+                                            </span>
+                                        </div>
+                                        {u.cap !== null ? (
+                                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f2f2f0]">
+                                                <div
+                                                    className={
+                                                        'h-full rounded-full ' +
+                                                        (full ? 'bg-[#b91c1c]' : 'bg-[#111]')
+                                                    }
+                                                    style={{ width: `${pct}%` }}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <p className="mt-2 text-[12px] text-[#9ca3af]">{t('بلا سقف')}</p>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* التجديد: دورةٌ كاملة وفاتورةٌ تُصدَر معها */}
+                        <div className="mt-6 flex flex-wrap items-center gap-3 rounded-[12px] bg-[#fafafa] p-4">
+                            <span className="text-sm text-[#4b4b4b]">
+                                {renewal.endsAt
+                                    ? `${t('ينتهي في')} ${renewal.endsAt}`
+                                    : t('لا تاريخ انتهاء محدَّد')}
+                            </span>
+                            <span className="flex-1" />
+                            <Button
+                                variant="outline"
+                                onClick={() =>
+                                    router.post(route('super-admin.businesses.renew', business.id), {
+                                        cycle: 'monthly',
+                                    })
+                                }
+                            >
+                                {t('جدّد شهرًا')} · {money(renewal.monthly, currency)}
+                            </Button>
+                            <Button
+                                onClick={() =>
+                                    router.post(route('super-admin.businesses.renew', business.id), {
+                                        cycle: 'yearly',
+                                    })
+                                }
+                            >
+                                {t('جدّد سنة')} · {money(renewal.yearly, currency)}
+                            </Button>
+                        </div>
                     </div>
                 )}
 

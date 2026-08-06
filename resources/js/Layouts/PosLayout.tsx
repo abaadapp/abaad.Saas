@@ -16,6 +16,7 @@ import {
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { logout } from '@/lib/logout';
+import ImpersonationBar from '@/Components/ImpersonationBar';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
@@ -74,6 +75,8 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
     return (
         <div className={cn('pos-scope flex flex-col', fill ? 'h-screen overflow-hidden' : 'min-h-screen')}>
             <Head title={title} />
+
+            <ImpersonationBar />
 
             <header className="flex h-16 shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-4">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-[12px] bg-[#111] text-white">

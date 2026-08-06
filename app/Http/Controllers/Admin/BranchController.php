@@ -42,6 +42,7 @@ class BranchController extends Controller
             'address' => ['nullable', 'string', 'max:255'],
         ]);
         $data['business_id'] = $this->bid();
+        \App\Support\PlanLimits::enforce(auth()->user()->business, 'branches');
         Branch::create($data);
         \App\Support\Activity::log('created', 'أضاف فرعًا: ' . $data['name']);
 

@@ -13,7 +13,7 @@ const LENGTH = 4;
 
 /** دخول الموظف برمز — نفس ثيمة أبعاد، بلا بريد ولا كلمة مرور */
 export default function Pin() {
-    const { errors } = usePage<PageProps>().props;
+    const { errors, deviceBusiness } = usePage<PageProps<{ deviceBusiness: string | null }>>().props;
     const t = useTranslate();
     const [pin, setPin] = useState('');
     const [shake, setShake] = useState(false);
@@ -84,6 +84,14 @@ export default function Pin() {
             <div className="w-full max-w-[360px]">
                 <div className="mb-8 flex flex-col items-center gap-3">
                     <Logo className="h-14 w-auto text-[#111]" />
+                    {/*
+                        اسم المتجر الذي يقرأ هذا الجهاز رموزه.
+                        جهازٌ رُبط بالمتجر الخطأ يوم التركيب يبقى صامتًا حتى
+                        يقف موظفٌ أمام شاشةٍ ترفض رمزه الصحيح ولا يفهم لماذا.
+                    */}
+                    {deviceBusiness && (
+                        <p className="text-[15px] font-semibold text-[#111]">{deviceBusiness}</p>
+                    )}
                     <p className="text-[13px] text-[#6b7280]">{t('أدخل رمز الدخول المكوّن من 4 أرقام')}</p>
                 </div>
 

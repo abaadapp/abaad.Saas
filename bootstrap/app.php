@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'ability' => \App\Http\Middleware\CheckAbility::class,
             'panel' => \App\Http\Middleware\EntersPanel::class,
             'business' => \App\Http\Middleware\RequiresBusiness::class,
+            'tenant' => \App\Http\Middleware\CheckTenantStatus::class,
         ]);
         $middleware->web(append: [
             \App\Http\Middleware\SetLocale::class,

@@ -129,4 +129,35 @@ class LocalePreferenceTest extends TestCase
         $this->post(route('language.guest'), ['locale' => 'en'])->assertRedirect();
         $this->assertSame('en', session('locale'));
     }
+
+    /**
+     * تسميات الشهور تتبع اللغة في كل المخططات.
+     *
+     * كانت ثلاثة منها تقرأ جدول الأشهر العربي مباشرةً بلا فحص اللغة: «مارس»
+     * و«يوليو» على لوحةٍ إنجليزية كاملة. ومن لا يقرأ العربية لا يعرف أيّ
+     * عمودٍ أيّ شهر — فيقرأ المخطط بالعكس ولا يشكّ أنه أخطأ.
+     */
+    public function test_chart_month_labels_follow_the_locale(): void
+    {
+        $series = [
+            fn () => \App\Support\Demo::revenueSeries()['labels'],
+            fn () => \App\Support\Demo::businessesGrowthSeries()['labels'],
+            fn () => \App\Support\Demo::businessSalesSeries($this->business->id)['labels'],
+            fn () => \App\Support\Demo::salesSeries()['labels'],
+        ];
+
+        app()->setLocale('en');
+        foreach ($series as $i => $make) {
+            foreach ($make() as $label) {
+                $this->assertDoesNotMatchRegularExpression('/[\x{0600}-\x{06FF}]/u', $label, "مخطط رقم {$i} يعرض شهرًا بالعربية في الوضع الإنجليزي: {$label}");
+            }
+        }
+
+        app()->setLocale('ar');
+        foreach ($series as $i => $make) {
+            foreach ($make() as $label) {
+                $this->assertMatchesRegularExpression('/[\x{0600}-\x{06FF}]/u', $label, "مخطط رقم {$i} يعرض شهرًا بالإنجليزية في الوضع العربي: {$label}");
+            }
+        }
+    }
 }

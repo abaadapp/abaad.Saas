@@ -328,6 +328,27 @@ class ProductImportExportController extends Controller
         $bid = $this->bid();
         $branchId = $payload['branch_id'];
         $analysis = $this->analyze($payload);
+
+        /*
+         * الاستيراد يخضع لسقف الباقة كالإضافة اليدوية.
+         *
+         * حدٌّ يُفرض في نموذجٍ ويُتجاوَز بملف CSV ليس حدًّا. والفحص هنا على
+         * المجموع لا على كل صفٍّ: ملفٌ بمئة صنف على متجرٍ سقفه خمسون يجب أن
+         * يُرفض كاملًا قبل الكتابة — لا أن يدخل نصفه ثم يتوقّف.
+         */
+        $incoming = collect($analysis['rows'])->where('status', 'new')->count();
+        $business = auth()->user()->business;
+        $cap = \App\Support\PlanLimits::cap($business, 'products');
+        if ($cap !== null && \App\Support\PlanLimits::used($bid, 'products') + $incoming > $cap) {
+            return back()->with('toast', [
+                'msg' => __('الملف يتجاوز حدّ باقة «:plan»: :cap منتجًا. رقِّ الباقة أو احذف أصنافًا.', [
+                    'plan' => $business->plan->name,
+                    'cap' => $cap,
+                ]),
+                'type' => 'danger',
+            ]);
+        }
+
         $added = 0;
         $updated = 0;
         // لقطة ما قبل الكتابة — بها وحدها يصير التراجع ممكنًا

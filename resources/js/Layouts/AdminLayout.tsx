@@ -2,7 +2,9 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
+import ImpersonationBar from '@/Components/ImpersonationBar';
 import Sidebar from '@/Components/Sidebar';
+import SubscriptionBanner from '@/Components/SubscriptionBanner';
 import Topbar from '@/Components/Topbar';
 import type { NavGroup } from '@/lib/nav';
 import type { PageProps } from '@/types';
@@ -36,6 +38,8 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
         <div className="admin-ui min-h-screen">
             <Head title={title} />
 
+            <ImpersonationBar />
+
             <Sidebar
                 open={sidebarOpen}
                 onClose={() => setSidebarOpen(false)}
@@ -53,6 +57,7 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
                     transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
                     className="p-4 lg:p-6"
                 >
+                    <SubscriptionBanner />
                     {children}
                 </motion.main>
             </div>

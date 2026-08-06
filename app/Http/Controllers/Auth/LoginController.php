@@ -35,10 +35,40 @@ class LoginController extends Controller
             ]);
         }
 
+        $this->refuseBlocked(Auth::user(), 'email');
+
         $request->session()->regenerate();
         $this->markLogin(Auth::user());
 
+        // يوم التركيب يدخل صاحب المتجر ببريده على جهاز الصندوق، فيتذكّره
+        // الجهاز ويعمل الكاشير بالرمز وحده بعدها — انظر PosDevice
+        \App\Support\PosDevice::remember(Auth::user()->business_id);
+
         return redirect()->intended($this->homeFor(Auth::user()));
+    }
+
+    /**
+     * يُنهي الجلسة ويرفض الدخول إن كان الحساب أو متجره أو اشتراكه موقوفًا.
+     *
+     * كان الباب مفتوحًا كلّه: `Auth::attempt` لا تقرأ حالة الحساب، ودخولُ
+     * الرمز يقرأ حالة الموظف وحده — فموظفٌ نشطٌ في متجرٍ معطَّل انتهى
+     * اشتراكه منذ أشهر كان يدخل ويبيع.
+     *
+     * والمنع عند الباب لا يكفي وحده: حارسُ الطلب (CheckTenantStatus) يقطع
+     * جلسةً فُتحت قبل الإيقاف. وهذا يمنع فتح واحدةٍ جديدة.
+     */
+    private function refuseBlocked(?User $user, string $field): void
+    {
+        $reason = \App\Support\Tenancy::blockReason($user);
+        if (! $reason) {
+            return;
+        }
+
+        Auth::logout();
+
+        throw ValidationException::withMessages([
+            $field => \App\Support\Tenancy::message($reason),
+        ]);
     }
 
     /** شاشة الدخول بالبريد وكلمة المرور — أول ما يراه المستخدم */
@@ -47,7 +77,6 @@ class LoginController extends Controller
         return \Inertia\Inertia::render('Auth/Login', [
             // رمز الموظف مسار حقيقي لا زخرفة؛ يُمرَّر جاهزًا فلا تبنيه الواجهة
             'pinUrl' => route('pin.form'),
-            'supportEmail' => config('mail.from.address', 'support@abaad.app'),
             'year' => (int) now()->format('Y'),
         ]);
     }
@@ -57,7 +86,16 @@ class LoginController extends Controller
     {
         app()->setLocale('en');
 
-        return \Inertia\Inertia::render('Auth/Pin');
+        return \Inertia\Inertia::render('Auth/Pin', [
+            /*
+             * اسم المتجر الذي يقرأ هذا الجهازُ رموزَه.
+             *
+             * صار الرمز فريدًا داخل المتجر، فمن الواجب أن يرى الكاشير أين
+             * يدخل: جهازٌ رُبط بالمتجر الخطأ يوم التركيب يبقى صامتًا حتى
+             * يقف موظفٌ أمام شاشةٍ ترفض رمزه الصحيح ولا يفهم لماذا.
+             */
+            'deviceBusiness' => \App\Support\PosDevice::name(),
+        ]);
     }
 
     /** دخول الموظف برمز من ٤ أرقام — بلا بريد أو كلمة مرور */
@@ -72,33 +110,56 @@ class LoginController extends Controller
             'pin.digits' => __('رمز الدخول يجب أن يكون 4 أرقام.'),
         ]);
 
-        // تحديد المعدل: ٥ محاولات لكل عنوان IP في الدقيقة
-        $key = 'pin-login:' . $request->ip();
-        if (RateLimiter::tooManyAttempts($key, 5)) {
-            $seconds = RateLimiter::availableIn($key);
+        /*
+         * الرمز يُقرأ داخل متجر هذا الجهاز وحده.
+         *
+         * صار «1234» ممكنًا في متجرين، فالبحث في المستخدمين كلّهم كان
+         * سيُدخل صاحبَ الرمز أيًّا كان متجره — وهو أسوأ من العطب الذي
+         * أصلحناه: دخولٌ إلى متجرٍ غير متجرك.
+         */
+        $businessId = \App\Support\PosDevice::businessId();
+        if (! $businessId) {
             throw ValidationException::withMessages([
-                'pin' => __('محاولات كثيرة. حاول بعد :seconds ثانية.', ['seconds' => $seconds]),
+                'pin' => __('هذا الجهاز غير مرتبط بمتجر. ادخل مرّةً بالبريد وكلمة المرور أولًا.'),
             ]);
         }
 
-        // البحث عن مستخدم يطابق رمزه المُجزّأ (بين من لديهم رمز فقط)
-        $user = User::whereNotNull('pin')->get()
+        /*
+         * حدّان لا واحد: ٥ في الدقيقة، و٣٠ في الساعة.
+         *
+         * الحدّ الدقيقيّ وحده يُبطئ ولا يمنع — من يصبر يجرّب سبعة آلاف رمز
+         * في اليوم، وهو أكثر من فضاء الرموز كلّه. والحدّ الساعيّ يجعل مسحَ
+         * الفضاء يستغرق سنة.
+         */
+        $key = 'pin-login:' . $request->ip();
+        $slowKey = 'pin-login-hour:' . $request->ip();
+
+        foreach ([[$key, 5], [$slowKey, 30]] as [$k, $max]) {
+            if (RateLimiter::tooManyAttempts($k, $max)) {
+                throw ValidationException::withMessages([
+                    'pin' => __('محاولات كثيرة. حاول بعد :seconds ثانية.', [
+                        'seconds' => RateLimiter::availableIn($k),
+                    ]),
+                ]);
+            }
+        }
+
+        // البحث عن مستخدم يطابق رمزه المُجزّأ داخل متجر الجهاز
+        $user = User::where('business_id', $businessId)->whereNotNull('pin')->get()
             ->first(fn ($u) => Hash::check($data['pin'], $u->getRawOriginal('pin')));
 
         if (! $user) {
             RateLimiter::hit($key, 60);
+            RateLimiter::hit($slowKey, 3600);
             throw ValidationException::withMessages([
                 'pin' => __('رمز الدخول غير صحيح.'),
             ]);
         }
 
-        if ($user->status !== 'نشط') {
-            throw ValidationException::withMessages([
-                'pin' => __('هذا الحساب معطّل. راجع صاحب النشاط.'),
-            ]);
-        }
+        $this->refuseBlocked($user, 'pin');
 
         RateLimiter::clear($key);
+        RateLimiter::clear($slowKey);
         Auth::login($user);
         $request->session()->regenerate();
         $this->markLogin($user);
@@ -120,9 +181,12 @@ class LoginController extends Controller
             return redirect()->route('login')->withErrors(['email' => __('الحساب التجريبي غير متوفر.')]);
         }
 
+        $this->refuseBlocked($user, 'email');
+
         Auth::login($user);
         $request->session()->regenerate();
         $this->markLogin($user);
+        \App\Support\PosDevice::remember($user->business_id);
 
         return redirect($this->homeFor($user));
     }

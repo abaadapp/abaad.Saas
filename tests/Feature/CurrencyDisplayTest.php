@@ -55,6 +55,9 @@ class CurrencyDisplayTest extends TestCase
             'business_id' => $this->business->id, 'name' => 'باقة ورد',
             'price' => 10, 'quantity' => 50, 'active' => true,
         ]);
+
+        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
+        $this->openShiftFor($this->business->id);
     }
 
     private function sell(): \App\Models\Order

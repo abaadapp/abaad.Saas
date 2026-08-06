@@ -5,13 +5,18 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 
 /**
- * يتحقق أن كل نص عربي مغلَّف بـ __() في الكود له ترجمة في lang/en.json.
+ * يتحقق أن كل نص عربي مغلَّف بـ __() في الخادم أو t() في الواجهة له ترجمة
+ * في lang/en.json.
  *
  *   php artisan translations:check          # يعرض المفاتيح الناقصة (يفشل إن وُجدت)
  *   php artisan translations:check --stub   # يضيف الناقصة إلى en.json بقيمة «TODO» لترجمتها
  *
  * التصميم: النص العربي نفسه هو المفتاح، فالنص الناقص يظهر عربيًا (تراجع آمن)،
  * وهذا الأمر يكشفه حتى لا يبقى بلا ترجمة إنجليزية.
+ *
+ * وكان يقرأ ملفات php وحدها فيقول «الترجمة مكتملة» وسبعُ مئة مفتاحٍ في
+ * الواجهة لم تُفحص — تطمينٌ بلا فحص، وهو أسوأ من لا فحص: من يقرأ «مكتملة»
+ * يكفّ عن النظر. وموظفٌ لا يقرأ العربية يقف أمام النص الذي فات.
  */
 class TranslationsCheck extends Command
 {
@@ -38,7 +43,7 @@ class TranslationsCheck extends Command
             }
         }
 
-        $this->line("مفاتيح __() في الكود : " . count($keys));
+        $this->line("مفاتيح __() و t() في الكود : " . count($keys));
         $this->line("مترجَمة في en.json    : " . (count($keys) - count($missing)));
 
         if ($mismatched) {
@@ -76,16 +81,34 @@ class TranslationsCheck extends Command
         return self::FAILURE;
     }
 
-    /** يستخرج كل مفاتيح __() العربية الحرفية من resources/ و app/ */
+    /** يستخرج مفاتيح __() العربية من php ومفاتيح t() من tsx/ts */
     private function extractKeys(): array
     {
         $keys = [];
+
         foreach ([resource_path(), app_path()] as $root) {
             $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root));
             foreach ($it as $file) {
-                if (! $file->isFile() || ! preg_match('/\.php$/', $file->getFilename())) { continue; }
-                $src = file_get_contents($file->getPathname());
-                foreach (["/__\(\s*'((?:[^'\\\\]|\\\\.)*)'/", '/__\(\s*"((?:[^"\\\\]|\\\\.)*)"/'] as $re) {
+                if (! $file->isFile()) { continue; }
+                $name = $file->getFilename();
+                $src = null;
+
+                if (preg_match('/\.php$/', $name)) {
+                    $src = file_get_contents($file->getPathname());
+                    $fn = '__';
+                } elseif (preg_match('/\.tsx?$/', $name)) {
+                    // التعليقات تُنزع أولًا: مثالُ الاستعمال في توثيق useTranslate
+                    // كان يُقرأ مفتاحًا ناقصًا فيُبلَّغ عن عطبٍ لا وجود له
+                    $src = preg_replace('#/\*.*?\*/|//[^\n]*#s', '', file_get_contents($file->getPathname()));
+                    $fn = 't';
+                } else {
+                    continue;
+                }
+
+                foreach ([
+                    "/\b{$fn}\(\s*'((?:[^'\\\\]|\\\\.)*)'/",
+                    "/\b{$fn}\(\s*\"((?:[^\"\\\\]|\\\\.)*)\"/",
+                ] as $re) {
                     if (preg_match_all($re, $src, $m)) {
                         foreach ($m[1] as $k) {
                             $k = stripcslashes($k);

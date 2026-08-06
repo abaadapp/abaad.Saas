@@ -56,7 +56,11 @@ export default function Analytics() {
             <PageHeader
                 title="التحليلات"
                 subtitle={t('مقارنات الفترات وأنماط البيع حسب اليوم والساعة والقسم')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'التحليلات' }]}
+                breadcrumbs={[
+                    { label: 'الرئيسية', href: route('admin.dashboard') },
+                    { label: 'التقارير', href: route('admin.reports.index') },
+                    { label: 'تحليلات متقدمة' },
+                ]}
                 actions={
                     <ExportMenu
                         xlsx={route('admin.analytics.xlsx')}

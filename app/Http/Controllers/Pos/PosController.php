@@ -317,6 +317,23 @@ class PosController extends Controller
 
     public function checkout(Request $request)
     {
+        /*
+         * لا بيع بلا وردية مفتوحة.
+         *
+         * بيعةٌ خارج وردية لا تدخل في حساب أي درج: تُقبض نقدًا وتغيب عن
+         * المتوقّع، فيظهر الدرج زائدًا بلا تفسير — ويصير الإقفال طقسًا لا
+         * يكشف شيئًا. والباب هنا لا في الواجهة وحدها: الطلب يصل من جهازٍ
+         * قد تكون شاشته قديمة.
+         */
+        $shift = \App\Support\Shifts::current();
+        if (! $shift && \App\Support\Shifts::blocksSelling()) {
+            return response()->json([
+                'ok' => false,
+                'shift_required' => true,
+                'message' => __('افتح وردية الصندوق قبل البيع.'),
+            ], 409);
+        }
+
         $data = $request->validate([
             'items' => ['required', 'array', 'min:1'],
             'items.*.id' => ['nullable', 'integer'],
@@ -327,6 +344,9 @@ class PosController extends Controller
             'items.*.qty' => ['required', 'integer', 'min:1'],
             'items.*.note' => ['nullable', 'string', 'max:255'],
             'customer' => ['nullable', 'string'],
+            // المعرّف هو ما تتبعه النقاط؛ والهاتف مرجعٌ ثانٍ حين يغيب
+            'customer_id' => ['nullable', 'integer'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
             'payment_method' => ['nullable', 'string'],
             'delivery_fee' => ['nullable', 'numeric', 'min:0'],
             'resume_id' => ['nullable', 'integer'],
@@ -348,7 +368,7 @@ class PosController extends Controller
         // البيع سبع كتابات مترابطة (طلب، بنود، مخزون، حركات، معاملة، نقاط، تنظيف
         // المعلّق). انقطاعٌ في المنتصف كان يترك طلبًا بلا معاملة مالية أو مخزونًا
         // منقوصًا بلا فاتورة — فتُنفَّذ كلها أو لا تُنفَّذ أيٌّ منها.
-        $result = DB::transaction(function () use ($data) {
+        $result = DB::transaction(function () use ($data, $shift) {
             $bid = $this->bid();
             $branch = $this->branch();
 
@@ -364,7 +384,7 @@ class PosController extends Controller
             $couponApplied = $coupon && $coupon->isValid() && $subtotal >= (float) $coupon->min_order;
             $couponDiscount = $couponApplied ? min((float) $coupon->discountFor($subtotal), $subtotal) : 0.0;
 
-            $customer = $this->customerFor($data['customer'] ?? null);
+            $customer = $this->customerFor($data['customer'] ?? null, $data['customer_id'] ?? null, $data['customer_phone'] ?? null);
             $redeem = $this->resolveRedemption($customer, $subtotal, $couponDiscount, (int) ($data['redeem_points'] ?? 0));
 
             $discount = round(min($couponDiscount + $redeem['discount'], $subtotal), 3);
@@ -388,6 +408,8 @@ class PosController extends Controller
                 'user_id' => PosCashier::id(),
                 'branch_id' => $branch['id'],
                 'branch' => $branch['name'],
+                // تُنسب إلى الوردية إن كانت مفتوحة، ولو كان المنع مطفأً
+                'shift_id' => $shift?->id,
                 'status' => 'مكتمل',
                 'payment_method' => $data['payment_method'] ?? 'نقدي',
                 'payment_status' => 'مدفوع',
@@ -579,9 +601,11 @@ class PosController extends Controller
         $data = $request->validate([
             // لا name_en: localizeName أدناه يشتقّه من الاسم المُدخَل
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => \App\Support\Customers::phoneRule($this->bid()),
             'email' => ['nullable', 'email'],
             'tax_number' => ['nullable', 'string', 'max:50'],
+        ], [
+            'phone.unique' => __('هذا الرقم مسجَّل لعميل آخر — نقاط الولاء تتبع الرقم.'),
         ]);
         $data['business_id'] = $this->bid();
         $data = \App\Support\Customers::localizeName($data);
@@ -608,18 +632,45 @@ class PosController extends Controller
      * نقاط الولاء للعميل المسجّل: تستبدل النقاط المطلوبة (خصم) ثم تمنح نقاط الشراء.
      * تحترم إعداد التفعيل والمعدّل، وتربط الطلب بالعميل. تُرجِع ['earned'=>x, 'redeemed'=>y].
      */
-    /** عميل النشاط بالاسم — أو null للعميل النقدي */
-    private function customerFor(?string $name): ?\App\Models\Customer
+    /**
+     * عميل النشاط — بالمعرّف، ثم بالهاتف، ثم بالاسم إن كان فريدًا.
+     *
+     * كان يُطابَق بالاسم وحده ويُؤخذ أوّل ما يعود. والاسم ليس مفتاحًا: متجرٌ
+     * فيه ثلاثة باسم «محمد» كان يمنح نقاط شراء كلٍّ منهم لأوّلهم في الجدول،
+     * ويخصم رصيده هو عند استبدال غيره. النقاط مالٌ فعلي، فالخلط فيها خسارة
+     * لصاحبها وهبةٌ لسواه — ولا يظهر شيء من ذلك في أي شاشة.
+     *
+     * والهاتف هو ما يعرّف الشخص عند التاجر فعلًا، فهو المرجع الثاني.
+     *
+     * وحين يبقى الاسم وحده ويطابق أكثر من واحد: لا يُربط أحد. بيعةٌ بلا نقاط
+     * يشتكي منها العميل فتُصحَّح، ونقاطٌ تذهب لغير صاحبها لا يلحظها أحد.
+     */
+    private function customerFor(?string $name, ?int $id = null, ?string $phone = null): ?\App\Models\Customer
     {
+        $scope = fn () => \App\Models\Customer::where('business_id', $this->bid());
+
+        if ($id) {
+            return $scope()->find($id);
+        }
+
+        if (filled($phone)) {
+            $found = $scope()->where('phone', $phone)->first();
+            if ($found) {
+                return $found;
+            }
+        }
+
         if (empty($name) || $name === 'عميل نقدي') {
             return null;
         }
 
         // الكاشير الإنجليزي يرى name_en ويرسله، فنطابق العمودين معًا:
         // المطابقة بالعربي وحده كانت تُسقط ربط العميل ونقاط ولائه.
-        return \App\Models\Customer::where('business_id', $this->bid())
+        $matches = $scope()
             ->where(fn ($q) => $q->where('name', $name)->orWhere('name_en', $name))
-            ->first();
+            ->limit(2)->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     /**

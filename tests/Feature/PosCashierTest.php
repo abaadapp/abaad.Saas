@@ -55,6 +55,9 @@ class PosCashierTest extends TestCase
             'business_id' => $this->business->id, 'name' => 'باقة ورد',
             'price' => 10, 'cost' => 4, 'quantity' => 50, 'alert_qty' => 2, 'active' => true,
         ]);
+
+        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
+        $this->openShiftFor($this->business->id);
     }
 
     private function sell()

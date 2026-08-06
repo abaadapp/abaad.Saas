@@ -52,6 +52,54 @@ class AlertMetrics
             ->get();
     }
 
+    /**
+     * البطاقات الاختيارية للوحة — مقاييس التقارير نفسها معروضةً كبطاقات.
+     *
+     * المصدر واحد مقصود: هذه المقاييس تُبنى عليها التنبيهات المخصّصة أصلًا،
+     * فلو بُنيت للّوحة قائمةٌ ثانية لافترقتا عند أوّل تعديل — يقول التنبيه
+     * رقمًا وتقول البطاقة غيره، ولا يعرف التاجر أيّهما يصدّق.
+     *
+     * وكلٌّ منها يقود إلى قسمه: البطاقة سؤال، وقسمها هو الجواب المفصَّل.
+     */
+    public static function catalog(int $businessId): array
+    {
+        $icons = [
+            'daily_sales' => 'shopping-bag', 'monthly_expenses' => 'arrow-down-circle',
+            'pending_orders' => 'clock', 'low_stock_products' => 'alert-triangle',
+            'dormant_customers' => 'user-x', 'open_purchase_orders' => 'clipboard-list',
+            'today_profit' => 'piggy-bank', 'open_shift_hours' => 'clock',
+        ];
+        $colors = [
+            'daily_sales' => 'primary', 'monthly_expenses' => 'danger',
+            'pending_orders' => 'warning', 'low_stock_products' => 'warning',
+            'dormant_customers' => 'secondary', 'open_purchase_orders' => 'info',
+            'today_profit' => 'success', 'open_shift_hours' => 'warning',
+        ];
+
+        return collect(\App\Models\CustomAlert::METRICS)
+            ->map(function ($m, $key) use ($businessId, $icons, $colors) {
+                $value = self::value($key, $businessId);
+
+                return [
+                    'key' => $key,
+                    'label' => __($m['label']),
+                    'value' => $m['unit'] === 'money' ? Demo::money($value) : (string) (int) $value,
+                    'icon' => $icons[$key] ?? 'activity',
+                    'color' => $colors[$key] ?? 'primary',
+                    'url' => self::sectionUrl($m['section']),
+                ];
+            })
+            ->values()->all();
+    }
+
+    /** قسم المقياس → مساره. غيابه يعني بطاقة لا تقود إلى شيء */
+    private static function sectionUrl(string $section): ?string
+    {
+        $name = \App\Support\Permissions::ROUTES[$section] ?? null;
+
+        return $name && auth()->user()?->allows($section) ? route($name) : null;
+    }
+
     /** القيمة الحالية لمقياس */
     public static function value(string $metric, int $businessId): float
     {
@@ -78,6 +126,15 @@ class AlertMetrics
 
             // الإيراد ناقص التكلفة ناقص مصروفات اليوم
             'today_profit' => self::todayProfit($businessId),
+
+            // كم ساعة والوردية مفتوحة؟ صفرٌ إن لم تكن مفتوحة أصلًا
+            'open_shift_hours' => (function () use ($businessId) {
+                $opened = \App\Models\Shift::where('business_id', $businessId)
+                    ->where('status', \App\Models\Shift::OPEN)
+                    ->min('opened_at');
+
+                return $opened ? round(\Illuminate\Support\Carbon::parse($opened)->diffInMinutes(now()) / 60, 1) : 0.0;
+            })(),
 
             default => 0.0,
         };

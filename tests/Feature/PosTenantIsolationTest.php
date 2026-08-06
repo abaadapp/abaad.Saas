@@ -10,9 +10,9 @@ use Tests\TestCase;
 /**
  * العزل بين المتاجر داخل نقطة البيع.
  *
- * مسارات /pos تحرسها 'auth' و'business' فقط — لا 'ability' — فهي أوسع بابًا
- * من لوحة النشاط. والكاشير هو أقلّ الأدوار صلاحية وأكثرها عددًا، فإن مرّ
- * معرّف طلبٍ من متجر آخر عبرها مرّ لأضعف حساب في النظام.
+ * حارس الصلاحية يقول «له نقطة بيع» ولا يقول «أيّ متجر». والكاشير هو أقلّ
+ * الأدوار صلاحية وأكثرها عددًا، فإن مرّ معرّف طلبٍ من متجر آخر عبر مسارات
+ * /pos مرّ لأضعف حساب في النظام.
  */
 class PosTenantIsolationTest extends TestCase
 {
@@ -35,6 +35,9 @@ class PosTenantIsolationTest extends TestCase
             'business_id' => $this->mine->id, 'name' => 'كاشير', 'email' => 'c@abaad.om',
             'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
         ]);
+
+        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
+        $this->openShiftFor($this->mine->id);
     }
 
     private function theirOrder(string $number, bool $held = false): int

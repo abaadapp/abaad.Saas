@@ -190,6 +190,8 @@ export default function SettingsIndex() {
         free_threshold: get('free_threshold', '0'),
 
         loyalty_enabled: on('loyalty_enabled'),
+        // مطفأ افتراضيًّا: منعُ البيع أخطر تصرّف في نقطة بيع
+        require_open_shift: on('require_open_shift', '0'),
         loyalty_earn_rate: get('loyalty_earn_rate', '5'),
         loyalty_redeem_max_pct: get('loyalty_redeem_max_pct', '50'),
         loyalty_redeem_min: get('loyalty_redeem_min', '100'),
@@ -833,6 +835,27 @@ export default function SettingsIndex() {
                                         <Input type="number" step="0.001" min="0" dir="ltr" value={form.data.free_threshold} onChange={(e) => form.setData('free_threshold', e.target.value)} />
                                     </Field>
                                 </div>
+                            </>
+                        )}
+
+                        {tab === 'shifts' && (
+                            <>
+                                <h3 className="mb-2 font-bold text-[#111]">{t('وردية الصندوق')}</h3>
+                                <p className="mb-5 text-[13px] text-[#6b7280]">
+                                    {t('الوردية تُحسب وتُقفل دائمًا. هذا المفتاح يقرّر هل تمنع البيع أيضًا.')}
+                                </p>
+                                <Toggle
+                                    on={form.data.require_open_shift}
+                                    onChange={(v) => form.setData('require_open_shift', v)}
+                                    label="امنع البيع بلا وردية مفتوحة"
+                                    hint="بتفعيله لا تُقبل بيعة قبل فتح الوردية — كاشير ينسى الفتح يوقف الصندوق."
+                                />
+                                <p className="mt-4 flex items-start gap-2 rounded-[12px] bg-[#fffbeb] px-3 py-2.5 text-[12px] text-[#b45309]">
+                                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                                    <span>
+                                        {t('فعّله بعد أن يعتاد موظفوك فتح الوردية كل صباح — لا قبل ذلك.')}
+                                    </span>
+                                </p>
                             </>
                         )}
 

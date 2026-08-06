@@ -21,29 +21,38 @@ class SearchController extends Controller
         if (mb_strlen($q) < 2) {
             return response()->json(['groups' => []]);
         }
-        $bid = auth()->user()->business_id ?? Demo::bid();
+        $user = auth()->user();
+        $bid = $user->business_id ?? Demo::bid();
         $like = "%{$q}%";
 
-        $products = Product::where('business_id', $bid)
+        /*
+         * البحث لا يتجاوز صلاحيات صاحبه.
+         *
+         * المسار نفسه مفتوح لكل من دخل اللوحة — هو أداةٌ في الشريط العلوي لا
+         * قسم. لكن نتائجه تقود إلى ثلاثة أقسام، فمن لا يملك «العملاء» كان
+         * يقرأ أسماءهم وأرقامهم من مربّع البحث ثم يصطدم بـ403 عند الضغط:
+         * البيانات وصلته قبل الباب المغلق.
+         */
+        $products = $user->allows('products') ? Product::where('business_id', $bid)
             ->where(fn ($w) => $w->where('name', 'like', $like)->orWhere('sku', 'like', $like))
             ->limit(5)->get()->map(fn ($p) => [
                 'label' => $p->name, 'meta' => $p->sku ?: '—',
                 'url' => route('admin.products.show', $p->id),
-            ]);
+            ]) : collect();
 
-        $orders = Order::where('business_id', $bid)->where('is_held', false)
+        $orders = $user->allows('orders') ? Order::where('business_id', $bid)->where('is_held', false)
             ->where(fn ($w) => $w->where('number', 'like', $like)->orWhere('customer_name', 'like', $like))
             ->orderByDesc('id')->limit(5)->get()->map(fn ($o) => [
                 'label' => $o->number, 'meta' => $o->customer_name ?? __('عميل نقدي'),
                 'url' => route('admin.orders.show', $o->number),
-            ]);
+            ]) : collect();
 
-        $customers = Customer::where('business_id', $bid)
+        $customers = $user->allows('customers') ? Customer::where('business_id', $bid)
             ->where(fn ($w) => $w->where('name', 'like', $like)->orWhere('phone', 'like', $like))
             ->limit(5)->get()->map(fn ($c) => [
                 'label' => $c->name, 'meta' => $c->phone ?: '—',
                 'url' => route('admin.customers.show', $c->id),
-            ]);
+            ]) : collect();
 
         return response()->json(['groups' => array_values(array_filter([
             $this->group(__('المنتجات'), 'package', $products),

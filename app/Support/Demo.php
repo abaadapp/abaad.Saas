@@ -549,7 +549,7 @@ class Demo
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
             ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
                 'id' => $o->number,
-                'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
+                'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
                 'employee' => $o->employee_name ?? '—',
                 'branch' => $o->branch,
                 'items_count' => $o->items_count,
@@ -580,7 +580,7 @@ class Demo
         return [
             'id' => $o->number,
             'db_id' => $o->id,
-            'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
+            'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
             'employee' => $o->employee_name ?? '—',
             'branch' => $o->branch ?? __('الفرع الرئيسي'),
             'status' => $o->status,
@@ -931,13 +931,13 @@ class Demo
         $bid = self::bid();
         // خريطة product_id -> [category, cost]
         $products = Product::where('business_id', $bid)->with('category')->get()
-            ->keyBy('id')->map(fn ($p) => ['cat' => optional($p->category)->name ?? 'غير مصنّف', 'cost' => (float) $p->cost]);
+            ->keyBy('id')->map(fn ($p) => ['cat' => optional($p->category)->name ?? __('غير مصنّف'), 'cost' => (float) $p->cost]);
 
         $agg = [];
         $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
             ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue')->groupBy('product_id')->get();
         foreach ($items as $it) {
-            $info = $products[$it->product_id] ?? ['cat' => 'غير مصنّف', 'cost' => 0];
+            $info = $products[$it->product_id] ?? ['cat' => __('غير مصنّف'), 'cost' => 0];
             $cat = $info['cat'];
             $agg[$cat] ??= ['revenue' => 0, 'cost' => 0];
             $agg[$cat]['revenue'] += (float) $it->revenue;
@@ -1390,7 +1390,7 @@ class Demo
             ->withCount('items')->orderByDesc('ordered_at')->limit($limit)->get()
             ->map(fn ($o) => [
                 'id' => $o->number,
-                'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
+                'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
                 'items_count' => (int) $o->items_count,
                 'total' => (float) $o->total,
                 'payment' => $o->payment_method,
@@ -1655,7 +1655,11 @@ class Demo
         return Order::where('business_id', self::bid())->where('is_held', false)->whereNotNull('customer_name')
             ->selectRaw('customer_name, SUM(total) as t, COUNT(*) as c')
             ->groupBy('customer_name')->orderByDesc('t')->limit($limit)->get()
-            ->map(fn ($r) => ['name' => $r->customer_name, 'total' => round((float) $r->t, 3), 'orders' => (int) $r->c])->all();
+            ->map(fn ($r) => [
+                'name' => self::customerLabel($r->customer_name),
+                'total' => round((float) $r->t, 3),
+                'orders' => (int) $r->c,
+            ])->all();
     }
 
     /** المبيعات حسب القسم */
@@ -1740,6 +1744,20 @@ class Demo
     }
 
     /**
+     * اسم العميل كما يُعرض — و«عميل نقدي» ليس اسمًا.
+     *
+     * الطلب النقدي يُخزَّن باسمٍ نصّي لا بمرجعٍ إلى عميل، فيصل إلى الشاشة
+     * عربيًّا مهما كانت اللغة: كاشيرٌ لا يقرأ العربية يرى أغلبَ صفوف الطلبات
+     * بلفظٍ واحد لا يفهمه. وهو وسمٌ من النظام لا اسمُ شخص، فيُترجَم.
+     */
+    public static function customerLabel(?string $ar, ?string $en = null): string
+    {
+        $label = self::ln($ar, $en);
+
+        return ($label === '' || $label === 'عميل نقدي') ? __('عميل نقدي') : $label;
+    }
+
+    /**
      * أقسام نقطة البيع: القيمة تبقى الاسم العربي (لمطابقة الفلترة)،
      * والتسمية المعروضة تُترجَم حسب اللغة.
      */
@@ -1753,19 +1771,31 @@ class Demo
         return $list;
     }
 
+    /**
+     * الطلبات المعلّقة والمحفوظة — للفرع لا للشخص.
+     *
+     * كانت تُرشَّح على `employee_name == auth()->user()->name`، وهو ما كان
+     * صحيحًا يوم كان اسم الموظف هو اسم الحساب المسجَّل. ثم صار البيع يُنسب
+     * إلى الكاشير المختار على الصندوق، فصار الطلب يُحفظ باسم «أحمد» ويُبحث
+     * عنه باسم «مالك النشاط» — فيُخزَّن بنجاح، وتظهر رسالة «تم تعليق الطلب»،
+     * ولا يظهر في القائمة أبدًا. أسوأ أنواع العطب: يقول لك إنه نجح.
+     *
+     * والصواب أن تكون للفرع: الطلب المعلّق زبونٌ ينتظر عند الصندوق، فمن يقف
+     * عليه حين يعود الزبون هو من يستكمله — لا صاحب الجلسة التي أنشأته.
+     */
     public static function heldOrders(): array
     {
-        $name = auth()->user()?->name;
         return Order::where('business_id', self::bid())->where('is_held', true)
-            ->when($name, fn ($q) => $q->where('employee_name', $name))
+            ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
             ->withCount('items')->orderByDesc('id')->get()->map(fn ($o) => [
                 'order_id' => $o->id,
                 'id' => $o->number,
-                'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
+                'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
                 'items' => $o->items_count,
                 'total' => (float) $o->total,
                 'time' => optional($o->ordered_at)->format('H:i') ?? '—',
-                'employee' => $o->employee_name ?? 'سارة حسن',
+                // كان الاحتياط اسمًا تجريبيًّا («سارة حسن») يظهر في متجرٍ حقيقي
+                'employee' => $o->employee_name ?: __('غير محدّد'),
                 'status' => $o->status ?? 'معلّق',
                 'saved' => ($o->status ?? '') === 'محفوظ',
             ])->all();
@@ -1775,7 +1805,7 @@ class Demo
      * فواتير المتجر. بلا بحث: أحدث $limit فاتورة. مع $search: يبحث في كل الفواتير
      * (بلا حدّ الأحدث) برقم الفاتورة أو اسم العميل أو رقم هاتفه.
      */
-    public static function receipts(?string $search = null, int $limit = 30): array
+    public static function receipts(?string $search = null, int $limit = 30, ?int $shiftId = null): array
     {
         $bid = self::bid();
         // خريطة الاسم → الهاتف لعملاء النشاط (لعرض الهاتف والبحث به)
@@ -1784,6 +1814,8 @@ class Demo
 
         $query = Order::where('business_id', $bid)->where('is_held', false)
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
+            // وردية بعينها: شاشة تقفيل الصندوق تسأل عن درجٍ واحد لا عن آخر ٣٠ بيعة
+            ->when($shiftId, fn ($q) => $q->where('shift_id', $shiftId))
             ->with('items');
 
         $term = $search !== null ? trim($search) : '';
@@ -1802,7 +1834,7 @@ class Demo
 
         return $query->orderByDesc('ordered_at')->limit($limit)->get()->map(fn ($o) => [
                 'number' => $o->number,
-                'customer' => self::ln($o->customer_name, $o->customer_name_en) ?: __('عميل نقدي'),
+                'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
                 'phone' => $phones[$o->customer_name] ?? '',
                 'total' => (float) $o->total,
                 'subtotal' => (float) $o->subtotal,

@@ -1,12 +1,23 @@
+import { usePage } from '@inertiajs/react';
 import SmartLink from '@/Components/SmartLink';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import type { PageProps } from '@/types';
 
 export interface SectionTab {
     label: string;
     routeName: string;
     /** وسيط المسار إن كان يحتاجه */
     args?: unknown;
+    /**
+     * قسم الصلاحية — يُخفى التبويب إن لم يملكه المستخدم.
+     *
+     * بلا هذا كان الشريط يعرض التبويبات كاملةً لكل من فتح الصفحة، فمحاسبٌ
+     * مُنح «التقارير» ولم يُمنح «الربحية» يرى تبويبها ويضغطه فيصطدم بـ403.
+     * والقائمة الجانبية تُخفي ما لا يُملك منذ البداية — فيفترق البابان على
+     * الشيء نفسه: هذا يخفيه وذاك يعرضه.
+     */
+    section?: string;
 }
 
 interface Props {
@@ -30,9 +41,13 @@ interface Props {
  * النشط يُحدَّد باسم المسار لا بالرابط: مسارات مثل المنتجات لها صفحات فرعية
  * (إنشاء/تعديل/عرض) يجب أن تُبقي تبويبها مضيئًا.
  */
-export default function SectionTabs({ tabs, current, className, variant = 'underline' }: Props) {
+export default function SectionTabs({ tabs: all, current, className, variant = 'underline' }: Props) {
     const t = useTranslate();
+    const { auth } = usePage<PageProps>().props;
     const segmented = variant === 'segmented';
+
+    // بلا قسم يظهر التبويب دائمًا — انظر SectionTab.section
+    const tabs = all.filter((tb) => !tb.section || (auth?.abilities.includes(tb.section) ?? false));
 
     /*
      * تبويب نشط واحد لا أكثر.
@@ -45,6 +60,12 @@ export default function SectionTabs({ tabs, current, className, variant = 'under
      * أيُّ تبويب حرفيًا (صفحات فرعية مثل admin.products.create) — ويؤخذ عندها
      * أطولُ مسارٍ مطابق فيبقى الاختيار محدَّدًا لا عشوائيًا.
      */
+    // تبويبٌ واحد ليس شريطًا: من لا يملك إلا قسمًا من القسم يرى عنوان صفحته
+    // مرسومًا كتبويب لا ينقله إلى شيء
+    if (tabs.length < 2) {
+        return null;
+    }
+
     const activeRoute =
         tabs.find((tb) => tb.routeName === current)?.routeName ??
         tabs
@@ -97,9 +118,9 @@ export default function SectionTabs({ tabs, current, className, variant = 'under
 
 /** تبويبات قسم المنتجات */
 export const PRODUCT_TABS: SectionTab[] = [
-    { label: 'الأقسام', routeName: 'admin.categories.index' },
-    { label: 'المنتجات', routeName: 'admin.products.index' },
-    { label: 'الإضافات', routeName: 'admin.addons.index' },
+    { label: 'الأقسام', routeName: 'admin.categories.index', section: 'categories' },
+    { label: 'المنتجات', routeName: 'admin.products.index', section: 'products' },
+    { label: 'الإضافات', routeName: 'admin.addons.index', section: 'products' },
 ];
 
 /** تبويبات قسم المخزون */
@@ -113,9 +134,10 @@ export const PRODUCT_TABS: SectionTab[] = [
  * شريطهما في REPORTS_TABS أدناه.
  */
 export const FINANCE_TABS: SectionTab[] = [
-    { label: 'المالية', routeName: 'admin.finance.index' },
-    { label: 'المصروفات', routeName: 'admin.expenses.index' },
-    { label: 'كشف الحساب البنكي', routeName: 'admin.finance.statement' },
+    { label: 'المالية', routeName: 'admin.finance.index', section: 'finance' },
+    { label: 'المصروفات', routeName: 'admin.expenses.index', section: 'expenses' },
+    { label: 'كشف الحساب البنكي', routeName: 'admin.finance.statement', section: 'finance' },
+    { label: 'الورديات', routeName: 'admin.shifts.index', section: 'finance' },
 ];
 
 /*
@@ -124,17 +146,17 @@ export const FINANCE_TABS: SectionTab[] = [
  * لكل تنقّل. الشريط يجعلها كالمالية: نقرة واحدة من أي صفحة إلى أختها.
  */
 export const REPORTS_TABS: SectionTab[] = [
-    { label: 'التقارير', routeName: 'admin.reports.index' },
-    { label: 'تحليلات متقدمة', routeName: 'admin.analytics.index' },
-    { label: 'الربحية', routeName: 'admin.profitability.index' },
-    { label: 'ضريبة القيمة المضافة', routeName: 'admin.vat.index' },
+    { label: 'التقارير', routeName: 'admin.reports.index', section: 'reports' },
+    { label: 'تحليلات متقدمة', routeName: 'admin.analytics.index', section: 'reports' },
+    { label: 'الربحية', routeName: 'admin.profitability.index', section: 'profitability' },
+    { label: 'ضريبة القيمة المضافة', routeName: 'admin.vat.index', section: 'vat' },
 ];
 
 export const INVENTORY_TABS: SectionTab[] = [
-    { label: 'نظرة عامة', routeName: 'admin.inventory.overview' },
-    { label: 'المنتجات والكميات', routeName: 'admin.inventory.index' },
-    { label: 'أوامر الشراء', routeName: 'admin.purchases.index' },
-    { label: 'الجرد', routeName: 'admin.inventory.stocktake' },
-    { label: 'المورّدون', routeName: 'admin.suppliers.index' },
-    { label: 'حركات المخزون', routeName: 'admin.inventory.movements' },
+    { label: 'نظرة عامة', routeName: 'admin.inventory.overview', section: 'inventory' },
+    { label: 'المنتجات والكميات', routeName: 'admin.inventory.index', section: 'inventory' },
+    { label: 'أوامر الشراء', routeName: 'admin.purchases.index', section: 'purchases' },
+    { label: 'الجرد', routeName: 'admin.inventory.stocktake', section: 'inventory' },
+    { label: 'المورّدون', routeName: 'admin.suppliers.index', section: 'suppliers' },
+    { label: 'حركات المخزون', routeName: 'admin.inventory.movements', section: 'inventory' },
 ];

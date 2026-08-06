@@ -66,11 +66,13 @@ class CustomerController extends Controller
             // لا name_en هنا: Customers::localizeName هو من يملأه من الاسم
             // نفسه، فأي قيمة واردة تُكتب فوقها.
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => \App\Support\Customers::phoneRule($this->bid()),
             'email' => ['nullable', 'email'],
             'tax_number' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
             'branch_id' => ['nullable', 'integer'],
+        ], [
+            'phone.unique' => __('هذا الرقم مسجَّل لعميل آخر — نقاط الولاء تتبع الرقم.'),
         ]);
         $data['business_id'] = $this->bid();
 

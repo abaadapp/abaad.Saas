@@ -23,7 +23,7 @@ class OrderController extends Controller
         if ($d = $request->query('date')) { $q->whereDate('ordered_at', $d); }
 
         $orders = $q->orderByDesc('ordered_at')->paginate(10)->withQueryString()->through(fn ($o) => [
-            'id' => $o->number, 'customer' => $o->customer_name ?? 'عميل نقدي',
+            'id' => $o->number, 'customer' => \App\Support\Demo::customerLabel($o->customer_name),
             'employee' => $o->employee_name ?? '—', 'branch' => $o->branch,
             'items_count' => $o->items_count, 'total' => (float) $o->total,
             'payment' => $o->payment_method, 'status' => $o->status,

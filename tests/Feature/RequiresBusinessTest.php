@@ -30,6 +30,9 @@ class RequiresBusinessTest extends TestCase
 
         $this->mine = Business::create(['name' => 'متجري', 'status' => 'نشط']);
         $this->theirs = Business::create(['name' => 'متجر آخر', 'status' => 'نشط']);
+
+        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
+        $this->openShiftFor($this->mine->id);
     }
 
     private function superAdmin(): User

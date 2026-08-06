@@ -134,6 +134,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
     const [customer, setCustomer] = useState<string>(
         resume?.customer || new URLSearchParams(location.search).get('customer') || CASH_CUSTOMER,
     );
+    /*
+     * المعرّف بجانب الاسم — والنقاط تتبعه لا تتبع الاسم.
+     *
+     * الاسم ليس مفتاحًا: «محمد» في متجرٍ فيه ثلاثة محمّدين يطابق أوّلهم في
+     * القائمة، فتُضاف نقاط الشراء إلى شخصٍ لم يشترِ، ويُخصم رصيد غيره عند
+     * الاستبدال. والنقاط مالٌ فعلي.
+     */
+    const [customerId, setCustomerId] = useState<number | null>(null);
     const [customers, setCustomers] = useState<PosCustomer[]>(initialCustomers);
     const [customerSearch, setCustomerSearch] = useState('');
 
@@ -168,11 +176,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
         return Math.min(d, subtotal);
     }, [coupon, subtotal]);
 
-    const selectedCustomer = useMemo(
-        // الاسم المختار قد يكون العربي أو الإنجليزي حسب لغة الكاشير
-        () => customers.find((c) => c.name === customer || c.name_en === customer) ?? null,
-        [customers, customer],
-    );
+    const selectedCustomer = useMemo(() => {
+        // بالمعرّف أولًا. ولا يُلجأ إلى الاسم إلا حين لا معرّف (طلب مستعاد أو
+        // رابط فيه ?customer=) — وحتى حينها لا يُختار إلا إن كان الاسم فريدًا،
+        // فالمطابقة الغامضة تعرض رصيد شخصٍ آخر للكاشير
+        if (customerId !== null) return customers.find((c) => c.id === customerId) ?? null;
+        const byName = customers.filter((c) => c.name === customer || c.name_en === customer);
+        return byName.length === 1 ? byName[0] : null;
+    }, [customers, customer, customerId]);
     const selectedPoints = selectedCustomer?.points ?? 0;
     const canRedeem = selectedPoints > 0 && selectedPoints >= redeemMin;
     const pointsToThreshold = Math.max(0, redeemMin - selectedPoints);
@@ -399,8 +410,9 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
 
     /* ------------------------------ العملاء ------------------------------ */
 
-    const selectCustomer = useCallback((name: string) => {
+    const selectCustomer = useCallback((name: string, id: number | null = null) => {
         setCustomer(name);
+        setCustomerId(id);
         setCustomerSearch('');
     }, []);
 
@@ -430,6 +442,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                     ...prev,
                 ]);
                 setCustomer(c.name);
+                setCustomerId(c.id);
                 setCustomerSearch('');
                 form.reset();
                 onToast('تم إضافة العميل وتحديده للطلب', 'success');
@@ -468,7 +481,9 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 // 419 جلسة منتهية و422 بيانات مرفوضة — إعادة المحاولة بلا فائدة.
                 // نستخرج السبب: الخادم يرفض هنا نقص المخزون وصنفًا غير معروف،
                 // وإسقاط البيع صامتًا يترك الكاشير بلا تفسير.
-                if (res.status === 422 || res.status === 419) {
+                // 409 لا وردية مفتوحة: إعادة المحاولة لن تفتحها، والبيعة
+                // تُسقَط برسالتها كي يفتح الكاشير الوردية ثم يعيد البيع
+                if (res.status === 422 || res.status === 419 || res.status === 409) {
                     let error = '';
                     try {
                         const d = await res.json();
@@ -556,6 +571,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                     note: i.note ?? '',
                 })),
                 customer,
+                customer_id: customerId,
                 payment_method: method,
                 // الخصم والضريبة والإجمالي تُحتسب خادميًا من أسعار القاعدة؛
                 // ما يلي معروض للمستخدم فقط ولا يُقيَّد كما هو
@@ -590,7 +606,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
 
             return { synced: !!res.ok, invoice: res.invoice ?? null, points: res.points ?? 0, rejected: !!res.drop };
         },
-        [items, customer, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
+        [items, customer, customerId, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */

@@ -9,6 +9,7 @@ import {
     LogOut,
     Menu,
     User as UserIcon,
+    X,
 } from 'lucide-react';
 import UnifiedSearch from '@/Components/UnifiedSearch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
@@ -58,6 +59,43 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
         };
     }, [notifications]);
     const t = useTranslate();
+
+    /*
+     * حذف التنبيه من الجرس.
+     *
+     * المسار موجود منذ مدّة ولا يستدعيه إلا شاشة الإعدادات — فالتاجر الذي
+     * يرى تنبيهًا انتهى أمره لا سبيل له إلى إزالته من حيث يراه. والإزالة
+     * محلّية أولًا ثم تُرسل: انتظار الشبكة يجعل النقرة تبدو بلا أثر.
+     */
+    const post = (url: string) =>
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf ?? '',
+                Accept: 'application/json',
+            },
+        }).catch(() => {
+            // انقطاع الشبكة: يعود التنبيه عند أوّل استطلاع، ولا شيء يضيع
+        });
+
+    const dismissOne = (key: string) => {
+        setFeed((f) => (f ? { items: f.items.filter((i) => i.key !== key), count: Math.max(0, f.count - 1) } : f));
+        void fetch('/admin/notifications/dismiss', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf ?? '',
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({ key }),
+        }).catch(() => {});
+    };
+
+    const dismissAll = () => {
+        setFeed((f) => (f ? { items: [], count: 0 } : f));
+        void post('/admin/notifications/clear');
+    };
 
     /**
      * تبديل اللغة. الخادم يحفظها في الجلسة وفي إعدادات النشاط ثم يعيد
@@ -189,7 +227,21 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-80">
-                            <DropdownMenuLabel>{t('الإشعارات')}</DropdownMenuLabel>
+                            <DropdownMenuLabel className="flex items-center justify-between gap-2">
+                                <span>{t('الإشعارات')}</span>
+                                {feed.items.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={(ev) => {
+                                            ev.preventDefault();
+                                            dismissAll();
+                                        }}
+                                        className="text-[12px] font-normal text-[#6b7280] transition-colors hover:text-[#b91c1c]"
+                                    >
+                                        {t('حذف الكل')}
+                                    </button>
+                                )}
+                            </DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             {feed.items.length === 0 ? (
                                 <p className="px-3 py-8 text-center text-[13px] text-[#9ca3af]">
@@ -197,14 +249,35 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                 </p>
                             ) : (
                                 feed.items.slice(0, 6).map((item) => (
-                                    <DropdownMenuItem key={item.key} className="flex-col items-start gap-0.5" asChild>
-                                        <Link href={item.url ?? '#'}>
-                                            <span className="text-[13px] font-medium">{item.text}</span>
+                                    /* صفٌّ لا DropdownMenuItem: زرّ الحذف داخل عنصرٍ
+                                       قابل للاختيار كان يُغلق القائمة عند كل نقرة */
+                                    <div
+                                        key={item.key}
+                                        className="group flex items-start gap-1 rounded-[8px] px-1 transition-colors hover:bg-[#f5f5f4]"
+                                    >
+                                        <Link
+                                            href={item.url ?? '#'}
+                                            className="flex min-w-0 flex-1 flex-col gap-0.5 px-2 py-2"
+                                        >
+                                            <span className="text-[13px] font-medium text-[#111]">{item.text}</span>
                                             {item.time && (
                                                 <span className="text-[12px] text-[#6b7280]">{item.time}</span>
                                             )}
                                         </Link>
-                                    </DropdownMenuItem>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                dismissOne(item.key);
+                                            }}
+                                            aria-label={t('حذف الإشعار')}
+                                            title={t('حذف الإشعار')}
+                                            className="mt-2 flex size-6 shrink-0 items-center justify-center rounded-full text-[#9ca3af] transition-colors hover:bg-[#e8e8e6] hover:text-[#111]"
+                                        >
+                                            <X className="size-3.5" />
+                                        </button>
+                                    </div>
                                 ))
                             )}
                         </DropdownMenuContent>

@@ -26,6 +26,9 @@ class DashboardController extends Controller
     {
         return Inertia::render('Admin/Dashboard', [
             'stats' => Demo::adminStats(),
+            // بطاقات اختيارية من مقاييس التقارير — تُرسل كاملةً وتختار الواجهة
+            // منها: سبعة تجميعات خفيفة، وطلبُ الخادم عند كل إضافة أثقل منها
+            'statCatalog' => \App\Support\AlertMetrics::catalog(Demo::bid()),
             'salesSeries' => Demo::salesSeries(),
             'paymentDistribution' => Demo::paymentDistribution(),
             // أحدث 6 طلبات وأفضل 5 منتجات وموظفين — ما تعرضه اللوحة فقط

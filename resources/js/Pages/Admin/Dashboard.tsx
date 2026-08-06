@@ -5,7 +5,7 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
-import StatGrid from '@/Components/StatGrid';
+import StatGrid, { type CatalogStat } from '@/Components/StatGrid';
 import { type Stat } from '@/Components/StatCard';
 import AreaChart from '@/Components/charts/AreaChart';
 import BarChart from '@/Components/charts/BarChart';
@@ -60,6 +60,7 @@ interface Employee {
  */
 interface DashboardProps {
     stats: Stat[];
+    statCatalog: CatalogStat[];
     salesSeries: { labels: string[]; data: number[] };
     paymentDistribution: { labels: string[]; series: number[] };
     recentOrders: Order[];
@@ -70,7 +71,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard() {
-    const { stats, salesSeries, paymentDistribution, recentOrders, topProducts, topEmployees, website, context } =
+    const { stats, statCatalog, salesSeries, paymentDistribution, recentOrders, topProducts, topEmployees, website, context } =
         usePage<PageProps<DashboardProps>>().props;
 
     const t = useTranslate();
@@ -118,7 +119,7 @@ export default function Dashboard() {
                 }
             />
 
-            <StatGrid stats={liveStats} storageKey="admin" />
+            <StatGrid stats={liveStats} storageKey="admin" catalog={statCatalog} />
             {updatedAt && (
                 <p className="mt-2 text-[12px] text-[#9ca3af]">
                     {t('آخر تحديث')}: <span dir="ltr">{updatedAt}</span>

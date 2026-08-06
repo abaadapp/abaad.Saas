@@ -340,7 +340,7 @@ export default function PosIndex() {
                                             <div className="max-h-60 overflow-y-auto">
                                                 <button
                                                     type="button"
-                                                    onClick={() => { cart.selectCustomer('عميل نقدي'); setCustomerMenuOpen(false); }}
+                                                    onClick={() => { cart.selectCustomer('عميل نقدي', null); setCustomerMenuOpen(false); }}
                                                     className="block w-full px-4 py-2 text-start text-sm hover:bg-gray-50"
                                                 >
                                                     {t('عميل نقدي')}
@@ -349,7 +349,7 @@ export default function PosIndex() {
                                                     <button
                                                         key={c.id}
                                                         type="button"
-                                                        onClick={() => { cart.selectCustomer(c.name); setCustomerMenuOpen(false); }}
+                                                        onClick={() => { cart.selectCustomer(c.name, c.id); setCustomerMenuOpen(false); }}
                                                         className="flex w-full items-center justify-between gap-2 px-4 py-2 text-start text-sm hover:bg-gray-50"
                                                     >
                                                         <span className="truncate">{c.label}</span>

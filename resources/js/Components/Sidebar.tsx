@@ -24,6 +24,23 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
     // بلا قسم صلاحية يظهر العنصر دائمًا — انظر NavItem.section
     const can = (section?: string) => !section || (auth?.abilities.includes(section) ?? false);
 
+    // المطابقة بالعائلة تُبقي العنصر مضيئًا في الصفحات الفرعية
+    // (admin.products.create مثلًا)
+    const matches = (name: string) =>
+        current === name || (current?.startsWith(name.replace(/\.index$/, '.')) ?? false);
+
+    /*
+     * عنصرٌ مضيء واحد لا أكثر.
+     *
+     * مسارُ العنصر نفسه يُقدَّم على ما يغطّيه: «المصروفات» في شريط المالية
+     * ولها مدخلها، فلولا هذا الترتيب لأضاء المدخلان معًا على صفحة واحدة.
+     * وما لا مدخل له — كالربحية والضريبة — يُضيء قسمه الذي يضمّه.
+     */
+    const items = nav.flatMap((g) => g.items).filter((i) => can(i.section));
+    const activeRoute =
+        items.find((i) => matches(i.route))?.route ??
+        items.find((i) => i.covers?.some(matches))?.route;
+
     return (
         <>
             {/* خلفية معتمة على الجوال فقط */}
@@ -79,7 +96,6 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
                                 )}
                                 {visible.map((item) => {
                                     const Icon = item.icon;
-                                    const active = current === item.route || current?.startsWith(item.route.replace(/\.index$/, '.'));
 
                                     return (
                                         <SmartLink
@@ -87,7 +103,7 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
                                             routeName={item.route}
                                             href={route(item.route)}
                                             onClick={onClose}
-                                            className={cn('ui-nav-link', active && 'is-active')}
+                                            className={cn('ui-nav-link', item.route === activeRoute && 'is-active')}
                                         >
                                             <Icon className="size-[18px] shrink-0" />
                                             <span className="truncate">{t(item.label)}</span>

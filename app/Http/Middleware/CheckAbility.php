@@ -18,7 +18,14 @@ class CheckAbility
         if (! $user) {
             return redirect()->route('login');
         }
-        $section = Permissions::sectionFromRoute($request->route()?->getName());
+        $name = $request->route()?->getName();
+
+        // هيكل اللوحة لا أقسامها — انظر Permissions::SHELL
+        if (Permissions::isShell($name)) {
+            return $next($request);
+        }
+
+        $section = Permissions::sectionFromRoute($name);
         if (! $user->allows($section)) {
             abort(403, __('ليس لديك صلاحية للوصول إلى قسم «:section».', ['section' => $section]));
         }

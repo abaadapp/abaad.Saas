@@ -38,6 +38,17 @@ class PageController extends Controller
             return redirect()->route('pos.cashier');
         }
 
+        /*
+         * لا شاشة بيع بلا وردية مفتوحة.
+         *
+         * الترتيب مقصود: يُختار الواقف على الصندوق أولًا، لأن الوردية تُسجَّل
+         * باسمه. والتوجيه هنا لا تعطيلُ زرٍّ في الواجهة: الكاشير يجد نفسه
+         * أمام شاشة الفتح فيفتح ويعود، بدل أن يجمع سلّة ثم يُرفض دفعُها.
+         */
+        if (! \App\Support\Shifts::isOpen() && \App\Support\Shifts::blocksSelling()) {
+            return redirect()->route('pos.shift');
+        }
+
         return Inertia::render('Pos/Index', [
             // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة
             'products' => Demo::products(Demo::activeBranchId()),
@@ -68,10 +79,26 @@ class PageController extends Controller
         ]);
     }
 
+    /**
+     * مقبوضات الوردية المفتوحة — لا آخر ثلاثين فاتورة.
+     *
+     * كانت تعرض آخر ٣٠ فاتورة للفرع بلا حدٍّ زمني، وهي شاشة تقفيل صندوق:
+     * فمحلٌّ يبيع ٥٠ مرّة يوميًّا كان يرى جزء يومه، ومحلٌّ يبيع ٥ مرّات يرى
+     * ستّة أيام مخلوطة. وفي الحالتين لا يطابق الرقم ما في الدرج — رقمٌ يبدو
+     * دقيقًا وهو ليس كذلك، وذلك أسوأ من غياب الشاشة.
+     */
     public function payments(): Response
     {
+        $shift = \App\Support\Shifts::current();
+
         return Inertia::render('Pos/Payments', [
-            'receipts' => Demo::receipts(),
+            // سقفٌ يسع يومًا مزدحمًا: بترُ الوردية عند ٣٠ يُنقص المجموع بلا أن يقول
+            'receipts' => $shift ? Demo::receipts(limit: 500, shiftId: $shift->id) : [],
+            'shift' => $shift ? [
+                'opened_at' => $shift->opened_at?->format('Y-m-d H:i'),
+                'opening_balance' => (float) $shift->opening_balance,
+                'expected' => \App\Support\Shifts::expectedCash($shift),
+            ] : null,
         ]);
     }
 

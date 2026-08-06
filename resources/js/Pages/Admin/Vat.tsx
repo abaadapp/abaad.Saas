@@ -81,6 +81,7 @@ export default function Vat() {
                 subtitle={`${t('إقرار VAT')} — ${t(report.label)} (${report.from} — ${report.to})`}
                 breadcrumbs={[
                     { label: 'الرئيسية', href: route('admin.dashboard') },
+                    { label: 'التقارير', href: route('admin.reports.index') },
                     { label: 'ضريبة القيمة المضافة' },
                 ]}
                 actions={

@@ -27,6 +27,9 @@ class PosPaymentsAccessTest extends TestCase
     {
         parent::setUp();
         $this->business = Business::create(['name' => 'متجري', 'status' => 'نشط']);
+
+        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
+        $this->openShiftFor($this->business->id);
     }
 
     private function user(string $role): User

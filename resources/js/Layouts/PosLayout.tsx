@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, CreditCard, Languages, LayoutDashboard, LogOut, Receipt, ReceiptText, Settings, Store, User, UserRound, Users } from 'lucide-react';
+import { Check, ChevronDown, CreditCard, Languages, LayoutDashboard, LogOut, Receipt, ReceiptText, Settings, Store, User, UserRound, Users, Wallet } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { Toaster, toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
@@ -31,6 +31,7 @@ const POS_NAV = [
     // حصيلة الصندوق وطرق الدفع — لصاحب النشاط لا للكاشير
     { label: 'المدفوعات', icon: CreditCard, route: 'pos.payments', ability: 'finance' },
     { label: 'العملاء', icon: Users, route: 'pos.customers' },
+    { label: 'الوردية', icon: Wallet, route: 'pos.shift' },
 ] as const;
 
 interface PosLayoutProps {

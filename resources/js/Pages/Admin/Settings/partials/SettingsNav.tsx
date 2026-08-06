@@ -19,6 +19,7 @@ import {
     Target,
     Truck,
     UserCog,
+    Wallet,
 } from 'lucide-react';
 import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
@@ -40,6 +41,7 @@ export const SETTINGS_NAV = [
             { key: 'currency', label: 'العملة', icon: Coins },
             { key: 'payments', label: 'طرق الدفع', icon: CreditCard },
             { key: 'loyalty', label: 'الولاء', icon: Gift },
+            { key: 'shifts', label: 'وردية الصندوق', icon: Wallet },
         ],
     },
     {

@@ -172,6 +172,56 @@ class Permissions
         return in_array($section, $abilities, true);
     }
 
+    /**
+     * مسارات هيكل اللوحة لا أقسامها: الجرس، والبحث، ومبدّلا اللغة والعملة.
+     *
+     * هذه أدوات الشريط العلوي التي يراها كلّ من دخل اللوحة أيًّا كان قسمه —
+     * ليست بابًا إلى بيانات قسم، فلا يُشتقّ لها مفتاح صلاحية. والبحث يصفّي
+     * نتائجه بنفسه حسب ما يملكه صاحبه (انظر SearchController).
+     */
+    public const SHELL = [
+        'admin.search', 'admin.currency.switch', 'admin.language.update',
+        'admin.notifications.feed', 'admin.notifications.dismiss', 'admin.notifications.clear',
+    ];
+
+    /**
+     * مسارٌ اسمه لا يشتقّ قسمه — يُنسب صراحةً إلى القسم الذي يملكه.
+     *
+     * الاشتقاق من الاسم يعمل ما دام الاسم يطابق مفتاح الصلاحية. وحين يفترقان
+     * يُنتج مفتاحًا لا وجود له في SECTIONS، فلا يملكه أحد: يُمنع منه كلّ من
+     * خُصّصت صلاحياته يدويًّا مهما مُنح، ويُمنع منه كلُّ دورٍ إلا المالك
+     * والمدير (لهما '*'). والنتيجة صفحةٌ في القائمة لا تُفتح، أو علامةٌ
+     * يرفعها صاحب النشاط ولا تغيّر شيئًا.
+     *
+     * أوضحها «الفروع»: مساره admin.branches يشتقّ 'branches' والمفتاح
+     * 'branch' — فمنحُها كان بلا أثر.
+     */
+    public const ALIASES = [
+        'branches' => 'branch',
+        'addons' => 'products',
+        'jobTitles' => 'employees',
+        'coupons' => 'marketing',
+        'bank' => 'finance',
+        'expenseTypes' => 'expenses',
+        'goals' => 'dashboard',
+        'alerts' => 'settings',
+        'backup' => 'settings',
+        'activity' => 'settings',
+    ];
+
+    /** التصدير يتبع قسم ما يُصدَّر: admin.export.orders → orders */
+    public const EXPORT_ALIASES = [
+        'products' => 'products', 'orders' => 'orders', 'customers' => 'customers',
+        'transactions' => 'finance', 'analytics' => 'reports', 'reports' => 'reports',
+        'expenses' => 'expenses', 'inventory' => 'inventory',
+    ];
+
+    /** هل هذا المسار من هيكل اللوحة لا من أقسامها؟ */
+    public static function isShell(?string $route): bool
+    {
+        return $route !== null && in_array($route, self::SHELL, true);
+    }
+
     /** استخراج القسم من اسم المسار: admin.products.index → products */
     public static function sectionFromRoute(?string $route): string
     {
@@ -184,10 +234,32 @@ class Permissions
         if ($route === 'pos.payments') {
             return 'finance';
         }
+        // الورديات وفروقها قراءةٌ مالية لا قسمٌ قائم بذاته: من يراجع حصيلة
+        // الصندوق هو من يملك «المالية»، فلا يُخترع مفتاح صلاحية ثالث لها
+        if ($route === 'admin.shifts.index') {
+            return 'finance';
+        }
+
+        /*
+         * «تحليلات متقدمة» عرضٌ من عروض التقارير لا قسمٌ مستقلّ.
+         *
+         * كان اسم مساره يشتقّ المفتاح 'analytics' — وهو ليس في SECTIONS، فلا
+         * يملكه أحد: يُمنع منه المحاسب، ويُمنع منه كل من خُصّصت صلاحياته
+         * يدويًّا مهما مُنح. صفحةٌ موجودة في القائمة ولا تُفتح إلا للمالك.
+         */
+        if (str_starts_with($route, 'admin.analytics.')) {
+            return 'reports';
+        }
         if (str_starts_with($route, 'pos.')) {
             return 'pos';
         }
         $parts = explode('.', $route);
-        return $parts[1] ?? 'dashboard';
+        $section = $parts[1] ?? 'dashboard';
+
+        if ($section === 'export') {
+            return self::EXPORT_ALIASES[$parts[2] ?? ''] ?? 'reports';
+        }
+
+        return self::ALIASES[$section] ?? $section;
     }
 }

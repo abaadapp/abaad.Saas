@@ -263,6 +263,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'business', 'panel',
     Route::get('/finance', [\App\Http\Controllers\Admin\PageController::class, 'financeIndex'])->name('finance.index');
     // كشف الحساب البنكي والمطابقة
     Route::get('/finance/statement', [\App\Http\Controllers\Admin\PageController::class, 'financeStatement'])->name('finance.statement');
+    // الورديات المُقفلة وفروقها — يقرؤها من يملك «المالية» (sectionFromRoute)
+    Route::get('/shifts', [\App\Http\Controllers\Admin\ShiftController::class, 'index'])->name('shifts.index');
     Route::post('/bank/account', [\App\Http\Controllers\Admin\BankStatementController::class, 'updateAccount'])->name('bank.account');
     Route::post('/bank/import', [\App\Http\Controllers\Admin\BankStatementController::class, 'import'])->name('bank.import');
     Route::post('/bank/rematch', [\App\Http\Controllers\Admin\BankStatementController::class, 'rematch'])->name('bank.rematch');
@@ -340,6 +342,12 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'business', 'ability'])-
     Route::post('/cashier', [\App\Http\Controllers\Pos\CashierController::class, 'select'])->name('cashier.select');
     Route::post('/cashier/leave', [\App\Http\Controllers\Pos\CashierController::class, 'leave'])->name('cashier.leave');
     Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
+
+    // وردية الصندوق: فتحٌ برصيد ابتدائي، وإقفالٌ بعدٍّ فعليّ
+    Route::get('/shift', [\App\Http\Controllers\Pos\ShiftController::class, 'show'])->name('shift');
+    Route::post('/shift/open', [\App\Http\Controllers\Pos\ShiftController::class, 'open'])->name('shift.open');
+    Route::post('/shift/close', [\App\Http\Controllers\Pos\ShiftController::class, 'close'])->name('shift.close');
+    Route::post('/shift/move', [\App\Http\Controllers\Pos\ShiftController::class, 'move'])->name('shift.move');
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
     Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');

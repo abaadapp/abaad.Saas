@@ -26,7 +26,7 @@ class NotificationController extends Controller
             'latest_order' => $latest ? [
                 'id' => $latest->id,
                 'number' => $latest->number,
-                'customer' => $latest->customer_name ?? 'عميل نقدي',
+                'customer' => \App\Support\Demo::customerLabel($latest->customer_name),
                 'total' => (float) $latest->total,
                 'url' => route('admin.orders.show', $latest->number),
             ] : null,

@@ -137,7 +137,11 @@ export default function Profitability() {
             <PageHeader
                 title="الربحية"
                 subtitle={t('تحليل الإيرادات والتكاليف وهوامش الربح لكل منتج وقسم')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الربحية' }]}
+                breadcrumbs={[
+                    { label: 'الرئيسية', href: route('admin.dashboard') },
+                    { label: 'التقارير', href: route('admin.reports.index') },
+                    { label: 'الربحية' },
+                ]}
             />
 
             <SectionTabs tabs={REPORTS_TABS} current="admin.profitability.index" variant="segmented" />

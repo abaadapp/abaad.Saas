@@ -1,5 +1,12 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+    FINANCE_TABS,
+    INVENTORY_TABS,
+    PRODUCT_TABS,
+    REPORTS_TABS,
+    type SectionTab,
+} from '@/Components/SectionTabs';
+import {
     ArrowDownCircle,
     BarChart3,
     Boxes,
@@ -28,6 +35,15 @@ export interface NavItem {
      * (role:super_admin) لا صلاحيات الأقسام، فلا معنى لتصفيتها هنا.
      */
     section?: string;
+    /**
+     * صفحات تتبع هذا العنصر ولا مدخل لها في القائمة — تُبقيه مضيئًا.
+     *
+     * «تحليلات متقدمة» و«الربحية» و«الضريبة» صفحاتُ قسم التقارير، تُفتح من
+     * شريط تبويباته. وبلا هذا كان الضغط عليها يُطفئ القائمة كلّها: لا عنصر
+     * مضيء، فلا يعرف من فتحها أين هو من اللوحة ولا من أين جاء. والمالية
+     * والمصروفات لا تعانيان منه لأن لكلٍّ منهما مدخلها.
+     */
+    covers?: string[];
 }
 
 export interface NavGroup {
@@ -39,6 +55,14 @@ export interface NavGroup {
  * القائمة الجانبية — منقولة عن $menu في layouts/admin.blade.php.
  * التسميات بالعربية لأنها مفاتيح الترجمة نفسها (كما في __() داخل Blade).
  */
+/**
+ * صفحات الشريط مصدرها شريط تبويبات القسم نفسه.
+ *
+ * قائمةٌ ثانية مكتوبة باليد كانت ستفترق عن الأولى عند أوّل تبويب يُضاف —
+ * فيظهر تبويبٌ لا يُضيء قسمه في القائمة.
+ */
+const covers = (tabs: SectionTab[]) => tabs.map((tb) => tb.routeName);
+
 export const NAV: NavGroup[] = [
     {
         items: [
@@ -49,7 +73,13 @@ export const NAV: NavGroup[] = [
     {
         heading: 'المتجر',
         items: [
-            { label: 'المنتجات', icon: Package, route: 'admin.products.index', section: 'products' },
+            {
+                label: 'المنتجات',
+                icon: Package,
+                route: 'admin.products.index',
+                section: 'products',
+                covers: covers(PRODUCT_TABS),
+            },
             { label: 'الطلبات', icon: ShoppingCart, route: 'admin.orders.index', section: 'orders' },
             { label: 'التسويق والكوبونات', icon: Megaphone, route: 'admin.marketing.index', section: 'marketing' },
         ],
@@ -57,10 +87,28 @@ export const NAV: NavGroup[] = [
     {
         heading: 'الإدارة',
         items: [
-            { label: 'المخزون', icon: Boxes, route: 'admin.inventory.overview', section: 'inventory' },
-            { label: 'المالية', icon: Wallet, route: 'admin.finance.index', section: 'finance' },
+            {
+                label: 'المخزون',
+                icon: Boxes,
+                route: 'admin.inventory.overview',
+                section: 'inventory',
+                covers: covers(INVENTORY_TABS),
+            },
+            {
+                label: 'المالية',
+                icon: Wallet,
+                route: 'admin.finance.index',
+                section: 'finance',
+                covers: covers(FINANCE_TABS),
+            },
             { label: 'المصروفات', icon: ArrowDownCircle, route: 'admin.expenses.index', section: 'expenses' },
-            { label: 'التقارير', icon: BarChart3, route: 'admin.reports.index', section: 'reports' },
+            {
+                label: 'التقارير',
+                icon: BarChart3,
+                route: 'admin.reports.index',
+                section: 'reports',
+                covers: covers(REPORTS_TABS),
+            },
             { label: 'الإعدادات', icon: Settings, route: 'admin.settings.index', section: 'settings' },
         ],
     },

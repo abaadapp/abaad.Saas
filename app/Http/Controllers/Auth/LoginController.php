@@ -29,11 +29,45 @@ class LoginController extends Controller
 
         $remember = $request->boolean('remember');
 
+        /*
+         * الحدّ نفسه الذي يحرس رمز الكاشير — ومن باب أخطر.
+         *
+         * كان دخول الرمز محروسًا بحدَّين وقفل، ودخول البريد بلا حدّ إطلاقًا:
+         * فمن يجرّب كلمات المرور على شاشة الرمز يُقفل بعد خمس، ومن يجرّبها
+         * على هذه الشاشة يجرّب ما شاء إلى الأبد. وخلف هذا الباب حساب مدير
+         * المنصة، لا درج صندوقٍ واحد.
+         *
+         * والمفتاح بريدٌ وعنوان معًا: العنوان وحده يوقف مكتبًا كاملًا خلف
+         * موجّهٍ واحد لأن موظفًا أخطأ، والبريد وحده يجعل من يملك آلاف
+         * العناوين يقصف حسابًا بعينه بلا حساب.
+         */
+        $key = 'login:'.mb_strtolower($credentials['email']).'|'.$request->ip();
+        $slowKey = 'login-hour:'.mb_strtolower($credentials['email']).'|'.$request->ip();
+
+        foreach ([[$key, 5], [$slowKey, 20]] as [$k, $max]) {
+            if (RateLimiter::tooManyAttempts($k, $max)) {
+                throw ValidationException::withMessages([
+                    'email' => __('محاولات كثيرة. حاول بعد :seconds ثانية.', [
+                        'seconds' => RateLimiter::availableIn($k),
+                    ]),
+                ]);
+            }
+        }
+
         if (! Auth::attempt($credentials, $remember)) {
+            RateLimiter::hit($key, 60);
+            RateLimiter::hit($slowKey, 3600);
+
+            // يُسجَّل الفشل بلا كلمة المرور — والبريد يبقى ليُعرف الحسابُ المستهدف
+            \App\Support\Activity::log('login_failed', 'محاولة دخول فاشلة — '.$credentials['email']);
+
             throw ValidationException::withMessages([
                 'email' => __('بيانات الدخول غير صحيحة.'),
             ]);
         }
+
+        RateLimiter::clear($key);
+        RateLimiter::clear($slowKey);
 
         $this->refuseBlocked(Auth::user(), 'email');
 

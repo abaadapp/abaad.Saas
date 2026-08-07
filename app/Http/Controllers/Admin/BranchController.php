@@ -55,6 +55,10 @@ class BranchController extends Controller
         \App\Support\Activity::log('deleted', 'حذف الفرع: ' . $branch->name, ['subject_id' => $branch->id]);
         $branch->delete();
 
-        return back()->with('toast', ['msg' => __('تم حذف الفرع'), 'type' => 'warning']);
+        return back()->with('toast', [
+            'msg' => __('تم حذف الفرع'),
+            'type' => 'warning',
+            'undo' => ['url' => route('admin.branches.restore', $branch->id), 'label' => $branch->name],
+        ]);
     }
 }

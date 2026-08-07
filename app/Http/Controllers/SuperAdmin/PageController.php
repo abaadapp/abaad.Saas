@@ -247,8 +247,6 @@ class PageController extends Controller
                     'value' => (string) \App\Models\Business::count()],
                 ['title' => __('تقرير الأنشطة'), 'desc' => __('سجل الأنشطة والعمليات'), 'icon' => 'activity', 'color' => 'warning',
                     'value' => (string) \App\Models\ActivityLog::count()],
-                ['title' => __('محلات الورود'), 'desc' => __('أداء محلات الورود'), 'icon' => 'flower', 'color' => 'secondary',
-                    'value' => (string) \App\Models\Business::where('type', 'محل ورود')->count()],
             ],
             'revenueSeries' => Demo::revenueSeries(),
             'planDistribution' => $dist,

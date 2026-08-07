@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { Eye, EyeOff, KeyRound, Languages, Lock, Mail, TriangleAlert } from 'lucide-react';
 import Logo from '@/Components/Logo';
 import Field from '@/Components/Field';
@@ -130,20 +130,28 @@ export default function Login() {
                         </Field>
 
                         {/*
-                            «نسيت كلمة المرور» حُذف: كان رابط بريدٍ إلى الدعم لا
-                            استعادةً فعلية — وعدٌ بباب لا يفتحه إلا إنسان. ومن
-                            نسي كلمته يطلبها من صاحب النشاط، وهو يعيد تعيينها من
-                            صفحة الموظف.
+                            «نسيت كلمة المرور» صار مسارًا حقيقيًّا لا رابط بريدٍ
+                            إلى الدعم. الموظف يطلب رمزه من صاحب النشاط كما كان،
+                            وصاحب النشاط نفسه لم يكن له باب إلا الاتصال بالدعم.
                         */}
-                        <label className="flex w-fit cursor-pointer items-center gap-2 text-[13px] text-[#4b4b4b]">
-                            <input
-                                type="checkbox"
-                                checked={form.data.remember}
-                                onChange={(e) => form.setData('remember', e.target.checked)}
-                                className="size-4 rounded-[4px] border-[#d1d5db] text-[#111] accent-[#111] focus:ring-0"
-                            />
-                            {t('تذكرني')}
-                        </label>
+                        <div className="flex items-center justify-between gap-3">
+                            <label className="flex w-fit cursor-pointer items-center gap-2 text-[13px] text-[#4b4b4b]">
+                                <input
+                                    type="checkbox"
+                                    checked={form.data.remember}
+                                    onChange={(e) => form.setData('remember', e.target.checked)}
+                                    className="size-4 rounded-[4px] border-[#d1d5db] text-[#111] accent-[#111] focus:ring-0"
+                                />
+                                {t('تذكرني')}
+                            </label>
+
+                            <Link
+                                href={route('password.request')}
+                                className="text-[13px] font-medium text-[#6b7280] transition-colors hover:text-[#111]"
+                            >
+                                {t('نسيت كلمة المرور؟')}
+                            </Link>
+                        </div>
 
                         <Button type="submit" size="lg" className="w-full" loading={form.processing}>
                             {t('تسجيل الدخول')}

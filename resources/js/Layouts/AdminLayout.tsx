@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
 import ImpersonationBar from '@/Components/ImpersonationBar';
@@ -7,6 +7,7 @@ import Sidebar from '@/Components/Sidebar';
 import SubscriptionBanner from '@/Components/SubscriptionBanner';
 import Topbar from '@/Components/Topbar';
 import type { NavGroup } from '@/lib/nav';
+import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
 interface AdminLayoutProps {
@@ -20,19 +21,34 @@ interface AdminLayoutProps {
 
 export default function AdminLayout({ title, children, nav, sidebarSubtitle }: AdminLayoutProps) {
     const { flash } = usePage<PageProps>().props;
+    const t = useTranslate();
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     // رسائل الجلسة القادمة من الخادم تُعرض كـtoast
     useEffect(() => {
         if (!flash?.toast) return;
-        const { msg, type } = flash.toast;
+        const { msg, type, undo } = flash.toast;
         const fn =
             type === 'success' ? toast.success
             : type === 'danger' ? toast.error
             : type === 'warning' ? toast.warning
             : toast;
-        fn(msg);
-    }, [flash?.toast]);
+
+        /*
+         * «تراجع» بعد الحذف — هنا تصل قيمة سلّة المحذوفات إلى صاحب النشاط.
+         *
+         * السلّة مدفونة في الإعدادات، ومن حذف بالخطأ لا يعرف بوجودها فيتّصل
+         * بالدعم. والزرّ يردّ الخطأ في مكانه، ومهلته أطول من المعتاد لأن من
+         * يكتشف الخطأ يحتاج ثانيةً ليقرأ ما حدث قبل أن يتصرّف.
+         */
+        fn(msg, undo ? {
+            duration: 12000,
+            action: {
+                label: t('تراجع'),
+                onClick: () => router.post(undo.url, {}, { preserveScroll: true }),
+            },
+        } : undefined);
+    }, [flash?.toast, t]);
 
     return (
         <div className="admin-ui min-h-screen">

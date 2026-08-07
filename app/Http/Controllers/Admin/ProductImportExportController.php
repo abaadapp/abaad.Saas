@@ -507,7 +507,15 @@ class ProductImportExportController extends Controller
                     continue;
                 }
                 BranchStock::where('product_id', $id)->delete();
-                $product->delete();
+                /*
+                 * تراجعٌ عن استيراد، لا حذفٌ يتراجع عنه أحد.
+                 *
+                 * هذه المنتجات أُنشئت قبل دقائق من الملف نفسه، والمقصود
+                 * إزالتها كأنها لم تُستورد. لو حُذفت حذفًا ناعمًا لملأت
+                 * «المحذوفات» بمئة صفٍّ من استيرادٍ أُلغي — فيضيع فيها ما
+                 * حُذف عن قصدٍ ويستحقّ الاسترداد.
+                 */
+                $product->forceDelete();
                 $removed++;
             }
 

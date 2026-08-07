@@ -1,10 +1,12 @@
 import { usePage } from '@inertiajs/react';
+import { Printer } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
 import DataTable, { type Column } from '@/Components/DataTable';
 import StatCard from '@/Components/StatCard';
 import { Badge } from '@/Components/ui/badge';
+import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -72,6 +74,26 @@ export default function AdminShifts() {
                 ),
         },
         { key: 'note', header: 'ملاحظة', cell: (s) => s.note || '—' },
+        {
+            key: 'print',
+            header: '',
+            align: 'end',
+            /*
+             * تقرير الإقفال (Z) — للمقفلة وحدها.
+             *
+             * الوردية المفتوحة أرقامها تتغيّر مع كل بيعة، وورقةٌ تُطبع منها
+             * تُوقَّع على رقمٍ يكذّبه الصندوق بعد دقيقة.
+             */
+            cell: (s) =>
+                s.difference === null ? null : (
+                    <Button variant="outline" size="sm" asChild>
+                        <a href={route('admin.shifts.pdf', s.id)} target="_blank" rel="noreferrer">
+                            <Printer className="size-4" />
+                            {t('تقرير الإقفال')}
+                        </a>
+                    </Button>
+                ),
+        },
     ];
 
     return (

@@ -61,24 +61,34 @@ class BackupController extends Controller
         $currentUserId = auth()->id();
 
         DB::transaction(function () use ($data, $bid, $currentUserId) {
-            // ===== الحذف: الأبناء أولًا ثم الآباء =====
+            /*
+             * ===== الحذف: الأبناء أولًا ثم الآباء =====
+             *
+             * ما يُحذف حذفًا ناعمًا يُمحى هنا محوًا نهائيًّا (forceDelete).
+             *
+             * الاستعادة تُحلّ محتوى الملف محلّ ما في المتجر، فالقديم يجب أن
+             * يزول لا أن يُخفى: `delete()` وحدها كانت ستترك المنتجات
+             * والمصروفات السابقة صفوفًا مخفية، فتظهر في «المحذوفات» بعد
+             * الاستعادة ويستطيع التاجر «استعادتها» — فتنشأ نسخةٌ ثانية من كل
+             * منتجٍ إلى جانب ما استُعيد.
+             */
             OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid))->delete();
             Order::where('business_id', $bid)->delete();
             PurchaseOrderItem::whereHas('purchaseOrder', fn ($q) => $q->where('business_id', $bid))->delete();
             PurchaseOrder::where('business_id', $bid)->delete();
             InventoryMovement::where('business_id', $bid)->delete();
-            Expense::where('business_id', $bid)->delete();
+            Expense::where('business_id', $bid)->forceDelete();
             Transaction::where('business_id', $bid)->delete();
             Coupon::where('business_id', $bid)->delete();
             Shift::where('business_id', $bid)->delete();
             ActivityLog::where('business_id', $bid)->delete();
-            Product::where('business_id', $bid)->delete();
+            Product::where('business_id', $bid)->forceDelete();
             Category::where('business_id', $bid)->delete();
-            Customer::where('business_id', $bid)->delete();
+            Customer::where('business_id', $bid)->forceDelete();
             ExpenseType::where('business_id', $bid)->delete();
             Supplier::where('business_id', $bid)->delete();
             Currency::where('business_id', $bid)->delete();
-            Branch::where('business_id', $bid)->delete();
+            Branch::where('business_id', $bid)->forceDelete();
             Setting::where('business_id', $bid)->delete();
             // الموظفون لا يُحذفون — تُحدَّث بياناتهم فقط (انظر أدناه)
 

@@ -222,10 +222,26 @@ class Demo
     }
 
     /** فروع النشاط الحالي */
+    /**
+     * فروع المتجر — ومعها ما يتعلّق بكل فرع.
+     *
+     * العددان ليسا زينة: زرّ الحذف كان يسأل «حذف هذا الفرع؟» بلا أن يقول إن
+     * فيه أربعمئة فاتورة وصندوقَين. وتحذيرٌ يمنع الضغطة أنفع من سلّةٍ
+     * تُصلحها بعدها — فمن يقرأ العدد يتوقّف، ومن لا يقرؤه يضغط.
+     */
     public static function branches(): array
     {
-        return \App\Models\Branch::where('business_id', self::bid())->orderBy('id')->get()
-            ->map(fn ($b) => ['id' => $b->id, 'name' => $b->name, 'phone' => $b->phone, 'address' => $b->address])->all();
+        return \App\Models\Branch::where('business_id', self::bid())
+            ->withCount([
+                'orders as orders_count' => fn ($q) => $q->where('is_held', false),
+                'devices as devices_count',
+            ])
+            ->orderBy('id')->get()
+            ->map(fn ($b) => [
+                'id' => $b->id, 'name' => $b->name, 'phone' => $b->phone, 'address' => $b->address,
+                'orders' => (int) $b->orders_count,
+                'devices' => (int) $b->devices_count,
+            ])->all();
     }
 
     /* ============================ Super Admin ============================ */
@@ -240,7 +256,6 @@ class Demo
         // القيم (إجمالي)
         $total = Business::count();
         $active = Business::where('status', 'نشط')->count();
-        $flowers = Business::where('type', 'محل ورود')->count();
         $users = User::count();
         $activeSubs = Subscription::where('status', 'نشط')->count();
         $expiredSubs = Subscription::where('status', '!=', 'نشط')->count();
@@ -250,12 +265,48 @@ class Demo
         $bizNewLast = Business::whereBetween('starts_at', [$lmStart, $mStart])->count();
         $activeNew = Business::where('status', 'نشط')->where('starts_at', '>=', $mStart)->count();
         $activeNewLast = Business::where('status', 'نشط')->whereBetween('starts_at', [$lmStart, $mStart])->count();
-        $flowNew = Business::where('type', 'محل ورود')->where('starts_at', '>=', $mStart)->count();
-        $flowNewLast = Business::where('type', 'محل ورود')->whereBetween('starts_at', [$lmStart, $mStart])->count();
         $usersNew = User::where('created_at', '>=', $mStart)->count();
         $usersNewLast = User::whereBetween('created_at', [$lmStart, $mStart])->count();
         $subsNew = Subscription::where('status', 'نشط')->where('created_at', '>=', $mStart)->count();
         $subsNewLast = Subscription::where('status', 'نشط')->whereBetween('created_at', [$lmStart, $mStart])->count();
+
+        /*
+         * الإيراد الشهري المتكرّر: الاشتراكات السارية منسوبةً إلى الشهر.
+         *
+         * لا مجموع الفواتير: فاتورةٌ سنوية تُدفع مرّةً واحدة تجعل شهرًا يبدو
+         * عظيمًا وأحد عشر شهرًا تبدو خرابًا. والمتكرّر يقيس ما يتكرّر — وهو ما
+         * يُبنى عليه قرارٌ في هذا العمل.
+         *
+         * والقسمة على عدد أشهر الدورة: اشتراك سنوي بـ١٢٠ يساوي ١٠ في الشهر.
+         */
+        $mrrAt = function ($moment) {
+            return (float) Subscription::where('status', 'نشط')
+                ->where('starts_at', '<=', $moment)
+                ->where(fn ($q) => $q->whereNull('ends_at')->orWhere('ends_at', '>=', $moment))
+                ->get()
+                ->sum(function ($sub) {
+                    $months = $sub->starts_at && $sub->ends_at
+                        ? max(1, round($sub->starts_at->diffInDays($sub->ends_at) / 30))
+                        : 1;
+
+                    return (float) $sub->amount / $months;
+                });
+        };
+        $mrr = $mrrAt(now());
+        $mrrLast = $mrrAt($lmStart);
+
+        /*
+         * الفاقد: من كان معك أول الشهر وليس معك الآن.
+         *
+         * يُحسب من الحالة الفعلية لا من عدّاد «الاشتراكات المنتهية» — ذاك يعدّ
+         * دوراتٍ قديمة لعملاء جدّدوا، فيقول إنك تخسر وأنت تكسب.
+         */
+        $churned = Business::where('starts_at', '<', $mStart)
+            ->where(fn ($q) => $q->whereIn('status', ['معطل', 'معطّل'])->orWhere('ends_at', '<', now()))
+            ->where('updated_at', '>=', $mStart)
+            ->count();
+        $activeAtStart = max(1, Business::where('starts_at', '<', $mStart)->count());
+        $churnLabel = $churned.' · '.round($churned / $activeAtStart * 100).'%';
 
         // الإيرادات: الشهر مقابل السابق، والسنة مقابل السابقة (فواتير مدفوعة فعليًا)
         $paid = fn () => Invoice::where('status', 'مدفوعة');
@@ -267,10 +318,21 @@ class Demo
         return [
             array_merge(['label' => __('إجمالي الشركات'), 'value' => (string) $total, 'icon' => 'building-2', 'color' => 'primary'], self::trend($bizNew, $bizNewLast)),
             array_merge(['label' => __('الشركات النشطة'), 'value' => (string) $active, 'icon' => 'circle-check', 'color' => 'success'], self::trend($activeNew, $activeNewLast)),
-            array_merge(['label' => __('محلات الورود'), 'value' => (string) $flowers, 'icon' => 'flower', 'color' => 'secondary'], self::trend($flowNew, $flowNewLast)),
-            array_merge(['label' => __('المستخدمون'), 'value' => (string) $users, 'icon' => 'users', 'color' => 'info'], self::trend($usersNew, $usersNewLast)),
+            /*
+             * الإيراد الشهري المتكرّر والفاقد — لا عدد المستخدمين.
+             *
+             * «إجمالي الشركات» و«المستخدمون» أرقامٌ ترتفع ولا تُدار: تصعد وأنت
+             * تخسر، ولا تقول متى. والمنصّة تُدار برقمين — كم يدخل شهريًّا، وكم
+             * خرج ومن.
+             */
+            array_merge(['label' => __('الإيراد الشهري المتكرّر'), 'value' => self::money($mrr), 'icon' => 'repeat', 'color' => 'primary'], self::trend($mrr, $mrrLast)),
+            [
+                'label' => __('الفاقد هذا الشهر'), 'value' => $churnLabel, 'icon' => 'user-minus',
+                // ارتفاع الفاقد ليس نموًّا: الاتجاه معكوس عمدًا
+                'trend' => $churned > 0 ? '−'.$churned : null, 'up' => false, 'color' => $churned > 0 ? 'danger' : 'success',
+            ],
             array_merge(['label' => __('الاشتراكات النشطة'), 'value' => (string) $activeSubs, 'icon' => 'badge-check', 'color' => 'success'], self::trend($subsNew, $subsNewLast)),
-            ['label' => __('الاشتراكات المنتهية'), 'value' => (string) $expiredSubs, 'icon' => 'badge-x', 'trend' => null, 'up' => false, 'color' => 'danger'],
+            array_merge(['label' => __('المستخدمون'), 'value' => (string) $users, 'icon' => 'users', 'color' => 'info'], self::trend($usersNew, $usersNewLast)),
             array_merge(['label' => __('الإيرادات الشهرية'), 'value' => self::money($monthly), 'icon' => 'wallet', 'color' => 'warning'], self::trend($monthly, $monthlyLast)),
             array_merge(['label' => __('الإيرادات السنوية'), 'value' => self::money($yearly), 'icon' => 'trending-up', 'color' => 'primary'], self::trend($yearly, $yearlyLast)),
         ];
@@ -295,9 +357,16 @@ class Demo
         ])->all();
     }
 
-    public static function flowerShops(): array
+    /**
+     * أداء الشركات — لتقرير المنصة.
+     *
+     * كانت مقصورةً على «محل ورود»: بقيّةٌ من كون النظام محلَّ ورودٍ يومًا.
+     * فتقرير المنصة كان يُخرج نوعًا واحدًا ويسقط المخابز والمغاسل والورش —
+     * تقريرٌ ناقصٌ لا يقول إنه ناقص.
+     */
+    public static function businessPerformance(): array
     {
-        return Business::where('type', 'محل ورود')->with('plan')
+        return Business::with('plan')
             ->withCount(['products', 'users', 'orders'])->get()->map(fn ($b) => [
                 'id' => $b->id,
                 'name' => $b->name,
@@ -379,8 +448,37 @@ class Demo
         if ($u && ! $u->isSuperAdmin()) {
             $q->where('business_id', self::bid());
         }
+
+        /*
+         * بطاقة «أحدث الأنشطة» مراقبةٌ لا مرآة.
+         *
+         * كانت تعرض صاحبَ الشاشة نفسه: يفتح مدير المنصة لوحته فيقرأ «مدير
+         * المنصة — سجّل الدخول»، ويفتح التاجر لوحته فيقرأ فعلَه هو قبل قليل.
+         * ثمانية أسطر تُدفع فيها أفعالُ من يجب أن يُراقَبوا خارج الشاشة.
+         *
+         * والسجلّ الكامل (صفحة «سجل النشاط») لا يُمسّ: هو الدليل، ولا يجوز
+         * أن يُنقّى — ما يُخفى من بطاقةٍ يبقى في السجلّ.
+         */
+        $q->whereNotIn('user_id', User::where('role', 'super_admin')->select('id'));
+
+        if ($u && ! $u->isSuperAdmin()) {
+            /*
+             * ولوحة التاجر تعرض موظفيه لا نفسه.
+             *
+             * ويبقى ما فعله الدعم داخل حسابه ظاهرًا — يُقيَّد باسمه هو، وإخفاؤه
+             * يعني أن يجري في متجره ما لا يراه.
+             */
+            $q->where(fn ($w) => $w
+                ->whereNotIn('user_id', User::where('business_id', self::bid())
+                    ->where('role', 'admin')->select('id'))
+                ->orWhereNotNull('impersonator_id'));
+        }
+
         return $q->limit($limit)->get()->map(fn ($a) => [
-            'text' => $a->user_name . ' — ' . $a->description,
+            // «عبر الدعم» تُلحق بالاسم: السطر الواحد لا يتّسع لشارة
+            'text' => $a->user_name
+                . ($a->impersonator_name ? ' (' . __('عبر الدعم') . ')' : '')
+                . ' — ' . $a->description,
             'time' => optional($a->created_at)?->diffForHumans() ?? '—',
             'icon' => $a->icon,
             'color' => $a->color,
@@ -1773,7 +1871,6 @@ class Demo
     public static function customer($id): array { return self::findById(self::customers(), $id); }
     public static function employee($id): array { return self::findById(self::employees(), $id); }
     public static function business($id): array { return self::findById(self::businesses(), $id); }
-    public static function flowerShop($id): array { return self::findById(self::flowerShops(), $id); }
     public static function platformUser($id): array { return self::findById(self::platformUsers(), $id); }
 
     /* ============================ POS ============================ */

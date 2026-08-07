@@ -4,9 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Product extends Model
 {
+    // الحذف يُخفي ولا يمحو — انظر الهجرة add_soft_deletes_to_products_and_expenses
+    use SoftDeletes;
+
     protected $guarded = [];
     protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean'];
 

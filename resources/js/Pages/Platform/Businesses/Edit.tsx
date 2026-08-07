@@ -41,6 +41,7 @@ export default function BusinessEdit() {
 
             <BusinessForm
                 options={options}
+                businessId={business.id}
                 // القيم من السجل نفسه؛ القالب القديم كان يطبع العنوان والتاريخين ثابتين
                 initial={{
                     name: business.name ?? '',

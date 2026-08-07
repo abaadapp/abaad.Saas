@@ -195,6 +195,17 @@ class ProductController extends Controller
         \App\Support\Activity::log('deleted', 'حذف المنتج: ' . $product->name, ['subject_id' => $product->id]);
         $product->delete();
 
-        return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم حذف المنتج'), 'type' => 'success']);
+        /*
+         * «تراجع» في الإشعار نفسه، لا في شاشةٍ يبحث عنها.
+         *
+         * سلّة المحذوفات تحرس البيانات لكنها مدفونة في الإعدادات: من حذف
+         * منتجًا بالخطأ لا يعرف أنها موجودة، فيتّصل بالدعم. والزرّ هنا يردّ
+         * الخطأ في اللحظة التي وقع فيها.
+         */
+        return redirect()->route('admin.products.index')->with('toast', [
+            'msg' => __('تم حذف المنتج'),
+            'type' => 'success',
+            'undo' => ['url' => route('admin.products.restore', $product->id), 'label' => $product->name],
+        ]);
     }
 }

@@ -22,6 +22,9 @@ interface BusinessRow {
     plan: string;
     status: string;
     registered: string;
+    /** آخر بيعة فعلية — null إن لم يبع قطّ */
+    lastSale: string | null;
+    silentDays: number | null;
     branches: number;
     logo: string | null;
 }
@@ -93,6 +96,36 @@ export default function BusinessesIndex() {
                     {b.registered}
                 </span>
             ),
+        },
+        /*
+            آخر بيعة — الإشارة الوحيدة أن المشترك ما زال يستعمل ما يدفع ثمنه.
+            «نشط» تقول إن اشتراكه سارٍ، لا إنه يعمل. ومن سكت أسبوعين يُتّصل به
+            قبل أن يتصل هو ليلغي.
+        */
+        {
+            key: 'lastSale',
+            header: 'آخر بيعة',
+            sortable: true,
+            value: (b) => b.lastSale ?? '',
+            cell: (b) =>
+                b.lastSale ? (
+                    <span
+                        dir="ltr"
+                        className={
+                            (b.silentDays ?? 0) >= 14
+                                ? 'rounded-full bg-[#fef2f2] px-2.5 py-1 text-[12px] text-[#b91c1c]'
+                                : (b.silentDays ?? 0) >= 7
+                                  ? 'rounded-full bg-[#fff7ed] px-2.5 py-1 text-[12px] text-[#9a3412]'
+                                  : 'text-[#6b7280]'
+                        }
+                    >
+                        {b.lastSale}
+                    </span>
+                ) : (
+                    <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-[12px] text-[#6b7280]">
+                        {t('لم يبع بعد')}
+                    </span>
+                ),
         },
         {
             key: 'branches',

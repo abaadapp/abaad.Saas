@@ -38,6 +38,26 @@ class User extends Authenticatable
         return $this->belongsTo(Business::class);
     }
 
+    /**
+     * العنوان الذي يصل إليه بريدٌ فعلًا — لا الذي يُكتب في خانة الدخول.
+     *
+     * حسابات التجّار على نطاق داخلي (@abaadapp.om) لا صناديق بريدٍ خلفه:
+     * اسم دخولٍ يُملى في الهاتف لا عنوانٌ يُراسَل. فلو أُرسل رابط استعادة
+     * كلمة المرور إليه لسقط في العدم، وقال النظام «أرسلنا» ولم يصل شيء —
+     * وهو أسوأ من ألّا يكون هناك استعادة أصلًا: انتظارٌ بلا نهاية.
+     *
+     * فيُرسَل إلى بريد التواصل المسجَّل للمتجر. ومن كان بريده حقيقيًّا
+     * (الموظفون، مدير المنصة) يصله على بريده هو.
+     */
+    public function contactEmail(): ?string
+    {
+        if (! str_ends_with(mb_strtolower((string) $this->email), \App\Support\MerchantAccount::DOMAIN)) {
+            return $this->email;
+        }
+
+        return $this->business?->email ?: null;
+    }
+
     /** الفروع المسموح للموظف بالعمل فيها — انظر worksAt() */
     public function branches(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
     {

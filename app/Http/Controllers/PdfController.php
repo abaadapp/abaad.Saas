@@ -45,6 +45,59 @@ class PdfController extends Controller
         ]);
     }
 
+    /**
+     * تقرير إقفال الوردية (تقرير Z) — الورقة التي تُوقَّع عند تسليم الدرج.
+     *
+     * كان الإقفال ينتهي عند شاشة: يُدخل الكاشير ما عدّه، ويُخزَّن الفرق في
+     * القاعدة، ولا يبقى في يد أحدٍ شيء. فإن اختلفا غدًا على عشرين ريالًا، كلٌّ
+     * يذكر رقمًا ولا ورقة بينهما.
+     *
+     * ويُطبع على ورق الإيصال نفسه لا على A4: الطابعة الموجودة عند الصندوق
+     * حرارية، وتقريرٌ لا تطبعه الطابعة التي بجانبه ليس تقريرًا يُوقَّع.
+     */
+    public function shiftReport($id)
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+
+        $shift = \App\Models\Shift::where('business_id', $bid)
+            ->with(['openedBy:id,name', 'closedBy:id,name'])
+            ->findOrFail($id);
+
+        // الوردية المفتوحة لا تُقفل على ورق: أرقامها تتغيّر مع كل بيعة
+        abort_if($shift->isOpen(), 404);
+
+        $movements = \App\Models\ShiftMovement::where('shift_id', $shift->id)
+            ->orderBy('id')->get()
+            ->map(fn ($m) => ['type' => $m->type, 'amount' => (float) $m->amount, 'reason' => $m->reason])
+            ->all();
+
+        $html = view('pdf.shift-report', [
+            'shift' => $shift,
+            'business' => Demo::business($bid),
+            'branchName' => \App\Models\Branch::where('id', $shift->branch_id)->value('name') ?: __('الفرع الرئيسي'),
+            'deviceName' => \App\Models\PosDevice::where('id', $shift->pos_device_id)->value('name'),
+            'totals' => \App\Support\Shifts::totals($shift),
+            'moves' => \App\Support\Shifts::movements($shift),
+            'movements' => $movements,
+            'openedBy' => $shift->employee_name ?: ($shift->openedBy?->name ?? '—'),
+            'closedBy' => $shift->closedBy?->name,
+        ])->render();
+
+        $mpdf = new Mpdf([
+            'mode' => 'utf-8', 'format' => [80, 220],
+            'margin_left' => 4, 'margin_right' => 4, 'margin_top' => 6, 'margin_bottom' => 6,
+            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
+        ]);
+        $mpdf->WriteHTML($html);
+
+        $name = 'shift-'.$shift->id;
+
+        return response($mpdf->Output($name.'.pdf', 'S'), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.$name.'.pdf"',
+        ]);
+    }
+
     /** تقرير المبيعات الشهري (لوحة النشاط) */
     public function salesReport()
     {
@@ -82,7 +135,7 @@ class PdfController extends Controller
 
     public function platformReport()
     {
-        $businesses = Demo::flowerShops();
+        $businesses = Demo::businessPerformance();
         usort($businesses, fn ($a, $b) => $b['sales'] <=> $a['sales']);
 
         $html = view('pdf.platform-report', [

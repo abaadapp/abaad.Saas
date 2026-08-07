@@ -10,7 +10,20 @@ class BusinessController extends Controller
 {
     public function index(Request $request)
     {
-        $q = Business::with('plan');
+        /*
+         * «آخر بيعة» عمودٌ يقلب الجدول من سجلّ إلى أداة.
+         *
+         * شركةٌ «نشطة» باشتراكٍ سارٍ إلى ٢٠٢٧ وصفر طلبات منذ ثلاثة أسابيع
+         * مشتركٌ سيلغي ولا تدري — واللوحة تعدّه في «النشطة». ومن مضى عليه
+         * أسبوع يُتّصل به قبل أن يتصل هو ليلغي.
+         *
+         * وبفرعٍ استعلاميّ لا بعلاقة: صفٌّ واحد لكل شركة، لا استعلامٌ لكلٍّ منها.
+         */
+        $q = Business::with('plan')->addSelect([
+            'last_sale' => \App\Models\Order::selectRaw('MAX(ordered_at)')
+                ->whereColumn('orders.business_id', 'businesses.id')
+                ->where('is_held', false),
+        ]);
 
         if ($s = trim((string) $request->query('q'))) {
             $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('owner_name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
@@ -26,6 +39,11 @@ class BusinessController extends Controller
             'branches' => $b->branches_count, 'city' => $b->city, 'country' => $b->country,
             // مسار مخزَّن أو رابط مطلق — المحوّل يميّز بينهما
             'logo' => PageController::logoUrl($b->logo),
+            'lastSale' => $b->last_sale ? \Illuminate\Support\Carbon::parse($b->last_sale)->format('Y-m-d') : null,
+            // الأيام منذ آخر بيعة — الواجهة تلوّن بها ولا تحسب
+            'silentDays' => $b->last_sale
+                ? (int) \Illuminate\Support\Carbon::parse($b->last_sale)->startOfDay()->diffInDays(now()->startOfDay())
+                : null,
         ]);
 
         return \Inertia\Inertia::render('Platform/Businesses/Index', [
@@ -86,6 +104,35 @@ class BusinessController extends Controller
         \App\Support\Activity::log('deleted', 'عطّل الشركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 
         return redirect()->route('super-admin.businesses.index')->with('toast', ['msg' => __('تم تعطيل الشركة'), 'type' => 'warning']);
+    }
+
+    /**
+     * تعديل حساب الدخول وحده — من صفحة الشركة.
+     *
+     * مسارٌ مستقلّ لا تمريرٌ عبر نموذج الشركة: إعادةُ كتابة الاسم والنوع
+     * والحالة لتغيير كلمة مرورٍ نسيها تاجر عملٌ زائد يُخطئ فيه المشغّل، وأيّ
+     * حقلٍ يسقط من الطلب يمحو ما في القاعدة.
+     *
+     * وكلمة المرور تُعاد في الرسالة مرّةً واحدة: هي مجزَّأة في القاعدة فلا
+     * تُقرأ بعدها أبدًا — وبلا عرضها هنا لا سبيل لإبلاغ التاجر بها.
+     */
+    public function account(Request $request, $id)
+    {
+        $business = Business::findOrFail($id);
+        $extra = $this->syncAccount($request, $business);
+
+        if ($extra === '') {
+            return back()->with('toast', ['msg' => __('لم يتغيّر شيء'), 'type' => 'info']);
+        }
+
+        $shown = filled($request->input('login_password'))
+            ? __(' · كلمة المرور: :password', ['password' => $request->input('login_password')])
+            : '';
+
+        return back()->with('toast', [
+            'msg' => __('تم تحديث حساب الدخول').$extra.$shown,
+            'type' => 'success',
+        ]);
     }
 
     /**

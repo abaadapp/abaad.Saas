@@ -128,12 +128,32 @@ class CustomerAddressTest extends TestCase
         $this->assertDatabaseHas('customer_addresses', ['id' => $stranger->id]);
     }
 
-    public function test_deleting_a_customer_takes_their_addresses_with_them(): void
+    /**
+     * الحذف الناعم يُبقي العناوين — والاستعادة تعيدها معه.
+     *
+     * كان الاختبار يفحص العكس: أن الحذف يمحو العناوين بالتسلسل. وذلك صحيحٌ
+     * حين يكون الحذف نهائيًّا، لكن العميل صار يُخفى لا يُمحى — وعميلٌ يعود
+     * بلا عناوينه يعود ناقصًا، فيُعاد إدخالها يدويًّا وقد ضاع أصلها.
+     */
+    public function test_hiding_a_customer_keeps_their_addresses_for_the_return(): void
     {
         [, $customer] = $this->scenario();
         $customer->addresses()->create(['label' => 'المنزل', 'city' => 'مسقط']);
 
         $customer->delete();
+        $this->assertSame(1, CustomerAddress::count());
+
+        $customer->restore();
+        $this->assertSame(1, $customer->fresh()->addresses()->count());
+    }
+
+    public function test_wiping_a_customer_still_takes_their_addresses(): void
+    {
+        [, $customer] = $this->scenario();
+        $customer->addresses()->create(['label' => 'المنزل', 'city' => 'مسقط']);
+
+        // المحو النهائي (مسح المتجر قبل استعادة نسخة) يتسلسل كما كان
+        $customer->forceDelete();
 
         $this->assertSame(0, CustomerAddress::count());
     }

@@ -99,13 +99,20 @@ class ExpenseController extends Controller
         $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
         \App\Support\Activity::log('deleted', 'حذف المصروف: ' . $expense->reference, ['subject_id' => $expense->id]);
 
-        // حذف الملف المرفق مع المصروف
-        if ($expense->attachment) {
-            \Illuminate\Support\Facades\Storage::disk('public')->delete($expense->attachment);
-        }
+        /*
+         * المرفق يبقى مع المصروف المحذوف.
+         *
+         * صار الحذف ناعمًا يُستدرَك من «المحذوفات»، ومصروفٌ يعود بلا فاتورته
+         * نصفُ استعادة: القيد يظهر في التقرير ولا شيء يُقدَّم للمحاسب.
+         * والملفات تُنظَّف مع المسح النهائي لا مع الإخفاء.
+         */
         $expense->delete();
 
-        return back()->with('toast', ['msg' => __('تم حذف المصروف'), 'type' => 'warning']);
+        return back()->with('toast', [
+            'msg' => __('تم حذف المصروف'),
+            'type' => 'warning',
+            'undo' => ['url' => route('admin.expenses.restore', $expense->id), 'label' => $expense->reference ?: $expense->type],
+        ]);
     }
 
     /** توليد الرقم المرجعي التالي للنشاط */

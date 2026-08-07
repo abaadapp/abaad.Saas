@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { Layers, LogIn, Pencil, Phone, User } from 'lucide-react';
+import { KeyRound, Layers, LogIn, Pencil, Phone, User } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import DeleteButton from '@/Components/DeleteButton';
@@ -10,6 +10,7 @@ import Tabs from '@/Components/Tabs';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import AccountCard from './partials/AccountCard';
 import {
     Table,
     TableBody,
@@ -97,7 +98,6 @@ export default function BusinessShow() {
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('overview');
-
     const facts = [
         { label: 'الاسم', value: business.name },
         { label: 'النوع', value: t(business.type) },
@@ -191,6 +191,26 @@ export default function BusinessShow() {
                     </div>
                 </div>
             </Card>
+
+            {business.owner_email ? (
+                <AccountCard businessId={business.id} ownerEmail={business.owner_email} />
+            ) : (
+                /* شركةٌ بلا حساب: لا يفتحها أحد — والإنشاء من صفحة التعديل حيث يُلزَم */
+                <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 border-[#fed7aa] bg-[#fff7ed] p-5">
+                    <p className="text-[13px] text-[#9a3412]">
+                        {t('هذه الشركة بلا حساب دخول — لا يستطيع صاحبها فتح لوحته.')}
+                    </p>
+                    <Button variant="outline" size="sm" asChild>
+                        <SmartLink
+                            routeName="super-admin.businesses.edit"
+                            href={route('super-admin.businesses.edit', business.id)}
+                        >
+                            <KeyRound />
+                            {t('إنشاء حساب')}
+                        </SmartLink>
+                    </Button>
+                </Card>
+            )}
 
             <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
                 {stats.map((s, i) => (
@@ -433,6 +453,7 @@ export default function BusinessShow() {
                     </Table>
                 )}
             </Card>
+
         </PlatformLayout>
     );
 }

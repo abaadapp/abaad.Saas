@@ -41,6 +41,13 @@ export interface Notification {
 export interface Toast {
     msg: string;
     type?: 'success' | 'warning' | 'danger' | 'info';
+    /**
+     * زرّ «تراجع» داخل الإشعار — يبنيه الخادم بعد كل حذفٍ ناعم.
+     *
+     * `url` مسارُ الاستعادة جاهزًا: بناؤه في الواجهة يعني تكرار معرفة أي
+     * قسمٍ يردّ أيّ نوع في مكانين.
+     */
+    undo?: { url: string; label?: string };
 }
 
 /** البيانات التي يشاركها HandleInertiaRequests مع كل صفحة */

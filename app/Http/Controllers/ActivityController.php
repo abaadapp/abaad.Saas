@@ -17,6 +17,13 @@ class ActivityController extends Controller
 
         return $q->latest('id')->paginate(15)->withQueryString()->through(fn ($l) => [
             'user' => $l->user_name, 'action' => $l->action, 'description' => $l->description,
+            /*
+             * من فعلها حقًّا — يظهر شارةً في السطر.
+             *
+             * بلا هذا يقرأ التاجر اسمه على عمليةٍ فعلها الدعم، فيتّهم موظفيه
+             * أو يتّهمك. وهو حقّه أن يعرف: لوحته وبياناته.
+             */
+            'via' => $l->impersonator_name,
             'icon' => $l->icon, 'color' => $l->color, 'ip' => $l->ip,
             'time' => optional($l->created_at)->format('Y-m-d H:i'),
             'ago' => optional($l->created_at)?->diffForHumans(),
@@ -37,7 +44,25 @@ class ActivityController extends Controller
     public function adminIndex(Request $request)
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
-        $logs = $this->shape(ActivityLog::where('business_id', $bid), $request);
+
+        /*
+         * سجلّ التاجر يتتبّع موظفيه لا نفسه.
+         *
+         * كان يفتحه فيقرأ أفعاله هو — «سجّل الدخول»، «عدّل منتجًا» — تدفع
+         * أفعالَ من يجب أن يُراقَبوا خارج الصفحة الأولى. والغرض من الشاشة أن
+         * يعرف ما جرى على الصندوق والمخزون في غيابه.
+         *
+         * ويبقى ما فعله الدعم داخل حسابه ظاهرًا: يُقيَّد باسمه، وإخفاؤه يعني أن
+         * يجري في متجره ما لا يراه. وسجلّ المنصة يحتفظ بكل شيء بلا استثناء —
+         * الدليل هناك.
+         */
+        $owners = \App\Models\User::where('business_id', $bid)->where('role', 'admin')->select('id');
+
+        $logs = $this->shape(
+            ActivityLog::where('business_id', $bid)
+                ->where(fn ($w) => $w->whereNotIn('user_id', $owners)->orWhereNotNull('impersonator_id')),
+            $request,
+        );
 
         return \Inertia\Inertia::render('Admin/Activity', [
             'logs' => $logs->items(),

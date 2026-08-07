@@ -61,11 +61,17 @@ class Preflight extends Command
             ! Route::has('demo.login'),
             'مسار /demo-login يمنح جلسة مدير منصة بلا كلمة مرور — يجب ألّا يوجد في الإنتاج'
         );
+        /*
+         * صار مانعًا لا تنبيهًا.
+         *
+         * كان `log` يعني أن التنبيهات والتقارير لا تصل — مزعج ولا يُوقف أحدًا.
+         * ثم صارت استعادة كلمة المرور تمرّ من هنا: فمع `log` يقول النظام
+         * للتاجر «أرسلنا الرابط» ولا يُرسل شيئًا، ولا باب له غير هذا.
+         */
         $this->check(
             'البريد ليس على السجلّ فقط',
             config('mail.default') !== 'log',
-            'MAIL_MAILER=log يعني أن التنبيهات والتقارير لا تصل أحدًا',
-            warnOnly: true
+            'MAIL_MAILER=log — لا تصل التنبيهات، ولا يصل رابط استعادة كلمة المرور: يقول النظام «أرسلنا» ولا يُرسل'
         );
 
         $this->section('الحسابات');
@@ -113,6 +119,49 @@ class Preflight extends Command
             '* * * * * cd ' . base_path() . ' && php artisan schedule:run >> /dev/null 2>&1'
         );
 
+        /*
+         * الجدولة لا تُثبت أن شيئًا جرى.
+         *
+         * `backup:run` مجدولٌ يوميًا منذ شهور، ولم يكن في النظام ما يقول إن
+         * cron يعمل أصلًا. فيبقى السطر في routes/console.php شاهدَ نيّةٍ لا
+         * شاهدَ نسخة — ولا يُكتشف الفرق إلا يوم تُطلب النسخة.
+         */
+        /*
+         * الطابور بلا عامل هو صمتٌ آخر.
+         *
+         * إشعار «طلب جديد» صار يُوضع في الطابور كي لا ينتظره الكاشير — وهذا
+         * يعني أن لا شيء يُرسَل إن لم يكن هناك عاملٌ يسحب. فيتحوّل بطءٌ ظاهر
+         * إلى غيابٍ صامت، وهو أسوأ.
+         */
+        if (config('queue.default') === 'database') {
+            $stuck = \Illuminate\Support\Facades\DB::table('jobs')
+                ->where('created_at', '<', now()->subMinutes(15)->timestamp)->count();
+            $this->check(
+                'عامل الطابور يسحب المهام',
+                $stuck === 0,
+                $stuck.' مهمة عالقة منذ أكثر من ربع ساعة — شغّل عاملًا دائمًا: php artisan queue:work (عبر supervisor أو systemd)',
+            );
+
+            $failed = \Illuminate\Support\Facades\DB::table('failed_jobs')->count();
+            $this->check(
+                'لا مهام فاشلة في الطابور',
+                $failed === 0,
+                $failed.' مهمة فاشلة — راجعها: php artisan queue:failed',
+                warnOnly: true,
+            );
+        }
+
+        $stamp = $this->lastBackup();
+        $this->check(
+            'نسخة احتياطية خلال آخر ٤٨ ساعة',
+            $stamp !== null && $stamp['fresh'] && empty($stamp['failed']),
+            $stamp === null
+                ? 'لم تُنشأ أي نسخة احتياطية قط — تأكّد من cron، وشغّل الآن: php artisan backup:run'
+                : (! $stamp['fresh']
+                    ? 'آخر نسخة: ' . $stamp['at'] . ' — المجدول متوقّف على الأرجح'
+                    : 'آخر تشغيل فشل في ' . count($stamp['failed']) . ' متجرًا — شغّل: php artisan backup:run'),
+        );
+
         /* ------------------------------- الخلاصة ------------------------------- */
         $this->newLine();
         if ($this->fail) {
@@ -133,6 +182,30 @@ class Preflight extends Command
         $this->newLine();
 
         return $this->fail ? self::FAILURE : self::SUCCESS;
+    }
+
+    /** بصمة آخر نسخة احتياطية — يكتبها backup:run */
+    private function lastBackup(): ?array
+    {
+        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+
+        if (! $disk->exists(BackupRun::STAMP)) {
+            return null;
+        }
+
+        $data = json_decode((string) $disk->get(BackupRun::STAMP), true);
+        $at = $data['finished_at'] ?? null;
+
+        if (! is_array($data) || ! $at) {
+            return null;
+        }
+
+        return [
+            'at' => \Illuminate\Support\Carbon::parse($at)->diffForHumans(),
+            // ٤٨ لا ٢٤: تشغيلٌ واحد يتأخّر أو يفوت لا يستحق منعَ إطلاق
+            'fresh' => \Illuminate\Support\Carbon::parse($at)->gt(now()->subHours(48)),
+            'failed' => $data['failed'] ?? [],
+        ];
     }
 
     private function section(string $title): void

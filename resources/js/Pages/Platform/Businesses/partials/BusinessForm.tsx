@@ -7,6 +7,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import AccountCard from './AccountCard';
 
 export interface BusinessOptions {
     types: string[];
@@ -44,6 +45,8 @@ interface Props {
      * غيابه يعني شركةً بلا حساب: تُطلب بياناته كما في الإنشاء.
      */
     ownerEmail?: string | null;
+    /** مطلوب عند التعديل: بطاقة الحساب تحفظ بمسارها الخاص */
+    businessId?: number;
     action: string;
     /** التعديل يمرّ بـPUT عبر _method لأن الطلب متعدّد الأجزاء (رفع ملف) */
     method: 'post' | 'put';
@@ -52,7 +55,7 @@ interface Props {
 }
 
 /** كلمة مرور مقروءة: بلا حروف تلتبس (l/1/O/0) لأنها تُملى في الهاتف */
-function randomPassword(): string {
+export function randomPassword(): string {
     const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     return Array.from(
         crypto.getRandomValues(new Uint32Array(10)),
@@ -72,6 +75,7 @@ export default function BusinessForm({
     initial,
     logoUrl,
     ownerEmail,
+    businessId,
     action,
     method,
     submitLabel,
@@ -97,8 +101,14 @@ export default function BusinessForm({
         ...initial,
         logo: null,
         remove_logo: false,
-        // الاسم القائم يُملأ سلفًا: التعديل يُصحّح الموجود لا يبدأ من فراغ
-        login_username: ownerEmail?.replace(MERCHANT_DOMAIN, '') ?? '',
+        /*
+         * الاسم القائم يُملأ سلفًا: التعديل يُصحّح الموجود لا يبدأ من فراغ.
+         *
+         * والقطع عند @ لا بنزع نطاقنا: حسابات أُنشئت قبل توحيد النطاق تحمل
+         * نطاقًا آخر، فنزعُ «@abaadapp.om» منها لا يطابق شيئًا — فيمتلئ الحقل
+         * بالبريد كاملًا، ويُرفض الحفظ لأن @ ليست حرفًا مسموحًا في الاسم.
+         */
+        login_username: ownerEmail?.split('@')[0] ?? '',
         login_password: '',
     });
     const [preview, setPreview] = useState<string | null>(logoUrl ?? null);
@@ -163,26 +173,25 @@ export default function BusinessForm({
                         />
                     </Field>
                     {/*
-                        كتابةٌ حرّة مع اقتراحات، لا قائمةً مغلقة.
-                        كانت ستّة أنواع لا سابع لها: من يسجّل مغسلةً أو ورشةً
-                        يضطرّ إلى اختيار «بقالة» — فيُكذَب النوع في السجلّ من
-                        أول يوم. والعمود نصّ حرّ أصلًا، وأيّ نوع غير معروف
-                        يأخذ تصنيفات البداية العامة (BusinessTypes::GENERIC).
+                        كتابةٌ حرّة بحتة: لا قائمة ولا اقتراحات.
+
+                        كانت ستّة أنواع لا سابع لها، فمن يسجّل مغسلةً أو ورشةً
+                        يضطرّ إلى «بقالة» — يُكذَب النوع في السجلّ من أول يوم.
+                        ثم صارت اقتراحاتٍ تنسدل، وهي تدعو إلى الاختيار من
+                        ستّةٍ لا تشبه ما بين يديه، فيعود إلى الكذب نفسه.
+
+                        والعمود نصّ حرّ أصلًا، وأيّ نوع غير معروف يأخذ تصنيفات
+                        البداية العامة (BusinessTypes::GENERIC).
                         مطلوب: عمود NOT NULL في قاعدة البيانات.
                     */}
                     <Field label="نوع النشاط" required error={form.errors.type}>
                         <Input
-                            list="business-types"
                             value={form.data.type}
                             onChange={(e) => form.setData('type', e.target.value)}
                             placeholder={t('مثال: محل ورود')}
+                            autoComplete="off"
                             required
                         />
-                        <datalist id="business-types">
-                            {options.types.map((v) => (
-                                <option key={v} value={v} />
-                            ))}
-                        </datalist>
                     </Field>
                     <Field label="الدولة" error={form.errors.country}>
                         <Input
@@ -190,19 +199,15 @@ export default function BusinessForm({
                             onChange={(e) => form.setData('country', e.target.value)}
                         />
                     </Field>
-                    {/* خمس مدن كانت تُغطّي عُمان كلّها — والبريمي ليست منها */}
+                    {/* خمس مدن كانت تُغطّي عُمان كلّها — والبريمي ليست منها.
+                        تُكتب كما هي، بلا قائمةٍ تنسدل توحي بأنها كل الخيارات. */}
                     <Field label="المدينة" error={form.errors.city}>
                         <Input
-                            list="business-cities"
                             value={form.data.city}
                             onChange={(e) => form.setData('city', e.target.value)}
                             placeholder={t('مثال: مسقط')}
+                            autoComplete="off"
                         />
-                        <datalist id="business-cities">
-                            {options.cities.map((v) => (
-                                <option key={v} value={v} />
-                            ))}
-                        </datalist>
                     </Field>
                     <Field label="العنوان" className="md:col-span-2" error={form.errors.address}>
                         <Input
@@ -249,6 +254,7 @@ export default function BusinessForm({
             {section(
                 <KeyRound className="size-5" />,
                 'حساب دخول التاجر',
+                needsAccount || !businessId ? (
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                     {creating ? (
                         <p className="text-[13px] text-[#6b7280] md:col-span-2">
@@ -328,7 +334,15 @@ export default function BusinessForm({
                             </Button>
                         </div>
                     </Field>
-                </div>,
+                </div>
+                ) : (
+                    /*
+                        الحساب القائم: البطاقة نفسها التي في ملف الشركة.
+                        كانت هنا حقولٌ داخل نموذج الشركة وهناك بطاقةٌ بأزرار،
+                        فيقف المشغّل في الصفحة التي وصل منها ولا يجد ما وُعد به.
+                    */
+                    <AccountCard bare businessId={businessId} ownerEmail={ownerEmail!} />
+                ),
             )}
 
             {section(

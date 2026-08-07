@@ -568,6 +568,110 @@ class PlatformPanelTest extends TestCase
         $this->assertSame('zahra@abaadapp.om', \App\Support\MerchantAccount::owner($biz)->email);
     }
 
+    /* -------------- تعديل الحساب من صفحة الشركة (مسار مستقلّ) -------------- */
+
+    private function saveAccount(Business $biz, array $data)
+    {
+        return $this->actingAs($this->super)->post(route('super-admin.businesses.account', $biz->id), $data);
+    }
+
+    /**
+     * الحساب يُعدَّل بمساره وحده.
+     *
+     * تمريرُه عبر نموذج الشركة كان يعني إعادة كتابة الاسم والنوع والحالة
+     * لتغيير كلمة مرورٍ نسيها تاجر — وأيّ حقلٍ يسقط من الطلب يمحو ما في
+     * القاعدة.
+     */
+    public function test_the_account_can_be_changed_from_its_own_route(): void
+    {
+        $this->newBusiness();
+        $biz = Business::where('name', 'زهرة مسقط')->firstOrFail();
+
+        $this->saveAccount($biz, ['login_username' => 'zahra2', 'login_password' => 'newsecret999'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('zahra2@abaadapp.om', \App\Support\MerchantAccount::owner($biz)->email);
+        // ولا تُمسّ بيانات الشركة
+        $this->assertSame('زهرة مسقط', $biz->fresh()->name);
+        $this->assertSame('محل ورود', $biz->fresh()->type);
+    }
+
+    /** وبالجديدة يدخل */
+    public function test_the_password_set_from_the_business_page_works(): void
+    {
+        $this->newBusiness();
+        $biz = Business::where('name', 'زهرة مسقط')->firstOrFail();
+        $this->saveAccount($biz, ['login_username' => 'zahra', 'login_password' => 'newsecret999']);
+        $this->post(route('logout'));
+
+        $this->post(route('login.attempt'), ['email' => 'zahra@abaadapp.om', 'password' => 'newsecret999'])
+            ->assertSessionHasNoErrors();
+        $this->assertAuthenticated();
+    }
+
+    /**
+     * وكلمة المرور تُعاد في الرسالة مرّةً واحدة.
+     *
+     * مخزَّنة مجزَّأة فلا تُقرأ بعدها أبدًا — وبلا عرضها هنا لا سبيل لإبلاغ
+     * التاجر بها إلا أن يخترع المشغّل واحدةً أخرى.
+     */
+    public function test_the_new_password_is_shown_once(): void
+    {
+        $this->newBusiness();
+        $biz = Business::where('name', 'زهرة مسقط')->firstOrFail();
+
+        $this->saveAccount($biz, ['login_username' => 'zahra', 'login_password' => 'newsecret999']);
+
+        $this->assertStringContainsString('newsecret999', (string) json_encode(session('toast')));
+    }
+
+    /** ولا تُعرض حين لا تُغيَّر */
+    public function test_no_password_is_shown_when_it_is_not_changed(): void
+    {
+        $this->newBusiness();
+        $biz = Business::where('name', 'زهرة مسقط')->firstOrFail();
+
+        $this->saveAccount($biz, ['login_username' => 'zahra.new']);
+
+        $toast = (string) json_encode(session('toast'));
+        $this->assertStringNotContainsString('secret', $toast);
+    }
+
+    /** ولا يفتحه إلا مدير المنصة */
+    public function test_only_the_platform_admin_may_change_a_merchant_account(): void
+    {
+        $this->newBusiness();
+        $biz = Business::where('name', 'زهرة مسقط')->firstOrFail();
+        $owner = \App\Support\MerchantAccount::owner($biz);
+
+        $this->actingAs($owner)
+            ->post(route('super-admin.businesses.account', $biz->id), [
+                'login_username' => 'hacked', 'login_password' => 'secret12345',
+            ])->assertForbidden();
+
+        $this->assertSame('zahra@abaadapp.om', $owner->fresh()->email);
+    }
+
+    /**
+     * وحسابٌ على نطاقٍ قديم يُنقل إلى النطاق الموحَّد.
+     *
+     * حسابات أُنشئت قبل توحيد النطاق تحمل غيره. وكان الحقل يُملأ بنزع
+     * «@abaadapp.om» فلا يطابق شيئًا — فيصل البريد كاملًا ويُرفض الحفظ لأن @
+     * ليست حرفًا مسموحًا. والقطع عند @ يجعله يعمل.
+     */
+    public function test_a_legacy_domain_account_moves_to_the_unified_domain(): void
+    {
+        $biz = Business::create(['name' => 'قديمة النطاق', 'type' => 'عام', 'status' => 'نشط']);
+        $owner = User::create([
+            'business_id' => $biz->id, 'name' => 'مالك', 'email' => 'admin@abadpos.com',
+            'password' => 'password', 'role' => 'admin', 'status' => 'نشط',
+        ]);
+
+        $this->saveAccount($biz, ['login_username' => 'admin'])->assertSessionHasNoErrors();
+
+        $this->assertSame('admin@abaadapp.om', $owner->fresh()->email);
+    }
+
     /** والبريد وكلمة المرور يتغيّران معًا في حفظةٍ واحدة */
     public function test_both_credentials_change_together(): void
     {

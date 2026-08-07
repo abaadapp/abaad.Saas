@@ -238,7 +238,8 @@ class Permissions
         }
         // الورديات وفروقها قراءةٌ مالية لا قسمٌ قائم بذاته: من يراجع حصيلة
         // الصندوق هو من يملك «المالية»، فلا يُخترع مفتاح صلاحية ثالث لها
-        if ($route === 'admin.shifts.index') {
+        // وتقرير الإقفال (Z) معها: هو الأرقام نفسها على ورق
+        if ($route === 'admin.shifts.index' || $route === 'admin.shifts.pdf') {
             return 'finance';
         }
 

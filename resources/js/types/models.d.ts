@@ -181,6 +181,9 @@ export interface Branch {
     name: string;
     phone: string | null;
     address: string | null;
+    /** ما يتعلّق بالفرع — يُعرض في تأكيد الحذف ليعرف الضاغط ما يُخفيه */
+    orders?: number;
+    devices?: number;
 }
 
 export interface Order {

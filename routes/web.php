@@ -38,6 +38,18 @@ Route::get('/login', [LoginController::class, 'showLogin'])->name('login.form');
 Route::post('/login', [LoginController::class, 'attempt'])->name('login.attempt');
 Route::get('/pin-login', [LoginController::class, 'pinForm'])->name('pin.form');
 Route::post('/pin-login', [LoginController::class, 'pinAttempt'])->name('pin.attempt');
+
+/*
+ * استعادة كلمة المرور — الباب الذي لا يمرّ بالدعم.
+ *
+ * الرمز في المسار لا في الاستعلام: الرابط يُنسخ من الرسالة كاملًا، وحصرُه
+ * بستّين محرفًا يمنع أن يبتلع مسارًا آخر.
+ */
+Route::get('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'request'])->name('password.request');
+Route::post('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'send'])->name('password.email');
+Route::get('/reset-password/{token}', [\App\Http\Controllers\Auth\PasswordResetController::class, 'reset'])
+    ->where('token', '[A-Za-z0-9]{32,128}')->name('password.reset');
+Route::post('/reset-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'store'])->name('password.update');
 /*
  * الدخول التجريبي: يمنح جلسة كاملة بلا كلمة مرور، فلا يُسجَّل إلا حيث يُسمح به صراحةً.
  * تركُه مفتوحًا يعني أن أي زائر مجهول يصير مدير منصة بطلب GET واحد.
@@ -87,22 +99,22 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 
     // دخول كتاجر — الخروج منه خارج هذه المجموعة (انظر أسفل الملف)
     Route::post('/businesses/{id}/impersonate', [\App\Http\Controllers\SuperAdmin\ImpersonationController::class, 'start'])->name('businesses.impersonate');
+    // حساب دخول التاجر وحده — لا يمرّ بنموذج الشركة كاملًا
+    Route::post('/businesses/{id}/account', [BusinessController::class, 'account'])->name('businesses.account');
 
     /*
      * محلات الورود = شركات نوعها «محل ورود».
      *
-     * كانت شاشات كاملة تكرّر شاشات الشركات على الجدول نفسه — ونوعُ النشاط
-     * صار كتابةً حرّة، فهي حالةٌ خاصّة لواحدٍ من أنواعٍ لا تُحصى. وثمنُ
-     * التكرار ظهر عند أوّل تعديل: قائمة المدن المغلقة أُصلحت في نموذجٍ
-     * ونُسيت في الآخر.
-     *
-     * والمسارات تبقى تحويلات لا حذفًا: روابط محفوظة ومرجعيّات قديمة تصل
-     * إلى وجهتها الجديدة بدل 404.
+     * الشاشات حُذفت — كانت تكرّر شاشات الشركات على الجدول نفسه. والمسارات
+     * تبقى تحويلات لا حذفًا: روابط محفوظة ومرجعيّات قديمة تصل إلى وجهتها
+     * الجديدة بدل 404. أربعة أسطر ثمنُها صفر، وحذفُها يكسر إشارةً محفوظة عند
+     * أحدهم لا نعرف بها.
      */
     Route::get('/flower-shops', fn () => redirect()->route('super-admin.businesses.index', ['type' => 'محل ورود']))->name('flower-shops.index');
     Route::get('/flower-shops/create', fn () => redirect()->route('super-admin.businesses.create'))->name('flower-shops.create');
     Route::get('/flower-shops/{id}', fn ($id) => redirect()->route('super-admin.businesses.show', $id))->name('flower-shops.show');
     Route::get('/flower-shops/{id}/edit', fn ($id) => redirect()->route('super-admin.businesses.edit', $id))->name('flower-shops.edit');
+
 
     // الاشتراكات والباقات
     Route::get('/subscriptions', [SuperAdminPageController::class, 'subscriptionsIndex'])->name('subscriptions.index');
@@ -162,6 +174,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::put('/devices/{id}', [\App\Http\Controllers\Pos\DeviceController::class, 'update'])->name('devices.update');
     Route::delete('/devices/{id}', [\App\Http\Controllers\Pos\DeviceController::class, 'revoke'])->name('devices.revoke');
     Route::delete('/branches/{id}', [\App\Http\Controllers\Admin\BranchController::class, 'destroy'])->name('branches.destroy');
+    /*
+     * التراجع تحت صلاحية القسم الذي حُذف منه، لا تحت «الإعدادات».
+     *
+     * وضعُه تحت الإعدادات كان يجعل زرّ «تراجع» في الإشعار عديم النفع لمن
+     * ضغط الحذف: من يملك حذف الفروع ولا يملك الإعدادات يرى الزرّ ويُردّ ٤٠٣.
+     * ومن يُؤذن له بالحذف يُؤذن له بردّه — الردّ أقلّ خطرًا من الحذف نفسه.
+     */
+    Route::post('/branches/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
+        ->defaults('type', 'branch')->name('branches.restore');
 
     // البحث الموحّد
     Route::get('/search', [\App\Http\Controllers\SearchController::class, 'admin'])->name('search');
@@ -189,6 +210,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/products/{id}/edit', [\App\Http\Controllers\Admin\PageController::class, 'productsEdit'])->name('products.edit');
     Route::put('/products/{id}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
+    Route::post('/products/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
+        ->defaults('type', 'product')->name('products.restore');
 
     // التصنيفات
     Route::get('/categories', [\App\Http\Controllers\Admin\PageController::class, 'categoriesIndex'])->name('categories.index');
@@ -296,6 +319,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/finance/statement', [\App\Http\Controllers\Admin\PageController::class, 'financeStatement'])->name('finance.statement');
     // الورديات المُقفلة وفروقها — يقرؤها من يملك «المالية» (sectionFromRoute)
     Route::get('/shifts', [\App\Http\Controllers\Admin\ShiftController::class, 'index'])->name('shifts.index');
+    // تقرير إقفال الوردية (Z) — على ورق الإيصال، يُوقَّع عند تسليم الدرج
+    Route::get('/shifts/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'shiftReport'])->name('shifts.pdf');
     Route::post('/bank/account', [\App\Http\Controllers\Admin\BankStatementController::class, 'updateAccount'])->name('bank.account');
     Route::post('/bank/import', [\App\Http\Controllers\Admin\BankStatementController::class, 'import'])->name('bank.import');
     Route::post('/bank/rematch', [\App\Http\Controllers\Admin\BankStatementController::class, 'rematch'])->name('bank.rematch');
@@ -308,6 +333,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/expenses/export-pdf', [\App\Http\Controllers\PdfController::class, 'expensesReport'])->name('expenses.exportPdf');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
     Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
+    Route::post('/expenses/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
+        ->defaults('type', 'expense')->name('expenses.restore');
     // أنواع المصروفات
     Route::post('/expense-types', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'store'])->name('expenseTypes.store');
     Route::delete('/expense-types/{id}', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'destroy'])->name('expenseTypes.destroy');
@@ -349,6 +376,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/settings', [\App\Http\Controllers\Admin\PageController::class, 'settingsIndex'])->name('settings.index');
     Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
     Route::post('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'update'])->name('settings.update');
+
+    // المحذوفات — استعادة ما أذهبته ضغطة (انظر TrashController)
+    Route::get('/settings/trash', [\App\Http\Controllers\Admin\TrashController::class, 'index'])->name('settings.trash');
 
     // تنبيهات يعرّفها صاحب النشاط — قواعد على مقاييس النظام، وتذكيرات بموعد
     Route::post('/alerts', [\App\Http\Controllers\Admin\CustomAlertController::class, 'store'])->name('alerts.store');

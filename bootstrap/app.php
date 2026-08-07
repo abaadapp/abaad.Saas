@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'panel' => \App\Http\Middleware\EntersPanel::class,
             'business' => \App\Http\Middleware\RequiresBusiness::class,
             'tenant' => \App\Http\Middleware\CheckTenantStatus::class,
+            'pos.branch' => \App\Http\Middleware\BindPosBranch::class,
         ]);
         $middleware->web(append: [
             \App\Http\Middleware\SetLocale::class,

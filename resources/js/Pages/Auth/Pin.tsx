@@ -13,7 +13,13 @@ const LENGTH = 4;
 
 /** دخول الموظف برمز — نفس ثيمة أبعاد، بلا بريد ولا كلمة مرور */
 export default function Pin() {
-    const { errors, deviceBusiness } = usePage<PageProps<{ deviceBusiness: string | null }>>().props;
+    const { errors, deviceBusiness, deviceBranch, deviceName } = usePage<
+        PageProps<{
+            deviceBusiness: string | null;
+            deviceBranch: string | null;
+            deviceName: string | null;
+        }>
+    >().props;
     const t = useTranslate();
     const [pin, setPin] = useState('');
     const [shake, setShake] = useState(false);
@@ -91,6 +97,17 @@ export default function Pin() {
                     */}
                     {deviceBusiness && (
                         <p className="text-[15px] font-semibold text-[#111]">{deviceBusiness}</p>
+                    )}
+                    {/*
+                        الفرع والصندوق: «الخوير • كاشير 01».
+                        الموظف يعرف بنظرةٍ أنه على الجهاز الصحيح — ورمزه
+                        مقيَّد بهذا الفرع، فرفضُه بلا سببٍ ظاهر أسوأ من رفضه.
+                    */}
+                    {deviceBranch && (
+                        <p className="text-[13px] text-[#6b7280]">
+                            {deviceBranch}
+                            {deviceName ? ` • ${deviceName}` : ''}
+                        </p>
                     )}
                     <p className="text-[13px] text-[#6b7280]">{t('أدخل رمز الدخول المكوّن من 4 أرقام')}</p>
                 </div>

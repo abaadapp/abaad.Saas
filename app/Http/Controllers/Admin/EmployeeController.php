@@ -29,6 +29,15 @@ class EmployeeController extends Controller
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
+            /*
+             * فروع العمل: قائمة معرّفات، والفارغة تعني «كل فروع المتجر».
+             *
+             * كان `branch` نصًّا حرًّا لا يُقارن بشيء ولا يُفحص عند الدخول —
+             * فكاشير الخوير يدخل على جهاز السيب ويبيع. وهذه القائمة هي مصدر
+             * الإذن الآن (انظر User::worksAt).
+             */
+            'branches' => ['nullable', 'array'],
+            'branches.*' => ['integer'],
             'password' => ['nullable', 'string', 'min:4'],
             /*
              * بلا بريدٍ لا بدّ من رمز: حسابٌ بلا واحدٍ منهما لا سبيل إليه.
@@ -60,7 +69,7 @@ class EmployeeController extends Controller
 
         \App\Support\PlanLimits::enforce(auth()->user()->business, 'employees');
 
-        User::create([
+        $employee = User::create([
             'business_id' => $this->bid(),
             'name' => $data['name'],
             // nullable: المفتاح يغيب عن $data حين لا يُرسل، ولا يأتي null
@@ -82,6 +91,7 @@ class EmployeeController extends Controller
                 ? array_values(array_unique($data['permissions'] ?? []))
                 : null,
         ]);
+        $this->syncBranches($employee, $data['branches'] ?? []);
         \App\Support\Activity::log('created', 'أضاف موظفًا: ' . $data['name']);
 
         return redirect()->route('admin.employees.index')->with('toast', ['msg' => __('تم إضافة الموظف بنجاح'), 'type' => 'success']);
@@ -146,6 +156,8 @@ class EmployeeController extends Controller
                  */
                 'pin' => '',
                 'has_pin' => filled($employee->pin),
+                // الفارغة تعني «كل الفروع» — انظر User::worksAt
+                'branches' => $employee->branches()->pluck('branches.id')->all(),
                 'avatar' => $employee->avatar,
                 'status' => $employee->status,
                 'monthly_target' => $employee->monthly_target,
@@ -158,6 +170,9 @@ class EmployeeController extends Controller
             ],
             'sections' => \App\Support\Permissions::sectionLabels(),
             'branches' => Demo::branches(),
+            'branchOptions' => \App\Models\Branch::where('business_id', Demo::bid())
+                ->orderBy('id')->get(['id', 'name'])
+                ->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
             'jobTitles' => \App\Models\JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all(),
         ]);
     }
@@ -171,6 +186,15 @@ class EmployeeController extends Controller
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
+            /*
+             * فروع العمل: قائمة معرّفات، والفارغة تعني «كل فروع المتجر».
+             *
+             * كان `branch` نصًّا حرًّا لا يُقارن بشيء ولا يُفحص عند الدخول —
+             * فكاشير الخوير يدخل على جهاز السيب ويبيع. وهذه القائمة هي مصدر
+             * الإذن الآن (انظر User::worksAt).
+             */
+            'branches' => ['nullable', 'array'],
+            'branches.*' => ['integer'],
             'pin' => ['nullable', 'digits:4'],
             // كان النموذج يعرض حقل كلمة مرور والتحقق لا يقبله: كل محاولة
             // تغيير كانت تُبتلع بصمت ويظنّ المدير أنه غيّرها.
@@ -267,10 +291,36 @@ class EmployeeController extends Controller
         }
         unset($data['permissions']);
 
+        /*
+         * الفروع: «لم تُرسل» ليست «أُرسلت فارغة».
+         *
+         * الفارغة تعني «كل الفروع» وهي اختيارٌ مشروع، فلا بدّ من التمييز —
+         * وإلا صار كل حفظٍ من شاشةٍ لا تعرض الفروع يمحو تقييد الموظف بها
+         * ويفتح له المتجر كلّه بلا أن يطلب أحدٌ ذلك.
+         */
+        if ($request->has('branches')) {
+            $this->syncBranches($employee, $data['branches'] ?? []);
+        }
+        unset($data['branches']);
+
         $employee->update($data);
         \App\Support\Activity::log('updated', 'عدّل بيانات الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
 
         return redirect()->route('admin.employees.show', $employee->id)->with('toast', ['msg' => __('تم تحديث بيانات الموظف'), 'type' => 'success']);
+    }
+
+    /**
+     * يضبط فروع الموظف.
+     *
+     * المعرّفات تُقيَّد بفروع متجره: قائمةٌ من الواجهة لا يُوثق بها، وفرعٌ من
+     * متجر الجار كان سيُكتب في جدول الإذن ويصير للموظف حقٌّ خارج متجره.
+     */
+    private function syncBranches(User $employee, array $ids): void
+    {
+        $valid = \App\Models\Branch::where('business_id', $this->bid())
+            ->whereIn('id', $ids)->pluck('id')->all();
+
+        $employee->branches()->sync($valid);
     }
 
     public function toggleStatus($id)

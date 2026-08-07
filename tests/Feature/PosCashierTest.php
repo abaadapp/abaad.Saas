@@ -58,6 +58,8 @@ class PosCashierTest extends TestCase
 
         // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
         $this->openShiftFor($this->business->id);
+        // البيع صار يتطلّب جهازًا مفعَّلًا — شرط السيناريو لا موضوعه
+        $this->activatePosDevice($this->business->id);
     }
 
     private function sell()

@@ -207,6 +207,8 @@ class Permissions
         'alerts' => 'settings',
         'backup' => 'settings',
         'activity' => 'settings',
+        // أجهزة نقطة البيع إعدادٌ إداريّ: من يملك الإعدادات يفعّل ويُلغي
+        'devices' => 'settings',
     ];
 
     /** التصدير يتبع قسم ما يُصدَّر: admin.export.orders → orders */

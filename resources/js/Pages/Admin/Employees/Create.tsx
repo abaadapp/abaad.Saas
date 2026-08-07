@@ -8,13 +8,14 @@ import type { Branch } from '@/types/models';
 
 interface Props {
     branches: Branch[];
+    branchOptions: { value: number; label: string }[];
     jobTitles: string[];
     currentBranchName: string | null;
     sections: Record<string, string>;
 }
 
 export default function EmployeeCreate() {
-    const { branches, jobTitles, currentBranchName, sections } =
+    const { branches, branchOptions, jobTitles, currentBranchName, sections } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -31,6 +32,7 @@ export default function EmployeeCreate() {
             />
             <EmployeeForm
                 branches={branches}
+                branchOptions={branchOptions}
                 jobTitles={jobTitles}
                 defaultBranch={currentBranchName}
                 sections={sections}

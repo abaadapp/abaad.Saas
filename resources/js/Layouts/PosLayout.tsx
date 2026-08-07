@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, CreditCard, Languages, LayoutDashboard, LogOut, Receipt, ReceiptText, Settings, Store, User, UserRound, Users, Wallet } from 'lucide-react';
+import { Check, ChevronDown, CreditCard, Languages, LayoutDashboard, Lock, LogOut, Receipt, ReceiptText, Settings, Store, User, UserRound, Users, Wallet } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { Toaster, toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
@@ -106,6 +106,20 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                 </nav>
 
                 <div className="ms-auto flex items-center gap-1.5">
+                    {/*
+                        «الخوير • كاشير 01».
+                        الجهاز هو من يقرّر الفرع، فعرضُه ليس زينة: من يقف على
+                        الصندوق يرى بنظرةٍ أين يبيع، قبل أن يكتشفه من الجرد.
+                    */}
+                    {context?.deviceName && (
+                        <span className="me-1 hidden items-center gap-1.5 rounded-full bg-[#f7f7f5] px-3 py-1 text-[12px] text-[#4b4b4b] md:flex">
+                            <Store className="size-3.5 text-gray-400" />
+                            <span>
+                                {context.branchName} • {context.deviceName}
+                            </span>
+                        </span>
+                    )}
+
                     {/*
                      * العودة إلى لوحة النشاط. تظهر لمن يدخلها فعلًا — الإشارة
                      * من الخادم لا من الدور، فلا يرى الكاشير زرًّا يقوده إلى 403.
@@ -214,6 +228,16 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                                 </Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
+                            {/*
+                                القفل لا الخروج: تنتهي جلسة الموظف ويبقى
+                                الجهاز مفعَّلًا، فيدخل التالي بأربعة أرقام.
+                                والخروج الكامل يترك الشاشة عند البريد وكلمة
+                                المرور — أي يستدعي مديرًا لتبديل كاشير.
+                            */}
+                            <DropdownMenuItem onSelect={() => router.post(route('pos.lock'))}>
+                                <Lock />
+                                {t('قفل الشاشة')}
+                            </DropdownMenuItem>
                             <DropdownMenuItem destructive onSelect={() => logout(route('logout'), csrf)}>
                                 <LogOut />
                                 {t('تسجيل الخروج')}

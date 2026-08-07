@@ -216,6 +216,9 @@ class PageController extends Controller
     {
         return Inertia::render('Admin/Employees/Create', [
             'branches' => Demo::branches(),
+            'branchOptions' => \App\Models\Branch::where('business_id', Demo::bid())
+                ->orderBy('id')->get(['id', 'name'])
+                ->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
             'jobTitles' => self::jobTitles(),
             'currentBranchName' => Demo::currentBranchName(),
             'sections' => \App\Support\Permissions::sectionLabels(),

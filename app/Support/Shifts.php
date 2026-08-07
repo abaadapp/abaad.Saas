@@ -85,6 +85,8 @@ class Shifts
                 'branch_id' => $branch,
                 'user_id' => $user?->id,
                 'employee_name' => PosCashier::name(),
+                // الدرج الذي فُتحت عليه — من الخادم لا من الطلب
+                'pos_device_id' => \App\Support\PosTerminal::current()?->id,
                 'opened_at' => now(),
                 'opening_balance' => max(0, $float),
                 'status' => Shift::OPEN,

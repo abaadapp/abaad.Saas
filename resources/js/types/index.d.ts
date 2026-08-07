@@ -57,6 +57,8 @@ export interface SharedProps {
         businessName: string;
         branchId: number | null;
         branchName: string;
+        /** اسم صندوق نقطة البيع المفعَّل على هذا الجهاز */
+        deviceName?: string | null;
         branches: Branch[];
         currency: Currency;
         currencies: Currency[];

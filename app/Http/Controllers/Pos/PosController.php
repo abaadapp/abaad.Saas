@@ -410,6 +410,14 @@ class PosController extends Controller
                 'branch' => $branch['name'],
                 // تُنسب إلى الوردية إن كانت مفتوحة، ولو كان المنع مطفأً
                 'shift_id' => $shift?->id,
+                /*
+                 * الصندوق الذي خرجت منه الفاتورة.
+                 *
+                 * يُقرأ من الخادم لا من الطلب: القيمة الوحيدة الموثوقة هي
+                 * رمز الجهاز في الكوكي الموقَّعة. وحين ينقص الدرج عشرين ريالًا
+                 * في محلٍّ فيه ثلاثة صناديق، هذا العمود وحده يقول أيّها.
+                 */
+                'pos_device_id' => \App\Support\PosTerminal::current()?->id,
                 'status' => 'مكتمل',
                 'payment_method' => $data['payment_method'] ?? 'نقدي',
                 'payment_status' => 'مدفوع',

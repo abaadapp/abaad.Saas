@@ -34,6 +34,19 @@ class PageController extends Controller
      */
     public function index(): Response|\Illuminate\Http\RedirectResponse
     {
+        /*
+         * لا بيع على جهازٍ غير مفعَّل.
+         *
+         * الجهاز هو من يعرف الفرع. وبلا تفعيل يعود الفرع إلى ما اختاره المدير
+         * في تبويبٍ آخر — أو إلى «كل الفروع» فيسقط على أوّل فرع في القائمة،
+         * فتُسجَّل مبيعات الخوير على السيب ولا يُكتشف إلا عند جرد آخر الشهر.
+         *
+         * ولا يُطبَّق على متجرٍ بلا فروع: لا فرع يُختار، ولا سبب للحجز.
+         */
+        if (! \App\Support\PosTerminal::activated() && \App\Models\Branch::where('business_id', Demo::bid())->exists()) {
+            return redirect()->route('pos.setup');
+        }
+
         if (\App\Support\PosCashier::required()) {
             return redirect()->route('pos.cashier');
         }
@@ -125,5 +138,26 @@ class PageController extends Controller
             'settings' => Demo::businessSettings(),
             'branchName' => Demo::currentBranchName(),
         ]);
+    }
+
+    /**
+     * قفل الشاشة: تنتهي جلسة الموظف، ويبقى الجهاز مفعَّلًا.
+     *
+     * الفرق بينه وبين تسجيل الخروج هو كل الفكرة: الخروج كان يترك الشاشة عند
+     * البريد وكلمة المرور، فتبديلُ كاشيرٍ في منتصف اليوم يستدعي مديرًا يعرف
+     * كلمة المرور. الآن: قفل، ثم أربعة أرقام، ويكمل الثاني.
+     *
+     * والكوكي لا تُمسّ — الجهاز يبقى هو الجهاز، وهو الذي يعرف الفرع.
+     */
+    public function lock(\Illuminate\Http\Request $request): \Illuminate\Http\RedirectResponse
+    {
+        \App\Support\Activity::log('logout', 'قفل شاشة نقطة البيع');
+        \App\Support\PosCashier::forget();
+
+        auth()->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('pin.form');
     }
 }

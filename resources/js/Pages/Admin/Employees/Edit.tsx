@@ -9,12 +9,13 @@ import type { Branch } from '@/types/models';
 interface Props {
     employee: EmployeeFormValues;
     branches: Branch[];
+    branchOptions: { value: number; label: string }[];
     jobTitles: string[];
     sections: Record<string, string>;
 }
 
 export default function EmployeeEdit() {
-    const { employee, branches, jobTitles, sections, auth } =
+    const { employee, branches, branchOptions, jobTitles, sections, auth } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -32,6 +33,7 @@ export default function EmployeeEdit() {
             <EmployeeForm
                 employee={employee}
                 branches={branches}
+                branchOptions={branchOptions}
                 jobTitles={jobTitles}
                 sections={sections}
                 canEditPermissions={auth?.user.id !== employee.id}

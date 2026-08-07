@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\User;
-use App\Support\PosDevice;
+use App\Support\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
@@ -89,7 +89,7 @@ class PinScopeTest extends TestCase
     public function test_signing_in_with_email_binds_the_device(): void
     {
         $this->post(route('login.attempt'), ['email' => 'a@abaad.om', 'password' => 'password'])
-            ->assertCookie(PosDevice::COOKIE, (string) $this->a->id);
+            ->assertCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id);
     }
 
     /**
@@ -104,7 +104,7 @@ class PinScopeTest extends TestCase
         $this->addCashier($this->ownerB, 'cb@abaad.om', '2222');
         $this->post(route('logout'));
 
-        $this->withCookie(PosDevice::COOKIE, (string) $this->a->id)
+        $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id)
             ->post(route('pin.attempt'), ['pin' => '2222'])
             ->assertSessionHasErrors('pin');
 
@@ -117,7 +117,7 @@ class PinScopeTest extends TestCase
         $this->addCashier($this->ownerA, 'ca@abaad.om', '1111');
         $this->post(route('logout'));
 
-        $this->withCookie(PosDevice::COOKIE, (string) $this->a->id)
+        $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id)
             ->post(route('pin.attempt'), ['pin' => '1111'])
             ->assertSessionHasNoErrors();
 
@@ -135,13 +135,13 @@ class PinScopeTest extends TestCase
         $this->addCashier($this->ownerB, 'cb@abaad.om', '1234');
         $this->post(route('logout'));
 
-        $this->withCookie(PosDevice::COOKIE, (string) $this->a->id)
+        $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id)
             ->post(route('pin.attempt'), ['pin' => '1234']);
         $this->assertSame('ca@abaad.om', auth()->user()->email);
 
         $this->post(route('logout'));
 
-        $this->withCookie(PosDevice::COOKIE, (string) $this->b->id)
+        $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->b->id)
             ->post(route('pin.attempt'), ['pin' => '1234']);
         $this->assertSame('cb@abaad.om', auth()->user()->email);
     }
@@ -180,7 +180,7 @@ class PinScopeTest extends TestCase
     /** وشاشة الرمز تقول أي متجر تقرأ رموزه */
     public function test_the_pin_screen_names_its_business(): void
     {
-        $this->withCookie(PosDevice::COOKIE, (string) $this->b->id)
+        $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->b->id)
             ->get(route('pin.form'))
             ->assertInertia(fn ($page) => $page->where('deviceBusiness', 'متجر ب'));
     }
@@ -296,12 +296,12 @@ class PinScopeTest extends TestCase
 
         for ($i = 0; $i < 31; $i++) {
             RateLimiter::clear('pin-login:127.0.0.1');
-            $this->withCookie(PosDevice::COOKIE, (string) $this->a->id)
+            $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id)
                 ->post(route('pin.attempt'), ['pin' => '0000']);
         }
 
         // الرمز الصحيح لا يُقبل بعد الحدّ الساعيّ
-        $this->withCookie(PosDevice::COOKIE, (string) $this->a->id)
+        $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id)
             ->post(route('pin.attempt'), ['pin' => '1111'])
             ->assertSessionHasErrors('pin');
 

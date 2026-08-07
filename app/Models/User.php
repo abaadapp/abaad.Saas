@@ -38,6 +38,37 @@ class User extends Authenticatable
         return $this->belongsTo(Business::class);
     }
 
+    /** الفروع المسموح للموظف بالعمل فيها — انظر worksAt() */
+    public function branches(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Branch::class);
+    }
+
+    /**
+     * هل يعمل هذا الموظف في هذا الفرع؟
+     *
+     * الفراغ يعني «كل فروع متجره»، لا «لا فرع». موظفوك الحاليون كلّهم بلا
+     * صفوف في جدول الإذن، فلو كان الفارغ منعًا لأُقفل كل كاشير صباح النشر —
+     * ترقيةٌ تُوقف المحلّ ليست ترقية. ومن يُحدَّد له فرعٌ واحد يُمنع مما عداه.
+     *
+     * والفحص مقيَّد بالمتجر أيضًا: فرعٌ من متجر الجار مرفوض ولو ورد في الصفوف
+     * (وهو ما لا يقع إلا بعبثٍ مباشر في القاعدة — والفحص أرخص من الثقة).
+     */
+    public function worksAt(?int $branchId): bool
+    {
+        if (! $branchId) {
+            return false;
+        }
+
+        if (! Branch::where('id', $branchId)->where('business_id', $this->business_id)->exists()) {
+            return false;
+        }
+
+        $allowed = $this->branches()->pluck('branches.id');
+
+        return $allowed->isEmpty() || $allowed->contains($branchId);
+    }
+
     /** رابط الصورة الرمزية: يدعم الروابط الخارجية والملفات المرفوعة */
     public function getAvatarAttribute($value): string
     {

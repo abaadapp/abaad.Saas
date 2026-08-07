@@ -61,6 +61,8 @@ class HandleInertiaRequests extends Middleware
                 'branchId' => Demo::currentBranchId(),
                 'branchName' => Demo::currentBranchName(),
                 'branches' => Demo::branches(),
+                // اسم الصندوق الذي يقف عليه — يُعرض في ترويسة نقطة البيع
+                'deviceName' => \App\Support\PosTerminal::current()?->name,
                 'currency' => Demo::displayCurrency(),
                 'currencies' => collect(Demo::currencies())->where('active', true)->values()->all(),
                 /*

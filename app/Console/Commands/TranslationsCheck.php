@@ -105,10 +105,28 @@ class TranslationsCheck extends Command
                     continue;
                 }
 
-                foreach ([
+                $patterns = [
                     "/\b{$fn}\(\s*'((?:[^'\\\\]|\\\\.)*)'/",
                     "/\b{$fn}\(\s*\"((?:[^\"\\\\]|\\\\.)*)\"/",
-                ] as $re) {
+                ];
+
+                /*
+                 * ونصوصٌ تُمرَّر خصائصَ ثم يترجمها المكوّن نفسه.
+                 *
+                 * كان الفاحص يقول «الترجمة مكتملة» و٢٣ نصًّا عربيًّا يظهر على
+                 * لوحةٍ إنجليزية: عناوين أعمدة الجداول وتلميحات الحقول تصل
+                 * إلى t() داخل DataTable وField لا عند موضع الكتابة، فلا يراها
+                 * فحصٌ يبحث عن t('…') وحدها. وفحصٌ يطمئن على ما لم يفحصه أسوأ
+                 * من لا فحص.
+                 */
+                if ($fn === 't') {
+                    foreach (['header', 'label', 'hint', 'title', 'subtitle', 'empty', 'message', 'placeholder'] as $prop) {
+                        $patterns[] = "/\b{$prop}\s*[:=]\s*'((?:[^'\\\\]|\\\\.)*)'/";
+                        $patterns[] = "/\b{$prop}\s*[:=]\s*\"((?:[^\"\\\\]|\\\\.)*)\"/";
+                    }
+                }
+
+                foreach ($patterns as $re) {
                     if (preg_match_all($re, $src, $m)) {
                         foreach ($m[1] as $k) {
                             $k = stripcslashes($k);

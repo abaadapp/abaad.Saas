@@ -77,9 +77,16 @@ class BranchStockTest extends TestCase
         ]);
     }
 
+    /**
+     * الوقوف في فرع.
+     *
+     * صار الجهاز هو من يقرّر فرع نقطة البيع، فالجلسة وحدها لم تعد تكفي —
+     * وهذا بالضبط ما جاء التفعيل ليغلقه: فرعٌ يتبدّل من تبويبٍ آخر.
+     */
     private function inBranch(Branch $branch): void
     {
         $this->actingAs($this->owner);
+        $this->activatePosDevice($this->business->id, $branch->id);
         session(['current_branch' => $branch->id]);
     }
 

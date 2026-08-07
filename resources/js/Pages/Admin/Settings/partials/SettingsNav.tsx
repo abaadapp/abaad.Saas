@@ -8,6 +8,7 @@ import {
     FileText,
     Gift,
     GitBranch,
+    MonitorSmartphone,
     History,
     Languages,
     LayoutTemplate,
@@ -73,6 +74,7 @@ export const SETTINGS_NAV = [
         items: [
             { key: 'branches', label: 'الفروع', icon: GitBranch, route: 'admin.branches.index' },
             { key: 'employees', label: 'الموظفون', icon: UserCog, route: 'admin.employees.index' },
+            { key: 'devices', label: 'أجهزة نقاط البيع', icon: MonitorSmartphone, route: 'admin.devices.index' },
             { key: 'activity', label: 'سجل النشاط', icon: History, route: 'admin.activity.index' },
             { key: 'backup', label: 'النسخ الاحتياطي', icon: DatabaseBackup },
         ],

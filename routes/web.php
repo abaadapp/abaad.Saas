@@ -156,6 +156,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/branches', [\App\Http\Controllers\Admin\PageController::class, 'branchesIndex'])->name('branches.index');
     Route::get('/branch/{branch}/switch', [\App\Http\Controllers\Admin\BranchController::class, 'switch'])->name('branch.switch');
     Route::post('/branches', [\App\Http\Controllers\Admin\BranchController::class, 'store'])->name('branches.store');
+
+    // أجهزة نقطة البيع — تسقط على صلاحية الإعدادات (انظر Permissions::ALIASES)
+    Route::get('/devices', [\App\Http\Controllers\Pos\DeviceController::class, 'index'])->name('devices.index');
+    Route::put('/devices/{id}', [\App\Http\Controllers\Pos\DeviceController::class, 'update'])->name('devices.update');
+    Route::delete('/devices/{id}', [\App\Http\Controllers\Pos\DeviceController::class, 'revoke'])->name('devices.revoke');
     Route::delete('/branches/{id}', [\App\Http\Controllers\Admin\BranchController::class, 'destroy'])->name('branches.destroy');
 
     // البحث الموحّد
@@ -359,8 +364,21 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
  * صارت صلاحيةً تُمنح، بقي المربّع بلا حارس: يرفع صاحب النشاط علامة «نقطة
  * البيع» عن موظف فلا يتغيّر شيء — يكتب العنوان فتُفتح له.
  */
-Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'ability'])->group(function () {
+Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'ability', 'pos.branch'])->group(function () {
     Route::get('/', [\App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
+
+    /*
+     * إعداد الجهاز: يقع مرّةً واحدة يوم التركيب، بيد مديرٍ يملك الإعدادات.
+     * بعده لا يرى الكاشير هذه الشاشة أبدًا — يفتح فيجد لوحة الأرقام.
+     */
+    Route::get('/setup', [\App\Http\Controllers\Pos\DeviceController::class, 'setup'])->name('setup');
+    Route::post('/setup', [\App\Http\Controllers\Pos\DeviceController::class, 'activate'])->name('setup.activate');
+
+    /*
+     * قفل الشاشة: يُنهي جلسة الموظف ويُبقي تفعيل الجهاز.
+     * تبديل الكاشير عشر ثوانٍ، لا دخول مديرٍ من جديد.
+     */
+    Route::post('/lock', [\App\Http\Controllers\Pos\PageController::class, 'lock'])->name('lock');
 
     // اختيار الموظف الواقف على الصندوق. ليس دخولًا ولا خروجًا — الصلاحيات
     // تبقى للمستخدم المسجَّل، وهذا يحدّد من تُنسب إليه البيعة فقط.

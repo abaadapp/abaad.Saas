@@ -15,6 +15,7 @@ import {
 } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { initials } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
 import type { Branch } from '@/types/models';
 
@@ -36,10 +37,14 @@ export interface EmployeeFormValues {
     permissions?: string[] | null;
     /** ما يمنحه الدور — يُعرض حين تكون الصلاحيات موروثة */
     role_permissions?: string[];
+    /** فروع العمل المسموح بها. الفارغة = كل فروع المتجر */
+    branches?: number[];
 }
 
 interface Props {
     branches: Branch[];
+    /** فروع المتجر كخيارات — مصدر الإذن، لا الحقل النصّي القديم */
+    branchOptions?: { value: number; label: string }[];
     jobTitles: string[];
     employee?: EmployeeFormValues;
     defaultBranch?: string | null;
@@ -90,6 +95,7 @@ function Section({
  */
 export default function EmployeeForm({
     branches,
+    branchOptions = [],
     jobTitles,
     employee,
     defaultBranch,
@@ -117,6 +123,7 @@ export default function EmployeeForm({
         name: employee?.name ?? '',
         job_title: employee?.job_title ?? '',
         branch: employee?.branch ?? defaultBranch ?? '',
+        branches: employee?.branches ?? [],
         phone: employee?.phone ?? '',
         email: employee?.email ?? '',
         password: '',
@@ -236,7 +243,7 @@ export default function EmployeeForm({
                         </div>
                     </Field>
 
-                    <Field label="الفرع" error={form.errors.branch}>
+                    <Field label="الفرع الأساسي" error={form.errors.branch}>
                         <Select
                             value={form.data.branch}
                             onChange={(e) => form.setData('branch', e.target.value)}
@@ -244,6 +251,48 @@ export default function EmployeeForm({
                             placeholder="اختر الفرع…"
                         />
                     </Field>
+
+                    {/*
+                        فروع العمل — هي مصدر الإذن، لا «الفرع الأساسي» أعلاه.
+                        الفارغة تعني كل فروع المتجر: موظفوك الحاليون كلّهم بلا
+                        تحديد، فجعلُ الفارغ منعًا كان سيقفل كل كاشير دفعةً واحدة.
+                    */}
+                    {branchOptions.length > 0 && (
+                        <Field
+                            label="فروع العمل"
+                            className="md:col-span-2"
+                            hint="بلا تحديد = كل الفروع. الموظف يدخل نقطة البيع في فروعه فقط"
+                            error={form.errors.branches}
+                        >
+                            <div className="flex flex-wrap gap-2">
+                                {branchOptions.map((b) => {
+                                    const on = form.data.branches.includes(b.value);
+                                    return (
+                                        <button
+                                            key={b.value}
+                                            type="button"
+                                            onClick={() =>
+                                                form.setData(
+                                                    'branches',
+                                                    on
+                                                        ? form.data.branches.filter((v) => v !== b.value)
+                                                        : [...form.data.branches, b.value],
+                                                )
+                                            }
+                                            className={cn(
+                                                'rounded-[10px] border px-3 py-2 text-[13px] transition-colors',
+                                                on
+                                                    ? 'border-[#111] bg-[#111] text-white'
+                                                    : 'border-[var(--ui-border,#e8e8e8)] bg-white text-[#4b4b4b] hover:bg-[#f7f7f5]',
+                                            )}
+                                        >
+                                            {b.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </Field>
+                    )}
 
                     <Field label="رقم الهاتف" error={form.errors.phone}>
                         <Input

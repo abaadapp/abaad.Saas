@@ -24,6 +24,26 @@ class TranslationsCheck extends Command
 
     protected $description = 'التأكد أن كل نص __() له ترجمة إنجليزية في lang/en.json';
 
+    /**
+     * عربيٌّ خارج t() عن قصد — يُستثنى بعلّته لا بالسكوت عنه.
+     *
+     * قائمةٌ مغلقة يقرؤها من يفتح الملف: تقريرٌ يكرّر ستّة أسطر صحيحة كل
+     * مرّة يصير ضجيجًا يُتجاهَل، فيمرّ السابعُ الخاطئ معها.
+     */
+    private const DELIBERATE = [
+        // زرّ اللغة يكتب الاسم بلغته: 'Change language' في الإنجليزية و«ع» شارةً
+        'تغيير اللغة',
+        'ع',
+        // بديل الأحرف الأولى لاسمٍ فارغ (lib/format.ts::initials)
+        '؟',
+        // قيمة افتراضية في القاعدة لا نصّ واجهة
+        'عُمان',
+        // تذييل الإيصال الافتراضي: يُطبع للزبون العُماني، ويعدّله التاجر من «قوالب»
+        "شكرًا لزيارتكم 🌹\nنتشرف بخدمتكم دائمًا",
+        // فاصلة العطف العربية في join()
+        '، ',
+    ];
+
     public function handle(): int
     {
         $keys = $this->extractKeys();
@@ -53,6 +73,8 @@ class TranslationsCheck extends Command
             }
         }
 
+        $this->reportLoose($en);
+
         if (empty($missing)) {
             $this->info("\n✔ لا مفاتيح ناقصة — الترجمة الإنجليزية مكتملة.");
 
@@ -80,6 +102,35 @@ class TranslationsCheck extends Command
 
         return self::FAILURE;
     }
+
+    /**
+     * يعرض النصوص العربية التي لم تمرّ بـt().
+     *
+     * ما كان منها في en.json يُسكت عنه: مرّ بالترجمة من موضعٍ آخر. والباقي
+     * إمّا نصُّ واجهةٍ نسيه أحدهم، أو قيمةٌ في القاعدة تُقارَن — والحكم
+     * للإنسان، لكن لا يجوز أن يبقى غير مرئي.
+     */
+    private function reportLoose(array $en): void
+    {
+        $suspects = array_values(array_filter(
+            $this->loose,
+            fn ($s) => ! array_key_exists($s, $en) && ! in_array($s, self::DELIBERATE, true),
+        ));
+
+        if (! $suspects) {
+            return;
+        }
+
+        $this->warn("\n⚠ نصوص عربية في tsx لم تمرّ بـt() (" . count($suspects) . ') — راجعها:');
+        foreach ($suspects as $s) {
+            $this->line('   · ' . mb_substr($s, 0, 70));
+        }
+    }
+
+    /** نصوص عربية في tsx لم تلتقطها الأنماط — تُعرض للمراجعة لا للإفشال */
+    private array $seen = [];
+
+    private array $loose = [];
 
     /** يستخرج مفاتيح __() العربية من php ومفاتيح t() من tsx/ts */
     private function extractKeys(): array
@@ -120,7 +171,10 @@ class TranslationsCheck extends Command
                  * من لا فحص.
                  */
                 if ($fn === 't') {
-                    foreach (['header', 'label', 'hint', 'title', 'subtitle', 'empty', 'message', 'placeholder'] as $prop) {
+                    // searchPlaceholder مستقلّة عن placeholder: لا حدَّ كلمةٍ
+                    // بينهما، فنمطُ الثانية لا يلتقط الأولى — وستّ خانات بحثٍ
+                    // كانت تُترجَم داخل DataTable ولا تُفحص، فبقيت عربية
+                    foreach (['header', 'label', 'hint', 'title', 'subtitle', 'empty', 'message', 'placeholder', 'searchPlaceholder'] as $prop) {
                         $patterns[] = "/\b{$prop}\s*[:=]\s*'((?:[^'\\\\]|\\\\.)*)'/";
                         $patterns[] = "/\b{$prop}\s*[:=]\s*\"((?:[^\"\\\\]|\\\\.)*)\"/";
                     }
@@ -136,8 +190,37 @@ class TranslationsCheck extends Command
                         }
                     }
                 }
+
+                /*
+                 * وما لم يُطابقه شيء ممّا سبق.
+                 *
+                 * الأنماط أعلاه تقرأ ما يلي t( مباشرةً وخصائصَ معدودة، وهذا
+                 * يفوته كلُّ شكلٍ آخر: نصٌّ في مصفوفةٍ يُمرّ عليها، أو عاملٌ
+                 * ثلاثي داخل t()، أو ثابتٌ يُعلَن فوق المكوّن. وقعت الثلاثة
+                 * فعلًا، وفي كل مرّة قال الفاحص «الترجمة مكتملة» وبقي النصّ
+                 * عربيًّا على شاشة إنجليزية.
+                 *
+                 * فيُجمع كلُّ نصٍّ عربيٍّ في الملف ويُعرض للإنسان ليحكم: قد
+                 * يكون قيمةً في القاعدة تُقارَن ('نشط') لا نصًّا يُعرض. لا
+                 * يُفشل الفحص، لكنه يُرى — وفحصٌ يصمت عمّا لم ينظر فيه أسوأ
+                 * من لا فحص.
+                 */
+                if ($fn === 't') {
+                    $quoted = "/'((?:[^'\\\\\\n]|\\\\.)*)'|\"((?:[^\"\\\\\\n]|\\\\.)*)\"/";
+                    if (preg_match_all($quoted, $src, $m)) {
+                        foreach (array_merge($m[1], $m[2]) as $s) {
+                            $s = stripcslashes($s);
+                            if ($s !== '' && preg_match('/[\x{0600}-\x{06FF}]/u', $s)) {
+                                $this->seen[$s] = true;
+                            }
+                        }
+                    }
+                }
             }
         }
+
+        // ما وُجد نصًّا عربيًّا ولم تلتقطه الأنماط — يُعرض ولا يُفشل
+        $this->loose = array_values(array_diff(array_keys($this->seen), array_keys($keys)));
 
         return array_keys($keys);
     }

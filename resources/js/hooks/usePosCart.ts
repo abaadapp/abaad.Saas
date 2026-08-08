@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { csrfHeaders } from '@/lib/csrf';
+import { useTranslate } from '@/lib/i18n';
 import type { Currency } from '@/types';
 
 /* ------------------------------- الأنواع ------------------------------- */
@@ -122,6 +123,15 @@ interface Options {
  * الانقطاع (outbox) الذي يكتب البيع محليًا أولًا ثم يرفعه.
  */
 export function usePosCart({ products, customers: initialCustomers, loyalty, resume, currency, onToast, onSynced }: Options) {
+    /*
+     * إشعارات الكاشير تُترجَم هنا لا في موضع العرض.
+     *
+     * كانت نصوصًا عربيةً صلبة تُمرَّر إلى onToast: النظام كلّه إنجليزي عند
+     * الموظف، ثم يبيع فتقفز له رسالة عربية — وهو من لا يقرأ العربية أصلًا.
+     * وترجمتها عند العرض لا تصلح: بعضها يحمل اسم صنفٍ أو سبب رفض، فيصير
+     * المفتاح نصًّا مركَّبًا لا يُطابق شيئًا.
+     */
+    const t = useTranslate();
     const [items, setItems] = useState<CartItem[]>(() =>
         (resume?.items ?? []).map((i, idx) => ({
             ...i,
@@ -272,12 +282,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
             const it = list.find((i) => i.key === key);
             if (!it || !overStock(it)) return false;
             onToast(
-                (it.stock! <= 0 ? 'صنف نفد مخزونه: ' : `الكمية تتجاوز المتوفر (${it.stock}): `) + it.name,
+                it.stock! <= 0
+                    ? t('صنف نفد مخزونه: :name', { name: it.name })
+                    : t('الكمية تتجاوز المتوفر (:stock): :name', { stock: it.stock!, name: it.name }),
                 'warning',
             );
             return true;
         },
-        [overStock, onToast],
+        [overStock, onToast, t],
     );
 
     const add = useCallback(
@@ -293,10 +305,10 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
             });
             // التحذير يُقيَّم على الحالة الجديدة لا القديمة
             queueMicrotask(() => {
-                if (!warnStock(next, key)) onToast('تمت الإضافة إلى السلة', 'success');
+                if (!warnStock(next, key)) onToast(t('تمت الإضافة إلى السلة'), 'success');
             });
         },
-        [warnStock, onToast],
+        [warnStock, onToast, t],
     );
 
     const inc = useCallback(
@@ -378,14 +390,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 const data = await res.json();
                 if (!res.ok || !data.ok) {
                     setCoupon(null);
-                    setCouponError(data.error || 'تعذّر تطبيق الكوبون');
+                    setCouponError(data.error || t('تعذّر تطبيق الكوبون'));
                     return;
                 }
                 setCoupon({ code: data.code, type: data.type, value: data.value });
                 setCouponCode(data.code);
-                onToast(data.message || 'تم تطبيق الكوبون', 'success');
+                onToast(data.message || t('تم تطبيق الكوبون'), 'success');
             } catch {
-                setCouponError('تعذّر الاتصال. حاول مرة أخرى.');
+                setCouponError(t('تعذّر الاتصال. حاول مرة أخرى.'));
             } finally {
                 setCouponLoading(false);
             }
@@ -422,7 +434,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
             const fd = new FormData(form);
             const name = (fd.get('name') || '').toString().trim();
             if (!name) {
-                onToast('أدخل اسم العميل', 'warning');
+                onToast(t('أدخل اسم العميل'), 'warning');
                 return false;
             }
             try {
@@ -433,7 +445,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.ok) {
-                    onToast(data.message || 'تعذّر إضافة العميل', 'danger');
+                    onToast(data.message || t('تعذّر إضافة العميل'), 'danger');
                     return false;
                 }
                 const c = data.customer;
@@ -445,10 +457,10 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 setCustomerId(c.id);
                 setCustomerSearch('');
                 form.reset();
-                onToast('تم إضافة العميل وتحديده للطلب', 'success');
+                onToast(t('تم إضافة العميل وتحديده للطلب'), 'success');
                 return true;
             } catch {
-                onToast('تعذّر الاتصال. حاول مرة أخرى.', 'danger');
+                onToast(t('تعذّر الاتصال. حاول مرة أخرى.'), 'danger');
                 return false;
             }
         },
@@ -491,7 +503,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                     } catch {
                         /* رد بلا JSON — نكتفي برسالة عامة */
                     }
-                    return { ok: false, drop: true, error: error || 'تعذّر إتمام البيع' };
+                    return { ok: false, drop: true, error: error || t('تعذّر إتمام البيع') };
                 }
                 return { ok: false };
             } catch {
@@ -519,11 +531,11 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                     remaining = remaining.filter((x) => x.uuid !== entry.uuid);
                     savePending(remaining);
                     if (res.ok) {
-                        onToast('تمت مزامنة طلب مُعلّق ✓', 'success');
+                        onToast(t('تمت مزامنة طلب مُعلّق ✓'), 'success');
                         onSynced?.();
                     } else if (res.error) {
                         // رُفض بعد عودة الاتصال (نفد المخزون مثلًا) — يجب أن يُعلَم لا أن يختفي
-                        onToast('طلب مُعلّق رُفض: ' + res.error, 'danger');
+                        onToast(t('طلب مُعلّق رُفض: :error', { error: res.error }), 'danger');
                     }
                 } else {
                     break; // الشبكة ما زالت منقطعة — نعيد لاحقًا
@@ -637,9 +649,9 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
                 }),
             });
             clear();
-            onToast(kind === 'hold' ? 'تم تعليق الطلب' : 'تم حفظ الطلب', kind === 'hold' ? 'warning' : 'success');
+            onToast(kind === 'hold' ? t('تم تعليق الطلب') : t('تم حفظ الطلب'), kind === 'hold' ? 'warning' : 'success');
         },
-        [items, customer, coupon, clear, onToast],
+        [items, customer, coupon, clear, onToast, t],
     );
 
     return {

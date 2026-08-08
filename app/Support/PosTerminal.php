@@ -148,6 +148,28 @@ class PosTerminal
         return Business::count() === 1 ? (int) Business::value('id') : null;
     }
 
+    /**
+     * هل سبق أن دخل أحدٌ من هذا المتصفّح؟
+     *
+     * غير `businessId()` عمدًا: تلك تسقط على المتجر الوحيد في القاعدة إن لم
+     * تجد كوكي — تسهيلًا للتاجر المفرد. وهذا الحكم لا يصلح لشاشة الدخول:
+     * لو بُني عليه لظهر تبويب «رمز الموظف» على أي متصفّح في العالم يفتح
+     * الرابط، قبل أن يُعرَف الجهاز أصلًا.
+     *
+     * هنا نسأل عن أثرٍ حقيقي لهذا الجهاز وحده: تفعيلٌ قائم، أو كوكي المتجر
+     * التي تُكتب عند أول دخولٍ ببريد وكلمة مرور.
+     */
+    public static function remembered(): bool
+    {
+        if (self::current()) {
+            return true;
+        }
+
+        $legacy = Request::cookie(self::LEGACY_COOKIE);
+
+        return $legacy !== null && Business::whereKey($legacy)->exists();
+    }
+
     /** فرع هذا الجهاز — null إن لم يكن مفعَّلًا */
     public static function branchId(): ?int
     {

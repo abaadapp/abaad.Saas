@@ -83,7 +83,7 @@ export default function ResetPassword() {
                                     <button
                                         type="button"
                                         onClick={() => setReveal((v) => !v)}
-                                        aria-label={t(reveal ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور')}
+                                        aria-label={reveal ? t('إخفاء كلمة المرور') : t('إظهار كلمة المرور')}
                                         className="absolute end-2 top-1.5 flex size-7 items-center justify-center rounded-[8px] text-[#9ca3af] transition-colors hover:bg-[#f2f2f0] hover:text-[#4b4b4b]"
                                     >
                                         {reveal ? <EyeOff className="size-4" /> : <Eye className="size-4" />}

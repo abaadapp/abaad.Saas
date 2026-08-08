@@ -40,6 +40,14 @@ Route::get('/pin-login', [LoginController::class, 'pinForm'])->name('pin.form');
 Route::post('/pin-login', [LoginController::class, 'pinAttempt'])->name('pin.attempt');
 
 /*
+ * نسيان الجهاز — المخرج من شاشةٍ صارت مقفلة على متجرٍ واحد.
+ *
+ * بلا حارس عمدًا: لا يمسّ إلا كوكي الطالب نفسه، والإلغاء الحقيقي في
+ * الإعدادات خلف صلاحيته. انظر LoginController::forgetDevice.
+ */
+Route::post('/forget-device', [LoginController::class, 'forgetDevice'])->name('device.forget');
+
+/*
  * استعادة كلمة المرور — الباب الذي لا يمرّ بالدعم.
  *
  * الرمز في المسار لا في الاستعلام: الرابط يُنسخ من الرسالة كاملًا، وحصرُه

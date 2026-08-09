@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     BellOff,
     BellRing,
+    ChevronLeft,
+    ChevronRight,
     Download,
     Save,
     Trash2,
@@ -20,7 +22,7 @@ import CustomAlerts, {
     type AlertMetric,
     type CustomAlertRow,
 } from './partials/CustomAlerts';
-import SettingsNav, { SETTINGS_NAV } from './partials/SettingsNav';
+import { SETTINGS_NAV } from './partials/SettingsNav';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -48,32 +50,40 @@ interface Props {
 }
 
 /**
- * أقسام الإعدادات في عمود جانبي مجمَّع.
+ * أقسام الإعدادات معروضةً كلوحة بطاقات مستطيلة أفقية.
  *
- * كانت شريطًا أفقيًّا من ستة عشر تبويبًا يتمرّر أفقيًّا: ما بعد التاسع منها
- * خارج الشاشة لا يُرى إلا بالتمرير، فلا يُعرف أنه موجود أصلًا. والعمود
- * الجانبي يُظهرها كلّها دفعةً واحدة، والتجميع يجعل موضع كلٍّ منها متوقَّعًا.
+ * كانت شريطًا أفقيًّا من ستة عشر تبويبًا ثم عمودًا جانبيًّا؛ صارت اللوحة
+ * تُظهرها كلّها دفعةً واحدة، كلٌّ في بطاقةٍ تحمل أيقونتها واسمها ووصفًا
+ * قصيرًا تحته — فيُعرف ما وراء القسم قبل فتحه. والنقر على بطاقةٍ يفتح قسمها
+ * مكان اللوحة، ويعود إليها زرُّ رجوع.
  */
 const NAV = SETTINGS_NAV;
 
 type TabKey = (typeof NAV)[number]['items'][number]['key'];
 
-const TAB_KEYS = NAV.flatMap((g) => g.items.map((i) => i.key)) as readonly TabKey[];
+/**
+ * مفاتيح الأقسام التي تُفتح داخل هذه الصفحة — دون بنود «النظام» التي لها
+ * `route` فتنقل إلى صفحاتها المستقلّة. مرساةٌ تحمل أحدها تفتح اللوحة لا قسمًا
+ * فارغًا لا محتوى له هنا.
+ */
+const TAB_KEYS = NAV.flatMap((g) =>
+    g.items.filter((i) => !('route' in i && i.route)).map((i) => i.key),
+) as readonly TabKey[];
 
 /**
  * القسم المطلوب من عنوان الصفحة: /admin/settings#taxes.
  *
- * بدون هذا كانت الصفحة تفتح على «بيانات النشاط» دائمًا، فرابطٌ مثل «أضِف
- * الرقم الضريبي من الإعدادات» في صفحة الضريبة يُنزل المستخدم في القسم
- * الخطأ ويتركه يبحث بين خمسة عشر بندًا عمّا وُعد به.
+ * بلا مرساة تُفتح لوحة البطاقات (الحالة الرئيسية للإعدادات). ومع مرساةٍ
+ * صحيحة يُفتح ذلك القسم مباشرةً، فرابطٌ مثل «أضِف الرقم الضريبي من الإعدادات»
+ * في صفحة الضريبة يُنزل المستخدم في قسم الضريبة لا في اللوحة.
  *
- * المفتاح يُتحقَّق منه: قيمةٌ غريبة في العنوان تعود إلى الافتراضي بدل أن
- * تُظهر صفحةً فارغة.
+ * القيمة الغريبة أو مفتاح صفحةٍ مستقلّة يعود إلى اللوحة (null) بدل أن يُظهر
+ * قسمًا فارغًا.
  */
-function tabFromHash(): TabKey {
-    if (typeof window === 'undefined') return 'business';
+function tabFromHash(): TabKey | null {
+    if (typeof window === 'undefined') return null;
     const key = window.location.hash.replace(/^#/, '');
-    return (TAB_KEYS as readonly string[]).includes(key) ? (key as TabKey) : 'business';
+    return (TAB_KEYS as readonly string[]).includes(key) ? (key as TabKey) : null;
 }
 
 /** طرق الدفع المتاحة — المفاتيح تطابق ما كان يحفظه القالب السابق (pay_*) */
@@ -109,29 +119,28 @@ export default function SettingsIndex() {
     const { settings, business, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const [tab, setTab] = useState<TabKey>(tabFromHash);
+    const [tab, setTab] = useState<TabKey | null>(tabFromHash);
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
     const [backupFile, setBackupFile] = useState<File | null>(null);
     const [notifs, setNotifs] = useState<NotificationRow[]>(notificationsAll ?? []);
 
-    /**
-     * على الجوال يقف العمود فوق المحتوى، فاختيار قسمٍ يترك المستخدم أمام
-     * القائمة نفسها ولا يرى أنّ شيئًا تغيّر — ما لم يمرّر خمسة عشر بندًا.
-     */
-    const contentRef = useRef<HTMLDivElement>(null);
     const pick = (key: string) => {
-        // العمود المشترك لا يعرف الأنواع الضيّقة؛ والمفاتيح تأتي منه وحده
         const tabKey = key as TabKey;
         setTab(tabKey);
         // العنوان يتبع القسم المفتوح، فيبقى قابلًا للنسخ والمشاركة وإعادة
         // التحميل. replaceState لا pushState: التنقّل بين الأقسام ليس تصفّحًا
         // يستحقّ أن يمتلئ به زرّ الرجوع.
         window.history.replaceState(null, '', `#${key}`);
-        if (window.innerWidth < 1024) {
-            requestAnimationFrame(() =>
-                contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-            );
-        }
+        // القسم يحلّ محلّ اللوحة كاملةً، فنبدأ المستخدم من رأسه لا من موضع
+        // البطاقة التي نقرها.
+        window.scrollTo({ top: 0 });
+    };
+
+    /** العودة من قسمٍ إلى لوحة البطاقات، ومحو المرساة كي يعكس العنوان اللوحة. */
+    const goHub = () => {
+        setTab(null);
+        window.history.replaceState(null, '', window.location.pathname);
+        window.scrollTo({ top: 0 });
     };
 
     const get = (k: string, fallback = '') => settings[k] ?? fallback;
@@ -233,12 +242,55 @@ export default function SettingsIndex() {
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الإعدادات' }]}
             />
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[232px_1fr]">
-                <SettingsNav current={tab} onPick={pick} />
-
-                {/* سقفٌ للعرض: سطرٌ يمتدّ عبر الشاشة كاملةً يصعب تتبّعه،
-                    وحقلان متباعدان بفراغٍ عريض يبدوان غير مرتبطين */}
-                <div ref={contentRef} className="min-w-0 max-w-4xl scroll-mt-4">
+            {tab === null ? (
+                /* لوحة البطاقات — كل قسمٍ بطاقةٌ مستطيلة أفقية: أيقونته ثم
+                   اسمه ووصفٌ خافتٌ تحته. النقر يفتح القسم مكان اللوحة. */
+                <div className="max-w-5xl space-y-8">
+                    {NAV.map((g) => (
+                        <section key={g.group}>
+                            <h3 className="mb-3 text-[13px] font-semibold text-[#6b7280]">{t(g.group)}</h3>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                {g.items.map((x) => {
+                                    const body = (
+                                        <>
+                                            <span className="flex size-11 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f4] text-[#111] transition-colors group-hover:bg-[#111] group-hover:text-white">
+                                                <x.icon className="size-5" />
+                                            </span>
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block text-sm font-semibold text-[#111]">{t(x.label)}</span>
+                                                <span className="mt-0.5 block text-[12px] leading-snug text-[#9ca3af]">{t(x.desc)}</span>
+                                            </span>
+                                            <ChevronLeft className="size-4 shrink-0 text-[#d1d5db] transition-colors group-hover:text-[#6b7280]" />
+                                        </>
+                                    );
+                                    const cls =
+                                        'group flex items-center gap-4 rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white p-4 text-start transition hover:border-[#d4d4d4] hover:bg-[#fafafa]';
+                                    // بند «النظام» بمساره ينقل إلى صفحته المستقلّة؛ سواه يفتح قسمه هنا
+                                    return 'route' in x && x.route ? (
+                                        <Link key={x.key} href={route(x.route)} className={cls}>
+                                            {body}
+                                        </Link>
+                                    ) : (
+                                        <button key={x.key} type="button" onClick={() => pick(x.key)} className={cls}>
+                                            {body}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    ))}
+                </div>
+            ) : (
+                /* قسمٌ مفتوح — سقفٌ للعرض كي لا يمتدّ السطر عبر الشاشة كاملةً */
+                <div className="min-w-0 max-w-4xl scroll-mt-4">
+                    <button
+                        type="button"
+                        onClick={goHub}
+                        className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-[#6b7280] transition-colors hover:text-[#111]"
+                    >
+                        <ChevronRight className="size-4" />
+                        {t('كل الإعدادات')}
+                    </button>
             {tab === 'language' ? (
                 <Card className="p-6">
                     <h3 className="mb-4 font-bold text-[#111]">{t('لغة النظام')}</h3>
@@ -887,7 +939,7 @@ export default function SettingsIndex() {
                 </form>
             )}
                 </div>
-            </div>
+            )}
         </AdminLayout>
     );
 }

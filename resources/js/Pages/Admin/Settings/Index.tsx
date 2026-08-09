@@ -245,26 +245,26 @@ export default function SettingsIndex() {
             {tab === null ? (
                 /* لوحة البطاقات — كل قسمٍ بطاقةٌ مستطيلة أفقية: أيقونته ثم
                    اسمه ووصفٌ خافتٌ تحته. النقر يفتح القسم مكان اللوحة. */
-                <div className="max-w-5xl space-y-8">
+                <div className="max-w-6xl space-y-8">
                     {NAV.map((g) => (
                         <section key={g.group}>
                             <h3 className="mb-3 text-[13px] font-semibold text-[#6b7280]">{t(g.group)}</h3>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 {g.items.map((x) => {
                                     const body = (
                                         <>
-                                            <span className="flex size-11 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f4] text-[#111] transition-colors group-hover:bg-[#111] group-hover:text-white">
-                                                <x.icon className="size-5" />
+                                            <span className="flex size-[52px] shrink-0 items-center justify-center rounded-[14px] bg-[#f5f5f4] text-[#111] transition-colors group-hover:bg-[#111] group-hover:text-white">
+                                                <x.icon className="size-6" />
                                             </span>
                                             <span className="min-w-0 flex-1">
-                                                <span className="block text-sm font-semibold text-[#111]">{t(x.label)}</span>
-                                                <span className="mt-0.5 block text-[12px] leading-snug text-[#9ca3af]">{t(x.desc)}</span>
+                                                <span className="block text-[15px] font-semibold text-[#111]">{t(x.label)}</span>
+                                                <span className="mt-1 block text-[13px] leading-snug text-[#9ca3af]">{t(x.desc)}</span>
                                             </span>
                                             <ChevronLeft className="size-4 shrink-0 text-[#d1d5db] transition-colors group-hover:text-[#6b7280]" />
                                         </>
                                     );
                                     const cls =
-                                        'group flex items-center gap-4 rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white p-4 text-start transition hover:border-[#d4d4d4] hover:bg-[#fafafa]';
+                                        'group flex items-center gap-4 rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white p-5 text-start transition hover:border-[#d4d4d4] hover:bg-[#fafafa]';
                                     // بند «النظام» بمساره ينقل إلى صفحته المستقلّة؛ سواه يفتح قسمه هنا
                                     return 'route' in x && x.route ? (
                                         <Link key={x.key} href={route(x.route)} className={cls}>

@@ -108,7 +108,7 @@ export default function PlatformDashboard() {
                 <Card className="p-5">
                     <div className="mb-4 flex items-center justify-between">
                         <h3 className="font-bold text-[#111]">{t('الإيرادات الشهرية')}</h3>
-                        <span className="text-[12px] text-[#9ca3af]">{t('آخر 6 أشهر')}</span>
+                        <span className="text-[12px] text-[#9ca3af]">{t('هذه السنة')}</span>
                     </div>
                     <AreaChart
                         labels={revenueSeries.labels}

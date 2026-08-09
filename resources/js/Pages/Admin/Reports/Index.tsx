@@ -113,7 +113,7 @@ export default function ReportsIndex() {
             <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <Card className="lg:col-span-2">
                     <CardHeader>
-                        <CardTitle>{t('المبيعات خلال آخر 12 شهرًا')}</CardTitle>
+                        <CardTitle>{t('مبيعات هذه السنة حسب الشهر')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <AreaChart labels={salesSeries.labels} data={salesSeries.data} format={m} />

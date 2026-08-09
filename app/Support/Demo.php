@@ -1339,16 +1339,36 @@ class Demo
         return app()->getLocale() === 'ar' ? self::AR_MONTHS[$m->month] : $m->translatedFormat('F');
     }
 
-    /** مبيعات آخر 6 أشهر للنشاط الحالي */
+    /**
+     * أشهر السنة الجارية: يناير … ديسمبر.
+     *
+     * كانت المخططات تعرض «آخر ١٢ شهرًا» — نافذةً متدحرجة تبدأ من شهر اليوم
+     * فتقرأ سبتمبر · أكتوبر … أغسطس. صحيحةٌ حسابيًّا، لكن العين تقرأ محور
+     * الأشهر بترتيبه المعروف، فمن ينظر سريعًا يظن العمود الأول يناير.
+     *
+     * والثمن مذكورٌ لا مخفيّ: الأشهر التي لم تأتِ بعد تُرسم أصفارًا حتى آخر
+     * السنة، وما قبل يناير يخرج من الرسم — فمقارنة العام بالعام لا تُقرأ من
+     * هنا، بل من تقرير الفترات في «تحليلات متقدمة».
+     *
+     * startOfMonth ثم setMonth: البناء من يوم اليوم يفيض في ٢٩–٣١ (٣٠ يوليو
+     * ← ٣٠ فبراير ← ٢ مارس) فيتكرّر شهر ويسقط آخر.
+     *
+     * @return array<int, \Illuminate\Support\Carbon>
+     */
+    private static function yearMonths(): array
+    {
+        $start = now()->startOfYear();
+
+        return array_map(fn (int $m) => $start->copy()->setMonth($m), range(1, 12));
+    }
+
+    /** مبيعات النشاط الحالي في السنة الجارية — يناير … ديسمبر */
     public static function salesSeries(): array
     {
         $bid = self::bid();
         $labels = [];
         $data = [];
-        for ($i = 11; $i >= 0; $i--) {
-            // startOfMonth أولًا: الطرح من يوم 29/30/31 يتخطّى الأشهر القصيرة
-            // (الطرح من 29 يوليو يقفز فوق فبراير فيتكرّر مارس ويختفي شهر).
-            $m = now()->startOfMonth()->subMonths($i);
+        foreach (self::yearMonths() as $m) {
             // اسم الشهر بلغة الواجهة — SetLocale يضبط لغة Carbon لكل طلب
             $labels[] = self::monthLabel($m);
             $data[] = round((float) Order::where('business_id', $bid)->where('is_held', false)
@@ -1359,7 +1379,7 @@ class Demo
     }
 
     /**
-     * مبيعات موظف بعينه خلال آخر ١٢ شهرًا.
+     * مبيعات موظف بعينه في السنة الجارية — يناير … ديسمبر.
      *
      * القالب القديم كان يرسم أرقامًا ثابتة مكتوبة يدويًا لكل موظف — فتُظهر
      * لموظف لم يبع شيئًا منحنى صاعدًا. هذه تقرأ طلباته الحقيقية.
@@ -1371,8 +1391,7 @@ class Demo
 
         $labels = [];
         $data = [];
-        for ($i = 11; $i >= 0; $i--) {
-            $m = now()->startOfMonth()->subMonths($i);
+        foreach (self::yearMonths() as $m) {
             $labels[] = self::monthLabel($m);
             $data[] = $name === null ? 0 : round((float) Order::where('business_id', $bid)
                 ->where('is_held', false)->where('status', '!=', 'ملغي')
@@ -1552,15 +1571,12 @@ class Demo
         ];
     }
 
-    /** مبيعات الشركة آخر 12 شهرًا — كانت سلسلة أرقام ثابتة في القالب */
+    /** مبيعات الشركة في السنة الجارية — كانت سلسلة أرقام ثابتة في القالب */
     public static function businessSalesSeries(int $businessId): array
     {
         $labels = [];
         $data = [];
-        for ($i = 11; $i >= 0; $i--) {
-            // startOfMonth أولًا: بدونه يفيض subMonths في أيام 29–31
-            // (٣٠ يوليو ناقص ٥ أشهر = ٣٠ فبراير → ٢ مارس) فيتكرّر شهر ويسقط آخر
-            $m = now()->startOfMonth()->subMonths($i);
+        foreach (self::yearMonths() as $m) {
             $labels[] = self::monthLabel($m);
             $data[] = round((float) Order::where('business_id', $businessId)->where('is_held', false)
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
@@ -1818,28 +1834,24 @@ class Demo
         return ['labels' => $rows->pluck('cat')->all(), 'series' => $rows->pluck('s')->map(fn ($v) => round((float) $v, 3))->all()];
     }
 
-    /** إيرادات المنصة (فواتير) آخر 6 أشهر */
+    /** إيرادات المنصة (فواتير) في السنة الجارية — يناير … ديسمبر */
     public static function revenueSeries(): array
     {
         $labels = [];
         $data = [];
-        for ($i = 5; $i >= 0; $i--) {
-            // انظر التعليق في businessSalesSeries — بدون startOfMonth يتكرّر شهر
-            $m = now()->startOfMonth()->subMonths($i);
+        foreach (self::yearMonths() as $m) {
             $labels[] = self::monthLabel($m);
             $data[] = round((float) Invoice::whereYear('issued_at', $m->year)->whereMonth('issued_at', $m->month)->sum('amount'), 3);
         }
         return ['labels' => $labels, 'data' => $data];
     }
 
-    /** نمو الشركات (عدد التسجيلات) آخر 6 أشهر */
+    /** نمو الشركات (عدد التسجيلات) في السنة الجارية — يناير … ديسمبر */
     public static function businessesGrowthSeries(): array
     {
         $labels = [];
         $data = [];
-        for ($i = 5; $i >= 0; $i--) {
-            // انظر التعليق في businessSalesSeries — بدون startOfMonth يتكرّر شهر
-            $m = now()->startOfMonth()->subMonths($i);
+        foreach (self::yearMonths() as $m) {
             $labels[] = self::monthLabel($m);
             $data[] = Business::whereYear('starts_at', $m->year)->whereMonth('starts_at', $m->month)->count();
         }

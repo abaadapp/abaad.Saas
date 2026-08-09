@@ -214,7 +214,7 @@ export default function EmployeeShow() {
                         {tab === 'sales' && (
                             <div className="p-6">
                                 <h4 className="mb-4 font-bold text-[#111]">
-                                    {t('مبيعات الموظف خلال آخر 12 شهرًا')}
+                                    {t('مبيعات الموظف هذه السنة')}
                                 </h4>
                                 <AreaChart labels={salesSeries.labels} data={salesSeries.data} format={m} />
                             </div>

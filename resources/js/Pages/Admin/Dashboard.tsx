@@ -129,7 +129,7 @@ export default function Dashboard() {
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Card className="lg:col-span-2">
                     <CardHeader>
-                        <CardTitle>{t('المبيعات خلال 12 شهرًا')}</CardTitle>
+                        <CardTitle>{t('مبيعات هذه السنة حسب الشهر')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <AreaChart

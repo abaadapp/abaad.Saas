@@ -157,8 +157,15 @@ else
         VERSION="v${MAJOR:-0}.$(( ${MINOR:-0} + 1 ))"
     fi
 
-    as_app git tag -a "$VERSION" -m "نُشر على الإنتاج $(date +%Y-%m-%d\ %H:%M)"
-    ok "$VERSION → $TO_COMMIT (محليًّا على الخادم)"
+    # الهوية في الأمر نفسه لا على الخادم: الوسم الموثَّق يحتاج اسمًا وبريدًا،
+    # ولا هوية لـwww-data — فكان يفشل بـ«Committer identity unknown»
+    if as_app git -c user.name='abaad-deploy' -c user.email='deploy@abaadapp.om' \
+         tag -a "$VERSION" -m "نُشر على الإنتاج $(date +%Y-%m-%d\ %H:%M)" 2>/dev/null; then
+        ok "$VERSION → $TO_COMMIT (محليًّا على الخادم)"
+    else
+        # النشر تمّ ونجح؛ تعذّر الوسم لا يُبطله ولا يُخفيه
+        printf '  \033[33m!\033[0m تعذّر إنشاء الوسم %s — النشر تمّ على كل حال\n' "$VERSION"
+    fi
 fi
 
 printf '%s\n%s\n%s\n' "$VERSION" "$TO_COMMIT" "$(date -Is)" > "$BACKUP_DIR/DEPLOYED.txt"

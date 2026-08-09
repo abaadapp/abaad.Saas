@@ -203,6 +203,12 @@ i[data-lucide] {
     --ui-muted-2: #9ca3af;
     --ui-accent: #111111;
     --ui-radius: 16px;
+    /* ===== قياسات سائلة تتدرّج مع حجم الجهاز، لا تقفز عند نقطة قطع =====
+       clamp(الأدنى، مفضّل يكبر مع الشاشة، الأقصى): فالهامش والفجوات تنمو
+       بنعومة من الجوال إلى الشاشة الكبيرة بلا وثباتٍ عند sm/lg. */
+    --content-max: 96rem;                                  /* سقف عرض المحتوى فلا يمتدّ بلا حدّ على الشاشات العريضة */
+    --gutter: clamp(1rem, 0.6rem + 1.6vw, 2rem);           /* هامش الصفحة */
+    --grid-gap: clamp(0.75rem, 0.55rem + 0.9vw, 1.25rem);  /* الفجوة بين البطاقات */
     background-color: var(--ui-bg);
     color: var(--ui-text);
     font-family: 'IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
@@ -223,6 +229,35 @@ i[data-lucide] {
 .admin-ui .bg-gray-50 { background-color: #fafafa !important; }
 .admin-ui .text-gray-800, .admin-ui .text-gray-900 { color: var(--ui-text) !important; }
 .admin-ui .text-gray-500, .admin-ui .text-gray-400 { color: var(--ui-muted) !important; }
+
+/* =====================================================================
+   قاعدة التخطيط المتجاوب — حاوية موحّدة وشبكة ذاتية التوزيع
+   الهدف: لا مساحات فارغة ولا بطاقات ناقصة على أي جهاز أو قياس.
+   ===================================================================== */
+
+/* حاوية المحتوى الموحّدة: عرضٌ أقصى مريح، توسيطٌ، وهامشٌ سائل. تحسم عرض
+   كل الصفحات مرّة واحدة بدل أن تخترع كلٌّ منها max-w خاصًّا بها، فلا يبقى
+   على الشاشات العريضة سطرٌ يمتدّ بلا حدّ ولا فراغٌ غير موزون. */
+.ui-main {
+    width: 100%;
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--gutter);
+}
+
+/* شبكة ذاتية التوزيع لمجموعة بطاقاتٍ متجانسة.
+   بدل `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4` المربوطة بحجم الشاشة —
+   تهدر المساحة بين نقطتَي قطع وتترك بطاقاتٍ يتيمة — تحسب هذه عددَ الأعمدة
+   من الحيّز المتاح فعلًا: أكبر عددٍ يسعه بعرض --ui-col-min، ثم تمدّ
+   البطاقات (1fr) لتملأ الصفّ. auto-fit يطوي الأعمدة الفارغة فتتمدّد القلّة
+   لتملأه فلا فراغ يمين الصفّ. min(col,100%) يمنع الفيضان على الجوال.
+   وهي container-aware ذاتيًّا: تتبع عرض العنصر لا عرض الشاشة، فتصحّ في
+   عمودٍ ضيّق كما تصحّ في عرضٍ كامل. */
+.ui-autogrid {
+    display: grid;
+    gap: var(--grid-gap);
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--ui-col-min, 16rem), 100%), 1fr));
+}
 
 /* --- بطاقة أساسية --- */
 .ui-card {

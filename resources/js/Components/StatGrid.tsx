@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from '@inertiajs/react';
 import { Check, Plus, SlidersHorizontal, X } from 'lucide-react';
+import AutoGrid from '@/Components/AutoGrid';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
@@ -138,7 +139,7 @@ export default function StatGrid({ stats, storageKey, catalog = [] }: Props) {
                 </Button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <AutoGrid min="15rem">
                 {shown.map((item, i) => {
                     const card = <StatCard stat={item.stat} index={i} />;
 
@@ -167,7 +168,7 @@ export default function StatGrid({ stats, storageKey, catalog = [] }: Props) {
                         </div>
                     );
                 })}
-            </div>
+            </AutoGrid>
 
             {shown.length === 0 && (
                 <p className="rounded-[14px] border border-dashed border-[var(--ui-border,#e8e8e8)] py-10 text-center text-sm text-[#9ca3af]">

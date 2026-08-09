@@ -12,6 +12,7 @@ import {
     Upload,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import AutoGrid from '@/Components/AutoGrid';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
@@ -249,7 +250,7 @@ export default function SettingsIndex() {
                     {NAV.map((g) => (
                         <section key={g.group}>
                             <h3 className="mb-3 text-[13px] font-semibold text-[#6b7280]">{t(g.group)}</h3>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <AutoGrid min="19rem">
                                 {g.items.map((x) => {
                                     const body = (
                                         <>
@@ -276,7 +277,7 @@ export default function SettingsIndex() {
                                         </button>
                                     );
                                 })}
-                            </div>
+                            </AutoGrid>
                         </section>
                     ))}
                 </div>

@@ -67,11 +67,13 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
             <div className="lg:ms-64">
                 <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
+                {/* حاوية موحّدة: عرضٌ أقصى وتوسيطٌ وهامشٌ سائل لكل صفحات اللوحة
+                    في مكان واحد — بدل أن تخترع كل صفحة max-w خاصًّا بها. */}
                 <motion.main
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                    className="p-4 lg:p-6"
+                    className="ui-main"
                 >
                     <SubscriptionBanner />
                     {children}

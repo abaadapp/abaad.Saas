@@ -44,6 +44,8 @@ interface Props {
     profitStats: ProfitStats;
     paymentMethods: PaymentMethod[];
     transactions: Transaction[];
+    /** تاريخ اليوم بتوقيت الخادم — القيمة الابتدائية لحقل «التاريخ» */
+    today: string;
 }
 
 /** وسائل الدفع المتاحة للتسجيل اليدوي — القيم هي ما يقبله المتحكّم حرفيًا */
@@ -54,7 +56,7 @@ const METHODS = [
 ] as const;
 
 export default function FinanceIndex() {
-    const { financeStats, profitStats, paymentMethods, transactions, context } = usePage<PageProps<Props>>().props;
+    const { financeStats, profitStats, paymentMethods, transactions, today, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -65,7 +67,7 @@ export default function FinanceIndex() {
         amount: '',
         description: '',
         method: 'نقدي',
-        occurred_at: '',
+        occurred_at: today,
     });
 
     const close = () => {

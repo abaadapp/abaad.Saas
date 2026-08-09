@@ -58,6 +58,8 @@ interface Account {
 
 interface Props {
     account: Account;
+    /** تاريخ اليوم بتوقيت الخادم — تعبئة تاريخ الرصيد الافتتاحي حين لا يكون محفوظًا */
+    today: string;
     statement: { opening: number; rows: StatementRow[]; closing: number };
     lines: BankLine[];
     reconciliation: {
@@ -78,7 +80,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 export default function FinanceStatement() {
-    const { account, statement, lines, reconciliation, context } = usePage<PageProps<Props>>().props;
+    const { account, statement, lines, reconciliation, today, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -92,7 +94,7 @@ export default function FinanceStatement() {
         account_name: account.account_name ?? '',
         iban: account.iban ?? '',
         opening_balance: String(account.opening_balance ?? 0),
-        opening_date: account.opening_date ?? '',
+        opening_date: account.opening_date ?? today,
     });
 
     const importStatement = (e: React.FormEvent) => {

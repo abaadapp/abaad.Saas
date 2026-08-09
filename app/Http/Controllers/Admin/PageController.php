@@ -339,6 +339,9 @@ class PageController extends Controller
             'profitStats' => Demo::profitStats(),
             'paymentMethods' => Demo::paymentMethods(),
             'transactions' => Demo::transactions(),
+            // تاريخ اليوم لتعبئة حقل «التاريخ» ابتداءً (بتوقيت الخادم) بدل تركه
+            // فارغًا فيظهر رماديًّا — كما تفعل صفحة المصروفات
+            'today' => now()->format('Y-m-d'),
         ]);
     }
 
@@ -349,6 +352,8 @@ class PageController extends Controller
             'statement' => Demo::bankStatement(),
             'lines' => Demo::bankLines(),
             'reconciliation' => Demo::reconciliationSummary(),
+            // تاريخ اليوم لتعبئة «تاريخ الرصيد الافتتاحي» حين لا يكون محفوظًا
+            'today' => now()->format('Y-m-d'),
         ]);
     }
 

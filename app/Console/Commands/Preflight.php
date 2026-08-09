@@ -282,10 +282,18 @@ class Preflight extends Command
      * غياب المخرج كما يعيدها عند الفشل، فـ«لا عامل» — وهي الحالة التي كُتب
      * هذا الفحص لأجلها — كانت ستُقرأ «تعذّر الفحص» وتمرّ. وwc يطبع رقمًا
      * دائمًا، فيفترق الصمتان.
+     *
+     * و[a]rtisan لا artisan: النمط يبحث في أسطر أوامر العمليات، وسطرُ الأمر
+     * الذي يبحث يحمل النمط نفسه — فيلتقط pgrep نفسه ويعدّ واحدًا ويُقرأ
+     * «يوجد عامل» على خادمٍ لا عامل فيه. القوس يكسر المطابقة الذاتية دون أن
+     * يغيّر ما يُطابَق: «[a]rtisan» في سطر البحث ليس «artisan».
+     *
+     * وقعتُ فيها فعلًا في أول نسخةٍ من هذا الفحص، وهي نفس الطمأنينة الكاذبة
+     * التي كُتب لإزالتها.
      */
     private function queueWorkerRunning(): ?bool
     {
-        $out = $this->shell('pgrep -f "artisan queue:" 2>/dev/null | wc -l');
+        $out = $this->shell('pgrep -f "[a]rtisan queue:(work|listen)" 2>/dev/null | wc -l');
 
         return $out === null || trim($out) === '' ? null : ((int) trim($out)) > 0;
     }

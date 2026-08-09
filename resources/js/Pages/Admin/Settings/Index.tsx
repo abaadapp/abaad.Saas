@@ -244,8 +244,10 @@ export default function SettingsIndex() {
 
             {tab === null ? (
                 /* لوحة البطاقات — كل قسمٍ بطاقةٌ مستطيلة أفقية: أيقونته ثم
-                   اسمه ووصفٌ خافتٌ تحته. النقر يفتح القسم مكان اللوحة. */
-                <div className="max-w-6xl space-y-8">
+                   اسمه ووصفٌ خافتٌ تحته. النقر يفتح القسم مكان اللوحة.
+                   mx-auto: يتوسّط المحتوى في الصفحة بهامشين متساويين بدل أن
+                   يلتصق بالبداية ويترك فراغًا على الجهة الأخرى. */
+                <div className="mx-auto max-w-6xl space-y-8">
                     {NAV.map((g) => (
                         <section key={g.group}>
                             <h3 className="mb-3 text-[13px] font-semibold text-[#6b7280]">{t(g.group)}</h3>
@@ -281,8 +283,9 @@ export default function SettingsIndex() {
                     ))}
                 </div>
             ) : (
-                /* قسمٌ مفتوح — سقفٌ للعرض كي لا يمتدّ السطر عبر الشاشة كاملةً */
-                <div className="min-w-0 max-w-4xl scroll-mt-4">
+                /* قسمٌ مفتوح — سقفٌ للعرض كي لا يمتدّ السطر عبر الشاشة كاملةً،
+                   ومتوسّطٌ مثل اللوحة فلا يقفز المحتوى إلى الحافة عند الفتح. */
+                <div className="mx-auto min-w-0 max-w-4xl scroll-mt-4">
                     <button
                         type="button"
                         onClick={goHub}

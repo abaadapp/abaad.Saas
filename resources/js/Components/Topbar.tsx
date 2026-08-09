@@ -2,13 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, router, usePage } from '@inertiajs/react';
 import {
     Bell,
+    Building2,
     Check,
     ChevronDown,
-    GitBranch,
-    Languages,
-    LogOut,
     Menu,
-    User as UserIcon,
     X,
 } from 'lucide-react';
 import UnifiedSearch from '@/Components/UnifiedSearch';
@@ -20,11 +17,15 @@ import {
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { logout } from '@/lib/logout';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
@@ -252,9 +253,9 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                     </DropdownMenu>
                 )}
 
-                {/* الحساب — قائمة موحّدة تفتح بمرور الماوس: المستخدم، الفرع
-                    وتحديده، اللغة، إدارة الحساب، والخروج. «المظهر» مؤجّل حتى
-                    يوجد وضعٌ داكن حقيقيّ يشمل الواجهة كلّها. */}
+                {/* الحساب — قائمة صفوف تفتح بمرور الماوس: رأس المستخدم، الفرع
+                    الافتراضي واختياره، اللغة كمبدّل مقسّم، إدارة الحساب،
+                    والخروج. «المظهر» و«اشتراك ركاز» مؤجّلان بطلب المالك. */}
                 <DropdownMenu open={accountOpen} onOpenChange={setAccountOpen} modal={false}>
                     <DropdownMenuTrigger asChild>
                         <button
@@ -279,72 +280,112 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                         align="end"
-                        className="w-64"
+                        className="w-72 p-2"
                         onMouseEnter={openAccount}
                         onMouseLeave={closeAccountSoon}
                     >
-                        {/* المستخدم: الاسم والبريد */}
-                        <div className="flex items-center gap-2.5 px-2 py-2">
-                            <Avatar className="size-9">
+                        {/* رأس المستخدم: الاسم والبريد والصورة */}
+                        <div className="flex items-center gap-3 px-1.5 pb-2 pt-1">
+                            <Avatar className="size-10">
                                 {auth?.user.avatar && <AvatarImage src={auth.user.avatar} alt="" />}
                                 <AvatarFallback>{initials(auth?.user.name)}</AvatarFallback>
                             </Avatar>
-                            <div className="min-w-0">
-                                <p className="truncate text-[13px] font-semibold text-[#111]">
-                                    {auth?.user.name}
-                                </p>
+                            <div className="min-w-0 text-start">
+                                <p className="truncate text-[14px] font-bold text-[#111]">{auth?.user.name}</p>
                                 <p className="truncate text-[12px] text-[#6b7280]">{auth?.user.email}</p>
                             </div>
                         </div>
 
-                        {/* الفرع وتحديده */}
+                        <DropdownMenuSeparator />
+
+                        {/* الفرع الافتراضي واختياره — قائمة فرعية تفتح بالمرور */}
                         {context && context.branches.length > 0 && (
-                            <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuLabel>{t('الفرع')}</DropdownMenuLabel>
-                                <DropdownMenuItem asChild>
-                                    <a href={route('admin.branch.switch', 'all')}>
-                                        <GitBranch />
-                                        <span className="flex-1">{t('كل الفروع')}</span>
-                                        {!context.branchId && <Check className="size-4" />}
-                                    </a>
-                                </DropdownMenuItem>
-                                {context.branches.map((branch) => (
-                                    <DropdownMenuItem key={branch.id} asChild>
-                                        <a href={route('admin.branch.switch', branch.id)}>
-                                            <GitBranch />
-                                            <span className="flex-1 truncate">{branch.name}</span>
-                                            {context.branchId === branch.id && <Check className="size-4" />}
-                                        </a>
-                                    </DropdownMenuItem>
-                                ))}
-                            </>
+                            <div className="flex items-center justify-between gap-2 px-1.5 py-1.5">
+                                <span className="text-[14px] font-medium text-[#111]">
+                                    {t('الفرع الافتراضي')}
+                                </span>
+                                <DropdownMenuSub>
+                                    <DropdownMenuSubTrigger className="rounded-full bg-[#f2f2f0] px-3 py-1.5 text-[13px] font-medium text-[#111] data-[state=open]:bg-[#e8e8e6]">
+                                        <Building2 className="size-4" />
+                                        <span className="max-w-28 truncate">
+                                            {context.branchName || t('اختر الفرع')}
+                                        </span>
+                                    </DropdownMenuSubTrigger>
+                                    <DropdownMenuSubContent
+                                        onMouseEnter={openAccount}
+                                        onMouseLeave={closeAccountSoon}
+                                    >
+                                        <DropdownMenuItem asChild>
+                                            <a href={route('admin.branch.switch', 'all')}>
+                                                <span className="flex-1">{t('كل الفروع')}</span>
+                                                {!context.branchId && <Check className="size-4" />}
+                                            </a>
+                                        </DropdownMenuItem>
+                                        {context.branches.map((branch) => (
+                                            <DropdownMenuItem key={branch.id} asChild>
+                                                <a href={route('admin.branch.switch', branch.id)}>
+                                                    <span className="flex-1 truncate">{branch.name}</span>
+                                                    {context.branchId === branch.id && (
+                                                        <Check className="size-4" />
+                                                    )}
+                                                </a>
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                            </div>
                         )}
 
-                        {/* اللغة */}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel>{t('اللغة')}</DropdownMenuLabel>
-                        <DropdownMenuItem onSelect={() => switchLocale('ar')}>
-                            <Languages />
-                            <span className="flex-1">العربية</span>
-                            {locale === 'ar' && <Check className="size-4" />}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => switchLocale('en')}>
-                            <Languages />
-                            <span className="flex-1">English</span>
-                            {locale === 'en' && <Check className="size-4" />}
-                        </DropdownMenuItem>
+                        {/* اللغة — مبدّل مقسّم بأعلام */}
+                        <div className="flex items-center justify-between gap-2 px-1.5 py-1.5">
+                            <span className="text-[14px] font-medium text-[#111]">{t('اللغة')}</span>
+                            <div className="flex items-center rounded-full bg-[#f2f2f0] p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => switchLocale('ar')}
+                                    className={cn(
+                                        'flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-colors',
+                                        locale === 'ar'
+                                            ? 'bg-[#111] text-white'
+                                            : 'text-[#6b7280] hover:text-[#111]',
+                                    )}
+                                >
+                                    <span>العربية</span>
+                                    <span className="text-[14px] leading-none">🇸🇦</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => switchLocale('en')}
+                                    className={cn(
+                                        'flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-colors',
+                                        locale === 'en'
+                                            ? 'bg-[#111] text-white'
+                                            : 'text-[#6b7280] hover:text-[#111]',
+                                    )}
+                                >
+                                    <span>English</span>
+                                    <span className="text-[14px] leading-none">🇬🇧</span>
+                                </button>
+                            </div>
+                        </div>
 
-                        {/* إدارة الحساب والخروج */}
                         <DropdownMenuSeparator />
+
+                        {/* إدارة الحساب */}
                         <DropdownMenuItem asChild>
-                            <Link href={route('profile.edit')}>
-                                <UserIcon />
+                            <Link href={route('profile.edit')} className="text-[14px] font-medium">
                                 {t('إدارة حسابك')}
                             </Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem destructive onSelect={() => logout(route('logout'), csrf)}>
-                            <LogOut />
+
+                        <DropdownMenuSeparator />
+
+                        {/* الخروج */}
+                        <DropdownMenuItem
+                            destructive
+                            onSelect={() => logout(route('logout'), csrf)}
+                            className="justify-center text-[14px] font-semibold"
+                        >
                             {t('تسجيل الخروج')}
                         </DropdownMenuItem>
                     </DropdownMenuContent>

@@ -20,13 +20,20 @@ interface SmartLinkProps extends Omit<ComponentProps<'a'>, 'href'> {
  *
  * كل صفحات النظام اليوم Inertia، فالقائمة حُذفت. ولو أُضيفت وجهة غير Inertia
  * لاحقًا (تنزيل مثلًا) فلا تمرّرها من هنا — استعمل <a> صراحةً.
+ *
+ * جلبٌ مسبق عند المرور بالمؤشّر: حين يمرّ المؤشّر على الرابط (قبل النقر بلحظة)
+ * تُجلب الصفحة في الخلفية، فيصير النقر فتحًا فوريًّا بلا انتظار الخادم. كل
+ * روابط التنقّل تمرّ من هنا، فالإضافة في مكان واحد تسري على النظام كلّه.
+ * cacheFor قصير (نصف دقيقة) لأنه نظام بيع تتغيّر بياناته: يكفي لالتقاط النقرة
+ * التي تلي المرور، ولا يُبقي بياناتٍ قديمة لو تأخّر النقر. القيمة قابلة
+ * للتجاوز لكل رابط عبر تمرير prefetch/cacheFor صراحةً.
  */
 export default function SmartLink({ routeName: _routeName, href, children, ...props }: SmartLinkProps) {
     // توقيع onClick في <Link> أعمّ منه في <a>؛ نوسّعه هنا بدل تضييق نوع الوسيط
     const linkProps = props as ComponentProps<typeof Link>;
 
     return (
-        <Link href={href} {...linkProps}>
+        <Link href={href} prefetch="hover" cacheFor="30s" {...linkProps}>
             {children}
         </Link>
     );

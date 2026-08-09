@@ -1,6 +1,7 @@
 import '../css/app.css';
 
 import { createInertiaApp, router } from '@inertiajs/react';
+import { MotionConfig } from 'framer-motion';
 import { createRoot } from 'react-dom/client';
 import type { ComponentType } from 'react';
 
@@ -50,7 +51,14 @@ createInertiaApp({
             router.on('success', (event) => {
                 syncDirection(event.detail.page.props as Record<string, unknown>);
             });
-            createRoot(el).render(<App {...props} />);
+            // reducedMotion="user": كل حركات framer-motion تحترم تفضيل «تقليل
+            // الحركة» في نظام المستخدم — تُلغى الإزاحة والتحجيم ويبقى التلاشي
+            // فقط — في مكان واحد بدل فحصٍ في كل مكوّن.
+            createRoot(el).render(
+                <MotionConfig reducedMotion="user">
+                    <App {...props} />
+                </MotionConfig>,
+            );
         }
     },
 

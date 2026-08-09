@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
     AlertTriangle,
     BellOff,
@@ -24,6 +25,7 @@ import CustomAlerts, {
     type CustomAlertRow,
 } from './partials/CustomAlerts';
 import { SETTINGS_NAV } from './partials/SettingsNav';
+import { DUR, EASE } from '@/lib/motion';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -243,6 +245,16 @@ export default function SettingsIndex() {
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الإعدادات' }]}
             />
 
+            {/* تبدّلٌ ناعمٌ بتلاشٍ متقاطع بين لوحة البطاقات والقسم المفتوح.
+                mode="wait" كي يكتمل خروج السابق قبل دخول اللاحق فلا يتراكبان. */}
+            <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                    key={tab ?? 'hub'}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: DUR.fast, ease: EASE }}
+                >
             {tab === null ? (
                 /* لوحة البطاقات — كل قسمٍ بطاقةٌ مستطيلة أفقية: أيقونته ثم
                    اسمه ووصفٌ خافتٌ تحته. النقر يفتح القسم مكان اللوحة. */
@@ -941,6 +953,8 @@ export default function SettingsIndex() {
             )}
                 </div>
             )}
+                </motion.div>
+            </AnimatePresence>
         </AdminLayout>
     );
 }

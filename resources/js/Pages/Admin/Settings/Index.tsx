@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
-import { AnimatePresence, motion } from 'framer-motion';
 import {
     AlertTriangle,
     BellOff,
@@ -13,7 +12,6 @@ import {
     Upload,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
-import AutoGrid from '@/Components/AutoGrid';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
@@ -25,7 +23,6 @@ import CustomAlerts, {
     type CustomAlertRow,
 } from './partials/CustomAlerts';
 import { SETTINGS_NAV } from './partials/SettingsNav';
-import { DUR, EASE } from '@/lib/motion';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -245,16 +242,6 @@ export default function SettingsIndex() {
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الإعدادات' }]}
             />
 
-            {/* تبدّلٌ ناعمٌ بتلاشٍ متقاطع بين لوحة البطاقات والقسم المفتوح.
-                mode="wait" كي يكتمل خروج السابق قبل دخول اللاحق فلا يتراكبان. */}
-            <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                    key={tab ?? 'hub'}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: DUR.fast, ease: EASE }}
-                >
             {tab === null ? (
                 /* لوحة البطاقات — كل قسمٍ بطاقةٌ مستطيلة أفقية: أيقونته ثم
                    اسمه ووصفٌ خافتٌ تحته. النقر يفتح القسم مكان اللوحة. */
@@ -262,7 +249,7 @@ export default function SettingsIndex() {
                     {NAV.map((g) => (
                         <section key={g.group}>
                             <h3 className="mb-3 text-[13px] font-semibold text-[#6b7280]">{t(g.group)}</h3>
-                            <AutoGrid min="19rem">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 {g.items.map((x) => {
                                     const body = (
                                         <>
@@ -289,7 +276,7 @@ export default function SettingsIndex() {
                                         </button>
                                     );
                                 })}
-                            </AutoGrid>
+                            </div>
                         </section>
                     ))}
                 </div>
@@ -953,8 +940,6 @@ export default function SettingsIndex() {
             )}
                 </div>
             )}
-                </motion.div>
-            </AnimatePresence>
         </AdminLayout>
     );
 }

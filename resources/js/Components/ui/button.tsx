@@ -8,13 +8,10 @@ import { cn } from '@/lib/utils';
  * الأنماط منقولة حرفيًا عن <x-button> في Blade حتى لا يتغيّر شكل الواجهة.
  */
 const buttonVariants = cva(
-    // `transition` (لا transition-all): قائمةٌ منتقاة تشمل اللون والتحويل
-    // (scale) دون خصائص التخطيط (العرض/الحشو)، فلا يهتزّ الزر. active:scale
-    // ردُّ فعلٍ لمسيّ طفيف يعمل للزر وللرابط المُغلَّف (Slot) معًا لأنه صنف.
-    // motion-reduce يلغي التحجيم لمن طلب تقليل الحركة.
+    // transition-colors لا transition-all: الثانية تُحرّك خصائص التخطيط (العرض
+    // والحشو) فيبدو الزر مهتزًّا عند المرور عليه.
     'relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium ' +
-        'transition duration-150 active:scale-[0.97] motion-reduce:active:scale-100 ' +
-        'disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none ' +
+        'transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none ' +
         'focus-visible:ring-2 focus-visible:ring-[var(--ring)] [&_svg]:pointer-events-none [&_svg]:shrink-0',
     {
         variants: {

@@ -15,7 +15,6 @@ import {
     Upload,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
-import AutoGrid from '@/Components/AutoGrid';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PRODUCT_TABS } from '@/Components/SectionTabs';
 import RowActions from '@/Components/RowActions';
@@ -303,7 +302,7 @@ export default function ProductsIndex() {
                     renderBody={
                         view === 'grid'
                             ? (rows) => (
-                                  <AutoGrid min="15rem">
+                                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                                       {rows.map((p, i) => (
                                           <motion.div
                                               key={p.id}
@@ -342,7 +341,7 @@ export default function ProductsIndex() {
                                               </Card>
                                           </motion.div>
                                       ))}
-                                  </AutoGrid>
+                                  </div>
                               )
                             : undefined
                     }

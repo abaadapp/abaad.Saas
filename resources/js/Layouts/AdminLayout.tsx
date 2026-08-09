@@ -7,7 +7,6 @@ import Sidebar from '@/Components/Sidebar';
 import SubscriptionBanner from '@/Components/SubscriptionBanner';
 import Topbar from '@/Components/Topbar';
 import type { NavGroup } from '@/lib/nav';
-import { EASE } from '@/lib/motion';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
@@ -21,10 +20,7 @@ interface AdminLayoutProps {
 }
 
 export default function AdminLayout({ title, children, nav, sidebarSubtitle }: AdminLayoutProps) {
-    const page = usePage<PageProps>();
-    const flash = page.props.flash;
-    // اسم مكوّن Inertia الحالي — مفتاح انتقال الصفحة أدناه
-    const component = page.component;
+    const { flash } = usePage<PageProps>().props;
     const t = useTranslate();
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -71,24 +67,15 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
             <div className="lg:ms-64">
                 <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
-                {/* حاوية موحّدة: عرضٌ أقصى وتوسيطٌ وهامشٌ سائل لكل صفحات اللوحة
-                    في مكان واحد — بدل أن تخترع كل صفحة max-w خاصًّا بها. */}
-                <main className="ui-main">
+                <motion.main
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                    className="p-4 lg:p-6"
+                >
                     <SubscriptionBanner />
-                    {/* انتقال الصفحة: كل تنقّلٍ يُعيد ظهور المحتوى بتلاشٍ وانزلاقٍ
-                        طفيف للأعلى. المفتاح اسمُ المكوّن لا الرابط، فتغيّر
-                        المرشّحات/الترقيم على الصفحة نفسها لا يُعيد الحركة —
-                        الانتقال بين صفحتين مختلفتين وحده يفعل. بلا حركة خروج
-                        كي لا يتأخّر ظهور الصفحة الجديدة بعد نقرةٍ فوريّة. */}
-                    <motion.div
-                        key={component}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25, ease: EASE }}
-                    >
-                        {children}
-                    </motion.div>
-                </main>
+                    {children}
+                </motion.main>
             </div>
 
             <Toaster position="bottom-center" richColors dir="rtl" />

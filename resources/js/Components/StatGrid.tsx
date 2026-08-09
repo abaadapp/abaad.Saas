@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from '@inertiajs/react';
 import { Check, Plus, SlidersHorizontal, X } from 'lucide-react';
-import AutoGrid from '@/Components/AutoGrid';
-import Collapse from '@/Components/Collapse';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
@@ -94,7 +92,41 @@ export default function StatGrid({ stats, storageKey, catalog = [] }: Props) {
 
     return (
         <div>
-            <div className="mb-3 flex items-center justify-end gap-2">
+            <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+                {editing && (
+                    <div className="me-auto flex flex-wrap items-center gap-1.5">
+                        <span className="text-[12px] text-[#9ca3af]">{t('أضف:')}</span>
+                        {hiddenNow.length === 0 && available.length === 0 ? (
+                            <span className="text-[12px] text-[#c4c4c4]">{t('لا شيء')}</span>
+                        ) : (
+                            <>
+                                {/* المخفيّة تعود، والاختيارية تُضاف — كلاهما «إضافة» عند التاجر */}
+                                {hiddenNow.map((label) => (
+                                    <button
+                                        key={label}
+                                        type="button"
+                                        onClick={() => write(key, hiddenNow.filter((l) => l !== label), setHidden)}
+                                        className="inline-flex items-center gap-1 rounded-full bg-[#f2f2f0] px-2.5 py-1 text-[12px] text-[#6b7280] transition-colors hover:bg-[#e8e8e6]"
+                                    >
+                                        <Plus className="size-3" />
+                                        {label}
+                                    </button>
+                                ))}
+                                {available.map((c) => (
+                                    <button
+                                        key={c.key}
+                                        type="button"
+                                        onClick={() => write(addedKey, [...addedNow, c.key], setAdded)}
+                                        className="inline-flex items-center gap-1 rounded-full border border-dashed border-[#d1d5db] px-2.5 py-1 text-[12px] text-[#6b7280] transition-colors hover:border-[#111] hover:text-[#111]"
+                                    >
+                                        <Plus className="size-3" />
+                                        {c.label}
+                                    </button>
+                                ))}
+                            </>
+                        )}
+                    </div>
+                )}
                 <Button
                     type="button"
                     variant={editing ? 'primary' : 'outline'}
@@ -106,44 +138,7 @@ export default function StatGrid({ stats, storageKey, catalog = [] }: Props) {
                 </Button>
             </div>
 
-            {/* لوحة الإضافة تتمدّد/تنطوي بنعومة تحت الزرّ عند التخصيص، بدل
-                الظهور والاختفاء فجأة. */}
-            <Collapse open={editing}>
-                <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                    <span className="text-[12px] text-[#9ca3af]">{t('أضف:')}</span>
-                    {hiddenNow.length === 0 && available.length === 0 ? (
-                        <span className="text-[12px] text-[#c4c4c4]">{t('لا شيء')}</span>
-                    ) : (
-                        <>
-                            {/* المخفيّة تعود، والاختيارية تُضاف — كلاهما «إضافة» عند التاجر */}
-                            {hiddenNow.map((label) => (
-                                <button
-                                    key={label}
-                                    type="button"
-                                    onClick={() => write(key, hiddenNow.filter((l) => l !== label), setHidden)}
-                                    className="inline-flex items-center gap-1 rounded-full bg-[#f2f2f0] px-2.5 py-1 text-[12px] text-[#6b7280] transition-colors hover:bg-[#e8e8e6]"
-                                >
-                                    <Plus className="size-3" />
-                                    {label}
-                                </button>
-                            ))}
-                            {available.map((c) => (
-                                <button
-                                    key={c.key}
-                                    type="button"
-                                    onClick={() => write(addedKey, [...addedNow, c.key], setAdded)}
-                                    className="inline-flex items-center gap-1 rounded-full border border-dashed border-[#d1d5db] px-2.5 py-1 text-[12px] text-[#6b7280] transition-colors hover:border-[#111] hover:text-[#111]"
-                                >
-                                    <Plus className="size-3" />
-                                    {c.label}
-                                </button>
-                            ))}
-                        </>
-                    )}
-                </div>
-            </Collapse>
-
-            <AutoGrid min="15rem">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {shown.map((item, i) => {
                     const card = <StatCard stat={item.stat} index={i} />;
 
@@ -172,7 +167,7 @@ export default function StatGrid({ stats, storageKey, catalog = [] }: Props) {
                         </div>
                     );
                 })}
-            </AutoGrid>
+            </div>
 
             {shown.length === 0 && (
                 <p className="rounded-[14px] border border-dashed border-[var(--ui-border,#e8e8e8)] py-10 text-center text-sm text-[#9ca3af]">

@@ -12,6 +12,21 @@
 
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# يُنفَّذ من نسخةٍ في /tmp لا من مكانه في المستودع.
+#
+# bash يقرأ السكربت على دفعاتٍ أثناء تنفيذه، وهذا السكربت يسحب من git —
+# فيستبدل الملفّ الذي يقرأ منه بينما هو في منتصفه. النتيجة سطرٌ يُقرأ من
+# موضعٍ خاطئ: أمرٌ مبتور، أو شرطٌ لا يُغلق، أو خطوةٌ تُقفز. ولا يقع إلا حين
+# يتغيّر السكربت نفسه — أي أندر الحالات وأسوأها وقتًا.
+# ---------------------------------------------------------------------------
+if [[ "${DEPLOY_DETACHED:-}" != "1" ]]; then
+    SELF="$(mktemp /tmp/abaad-deploy.XXXXXX.sh)"
+    cat "${BASH_SOURCE[0]}" > "$SELF"
+    trap 'rm -f "$SELF"' EXIT
+    DEPLOY_DETACHED=1 exec bash "$SELF" "$@"
+fi
+
 APP_DIR="${APP_DIR:-/var/www/abaad}"
 APP_USER="${APP_USER:-www-data}"
 BRANCH="${BRANCH:-main}"
@@ -120,6 +135,36 @@ else
     systemctl reload php8.4-fpm"
 fi
 
-printf '\n\033[1mتمّ: %s → %s\033[0m\n' "$FROM_COMMIT" "$TO_COMMIT"
+# ---------------------------------------------------------------------------
+# الترقيم عند النشر لا عند الدفع.
+#
+# الوسم يقول «هذا ما يعمل على الخادم»، وهذا لا يُعرف وقت الدفع إلى GitHub —
+# قد يُدفع شيء ولا يُنشر شهرًا. فيُوسَم ما نُشر، حين يُنشر.
+#
+# ويُنشأ محلّيًّا فقط: الخادم لا يملك اعتماداتِ دفعٍ إلى GitHub (والسحب يعمل
+# لأن المستودع عام). ووضعُ رمزٍ بصلاحية كتابة على خادمٍ يواجه الإنترنت ثمنٌ
+# أكبر من راحة سطرٍ واحد — فيُطبع الأمر ليُنشر من جهازٍ يملك الصلاحية.
+# ---------------------------------------------------------------------------
+step "الوسم"
+if EXISTING="$(git describe --exact-match --tags HEAD 2>/dev/null)"; then
+    ok "موسوم أصلًا: $EXISTING"
+    VERSION="$EXISTING"
+else
+    if [[ -z "${VERSION:-}" ]]; then
+        # أعلى vX.Y موجود، ثم Y+1. ولترقيمٍ آخر: VERSION=v4.0 bash deploy.sh
+        LATEST="$(git tag --list 'v[0-9]*' | sed 's/^v//' | sort -t. -k1,1n -k2,2n | tail -1)"
+        MAJOR="${LATEST%%.*}"; MINOR="${LATEST#*.}"; MINOR="${MINOR%%.*}"
+        VERSION="v${MAJOR:-0}.$(( ${MINOR:-0} + 1 ))"
+    fi
+
+    as_app git tag -a "$VERSION" -m "نُشر على الإنتاج $(date +%Y-%m-%d\ %H:%M)"
+    ok "$VERSION → $TO_COMMIT (محليًّا على الخادم)"
+fi
+
+printf '%s\n%s\n%s\n' "$VERSION" "$TO_COMMIT" "$(date -Is)" > "$BACKUP_DIR/DEPLOYED.txt"
+
+printf '\n\033[1mتمّ: %s → %s (%s)\033[0m\n' "$FROM_COMMIT" "$TO_COMMIT" "$VERSION"
+printf 'لنشر الوسم من جهازك: \033[1mgit tag -a %s %s -m "نُشر على الإنتاج" && git push origin %s\033[0m\n' \
+    "$VERSION" "$TO_COMMIT" "$VERSION"
 [[ $PREFLIGHT -eq 0 ]] || printf '\033[33m! preflight يبلّغ عن موانع أعلاه — النشر تمّ، والموانع تبقى قرارك\033[0m\n'
 printf 'للرجوع: %s\n' "$BACKUP_DIR/ROLLBACK.txt"

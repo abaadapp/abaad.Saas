@@ -145,6 +145,13 @@ class ProductController extends Controller
         \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) ($data['quantity'] ?? 0));
         \App\Support\Activity::log('created', 'أضاف منتجًا: ' . $data['name']);
 
+        /*
+         * الإضافة تنتهي فيُخرَج منها، خلافًا للتعديل الذي يبقى في مكانه.
+         *
+         * والقائمة هي الشاهد: المنتج الجديد يظهر فيها، فالإشعار يقول «تمّ»
+         * والعين ترى الصفّ. أمّا البقاء في نموذجٍ فارغ فيترك الإشعار وحده
+         * دليلًا، ولا يُرى المنتج إلا بخطوةٍ أخرى.
+         */
         return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم إضافة المنتج بنجاح'), 'type' => 'success']);
     }
 
@@ -186,7 +193,9 @@ class ProductController extends Controller
         \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) $product->quantity - $oldQty);
         \App\Support\Activity::log('updated', 'عدّل المنتج: ' . $product->name, ['subject_id' => $product->id]);
 
-        return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم تحديث المنتج بنجاح'), 'type' => 'success']);
+        // ويبقى في صفحة التعديل كذلك: من يصحّح سعرًا يريد أن يرى أنه ثبت،
+        // وغالبًا يتبعه بتعديل الكمية أو الصورة في القسم المجاور
+        return redirect()->route('admin.products.edit', $product->id)->with('toast', ['msg' => __('تم تحديث المنتج بنجاح'), 'type' => 'success']);
     }
 
     public function destroy($id)

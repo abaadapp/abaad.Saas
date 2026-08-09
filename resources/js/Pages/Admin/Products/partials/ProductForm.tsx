@@ -124,6 +124,10 @@ export default function ProductForm({ categories, product, description, currency
             : route('admin.products.store');
         form.post(url, {
             forceFormData: true,
+            // التعديل يعود إلى صفحته نفسها، فبقاء موضع التمرير يمنع قفزةً
+            // إلى الأعلى تُربك من كان أسفل قسمٍ طويل. والإضافة تنتقل إلى
+            // القائمة فلا يعنيها هذا.
+            preserveScroll: true,
             onError: (errors) => {
                 const first = Object.keys(errors)[0];
                 if (first) pick(FIELD_SECTION[first] ?? 'basic');

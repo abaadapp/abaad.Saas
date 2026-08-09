@@ -68,6 +68,18 @@ export default function PosIndex() {
     const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
     const barcodeRef = useRef<HTMLInputElement>(null);
 
+    /*
+     * ماسحٌ مسجَّل على هذا الصندوق ⇒ التركيز يبدأ في حقل الباركود.
+     *
+     * الماسح يكتب كلوحة مفاتيح ثم Enter، فما لم يكن الحقل مركَّزًا ذهبت
+     * الأرقام إلى حقل البحث أو إلى لا شيء — يمسح الكاشير فلا يحدث شيء
+     * فيمسح ثانيةً. ومن لا ماسح عنده يبقى تركيزه حرًّا كما كان.
+     */
+    const hasScanner = !!context?.peripherals?.some((x) => x.type === 'ماسح باركود');
+    useEffect(() => {
+        if (hasScanner) barcodeRef.current?.focus();
+    }, [hasScanner]);
+
     /* قائمة العميل مكتوبة يدويًا لا Radix، فلا تُغلق بـEscape كبقية قوائم
        النظام. وطبقتها الشفافة (fixed inset-0) تبتلع أول نقرة بعدها، فالكاشير
        الذي يضغط Escape ثم «تعليق» لا يحدث شيء ويظنّ الزر معطّلًا. */

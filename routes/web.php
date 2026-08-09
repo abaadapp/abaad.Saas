@@ -181,6 +181,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/devices', [\App\Http\Controllers\Pos\DeviceController::class, 'index'])->name('devices.index');
     Route::put('/devices/{id}', [\App\Http\Controllers\Pos\DeviceController::class, 'update'])->name('devices.update');
     Route::delete('/devices/{id}', [\App\Http\Controllers\Pos\DeviceController::class, 'revoke'])->name('devices.revoke');
+
+    // الأجهزة الملحقة بكل صندوق: طابعة، ماسح، درج… — تحت صلاحية الإعدادات
+    // نفسها: من يبدّل طابعة صندوق يوجّه إيصالات فرعٍ إلى ورق فرعٍ آخر
+    Route::post('/devices/{device}/peripherals', [\App\Http\Controllers\Pos\PeripheralController::class, 'store'])->name('devices.peripherals.store');
+    Route::put('/devices/{device}/peripherals/{id}', [\App\Http\Controllers\Pos\PeripheralController::class, 'update'])->name('devices.peripherals.update');
+    Route::delete('/devices/{device}/peripherals/{id}', [\App\Http\Controllers\Pos\PeripheralController::class, 'destroy'])->name('devices.peripherals.destroy');
     Route::delete('/branches/{id}', [\App\Http\Controllers\Admin\BranchController::class, 'destroy'])->name('branches.destroy');
     /*
      * التراجع تحت صلاحية القسم الذي حُذف منه، لا تحت «الإعدادات».

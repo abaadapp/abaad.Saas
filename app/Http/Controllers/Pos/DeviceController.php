@@ -83,7 +83,7 @@ class DeviceController extends Controller
 
         return Inertia::render('Admin/Devices/Index', [
             'devices' => PosDevice::where('business_id', Demo::bid())
-                ->with('branch:id,name', 'activatedBy:id,name')
+                ->with('branch:id,name', 'activatedBy:id,name', 'peripherals')
                 ->orderByDesc('id')->get()->map(fn ($d) => [
                     'id' => $d->id,
                     'name' => $d->name,
@@ -95,10 +95,28 @@ class DeviceController extends Controller
                     'activatedBy' => $d->activatedBy?->name ?? '—',
                     // الجهاز الذي تقف عليه الآن — لئلا يُلغي المدير جهازه بيده
                     'isThis' => $current?->id === $d->id,
+                    'peripherals' => $d->peripherals->map(fn ($p) => [
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        'type' => $p->type,
+                        'connection' => $p->connection,
+                        'model' => $p->model,
+                        'address' => $p->address,
+                        'port' => $p->port,
+                        'paperWidth' => $p->paper_width,
+                        'autoPrint' => $p->auto_print,
+                        'notes' => $p->notes,
+                        'active' => $p->active,
+                        // تقودها نقطة البيع فعلًا، أم تُسجَّل للجرد وحده
+                        'drivable' => $p->isDrivable(),
+                    ])->values()->all(),
                 ])->values()->all(),
             'branches' => Branch::where('business_id', Demo::bid())
                 ->orderBy('id')->get(['id', 'name'])
                 ->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
+            'peripheralTypes' => \App\Models\PosPeripheral::TYPES,
+            'drivableTypes' => \App\Models\PosPeripheral::DRIVABLE,
+            'paperWidths' => \App\Models\PosPeripheral::PAPER_WIDTHS,
         ]);
     }
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { usePage } from '@inertiajs/react';
 import { Banknote, CheckCircle, CreditCard, Landmark, Plus, Printer } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import {
@@ -13,6 +14,7 @@ import { Label } from '@/Components/ui/label';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { CheckoutResult } from '@/hooks/usePosCart';
+import type { PageProps } from '@/types';
 
 const METHODS = [
     { value: 'نقدي', label: 'نقدي', icon: Banknote },
@@ -37,6 +39,9 @@ export default function PaymentDialog({
     open, onOpenChange, total, displayTotal, customer, money, fmt, onCheckout, onNewOrder,
 }: Props) {
     const t = useTranslate();
+    const { context } = usePage<PageProps>().props;
+    // طابعة هذا الصندوق وحدها — لا طابعة صندوقٍ آخر في الفرع نفسه
+    const printer = context?.peripherals?.find((x) => x.type === 'طابعة');
     const [step, setStep] = useState<'pay' | 'success'>('pay');
     const [paid, setPaid] = useState('');
     const [method, setMethod] = useState('نقدي');
@@ -62,6 +67,20 @@ export default function PaymentDialog({
             const res = await onCheckout(method);
             setResult(res);
             setStep('success');
+
+            /*
+             * الطباعة التلقائية — إن كانت مضبوطة على طابعة هذا الصندوق.
+             *
+             * ومشروطةٌ بـres.invoice: البيع بلا اتصال يُحفظ في الطابور بلا رقم
+             * فاتورة بعد، وفتحُ نافذةٍ على رابطٍ لا وجود له يعطي الكاشير صفحة
+             * خطأ عند رأس الزبون. يطبع حين يوجد ما يُطبع.
+             *
+             * ونافذةٌ منفصلة لا طباعةٌ في مكانها: الشاشة نفسها لا تزال تعرض
+             * تأكيد البيع، وحوارُ الطباعة يجمّد ما تحته.
+             */
+            if (printer?.autoPrint && res.synced && res.invoice) {
+                window.open(route('pos.receipt.pdf', res.invoice), '_blank', 'noopener');
+            }
         } finally {
             setBusy(false);
         }

@@ -31,6 +31,25 @@ class PdfController extends Controller
             default => [80, 200],
         };
 
+        /*
+         * وطابعة هذا الصندوق تغلب قالب المتجر.
+         *
+         * القالب إعدادٌ واحد للمتجر كلّه، والصناديق تختلف: صندوق المدخل بورق
+         * ٨٠ وصندوق التغليف بورق ٥٨. فمن يطبع من صندوقٍ يطبع بمقاس ورقه هو،
+         * لا بمقاسٍ يخصّ صندوقًا آخر — وورقٌ لا يطابق الطابعة يخرج مقصوصًا
+         * من الحافة، ويُكتشف بعد أن يأخذه الزبون.
+         *
+         * وA4 لا تُمسّ: من اختارها اختار فاتورةً كاملة لا شريطًا.
+         */
+        if (($tpl['paper'] ?? '80mm') !== 'A4'
+            && ($width = \App\Support\PosTerminal::current()
+                ?->peripherals()->where('active', true)
+                ->where('type', \App\Models\PosPeripheral::PRINTER)
+                ->value('paper_width'))
+        ) {
+            $format = [(int) $width, 200];
+        }
+
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
             'format' => $format,

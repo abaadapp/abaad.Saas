@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * جهاز نقطة بيع مفعَّل — يعرف متجره وفرعه.
@@ -40,6 +41,12 @@ class PosDevice extends Model
     public function activatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'activated_by');
+    }
+
+    /** الملحقات: طابعة، ماسح، درج… — تُحذف مع الجهاز (قيد أجنبي) */
+    public function peripherals(): HasMany
+    {
+        return $this->hasMany(PosPeripheral::class);
     }
 
     public function isActive(): bool

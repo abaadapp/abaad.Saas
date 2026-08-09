@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { MonitorSmartphone, Pencil } from 'lucide-react';
+import { MonitorSmartphone, Pencil, Plug } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SettingsNav from '../Settings/partials/SettingsNav';
@@ -12,6 +12,7 @@ import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import PeripheralsDialog, { type Peripheral } from './partials/PeripheralsDialog';
 import type { PageProps } from '@/types';
 
 interface Device {
@@ -24,11 +25,15 @@ interface Device {
     activatedAt: string;
     activatedBy: string;
     isThis: boolean;
+    peripherals: Peripheral[];
 }
 
 interface Props {
     devices: Device[];
     branches: { value: number; label: string }[];
+    peripheralTypes: string[];
+    drivableTypes: string[];
+    paperWidths: number[];
 }
 
 /**
@@ -38,9 +43,11 @@ interface Props {
  * ولا يُخزَّن إلا مجزَّأً. ما لا يُخزَّن لا يُسرَّب.
  */
 export default function DevicesIndex() {
-    const { devices, branches, errors } = usePage<PageProps<Props>>().props;
+    const { devices, branches, peripheralTypes, drivableTypes, paperWidths, errors } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [editing, setEditing] = useState<Device | null>(null);
+    const [linking, setLinking] = useState<number | null>(null);
     const form = useForm({ name: '', branch_id: '' });
 
     // Radix Select لا يقبل قيمةً تتغيّر أثناء الفتح، فتُملأ عند تبديل الجهاز
@@ -98,6 +105,25 @@ export default function DevicesIndex() {
                 </span>
             ),
         },
+        {
+            key: 'peripherals',
+            header: 'الملحقات',
+            cell: (d) => {
+                const on = d.peripherals.filter((p) => p.active).length;
+                return (
+                    <button
+                        type="button"
+                        onClick={() => setLinking(d.id)}
+                        className="flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[13px] text-[#4b4b4b] transition-colors hover:bg-[#f2f2f0]"
+                    >
+                        <Plug className="size-4 text-[#9ca3af]" />
+                        {/* الرقم بلا صيغة جمع: «١ جهاز» و«٣ أجهزة» لا تُبنى من
+                            قالبٍ واحد بالعربية، والصفر يقول «أضف» لا «٠» */}
+                        {on > 0 ? on : t('إضافة')}
+                    </button>
+                );
+            },
+        },
         { key: 'lastSeen', header: 'آخر اتصال', cell: (d) => d.lastSeen },
         { key: 'activatedAt', header: 'تاريخ التفعيل', cell: (d) => d.activatedAt },
         { key: 'activatedBy', header: 'فعّله', cell: (d) => d.activatedBy },
@@ -107,7 +133,14 @@ export default function DevicesIndex() {
             align: 'end',
             cell: (d) => (
                 <RowActions
-                    extra={[{ label: 'تعديل', icon: <Pencil className="size-4" />, onSelect: () => setEditing(d) }]}
+                    extra={[
+                        { label: 'تعديل', icon: <Pencil className="size-4" />, onSelect: () => setEditing(d) },
+                        {
+                            label: 'الأجهزة الملحقة',
+                            icon: <Plug className="size-4" />,
+                            onSelect: () => setLinking(d.id),
+                        },
+                    ]}
                     destroy={
                         d.status === 'نشط'
                             ? {
@@ -201,6 +234,24 @@ export default function DevicesIndex() {
                 </DialogContent>
             </Dialog>
 
+            {/* الملحقات تُقرأ من devices مباشرةً لا من نسخةٍ في الحالة: بعد
+                الإضافة يعيد Inertia الصفحة، فلو حُفظ الجهاز في useState بقيت
+                القائمة على ما كانت وبدا أن الإضافة لم تقع */}
+            {linking !== null &&
+                (() => {
+                    const d = devices.find((x) => x.id === linking);
+                    return d ? (
+                        <PeripheralsDialog
+                            deviceId={d.id}
+                            deviceName={d.name}
+                            peripherals={d.peripherals}
+                            types={peripheralTypes}
+                            drivableTypes={drivableTypes}
+                            paperWidths={paperWidths}
+                            onClose={() => setLinking(null)}
+                        />
+                    ) : null;
+                })()}
         </AdminLayout>
     );
 }

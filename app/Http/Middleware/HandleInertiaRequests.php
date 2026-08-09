@@ -63,6 +63,22 @@ class HandleInertiaRequests extends Middleware
                 'branches' => Demo::branches(),
                 // اسم الصندوق الذي يقف عليه — يُعرض في ترويسة نقطة البيع
                 'deviceName' => \App\Support\PosTerminal::current()?->name,
+                /*
+                 * ملحقات هذا الصندوق وحده — لا ملحقات المتجر كلّه.
+                 *
+                 * الطابعة تُقرأ لتحديد عرض الورق والطباعة التلقائية بعد البيع،
+                 * والماسح ليُوجَّه التركيز إلى حقل الباركود من أول الشاشة.
+                 * وتُرسل النشطة فقط: ملحقٌ عُطِّل من الإعدادات لأنه معطوب يجب
+                 * ألّا يُطبع عليه.
+                 */
+                'peripherals' => \App\Support\PosTerminal::current()
+                    ?->peripherals()->where('active', true)->get()
+                    ->map(fn ($p) => [
+                        'type' => $p->type,
+                        'name' => $p->name,
+                        'paperWidth' => $p->paper_width,
+                        'autoPrint' => $p->auto_print,
+                    ])->values()->all() ?? [],
                 'currency' => Demo::displayCurrency(),
                 'currencies' => collect(Demo::currencies())->where('active', true)->values()->all(),
                 /*

@@ -66,6 +66,13 @@ export interface SharedProps {
         branchName: string;
         /** اسم صندوق نقطة البيع المفعَّل على هذا الجهاز */
         deviceName?: string | null;
+        /** ملحقات هذا الصندوق النشطة وحدها — طابعة، ماسح، درج… */
+        peripherals?: {
+            type: string;
+            name: string;
+            paperWidth: number | null;
+            autoPrint: boolean;
+        }[];
         branches: Branch[];
         currency: Currency;
         currencies: Currency[];

@@ -17,6 +17,16 @@ const PAD = { top: 12, right: 8, bottom: 26, left: 56 };
 /**
  * سلسلة زمنية بسلسلة واحدة — لا حاجة لمفتاح ألوان، العنوان يسمّيها.
  * خط 2px بلون واحد + تعبئة متدرّجة خافتة + تعقّب بالمؤشر.
+ *
+ * والتسميات كلّها HTML داخل foreignObject، لا <text>.
+ *
+ * WebKit لا يُشكّل العربية ولا يرتّبها داخل <text>: «سبتمبر» تخرج «ربتبس»
+ * حروفًا مفكّكة معكوسة. والمتجر يعمل على آيباد، أي Safari — فتسميات الأشهر
+ * في ستّ شاشات كانت طلاسم عند التاجر وسليمة عند كل من فحصها على كروم.
+ * والنصّ في DOM صحيح، فلا يكشفه اختبارٌ يقرأ الشجرة ولا فاحص الترجمة؛ لا
+ * يُرى إلا بالعين على المحرّك الصحيح.
+ *
+ * فيبقى SVG للخطوط والمسارات — وهي لا لغة لها — ويُترك النصّ لمحرّك النصّ.
  */
 export default function AreaChart({
     labels,
@@ -33,7 +43,7 @@ export default function AreaChart({
     const innerW = width - PAD.left - PAD.right;
     const innerH = height - PAD.top - PAD.bottom;
 
-    const { points, ticks } = useMemo(() => {
+    const { points, ticks, slot } = useMemo(() => {
         const maxValue = Math.max(...data, 1);
         // سقف مريح: نقرّب لأعلى حتى تبقى القمة تحت الحافة
         const niceMax = Math.ceil(maxValue * 1.1) || 1;
@@ -41,6 +51,9 @@ export default function AreaChart({
 
         return {
             max: niceMax,
+            // عرض ما تشغله التسمية الواحدة: المسافة بين نقطتين. الأشهر
+            // الاثنا عشر تُعرض كلّها، فلكلٍّ حصّتها ولا تتداخل مع جارتها
+            slot: stepX || innerW,
             points: data.map((value, i) => ({
                 x: PAD.left + i * stepX,
                 y: PAD.top + innerH - (value / niceMax) * innerH,
@@ -76,24 +89,15 @@ export default function AreaChart({
 
                 {/* شبكة خافتة — لا تنافس البيانات */}
                 {ticks.map((tick, i) => (
-                    <g key={i}>
-                        <line
-                            x1={PAD.left}
-                            y1={tick.y}
-                            x2={width - PAD.right}
-                            y2={tick.y}
-                            stroke="#eeeeee"
-                            strokeWidth="1"
-                        />
-                        <text
-                            x={PAD.left - 8}
-                            y={tick.y + 4}
-                            textAnchor="end"
-                            className="fill-[#9ca3af] text-[10px]"
-                        >
-                            {format(tick.value)}
-                        </text>
-                    </g>
+                    <line
+                        key={i}
+                        x1={PAD.left}
+                        y1={tick.y}
+                        x2={width - PAD.right}
+                        y2={tick.y}
+                        stroke="#eeeeee"
+                        strokeWidth="1"
+                    />
                 ))}
 
                 {areaPath && <path d={areaPath} fill={`url(#${gradientId})`} />}
@@ -109,21 +113,6 @@ export default function AreaChart({
                         strokeLinecap="round"
                         strokeLinejoin="round"
                     />
-                )}
-
-                {/* تسميات المحور الأفقي — واحدة من كل اثنتين حتى لا تتصادم */}
-                {points.map((p, i) =>
-                    i % 2 === 0 ? (
-                        <text
-                            key={i}
-                            x={p.x}
-                            y={height - 8}
-                            textAnchor="middle"
-                            className="fill-[#9ca3af] text-[10px]"
-                        >
-                            {p.label}
-                        </text>
-                    ) : null,
                 )}
 
                 {/* التعقّب: خط رأسي + نقطة بحلقة بيضاء تفصلها عن الخط */}
@@ -149,17 +138,88 @@ export default function AreaChart({
                     </g>
                 )}
 
-                {/* مناطق التقاط أعرض من العلامة نفسها */}
+                {/*
+                    مناطق التقاط أعرض من العلامة نفسها — وتستجيب للضغط.
+
+                    كانت تسمع onMouseEnter وحده والتلميح يقول «مرّر المؤشر»،
+                    والمتجر يعمل على آيباد: لا مؤشّر هناك ولا تمرير، فتفاصيل
+                    كل شهرٍ لم تكن تُقرأ أصلًا على الجهاز الذي يُستعمل فعلًا.
+
+                    والضغط لا يُلغي التمرير: على الحاسب يُقرأ بالمرور، وعلى
+                    اللمس بالنقر، ونفس المنطقة تخدم الاثنين.
+                */}
                 {points.map((p, i) => (
                     <rect
                         key={i}
-                        x={p.x - innerW / Math.max(points.length, 1) / 2}
+                        x={p.x - slot / 2}
                         y={PAD.top}
-                        width={innerW / Math.max(points.length, 1)}
+                        width={slot}
                         height={innerH}
                         fill="transparent"
+                        className="cursor-pointer"
                         onMouseEnter={() => setHover(i)}
+                        onClick={() => setHover(i)}
                     />
+                ))}
+
+                {/*
+                    التسميات: HTML داخل foreignObject لا <text>.
+
+                    وضعُها في طبقة HTML فوق الرسم يبدو أبسط، لكنه يفكّ ارتباط
+                    حجمها بالرسم: SVG يتقلّص مع عرض البطاقة (viewBox) والنصّ
+                    يبقى ١٠px، فيطفح خارج حدوده ويُقصّ — رأيتُ المحور الرأسي
+                    يعرض «ر.ع» بلا أرقام. وداخل foreignObject تُقاس الأبعاد
+                    بوحدات الرسم نفسها فتتقلّص معه، ويبقى النصّ نصَّ HTML
+                    يشكّله المتصفّح كما يشكّل أي كلمة في الصفحة.
+
+                    وdir=ltr على الصندوق وحده: الإحداثيات تُقرأ من اليسار في
+                    SVG مهما كانت لغة الصفحة، أمّا الكلمة فتُشكَّل باتجاهها.
+                */}
+                {ticks.map((tick, i) => (
+                    <foreignObject
+                        key={`t${i}`}
+                        x={0}
+                        y={tick.y - 7}
+                        width={PAD.left - 8}
+                        height={14}
+                        className="pointer-events-none"
+                    >
+                        <div
+                            dir="ltr"
+                            className="truncate text-end text-[10px] leading-[14px] text-[#9ca3af]"
+                        >
+                            {format(tick.value)}
+                        </div>
+                    </foreignObject>
+                ))}
+
+                {/*
+                    كل الأشهر تُكتب — لا واحدة من كل اثنتين.
+
+                    كان نصف المحور بلا اسم، فيقرأ الناظر قمّةً ويعدّ بعينه
+                    ليعرف شهرها، وقد يُخطئ عمودًا. وعرضُ التسمية محصورٌ بحصّة
+                    النقطة (المسافة بين نقطتين) فلا تزحف على جارتها مهما طال
+                    الاسم — «سبتمبر» أو «September».
+                */}
+                {points.map((p, i) => (
+                    <foreignObject
+                        key={`l${i}`}
+                        x={p.x - slot / 2}
+                        y={height - 18}
+                        width={slot}
+                        height={14}
+                        className="pointer-events-none"
+                    >
+                        <div
+                            dir="ltr"
+                            className={cn(
+                                'truncate text-center text-[9px] leading-[14px]',
+                                hover === i ? 'font-bold text-[#7c3aed]' : 'text-[#9ca3af]',
+                            )}
+                        >
+                            {p.label}
+                        </div>
+                    </foreignObject>
                 ))}
             </svg>
 
@@ -172,7 +232,10 @@ export default function AreaChart({
                         {format(points[hover].value)}
                     </>
                 ) : (
-                    <span className="text-[#c7c7c7]">{t('مرّر المؤشر لعرض التفاصيل')}</span>
+                    /* «مرّر المؤشر» لا معنى له على شاشة لمس، وهي شاشة المتجر.
+                       ولا تُسمّى «شهرًا»: نفس المكوّن يرسم الساعات وأيام
+                       الأسبوع في التحليلات */
+                    <span className="text-[#c7c7c7]">{t('اضغط على الرسم لعرض التفاصيل')}</span>
                 )}
             </p>
         </div>

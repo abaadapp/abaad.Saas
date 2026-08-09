@@ -27,6 +27,8 @@ interface Props {
         activated: boolean;
     } | null;
     year: number;
+    /** هل يستطيع النظام إرسال بريدٍ فعلًا — انظر App\Support\Mailer */
+    canRecover: boolean;
 }
 
 /**
@@ -36,7 +38,7 @@ interface Props {
  * سلفًا ببيانات الحساب التجريبي — وهو ما كان سيُشحن إلى العملاء كما هو.
  */
 export default function Login() {
-    const { pin, year, locale, errors } = usePage<PageProps<Props>>().props;
+    const { pin, year, canRecover, locale, errors } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [reveal, setReveal] = useState(false);
     const [forgetting, setForgetting] = useState(false);
@@ -229,6 +231,11 @@ export default function Login() {
                             «نسيت كلمة المرور» صار مسارًا حقيقيًّا لا رابط بريدٍ
                             إلى الدعم. الموظف يطلب رمزه من صاحب النشاط كما كان،
                             وصاحب النشاط نفسه لم يكن له باب إلا الاتصال بالدعم.
+
+                            ويختفي حين لا يكون البريد مضبوطًا — ولا يُترك مكانه
+                            فارغًا: من نسي كلمته يحتاج جوابًا، لا غيابَ سؤال.
+                            بابٌ يقول «أرسلنا الرابط» ولا يُرسل أسوأ من بابٍ
+                            مكتوبٍ عليه «اطلب من المدير».
                         */}
                         <div className="flex items-center justify-between gap-3">
                             <label className="flex w-fit cursor-pointer items-center gap-2 text-[13px] text-[#4b4b4b]">
@@ -241,12 +248,18 @@ export default function Login() {
                                 {t('تذكرني')}
                             </label>
 
-                            <Link
-                                href={route('password.request')}
-                                className="text-[13px] font-medium text-[#6b7280] transition-colors hover:text-[#111]"
-                            >
-                                {t('نسيت كلمة المرور؟')}
-                            </Link>
+                            {canRecover ? (
+                                <Link
+                                    href={route('password.request')}
+                                    className="text-[13px] font-medium text-[#6b7280] transition-colors hover:text-[#111]"
+                                >
+                                    {t('نسيت كلمة المرور؟')}
+                                </Link>
+                            ) : (
+                                <span className="text-[13px] text-[#9ca3af]">
+                                    {t('نسيت كلمتك؟ راجع مدير النظام')}
+                                </span>
+                            )}
                         </div>
 
                         <Button type="submit" size="lg" className="w-full" loading={form.processing}>

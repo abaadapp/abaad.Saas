@@ -27,11 +27,29 @@ use Illuminate\Validation\Rules\Password as PasswordRule;
 class PasswordResetController extends Controller
 {
     /** شاشة «نسيت كلمة المرور» */
-    public function request(): \Inertia\Response
+    public function request()
     {
+        $this->abortWithoutMail();
+
         return \Inertia\Inertia::render('Auth/ForgotPassword', [
             'year' => (int) now()->format('Y'),
         ]);
+    }
+
+    /**
+     * بلا بريدٍ مضبوط، هذا المسار لا يفعل شيئًا سوى الوعد.
+     *
+     * إخفاء الرابط من شاشة الدخول لا يكفي: من يعرف العنوان — أو حفظه
+     * متصفّحه، أو وصله من رسالةٍ قديمة — يصل إلى نموذجٍ يقول «أرسلنا» ولا
+     * يُرسل. فيُقفل الباب من الخادم لا من الواجهة، ويُقال له لماذا.
+     */
+    private function abortWithoutMail(): void
+    {
+        abort_if(
+            ! \App\Support\Mailer::configured(),
+            404,
+            __('استعادة كلمة المرور غير مفعَّلة على هذا النظام — تواصل مع مدير النظام.'),
+        );
     }
 
     /**
@@ -44,6 +62,8 @@ class PasswordResetController extends Controller
      */
     public function send(Request $request)
     {
+        $this->abortWithoutMail();
+
         $data = $request->validate(['email' => ['required', 'email']]);
         $email = mb_strtolower($data['email']);
 

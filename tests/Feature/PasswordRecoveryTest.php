@@ -31,6 +31,15 @@ class PasswordRecoveryTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        /*
+         * بيئة الاختبار على MAIL_MAILER=array، وهو مُرسِلٌ صامت — والاستعادة
+         * صارت تُقفل نفسها حين لا يوجد بريدٌ يصل (انظر PasswordRecoveryDisabledTest).
+         * فيُعلَن هنا صراحةً أن هذه الاختبارات تفحص الحالة التي البريد فيها
+         * مضبوط؛ وMail::fake تعترض الإرسال بعد ذلك فلا يخرج شيء.
+         */
+        config(['mail.default' => 'smtp', 'mail.mailers.smtp.host' => 'smtp.example.com']);
+
         RateLimiter::clear('login:owner@abaadapp.om|127.0.0.1');
         RateLimiter::clear('login-hour:owner@abaadapp.om|127.0.0.1');
 

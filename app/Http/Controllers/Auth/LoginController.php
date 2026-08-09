@@ -139,6 +139,9 @@ class LoginController extends Controller
                 'activated' => $device !== null,
             ] : null,
             'year' => (int) now()->format('Y'),
+            // بابٌ لا يفتح يُخفى: بلا بريدٍ مضبوط تقول شاشة الاستعادة
+            // «أرسلنا الرابط» ولا تُرسل، فينتظر المستخدم رسالةً لن تأتي
+            'canRecover' => \App\Support\Mailer::configured(),
         ]);
     }
 

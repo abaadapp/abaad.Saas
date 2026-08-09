@@ -48,6 +48,15 @@ Route::post('/pin-login', [LoginController::class, 'pinAttempt'])->name('pin.att
 Route::post('/forget-device', [LoginController::class, 'forgetDevice'])->name('device.forget');
 
 /*
+ * نقطة صحّة لمراقبٍ خارجي — بلا مصادقة.
+ *
+ * من يراقب لا يملك حسابًا، والعطب الذي نريد اكتشافه يمنع الدخول أصلًا. وهي
+ * تفحص القاعدة والتخزين والذاكرة وتردّ 503 إن سقط واحد: صفحةٌ تعيد 200 لأن
+ * nginx حيّ لا تقول شيئًا عن قاعدةٍ ساقطة، والمتجر بلا قاعدة متجرٌ ساقط.
+ */
+Route::get('/health', \App\Http\Controllers\HealthController::class)->name('health');
+
+/*
  * استعادة كلمة المرور — الباب الذي لا يمرّ بالدعم.
  *
  * الرمز في المسار لا في الاستعلام: الرابط يُنسخ من الرسالة كاملًا، وحصرُه

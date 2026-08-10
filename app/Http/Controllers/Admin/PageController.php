@@ -193,12 +193,23 @@ class PageController extends Controller
 
     public function employeesIndex(): Response
     {
+        return Inertia::render('Admin/Employees/Index', $this->employeesData());
+    }
+
+    /**
+     * بيانات قسم الموظفين — تُقرأ من موضعين: صفحتها المستقلّة، ولوحة
+     * الإعدادات حيث يُفتح القسم مكانها. وهي هنا مرّةً واحدة فلا تفترق النسختان.
+     *
+     * @return array<string, mixed>
+     */
+    private function employeesData(): array
+    {
         $bid = Demo::bid();
         // كم موظفًا يشغل كل مسمّى — عمود «الاستخدام» في تبويب الوظائف
         $usage = \App\Models\User::where('business_id', $bid)
             ->selectRaw('job_title, COUNT(*) as c')->groupBy('job_title')->pluck('c', 'job_title');
 
-        return Inertia::render('Admin/Employees/Index', [
+        return [
             'employees' => Demo::employees(),
             'jobTitles' => \App\Models\JobTitle::where('business_id', $bid)->orderBy('name')->get()
                 ->map(fn ($t) => [
@@ -209,7 +220,7 @@ class PageController extends Controller
                     'description' => $t->description,
                     'usage' => (int) ($usage[$t->name] ?? 0),
                 ])->all(),
-        ]);
+        ];
     }
 
     public function employeesCreate(): Response
@@ -408,9 +419,11 @@ class PageController extends Controller
 
     /* ----------------------------- الإعدادات ----------------------------- */
 
-    public function settingsIndex(): Response
+    public function settingsIndex(\Illuminate\Http\Request $request): Response
     {
         $b = \App\Models\Business::find(Demo::bid());
+        $section = $request->query('section');
+        $section = is_string($section) ? $section : null;
 
         return Inertia::render('Admin/Settings/Index', [
             'settings' => Demo::businessSettings(),
@@ -449,6 +462,64 @@ class PageController extends Controller
                     'manual' => $u->hasManualPermissions(),
                     'count' => count($u->permissions ?? []),
                 ])->all(),
+
+            /*
+             * أقسام «النظام» تُفتح داخل هذه الصفحة كبقيّة الأقسام.
+             *
+             * والقسم المطلوب يأتي في الرابط (?section=branches) لا في المرساة،
+             * لأن الخادم يحتاج أن يعرفه: بياناته تُحسب هنا. والمرساة لا تصل
+             * إلى الخادم أصلًا.
+             *
+             * ولا تُحسب إلا لقسمها: فتحُ الإعدادات لا يجرّ معه جدول الفروع
+             * ولا سجلّ النشاط، ولا يراهما إلا من قصدهما.
+             */
+            'section' => $section,
+            ...$this->settingsSection($section, $request),
         ]);
+    }
+
+    /**
+     * بيانات قسمٍ من أقسام «النظام» — أو لا شيء.
+     *
+     * وهي في الرابط لا في الذاكرة عمدًا: بعد إضافة فرعٍ يعود المستخدم بـback()
+     * إلى العنوان نفسه بمعاملِه، فتُحسب البيانات ثانيةً ويبقى القسم مفتوحًا
+     * على أحدث حال. ولو كانت في المرساة لعاد إلى لوحةٍ فارغة بعد كل حفظ.
+     *
+     * @return array<string, mixed>
+     */
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function renameKey(array $data, string $from, string $to): array
+    {
+        if (array_key_exists($from, $data)) {
+            $data[$to] = $data[$from];
+            unset($data[$from]);
+        }
+
+        return $data;
+    }
+
+    private function settingsSection(?string $section, \Illuminate\Http\Request $request): array
+    {
+        return match ($section) {
+            'branches' => ['branches' => Demo::branches()],
+            'employees' => $this->employeesData(),
+            /*
+             * الفروع تصل هنا بشكل خيارات (value/label) لا بشكل صفوف الجدول،
+             * فتُسمّى باسمٍ آخر. ولولا ذلك لتصادمت مع `branches` في قسم الفروع
+             * تصادمًا صامتًا: النوع واحد في TypeScript والحقول مختلفة، فيصير
+             * الجدول صفوفًا فارغة بلا خطأٍ يُنبّه.
+             */
+            'devices' => $this->renameKey(
+                \App\Http\Controllers\Pos\DeviceController::panelData(),
+                'branches',
+                'branchOptions',
+            ),
+            'activity' => \App\Http\Controllers\ActivityController::adminData($request),
+            'trash' => \App\Http\Controllers\Admin\TrashController::panelData(),
+            default => [],
+        };
     }
 }

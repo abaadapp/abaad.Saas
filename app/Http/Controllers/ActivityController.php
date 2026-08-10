@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 
 class ActivityController extends Controller
 {
-    private function shape($q, Request $request)
+    private static function shape($q, Request $request)
     {
         if ($s = trim((string) $request->query('q'))) {
             $q->where(fn ($w) => $w->where('description', 'like', "%{$s}%")->orWhere('user_name', 'like', "%{$s}%"));
@@ -32,7 +32,7 @@ class ActivityController extends Controller
 
     public function superIndex(Request $request)
     {
-        $logs = $this->shape(ActivityLog::query(), $request);
+        $logs = self::shape(ActivityLog::query(), $request);
 
         return \Inertia\Inertia::render('Platform/Activity', [
             'logs' => $logs->items(),
@@ -42,6 +42,17 @@ class ActivityController extends Controller
     }
 
     public function adminIndex(Request $request)
+    {
+        return \Inertia\Inertia::render('Admin/Activity', self::adminData($request));
+    }
+
+    /**
+     * بيانات قسم سجلّ النشاط — تُقرأ من صفحته المستقلّة ومن لوحة الإعدادات
+     * حيث يُفتح مكانها، فلا تفترق النسختان.
+     *
+     * @return array<string, mixed>
+     */
+    public static function adminData(Request $request): array
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
 
@@ -58,16 +69,16 @@ class ActivityController extends Controller
          */
         $owners = \App\Models\User::where('business_id', $bid)->where('role', 'admin')->select('id');
 
-        $logs = $this->shape(
+        $logs = self::shape(
             ActivityLog::where('business_id', $bid)
                 ->where(fn ($w) => $w->whereNotIn('user_id', $owners)->orWhereNotNull('impersonator_id')),
             $request,
         );
 
-        return \Inertia\Inertia::render('Admin/Activity', [
+        return [
             'logs' => $logs->items(),
             'pagination' => \App\Support\Pagination::meta($logs),
             'filters' => $request->only('q', 'action'),
-        ]);
+        ];
     }
 }

@@ -79,9 +79,22 @@ class DeviceController extends Controller
 
     public function index()
     {
+        return Inertia::render('Admin/Devices/Index', self::panelData());
+    }
+
+    /**
+     * بيانات قسم الأجهزة.
+     *
+     * تُقرأ من موضعين: صفحتها المستقلّة، ولوحة الإعدادات حيث يُفتح القسم
+     * مكانها. وهي هنا مرّةً واحدة فلا تفترق النسختان مع أوّل تعديل.
+     *
+     * @return array<string, mixed>
+     */
+    public static function panelData(): array
+    {
         $current = PosTerminal::current();
 
-        return Inertia::render('Admin/Devices/Index', [
+        return [
             'devices' => PosDevice::where('business_id', Demo::bid())
                 ->with('branch:id,name', 'activatedBy:id,name', 'peripherals')
                 ->orderByDesc('id')->get()->map(fn ($d) => [
@@ -117,7 +130,7 @@ class DeviceController extends Controller
             'peripheralTypes' => \App\Models\PosPeripheral::TYPES,
             'drivableTypes' => \App\Models\PosPeripheral::DRIVABLE,
             'paperWidths' => \App\Models\PosPeripheral::PAPER_WIDTHS,
-        ]);
+        ];
     }
 
     public function update(Request $request, int $id)

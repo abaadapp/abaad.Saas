@@ -22,17 +22,28 @@ class TrashController extends Controller
     /** كم يومًا تُعرض المحذوفات — بعدها تبقى في القاعدة ولا تُزحم الشاشة */
     private const WINDOW_DAYS = 90;
 
-    private function bid(): int
+    private static function bid(): int
     {
         return auth()->user()->business_id ?? Demo::bid();
     }
 
     public function index(): \Inertia\Response
     {
+        return \Inertia\Inertia::render('Admin/Settings/Trash', self::panelData());
+    }
+
+    /**
+     * بيانات قسم المحذوفات — تُقرأ من صفحته المستقلّة ومن لوحة الإعدادات
+     * حيث يُفتح مكانها.
+     *
+     * @return array<string, mixed>
+     */
+    public static function panelData(): array
+    {
         $since = now()->subDays(self::WINDOW_DAYS);
 
         $products = Product::onlyTrashed()
-            ->where('business_id', $this->bid())
+            ->where('business_id', self::bid())
             ->where('deleted_at', '>=', $since)
             ->orderByDesc('deleted_at')
             ->get(['id', 'name', 'sku', 'price', 'quantity', 'deleted_at'])
@@ -46,7 +57,7 @@ class TrashController extends Controller
             ]);
 
         $expenses = Expense::onlyTrashed()
-            ->where('business_id', $this->bid())
+            ->where('business_id', self::bid())
             ->where('deleted_at', '>=', $since)
             ->orderByDesc('deleted_at')
             ->get(['id', 'reference', 'type', 'description', 'amount', 'spent_at', 'deleted_at'])
@@ -67,11 +78,11 @@ class TrashController extends Controller
          * والحماية باقية: الفرع يُخفى ولا يُمحى، ويُردّ من زرّ «تراجع» في
          * إشعار الحذف (مسار admin.branches.restore).
          */
-        return \Inertia\Inertia::render('Admin/Settings/Trash', [
+        return [
             'products' => $products,
             'expenses' => $expenses,
             'windowDays' => self::WINDOW_DAYS,
-        ]);
+        ];
     }
 
     /**
@@ -94,7 +105,7 @@ class TrashController extends Controller
         };
 
         // المتجر يُقرأ من الجلسة لا من الطلب: معرّفٌ من متجر الجار يُردّ ٤٠٤
-        $row = $model::onlyTrashed()->where('business_id', $this->bid())->findOrFail($id);
+        $row = $model::onlyTrashed()->where('business_id', self::bid())->findOrFail($id);
         $row->restore();
 
         $label = match ($type) {

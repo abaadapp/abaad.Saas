@@ -5,7 +5,6 @@ import {
     BellOff,
     BellRing,
     ChevronLeft,
-    ChevronRight,
     Download,
     Save,
     Trash2,
@@ -23,9 +22,16 @@ import CustomAlerts, {
     type CustomAlertRow,
 } from './partials/CustomAlerts';
 import { SETTINGS_NAV } from './partials/SettingsNav';
+import BackToSettings from './partials/BackToSettings';
+import BranchesPanel from './panels/BranchesPanel';
+import EmployeesPanel, { type JobTitle } from './panels/EmployeesPanel';
+import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
+import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
+import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import type { Branch, Employee } from '@/types/models';
 
 type Settings = Record<string, string>;
 
@@ -47,6 +53,21 @@ interface Props {
     alertMetrics: AlertMetric[];
     alertSections: Record<string, string>;
     locale: string;
+    /* لا تصل إلا حين يُطلب قسمها في الرابط — انظر settingsSection في PageController */
+    branches?: Branch[];
+    employees?: Employee[];
+    jobTitles?: JobTitle[];
+    devices?: DevicesData['devices'];
+    branchOptions?: DevicesData['branches'];
+    peripheralTypes?: string[];
+    drivableTypes?: string[];
+    paperWidths?: number[];
+    logs?: ActivityData['logs'];
+    pagination?: ActivityData['pagination'];
+    filters?: ActivityData['filters'];
+    products?: TrashData['products'];
+    expenses?: TrashData['expenses'];
+    windowDays?: number;
 }
 
 /**
@@ -62,27 +83,38 @@ const NAV = SETTINGS_NAV;
 type TabKey = (typeof NAV)[number]['items'][number]['key'];
 
 /**
- * مفاتيح الأقسام التي تُفتح داخل هذه الصفحة — دون بنود «النظام» التي لها
- * `route` فتنقل إلى صفحاتها المستقلّة. مرساةٌ تحمل أحدها تفتح اللوحة لا قسمًا
- * فارغًا لا محتوى له هنا.
+ * أقسام «النظام» — بياناتها تُحسب على الخادم، فتُطلب في الرابط
+ * (?section=branches) لا في المرساة التي لا تصل إليه أصلًا.
  */
-const TAB_KEYS = NAV.flatMap((g) =>
-    g.items.filter((i) => !('route' in i && i.route)).map((i) => i.key),
-) as readonly TabKey[];
+/** صفحةٌ واحدة فارغة — تُستعمل قبل وصول بيانات السجلّ لا كحالةٍ دائمة */
+const EMPTY_PAGINATION: ActivityData['pagination'] = {
+    current_page: 1,
+    last_page: 1,
+    from: 0,
+    to: 0,
+    total: 0,
+    prev_page_url: null,
+    next_page_url: null,
+};
+
+const SERVER_TABS = ['branches', 'employees', 'devices', 'activity', 'trash'] as const;
+
+/** مفاتيح كل الأقسام التي تُفتح داخل هذه الصفحة — وهي اليوم كلّها. */
+const TAB_KEYS = NAV.flatMap((g) => g.items.map((i) => i.key)) as readonly TabKey[];
 
 /**
- * القسم المطلوب من عنوان الصفحة: /admin/settings#taxes.
+ * القسم المطلوب من عنوان الصفحة.
  *
- * بلا مرساة تُفتح لوحة البطاقات (الحالة الرئيسية للإعدادات). ومع مرساةٍ
- * صحيحة يُفتح ذلك القسم مباشرةً، فرابطٌ مثل «أضِف الرقم الضريبي من الإعدادات»
- * في صفحة الضريبة يُنزل المستخدم في قسم الضريبة لا في اللوحة.
+ * موضعان: `?section=branches` لأقسام النظام لأن الخادم يحتاج أن يقرأه،
+ * و`#taxes` لبقيّتها. وكلاهما يُفتح مباشرةً، فرابطٌ مثل «أضِف الرقم الضريبي
+ * من الإعدادات» في صفحة الضريبة يُنزل المستخدم في قسم الضريبة لا في اللوحة.
  *
- * القيمة الغريبة أو مفتاح صفحةٍ مستقلّة يعود إلى اللوحة (null) بدل أن يُظهر
- * قسمًا فارغًا.
+ * والقيمة الغريبة تعود إلى اللوحة (null) بدل أن تُظهر قسمًا فارغًا.
  */
-function tabFromHash(): TabKey | null {
+function tabFromUrl(): TabKey | null {
     if (typeof window === 'undefined') return null;
-    const key = window.location.hash.replace(/^#/, '');
+    const url = new URL(window.location.href);
+    const key = url.searchParams.get('section') || url.hash.replace(/^#/, '');
     return (TAB_KEYS as readonly string[]).includes(key) ? (key as TabKey) : null;
 }
 
@@ -116,16 +148,36 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale } =
+    const { settings, business, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+        logs, pagination, filters, products, expenses, windowDays } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const [tab, setTab] = useState<TabKey | null>(tabFromHash);
+    const [tab, setTab] = useState<TabKey | null>(tabFromUrl);
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
     const [backupFile, setBackupFile] = useState<File | null>(null);
     const [notifs, setNotifs] = useState<NotificationRow[]>(notificationsAll ?? []);
 
     const pick = (key: string) => {
         const tabKey = key as TabKey;
+
+        /*
+         * أقسام «النظام» بياناتها عند الخادم، فيُطلب القسم في الرابط.
+         *
+         * preserveState: النموذج المفتوح وحقوله لا تُمحى بزيارةٍ لجلب جدول.
+         * وreplace: التنقّل بين الأقسام ليس تصفّحًا يستحقّ أن يمتلئ به زرّ
+         * الرجوع — وهو ما تفعله المرساة في بقيّة الأقسام.
+         */
+        if ((SERVER_TABS as readonly string[]).includes(key)) {
+            router.get(route('admin.settings.index'), { section: key }, {
+                preserveState: true,
+                preserveScroll: false,
+                replace: true,
+                onSuccess: () => setTab(tabKey),
+            });
+
+            return;
+        }
+
         setTab(tabKey);
         // العنوان يتبع القسم المفتوح، فيبقى قابلًا للنسخ والمشاركة وإعادة
         // التحميل. replaceState لا pushState: التنقّل بين الأقسام ليس تصفّحًا
@@ -245,9 +297,9 @@ export default function SettingsIndex() {
             {tab === null ? (
                 /* لوحة البطاقات — كل قسمٍ بطاقةٌ مستطيلة أفقية: أيقونته ثم
                    اسمه ووصفٌ خافتٌ تحته. النقر يفتح القسم مكان اللوحة.
-                   mx-auto: يتوسّط المحتوى في الصفحة بهامشين متساويين بدل أن
-                   يلتصق بالبداية ويترك فراغًا على الجهة الأخرى. */
-                <div className="mx-auto max-w-6xl space-y-8">
+                   ولا سقف عرضٍ هنا: السقف في AdminLayout يشمل الصفحات كلّها،
+                   وسقفٌ ثانٍ فوقه كان يجعل الإعدادات أضيق من كل ما جاورها. */
+                <div className="space-y-8">
                     {NAV.map((g) => (
                         <section key={g.group}>
                             <h3 className="mb-3 text-[13px] font-semibold text-[#6b7280]">{t(g.group)}</h3>
@@ -267,12 +319,8 @@ export default function SettingsIndex() {
                                     );
                                     const cls =
                                         'group flex items-center gap-4 rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white p-5 text-start transition hover:border-[#d4d4d4] hover:bg-[#fafafa]';
-                                    // بند «النظام» بمساره ينقل إلى صفحته المستقلّة؛ سواه يفتح قسمه هنا
-                                    return 'route' in x && x.route ? (
-                                        <Link key={x.key} href={route(x.route)} className={cls}>
-                                            {body}
-                                        </Link>
-                                    ) : (
+                                    // كل البطاقات تفتح قسمها هنا؛ لا واحدة تقفز بك إلى هيئةٍ أخرى
+                                    return (
                                         <button key={x.key} type="button" onClick={() => pick(x.key)} className={cls}>
                                             {body}
                                         </button>
@@ -283,17 +331,13 @@ export default function SettingsIndex() {
                     ))}
                 </div>
             ) : (
-                /* قسمٌ مفتوح — سقفٌ للعرض كي لا يمتدّ السطر عبر الشاشة كاملةً،
-                   ومتوسّطٌ مثل اللوحة فلا يقفز المحتوى إلى الحافة عند الفتح. */
-                <div className="mx-auto min-w-0 max-w-4xl scroll-mt-4">
-                    <button
-                        type="button"
-                        onClick={goHub}
-                        className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-[#6b7280] transition-colors hover:text-[#111]"
-                    >
-                        <ChevronRight className="size-4" />
-                        {t('كل الإعدادات')}
-                    </button>
+                /* قسمٌ مفتوح — بعرض اللوحة نفسها، فلا ينكمش المحتوى تحت اليد
+                   لحظة الفتح. وطولُ السطر يُضبط بعدد الأعمدة في كل نموذج لا
+                   بسقفٍ على الصفحة. min-w-0: يمنع جدولًا عريضًا من دفع
+                   الحاوية فتتجاوز الشاشة. */
+                <div className="min-w-0 scroll-mt-4">
+                    {/* زرٌّ لا رابط: القسم يتبدّل هنا في مكانه بلا تنقّل */}
+                    <BackToSettings as="button" onClick={goHub} />
             {tab === 'language' ? (
                 <Card className="p-6">
                     <h3 className="mb-4 font-bold text-[#111]">{t('لغة النظام')}</h3>
@@ -434,6 +478,31 @@ export default function SettingsIndex() {
                         </div>
                     )}
                 </Card>
+            ) : tab === 'branches' ? (
+                /* بياناته تصل مع الرابط؛ وغيابها يعني فتحًا بلا `?section` */
+                <BranchesPanel branches={branches ?? []} />
+            ) : tab === 'employees' ? (
+                <EmployeesPanel employees={employees ?? []} jobTitles={jobTitles ?? []} />
+            ) : tab === 'devices' ? (
+                <DevicesPanel
+                    devices={devices ?? []}
+                    branches={branchOptions ?? []}
+                    peripheralTypes={peripheralTypes ?? []}
+                    drivableTypes={drivableTypes ?? []}
+                    paperWidths={paperWidths ?? []}
+                />
+            ) : tab === 'activity' ? (
+                /* العنوان يُمرَّر: التصفية والتصفّح يعودان إلى الإعدادات لا
+                   إلى الصفحة المستقلّة، وإلا قفز المستخدم عند أوّل «التالي» */
+                <ActivityPanel
+                    logs={logs ?? []}
+                    pagination={pagination ?? EMPTY_PAGINATION}
+                    filters={filters ?? {}}
+                    endpoint={route('admin.settings.index')}
+                    endpointParams={{ section: 'activity' }}
+                />
+            ) : tab === 'trash' ? (
+                <TrashPanel products={products ?? []} expenses={expenses ?? []} windowDays={windowDays ?? 0} />
             ) : tab === 'backup' ? (
                 <div className="grid grid-cols-1 gap-6">
                     <Card className="p-6">

@@ -463,15 +463,13 @@ class Demo
 
         if ($u && ! $u->isSuperAdmin()) {
             /*
-             * ولوحة التاجر تعرض موظفيه لا نفسه.
-             *
-             * ويبقى ما فعله الدعم داخل حسابه ظاهرًا — يُقيَّد باسمه هو، وإخفاؤه
-             * يعني أن يجري في متجره ما لا يراه.
+             * ولوحة التاجر تعرض موظفيه وحدهم: لا أفعاله هو، ولا ما جرى عبر
+             * انتحال الدعم. والبطاقة تتبع صفحة «سجل النشاط» في الحكم نفسه،
+             * فلا يقرأ التاجر في اللوحة سطرًا لا يجده في السجلّ فيحتار.
              */
-            $q->where(fn ($w) => $w
-                ->whereNotIn('user_id', User::where('business_id', self::bid())
-                    ->where('role', 'admin')->select('id'))
-                ->orWhereNotNull('impersonator_id'));
+            $q->whereNotIn('user_id', User::where('business_id', self::bid())
+                ->where('role', 'admin')->select('id'))
+                ->whereNull('impersonator_id');
         }
 
         return $q->limit($limit)->get()->map(fn ($a) => [

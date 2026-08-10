@@ -89,17 +89,32 @@ class PlatformInsightTest extends TestCase
         $this->assertNull(ActivityLog::latest('id')->first()->impersonator_id);
     }
 
-    /** والعلامة تصل إلى شاشة السجلّ عند التاجر — لوحته وحقّه أن يعرف */
-    public function test_the_marker_reaches_the_merchants_activity_screen(): void
+    /**
+     * وفعلُ الدعم لا يظهر في شاشة التاجر — بطلب المالك.
+     *
+     * الشاشة صارت للموظفين وحدهم: صاحب النشاط لا يقرأ فيها أفعاله ولا أفعال
+     * المنصة، بل ما جرى على الصندوق والمخزون في غيابه. والأثر لا يُمحى، بل
+     * يبقى حيث يُحتجّ به — سجلّ المنصة، والعلامة عليه.
+     */
+    public function test_a_support_action_stays_out_of_the_merchants_screen(): void
     {
         $this->actingAs($this->super)->post(route('super-admin.businesses.impersonate', $this->biz->id));
         Activity::log('updated', 'عدّل سعر منتج');
 
         $this->actingAs($this->owner)->get(route('admin.activity.index'))
-            ->assertInertia(fn ($page) => $page->where(
-                'logs.0.via',
-                'مدير المنصة',
-            ));
+            ->assertInertia(fn ($page) => $page->has('logs', 0));
+    }
+
+    /** والقيد نفسه محفوظٌ باسم من فعله، يقرؤه سجلّ المنصة */
+    public function test_but_the_platform_log_keeps_it_with_the_support_name(): void
+    {
+        $this->actingAs($this->super)->post(route('super-admin.businesses.impersonate', $this->biz->id));
+        Activity::log('updated', 'عدّل سعر منتج');
+
+        $this->assertSame('مدير المنصة', ActivityLog::latest('id')->first()->impersonator_name);
+
+        $this->actingAs($this->super)->get(route('super-admin.activity.index'))
+            ->assertInertia(fn ($page) => $page->where('logs.0.via', 'مدير المنصة'));
     }
 
     /* ------------------ ١·ب بطاقة «أحدث الأنشطة» ------------------ */
@@ -145,12 +160,13 @@ class PlatformInsightTest extends TestCase
     }
 
     /**
-     * ويبقى ما فعله الدعم داخل حساب المالك ظاهرًا.
+     * وفعلُ الدعم لا يظهر في بطاقة اللوحة — بطلب المالك.
      *
-     * يُقيَّد باسم المالك، فإخفاء أفعاله كان سيُخفيه معها — ويجري في متجره ما
-     * لا يراه.
+     * والبطاقة تتبع صفحة «سجل النشاط» في الحكم نفسه: لو أظهرت سطرًا لا يجده
+     * التاجر في السجلّ لصار كلٌّ منهما يكذّب الآخر. والقيد محفوظ في سجلّ
+     * المنصة باسم من فعله — انظر test_but_the_platform_log_keeps_it.
      */
-    public function test_support_actions_stay_visible_to_the_owner(): void
+    public function test_support_actions_stay_out_of_the_owners_card(): void
     {
         $this->actingAs($this->super)->post(route('super-admin.businesses.impersonate', $this->biz->id));
         Activity::log('deleted', 'حذف فاتورة');
@@ -158,8 +174,8 @@ class PlatformInsightTest extends TestCase
         $this->actingAs($this->owner);
         $texts = collect(Demo::activities())->pluck('text')->implode(' ');
 
-        $this->assertStringContainsString('حذف فاتورة', $texts);
-        $this->assertStringContainsString('عبر الدعم', $texts);
+        $this->assertStringNotContainsString('حذف فاتورة', $texts);
+        $this->assertSame('حذف فاتورة', ActivityLog::latest('id')->first()->description);
     }
 
     /**

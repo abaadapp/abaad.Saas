@@ -55,6 +55,8 @@ export interface SharedProps {
     auth: {
         user: User;
         abilities: string[];
+        /** إلى أين يدخل اللوحة — أوّل قسمٍ يملكه، أو null فلا يُعرض الزرّ */
+        panelUrl?: string | null;
         /** هل يدخل هذا المستخدم لوحة النشاط؟ الكاشير لا يدخلها */
         entersPanel: boolean;
         /** جلسة انتحالٍ من لوحة المنصة — تُعلَن في كل صفحة */

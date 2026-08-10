@@ -79,6 +79,35 @@ class Permissions
             ->isNotEmpty();
     }
 
+    /**
+     * أوّل صفحةٍ في اللوحة يفتحها هذا المستخدم فعلًا — أو null.
+     *
+     * `entersPanel` تجيب «هل يدخل؟» ولا تقول «إلى أين». وزرّ «لوحة النشاط»
+     * في نقطة البيع كان يعتمد عليها ثم يقود إلى `admin.dashboard` دائمًا،
+     * فموظّفٌ مُنح المخزون وحده يرى الزرّ — لأنه يدخل اللوحة — ويصطدم بـ403
+     * على قسمٍ لم يُمنحه. بابٌ يُعرض ولا يُفتح، وهو أسوأ من بابٍ لا يُعرض:
+     * الموظّف يظنّ العطب في النظام ويعيد المحاولة، والتاجر يظنّ أن صلاحياته
+     * لم تُحفظ.
+     *
+     * فيُسأل عن الوجهة لا عن الإذن، ومن لا وجهة له لا يرى الزرّ.
+     */
+    public static function panelEntry(?User $user): ?string
+    {
+        if ($user === null || ! self::entersPanel($user)) {
+            return null;
+        }
+
+        if ($user->isSuperAdmin()) {
+            return route('super-admin.dashboard');
+        }
+
+        $section = collect(self::SECTIONS)
+            ->reject(fn ($s) => in_array($s, self::OUTSIDE_PANEL, true))
+            ->first(fn ($s) => $user->allows($s));
+
+        return $section ? route(self::ROUTES[$section]) : null;
+    }
+
     /** القسم → مساره. مصدرٌ واحد يقرؤه التوجيه بعد الدخول وروابط التنبيهات */
     public const ROUTES = [
         'dashboard' => 'admin.dashboard', 'customers' => 'admin.customers.index',

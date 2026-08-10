@@ -121,12 +121,15 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                     )}
 
                     {/*
-                     * العودة إلى لوحة النشاط. تظهر لمن يدخلها فعلًا — الإشارة
-                     * من الخادم لا من الدور، فلا يرى الكاشير زرًّا يقوده إلى 403.
+                     * العودة إلى لوحة النشاط — إلى أوّل قسمٍ يملكه هذا الموظّف
+                     * لا إلى لوحة التحكم دائمًا. كان الزرّ يظهر لمن يدخل اللوحة
+                     * ثم يقوده إلى `dashboard`، فمن مُنح المخزون وحده يصطدم
+                     * بـ403 على قسمٍ لم يُمنحه. والوجهة تأتي من الخادم، ومن لا
+                     * وجهة له لا يرى الزرّ.
                      */}
-                    {auth?.entersPanel && (
+                    {auth?.panelUrl && (
                         <Button variant="ghost" size="sm" className="gap-1.5" asChild>
-                            <Link href={route('admin.dashboard')}>
+                            <Link href={auth.panelUrl}>
                                 <LayoutDashboard className="size-4" />
                                 <span className="hidden sm:inline">{t('لوحة النشاط')}</span>
                             </Link>

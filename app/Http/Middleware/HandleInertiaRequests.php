@@ -41,6 +41,8 @@ class HandleInertiaRequests extends Middleware
                 // هل يدخل هذا المستخدم لوحة النشاط؟ من نفس مصدر حارس المسار،
                 // فلا يظهر في نقطة البيع زرُّ عودةٍ يقود إلى 403
                 'entersPanel' => Permissions::entersPanel($user),
+                // وإلى أين يدخل: الوجهة لا الإذن وحده — انظر Permissions::panelEntry
+                'panelUrl' => Permissions::panelEntry($user),
                 /*
                  * هل هذه جلسة انتحالٍ من لوحة المنصة؟
                  *

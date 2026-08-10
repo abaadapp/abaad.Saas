@@ -11,11 +11,15 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
- * زرّ «الموقع الإلكتروني» في اللوحة الرئيسية.
+ * زرّ «الموقع الإلكتروني».
  *
- * الزر كان موجودًا في النسخة القديمة بلا وجهة فحُذف. عاد الآن بوجهة من
- * إعدادات النشاط — وهذا يعني أن قيمة يكتبها التاجر تصبح رابطًا قابلًا
- * للنقر، فيلزم تطبيعها والتحقق منها لا عرضها كما وصلت.
+ * الزر كان موجودًا في النسخة القديمة بلا وجهة فحُذف. عاد بوجهة من إعدادات
+ * النشاط — وهذا يعني أن قيمة يكتبها التاجر تصبح رابطًا قابلًا للنقر، فيلزم
+ * تطبيعها والتحقق منها لا عرضها كما وصلت.
+ *
+ * وموضعه انتقل في 3.15 من اللوحة الرئيسية إلى الترويسة، فصار الرابط في
+ * السياق المشترك (context.website) لا في بيانات صفحةٍ واحدة — وهو ما تقرؤه
+ * هذه الاختبارات: الترويسة تُرسم على كل صفحة، والقيمة يجب أن تصلها هناك.
  */
 class DashboardWebsiteTest extends TestCase
 {
@@ -93,26 +97,38 @@ class DashboardWebsiteTest extends TestCase
         $this->assertNull(Demo::websiteUrl());
     }
 
-    public function test_the_dashboard_hands_the_link_to_the_button(): void
+    /** الرابط كما يصل الترويسة على صفحةٍ ما */
+    private function sharedWebsite(string $route = 'admin.dashboard'): ?string
+    {
+        return $this->actingAs($this->owner)
+            ->get(route($route))
+            ->assertOk()
+            ->viewData('page')['props']['context']['website'] ?? null;
+    }
+
+    public function test_the_shared_context_hands_the_link_to_the_button(): void
     {
         $this->setWebsite('abaad.om');
 
-        $props = $this->actingAs($this->owner)
-            ->get(route('admin.dashboard'))
-            ->assertOk()
-            ->viewData('page')['props'];
-
-        $this->assertSame('https://abaad.om', $props['website']);
+        $this->assertSame('https://abaad.om', $this->sharedWebsite());
     }
 
-    public function test_the_dashboard_says_null_so_the_button_points_at_settings(): void
+    public function test_it_reaches_the_header_on_every_page_not_the_dashboard_alone(): void
     {
-        $props = $this->actingAs($this->owner)
-            ->get(route('admin.dashboard'))
-            ->assertOk()
-            ->viewData('page')['props'];
+        /*
+         * الزرّ في الترويسة، والترويسة على كل صفحة. ولو بقي الرابط في بيانات
+         * اللوحة وحدها لظهر الزرّ فارغًا في كل ما سواها — وهو أسوأ من غيابه:
+         * زرٌّ يُرى ولا يفتح شيئًا.
+         */
+        $this->setWebsite('abaad.om');
 
-        $this->assertNull($props['website']);
+        $this->assertSame('https://abaad.om', $this->sharedWebsite('admin.products.index'));
+        $this->assertSame('https://abaad.om', $this->sharedWebsite('admin.settings.index'));
+    }
+
+    public function test_it_says_null_so_the_button_points_at_settings(): void
+    {
+        $this->assertNull($this->sharedWebsite());
     }
 
     public function test_a_broken_address_is_refused_at_save_time_not_discovered_as_a_dead_link(): void
@@ -139,10 +155,7 @@ class DashboardWebsiteTest extends TestCase
             'value' => 'abaad.om',
         ]);
 
-        $props = $this->actingAs($this->owner)
-            ->get(route('admin.dashboard'))->viewData('page')['props'];
-
-        $this->assertSame('https://abaad.om', $props['website']);
+        $this->assertSame('https://abaad.om', $this->sharedWebsite());
     }
 
     public function test_clearing_the_field_removes_the_button_again(): void
@@ -153,9 +166,6 @@ class DashboardWebsiteTest extends TestCase
             ->post(route('admin.settings.update'), ['website' => ''])
             ->assertSessionHasNoErrors();
 
-        $props = $this->actingAs($this->owner)
-            ->get(route('admin.dashboard'))->viewData('page')['props'];
-
-        $this->assertNull($props['website']);
+        $this->assertNull($this->sharedWebsite());
     }
 }

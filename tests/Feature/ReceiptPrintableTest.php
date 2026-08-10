@@ -44,6 +44,37 @@ class ReceiptPrintableTest extends TestCase
         $this->assertSame('شكرًا لك', ReceiptTemplate::printable('شكرًا 🌹 لك'));
     }
 
+    public function test_a_handle_keeps_its_at_sign_where_it_belongs(): void
+    {
+        /*
+         * سطرٌ عربيّ فيه «@abaad» كان يُطبع «abaad@»: الرمز محايد الاتجاه
+         * فيتبع السطر لا الكلمة. ولا يلاحظه التاجر لأنه يعرف ما كتب ويقرؤه
+         * صحيحًا في رأسه — من يقرؤه غلطًا هو الزبون.
+         */
+        $html = ReceiptTemplate::printableHtml('تابعنا @abaad');
+
+        $this->assertStringContainsString('<span dir="ltr">abaad</span>', $html);
+        $this->assertStringContainsString('تابعنا @', $html);
+    }
+
+    public function test_it_escapes_what_the_merchant_typed(): void
+    {
+        // التذييل نصّ التاجر ويُطبع بلا هروب (‎{!! !!}‎)، فالهروب مسؤولية هذه الدالة
+        $html = ReceiptTemplate::printableHtml('<script>alert(1)</script>');
+
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertStringContainsString('&lt;', $html);
+    }
+
+    public function test_escaping_does_not_leak_amp_into_the_paper(): void
+    {
+        // «&» تصير «&amp;» عند الهروب، وفيها حروفٌ لاتينية كان التعبير يلتقطها
+        $html = ReceiptTemplate::printableHtml('ورود & هدايا');
+
+        $this->assertStringNotContainsString('amp;</span>', $html);
+        $this->assertStringContainsString('&amp;', $html);
+    }
+
     public function test_arabic_diacritics_and_tatweel_survive(): void
     {
         // علاماتٌ في نطاقاتٍ قريبة من المحذوف — الحدّ يجب أن يقف دونها

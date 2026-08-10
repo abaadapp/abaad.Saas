@@ -18,7 +18,16 @@ class PdfController extends Controller
 
         $tpl = \App\Support\ReceiptTemplate::forBusiness($bid);
 
-        $html = view('pdf.receipt', [
+        /*
+         * A4 ورقةٌ أخرى لا شريطٌ مُمدَّد.
+         *
+         * كانت تُرسم بقالب الإيصال نفسه، فتخرج بمحتوًى منكمشٍ في أعلى الصفحة
+         * وثلثيها بياض — وهي الورقة التي تُرسَل إلى شركةٍ تطلب فاتورة ضريبية.
+         * والقالب واحدٌ يحكم الاثنين، فلا تفترق ورقتان لطلبٍ واحد.
+         */
+        $onA4 = ($tpl['paper'] ?? '80mm') === 'A4';
+
+        $html = view($onA4 ? 'pdf.invoice' : 'pdf.receipt', [
             'order' => $order,
             'qr' => \App\Support\EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
             'tpl' => $tpl,
@@ -41,7 +50,7 @@ class PdfController extends Controller
          *
          * وA4 لا تُمسّ: من اختارها اختار فاتورةً كاملة لا شريطًا.
          */
-        if (($tpl['paper'] ?? '80mm') !== 'A4'
+        if (! $onA4
             && ($width = \App\Support\PosTerminal::current()
                 ?->peripherals()->where('active', true)
                 ->where('type', \App\Models\PosPeripheral::PRINTER)
@@ -50,10 +59,14 @@ class PdfController extends Controller
             $format = [(int) $width, 200];
         }
 
+        // هوامش الورقة لا هوامش الشريط: ٤mm على A4 تجعل النصّ يلامس الحافة
+        $margin = $onA4 ? 14 : 4;
+
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
             'format' => $format,
-            'margin_left' => 4, 'margin_right' => 4, 'margin_top' => 6, 'margin_bottom' => 6,
+            'margin_left' => $margin, 'margin_right' => $margin,
+            'margin_top' => $onA4 ? 14 : 6, 'margin_bottom' => $onA4 ? 14 : 6,
             'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
         ]);
         $mpdf->WriteHTML($html);

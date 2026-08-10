@@ -123,7 +123,7 @@
 {{-- التذييل نصّ التاجر: أسطره تُحترم كما كتبها، ويُنقّى ممّا لا يطبعه الخطّ --}}
 <div class="center muted">
     @foreach (preg_split('/\r\n|\r|\n/', $line('tpl_footer', __('شكرًا لزيارتكم') . "\n" . __('نتشرف بخدمتكم دائمًا'))) as $l)
-        @php($clean = \App\Support\ReceiptTemplate::printable($l))
-        @if ($clean !== ''){{ $clean }}@if (! $loop->last)<br>@endif @endif
+        @php($clean = \App\Support\ReceiptTemplate::printableHtml($l))
+        @if ($clean !== ''){!! $clean !!}@if (! $loop->last)<br>@endif @endif
     @endforeach
 </div>

@@ -75,7 +75,9 @@ export default function ForgotPassword() {
                             </div>
                         )}
 
-                        <form onSubmit={submit} className="mt-5 space-y-4">
+                        {/* «اذهب» على مفتاح الآيباد تُرسل هنا: حقلان وزرٌّ واحد،
+                            ومنعُ الإرسال إزعاجٌ لا حماية — انظر lib/enter-key */}
+                        <form onSubmit={submit} data-enter-submits className="mt-5 space-y-4">
                             <Field label="البريد الإلكتروني" required htmlFor="email">
                                 <span className="relative block" dir="ltr">
                                     <Mail className="pointer-events-none absolute start-3 top-3 size-4 text-[#9ca3af]" />

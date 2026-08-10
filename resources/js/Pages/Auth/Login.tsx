@@ -176,7 +176,9 @@ export default function Login() {
                         </div>
                     )}
 
-                    <form onSubmit={submit} className="mt-5 space-y-4">
+                    {/* «اذهب» على مفتاح الآيباد تُرسل هنا: حقلان وزرٌّ واحد،
+                        ومنعُ الإرسال إزعاجٌ لا حماية — انظر lib/enter-key */}
+                    <form onSubmit={submit} data-enter-submits className="mt-5 space-y-4">
                         <Field label="البريد الإلكتروني" required htmlFor="email">
                             {/*
                              * الغلاف بالاتجاه نفسه لا الصفحة: البريد قيمة لاتينية دائمًا،

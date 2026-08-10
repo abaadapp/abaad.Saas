@@ -3,6 +3,7 @@ import '../css/app.css';
 import { createInertiaApp, router } from '@inertiajs/react';
 import { createRoot } from 'react-dom/client';
 import type { ComponentType } from 'react';
+import { enterEndsTypingOnTouch } from '@/lib/enter-key';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Abad POS';
 
@@ -46,6 +47,8 @@ createInertiaApp({
     setup({ el, App, props }) {
         if (el) {
             syncDirection(props.initialPage.props as Record<string, unknown>);
+            // مرّةً واحدة على المستند — يبقى عبر تنقّلات Inertia كلّها
+            enterEndsTypingOnTouch();
             // وكل تنقّل أو تبديل لغة بعدها
             router.on('success', (event) => {
                 syncDirection(event.detail.page.props as Record<string, unknown>);

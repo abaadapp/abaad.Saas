@@ -40,7 +40,7 @@ class EmployeeEditTest extends TestCase
         ]);
     }
 
-    private function employee(?string $pin = '1234'): User
+    private function employee(?string $pin = '4739'): User
     {
         return User::create([
             'business_id' => $this->business->id,
@@ -64,7 +64,7 @@ class EmployeeEditTest extends TestCase
 
     public function test_the_edit_page_never_sends_the_pin_hash_to_the_browser(): void
     {
-        $employee = $this->employee('1234');
+        $employee = $this->employee('4739');
 
         $props = $this->actingAs($this->owner)
             ->get(route('admin.employees.edit', $employee->id))
@@ -78,7 +78,7 @@ class EmployeeEditTest extends TestCase
 
     public function test_an_employee_with_a_pin_can_be_saved_without_retyping_it(): void
     {
-        $employee = $this->employee('1234');
+        $employee = $this->employee('4739');
         $before = $employee->pin;
 
         $this->actingAs($this->owner)
@@ -93,18 +93,18 @@ class EmployeeEditTest extends TestCase
 
     public function test_a_new_pin_replaces_the_old_one(): void
     {
-        $employee = $this->employee('1234');
+        $employee = $this->employee('4739');
 
         $this->actingAs($this->owner)
-            ->put(route('admin.employees.update', $employee->id), $this->payload(['pin' => '5678']))
+            ->put(route('admin.employees.update', $employee->id), $this->payload(['pin' => '6284']))
             ->assertSessionHasNoErrors();
 
-        $this->assertTrue(Hash::check('5678', $employee->refresh()->pin));
+        $this->assertTrue(Hash::check('6284', $employee->refresh()->pin));
     }
 
     public function test_a_pin_that_is_not_four_digits_is_refused(): void
     {
-        $employee = $this->employee('1234');
+        $employee = $this->employee('4739');
 
         $this->actingAs($this->owner)
             ->put(route('admin.employees.update', $employee->id), $this->payload(['pin' => '99']))

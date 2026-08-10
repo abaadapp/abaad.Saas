@@ -43,7 +43,7 @@ class EmployeeController extends Controller
              * بلا بريدٍ لا بدّ من رمز: حسابٌ بلا واحدٍ منهما لا سبيل إليه.
              * يُحفظ بنجاح ثمّ يقف صاحبه أمام شاشة الدخول ولا يجد بابًا.
              */
-            'pin' => ['required_without:email', 'nullable', 'digits:4'],
+            'pin' => ['required_without:email', 'nullable', 'digits:4', new \App\Rules\StrongPin],
             /*
              * الصلاحيات إلزامية: قسمٌ واحد على الأقل. موظفٌ بلا صلاحية حسابٌ
              * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
@@ -195,7 +195,7 @@ class EmployeeController extends Controller
              */
             'branches' => ['nullable', 'array'],
             'branches.*' => ['integer'],
-            'pin' => ['nullable', 'digits:4'],
+            'pin' => ['nullable', 'digits:4', new \App\Rules\StrongPin],
             // كان النموذج يعرض حقل كلمة مرور والتحقق لا يقبله: كل محاولة
             // تغيير كانت تُبتلع بصمت ويظنّ المدير أنه غيّرها.
             'password' => ['nullable', 'string', 'min:4'],

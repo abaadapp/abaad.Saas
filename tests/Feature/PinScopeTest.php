@@ -68,8 +68,8 @@ class PinScopeTest extends TestCase
 
     public function test_two_businesses_may_use_the_same_pin(): void
     {
-        $this->addCashier($this->ownerA, 'ca@abaad.om', '1234')->assertSessionHasNoErrors();
-        $this->addCashier($this->ownerB, 'cb@abaad.om', '1234')->assertSessionHasNoErrors();
+        $this->addCashier($this->ownerA, 'ca@abaad.om', '4739')->assertSessionHasNoErrors();
+        $this->addCashier($this->ownerB, 'cb@abaad.om', '4739')->assertSessionHasNoErrors();
 
         $this->assertSame(2, User::where('email', 'like', 'c%@abaad.om')->count());
     }
@@ -77,9 +77,9 @@ class PinScopeTest extends TestCase
     /** ولا يتكرّر داخل المتجر الواحد: الرمز لا يعود يعرّف أحدًا */
     public function test_the_same_pin_is_still_refused_inside_one_business(): void
     {
-        $this->addCashier($this->ownerA, 'ca@abaad.om', '1234');
+        $this->addCashier($this->ownerA, 'ca@abaad.om', '4739');
 
-        $this->addCashier($this->ownerA, 'ca2@abaad.om', '1234')
+        $this->addCashier($this->ownerA, 'ca2@abaad.om', '4739')
             ->assertSessionHasErrors('pin');
     }
 
@@ -100,12 +100,12 @@ class PinScopeTest extends TestCase
      */
     public function test_a_neighbours_pin_does_not_open_this_device(): void
     {
-        $this->addCashier($this->ownerA, 'ca@abaad.om', '1111');
-        $this->addCashier($this->ownerB, 'cb@abaad.om', '2222');
+        $this->addCashier($this->ownerA, 'ca@abaad.om', '7361');
+        $this->addCashier($this->ownerB, 'cb@abaad.om', '9184');
         $this->post(route('logout'));
 
         $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id)
-            ->post(route('pin.attempt'), ['pin' => '2222'])
+            ->post(route('pin.attempt'), ['pin' => '9184'])
             ->assertSessionHasErrors('pin');
 
         $this->assertGuest();
@@ -114,11 +114,11 @@ class PinScopeTest extends TestCase
     /** ورمز متجرها يفتحه */
     public function test_its_own_pin_opens_it(): void
     {
-        $this->addCashier($this->ownerA, 'ca@abaad.om', '1111');
+        $this->addCashier($this->ownerA, 'ca@abaad.om', '7361');
         $this->post(route('logout'));
 
         $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id)
-            ->post(route('pin.attempt'), ['pin' => '1111'])
+            ->post(route('pin.attempt'), ['pin' => '7361'])
             ->assertSessionHasNoErrors();
 
         $this->assertSame($this->a->id, auth()->user()->business_id);
@@ -131,28 +131,28 @@ class PinScopeTest extends TestCase
      */
     public function test_the_same_pin_opens_a_different_person_on_each_device(): void
     {
-        $this->addCashier($this->ownerA, 'ca@abaad.om', '1234');
-        $this->addCashier($this->ownerB, 'cb@abaad.om', '1234');
+        $this->addCashier($this->ownerA, 'ca@abaad.om', '4739');
+        $this->addCashier($this->ownerB, 'cb@abaad.om', '4739');
         $this->post(route('logout'));
 
         $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id)
-            ->post(route('pin.attempt'), ['pin' => '1234']);
+            ->post(route('pin.attempt'), ['pin' => '4739']);
         $this->assertSame('ca@abaad.om', auth()->user()->email);
 
         $this->post(route('logout'));
 
         $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->b->id)
-            ->post(route('pin.attempt'), ['pin' => '1234']);
+            ->post(route('pin.attempt'), ['pin' => '4739']);
         $this->assertSame('cb@abaad.om', auth()->user()->email);
     }
 
     /** وجهازٌ غير مربوط في منصةٍ بها متاجر لا يقبل رمزًا */
     public function test_an_unbound_device_refuses_the_pin(): void
     {
-        $this->addCashier($this->ownerA, 'ca@abaad.om', '1111');
+        $this->addCashier($this->ownerA, 'ca@abaad.om', '7361');
         $this->post(route('logout'));
 
-        $this->post(route('pin.attempt'), ['pin' => '1111'])
+        $this->post(route('pin.attempt'), ['pin' => '7361'])
             ->assertSessionHasErrors('pin');
 
         $this->assertGuest();
@@ -169,10 +169,10 @@ class PinScopeTest extends TestCase
         User::where('business_id', $this->b->id)->delete();
         $this->b->delete();
 
-        $this->addCashier($this->ownerA, 'ca@abaad.om', '1111');
+        $this->addCashier($this->ownerA, 'ca@abaad.om', '7361');
         $this->post(route('logout'));
 
-        $this->post(route('pin.attempt'), ['pin' => '1111'])->assertSessionHasNoErrors();
+        $this->post(route('pin.attempt'), ['pin' => '7361'])->assertSessionHasNoErrors();
 
         $this->assertAuthenticated();
     }
@@ -196,7 +196,7 @@ class PinScopeTest extends TestCase
     public function test_an_employee_may_have_no_email_at_all(): void
     {
         $this->actingAs($this->ownerA)->post(route('admin.employees.store'), [
-            'name' => 'كاشير بلا بريد', 'job_title' => 'كاشير', 'pin' => '5555',
+            'name' => 'كاشير بلا بريد', 'job_title' => 'كاشير', 'pin' => '5372',
         ])->assertRedirect();
 
         $emp = User::where('name', 'كاشير بلا بريد')->first();
@@ -208,11 +208,11 @@ class PinScopeTest extends TestCase
     public function test_two_businesses_may_both_add_emailless_staff(): void
     {
         $this->actingAs($this->ownerA)->post(route('admin.employees.store'), [
-            'name' => 'كاشير أ', 'job_title' => 'كاشير', 'pin' => '5555',
+            'name' => 'كاشير أ', 'job_title' => 'كاشير', 'pin' => '5372',
         ])->assertRedirect();
 
         $this->actingAs($this->ownerB)->post(route('admin.employees.store'), [
-            'name' => 'كاشير ب', 'job_title' => 'كاشير', 'pin' => '5555',
+            'name' => 'كاشير ب', 'job_title' => 'كاشير', 'pin' => '5372',
         ])->assertRedirect();
 
         $this->assertSame(2, User::whereNull('email')->count());
@@ -291,7 +291,7 @@ class PinScopeTest extends TestCase
      */
     public function test_repeated_failures_lock_out_for_the_hour(): void
     {
-        $this->addCashier($this->ownerA, 'ca@abaad.om', '1111');
+        $this->addCashier($this->ownerA, 'ca@abaad.om', '7361');
         $this->post(route('logout'));
 
         for ($i = 0; $i < 31; $i++) {
@@ -302,7 +302,7 @@ class PinScopeTest extends TestCase
 
         // الرمز الصحيح لا يُقبل بعد الحدّ الساعيّ
         $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->a->id)
-            ->post(route('pin.attempt'), ['pin' => '1111'])
+            ->post(route('pin.attempt'), ['pin' => '7361'])
             ->assertSessionHasErrors('pin');
 
         $this->assertGuest();

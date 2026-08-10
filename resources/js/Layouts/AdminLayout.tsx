@@ -67,11 +67,22 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
             <div className="lg:ms-64">
                 <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
+                {/*
+                 * سقف العرض هنا وحده، لا في كل صفحة.
+                 *
+                 * كانت الإعدادات وحدها تضع سقفًا لنفسها وبقيّة الصفحات تمتدّ
+                 * بلا حدّ، فيشعر المستخدم أن النظام ينكمش حين ينتقل إليها.
+                 * والسقف في الحاوية يجعل الصفحات كلّها بعرضٍ واحد بلا أن
+                 * تعرف أيّ صفحةٍ شيئًا عنه.
+                 *
+                 * و1600 لا أكبر: بعده يتباعد الشريط الجانبي عن المحتوى فتقطع
+                 * العينُ مسافةً في كل نظرة.
+                 */}
                 <motion.main
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                    className="p-4 lg:p-6"
+                    className="mx-auto w-full max-w-[1600px] p-4 lg:p-6"
                 >
                     <SubscriptionBanner />
                     {children}

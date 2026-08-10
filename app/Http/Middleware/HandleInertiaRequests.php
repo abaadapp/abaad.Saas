@@ -58,6 +58,9 @@ class HandleInertiaRequests extends Middleware
             // سياق المتجر: الفرع الحالي والعملة المعروضة ومنازل الكسر
             'context' => fn () => $user?->business_id ? [
                 'businessName' => Demo::businessName(),
+                // رابط موقع التاجر — يستعمله زرّ «الموقع الإلكتروني» في الهيدر،
+                // فصار مشتركًا لا خاصًّا باللوحة. null حين لم يُضبط بعد.
+                'website' => Demo::websiteUrl(),
                 'branchId' => Demo::currentBranchId(),
                 'branchName' => Demo::currentBranchName(),
                 'branches' => Demo::branches(),

@@ -1,7 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import {
-    ArrowLeft, ExternalLink, Globe, Store,
-} from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
@@ -66,12 +64,10 @@ interface DashboardProps {
     recentOrders: Order[];
     topProducts: Product[];
     topEmployees: Employee[];
-    /** رابط مُطبَّع من الخادم — null حين لم يضبطه التاجر بعد */
-    website: string | null;
 }
 
 export default function Dashboard() {
-    const { stats, statCatalog, salesSeries, paymentDistribution, recentOrders, topProducts, topEmployees, website, context } =
+    const { stats, statCatalog, salesSeries, paymentDistribution, recentOrders, topProducts, topEmployees, context } =
         usePage<PageProps<DashboardProps>>().props;
 
     const t = useTranslate();
@@ -81,42 +77,11 @@ export default function Dashboard() {
 
     return (
         <AdminLayout title="لوحة التحكم">
+            {/* زرّا «نقطة البيع» و«الموقع الإلكتروني» انتقلا إلى الهيدر ثابتين
+                على كل الصفحات، فرُفعا من ترويسة اللوحة كي لا يتكرّرا. */}
             <PageHeader
                 title="لوحة التحكم"
                 subtitle={t('نظرة عامة على أداء :name', { name: context?.businessName ?? t('متجرك') })}
-                actions={
-                    <>
-                        {/* الوجهة تأتي من إعداد «الموقع الإلكتروني». وحين لا
-                            يُضبط لا يبقى الزر واقفًا بلا وظيفة — يدلّ على
-                            الإعدادات ليُضاف، فلا يقرأه التاجر عطلًا. */}
-                        {website ? (
-                            <Button variant="outline" asChild>
-                                <a href={website} target="_blank" rel="noopener noreferrer">
-                                    <Globe />
-                                    {t('الموقع الإلكتروني')}
-                                    <ExternalLink className="size-3.5 text-[#9ca3af]" />
-                                </a>
-                            </Button>
-                        ) : (
-                            <Button variant="outline" asChild>
-                                <SmartLink
-                                    routeName={'admin.settings.index'}
-                                    href={route('admin.settings.index')}
-                                >
-                                    <Globe />
-                                    {t('أضف الموقع الإلكتروني')}
-                                </SmartLink>
-                            </Button>
-                        )}
-
-                        <Button asChild>
-                            <SmartLink routeName={'pos.index'} href={route('pos.index')}>
-                                <Store />
-                                {t('فتح نقطة البيع')}
-                            </SmartLink>
-                        </Button>
-                    </>
-                }
             />
 
             <StatGrid stats={liveStats} storageKey="admin" catalog={statCatalog} />

@@ -5,7 +5,9 @@ import {
     Building2,
     Check,
     ChevronDown,
+    Globe,
     Menu,
+    Store,
     X,
 } from 'lucide-react';
 import UnifiedSearch from '@/Components/UnifiedSearch';
@@ -179,6 +181,38 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                             ))}
                         </DropdownMenuContent>
                     </DropdownMenu>
+                )}
+
+                {/* نقطة البيع والموقع الإلكتروني — زرّان ثابتان في الهيدر
+                    (انتقلا من ترويسة اللوحة). يظهران للتاجر فقط: مدير المنصّة
+                    بلا business_id فلا context ولا مسار POS له. */}
+                {context && (
+                    <>
+                        <Button asChild variant="ghost" size="icon" title={t('نقطة البيع')}>
+                            <Link href={route('pos.index')}>
+                                <Store />
+                                <span className="sr-only">{t('نقطة البيع')}</span>
+                            </Link>
+                        </Button>
+
+                        {/* موقع التاجر إن ضُبط، وإلا فزرٌّ يدلّ على الإعدادات
+                            لإضافته — فلا يقف بلا وظيفة. */}
+                        {context.website ? (
+                            <Button asChild variant="ghost" size="icon" title={t('الموقع الإلكتروني')}>
+                                <a href={context.website} target="_blank" rel="noopener noreferrer">
+                                    <Globe />
+                                    <span className="sr-only">{t('الموقع الإلكتروني')}</span>
+                                </a>
+                            </Button>
+                        ) : (
+                            <Button asChild variant="ghost" size="icon" title={t('أضف الموقع الإلكتروني')}>
+                                <Link href={route('admin.settings.index')}>
+                                    <Globe />
+                                    <span className="sr-only">{t('أضف الموقع الإلكتروني')}</span>
+                                </Link>
+                            </Button>
+                        )}
+                    </>
                 )}
 
                 {/* الإشعارات */}

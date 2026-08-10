@@ -1,5 +1,11 @@
 @php
-    function bar($pct) { return max(1, min(100, (int) round($pct))); }
+    /*
+     * دالةٌ مجهولة لا معرّفة باسمٍ عام: `function bar()` في قالبٍ تُعرَّف على
+     * مستوى PHP كلّه، فرسمُ القالب مرّتين في عمليةٍ واحدة يُسقطها بـ«Cannot
+     * redeclare». ولا يظهر على php-fpm — كل طلبٍ عملية — ويظهر في عامل
+     * الطابور وفي أمرٍ يولّد تقريرين وفي مجموعة الاختبارات.
+     */
+    $bar = fn ($pct) => max(1, min(100, (int) round($pct)));
     $maxSales = max(1, max($salesSeries['data'] ?: [1]));
 @endphp
 <style>
@@ -53,7 +59,7 @@
         @php $val = $salesSeries['data'][$i] ?? 0; @endphp
         <tr>
             <td style="width:16%;">{{ __($label) }}</td>
-            <td style="width:60%;"><div class="barwrap"><div class="bar" style="width: {{ bar($val / $maxSales * 100) }}%;"></div></div></td>
+            <td style="width:60%;"><div class="barwrap"><div class="bar" style="width: {{ $bar($val / $maxSales * 100) }}%;"></div></div></td>
             <td style="width:24%; text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($val) }}</td>
         </tr>
     @endforeach
@@ -67,7 +73,7 @@
             <td>{{ __($p['name']) }}</td>
             <td>{{ $p['count'] }}</td>
             <td>{{ \App\Support\Demo::moneyBase($p['total']) }}</td>
-            <td><div class="barwrap"><div class="bar barsec" style="width: {{ bar($p['percent']) }}%;"></div></div>
+            <td><div class="barwrap"><div class="bar barsec" style="width: {{ $bar($p['percent']) }}%;"></div></div>
                 <span class="muted">{{ $p['percent'] }}%</span></td>
         </tr>
     @endforeach

@@ -1,5 +1,13 @@
 @php
-    function pbar($pct) { return max(1, min(100, (int) round($pct))); }
+    /*
+     * دالةٌ مجهولة لا معرّفة باسمٍ عام.
+     *
+     * `function pbar()` في قالبٍ تُعرَّف على مستوى PHP كلّه، فتُعرَّف مرّتين إن
+     * رُسم القالب مرّتين في العملية نفسها — «Cannot redeclare» تُسقط العملية
+     * لا الصفحة. ولا يقع على php-fpm لأن كل طلبٍ عملية، لكنه يقع في عاملٍ
+     * دائم للطابور، وفي أي أمرٍ يولّد تقريرين، وفي مجموعة الاختبارات.
+     */
+    $pbar = fn ($pct) => max(1, min(100, (int) round($pct)));
     $maxRev = max(1, max($revenueSeries['data'] ?: [1]));
     $maxGrow = max(1, max($growthSeries['data'] ?: [1]));
 @endphp
@@ -53,7 +61,7 @@
         @php $val = $revenueSeries['data'][$i] ?? 0; @endphp
         <tr>
             <td style="width:16%;">{{ __($label) }}</td>
-            <td style="width:60%;"><div class="barwrap"><div class="bar" style="width: {{ pbar($val / $maxRev * 100) }}%;"></div></div></td>
+            <td style="width:60%;"><div class="barwrap"><div class="bar" style="width: {{ $pbar($val / $maxRev * 100) }}%;"></div></div></td>
             <td style="width:24%; text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($val) }}</td>
         </tr>
     @endforeach
@@ -65,7 +73,7 @@
         @php $val = $growthSeries['data'][$i] ?? 0; @endphp
         <tr>
             <td style="width:16%;">{{ __($label) }}</td>
-            <td style="width:60%;"><div class="barwrap"><div class="bar barsec" style="width: {{ pbar($val / $maxGrow * 100) }}%;"></div></div></td>
+            <td style="width:60%;"><div class="barwrap"><div class="bar barsec" style="width: {{ $pbar($val / $maxGrow * 100) }}%;"></div></div></td>
             <td style="width:24%; text-align:left; font-weight:bold;">{{ __(':n شركة', ['n' => $val]) }}</td>
         </tr>
     @endforeach

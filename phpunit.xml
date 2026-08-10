@@ -18,6 +18,12 @@
         </include>
     </source>
     <php>
+        <!--
+            المجموعة تمرّ على أكثر من مئة صفحة في عمليةٍ واحدة، وفيها ما يبني
+            ملفّ xlsx في الذاكرة. و128M الافتراضية كانت تنفد عند اختبارٍ لا
+            علاقة له بالسبب، فيبدو العطب في غير موضعه.
+        -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

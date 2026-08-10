@@ -179,6 +179,88 @@ class PlatformEmailDomainTest extends TestCase
         $this->assertDatabaseHas('users', ['email' => 'newshop@gmail.com']);
     }
 
+    public function test_editing_a_user_changes_their_password_on_confirm(): void
+    {
+        /*
+         * لم يكن للكلمة حقلٌ في هذه الشاشة ولا سطرٌ في التحقّق: يفتح المشغّل
+         * «تعديل بيانات المستخدم» ليصلح حساب من فقد كلمته فلا يجد إلا الاسم
+         * والبريد والدور، ويحفظ فلا يتغيّر شيء — ولا مخرج إلا فتح القاعدة.
+         */
+        $business = Business::create(['name' => 'متجري', 'status' => 'نشط']);
+        $merchant = User::create([
+            'business_id' => $business->id,
+            'name' => 'تاجر',
+            'email' => 'shop@abaadapp.om',
+            'password' => bcrypt('old-password'),
+            'role' => 'admin',
+            'status' => 'نشط',
+        ]);
+
+        $this->actingAs($this->platform)
+            ->put(route('super-admin.users.update', $merchant->id), [
+                'name' => 'تاجر',
+                'email' => 'shop@abaadapp.om',
+                'role' => 'admin',
+                'password' => 'brand-new-pass',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $merchant->refresh();
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('brand-new-pass', $merchant->password));
+        $this->assertFalse(\Illuminate\Support\Facades\Hash::check('old-password', $merchant->password));
+    }
+
+    public function test_an_empty_password_field_leaves_the_password_alone(): void
+    {
+        // وإلا صار كل تعديلٍ لدورٍ أو هاتف يُخرج صاحب الحساب منه
+        $business = Business::create(['name' => 'متجري', 'status' => 'نشط']);
+        $merchant = User::create([
+            'business_id' => $business->id,
+            'name' => 'تاجر',
+            'email' => 'shop2@abaadapp.om',
+            'password' => bcrypt('keep-me'),
+            'role' => 'admin',
+            'status' => 'نشط',
+        ]);
+
+        $this->actingAs($this->platform)
+            ->put(route('super-admin.users.update', $merchant->id), [
+                'name' => 'اسم آخر',
+                'email' => 'shop2@abaadapp.om',
+                'role' => 'admin',
+                'password' => '',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $merchant->refresh();
+        $this->assertSame('اسم آخر', $merchant->name);
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('keep-me', $merchant->password));
+    }
+
+    public function test_a_short_password_is_refused_rather_than_silently_saved(): void
+    {
+        $business = Business::create(['name' => 'متجري', 'status' => 'نشط']);
+        $merchant = User::create([
+            'business_id' => $business->id,
+            'name' => 'تاجر',
+            'email' => 'shop3@abaadapp.om',
+            'password' => bcrypt('keep-me'),
+            'role' => 'admin',
+            'status' => 'نشط',
+        ]);
+
+        $this->actingAs($this->platform)
+            ->put(route('super-admin.users.update', $merchant->id), [
+                'name' => 'تاجر',
+                'email' => 'shop3@abaadapp.om',
+                'role' => 'admin',
+                'password' => '123',
+            ])
+            ->assertSessionHasErrors('password');
+
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('keep-me', $merchant->fresh()->password));
+    }
+
     public function test_the_rule_reads_the_address_not_a_substring_of_it(): void
     {
         // عنوانٌ يحمل النطاق في وسطه لا في آخره — ‏abaadapp.om.attacker.com

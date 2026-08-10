@@ -246,6 +246,7 @@ function EditUserDialog({
         email: user.email,
         phone: user.phone ?? '',
         role: user.role_key ?? '',
+        password: '',
     });
 
     const submit = (e: FormEvent) => {
@@ -292,6 +293,23 @@ function EditUserDialog({
                             options={roles}
                             placeholder="اختر الدور…"
                             required
+                        />
+                    </Field>
+
+                    {/* كلمة المرور: الفارغ يعني «لا تغيّرها». ولولا الحقل لما
+                        كان لمن فقد كلمته مخرجٌ من هذه الشاشة أصلًا. */}
+                    <Field
+                        label="كلمة مرور جديدة"
+                        hint="اتركها فارغة لإبقاء كلمته كما هي — ثمانية أحرف على الأقل"
+                        error={form.errors.password}
+                    >
+                        <Input
+                            type="text"
+                            dir="ltr"
+                            autoComplete="new-password"
+                            placeholder="••••••••"
+                            value={form.data.password}
+                            onChange={(e) => form.setData('password', e.target.value)}
                         />
                     </Field>
 

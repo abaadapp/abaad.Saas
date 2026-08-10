@@ -84,10 +84,29 @@ class UserController extends Controller
             ],
             'phone' => ['nullable', 'string', 'max:50'],
             'role' => ['required', 'string', 'max:50'],
+            /*
+             * كلمة المرور لم يكن لها حقلٌ هنا ولا سطرٌ في التحقّق.
+             *
+             * فيفتح المشغّل «تعديل بيانات المستخدم» ليصلح حساب من فقد كلمته،
+             * فلا يجد إلا الاسم والبريد والدور — ولا مخرج إلا فتح القاعدة.
+             * والفارغ يعني «لا تغيّرها»، وإلا صار كل تعديلٍ لدورٍ أو هاتفٍ
+             * يطالب بكلمةٍ جديدة فتُخترع واحدة ويخرج صاحبها من حسابه.
+             */
+            'password' => ['nullable', 'string', 'min:8'],
         ], [
             'email.unique' => __('هذا البريد مستعمل في حساب آخر — اختر غيره.'),
         ]);
+
+        $password = $data['password'] ?? null;
+        unset($data['password']);
+
         $user->update($data);
+
+        if (filled($password)) {
+            $user->password = $password; // cast hashed
+            $user->save();
+            \App\Support\Activity::log('updated', 'غيّر كلمة مرور المستخدم: ' . $user->name, ['subject_id' => $user->id]);
+        }
         \App\Support\Activity::log('updated', 'عدّل بيانات المستخدم: ' . $user->name, ['subject_id' => $user->id]);
 
         return back()->with('toast', ['msg' => __('تم تحديث بيانات المستخدم'), 'type' => 'success']);

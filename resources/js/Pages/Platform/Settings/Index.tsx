@@ -16,6 +16,7 @@ type Settings = Record<string, string>;
 
 const TABS = [
     { key: 'general', label: 'عامة' },
+    { key: 'language', label: 'اللغة' },
     { key: 'platform', label: 'بيانات المنصة' },
     { key: 'subscriptions', label: 'الاشتراكات' },
     { key: 'taxes', label: 'الضرائب' },
@@ -37,9 +38,10 @@ const NOTIFICATIONS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings } = usePage<PageProps<{ settings: Settings }>>().props;
+    const { settings, locale } = usePage<PageProps<{ settings: Settings }>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('general');
+    const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
 
     const get = (k: string) => settings[k] ?? '';
     const on = (k: string) => (settings[k] ?? '0') !== '0';
@@ -361,6 +363,71 @@ export default function PlatformSettings() {
                     </Card>
                 )}
             </form>
+
+            {/*
+                خارج النموذج عمدًا: لغة الواجهة تفضيلٌ شخصيّ لحساب مدير المنصة،
+                لا إعدادًا من إعدادات المنصة — ولها مسارها الذي يكتب في الحساب.
+                وتبويب «عامة» فيه «اللغة الافتراضية» وهي شيء آخر: لغة المنصة
+                لمن لم يختر بعد، لا لغة من يقرأ هذه الشاشة الآن.
+            */}
+            {tab === 'language' && (
+                <Card className="p-6">
+                    <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('لغة واجهتك')}</h3>
+                    <p className="mb-6 text-[13px] text-[#9ca3af]">
+                        {t('تخصّك وحدك ولا تغيّر لغة أحدٍ آخر ولا لغة المنصة الافتراضية.')}
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        {[
+                            { code: 'ar', label: 'العربية', hint: 'من اليمين إلى اليسار (RTL)' },
+                            { code: 'en', label: 'English', hint: 'من اليسار إلى اليمين (LTR)' },
+                        ].map((l) => (
+                            <label
+                                key={l.code}
+                                className={
+                                    'flex cursor-pointer items-center justify-between rounded-[12px] border px-4 py-3.5 transition ' +
+                                    (pickedLocale === l.code
+                                        ? 'border-[#111] bg-[#fafafa]'
+                                        : 'border-[var(--ui-border,#e8e8e8)] hover:bg-[#fafafa]')
+                                }
+                            >
+                                <span>
+                                    <span className="block text-sm font-medium text-[#111]">{l.label}</span>
+                                    <span className="block text-[12px] text-[#9ca3af]">{t(l.hint)}</span>
+                                </span>
+                                <input
+                                    type="radio"
+                                    name="ui-locale"
+                                    checked={pickedLocale === l.code}
+                                    onChange={() => setPickedLocale(l.code)}
+                                    className="size-5"
+                                />
+                            </label>
+                        ))}
+                    </div>
+
+                    <div className="mt-6 flex justify-end">
+                        <Button
+                            onClick={() =>
+                                /*
+                                 * اتجاه المستند (dir) يُحسم في قالب الجذر، فتحديث
+                                 * Inertia الجزئي يترك الصفحة بالاتجاه القديم —
+                                 * ولذلك إعادة تحميلٍ كاملة بعد الحفظ.
+                                 */
+                                router.post(
+                                    route('super-admin.language.update'),
+                                    { locale: pickedLocale },
+                                    { onSuccess: () => window.location.reload() },
+                                )
+                            }
+                            disabled={pickedLocale === (locale === 'en' ? 'en' : 'ar')}
+                        >
+                            <Save />
+                            {t('حفظ اللغة')}
+                        </Button>
+                    </div>
+                </Card>
+            )}
         </PlatformLayout>
     );
 }

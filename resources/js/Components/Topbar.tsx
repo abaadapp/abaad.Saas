@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, router, usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import {
     Bell,
     Building2,
@@ -27,11 +27,10 @@ import {
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { logout } from '@/lib/logout';
-import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
-    const { auth, context, notifications, locale, csrf } = usePage<PageProps>().props;
+    const { auth, context, notifications, csrf } = usePage<PageProps>().props;
 
     /**
      * تغذية الجرس الحيّة — بديل استطلاع admin.notifications.feed الذي كان في
@@ -100,24 +99,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
         void post('/admin/notifications/clear');
     };
 
-    /**
-     * تبديل اللغة. الخادم يحفظها في الجلسة وفي إعدادات النشاط ثم يعيد
-     * التوجيه، لكن اتجاه الصفحة (dir) يُحسم في قالب الجذر — فلا يكفي تحديث
-     * Inertia الجزئي، نحتاج إعادة تحميل كاملة ليُعاد بناء الصفحة بالاتجاه الصحيح.
-     */
     const isPlatform = auth?.user.role === 'super_admin';
-
-    const switchLocale = (next: 'ar' | 'en') => {
-        if (next === locale) return;
-
-        // لكل لوحة مسارها: مسار لوحة التاجر يحرسه middleware الأدوار،
-        // فمدير المنصة يُرفض عليه بـ403 ولا تتغيّر لغته.
-        router.post(
-            route(isPlatform ? 'super-admin.language.update' : 'admin.language.update'),
-            { locale: next },
-            { preserveScroll: true },
-        );
-    };
 
     /**
      * البحث الموحّد — لكل لوحة مسارها. مدير المنصة لا يملك business_id،
@@ -370,39 +352,9 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                             </div>
                         )}
 
-                        {/* اللغة — مبدّل مقسّم بأعلام */}
-                        <div className="flex items-center justify-between gap-2 px-1.5 py-1.5">
-                            <span className="text-[14px] font-medium text-[#111]">{t('اللغة')}</span>
-                            <div className="flex items-center rounded-full bg-[#f2f2f0] p-0.5">
-                                <button
-                                    type="button"
-                                    onClick={() => switchLocale('ar')}
-                                    className={cn(
-                                        'flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-colors',
-                                        locale === 'ar'
-                                            ? 'bg-[#111] text-white'
-                                            : 'text-[#6b7280] hover:text-[#111]',
-                                    )}
-                                >
-                                    <span>العربية</span>
-                                    <span className="text-[14px] leading-none">🇸🇦</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => switchLocale('en')}
-                                    className={cn(
-                                        'flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-colors',
-                                        locale === 'en'
-                                            ? 'bg-[#111] text-white'
-                                            : 'text-[#6b7280] hover:text-[#111]',
-                                    )}
-                                >
-                                    <span>English</span>
-                                    <span className="text-[14px] leading-none">🇬🇧</span>
-                                </button>
-                            </div>
-                        </div>
-
+                        {/* اللغة كانت هنا. موضعها الإعدادات: تبديلها يعيد تحميل
+                            الصفحة ويقلب اتجاه المستند كلّه، وهذا ليس ما يُتوقَّع
+                            من صفٍّ في قائمةٍ تُفتح بمرور الماوس. */}
                         <DropdownMenuSeparator />
 
                         {/* إدارة الحساب */}

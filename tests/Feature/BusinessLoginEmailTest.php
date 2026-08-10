@@ -101,6 +101,56 @@ class BusinessLoginEmailTest extends TestCase
         $this->assertFalse(\Illuminate\Support\Facades\Hash::check('secret-pass', $owner->password));
     }
 
+    public function test_saving_the_business_does_not_touch_the_login_account(): void
+    {
+        /*
+         * العطب الذي وقع فعلًا على الإنتاج.
+         *
+         * كان نموذج الشركة يحمل اسم الدخول كما كان لحظة فتح الصفحة ويرسله مع
+         * كل حفظ. فيبدّل المشغّل الاسم من بطاقة الحساب — ويقع التبديل — ثم
+         * يضغط «حفظ التعديلات» فيصعد الاسم القديم معه ويعيده. لا رسالة ولا
+         * فشل: تعديلٌ أُلغي بيد صاحبه، وسجلّ النشاط يقيّد الاثنين في الثانية
+         * نفسها.
+         *
+         * فصار ما لا يُعرض لا يُرسَل، وهذا الاختبار يحرس العقد من جهة الخادم:
+         * طلبُ تعديلِ شركةٍ بلا حقلَي الحساب لا يمسّ الحساب.
+         */
+        $this->actingAs($this->platform)
+            ->post(route('super-admin.businesses.account', $this->business->id), [
+                'login_username' => 'newname',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->platform)
+            ->put(route('super-admin.businesses.update', $this->business->id), [
+                'name' => 'متجري بعد التعديل',
+                'type' => 'عام',
+                'status' => 'نشط',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('متجري بعد التعديل', $this->business->fresh()->name);
+        $this->assertSame('newname@abaadapp.om', MerchantAccount::owner($this->business->fresh())->email);
+    }
+
+    public function test_saving_the_business_does_not_reset_the_password_either(): void
+    {
+        $this->actingAs($this->platform)
+            ->post(route('super-admin.businesses.account', $this->business->id), [
+                'login_password' => 'a-new-password',
+            ]);
+
+        $this->actingAs($this->platform)
+            ->put(route('super-admin.businesses.update', $this->business->id), [
+                'name' => 'متجري',
+                'type' => 'عام',
+                'status' => 'نشط',
+            ]);
+
+        $owner = MerchantAccount::owner($this->business->fresh());
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('a-new-password', $owner->password));
+    }
+
     public function test_search_finds_a_merchant_by_the_address_support_knows(): void
     {
         $this->actingAs($this->platform)

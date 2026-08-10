@@ -139,10 +139,30 @@ export default function BusinessForm({
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
-        if (method === 'put') {
-            // transform يُعيد void في هذا الإصدار، فيُستدعى قبل post لا مسلسلًا معه
-            form.transform((data) => ({ ...data, _method: 'put' }));
-        }
+
+        /*
+         * ما لا يُعرض لا يُرسَل.
+         *
+         * حقلا الحساب يبقيان في بيانات النموذج حتى حين لا تُعرض بطاقتهما —
+         * ويحملان الاسم كما كان لحظة فتح الصفحة. فيبدّل المشغّل اسم الدخول من
+         * البطاقة (ويقع التبديل)، ثم يضغط «حفظ التعديلات» فيصعد الاسم القديم
+         * معه ويعيده. لا شيء يفشل ولا رسالة تظهر: تعديلٌ وقع ثم أُلغي بيد
+         * صاحبه، وسجلّ النشاط يقيّد الاثنين في الثانية نفسها.
+         *
+         * والحذف لا الإفراغ: قيمةٌ فارغة تعني «لا تغيّره» عند الخادم أصلًا،
+         * لكنّ الحذف يقول المقصود بلا اعتمادٍ على تفسير الطرف الآخر.
+         */
+        form.transform((data) => {
+            const out: Record<string, unknown> = { ...data };
+            if (method === 'put') out._method = 'put';
+            if (!needsAccount) {
+                delete out.login_username;
+                delete out.login_password;
+            }
+
+            return out;
+        });
+
         form.post(action, { forceFormData: true });
     };
 

@@ -260,7 +260,7 @@ export default function SettingsIndex() {
         /* قوالب الطباعة — الافتراضات هي شكل الإيصال قبل وجود هذا القسم
            حرفيًّا: تاجرٌ لم يفتحه قطّ يطبع اليوم ما كان يطبعه أمس. */
         tpl_header: get('tpl_header'),
-        tpl_footer: get('tpl_footer', 'شكرًا لزيارتكم 🌹\nنتشرف بخدمتكم دائمًا'),
+        tpl_footer: get('tpl_footer', 'شكرًا لزيارتكم\nنتشرف بخدمتكم دائمًا'),
         tpl_font: get('tpl_font', 'عادي'),
         tpl_show_logo: on('tpl_show_logo', '0'),
         tpl_show_branch: on('tpl_show_branch'),

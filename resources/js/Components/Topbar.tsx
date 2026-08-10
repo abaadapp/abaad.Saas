@@ -134,7 +134,15 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
     }, []);
 
     return (
-        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-[var(--ui-border,#e8e8e8)] bg-white/80 px-4 backdrop-blur-md lg:px-6">
+        /*
+         * الترويسة مثبّتة تحت شريط الانتحال إن وُجد (--chrome-top، وإلا صفر).
+         *
+         * وbg-white/95 أساسًا و80 عند دعم backdrop-filter: الشفافية بلا ضبابٍ
+         * تجعل نصّ الصفحة يظهر خلف الترويسة عند التمرير — وهو ما يحدث حين
+         * يتعذّر التمويه. وtransform-gpu يرفعها إلى طبقةٍ مستقلة فلا تتأخّر
+         * عن الصفحة أثناء التمرير باللمس على الآيباد.
+         */
+        <header className="sticky top-[var(--chrome-top,0px)] z-30 flex h-16 shrink-0 transform-gpu items-center gap-3 border-b border-[var(--ui-border,#e8e8e8)] bg-white/95 px-4 backdrop-blur-md supports-[backdrop-filter]:bg-white/80 lg:px-6">
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick}>
                 <Menu />
                 <span className="sr-only">{t('القائمة')}</span>

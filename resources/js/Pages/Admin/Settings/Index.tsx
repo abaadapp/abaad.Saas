@@ -803,7 +803,9 @@ export default function SettingsIndex() {
 
                                     {/* معاينة حيّة — محرّر قالبٍ بلا معاينة تخمين،
                                         ولا يُكتشف خطؤه إلا على ورقٍ أمام الزبون */}
-                                    <div className="lg:sticky lg:top-4 lg:self-start">
+                                    {/* تحت الترويسة المثبّتة لا خلفها: top-4 كانت
+                                        تُوقف المعاينة عند 16px فتغطّيها الترويسة */}
+                                    <div className="lg:sticky lg:top-[calc(var(--chrome-top,0px)+5rem)] lg:self-start">
                                         <p className="mb-2 text-[12px] text-[#9ca3af]">{t('معاينة')}</p>
                                         <div
                                             dir="rtl"

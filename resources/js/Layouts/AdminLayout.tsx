@@ -51,7 +51,9 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
     }, [flash?.toast, t]);
 
     return (
-        <div className="admin-ui min-h-screen">
+        /* dvh لا vh — انظر التعليق في PosLayout: على الآيباد يقيس vh شاشةً
+           بشريط سفاري مطويًّا، فيتغيّر الارتفاع عند أوّل تمرير */
+        <div className="admin-ui min-h-dvh">
             <Head title={title} />
 
             <ImpersonationBar />

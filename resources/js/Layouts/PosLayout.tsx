@@ -73,12 +73,25 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
     };
 
     return (
-        <div className={cn('pos-scope flex flex-col', fill ? 'h-screen overflow-hidden' : 'min-h-screen')}>
+        /*
+         * dvh لا vh: على الآيباد يقيس vh الشاشةَ بشريط سفاري مطويًّا، فتُبنى
+         * شاشةُ البيع أطولَ من المرئي وتُقصّ نهايتها — وفيها زرّ الدفع —
+         * و`overflow-hidden` يمنع الوصول إليها. ثم يتغيّر المقاس عند أوّل
+         * تمرير حين ينطوي الشريط، فتقفز الواجهة تحت الإصبع. وdvh يتبع
+         * المرئيَّ فعلًا فلا قصَّ ولا قفزة.
+         */
+        <div className={cn('pos-scope flex flex-col', fill ? 'h-dvh overflow-hidden' : 'min-h-dvh')}>
             <Head title={title} />
 
             <ImpersonationBar />
 
-            <header className="flex h-16 shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-4">
+            {/*
+             * الشريط مثبَّت: صفحات الطلبات والفواتير والعملاء تُمرَّر طويلًا،
+             * وكان يذهب مع التمرير فيبقى الكاشير بلا تنقّلٍ ولا مبدّل موظّف
+             * حتى يعود إلى الأعلى. وفي شاشة البيع (fill) لا تمريرَ أصلًا،
+             * فالتثبيت هناك بلا أثر.
+             */}
+            <header className="sticky top-[var(--chrome-top,0px)] z-30 flex h-16 shrink-0 transform-gpu items-center gap-3 border-b border-gray-100 bg-white px-4">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-[12px] bg-[#111] text-white">
                     <Store className="size-[18px]" />
                 </span>

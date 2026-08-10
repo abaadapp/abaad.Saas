@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { LogOut, ShieldAlert } from 'lucide-react';
 import { useTranslate } from '@/lib/i18n';
@@ -14,12 +15,41 @@ export default function ImpersonationBar() {
     const { auth } = usePage<PageProps>().props;
     const t = useTranslate();
 
+    /*
+     * الشريط يعلن ارتفاعه لمن تحته.
+     *
+     * هو مثبّتٌ في أعلى الصفحة، وترويسةُ اللوحة مثبّتةٌ في أعلى الصفحة كذلك،
+     * فكانا يقفان على النقطة نفسها ويغطّي الأحمرُ الترويسةَ عند أوّل تمرير:
+     * يفقد موظّف الدعم البحثَ والتنقّل ما دام داخلًا باسم تاجر. والارتفاع
+     * يُقاس ولا يُفترض لأن السطر ينكسر سطرين على الآيباد فيتضاعف.
+     */
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const el = ref.current;
+        const root = document.documentElement;
+        if (!el) {
+            root.style.removeProperty('--chrome-top');
+            return;
+        }
+        const sync = () => root.style.setProperty('--chrome-top', `${el.offsetHeight}px`);
+        sync();
+        const ro = new ResizeObserver(sync);
+        ro.observe(el);
+        return () => {
+            ro.disconnect();
+            root.style.removeProperty('--chrome-top');
+        };
+    }, [auth?.impersonating]);
+
     if (!auth?.impersonating) {
         return null;
     }
 
     return (
-        <div className="sticky top-0 z-50 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-[#b91c1c] px-4 py-2 text-[13px] font-medium text-white">
+        <div
+            ref={ref}
+            className="sticky top-0 z-50 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-[#b91c1c] px-4 py-2 text-[13px] font-medium text-white"
+        >
             <ShieldAlert className="size-4 shrink-0" />
             <span>
                 {t('تدخل الآن باسم :name', { name: auth.user.name })} — {t('كل ما تفعله يُنسب إليه')}

@@ -56,13 +56,35 @@ class ProfileController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
+            /*
+             * الرسالة تُكتب هنا لا تُترك للافتراضية: المستخدم يرى «ما تغيّر
+             * شيء» حين يضع عنوانًا يملكه حسابٌ آخر، لأن النصّ الافتراضي لا
+             * يقول أين ذهب العنوان ولا ماذا يفعل.
+             */
+            'email' => [
+                'required',
+                'email',
+                Rule::unique('users', 'email')->ignore($user->id),
+                /*
+                 * النطاق يُفرض على العنوان الجديد وحده.
+                 *
+                 * لو فُرض على كل حفظ لصار مدير المنصة القائم — وبريده خارج
+                 * النطاق — عاجزًا عن تعديل اسمه أو صورته أو كلمة مروره: يضغط
+                 * «حفظ» فيُرفض بسبب حقلٍ لم يلمسه. القاعدة تمنع الانتقال إلى
+                 * الخارج، لا تعاقب من كان هناك قبلها.
+                 */
+                Rule::when(
+                    $user->isSuperAdmin() && $request->input('email') !== $user->email,
+                    [new \App\Rules\PlatformEmailDomain],
+                ),
+            ],
             'phone' => ['nullable', 'string', 'max:50'],
             'avatar' => ['nullable', 'image', 'max:2048'],
             'current_password' => ['nullable', 'required_with:password', 'current_password'],
             'password' => ['nullable', 'confirmed', 'min:6'],
         ], [
             'current_password.current_password' => __('كلمة المرور الحالية غير صحيحة.'),
+            'email.unique' => __('هذا البريد مستعمل في حساب آخر — اختر غيره.'),
         ]);
 
         $user->name = $data['name'];

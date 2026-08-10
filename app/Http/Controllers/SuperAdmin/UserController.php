@@ -5,7 +5,9 @@ namespace App\Http\Controllers\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\Demo;
+use App\Rules\PlatformEmailDomain;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -40,11 +42,19 @@ class UserController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'unique:users,email'],
+            'email' => [
+                'required',
+                'email',
+                'unique:users,email',
+                // النطاق يُفرض على مدراء المنصة وحدهم؛ التاجر يدخل ببريده هو
+                Rule::when($request->input('role') === 'super_admin', [new PlatformEmailDomain]),
+            ],
             'phone' => ['nullable', 'string', 'max:50'],
             'role' => ['required', 'string', 'max:50'],
             'business_id' => ['nullable', 'integer', 'exists:businesses,id'],
             'password' => ['nullable', 'string', 'min:4'],
+        ], [
+            'email.unique' => __('هذا البريد مستعمل في حساب آخر — اختر غيره.'),
         ]);
         User::create([
             'name' => $data['name'],
@@ -66,9 +76,16 @@ class UserController extends Controller
         $user = User::findOrFail($id);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($user->id)],
+            'email' => [
+                'required',
+                'email',
+                Rule::unique('users', 'email')->ignore($user->id),
+                Rule::when($request->input('role') === 'super_admin', [new PlatformEmailDomain]),
+            ],
             'phone' => ['nullable', 'string', 'max:50'],
             'role' => ['required', 'string', 'max:50'],
+        ], [
+            'email.unique' => __('هذا البريد مستعمل في حساب آخر — اختر غيره.'),
         ]);
         $user->update($data);
         \App\Support\Activity::log('updated', 'عدّل بيانات المستخدم: ' . $user->name, ['subject_id' => $user->id]);

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Rules\PlatformEmailDomain;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
@@ -90,6 +91,22 @@ class Preflight extends Command
             'يوجد مدير منصة واحد على الأقل',
             User::where('role', 'super_admin')->exists(),
             'لا يمكن الدخول إلى لوحة المنصة — أنشئ حسابًا عبر البذرة أو tinker'
+        );
+
+        /*
+         * القاعدة تُفرض عند الكتابة لا عند الدخول، فحسابٌ أُنشئ قبلها يبقى
+         * عاملًا — ولو مُنع الدخول لأُغلقت اللوحة في وجه صاحبها لحظة النشر.
+         * فيُبلَّغ عنه هنا: يُرى ولا يُطرد.
+         */
+        $outside = User::where('role', 'super_admin')->pluck('email')
+            ->reject(fn ($e) => PlatformEmailDomain::matches($e));
+        $this->check(
+            'بريد مدراء المنصة على نطاق '.PlatformEmailDomain::DOMAIN,
+            $outside->isEmpty(),
+            'حسابات مدير منصة على بريد خارجي: '.$outside->implode('، ')
+                .' — مفتاح المنصّة كلّها معلَّقٌ على حسابٍ لا تملكه',
+            // تنبيه لا مانع: قرارٌ يخصّ المالك، ولا يُوقف نشرةً بسببه
+            warnOnly: true
         );
 
         $this->section('البيانات');

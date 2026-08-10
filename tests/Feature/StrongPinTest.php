@@ -90,14 +90,32 @@ class StrongPinTest extends TestCase
     {
         /*
          * رسالةٌ واحدة لكل الأسباب تترك المستخدم يجرّب 1111 بعد 1234 ثم 2222،
-         * فيقرأ الرفض عطبًا في الحقل لا حكمًا على اختياره.
+         * فيقرأ الرفض عطبًا في الحقل لا حكمًا على اختياره. فيُشترط أن تختلف
+         * الرسائل، لا أن تحمل كلمةً بعينها: النصّ يُترجم ويُعاد صوغه، والمعنى
+         * المقصود هو أن يعرف المستخدم أيّ ضعفٍ وقع فيه.
          */
-        $this->assertStringContainsString('شيوعًا', (string) StrongPin::weakness('1234'));
-        $this->assertStringContainsString('متتابعة', (string) StrongPin::weakness('2345'));
-        $this->assertStringContainsString('شيوعًا', (string) StrongPin::weakness('7777'));
-        $this->assertStringContainsString('متطابقان', (string) StrongPin::weakness('3838'));
-        $this->assertStringContainsString('ميلاد', (string) StrongPin::weakness('1990'));
+        $reasons = collect(['1234', '2345', '7777', '3838', '1990'])
+            ->map(fn (string $pin) => (string) StrongPin::weakness($pin));
+
+        $this->assertCount(5, $reasons->filter());
+        $this->assertSame(4, $reasons->unique()->count(), 'المتسلسل والمكرّر والسنة لكلٍّ رسالته');
         $this->assertNull(StrongPin::weakness('4739'));
+    }
+
+    public function test_the_reason_speaks_the_readers_language(): void
+    {
+        /*
+         * وهذا ما كشفه إكمال الترجمة: الاختبار السابق كان يمرّ لأن المفاتيح
+         * كانت غائبة عن en.json فيعود __() بالعربية أيًّا كانت اللغة. فلمّا
+         * تُرجمت سقط — أي أنه كان يقيس نقص الترجمة لا سلامة الرسالة.
+         *
+         * والموظّف الذي لا يقرأ العربية هو أوّل من يقف أمام هذا الرفض.
+         */
+        app()->setLocale('ar');
+        $this->assertStringContainsString('متتابعة', (string) StrongPin::weakness('2345'));
+
+        app()->setLocale('en');
+        $this->assertStringContainsString('Sequential', (string) StrongPin::weakness('2345'));
     }
 
     public function test_editing_an_employee_obeys_the_same_rule(): void

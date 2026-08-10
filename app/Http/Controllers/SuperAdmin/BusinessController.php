@@ -23,10 +23,31 @@ class BusinessController extends Controller
             'last_sale' => \App\Models\Order::selectRaw('MAX(ordered_at)')
                 ->whereColumn('orders.business_id', 'businesses.id')
                 ->where('is_held', false),
+
+            /*
+             * بريد الدخول لا بريد التواصل.
+             *
+             * كان العمود يعرض businesses.email — عنوانَ تواصلٍ يُكتب عند
+             * التسجيل ولا علاقة له بالدخول. فيبدّل المشغّل حساب الدخول من
+             * بطاقة الحساب، ثم يعود إلى الجدول فيرى العنوان القديم ويظنّ أن
+             * التعديل لم يقع. وهو العمود الذي يبحث فيه الدعم عن تاجرٍ يتّصل.
+             *
+             * وبفرعٍ استعلاميّ لا بعلاقة: صفٌّ واحد لكل شركة، ونفس شرط
+             * MerchantAccount::owner — أوّل حسابٍ بدور admin فيها.
+             */
+            'owner_email' => \App\Models\User::select('email')
+                ->whereColumn('users.business_id', 'businesses.id')
+                ->where('role', 'admin')
+                ->orderBy('id')
+                ->limit(1),
         ]);
 
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('owner_name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
+            // ويُبحث في بريد الدخول أيضًا: هو ما يعرفه الدعم عن التاجر
+            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")
+                ->orWhere('owner_name', 'like', "%{$s}%")
+                ->orWhere('email', 'like', "%{$s}%")
+                ->orWhereHas('users', fn ($u) => $u->where('role', 'admin')->where('email', 'like', "%{$s}%")));
         }
         if ($t = $request->query('type')) { $q->where('type', $t); }
         if ($p = $request->query('plan')) { $q->whereHas('plan', fn ($w) => $w->where('name', $p)); }
@@ -34,7 +55,8 @@ class BusinessController extends Controller
 
         $businesses = $q->orderByDesc('id')->paginate(10)->withQueryString()->through(fn ($b) => [
             'id' => $b->id, 'name' => $b->name, 'type' => $b->type, 'owner' => $b->owner_name,
-            'phone' => $b->phone, 'email' => $b->email, 'plan' => $b->plan?->name ?? '—',
+            'phone' => $b->phone, 'email' => $b->owner_email, 'contactEmail' => $b->email,
+            'plan' => $b->plan?->name ?? '—',
             'status' => $b->status, 'registered' => optional($b->starts_at)->format('Y-m-d') ?? '—',
             'branches' => $b->branches_count, 'city' => $b->city, 'country' => $b->country,
             // مسار مخزَّن أو رابط مطلق — المحوّل يميّز بينهما

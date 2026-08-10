@@ -18,7 +18,9 @@ interface BusinessRow {
     type: string;
     owner: string | null;
     phone: string | null;
+    /** بريد الدخول (حساب المالك) — لا بريد التواصل، وهو contactEmail */
     email: string | null;
+    contactEmail: string | null;
     plan: string;
     status: string;
     registered: string;
@@ -79,7 +81,10 @@ export default function BusinessesIndex() {
         },
         {
             key: 'email',
-            header: 'البريد',
+            /* «بريد الدخول» لا «البريد»: للشركة عنوانا بريدٍ — واحدٌ للتواصل
+               يُكتب عند التسجيل، وآخرُ يدخل به التاجر. والعمود بلا وصفٍ كان
+               يُقرأ الثاني وهو الأول. */
+            header: 'بريد الدخول',
             cell: (b) => (
                 <span dir="ltr" className="text-[#6b7280]">
                     {b.email || '—'}

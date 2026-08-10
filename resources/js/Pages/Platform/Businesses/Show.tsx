@@ -109,7 +109,7 @@ export default function BusinessShow() {
     const owner = [
         { label: 'الاسم', value: business.owner },
         { label: 'الهاتف', value: business.phone, ltr: true },
-        { label: 'البريد', value: business.email, ltr: true },
+        { label: 'بريد التواصل', value: business.email, ltr: true },
         // بريد الدخول لا بريد التواصل — أوّل ما يُسأل عنه حين يتصل التاجر
         { label: 'حساب الدخول', value: business.owner_email, ltr: true },
     ];

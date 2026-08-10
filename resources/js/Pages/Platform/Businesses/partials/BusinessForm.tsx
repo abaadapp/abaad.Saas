@@ -239,7 +239,14 @@ export default function BusinessForm({
                             placeholder="+968 9xxxxxxx"
                         />
                     </Field>
-                    <Field label="البريد الإلكتروني" className="md:col-span-2" error={form.errors.email}>
+                    {/* «التواصل» في الاسم: الحقل لا يفتح حسابًا ولا يبدّل دخولًا،
+                        وكُتب فيه بريد الدخول مرارًا لأن اسمه لم يقل غير ذلك */}
+                    <Field
+                        label="بريد التواصل"
+                        hint="للتواصل مع الشركة — حساب الدخول يُضبط من بطاقة «حساب الدخول»"
+                        className="md:col-span-2"
+                        error={form.errors.email}
+                    >
                         <Input
                             type="email"
                             dir="ltr"

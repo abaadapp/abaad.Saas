@@ -5,9 +5,7 @@ import {
     Building2,
     Check,
     ChevronDown,
-    Globe,
     Menu,
-    Store,
     X,
 } from 'lucide-react';
 import UnifiedSearch from '@/Components/UnifiedSearch';
@@ -182,25 +180,6 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                         </DropdownMenuContent>
                     </DropdownMenu>
                 )}
-
-                {/* نقطة البيع — وصولٌ سريع من الهيدر. يظهر للتاجر فقط:
-                    مدير المنصّة بلا business_id فمسار POS يُرفض عليه. */}
-                {!isPlatform && auth?.user.businessId && (
-                    <Button asChild variant="ghost" size="icon" title={t('نقطة البيع')}>
-                        <Link href={route('pos.index')}>
-                            <Store />
-                            <span className="sr-only">{t('نقطة البيع')}</span>
-                        </Link>
-                    </Button>
-                )}
-
-                {/* الموقع الإلكتروني — يفتح موقع أبعاد التعريفي في تبويب جديد */}
-                <Button asChild variant="ghost" size="icon" title={t('الموقع الإلكتروني')}>
-                    <a href="https://abaadapp.om" target="_blank" rel="noopener noreferrer">
-                        <Globe />
-                        <span className="sr-only">{t('الموقع الإلكتروني')}</span>
-                    </a>
-                </Button>
 
                 {/* الإشعارات */}
                 {feed && (

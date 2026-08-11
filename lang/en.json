@@ -2428,6 +2428,6 @@
     "— انتهى": "— expired",
     "— بعد :n يوم": "— in :n days",
     "بصيغة ZATCA الخليجية. لا يظهر بلا رقم ضريبي. راجع جهاز الضرائب قبل الاعتماد عليه": "Gulf ZATCA format. Hidden when no tax number is set. Check with the Tax Authority before relying on it.",
-    "رصيد الفرع الدفتري": "Branch book quantity",
-    "الأرقام تخصّ الفرع المختار وحده. اترك الحقل فارغًا للأصناف التي لم تُعَدّ (لن تتغيّر).": "Figures are for the selected branch only. Leave blank for items you did not count (they stay unchanged)."
+    "الأرقام تخصّ الفرع المختار وحده. اترك الحقل فارغًا للأصناف التي لم تُعَدّ (لن تتغيّر).": "Figures are for the selected branch only. Leave blank for items you did not count (they stay unchanged).",
+    "رصيد النظام": "System quantity"
 }

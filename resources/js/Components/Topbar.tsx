@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, usePage } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import {
     Bell,
     Building2,
     Check,
     ChevronDown,
     Globe,
+    Languages,
     Menu,
     Store,
     X,
@@ -27,7 +28,7 @@ import { logout } from '@/lib/logout';
 import type { PageProps } from '@/types';
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
-    const { auth, context, notifications, csrf } = usePage<PageProps>().props;
+    const { auth, context, notifications, csrf, locale } = usePage<PageProps>().props;
 
     /**
      * تغذية الجرس الحيّة — بديل استطلاع admin.notifications.feed الذي كان في
@@ -173,6 +174,51 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                 {/* نقطة البيع والموقع الإلكتروني — زرّان ثابتان في الهيدر
                     (انتقلا من ترويسة اللوحة). يظهران للتاجر فقط: مدير المنصّة
                     بلا business_id فلا context ولا مسار POS له. */}
+                {/*
+                 * اللغة في الشريط — ظاهرةً لا مدفونة.
+                 *
+                 * كانت في قائمة الحساب فنُقلت إلى الإعدادات لأن تبديلها يقلب
+                 * اتجاه المستند كلّه، وهذا ليس ما يُتوقَّع من صفٍّ في قائمةٍ
+                 * تُفتح بمرور الماوس. لكنّ الإعدادات موضعُ ما يُضبط مرّة،
+                 * واللغة يبدّلها الموظّف كل يوم: من لا يقرأ العربية يقف أمام
+                 * لوحةٍ عربية ولا يعرف أن في الإعدادات ما يخلّصه — ولا يقرأ
+                 * كلمة «الإعدادات» أصلًا. فصارت هنا، كما هي في نقطة البيع.
+                 *
+                 * والتبديل يُرسَل إلى مسار اللوحة التي يقف عليها: لمدير المنصة
+                 * مسارُه، وللتاجر مسارُه — ومسارٌ واحد يعني ٤٠٣ لأحدهما.
+                 */}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5"
+                            aria-label={locale === 'en' ? 'Change language' : 'تغيير اللغة'}
+                        >
+                            <Languages className="size-4 text-[#9ca3af]" />
+                            <span className="font-medium">{locale === 'en' ? 'EN' : 'ع'}</span>
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        {(['ar', 'en'] as const).map((code) => (
+                            <DropdownMenuItem
+                                key={code}
+                                onSelect={() => {
+                                    if (code === locale) return;
+                                    router.post(
+                                        route(isPlatform ? 'super-admin.language.update' : 'admin.language.update'),
+                                        { locale: code },
+                                        { preserveScroll: true },
+                                    );
+                                }}
+                            >
+                                {locale === code && <Check className="size-4" />}
+                                {code === 'ar' ? 'العربية' : 'English'}
+                            </DropdownMenuItem>
+                        ))}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+
                 {/*
                  * الفرع الافتراضي في الشريط لا في قائمة الحساب.
                  *

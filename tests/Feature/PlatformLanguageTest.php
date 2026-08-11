@@ -12,7 +12,9 @@ use Tests\TestCase;
  *
  * كان المبدّل صفًّا في القائمة التي تُفتح بمرور الماوس تحت الصورة، فحُذف من
  * هناك — تبديل اللغة يقلب اتجاه المستند ويعيد تحميل الصفحة، وهذا ليس ما
- * يُتوقَّع من صفٍّ يمرّ عليه المؤشّر. وموضعه الآن تبويبٌ في الإعدادات.
+ * يُتوقَّع من صفٍّ يمرّ عليه المؤشّر. وموضعه الآن زرٌّ ظاهر في الشريط العلوي،
+ * وتبويبٌ في الإعدادات معه: الإعدادات موضعُ ما يُضبط مرّة، واللغة يبدّلها
+ * الموظّف كل يوم — ومن لا يقرأ العربية لا يقرأ كلمة «الإعدادات» ليصل إليها.
  *
  * وأهمّ ما يُختبر أنها **تفضيل شخصي**: تُكتب في حساب من بدّلها وحده.
  */
@@ -42,6 +44,28 @@ class PlatformLanguageTest extends TestCase
             ->assertRedirect();
 
         $this->assertSame('en', $this->platform->fresh()->locale);
+    }
+
+    /**
+     * ولكل لوحةٍ مسارُها.
+     *
+     * المسار واحدُ الاسم في ثلاث مجموعات — لوحة المنصة ولوحة التاجر ونقطة
+     * البيع — ولكلٍّ حارسه. وزرُّ الشريط يختار بحسب من يقف عليه، فلو أرسل
+     * إلى مسارٍ واحد لردَّ ٤٠٣ لأحدهما. وهذا يثبت أن البابين مفتوحان.
+     */
+    public function test_a_merchant_switches_through_their_own_route(): void
+    {
+        $business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
+        $owner = User::create([
+            'business_id' => $business->id, 'name' => 'المالك', 'email' => 'owner@abaadapp.om',
+            'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('admin.language.update'), ['locale' => 'en'])
+            ->assertRedirect();
+
+        $this->assertSame('en', $owner->fresh()->locale);
     }
 
     public function test_it_refuses_a_language_the_system_does_not_have(): void

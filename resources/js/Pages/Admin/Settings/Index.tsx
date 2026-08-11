@@ -66,6 +66,7 @@ interface Props {
     pagination?: ActivityData['pagination'];
     filters?: ActivityData['filters'];
     products?: TrashData['products'];
+    trashedBranches?: TrashData['trashedBranches'];
     expenses?: TrashData['expenses'];
     windowDays?: number;
 }
@@ -149,7 +150,7 @@ const NOTIF_COLORS: Record<string, string> = {
 
 export default function SettingsIndex() {
     const { settings, business, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
-        logs, pagination, filters, products, expenses, windowDays } =
+        logs, pagination, filters, products, expenses, trashedBranches, windowDays } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState<TabKey | null>(tabFromUrl);
@@ -502,7 +503,12 @@ export default function SettingsIndex() {
                     endpointParams={{ section: 'activity' }}
                 />
             ) : tab === 'trash' ? (
-                <TrashPanel products={products ?? []} expenses={expenses ?? []} windowDays={windowDays ?? 0} />
+                <TrashPanel
+                    products={products ?? []}
+                    expenses={expenses ?? []}
+                    trashedBranches={trashedBranches ?? []}
+                    windowDays={windowDays ?? 0}
+                />
             ) : tab === 'backup' ? (
                 <div className="grid grid-cols-1 gap-6">
                     <Card className="p-6">

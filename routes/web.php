@@ -235,6 +235,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
     Route::post('/products/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
         ->defaults('type', 'product')->name('products.restore');
+    // المحو النهائي يتبع صلاحية الحذف نفسها: من أخفاه يمحوه، ولا أحد سواه
+    Route::delete('/products/{id}/purge', [\App\Http\Controllers\Admin\TrashController::class, 'purge'])
+        ->defaults('type', 'product')->name('products.purge');
 
     // التصنيفات
     Route::get('/categories', [\App\Http\Controllers\Admin\PageController::class, 'categoriesIndex'])->name('categories.index');
@@ -358,6 +361,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
     Route::post('/expenses/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
         ->defaults('type', 'expense')->name('expenses.restore');
+    Route::delete('/expenses/{id}/purge', [\App\Http\Controllers\Admin\TrashController::class, 'purge'])
+        ->defaults('type', 'expense')->name('expenses.purge');
     // أنواع المصروفات
     Route::post('/expense-types', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'store'])->name('expenseTypes.store');
     Route::delete('/expense-types/{id}', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'destroy'])->name('expenseTypes.destroy');

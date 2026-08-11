@@ -14,6 +14,13 @@ Schedule::command('subscriptions:expire')->dailyAt('00:10')->withoutOverlapping(
 // نسخ احتياطي تلقائي يومي لكل المتاجر (الساعة 02:00)
 Schedule::command('backup:run')->dailyAt('02:00')->withoutOverlapping();
 
+/*
+ * محو ما انقضت مهلته في سلّة المحذوفات (02:30) — بعد النسخ الاحتياطي لا
+ * قبله: المحو لا رجعة فيه، وأقرب نسخةٍ إليه يجب أن تكون قد التقطت الصفوف
+ * قبل ذهابها. نصف ساعةٍ تكفي لأكبر متجرٍ عندنا بمراحل.
+ */
+Schedule::command('trash:purge')->dailyAt('02:30')->withoutOverlapping();
+
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 

@@ -52,7 +52,7 @@ class BranchController extends Controller
     public function destroy($id)
     {
         $branch = Branch::where('business_id', $this->bid())->findOrFail($id);
-        \App\Support\Activity::log('deleted', 'حذف الفرع: ' . $branch->name, ['subject_id' => $branch->id]);
+        \App\Support\Activity::log('deleted', 'حذف الفرع: ' . $branch->name, ['subject_id' => $branch->id, 'subject_type' => 'branch']);
         $branch->delete();
 
         return back()->with('toast', [

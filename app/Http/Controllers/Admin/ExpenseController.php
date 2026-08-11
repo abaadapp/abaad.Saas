@@ -97,7 +97,7 @@ class ExpenseController extends Controller
     public function destroy($id)
     {
         $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
-        \App\Support\Activity::log('deleted', 'حذف المصروف: ' . $expense->reference, ['subject_id' => $expense->id]);
+        \App\Support\Activity::log('deleted', 'حذف المصروف: ' . $expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
 
         /*
          * المرفق يبقى مع المصروف المحذوف.

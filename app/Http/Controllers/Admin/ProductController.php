@@ -201,7 +201,7 @@ class ProductController extends Controller
     public function destroy($id)
     {
         $product = Product::where('business_id', $this->bid())->findOrFail($id);
-        \App\Support\Activity::log('deleted', 'حذف المنتج: ' . $product->name, ['subject_id' => $product->id]);
+        \App\Support\Activity::log('deleted', 'حذف المنتج: ' . $product->name, ['subject_id' => $product->id, 'subject_type' => 'product']);
         $product->delete();
 
         /*

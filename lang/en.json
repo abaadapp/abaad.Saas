@@ -2402,5 +2402,15 @@
     "يشبه سنة ميلاد — وهي أوّل ما يُجرَّب على من يعرفك.": "Looks like a birth year — the first guess for anyone who knows you.",
     "بريد مدير المنصة يكون على نطاق :domain وحده — مثال: admin@:domain": "A platform admin's email must be on the :domain domain only — for example: admin@:domain",
     "اتركه فارغًا للإبقاء على الرمز الحالي — ولا يُقبل متسلسل ولا مكرّر ولا سنة ميلاد": "Leave empty to keep the current code — sequences, repeats and birth years are not accepted",
-    "يلزم إن تُرك البريد فارغًا — ولا يُقبل متسلسل (1234) ولا مكرّر (1111) ولا سنة ميلاد": "Required if the email is left empty — sequences (1234), repeats (1111) and birth years are not accepted"
+    "يلزم إن تُرك البريد فارغًا — ولا يُقبل متسلسل (1234) ولا مكرّر (1111) ولا سنة ميلاد": "Required if the email is left empty — sequences (1234), repeats (1111) and birth years are not accepted",
+    "يُستعاد ما حُذف خلال :n يومًا، ثم يُمحى محوًا نهائيًّا لا رجعة فيه.": "Deleted items can be restored for :n days, then they are erased permanently.",
+    "من حذفه": "Deleted by",
+    "يُمحى بعد": "Erased in",
+    ":n يوم": ":n days",
+    "محو نهائي": "Erase permanently",
+    "امحُ نهائيًّا": "Erase permanently",
+    "سيُمحى «:name» ولا يمكن استرداده بعدها — ولا من النسخة الاحتياطية إن مضى وقت.": "“:name” will be erased and cannot be recovered — not even from a backup once time has passed.",
+    "الفرع لا يُمحى: صناديقه وأذون موظفيه وحركة مخزونه معلّقةٌ به، فيبقى هنا حتى تستعيده.": "A branch is never erased: its tills, staff permissions and stock movements hang on it, so it stays here until you restore it.",
+    "لا فروع محذوفة.": "No deleted branches.",
+    "تم المحو النهائي: :name": "Permanently erased: :name"
 }

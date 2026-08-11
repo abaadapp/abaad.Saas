@@ -343,7 +343,6 @@
     "ابحث عن منتج…": "Search for a product…",
     "ابحث عن موظف بالاسم أو البريد…": "Search for an employee by name or email…",
     "ابحث في المنتجات والطلبات والعملاء…": "Search products, orders and customers…",
-    "اترك الحقل فارغًا للأصناف التي لم تُعَدّ (لن تتغيّر).": "Leave the field empty for items not counted (they will not change).",
     "اتركه فارغًا إن لم ترد تغييرها": "Leave blank to keep it unchanged",
     "اتركه فارغًا إن لم ترد تغييرها — وتظهر مرّة واحدة بعد الحفظ": "Leave blank to keep it — it is shown once after saving",
     "اتركه فارغًا لبلا هدف": "Leave blank for no target",
@@ -751,7 +750,6 @@
     "الكميات موزّعة بأعمدة الفروع": "Quantities split by branch columns",
     "الكمية": "Quantity",
     "الكمية الحالية": "Current quantity",
-    "الكمية الدفترية": "Book Quantity",
     "الكمية المباعة": "Quantity sold",
     "الكمية المتوفرة": "Available quantity",
     "الكمية المعدودة": "Counted Quantity",
@@ -2429,5 +2427,7 @@
     "بلا مدّة": "No end date",
     "— انتهى": "— expired",
     "— بعد :n يوم": "— in :n days",
-    "بصيغة ZATCA الخليجية. لا يظهر بلا رقم ضريبي. راجع جهاز الضرائب قبل الاعتماد عليه": "Gulf ZATCA format. Hidden when no tax number is set. Check with the Tax Authority before relying on it."
+    "بصيغة ZATCA الخليجية. لا يظهر بلا رقم ضريبي. راجع جهاز الضرائب قبل الاعتماد عليه": "Gulf ZATCA format. Hidden when no tax number is set. Check with the Tax Authority before relying on it.",
+    "رصيد الفرع الدفتري": "Branch book quantity",
+    "الأرقام تخصّ الفرع المختار وحده. اترك الحقل فارغًا للأصناف التي لم تُعَدّ (لن تتغيّر).": "Figures are for the selected branch only. Leave blank for items you did not count (they stay unchanged)."
 }

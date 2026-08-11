@@ -52,6 +52,39 @@ class BranchStock extends Model
         ]);
     }
 
+    /**
+     * رصيد كل فرعٍ لكل منتج — قاعدةٌ واحدة تقرؤها الشاشة والخادم.
+     *
+     * ومنتجٌ لم يُوزَّع قطّ رصيدُه كلّه في الفرع الأوّل، وهي القاعدة نفسها
+     * التي يطبّقها `ensureAllocated` عند أوّل حركة. واختلافُ الشاشة عنها
+     * يعني رقمًا دفتريًّا يخالف ما سيحسبه الخادم — والفرق يظهر تسويةً لم
+     * يطلبها أحد.
+     *
+     * @return array<int, array<int, int>>  [معرّف المنتج][معرّف الفرع] => الكمية
+     */
+    public static function books(int $businessId): array
+    {
+        $main = Branch::where('business_id', $businessId)->orderBy('id')->value('id');
+        $rows = static::where('business_id', $businessId)->get()->groupBy('product_id');
+
+        return \App\Models\Product::where('business_id', $businessId)
+            ->get(['id', 'quantity'])
+            ->mapWithKeys(function ($p) use ($rows, $main) {
+                $group = $rows[$p->id] ?? collect();
+
+                return [$p->id => $group->isEmpty()
+                    ? ($main ? [$main => (int) $p->quantity] : [])
+                    : $group->mapWithKeys(fn ($s) => [(int) $s->branch_id => (int) $s->quantity])->all()];
+            })
+            ->all();
+    }
+
+    /** رصيد منتجٍ في فرعٍ بعينه — بالقاعدة نفسها */
+    public static function bookOf(int $businessId, int $productId, int $branchId): int
+    {
+        return (int) (static::books($businessId)[$productId][$branchId] ?? 0);
+    }
+
     public static function adjust(int $businessId, ?int $branchId, int $productId, int $delta): void
     {
         if (! $branchId || $delta === 0) {

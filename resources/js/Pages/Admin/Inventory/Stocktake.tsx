@@ -22,8 +22,11 @@ import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import type { Branch, InventoryItem } from '@/types/models';
 
+/** رصيد كل فرعٍ لهذا الصنف — المفتاح معرّف الفرع */
+type StocktakeItem = InventoryItem & { stock: Record<number, number> };
+
 interface Props {
-    items: InventoryItem[];
+    items: StocktakeItem[];
     branches: Branch[];
     currentBranch: number | null;
 }
@@ -39,6 +42,17 @@ export default function Stocktake() {
 
     const setCount = (id: number, value: string) =>
         form.setData('counts', { ...form.data.counts, [id]: value });
+
+    /**
+     * دفتر الفرع المختار — لا إجمالي الشركة.
+     *
+     * الرقم المعروض هو ما يقرأه العادّ ويقارن به. وكان يعرض الإجمالي: من
+     * يعدّ مسقط فيجدها عشرة كما في دفترها يقرأ «الدفترية ١٥» ويظنّ نفسه
+     * ناقصًا خمسة — فيذهب يبحث عن بضاعةٍ لم تُفقد. والقاعدة نفسها على
+     * الخادم (BranchStock::books)، وبلا ذلك تختلف الشاشة عمّا سيُطبَّق.
+     */
+    const book = (item: StocktakeItem): number =>
+        form.data.branch_id ? (item.stock[Number(form.data.branch_id)] ?? 0) : 0;
 
     /** الفرق بين المعدود والدفتري — null يعني «لم يُعَدّ» فلا يُحتسب */
     const variance = (id: number, book: number): number | null => {
@@ -81,7 +95,7 @@ export default function Stocktake() {
                             />
                         </Field>
                         <p className="text-[12px] text-[#9ca3af] sm:pb-2.5">
-                            {t('اترك الحقل فارغًا للأصناف التي لم تُعَدّ (لن تتغيّر).')}
+                            {t('الأرقام تخصّ الفرع المختار وحده. اترك الحقل فارغًا للأصناف التي لم تُعَدّ (لن تتغيّر).')}
                         </p>
                     </div>
                 </Card>
@@ -90,20 +104,24 @@ export default function Stocktake() {
                     <Table>
                         <TableHeader>
                             <TableRow className="hover:bg-transparent">
-                                {['المنتج', 'SKU', 'الكمية الدفترية', 'الكمية المعدودة', 'الفرق'].map((h) => (
+                                {['المنتج', 'SKU', 'رصيد الفرع الدفتري', 'الكمية المعدودة', 'الفرق'].map((h) => (
                                     <TableHead key={h}>{t(h)}</TableHead>
                                 ))}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {items.map((item) => {
-                                const diff = variance(item.id, item.qty);
+                                const onHand = book(item);
+                                const diff = variance(item.id, onHand);
 
                                 return (
                                     <TableRow key={item.id}>
                                         <TableCell className="font-medium text-[#111]">{item.name}</TableCell>
                                         <TableCell className="font-mono text-[#6b7280]">{item.sku}</TableCell>
-                                        <TableCell className="font-semibold tabular-nums">{number(item.qty)}</TableCell>
+                                        <TableCell className="font-semibold tabular-nums">
+                                            {/* بلا فرعٍ مختار لا رقم دفتريّ يُقارن به */}
+                                            {form.data.branch_id ? number(onHand) : <span className="text-[#d1d5db]">—</span>}
+                                        </TableCell>
                                         <TableCell>
                                             <Input
                                                 inputMode="numeric"
@@ -112,6 +130,8 @@ export default function Stocktake() {
                                                 onChange={(e) => setCount(item.id, e.target.value)}
                                                 placeholder={t('لم يُعَدّ')}
                                                 className="h-9 w-28"
+                                                // بلا فرعٍ لا معنى للعدّ: الرقم يُقيَّد على فرع
+                                                disabled={!form.data.branch_id}
                                             />
                                         </TableCell>
                                         <TableCell>

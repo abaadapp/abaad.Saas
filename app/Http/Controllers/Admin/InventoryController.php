@@ -83,11 +83,27 @@ class InventoryController extends Controller
         return \Inertia\Inertia::render('Admin/Inventory/Reorder', ['items' => $items]);
     }
 
-    /** شاشة الجرد الفعلي — إدخال الكمية المعدودة ومقارنتها بالدفترية */
+    /**
+     * شاشة الجرد الفعلي — إدخال الكمية المعدودة ومقارنتها بدفتر الفرع.
+     *
+     * «الدفترية» كانت إجمالي الشركة، والجرد يعدّ فرعًا واحدًا. فمتجرٌ بفرعين
+     * — عشرة في مسقط وخمسة في صلالة — يعدّ مسقط فيجدها عشرة كما يجب، فتقول
+     * له الشاشة إن الفرق ناقص خمسة. فيذهب يبحث عن بضاعةٍ لم تُفقد.
+     *
+     * ورصيدُ كل فرعٍ يُرسَل كاملًا لا رصيدُ الفرع المختار وحده: تبديل الفرع
+     * في الأعلى يجب أن يقلب الأرقام في مكانها، وطلبٌ جديد لكل تبديلٍ يمحو ما
+     * أُدخل من أعدادٍ قبله.
+     */
     public function stocktake()
     {
+        $books = \App\Models\BranchStock::books($this->bid());
+
+        $items = collect(Demo::inventory())
+            ->map(fn (array $i) => $i + ['stock' => $books[$i['id']] ?? []])
+            ->all();
+
         return \Inertia\Inertia::render('Admin/Inventory/Stocktake', [
-            'items' => Demo::inventory(),
+            'items' => $items,
             'branches' => Demo::branches(),
             'currentBranch' => Demo::currentBranchId(),
         ]);
@@ -119,14 +135,24 @@ class InventoryController extends Controller
                 continue;
             }
             $counted = (int) $counted;
-            $delta = $counted - (int) $product->quantity;
+
+            /*
+             * الفرق من دفتر الفرع لا من إجمالي الشركة — والإجمالي يتحرّك
+             * بالفرق ولا يصير المعدود.
+             *
+             * كان يكتب المعدود في الإجمالي، فجردُ فرعٍ يمحو أرصدة بقيّة
+             * الفروع: تعدّ مسقط فتضيع صلالة. وجردٌ كامل يمرّ على الفروع
+             * واحدًا واحدًا كان ينتهي برصيد آخر فرعٍ في خانة الشركة كلّها.
+             */
+            $book = \App\Models\BranchStock::bookOf($this->bid(), $product->id, $branch->id);
+            $delta = $counted - $book;
             if ($delta === 0) {
                 continue;
             }
             \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, (int) $product->quantity);
-            $product->quantity = $counted;
-            $product->save();
             \App\Models\BranchStock::adjust($this->bid(), $branch->id, $product->id, $delta);
+            $product->quantity = max(0, (int) $product->quantity + $delta);
+            $product->save();
 
             InventoryMovement::create([
                 'business_id' => $this->bid(),

@@ -19,9 +19,6 @@ import {
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
-    DropdownMenuSub,
-    DropdownMenuSubContent,
-    DropdownMenuSubTrigger,
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { initials } from '@/lib/format';
@@ -166,6 +163,50 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                     <a href={route('admin.currency.switch', currency.code)}>
                                         {context.currency.code === currency.code && <Check className="size-4" />}
                                         {currency.name}
+                                    </a>
+                                </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
+
+                {/* نقطة البيع والموقع الإلكتروني — زرّان ثابتان في الهيدر
+                    (انتقلا من ترويسة اللوحة). يظهران للتاجر فقط: مدير المنصّة
+                    بلا business_id فلا context ولا مسار POS له. */}
+                {/*
+                 * الفرع الافتراضي في الشريط لا في قائمة الحساب.
+                 *
+                 * كان صفًّا داخل قائمةٍ تُفتح بمرور الماوس، وهو ليس تفضيلًا
+                 * شخصيًّا: كل رقمٍ في اللوحة مرشَّحٌ به — المبيعات والمخزون
+                 * والتقارير. فمن يقرأ رقمًا لا يعرف أيّ فرعٍ يقرأ حتى يفتح
+                 * قائمةً لا شأن لها بالأرقام. واسمه ظاهرٌ الآن دائمًا.
+                 */}
+                {context && context.branches.length > 0 && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="gap-1.5">
+                                <Building2 className="size-4 text-[#9ca3af]" />
+                                {/* الاسم يختفي على الشاشات الضيّقة والأيقونة تبقى */}
+                                <span className="hidden max-w-28 truncate sm:inline">
+                                    {context.branchName || t('كل الفروع')}
+                                </span>
+                                <ChevronDown className="size-3.5 text-[#9ca3af]" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuLabel>{t('الفرع الافتراضي')}</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem asChild>
+                                <a href={route('admin.branch.switch', 'all')}>
+                                    <span className="flex-1">{t('كل الفروع')}</span>
+                                    {!context.branchId && <Check className="size-4" />}
+                                </a>
+                            </DropdownMenuItem>
+                            {context.branches.map((branch) => (
+                                <DropdownMenuItem key={branch.id} asChild>
+                                    <a href={route('admin.branch.switch', branch.id)}>
+                                        <span className="flex-1 truncate">{branch.name}</span>
+                                        {context.branchId === branch.id && <Check className="size-4" />}
                                     </a>
                                 </DropdownMenuItem>
                             ))}
@@ -322,43 +363,9 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
                         <DropdownMenuSeparator />
 
-                        {/* الفرع الافتراضي واختياره — قائمة فرعية تفتح بالمرور */}
-                        {context && context.branches.length > 0 && (
-                            <div className="flex items-center justify-between gap-2 px-1.5 py-1.5">
-                                <span className="text-[14px] font-medium text-[#111]">
-                                    {t('الفرع الافتراضي')}
-                                </span>
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger className="rounded-full bg-[#f2f2f0] px-3 py-1.5 text-[13px] font-medium text-[#111] data-[state=open]:bg-[#e8e8e6]">
-                                        <Building2 className="size-4" />
-                                        <span className="max-w-28 truncate">
-                                            {context.branchName || t('اختر الفرع')}
-                                        </span>
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent
-                                        onMouseEnter={openAccount}
-                                        onMouseLeave={closeAccountSoon}
-                                    >
-                                        <DropdownMenuItem asChild>
-                                            <a href={route('admin.branch.switch', 'all')}>
-                                                <span className="flex-1">{t('كل الفروع')}</span>
-                                                {!context.branchId && <Check className="size-4" />}
-                                            </a>
-                                        </DropdownMenuItem>
-                                        {context.branches.map((branch) => (
-                                            <DropdownMenuItem key={branch.id} asChild>
-                                                <a href={route('admin.branch.switch', branch.id)}>
-                                                    <span className="flex-1 truncate">{branch.name}</span>
-                                                    {context.branchId === branch.id && (
-                                                        <Check className="size-4" />
-                                                    )}
-                                                </a>
-                                            </DropdownMenuItem>
-                                        ))}
-                                    </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-                            </div>
-                        )}
+                        {/* الفرع الافتراضي كان هنا. صار في الشريط نفسه بجوار
+                            نقطة البيع: هو مرشِّح كل رقمٍ في اللوحة، ومن يقرأ
+                            تقريرًا يجب أن يرى أيّ فرعٍ يقرأ بلا أن يفتح قائمة. */}
 
                         {/* اللغة كانت هنا. موضعها الإعدادات: تبديلها يعيد تحميل
                             الصفحة ويقلب اتجاه المستند كلّه، وهذا ليس ما يُتوقَّع

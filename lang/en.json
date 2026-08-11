@@ -2425,5 +2425,9 @@
     "بياناتك محفوظة كما هي — المنتجات والطلبات والعملاء والتقارير. لا يُحذف شيء.": "Your data is intact — products, orders, customers and reports. Nothing is deleted.",
     "للتجديد تواصل مع :company": "To renew, contact :company",
     "انتهى اشتراك المتجر. يتوقّف النظام بعد :n يوم.": "Subscription expired. The system stops in :n days.",
-    "انتهى اشتراك المتجر. اليوم آخر يوم عمل.": "Subscription expired. Today is the last working day."
+    "انتهى اشتراك المتجر. اليوم آخر يوم عمل.": "Subscription expired. Today is the last working day.",
+    "انتهاء الاشتراك": "Expires",
+    "بلا مدّة": "No end date",
+    "— انتهى": "— expired",
+    "— بعد :n يوم": "— in :n days"
 }

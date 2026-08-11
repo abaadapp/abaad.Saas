@@ -58,6 +58,14 @@ class BusinessController extends Controller
             'phone' => $b->phone, 'email' => $b->owner_email, 'contactEmail' => $b->email,
             'plan' => $b->plan?->name ?? '—',
             'status' => $b->status, 'registered' => optional($b->starts_at)->format('Y-m-d') ?? '—',
+            'expires' => optional($b->ends_at)->format('Y-m-d'),
+            /*
+             * الأيّام الباقية — الواجهة تلوّن بها ولا تحسب.
+             *
+             * وسالبها يعني انقضاءً: بينه وبين الإقفال مهلةُ السماح، فالرقم
+             * وحده لا يقول إن المتجر واقف — انظر Tenancy::locked.
+             */
+            'daysLeft' => \App\Support\Tenancy::daysLeft($b),
             'branches' => $b->branches_count, 'city' => $b->city, 'country' => $b->country,
             // مسار مخزَّن أو رابط مطلق — المحوّل يميّز بينهما
             'logo' => PageController::logoUrl($b->logo),

@@ -24,6 +24,8 @@ interface BusinessRow {
     contactEmail: string | null;
     plan: string;
     status: string;
+    expires: string | null;
+    daysLeft: number | null;
     registered: string;
     /** آخر بيعة فعلية — null إن لم يبع قطّ */
     lastSale: string | null;
@@ -102,6 +104,41 @@ export default function BusinessesIndex() {
                     {b.registered}
                 </span>
             ),
+        },
+        /*
+            انتهاء الاشتراك بجوار التسجيل — أوّله وآخره في نظرةٍ واحدة.
+            وكان الجدول يعرض «الحالة» وحدها: تقول «نشط» ولا تقول إن الاشتراك
+            ينتهي بعد يومين، فلا يُعرف من يجب أن يُتّصل به إلا بفتح كل ملفّ.
+        */
+        {
+            key: 'expires',
+            header: 'انتهاء الاشتراك',
+            sortable: true,
+            value: (b) => b.expires ?? '',
+            cell: (b) => {
+                // بلا تاريخ لا مدّة محدَّدة — ولا يُقفل صاحبها أبدًا
+                if (!b.expires) {
+                    return <span className="text-[#c4c4c4]">{t('بلا مدّة')}</span>;
+                }
+
+                const left = b.daysLeft ?? 0;
+                const tone =
+                    left < 0 ? 'rounded-full bg-[#fef2f2] px-2.5 py-1 text-[12px] text-[#b91c1c]'
+                    : left <= 7 ? 'rounded-full bg-[#fffbeb] px-2.5 py-1 text-[12px] text-[#b45309]'
+                    : 'text-[#6b7280]';
+
+                return (
+                    <span className={tone}>
+                        <span dir="ltr">{b.expires}</span>
+                        {/* الرقم لا التاريخ وحده: «بعد ٣ أيّام» تُقرأ بلا حساب */}
+                        {left < 0 ? (
+                            <span className="ms-1">{t('— انتهى')}</span>
+                        ) : left <= 7 ? (
+                            <span className="ms-1">{t('— بعد :n يوم', { n: left })}</span>
+                        ) : null}
+                    </span>
+                );
+            },
         },
         /*
             آخر بيعة — الإشارة الوحيدة أن المشترك ما زال يستعمل ما يدفع ثمنه.

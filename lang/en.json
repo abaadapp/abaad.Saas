@@ -191,7 +191,6 @@
     "إجمالي غير المدفوع": "Total unpaid",
     "إخفاء البطاقة": "Hide card",
     "إخفاء كلمة المرور": "Hide password",
-    "إخفاؤه قد يخالف متطلبات الفوترة": "Hiding it may breach e-invoicing requirements",
     "إدارة إعدادات المحل والفروع والضرائب وطرق الدفع والطباعة": "Manage store, branch, tax, payment method and printing settings",
     "إدارة إعدادات المنصة العامة والاشتراكات والضرائب والإشعارات": "Manage general platform, subscription, tax and notification settings",
     "إدارة اشتراكات الشركات في المنصة ومتابعة حالة الدفع والتجديد": "Manage company subscriptions and track payment and renewal status",
@@ -2429,5 +2428,6 @@
     "انتهاء الاشتراك": "Expires",
     "بلا مدّة": "No end date",
     "— انتهى": "— expired",
-    "— بعد :n يوم": "— in :n days"
+    "— بعد :n يوم": "— in :n days",
+    "بصيغة ZATCA الخليجية. لا يظهر بلا رقم ضريبي. راجع جهاز الضرائب قبل الاعتماد عليه": "Gulf ZATCA format. Hidden when no tax number is set. Check with the Tax Authority before relying on it."
 }

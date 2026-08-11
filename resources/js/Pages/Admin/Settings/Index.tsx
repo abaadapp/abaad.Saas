@@ -138,7 +138,10 @@ const TEMPLATE_ROWS: { key: string; label: string; hint?: string }[] = [
     { key: 'tpl_show_datetime', label: 'التاريخ والوقت' },
     { key: 'tpl_show_items_count', label: 'عدد الأصناف' },
     { key: 'tpl_show_vat_no', label: 'الرقم الضريبي' },
-    { key: 'tpl_show_qr', label: 'رمز الفوترة الإلكترونية (QR)', hint: 'إخفاؤه قد يخالف متطلبات الفوترة' },
+    /* الوصف كان «إخفاؤه قد يخالف متطلبات الفوترة» — تخويفٌ من شيءٍ غير
+       مؤكَّد: الرمز بصيغة ZATCA الخليجية، ولا نعلم أن جهاز الضرائب في عُمان
+       يشترطها اليوم. والوصف يقول ما نعرفه ويترك القرار لصاحبه. */
+    { key: 'tpl_show_qr', label: 'رمز الفوترة الإلكترونية (QR)', hint: 'بصيغة ZATCA الخليجية. لا يظهر بلا رقم ضريبي. راجع جهاز الضرائب قبل الاعتماد عليه' },
 ];
 
 const NOTIF_COLORS: Record<string, string> = {

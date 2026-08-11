@@ -1024,11 +1024,12 @@ class Demo
         $bid = self::bid();
         $costs = Product::where('business_id', $bid)->pluck('cost', 'id');
 
+        // التكلفة من لقطة البيع — انظر التعليق في categoryProfitability
         $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
-            ->selectRaw('product_id, name, SUM(quantity) as qty, SUM(total) as revenue')
+            ->selectRaw('product_id, name, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
             ->groupBy('product_id', 'name')->get()->map(function ($r) use ($costs) {
                 $cost = (float) ($costs[$r->product_id] ?? 0);
-                $cogs = $cost * (int) $r->qty;
+                $cogs = (float) $r->cost_snapshot + $cost * ((int) $r->qty - (int) $r->costed_qty);
                 $revenue = (float) $r->revenue;
                 $profit = $revenue - $cogs;
 
@@ -1052,15 +1053,26 @@ class Demo
         $products = Product::where('business_id', $bid)->with('category')->get()
             ->keyBy('id')->map(fn ($p) => ['cat' => optional($p->category)->name ?? __('غير مصنّف'), 'cost' => (float) $p->cost]);
 
+        /*
+         * التكلفة من لقطة البيع لا من بطاقة المنتج اليوم.
+         *
+         * `receive` تكتب آخر سعر شراء فوق تكلفة المنتج، فحسابُ الربح من
+         * البطاقة يجعل رفعَ المورّد سعرَه اليوم يُنقص ربحَ الشهر الماضي —
+         * تقريرٌ ماليّ يتغيّر بأثرٍ رجعيّ كلّما اشتريتَ، ولا يُرى لأن الأرقام
+         * تبقى معقولة. و`cost_snapshot` مجموعُ ما التُقط، ويعود إلى البطاقة
+         * للبيعات التي سبقت اللقطة (صفرًا) فلا تنقلب أرقام ما مضى.
+         */
         $agg = [];
         $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
-            ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue')->groupBy('product_id')->get();
+            ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
+            ->groupBy('product_id')->get();
         foreach ($items as $it) {
             $info = $products[$it->product_id] ?? ['cat' => __('غير مصنّف'), 'cost' => 0];
             $cat = $info['cat'];
+            $uncosted = (int) $it->qty - (int) $it->costed_qty;
             $agg[$cat] ??= ['revenue' => 0, 'cost' => 0];
             $agg[$cat]['revenue'] += (float) $it->revenue;
-            $agg[$cat]['cost'] += $info['cost'] * (int) $it->qty;
+            $agg[$cat]['cost'] += (float) $it->cost_snapshot + $info['cost'] * $uncosted;
         }
 
         $rows = [];
@@ -1098,9 +1110,12 @@ class Demo
         OrderItem::whereHas('order', function ($q) use ($bid, $start) {
             $q->where('business_id', $bid)->where('is_held', false)
                 ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start));
-        })->selectRaw('product_id, SUM(quantity) as qty')->groupBy('product_id')->get()
+        })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
+            ->groupBy('product_id')->get()
             ->each(function ($r) use (&$cogs, $costs) {
-                $cogs += (float) ($costs[$r->product_id] ?? 0) * (int) $r->qty;
+                // اللقطة أولًا، وبطاقةُ المنتج لما بيع قبل وجودها
+                $cogs += (float) $r->cost_snapshot
+                    + (float) ($costs[$r->product_id] ?? 0) * ((int) $r->qty - (int) $r->costed_qty);
             });
 
         // المصروفات التشغيلية في الفترة
@@ -1138,18 +1153,34 @@ class Demo
         ];
     }
 
+    /**
+     * جدول المخزون — وأرقامه تتبع الفرع المختار حين يكون مختارًا.
+     *
+     * كانت الكمية والحالة من إجمالي الشركة دائمًا، والبيع يقرأ رصيد الفرع
+     * (انظر Support\Stock). فصلالة برصيد صفرٍ ومسقط بخمسين تُقرأ على الشاشة
+     * «متوفر»، ولا تنبيه ولا قائمة إعادة طلب — والكاشير في صلالة لا يستطيع
+     * البيع. ولا يعلم أحدٌ حتى يقف زبونٌ أمام الصندوق.
+     *
+     * و«كل الفروع» يبقى إجماليًّا: هو عرضُ الشركة لا موضعُ بيع.
+     */
     public static function inventory(): array
     {
         $branchNames = \App\Models\Branch::where('business_id', self::bid())->pluck('name', 'id');
         $stocks = \App\Models\BranchStock::where('business_id', self::bid())->get()->groupBy('product_id');
+        $books = \App\Models\BranchStock::books(self::bid());
+        $here = self::currentBranchId();
 
         return Product::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($p) => [
             'id' => $p->id,
             'name' => $p->name,
             'sku' => $p->sku,
-            'qty' => $p->quantity,
+            'qty' => $here ? (int) ($books[$p->id][$here] ?? 0) : $p->quantity,
+            // الإجمالي يبقى معروضًا: من يرى فرعه صفرًا يحتاج أن يعرف أن في غيره بضاعة
+            'totalQty' => (int) $p->quantity,
             'min' => $p->alert_qty,
-            'status' => $p->stock_status,
+            'status' => $here
+                ? Product::statusFor((int) ($books[$p->id][$here] ?? 0), (int) $p->alert_qty)
+                : $p->stock_status,
             'cost' => (float) $p->cost,
             'value' => round((float) $p->cost * (int) $p->quantity, 3),
             'updated' => optional($p->updated_at)->format('Y-m-d') ?? '—',
@@ -1172,6 +1203,8 @@ class Demo
             'type' => $m->type,
             'qty' => $m->quantity,
             'branch' => $branches[$m->branch_id] ?? '—',
+            // مسار التحويل («مسقط ← صلالة») — بلا هذا تُقرأ الحركتان تلفًا ومكسبًا
+            'note' => $m->note,
             'employee' => $m->employee_name,
             'date' => optional($m->created_at)->format('Y-m-d') ?? '—',
         ])->all();

@@ -172,6 +172,8 @@ export interface Movement {
     type: string;
     qty: string;
     branch: string | null;
+    /** مسار التحويل («مسقط ← صلالة») — للحركات من نوع «تحويل بين الفروع» */
+    note: string | null;
     employee: string;
     date: string;
 }

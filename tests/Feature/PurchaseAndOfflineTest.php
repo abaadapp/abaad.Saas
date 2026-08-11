@@ -97,13 +97,21 @@ class PurchaseAndOfflineTest extends TestCase
         $this->assertSame(25, (int) $this->product->fresh()->quantity, 'تضاعف المخزون');
     }
 
-    public function test_receiving_updates_the_cost_used_for_profit(): void
+    /**
+     * الاستلام يُخرج متوسّطًا مرجّحًا لا آخر سعر.
+     *
+     * كان يكتب سعر الشراء الأخير فوق التكلفة، فخمسٌ اشتُريت بأربعة وعشرون
+     * بستّة تصير الخمسةُ والعشرون كلُّها بستّة — تقفز قيمة المخزون بعشرة لم
+     * تُدفع، وينقص الربح المحسوب على كل بيعةٍ قادمة. والمتوسّط يوزّع الفرق
+     * على ما اشتُري فعلًا: (٥×٤ + ٢٠×٦) ÷ ٢٥ = ٥٫٦.
+     */
+    public function test_receiving_averages_the_cost_over_what_was_bought(): void
     {
         $po = $this->purchaseOrder(qty: 20, cost: 6);
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
 
-        $this->assertSame(6.0, (float) $this->product->fresh()->cost, 'التكلفة لم تُحدَّث');
+        $this->assertSame(5.6, (float) $this->product->fresh()->cost);
     }
 
     public function test_receiving_writes_an_inventory_movement(): void

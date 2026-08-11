@@ -95,10 +95,26 @@ class PurchaseOrderController extends Controller
                 $product = Product::where('business_id', $bid)->find($item->product_id);
                 if ($product) {
                     \App\Models\BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
+                    $onHand = (int) $product->quantity;
                     $product->increment('quantity', $remaining);
                     \App\Models\BranchStock::adjust($bid, $po->branch_id, $product->id, (int) $remaining);
-                    // تحديث تكلفة المنتج بآخر تكلفة شراء
-                    $product->update(['cost' => $item->cost]);
+
+                    /*
+                     * متوسّطٌ مرجّح لا آخر سعر.
+                     *
+                     * كانت التكلفة تُكتب فوق القديمة: مئةُ قطعةٍ اشتُريت بأربعة
+                     * ثم عشرٌ بستّة تجعل المئة والعشر كلَّها بستّة — فتقفز قيمة
+                     * المخزون بمئتين لم تُدفع، وينقص الربح المحسوب على كل
+                     * بيعةٍ قادمة. والمتوسّط يوزّع الفرق على ما اشتُري فعلًا.
+                     *
+                     * ورصيدٌ صفرٌ أو سالب يعني بدايةً جديدة، فتُؤخذ تكلفة
+                     * الشراء كما هي — لا معنى لمتوسّطٍ على لا شيء.
+                     */
+                    $newCost = $onHand > 0
+                        ? (($onHand * (float) $product->cost) + ($remaining * (float) $item->cost))
+                            / ($onHand + $remaining)
+                        : (float) $item->cost;
+                    $product->update(['cost' => round($newCost, 3)]);
                     InventoryMovement::create([
                         'business_id' => $bid,
                         'branch_id' => $po->branch_id,

@@ -317,6 +317,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/inventory/reorder', [InventoryController::class, 'reorder'])->name('inventory.reorder');
     Route::get('/inventory/stocktake', [InventoryController::class, 'stocktake'])->name('inventory.stocktake');
     Route::post('/inventory/stocktake', [InventoryController::class, 'applyStocktake'])->name('inventory.stocktake.apply');
+    // التحويل بين الفروع — حركة واحدة بدل «صرف» ثم «إضافة»
+    Route::get('/inventory/transfer', [InventoryController::class, 'transfer'])->name('inventory.transfer');
+    Route::post('/inventory/transfer', [InventoryController::class, 'applyTransfer'])->name('inventory.transfer.apply');
     Route::get('/inventory/movements', [\App\Http\Controllers\Admin\PageController::class, 'inventoryMovements'])->name('inventory.movements');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 

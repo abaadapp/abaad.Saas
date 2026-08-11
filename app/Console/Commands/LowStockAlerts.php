@@ -23,9 +23,12 @@ class LowStockAlerts extends Command
         $sent = 0;
 
         Business::whereNotNull('email')->each(function (Business $business) use (&$sent) {
+            // القاعدة نفسها التي تلوّن الحالة وتبني قائمة إعادة الطلب
             $low = Product::where('business_id', $business->id)
-                ->whereColumn('quantity', '<', 'alert_qty')
-                ->orderBy('quantity')->get();
+                ->get()
+                ->filter(fn ($p) => Product::statusFor((int) $p->quantity, (int) $p->alert_qty) !== 'متوفر')
+                ->sortBy('quantity')
+                ->values();
 
             if ($low->isEmpty()) {
                 return;

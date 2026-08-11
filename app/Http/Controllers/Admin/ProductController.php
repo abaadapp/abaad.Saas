@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Support\Demo;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
@@ -115,8 +116,17 @@ class ProductController extends Controller
             'name_en' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'category_id' => ['nullable', 'integer'],
-            'sku' => ['nullable', 'string', 'max:100'],
-            'barcode' => ['nullable', 'string', 'max:100'],
+            /*
+             * الرمز والباركود فريدان داخل المتجر.
+             *
+             * صنفان بباركودٍ واحد يجعلان الماسح يختار أحدهما — فيُخصم من
+             * صنفٍ ويبقى الآخر على الرفّ، ويظهر الفرق في الجرد بلا سبب.
+             * والقيد في التحقّق لا في القاعدة: متاجر قائمة قد تحمل تكرارًا
+             * اليوم، وقيدٌ في القاعدة يُسقط الهجرة على الإنتاج بدل أن يمنع
+             * الخطأ القادم.
+             */
+            'sku' => ['nullable', 'string', 'max:100', Rule::unique('products', 'sku')->where('business_id', $this->bid())->whereNull('deleted_at')],
+            'barcode' => ['nullable', 'string', 'max:100', Rule::unique('products', 'barcode')->where('business_id', $this->bid())->whereNull('deleted_at')],
             'price' => ['required', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
             'quantity' => ['nullable', 'integer', 'min:0'],
@@ -163,8 +173,17 @@ class ProductController extends Controller
             'name_en' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'category_id' => ['nullable', 'integer'],
-            'sku' => ['nullable', 'string', 'max:100'],
-            'barcode' => ['nullable', 'string', 'max:100'],
+            /*
+             * الرمز والباركود فريدان داخل المتجر.
+             *
+             * صنفان بباركودٍ واحد يجعلان الماسح يختار أحدهما — فيُخصم من
+             * صنفٍ ويبقى الآخر على الرفّ، ويظهر الفرق في الجرد بلا سبب.
+             * والقيد في التحقّق لا في القاعدة: متاجر قائمة قد تحمل تكرارًا
+             * اليوم، وقيدٌ في القاعدة يُسقط الهجرة على الإنتاج بدل أن يمنع
+             * الخطأ القادم.
+             */
+            'sku' => ['nullable', 'string', 'max:100', Rule::unique('products', 'sku')->where('business_id', $this->bid())->whereNull('deleted_at')->ignore($product->id)],
+            'barcode' => ['nullable', 'string', 'max:100', Rule::unique('products', 'barcode')->where('business_id', $this->bid())->whereNull('deleted_at')->ignore($product->id)],
             'price' => ['required', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
             'quantity' => ['nullable', 'integer', 'min:0'],

@@ -32,6 +32,10 @@ const TYPE_VARIANT: Record<string, 'success' | 'danger' | 'info' | 'warning' | '
     مرتجع: 'info',
     تلف: 'warning',
     'تعديل يدوي': 'primary',
+    // لونٌ محايد للتحويل: ليس ربحًا ولا فقدًا، والبضاعة لم تخرج من المتجر
+    'تحويل بين الفروع': 'info',
+    'تسوية جرد': 'warning',
+    بيع: 'danger',
 };
 
 export default function Movements() {
@@ -62,7 +66,17 @@ export default function Movements() {
             <span className="font-medium text-[#111]">{m.product}</span>
         ) },
         { key: 'sku', header: 'SKU', cell: (m) => <span className="font-mono text-[#6b7280]">{m.sku}</span> },
-        { key: 'branch', header: 'الفرع', cell: (m) => m.branch || '—' },
+        {
+            key: 'branch',
+            header: 'الفرع',
+            // ومسار التحويل تحته: «−٥ من مسقط» وحدها تُقرأ فقدًا لا انتقالًا
+            cell: (m) => (
+                <span>
+                    <span className="block">{m.branch || '—'}</span>
+                    {m.note && <span className="block text-[12px] text-[#9ca3af]">{m.note}</span>}
+                </span>
+            ),
+        },
         {
             key: 'type',
             header: 'نوع الحركة',

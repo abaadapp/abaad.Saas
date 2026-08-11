@@ -2429,5 +2429,22 @@
     "— بعد :n يوم": "— in :n days",
     "بصيغة ZATCA الخليجية. لا يظهر بلا رقم ضريبي. راجع جهاز الضرائب قبل الاعتماد عليه": "Gulf ZATCA format. Hidden when no tax number is set. Check with the Tax Authority before relying on it.",
     "الأرقام تخصّ الفرع المختار وحده. اترك الحقل فارغًا للأصناف التي لم تُعَدّ (لن تتغيّر).": "Figures are for the selected branch only. Leave blank for items you did not count (they stay unchanged).",
-    "رصيد النظام": "System quantity"
+    "رصيد النظام": "System quantity",
+    "التحويل بين الفروع": "Transfer between branches",
+    "انقل كمية من فرع إلى آخر — لا يتغيّر إجمالي المخزون، ينتقل موضعه": "Move quantity from one branch to another — the total does not change, its location does",
+    "من فرع": "From branch",
+    "إلى فرع": "To branch",
+    "تنفيذ التحويل": "Transfer",
+    "المتاح في الفرع المُرسِل: :n": "Available at the sending branch: :n",
+    "اختر الصنف والفرع لعرض المتاح": "Pick an item and branch to see what is available",
+    "أصناف نفدت في فرع وهي متوفّرة في غيره": "Items out of stock at one branch but available at another",
+    "لا يُحوَّل الصنف إلى الفرع نفسه.": "An item cannot be transferred to the same branch.",
+    "رصيد :branch من هذا الصنف :n فقط.": "Only :n of this item at :branch.",
+    "رصيد :branch من هذا الصنف :n فقط — لا يمكن صرف أكثر منه.": "Only :n of this item at :branch — you cannot take out more.",
+    "تم تحويل :n من :name — :route": ":n of :name transferred — :route",
+    "لا فرق — لم تتغيّر الكمية": "No difference — the quantity did not change",
+    "فاقد جرد": "Stocktake shrinkage",
+    "فاقد جرد — :branch (:n صنفًا)": "Stocktake shrinkage — :branch (:n items)",
+    "تحويل بين الفروع": "Branch transfer",
+    "قيد داخلي": "Internal entry"
 }

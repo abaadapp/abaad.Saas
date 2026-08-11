@@ -435,6 +435,14 @@ class PosController extends Controller
                     'product_id' => $l['product']?->id,
                     'name' => $l['name'],
                     'price' => $l['price'],
+                    /*
+                     * تكلفة القطعة تُلتقط يوم البيع لا تُقرأ يوم التقرير.
+                     *
+                     * تكلفة المنتج تُكتب فوقها عند كل استلامٍ بآخر سعر شراء،
+                     * فقراءتُها لاحقًا تجعل ربح الشهر الماضي يتغيّر لأن المورّد
+                     * رفع سعره اليوم. واللقطة تُثبّت ما مضى.
+                     */
+                    'cost' => (float) ($l['product']?->cost ?? 0),
                     'quantity' => $l['qty'],
                     'note' => $l['note'],
                     'total' => round($l['price'] * $l['qty'], 3),
@@ -557,6 +565,8 @@ class PosController extends Controller
                     'product_id' => $l['product']?->id,
                     'name' => $l['name'],
                     'price' => $l['price'],
+                    // لقطة التكلفة — انظر التعليق في إتمام البيع
+                    'cost' => (float) ($l['product']?->cost ?? 0),
                     'quantity' => $l['qty'],
                     'note' => $l['note'],
                     'total' => round($l['price'] * $l['qty'], 3),

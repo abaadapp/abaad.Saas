@@ -98,6 +98,15 @@ class LoginController extends Controller
             return;
         }
 
+        /*
+         * منتهي الاشتراك يدخل: حارسُ الطلب يسوقه إلى صفحة التجديد ولا يدعه
+         * يتجاوزها. وردُّه هنا برسالةٍ في حقل البريد كان يجعله يعيد كتابة
+         * كلمة المرور ظنًّا أنه أخطأها.
+         */
+        if (! \App\Support\Tenancy::isHard($reason)) {
+            return;
+        }
+
         Auth::logout();
 
         throw ValidationException::withMessages([
@@ -270,9 +279,11 @@ class LoginController extends Controller
          * الموظفَ الصادق سؤالًا لمديره، وتكلّف المخمّن كل شيء.
          */
         $branchId = $device?->branch_id;
+        // ومنتهي الاشتراك يمرّ من هنا كذلك: يقف عند صفحة التجديد لا عند الرمز
+        $reason = $user ? \App\Support\Tenancy::blockReason($user) : null;
         $allowed = $user
             && (! $device || $user->worksAt($branchId))
-            && \App\Support\Tenancy::blockReason($user) === null;
+            && ($reason === null || ! \App\Support\Tenancy::isHard($reason));
 
         if (! $allowed) {
             RateLimiter::hit($key, 60);

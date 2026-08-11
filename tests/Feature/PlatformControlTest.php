@@ -75,12 +75,23 @@ class PlatformControlTest extends TestCase
         $this->assertGuest();
     }
 
-    public function test_an_expired_subscription_locks_them_out(): void
+    /**
+     * الاشتراك المنتهي يحجز ولا يطرد — وهو غير التعطيل عمدًا.
+     *
+     * كان يُردّ عند الباب برسالةٍ في حقل البريد، فيعيد التاجر كتابة كلمة
+     * المرور ظنًّا أنه أخطأها. صار يدخل ويقف عند صفحةٍ واحدة تقول له كم
+     * عليه وبمن يتّصل — ولا يتجاوزها إلى شاشةٍ أخرى. انظر SubscriptionGraceTest.
+     */
+    public function test_an_expired_subscription_confines_them_to_the_renewal_page(): void
     {
         [, $owner] = $this->tenant(['ends_at' => now()->subMonth()], ['email' => 'e@abaad.om']);
 
         $this->post(route('login.attempt'), ['email' => 'e@abaad.om', 'password' => 'password'])
-            ->assertSessionHasErrors('email');
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($owner)
+            ->get(route('admin.dashboard'))
+            ->assertRedirect(route('subscription.expired'));
     }
 
     /**

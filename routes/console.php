@@ -21,6 +21,13 @@ Schedule::command('backup:run')->dailyAt('02:00')->withoutOverlapping();
  */
 Schedule::command('trash:purge')->dailyAt('02:30')->withoutOverlapping();
 
+/*
+ * إنذار الاشتراك (07:30) — قبل `subscriptions:expire` بيومٍ في المعنى لا في
+ * الساعة: الإنذار يُرسل ما دام المتجر يعمل، فلو تأخّر عن قلب الحالة لوصل
+ * الخبر بعد وقوعه.
+ */
+Schedule::command('subscriptions:notify')->dailyAt('07:30')->withoutOverlapping();
+
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 

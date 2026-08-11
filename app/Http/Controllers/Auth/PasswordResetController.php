@@ -83,7 +83,9 @@ class PasswordResetController extends Controller
 
         // حسابٌ موقوف أو متجرٌ منتهٍ لا يُفتح بابه من هنا: الاستعادة تعيد
         // كلمة المرور لا الصلاحية، ورابطٌ ينتهي إلى شاشة رفضٍ أسوأ من صمت
-        if ($user && Tenancy::blockReason($user) === null) {
+        // اشتراكٌ منتهٍ لا يمنع استعادة كلمة المرور: هي ما يحتاجه ليدخل ويجدّد
+        $reason = $user ? Tenancy::blockReason($user) : null;
+        if ($user && ($reason === null || ! Tenancy::isHard($reason))) {
             $to = $user->contactEmail();
 
             if ($to) {

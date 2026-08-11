@@ -35,6 +35,22 @@ class CheckTenantStatus
 
         $message = Tenancy::message($reason);
 
+        /*
+         * منتهي الاشتراك يُحجز ولا يُطرد.
+         *
+         * كان يُخرَج إلى شاشة الدخول برسالةٍ في حقل البريد، فيقرؤها ويحاول
+         * ثانيةً ظنًّا أنه أخطأ كلمة المرور. ثم يتّصل ليسأل «لماذا لا أدخل؟»
+         * قبل أن يسأل «كيف أجدّد؟» — وهو السؤال الوحيد الذي يهمّ الطرفين.
+         * فصار يدخل ويقف عند صفحةٍ تقول له كم عليه وبمن يتّصل.
+         */
+        if (! Tenancy::isHard($reason)) {
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'blocked' => $reason, 'message' => $message], 403);
+            }
+
+            return redirect()->route('subscription.expired');
+        }
+
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

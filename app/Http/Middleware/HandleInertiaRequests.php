@@ -97,6 +97,12 @@ class HandleInertiaRequests extends Middleware
                     ? [
                         'endsAt' => $ends->format('Y-m-d'),
                         'daysLeft' => \App\Support\Tenancy::daysLeft($user->business),
+                        /*
+                         * أيّام المهلة الباقية بعد الانتهاء — الرقم الذي يدفع
+                         * إلى الدفع. «انتهى اشتراكك» وحدها لا تقول متى يقف
+                         * الصندوق، ومن لا يعرف الموعد يؤجّل إلى أن يفاجئه.
+                         */
+                        'graceLeft' => \App\Support\Tenancy::graceLeft($user->business),
                     ]
                     : null,
             ] : null,

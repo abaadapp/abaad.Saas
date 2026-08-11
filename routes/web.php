@@ -91,6 +91,15 @@ Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->na
 Route::post('/stop-impersonating', [\App\Http\Controllers\SuperAdmin\ImpersonationController::class, 'stop'])
     ->middleware('auth')->name('impersonate.stop');
 
+/*
+ * صفحة انتهاء الاشتراك — خارج حارس المستأجر عمدًا.
+ *
+ * هي وجهةُ الحارس نفسه، فلو وقعت تحته لدارت الإحالة على نفسها إلى الأبد.
+ * وحارسها الخاصّ في المتحكّم: من لم ينتهِ اشتراكه يُعاد إلى لوحته.
+ */
+Route::get('/subscription-expired', \App\Http\Controllers\SubscriptionExpiredController::class)
+    ->middleware('auth')->name('subscription.expired');
+
 /* ------------------------- الملف الشخصي (كل الأدوار) ------------------------- */
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [\App\Http\Controllers\ProfileController::class, 'edit'])->name('profile.edit');

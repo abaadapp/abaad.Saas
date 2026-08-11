@@ -52,11 +52,69 @@ class Tenancy
             return self::BUSINESS_DISABLED;
         }
 
-        if (self::expired($business)) {
+        // بعد المهلة لا عندها: المهلة موجودة كي لا يقف متجرٌ لتأخّر حوالةٍ يومًا
+        if (self::locked($business)) {
             return self::SUBSCRIPTION_EXPIRED;
         }
 
         return null;
+    }
+
+    /**
+     * منعٌ يُخرج من الباب، أم حجزٌ داخل الصفحة؟
+     *
+     * الموقوف والمعطَّل تُنهى جلستهما ويُردّان إلى شاشة الدخول: أمرهما بيد
+     * غيرهما ولا شيء يفعلانه في النظام. ومنتهي الاشتراك يدخل ويقف عند صفحةٍ
+     * واحدة تقول له كم عليه وبمن يتّصل — لأن طردَه عند الباب يجعله يتّصل
+     * ليسأل «لماذا لا أدخل؟» قبل أن يسأل «كيف أجدّد؟».
+     */
+    public static function isHard(string $reason): bool
+    {
+        return $reason !== self::SUBSCRIPTION_EXPIRED;
+    }
+
+    /**
+     * مهلة السماح بالأيّام — من إعدادات المنصة.
+     *
+     * المفتاح `grace_days` كان في شاشة إعدادات المنصة منذ البداية ولا يقرؤه
+     * أحد: مقبضٌ يديره المشغّل ولا يوصَّل بشيء، وهو أسوأ من غيابه لأنه
+     * يُطمئن. وصفرٌ يعني الإقفال لحظة الانتهاء — وهو خيارٌ مشروع.
+     */
+    public static function graceDays(): int
+    {
+        $value = \App\Models\Setting::where('business_id', null)
+            ->where('key', 'grace_days')
+            ->value('value');
+
+        return max(0, (int) ($value ?? 7));
+    }
+
+    /** آخر لحظةٍ يعمل فيها المتجر — نهاية الاشتراك زائدَ المهلة */
+    public static function locksAt(?Business $business): ?\Illuminate\Support\Carbon
+    {
+        return $business?->ends_at?->endOfDay()->addDays(self::graceDays());
+    }
+
+    /**
+     * أُقفل فعلًا؟ — وهو غير «انتهى».
+     *
+     * الفرق ليس لفظيًّا: بينهما أيّامٌ يعمل فيها المتجر كاملًا ويرى صاحبه
+     * شريطًا أحمر يعدّ ما بقي. وخلطُهما يعني أن تأخّر حوالةٍ ساعةً يوقف
+     * صندوقًا في يوم عيد.
+     */
+    public static function locked(?Business $business): bool
+    {
+        return self::locksAt($business)?->isPast() ?? false;
+    }
+
+    /** كم يومًا بقي من المهلة بعد الانتهاء؟ null إن لم ينتهِ بعد */
+    public static function graceLeft(?Business $business): ?int
+    {
+        if (! self::expired($business)) {
+            return null;
+        }
+
+        return max(0, (int) now()->startOfDay()->diffInDays(self::locksAt($business), false));
     }
 
     /**

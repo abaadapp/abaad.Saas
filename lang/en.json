@@ -2412,5 +2412,9 @@
     "سيُمحى «:name» ولا يمكن استرداده بعدها — ولا من النسخة الاحتياطية إن مضى وقت.": "“:name” will be erased and cannot be recovered — not even from a backup once time has passed.",
     "الفرع لا يُمحى: صناديقه وأذون موظفيه وحركة مخزونه معلّقةٌ به، فيبقى هنا حتى تستعيده.": "A branch is never erased: its tills, staff permissions and stock movements hang on it, so it stays here until you restore it.",
     "لا فروع محذوفة.": "No deleted branches.",
-    "تم المحو النهائي: :name": "Permanently erased: :name"
+    "تم المحو النهائي: :name": "Permanently erased: :name",
+    "إعادة تشغيل": "Reactivate",
+    "تمت إعادة تشغيل الشركة": "Business reactivated",
+    "أُعيد تشغيل الشركة، لكنّ اشتراكها منتهٍ — جدّده ليتمكّن التاجر من الدخول": "Business reactivated, but its subscription has expired — renew it so the merchant can sign in",
+    "هذه الشركة ليست معطَّلة": "This business is not disabled"
 }

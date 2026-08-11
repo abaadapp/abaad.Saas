@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { KeyRound, Layers, LogIn, Pencil, Phone, User } from 'lucide-react';
+import { KeyRound, Layers, LogIn, Pencil, Phone, Power, User } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import DeleteButton from '@/Components/DeleteButton';
@@ -22,6 +22,7 @@ import {
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { isDisabled } from '@/lib/tenancy';
 import type { Currency, PageProps } from '@/types';
 
 interface Business {
@@ -145,11 +146,29 @@ export default function BusinessShow() {
                                 {t('تعديل')}
                             </SmartLink>
                         </Button>
-                        <DeleteButton
-                            url={route('super-admin.businesses.destroy', business.id)}
-                            label="تعطيل"
-                            message="سيُنقل هذا النشاط إلى حالة «معطل». هل تريد المتابعة؟"
-                        />
+                        {/* المعطَّلة تُعرض عليها إعادة التشغيل وحدها، والعاملة
+                            التعطيل وحده — لا زرَّ لا يفعل شيئًا */}
+                        {isDisabled(business.status) ? (
+                            <Button
+                                variant="outline"
+                                onClick={() =>
+                                    router.post(
+                                        route('super-admin.businesses.activate', business.id),
+                                        {},
+                                        { preserveScroll: true },
+                                    )
+                                }
+                            >
+                                <Power />
+                                {t('إعادة تشغيل')}
+                            </Button>
+                        ) : (
+                            <DeleteButton
+                                url={route('super-admin.businesses.destroy', business.id)}
+                                label="تعطيل"
+                                message="سيُنقل هذا النشاط إلى حالة «معطل». هل تريد المتابعة؟"
+                            />
+                        )}
                     </>
                 }
             />

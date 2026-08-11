@@ -1,5 +1,5 @@
-import { usePage } from '@inertiajs/react';
-import { Ban, Plus } from 'lucide-react';
+import { router, usePage } from '@inertiajs/react';
+import { Ban, Plus, Power } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
@@ -9,6 +9,7 @@ import DataTable, { type Column, type Filter, type ServerPagination } from '@/Co
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { number } from '@/lib/format';
+import { isDisabled } from '@/lib/tenancy';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
@@ -142,19 +143,42 @@ export default function BusinessesIndex() {
             key: 'actions',
             header: 'إجراءات',
             align: 'end',
-            cell: (b) => (
-                <RowActions
-                    show={{ routeName: 'super-admin.businesses.show', href: route('super-admin.businesses.show', b.id) }}
-                    edit={{ routeName: 'super-admin.businesses.edit', href: route('super-admin.businesses.edit', b.id) }}
-                    destroy={{
-                        url: route('super-admin.businesses.destroy', b.id),
-                        // «تعطيل» لا «حذف»: المتحكّم يغيّر الحالة ولا يمحو السجل،
-                        // وصفحة الشركة تسمّيه كذلك — فلا تختلف التسميتان للفعل نفسه
-                        label: 'تعطيل',
-                        message: 'سيُنقل هذا النشاط إلى حالة «معطل». هل تريد المتابعة؟',
-                    }}
-                />
-            ),
+            /*
+             * الفعل المعروض هو المتاح لا الاثنان: الشركة المعطَّلة تُعرض عليها
+             * «إعادة تشغيل» وحدها، والعاملة «تعطيل» وحده. وقائمةٌ فيها زرٌّ
+             * لا يفعل شيئًا تجعل المشغّل يضغطه ليعرف.
+             */
+            cell: (b) =>
+                isDisabled(b.status) ? (
+                    <RowActions
+                        show={{ routeName: 'super-admin.businesses.show', href: route('super-admin.businesses.show', b.id) }}
+                        edit={{ routeName: 'super-admin.businesses.edit', href: route('super-admin.businesses.edit', b.id) }}
+                        extra={[
+                            {
+                                label: 'إعادة تشغيل',
+                                icon: <Power />,
+                                onSelect: () =>
+                                    router.post(
+                                        route('super-admin.businesses.activate', b.id),
+                                        {},
+                                        { preserveScroll: true },
+                                    ),
+                            },
+                        ]}
+                    />
+                ) : (
+                    <RowActions
+                        show={{ routeName: 'super-admin.businesses.show', href: route('super-admin.businesses.show', b.id) }}
+                        edit={{ routeName: 'super-admin.businesses.edit', href: route('super-admin.businesses.edit', b.id) }}
+                        destroy={{
+                            url: route('super-admin.businesses.destroy', b.id),
+                            // «تعطيل» لا «حذف»: المتحكّم يغيّر الحالة ولا يمحو السجل،
+                            // وصفحة الشركة تسمّيه كذلك — فلا تختلف التسميتان للفعل نفسه
+                            label: 'تعطيل',
+                            message: 'سيُنقل هذا النشاط إلى حالة «معطل». هل تريد المتابعة؟',
+                        }}
+                    />
+                ),
         },
     ];
 

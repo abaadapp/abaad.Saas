@@ -113,6 +113,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/businesses/{id}/edit', [SuperAdminPageController::class, 'businessesEdit'])->name('businesses.edit');
     Route::put('/businesses/{id}', [BusinessController::class, 'update'])->name('businesses.update');
     Route::delete('/businesses/{id}', [BusinessController::class, 'destroy'])->name('businesses.destroy');
+    // الطرف الآخر من التعطيل — بلا هذا المسار كان الباب يُغلق ولا يُفتح
+    Route::post('/businesses/{id}/activate', [BusinessController::class, 'activate'])->name('businesses.activate');
 
     // دخول كتاجر — الخروج منه خارج هذه المجموعة (انظر أسفل الملف)
     Route::post('/businesses/{id}/impersonate', [\App\Http\Controllers\SuperAdmin\ImpersonationController::class, 'start'])->name('businesses.impersonate');

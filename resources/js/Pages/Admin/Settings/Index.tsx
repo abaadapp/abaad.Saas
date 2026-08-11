@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
@@ -154,6 +154,24 @@ export default function SettingsIndex() {
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState<TabKey | null>(tabFromUrl);
+
+    /*
+     * المرساة تُقرأ عند كل تنقّل لا عند أوّل تركيبٍ وحده.
+     *
+     * الصفحة تُقرأ مرّةً ثم تبقى، فرابطٌ إلى ‎#business‎ من داخلها كان يغيّر
+     * العنوان ولا يغيّر المعروض: لا تركيب جديد فلا قراءة جديدة. ومن ضغط
+     * الزرّ وهو واقفٌ على الإعدادات لا يرى شيئًا يتحرّك.
+     */
+    useEffect(() => {
+        const sync = () => setTab(tabFromUrl());
+        window.addEventListener('hashchange', sync);
+        const off = router.on('navigate', sync);
+
+        return () => {
+            window.removeEventListener('hashchange', sync);
+            off();
+        };
+    }, []);
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
     const [backupFile, setBackupFile] = useState<File | null>(null);
     const [notifs, setNotifs] = useState<NotificationRow[]>(notificationsAll ?? []);

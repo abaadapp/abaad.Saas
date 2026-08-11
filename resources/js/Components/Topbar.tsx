@@ -282,8 +282,15 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                 </a>
                             </Button>
                         ) : (
+                            /*
+                             * إلى الحقل نفسه لا إلى لوحة الإعدادات.
+                             *
+                             * كان يقود إلى شبكة البطاقات: يضغط من يريد إضافة
+                             * موقعه فيجد اثنتين وعشرين بطاقة ولا يجد ما ضغط
+                             * من أجله — فيُقرأ الزرّ معطّلًا وهو يعمل.
+                             */
                             <Button asChild variant="ghost" size="icon" title={t('أضف الموقع الإلكتروني')}>
-                                <Link href={route('admin.settings.index')}>
+                                <Link href={`${route('admin.settings.index')}#business`}>
                                     <Globe />
                                     <span className="sr-only">{t('أضف الموقع الإلكتروني')}</span>
                                 </Link>

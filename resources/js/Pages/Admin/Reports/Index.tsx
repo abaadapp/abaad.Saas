@@ -19,6 +19,7 @@ import {
 import useLiveFeed from '@/hooks/useLiveFeed';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import { money, number } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
@@ -129,23 +130,31 @@ export default function ReportsIndex() {
             </div>
 
             <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <Card className="lg:col-span-2">
-                    <CardHeader>
-                        {/* عنوان المخطّط يتبع دقّته: ساعات اليوم، أو أيّام الشهر، أو أشهر السنة */}
-                        <CardTitle>{t(CHART_TITLE[server.range])}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <AreaChart
-                            labels={salesSeries.labels}
-                            fullLabels={salesSeries.full}
-                            counts={salesSeries.counts}
-                            data={salesSeries.data}
-                            format={m}
-                        />
-                    </CardContent>
-                </Card>
+                {/*
+                    لا مخطّط في فترة «الكل» بطلب المالك.
+                    الأرقام والجداول تبقى — المحذوف هو المخطّط وحده، وفي هذه
+                    الفترة وحدها. وبقيّة الفترات كما هي.
+                */}
+                {server.range !== 'all' && (
+                    <Card className="lg:col-span-2">
+                        <CardHeader>
+                            {/* عنوان المخطّط يتبع دقّته: ساعات اليوم، أو أيّام الشهر، أو أشهر السنة */}
+                            <CardTitle>{t(CHART_TITLE[server.range])}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <AreaChart
+                                labels={salesSeries.labels}
+                                fullLabels={salesSeries.full}
+                                counts={salesSeries.counts}
+                                data={salesSeries.data}
+                                format={m}
+                            />
+                        </CardContent>
+                    </Card>
+                )}
 
-                <Card>
+                {/* بلا المخطّط تأخذ البطاقة العرض كلّه بدل ثلثٍ وفراغين */}
+                <Card className={cn(server.range === 'all' && 'lg:col-span-3')}>
                     <CardHeader>
                         <CardTitle>{t('توزيع وسائل الدفع')}</CardTitle>
                     </CardHeader>

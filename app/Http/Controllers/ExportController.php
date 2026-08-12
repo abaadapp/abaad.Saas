@@ -76,7 +76,11 @@ class ExportController extends Controller
         $rows[] = [__('الفترة'), __('المبيعات'), __('عدد الطلبات')];
         $series = Demo::salesTrend($range);
         foreach ($series['full'] as $i => $label) {
-            $rows[] = [$label, number_format((float) ($series['data'][$i] ?? 0), 3, '.', ''), (int) ($series['counts'][$i] ?? 0)];
+            // ما لم يأتِ بعدُ لا يُكتب: صفٌّ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة
+            if (($series['data'][$i] ?? null) === null) {
+                continue;
+            }
+            $rows[] = [$label, number_format((float) $series['data'][$i], 3, '.', ''), (int) ($series['counts'][$i] ?? 0)];
         }
         $rows[] = ['', '', ''];
         $rows[] = [__('— وسائل الدفع —'), '', ''];

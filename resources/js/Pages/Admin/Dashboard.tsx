@@ -59,7 +59,7 @@ interface Employee {
 interface DashboardProps {
     stats: Stat[];
     statCatalog: CatalogStat[];
-    salesSeries: { labels: string[]; full: string[]; data: number[]; counts: number[] };
+    salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[] };
     paymentDistribution: { labels: string[]; series: number[] };
     recentOrders: Order[];
     topProducts: Product[];

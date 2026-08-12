@@ -6,7 +6,7 @@
      * الطابور وفي أمرٍ يولّد تقريرين وفي مجموعة الاختبارات.
      */
     $bar = fn ($pct) => max(1, min(100, (int) round($pct)));
-    $maxSales = max(1, max($salesSeries['data'] ?: [1]));
+    $maxSales = max(1, max(array_filter($salesSeries['data'], fn ($v) => $v !== null) ?: [1]));
 @endphp
 <style>
     * { font-family: 'dejavusans', sans-serif; }
@@ -58,6 +58,8 @@
 <h2>{{ __('حركة المبيعات') }} — {{ $rangeLabel ?? '' }}</h2>
 <table>
     @foreach (($salesSeries['full'] ?? $salesSeries['labels']) as $i => $label)
+        {{-- ما لم يأتِ بعدُ لا يُطبع: سطرٌ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة --}}
+        @continue(($salesSeries['data'][$i] ?? null) === null)
         @php $val = $salesSeries['data'][$i] ?? 0; @endphp
         <tr>
             <td style="width:20%;">{{ __($label) }}</td>

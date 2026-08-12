@@ -5,11 +5,12 @@ import { cn } from '@/lib/utils';
 
 interface AreaChartProps {
     labels: string[];
-    data: number[];
+    /** null = لم يأتِ بعد. صفرٌ يعني «لم يُبَع شيء» وهما ليسا واحدًا */
+    data: (number | null)[];
     /** تسمية كاملة لكل نقطة تُقرأ في التلميح — «الأحد ١٠ أغسطس» مقابل «١٠» على المحور */
     fullLabels?: string[];
     /** عدد الطلبات في كل نقطة — المبلغ وحده لا يفرّق بين طلبٍ كبير وأربعين صغيرًا */
-    counts?: number[];
+    counts?: (number | null)[];
     /** لتنسيق القيمة في التلميح والمحور */
     format?: (value: number) => string;
     className?: string;
@@ -67,8 +68,8 @@ export default function AreaChart({
     const innerH = height - PAD.top - PAD.bottom;
 
     const { points, ticks, slot } = useMemo(() => {
-        const maxValue = Math.max(...data, 0);
-        const niceMax = niceCeiling(maxValue, 3);
+        const known = data.filter((v): v is number => v !== null);
+        const niceMax = niceCeiling(Math.max(...known, 0), 3);
         const stepX = data.length > 1 ? innerW / (data.length - 1) : 0;
 
         return {
@@ -78,7 +79,8 @@ export default function AreaChart({
             slot: stepX || innerW,
             points: data.map((value, i) => ({
                 x: PAD.left + i * stepX,
-                y: PAD.top + innerH - (value / niceMax) * innerH,
+                // المستقبل بلا ارتفاع — لا يُرسم أصلًا، ولا يُسحب الخطّ إلى القاع
+                y: value === null ? null : PAD.top + innerH - (value / niceMax) * innerH,
                 value,
                 label: labels[i] ?? '',
                 full: fullLabels?.[i] ?? labels[i] ?? '',
@@ -91,9 +93,17 @@ export default function AreaChart({
         };
     }, [data, labels, fullLabels, counts, innerH, innerW]);
 
-    const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-    const areaPath = points.length
-        ? `${linePath} L${points[points.length - 1].x},${PAD.top + innerH} L${points[0].x},${PAD.top + innerH} Z`
+    /*
+     * الخطّ يُرسم على ما تحقّق فقط، والمحور يبقى كاملًا.
+     *
+     * فمن يفتح تقرير الشهر في يومه الثاني عشر يرى محورًا بواحدٍ وثلاثين يومًا
+     * — فيعرف موضعه من شهره — وخطًّا ينتهي عند اليوم لا خطًّا يهوي إلى القاع
+     * تسعة عشر يومًا لم تُعش بعد.
+     */
+    const drawn = points.filter((p): p is typeof p & { y: number } => p.y !== null);
+    const linePath = drawn.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+    const areaPath = drawn.length
+        ? `${linePath} L${drawn[drawn.length - 1].x},${PAD.top + innerH} L${drawn[0].x},${PAD.top + innerH} Z`
         : '';
 
     return (
@@ -151,14 +161,17 @@ export default function AreaChart({
                             strokeWidth="1"
                             strokeDasharray="3 3"
                         />
-                        <circle
-                            cx={points[hover].x}
-                            cy={points[hover].y}
-                            r="5"
-                            fill="#7c3aed"
-                            stroke="#ffffff"
-                            strokeWidth="2"
-                        />
+                        {/* لا نقطة على عمودٍ لم يأتِ: النقطة تقول «هذه قيمته» */}
+                        {points[hover].y !== null && (
+                            <circle
+                                cx={points[hover].x}
+                                cy={points[hover].y as number}
+                                r="5"
+                                fill="#7c3aed"
+                                stroke="#ffffff"
+                                strokeWidth="2"
+                            />
+                        )}
                     </g>
                 )}
 
@@ -238,7 +251,13 @@ export default function AreaChart({
                             dir="ltr"
                             className={cn(
                                 'truncate text-center text-[9px] leading-[14px]',
-                                hover === i ? 'font-bold text-[#7c3aed]' : 'text-[#9ca3af]',
+                                hover === i
+                                    ? 'font-bold text-[#7c3aed]'
+                                    /* ما لم يأتِ بعدُ باهتٌ على المحور: موجودٌ ليُقرأ
+                                       الموضع، لا ليُقرأ على أنه قياس */
+                                    : p.y === null
+                                      ? 'text-[#d8d8d8]'
+                                      : 'text-[#9ca3af]',
                             )}
                         >
                             {p.label}
@@ -253,14 +272,21 @@ export default function AreaChart({
                     <>
                         <span className="font-medium text-[#111]">{points[hover].full}</span>
                         {' · '}
-                        {format(points[hover].value)}
-                        {/* عددُ الطلبات يفصل بيعةً كبيرة عن يومٍ مزدحم — والمبلغ وحده لا يفعل */}
-                        {points[hover].count !== undefined && (
+                        {points[hover].value === null ? (
+                            /* «٠ ر.ع» عن يومٍ لم يأتِ خبرٌ كاذب عن الغد */
+                            <span className="text-[#c7c7c7]">{t('لم يأتِ بعد')}</span>
+                        ) : (
                             <>
-                                {' · '}
-                                {points[hover].count === 0
-                                    ? t('لا طلبات')
-                                    : `${points[hover].count} ${t('طلب')}`}
+                                {format(points[hover].value as number)}
+                                {/* عددُ الطلبات يفصل بيعةً كبيرة عن يومٍ مزدحم — والمبلغ وحده لا يفعل */}
+                                {points[hover].count != null && (
+                                    <>
+                                        {' · '}
+                                        {points[hover].count === 0
+                                            ? t('لا طلبات')
+                                            : `${points[hover].count} ${t('طلب')}`}
+                                    </>
+                                )}
                             </>
                         )}
                     </>

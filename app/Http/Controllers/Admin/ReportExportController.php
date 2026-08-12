@@ -126,6 +126,10 @@ class ReportExportController extends Controller
         $title(__('المبيعات') . ' — ' . Demo::rangeLabel($range));
         $head([__('الفترة'), __('المبيعات (ر.ع)'), __('عدد الطلبات')]);
         foreach ($series['full'] as $i => $label) {
+            // ما لم يأتِ بعدُ لا يُكتب: صفٌّ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة
+            if (($series['data'][$i] ?? null) === null) {
+                continue;
+            }
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $label);
             $sheet->setCellValue("B{$r}", round((float) ($series['data'][$i] ?? 0), 3));

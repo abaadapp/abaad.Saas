@@ -76,34 +76,49 @@ class ReportRangeTest extends TestCase
 
     /* ---------------------------- دقّة المحور ---------------------------- */
 
-    public function test_the_axis_follows_the_chosen_period(): void
+    public function test_the_axis_is_drawn_whole(): void
     {
-        // الوحدة تتبع المدى، والعدد يقف عند هذه اللحظة لا عند آخر التقويم
-        $this->assertCount(now()->hour + 1, Demo::salesTrend('today')['labels'], 'اليوم يُقرأ بالساعات');
-        $this->assertCount(
-            now()->startOfWeek()->diffInDays(now()) + 1,
-            Demo::salesTrend('week')['labels'],
-            'الأسبوع يُقرأ بالأيّام'
-        );
-        $this->assertCount(now()->day, Demo::salesTrend('month')['labels'], 'الشهر يُقرأ بأيّامه');
-        $this->assertCount(now()->month, Demo::salesTrend('year')['labels'], 'السنة تُقرأ بالأشهر');
+        // الفترة تُعرض كاملة ليُقرأ اليومُ في موضعه منها: من يرى عمودًا في
+        // منتصف محورٍ يعرف أنه في منتصف شهره
+        $this->assertCount(24, Demo::salesTrend('today')['labels'], 'اليوم أربع وعشرون ساعة');
+        $this->assertCount(7, Demo::salesTrend('week')['labels'], 'الأسبوع سبعة أيّام');
+        $this->assertCount(now()->daysInMonth, Demo::salesTrend('month')['labels'], 'الشهر بأيّامه كلّها');
+        $this->assertCount(12, Demo::salesTrend('year')['labels'], 'السنة اثنا عشر شهرًا');
         $this->assertCount(12, Demo::salesTrend('all')['labels'], 'الكلّ: آخر اثني عشر شهرًا');
     }
 
-    public function test_the_axis_stops_at_this_moment(): void
+    public function test_what_has_not_happened_is_empty_not_zero(): void
     {
         /*
-         * بقيّة الشهر ليست أيّامًا بلا بيع بل أيّامًا لم تأتِ بعد. برسمها
-         * أصفارًا يسقط الخطّ إلى القاع في منتصف كل شهر، فيقرأ صاحب المتجر
-         * انهيارًا وهو تقويمٌ لم يُستهلك.
+         * المحور كاملٌ والخطّ ليس كذلك: يومٌ لم يأتِ ليس يومًا بلا بيع.
+         * بكتابته صفرًا يهوي الخطّ إلى القاع في منتصف كل شهر، فيقرأ صاحب
+         * المتجر انهيارًا وهو تقويمٌ لم يُستهلك.
          */
         $trend = Demo::salesTrend('month');
 
-        $this->assertSame((string) now()->day, end($trend['labels']), 'آخر عمود ليس اليوم');
-        $this->assertCount(now()->day, $trend['data']);
+        $this->assertNotNull($trend['data'][now()->day - 1], 'اليوم الجاري يُقرأ بما تحقّق منه');
+
+        if (now()->day < now()->daysInMonth) {
+            $this->assertNull($trend['data'][now()->day], 'كُتب صفرٌ عن يومٍ لم يأتِ');
+            $this->assertNull($trend['counts'][now()->day]);
+            $this->assertNull($trend['data'][now()->daysInMonth - 1], 'كُتب صفرٌ عن آخر الشهر');
+        }
 
         $hours = Demo::salesTrend('today');
-        $this->assertSame(now()->format('H') . ':00', end($hours['labels']), 'رُسمت ساعاتٌ لم تأتِ');
+        $this->assertNotNull($hours['data'][now()->hour]);
+        if (now()->hour < 23) {
+            $this->assertNull($hours['data'][23], 'رُسمت ساعةٌ لم تأتِ صفرًا');
+        }
+    }
+
+    public function test_a_day_with_no_sale_is_still_a_zero(): void
+    {
+        // الفراغ للمستقبل وحده: يومٌ مضى بلا بيع صفرٌ حقيقيّ يُرسم
+        $trend = Demo::salesTrend('year');
+
+        for ($i = 0; $i < now()->month; $i++) {
+            $this->assertNotNull($trend['data'][$i], 'شهرٌ مضى صار فراغًا بدل صفر');
+        }
     }
 
     public function test_each_column_carries_its_order_count(): void
@@ -149,7 +164,7 @@ class ReportRangeTest extends TestCase
 
         $trend = Demo::salesTrend('month');
 
-        $this->assertCount(now()->day, $trend['data']);
+        $this->assertCount(now()->daysInMonth, $trend['data']);
         $this->assertSame(10.0, $trend['data'][0]);
         $this->assertSame(0.0, $trend['data'][1] ?? 0.0);
     }
@@ -264,7 +279,7 @@ class ReportRangeTest extends TestCase
             ->assertOk()->viewData('page')['props'];
 
         $this->assertSame('today', $props['range']);
-        $this->assertCount(now()->hour + 1, $props['salesSeries']['labels']);
+        $this->assertCount(24, $props['salesSeries']['labels']);
     }
 
     public function test_a_made_up_period_falls_back_instead_of_breaking(): void
@@ -288,7 +303,7 @@ class ReportRangeTest extends TestCase
         $feed = $this->getJson(route('admin.reports.feed', ['range' => 'today']))->assertOk()->json();
 
         $this->assertSame(15.0, (float) $feed['summary']['sales']);
-        $this->assertCount(now()->hour + 1, $feed['salesSeries']['labels']);
+        $this->assertCount(24, $feed['salesSeries']['labels']);
     }
 
     /* ------------------------- ما يغادر الشاشة ------------------------- */

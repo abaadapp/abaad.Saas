@@ -44,7 +44,7 @@ interface TopProduct {
 
 interface Props {
     summary: Summary;
-    salesSeries: { labels: string[]; full: string[]; data: number[]; counts: number[]; range: ReportRange };
+    salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[]; range: ReportRange };
     range: ReportRange;
     paymentDistribution: { labels: string[]; series: number[] };
     topSellingProducts: TopProduct[];

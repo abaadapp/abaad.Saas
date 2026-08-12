@@ -94,16 +94,26 @@ export default function AreaChart({
     }, [data, labels, fullLabels, counts, innerH, innerW]);
 
     /*
-     * الخطّ يُرسم على ما تحقّق فقط، والمحور يبقى كاملًا.
+     * الخطّ يمتدّ على المحور كلّه — وما لم يأتِ بعدُ يمتدّ متقطّعًا.
      *
-     * فمن يفتح تقرير الشهر في يومه الثاني عشر يرى محورًا بواحدٍ وثلاثين يومًا
-     * — فيعرف موضعه من شهره — وخطًّا ينتهي عند اليوم لا خطًّا يهوي إلى القاع
-     * تسعة عشر يومًا لم تُعش بعد.
+     * كان ينتهي عند اليوم فيبقى ثلث البطاقة أبيضَ يُقرأ عطلًا في الشاشة لا
+     * تقويمًا لم يُستهلك. فصار يصل إلى آخر المحور، لكن الجزء الذي لم يُقس
+     * يُرسم متقطّعًا باهتًا بلا تعبئةٍ تحته ولا نقاط: ممتدٌّ ليكتمل الشكل،
+     * ومميَّزٌ كي لا يُقرأ قياسًا. ولمسُه يقول «لم يأتِ بعد» لا «٠ ر.ع».
      */
+    const baseline = PAD.top + innerH;
     const drawn = points.filter((p): p is typeof p & { y: number } => p.y !== null);
+    const pending = points.filter((p) => p.y === null);
+
     const linePath = drawn.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
     const areaPath = drawn.length
-        ? `${linePath} L${drawn[drawn.length - 1].x},${PAD.top + innerH} L${drawn[0].x},${PAD.top + innerH} Z`
+        ? `${linePath} L${drawn[drawn.length - 1].x},${baseline} L${drawn[0].x},${baseline} Z`
+        : '';
+
+    // يبدأ من آخر نقطةٍ مقيسة كي يكون امتدادًا لخطٍّ واحد لا خطًّا ثانيًا
+    const pendingPath = pending.length && drawn.length
+        ? `M${drawn[drawn.length - 1].x},${drawn[drawn.length - 1].y} ` +
+          pending.map((p) => `L${p.x},${baseline}`).join(' ')
         : '';
 
     return (
@@ -135,6 +145,19 @@ export default function AreaChart({
                 ))}
 
                 {areaPath && <path d={areaPath} fill={`url(#${gradientId})`} />}
+
+                {/* الامتداد غير المقيس: متقطّع وباهت وبلا تعبئة تحته */}
+                {pendingPath && (
+                    <path
+                        d={pendingPath}
+                        fill="none"
+                        stroke="#7c3aed"
+                        strokeOpacity="0.28"
+                        strokeWidth="2"
+                        strokeDasharray="4 4"
+                        strokeLinecap="round"
+                    />
+                )}
                 {linePath && (
                     <motion.path
                         initial={{ pathLength: 0 }}
@@ -239,9 +262,16 @@ export default function AreaChart({
                     الاسم — «سبتمبر» أو «September».
                 */}
                 {points.map((p, i) => (
+                    /*
+                     * التسمية تُحصر داخل حدود الرسم.
+                     *
+                     * كانت حصّة أوّل نقطةٍ وآخرها تمتدّ نصفَ حصّةٍ خارج الإطار،
+                     * فيُقصّ نصف الكلمة: «أغسطس» تُقرأ «سطس» و«ديسمبر» تُقرأ
+                     * «سمبر». وهو آخر عمودٍ في المخطّط — أهمّها، لأنه الحاضر.
+                     */
                     <foreignObject
                         key={`l${i}`}
-                        x={p.x - slot / 2}
+                        x={Math.min(Math.max(p.x - slot / 2, 0), width - slot)}
                         y={height - 18}
                         width={slot}
                         height={14}

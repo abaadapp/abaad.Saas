@@ -23,12 +23,13 @@
         </td>
         <td style="border:none; text-align:left;">
             <div style="font-size:15px; font-weight:bold;">{{ __('تقرير التحليلات المتقدمة') }}</div>
+            <div style="font-weight:bold;">{{ __('الفترة:') }} {{ $rangeLabel ?? '—' }}</div>
             <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
         </td>
     </tr></table>
 </div>
 
-<h2>{{ __('مقارنة الأداء (هذا الشهر مقابل السابق)') }}</h2>
+<h2>{{ __('مقارنة الأداء بالفترة السابقة') }}</h2>
 <table class="cards"><tr>
     @foreach ($comparison as $m)
         <td><div class="card">

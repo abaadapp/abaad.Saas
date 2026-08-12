@@ -16,8 +16,19 @@ class ReportExportController extends Controller
     /** الصف الحالي أثناء بناء الورقة */
     private int $row = 5;
 
+    /**
+     * الفترة التي كان التاجر ينظر إليها لحظة الضغط على «تصدير».
+     *
+     * كان الملفّ يخرج بفترته الخاصّة مهما اختار: من يقرأ تقرير «اليوم» ويضغط
+     * تصدير يخرج باثني عشر شهرًا ولا سطر فيه يقول ذلك.
+     */
+    private function range(): string
+    {
+        return Demo::range(request()->query('range'));
+    }
+
     /** تجهيز ورقة RTL بترويسة موحّدة، وإرجاع [الورقة، دالة العنوان، دالة رأس الجدول] */
-    private function sheet(Spreadsheet $spreadsheet, string $reportTitle): array
+    private function sheet(Spreadsheet $spreadsheet, string $reportTitle, ?string $range = null): array
     {
         $business = Demo::business(auth()->user()->business_id ?? Demo::bid());
 
@@ -30,7 +41,14 @@ class ReportExportController extends Controller
         $sheet->setCellValue('A2', $reportTitle . ' — ' . now()->format('Y-m-d H:i'));
         $sheet->setCellValue('A3', __('الفرع') . ': ' . Demo::currentBranchName());
 
-        $this->row = 5;
+        // الفترة تُطبع دائمًا حتى في الأوراق التي لا فترة لها (جرد، منتجات):
+        // سطرٌ ناقص أسهل أن يُقرأ على أنه «كل شيء» من سطرٍ مكتوب
+        if ($range !== null) {
+            $sheet->setCellValue('A4', __('الفترة') . ': ' . Demo::rangeLabel($range));
+            $sheet->getStyle('A4')->getFont()->setBold(true);
+        }
+
+        $this->row = $range !== null ? 6 : 5;
         $title = function (string $text) use ($sheet) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $text);
@@ -89,8 +107,9 @@ class ReportExportController extends Controller
     /** تصدير تقرير المبيعات كملف Excel حقيقي (xlsx) */
     public function xlsx()
     {
+        $range = $this->range();
         $spreadsheet = new Spreadsheet();
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تقرير المبيعات'));
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تقرير المبيعات'), $range);
         $money = [];
 
         // المؤشرات
@@ -102,14 +121,15 @@ class ReportExportController extends Controller
         }
         $this->row++;
 
-        // المبيعات الشهرية
-        $series = Demo::salesSeries();
-        $title(__('المبيعات الشهرية'));
-        $head([__('الشهر'), __('المبيعات (ر.ع)')]);
-        foreach ($series['labels'] as $i => $label) {
+        // المبيعات على محور الفترة — ساعاتٍ أو أيّامًا أو أشهرًا، وبعدد الطلبات
+        $series = Demo::salesTrend($range);
+        $title(__('المبيعات') . ' — ' . Demo::rangeLabel($range));
+        $head([__('الفترة'), __('المبيعات (ر.ع)'), __('عدد الطلبات')]);
+        foreach ($series['full'] as $i => $label) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $label);
             $sheet->setCellValue("B{$r}", round((float) ($series['data'][$i] ?? 0), 3));
+            $sheet->setCellValue("C{$r}", (int) ($series['counts'][$i] ?? 0));
             $money[] = "B{$r}";
             $this->row++;
         }
@@ -118,7 +138,7 @@ class ReportExportController extends Controller
         // وسائل الدفع
         $title(__('وسائل الدفع'));
         $head([__('الوسيلة'), __('الإجمالي (ر.ع)'), __('عدد العمليات')]);
-        foreach (Demo::paymentMethods() as $m) {
+        foreach (Demo::paymentMethods($range) as $m) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $m['name']);
             $sheet->setCellValue("B{$r}", round((float) $m['total'], 3));
@@ -131,7 +151,7 @@ class ReportExportController extends Controller
         // أفضل المنتجات
         $title(__('أفضل المنتجات مبيعًا'));
         $head([__('المنتج'), __('الكمية المباعة'), __('الإيراد (ر.ع)')]);
-        foreach (Demo::topProducts() as $p) {
+        foreach (Demo::topProducts($range) as $p) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $p['name']);
             $sheet->setCellValue("B{$r}", (int) $p['qty']);
@@ -142,20 +162,21 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر تقرير المبيعات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'sales-report-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'sales-report-' . $range . '-' . now()->format('Y-m-d') . '.xlsx');
     }
 
     /** تصدير التحليلات المتقدمة كملف Excel حقيقي (xlsx) */
     public function analyticsXlsx()
     {
+        $range = $this->range();
         $spreadsheet = new Spreadsheet();
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تحليلات متقدمة'));
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تحليلات متقدمة'), $range);
         $money = [];
 
         // مقارنة الفترات
-        $title(__('مقارنة الفترات (هذا الشهر مقابل السابق)'));
-        $head([__('المؤشر'), __('الشهر الحالي'), __('الشهر السابق')]);
-        foreach (Demo::periodComparison() as $m) {
+        $title(__('مقارنة الفترة بسابقتها'));
+        $head([__('المؤشر'), __('الفترة الحالية'), __('الفترة السابقة')]);
+        foreach (Demo::periodComparison($range) as $m) {
             $sheet->fromArray([$m['label'], $m['cur'], $m['prev']], null, 'A' . $this->row);
             $this->row++;
         }
@@ -164,7 +185,7 @@ class ReportExportController extends Controller
         // أفضل المنتجات
         $title(__('أفضل المنتجات مبيعًا'));
         $head([__('المنتج'), __('الكمية المباعة'), __('الإيراد (ر.ع)')]);
-        foreach (Demo::topProducts() as $p) {
+        foreach (Demo::topProducts($range) as $p) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $p['name']);
             $sheet->setCellValue("B{$r}", (int) $p['qty']);
@@ -177,7 +198,7 @@ class ReportExportController extends Controller
         // أفضل العملاء
         $title(__('أفضل العملاء إنفاقًا'));
         $head([__('العميل'), __('عدد الطلبات'), __('إجمالي الإنفاق (ر.ع)')]);
-        foreach (Demo::topCustomers() as $c) {
+        foreach (Demo::topCustomers(7, $range) as $c) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $c['name']);
             $sheet->setCellValue("B{$r}", (int) $c['orders']);
@@ -188,7 +209,7 @@ class ReportExportController extends Controller
         $this->row++;
 
         // المبيعات حسب القسم
-        $cat = Demo::categorySales();
+        $cat = Demo::categorySales($range);
         $title(__('المبيعات حسب القسم'));
         $head([__('القسم'), __('المبيعات (ر.ع)')]);
         foreach ($cat['labels'] as $i => $label) {
@@ -201,7 +222,7 @@ class ReportExportController extends Controller
         $this->row++;
 
         // المبيعات حسب أيام الأسبوع
-        $wd = Demo::salesByWeekday();
+        $wd = Demo::salesByWeekday($range);
         $title(__('المبيعات حسب أيام الأسبوع'));
         $head([__('اليوم'), __('المبيعات (ر.ع)')]);
         foreach ($wd['labels'] as $i => $label) {
@@ -214,7 +235,7 @@ class ReportExportController extends Controller
         $this->row++;
 
         // أوقات الذروة
-        $hr = Demo::salesByHour();
+        $hr = Demo::salesByHour($range);
         $title(__('أوقات الذروة (حسب الساعة)'));
         $head([__('الساعة'), __('المبيعات (ر.ع)')]);
         foreach ($hr['labels'] as $i => $label) {
@@ -227,7 +248,7 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر التحليلات المتقدمة (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'analytics-report-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'analytics-report-' . $range . '-' . now()->format('Y-m-d') . '.xlsx');
     }
 
     /** تصدير المنتجات كملف Excel حقيقي (xlsx) */

@@ -2446,5 +2446,10 @@
     "فاقد جرد": "Stocktake shrinkage",
     "فاقد جرد — :branch (:n صنفًا)": "Stocktake shrinkage — :branch (:n items)",
     "تحويل بين الفروع": "Branch transfer",
-    "قيد داخلي": "Internal entry"
+    "قيد داخلي": "Internal entry",
+    "لا طلبات": "No orders",
+    "الفترة": "Period",
+    "مقارنة الفترة بسابقتها": "This period vs. the previous one",
+    "مقارنة الأداء بالفترة السابقة": "Performance vs. the previous period",
+    "كل الفترات": "All time"
 }

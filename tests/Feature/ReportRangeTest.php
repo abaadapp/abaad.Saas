@@ -78,11 +78,54 @@ class ReportRangeTest extends TestCase
 
     public function test_the_axis_follows_the_chosen_period(): void
     {
-        $this->assertCount(24, Demo::salesTrend('today')['labels'], 'اليوم يُقرأ بالساعات');
-        $this->assertCount(7, Demo::salesTrend('week')['labels'], 'الأسبوع يُقرأ بالأيّام');
-        $this->assertCount(now()->daysInMonth, Demo::salesTrend('month')['labels'], 'الشهر يُقرأ بأيّامه');
-        $this->assertCount(12, Demo::salesTrend('year')['labels'], 'السنة تُقرأ بالأشهر');
+        // الوحدة تتبع المدى، والعدد يقف عند هذه اللحظة لا عند آخر التقويم
+        $this->assertCount(now()->hour + 1, Demo::salesTrend('today')['labels'], 'اليوم يُقرأ بالساعات');
+        $this->assertCount(
+            now()->startOfWeek()->diffInDays(now()) + 1,
+            Demo::salesTrend('week')['labels'],
+            'الأسبوع يُقرأ بالأيّام'
+        );
+        $this->assertCount(now()->day, Demo::salesTrend('month')['labels'], 'الشهر يُقرأ بأيّامه');
+        $this->assertCount(now()->month, Demo::salesTrend('year')['labels'], 'السنة تُقرأ بالأشهر');
         $this->assertCount(12, Demo::salesTrend('all')['labels'], 'الكلّ: آخر اثني عشر شهرًا');
+    }
+
+    public function test_the_axis_stops_at_this_moment(): void
+    {
+        /*
+         * بقيّة الشهر ليست أيّامًا بلا بيع بل أيّامًا لم تأتِ بعد. برسمها
+         * أصفارًا يسقط الخطّ إلى القاع في منتصف كل شهر، فيقرأ صاحب المتجر
+         * انهيارًا وهو تقويمٌ لم يُستهلك.
+         */
+        $trend = Demo::salesTrend('month');
+
+        $this->assertSame((string) now()->day, end($trend['labels']), 'آخر عمود ليس اليوم');
+        $this->assertCount(now()->day, $trend['data']);
+
+        $hours = Demo::salesTrend('today');
+        $this->assertSame(now()->format('H') . ':00', end($hours['labels']), 'رُسمت ساعاتٌ لم تأتِ');
+    }
+
+    public function test_each_column_carries_its_order_count(): void
+    {
+        // مئة ريالٍ من طلبٍ واحد غير مئةٍ من أربعين، والمبلغ وحده لا يفرّق
+        $this->sale(60, now()->startOfDay()->addHours(9));
+        $this->sale(40, now()->startOfDay()->addHours(9)->addMinutes(20));
+
+        $trend = Demo::salesTrend('today');
+
+        $this->assertSame(100.0, $trend['data'][9]);
+        $this->assertSame(2, $trend['counts'][9]);
+        $this->assertSame(0, $trend['counts'][8]);
+    }
+
+    public function test_every_column_has_a_label_that_reads_alone(): void
+    {
+        // «١٠» على المحور لا تقول أيّ شهرٍ ولا أيّ يومٍ من الأسبوع
+        $trend = Demo::salesTrend('month');
+
+        $this->assertCount(count($trend['labels']), $trend['full']);
+        $this->assertStringContainsString(now()->translatedFormat('F'), $trend['full'][0]);
     }
 
     public function test_a_sale_lands_in_its_own_bucket(): void
@@ -106,9 +149,9 @@ class ReportRangeTest extends TestCase
 
         $trend = Demo::salesTrend('month');
 
-        $this->assertCount(now()->daysInMonth, $trend['data']);
+        $this->assertCount(now()->day, $trend['data']);
         $this->assertSame(10.0, $trend['data'][0]);
-        $this->assertSame(0.0, $trend['data'][1]);
+        $this->assertSame(0.0, $trend['data'][1] ?? 0.0);
     }
 
     public function test_yesterday_stays_out_of_today(): void
@@ -221,7 +264,7 @@ class ReportRangeTest extends TestCase
             ->assertOk()->viewData('page')['props'];
 
         $this->assertSame('today', $props['range']);
-        $this->assertCount(24, $props['salesSeries']['labels']);
+        $this->assertCount(now()->hour + 1, $props['salesSeries']['labels']);
     }
 
     public function test_a_made_up_period_falls_back_instead_of_breaking(): void
@@ -245,7 +288,44 @@ class ReportRangeTest extends TestCase
         $feed = $this->getJson(route('admin.reports.feed', ['range' => 'today']))->assertOk()->json();
 
         $this->assertSame(15.0, (float) $feed['summary']['sales']);
-        $this->assertCount(24, $feed['salesSeries']['labels']);
+        $this->assertCount(now()->hour + 1, $feed['salesSeries']['labels']);
+    }
+
+    /* ------------------------- ما يغادر الشاشة ------------------------- */
+
+    public function test_an_exported_file_carries_the_period_it_was_asked_for(): void
+    {
+        /*
+         * الملفّ يغادر الشاشة: يُرسَل إلى المحاسب ويُطبع ويُفتح بعد شهرين،
+         * ولا مبدّل فوقه يصحّح قراءته. فكان من يقرأ تقرير «اليوم» ويضغط
+         * تصدير يخرج باثني عشر شهرًا ولا سطر فيه يقول ذلك.
+         */
+        $this->sale(70, now()->setTime(11, 0));
+        $this->sale(900, now()->subMonths(3));
+
+        $csv = $this->get(route('admin.export.reports', ['range' => 'today']))
+            ->assertOk()->streamedContent();
+
+        $this->assertStringContainsString(__('الفترة'), $csv);
+        $this->assertStringContainsString(now()->startOfDay()->format('Y-m-d'), $csv);
+        $this->assertStringContainsString('70.000', $csv);
+        $this->assertStringNotContainsString('900.000', $csv, 'دخل الملفَّ ما هو خارج الفترة');
+    }
+
+    public function test_the_file_name_says_which_period_it_holds(): void
+    {
+        // ملفّان لفترتين في يومٍ واحد كانا يخرجان باسمٍ واحد
+        $this->get(route('admin.reports.xlsx', ['range' => 'year']))
+            ->assertOk()
+            ->assertDownload('sales-report-year-'.now()->format('Y-m-d').'.xlsx');
+    }
+
+    public function test_the_printed_report_prints_its_period(): void
+    {
+        $pdf = $this->get(route('admin.reports.pdf', ['range' => 'today']))->assertOk();
+
+        $this->assertSame('application/pdf', $pdf->headers->get('Content-Type'));
+        $this->assertStringContainsString('sales-report-today', $pdf->headers->get('Content-Disposition'));
     }
 
     public function test_analytics_and_profitability_take_the_period_as_well(): void

@@ -133,19 +133,24 @@ class PdfController extends Controller
     /** تقرير المبيعات الشهري (لوحة النشاط) */
     public function salesReport()
     {
+        // الفترة تُورَث من الشاشة وتُطبع في الترويسة: ورقةٌ مطبوعة لا مبدّل
+        // فوقها، فإن لم تقل فترتها قُرئت على أنها فترة قارئها
+        $range = Demo::range(request()->query('range'));
+
         $html = view('pdf.sales-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::currentBranchName(),
             'stats' => Demo::adminStats(),
-            'salesSeries' => Demo::salesSeries(),
-            'payments' => Demo::paymentMethods(),
-            'topProducts' => Demo::topProducts(),
+            'salesSeries' => Demo::salesTrend($range),
+            'payments' => Demo::paymentMethods($range),
+            'topProducts' => Demo::topProducts($range),
+            'rangeLabel' => Demo::rangeLabel($range),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
         \App\Support\Activity::log('report', 'صدّر تقرير المبيعات (PDF)');
 
-        return $this->pdf($html, 'sales-report-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'sales-report-' . $range . '-' . now()->format('Y-m-d'));
     }
 
     /** تقرير أداء المنصة (سوبر أدمن) */
@@ -187,21 +192,23 @@ class PdfController extends Controller
     /** تقرير التحليلات المتقدمة (PDF) */
     public function analyticsReport()
     {
-        $customers = Demo::topCustomers();
+        $range = Demo::range(request()->query('range'));
+        $customers = Demo::topCustomers(7, $range);
 
         $html = view('pdf.analytics-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'comparison' => Demo::periodComparison(),
-            'topProducts' => Demo::topProducts(),
+            'comparison' => Demo::periodComparison($range),
+            'topProducts' => Demo::topProducts($range),
             'topCustomers' => $customers,
-            'categorySales' => Demo::categorySales(),
-            'byWeekday' => Demo::salesByWeekday(),
+            'categorySales' => Demo::categorySales($range),
+            'byWeekday' => Demo::salesByWeekday($range),
+            'rangeLabel' => Demo::rangeLabel($range),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
         \App\Support\Activity::log('report', 'صدّر تقرير التحليلات (PDF)');
 
-        return $this->pdf($html, 'analytics-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'analytics-' . $range . '-' . now()->format('Y-m-d'));
     }
 
     /** كشف حساب عميل (PDF) */

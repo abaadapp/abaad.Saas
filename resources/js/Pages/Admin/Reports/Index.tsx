@@ -44,7 +44,7 @@ interface TopProduct {
 
 interface Props {
     summary: Summary;
-    salesSeries: { labels: string[]; data: number[]; range: ReportRange };
+    salesSeries: { labels: string[]; full: string[]; data: number[]; counts: number[]; range: ReportRange };
     range: ReportRange;
     paymentDistribution: { labels: string[]; series: number[] };
     topSellingProducts: TopProduct[];
@@ -103,10 +103,11 @@ export default function ReportsIndex() {
                 subtitle={t('ملخّص أداء المتجر: المبيعات والأرباح والمصروفات')}
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'التقارير' }]}
                 actions={
+                    /* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */
                     <ExportMenu
-                        xlsx={route('admin.reports.xlsx')}
-                        pdf={route('admin.reports.pdf')}
-                        csv={route('admin.export.reports')}
+                        xlsx={route('admin.reports.xlsx', { range: server.range })}
+                        pdf={route('admin.reports.pdf', { range: server.range })}
+                        csv={route('admin.export.reports', { range: server.range })}
                     />
                 }
             />
@@ -134,7 +135,13 @@ export default function ReportsIndex() {
                         <CardTitle>{t(CHART_TITLE[server.range])}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <AreaChart labels={salesSeries.labels} data={salesSeries.data} format={m} />
+                        <AreaChart
+                            labels={salesSeries.labels}
+                            fullLabels={salesSeries.full}
+                            counts={salesSeries.counts}
+                            data={salesSeries.data}
+                            format={m}
+                        />
                     </CardContent>
                 </Card>
 

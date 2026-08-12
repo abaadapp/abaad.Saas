@@ -29,7 +29,10 @@ class DashboardController extends Controller
             // بطاقات اختيارية من مقاييس التقارير — تُرسل كاملةً وتختار الواجهة
             // منها: سبعة تجميعات خفيفة، وطلبُ الخادم عند كل إضافة أثقل منها
             'statCatalog' => \App\Support\AlertMetrics::catalog(Demo::bid()),
-            'salesSeries' => Demo::salesSeries(),
+            // اللوحة تبقى على السنة — لا مبدّل فترة فيها: تُفتح عشرات المرّات
+            // يوميًّا لنظرة، والمبدّل يحوّل النظرة إلى قرار. لكنها تستعمل محور
+            // التقارير نفسه لتقف عند هذا الشهر بدل رسم بقيّة السنة أصفارًا
+            'salesSeries' => Demo::salesTrend('year'),
             'paymentDistribution' => Demo::paymentDistribution(),
             // أحدث 6 طلبات وأفضل 5 منتجات وموظفين — ما تعرضه اللوحة فقط
             'recentOrders' => collect(Demo::orders())->take(6)->values()->all(),

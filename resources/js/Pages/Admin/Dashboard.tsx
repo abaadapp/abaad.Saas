@@ -59,7 +59,7 @@ interface Employee {
 interface DashboardProps {
     stats: Stat[];
     statCatalog: CatalogStat[];
-    salesSeries: { labels: string[]; data: number[] };
+    salesSeries: { labels: string[]; full: string[]; data: number[]; counts: number[] };
     paymentDistribution: { labels: string[]; series: number[] };
     recentOrders: Order[];
     topProducts: Product[];
@@ -99,6 +99,8 @@ export default function Dashboard() {
                     <CardContent>
                         <AreaChart
                             labels={salesSeries.labels}
+                            fullLabels={salesSeries.full}
+                            counts={salesSeries.counts}
                             data={salesSeries.data}
                             format={(v) => number(v, 0)}
                         />

@@ -35,8 +35,10 @@
             <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
         </td>
         <td style="border:none; text-align:left;">
-            <div style="font-size:15px; font-weight:bold;">{{ __('تقرير المبيعات الشهري') }}</div>
+            <div style="font-size:15px; font-weight:bold;">{{ __('تقرير المبيعات') }}</div>
             <div class="muted">{{ $branch }}</div>
+            {{-- الفترة في الترويسة: ورقةٌ تُطبع وتُرسل، ولا مبدّل فوقها يقول عمّاذا تتحدّث --}}
+            <div style="font-weight:bold;">{{ __('الفترة:') }} {{ $rangeLabel ?? '—' }}</div>
             <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
         </td>
     </tr></table>
@@ -53,14 +55,16 @@
     @endforeach
 </table>
 
-<h2>{{ __('حركة المبيعات (آخر 6 أشهر)') }}</h2>
+<h2>{{ __('حركة المبيعات') }} — {{ $rangeLabel ?? '' }}</h2>
 <table>
-    @foreach ($salesSeries['labels'] as $i => $label)
+    @foreach (($salesSeries['full'] ?? $salesSeries['labels']) as $i => $label)
         @php $val = $salesSeries['data'][$i] ?? 0; @endphp
         <tr>
-            <td style="width:16%;">{{ __($label) }}</td>
-            <td style="width:60%;"><div class="barwrap"><div class="bar" style="width: {{ $bar($val / $maxSales * 100) }}%;"></div></div></td>
-            <td style="width:24%; text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($val) }}</td>
+            <td style="width:20%;">{{ __($label) }}</td>
+            <td style="width:48%;"><div class="barwrap"><div class="bar" style="width: {{ $bar($val / $maxSales * 100) }}%;"></div></div></td>
+            {{-- عدد الطلبات إلى جانب المبلغ: مئةٌ من طلبٍ واحد غير مئةٍ من أربعين --}}
+            <td style="width:12%; text-align:center;" class="muted">{{ $salesSeries['counts'][$i] ?? 0 }}</td>
+            <td style="width:20%; text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($val) }}</td>
         </tr>
     @endforeach
 </table>

@@ -65,9 +65,9 @@ export default function Analytics() {
                 ]}
                 actions={
                     <ExportMenu
-                        xlsx={route('admin.analytics.xlsx')}
-                        pdf={route('admin.analytics.pdf')}
-                        csv={route('admin.export.analytics')}
+                        xlsx={route('admin.analytics.xlsx', { range: server.range })}
+                        pdf={route('admin.analytics.pdf', { range: server.range })}
+                        csv={route('admin.export.analytics', { range: server.range })}
                     />
                 }
             />

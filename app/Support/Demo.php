@@ -1487,6 +1487,28 @@ class Demo
     }
 
     /**
+     * وصف الفترة بالكلمات وبتاريخيها — يُطبع في ترويسة كل ملفٍّ يغادر الشاشة.
+     *
+     * الشاشة يصحّحها المبدّل الذي فوقها، والملفّ لا يصحّحه شيء: يُرسَل إلى
+     * المحاسب ويُطبع ويُفتح بعد شهرين، فإن لم يقل أيّ فترةٍ يحمل قُرئ على
+     * أنه فترة قارئه.
+     */
+    public static function rangeLabel(?string $range): string
+    {
+        [$name, $start] = match (self::range($range)) {
+            'today' => [__('اليوم'), now()->startOfDay()],
+            'week' => [__('هذا الأسبوع'), now()->startOfWeek()],
+            'year' => [__('هذه السنة'), now()->startOfYear()],
+            'all' => [__('كل الفترات'), null],
+            default => [__('هذا الشهر'), now()->startOfMonth()],
+        };
+
+        return $start
+            ? $name.' ('.$start->format('Y-m-d').' — '.now()->format('Y-m-d').')'
+            : $name;
+    }
+
+    /**
      * محور الزمن في مخطّط المبيعات — دقّتُه تتبع الفترة المطلوبة.
      *
      * كان المخطّط يرسم أشهر السنة الجارية دائمًا، مهما كان ما تحته من أرقام.
@@ -1500,6 +1522,13 @@ class Demo
      *
      * واستعلامٌ واحد لا استعلامٌ لكل عمود: كان اثنا عشر استعلامًا لرسم سنة،
      * وسيصير واحدًا وثلاثين لرسم شهر بالأيّام.
+     *
+     * والمحور يقف عند هذه اللحظة: بقيّة الشهر ليست أيّامًا بلا بيع بل أيّامًا
+     * لم تأتِ بعد. برسمها أصفارًا يسقط الخطّ إلى القاع في منتصف كل شهر —
+     * فيقرأ صاحب المتجر انهيارًا وهو تقويمٌ لم يُستهلك.
+     *
+     * ولكل عمود عدد طلباته إلى جانب مبلغه: مئة ريالٍ من طلبٍ واحد غير مئةٍ من
+     * أربعين طلبًا، والمبلغ وحده لا يفرّق بينهما.
      */
     public static function salesTrend(string $range = 'month'): array
     {
@@ -1515,6 +1544,11 @@ class Demo
             'all' => ['month', now()->copy()->subMonths(11)->startOfMonth(), now()->endOfMonth()],
             default => ['day', now()->startOfMonth(), now()->endOfMonth()],
         };
+
+        // لا أعمدة لما لم يأتِ بعد
+        if ($end->gt(now())) {
+            $end = now()->copy();
+        }
 
         // التقويم من المحرّك لا من PHP: تجميعُ آلاف الصفوف في الذاكرة لرسم
         // اثني عشر عمودًا يقرأ الجدول كلّه بلا سبب
@@ -1532,29 +1566,51 @@ class Demo
             },
         };
 
-        $sums = Order::where('business_id', $bid)
+        $rows = Order::where('business_id', $bid)
             ->where('is_held', false)
             ->where('status', '!=', 'ملغي')
             ->whereBetween('ordered_at', [$start, $end])
-            ->selectRaw("{$format} as bucket, SUM(total) as s")
+            ->selectRaw("{$format} as bucket, SUM(total) as s, COUNT(*) as c")
             ->groupBy('bucket')
-            ->pluck('s', 'bucket');
+            ->get();
+
+        $sums = $rows->pluck('s', 'bucket');
+        $counts = $rows->pluck('c', 'bucket');
 
         $labels = [];
+        $full = [];
         $data = [];
+        $orders = [];
         $cursor = $start->copy();
 
         while ($cursor->lte($end)) {
-            [$key, $label] = match ($unit) {
-                'hour' => [$cursor->format('H'), $cursor->format('H') . ':00'],
-                'month' => [$cursor->format('Y-m'), self::monthLabel($cursor)],
-                default => [$cursor->format('Y-m-d'), $range === 'week'
-                    ? $cursor->translatedFormat('D')
-                    : $cursor->format('j')],
+            /*
+             * تسميتان لكل عمود: قصيرةٌ على المحور لأن واحدًا وثلاثين يومًا
+             * لا تتّسع لأكثر من رقم، وكاملةٌ في التلميح لأن «١٠» وحدها لا
+             * تقول أيّ شهرٍ ولا أيّ يومٍ من الأسبوع.
+             */
+            [$key, $label, $detail] = match ($unit) {
+                'hour' => [
+                    $cursor->format('H'),
+                    $cursor->format('H') . ':00',
+                    $cursor->format('H:00') . ' — ' . $cursor->format('H') . ':59',
+                ],
+                'month' => [
+                    $cursor->format('Y-m'),
+                    self::monthLabel($cursor),
+                    $cursor->translatedFormat('F Y'),
+                ],
+                default => [
+                    $cursor->format('Y-m-d'),
+                    $range === 'week' ? $cursor->translatedFormat('D') : $cursor->format('j'),
+                    $cursor->translatedFormat('l j F'),
+                ],
             };
 
             $labels[] = $label;
+            $full[] = $detail;
             $data[] = round((float) ($sums[$key] ?? 0), 3);
+            $orders[] = (int) ($counts[$key] ?? 0);
 
             $cursor = match ($unit) {
                 'hour' => $cursor->addHour(),
@@ -1563,7 +1619,14 @@ class Demo
             };
         }
 
-        return ['labels' => $labels, 'data' => $data, 'range' => $range];
+        return [
+            'labels' => $labels,
+            'full' => $full,
+            'data' => $data,
+            'counts' => $orders,
+            'range' => $range,
+            'unit' => $unit,
+        ];
     }
 
     /** مبيعات النشاط الحالي في السنة الجارية — يناير … ديسمبر */

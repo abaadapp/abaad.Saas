@@ -368,10 +368,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/finance/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'financeXlsx'])->name('finance.xlsx');
     Route::get('/finance/pdf', [\App\Http\Controllers\PdfController::class, 'financeReport'])->name('finance.pdf');
     Route::post('/finance/transactions', [FinanceController::class, 'store'])->name('finance.store');
-    // الذمم: من عليه لي — البيع الآجل وتحصيله
-    Route::get('/finance/receivables', [\App\Http\Controllers\Admin\ReceivableController::class, 'index'])->name('receivables.index');
-    Route::get('/finance/receivables/{id}', [\App\Http\Controllers\Admin\ReceivableController::class, 'show'])->name('receivables.show');
-    Route::post('/finance/receivables/{id}/pay', [\App\Http\Controllers\Admin\ReceivableController::class, 'pay'])->name('receivables.pay');
     Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
     Route::get('/expenses/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'expensesXlsx'])->name('expenses.xlsx');
     Route::get('/expenses/export-pdf', [\App\Http\Controllers\PdfController::class, 'expensesReport'])->name('expenses.exportPdf');

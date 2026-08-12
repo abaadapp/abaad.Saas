@@ -680,7 +680,6 @@ export default function PosIndex() {
                 money={money}
                 fmt={fmt}
                 methods={settings.paymentMethods}
-                hasCustomer={!cart.isWalkIn}
                 onCheckout={cart.checkoutSale}
                 onNewOrder={() => { cart.clear(); toast.success(t('طلب جديد جاهز')); }}
             />

@@ -20,8 +20,6 @@ class PosController extends Controller
     /** 100 نقطة = وحدة عملة واحدة — يجب أن تطابق POINTS_PER_UNIT في usePosCart.ts */
     private const POINTS_PER_UNIT = 100;
 
-    /** البيع على الحساب — وسيلةٌ لا تُقبض لحظتها */
-    public const CREDIT = 'آجل';
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
@@ -249,14 +247,7 @@ class PosController extends Controller
             }
         }
 
-        $on = $on ?: ['نقدي'];
-
-        // الآجل مطفأ افتراضيًّا: بيعٌ بلا قبضٍ قرارُ صاحب النشاط لا افتراضُ النظام
-        if (($settings['pay_credit'] ?? '0') === '1') {
-            $on[] = self::CREDIT;
-        }
-
-        return $on;
+        return $on ?: ['نقدي'];
     }
 
     /** يردّ الطريقة المطلوبة إن كانت مأذونة، وإلا أوّل المأذون */
@@ -405,8 +396,6 @@ class PosController extends Controller
             'customer_id' => ['nullable', 'integer'],
             'customer_phone' => ['nullable', 'string', 'max:50'],
             'payment_method' => ['nullable', 'string'],
-            // موعد استحقاق الدَّين — للآجل وحده، ويُتجاهل فيما عداه
-            'due_at' => ['nullable', 'date'],
             'delivery_fee' => ['nullable', 'numeric', 'min:0'],
             'resume_id' => ['nullable', 'integer'],
             'coupon_code' => ['nullable', 'string', 'max:40'],
@@ -455,19 +444,6 @@ class PosController extends Controller
                 $coupon->increment('used_count');
             }
 
-            /*
-             * البيع على الحساب.
-             *
-             * لا يُقبل لعميلٍ عابر: دَينٌ بلا اسمٍ لا يُحصَّل، و«عميل نقدي»
-             * ليس شخصًا. ومن طلبه بلا عميلٍ يعود بيعُه نقديًّا لا يُرفض —
-             * الرفض عند الدفع يوقف طابورًا، والنقد هو الأصل.
-             */
-            $method = $this->paymentMethod($data['payment_method'] ?? null);
-            $credit = $method === self::CREDIT && $customer !== null;
-            if ($method === self::CREDIT && ! $credit) {
-                $method = 'نقدي';
-            }
-
             $order = $this->createNumbered([
                 'business_id' => $bid,
                 'client_uuid' => $data['client_uuid'] ?? null,
@@ -491,8 +467,8 @@ class PosController extends Controller
                  */
                 'pos_device_id' => \App\Support\PosTerminal::current()?->id,
                 'status' => 'مكتمل',
-                'payment_method' => $method,
-                'payment_status' => $credit ? 'آجل' : 'مدفوع',
+                'payment_method' => $this->paymentMethod($data['payment_method'] ?? null),
+                'payment_status' => 'مدفوع',
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'coupon_code' => $couponApplied ? $coupon->code : null,
@@ -502,9 +478,6 @@ class PosController extends Controller
                 'tax' => $tax,
                 'delivery_fee' => $delivery,
                 'total' => $total,
-                // الآجل يبدأ بلا سداد، وما عداه مدفوعٌ كاملًا لحظته
-                'paid_amount' => $credit ? 0 : $total,
-                'due_at' => $credit ? ($data['due_at'] ?? null) : null,
                 'ordered_at' => now(),
             ], $this->salePrefix(), max(1, (int) $this->setting('inv_start', 1)));
 
@@ -555,8 +528,6 @@ class PosController extends Controller
                 'description' => 'مبيعات نقطة البيع — ' . ($order->customer_name ?? 'عميل نقدي'),
                 'method' => $order->payment_method ?? 'نقدي',
                 'type' => 'دخل',
-                // المبيعات تُقيَّد كاملةً وقت البيع — والآجل لا يزيد النقد لأن
-                // بطاقة «المدفوعات النقدية» تقرأ وسيلة الدفع لا المجموع
                 'amount' => $order->total,
                 'tax_amount' => $order->tax ?? 0,
                 'employee_name' => PosCashier::name(),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Banknote, CheckCircle, CreditCard, Landmark, NotebookPen, Plus, Printer } from 'lucide-react';
+import { Banknote, CheckCircle, CreditCard, Landmark, Plus, Printer } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import {
     Dialog,
@@ -20,15 +20,11 @@ const ALL_METHODS = [
     { value: 'نقدي', label: 'نقدي', icon: Banknote },
     { value: 'بطاقة', label: 'فيزا', icon: CreditCard },
     { value: 'تحويل بنكي', label: 'تحويل بنكي', icon: Landmark },
-    // الآجل: بيعٌ لا يُقبض لحظته — لا يظهر ما لم يُفعَّل في الإعدادات
-    { value: 'آجل', label: 'آجل (على الحساب)', icon: NotebookPen },
 ];
 
 interface Props {
     /** الوسائل المأذونة من الإعدادات؛ غيابها يعني الثلاث (شاشة قديمة) */
     methods?: string[];
-    /** الآجل يحتاج عميلًا معروفًا — دَينٌ بلا اسمٍ لا يُحصَّل */
-    hasCustomer?: boolean;
     open: boolean;
     onOpenChange: (open: boolean) => void;
     total: number;
@@ -42,15 +38,15 @@ interface Props {
 }
 
 export default function PaymentDialog({
-    open, onOpenChange, total, displayTotal, customer, money, fmt, onCheckout, onNewOrder, methods, hasCustomer,
+    open, onOpenChange, total, displayTotal, customer, money, fmt, onCheckout, onNewOrder, methods,
 }: Props) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
     // طابعة هذا الصندوق وحدها — لا طابعة صندوقٍ آخر في الفرع نفسه
     const printer = context?.peripherals?.find((x) => x.type === 'طابعة');
-    const allowed = methods?.length ? methods : ALL_METHODS.map((m) => m.value).filter((v) => v !== 'آجل');
-    // «عميل نقدي» ليس شخصًا: الآجل عليه دَينٌ لا يُطالَب به أحد
-    const METHODS = ALL_METHODS.filter((m) => allowed.includes(m.value) && (m.value !== 'آجل' || hasCustomer));
+    const METHODS = methods?.length
+        ? ALL_METHODS.filter((m) => methods.includes(m.value))
+        : ALL_METHODS;
     const [step, setStep] = useState<'pay' | 'success'>('pay');
     const [paid, setPaid] = useState('');
     // أوّل وسيلةٍ مأذونة لا «نقدي» دائمًا: من أطفأ النقد لا يبدأ عليه

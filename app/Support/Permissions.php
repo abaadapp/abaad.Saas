@@ -271,11 +271,6 @@ class Permissions
         if ($route === 'admin.shifts.index' || $route === 'admin.shifts.pdf') {
             return 'finance';
         }
-        // الذمم قراءةٌ مالية وتحصيلٌ نقديّ: من يملك «المالية» يملكها، ولا
-        // يُخترع لها مفتاحٌ ثالث يُنسى منحه فتبقى الشاشة مقفلة على الجميع
-        if (str_starts_with($route, 'admin.receivables.')) {
-            return 'finance';
-        }
 
         /*
          * «تحليلات متقدمة» عرضٌ من عروض التقارير لا قسمٌ مستقلّ.

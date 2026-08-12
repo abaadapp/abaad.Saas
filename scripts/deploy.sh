@@ -74,7 +74,11 @@ ok "$(du -h "$DUMP" | cut -f1) → $DUMP"
 # ---------------------------------------------------------------------------
 step "سحب $BRANCH"
 git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
-as_app git fetch --tags --quiet origin
+# --force على الوسوم: الخادم يصنع وسمه محليًّا حين لا يجد رمز دفعٍ لـGitHub،
+# فإذا دُفع الوسم نفسه من جهاز المطوّر اختلف الكائنان ورفض git السحب
+# «would clobber existing tag». وبـset -e يموت النشر عند أوّل سطرٍ بعد
+# الترويسة بلا رسالة — نشرٌ يتوقّف بصمت، وكلّ نشرةٍ بعده كذلك.
+as_app git fetch --tags --force --quiet origin
 as_app git pull --ff-only --quiet origin "$BRANCH"
 TO_COMMIT="$(git rev-parse --short HEAD)"
 

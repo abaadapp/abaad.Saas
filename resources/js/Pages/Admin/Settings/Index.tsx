@@ -260,6 +260,7 @@ export default function SettingsIndex() {
         loyalty_enabled: on('loyalty_enabled'),
         // مطفأ افتراضيًّا: منعُ البيع أخطر تصرّف في نقطة بيع
         require_open_shift: on('require_open_shift', '0'),
+        shift_max_hours: get('shift_max_hours', '18'),
         loyalty_earn_rate: get('loyalty_earn_rate', '5'),
         loyalty_redeem_max_pct: get('loyalty_redeem_max_pct', '50'),
         loyalty_redeem_min: get('loyalty_redeem_min', '100'),
@@ -942,6 +943,25 @@ export default function SettingsIndex() {
                                         {t('فعّله بعد أن يعتاد موظفوك فتح الوردية كل صباح — لا قبل ذلك.')}
                                     </span>
                                 </p>
+
+                                {/* الوردية المنسيّة تبتلع مبيعات اليوم التالي — والسقف بالساعات
+                                    لا باليوم التقويميّ، فوردية تبدأ العاشرة مساءً شرعيّة */}
+                                <div className="mt-6 max-w-xs">
+                                    <Field
+                                        label="أقصى مدّة للوردية (ساعات)"
+                                        error={form.errors.shift_max_hours}
+                                        hint="ما تجاوزها يُعدّ منسيًّا فيُقفل تلقائيًّا بلا عدّ — وفرقُه يبقى مجهولًا لا صفرًا"
+                                    >
+                                        <Input
+                                            type="number"
+                                            min="1"
+                                            max="72"
+                                            dir="ltr"
+                                            value={form.data.shift_max_hours}
+                                            onChange={(e) => form.setData('shift_max_hours', e.target.value)}
+                                        />
+                                    </Field>
+                                </div>
                             </>
                         )}
 

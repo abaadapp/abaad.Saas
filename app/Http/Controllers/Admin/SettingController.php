@@ -41,6 +41,8 @@ class SettingController extends Controller
             'currency' => ['sometimes', 'nullable', 'string', 'size:3', 'alpha'],
             'decimals' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:4'],
             'symbol_pos' => ['sometimes', 'nullable', 'in:before,after'],
+            // سقفٌ صفر يعني إقفال كل وردية لحظة فتحها، وسقفٌ بلا حدّ يُبطل الغرض
+            'shift_max_hours' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:72'],
         ], [
             'inv_prefix.not_regex' => __('لا تصلح الرموز % و _ و \\ في بادئة رقم الفاتورة'),
             'currency.size' => __('رمز العملة ثلاثة أحرف مثل OMR'),

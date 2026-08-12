@@ -53,7 +53,8 @@ interface Props {
     shift: OpenShift | null;
     showsAmounts: boolean;
     branchName: string;
-    lastClosed: { closed_at: string; actual_balance: number } | null;
+    /** المعدود قد يكون فارغًا: وردية أُقفلت بلا عدّ لا رقم لها يُورَّث */
+    lastClosed: { closed_at: string; actual_balance: number | null } | null;
 }
 
 export default function PosShift() {
@@ -116,7 +117,7 @@ export default function PosShift() {
                             {lastClosed && (
                                 <p className="text-[12px] text-[#9ca3af]">
                                     {t('آخر إقفال')}: {lastClosed.closed_at}
-                                    {showsAmounts && ` · ${m(lastClosed.actual_balance)}`}
+                                    {showsAmounts && lastClosed.actual_balance !== null && ` · ${m(lastClosed.actual_balance)}`}
                                 </p>
                             )}
 

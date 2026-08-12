@@ -22,6 +22,20 @@ class Shifts
     /** ما يُعدّ نقدًا في الدرج. البطاقة والتحويل لا يمرّان بالصندوق */
     public const CASH = 'نقدي';
 
+    /** أطول ما تبقى وردية مفتوحة قبل أن تُعدّ منسيّة — ساعةً لا يومًا تقويميًّا */
+    public const DEFAULT_MAX_HOURS = 18;
+
+    public static function maxHours(?int $businessId = null): int
+    {
+        $value = \App\Models\Setting::where('business_id', $businessId ?? Demo::bid())
+            ->where('key', 'shift_max_hours')->value('value');
+
+        // صفرٌ أو سالبٌ يعني إقفال كل وردية لحظة فتحها — يُردّ إلى الافتراضي
+        $hours = (int) $value;
+
+        return $hours > 0 ? $hours : self::DEFAULT_MAX_HOURS;
+    }
+
     /**
      * هل يُمنع البيع بلا وردية مفتوحة؟ مطفأٌ افتراضيًّا.
      *
@@ -73,6 +87,19 @@ class Shifts
                 ->where('status', Shift::OPEN)
                 ->lockForUpdate()
                 ->first();
+
+            /*
+             * الوردية المنسيّة لا تُورَّث.
+             *
+             * كان الفتح يُرجع القائمة أيًّا كان عمرها، فكاشير الصباح يبيع في
+             * درج الأمس ولا يعلم: مبيعات يومين في وردية واحدة، ودرجٌ لا
+             * يطابق شيئًا. فتُقفل بلا عدّ — وفرقُها مجهول يُنسب إلى ليلة
+             * نسيانها — ثمّ تُفتح واحدةٌ نظيفة لهذا اليوم.
+             */
+            if ($existing && $existing->isStale(self::maxHours($bid))) {
+                self::closeWithoutCount($existing, Shift::BY_SYSTEM);
+                $existing = null;
+            }
 
             if ($existing) {
                 return $existing;
@@ -162,6 +189,40 @@ class Shifts
         return round((float) $shift->opening_balance + self::totals($shift)['cash'] + self::movements($shift)['net'], 3);
     }
 
+    /**
+     * إقفالٌ بلا عدّ — تلقائيّ أو بيد صاحب النشاط.
+     *
+     * يُثبَّت المتوقّع كما يُثبَّت في الإقفال العاديّ، **ويبقى المعدود والفرق
+     * فارغَين**: لا أحد فتح الدرج فعدّه، وكتابة صفرٍ في خانة الفرق تعني
+     * «طابق» — فتُبرّئ نقصًا لم يُعلم به أحد، وتفسد أيّ متوسّطٍ يُحسب لاحقًا.
+     */
+    public static function closeWithoutCount(Shift $shift, string $kind, ?string $note = null): Shift
+    {
+        $totals = self::totals($shift);
+        $moves = self::movements($shift);
+
+        $shift->update([
+            'closed_by' => auth()->id(),
+            'closed_at' => now(),
+            'cash_sales' => $totals['cash'],
+            'card_sales' => $totals['sales'] - $totals['cash'],
+            'expenses' => $moves['out'],
+            'returns' => $moves['in'],
+            'expected_balance' => round((float) $shift->opening_balance + $totals['cash'] + $moves['net'], 3),
+            'actual_balance' => null,
+            'difference' => null,
+            'note' => $note,
+            'status' => Shift::CLOSED,
+            'closed_kind' => $kind,
+        ]);
+
+        Activity::log('shift', $kind === Shift::BY_SYSTEM
+            ? 'أُقفلت وردية منسيّة تلقائيًّا بلا عدّ'
+            : 'أقفل وردية إداريًّا بلا عدّ', ['subject_id' => $shift->id]);
+
+        return $shift->fresh();
+    }
+
     /** إقفال: يُثبَّت المحسوب، ويُسجَّل المعدود، والفرق بينهما */
     public static function close(Shift $shift, float $counted, ?string $note = null): Shift
     {
@@ -182,6 +243,7 @@ class Shifts
             'difference' => round($counted - $expected, 3),
             'note' => $note,
             'status' => Shift::CLOSED,
+            'closed_kind' => Shift::BY_COUNT,
         ]);
 
         Activity::log('shift', 'أقفل الوردية — فرق: ' . number_format($shift->difference, 3), ['subject_id' => $shift->id]);

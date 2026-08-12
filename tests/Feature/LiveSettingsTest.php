@@ -247,7 +247,8 @@ class LiveSettingsTest extends TestCase
         $created = Business::where('name', 'متجر جديد')->firstOrFail();
 
         $this->assertNotNull($created->ends_at, 'شركةٌ بلا تاريخ انتهاء تعمل إلى الأبد');
-        $this->assertSame(30, (int) round(now()->diffInDays($created->ends_at)));
+        // مقارنة تواريخ لا عدد أيّام: الفرق بالساعات يتقلّب بساعة تشغيل الاختبار
+        $this->assertSame(now()->addDays(30)->toDateString(), $created->ends_at->toDateString());
     }
 
     public function test_an_explicit_end_date_beats_the_trial_default(): void

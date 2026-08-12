@@ -361,6 +361,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/shifts', [\App\Http\Controllers\Admin\ShiftController::class, 'index'])->name('shifts.index');
     // تقرير إقفال الوردية (Z) — على ورق الإيصال، يُوقَّع عند تسليم الدرج
     Route::get('/shifts/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'shiftReport'])->name('shifts.pdf');
+    // إقفال وردية نسيها الكاشير — بلا عدّ، وفرقُها يبقى مجهولًا
+    Route::post('/shifts/{id}/close', [\App\Http\Controllers\Admin\ShiftController::class, 'close'])->name('shifts.close');
     Route::post('/bank/account', [\App\Http\Controllers\Admin\BankStatementController::class, 'updateAccount'])->name('bank.account');
     Route::post('/bank/import', [\App\Http\Controllers\Admin\BankStatementController::class, 'import'])->name('bank.import');
     Route::post('/bank/rematch', [\App\Http\Controllers\Admin\BankStatementController::class, 'rematch'])->name('bank.rematch');

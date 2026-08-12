@@ -11,6 +11,13 @@ class Shift extends Model
 
     public const CLOSED = 'مغلقة';
 
+    /* كيف انتهت الوردية — والفرق لا يُعرف إلا في الأولى */
+    public const BY_COUNT = 'counted';
+
+    public const BY_SYSTEM = 'auto';
+
+    public const BY_ADMIN = 'admin';
+
     protected $guarded = [];
 
     protected $casts = [
@@ -29,5 +36,25 @@ class Shift extends Model
     public function isOpen(): bool
     {
         return $this->status === self::OPEN;
+    }
+
+    /** أُقفلت بلا أن يعدّ أحدٌ الدرج — فرقُها مجهول لا صفر */
+    public function closedWithoutCount(): bool
+    {
+        return ! $this->isOpen() && $this->closed_kind !== null && $this->closed_kind !== self::BY_COUNT;
+    }
+
+    /**
+     * وردية طال فتحُها فوق ما يحتمله يومُ عمل.
+     *
+     * السقف بالساعات لا «قبل منتصف الليل»: وردية تبدأ العاشرة مساءً وتنتهي
+     * الثانية فجرًا شرعيّة، وقاعدةٌ تُقفل عند اليوم التقويميّ تقطعها في
+     * منتصفها.
+     */
+    public function isStale(int $maxHours): bool
+    {
+        return $this->isOpen()
+            && $this->opened_at !== null
+            && $this->opened_at->diffInHours(now()) >= $maxHours;
     }
 }

@@ -62,13 +62,29 @@
     <tr><td class="label">{{ __('إيداع في الدرج') }}</td><td class="num" dir="ltr">+ {{ $money($moves['in']) }}</td></tr>
     <tr><td class="label">{{ __('سحب من الدرج') }}</td><td class="num" dir="ltr">− {{ $money($moves['out']) }}</td></tr>
     <tr><td class="label grand">{{ __('النقد المتوقّع') }}</td><td class="num grand" dir="ltr">{{ $money($shift->expected_balance) }}</td></tr>
-    <tr><td class="label">{{ __('النقد المعدود') }}</td><td class="num" dir="ltr">{{ $money($shift->actual_balance) }}</td></tr>
-    <tr>
-        <td class="label"><strong>{{ __('الفرق') }}</strong></td>
-        <td class="num {{ abs((float) $shift->difference) < 0.001 ? 'diff-ok' : 'diff-bad' }}" dir="ltr">
-            {{ (float) $shift->difference > 0 ? '+' : '' }}{{ $money($shift->difference) }}
-        </td>
-    </tr>
+    {{--
+        الوردية التي أُقفلت بلا عدّ لا تُطبع لها خانتان بصفرين.
+        ورقةٌ تقول «الفرق 0.000» تُقرأ «طابق الدرج»، وتُوقَّع على ذلك — وهي
+        عن درجٍ لم يفتحه أحد. فيُقال ما جرى بلفظه: لم يُعدّ.
+    --}}
+    @if ($shift->actual_balance === null)
+        <tr>
+            <td class="label"><strong>{{ __('النقد المعدود') }}</strong></td>
+            <td class="num diff-bad" dir="rtl">{{ __('لم يُعدّ') }}</td>
+        </tr>
+        <tr>
+            <td class="label"><strong>{{ __('الفرق') }}</strong></td>
+            <td class="num diff-bad" dir="rtl">{{ __('مجهول') }}</td>
+        </tr>
+    @else
+        <tr><td class="label">{{ __('النقد المعدود') }}</td><td class="num" dir="ltr">{{ $money($shift->actual_balance) }}</td></tr>
+        <tr>
+            <td class="label"><strong>{{ __('الفرق') }}</strong></td>
+            <td class="num {{ abs((float) $shift->difference) < 0.001 ? 'diff-ok' : 'diff-bad' }}" dir="ltr">
+                {{ (float) $shift->difference > 0 ? '+' : '' }}{{ $money($shift->difference) }}
+            </td>
+        </tr>
+    @endif
 </table>
 
 @if (count($movements))

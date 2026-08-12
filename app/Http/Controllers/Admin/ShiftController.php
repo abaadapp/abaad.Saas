@@ -40,12 +40,45 @@ class ShiftController extends Controller
                 'cash' => (float) $s->cash_sales,
                 // الوردية المفتوحة لم تُقفل بعد: المتوقّع يُحسب حيًّا ولا فرق لها
                 'expected' => $s->isOpen() ? Shifts::expectedCash($s) : (float) $s->expected_balance,
-                'counted' => $s->isOpen() ? null : (float) $s->actual_balance,
-                'difference' => $s->isOpen() ? null : (float) $s->difference,
+                // فارغٌ يعني «لم يُعدّ» — للمفتوحة وللمُقفلة بلا عدّ معًا
+                'counted' => $s->actual_balance === null ? null : (float) $s->actual_balance,
+                'difference' => $s->difference === null ? null : (float) $s->difference,
                 'note' => $s->note,
                 'status' => $s->status,
+                'closedKind' => $s->closed_kind,
+                // وردية طال فتحُها: تُعرَض لصاحبها ليُقفلها قبل أن تبتلع يومًا آخر
+                'stale' => $s->isStale(Shifts::maxHours()),
             ])->all(),
             'openShiftId' => $open?->id,
+            'maxHours' => Shifts::maxHours(),
+        ]);
+    }
+
+    /**
+     * إقفال وردية بيد صاحب النشاط.
+     *
+     * الكاشير ذهب ولم يُقفل، والدرج لا يُعدّ بأثرٍ رجعيّ. فتُقفل بلا عدّ:
+     * تُوقَف عن ابتلاع مبيعات الغد، **وفرقُها يبقى مجهولًا** — لا يُنتحل له
+     * صفرٌ يقول «طابق» عن درجٍ لم يفتحه أحد.
+     */
+    public function close(\Illuminate\Http\Request $request, $id)
+    {
+        $shift = Shift::where('business_id', Demo::bid())->findOrFail($id);
+
+        if (! $shift->isOpen()) {
+            return back()->with('toast', ['msg' => __('الوردية مُقفلة أصلًا'), 'type' => 'warning']);
+        }
+
+        $data = $request->validate([
+            // السبب مطلوب: إقفالٌ بلا عدّ يترك فجوةً في الرقابة، ومن أحدثها يُسمّيها
+            'note' => ['required', 'string', 'max:255'],
+        ], [], ['note' => __('السبب')]);
+
+        Shifts::closeWithoutCount($shift, Shift::BY_ADMIN, $data['note']);
+
+        return back()->with('toast', [
+            'msg' => __('أُقفلت الوردية بلا عدّ — الفرق يبقى مجهولًا'),
+            'type' => 'warning',
         ]);
     }
 }

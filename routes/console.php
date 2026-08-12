@@ -39,3 +39,12 @@ Schedule::command('alerts:smart')->dailyAt('08:30')->withoutOverlapping();
 
 // ملخّص الأداء اليومي بالبريد لصاحب النشاط نهاية كل يوم (23:55)
 Schedule::command('report:daily-summary')->dailyAt('23:55')->withoutOverlapping();
+
+/*
+ * الورديات المنسيّة تُقفل بلا عدّ — كل ساعة لا مرّةً في اليوم.
+ *
+ * السقف بالساعات لا باليوم التقويميّ (وردية تبدأ العاشرة مساءً شرعيّة)،
+ * فموعدٌ يوميٌّ واحد كان يترك ورديةً تجاوزت سقفها تُجمَع فيها مبيعات نصف
+ * يومٍ آخر قبل أن يمرّ عليها أحد.
+ */
+Schedule::command('shifts:auto-close')->hourly()->withoutOverlapping();

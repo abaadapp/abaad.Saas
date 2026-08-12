@@ -1090,13 +1090,15 @@ class Demo
     /* ============================ الربحية ============================ */
 
     /** ربح كل منتج = (سعر البيع - التكلفة) × الكمية المباعة، من عناصر الطلبات الفعلية */
-    public static function productProfitability(): array
+    public static function productProfitability(string $range = 'month'): array
     {
         $bid = self::bid();
         $costs = Product::where('business_id', $bid)->pluck('cost', 'id');
+        $start = self::rangeStart(self::range($range));
 
         // التكلفة من لقطة البيع — انظر التعليق في categoryProfitability
-        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
+        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false)
+            ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('product_id, name, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
             ->groupBy('product_id', 'name')->get()->map(function ($r) use ($costs) {
                 $cost = (float) ($costs[$r->product_id] ?? 0);
@@ -1117,9 +1119,10 @@ class Demo
         return $rows;
     }
 
-    public static function categoryProfitability(): array
+    public static function categoryProfitability(string $range = 'month'): array
     {
         $bid = self::bid();
+        $start = self::rangeStart(self::range($range));
         // خريطة product_id -> [category, cost]
         $products = Product::where('business_id', $bid)->with('category')->get()
             ->keyBy('id')->map(fn ($p) => ['cat' => optional($p->category)->name ?? __('غير مصنّف'), 'cost' => (float) $p->cost]);
@@ -1134,7 +1137,8 @@ class Demo
          * للبيعات التي سبقت اللقطة (صفرًا) فلا تنقلب أرقام ما مضى.
          */
         $agg = [];
-        $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
+        $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false)
+            ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
             ->groupBy('product_id')->get();
         foreach ($items as $it) {
@@ -1206,9 +1210,9 @@ class Demo
         ];
     }
 
-    public static function profitSummary(): array
+    public static function profitSummary(string $range = 'month'): array
     {
-        $prods = self::productProfitability();
+        $prods = self::productProfitability($range);
         $revenue = array_sum(array_column($prods, 'revenue'));
         $cost = array_sum(array_column($prods, 'cost'));
         $profit = $revenue - $cost;
@@ -1473,6 +1477,95 @@ class Demo
         return array_map(fn (int $m) => $start->copy()->setMonth($m), range(1, 12));
     }
 
+    /** الفترات التي تفهمها التقارير — مصدرٌ واحد يقرأه الخادم والواجهة */
+    public const RANGES = ['today', 'week', 'month', 'year', 'all'];
+
+    /** يردّ فترةً مفهومة، ويردّ ما سواها إلى الافتراضي — الرابط مُدخَل لا يُوثق به */
+    public static function range(?string $range, string $fallback = 'month'): string
+    {
+        return in_array($range, self::RANGES, true) ? $range : $fallback;
+    }
+
+    /**
+     * محور الزمن في مخطّط المبيعات — دقّتُه تتبع الفترة المطلوبة.
+     *
+     * كان المخطّط يرسم أشهر السنة الجارية دائمًا، مهما كان ما تحته من أرقام.
+     * فبطاقات الصفحة تجمع عمر المتجر كلّه والمخطّط يعرض هذه السنة — رقمان
+     * لفترتين مختلفتين في شاشةٍ واحدة، وأسوأ من ذلك أن من يختار «اليوم» يرى
+     * اثني عشر عمودًا شهريًّا فيظنّ مبيعات اليوم موزّعةً على السنة.
+     *
+     * والدقّة تتبع المدى: يومٌ يُقرأ بالساعات، وشهرٌ بالأيّام، وسنةٌ بالأشهر.
+     * فالفراغات تُملأ أصفارًا: يومٌ بلا بيع فراغٌ في المحور لا سقوطٌ منه، وإلا
+     * تقاربت نقطتان بينهما أسبوع فبدا الخطّ متّصلًا وهو منقطع.
+     *
+     * واستعلامٌ واحد لا استعلامٌ لكل عمود: كان اثنا عشر استعلامًا لرسم سنة،
+     * وسيصير واحدًا وثلاثين لرسم شهر بالأيّام.
+     */
+    public static function salesTrend(string $range = 'month'): array
+    {
+        $bid = self::bid();
+        $range = self::range($range);
+        $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+
+        [$unit, $start, $end] = match ($range) {
+            'today' => ['hour', now()->startOfDay(), now()->endOfDay()],
+            'week' => ['day', now()->startOfWeek(), now()->endOfWeek()],
+            'year' => ['month', now()->startOfYear(), now()->endOfYear()],
+            // الكلّ: آخر اثني عشر شهرًا — عمر المتجر كلّه على محورٍ واحد يصير خطًّا لا يُقرأ
+            'all' => ['month', now()->copy()->subMonths(11)->startOfMonth(), now()->endOfMonth()],
+            default => ['day', now()->startOfMonth(), now()->endOfMonth()],
+        };
+
+        // التقويم من المحرّك لا من PHP: تجميعُ آلاف الصفوف في الذاكرة لرسم
+        // اثني عشر عمودًا يقرأ الجدول كلّه بلا سبب
+        $format = match ([$driver, $unit]) {
+            ['pgsql', 'hour'] => "to_char(ordered_at, 'HH24')",
+            ['pgsql', 'day'] => "to_char(ordered_at, 'YYYY-MM-DD')",
+            ['pgsql', 'month'] => "to_char(ordered_at, 'YYYY-MM')",
+            ['mysql', 'hour'], ['mariadb', 'hour'] => "DATE_FORMAT(ordered_at, '%H')",
+            ['mysql', 'day'], ['mariadb', 'day'] => "DATE_FORMAT(ordered_at, '%Y-%m-%d')",
+            ['mysql', 'month'], ['mariadb', 'month'] => "DATE_FORMAT(ordered_at, '%Y-%m')",
+            default => match ($unit) {
+                'hour' => "strftime('%H', ordered_at)",
+                'day' => "strftime('%Y-%m-%d', ordered_at)",
+                default => "strftime('%Y-%m', ordered_at)",
+            },
+        };
+
+        $sums = Order::where('business_id', $bid)
+            ->where('is_held', false)
+            ->where('status', '!=', 'ملغي')
+            ->whereBetween('ordered_at', [$start, $end])
+            ->selectRaw("{$format} as bucket, SUM(total) as s")
+            ->groupBy('bucket')
+            ->pluck('s', 'bucket');
+
+        $labels = [];
+        $data = [];
+        $cursor = $start->copy();
+
+        while ($cursor->lte($end)) {
+            [$key, $label] = match ($unit) {
+                'hour' => [$cursor->format('H'), $cursor->format('H') . ':00'],
+                'month' => [$cursor->format('Y-m'), self::monthLabel($cursor)],
+                default => [$cursor->format('Y-m-d'), $range === 'week'
+                    ? $cursor->translatedFormat('D')
+                    : $cursor->format('j')],
+            };
+
+            $labels[] = $label;
+            $data[] = round((float) ($sums[$key] ?? 0), 3);
+
+            $cursor = match ($unit) {
+                'hour' => $cursor->addHour(),
+                'month' => $cursor->addMonthNoOverflow(),
+                default => $cursor->addDay(),
+            };
+        }
+
+        return ['labels' => $labels, 'data' => $data, 'range' => $range];
+    }
+
     /** مبيعات النشاط الحالي في السنة الجارية — يناير … ديسمبر */
     public static function salesSeries(): array
     {
@@ -1531,9 +1624,11 @@ class Demo
         return __(['بطاقة' => 'بطاقة (فيزا)'][$key] ?? $key);
     }
 
-    public static function paymentDistribution(): array
+    public static function paymentDistribution(string $range = 'month'): array
     {
+        $start = self::rangeStart(self::range($range));
         $rows = Order::where('business_id', self::bid())->where('is_held', false)
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->selectRaw('payment_method, SUM(total) as s')->groupBy('payment_method')->pluck('s', 'payment_method');
         return [
             'labels' => $rows->keys()->map(fn ($k) => self::methodLabel((string) $k))->all(),
@@ -1542,10 +1637,13 @@ class Demo
     }
 
     /** أفضل 5 منتجات مبيعًا للنشاط الحالي */
-    public static function topProducts(): array
+    public static function topProducts(string $range = 'month'): array
     {
         $bid = self::bid();
-        return OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
+        $start = self::rangeStart(self::range($range));
+
+        return OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false)
+            ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('name, SUM(quantity) as q, SUM(total) as t')
             ->groupBy('name')->orderByDesc('q')->limit(5)->get()
             ->map(fn ($r) => ['name' => $r->name, 'qty' => (int) $r->q, 'total' => round((float) $r->t, 3)])->all();
@@ -1728,13 +1826,25 @@ class Demo
     }
 
     /** ملخّص أرقام بطاقات التقارير — كلها محسوبة فعليًا من قاعدة البيانات (صفر عند فراغها) */
-    public static function reportSummary(): array
+    public static function reportSummary(string $range = 'month'): array
     {
         $bid = self::bid();
-        $ordersQ = Order::where('business_id', $bid)->where('is_held', false);
+        /*
+         * البطاقات تتبع الفترة كما يتبعها المخطّط.
+         *
+         * كانت تجمع عمر المتجر كلّه بينما المخطّط تحتها يرسم السنة الجارية —
+         * رقمان لفترتين مختلفتين في شاشةٍ واحدة، ولا شيء يقول ذلك.
+         *
+         * وما لا زمن له يبقى كما هو: عدد المنتجات والموظفين والعملاء حالةٌ
+         * الآن لا حصيلةُ فترة، و«منتجات تحت حدّ التنبيه» كذلك.
+         */
+        $start = self::rangeStart(self::range($range));
+        $ordersQ = Order::where('business_id', $bid)->where('is_held', false)
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start));
         $sales = (float) (clone $ordersQ)->sum('total');
         $tax = (float) (clone $ordersQ)->sum('tax');
-        $expenses = (float) Expense::where('business_id', $bid)->sum('amount');
+        $expenses = (float) Expense::where('business_id', $bid)
+            ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount');
 
         return [
             'sales' => $sales,
@@ -1750,10 +1860,12 @@ class Demo
     }
 
     /** أفضل المنتجات مبيعًا (بيانات حقيقية من الطلبات) — مع الفئة ونسبة المبيعات */
-    public static function topSellingProducts(int $limit = 5): array
+    public static function topSellingProducts(int $limit = 5, string $range = 'month'): array
     {
         $bid = self::bid();
-        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false))
+        $start = self::rangeStart(self::range($range));
+        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false)
+            ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('name, SUM(quantity) as sold, SUM(total) as revenue')
             ->groupBy('name')->orderByDesc('revenue')->limit($limit)->get();
         $totalRev = (float) $rows->sum('revenue');
@@ -1832,10 +1944,16 @@ class Demo
         return $alerts;
     }
 
-    /** مقارنة أداء الشهر الحالي بالشهر السابق */
-    public static function periodComparison(): array
+    /**
+     * مقارنة الفترة المختارة بالفترة السابقة المكافئة.
+     *
+     * كانت الشهر بالشهر دائمًا مهما اختار التاجر — فمن يقرأ «اليوم» في بقيّة
+     * الشاشة يجد هنا شهرًا، ويظنّ الأرقام متناقضة وهي عن فترتين.
+     */
+    public static function periodComparison(string $range = 'month'): array
     {
         $bid = self::bid();
+        $range = self::range($range);
         $now = now();
         $metric = function ($start, $end) use ($bid) {
             $q = Order::where('business_id', $bid)->where('is_held', false)->whereBetween('ordered_at', [$start, $end]);
@@ -1844,12 +1962,29 @@ class Demo
 
             return ['sales' => $sales, 'orders' => $orders, 'avg' => $orders ? $sales / $orders : 0];
         };
-        $cur = $metric($now->copy()->startOfMonth(), $now->copy()->endOfMonth());
-        $prev = $metric($now->copy()->subMonthNoOverflow()->startOfMonth(), $now->copy()->subMonthNoOverflow()->endOfMonth());
+        [$curStart, $curEnd] = match ($range) {
+            'today' => [$now->copy()->startOfDay(), $now->copy()->endOfDay()],
+            'week' => [$now->copy()->startOfWeek(), $now->copy()->endOfWeek()],
+            'year' => [$now->copy()->startOfYear(), $now->copy()->endOfYear()],
+            // «الكلّ» لا سابقَ له يُقارَن به: يُقرأ شهرًا كي تبقى المقارنة ذات معنى
+            default => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()],
+        };
+
+        $prevBounds = self::rangePrev($range === 'all' ? 'month' : $range);
+
+        $cur = $metric($curStart, $curEnd);
+        $prev = $prevBounds ? $metric($prevBounds[0], $prevBounds[1]) : ['sales' => 0.0, 'orders' => 0, 'avg' => 0.0];
         $delta = fn ($c, $p) => $p > 0 ? round(($c - $p) / $p * 100, 1) : ($c > 0 ? 100.0 : 0.0);
 
+        $salesLabel = match ($range) {
+            'today' => __('مبيعات اليوم'),
+            'week' => __('مبيعات الأسبوع'),
+            'year' => __('مبيعات السنة'),
+            default => __('مبيعات الشهر'),
+        };
+
         return [
-            ['label' => __('مبيعات الشهر'), 'cur' => self::money($cur['sales']), 'prev' => self::money($prev['sales']), 'delta' => $delta($cur['sales'], $prev['sales']), 'icon' => 'trending-up'],
+            ['label' => $salesLabel, 'cur' => self::money($cur['sales']), 'prev' => self::money($prev['sales']), 'delta' => $delta($cur['sales'], $prev['sales']), 'icon' => 'trending-up'],
             ['label' => __('عدد الطلبات'), 'cur' => (string) $cur['orders'], 'prev' => (string) $prev['orders'], 'delta' => $delta($cur['orders'], $prev['orders']), 'icon' => 'receipt'],
             ['label' => __('متوسط قيمة الطلب'), 'cur' => self::money($cur['avg']), 'prev' => self::money($prev['avg']), 'delta' => $delta($cur['avg'], $prev['avg']), 'icon' => 'calculator'],
         ];
@@ -1885,11 +2020,13 @@ class Demo
     }
 
     /** المبيعات حسب أيام الأسبوع */
-    public static function salesByWeekday(): array
+    public static function salesByWeekday(string $range = 'month'): array
     {
         $labels = [__('الأحد'), __('الاثنين'), __('الثلاثاء'), __('الأربعاء'), __('الخميس'), __('الجمعة'), __('السبت')];
         $expr = self::datePartSql('dow', 'ordered_at');
+        $start = self::rangeStart(self::range($range));
         $rows = Order::where('business_id', self::bid())->where('is_held', false)
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->selectRaw("{$expr} as w, SUM(total) as s")->groupBy('w')->pluck('s', 'w');
         $data = [];
         for ($i = 0; $i < 7; $i++) {
@@ -1900,10 +2037,12 @@ class Demo
     }
 
     /** المبيعات حسب ساعات اليوم */
-    public static function salesByHour(): array
+    public static function salesByHour(string $range = 'month'): array
     {
         $expr = self::datePartSql('hour', 'ordered_at');
+        $start = self::rangeStart(self::range($range));
         $rows = Order::where('business_id', self::bid())->where('is_held', false)
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->selectRaw("{$expr} as h, SUM(total) as s")->groupBy('h')->pluck('s', 'h');
         $labels = [];
         $data = [];
@@ -1916,9 +2055,12 @@ class Demo
     }
 
     /** أفضل العملاء إنفاقًا */
-    public static function topCustomers(int $limit = 7): array
+    public static function topCustomers(int $limit = 7, string $range = 'month'): array
     {
+        $start = self::rangeStart(self::range($range));
+
         return Order::where('business_id', self::bid())->where('is_held', false)->whereNotNull('customer_name')
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->selectRaw('customer_name, SUM(total) as t, COUNT(*) as c')
             ->groupBy('customer_name')->orderByDesc('t')->limit($limit)->get()
             ->map(fn ($r) => [
@@ -1929,13 +2071,15 @@ class Demo
     }
 
     /** المبيعات حسب القسم */
-    public static function categorySales(): array
+    public static function categorySales(string $range = 'month'): array
     {
+        $start = self::rangeStart(self::range($range));
         $rows = \Illuminate\Support\Facades\DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
             ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
             ->where('orders.business_id', self::bid())->where('orders.is_held', false)
+            ->when($start, fn ($q) => $q->where('orders.ordered_at', '>=', $start))
             // علامة تنصيص مفردة لا مزدوجة: SQLite يتساهل ويعدّ "..." نصًّا،
             // أما PostgreSQL فيعدّها اسم عمود ويفشل بـ«column does not exist».
             // ومربوطة كمعامل لا مدموجة في النص أصلًا.

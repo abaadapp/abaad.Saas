@@ -16,6 +16,7 @@ import {
     TableRow,
 } from '@/Components/ui/table';
 import useLiveFeed from '@/hooks/useLiveFeed';
+import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -51,13 +52,14 @@ interface Props {
     summary: Summary;
     products: ProductProfit[];
     categories: CategoryProfit[];
+    range: ReportRange;
 }
 
 export default function Profitability() {
     const { context, ...server } = usePage<PageProps<Props>>().props;
 
     /* تُحتسب لحظة الفتح ثم تتجمّد — وصفحة تُترك مفتوحة تعرض أرقام الصباح */
-    const { data: live, updatedAt } = useLiveFeed<Props>(route('admin.profitability.feed'));
+    const { data: live, updatedAt } = useLiveFeed<Props>(route('admin.profitability.feed', { range: server.range }));
     const { summary, products, categories } = live ?? server;
 
     const t = useTranslate();
@@ -145,6 +147,8 @@ export default function Profitability() {
             />
 
             <SectionTabs tabs={REPORTS_TABS} current="admin.profitability.index" variant="segmented" />
+
+            <RangeTabs current={server.range} />
 
             {updatedAt && (
                 <p className="mb-3 text-[12px] text-[#9ca3af]">

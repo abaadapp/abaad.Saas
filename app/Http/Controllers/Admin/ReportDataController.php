@@ -84,8 +84,10 @@ class ReportDataController extends Controller
         $rate = (float) (\App\Models\Setting::where('business_id', Demo::bid())->where('key', 'vat_rate')->value('value') ?? 5);
         $rows = [];
         $totalTax = 0;
-        foreach (Demo::salesSeries()['labels'] as $i => $label) {
-            $sales = (float) (Demo::salesSeries()['data'][$i] ?? 0);
+        // مرّةً واحدة: كانت تُستدعى داخل الحلقة فتُعاد قراءة السنة كلّها لكل شهر
+        $series = Demo::salesSeries();
+        foreach ($series['labels'] as $i => $label) {
+            $sales = (float) ($series['data'][$i] ?? 0);
             $tax = $sales * $rate / 100;
             $totalTax += $tax;
             $rows[] = [$label, $this->money($sales), $rate . '%', $this->money($tax)];

@@ -104,6 +104,9 @@ class ReportFeedTest extends TestCase
             'business_id' => $this->business->id, 'number' => 'INV-1', 'status' => 'مكتمل',
             'payment_method' => 'نقدي', 'subtotal' => 100, 'tax' => 5, 'total' => 105,
             'user_id' => $this->owner->id,
+            // بتاريخٍ صريح: صارت التقارير تُقرأ على فترة، وبيعةٌ بلا تاريخ
+            // لا تُنسب إلى يومٍ ولا شهر — ونقطةُ البيع تكتبه دائمًا
+            'ordered_at' => now(),
         ]);
 
         $after = $this->actingAs($this->owner)->getJson(route('admin.reports.feed'))

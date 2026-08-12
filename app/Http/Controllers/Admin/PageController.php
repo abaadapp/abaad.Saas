@@ -370,34 +370,50 @@ class PageController extends Controller
         ]);
     }
 
-    public function reportsIndex(): Response
+    /**
+     * التقارير كلّها على فترةٍ واحدة يختارها التاجر.
+     *
+     * كانت البطاقات تجمع عمر المتجر كلّه والمخطّط يرسم السنة الجارية — رقمان
+     * لفترتين في شاشةٍ واحدة. والفترة في الرابط لا في الجلسة: رابطٌ يُرسَل
+     * أو يُحفَظ يفتح على ما فُتح عليه، ولا تتبدّل شاشة أحدٍ لأن آخر بدّلها.
+     */
+    public function reportsIndex(\Illuminate\Http\Request $request): Response
     {
+        $range = Demo::range($request->query('range'));
+
         return Inertia::render('Admin/Reports/Index', [
-            'summary' => Demo::reportSummary(),
-            'salesSeries' => Demo::salesSeries(),
-            'paymentDistribution' => Demo::paymentDistribution(),
-            'topSellingProducts' => Demo::topSellingProducts(),
+            'summary' => Demo::reportSummary($range),
+            'salesSeries' => Demo::salesTrend($range),
+            'paymentDistribution' => Demo::paymentDistribution($range),
+            'topSellingProducts' => Demo::topSellingProducts(5, $range),
+            'range' => $range,
         ]);
     }
 
-    public function analytics(): Response
+    public function analytics(\Illuminate\Http\Request $request): Response
     {
+        $range = Demo::range($request->query('range'));
+
         return Inertia::render('Admin/Analytics', [
-            'periodComparison' => Demo::periodComparison(),
-            'topProducts' => Demo::topProducts(),
-            'topCustomers' => Demo::topCustomers(),
-            'salesByWeekday' => Demo::salesByWeekday(),
-            'salesByHour' => Demo::salesByHour(),
-            'categorySales' => Demo::categorySales(),
+            'periodComparison' => Demo::periodComparison($range),
+            'topProducts' => Demo::topProducts($range),
+            'topCustomers' => Demo::topCustomers(7, $range),
+            'salesByWeekday' => Demo::salesByWeekday($range),
+            'salesByHour' => Demo::salesByHour($range),
+            'categorySales' => Demo::categorySales($range),
+            'range' => $range,
         ]);
     }
 
-    public function profitability(): Response
+    public function profitability(\Illuminate\Http\Request $request): Response
     {
+        $range = Demo::range($request->query('range'));
+
         return Inertia::render('Admin/Profitability', [
-            'summary' => Demo::profitSummary(),
-            'products' => Demo::productProfitability(),
-            'categories' => Demo::categoryProfitability(),
+            'summary' => Demo::profitSummary($range),
+            'products' => Demo::productProfitability($range),
+            'categories' => Demo::categoryProfitability($range),
+            'range' => $range,
         ]);
     }
 

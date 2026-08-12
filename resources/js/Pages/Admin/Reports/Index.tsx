@@ -17,6 +17,7 @@ import {
     TableRow,
 } from '@/Components/ui/table';
 import useLiveFeed from '@/hooks/useLiveFeed';
+import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -43,17 +44,31 @@ interface TopProduct {
 
 interface Props {
     summary: Summary;
-    salesSeries: { labels: string[]; data: number[] };
+    salesSeries: { labels: string[]; data: number[]; range: ReportRange };
+    range: ReportRange;
     paymentDistribution: { labels: string[]; series: number[] };
     topSellingProducts: TopProduct[];
 }
+
+/** عنوان المخطّط بحسب دقّة محوره — انظر Demo::salesTrend */
+const CHART_TITLE: Record<ReportRange, string> = {
+    today: 'مبيعات اليوم حسب الساعة',
+    week: 'مبيعات الأسبوع حسب اليوم',
+    month: 'مبيعات الشهر حسب اليوم',
+    year: 'مبيعات السنة حسب الشهر',
+    all: 'المبيعات في آخر ١٢ شهرًا',
+};
 
 export default function ReportsIndex() {
     const { context, ...server } = usePage<PageProps<Props>>().props;
 
     /* التقرير يُحتسب لحظة الفتح ثم يتجمّد. صفحة تُترك مفتوحة على مكتب التاجر
        كانت تعرض أرقام الصباح بعد يوم بيع كامل — وعليها يُبنى قرار. */
-    const { data: live, updatedAt } = useLiveFeed<Props>(route('admin.reports.feed'));
+    /* الفترة تُمرَّر إلى التغذية أيضًا، وإلا انقلبت أرقام «اليوم» إلى أرقام
+       الشهر بعد أوّل تحديث تلقائيّ بلا أن يلمس التاجر شيئًا */
+    const { data: live, updatedAt } = useLiveFeed<Props>(
+        route('admin.reports.feed', { range: server.range }),
+    );
     const { summary, salesSeries, paymentDistribution, topSellingProducts } = live ?? server;
 
     const t = useTranslate();
@@ -104,6 +119,8 @@ export default function ReportsIndex() {
                 </p>
             )}
 
+            <RangeTabs current={server.range} />
+
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {stats.map((s, i) => (
                     <StatCard key={s.label} stat={s} index={i} />
@@ -113,7 +130,8 @@ export default function ReportsIndex() {
             <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <Card className="lg:col-span-2">
                     <CardHeader>
-                        <CardTitle>{t('مبيعات هذه السنة حسب الشهر')}</CardTitle>
+                        {/* عنوان المخطّط يتبع دقّته: ساعات اليوم، أو أيّام الشهر، أو أشهر السنة */}
+                        <CardTitle>{t(CHART_TITLE[server.range])}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <AreaChart labels={salesSeries.labels} data={salesSeries.data} format={m} />

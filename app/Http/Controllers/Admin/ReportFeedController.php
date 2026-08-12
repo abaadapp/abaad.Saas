@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Support\Demo;
+use Illuminate\Http\Request;
 
 /**
  * تغذية صفحات التقارير — نفس ما يُرسله PageController عند فتح الصفحة.
@@ -16,34 +17,46 @@ use App\Support\Demo;
  */
 class ReportFeedController extends Controller
 {
-    public function reports()
+    /*
+     * الفترة تصل مع التغذية كما وصلت مع الصفحة.
+     *
+     * وبدونها كانت الشاشة تُحدَّث بعد دقائق على الفترة الافتراضية: يفتح
+     * التاجر «اليوم» فيجد أرقامه تنقلب إلى أرقام الشهر بلا أن يلمس شيئًا.
+     */
+    public function reports(Request $request)
     {
+        $range = Demo::range($request->query('range'));
+
         return $this->feed([
-            'summary' => Demo::reportSummary(),
-            'salesSeries' => Demo::salesSeries(),
-            'paymentDistribution' => Demo::paymentDistribution(),
-            'topSellingProducts' => Demo::topSellingProducts(),
+            'summary' => Demo::reportSummary($range),
+            'salesSeries' => Demo::salesTrend($range),
+            'paymentDistribution' => Demo::paymentDistribution($range),
+            'topSellingProducts' => Demo::topSellingProducts(5, $range),
         ]);
     }
 
-    public function analytics()
+    public function analytics(Request $request)
     {
+        $range = Demo::range($request->query('range'));
+
         return $this->feed([
-            'periodComparison' => Demo::periodComparison(),
-            'topProducts' => Demo::topProducts(),
-            'topCustomers' => Demo::topCustomers(),
-            'salesByWeekday' => Demo::salesByWeekday(),
-            'salesByHour' => Demo::salesByHour(),
-            'categorySales' => Demo::categorySales(),
+            'periodComparison' => Demo::periodComparison($range),
+            'topProducts' => Demo::topProducts($range),
+            'topCustomers' => Demo::topCustomers(7, $range),
+            'salesByWeekday' => Demo::salesByWeekday($range),
+            'salesByHour' => Demo::salesByHour($range),
+            'categorySales' => Demo::categorySales($range),
         ]);
     }
 
-    public function profitability()
+    public function profitability(Request $request)
     {
+        $range = Demo::range($request->query('range'));
+
         return $this->feed([
-            'summary' => Demo::profitSummary(),
-            'products' => Demo::productProfitability(),
-            'categories' => Demo::categoryProfitability(),
+            'summary' => Demo::profitSummary($range),
+            'products' => Demo::productProfitability($range),
+            'categories' => Demo::categoryProfitability($range),
         ]);
     }
 

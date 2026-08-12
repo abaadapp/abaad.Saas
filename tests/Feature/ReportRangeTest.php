@@ -294,7 +294,7 @@ class ReportRangeTest extends TestCase
 
     public function test_the_page_echoes_the_period_it_drew(): void
     {
-        $props = $this->get(route('admin.reports.index', ['range' => 'today']))
+        $props = $this->get(route('admin.reports.sales', ['range' => 'today']))
             ->assertOk()->viewData('page')['props'];
 
         $this->assertSame('today', $props['range']);
@@ -304,7 +304,7 @@ class ReportRangeTest extends TestCase
     public function test_a_made_up_period_falls_back_instead_of_breaking(): void
     {
         // الرابط مُدخَلٌ لا يُوثق به: ?range=<script> لا يكسر شاشة
-        $props = $this->get(route('admin.reports.index', ['range' => 'nonsense']))
+        $props = $this->get(route('admin.reports.sales', ['range' => 'nonsense']))
             ->assertOk()->viewData('page')['props'];
 
         $this->assertSame('month', $props['range']);

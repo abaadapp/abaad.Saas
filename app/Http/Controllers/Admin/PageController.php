@@ -371,17 +371,35 @@ class PageController extends Controller
     }
 
     /**
-     * التقارير كلّها على فترةٍ واحدة يختارها التاجر.
+     * فهرس التقارير — بابٌ واحد يُعرض منه ما في النظام من تقارير.
+     *
+     * كانت هذه الصفحة لوحة مبيعاتٍ واحدة، وبقيّة التقارير موزّعةً على أقسام
+     * اللوحة لا يجمعها جامع: من يريد الضريبة يعرف أين هي، ومن لا يعرف لا
+     * يجدها. صارت اللوحة تقريرًا من التقارير (reportsSales أدناه) والفهرس
+     * يعرضها وأخواتها مصنَّفةً وقابلةً للبحث.
+     *
+     * ولا فترةَ هنا: الفهرس قائمةُ مداخل لا أرقامًا، والفترة تخصّ من يعرض رقمًا.
+     */
+    public function reportsIndex(): Response
+    {
+        return Inertia::render('Admin/Reports/Index', [
+            'reports' => \App\Support\Reports::forUser(auth()->user()),
+            'categories' => \App\Support\Reports::categoryLabels(),
+        ]);
+    }
+
+    /**
+     * ملخّص المبيعات — كلّه على فترةٍ واحدة يختارها التاجر.
      *
      * كانت البطاقات تجمع عمر المتجر كلّه والمخطّط يرسم السنة الجارية — رقمان
      * لفترتين في شاشةٍ واحدة. والفترة في الرابط لا في الجلسة: رابطٌ يُرسَل
      * أو يُحفَظ يفتح على ما فُتح عليه، ولا تتبدّل شاشة أحدٍ لأن آخر بدّلها.
      */
-    public function reportsIndex(\Illuminate\Http\Request $request): Response
+    public function reportsSales(\Illuminate\Http\Request $request): Response
     {
         $range = Demo::range($request->query('range'));
 
-        return Inertia::render('Admin/Reports/Index', [
+        return Inertia::render('Admin/Reports/Sales', [
             'summary' => Demo::reportSummary($range),
             'salesSeries' => Demo::salesTrend($range),
             'paymentDistribution' => Demo::paymentDistribution($range),

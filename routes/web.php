@@ -383,6 +383,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/expense-types', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'store'])->name('expenseTypes.store');
     Route::delete('/expense-types/{id}', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'destroy'])->name('expenseTypes.destroy');
     Route::get('/reports', [\App\Http\Controllers\Admin\PageController::class, 'reportsIndex'])->name('reports.index');
+    // ملخّص المبيعات — كان محتوى /reports نفسه قبل أن يصير الفهرس بابها
+    Route::get('/reports/sales', [\App\Http\Controllers\Admin\PageController::class, 'reportsSales'])->name('reports.sales');
     Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'salesReport'])->name('reports.pdf');
     Route::get('/reports/data/{key}', [\App\Http\Controllers\Admin\ReportDataController::class, 'show'])->name('reports.data');
     Route::get('/reports/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'xlsx'])->name('reports.xlsx');

@@ -1,214 +1,268 @@
-import { usePage } from '@inertiajs/react';
+import { useMemo, useState } from 'react';
+import { Link, usePage } from '@inertiajs/react';
+import {
+    ArrowDownCircle,
+    ArrowLeft,
+    Boxes,
+    Clock,
+    CreditCard,
+    History,
+    Landmark,
+    Layers,
+    LineChart,
+    type LucideIcon,
+    Package,
+    Percent,
+    PiggyBank,
+    RefreshCw,
+    Search,
+    ShoppingCart,
+    Star,
+    Store,
+    TicketPercent,
+    TrendingUp,
+    Truck,
+    Users,
+    Wallet,
+    X,
+} from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import SectionTabs, { REPORTS_TABS } from '@/Components/SectionTabs';
-import ExportMenu from '@/Components/ExportMenu';
-import StatCard from '@/Components/StatCard';
-import AreaChart from '@/Components/charts/AreaChart';
-import BarChart from '@/Components/charts/BarChart';
-import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableEmpty,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/Components/ui/table';
-import useLiveFeed from '@/hooks/useLiveFeed';
-import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
-import { money, number } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import ReportViewer from './partials/ReportViewer';
 import { useTranslate } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
-interface Summary {
-    sales: number;
-    profit: number;
-    expenses: number;
-    tax: number;
-    products: number;
-    inventory_alerts: number;
-    employees: number;
-    customers: number;
-    payment_methods: number;
-}
-
-interface TopProduct {
-    name: string;
-    cat: string;
-    sold: number;
-    revenue: number;
-    pct: string;
+interface Report {
+    key: string;
+    category: string;
+    title: string;
+    desc: string;
+    icon: string;
+    /** صفحةٌ تفتحه — أو null فيفتحه العارض */
+    href: string | null;
+    /** مفتاح بياناته في ReportDataController — أو null فله صفحة */
+    data: string | null;
 }
 
 interface Props {
-    summary: Summary;
-    salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[]; range: ReportRange };
-    range: ReportRange;
-    paymentDistribution: { labels: string[]; series: number[] };
-    topSellingProducts: TopProduct[];
+    reports: Report[];
+    categories: Record<string, string>;
 }
 
-/** عنوان المخطّط بحسب دقّة محوره — انظر Demo::salesTrend */
-const CHART_TITLE: Record<ReportRange, string> = {
-    today: 'مبيعات اليوم حسب الساعة',
-    week: 'مبيعات الأسبوع حسب اليوم',
-    month: 'مبيعات الشهر حسب اليوم',
-    year: 'مبيعات السنة حسب الشهر',
-    all: 'المبيعات في آخر ١٢ شهرًا',
+/**
+ * خريطة صريحة لأسماء الأيقونات القادمة من Support\Reports.
+ * صريحة عمدًا: الاستيراد الشامل من lucide-react يضخّ المكتبة كاملة في الحزمة.
+ */
+const ICONS: Record<string, LucideIcon> = {
+    'arrow-down-circle': ArrowDownCircle,
+    boxes: Boxes,
+    clock: Clock,
+    'credit-card': CreditCard,
+    history: History,
+    landmark: Landmark,
+    layers: Layers,
+    'line-chart': LineChart,
+    package: Package,
+    percent: Percent,
+    'piggy-bank': PiggyBank,
+    'refresh-cw': RefreshCw,
+    'shopping-cart': ShoppingCart,
+    star: Star,
+    store: Store,
+    'ticket-percent': TicketPercent,
+    'trending-up': TrendingUp,
+    truck: Truck,
+    users: Users,
+    wallet: Wallet,
 };
 
+/**
+ * فهرس التقارير — بابٌ واحد إلى ما في النظام من تقارير.
+ *
+ * البطاقات تأتي من الخادم مصفّاةً بصلاحيات صاحبها (Support\Reports)، فما لا
+ * يفتحه لا يراه. والعدّ في الشرائح يُحتسب مما وصل لا من القائمة الكاملة، وإلا
+ * قال «١٤» ثم عرض ثمانيًا.
+ */
 export default function ReportsIndex() {
-    const { context, ...server } = usePage<PageProps<Props>>().props;
-
-    /* التقرير يُحتسب لحظة الفتح ثم يتجمّد. صفحة تُترك مفتوحة على مكتب التاجر
-       كانت تعرض أرقام الصباح بعد يوم بيع كامل — وعليها يُبنى قرار. */
-    /* الفترة تُمرَّر إلى التغذية أيضًا، وإلا انقلبت أرقام «اليوم» إلى أرقام
-       الشهر بعد أوّل تحديث تلقائيّ بلا أن يلمس التاجر شيئًا */
-    const { data: live, updatedAt } = useLiveFeed<Props>(
-        route('admin.reports.feed', { range: server.range }),
-    );
-    const { summary, salesSeries, paymentDistribution, topSellingProducts } = live ?? server;
-
+    const { reports, categories } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const currency = context!.currency;
-    const m = (v: number) => money(v, currency);
 
-    const stats = [
-        { label: t('إجمالي المبيعات'), value: m(summary.sales), icon: 'wallet', color: 'primary' },
-        {
-            label: t('صافي الربح'),
-            value: m(summary.profit),
-            icon: summary.profit >= 0 ? 'trending-up' : 'trending-down',
-            color: summary.profit >= 0 ? 'success' : 'danger',
-        },
-        { label: t('المصروفات'), value: m(summary.expenses), icon: 'arrow-down-circle', color: 'warning' },
-        { label: t('الضريبة المحصّلة'), value: m(summary.tax), icon: 'receipt', color: 'info' },
-    ];
+    const [query, setQuery] = useState('');
+    const [category, setCategory] = useState<string | null>(null);
+    const [viewing, setViewing] = useState<string | null>(null);
 
-    const counters = [
-        { label: 'المنتجات', value: summary.products },
-        { label: 'تنبيهات المخزون', value: summary.inventory_alerts },
-        { label: 'الموظفون', value: summary.employees },
-        { label: 'العملاء', value: summary.customers },
-        { label: 'وسائل الدفع', value: summary.payment_methods },
-    ];
+    /* البحث في الاسم والوصف معًا: من يبحث عن «ضريبة» يجدها في اسمها، ومن
+       يبحث عن «الإقرار» لا يجدها إلا في وصفها. */
+    const matched = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return reports;
 
+        return reports.filter(
+            (r) => r.title.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q),
+        );
+    }, [reports, query]);
+
+    const visible = category ? matched.filter((r) => r.category === category) : matched;
+
+    // التصنيف الذي لا تقريرَ فيه بعد البحث لا تُرسم شريحته فارغةً
+    const chips = Object.entries(categories)
+        .map(([key, label]) => ({ key, label, count: matched.filter((r) => r.category === key).length }))
+        .filter((c) => c.count > 0);
+
+    const groups = Object.entries(categories)
+        .map(([key, label]) => ({ key, label, items: visible.filter((r) => r.category === key) }))
+        .filter((g) => g.items.length > 0);
 
     return (
         <AdminLayout title="التقارير">
             <PageHeader
                 title="التقارير"
-                subtitle={t('ملخّص أداء المتجر: المبيعات والأرباح والمصروفات')}
+                subtitle={t('تصفَّح وافتح التقارير التي تعتمد عليها.')}
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'التقارير' }]}
-                actions={
-                    /* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */
-                    <ExportMenu
-                        xlsx={route('admin.reports.xlsx', { range: server.range })}
-                        pdf={route('admin.reports.pdf', { range: server.range })}
-                        csv={route('admin.export.reports', { range: server.range })}
-                    />
-                }
             />
 
-            <SectionTabs tabs={REPORTS_TABS} current="admin.reports.index" variant="segmented" />
+            {/* البحث — أيقونةٌ في بداية الحقل، والحقل بعرض الصفحة كما في الشاشة الأصل */}
+            <div className="relative mb-4">
+                <Search className="pointer-events-none absolute start-4 top-1/2 size-[18px] -translate-y-1/2 text-[#9ca3af]" />
+                <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={t('ابحث عن تقرير بالاسم أو الوصف')}
+                    aria-label={t('ابحث عن تقرير بالاسم أو الوصف')}
+                    className={cn(
+                        'h-[52px] w-full rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white',
+                        'ps-12 pe-11 text-[14px] text-[#111] placeholder:text-[#9ca3af]',
+                        'transition-[border-color,box-shadow] focus:border-[#d1d5db] focus:outline-none',
+                        'focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)]',
+                        /* زرّ المسح الأصلي يخرج أزرقَ من لوحة النظام على
+                           سفاري وكروم — لونٌ لا وجود له في ثيمة أبعاد. يُخفى
+                           ويُرسم بدلًا منه زرٌّ بلون الواجهة. */
+                        '[&::-webkit-search-cancel-button]:appearance-none',
+                    )}
+                />
+                {query && (
+                    <button
+                        type="button"
+                        onClick={() => setQuery('')}
+                        aria-label={t('مسح البحث')}
+                        className="absolute end-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-[#9ca3af] transition-colors hover:bg-[#f2f2f0] hover:text-[#111]"
+                    >
+                        <X className="size-4" />
+                    </button>
+                )}
+            </div>
 
-            {updatedAt && (
-                <p className="mb-3 text-[12px] text-[#9ca3af]">
-                    {t('الأرقام محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
-                </p>
+            {/* شرائح التصنيف — النشطة سوداء كأزرار النظام، وبقيّتها بيضاء بحدّ */}
+            <div className="mb-7 flex flex-wrap items-center gap-2">
+                {[{ key: null, label: t('الكل'), count: matched.length }, ...chips].map((c) => {
+                    const active = category === c.key;
+
+                    return (
+                        <button
+                            key={c.key ?? 'all'}
+                            type="button"
+                            onClick={() => setCategory(c.key)}
+                            aria-pressed={active}
+                            className={cn(
+                                'flex h-9 items-center gap-2 rounded-full px-4 text-[13px] font-medium transition-colors',
+                                active
+                                    ? 'bg-[#111] text-white'
+                                    : 'border border-[var(--ui-border,#e8e8e8)] bg-white text-[#6b7280] hover:border-[#d4d4d4] hover:text-[#111]',
+                            )}
+                        >
+                            {c.label}
+                            <span
+                                className={cn(
+                                    'tabular-nums text-[12px]',
+                                    active ? 'text-white/60' : 'text-[#9ca3af]',
+                                )}
+                            >
+                                {c.count}
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {groups.length === 0 ? (
+                <div className="rounded-[16px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-white py-16 text-center">
+                    <p className="text-[14px] font-medium text-[#111]">{t('لا تقرير بهذا الاسم')}</p>
+                    <p className="mt-1 text-[13px] text-[#9ca3af]">
+                        {t('جرّب كلمةً أخرى، أو اعرض الكل.')}
+                    </p>
+                </div>
+            ) : (
+                <div className="space-y-9">
+                    {groups.map((g) => (
+                        <section key={g.key}>
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                                <h2 className="flex items-center gap-2.5 text-[15px] font-bold text-[#111]">
+                                    <span className="size-2 rounded-[3px] bg-[#111]" aria-hidden />
+                                    {g.label}
+                                </h2>
+                                <span className="flex size-7 items-center justify-center rounded-full border border-[var(--ui-border,#e8e8e8)] bg-white text-[12px] tabular-nums text-[#9ca3af]">
+                                    {g.items.length}
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                {g.items.map((r) => (
+                                    <ReportCard key={r.key} report={r} onView={setViewing} />
+                                ))}
+                            </div>
+                        </section>
+                    ))}
+                </div>
             )}
 
-            <RangeTabs current={server.range} />
-
-            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {stats.map((s, i) => (
-                    <StatCard key={s.label} stat={s} index={i} />
-                ))}
-            </div>
-
-            <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-                {/*
-                    لا مخطّط في فترة «الكل» بطلب المالك.
-                    الأرقام والجداول تبقى — المحذوف هو المخطّط وحده، وفي هذه
-                    الفترة وحدها. وبقيّة الفترات كما هي.
-                */}
-                {server.range !== 'all' && (
-                    <Card className="lg:col-span-2">
-                        <CardHeader>
-                            {/* عنوان المخطّط يتبع دقّته: ساعات اليوم، أو أيّام الشهر، أو أشهر السنة */}
-                            <CardTitle>{t(CHART_TITLE[server.range])}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <AreaChart
-                                labels={salesSeries.labels}
-                                fullLabels={salesSeries.full}
-                                counts={salesSeries.counts}
-                                data={salesSeries.data}
-                                format={m}
-                            />
-                        </CardContent>
-                    </Card>
-                )}
-
-                {/* بلا المخطّط تأخذ البطاقة العرض كلّه بدل ثلثٍ وفراغين */}
-                <Card className={cn(server.range === 'all' && 'lg:col-span-3')}>
-                    <CardHeader>
-                        <CardTitle>{t('توزيع وسائل الدفع')}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <BarChart
-                            labels={paymentDistribution.labels.map((l) => t(l))}
-                            series={paymentDistribution.series}
-                            format={m}
-                        />
-                    </CardContent>
-                </Card>
-            </div>
-
-
-            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-                {counters.map((c) => (
-                    <Card key={c.label} className="p-4 text-center">
-                        <p className="text-[22px] font-bold tabular-nums text-[#111]">{number(c.value)}</p>
-                        <p className="mt-0.5 text-[12px] text-[#9ca3af]">{t(c.label)}</p>
-                    </Card>
-                ))}
-            </div>
-
-            <Card className="overflow-hidden">
-                <div className="border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
-                    <h3 className="font-bold text-[#111]">{t('الأكثر مبيعًا')}</h3>
-                </div>
-                <Table>
-                    <TableHeader>
-                        <TableRow className="hover:bg-transparent">
-                            <TableHead>{t('المنتج')}</TableHead>
-                            <TableHead>{t('القسم')}</TableHead>
-                            <TableHead className="text-end">{t('المُباع')}</TableHead>
-                            <TableHead className="text-end">{t('الإيراد')}</TableHead>
-                            <TableHead className="text-end">{t('النسبة')}</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {topSellingProducts.length === 0 ? (
-                            <TableEmpty colSpan={5}>{t('لا توجد مبيعات بعد')}</TableEmpty>
-                        ) : (
-                            topSellingProducts.map((p) => (
-                                <TableRow key={p.name}>
-                                    <TableCell className="font-medium text-[#111]">{p.name}</TableCell>
-                                    <TableCell className="text-[#6b7280]">{p.cat}</TableCell>
-                                    <TableCell className="text-end tabular-nums">{number(p.sold)}</TableCell>
-                                    <TableCell className="text-end tabular-nums font-medium">{m(p.revenue)}</TableCell>
-                                    <TableCell className="text-end tabular-nums text-[#6d28d9]">{p.pct}</TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </Card>
+            <ReportViewer dataKey={viewing} onClose={() => setViewing(null)} />
         </AdminLayout>
+    );
+}
+
+/**
+ * بطاقة تقرير — أيقونةٌ في أعلى الطرف، ثم الاسم والوصف، و«فتح» في القاع.
+ *
+ * البطاقة كلّها هي المقبض لا كلمة «فتح» وحدها: هدفٌ بحجم البطاقة لا يُخطئه
+ * إصبعٌ على الآيباد. و«فتح» تبقى مرسومةً لأنها تقول ما يحدث عند النقر.
+ */
+function ReportCard({ report, onView }: { report: Report; onView: (key: string) => void }) {
+    const t = useTranslate();
+    const Icon = ICONS[report.icon] ?? LineChart;
+
+    const body = (
+        <>
+            <div className="flex items-start justify-between gap-3">
+                <h3 className="text-[15px] font-semibold text-[#111]">{report.title}</h3>
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-[13px] bg-[#f5f5f4] text-[#111] transition-colors group-hover:bg-[#111] group-hover:text-white">
+                    <Icon className="size-5" />
+                </span>
+            </div>
+
+            {/* الوصف يشغل ما بينهما فتستوي أقدام البطاقات في الصف الواحد */}
+            <p className="mt-2 flex-1 text-[13px] leading-relaxed text-[#9ca3af]">{report.desc}</p>
+
+            <span className="mt-4 flex items-center gap-1.5 text-[13px] font-medium text-[#111]">
+                {t('فتح')}
+                {/* السهم يشير إلى جهة القراءة التالية: يسارًا في العربية،
+                    ويُقلب في الإنجليزية فلا يعود يشير إلى الخلف */}
+                <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1 ltr:rotate-180 ltr:group-hover:translate-x-1" />
+            </span>
+        </>
+    );
+
+    const cls =
+        'group flex h-full flex-col rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white p-5 text-start transition hover:border-[#d4d4d4] hover:shadow-[0_8px_30px_-12px_rgba(17,17,17,0.14)]';
+
+    return report.href ? (
+        <Link href={report.href} className={cls}>
+            {body}
+        </Link>
+    ) : (
+        <button type="button" onClick={() => onView(report.data!)} className={cls}>
+            {body}
+        </button>
     );
 }

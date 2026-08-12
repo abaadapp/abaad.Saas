@@ -48,7 +48,9 @@ class CustomAlert extends Model
     public function url(): string
     {
         $routes = [
-            'reports' => 'admin.reports.index',
+            // ملخّص المبيعات لا فهرس التقارير: التنبيه على رقمٍ يقود إلى الرقم،
+            // ومن نقر «مبيعات اليوم تجاوزت كذا» لا يريد قائمةً يختار منها
+            'reports' => 'admin.reports.sales',
             'expenses' => 'admin.expenses.index',
             'orders' => 'admin.orders.index',
             'inventory' => 'admin.inventory.index',

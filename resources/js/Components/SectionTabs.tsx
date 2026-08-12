@@ -146,7 +146,11 @@ export const FINANCE_TABS: SectionTab[] = [
  * لكل تنقّل. الشريط يجعلها كالمالية: نقرة واحدة من أي صفحة إلى أختها.
  */
 export const REPORTS_TABS: SectionTab[] = [
+    /* «التقارير» صار فهرسًا لا لوحة، فيبقى أوّل التبويبات ليعود إليه من دخل
+       تقريرًا — وملخّص المبيعات (محتوى الصفحة القديم) يليه تبويبًا مستقلًّا.
+       والفهرس نفسه لا يرسم هذا الشريط: شرائح تصنيفه هي ملاحته. */
     { label: 'التقارير', routeName: 'admin.reports.index', section: 'reports' },
+    { label: 'ملخّص المبيعات', routeName: 'admin.reports.sales', section: 'reports' },
     { label: 'تحليلات متقدمة', routeName: 'admin.analytics.index', section: 'reports' },
     { label: 'الربحية', routeName: 'admin.profitability.index', section: 'profitability' },
     { label: 'ضريبة القيمة المضافة', routeName: 'admin.vat.index', section: 'vat' },

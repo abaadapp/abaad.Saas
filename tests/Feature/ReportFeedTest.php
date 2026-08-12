@@ -65,7 +65,8 @@ class ReportFeedTest extends TestCase
 
     public function test_the_reports_feed_matches_what_the_page_rendered(): void
     {
-        [$props, $feed] = $this->pageAndFeed('admin.reports.index', 'admin.reports.feed');
+        // التغذية تخدم ملخّص المبيعات لا الفهرس: الفهرس قائمةُ بطاقاتٍ لا أرقامًا
+        [$props, $feed] = $this->pageAndFeed('admin.reports.sales', 'admin.reports.feed');
 
         $this->assertNotEmpty($feed);
         foreach ($feed as $key => $value) {

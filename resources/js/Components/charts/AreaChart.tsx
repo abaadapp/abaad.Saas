@@ -111,26 +111,19 @@ export default function AreaChart({
     }, [data, labels, fullLabels, counts, innerH, innerW, plotStart, plotEnd, rtl]);
 
     /*
-     * الخطّ يمتدّ على المحور كلّه — وما لم يأتِ بعدُ يمتدّ متقطّعًا.
+     * خطٌّ واحد متّصل على المحور كلّه — بقرار المالك.
      *
-     * كان ينتهي عند اليوم فيبقى ثلث البطاقة أبيضَ يُقرأ عطلًا في الشاشة لا
-     * تقويمًا لم يُستهلك. فصار يصل إلى آخر المحور، لكن الجزء الذي لم يُقس
-     * يُرسم متقطّعًا باهتًا بلا تعبئةٍ تحته ولا نقاط: ممتدٌّ ليكتمل الشكل،
-     * ومميَّزٌ كي لا يُقرأ قياسًا. ولمسُه يقول «لم يأتِ بعد» لا «٠ ر.ع».
+     * ما لم يأتِ بعدُ يُرسم عند القاع كبقيّة الخطّ لا متقطّعًا. وقد نبّهتُ
+     * أن الهبوط إلى الصفر في شهرٍ لم يبدأ يُقرأ توقّفَ بيع بعد شهرين، فاختار
+     * الشكل المتّصل. فبقي التمييز حيث لا يُفسد الشكل: لمسُ العمود يقول «لم
+     * يأتِ بعد» لا «٠ ر.ع»، وتسميته باهتة، ولا يدخل تصديرًا ولا ملفّ PDF.
      */
     const baseline = PAD.top + innerH;
-    const drawn = points.filter((p): p is typeof p & { y: number } => p.y !== null);
-    const pending = points.filter((p) => p.y === null);
+    const line = points.map((p) => ({ x: p.x, y: p.y ?? baseline }));
 
-    const linePath = drawn.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-    const areaPath = drawn.length
-        ? `${linePath} L${drawn[drawn.length - 1].x},${baseline} L${drawn[0].x},${baseline} Z`
-        : '';
-
-    // يبدأ من آخر نقطةٍ مقيسة كي يكون امتدادًا لخطٍّ واحد لا خطًّا ثانيًا
-    const pendingPath = pending.length && drawn.length
-        ? `M${drawn[drawn.length - 1].x},${drawn[drawn.length - 1].y} ` +
-          pending.map((p) => `L${p.x},${baseline}`).join(' ')
+    const linePath = line.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+    const areaPath = line.length
+        ? `${linePath} L${line[line.length - 1].x},${baseline} L${line[0].x},${baseline} Z`
         : '';
 
     return (
@@ -163,18 +156,6 @@ export default function AreaChart({
 
                 {areaPath && <path d={areaPath} fill={`url(#${gradientId})`} />}
 
-                {/* الامتداد غير المقيس: متقطّع وباهت وبلا تعبئة تحته */}
-                {pendingPath && (
-                    <path
-                        d={pendingPath}
-                        fill="none"
-                        stroke="#7c3aed"
-                        strokeOpacity="0.28"
-                        strokeWidth="2"
-                        strokeDasharray="4 4"
-                        strokeLinecap="round"
-                    />
-                )}
                 {linePath && (
                     <motion.path
                         initial={{ pathLength: 0 }}
@@ -201,17 +182,15 @@ export default function AreaChart({
                             strokeWidth="1"
                             strokeDasharray="3 3"
                         />
-                        {/* لا نقطة على عمودٍ لم يأتِ: النقطة تقول «هذه قيمته» */}
-                        {points[hover].y !== null && (
-                            <circle
-                                cx={points[hover].x}
-                                cy={points[hover].y as number}
-                                r="5"
-                                fill="#7c3aed"
-                                stroke="#ffffff"
-                                strokeWidth="2"
-                            />
-                        )}
+                        {/* النقطة على الخطّ حيثما وقع — والتلميح يقول أهي قياسٌ أم لا */}
+                        <circle
+                            cx={points[hover].x}
+                            cy={points[hover].y ?? baseline}
+                            r="5"
+                            fill={points[hover].y === null ? '#c4b5fd' : '#7c3aed'}
+                            stroke="#ffffff"
+                            strokeWidth="2"
+                        />
                     </g>
                 )}
 
@@ -282,39 +261,49 @@ export default function AreaChart({
                     النقطة (المسافة بين نقطتين) فلا تزحف على جارتها مهما طال
                     الاسم — «سبتمبر» أو «September».
                 */}
-                {points.map((p, i) => (
+                {points.map((p, i) => {
                     /*
-                     * التسمية تُحصر داخل حدود الرسم.
+                     * التسمية تُحصر داخل الإطار، ونصّها يُزاح إلى الطرف الذي
+                     * أُزيحت إليه.
                      *
-                     * كانت حصّة أوّل نقطةٍ وآخرها تمتدّ نصفَ حصّةٍ خارج الإطار،
-                     * فيُقصّ نصف الكلمة: «أغسطس» تُقرأ «سطس» و«ديسمبر» تُقرأ
-                     * «سمبر». وهو آخر عمودٍ في المخطّط — أهمّها، لأنه الحاضر.
+                     * حصّة أوّل نقطةٍ وآخرها تمتدّ نصفَ حصّةٍ خارج الإطار،
+                     * فكان نصف الكلمة يُقصّ: «أغسطس» تُقرأ «سطس». وبإزاحة
+                     * الحصّة إلى الداخل وحدها تركب التسمية جارتَها — «يوليو
+                     * ٢٦ أغسطس ٢٦» كلمتين فوق بعضهما. فالحصّة تُزاح والنصّ
+                     * يُحاذي طرفَها، فيبقى كلٌّ في مكانه ولا يُقصّ ولا يركب.
                      */
-                    <foreignObject
-                        key={`l${i}`}
-                        x={Math.min(Math.max(p.x - slot / 2, 0), width - slot)}
-                        y={height - 18}
-                        width={slot}
-                        height={14}
-                        className="pointer-events-none"
-                    >
-                        <div
-                            dir="ltr"
-                            className={cn(
-                                'truncate text-center text-[9px] leading-[14px]',
-                                hover === i
-                                    ? 'font-bold text-[#7c3aed]'
-                                    /* ما لم يأتِ بعدُ باهتٌ على المحور: موجودٌ ليُقرأ
-                                       الموضع، لا ليُقرأ على أنه قياس */
-                                    : p.y === null
-                                      ? 'text-[#d8d8d8]'
-                                      : 'text-[#9ca3af]',
-                            )}
+                    const raw = p.x - slot / 2;
+                    const x = Math.min(Math.max(raw, 0), width - slot);
+                    const align = x > raw ? 'text-start' : x < raw ? 'text-end' : 'text-center';
+
+                    return (
+                        <foreignObject
+                            key={`l${i}`}
+                            x={x}
+                            y={height - 18}
+                            width={slot}
+                            height={14}
+                            className="pointer-events-none"
                         >
-                            {p.label}
-                        </div>
-                    </foreignObject>
-                ))}
+                            <div
+                                dir="ltr"
+                                className={cn(
+                                    'truncate text-[9px] leading-[14px]',
+                                    align,
+                                    hover === i
+                                        ? 'font-bold text-[#7c3aed]'
+                                        /* ما لم يأتِ بعدُ باهتٌ على المحور: موجودٌ ليُقرأ
+                                           الموضع، لا ليُقرأ على أنه قياس */
+                                        : p.value === null
+                                          ? 'text-[#d8d8d8]'
+                                          : 'text-[#9ca3af]',
+                                )}
+                            >
+                                {p.label}
+                            </div>
+                        </foreignObject>
+                    );
+                })}
             </svg>
 
             {/* التلميح كنص أسفل الرسم — يتجنّب مشاكل تموضع RTL */}

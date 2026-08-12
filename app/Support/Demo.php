@@ -935,7 +935,8 @@ class Demo
             'max_uses' => $c->max_uses,
             'used_count' => (int) $c->used_count,
             'expires' => optional($c->expires_at)->format('Y-m-d'),
-            'expired' => $c->expires_at && $c->expires_at->isPast(),
+            // نهاية اليوم لا أوّله — انظر Coupon::endsAt
+            'expired' => $c->isExpired(),
             'active' => (bool) $c->active,
             'display' => $c->type === 'نسبة' ? rtrim(rtrim(number_format($c->value, 2, '.', ''), '0'), '.') . '%' : self::money($c->value),
         ])->all();
@@ -946,7 +947,8 @@ class Demo
     {
         return \App\Models\Coupon::where('business_id', self::bid())
             ->where('active', true)
-            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', now()))
+            // من ينتهي اليوم يعمل اليوم كلّه: المقارنة ببداية اليوم لا بالساعة
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', now()->startOfDay()))
             ->whereRaw('(max_uses IS NULL OR used_count < max_uses)')
             ->orderByDesc('id')->get()->map(fn ($c) => [
                 'code' => $c->code,
@@ -974,16 +976,33 @@ class Demo
         $bid = self::bid();
         $q = Customer::where('business_id', $bid)->whereNotNull('phone');
 
-        $customers = $q->get()->map(function ($c) {
-            $last = Order::where('customer_id', $c->id)->max('ordered_at');
+        /*
+         * استعلامان للكلّ لا استعلامان لكلّ عميل.
+         *
+         * كان الصفّ الواحد يكلّف استعلامَين — آخر طلبٍ ومجموع إنفاق — فمتجرٌ
+         * بألفَي عميل يدفع أربعة آلاف استعلامٍ وواحدًا لفتح صفحة التسويق
+         * مرّة. والمعلّق لا يُعدّ طلبًا هنا كما لا يُعدّ في الإنفاق: عميلٌ
+         * علّق سلّةً ولم يدفع كان يظهر نشطًا فيسقط من قائمة «لم يشتروا منذ
+         * شهرين» — وهي القائمة التي صُنعت الصفحة لأجلها.
+         */
+        $sales = Order::where('business_id', $bid)
+            ->where('is_held', false)
+            ->whereNotNull('customer_id')
+            ->selectRaw('customer_id, MAX(ordered_at) as last_at, SUM(total) as spent')
+            ->groupBy('customer_id')
+            ->get()
+            ->keyBy('customer_id');
+
+        $customers = $q->get()->map(function ($c) use ($sales) {
+            $row = $sales->get($c->id);
 
             return [
                 'id' => $c->id,
                 'name' => $c->name,
                 'phone' => $c->phone,
                 'wa' => preg_replace('/\D/', '', (string) $c->phone),
-                'last_order' => $last ? \Illuminate\Support\Carbon::parse($last) : null,
-                'spent' => (float) Order::where('customer_id', $c->id)->where('is_held', false)->sum('total'),
+                'last_order' => $row?->last_at ? \Illuminate\Support\Carbon::parse($row->last_at) : null,
+                'spent' => (float) ($row->spent ?? 0),
             ];
         });
 
@@ -1387,12 +1406,21 @@ class Demo
         }, $defs);
     }
 
-    public static function transactions(string $range = 'all'): array
+    /**
+     * حركات المالية — بسقفٍ لا بلا نهاية.
+     *
+     * كلّ بيعةٍ تكتب صفًّا هنا، وكانت الصفحة تُحمّل الجدول كلّه منذ أوّل يوم:
+     * متجرٌ بعشرة آلاف فاتورة يرسل عشرة آلاف صفٍّ إلى المتصفّح في كل فتح،
+     * حتى تعجز الصفحة عن الفتح أصلًا. والسقف هنا لا تصفّحٌ عن قصد: البحث
+     * والتصفية في الجدول تعملان على ما وصل، وبترُها إلى صفحاتٍ يجعل البحث
+     * يفتّش صفحةً واحدة ويقول «لا نتائج». وللدفتر كاملًا: التصدير.
+     */
+    public static function transactions(string $range = 'all', int $limit = 500): array
     {
         $start = self::rangeStart($range);
         return Transaction::where('business_id', self::bid())
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start))
-            ->orderByDesc('occurred_at')->get()->map(fn ($t) => [
+            ->orderByDesc('occurred_at')->limit($limit)->get()->map(fn ($t) => [
             // المرجع للعرض، والمفتاح للهوية: مرجعان متطابقان (تصحيح يشير
             // لفاتورة أصلية مثلًا) كانا يجعلان React يُسقط صفًّا من دفتر مالي
             'key' => $t->id,

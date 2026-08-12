@@ -222,7 +222,20 @@ class CustomerImportExportController extends Controller
                 $seen[$np] = true;
             }
 
-            $rows[] = compact('name', 'phone', 'email', 'address', 'points', 'branchId', 'branchDisplay', 'status', 'note', 'targetId');
+            /*
+             * ما ذكره الملفّ فعلًا — وما سكت عنه يبقى عند التحديث.
+             *
+             * كان الصفُّ يُقرأ بطاقةَ عميلٍ كاملة: عمودٌ غائبٌ يعني فراغًا أو
+             * صفرًا. فاستيراد قائمة أسماءٍ وأرقام — وهو أكثر ما يُستورد —
+             * كان **يمحو نقاط الولاء إلى صفر** لكل عميلٍ طابق، ويمحو بريده
+             * وعنوانه معها. ولا شيء في الشاشة يقول ذلك.
+             */
+            $stated = [];
+            foreach (['name', 'phone', 'email', 'address', 'points'] as $field) {
+                $stated[$field] = $idx[$field] !== null && $get($field) !== '';
+            }
+
+            $rows[] = compact('name', 'phone', 'email', 'address', 'points', 'branchId', 'branchDisplay', 'status', 'note', 'targetId', 'stated');
         }
 
         session()->put(self::SESSION_KEY, [
@@ -251,9 +264,21 @@ class CustomerImportExportController extends Controller
             'skip' => count(array_filter($rows, fn ($r) => in_array($r['status'], ['invalid', 'dup_file'], true))),
         ];
 
+        // ما لا يذكره الملفّ يبقى كما هو — يُقال قبل التأكيد لا بعده
+        $labels = ['name' => 'الاسم', 'phone' => 'الهاتف', 'email' => 'البريد', 'address' => 'العنوان', 'points' => 'النقاط'];
+        $untouched = [];
+        if ($counts['update'] > 0) {
+            foreach ($labels as $key => $label) {
+                if (! collect($rows)->where('status', 'update')->contains(fn ($r) => $r['stated'][$key] ?? false)) {
+                    $untouched[] = __($label);
+                }
+            }
+        }
+
         return \Inertia\Inertia::render('Admin/Customers/ImportPreview', [
             'rows' => $rows,
             'counts' => $counts,
+            'untouched' => $untouched,
             'defaultBranchName' => $default?->name,
             'file' => $payload['file'],
         ]);
@@ -292,6 +317,12 @@ class CustomerImportExportController extends Controller
                     // الحفاظ على الفرع: لا نمسح الفرع الحالي إن لم يُحدَّد فرع في الاستيراد
                     if ($r['branchId']) {
                         $fields['branch_id'] = $r['branchId'];
+                    }
+                    // وما لم يذكره الملفّ لا يُكتب — انظر بناء `stated` أعلاه
+                    foreach (['name', 'phone', 'email', 'address', 'points'] as $field) {
+                        if (! ($r['stated'][$field] ?? true)) {
+                            unset($fields[$field]);
+                        }
                     }
                     $customer->update($fields);
                     $updated++;

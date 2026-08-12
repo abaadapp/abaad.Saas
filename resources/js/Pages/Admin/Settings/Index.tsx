@@ -124,6 +124,8 @@ const PAYMENT_METHODS = [
     { key: 'pay_cash', label: 'نقدي', hint: 'الدفع النقدي عند الشراء' },
     { key: 'pay_card', label: 'بطاقة (فيزا)', hint: 'الدفع عبر بطاقات الصراف والائتمان' },
     { key: 'pay_transfer', label: 'تحويل بنكي', hint: 'التحويل المباشر للحساب البنكي' },
+    // مطفأ افتراضيًّا: بيعٌ بلا قبضٍ قرارُ صاحب النشاط لا افتراضُ النظام
+    { key: 'pay_credit', label: 'آجل (على الحساب)', hint: 'بيعٌ لا يُقبض لحظته — يُقيَّد دَينًا على عميلٍ معروف، ويُحصَّل من «المالية ← الذمم»' },
 ] as const;
 
 
@@ -239,6 +241,7 @@ export default function SettingsIndex() {
         pay_cash: on('pay_cash'),
         pay_card: on('pay_card'),
         pay_transfer: on('pay_transfer'),
+        pay_credit: on('pay_credit', '0'),
 
         /*
          * حُذف من هنا ما كان يُحفظ ولا يقرؤه سطرٌ واحد: مربّعات الصلاحيات

@@ -298,9 +298,27 @@ class ProductImportExportController extends Controller
             ];
         }
 
+        /*
+         * ما لا يذكره الملفّ — يُقال قبل التأكيد لا بعده.
+         *
+         * التحديث صار يبقي هذه الحقول كما هي، وذلك هو الصواب؛ لكن التاجر الذي
+         * يرفع قائمة أسعارٍ يظنّ أنه يرفع بطاقة المنتج كاملة. فيُقال له صراحةً
+         * ما الذي لن يُمسّ، فلا ينتظر تغييرًا لن يقع.
+         */
+        $untouched = [];
+        if ($counts['update'] > 0) {
+            foreach (self::FIELDS as $key => $label) {
+                $stated = collect($rows)->where('status', 'update')->contains(fn ($r) => $r['stated'][$key] ?? false);
+                if (! $stated && ! ($key === 'quantity' && $analysis['branch_columns'])) {
+                    $untouched[] = $label;
+                }
+            }
+        }
+
         return \Inertia\Inertia::render('Admin/Products/ImportPreview', [
             'rows' => $rows,
             'counts' => $counts,
+            'untouched' => $untouched,
             'branchName' => $payload['branch_id'] ? Branch::find($payload['branch_id'])?->name : null,
             'newCategories' => $analysis['new_categories'],
             'file' => $payload['file'],
@@ -410,16 +428,35 @@ class ProductImportExportController extends Controller
                     continue;
                 }
 
+                /*
+                 * التحديث يكتب ما ذكره الملفّ فقط.
+                 *
+                 * وما سكت عنه يبقى: قائمة أسعارٍ فيها اسمٌ وسعر لا تمسّ
+                 * المخزون ولا التكلفة ولا الباركود. انظر بناء `stated` أعلاه.
+                 */
+                $stated = $r['stated'] ?? [];
+                $map = [
+                    'name' => 'name', 'category_id' => 'category', 'sku' => 'sku', 'barcode' => 'barcode',
+                    'price' => 'price', 'cost' => 'cost', 'alert_qty' => 'alert_qty',
+                    'tax' => 'tax', 'discount' => 'discount', 'active' => 'status',
+                ];
+                foreach ($map as $column => $field) {
+                    if (! ($stated[$field] ?? true)) {
+                        unset($fields[$column]);
+                    }
+                }
+
                 $before = $product->only(array_merge(array_keys($fields), ['quantity']));
 
                 // الفرق لا الكمية: كتابة 50 فوق منتجٍ رصيده 30 موزّع على فرعين
                 // تجعل مجموع الفروع 30 وكمية المنتج 50 — وهو الخلل الذي كان
                 // يُجيز البيع من فرعٍ فارغ.
                 $oldQty = (int) $product->quantity;
-                $product->update($fields + ['quantity' => $r['quantity']]);
+                $quantityStated = $stated['quantity'] ?? true;
+                $product->update($quantityStated ? $fields + ['quantity' => $r['quantity']] : $fields);
 
                 $deltas = [];
-                if ($r['quantity'] !== $oldQty) {
+                if ($quantityStated && $r['quantity'] !== $oldQty) {
                     BranchStock::ensureAllocated($bid, $product->id, $oldQty);
                     foreach ($this->allocation($r, $branchId) as $branch => $qty) {
                         // في وضع الفرع الواحد الفارق كلّه إلى الفرع المختار؛
@@ -704,10 +741,28 @@ class ProductImportExportController extends Controller
                 }
             }
 
+            /*
+             * ما ذكره الملفّ فعلًا — وما سكت عنه يبقى كما هو عند التحديث.
+             *
+             * كان الصفُّ يُقرأ كأنّه بطاقة المنتج كاملة: عمودٌ غائبٌ يعني صفرًا.
+             * فقائمة أسعارٍ محدَّثة — اسمٌ وسعرٌ لا غير، وهي أكثر ما يُستورد —
+             * كانت **تمحو مخزون المتجر كلّه إلى صفر**، وتمحو التكلفة فيصير كل
+             * بيعٍ ربحًا صافيًا في التقارير، وتمحو الباركود فيتوقّف الماسح.
+             * ثلاثتها لا تُرى وقت الاستيراد: الأرقام تبقى معقولة.
+             */
+            $stated = [];
+            foreach (['name', 'category', 'sku', 'barcode', 'price', 'cost', 'alert_qty', 'tax', 'discount', 'status'] as $field) {
+                $stated[$field] = $idx[$field] !== null && $get($field) !== '';
+            }
+            // الكمية: عمودٌ واحد، أو أعمدة فروع — وأيّهما وُجد فقد ذُكرت
+            $stated['quantity'] = $branchColumns
+                ? true
+                : ($idx['quantity'] !== null && $get('quantity') !== '');
+
             $rows[] = compact(
                 'name', 'category', 'categoryDisplay', 'categoryNew', 'categoryId', 'sku', 'barcode',
                 'price', 'cost', 'quantity', 'branchQty', 'alertQty', 'tax', 'discount', 'active',
-                'status', 'note', 'targetId',
+                'status', 'note', 'targetId', 'stated',
             ) + [
                 'grossPrice' => $grossPrice,
                 'currentQty' => $targetId ? ($qtyOf[$targetId] ?? 0) : null,

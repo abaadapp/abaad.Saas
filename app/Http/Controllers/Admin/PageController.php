@@ -350,6 +350,8 @@ class PageController extends Controller
             'profitStats' => Demo::profitStats(),
             'paymentMethods' => Demo::paymentMethods(),
             'transactions' => Demo::transactions(),
+            // ما وراء السقف يُقال لا يُخفى — انظر Demo::transactions
+            'totalTransactions' => \App\Models\Transaction::where('business_id', Demo::bid())->count(),
             // تاريخ اليوم لتعبئة حقل «التاريخ» ابتداءً (بتوقيت الخادم) بدل تركه
             // فارغًا فيظهر رماديًّا — كما تفعل صفحة المصروفات
             'today' => now()->format('Y-m-d'),

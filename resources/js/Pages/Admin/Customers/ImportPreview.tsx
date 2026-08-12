@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, Check, Info, X } from 'lucide-react';
+import { AlertTriangle, Check, Info, ShieldCheck, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import { Badge } from '@/Components/ui/badge';
@@ -34,6 +34,8 @@ interface Row {
 interface Props {
     rows: Row[];
     counts: { total: number; new: number; update: number; skip: number };
+    /** حقولٌ لا يذكرها الملفّ — تبقى كما هي في العملاء المحدَّثين */
+    untouched: string[];
     defaultBranchName: string | null;
     file: string;
 }
@@ -47,7 +49,7 @@ const STATUS: Record<Row['status'], { row: string; variant: 'success' | 'info' |
 };
 
 export default function ImportPreview() {
-    const { rows, counts, defaultBranchName, file } = usePage<PageProps<Props>>().props;
+    const { rows, counts, untouched, defaultBranchName, file } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [confirming, setConfirming] = useState(false);
 
@@ -93,6 +95,17 @@ export default function ImportPreview() {
                     </Card>
                 ))}
             </div>
+
+            {/* الغائب كان يُقرأ صفرًا: قائمة أسماءٍ وأرقام تمحو نقاط الولاء كلّها */}
+            {untouched.length > 0 && (
+                <div className="mb-4 flex items-start gap-2 rounded-[10px] bg-[#f0fdf4] px-3 py-2.5 text-[13px] text-[#166534]">
+                    <ShieldCheck className="mt-0.5 size-4 shrink-0" />
+                    <span>
+                        {t('الملفّ لا يذكر:')} <b>{untouched.join('، ')}</b>{' — '}
+                        {t('فتبقى كما هي في العملاء الموجودين، ولا تُمسّ.')}
+                    </span>
+                </div>
+            )}
 
             <div className="mb-4 flex flex-wrap items-center gap-2 text-[12px]">
                 <span className="inline-flex items-center gap-2 rounded-[8px] bg-[#eff6ff] px-3 py-1.5 text-[#2563eb]">

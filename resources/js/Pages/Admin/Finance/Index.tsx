@@ -44,6 +44,8 @@ interface Props {
     profitStats: ProfitStats;
     paymentMethods: PaymentMethod[];
     transactions: Transaction[];
+    /** كل ما في الدفتر — والمعروض أحدث 500 منها */
+    totalTransactions: number;
     /** تاريخ اليوم بتوقيت الخادم — القيمة الابتدائية لحقل «التاريخ» */
     today: string;
 }
@@ -56,7 +58,8 @@ const METHODS = [
 ] as const;
 
 export default function FinanceIndex() {
-    const { financeStats, profitStats, paymentMethods, transactions, today, context } = usePage<PageProps<Props>>().props;
+    const { financeStats, profitStats, paymentMethods, transactions, totalTransactions, today, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -225,6 +228,15 @@ export default function FinanceIndex() {
             <Card className="overflow-hidden">
                 <div className="border-b border-[var(--ui-border,#e8e8e8)] px-5 pt-5">
                     <h3 className="font-bold text-[#111]">{t('الحركات المالية')}</h3>
+                    {/* السقف يُقال: جدولٌ يعرض بعضه ولا يقول ذلك يُقرأ كأنه الكلّ */}
+                    {totalTransactions > transactions.length && (
+                        <p className="mt-1 text-[12px] text-[#9ca3af]">
+                            {t('أحدث :shown من :total حركة — للدفتر كاملًا استخدم التصدير.', {
+                                shown: number(transactions.length),
+                                total: number(totalTransactions),
+                            })}
+                        </p>
+                    )}
                 </div>
                 <DataTable
                     rows={transactions}

@@ -136,6 +136,7 @@ export const PRODUCT_TABS: SectionTab[] = [
 export const FINANCE_TABS: SectionTab[] = [
     { label: 'المالية', routeName: 'admin.finance.index', section: 'finance' },
     { label: 'المصروفات', routeName: 'admin.expenses.index', section: 'expenses' },
+    { label: 'الذمم', routeName: 'admin.receivables.index', section: 'finance' },
     { label: 'كشف الحساب البنكي', routeName: 'admin.finance.statement', section: 'finance' },
     { label: 'الورديات', routeName: 'admin.shifts.index', section: 'finance' },
 ];

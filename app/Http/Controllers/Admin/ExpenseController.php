@@ -88,6 +88,27 @@ class ExpenseController extends Controller
         $data['attachment'] = $attachment;
         $data['attachment_name'] = $attachmentName;
 
+        /*
+         * المصروف يظهر في دفتر المالية أيضًا.
+         *
+         * كان لكلّ منهما جدولُه: مصروفٌ من هذه الشاشة لا يُرى في المالية،
+         * ومصروفٌ من المالية لا ينقص الربح. فصار المصدر واحدًا والدفتر
+         * يعرضهما معًا — والربح يُقرأ من جدول المصروفات كما كان، فلا يُعدّ
+         * المبلغ مرّتين.
+         */
+        $transaction = \App\Models\Transaction::create([
+            'business_id' => $bid,
+            'reference' => \App\Models\Transaction::nextReference($bid),
+            // الوصف اختياريّ فقد يغيب عن الطلب أصلًا — لا يكفي أن يكون nullable
+            'description' => $data['type'] . (($data['description'] ?? '') !== '' ? ' — ' . $data['description'] : ''),
+            'method' => $data['method'],
+            'type' => 'مصروف',
+            'amount' => $data['amount'],
+            'employee_name' => $data['employee_name'],
+            'occurred_at' => $data['spent_at'],
+        ]);
+        $data['transaction_id'] = $transaction->id;
+
         Expense::create($data);
         \App\Support\Activity::log('created', 'سجّل مصروف ' . $data['type'] . ' بقيمة ' . $data['amount']);
 

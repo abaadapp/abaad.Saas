@@ -14,11 +14,9 @@ import {
     Percent,
     Printer,
     ShieldCheck,
-    ShoppingCart,
     Store,
     Target,
     Trash2,
-    Truck,
     UserCog,
     Wallet,
 } from 'lucide-react';
@@ -50,15 +48,13 @@ export const SETTINGS_NAV = [
     {
         group: 'المبيعات',
         items: [
-            { key: 'invoices', label: 'الفواتير', desc: 'ترقيم الفواتير وإظهار الشعار', icon: FileText },
-            { key: 'orders', label: 'الطلبات', desc: 'ترقيم الطلبات وحالتها الافتراضية وتعديلها', icon: ShoppingCart },
-            { key: 'delivery', label: 'التوصيل', desc: 'تفعيل التوصيل ورسومه وحدّ الشحن المجاني', icon: Truck },
+            { key: 'invoices', label: 'الفواتير', desc: 'بادئة رقم الفاتورة ورقمها الأول', icon: FileText },
         ],
     },
     {
         group: 'الطباعة',
         items: [
-            { key: 'printing', label: 'الطباعة', desc: 'مقاس الورق وعدد النسخ والطباعة التلقائية', icon: Printer },
+            { key: 'printing', label: 'الطباعة', desc: 'مقاس ورق الإيصال', icon: Printer },
             { key: 'templates', label: 'قالب الإيصال', desc: 'شكل الإيصال المطبوع وما يظهر فيه', icon: LayoutTemplate },
         ],
     },

@@ -16,13 +16,15 @@ import { cn } from '@/lib/utils';
 import type { CheckoutResult } from '@/hooks/usePosCart';
 import type { PageProps } from '@/types';
 
-const METHODS = [
+const ALL_METHODS = [
     { value: 'نقدي', label: 'نقدي', icon: Banknote },
     { value: 'بطاقة', label: 'فيزا', icon: CreditCard },
     { value: 'تحويل بنكي', label: 'تحويل بنكي', icon: Landmark },
 ];
 
 interface Props {
+    /** الوسائل المأذونة من الإعدادات؛ غيابها يعني الثلاث (شاشة قديمة) */
+    methods?: string[];
     open: boolean;
     onOpenChange: (open: boolean) => void;
     total: number;
@@ -36,15 +38,19 @@ interface Props {
 }
 
 export default function PaymentDialog({
-    open, onOpenChange, total, displayTotal, customer, money, fmt, onCheckout, onNewOrder,
+    open, onOpenChange, total, displayTotal, customer, money, fmt, onCheckout, onNewOrder, methods,
 }: Props) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
     // طابعة هذا الصندوق وحدها — لا طابعة صندوقٍ آخر في الفرع نفسه
     const printer = context?.peripherals?.find((x) => x.type === 'طابعة');
+    const METHODS = methods?.length
+        ? ALL_METHODS.filter((m) => methods.includes(m.value))
+        : ALL_METHODS;
     const [step, setStep] = useState<'pay' | 'success'>('pay');
     const [paid, setPaid] = useState('');
-    const [method, setMethod] = useState('نقدي');
+    // أوّل وسيلةٍ مأذونة لا «نقدي» دائمًا: من أطفأ النقد لا يبدأ عليه
+    const [method, setMethod] = useState(METHODS[0]?.value ?? 'نقدي');
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState<CheckoutResult | null>(null);
 
@@ -54,6 +60,7 @@ export default function PaymentDialog({
             setStep('pay');
             setPaid('');
             setResult(null);
+            setMethod((m) => (METHODS.some((x) => x.value === m) ? m : METHODS[0]?.value ?? 'نقدي'));
         }
     }, [open]);
 
@@ -132,7 +139,11 @@ export default function PaymentDialog({
 
                         <div>
                             <Label className="mb-1.5">{t('وسيلة الدفع')}</Label>
-                            <div className="grid grid-cols-3 gap-2">
+                            {/* الأعمدة بعدد المعروض: وسيلتان في ثلاثة أعمدة تتركان فراغًا يبدو عطلًا */}
+                            <div
+                                className="grid gap-2"
+                                style={{ gridTemplateColumns: `repeat(${Math.max(1, METHODS.length)}, minmax(0, 1fr))` }}
+                            >
                                 {METHODS.map((m) => {
                                     const Icon = m.icon;
                                     const active = method === m.value;

@@ -33,6 +33,9 @@ class Demo
     private static $baseCur = null;
     private static $displayCur = null;
 
+    /** صاحب العملة المحفوظة في الذاكرة — تُعاد القراءة إن تغيّر */
+    private static ?int $curBid = null;
+
     /**
      * تفريغ ذاكرة العملة المؤقّتة.
      *
@@ -45,32 +48,78 @@ class Demo
     {
         self::$baseCur = null;
         self::$displayCur = null;
+        self::$curBid = null;
     }
 
-    /** العملة الأساسية للنشاط (الافتراضي: ريال عماني) */
+    /** رموز العملات الشائعة في المنطقة — لمن ضبط عملته من الإعدادات بلا جدول عملات */
+    private const SYMBOLS = [
+        'OMR' => 'ر.ع', 'AED' => 'د.إ', 'SAR' => 'ر.س', 'KWD' => 'د.ك', 'BHD' => 'د.ب',
+        'QAR' => 'ر.ق', 'JOD' => 'د.أ', 'EGP' => 'ج.م', 'USD' => '$', 'EUR' => '€', 'GBP' => '£',
+    ];
+
+    /**
+     * يُلحق بالعملة كيفيةَ كتابتها كما اختارها التاجر.
+     *
+     * المنازل كانت مشتقّةً من رمز العملة وحده، وموضع الرمز مثبّتًا بعده —
+     * وحقلاهما في الإعدادات يُحفظان ولا يقرؤهما أحد.
+     */
+    private static function withFormat(array $cur, array $settings): array
+    {
+        $fallback = in_array($cur['code'], ['OMR', 'KWD', 'BHD'], true) ? 3 : 2;
+        $set = $settings['decimals'] ?? null;
+
+        return $cur + [
+            'decimals' => $set === null || $set === '' ? $fallback : max(0, min(4, (int) $set)),
+            'before' => ($settings['symbol_pos'] ?? 'after') === 'before',
+        ];
+    }
+
+    /**
+     * العملة الأساسية للنشاط.
+     *
+     * جدول العملات أوّلًا، فإن خلا — وهو حال كل متجرٍ لا يستورد نسخة احتياطية،
+     * إذ لا شاشة تملؤه — فإعداد «العملة» في الإعدادات. وكان السقوط على ر.ع
+     * مثبّتًا: تاجرٌ في دبي يكتب AED فيرى ر.ع في كل رقمٍ عنده.
+     */
     public static function baseCurrency(): array
     {
-        if (self::$baseCur !== null) {
+        // الذاكرة مربوطةٌ بصاحبها: بلا ذلك يُخدَم متجرٌ بعملة متجرٍ سبقه في
+        // العمليّة نفسها — تحت Octane أو عامل طابور يعالج متجرين بالتتابع
+        if (self::$baseCur !== null && self::$curBid === self::bid()) {
             return self::$baseCur;
         }
+        self::$curBid = self::bid();
+        $s = self::businessSettings();
         $c = \App\Models\Currency::where('business_id', self::bid())->where('is_base', true)->first();
 
-        return self::$baseCur = $c
-            ? ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => true]
-            : ['code' => 'OMR', 'symbol' => 'ر.ع', 'rate' => 1.0, 'is_base' => true];
+        if ($c) {
+            $cur = ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => true];
+        } else {
+            // رمزٌ من ثلاثة أحرف لاتينية أو لا شيء: في القاعدة صفوفٌ قديمة
+            // قيمتها «ريال عماني» — تُقرأ رمزًا فيظهر بجانب كلّ مبلغ كما هو
+            $code = strtoupper(trim((string) ($s['currency'] ?? '')));
+            $code = preg_match('/^[A-Z]{3}$/', $code) ? $code : 'OMR';
+            $cur = ['code' => $code, 'symbol' => self::SYMBOLS[$code] ?? $code, 'rate' => 1.0, 'is_base' => true];
+        }
+
+        return self::$baseCur = self::withFormat($cur, $s);
     }
 
     /** عملة العرض المختارة (من الجلسة) أو الأساسية */
     public static function displayCurrency(): array
     {
-        if (self::$displayCur !== null) {
+        if (self::$displayCur !== null && self::$curBid === self::bid()) {
             return self::$displayCur;
         }
+        self::$curBid = self::bid();
         $code = session('display_currency');
         if ($code) {
             $c = \App\Models\Currency::where('business_id', self::bid())->where('code', $code)->where('active', true)->first();
             if ($c) {
-                return self::$displayCur = ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => (bool) $c->is_base];
+                return self::$displayCur = self::withFormat(
+                    ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => (bool) $c->is_base],
+                    self::businessSettings()
+                );
             }
         }
 
@@ -79,10 +128,13 @@ class Demo
 
     private static function formatMoney(float $value, array $cur): string
     {
-        $decimals = in_array($cur['code'], ['OMR', 'KWD', 'BHD']) ? 3 : 2;
+        $decimals = (int) ($cur['decimals'] ?? (in_array($cur['code'], ['OMR', 'KWD', 'BHD']) ? 3 : 2));
 
         // الترجمة هنا لا عند تعريف العملة، لتشمل الرمز القادم من قاعدة البيانات أيضًا
-        return number_format($value, $decimals, '.', ',') . ' ' . __($cur['symbol']);
+        $symbol = __($cur['symbol']);
+        $amount = number_format($value, $decimals, '.', ',');
+
+        return ($cur['before'] ?? false) ? $symbol . ' ' . $amount : $amount . ' ' . $symbol;
     }
 
     /** المبلغ بعملة العرض المختارة (تحويل تلقائي حسب سعر الصرف) */

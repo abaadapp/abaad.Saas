@@ -90,6 +90,37 @@ class BusinessController extends Controller
         $account = $this->validateAccount($request);
 
         $data['logo'] = $request->hasFile('logo') ? $request->file('logo')->store('logos', 'public') : null;
+
+        /*
+         * مدّة التجربة — من إعدادات المنصة.
+         *
+         * `trial_days` كان حقلًا يُملأ ولا يقرؤه شيء: شركةٌ تُضاف بلا تاريخ
+         * انتهاء تعمل إلى الأبد، فلا تجربةَ تنتهي ولا مطالبةَ تحلّ. ولا
+         * يُطبَّق إن حدّد المشغّل التاريخين بنفسه: اختيارُه أولى من الافتراضي.
+         */
+        /*
+         * الباقة الافتراضية — بالاسم كما يكتبه المشغّل في الإعدادات.
+         *
+         * كانت شركةٌ تُضاف بلا باقة فتبقى بلا سعرٍ ولا فاتورة، والحقل في
+         * الإعدادات يُملأ ولا يقرؤه شيء. واسمٌ لا يطابق باقةً قائمة يُترك
+         * كما كان: لا نخترع باقة.
+         */
+        if (empty($data['plan_id'])) {
+            $name = trim((string) \App\Support\Tenancy::platform('default_plan', ''));
+            if ($name !== '') {
+                $data['plan_id'] = \App\Models\Plan::where('name', $name)->value('id') ?: null;
+            }
+        }
+
+        if (empty($data['ends_at'])) {
+            $days = (int) \App\Support\Tenancy::platform('trial_days', 14);
+            $starts = ! empty($data['starts_at']) ? \Illuminate\Support\Carbon::parse($data['starts_at']) : now();
+            $data['starts_at'] = $data['starts_at'] ?? $starts->toDateString();
+            if ($days > 0) {
+                $data['ends_at'] = $starts->copy()->addDays($days)->toDateString();
+            }
+        }
+
         $business = Business::create($data);
         $owner = \App\Support\MerchantAccount::create($business, $account['login_username'], $account['login_password']);
         // بذرة تصنيفات حسب النوع — لئلا يفتح التاجر لوحته على صفحة بيضاء

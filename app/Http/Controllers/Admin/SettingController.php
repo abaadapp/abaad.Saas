@@ -34,7 +34,16 @@ class SettingController extends Controller
             'email' => ['sometimes', 'nullable', 'email', 'max:120'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:40'],
             'address' => ['sometimes', 'nullable', 'string', 'max:500'],
+            // البادئة تدخل شرط LIKE عند توليد الرقم — و«%» فيها تجعل كل فاتورةٍ
+            // مطابقةً فيقفز العدّاد. تُنقّى في PosController أيضًا، والمنع هنا أوضح.
+            'inv_prefix' => ['sometimes', 'nullable', 'string', 'max:12', 'not_regex:/[%_\\\\]/'],
+            'inv_start' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'currency' => ['sometimes', 'nullable', 'string', 'size:3', 'alpha'],
+            'decimals' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:4'],
+            'symbol_pos' => ['sometimes', 'nullable', 'in:before,after'],
         ], [
+            'inv_prefix.not_regex' => __('لا تصلح الرموز % و _ و \\ في بادئة رقم الفاتورة'),
+            'currency.size' => __('رمز العملة ثلاثة أحرف مثل OMR'),
             'website.regex' => __('أدخل عنوان موقع صحيح مثل example.com'),
         ]);
 

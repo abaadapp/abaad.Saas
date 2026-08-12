@@ -31,7 +31,7 @@ class SubscriptionExpiredController extends Controller
         }
 
         $platform = Setting::whereNull('business_id')
-            ->whereIn('key', ['company', 'official_email', 'phone'])
+            ->whereIn('key', ['company', 'official_email', 'phone', 'website'])
             ->pluck('value', 'key');
 
         return \Inertia\Inertia::render('Auth/SubscriptionExpired', [
@@ -48,6 +48,7 @@ class SubscriptionExpiredController extends Controller
                 'company' => $platform['company'] ?? null,
                 'email' => $platform['official_email'] ?? null,
                 'phone' => $platform['phone'] ?? null,
+                'website' => $platform['website'] ?? null,
             ],
         ]);
     }

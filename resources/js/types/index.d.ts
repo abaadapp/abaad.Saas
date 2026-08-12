@@ -26,6 +26,8 @@ export interface Currency {
     is_base: boolean;
     active: boolean;
     decimals?: number;
+    /** الرمز قبل المبلغ لا بعده — إعداد «موضع الرمز» */
+    before?: boolean;
 }
 
 export interface Notification {

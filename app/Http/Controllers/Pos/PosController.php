@@ -185,7 +185,7 @@ class PosController extends Controller
      * كان random_int(78900, 99999) بلا قيد فريد: 21,100 قيمة فقط تعني احتمال
      * تصادم ≈61% خلال 200 فاتورة — أي فاتورتين مختلفتين تحملان الرقم نفسه.
      */
-    private function nextNumber(string $prefix): string
+    private function nextNumber(string $prefix, int $start = 1): string
     {
         $offset = strlen($prefix) + 1; // عدد صحيح من strlen، فلا خطر حقن هنا
 
@@ -205,17 +205,64 @@ class PosController extends Controller
             ->orderByRaw("{$suffix} DESC")
             ->value('number');
 
-        $n = $last ? (int) substr($last, strlen($prefix)) : 0;
+        // أوّل فاتورةٍ بهذه البادئة تبدأ من الرقم الذي اختاره التاجر، وما بعدها
+        // يتبع الأخير. ولذلك تغيير البادئة يفتح تسلسلًا جديدًا لا يصطدم بالقديم.
+        $n = $last ? (int) substr($last, strlen($prefix)) : max(0, $start - 1);
 
         return $prefix . str_pad((string) ($n + 1), 6, '0', STR_PAD_LEFT);
     }
 
+    /**
+     * بادئة رقم الفاتورة كما اختارها التاجر.
+     *
+     * كانت 'INV-' مثبّتةً في الكود بينما الإعدادات تعرض حقلًا يُحفظ ولا يُقرأ.
+     * والتنقية ليست زينة: البادئة تدخل شرط LIKE، فـ«%» فيها تجعل كل فاتورةٍ
+     * مطابقةً فيقفز العدّاد إلى رقمٍ لا يخصّها.
+     */
+    private function salePrefix(): string
+    {
+        $raw = trim((string) $this->setting('inv_prefix', 'INV-'));
+        $clean = str_replace(['%', '_', '\\'], '', $raw);
+
+        return $clean === '' ? 'INV-' : mb_substr($clean, 0, 12);
+    }
+
+    /**
+     * طرق الدفع التي أذن بها التاجر.
+     *
+     * كانت مفاتيح pay_* تُحفظ ولا يقرؤها أحد: يُطفئ التاجر «بطاقة» فتبقى
+     * معروضةً في الصندوق ومقبولةً — ثم يحاسب موظفًا قبِل ما ظنّ أنه منعه.
+     *
+     * ولا تعود فارغةً أبدًا: من أطفأ الثلاث لا يُراد به أن يقف البيع، فيبقى
+     * النقد. حجبُ وسيلةٍ إعدادٌ، وإيقافُ الصندوق عطل.
+     */
+    public static function enabledPaymentMethods(array $settings): array
+    {
+        $all = ['نقدي' => 'pay_cash', 'بطاقة' => 'pay_card', 'تحويل بنكي' => 'pay_transfer'];
+        $on = [];
+        foreach ($all as $label => $key) {
+            if (($settings[$key] ?? '1') !== '0') {
+                $on[] = $label;
+            }
+        }
+
+        return $on ?: ['نقدي'];
+    }
+
+    /** يردّ الطريقة المطلوبة إن كانت مأذونة، وإلا أوّل المأذون */
+    private function paymentMethod(?string $requested): string
+    {
+        $allowed = self::enabledPaymentMethods(Demo::businessSettings());
+
+        return in_array($requested, $allowed, true) ? $requested : $allowed[0];
+    }
+
     /** ينشئ الطلب برقم فريد، ويعيد المحاولة إن سبقه كاشير آخر إلى الرقم نفسه */
-    private function createNumbered(array $attrs, string $prefix): Order
+    private function createNumbered(array $attrs, string $prefix, int $start = 1): Order
     {
         for ($attempt = 0; $attempt < 5; $attempt++) {
             try {
-                return Order::create($attrs + ['number' => $this->nextNumber($prefix)]);
+                return Order::create($attrs + ['number' => $this->nextNumber($prefix, $start)]);
             } catch (UniqueConstraintViolationException $e) {
                 if ($attempt === 4) {
                     throw $e;
@@ -419,7 +466,7 @@ class PosController extends Controller
                  */
                 'pos_device_id' => \App\Support\PosTerminal::current()?->id,
                 'status' => 'مكتمل',
-                'payment_method' => $data['payment_method'] ?? 'نقدي',
+                'payment_method' => $this->paymentMethod($data['payment_method'] ?? null),
                 'payment_status' => 'مدفوع',
                 'subtotal' => $subtotal,
                 'discount' => $discount,
@@ -428,7 +475,7 @@ class PosController extends Controller
                 'delivery_fee' => $delivery,
                 'total' => $total,
                 'ordered_at' => now(),
-            ], 'INV-');
+            ], $this->salePrefix(), max(1, (int) $this->setting('inv_start', 1)));
 
             foreach ($lines as $l) {
                 $order->items()->create([

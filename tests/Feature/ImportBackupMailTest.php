@@ -194,8 +194,16 @@ class ImportBackupMailTest extends TestCase
 
     public function test_the_test_email_actually_goes_out(): void
     {
-        config(['mail.default' => 'array']);
-        Mail::purge('array');
+        /*
+         * ناقل الذاكرة تحت اسم smtp عمدًا.
+         *
+         * الزرّ صار يرفض المرسِلات التي لا تُخرج شيئًا (log و array و null)
+         * بدل أن يقول «تم الإرسال» وهو يكتب في ملفّ. فلالتقاط الرسالة هنا
+         * يُسمّى الناقلُ smtp ويبقى في الذاكرة: مرسِلٌ يسلّم في نظر الحارس،
+         * وصندوقُ وارد نقرؤه في نظر الاختبار.
+         */
+        config(['mail.default' => 'smtp', 'mail.mailers.smtp' => ['transport' => 'array']]);
+        Mail::purge('smtp');
 
         $this->actingAs($this->super)
             ->post(route('super-admin.settings.testEmail'), ['to' => 'check@abaad.om'])
@@ -207,6 +215,20 @@ class ImportBackupMailTest extends TestCase
             'check@abaad.om',
             $messages[0]->getOriginalMessage()->getTo()[0]->getAddress(),
         );
+    }
+
+    public function test_the_button_refuses_when_the_server_sends_nothing(): void
+    {
+        /*
+         * أخطر ما كان في الشاشة: المرسِل `log` يكتب الرسالة في ملفّ ولا
+         * يخرجها، والزرّ يقول «تم الإرسال». فيطمئنّ المشغّل ولا يصل تنبيهُ
+         * اشتراكٍ ولا رابطُ استعادة كلمة سرّ لأحد. الفشل الصريح هو الفائدة.
+         */
+        config(['mail.default' => 'log']);
+
+        $this->actingAs($this->super)
+            ->post(route('super-admin.settings.testEmail'), ['to' => 'check@abaad.om'])
+            ->assertSessionHas('toast.type', 'error');
     }
 
     public function test_a_merchant_cannot_send_platform_test_email(): void

@@ -46,7 +46,7 @@ interface Props {
     addons: Addon[];
     coupons: PosCoupon[];
     resumeCart: ResumeCart | null;
-    settings: LoyaltySettings & { loyaltyEnabled?: boolean };
+    settings: LoyaltySettings & { loyaltyEnabled?: boolean; paymentMethods?: string[] };
 }
 
 export default function PosIndex() {
@@ -679,6 +679,7 @@ export default function PosIndex() {
                 customer={cart.customer}
                 money={money}
                 fmt={fmt}
+                methods={settings.paymentMethods}
                 onCheckout={cart.checkoutSale}
                 onNewOrder={() => { cart.clear(); toast.success(t('طلب جديد جاهز')); }}
             />

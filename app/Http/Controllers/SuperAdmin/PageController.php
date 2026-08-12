@@ -283,6 +283,8 @@ class PageController extends Controller
     {
         return $this->page('Platform/Settings/Index', [
             'settings' => $this->platformSettings(),
+            // حال البريد كما هو على الخادم — لا كما حُفظ في الشاشة
+            'mail' => \App\Support\PlatformConfig::mailStatus(),
         ]);
     }
 
@@ -299,45 +301,30 @@ class PageController extends Controller
         return [...self::SETTING_DEFAULTS, ...$saved];
     }
 
+    /**
+     * الافتراضيات — وكلٌّ منها موصولٌ بشيء.
+     *
+     * حُذف منها ما كان يُعرض ويُحفظ ولا يقرؤه سطر: تنسيق التاريخ، المنطقة
+     * الزمنية، الرقم الضريبي، التجديد التلقائي، العملات الأربعة، إشعارات
+     * المنصة الستّة، الشروط والخصوصية، ومضيف SMTP ومنفذه (بقيت الاعتمادات
+     * في .env حيث موضعها).
+     */
     private const SETTING_DEFAULTS = [
         'app_name' => 'Abad POS',
         'locale' => 'ar',
-        'timezone' => 'Asia/Muscat',
-        'date_format' => 'Y-m-d',
         'maintenance_mode' => '0',
         'company' => 'شركة أبعاد للتقنية',
         'official_email' => 'info@abad.om',
         'phone' => '+968 24000000',
         'website' => 'https://abad.om',
-        'address' => 'مسقط، سلطنة عُمان',
-        'cr' => '1234567',
         'trial_days' => '14',
         'grace_days' => '7',
         'default_plan' => 'أساسية',
-        'auto_renew' => '1',
         'auto_suspend' => '1',
         'vat_rate' => '5',
-        'tax_number' => 'OM100234567',
         'tax_mode' => 'exclusive',
-        'platform_vat_enabled' => '1',
-        'base_currency' => 'OMR',
-        'currency_symbol' => 'ر.ع',
-        'decimals' => '3',
-        'symbol_position' => 'after',
-        'platform_notif_0' => '1',
-        'platform_notif_1' => '1',
-        'platform_notif_2' => '1',
-        'platform_notif_3' => '1',
-        'platform_notif_4' => '1',
-        'platform_notif_5' => '0',
-        'mailer' => 'smtp',
-        'mail_host' => '',
-        'mail_port' => '587',
-        'mail_encryption' => 'tls',
         'from_address' => 'no-reply@abad.om',
         'from_name' => 'Abad POS',
-        'terms' => '',
-        'privacy' => '',
     ];
 
     /* ------------------------------ مشتركات ------------------------------ */

@@ -26,8 +26,23 @@ class SettingController extends Controller
         return back()->with('toast', ['msg' => __('تم حفظ إعدادات المنصة بنجاح'), 'type' => 'success']);
     }
 
+    /**
+     * تجربة البريد — تصدُق أو تسكت.
+     *
+     * كانت تنجح دائمًا: المرسِل `log` يكتب الرسالة في ملفّ ولا يخرجها، ثم
+     * يقول التوست «تم الإرسال». فيطمئنّ المشغّل ولا يصل تنبيهُ اشتراكٍ ولا
+     * رابطُ استعادة كلمة سرّ لأحد. والفشل الصريح هنا هو الفائدة كلّها.
+     */
     public function testEmail(Request $request)
     {
+        $status = \App\Support\PlatformConfig::mailStatus();
+        if (! $status['delivers']) {
+            return back()->with('toast', [
+                'msg' => __('البريد غير مفعّل على الخادم (المرسِل: :mailer) — لن تخرج أي رسالة.', ['mailer' => $status['mailer']]),
+                'type' => 'error',
+            ]);
+        }
+
         $to = $request->input('to', auth()->user()->email);
         try {
             \Illuminate\Support\Facades\Mail::raw(__('هذه رسالة اختبار من نظام Abad POS. إذا وصلتك فإن إعدادات البريد تعمل بنجاح.'), function ($m) use ($to) {

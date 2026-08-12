@@ -240,37 +240,22 @@ export default function SettingsIndex() {
         pay_card: on('pay_card'),
         pay_transfer: on('pay_transfer'),
 
-        perm_0_0: on('perm_0_0'),
-        perm_0_1: on('perm_0_1'),
-        perm_0_2: on('perm_0_2'),
-        perm_1_0: on('perm_1_0'),
-        perm_1_1: on('perm_1_1'),
-        perm_1_2: on('perm_1_2'),
-        perm_2_0: on('perm_2_0'),
-        perm_2_1: on('perm_2_1'),
-        perm_2_2: on('perm_2_2'),
-
+        /*
+         * حُذف من هنا ما كان يُحفظ ولا يقرؤه سطرٌ واحد: مربّعات الصلاحيات
+         * التسعة (perm_*)، وشعارُ الفاتورة المكرَّر (invoice_show_logo وله
+         * توأمٌ حيّ هو tpl_show_logo)، وعدد النسخ والطباعة التلقائية وطباعة
+         * التجهيز — والطباعة التلقائية تعمل فعلًا لكن من «الأجهزة» لكلّ
+         * طابعة على حدة — وبادئة الطلب وحالته الافتراضية وتعديله وتأكيد
+         * إلغائه، والتوصيل الثلاثة. المقبض الذي لا يُمسك أسوأ من غيابه.
+         */
         inv_prefix: get('inv_prefix', 'INV-'),
         inv_start: get('inv_start', '1'),
-        invoice_show_logo: on('invoice_show_logo'),
 
         paper: get('paper', '80mm'),
-        copies: get('copies', '1'),
-        print_auto: on('print_auto', '0'),
-        print_kitchen: on('print_kitchen', '0'),
 
         notify_new_order: on('notify_new_order'),
         notify_smart_alerts: on('notify_smart_alerts'),
         notify_daily_summary: on('notify_daily_summary'),
-
-        order_prefix: get('order_prefix', 'ORD-'),
-        default_status: get('default_status', 'جديد'),
-        order_allow_edit: on('order_allow_edit'),
-        order_confirm_cancel: on('order_confirm_cancel'),
-
-        delivery_enabled: on('delivery_enabled', '0'),
-        delivery_fee: get('delivery_fee', '0'),
-        free_threshold: get('free_threshold', '0'),
 
         loyalty_enabled: on('loyalty_enabled'),
         // مطفأ افتراضيًّا: منعُ البيع أخطر تصرّف في نقطة بيع
@@ -737,17 +722,17 @@ export default function SettingsIndex() {
                                     <Field label="بادئة رقم الفاتورة" error={form.errors.inv_prefix}>
                                         <Input dir="ltr" value={form.data.inv_prefix} onChange={(e) => form.setData('inv_prefix', e.target.value)} />
                                     </Field>
-                                    <Field label="رقم البداية" error={form.errors.inv_start}>
+                                    <Field
+                                        label="رقم البداية"
+                                        error={form.errors.inv_start}
+                                        hint="يسري على أوّل فاتورةٍ بالبادئة الجديدة، ولا يمسّ ما صدر"
+                                    >
                                         <Input type="number" min="1" dir="ltr" value={form.data.inv_start} onChange={(e) => form.setData('inv_start', e.target.value)} />
                                     </Field>
                                 </div>
-                                <div className="mt-2">
-                                    <Toggle
-                                        on={form.data.invoice_show_logo}
-                                        onChange={(v) => form.setData('invoice_show_logo', v)}
-                                        label="إظهار الشعار في الفاتورة"
-                                    />
-                                </div>
+                                <p className="mt-3 text-[12px] text-[#9ca3af]">
+                                    {t('شعار الفاتورة يُضبط من «قالب الإيصال» — كان هنا مفتاحٌ ثانٍ لا يقرؤه شيء.')}
+                                </p>
                             </>
                         )}
 
@@ -906,18 +891,12 @@ export default function SettingsIndex() {
                                             ]}
                                         />
                                     </Field>
-                                    <Field label="عدد النسخ" error={form.errors.copies}>
-                                        <Select
-                                            value={form.data.copies}
-                                            onChange={(e) => form.setData('copies', e.target.value)}
-                                            options={[1, 2, 3].map((n) => ({ label: String(n), value: n }))}
-                                        />
-                                    </Field>
                                 </div>
-                                <div className="mt-2">
-                                    <Toggle on={form.data.print_auto} onChange={(v) => form.setData('print_auto', v)} label="طباعة تلقائية بعد كل بيع" />
-                                    <Toggle on={form.data.print_kitchen} onChange={(v) => form.setData('print_kitchen', v)} label="طباعة نسخة للتجهيز" />
-                                </div>
+                                {/* الطباعة التلقائية تعمل من «الأجهزة» لكلّ طابعة على حدة —
+                                    وكان هنا مفتاحٌ ثالث لا يقرؤه شيء، فيُطفئه التاجر وتطبع. */}
+                                <p className="mt-3 text-[12px] text-[#9ca3af]">
+                                    {t('الطباعة التلقائية بعد البيع تُضبط لكل طابعة من «الأجهزة» — لأن الصندوق الذي فيه طابعة يطبع، وغيره لا.')}
+                                </p>
                             </>
                         )}
 
@@ -942,52 +921,6 @@ export default function SettingsIndex() {
                                     label="ملخّص الأداء اليومي"
                                     hint="يصل آخر اليوم بمبيعات اليوم وأبرز أرقامه."
                                 />
-                            </>
-                        )}
-
-                        {tab === 'orders' && (
-                            <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('إعدادات الطلبات')}</h3>
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <Field label="بادئة رقم الطلب" error={form.errors.order_prefix}>
-                                        <Input dir="ltr" value={form.data.order_prefix} onChange={(e) => form.setData('order_prefix', e.target.value)} />
-                                    </Field>
-                                    <Field label="الحالة الافتراضية للطلب الجديد" error={form.errors.default_status}>
-                                        <Select
-                                            value={form.data.default_status}
-                                            onChange={(e) => form.setData('default_status', e.target.value)}
-                                            options={[
-                                                { label: 'جديد', value: 'جديد' },
-                                                { label: 'قيد التجهيز', value: 'قيد التجهيز' },
-                                                { label: 'مكتمل', value: 'مكتمل' },
-                                            ]}
-                                        />
-                                    </Field>
-                                </div>
-                                <div className="mt-2">
-                                    <Toggle on={form.data.order_allow_edit} onChange={(v) => form.setData('order_allow_edit', v)} label="السماح بتعديل الطلب بعد إنشائه" />
-                                    <Toggle on={form.data.order_confirm_cancel} onChange={(v) => form.setData('order_confirm_cancel', v)} label="طلب تأكيد قبل إلغاء الطلب" />
-                                </div>
-                            </>
-                        )}
-
-                        {tab === 'delivery' && (
-                            <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('إعدادات التوصيل')}</h3>
-                                <Toggle
-                                    on={form.data.delivery_enabled}
-                                    onChange={(v) => form.setData('delivery_enabled', v)}
-                                    label="تفعيل خدمة التوصيل"
-                                    hint="إتاحة التوصيل للطلبات الخارجية"
-                                />
-                                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <Field label="رسوم التوصيل الافتراضية" error={form.errors.delivery_fee}>
-                                        <Input type="number" step="0.001" min="0" dir="ltr" value={form.data.delivery_fee} onChange={(e) => form.setData('delivery_fee', e.target.value)} />
-                                    </Field>
-                                    <Field label="حد التوصيل المجاني" error={form.errors.free_threshold}>
-                                        <Input type="number" step="0.001" min="0" dir="ltr" value={form.data.free_threshold} onChange={(e) => form.setData('free_threshold', e.target.value)} />
-                                    </Field>
-                                </div>
                             </>
                         )}
 

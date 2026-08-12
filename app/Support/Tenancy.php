@@ -82,11 +82,27 @@ class Tenancy
      */
     public static function graceDays(): int
     {
-        $value = \App\Models\Setting::where('business_id', null)
-            ->where('key', 'grace_days')
-            ->value('value');
+        return max(0, (int) self::platform('grace_days', 7));
+    }
 
-        return max(0, (int) ($value ?? 7));
+    /** إعدادٌ من إعدادات المنصة (business_id = null) */
+    public static function platform(string $key, $default = null)
+    {
+        $value = \App\Models\Setting::whereNull('business_id')->where('key', $key)->value('value');
+
+        return $value === null || $value === '' ? $default : $value;
+    }
+
+    /**
+     * وضع الصيانة: النظام موقوفٌ على التجّار دون مدير المنصة.
+     *
+     * المفتاح كان معروضًا في إعدادات المنصة ولا يقرؤه شيء — يُشغّله المشغّل
+     * قبل ترقيةٍ ويظنّ أنه أغلق الأبواب، والتجّار يبيعون على قاعدةٍ تُهاجَر
+     * تحتهم. مقبضُ أمانٍ لا يُمسك أخطرُ من غيابه.
+     */
+    public static function maintenance(): bool
+    {
+        return (string) self::platform('maintenance_mode', '0') === '1';
     }
 
     /** آخر لحظةٍ يعمل فيها المتجر — نهاية الاشتراك زائدَ المهلة */
@@ -104,6 +120,17 @@ class Tenancy
      */
     public static function locked(?Business $business): bool
     {
+        /*
+         * الإقفال التلقائي مقبضٌ للمشغّل.
+         *
+         * كان «تعطيل الحساب تلقائيًا عند انتهاء المهلة» مربّعًا في إعدادات
+         * المنصة لا يقرؤه شيء — والنظام يقفل دائمًا. وإطفاؤه يعني متابعةً
+         * يدوية: تنبيهاتٌ تُرسل ومتاجر تعمل حتى يُقفلها المشغّل بنفسه.
+         */
+        if ((string) self::platform('auto_suspend', '1') === '0') {
+            return false;
+        }
+
         return self::locksAt($business)?->isPast() ?? false;
     }
 

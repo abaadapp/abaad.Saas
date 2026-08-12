@@ -29,12 +29,15 @@ export function currencyLabel(currency: Currency): string {
 
 export function money(value: number | string | null | undefined, currency: Currency): string {
     const amount = Number(value ?? 0) * (currency.rate ?? 1);
-    const decimals = decimalsFor(currency.code);
-
-    return `${amount.toLocaleString('en-US', {
+    // ما اختاره التاجر أوّلًا، ثم الاشتقاق من رمز العملة — والخادم يرسل الاثنين
+    const decimals = currency.decimals ?? decimalsFor(currency.code);
+    const text = amount.toLocaleString('en-US', {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-    })} ${currencyLabel(currency)}`;
+    });
+    const symbol = currencyLabel(currency);
+
+    return currency.before ? `${symbol} ${text}` : `${text} ${symbol}`;
 }
 
 /** رقم بلا عملة، بفاصلة آلاف */

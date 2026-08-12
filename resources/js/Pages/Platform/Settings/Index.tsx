@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Save, Send } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Save, Send } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
@@ -8,37 +8,39 @@ import Tabs from '@/Components/Tabs';
 import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
-import { Input, Textarea } from '@/Components/ui/input';
+import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
 type Settings = Record<string, string>;
 
+/** حال البريد على الخادم كما تقرؤه PlatformConfig::mailStatus */
+interface MailStatus {
+    mailer: string;
+    host: string;
+    port: number | null;
+    delivers: boolean;
+}
+
+/*
+ * التبويبات المحذوفة: العملات، الإشعارات، الشروط، الخصوصية — ومعها حقول
+ * تنسيق التاريخ والمنطقة الزمنية والرقم الضريبي والتجديد التلقائي.
+ *
+ * كانت كلّها تُحفظ في جدول الإعدادات ولا يقرؤها سطرٌ واحد في النظام: يبدّلها
+ * المشغّل فلا يتغيّر شيء، ويظنّ أنه ضبط. ومقبضٌ لا يُمسك أسوأ من غيابه لأنه
+ * يُطمئن. وما بقي هنا كلُّه موصولٌ بشيء — أو معروضٌ للقراءة لا للتحرير.
+ */
 const TABS = [
     { key: 'general', label: 'عامة' },
     { key: 'language', label: 'اللغة' },
     { key: 'platform', label: 'بيانات المنصة' },
     { key: 'subscriptions', label: 'الاشتراكات' },
-    { key: 'taxes', label: 'الضرائب' },
-    { key: 'currencies', label: 'العملات' },
-    { key: 'notifications', label: 'الإشعارات' },
+    { key: 'taxes', label: 'الضريبة الافتراضية' },
     { key: 'mail', label: 'البريد' },
-    { key: 'terms', label: 'الشروط والأحكام' },
-    { key: 'privacy', label: 'سياسة الخصوصية' },
-];
-
-/** إشعارات المنصة — التسميات بترتيب مفاتيحها platform_notif_0..5 */
-const NOTIFICATIONS = [
-    'إشعار عند تسجيل شركة جديدة',
-    'إشعار عند دفع فاتورة',
-    'إشعار قرب انتهاء الاشتراك',
-    'إشعار عند انتهاء الاشتراك',
-    'إشعارات عبر البريد الإلكتروني',
-    'إشعارات عبر الرسائل النصية',
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale } = usePage<PageProps<{ settings: Settings }>>().props;
+    const { settings, locale, mail } = usePage<PageProps<{ settings: Settings; mail?: MailStatus }>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('general');
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
@@ -54,49 +56,23 @@ export default function PlatformSettings() {
     const form = useForm({
         app_name: get('app_name'),
         locale: get('locale'),
-        timezone: get('timezone'),
-        date_format: get('date_format'),
         maintenance_mode: on('maintenance_mode'),
 
         company: get('company'),
         official_email: get('official_email'),
         phone: get('phone'),
         website: get('website'),
-        address: get('address'),
-        cr: get('cr'),
 
         trial_days: get('trial_days'),
         grace_days: get('grace_days'),
         default_plan: get('default_plan'),
-        auto_renew: on('auto_renew'),
         auto_suspend: on('auto_suspend'),
 
         vat_rate: get('vat_rate'),
-        tax_number: get('tax_number'),
         tax_mode: get('tax_mode'),
-        platform_vat_enabled: on('platform_vat_enabled'),
 
-        base_currency: get('base_currency'),
-        currency_symbol: get('currency_symbol'),
-        decimals: get('decimals'),
-        symbol_position: get('symbol_position'),
-
-        platform_notif_0: on('platform_notif_0'),
-        platform_notif_1: on('platform_notif_1'),
-        platform_notif_2: on('platform_notif_2'),
-        platform_notif_3: on('platform_notif_3'),
-        platform_notif_4: on('platform_notif_4'),
-        platform_notif_5: on('platform_notif_5'),
-
-        mailer: get('mailer'),
-        mail_host: get('mail_host'),
-        mail_port: get('mail_port'),
-        mail_encryption: get('mail_encryption'),
         from_address: get('from_address'),
         from_name: get('from_name'),
-
-        terms: get('terms'),
-        privacy: get('privacy'),
     });
 
     type Key = keyof typeof form.data;
@@ -161,21 +137,11 @@ export default function PlatformSettings() {
                                     { label: 'English', value: 'en' },
                                 ])}
                             </div>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {choice('timezone', 'المنطقة الزمنية', [
-                                    { label: 'مسقط (GMT+4)', value: 'Asia/Muscat' },
-                                    { label: 'الرياض (GMT+3)', value: 'Asia/Riyadh' },
-                                ])}
-                                {choice('date_format', 'تنسيق التاريخ', [
-                                    { label: '2026-07-30', value: 'Y-m-d' },
-                                    { label: '30/07/2026', value: 'd/m/Y' },
-                                ])}
-                            </div>
                             <Toggle
                                 on={form.data.maintenance_mode}
                                 onChange={(v) => form.setData('maintenance_mode', v)}
                                 label="وضع الصيانة"
-                                hint="إيقاف الوصول للمنصة مؤقتًا"
+                                hint="يوقف التجّار عن الدخول ولا يوقفك أنت — تبقى جلساتهم مفتوحة ويعودون بمجرّد إطفائه"
                             />
                         </div>
                         {saveBar}
@@ -194,8 +160,9 @@ export default function PlatformSettings() {
                                 {text('phone', 'رقم الهاتف', { ltr: true })}
                                 {text('website', 'الموقع الإلكتروني', { ltr: true })}
                             </div>
-                            {text('address', 'العنوان')}
-                            {text('cr', 'السجل التجاري', { ltr: true })}
+                            <p className="text-[12px] text-[#9ca3af]">
+                                {t('هذه البيانات يراها التاجر في صفحة انتهاء الاشتراك ليتواصل معك — لا تُعرض في غيرها.')}
+                            </p>
                         </div>
                         {saveBar}
                     </Card>
@@ -206,19 +173,25 @@ export default function PlatformSettings() {
                         <h3 className="mb-6 text-[18px] font-bold text-[#111]">{t('إعدادات الاشتراكات')}</h3>
                         <div className="space-y-5">
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {text('trial_days', 'مدة الفترة التجريبية (أيام)', { type: 'number', ltr: true })}
-                                {text('grace_days', 'مهلة السماح بعد الانتهاء (أيام)', { type: 'number', ltr: true })}
+                                {text('trial_days', 'مدة الفترة التجريبية (أيام)', {
+                                    type: 'number',
+                                    ltr: true,
+                                    hint: 'تُطبَّق على شركةٍ تُضاف بلا تاريخ انتهاء',
+                                })}
+                                {text('grace_days', 'مهلة السماح بعد الانتهاء (أيام)', {
+                                    type: 'number',
+                                    ltr: true,
+                                    hint: 'يعمل المتجر كاملًا فيها ويرى شريطًا يعدّ ما بقي',
+                                })}
                             </div>
-                            {text('default_plan', 'الباقة الافتراضية عند التسجيل')}
-                            <Toggle
-                                on={form.data.auto_renew}
-                                onChange={(v) => form.setData('auto_renew', v)}
-                                label="التجديد التلقائي للاشتراكات"
-                            />
+                            {text('default_plan', 'الباقة الافتراضية عند التسجيل', {
+                                hint: 'اسم باقةٍ قائمة بالحرف — تُسنَد لمن يُضاف بلا باقة',
+                            })}
                             <Toggle
                                 on={form.data.auto_suspend}
                                 onChange={(v) => form.setData('auto_suspend', v)}
-                                label="تعطيل الحساب تلقائيًا عند انتهاء المهلة"
+                                label="إقفال المتجر تلقائيًا بعد انتهاء المهلة"
+                                hint="إطفاؤه يعني أن المتاجر المنتهية تبقى تعمل حتى تُقفلها بنفسك"
                             />
                         </div>
                         {saveBar}
@@ -227,74 +200,20 @@ export default function PlatformSettings() {
 
                 {tab === 'taxes' && (
                     <Card className="p-6">
-                        <h3 className="mb-6 text-[18px] font-bold text-[#111]">{t('إعدادات الضرائب')}</h3>
+                        <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('الضريبة الافتراضية للمتاجر')}</h3>
+                        <p className="mb-6 text-[13px] text-[#6b7280]">
+                            {t('تُطبَّق على متجرٍ لم يضبط ضريبته في إعداداته. ومن ضبطها فإعداده أولى.')}
+                        </p>
                         <div className="space-y-5">
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {text('vat_rate', 'نسبة ضريبة القيمة المضافة (%)', {
-                                    type: 'number',
-                                    ltr: true,
-                                    hint: 'النسبة المطبقة في سلطنة عُمان',
-                                })}
-                                {text('tax_number', 'الرقم الضريبي', { ltr: true })}
-                            </div>
+                            {text('vat_rate', 'نسبة ضريبة القيمة المضافة (%)', {
+                                type: 'number',
+                                ltr: true,
+                                hint: 'النسبة المطبقة في سلطنة عُمان',
+                            })}
                             {choice('tax_mode', 'طريقة احتساب الضريبة', [
                                 { label: 'شاملة السعر', value: 'inclusive' },
                                 { label: 'مضافة على السعر', value: 'exclusive' },
                             ])}
-                            <Toggle
-                                on={form.data.platform_vat_enabled}
-                                onChange={(v) => form.setData('platform_vat_enabled', v)}
-                                label="تفعيل ضريبة القيمة المضافة"
-                            />
-                        </div>
-                        {saveBar}
-                    </Card>
-                )}
-
-                {tab === 'currencies' && (
-                    <Card className="p-6">
-                        <h3 className="mb-6 text-[18px] font-bold text-[#111]">{t('إعدادات العملات')}</h3>
-                        <div className="space-y-5">
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {choice('base_currency', 'العملة الأساسية', [
-                                    { label: 'ريال عماني (OMR)', value: 'OMR' },
-                                    { label: 'درهم إماراتي (AED)', value: 'AED' },
-                                    { label: 'ريال سعودي (SAR)', value: 'SAR' },
-                                ])}
-                                {text('currency_symbol', 'رمز العملة')}
-                            </div>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {text('decimals', 'عدد الخانات العشرية', {
-                                    type: 'number',
-                                    ltr: true,
-                                    hint: 'الريال العماني يستخدم 3 خانات عشرية',
-                                })}
-                                {choice('symbol_position', 'موضع الرمز', [
-                                    { label: 'بعد المبلغ (12.500 ر.ع)', value: 'after' },
-                                    { label: 'قبل المبلغ (ر.ع 12.500)', value: 'before' },
-                                ])}
-                            </div>
-                        </div>
-                        {saveBar}
-                    </Card>
-                )}
-
-                {tab === 'notifications' && (
-                    <Card className="p-6">
-                        <h3 className="mb-6 text-[18px] font-bold text-[#111]">{t('إعدادات الإشعارات')}</h3>
-                        <div className="divide-y divide-[#f5f5f4]">
-                            {NOTIFICATIONS.map((label, i) => {
-                                const key = `platform_notif_${i}` as Key;
-
-                                return (
-                                    <Toggle
-                                        key={key}
-                                        on={Boolean(form.data[key])}
-                                        onChange={(v) => form.setData(key, v as never)}
-                                        label={label}
-                                    />
-                                );
-                            })}
                         </div>
                         {saveBar}
                     </Card>
@@ -302,31 +221,58 @@ export default function PlatformSettings() {
 
                 {tab === 'mail' && (
                     <Card className="p-6">
-                        <h3 className="mb-6 text-[18px] font-bold text-[#111]">
-                            {t('إعدادات البريد الإلكتروني')}
-                        </h3>
-                        <div className="space-y-5">
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {choice('mailer', 'مزود الإرسال', [
-                                    { label: 'SMTP', value: 'smtp' },
-                                    { label: 'Amazon SES', value: 'ses' },
-                                    { label: 'Mailgun', value: 'mailgun' },
-                                ])}
-                                {text('mail_host', 'خادم SMTP', { ltr: true })}
-                            </div>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {text('mail_port', 'المنفذ', { type: 'number', ltr: true })}
-                                {choice('mail_encryption', 'التشفير', [
-                                    { label: 'TLS', value: 'tls' },
-                                    { label: 'SSL', value: 'ssl' },
-                                    { label: 'بدون', value: 'none' },
-                                ])}
-                            </div>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                {text('from_address', 'بريد المُرسِل', { type: 'email', ltr: true })}
-                                {text('from_name', 'اسم المُرسِل')}
-                            </div>
+                        <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('البريد الإلكتروني')}</h3>
+                        <p className="mb-6 text-[13px] text-[#6b7280]">
+                            {t('خادم الإرسال واعتماداته تُضبط في ملفّ الخادم (.env) لا هنا — كي لا تُخزَّن كلمة سرّه في قاعدة البيانات وتخرج مع كل نسخة احتياطية.')}
+                        </p>
+
+                        {/*
+                            حالة الإرسال الفعليّة أوّل ما يُقرأ في الشاشة.
+                            كانت الحقول تُملأ وتُحفظ ولا تصل إلى النظام، والزرّ
+                            يقول «تم الإرسال» لأن المرسِل log — يكتب في ملفّ ولا
+                            يُخرج شيئًا. فصار ما يُعرض هو ما يعمل.
+                        */}
+                        <div
+                            className={
+                                'mb-5 flex items-start gap-2 rounded-[10px] p-3 text-[13px] ' +
+                                (mail?.delivers
+                                    ? 'bg-[#f0fdf4] text-[#166534]'
+                                    : 'bg-[#fef2f2] text-[#b91c1c]')
+                            }
+                        >
+                            {mail?.delivers ? (
+                                <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                            ) : (
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                            )}
+                            <span>
+                                {mail?.delivers
+                                    ? t('البريد يعمل — الرسائل تخرج من الخادم.')
+                                    : t('لا رسائل تخرج من الخادم: تنبيهات الاشتراك وروابط استعادة كلمة المرور لن تصل أحدًا.')}
+                            </span>
                         </div>
+
+                        <dl className="mb-6 space-y-2 rounded-[12px] bg-[#fafafa] p-4 text-[13px]">
+                            {[
+                                { label: 'مزوّد الإرسال', value: mail?.mailer },
+                                { label: 'الخادم', value: mail?.host || '—' },
+                                { label: 'المنفذ', value: mail?.port ? String(mail.port) : '—' },
+                            ].map((row) => (
+                                <div key={row.label} className="flex justify-between gap-3">
+                                    <dt className="text-[#6b7280]">{t(row.label)}</dt>
+                                    <dd className="font-medium text-[#111]" dir="ltr">
+                                        {row.value}
+                                    </dd>
+                                </div>
+                            ))}
+                        </dl>
+
+                        {/* اسم المُرسِل وعنوانه لا سرّ فيهما، وهما ما يراه المستقبِل — فيُحرَّران ويُطبَّقان */}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            {text('from_address', 'بريد المُرسِل', { type: 'email', ltr: true })}
+                            {text('from_name', 'اسم المُرسِل')}
+                        </div>
+
                         <div className="mt-6 flex justify-end gap-2">
                             {/* اختبار الإرسال فعل مستقل لا حفظ: يُرسل وحده ولا يكتب الإعدادات */}
                             <Button
@@ -344,22 +290,6 @@ export default function PlatformSettings() {
                                 {t('حفظ التغييرات')}
                             </Button>
                         </div>
-                    </Card>
-                )}
-
-                {(tab === 'terms' || tab === 'privacy') && (
-                    <Card className="p-6">
-                        <h3 className="mb-6 text-[18px] font-bold text-[#111]">
-                            {t(tab === 'terms' ? 'الشروط والأحكام' : 'سياسة الخصوصية')}
-                        </h3>
-                        <Field label={tab === 'terms' ? 'نص الشروط والأحكام' : 'نص سياسة الخصوصية'}>
-                            <Textarea
-                                rows={12}
-                                value={tab === 'terms' ? form.data.terms : form.data.privacy}
-                                onChange={(e) => form.setData(tab, e.target.value as never)}
-                            />
-                        </Field>
-                        {saveBar}
                     </Card>
                 )}
             </form>

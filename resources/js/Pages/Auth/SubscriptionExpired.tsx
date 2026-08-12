@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react';
-import { CalendarX, Mail, Phone, ShieldCheck } from 'lucide-react';
+import { CalendarX, Globe, Mail, Phone, ShieldCheck } from 'lucide-react';
 import Logo from '@/Components/Logo';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -13,7 +13,7 @@ interface Props {
     daysSince: number | null;
     plan: string | null;
     amount: number | null;
-    contact: { company: string | null; email: string | null; phone: string | null };
+    contact: { company: string | null; email: string | null; phone: string | null; website: string | null };
 }
 
 /**
@@ -108,6 +108,17 @@ export default function SubscriptionExpired() {
                                 >
                                     <Mail className="size-4 text-[#6b7280]" />
                                     <span dir="ltr">{contact.email}</span>
+                                </a>
+                            )}
+                            {contact.website && (
+                                <a
+                                    href={contact.website.startsWith('http') ? contact.website : `https://${contact.website}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-2.5 text-[14px] font-medium text-[#111] transition-colors hover:bg-[#fafafa]"
+                                >
+                                    <Globe className="size-4 text-[#6b7280]" />
+                                    <span dir="ltr">{contact.website}</span>
                                 </a>
                             )}
                         </div>

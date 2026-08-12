@@ -9,6 +9,21 @@ use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 abstract class TestCase extends BaseTestCase
 {
     /**
+     * الذاكرة الساكنة لا تعيش بين اختبارين.
+     *
+     * قاعدة البيانات تُلفّ وتُعاد، لكن `Demo::$baseCur` ساكنةٌ تعيش ما عاشت
+     * العمليّة — فاختبارٌ يضبط عملته دولارًا يجعل الاختبار الذي يليه يقرأ
+     * الدولار وقد مُحيت إعداداته. عطلٌ في الاختبار لا في النظام، وأسوأ منه
+     * أنه يظهر ويختفي بترتيب التشغيل.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        \App\Support\Demo::flushCurrency();
+    }
+
+    /**
      * وردية مفتوحة لهذا النشاط.
      *
      * البيع صار يتطلّبها، وهي شرطٌ للسيناريو لا موضوعُه: اختبارات المخزون

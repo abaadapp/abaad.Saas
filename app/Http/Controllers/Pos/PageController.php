@@ -22,6 +22,9 @@ class PageController extends Controller
             'redeemMaxPct' => (float) ($s['loyalty_redeem_max_pct'] ?? 50),
             'earnRate' => (float) ($s['loyalty_earn_rate'] ?? 5),
             'redeemMin' => (float) ($s['loyalty_redeem_min'] ?? 100),
+            // الوسائل المأذونة — والخادم يرفض ما عداها، فالإخفاء هنا عرضٌ لقرارٍ
+            // مُنفَّذ لا حاجزٌ وحيد (انظر PosController::enabledPaymentMethods)
+            'paymentMethods' => \App\Http\Controllers\Pos\PosController::enabledPaymentMethods($s),
         ];
     }
 

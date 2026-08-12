@@ -28,6 +28,24 @@ class CheckTenantStatus
             return $next($request);
         }
 
+        /*
+         * الصيانة تسبق كلّ فحص: هي حالة النظام لا حالة الحساب.
+         *
+         * ولا تُنهي الجلسة — الوقفة مؤقّتة، وإخراجُ الجميع يعني أن كلّ تاجر
+         * يعود ليكتب كلمة سرّه بعد ترقيةٍ استغرقت دقيقتين. و503 مقصود:
+         * يقول للمتصفّح وللمراقبة «موقوف مؤقّتًا» لا «تعطّل».
+         */
+        if ($user && ! $user->isSuperAdmin() && Tenancy::maintenance()) {
+            $message = __('النظام في وضع الصيانة مؤقّتًا. سنعود بعد قليل.');
+
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'blocked' => 'maintenance', 'message' => $message], 503);
+            }
+
+            return \Inertia\Inertia::render('Auth/Maintenance', ['message' => $message])
+                ->toResponse($request)->setStatusCode(503);
+        }
+
         $reason = Tenancy::blockReason($user);
         if (! $reason) {
             return $next($request);

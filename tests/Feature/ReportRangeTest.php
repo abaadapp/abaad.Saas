@@ -121,6 +121,25 @@ class ReportRangeTest extends TestCase
         }
     }
 
+    public function test_a_window_across_two_years_says_which_year(): void
+    {
+        /*
+         * «آخر ١٢ شهرًا» تبدأ من سبتمبر وتنتهي بأغسطس، فيُقرأ ديسمبر قبل
+         * يناير فتبدو الأشهر غير مرتّبة وهي مرتّبة على سنتين.
+         */
+        $all = Demo::salesTrend('all')['labels'];
+
+        $this->assertStringContainsString(now()->subYear()->format('y'), $all[0], 'أوّل شهرٍ بلا سنته');
+        $this->assertStringContainsString(now()->format('y'), end($all));
+
+        // وسنةٌ كاملة لا تحتاجها: أشهرها كلّها من سنةٍ واحدة
+        $this->assertSame(
+            [now()->startOfYear()->translatedFormat('F'), 12],
+            [Demo::salesTrend('year')['labels'][0], count(Demo::salesTrend('year')['labels'])],
+            'أُقحمت السنة على محورٍ لا يعبرها'
+        );
+    }
+
     public function test_each_column_carries_its_order_count(): void
     {
         // مئة ريالٍ من طلبٍ واحد غير مئةٍ من أربعين، والمبلغ وحده لا يفرّق

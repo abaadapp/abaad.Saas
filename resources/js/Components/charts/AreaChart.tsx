@@ -17,7 +17,8 @@ interface AreaChartProps {
     height?: number;
 }
 
-const PAD = { top: 12, right: 8, bottom: 26, left: 56 };
+/** GUTTER: حصّة أرقام المحور الرأسي. EDGE: هامش الطرف الآخر */
+const PAD = { top: 12, bottom: 26, gutter: 56, edge: 8 };
 
 /**
  * سقفٌ يقبل القسمة على ثلاثة بأرقامٍ تُقرأ.
@@ -63,9 +64,25 @@ export default function AreaChart({
     const gradientId = useId();
     const [hover, setHover] = useState<number | null>(null);
 
+    /*
+     * الزمن يجري باتجاه القراءة.
+     *
+     * كان المحور يبدأ من اليسار دائمًا: في صفحةٍ عربية تقع العين أوّلًا على
+     * أقصى اليمين فتقرأ الشهر الأحدث، ثم تمضي يسارًا فتجد ما قبله — أغسطس
+     * ثمّ يوليو ثمّ يونيو. فيبدو المحور مقلوبًا وهو مرتَّب، ويُقرأ صعودُ
+     * المبيعات هبوطًا.
+     *
+     * فالبداية عند اليمين في RTL، وأرقام المحور الرأسي تنتقل إلى اليمين
+     * معها — الصفر يسكن عند بداية القراءة لا عند نهايتها.
+     */
+    const rtl = typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
+    const padStart = rtl ? PAD.edge : PAD.gutter;
+
     const width = 720;
-    const innerW = width - PAD.left - PAD.right;
+    const innerW = width - PAD.gutter - PAD.edge;
     const innerH = height - PAD.top - PAD.bottom;
+    const plotStart = padStart;
+    const plotEnd = padStart + innerW;
 
     const { points, ticks, slot } = useMemo(() => {
         const known = data.filter((v): v is number => v !== null);
@@ -78,7 +95,7 @@ export default function AreaChart({
             // الاثنا عشر تُعرض كلّها، فلكلٍّ حصّتها ولا تتداخل مع جارتها
             slot: stepX || innerW,
             points: data.map((value, i) => ({
-                x: PAD.left + i * stepX,
+                x: rtl ? plotEnd - i * stepX : plotStart + i * stepX,
                 // المستقبل بلا ارتفاع — لا يُرسم أصلًا، ولا يُسحب الخطّ إلى القاع
                 y: value === null ? null : PAD.top + innerH - (value / niceMax) * innerH,
                 value,
@@ -91,7 +108,7 @@ export default function AreaChart({
                 return { value, y: PAD.top + innerH - (value / niceMax) * innerH };
             }),
         };
-    }, [data, labels, fullLabels, counts, innerH, innerW]);
+    }, [data, labels, fullLabels, counts, innerH, innerW, plotStart, plotEnd, rtl]);
 
     /*
      * الخطّ يمتدّ على المحور كلّه — وما لم يأتِ بعدُ يمتدّ متقطّعًا.
@@ -135,9 +152,9 @@ export default function AreaChart({
                 {ticks.map((tick, i) => (
                     <line
                         key={i}
-                        x1={PAD.left}
+                        x1={plotStart}
                         y1={tick.y}
-                        x2={width - PAD.right}
+                        x2={plotEnd}
                         y2={tick.y}
                         stroke="#eeeeee"
                         strokeWidth="1"
@@ -238,15 +255,19 @@ export default function AreaChart({
                 {ticks.map((tick, i) => (
                     <foreignObject
                         key={`t${i}`}
-                        x={0}
+                        /* الحصّة تتبع جهة البداية: يمينًا في العربية */
+                        x={rtl ? plotEnd + 8 : 0}
                         y={tick.y - 7}
-                        width={PAD.left - 8}
+                        width={PAD.gutter - 8}
                         height={14}
                         className="pointer-events-none"
                     >
                         <div
                             dir="ltr"
-                            className="truncate text-end text-[10px] leading-[14px] text-[#9ca3af]"
+                            className={cn(
+                                'truncate text-[10px] leading-[14px] text-[#9ca3af]',
+                                rtl ? 'text-start' : 'text-end',
+                            )}
                         >
                             {format(tick.value)}
                         </div>

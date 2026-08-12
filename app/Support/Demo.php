@@ -1598,9 +1598,16 @@ class Demo
                     $cursor->format('H') . ':00',
                     $cursor->format('H:00') . ' — ' . $cursor->format('H') . ':59',
                 ],
+                /*
+                 * السنة تُكتب على المحور متى عبَرت النافذةُ رأسَ سنة.
+                 *
+                 * «آخر ١٢ شهرًا» تبدأ من سبتمبر وتنتهي بأغسطس، فيقرأ الناظر
+                 * سبتمبر · أكتوبر · نوفمبر · ديسمبر · يناير — ديسمبر قبل
+                 * يناير — فيظنّ الأشهر غير مرتّبة وهي مرتّبة على سنتين.
+                 */
                 'month' => [
                     $cursor->format('Y-m'),
-                    self::monthLabel($cursor),
+                    self::monthLabel($cursor).($start->year === $end->year ? '' : ' '.$cursor->format('y')),
                     $cursor->translatedFormat('F Y'),
                 ],
                 default => [

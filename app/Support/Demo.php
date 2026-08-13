@@ -257,7 +257,20 @@ class Demo
      */
     public static function websiteUrl(): ?string
     {
-        $raw = trim((string) (self::businessSettings()['website'] ?? ''));
+        /*
+         * النطاق مصدره شاشة «الموقع الإلكتروني» أوّلًا.
+         *
+         * كان الزرّ يقرأ مفتاح `website` من إعدادات المتجر، وصارت شاشةُ
+         * التسويق تكتب `site_domain` — فمفتاحان لشيءٍ واحد: يضبط التاجر
+         * نطاقه في الشاشة الجديدة ويبقى زرّ الهيدر يقود إلى القديم أو إلى
+         * لا شيء. والقديم يبقى بديلًا فلا يضيع نطاقٌ ضُبط قبل هذه النسخة.
+         */
+        $settings = self::businessSettings();
+        $raw = trim((string) ($settings['site_domain'] ?? ''));
+
+        if ($raw === '') {
+            $raw = trim((string) ($settings['website'] ?? ''));
+        }
 
         if ($raw === '') {
             return null;

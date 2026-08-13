@@ -3,6 +3,7 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import {
     Barcode,
+    Copy,
     Eye,
     FileDown,
     FileSpreadsheet,
@@ -34,6 +35,7 @@ import {
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
+import QuickCell from './partials/QuickCell';
 import { money, number } from '@/lib/format';
 import useLiveStock from '@/hooks/useLiveStock';
 import { useTranslate } from '@/lib/i18n';
@@ -83,16 +85,60 @@ export default function ProductsIndex() {
        الشيء نفسه. التغذية بإجمالي الشركة كما يعرض هذا الجدول. */
     const { products, updatedAt } = useLiveStock(route('admin.products.stockFeed'), serverProducts);
     const [view, setView] = useState<'table' | 'grid'>('table');
+    /* التحديد بمعرّفات الصفحة المعروضة: الإجراء الجماعي يمسّ ما تراه العين
+       لا ما خلف الترقيم — «طبّقتُه على ١٢» أصدق من «على ٤٠٠ لم ترها» */
+    const [selected, setSelected] = useState<number[]>([]);
+    const [bulk, setBulk] = useState<'category' | 'price' | null>(null);
+    const bulkForm = useForm({ action: '', ids: [] as number[], category_id: '', percent: '5' });
+
+    const toggle = (id: number) =>
+        setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+
+    const runBulk = (action: string, extra: Record<string, unknown> = {}) => {
+        router.post(route('admin.products.bulk'), { action, ids: selected, ...extra }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setSelected([]);
+                setBulk(null);
+            },
+        });
+    };
 
     const actionsFor = (p: Product) => (
         <RowActions
             show={{ routeName: 'admin.products.show', href: route('admin.products.show', p.id) }}
             edit={{ routeName: 'admin.products.edit', href: route('admin.products.edit', p.id) }}
             destroy={{ url: route('admin.products.destroy', p.id), message: 'حذف المنتج؟' }}
+            extra={[
+                {
+                    label: 'نسخ المنتج',
+                    icon: <Copy className="size-4" />,
+                    onSelect: () => router.post(route('admin.products.duplicate', p.id)),
+                },
+                {
+                    label: 'طباعة ملصق',
+                    icon: <Barcode className="size-4" />,
+                    href: route('admin.products.barcodes', { ids: p.id }),
+                    routeName: 'admin.products.barcodes',
+                },
+            ]}
         />
     );
 
     const columns: Column<Product>[] = [
+        {
+            key: 'select',
+            header: '',
+            cell: (p) => (
+                <input
+                    type="checkbox"
+                    checked={selected.includes(p.id)}
+                    onChange={() => toggle(p.id)}
+                    aria-label={t('تحديد')}
+                    className="size-4 cursor-pointer accent-[#111]"
+                />
+            ),
+        },
         {
             key: 'name',
             header: 'المنتج',
@@ -121,7 +167,15 @@ export default function ProductsIndex() {
             key: 'price',
             header: 'السعر',
             align: 'end',
-            cell: (p) => <span className="tabular-nums font-medium">{money(p.price, currency)}</span>,
+            cell: (p) => (
+                <QuickCell
+                    id={p.id}
+                    field="price"
+                    value={p.price}
+                    display={money(p.price, currency)}
+                    className="font-medium"
+                />
+            ),
         },
         {
             key: 'cost',
@@ -130,10 +184,33 @@ export default function ProductsIndex() {
             cell: (p) => <span className="tabular-nums text-[#6b7280]">{money(p.cost, currency)}</span>,
         },
         {
+            key: 'margin',
+            header: 'الهامش',
+            align: 'end',
+            cell: (p) => {
+                // بيعٌ بأقلّ من التكلفة يمرّ اليوم بلا اعتراض — فليُرَ بنظرة
+                if (!p.price) return <span className="text-[#9ca3af]">—</span>;
+                const margin = ((p.price - p.cost) / p.price) * 100;
+
+                return (
+                    <span
+                        className={cn(
+                            'tabular-nums',
+                            margin < 0 ? 'font-bold text-[#dc2626]' : margin < 10 ? 'text-[#d97706]' : 'text-[#6b7280]',
+                        )}
+                    >
+                        {margin.toFixed(0)}%
+                    </span>
+                );
+            },
+        },
+        {
             key: 'qty',
             header: 'الكمية',
             align: 'end',
-            cell: (p) => <span className="tabular-nums">{number(p.qty)}</span>,
+            cell: (p) => (
+                <QuickCell id={p.id} field="quantity" value={p.qty} display={number(p.qty)} />
+            ),
         },
         { key: 'stock_status', header: 'المخزون', cell: (p) => <Badge status={p.stock_status} /> },
         {
@@ -167,6 +244,8 @@ export default function ProductsIndex() {
                 { label: 'متوفر', value: 'متوفر' },
                 { label: 'منخفض', value: 'منخفض' },
                 { label: 'نفد المخزون', value: 'نفد المخزون' },
+                // مالٌ نائم على الرفّ: الجرد يعرضه «متوفرًا» كغيره
+                { label: 'راكد — لم يُبَع منذ ٩٠ يومًا', value: 'راكد' },
             ],
         },
     ];
@@ -293,11 +372,53 @@ export default function ProductsIndex() {
                     rows={products}
                     columns={columns}
                     rowKey={(p) => p.id}
-                    searchPlaceholder="ابحث بالاسم أو SKU…"
+                    searchPlaceholder="ابحث بالاسم أو الرمز أو الباركود…"
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا توجد منتجات بعد — أضف أول منتج"
                     server={{ pagination, params: filters }}
+                    /*
+                        شريط الإجراء الجماعي لا يظهر إلا حين يكون له ما يعمل
+                        عليه — وكان رفع أسعار قسمٍ يعني فتح كل صنفٍ على حدة.
+                    */
+                    toolbar={
+                        selected.length > 0 ? (
+                            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#111] bg-[#fafafa] px-4 py-3">
+                                <span className="text-[13px] font-medium text-[#111]">
+                                    {t(':n محدَّد', { n: String(selected.length) })}
+                                </span>
+                                <span className="flex-1" />
+                                <Button variant="outline" size="sm" onClick={() => runBulk('activate')}>
+                                    {t('تفعيل')}
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => runBulk('deactivate')}>
+                                    {t('تعطيل')}
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => setBulk('category')}>
+                                    {t('نقل إلى قسم')}
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => setBulk('price')}>
+                                    {t('تغيير الأسعار %')}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        // الحذف إلى السلة، ومع ذلك يُسأل: جماعيٌّ لا يُتراجع عنه بضغطة
+                                        if (confirm(t('حذف :n منتجًا؟ تبقى في سلة المحذوفات.', { n: String(selected.length) }))) {
+                                            runBulk('delete');
+                                        }
+                                    }}
+                                    className="text-[#dc2626]"
+                                >
+                                    {t('حذف')}
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setSelected([])}>
+                                    {t('إلغاء التحديد')}
+                                </Button>
+                            </div>
+                        ) : null
+                    }
                     // العرض الشبكي يستبدل الجدول ويُبقي البحث والتصفية والترقيم فوقه
                     renderBody={
                         view === 'grid'
@@ -467,6 +588,75 @@ export default function ProductsIndex() {
                             >
                                 <Undo2 />
                                 {t('تراجع')}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* نقل المحدَّد إلى قسم */}
+            <Dialog open={bulk === 'category'} onOpenChange={(o) => !o && setBulk(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{t('نقل إلى قسم')}</DialogTitle>
+                    </DialogHeader>
+                    <div className="p-6 pt-0">
+                        <Field label="القسم">
+                            <Select
+                                value={bulkForm.data.category_id}
+                                onChange={(e) => bulkForm.setData('category_id', e.target.value)}
+                                options={[
+                                    { label: 'بلا قسم', value: '' },
+                                    ...categories.map((c) => ({ label: c.name, value: String(c.id) })),
+                                ]}
+                            />
+                        </Field>
+                        <div className="mt-5 flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setBulk(null)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button
+                                onClick={() =>
+                                    runBulk('category', {
+                                        category_id: bulkForm.data.category_id || null,
+                                    })
+                                }
+                            >
+                                {t('نقل :n منتجًا', { n: String(selected.length) })}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* تغيير أسعار المحدَّد بنسبة */}
+            <Dialog open={bulk === 'price'} onOpenChange={(o) => !o && setBulk(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{t('تغيير الأسعار بنسبة')}</DialogTitle>
+                    </DialogHeader>
+                    <div className="p-6 pt-0">
+                        <Field label="النسبة % (سالبة للخفض)">
+                            <Input
+                                type="number"
+                                dir="ltr"
+                                step="0.1"
+                                value={bulkForm.data.percent}
+                                onChange={(e) => bulkForm.setData('percent', e.target.value)}
+                            />
+                        </Field>
+                        {/* الرقم المطبعيّ يمسح تسعيرة متجر — فيُقرأ قبل الضغط */}
+                        <p className="mt-3 rounded-[12px] bg-[#fffbeb] px-3 py-2.5 text-[12px] text-[#b45309]">
+                            {t('تُطبَّق على :n منتجًا المحدَّدة، ولا تراجع عنها.', {
+                                n: String(selected.length),
+                            })}
+                        </p>
+                        <div className="mt-5 flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setBulk(null)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button onClick={() => runBulk('price', { percent: Number(bulkForm.data.percent) })}>
+                                {t('تطبيق')}
                             </Button>
                         </div>
                     </div>

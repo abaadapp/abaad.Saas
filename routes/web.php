@@ -240,7 +240,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/products/import/confirm', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'confirm'])->name('products.import.confirm');
     Route::post('/products/import/cancel', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'cancel'])->name('products.import.cancel');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
+    // الإجراء الجماعي قبل نمط المعرّف حتى لا يبتلعه
+    Route::post('/products/bulk', [ProductController::class, 'bulk'])->name('products.bulk');
     Route::get('/products/{id}', [\App\Http\Controllers\Admin\PageController::class, 'productsShow'])->name('products.show');
+    Route::post('/products/{id}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
+    Route::patch('/products/{id}/quick', [ProductController::class, 'quickUpdate'])->name('products.quick');
     Route::get('/products/{id}/edit', [\App\Http\Controllers\Admin\PageController::class, 'productsEdit'])->name('products.edit');
     Route::put('/products/{id}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');

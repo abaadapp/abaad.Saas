@@ -64,10 +64,18 @@ class PageController extends Controller
         ]);
     }
 
-    public function productsBarcodes(): Response
+    public function productsBarcodes(\Illuminate\Http\Request $request): Response
     {
+        // ?ids= — طباعة ملصق صنفٍ بعينه من صفّه في القائمة بدل البحث عنه
+        // بين مئة ملصق. وبلا المعامل تُعرض الأصناف كلّها كما كانت.
+        $ids = array_filter(array_map('intval', explode(',', (string) $request->query('ids'))));
+
+        $products = collect(Demo::products())
+            ->when($ids, fn ($c) => $c->whereIn('id', $ids))
+            ->values()->all();
+
         return Inertia::render('Admin/Products/Barcodes', [
-            'products' => Demo::products(),
+            'products' => $products,
         ]);
     }
 

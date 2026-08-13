@@ -76,7 +76,8 @@ export default function ProductForm({ categories, product, description, currency
         barcode: product?.barcode ?? '',
         price: product ? String(product.price) : '',
         cost: product ? String(product.cost) : '',
-        tax: product ? String(product.tax) : '5',
+        // فراغٌ لا «٥»: الفراغ يعني «اتبع نسبة المتجر» فلا تُثبَّت نسبةٌ على الصنف بلا قصد
+        tax: product?.tax == null ? '' : String(product.tax),
         discount: product ? String(product.discount) : '',
         quantity: product ? String(product.qty) : '',
         alert_qty: product ? String(product.alert) : '',
@@ -300,18 +301,21 @@ export default function ProductForm({ categories, product, description, currency
                                     placeholder="0.000"
                                 />
                             </Field>
-                            <Field label="الضريبة" error={form.errors.tax}>
+                            {/* الفراغ يتبع نسبة المتجر، والصفر إعلانٌ بأن الصنف
+                                معفى — والخبز والحليب والدواء صفرية في عُمان */}
+                            <Field label="ضريبة الصنف" error={form.errors.tax} hint="اتركها فارغة لتتبع نسبة المتجر">
                                 <Select
                                     value={form.data.tax}
                                     onChange={(e) => form.setData('tax', e.target.value)}
                                     options={[
-                                        { label: 'بدون ضريبة', value: '0' },
+                                        { label: 'نسبة المتجر', value: '' },
+                                        { label: 'صفرية (معفى)', value: '0' },
                                         { label: '5%', value: '5' },
                                         { label: '10%', value: '10' },
                                     ]}
                                 />
                             </Field>
-                            <Field label="الخصم (%)" error={form.errors.discount}>
+                            <Field label="الخصم (%)" error={form.errors.discount} hint="يُخصم من سعر الصنف عند البيع">
                                 <Input
                                     type="number"
                                     min="0"

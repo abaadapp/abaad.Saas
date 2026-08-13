@@ -33,6 +33,33 @@ class PosController extends Controller
         return max(0.0, (float) ($v ?? 5));
     }
 
+    /**
+     * ضريبة الفاتورة بنسبة كل صنف على حدة.
+     *
+     * كانت نسبةً واحدة على المجموع كلّه، فيدفع بائع الخبز ضريبةً على صنفٍ
+     * صفريّ. والصنف الذي لا نسبة له يأخذ نسبة المتجر، فلا يتغيّر شيء لمن
+     * لم يلمس الحقل.
+     *
+     * وخصم الفاتورة (كوبونًا كان أو نقاطًا) يُوزَّع على البنود بنسبة قيمتها:
+     * حسمُه من وعاءٍ واحد يُنقص ضريبة الصنف الصفريّ ويُبقيها كاملةً على
+     * الخاضع — وهو خطأٌ في الإقرار لا في الشاشة وحدها.
+     */
+    private function taxFor(array $lines, float $subtotal, float $discount): float
+    {
+        $default = $this->vatRate();
+        $tax = 0.0;
+
+        foreach ($lines as $l) {
+            $net = $l['price'] * $l['qty'];
+            $share = $subtotal > 0 ? $net / $subtotal : 0;
+            $taxable = $net - ($discount * $share);
+            $rate = $l['product'] ? $l['product']->taxRate($default) : $default;
+            $tax += ($taxable * $rate) / 100;
+        }
+
+        return round($tax, 3);
+    }
+
     private function setting(string $key, $default = null)
     {
         return \App\Models\Setting::where('business_id', $this->bid())->where('key', $key)->value('value') ?? $default;
@@ -117,8 +144,10 @@ class PosController extends Controller
                     $errors["items.$idx.id"] = __('صنف غير موجود في هذا المتجر.');
                     continue;
                 }
+                // السعر بعد خصم الصنف — والسعر قبله يُحفظ ليُطبع على الفاتورة
                 $lines[] = ['product' => $product, 'name' => $product->name,
-                    'price' => (float) $product->price, 'qty' => $qty, 'note' => $i['note'] ?? null];
+                    'price' => $product->sellingPrice(), 'list_price' => (float) $product->price,
+                    'qty' => $qty, 'note' => $i['note'] ?? null];
                 continue;
             }
 
@@ -132,7 +161,8 @@ class PosController extends Controller
                 continue;
             }
             $lines[] = ['product' => null, 'name' => $addon->name,
-                'price' => (float) $addon->price, 'qty' => $qty, 'note' => $i['note'] ?? null];
+                'price' => (float) $addon->price, 'list_price' => (float) $addon->price,
+                'qty' => $qty, 'note' => $i['note'] ?? null];
         }
 
         if ($errors) {
@@ -437,7 +467,7 @@ class PosController extends Controller
 
             $discount = round(min($couponDiscount + $redeem['discount'], $subtotal), 3);
             $delivery = (float) ($data['delivery_fee'] ?? 0);
-            $tax = round((($subtotal - $discount) * $this->vatRate()) / 100, 3);
+            $tax = $this->taxFor($lines, $subtotal, $discount);
             $total = round($subtotal - $discount + $tax + $delivery, 3);
 
             if ($couponApplied) {

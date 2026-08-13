@@ -69,7 +69,15 @@ class ProductController extends Controller
         $q = Product::where('business_id', $this->bid())->with('category');
 
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('sku', 'like', "%{$s}%"));
+            /*
+             * والباركود من البحث.
+             *
+             * شاشة البيع تقرأ الماسح، فمن اعتاده يمرّره هنا فلا يجد شيئًا —
+             * ويظنّ الصنف غير مسجَّل فيُدخله ثانيةً بباركودٍ مكرّر.
+             */
+            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")
+                ->orWhere('sku', 'like', "%{$s}%")
+                ->orWhere('barcode', 'like', "%{$s}%"));
         }
         if ($c = $request->query('category')) {
             $q->whereHas('category', fn ($w) => $w->where('name', $c));
@@ -81,6 +89,19 @@ class ProductController extends Controller
             if ($stock === 'نفد المخزون') { $q->where('quantity', '<=', 0); }
             elseif ($stock === 'منخفض') { $q->whereColumn('quantity', '<', 'alert_qty')->where('quantity', '>', 0); }
             elseif ($stock === 'متوفر') { $q->whereColumn('quantity', '>=', 'alert_qty'); }
+            elseif ($stock === 'راكد') {
+                /*
+                 * ما لم يُبَع منذ تسعين يومًا وفي المخزن منه بضاعة.
+                 *
+                 * مالٌ نائم على الرفّ لا يراه أحد: الجرد يعرضه «متوفرًا»
+                 * كغيره، ولا شيء يفرّق بين صنفٍ يدور كل أسبوع وصنفٍ لم
+                 * يتحرّك منذ فصل.
+                 */
+                $q->where('quantity', '>', 0)->whereDoesntHave('orderItems', fn ($w) => $w
+                    ->whereHas('order', fn ($o) => $o
+                        ->where('is_held', false)
+                        ->where('ordered_at', '>=', now()->subDays(90))));
+            }
         }
 
         $products = $q->orderBy('id')->paginate(12)->withQueryString()->through(fn ($p) => [
@@ -131,8 +152,10 @@ class ProductController extends Controller
             'cost' => ['nullable', 'numeric', 'min:0'],
             'quantity' => ['nullable', 'integer', 'min:0'],
             'alert_qty' => ['nullable', 'integer', 'min:0'],
-            'tax' => ['nullable', 'numeric', 'min:0'],
-            'discount' => ['nullable', 'numeric', 'min:0'],
+            // نسبتان لا مبلغان: خصمٌ فوق المئة يجعل سطر الفاتورة سالبًا،
+            // وضريبةٌ ٩٠٠٪ تُخرج فاتورةً بعشرة أضعاف ثمنها. كانا يُقبلان
+            'tax' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
         $data['business_id'] = $this->bid();
@@ -141,7 +164,8 @@ class ProductController extends Controller
         $data['cost'] = $data['cost'] ?? 0;
         $data['quantity'] = $data['quantity'] ?? 0;
         $data['alert_qty'] = $data['alert_qty'] ?? 10;
-        $data['tax'] = $data['tax'] ?? 0;
+        // الضريبة الفارغة تبقى فارغة: «اتبع نسبة المتجر» لا «صفر»
+        $data['tax'] = ($data['tax'] ?? '') === '' ? null : $data['tax'];
         $data['discount'] = $data['discount'] ?? 0;
         // توليد رمز المنتج والباركود تلقائيًا إن تُركا فارغين
         $data['sku'] = ! empty($data['sku']) ? $data['sku'] : $this->generateSku();
@@ -188,8 +212,10 @@ class ProductController extends Controller
             'cost' => ['nullable', 'numeric', 'min:0'],
             'quantity' => ['nullable', 'integer', 'min:0'],
             'alert_qty' => ['nullable', 'integer', 'min:0'],
-            'tax' => ['nullable', 'numeric', 'min:0'],
-            'discount' => ['nullable', 'numeric', 'min:0'],
+            // نسبتان لا مبلغان: خصمٌ فوق المئة يجعل سطر الفاتورة سالبًا،
+            // وضريبةٌ ٩٠٠٪ تُخرج فاتورةً بعشرة أضعاف ثمنها. كانا يُقبلان
+            'tax' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
         $data['name_en'] = $data['name_en'] ?? null;
@@ -198,7 +224,8 @@ class ProductController extends Controller
         $data['cost'] = $data['cost'] ?? 0;
         $data['quantity'] = $data['quantity'] ?? 0;
         $data['alert_qty'] = $data['alert_qty'] ?? 10;
-        $data['tax'] = $data['tax'] ?? 0;
+        // الضريبة الفارغة تبقى فارغة: «اتبع نسبة المتجر» لا «صفر»
+        $data['tax'] = ($data['tax'] ?? '') === '' ? null : $data['tax'];
         $data['discount'] = $data['discount'] ?? 0;
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('products', 'public');
@@ -215,6 +242,121 @@ class ProductController extends Controller
         // ويبقى في صفحة التعديل كذلك: من يصحّح سعرًا يريد أن يرى أنه ثبت،
         // وغالبًا يتبعه بتعديل الكمية أو الصورة في القسم المجاور
         return redirect()->route('admin.products.edit', $product->id)->with('toast', ['msg' => __('تم تحديث المنتج بنجاح'), 'type' => 'success']);
+    }
+
+    /**
+     * نسخ منتج.
+     *
+     * المتجر فيه قميصٌ بأربعة مقاسات: كانت العشرة حقول تُدخَل أربع مرّات.
+     * والنسخة تُنشأ بكميةٍ صفر لا بكمية أصلها — نسخُ الرصيد يخلق بضاعةً لا
+     * وجود لها على الرفّ، وهو أسوأ من حقلٍ يُملأ باليد.
+     */
+    public function duplicate($id)
+    {
+        $source = Product::where('business_id', $this->bid())->findOrFail($id);
+        \App\Support\PlanLimits::enforce(auth()->user()->business, 'products');
+
+        $copy = $source->replicate(['sku', 'barcode', 'quantity', 'created_at', 'updated_at']);
+        $copy->name = $source->name.' — '.__('نسخة');
+        $copy->sku = $this->generateSku();
+        $copy->barcode = $this->generateBarcode();
+        $copy->quantity = 0;
+        $copy->save();
+
+        \App\Support\Activity::log('created', 'نسخ المنتج: '.$source->name, ['subject_id' => $copy->id]);
+
+        return redirect()->route('admin.products.edit', $copy->id)
+            ->with('toast', ['msg' => __('نُسخ المنتج — عدّل اسمه وكميته'), 'type' => 'success']);
+    }
+
+    /**
+     * تعديل السعر أو الكمية من الصفّ مباشرة.
+     *
+     * جردُ عشرين صنفًا كان أربعين نقرة: فتح، تعديل، حفظ، رجوع — لكلٍّ منها.
+     */
+    public function quickUpdate(Request $request, $id)
+    {
+        $product = Product::where('business_id', $this->bid())->findOrFail($id);
+
+        $data = $request->validate([
+            'price' => ['nullable', 'numeric', 'min:0'],
+            'quantity' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        if (array_key_exists('price', $data) && $data['price'] !== null) {
+            $product->price = $data['price'];
+        }
+
+        if (array_key_exists('quantity', $data) && $data['quantity'] !== null) {
+            // الفارق يذهب إلى الفرع الحالي كما في نموذج المنتج، فيبقى
+            // «مجموع الفروع = كمية المنتج»
+            $old = (int) $product->quantity;
+            \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, $old);
+            $product->quantity = (int) $data['quantity'];
+            \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) $data['quantity'] - $old);
+        }
+
+        $product->save();
+        \App\Support\Activity::log('updated', 'عدّل سريعًا: '.$product->name, ['subject_id' => $product->id]);
+
+        return back()->with('toast', ['msg' => __('حُفظ'), 'type' => 'success']);
+    }
+
+    /**
+     * إجراء على المحدَّد: تفعيل، تعطيل، نقل إلى قسم، تغيير الأسعار بنسبة، حذف.
+     *
+     * رفعُ أسعار قسمٍ خمسةً بالمئة كان يعني فتح كل صنفٍ على حدة.
+     */
+    public function bulk(Request $request)
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:activate,deactivate,category,price,delete'],
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer'],
+            'category_id' => ['nullable', 'integer'],
+            // ±٩٠٪ سقفٌ يمنع الغلطة المطبعية: «٥٠٠» بدل «٥» تمسح تسعيرة متجر
+            'percent' => ['nullable', 'numeric', 'min:-90', 'max:900'],
+        ]);
+
+        $query = Product::where('business_id', $this->bid())->whereIn('id', $data['ids']);
+        $count = 0;
+
+        switch ($data['action']) {
+            case 'activate':
+            case 'deactivate':
+                $count = $query->update(['active' => $data['action'] === 'activate']);
+                break;
+
+            case 'category':
+                $categoryId = $data['category_id'] ?? null;
+                if ($categoryId && ! \App\Models\Category::where('business_id', $this->bid())->whereKey($categoryId)->exists()) {
+                    return back()->with('toast', ['msg' => __('قسم غير معروف'), 'type' => 'error']);
+                }
+                $count = $query->update(['category_id' => $categoryId]);
+                break;
+
+            case 'price':
+                $percent = (float) ($data['percent'] ?? 0);
+                foreach ($query->get() as $p) {
+                    // القيمة تُحسب في PHP لا في SQL: التقريب إلى ثلاث خانات
+                    // يجب أن يطابق ما يعرضه الجدول، وضربُ decimal في المحرّك
+                    // يترك ٩٫٩٩٩٩٩٩٩ في العمود
+                    $p->update(['price' => max(0, round((float) $p->price * (1 + $percent / 100), 3))]);
+                    $count++;
+                }
+                break;
+
+            case 'delete':
+                foreach ($query->get() as $p) {
+                    $p->delete();   // إلى السلة لا إعدامًا — تُستعاد من المحذوفات
+                    $count++;
+                }
+                break;
+        }
+
+        \App\Support\Activity::log('updated', "إجراء جماعي ({$data['action']}) على {$count} منتجًا");
+
+        return back()->with('toast', ['msg' => __('طُبّق على :n منتجًا', ['n' => $count]), 'type' => 'success']);
     }
 
     public function destroy($id)

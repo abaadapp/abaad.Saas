@@ -17,6 +17,12 @@ class Product extends Model
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
     public function category(): BelongsTo { return $this->belongsTo(Category::class); }
 
+    /** بنود الطلبات التي بيع فيها — يقرؤها مرشّح «الراكد» */
+    public function orderItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
     // مفاتيح متوافقة مع الواجهات (Demo shape)
     public function getQtyAttribute() { return $this->quantity; }
     public function getAlertAttribute() { return $this->alert_qty; }
@@ -24,6 +30,40 @@ class Product extends Model
     public function getStockStatusAttribute(): string
     {
         return self::statusFor((int) $this->quantity, (int) $this->alert_qty);
+    }
+
+    /**
+     * نسبة خصم الصنف — مقيَّدة بين صفر ومئة.
+     *
+     * كان الحقل يقبل «٥٠٠» ويُحفظ كما هو. القيد في التحقّق يمنع القادم،
+     * والقصّ هنا يحمي ممّا حُفظ قبله: سطرُ فاتورةٍ بسالب أسوأ من خصمٍ ناقص.
+     */
+    public function discountRate(): float
+    {
+        return max(0.0, min(100.0, (float) $this->discount));
+    }
+
+    /**
+     * سعر البيع الفعليّ بعد خصم الصنف.
+     *
+     * كان حقل «الخصم (%)» في نموذج المنتج لا يقرؤه أحد: البيع يقرأ السعر
+     * وحده. فمن وضع خصمًا على صنفٍ ثم باعه بكامل سعره لا يعلم — والمقبض
+     * غير الموصول أسوأ من غيابه لأنه يطمئن.
+     */
+    public function sellingPrice(): float
+    {
+        return round((float) $this->price * (1 - $this->discountRate() / 100), 3);
+    }
+
+    /**
+     * نسبة ضريبة الصنف حين تختلف عن نسبة المتجر.
+     *
+     * حاجةٌ حقيقية لا رفاهية: الخبز والحليب والدواء صفرية في عُمان، وكانت
+     * الفاتورة تحسب على الجميع نسبةَ الإعداد العامّ.
+     */
+    public function taxRate(float $default): float
+    {
+        return $this->tax === null ? $default : max(0.0, min(100.0, (float) $this->tax));
     }
 
     /**

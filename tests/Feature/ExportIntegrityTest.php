@@ -249,21 +249,6 @@ class ExportIntegrityTest extends TestCase
 
     // ————— ما وراء الترويسة —————
 
-    public function test_a_second_render_in_the_same_process_still_works(): void
-    {
-        /*
-         * قوالب التقارير حملت يومًا دوالَّ معرَّفةً في أعلى القالب، وهي عامّة
-         * على مستوى العملية: فأوّل تصديرٍ ينجح والثاني يسقط بـ«Cannot
-         * redeclare». ولا يظهر في المتصفّح — كل طلبٍ عمليةٌ جديدة — بل في
-         * عاملِ الطوابير الذي يقتله أوّل تقريرين.
-         */
-        foreach ([1, 2] as $_) {
-            $this->assertRealFile(
-                $this->actingAs($this->owner)->get(route('admin.reports.pdf')),
-                'reports/pdf',
-            );
-        }
-    }
 
     public function test_the_filename_reaches_the_browser(): void
     {

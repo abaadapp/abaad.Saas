@@ -175,80 +175,12 @@ class InventoryIntegrityTest extends TestCase
         $this->assertSame(15, $row['qty']);
     }
 
-    public function test_the_overview_warns_about_a_branch_that_ran_dry(): void
-    {
-        // نفاذٌ في فرعٍ وبضاعةٌ في غيره — علاجه تحويلٌ لا شراء
-        BranchStock::where('branch_id', $this->salalah->id)->update(['quantity' => 0]);
-
-        $props = $this->actingAs($this->owner)
-            ->get(route('admin.inventory.overview'))
-            ->viewData('page')['props'];
-
-        $alert = collect($props['alerts'])->firstWhere('key', 'starved');
-
-        $this->assertNotNull($alert, 'لا تنبيه لفرعٍ نفد وحده');
-        $this->assertSame(1, $alert['count']);
-        $this->assertStringContainsString('transfer', $alert['href']);
-    }
 
     // ————— ٥· التحويل —————
 
-    public function test_a_transfer_moves_stock_without_changing_the_total(): void
-    {
-        $this->actingAs($this->owner)->post(route('admin.inventory.transfer.apply'), [
-            'from_branch_id' => $this->muscat->id,
-            'to_branch_id' => $this->salalah->id,
-            'product_id' => $this->product->id,
-            'quantity' => 4,
-        ])->assertRedirect();
 
-        $this->assertSame(6, $this->stock($this->muscat));
-        $this->assertSame(9, $this->stock($this->salalah));
-        $this->assertSame(15, (int) $this->product->fresh()->quantity, 'التحويل غيّر إجمالي الشركة');
-    }
 
-    public function test_a_transfer_is_recorded_as_a_transfer_not_a_loss(): void
-    {
-        /*
-         * «صرف» ثم «إضافة» كانتا تُقرآن في التقارير خسارةً ثم ربحًا لم يقعا.
-         * والنوع الخاصّ ومسارُه يجعلان الحركتين تُقرآن انتقالًا.
-         */
-        $this->actingAs($this->owner)->post(route('admin.inventory.transfer.apply'), [
-            'from_branch_id' => $this->muscat->id,
-            'to_branch_id' => $this->salalah->id,
-            'product_id' => $this->product->id,
-            'quantity' => 3,
-        ]);
 
-        $moves = InventoryMovement::orderBy('id')->get();
-
-        $this->assertCount(2, $moves);
-        $this->assertSame(['تحويل بين الفروع', 'تحويل بين الفروع'], $moves->pluck('type')->all());
-        $this->assertSame(['-3', '+3'], $moves->pluck('quantity')->all());
-        $this->assertSame('مسقط ← صلالة', $moves->first()->note);
-    }
-
-    public function test_a_transfer_cannot_send_what_is_not_there(): void
-    {
-        $this->actingAs($this->owner)->post(route('admin.inventory.transfer.apply'), [
-            'from_branch_id' => $this->muscat->id,
-            'to_branch_id' => $this->salalah->id,
-            'product_id' => $this->product->id,
-            'quantity' => 50,
-        ])->assertSessionHasErrors('quantity');
-
-        $this->assertSame(10, $this->stock($this->muscat));
-    }
-
-    public function test_a_transfer_to_the_same_branch_is_refused(): void
-    {
-        $this->actingAs($this->owner)->post(route('admin.inventory.transfer.apply'), [
-            'from_branch_id' => $this->muscat->id,
-            'to_branch_id' => $this->muscat->id,
-            'product_id' => $this->product->id,
-            'quantity' => 2,
-        ])->assertSessionHasErrors('from_branch_id');
-    }
 
     // ————— ٦· فاقد الجرد —————
 
@@ -357,22 +289,6 @@ class InventoryIntegrityTest extends TestCase
 
     // ————— ٧· الحدّ والباركود —————
 
-    public function test_the_reorder_list_and_the_status_agree_on_the_threshold(): void
-    {
-        /*
-         * كانت إعادة الطلب تستخدم `≤` والحالة `<`: صنفٌ كميّته تساوي الحدّ
-         * بالضبط يُقرأ «متوفر» في الجدول ويقف في قائمة «يحتاج طلبًا».
-         * حدّان لمعنًى واحد، والتاجر يصدّق أيّهما رأى أوّلًا.
-         */
-        $this->product->update(['quantity' => 5, 'alert_qty' => 5]);
-
-        $props = $this->actingAs($this->owner)
-            ->get(route('admin.inventory.reorder'))
-            ->viewData('page')['props'];
-
-        $this->assertSame('متوفر', Product::statusFor(5, 5));
-        $this->assertCount(0, $props['items'], 'صنفٌ «متوفر» يقف في قائمة إعادة الطلب');
-    }
 
     public function test_two_products_cannot_share_a_barcode(): void
     {

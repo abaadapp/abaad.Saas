@@ -1,14 +1,11 @@
 import { useMemo } from 'react';
 import { usePage } from '@inertiajs/react';
-import { ArrowLeftRight } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
 import ExportMenu from '@/Components/ExportMenu';
-import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
 import { Badge } from '@/Components/ui/badge';
-import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
 import useLiveStock from '@/hooks/useLiveStock';
@@ -129,12 +126,6 @@ export default function InventoryIndex() {
                             pdf={route('admin.inventory.exportPdf')}
                             csv={route('admin.export.inventory')}
                         />
-                        <Button variant="outline" asChild>
-                            <SmartLink routeName={'admin.inventory.movements'} href={route('admin.inventory.movements')}>
-                                <ArrowLeftRight />
-                                {t('الحركات')}
-                            </SmartLink>
-                        </Button>
                     </>
                 }
             />

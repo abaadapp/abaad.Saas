@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import {
-    Barcode,
     Copy,
     Eye,
     FileDown,
@@ -114,12 +113,6 @@ export default function ProductsIndex() {
                     label: 'نسخ المنتج',
                     icon: <Copy className="size-4" />,
                     onSelect: () => router.post(route('admin.products.duplicate', p.id)),
-                },
-                {
-                    label: 'طباعة ملصق',
-                    icon: <Barcode className="size-4" />,
-                    href: route('admin.products.barcodes', { ids: p.id }),
-                    routeName: 'admin.products.barcodes',
                 },
             ]}
         />
@@ -258,12 +251,6 @@ export default function ProductsIndex() {
                 breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'المنتجات' }]}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <SmartLink routeName="admin.products.barcodes" href={route('admin.products.barcodes')}>
-                                <Barcode />
-                                {t('طباعة الباركود')}
-                            </SmartLink>
-                        </Button>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="icon" aria-label={t('المزيد')}>

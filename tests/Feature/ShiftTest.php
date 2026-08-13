@@ -381,29 +381,7 @@ class ShiftTest extends TestCase
 
     /* -------------------------- المراجعة -------------------------- */
 
-    public function test_the_owner_reviews_closed_shifts(): void
-    {
-        Shifts::open(20);
-        $this->sell('نقدي');
-        $this->post(route('pos.shift.close'), ['counted' => '25']);
 
-        $this->get(route('admin.shifts.index'))
-            ->assertOk()
-            ->assertInertia(fn ($page) => $page
-                ->has('shifts', 1)
-                ->where('shifts.0.difference', -5)
-                ->where('shifts.0.expected', 30));
-    }
-
-    public function test_a_cashier_cannot_review_the_shifts(): void
-    {
-        $cashier = User::create([
-            'business_id' => $this->business->id, 'name' => 'أحمد', 'email' => 'c@abaad.om',
-            'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط', 'job_title' => 'كاشير',
-        ]);
-
-        $this->actingAs($cashier)->get(route('admin.shifts.index'))->assertForbidden();
-    }
 
     /**
      * شاشة المقبوضات تسأل عن وردية بعينها.

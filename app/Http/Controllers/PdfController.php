@@ -77,81 +77,7 @@ class PdfController extends Controller
         ]);
     }
 
-    /**
-     * تقرير إقفال الوردية (تقرير Z) — الورقة التي تُوقَّع عند تسليم الدرج.
-     *
-     * كان الإقفال ينتهي عند شاشة: يُدخل الكاشير ما عدّه، ويُخزَّن الفرق في
-     * القاعدة، ولا يبقى في يد أحدٍ شيء. فإن اختلفا غدًا على عشرين ريالًا، كلٌّ
-     * يذكر رقمًا ولا ورقة بينهما.
-     *
-     * ويُطبع على ورق الإيصال نفسه لا على A4: الطابعة الموجودة عند الصندوق
-     * حرارية، وتقريرٌ لا تطبعه الطابعة التي بجانبه ليس تقريرًا يُوقَّع.
-     */
-    public function shiftReport($id)
-    {
-        $bid = auth()->user()->business_id ?? Demo::bid();
 
-        $shift = \App\Models\Shift::where('business_id', $bid)
-            ->with(['openedBy:id,name', 'closedBy:id,name'])
-            ->findOrFail($id);
-
-        // الوردية المفتوحة لا تُقفل على ورق: أرقامها تتغيّر مع كل بيعة
-        abort_if($shift->isOpen(), 404);
-
-        $movements = \App\Models\ShiftMovement::where('shift_id', $shift->id)
-            ->orderBy('id')->get()
-            ->map(fn ($m) => ['type' => $m->type, 'amount' => (float) $m->amount, 'reason' => $m->reason])
-            ->all();
-
-        $html = view('pdf.shift-report', [
-            'shift' => $shift,
-            'business' => Demo::business($bid),
-            'branchName' => \App\Models\Branch::where('id', $shift->branch_id)->value('name') ?: __('الفرع الرئيسي'),
-            'deviceName' => \App\Models\PosDevice::where('id', $shift->pos_device_id)->value('name'),
-            'totals' => \App\Support\Shifts::totals($shift),
-            'moves' => \App\Support\Shifts::movements($shift),
-            'movements' => $movements,
-            'openedBy' => $shift->employee_name ?: ($shift->openedBy?->name ?? '—'),
-            'closedBy' => $shift->closedBy?->name,
-        ])->render();
-
-        $mpdf = new Mpdf([
-            'mode' => 'utf-8', 'format' => [80, 220],
-            'margin_left' => 4, 'margin_right' => 4, 'margin_top' => 6, 'margin_bottom' => 6,
-            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
-        ]);
-        $mpdf->WriteHTML($html);
-
-        $name = 'shift-'.$shift->id;
-
-        return response($mpdf->Output($name.'.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="'.$name.'.pdf"',
-        ]);
-    }
-
-    /** تقرير المبيعات الشهري (لوحة النشاط) */
-    public function salesReport()
-    {
-        // الفترة تُورَث من الشاشة وتُطبع في الترويسة: ورقةٌ مطبوعة لا مبدّل
-        // فوقها، فإن لم تقل فترتها قُرئت على أنها فترة قارئها
-        $range = Demo::range(request()->query('range'));
-
-        $html = view('pdf.sales-report', [
-            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'branch' => Demo::currentBranchName(),
-            'stats' => Demo::adminStats(),
-            'salesSeries' => Demo::salesTrend($range),
-            'payments' => Demo::paymentMethods($range),
-            'topProducts' => Demo::topProducts($range),
-            'rangeLabel' => Demo::rangeLabel($range),
-            'generatedAt' => now()->format('Y-m-d H:i'),
-        ])->render();
-
-        \App\Support\Activity::log('report', 'صدّر تقرير المبيعات (PDF)');
-
-        return $this->pdf($html, 'sales-report-' . $range . '-' . now()->format('Y-m-d'));
-    }
 
     /** تقرير أداء المنصة (سوبر أدمن) */
     public function financeReport()
@@ -189,27 +115,6 @@ class PdfController extends Controller
         return $this->pdf($html, 'platform-report-' . now()->format('Y-m-d'));
     }
 
-    /** تقرير التحليلات المتقدمة (PDF) */
-    public function analyticsReport()
-    {
-        $range = Demo::range(request()->query('range'));
-        $customers = Demo::topCustomers(7, $range);
-
-        $html = view('pdf.analytics-report', [
-            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'comparison' => Demo::periodComparison($range),
-            'topProducts' => Demo::topProducts($range),
-            'topCustomers' => $customers,
-            'categorySales' => Demo::categorySales($range),
-            'byWeekday' => Demo::salesByWeekday($range),
-            'rangeLabel' => Demo::rangeLabel($range),
-            'generatedAt' => now()->format('Y-m-d H:i'),
-        ])->render();
-
-        \App\Support\Activity::log('report', 'صدّر تقرير التحليلات (PDF)');
-
-        return $this->pdf($html, 'analytics-' . $range . '-' . now()->format('Y-m-d'));
-    }
 
     /** كشف حساب عميل (PDF) */
     public function customerStatement($id)
@@ -335,23 +240,6 @@ class PdfController extends Controller
         return $this->pdf($html, 'invoices-report-' . now()->format('Y-m-d'));
     }
 
-    public function vatReport(Request $request)
-    {
-        $bid = auth()->user()->business_id ?? Demo::bid();
-        $period = $request->query('period', 'quarter');
-        $report = Demo::vatReport($period);
-
-        $html = view('pdf.vat-report', [
-            'report' => $report,
-            'vat' => Demo::vatSettings(),
-            'business' => Demo::business($bid),
-            'generatedAt' => now()->format('Y-m-d H:i'),
-        ])->render();
-
-        \App\Support\Activity::log('report', 'صدّر تقرير ضريبة القيمة المضافة (' . $report['label'] . ')');
-
-        return $this->pdf($html, 'vat-' . $period . '-' . now()->format('Y-m-d'));
-    }
 
     public function taxInvoice($number)
     {

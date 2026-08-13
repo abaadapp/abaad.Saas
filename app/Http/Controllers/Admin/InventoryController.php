@@ -12,112 +12,7 @@ class InventoryController extends Controller
 {
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
-    /**
-     * نظرة عامة على المخزون — أرقام وتنبيهات وآخر الحركات في شاشة واحدة.
-     *
-     * كل رقم هنا محسوب من الجداول القائمة (products وpurchase_orders
-     * وinventory_movements) بلا عمود جديد ولا جدول جديد. ما لا تسنده البنية
-     * الحالية — المحجوز وقيد التوريد وجلسات الجرد والتحويلات — غائب عمدًا
-     * بدل عرض صفر مضلّل يقرأه التاجر على أنه واقع.
-     */
-    public function overview()
-    {
-        $bid = $this->bid();
-        $products = Product::where('business_id', $bid)->get();
 
-        $out = $products->filter(fn ($p) => (int) $p->quantity <= 0);
-        $low = $products->filter(
-            fn ($p) => (int) $p->quantity > 0 && (int) $p->quantity < (int) $p->alert_qty,
-        );
-
-        // «المفتوح» = كل ما لم يُستلم ولم يُلغَ
-        $openOrders = \App\Models\PurchaseOrder::where('business_id', $bid)
-            ->whereNotIn('status', ['مستلم', 'ملغي'])
-            ->count();
-
-        /*
-         * نفاذٌ في فرعٍ وبضاعةٌ في غيره — الحالة التي لم يكن أحد يراها.
-         *
-         * الأرقام أعلاه كلّها إجماليّ الشركة، والبيع يقرأ رصيد الفرع. فصنفٌ
-         * رصيده صفرٌ في صلالة وخمسون في مسقط لا يظهر «نافدًا» ولا «منخفضًا»
-         * ولا في قائمة إعادة الطلب — والكاشير في صلالة لا يستطيع بيعه.
-         * وعلاجُه ليس شراءً بل تحويلًا، فوجهة التنبيه شاشة التحويل.
-         */
-        $books = \App\Models\BranchStock::books($bid);
-        $branchCount = \App\Models\Branch::where('business_id', $bid)->count();
-        $starved = 0;
-        if ($branchCount > 1) {
-            foreach ($products as $p) {
-                if ((int) $p->quantity <= 0) {
-                    continue; // نافدٌ في الشركة كلّها — تنبيهه أعلاه لا هنا
-                }
-                $rows = $books[$p->id] ?? [];
-                if (count($rows) > 0 && min($rows) <= 0) {
-                    $starved++;
-                }
-            }
-        }
-
-        return \Inertia\Inertia::render('Admin/Inventory/Overview', [
-            'stats' => [
-                'value' => round($products->sum(fn ($p) => (float) $p->cost * (int) $p->quantity), 3),
-                'inStock' => $products->filter(fn ($p) => (int) $p->quantity > 0)->count(),
-                'low' => $low->count(),
-                'out' => $out->count(),
-                'openOrders' => $openOrders,
-            ],
-            // كل تنبيه يحمل وجهته وفلترها، فالضغط عليه يصل إلى الصفّ المقصود
-            'alerts' => array_values(array_filter([
-                $out->isNotEmpty() ? [
-                    'key' => 'out',
-                    'label' => 'منتجات نفد مخزونها',
-                    'count' => $out->count(),
-                    'tone' => 'danger',
-                    'href' => route('admin.inventory.index', ['stock' => 'نفد المخزون']),
-                ] : null,
-                $low->isNotEmpty() ? [
-                    'key' => 'low',
-                    'label' => 'منتجات تحت الحد الأدنى',
-                    'count' => $low->count(),
-                    'tone' => 'warning',
-                    'href' => route('admin.inventory.index', ['stock' => 'منخفض']),
-                ] : null,
-                $starved > 0 ? [
-                    'key' => 'starved',
-                    'label' => 'أصناف نفدت في فرع وهي متوفّرة في غيره',
-                    'count' => $starved,
-                    'tone' => 'warning',
-                    'href' => route('admin.inventory.transfer'),
-                ] : null,
-                $openOrders > 0 ? [
-                    'key' => 'orders',
-                    'label' => 'أوامر شراء مفتوحة لم تُستلم',
-                    'count' => $openOrders,
-                    'tone' => 'info',
-                    'href' => route('admin.purchases.index'),
-                ] : null,
-            ])),
-            'recent' => array_slice(Demo::movements(), 0, 8),
-        ]);
-    }
-
-    /**
-     * الأصناف التي تحتاج إعادة طلب — بالقاعدة نفسها التي تلوّن الحالة.
-     *
-     * كانت هنا `≤` وفي `Product::statusFor` `<`، فصنفٌ كميّته تساوي الحدّ
-     * بالضبط يُقرأ «متوفر» في جدول المخزون ويقف في قائمة «يحتاج طلبًا».
-     * حدّان لمعنًى واحد، والتاجر يصدّق أيّهما رأى أوّلًا.
-     */
-    public function reorder()
-    {
-        $items = collect(Demo::inventory())
-            ->filter(fn ($i) => Product::statusFor((int) $i['qty'], (int) $i['min']) !== 'متوفر')
-            ->sortBy('qty')
-            ->values()
-            ->all();
-
-        return \Inertia\Inertia::render('Admin/Inventory/Reorder', ['items' => $items]);
-    }
 
     /**
      * شاشة الجرد الفعلي — إدخال الكمية المعدودة ومقارنتها بدفتر الفرع.
@@ -238,86 +133,7 @@ class InventoryController extends Controller
             ->with('toast', ['msg' => __('تمت تسوية :n صنفًا بعد الجرد', ['n' => $adjusted]), 'type' => 'success']);
     }
 
-    /**
-     * تحويل بضاعةٍ بين فرعين — حركةٌ واحدة لا حركتان.
-     *
-     * كان السبيل الوحيد «صرف» من فرعٍ ثم «إضافة» في آخر. فمن نسي الثانية
-     * اختفت بضاعته من النظام، ومن أتمّهما قرأ السجلُّ فعلَه تلفًا ثم مكسبًا
-     * — فتظهر في التقارير خسارةٌ ثم ربحٌ لم يقعا. والتحويل لا يغيّر إجمالي
-     * الشركة بشيء: ينتقل الرقم من عمودٍ إلى عمود.
-     */
-    public function transfer()
-    {
-        return \Inertia\Inertia::render('Admin/Inventory/Transfer', [
-            'items' => Demo::inventory(),
-            'branches' => Demo::branches(),
-            'books' => \App\Models\BranchStock::books($this->bid()),
-        ]);
-    }
 
-    public function applyTransfer(Request $request)
-    {
-        $data = $request->validate([
-            'from_branch_id' => ['required', 'integer', 'different:to_branch_id'],
-            'to_branch_id' => ['required', 'integer'],
-            'product_id' => ['required', 'integer'],
-            'quantity' => ['required', 'integer', 'min:1'],
-        ], [
-            'from_branch_id.different' => __('لا يُحوَّل الصنف إلى الفرع نفسه.'),
-        ]);
-
-        $branches = \App\Models\Branch::where('business_id', $this->bid())
-            ->whereIn('id', [$data['from_branch_id'], $data['to_branch_id']])
-            ->pluck('name', 'id');
-
-        if ($branches->count() !== 2) {
-            return back()->withInput()->withErrors(['from_branch_id' => __('الفرع المحدد غير صالح.')]);
-        }
-
-        $product = Product::where('business_id', $this->bid())->findOrFail($data['product_id']);
-        $qty = (int) $data['quantity'];
-
-        \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, (int) $product->quantity);
-        $available = \App\Models\BranchStock::bookOf($this->bid(), $product->id, (int) $data['from_branch_id']);
-
-        // لا يُحوَّل ما ليس هناك — وإلا صار الفرع المُرسِل سالبًا
-        if ($qty > $available) {
-            return back()->withInput()->withErrors([
-                'quantity' => __('رصيد :branch من هذا الصنف :n فقط.', [
-                    'branch' => $branches[$data['from_branch_id']], 'n' => $available,
-                ]),
-            ]);
-        }
-
-        \App\Models\BranchStock::adjust($this->bid(), (int) $data['from_branch_id'], $product->id, -$qty);
-        \App\Models\BranchStock::adjust($this->bid(), (int) $data['to_branch_id'], $product->id, $qty);
-        // الإجمالي لا يُمَسّ: البضاعة لم تدخل ولم تخرج، انتقلت
-
-        $note = $branches[$data['from_branch_id']].' ← '.$branches[$data['to_branch_id']];
-        foreach ([[$data['from_branch_id'], -$qty], [$data['to_branch_id'], $qty]] as [$branchId, $signed]) {
-            InventoryMovement::create([
-                'business_id' => $this->bid(),
-                'branch_id' => $branchId,
-                'product_id' => $product->id,
-                'product_name' => $product->name,
-                'sku' => $product->sku,
-                // نوعٌ خاصّ به: التقارير تميّز الانتقال من الفقد والمكسب
-                'type' => 'تحويل بين الفروع',
-                'quantity' => ($signed >= 0 ? '+' : '').$signed,
-                'employee_name' => auth()->user()->name,
-                'note' => $note,
-            ]);
-        }
-
-        \App\Support\Activity::log('updated', 'حوّل '.$qty.' من '.$product->name.' — '.$note, [
-            'subject_id' => $product->id,
-        ]);
-
-        return back()->with('toast', [
-            'msg' => __('تم تحويل :n من :name — :route', ['n' => $qty, 'name' => $product->name, 'route' => $note]),
-            'type' => 'success',
-        ]);
-    }
 
     public function store(Request $request)
     {
@@ -391,6 +207,6 @@ class InventoryController extends Controller
         ]);
         \App\Support\Activity::log('updated', 'حركة مخزون (' . $data['type'] . ') على: ' . $product->name . ' — فرع: ' . $branch->name, ['subject_id' => $product->id]);
 
-        return redirect()->route('admin.inventory.movements')->with('toast', ['msg' => __('تم تسجيل حركة المخزون'), 'type' => 'success']);
+        return redirect()->route('admin.inventory.index')->with('toast', ['msg' => __('تم تسجيل حركة المخزون'), 'type' => 'success']);
     }
 }

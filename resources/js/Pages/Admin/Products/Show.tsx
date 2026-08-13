@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Barcode, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import StatCard, { type Stat } from '@/Components/StatCard';
@@ -57,15 +57,6 @@ export default function ProductShow() {
                 ]}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <SmartLink
-                                routeName="admin.products.barcodes"
-                                href={`${route('admin.products.barcodes')}?copies=1`}
-                            >
-                                <Barcode />
-                                {t('الباركود')}
-                            </SmartLink>
-                        </Button>
                         <Button variant="outline" asChild>
                             <SmartLink routeName="admin.products.edit" href={route('admin.products.edit', product.id)}>
                                 <Pencil />
@@ -154,13 +145,6 @@ export default function ProductShow() {
             <div>
                 <div className="mb-3 flex items-center justify-between">
                     <h3 className="font-bold text-[#111]">{t('حركة المخزون')}</h3>
-                    <SmartLink
-                        routeName="admin.inventory.movements"
-                        href={route('admin.inventory.movements')}
-                        className="text-sm font-medium text-[#6d28d9] hover:underline"
-                    >
-                        {t('عرض الكل')}
-                    </SmartLink>
                 </div>
                 <Card className="overflow-hidden">
                     <Table>

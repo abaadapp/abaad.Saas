@@ -57,88 +57,8 @@ class ExportController extends Controller
         return $this->stream('transactions', [__('المرجع'), __('التاريخ'), __('الوصف'), __('الطريقة'), __('النوع'), __('المبلغ'), __('الموظف')], $rows);
     }
 
-    public function reports()
-    {
-        // الفترة التي كان التاجر ينظر إليها — الملفّ يغادر الشاشة ولا يصحّحه
-        // مبدّلٌ فوقه، فيحملها في أوّل سطرٍ منه وفي اسمه
-        $range = Demo::range(request()->query('range'));
 
-        $rows = [];
-        $rows[] = [__('الفترة'), Demo::rangeLabel($range), ''];
-        $rows[] = ['', '', ''];
-        $rows[] = [__('— المؤشرات الرئيسية —'), '', ''];
-        $rows[] = [__('المؤشر'), __('القيمة'), __('التغيّر')];
-        foreach (Demo::adminStats() as $s) {
-            $rows[] = [$s['label'], $s['value'], $s['trend'] ?? '—'];
-        }
-        $rows[] = ['', '', ''];
-        $rows[] = [__('— المبيعات —'), '', ''];
-        $rows[] = [__('الفترة'), __('المبيعات'), __('عدد الطلبات')];
-        $series = Demo::salesTrend($range);
-        foreach ($series['full'] as $i => $label) {
-            // ما لم يأتِ بعدُ لا يُكتب: صفٌّ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة
-            if (($series['data'][$i] ?? null) === null) {
-                continue;
-            }
-            $rows[] = [$label, number_format((float) $series['data'][$i], 3, '.', ''), (int) ($series['counts'][$i] ?? 0)];
-        }
-        $rows[] = ['', '', ''];
-        $rows[] = [__('— وسائل الدفع —'), '', ''];
-        $rows[] = [__('الوسيلة'), __('الإجمالي'), __('عدد العمليات')];
-        foreach (Demo::paymentMethods($range) as $m) {
-            $rows[] = [$m['name'], number_format((float) $m['total'], 3, '.', ''), $m['count']];
-        }
-        $rows[] = ['', '', ''];
-        $rows[] = [__('— أفضل المنتجات مبيعًا —'), '', ''];
-        $rows[] = [__('المنتج'), __('الكمية المباعة'), __('الإيراد')];
-        foreach (Demo::topProducts($range) as $p) {
-            $rows[] = [$p['name'], $p['qty'], number_format((float) $p['total'], 3, '.', '')];
-        }
 
-        return $this->stream('sales-report-'.$range, [__('العنصر'), __('القيمة 1'), __('القيمة 2')], $rows);
-    }
-
-    public function analytics()
-    {
-        $range = Demo::range(request()->query('range'));
-
-        $rows = [];
-        $rows[] = [__('الفترة'), Demo::rangeLabel($range), ''];
-        $rows[] = ['', '', ''];
-        $rows[] = [__('— أفضل المنتجات —'), '', ''];
-        $rows[] = [__('المنتج'), __('الكمية المباعة'), __('الإيراد')];
-        foreach (Demo::topProducts($range) as $p) {
-            $rows[] = [$p['name'], $p['qty'], number_format($p['total'], 3, '.', '')];
-        }
-        $rows[] = ['', '', ''];
-        $rows[] = [__('— أفضل العملاء —'), '', ''];
-        $rows[] = [__('العميل'), __('عدد الطلبات'), __('إجمالي الإنفاق')];
-        foreach (Demo::topCustomers(7, $range) as $c) {
-            $rows[] = [$c['name'], $c['orders'], number_format($c['total'], 3, '.', '')];
-        }
-        $rows[] = ['', '', ''];
-        $rows[] = [__('— المبيعات حسب القسم —'), '', ''];
-        $cat = Demo::categorySales($range);
-        foreach ($cat['labels'] as $i => $label) {
-            $rows[] = [$label, number_format($cat['series'][$i] ?? 0, 3, '.', ''), ''];
-        }
-
-        return $this->stream('analytics-'.$range, [__('العنصر'), __('القيمة 1'), __('القيمة 2')], $rows);
-    }
-
-    public function vat()
-    {
-        $report = Demo::vatReport(request()->query('period', 'quarter'));
-        $rows = [
-            [__('المبيعات الخاضعة للضريبة'), number_format((float) $report['taxable_sales'], 3, '.', '')],
-            [__('ضريبة المخرجات'), number_format((float) $report['output_vat'], 3, '.', '')],
-            [__('المشتريات الخاضعة للضريبة'), number_format((float) $report['input_base'], 3, '.', '')],
-            [__('ضريبة المدخلات'), number_format((float) $report['input_vat'], 3, '.', '')],
-            [__('صافي الضريبة المستحقة'), number_format((float) $report['net_vat'], 3, '.', '')],
-        ];
-
-        return $this->stream('vat', [__('البند'), __('القيمة')], $rows);
-    }
 
     public function expenses()
     {

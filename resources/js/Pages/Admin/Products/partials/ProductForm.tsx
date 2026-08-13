@@ -410,14 +410,7 @@ export default function ProductForm({ categories, product, description, currency
                                     'الإضافات حاليًا على مستوى المتجر لا المنتج — تظهر في نقطة البيع لكل المنتجات. ربطها بمنتج بعينه يحتاج تطويرًا في الخادم.',
                                 )}
                             </p>
-                            <Button variant="outline" size="sm" className="mt-4" asChild>
-                                <SmartLink
-                                    routeName="admin.addons.index"
-                                    href={route('admin.addons.index')}
-                                >
-                                    {t('إدارة الإضافات')}
-                                </SmartLink>
-                            </Button>
+                            
                         </Card>
                     </div>
                 )}

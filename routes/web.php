@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\ExpenseController;
@@ -224,7 +223,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // المنتجات
     Route::get('/products', [ProductController::class, 'index'])->name('products.index');
     Route::get('/products/create', [\App\Http\Controllers\Admin\PageController::class, 'productsCreate'])->name('products.create');
-    Route::get('/products/barcodes', [\App\Http\Controllers\Admin\PageController::class, 'productsBarcodes'])->name('products.barcodes');
     // يجب أن يسبق products/{id} وإلا التقطه كمعرّف
     Route::get('/products/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'productsXlsx'])->name('products.xlsx');
     Route::get('/products/export-pdf', [\App\Http\Controllers\PdfController::class, 'productsReport'])->name('products.exportPdf');
@@ -255,18 +253,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
         ->defaults('type', 'product')->name('products.purge');
 
     // التصنيفات
-    Route::get('/categories', [\App\Http\Controllers\Admin\PageController::class, 'categoriesIndex'])->name('categories.index');
-    Route::get('/categories/create', [\App\Http\Controllers\Admin\PageController::class, 'categoriesCreate'])->name('categories.create');
-    Route::get('/categories/{id}/edit', [\App\Http\Controllers\Admin\PageController::class, 'categoriesEdit'])->name('categories.edit');
-    Route::post('/categories', [CategoryController::class, 'store'])->name('categories.store');
-    Route::put('/categories/{id}', [CategoryController::class, 'update'])->name('categories.update');
-    Route::delete('/categories/{id}', [CategoryController::class, 'destroy'])->name('categories.destroy');
 
     // الإضافات
-    Route::get('/addons', [\App\Http\Controllers\Admin\PageController::class, 'addonsIndex'])->name('addons.index');
-    Route::post('/addons', [\App\Http\Controllers\Admin\AddonController::class, 'store'])->name('addons.store');
-    Route::put('/addons/{id}', [\App\Http\Controllers\Admin\AddonController::class, 'update'])->name('addons.update');
-    Route::delete('/addons/{id}', [\App\Http\Controllers\Admin\AddonController::class, 'destroy'])->name('addons.destroy');
 
     // الطلبات
     Route::get('/orders', [\App\Http\Controllers\Admin\OrderController::class, 'index'])->name('orders.index');
@@ -330,17 +318,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
 
     // المخزون
     // نظرة عامة على المخزون — لا تسبق inventory.index في المطابقة لأن مسارها أخصّ
-    Route::get('/inventory/overview', [InventoryController::class, 'overview'])->name('inventory.overview');
     Route::get('/inventory', [\App\Http\Controllers\Admin\PageController::class, 'inventoryIndex'])->name('inventory.index');
     Route::get('/inventory/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'inventoryXlsx'])->name('inventory.xlsx');
     Route::get('/inventory/export-pdf', [\App\Http\Controllers\PdfController::class, 'inventoryReport'])->name('inventory.exportPdf');
-    Route::get('/inventory/reorder', [InventoryController::class, 'reorder'])->name('inventory.reorder');
     Route::get('/inventory/stocktake', [InventoryController::class, 'stocktake'])->name('inventory.stocktake');
     Route::post('/inventory/stocktake', [InventoryController::class, 'applyStocktake'])->name('inventory.stocktake.apply');
     // التحويل بين الفروع — حركة واحدة بدل «صرف» ثم «إضافة»
-    Route::get('/inventory/transfer', [InventoryController::class, 'transfer'])->name('inventory.transfer');
-    Route::post('/inventory/transfer', [InventoryController::class, 'applyTransfer'])->name('inventory.transfer.apply');
-    Route::get('/inventory/movements', [\App\Http\Controllers\Admin\PageController::class, 'inventoryMovements'])->name('inventory.movements');
 
     /*
      * تعديلات المخزون وإشعارات التسليم.
@@ -384,7 +367,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::delete('/purchases/{id}', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
 
     // تحليلات الربحية
-    Route::get('/profitability', [\App\Http\Controllers\Admin\PageController::class, 'profitability'])->name('profitability.index');
 
     /*
      * أدوات التسويق — ستّ أدوات تُفتح من قائمةٍ منسدلة لا من صفحةٍ جامعة.
@@ -413,10 +395,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::delete('/coupons/{id}', [\App\Http\Controllers\Admin\CouponController::class, 'destroy'])->name('coupons.destroy');
 
     // ضريبة القيمة المضافة
-    Route::get('/vat', [\App\Http\Controllers\Admin\PageController::class, 'vat'])->name('vat.index');
-    Route::get('/vat/pdf', [\App\Http\Controllers\PdfController::class, 'vatReport'])->name('vat.pdf');
-    Route::get('/vat/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'vatXlsx'])->name('vat.xlsx');
-    Route::get('/vat/csv', [\App\Http\Controllers\ExportController::class, 'vat'])->name('vat.csv');
     Route::get('/orders/{number}/tax-invoice', [\App\Http\Controllers\PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
 
     /*
@@ -452,11 +430,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/finance/assets/{id}/dispose', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'dispose'])->name('finance.assets.dispose');
     Route::delete('/finance/assets/{id}', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'destroy'])->name('finance.assets.destroy');
     // الورديات المُقفلة وفروقها — يقرؤها من يملك «المالية» (sectionFromRoute)
-    Route::get('/shifts', [\App\Http\Controllers\Admin\ShiftController::class, 'index'])->name('shifts.index');
     // تقرير إقفال الوردية (Z) — على ورق الإيصال، يُوقَّع عند تسليم الدرج
-    Route::get('/shifts/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'shiftReport'])->name('shifts.pdf');
     // إقفال وردية نسيها الكاشير — بلا عدّ، وفرقُها يبقى مجهولًا
-    Route::post('/shifts/{id}/close', [\App\Http\Controllers\Admin\ShiftController::class, 'close'])->name('shifts.close');
     Route::post('/bank/import', [\App\Http\Controllers\Admin\BankStatementController::class, 'import'])->name('bank.import');
     Route::post('/bank/rematch', [\App\Http\Controllers\Admin\BankStatementController::class, 'rematch'])->name('bank.rematch');
     Route::delete('/bank/clear', [\App\Http\Controllers\Admin\BankStatementController::class, 'clear'])->name('bank.clear');
@@ -476,21 +451,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // أنواع المصروفات
     Route::post('/expense-types', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'store'])->name('expenseTypes.store');
     Route::delete('/expense-types/{id}', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'destroy'])->name('expenseTypes.destroy');
-    Route::get('/reports', [\App\Http\Controllers\Admin\PageController::class, 'reportsIndex'])->name('reports.index');
     // ملخّص المبيعات — كان محتوى /reports نفسه قبل أن يصير الفهرس بابها
-    Route::get('/reports/sales', [\App\Http\Controllers\Admin\PageController::class, 'reportsSales'])->name('reports.sales');
-    Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'salesReport'])->name('reports.pdf');
-    Route::get('/reports/data/{key}', [\App\Http\Controllers\Admin\ReportDataController::class, 'show'])->name('reports.data');
-    Route::get('/reports/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'xlsx'])->name('reports.xlsx');
 
     // تغذية التقارير (Polling) — صفحة تُترك مفتوحة لا يجوز أن تتجمّد على أرقام الصباح
-    Route::get('/reports/feed', [\App\Http\Controllers\Admin\ReportFeedController::class, 'reports'])->name('reports.feed');
-    Route::get('/analytics/feed', [\App\Http\Controllers\Admin\ReportFeedController::class, 'analytics'])->name('analytics.feed');
-    Route::get('/profitability/feed', [\App\Http\Controllers\Admin\ReportFeedController::class, 'profitability'])->name('profitability.feed');
 
-    Route::get('/analytics', [\App\Http\Controllers\Admin\PageController::class, 'analytics'])->name('analytics.index');
-    Route::get('/analytics/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'analyticsXlsx'])->name('analytics.xlsx');
-    Route::get('/analytics/pdf', [\App\Http\Controllers\PdfController::class, 'analyticsReport'])->name('analytics.pdf');
     Route::post('/goals', [\App\Http\Controllers\Admin\GoalController::class, 'update'])->name('goals.update');
 
     // إشعارات المتصفح (Polling)
@@ -507,8 +471,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/export/orders', [\App\Http\Controllers\ExportController::class, 'orders'])->name('export.orders');
     Route::get('/export/customers', [\App\Http\Controllers\ExportController::class, 'customers'])->name('export.customers');
     Route::get('/export/transactions', [\App\Http\Controllers\ExportController::class, 'transactions'])->name('export.transactions');
-    Route::get('/export/analytics', [\App\Http\Controllers\ExportController::class, 'analytics'])->name('export.analytics');
-    Route::get('/export/reports', [\App\Http\Controllers\ExportController::class, 'reports'])->name('export.reports');
     Route::get('/export/expenses', [\App\Http\Controllers\ExportController::class, 'expenses'])->name('export.expenses');
     Route::get('/export/inventory', [\App\Http\Controllers\ExportController::class, 'inventory'])->name('export.inventory');
 

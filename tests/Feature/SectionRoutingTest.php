@@ -71,13 +71,6 @@ class SectionRoutingTest extends TestCase
         $this->assertSame([], $orphans, 'مسارات تسقط على أقسام لا تُمنح: '.implode(', ', $orphans));
     }
 
-    /** والفروع بعينها: مُنحت فانفتحت */
-    public function test_granting_branches_actually_opens_them(): void
-    {
-        $this->actingAs($this->userWith(['branch']))
-            ->get(route('admin.branches.index'))
-            ->assertOk();
-    }
 
     /** ومن لم يُمنحها لا تنفتح له — الإصلاح لم يفتح البابَ للجميع */
     public function test_not_granting_branches_still_closes_them(): void
@@ -157,28 +150,5 @@ class SectionRoutingTest extends TestCase
 
     /* --------------------- صفحات قسم التقارير --------------------- */
 
-    /**
-     * الثلاثة تُفتح من داخل التقارير لا من القائمة الجانبية.
-     *
-     * «تحليلات متقدمة» عرضٌ من عروض التقارير فتتبع صلاحيتها. والربحية
-     * والضريبة قسمان قائمان بذاتهما يُمنحان على حدة.
-     */
-    public function test_analytics_follows_the_reports_permission(): void
-    {
-        $this->actingAs($this->userWith(['reports']))
-            ->get(route('admin.analytics.index'))
-            ->assertOk();
-    }
 
-    public function test_profitability_and_vat_are_granted_on_their_own(): void
-    {
-        $reader = $this->userWith(['reports']);
-
-        $this->actingAs($reader)->get(route('admin.profitability.index'))->assertForbidden();
-        $this->actingAs($reader)->get(route('admin.vat.index'))->assertForbidden();
-
-        $this->actingAs($this->userWith(['profitability']))
-            ->get(route('admin.profitability.index'))
-            ->assertOk();
-    }
 }

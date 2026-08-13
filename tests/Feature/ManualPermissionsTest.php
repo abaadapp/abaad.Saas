@@ -134,17 +134,6 @@ class ManualPermissionsTest extends TestCase
         $this->assertTrue($cashier->allows('inventory'));
     }
 
-    /** والثلاثة تُمنح كغيرها حين يريدها صاحب النشاط */
-    public function test_the_three_can_be_granted_like_any_other_section(): void
-    {
-        $this->save(['manual_permissions' => 1, 'permissions' => ['dashboard', 'pos', 'branch']])->assertRedirect();
-
-        $cashier = $this->cashier->fresh();
-        $this->assertTrue($cashier->allows('dashboard'));
-        $this->assertTrue($cashier->allows('pos'));
-        $this->assertTrue($cashier->allows('branch'));
-        $this->assertFalse($cashier->allows('inventory'));
-    }
 
     /**
      * والمنع يصل إلى نقطة البيع نفسها لا إلى الشريط الجانبي وحده.
@@ -225,42 +214,8 @@ class ManualPermissionsTest extends TestCase
         $this->actingAs($this->cashier)->get($home)->assertOk();
     }
 
-    /**
-     * «تحليلات متقدمة» عرضٌ من عروض التقارير لا قسمٌ مستقلّ.
-     *
-     * كان اسم مسارها يشتقّ مفتاحًا ('analytics') ليس في قائمة الأقسام أصلًا،
-     * فلا يملكه أحد: تُمنع عن المحاسب، وتُمنع عن كل من خُصّصت صلاحياته
-     * يدويًّا مهما مُنح. صفحةٌ في القائمة لا تُفتح إلا للمالك.
-     */
-    public function test_advanced_analytics_follows_the_reports_permission(): void
-    {
-        $this->save(['manual_permissions' => 1, 'permissions' => ['reports']]);
 
-        $this->actingAs($this->cashier->fresh())->get(route('admin.analytics.index'))->assertOk();
-    }
 
-    public function test_advanced_analytics_is_closed_without_reports(): void
-    {
-        $this->save(['manual_permissions' => 1, 'permissions' => ['inventory']]);
-
-        $this->actingAs($this->cashier->fresh())->get(route('admin.analytics.index'))->assertForbidden();
-    }
-
-    /** والربحية والضريبة تبقيان قسمين مستقلّين — تُمنحان على حدة */
-    public function test_profitability_and_vat_stay_their_own_sections(): void
-    {
-        $this->save(['manual_permissions' => 1, 'permissions' => ['reports']]);
-        $cashier = $this->cashier->fresh();
-
-        $this->actingAs($cashier)->get(route('admin.profitability.index'))->assertForbidden();
-        $this->actingAs($cashier)->get(route('admin.vat.index'))->assertForbidden();
-
-        $this->save(['manual_permissions' => 1, 'permissions' => ['reports', 'profitability', 'vat']]);
-        $cashier = $this->cashier->fresh();
-
-        $this->actingAs($cashier)->get(route('admin.profitability.index'))->assertOk();
-        $this->actingAs($cashier)->get(route('admin.vat.index'))->assertOk();
-    }
 
     /** ونقطة البيع وحدها لا تفتح باب اللوحة — وإلا دخلها كل كاشير */
     public function test_pos_alone_does_not_open_the_panel(): void

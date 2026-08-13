@@ -175,33 +175,7 @@ class AbandonedShiftTest extends TestCase
         $this->assertSame(Shifts::DEFAULT_MAX_HOURS, Shifts::maxHours($this->business->id));
     }
 
-    public function test_the_owner_can_close_a_forgotten_shift(): void
-    {
-        $shift = $this->openShift(now()->subHours(30)->toDateTimeString());
 
-        $this->actingAs($this->owner)
-            ->post(route('admin.shifts.close', $shift->id), ['note' => 'نسي الكاشير وغادر'])
-            ->assertSessionHasNoErrors();
-
-        $closed = $shift->fresh();
-
-        $this->assertSame(Shift::CLOSED, $closed->status);
-        $this->assertSame(Shift::BY_ADMIN, $closed->closed_kind);
-        $this->assertNull($closed->difference);
-        $this->assertSame('نسي الكاشير وغادر', $closed->note);
-    }
-
-    public function test_closing_without_a_reason_is_refused(): void
-    {
-        // فجوةٌ في الرقابة يُحدثها صاحبها — فيُسمّيها
-        $shift = $this->openShift(now()->subHours(30)->toDateTimeString());
-
-        $this->actingAs($this->owner)
-            ->post(route('admin.shifts.close', $shift->id), ['note' => ''])
-            ->assertSessionHasErrors('note');
-
-        $this->assertSame(Shift::OPEN, $shift->fresh()->status);
-    }
 
     public function test_a_counted_close_still_records_its_difference(): void
     {
@@ -217,38 +191,5 @@ class AbandonedShiftTest extends TestCase
         $this->assertFalse($closed->closedWithoutCount());
     }
 
-    public function test_another_stores_shift_is_out_of_reach(): void
-    {
-        $other = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
-        $theirBranch = Branch::create(['business_id' => $other->id, 'name' => 'فرعهم']);
-        $theirs = Shift::create([
-            'business_id' => $other->id, 'branch_id' => $theirBranch->id,
-            'opened_at' => now()->subHours(40), 'opening_balance' => 0, 'status' => Shift::OPEN,
-        ]);
 
-        $this->actingAs($this->owner)
-            ->post(route('admin.shifts.close', $theirs->id), ['note' => 'محاولة'])
-            ->assertNotFound();
-
-        $this->assertSame(Shift::OPEN, $theirs->fresh()->status);
-    }
-
-    public function test_the_screen_separates_counted_from_uncounted(): void
-    {
-        /*
-         * وردية بلا عدّ لا تُحسب في «صافي الفروق»: إدخالُها بصفرٍ يجعل
-         * متجرًا فيه نقصٌ متكرّر يبدو متوازنًا.
-         */
-        $abandoned = $this->openShift(now()->subHours(40)->toDateTimeString());
-        $this->artisan('shifts:auto-close');
-
-        $props = $this->actingAs($this->owner)->get(route('admin.shifts.index'))
-            ->assertOk()->viewData('page')['props'];
-
-        $row = collect($props['shifts'])->firstWhere('id', $abandoned->id);
-
-        $this->assertNull($row['difference']);
-        $this->assertSame(Shift::BY_SYSTEM, $row['closedKind']);
-        $this->assertSame(18, $props['maxHours']);
-    }
 }

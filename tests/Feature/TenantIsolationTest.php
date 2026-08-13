@@ -55,10 +55,8 @@ class TenantIsolationTest extends TestCase
     {
         return [
             'منتج' => ['products', ['name' => 'منتج الجار', 'price' => 10, 'quantity' => 5], 'admin.products.destroy'],
-            'قسم' => ['categories', ['name' => 'قسم الجار'], 'admin.categories.destroy'],
             'مورّد' => ['suppliers', ['name' => 'مورّد الجار'], 'admin.suppliers.destroy'],
             'فرع' => ['branches', ['name' => 'فرع الجار'], 'admin.branches.destroy'],
-            'إضافة' => ['addons', ['name' => 'إضافة الجار', 'price' => 1], 'admin.addons.destroy'],
             'نوع مصروف' => ['expense_types', ['name' => 'نوع الجار'], 'admin.expenseTypes.destroy'],
             'وظيفة' => ['job_titles', ['name' => 'وظيفة الجار', 'role' => 'cashier'], 'admin.jobTitles.destroy'],
         ];

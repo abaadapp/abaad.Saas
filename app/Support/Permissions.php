@@ -13,8 +13,8 @@ class Permissions
     public const MAP = [
         'admin' => ['*'],
         'manager' => ['*'],
-        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses', 'reports', 'profitability', 'vat', 'pos'],
-        'inventory' => ['dashboard', 'products', 'categories', 'inventory', 'suppliers', 'purchases', 'reports', 'pos'],
+        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses', 'employees', 'pos'],
+        'inventory' => ['dashboard', 'products', 'inventory', 'suppliers', 'purchases', 'pos'],
         'sales' => ['dashboard', 'orders', 'customers', 'products', 'pos'],
         'cashier' => ['dashboard', 'pos'],
         'delivery' => ['dashboard', 'orders', 'pos'],
@@ -23,9 +23,8 @@ class Permissions
     /** كل الأقسام التي تظهر في لوحة النشاط — مصدر واحد تقرأ منه الواجهة */
     public const SECTIONS = [
         'dashboard', 'customers', 'products', 'orders', 'marketing',
-        'inventory', 'finance', 'expenses', 'reports', 'settings',
-        'categories', 'suppliers', 'purchases', 'profitability', 'vat',
-        'employees', 'pos', 'branch',
+        'inventory', 'finance', 'expenses', 'settings',
+        'suppliers', 'purchases', 'employees', 'pos',
     ];
 
     /**
@@ -114,11 +113,9 @@ class Permissions
         'products' => 'admin.products.index', 'orders' => 'admin.orders.index',
         'marketing' => 'admin.marketing.website', 'inventory' => 'admin.inventory.index',
         'finance' => 'admin.finance.index', 'expenses' => 'admin.expenses.index',
-        'reports' => 'admin.reports.index', 'settings' => 'admin.settings.index',
-        'categories' => 'admin.categories.index', 'suppliers' => 'admin.suppliers.index',
-        'purchases' => 'admin.purchases.index', 'profitability' => 'admin.profitability.index',
-        'vat' => 'admin.vat.index', 'employees' => 'admin.employees.index',
-        'pos' => 'pos.index', 'branch' => 'admin.branches.index',
+        'settings' => 'admin.settings.index', 'suppliers' => 'admin.suppliers.index',
+        'purchases' => 'admin.purchases.index', 'employees' => 'admin.employees.index',
+        'pos' => 'pos.index',
     ];
 
     /**
@@ -163,12 +160,10 @@ class Permissions
     {
         $labels = [
             'dashboard' => 'لوحة التحكم', 'customers' => 'العملاء', 'products' => 'المنتجات',
-            'orders' => 'المبيعات', 'marketing' => 'التسويق', 'inventory' => 'المخزون',
-            'finance' => 'المالية', 'expenses' => 'المصروفات', 'reports' => 'التقارير',
-            'settings' => 'الإعدادات', 'categories' => 'الأقسام', 'suppliers' => 'المورّدون',
-            'purchases' => 'المشتريات', 'profitability' => 'الربحية',
-            'vat' => 'ضريبة القيمة المضافة', 'employees' => 'الموظفون',
-            'pos' => 'نقطة البيع', 'branch' => 'الفروع',
+            'orders' => 'المبيعات', 'marketing' => 'أدوات التسويق', 'inventory' => 'المخزون',
+            'finance' => 'المالية', 'expenses' => 'مصاريف شهرية', 'settings' => 'الإعدادات',
+            'suppliers' => 'الموردين', 'purchases' => 'المشتريات',
+            'employees' => 'الرواتب والموظفين', 'pos' => 'نقطة البيع',
         ];
 
         return collect(self::SECTIONS)
@@ -226,7 +221,9 @@ class Permissions
      * 'branch' — فمنحُها كان بلا أثر.
      */
     public const ALIASES = [
-        'branches' => 'branch',
+        // تبديل الفرع صار في قائمة الحساب بالهيدر، وصفحة الفروع في الإعدادات
+        'branches' => 'settings',
+        'branch' => 'settings',
         'addons' => 'products',
         'jobTitles' => 'employees',
         // مسيرة الرواتب وصرفها من قسم «الرواتب والموظفين» — لا مفتاح ثالث لها
@@ -245,8 +242,7 @@ class Permissions
     /** التصدير يتبع قسم ما يُصدَّر: admin.export.orders → orders */
     public const EXPORT_ALIASES = [
         'products' => 'products', 'orders' => 'orders', 'customers' => 'customers',
-        'transactions' => 'finance', 'analytics' => 'reports', 'reports' => 'reports',
-        'expenses' => 'expenses', 'inventory' => 'inventory',
+        'transactions' => 'finance', 'expenses' => 'expenses', 'inventory' => 'inventory',
     ];
 
     /** هل هذا المسار من هيكل اللوحة لا من أقسامها؟ */
@@ -275,16 +271,6 @@ class Permissions
             return 'finance';
         }
 
-        /*
-         * «تحليلات متقدمة» عرضٌ من عروض التقارير لا قسمٌ مستقلّ.
-         *
-         * كان اسم مساره يشتقّ المفتاح 'analytics' — وهو ليس في SECTIONS، فلا
-         * يملكه أحد: يُمنع منه المحاسب، ويُمنع منه كل من خُصّصت صلاحياته
-         * يدويًّا مهما مُنح. صفحةٌ موجودة في القائمة ولا تُفتح إلا للمالك.
-         */
-        if (str_starts_with($route, 'admin.analytics.')) {
-            return 'reports';
-        }
         if (str_starts_with($route, 'pos.')) {
             return 'pos';
         }
@@ -292,7 +278,8 @@ class Permissions
         $section = $parts[1] ?? 'dashboard';
 
         if ($section === 'export') {
-            return self::EXPORT_ALIASES[$parts[2] ?? ''] ?? 'reports';
+            // ما لا يُعرف ما يُصدَّر يتبع الإعدادات: أضيقُ ما يُمنح
+            return self::EXPORT_ALIASES[$parts[2] ?? ''] ?? 'settings';
         }
 
         return self::ALIASES[$section] ?? $section;

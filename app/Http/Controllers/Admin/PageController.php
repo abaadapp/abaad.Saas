@@ -64,64 +64,11 @@ class PageController extends Controller
         ]);
     }
 
-    public function productsBarcodes(\Illuminate\Http\Request $request): Response
-    {
-        // ?ids= — طباعة ملصق صنفٍ بعينه من صفّه في القائمة بدل البحث عنه
-        // بين مئة ملصق. وبلا المعامل تُعرض الأصناف كلّها كما كانت.
-        $ids = array_filter(array_map('intval', explode(',', (string) $request->query('ids'))));
-
-        $products = collect(Demo::products())
-            ->when($ids, fn ($c) => $c->whereIn('id', $ids))
-            ->values()->all();
-
-        return Inertia::render('Admin/Products/Barcodes', [
-            'products' => $products,
-        ]);
-    }
 
     /* ----------------------------- التصنيفات ----------------------------- */
 
-    public function categoriesIndex(): Response
-    {
-        return Inertia::render('Admin/Categories/Index', [
-            'categories' => Demo::categories(),
-        ]);
-    }
 
-    public function categoriesCreate(): Response
-    {
-        return Inertia::render('Admin/Categories/Create', [
-            'categories' => Demo::categories(),
-            'emojiGroups' => self::emojiGroups(),
-            'palette' => self::PALETTE,
-        ]);
-    }
 
-    public function categoriesEdit(string $id): Response
-    {
-        $bid = auth()->user()->business_id ?? Demo::bid();
-        $category = \App\Models\Category::where('business_id', $bid)->findOrFail($id);
-
-        return Inertia::render('Admin/Categories/Edit', [
-            'category' => [
-                'id' => $category->id,
-                'name' => $category->name,
-                'name_en' => $category->name_en,
-                'icon' => $category->icon,
-                // اللون قد يكون اسم رمز في الصفوف القديمة، ومنتقي الألوان
-                // لا يقبل إلا سداسيًّا — فيُوحَّد قبل أن يصل النموذج
-                'color' => Demo::categoryColor($category->color),
-                'parent_id' => $category->parent_id,
-            ],
-            // القسم لا يصلح أبًا لنفسه، فيُستبعَد من القائمة
-            'categories' => array_values(array_filter(
-                Demo::categories(),
-                fn ($c) => $c['id'] !== $category->id,
-            )),
-            'emojiGroups' => self::emojiGroups(),
-            'palette' => self::PALETTE,
-        ]);
-    }
 
     /** ألوان الأقسام — نفس اللوحة التي كانت مضمّنة في القالب */
     private const PALETTE = [
@@ -133,13 +80,6 @@ class PageController extends Controller
 
     /* ------------------------------ الإضافات ------------------------------ */
 
-    public function addonsIndex(): Response
-    {
-        return Inertia::render('Admin/Addons/Index', [
-            'addons' => Demo::addons(),
-            'emojiGroups' => self::emojiGroups(),
-        ]);
-    }
 
     /** مجموعات الإيموجي بصيغة منتقي الواجهة — مصدرها App\Support\Emojis وحدها */
     private static function emojiGroups(): array
@@ -294,15 +234,6 @@ class PageController extends Controller
         ]);
     }
 
-    public function inventoryMovements(): Response
-    {
-        return Inertia::render('Admin/Inventory/Movements', [
-            'movements' => Demo::movements(),
-            'products' => Demo::products(),
-            'branches' => Demo::branches(),
-            'currentBranchId' => Demo::currentBranchId(),
-        ]);
-    }
 
     /* ----------------------- المورّدون وأوامر الشراء ----------------------- */
 
@@ -342,70 +273,9 @@ class PageController extends Controller
      * كتابةٌ تمرّ بـ`Ledger::post` — فلم تعد صفحاتِ عرضٍ تُقدَّم من هنا.
      */
 
-    /**
-     * فهرس التقارير — بابٌ واحد يُعرض منه ما في النظام من تقارير.
-     *
-     * كانت هذه الصفحة لوحة مبيعاتٍ واحدة، وبقيّة التقارير موزّعةً على أقسام
-     * اللوحة لا يجمعها جامع: من يريد الضريبة يعرف أين هي، ومن لا يعرف لا
-     * يجدها. صارت اللوحة تقريرًا من التقارير (reportsSales أدناه) والفهرس
-     * يعرضها وأخواتها مصنَّفةً وقابلةً للبحث.
-     *
-     * ولا فترةَ هنا: الفهرس قائمةُ مداخل لا أرقامًا، والفترة تخصّ من يعرض رقمًا.
-     */
-    public function reportsIndex(): Response
-    {
-        return Inertia::render('Admin/Reports/Index', [
-            'reports' => \App\Support\Reports::forUser(auth()->user()),
-            'categories' => \App\Support\Reports::categoryLabels(),
-        ]);
-    }
 
-    /**
-     * ملخّص المبيعات — كلّه على فترةٍ واحدة يختارها التاجر.
-     *
-     * كانت البطاقات تجمع عمر المتجر كلّه والمخطّط يرسم السنة الجارية — رقمان
-     * لفترتين في شاشةٍ واحدة. والفترة في الرابط لا في الجلسة: رابطٌ يُرسَل
-     * أو يُحفَظ يفتح على ما فُتح عليه، ولا تتبدّل شاشة أحدٍ لأن آخر بدّلها.
-     */
-    public function reportsSales(\Illuminate\Http\Request $request): Response
-    {
-        $range = Demo::range($request->query('range'));
 
-        return Inertia::render('Admin/Reports/Sales', [
-            'summary' => Demo::reportSummary($range),
-            'salesSeries' => Demo::salesTrend($range),
-            'paymentDistribution' => Demo::paymentDistribution($range),
-            'topSellingProducts' => Demo::topSellingProducts(5, $range),
-            'range' => $range,
-        ]);
-    }
 
-    public function analytics(\Illuminate\Http\Request $request): Response
-    {
-        $range = Demo::range($request->query('range'));
-
-        return Inertia::render('Admin/Analytics', [
-            'periodComparison' => Demo::periodComparison($range),
-            'topProducts' => Demo::topProducts($range),
-            'topCustomers' => Demo::topCustomers(7, $range),
-            'salesByWeekday' => Demo::salesByWeekday($range),
-            'salesByHour' => Demo::salesByHour($range),
-            'categorySales' => Demo::categorySales($range),
-            'range' => $range,
-        ]);
-    }
-
-    public function profitability(\Illuminate\Http\Request $request): Response
-    {
-        $range = Demo::range($request->query('range'));
-
-        return Inertia::render('Admin/Profitability', [
-            'summary' => Demo::profitSummary($range),
-            'products' => Demo::productProfitability($range),
-            'categories' => Demo::categoryProfitability($range),
-            'range' => $range,
-        ]);
-    }
 
     /*
      * التسويق انتقل إلى App\Http\Controllers\Admin\Marketing.
@@ -414,14 +284,6 @@ class PageController extends Controller
      * الكوبونات ويُبحث عن الباقي.
      */
 
-    public function vat(\Illuminate\Http\Request $request): Response
-    {
-        return Inertia::render('Admin/Vat', [
-            // الفترة تأتي من الرابط كما كانت في القالب (شهر/ربع/سنة)
-            'report' => Demo::vatReport($request->query('period', 'quarter')),
-            'settings' => Demo::vatSettings(),
-        ]);
-    }
 
     /* ----------------------------- الإعدادات ----------------------------- */
 

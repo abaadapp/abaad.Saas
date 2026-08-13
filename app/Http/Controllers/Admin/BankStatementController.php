@@ -24,33 +24,32 @@ class BankStatementController extends Controller
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
-    private function account(): BankAccount
+    /**
+     * الحساب المقصود — المطلوب في الطلب، وإلا الرئيسيّ.
+     *
+     * صار للنشاط أكثر من حساب بنكي، و«أوّل ما يوجد» يتبدّل بترتيب الصفوف:
+     * تستورد كشف حساب التحصيل فيدخل على حساب المصروفات بلا أن تدري.
+     */
+    private function account(?Request $request = null): BankAccount
     {
-        return BankAccount::firstOrCreate(['business_id' => $this->bid()]);
+        $id = $request?->input('bank_account_id');
+
+        if ($id) {
+            $found = BankAccount::where('business_id', $this->bid())->find($id);
+            if ($found) {
+                return $found;
+            }
+        }
+
+        return Bank::account($this->bid());
     }
 
-    /** حفظ بيانات الحساب البنكي والرصيد الافتتاحي */
-    public function updateAccount(Request $request)
-    {
-        $data = $request->validate([
-            'bank_name' => ['nullable', 'string', 'max:255'],
-            'account_name' => ['nullable', 'string', 'max:255'],
-            'iban' => ['nullable', 'string', 'max:64'],
-            'opening_balance' => ['nullable', 'numeric'],
-            'opening_date' => ['nullable', 'date'],
-        ]);
-
-        // حقلٌ فارغ يعني صفرًا لا فراغًا: العمود لا يقبل NULL، وكان مسحُ الرقم
-        // لتصحيحه يُسقط الصفحة بخطأ ٥٠٠
-        $data['opening_balance'] = $data['opening_balance'] === null || $data['opening_balance'] === ''
-            ? 0
-            : $data['opening_balance'];
-
-        $this->account()->update($data);
-        Activity::log('updated', 'حدّث بيانات الحساب البنكي');
-
-        return back()->with('toast', ['msg' => __('تم حفظ بيانات الحساب البنكي'), 'type' => 'success']);
-    }
+    /*
+     * حفظ بيانات الحساب انتقل إلى Finance\BankAccountController.
+     *
+     * صار للنشاط أكثر من حساب، وبابان يكتبان في الجدول نفسه بتحقّقٍ مكتوب
+     * مرّتين يفترقان عند أوّل تعديل: يُشدَّد أحدهما ويبقى الآخر مفتوحًا.
+     */
 
     /** استيراد كشف البنك (xlsx/xls/csv) ثم مطابقته تلقائيًا */
     public function import(Request $request)
@@ -78,6 +77,7 @@ class BankStatementController extends Controller
         }
 
         $bid = $this->bid();
+        $account = $this->account($request);
 
         /*
          * الاستيراد يضيف ولا يمسح.
@@ -85,8 +85,13 @@ class BankStatementController extends Controller
          * كان كل استيرادٍ يحذف الكشف السابق كلّه: تستورد فبراير فيضيع يناير
          * بلا سؤال ولا تحذير. والمكرّر يُمنع بالمقارنة لا بالمسح — سطران
          * بنفس التاريخ والمبلغ والمرجع والبيان هو السطر نفسه أُعيد استيراده.
+         *
+         * والمقارنة داخل الحساب الواحد: إيداعان بالمبلغ نفسه في حسابين
+         * مختلفين حركتان لا واحدة.
          */
-        $seen = BankStatementLine::where('business_id', $bid)->get()
+        $seen = BankStatementLine::where('business_id', $bid)
+            ->where(fn ($w) => $w->where('bank_account_id', $account->id)->orWhereNull('bank_account_id'))
+            ->get()
             ->map(fn ($l) => $this->fingerprint($l->date->format('Y-m-d'), (float) $l->amount, $l->reference, $l->description))
             ->flip();
 
@@ -122,6 +127,7 @@ class BankStatementController extends Controller
 
             BankStatementLine::create([
                 'business_id' => $bid,
+                'bank_account_id' => $account->id,
                 'date' => $date,
                 'description' => $description,
                 'reference' => $reference,
@@ -187,9 +193,14 @@ class BankStatementController extends Controller
         return back()->with('toast', ['msg' => __('أُعيدت المطابقة — مطابَق: :matched', ['matched' => $matched]), 'type' => 'success']);
     }
 
-    public function clear()
+    /** حذف الكشف المستورد لحسابٍ واحد — لا لكشوف الحسابات كلّها */
+    public function clear(Request $request)
     {
-        BankStatementLine::where('business_id', $this->bid())->delete();
+        $account = $this->account($request);
+
+        BankStatementLine::where('business_id', $this->bid())
+            ->where(fn ($w) => $w->where('bank_account_id', $account->id)->orWhereNull('bank_account_id'))
+            ->delete();
         Activity::log('deleted', 'حذف كشف البنك المستورد');
 
         return back()->with('toast', ['msg' => __('تم حذف الكشف المستورد'), 'type' => 'warning']);

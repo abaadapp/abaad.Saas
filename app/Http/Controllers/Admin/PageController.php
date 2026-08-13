@@ -351,32 +351,12 @@ class PageController extends Controller
 
     /* ------------------------- المالية والتقارير ------------------------- */
 
-    public function financeIndex(): Response
-    {
-        return Inertia::render('Admin/Finance/Index', [
-            'financeStats' => Demo::financeStats(),
-            'profitStats' => Demo::profitStats(),
-            'paymentMethods' => Demo::paymentMethods(),
-            'transactions' => Demo::transactions(),
-            // ما وراء السقف يُقال لا يُخفى — انظر Demo::transactions
-            'totalTransactions' => \App\Models\Transaction::where('business_id', Demo::bid())->count(),
-            // تاريخ اليوم لتعبئة حقل «التاريخ» ابتداءً (بتوقيت الخادم) بدل تركه
-            // فارغًا فيظهر رماديًّا — كما تفعل صفحة المصروفات
-            'today' => now()->format('Y-m-d'),
-        ]);
-    }
-
-    public function financeStatement(): Response
-    {
-        return Inertia::render('Admin/Finance/Statement', [
-            'account' => Demo::bankAccount(),
-            'statement' => Demo::bankStatement(),
-            'lines' => Demo::bankLines(),
-            'reconciliation' => Demo::reconciliationSummary(),
-            // تاريخ اليوم لتعبئة «تاريخ الرصيد الافتتاحي» حين لا يكون محفوظًا
-            'today' => now()->format('Y-m-d'),
-        ]);
-    }
+    /*
+     * المالية انتقلت إلى App\Http\Controllers\Admin\Finance.
+     *
+     * صارت خمس شاشات على دفترٍ مزدوج لا شاشتين على جدول معاملات، ولكلٍّ منها
+     * كتابةٌ تمرّ بـ`Ledger::post` — فلم تعد صفحاتِ عرضٍ تُقدَّم من هنا.
+     */
 
     /**
      * فهرس التقارير — بابٌ واحد يُعرض منه ما في النظام من تقارير.

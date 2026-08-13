@@ -357,17 +357,44 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/vat/csv', [\App\Http\Controllers\ExportController::class, 'vat'])->name('vat.csv');
     Route::get('/orders/{number}/tax-invoice', [\App\Http\Controllers\PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
 
-    // المالية والمصروفات والتقارير والإعدادات
-    Route::get('/finance', [\App\Http\Controllers\Admin\PageController::class, 'financeIndex'])->name('finance.index');
-    // كشف الحساب البنكي والمطابقة
-    Route::get('/finance/statement', [\App\Http\Controllers\Admin\PageController::class, 'financeStatement'])->name('finance.statement');
+    /*
+     * المالية — خمس شاشات على دفترٍ واحد.
+     *
+     * الحسابات البنكية والقيود اليومية وشجرة الحسابات والمصاريف الشهرية
+     * والأصول الثابتة. وكلّها تكتب من باب `Ledger::post` وحده، فلا يدخل
+     * الدفترَ قيدٌ لم يُفحص توازنه.
+     */
+    Route::get('/finance', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'index'])->name('finance.index');
+    Route::post('/finance/banks', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'store'])->name('finance.banks.store');
+    Route::put('/finance/banks/{id}', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'update'])->name('finance.banks.update');
+    Route::post('/finance/banks/{id}/primary', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'primary'])->name('finance.banks.primary');
+    Route::delete('/finance/banks/{id}', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'destroy'])->name('finance.banks.destroy');
+    // كشف الحساب البنكي والمطابقة — بلا معرّف: الحساب الرئيسيّ
+    Route::get('/finance/statement/{id?}', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'statement'])->name('finance.statement');
+
+    // شجرة الحسابات
+    Route::get('/finance/chart', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'index'])->name('finance.chart');
+    Route::post('/finance/chart', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'store'])->name('finance.chart.store');
+    Route::put('/finance/chart/{id}', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'update'])->name('finance.chart.update');
+    Route::post('/finance/chart/{id}/toggle', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'toggle'])->name('finance.chart.toggle');
+    Route::delete('/finance/chart/{id}', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'destroy'])->name('finance.chart.destroy');
+
+    // القيود اليومية
+    Route::get('/finance/journal', [\App\Http\Controllers\Admin\Finance\JournalController::class, 'index'])->name('finance.journal');
+    Route::post('/finance/journal', [\App\Http\Controllers\Admin\Finance\JournalController::class, 'store'])->name('finance.journal.store');
+
+    // الأصول الثابتة وإهلاكها
+    Route::get('/finance/assets', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'index'])->name('finance.assets');
+    Route::post('/finance/assets', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'store'])->name('finance.assets.store');
+    Route::post('/finance/assets/depreciate', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'depreciate'])->name('finance.assets.depreciate');
+    Route::post('/finance/assets/{id}/dispose', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'dispose'])->name('finance.assets.dispose');
+    Route::delete('/finance/assets/{id}', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'destroy'])->name('finance.assets.destroy');
     // الورديات المُقفلة وفروقها — يقرؤها من يملك «المالية» (sectionFromRoute)
     Route::get('/shifts', [\App\Http\Controllers\Admin\ShiftController::class, 'index'])->name('shifts.index');
     // تقرير إقفال الوردية (Z) — على ورق الإيصال، يُوقَّع عند تسليم الدرج
     Route::get('/shifts/{id}/pdf', [\App\Http\Controllers\PdfController::class, 'shiftReport'])->name('shifts.pdf');
     // إقفال وردية نسيها الكاشير — بلا عدّ، وفرقُها يبقى مجهولًا
     Route::post('/shifts/{id}/close', [\App\Http\Controllers\Admin\ShiftController::class, 'close'])->name('shifts.close');
-    Route::post('/bank/account', [\App\Http\Controllers\Admin\BankStatementController::class, 'updateAccount'])->name('bank.account');
     Route::post('/bank/import', [\App\Http\Controllers\Admin\BankStatementController::class, 'import'])->name('bank.import');
     Route::post('/bank/rematch', [\App\Http\Controllers\Admin\BankStatementController::class, 'rematch'])->name('bank.rematch');
     Route::delete('/bank/clear', [\App\Http\Controllers\Admin\BankStatementController::class, 'clear'])->name('bank.clear');

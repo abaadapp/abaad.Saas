@@ -157,8 +157,10 @@ class BankReconciliationTest extends TestCase
 
     public function test_an_empty_opening_balance_does_not_break_the_page(): void
     {
+        $account = \App\Support\Bank::account($this->business->id);
+
         // كان مسحُ الرقم لتصحيحه يُسقط الشاشة بخطأ ٥٠٠
-        $this->post(route('admin.bank.account'), [
+        $this->put(route('admin.finance.banks.update', $account->id), [
             'bank_name' => 'بنك مسقط', 'account_name' => 'متجري',
             'iban' => '', 'opening_balance' => '', 'opening_date' => '',
         ])->assertSessionHasNoErrors()->assertRedirect();

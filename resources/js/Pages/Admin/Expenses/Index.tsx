@@ -50,12 +50,20 @@ interface Props {
     unpaidCount: number;
     dueSoonCount: number;
     overdueCount: number;
+    /** الشهر المعروض (Y-m) — فارغًا يعني كل الشهور */
+    month: string;
+    /** مجموع الشهر المعروض — يُحسب على الشهر كلّه لا على صفحته */
+    monthTotal: number | null;
+    monthUnpaid: number | null;
+    monthCount: number | null;
+    /** الشهور التي فيها مصروفٌ فعلًا — أحدثها أوّلًا */
+    months: string[];
     today: string;
 }
 
 export default function ExpensesIndex() {
     const { expenses, pagination, types, filters, totalAmount, totalCount, unpaidAmount, unpaidCount,
-        dueSoonCount, overdueCount, today, context } =
+        dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -215,16 +223,41 @@ export default function ExpensesIndex() {
     ];
 
     return (
-        <AdminLayout title="المصروفات">
+        <AdminLayout title="مصاريف شهرية">
             <PageHeader
-                title="المصروفات"
-                subtitle={t('إدارة المصروفات وأنواع المصروفات')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'المصروفات' }]}
+                title="مصاريف شهرية"
+                subtitle={t('ما أُنفق في الشهر المعروض — وأنواع المصروفات')}
+                breadcrumbs={[
+                    { label: 'الرئيسية', href: route('admin.dashboard') },
+                    { label: 'المالية', href: route('admin.finance.index') },
+                    { label: 'مصاريف شهرية' },
+                ]}
                 actions={
-                    <Button onClick={() => setAddingExpense(true)}>
-                        <Plus />
-                        {t('مصروف جديد')}
-                    </Button>
+                    <>
+                        {/*
+                            الشهر يُختار هنا لا في شريط التصفية: هو محور الشاشة
+                            كلّها — العنوان والمجاميع والقائمة تتبعه، لا عمودٌ
+                            من أعمدة الترشيح.
+                        */}
+                        <Select
+                            value={month}
+                            aria-label={t('الشهر')}
+                            className="w-40"
+                            placeholder="كل الشهور"
+                            onChange={(e) =>
+                                router.get(
+                                    route('admin.expenses.index'),
+                                    { ...filters, month: e.target.value || 'all', page: null },
+                                    { preserveState: true, preserveScroll: true, replace: true },
+                                )
+                            }
+                            options={months.map((x) => ({ value: x, label: x }))}
+                        />
+                        <Button onClick={() => setAddingExpense(true)}>
+                            <Plus />
+                            {t('مصروف جديد')}
+                        </Button>
+                    </>
                 }
             />
 
@@ -271,7 +304,7 @@ export default function ExpensesIndex() {
             />
 
             {tab === 'expenses' ? (
-                expenses.length === 0 && !filters.q && !filters.type && !filters.status ? (
+                expenses.length === 0 && !filters.q && !filters.type && !filters.status && !month ? (
                     <Card className="px-5 py-16 text-center">
                         <FolderOpen className="mx-auto size-8 text-[#d1d5db]" />
                         <p className="mt-3 font-medium text-[#111]">{t('لا توجد مصروفات')}</p>
@@ -300,8 +333,28 @@ export default function ExpensesIndex() {
                                 />
                             }
                         />
+                        {/*
+                            مجموع الشهر أوّلًا ومجموع العمر بعده.
+                            السؤال المطروح على شاشةٍ شهرية هو «كم أنفقتُ هذا
+                            الشهر؟» — ورقمُ العمر كلّه يجيب سؤالًا آخر، فيبقى
+                            معروضًا ولا يتصدّر.
+                        */}
+                        {month && monthTotal !== null && (
+                            <div className="border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-4 py-3 text-sm text-[#374151]">
+                                <span className="font-medium">{month}</span> — {t('المدفوع')}:{' '}
+                                <span className="font-semibold text-[#111]">{m(monthTotal)}</span>
+                                {(monthUnpaid ?? 0) > 0 && (
+                                    <>
+                                        {' — '}
+                                        {t('مستحقّ عليك')}:{' '}
+                                        <span className="font-semibold text-[#b45309]">{m(monthUnpaid ?? 0)}</span>
+                                    </>
+                                )}
+                                <span className="text-[#9ca3af]"> ({number(monthCount ?? 0)})</span>
+                            </div>
+                        )}
                         <div className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm text-[#6b7280]">
-                            {t('المصروفات')}: {number(totalCount)} — {t('المدفوع')}:{' '}
+                            {t('كل الشهور')}: {number(totalCount)} — {t('المدفوع')}:{' '}
                             <span className="font-semibold text-[#111]">{m(totalAmount)}</span>
                             {/* المستحقّ لا يُجمع مع المدفوع: الأول التزامٌ عليك والثاني نقدٌ خرج */}
                             {unpaidCount > 0 && (

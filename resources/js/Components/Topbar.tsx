@@ -148,121 +148,15 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
             {searchUrl && <UnifiedSearch url={searchUrl} />}
 
+            {/*
+             * أربعة أزرار لا أكثر: الكاشير، والموقع، والإشعارات، والحساب.
+             *
+             * كان الشريط يحمل سبعة مداخل — عملة ولغة وفرع مستقلّة إلى جانبها —
+             * فصار صفًّا من القوائم يزاحم بعضه على الشاشات المتوسطة. واللغة
+             * والفرع ليسا وجهتين بل تفضيلان يُضبطان ثم يُنسيان، فموضعهما قائمة
+             * الحساب حيث بقيّة ما يخصّ من يقف أمام الشاشة.
+             */}
             <div className="ms-auto flex items-center gap-1.5">
-                {/* مبدّل العملة — يظهر فقط عند وجود أكثر من واحدة */}
-                {context && context.currencies.length > 1 && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="gap-1.5">
-                                <span>{context.currency.symbol || context.currency.code}</span>
-                                <ChevronDown className="size-3.5" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            {context.currencies.map((currency) => (
-                                <DropdownMenuItem key={currency.code} asChild>
-                                    <a href={route('admin.currency.switch', currency.code)}>
-                                        {context.currency.code === currency.code && <Check className="size-4" />}
-                                        {currency.name}
-                                    </a>
-                                </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
-
-                {/* نقطة البيع والموقع الإلكتروني — زرّان ثابتان في الهيدر
-                    (انتقلا من ترويسة اللوحة). يظهران للتاجر فقط: مدير المنصّة
-                    بلا business_id فلا context ولا مسار POS له. */}
-                {/*
-                 * اللغة في الشريط — ظاهرةً لا مدفونة.
-                 *
-                 * كانت في قائمة الحساب فنُقلت إلى الإعدادات لأن تبديلها يقلب
-                 * اتجاه المستند كلّه، وهذا ليس ما يُتوقَّع من صفٍّ في قائمةٍ
-                 * تُفتح بمرور الماوس. لكنّ الإعدادات موضعُ ما يُضبط مرّة،
-                 * واللغة يبدّلها الموظّف كل يوم: من لا يقرأ العربية يقف أمام
-                 * لوحةٍ عربية ولا يعرف أن في الإعدادات ما يخلّصه — ولا يقرأ
-                 * كلمة «الإعدادات» أصلًا. فصارت هنا، كما هي في نقطة البيع.
-                 *
-                 * والتبديل يُرسَل إلى مسار اللوحة التي يقف عليها: لمدير المنصة
-                 * مسارُه، وللتاجر مسارُه — ومسارٌ واحد يعني ٤٠٣ لأحدهما.
-                 */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1.5"
-                            aria-label={locale === 'en' ? 'Change language' : 'تغيير اللغة'}
-                        >
-                            <Languages className="size-4 text-[#9ca3af]" />
-                            <span className="font-medium">{locale === 'en' ? 'EN' : 'ع'}</span>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        {(['ar', 'en'] as const).map((code) => (
-                            <DropdownMenuItem
-                                key={code}
-                                onSelect={() => {
-                                    if (code === locale) return;
-                                    router.post(
-                                        route(isPlatform ? 'super-admin.language.update' : 'admin.language.update'),
-                                        { locale: code },
-                                        { preserveScroll: true },
-                                    );
-                                }}
-                            >
-                                {locale === code && <Check className="size-4" />}
-                                {code === 'ar' ? 'العربية' : 'English'}
-                            </DropdownMenuItem>
-                        ))}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/*
-                 * الفرع الافتراضي في الشريط لا في قائمة الحساب.
-                 *
-                 * كان صفًّا داخل قائمةٍ تُفتح بمرور الماوس، وهو ليس تفضيلًا
-                 * شخصيًّا: كل رقمٍ في اللوحة مرشَّحٌ به — المبيعات والمخزون
-                 * والتقارير. فمن يقرأ رقمًا لا يعرف أيّ فرعٍ يقرأ حتى يفتح
-                 * قائمةً لا شأن لها بالأرقام. واسمه ظاهرٌ الآن دائمًا.
-                 */}
-                {context && context.branches.length > 0 && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="gap-1.5">
-                                <Building2 className="size-4 text-[#9ca3af]" />
-                                {/* الاسم يختفي على الشاشات الضيّقة والأيقونة تبقى */}
-                                <span className="hidden max-w-28 truncate sm:inline">
-                                    {context.branchName || t('كل الفروع')}
-                                </span>
-                                <ChevronDown className="size-3.5 text-[#9ca3af]" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuLabel>{t('الفرع الافتراضي')}</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem asChild>
-                                <a href={route('admin.branch.switch', 'all')}>
-                                    <span className="flex-1">{t('كل الفروع')}</span>
-                                    {!context.branchId && <Check className="size-4" />}
-                                </a>
-                            </DropdownMenuItem>
-                            {context.branches.map((branch) => (
-                                <DropdownMenuItem key={branch.id} asChild>
-                                    <a href={route('admin.branch.switch', branch.id)}>
-                                        <span className="flex-1 truncate">{branch.name}</span>
-                                        {context.branchId === branch.id && <Check className="size-4" />}
-                                    </a>
-                                </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
-
-                {/* نقطة البيع والموقع الإلكتروني — زرّان ثابتان في الهيدر
-                    (انتقلا من ترويسة اللوحة). يظهران للتاجر فقط: مدير المنصّة
-                    بلا business_id فلا context ولا مسار POS له. */}
                 {context && (
                     <>
                         <Button asChild variant="ghost" size="icon" title={t('نقطة البيع')}>
@@ -416,13 +310,60 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
                         <DropdownMenuSeparator />
 
-                        {/* الفرع الافتراضي كان هنا. صار في الشريط نفسه بجوار
-                            نقطة البيع: هو مرشِّح كل رقمٍ في اللوحة، ومن يقرأ
-                            تقريرًا يجب أن يرى أيّ فرعٍ يقرأ بلا أن يفتح قائمة. */}
+                        {/* الفرع الافتراضي — مرشِّح كل رقمٍ في اللوحة، فاسمه
+                            مكتوبٌ في العنوان لا في القائمة وحدها */}
+                        {context && context.branches.length > 0 && (
+                            <>
+                                <DropdownMenuLabel className="flex items-center gap-2 text-[12px] font-normal text-[#9ca3af]">
+                                    <Building2 className="size-3.5" />
+                                    {t('الفرع')}
+                                    <span className="ms-auto truncate font-medium text-[#111]">
+                                        {context.branchName || t('كل الفروع')}
+                                    </span>
+                                </DropdownMenuLabel>
+                                <DropdownMenuItem asChild>
+                                    <a href={route('admin.branch.switch', 'all')} className="text-[14px]">
+                                        <span className="flex-1">{t('كل الفروع')}</span>
+                                        {!context.branchId && <Check className="size-4" />}
+                                    </a>
+                                </DropdownMenuItem>
+                                {context.branches.map((branch) => (
+                                    <DropdownMenuItem key={branch.id} asChild>
+                                        <a href={route('admin.branch.switch', branch.id)} className="text-[14px]">
+                                            <span className="flex-1 truncate">{branch.name}</span>
+                                            {context.branchId === branch.id && <Check className="size-4" />}
+                                        </a>
+                                    </DropdownMenuItem>
+                                ))}
+                                <DropdownMenuSeparator />
+                            </>
+                        )}
 
-                        {/* اللغة كانت هنا. موضعها الإعدادات: تبديلها يعيد تحميل
-                            الصفحة ويقلب اتجاه المستند كلّه، وهذا ليس ما يُتوقَّع
-                            من صفٍّ في قائمةٍ تُفتح بمرور الماوس. */}
+                        {/* اللغة — والتبديل يُرسَل إلى مسار اللوحة التي يقف
+                            عليها: لمدير المنصة مسارُه وللتاجر مسارُه، ومسارٌ
+                            واحد يعني ٤٠٣ لأحدهما */}
+                        <DropdownMenuLabel className="flex items-center gap-2 text-[12px] font-normal text-[#9ca3af]">
+                            <Languages className="size-3.5" />
+                            {t('اللغة')}
+                        </DropdownMenuLabel>
+                        {(['ar', 'en'] as const).map((code) => (
+                            <DropdownMenuItem
+                                key={code}
+                                className="text-[14px]"
+                                onSelect={() => {
+                                    if (code === locale) return;
+                                    router.post(
+                                        route(isPlatform ? 'super-admin.language.update' : 'admin.language.update'),
+                                        { locale: code },
+                                        { preserveScroll: true },
+                                    );
+                                }}
+                            >
+                                <span className="flex-1">{code === 'ar' ? 'العربية' : 'English'}</span>
+                                {locale === code && <Check className="size-4" />}
+                            </DropdownMenuItem>
+                        ))}
+
                         <DropdownMenuSeparator />
 
                         {/* إدارة الحساب */}

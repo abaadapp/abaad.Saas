@@ -17,6 +17,29 @@ class ExpenseController extends Controller
         $bid = $this->bid();
         $q = Expense::where('business_id', $bid);
 
+        /*
+         * الشاشة شهريّة: المصروف يُقرأ بالشهر لا بالعمر كلّه.
+         *
+         * «كم أنفقتُ هذا الشهر؟» سؤالٌ يُسأل كلّ شهر، وقائمةٌ تعرض ثلاث سنوات
+         * دفعةً واحدة لا تجيبه — يُجمع منها بالعين فيُخطئ الجمع. و«كل الشهور»
+         * تبقى خيارًا لمن يبحث عن فاتورةٍ قديمة بعينها.
+         */
+        $month = (string) $request->query('month', now()->format('Y-m'));
+        $span = null;
+
+        if (preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $first = \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $month.'-01');
+            $span = [$first->copy()->startOfMonth(), $first->copy()->endOfMonth()];
+            $q->whereBetween('spent_at', $span);
+        } else {
+            $month = '';
+        }
+
+        // مجموع الشهر يُحسب على الشهر كلّه لا على صفحته: الترقيم يقصّ الصفوف
+        // ولا يقصّ السؤال — «كم أنفقتُ هذا الشهر؟» جوابُه واحدٌ مهما تصفّحت
+        $base = Expense::where('business_id', $bid)
+            ->when($span, fn ($w) => $w->whereBetween('spent_at', $span));
+
         if ($s = trim((string) $request->query('q'))) {
             $q->where(fn ($w) => $w->where('reference', 'like', "%{$s}%")
                 ->orWhere('description', 'like', "%{$s}%")
@@ -47,7 +70,14 @@ class ExpenseController extends Controller
             ])->all(),
             'pagination' => \App\Support\Pagination::meta($expenses),
             'types' => Demo::expenseTypes(),
-            'filters' => $request->only('q', 'type', 'status', 'tab'),
+            'filters' => $request->only('q', 'type', 'status', 'tab') + ['month' => $month],
+            // الشهر المعروض ومجموعه — ما بعد الترقيم لا يُجمع في المتصفح
+            'month' => $month,
+            'monthTotal' => $month ? (float) (clone $base)->paid()->sum('amount') : null,
+            'monthUnpaid' => $month ? (float) (clone $base)->unpaid()->sum('amount') : null,
+            'monthCount' => $month ? (clone $base)->count() : null,
+            // الشهور التي فيها مصروفٌ فعلًا — قائمةٌ لا تعرض شهورًا فارغة
+            'months' => $this->months($bid),
             // المدفوع وحده هو المصروف — والمستحقّ يُعرض إلى جانبه لا يختفي:
             // رقمٌ خرج من حسابٍ بلا أن يظهر في آخر يضيع
             'totalAmount' => (float) Expense::where('business_id', $bid)->paid()->sum('amount'),
@@ -192,6 +222,24 @@ class ExpenseController extends Controller
             'type' => 'warning',
             'undo' => ['url' => route('admin.expenses.restore', $expense->id), 'label' => $expense->reference ?: $expense->type],
         ]);
+    }
+
+    /**
+     * الشهور التي فيها مصروفٌ فعلًا — أحدثها أوّلًا، والجاري معها دائمًا.
+     *
+     * قائمةٌ تولَّد من التقويم تعرض شهورًا فارغة يفتحها التاجر فلا يجد شيئًا،
+     * وقائمةٌ من البيانات وحدها تُسقط الشهر الجاري قبل أوّل مصروفٍ فيه —
+     * فيفتح الشاشة في أوّل الشهر فلا يجد شهره.
+     */
+    private function months(int $bid): array
+    {
+        $found = Expense::where('business_id', $bid)->whereNotNull('spent_at')
+            ->get(['spent_at'])->map(fn ($e) => $e->spent_at->format('Y-m'))->all();
+
+        // collect() صراحةً: مجموعة Eloquent تبقى كذلك بعد map فيسقط unique
+        // عليها بحثًا عن مفاتيح نماذج في مصفوفة نصوص
+        return collect($found)->push(now()->format('Y-m'))
+            ->unique()->sortDesc()->values()->all();
     }
 
     /** توليد الرقم المرجعي التالي للنشاط */

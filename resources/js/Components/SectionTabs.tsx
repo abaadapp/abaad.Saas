@@ -130,14 +130,17 @@ export const PRODUCT_TABS: SectionTab[] = [
  * يعرضان الشيء ذاته بترتيب مختلف.
  */
 /*
- * قسم المالية. الربحية والضريبة خارجه عمدًا: تابعتان للتقارير، ولهما
- * شريطهما في REPORTS_TABS أدناه.
+ * قسم المالية — دفترٌ واحد يُقرأ من خمسة أبواب.
+ *
+ * كشف الحساب البنكي ليس تبويبًا: هو صفحةُ حسابٍ بعينه تُفتح من قائمة
+ * الحسابات، فبقاؤه تبويبًا كان يعني بابًا يقود إلى «أوّل حساب» أيًّا كان.
  */
 export const FINANCE_TABS: SectionTab[] = [
-    { label: 'المالية', routeName: 'admin.finance.index', section: 'finance' },
-    { label: 'المصروفات', routeName: 'admin.expenses.index', section: 'expenses' },
-    { label: 'كشف الحساب البنكي', routeName: 'admin.finance.statement', section: 'finance' },
-    { label: 'الورديات', routeName: 'admin.shifts.index', section: 'finance' },
+    { label: 'الحسابات البنكية', routeName: 'admin.finance.index', section: 'finance' },
+    { label: 'القيود اليومية', routeName: 'admin.finance.journal', section: 'finance' },
+    { label: 'شجرة الحسابات', routeName: 'admin.finance.chart', section: 'finance' },
+    { label: 'مصاريف شهرية', routeName: 'admin.expenses.index', section: 'expenses' },
+    { label: 'أصول ثابتة', routeName: 'admin.finance.assets', section: 'finance' },
 ];
 
 /*

@@ -2491,12 +2491,22 @@ class Demo
 
     /* ============================ الحساب البنكي وكشف الحساب ============================ */
 
-    /** بيانات حساب الشركة البنكي */
-    public static function bankAccount(): array
+    /**
+     * بيانات حسابٍ بنكيّ للنشاط — المطلوب، وإلا الرئيسيّ.
+     *
+     * صار للنشاط أكثر من حساب، فمن يقرأ بلا تحديد يقرأ الرئيسيّ لا «أوّل ما
+     * يوجد»: الأوّل يتبدّل بترتيب الصفوف فيتبدّل الكشف بلا أن يمسّه أحد.
+     */
+    public static function bankAccount(?int $accountId = null): array
     {
-        $a = \App\Models\BankAccount::firstOrCreate(['business_id' => self::bid()]);
+        $a = $accountId
+            ? \App\Models\BankAccount::where('business_id', self::bid())->find($accountId)
+            : null;
+        $a ??= \App\Support\Bank::account(self::bid());
 
         return [
+            'id' => $a->id,
+            'label' => $a->displayName(),
             'bank_name' => $a->bank_name,
             'account_name' => $a->account_name,
             'iban' => $a->iban,
@@ -2510,9 +2520,9 @@ class Demo
      *
      * ما مرّ بالبنك وحده وبعد تاريخ الرصيد الافتتاحي — انظر Bank::transactions.
      */
-    public static function bankStatement(): array
+    public static function bankStatement(?int $accountId = null): array
     {
-        $acc = self::bankAccount();
+        $acc = self::bankAccount($accountId);
         $balance = $acc['opening_balance'];
 
         $rows = \App\Support\Bank::transactions(self::bid())
@@ -2537,10 +2547,12 @@ class Demo
         return ['opening' => $acc['opening_balance'], 'rows' => $rows, 'closing' => round($balance, 3)];
     }
 
-    /** أسطر كشف البنك المستوردة مع حالة المطابقة */
-    public static function bankLines(): array
+    /** أسطر كشف البنك المستوردة مع حالة المطابقة — لحسابٍ واحد */
+    public static function bankLines(?int $accountId = null): array
     {
         return \App\Models\BankStatementLine::where('business_id', self::bid())
+            ->when($accountId, fn ($q) => $q->where(fn ($w) => $w
+                ->where('bank_account_id', $accountId)->orWhereNull('bank_account_id')))
             ->with('transaction')->orderBy('date')->get()->map(fn ($l) => [
                 'id' => $l->id,
                 'date' => optional($l->date)->format('Y-m-d') ?? '—',
@@ -2554,10 +2566,13 @@ class Demo
     }
 
     /** ملخّص المطابقة: الفروقات بين البنك والنظام */
-    public static function reconciliationSummary(): array
+    public static function reconciliationSummary(?int $accountId = null): array
     {
         $bid = self::bid();
-        $lines = \App\Models\BankStatementLine::where('business_id', $bid)->get();
+        $lines = \App\Models\BankStatementLine::where('business_id', $bid)
+            ->when($accountId, fn ($q) => $q->where(fn ($w) => $w
+                ->where('bank_account_id', $accountId)->orWhereNull('bank_account_id')))
+            ->get();
         $matchedIds = $lines->whereNotNull('transaction_id')->pluck('transaction_id')->all();
 
         /*

@@ -25,9 +25,17 @@ class Bank
     /** الوسائل التي تمرّ بالحساب البنكي */
     public const METHODS = ['بطاقة', 'تحويل بنكي'];
 
+    /**
+     * الحساب الرئيسي — وجهةُ ما لا يُنسب إلى حسابٍ بعينه.
+     *
+     * صار للنشاط أكثر من حساب، و«أوّل ما يوجد» يتبدّل بترتيب الصفوف فيتبدّل
+     * الكشف بلا أن يمسّه أحد. فالرئيسيّ أوّلًا، ثمّ الأقدم.
+     */
     public static function account(int $businessId): BankAccount
     {
-        return BankAccount::firstOrCreate(['business_id' => $businessId]);
+        return BankAccount::where('business_id', $businessId)
+            ->orderByDesc('is_primary')->orderBy('id')->first()
+            ?? BankAccount::create(['business_id' => $businessId, 'is_primary' => true]);
     }
 
     /**

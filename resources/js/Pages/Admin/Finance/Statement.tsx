@@ -7,7 +7,7 @@ import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
 import Tabs from '@/Components/Tabs';
 import SmartLink from '@/Components/SmartLink';
 import StatCard from '@/Components/StatCard';
-import Field from '@/Components/Field';
+import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -49,6 +49,8 @@ interface BankLine {
 }
 
 interface Account {
+    id: number;
+    label: string;
     bank_name: string | null;
     account_name: string | null;
     iban: string | null;
@@ -58,6 +60,8 @@ interface Account {
 
 interface Props {
     account: Account;
+    /** حسابات النشاط كلّها — للتنقّل بينها بلا الرجوع إلى القائمة */
+    accounts: { id: number; label: string }[];
     /** تاريخ اليوم بتوقيت الخادم — تعبئة تاريخ الرصيد الافتتاحي حين لا يكون محفوظًا */
     today: string;
     statement: { opening: number; rows: StatementRow[]; closing: number };
@@ -80,7 +84,8 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 export default function FinanceStatement() {
-    const { account, statement, lines, reconciliation, today, context } = usePage<PageProps<Props>>().props;
+    const { account, accounts, statement, lines, reconciliation, today, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -97,37 +102,56 @@ export default function FinanceStatement() {
         opening_date: account.opening_date ?? today,
     });
 
+    /*
+     * كلّ فعلٍ هنا يحمل الحساب الذي يخصّه.
+     *
+     * بلا هذا كان الاستيراد والمطابقة والحذف تقع كلّها على «الحساب الرئيسيّ»
+     * أيًّا كان المفتوح على الشاشة: تفتح كشف حساب المصروفات وترفع ملفّه فيدخل
+     * على حساب التحصيل، ولا شيء في الشاشة يقول ذلك.
+     */
+    const bank = { bank_account_id: account.id };
+
     const importStatement = (e: React.FormEvent) => {
         e.preventDefault();
         if (!file) return;
-        router.post(route('admin.bank.import'), { statement: file }, { forceFormData: true });
+        router.post(route('admin.bank.import'), { ...bank, statement: file }, { forceFormData: true });
     };
 
     return (
         <AdminLayout title="كشف الحساب البنكي">
             <PageHeader
                 title="كشف الحساب البنكي"
-                subtitle={t('حساب الشركة البنكي ومطابقته مع معاملات النظام')}
+                subtitle={account.label}
                 breadcrumbs={[
                     { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المالية', href: route('admin.finance.index') },
+                    { label: 'الحسابات البنكية', href: route('admin.finance.index') },
                     { label: 'كشف الحساب' },
                 ]}
                 actions={
-                    <Button variant="outline" asChild>
-                        <SmartLink routeName="admin.finance.index" href={route('admin.finance.index')}>
-                            <ArrowRight />
-                            {t('رجوع للمالية')}
-                        </SmartLink>
-                    </Button>
+                    <>
+                        {accounts.length > 1 && (
+                            <Select
+                                value={String(account.id)}
+                                aria-label={t('الحساب البنكي')}
+                                className="w-48"
+                                onChange={(e) =>
+                                    router.get(route('admin.finance.statement', e.target.value))
+                                }
+                                options={accounts.map((a) => ({ value: a.id, label: a.label }))}
+                            />
+                        )}
+                        <Button variant="outline" asChild>
+                            <SmartLink routeName="admin.finance.index" href={route('admin.finance.index')}>
+                                <ArrowRight />
+                                {t('الحسابات البنكية')}
+                            </SmartLink>
+                        </Button>
+                    </>
                 }
             />
 
-            <SectionTabs
-                tabs={FINANCE_TABS}
-                current="admin.finance.statement"
-                variant="segmented"
-            />
+            {/* الشريط يُضيء «الحسابات البنكية»: هذه صفحةُ حسابٍ منها لا تبويبٌ سادس */}
+            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.index" variant="segmented" />
 
             {/* تبويبات داخل الصفحة — بالخطّ السفلي لا المقسَّم، فيبقى مستوياها
                 متمايزين: المقسَّم ينقل بين صفحات القسم وهذا يبدّل جزءًا منها */}
@@ -260,7 +284,7 @@ export default function FinanceStatement() {
                                             type="button"
                                             variant="outline"
                                             onClick={() =>
-                                                router.post(route('admin.bank.rematch'), {}, { preserveScroll: true })
+                                                router.post(route('admin.bank.rematch'), bank, { preserveScroll: true })
                                             }
                                         >
                                             <RefreshCw />
@@ -272,7 +296,7 @@ export default function FinanceStatement() {
                                             className="text-[#b91c1c]"
                                             onClick={() => {
                                                 if (!confirm(t('حذف الكشف المستورد؟'))) return;
-                                                router.delete(route('admin.bank.clear'), { preserveScroll: true });
+                                                router.delete(route('admin.bank.clear'), { data: bank, preserveScroll: true });
                                             }}
                                         >
                                             <Trash2 />
@@ -375,7 +399,7 @@ export default function FinanceStatement() {
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
-                            accountForm.post(route('admin.bank.account'), { preserveScroll: true });
+                            accountForm.put(route('admin.finance.banks.update', account.id), { preserveScroll: true });
                         }}
                         className="space-y-4"
                     >

@@ -2487,5 +2487,9 @@
     "التقرير": "Report",
     "تعذّر تحميل التقرير": "Could not load the report",
     "لا توجد بيانات في هذا التقرير بعد": "No data in this report yet",
-    "مسح البحث": "Clear search"
+    "مسح البحث": "Clear search",
+    "الرصيد يُحتسب تلقائيًا: الرصيد الافتتاحي + الإيرادات − المصروفات، مرتّبًا بالتاريخ. ولا يدخله إلا ما مرّ بالبنك — البطاقة والتحويل — ولا ما سبق تاريخ الرصيد الافتتاحي لأنه داخلٌ فيه.": "Balance is computed automatically: opening balance + income − expenses, in date order. Only what went through the bank — card and transfer — is included, and nothing before the opening-balance date, since that is already part of it.",
+    "XLSX · XLS · XLSM · CSV — حتى 10 ميجابايت. يُقبل عمود «المبلغ» أو عمودا «مدين» و«دائن». والاستيراد يضيف ولا يمسح، والمكرّر يُتخطّى.": "XLSX · XLS · XLSM · CSV — up to 10 MB. Either an “Amount” column or “Debit” and “Credit” columns. Importing adds to the statement rather than replacing it; duplicate rows are skipped.",
+    "تعذّر التعرّف على الأعمدة. يجب أن يحتوي الملف على عمود «التاريخ» وعمود «المبلغ» أو عمودَي «مدين» و«دائن».": "Could not identify the columns. The file needs a “Date” column and either an “Amount” column or “Debit” and “Credit” columns.",
+    "تُخطّي :n سطرًا مكرّرًا": "skipped :n duplicate rows"
 }

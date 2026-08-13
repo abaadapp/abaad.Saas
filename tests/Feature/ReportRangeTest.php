@@ -54,6 +54,15 @@ class ReportRangeTest extends TestCase
         ]);
 
         $this->actingAs($this->owner);
+
+        /*
+         * ساعةٌ ثابتة من اليوم.
+         *
+         * المحور يقف عند اللحظة الحاليّة، فبيعةٌ تُوضع في الساعة ١٤ تكون
+         * ماضيًا إن جرى الاختبار مساءً ومستقبلًا إن جرى صباحًا — فيمرّ الملفّ
+         * ويسقط بلا أن يتغيّر سطرٌ من الشيفرة.
+         */
+        $this->travelTo(now()->startOfDay()->addHours(20));
     }
 
     private function sale(float $total, Carbon $at, string $method = 'نقدي'): Order

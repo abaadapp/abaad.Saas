@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\BankAccount;
 use App\Models\BankStatementLine;
-use App\Models\Transaction;
 use App\Support\Activity;
+use App\Support\Bank;
 use App\Support\Demo;
 use Illuminate\Http\Request;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -39,6 +39,13 @@ class BankStatementController extends Controller
             'opening_balance' => ['nullable', 'numeric'],
             'opening_date' => ['nullable', 'date'],
         ]);
+
+        // حقلٌ فارغ يعني صفرًا لا فراغًا: العمود لا يقبل NULL، وكان مسحُ الرقم
+        // لتصحيحه يُسقط الصفحة بخطأ ٥٠٠
+        $data['opening_balance'] = $data['opening_balance'] === null || $data['opening_balance'] === ''
+            ? 0
+            : $data['opening_balance'];
+
         $this->account()->update($data);
         Activity::log('updated', 'حدّث بيانات الحساب البنكي');
 
@@ -62,22 +69,38 @@ class BankStatementController extends Controller
         }
 
         $cols = $this->detectColumns($rows[0]);
-        if ($cols['date'] === null || $cols['amount'] === null) {
+        $hasAmount = $cols['amount'] !== null || $cols['debit'] !== null || $cols['credit'] !== null;
+        if ($cols['date'] === null || ! $hasAmount) {
             return back()->with('toast', [
-                'msg' => __('تعذّر التعرّف على الأعمدة. يجب أن يحتوي الملف على عمودَي «التاريخ» و«المبلغ».'),
+                'msg' => __('تعذّر التعرّف على الأعمدة. يجب أن يحتوي الملف على عمود «التاريخ» وعمود «المبلغ» أو عمودَي «مدين» و«دائن».'),
                 'type' => 'error',
             ]);
         }
 
         $bid = $this->bid();
-        // استيراد جديد يستبدل الكشف السابق حتى لا تتراكم أسطر مكرّرة
-        BankStatementLine::where('business_id', $bid)->delete();
+
+        /*
+         * الاستيراد يضيف ولا يمسح.
+         *
+         * كان كل استيرادٍ يحذف الكشف السابق كلّه: تستورد فبراير فيضيع يناير
+         * بلا سؤال ولا تحذير. والمكرّر يُمنع بالمقارنة لا بالمسح — سطران
+         * بنفس التاريخ والمبلغ والمرجع والبيان هو السطر نفسه أُعيد استيراده.
+         */
+        $seen = BankStatementLine::where('business_id', $bid)->get()
+            ->map(fn ($l) => $this->fingerprint($l->date->format('Y-m-d'), (float) $l->amount, $l->reference, $l->description))
+            ->flip();
 
         $imported = 0;
+        $duplicates = 0;
+
         foreach (array_slice($rows, 1) as $row) {
             $rawDate = $row[$cols['date']] ?? null;
-            $rawAmount = $row[$cols['amount']] ?? null;
-            if ($rawDate === null || $rawDate === '' || $rawAmount === null || $rawAmount === '') {
+            if ($rawDate === null || $rawDate === '') {
+                continue;
+            }
+
+            $amount = $this->rowAmount($row, $cols);
+            if ($amount === null) {
                 continue;
             }
 
@@ -86,12 +109,23 @@ class BankStatementController extends Controller
                 continue;
             }
 
+            $description = $cols['desc'] !== null ? (string) ($row[$cols['desc']] ?? '') : null;
+            $reference = $cols['ref'] !== null ? (string) ($row[$cols['ref']] ?? '') : null;
+
+            $key = $this->fingerprint($date, $amount, $reference, $description);
+            if ($seen->has($key)) {
+                $duplicates++;
+
+                continue;
+            }
+            $seen[$key] = true;
+
             BankStatementLine::create([
                 'business_id' => $bid,
                 'date' => $date,
-                'description' => $cols['desc'] !== null ? (string) ($row[$cols['desc']] ?? '') : null,
-                'reference' => $cols['ref'] !== null ? (string) ($row[$cols['ref']] ?? '') : null,
-                'amount' => (float) str_replace([',', ' '], '', (string) $rawAmount),
+                'description' => $description,
+                'reference' => $reference,
+                'amount' => $amount,
             ]);
             $imported++;
         }
@@ -99,10 +133,50 @@ class BankStatementController extends Controller
         $matched = $this->reconcile();
         Activity::log('created', "استورد كشف البنك ({$imported} سطرًا) وطابَق {$matched}");
 
-        return back()->with('toast', [
-            'msg' => __('تم استيراد :imported سطرًا · مطابَق تلقائيًا: :matched', ['imported' => $imported, 'matched' => $matched]),
-            'type' => 'success',
-        ]);
+        $msg = __('تم استيراد :imported سطرًا · مطابَق تلقائيًا: :matched', ['imported' => $imported, 'matched' => $matched]);
+        if ($duplicates) {
+            $msg .= ' · '.__('تُخطّي :n سطرًا مكرّرًا', ['n' => $duplicates]);
+        }
+
+        return back()->with('toast', ['msg' => $msg, 'type' => 'success']);
+    }
+
+    /** بصمة السطر: نفس التاريخ والمبلغ والمرجع والبيان = السطر نفسه */
+    private function fingerprint(string $date, float $amount, ?string $reference, ?string $description): string
+    {
+        return $date.'|'.number_format($amount, 3, '.', '').'|'.trim((string) $reference).'|'.trim((string) $description);
+    }
+
+    /**
+     * مبلغ السطر من عمود «المبلغ»، أو من عمودَي «مدين» و«دائن».
+     *
+     * أغلب كشوف البنوك هنا تُصدَّر بعمودين منفصلين لا بعمودٍ بإشارة، وكان
+     * الملفّ يُرفض كلّه برسالة «تعذّر التعرّف على الأعمدة». والدائن وارد
+     * والمدين صادر — فيُوحَّدان في رقمٍ بإشارة.
+     */
+    private function rowAmount(array $row, array $cols): ?float
+    {
+        $num = function ($raw): ?float {
+            if ($raw === null || trim((string) $raw) === '') {
+                return null;
+            }
+            $clean = str_replace([',', ' ', "\u{00a0}"], '', (string) $raw);
+
+            return is_numeric($clean) ? (float) $clean : null;
+        };
+
+        if ($cols['amount'] !== null) {
+            return $num($row[$cols['amount']] ?? null);
+        }
+
+        $credit = $cols['credit'] !== null ? $num($row[$cols['credit']] ?? null) : null;
+        $debit = $cols['debit'] !== null ? $num($row[$cols['debit']] ?? null) : null;
+
+        if ($credit === null && $debit === null) {
+            return null;
+        }
+
+        return abs($credit ?? 0) - abs($debit ?? 0);
     }
 
     /** إعادة تشغيل المطابقة يدويًا */
@@ -124,6 +198,9 @@ class BankStatementController extends Controller
     /**
      * المطابقة التلقائية: لكل سطر بنكي ابحث عن معاملة بنفس المبلغ وتاريخ قريب.
      * تُعاد الحسبة من الصفر في كل مرة حتى لا تبقى مطابقات قديمة خاطئة.
+     *
+     * والمرشَّحون هم ما مرّ بالبنك وحده: كانت بيعةٌ نقدية تُطابَق بإيداعٍ
+     * بالمبلغ نفسه فيُكتب «مطابق» عن شيئين لم يلتقيا قط.
      */
     private function reconcile(): int
     {
@@ -132,7 +209,7 @@ class BankStatementController extends Controller
         BankStatementLine::where('business_id', $bid)
             ->update(['transaction_id' => null, 'match_status' => 'غير مطابق']);
 
-        $transactions = Transaction::where('business_id', $bid)->get();
+        $transactions = Bank::transactions($bid)->get();
         $usedTransactions = [];
         $matched = 0;
 
@@ -175,8 +252,11 @@ class BankStatementController extends Controller
             'desc' => ['البيان', 'الوصف', 'التفاصيل', 'description', 'details', 'narrative'],
             'ref' => ['المرجع', 'رقم المرجع', 'reference', 'ref'],
             'amount' => ['المبلغ', 'القيمة', 'amount', 'value'],
+            // كشوف البنوك هنا تُصدَّر بعمودَي مدين/دائن أكثر ممّا تُصدَّر بعمودٍ بإشارة
+            'debit' => ['مدين', 'المدين', 'سحب', 'منصرف', 'debit', 'withdrawal', 'debit amount'],
+            'credit' => ['دائن', 'الدائن', 'إيداع', 'وارد', 'credit', 'deposit', 'credit amount'],
         ];
-        $found = ['date' => null, 'desc' => null, 'ref' => null, 'amount' => null];
+        $found = ['date' => null, 'desc' => null, 'ref' => null, 'amount' => null, 'debit' => null, 'credit' => null];
 
         foreach ($header as $i => $cell) {
             $key = mb_strtolower(trim((string) $cell));

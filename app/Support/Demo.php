@@ -2505,13 +2505,17 @@ class Demo
         ];
     }
 
-    /** كشف حساب محسوب من معاملات النظام برصيد تراكمي */
+    /**
+     * كشف حساب محسوب من معاملات النظام برصيد تراكمي.
+     *
+     * ما مرّ بالبنك وحده وبعد تاريخ الرصيد الافتتاحي — انظر Bank::transactions.
+     */
     public static function bankStatement(): array
     {
         $acc = self::bankAccount();
         $balance = $acc['opening_balance'];
 
-        $rows = Transaction::where('business_id', self::bid())
+        $rows = \App\Support\Bank::transactions(self::bid())
             ->orderBy('occurred_at')->orderBy('id')->get()->map(function ($t) use (&$balance) {
                 // المصروفات مخزّنة بإشارة سالبة — نوحّد على القيمة المطلقة والاتجاه من النوع
                 $in = $t->type === 'دخل';
@@ -2556,9 +2560,21 @@ class Demo
         $lines = \App\Models\BankStatementLine::where('business_id', $bid)->get();
         $matchedIds = $lines->whereNotNull('transaction_id')->pluck('transaction_id')->all();
 
-        // معاملات في النظام لا يقابلها سطر في كشف البنك
-        $unmatchedSystem = Transaction::where('business_id', $bid)
-            ->when($matchedIds, fn ($q) => $q->whereNotIn('id', $matchedIds))->count();
+        /*
+         * «غير مطابق في النظام» داخل مدى الكشف وحده.
+         *
+         * كان يعدّ عمر المتجر كلّه: تستورد كشف شهرٍ فيقول إنّ معاملات الأشهر
+         * السابقة «ناقصة من البنك» — وهي في كشوفها هي. رقمٌ يخيف بلا سبب،
+         * ويُفقد الرقمَ معناه حين يكبر.
+         */
+        $unmatchedSystem = \App\Support\Bank::transactions($bid)
+            ->when($matchedIds, fn ($q) => $q->whereNotIn('id', $matchedIds))
+            ->when($lines->count(), fn ($q) => $q
+                ->whereBetween('occurred_at', [
+                    $lines->min('date')->copy()->startOfDay(),
+                    $lines->max('date')->copy()->endOfDay(),
+                ]))
+            ->count();
 
         return [
             'lines' => $lines->count(),

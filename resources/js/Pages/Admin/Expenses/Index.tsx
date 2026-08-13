@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { Check, FolderOpen, Paperclip, Plus, Tags } from 'lucide-react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import { AlertTriangle, Check, CheckCircle2, FolderOpen, Paperclip, Plus, Tags } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface ExpenseRow {
@@ -45,11 +46,16 @@ interface Props {
     filters: Record<string, string | null>;
     totalAmount: number;
     totalCount: number;
+    unpaidAmount: number;
+    unpaidCount: number;
+    dueSoonCount: number;
+    overdueCount: number;
     today: string;
 }
 
 export default function ExpensesIndex() {
-    const { expenses, pagination, types, filters, totalAmount, totalCount, today, context } =
+    const { expenses, pagination, types, filters, totalAmount, totalCount, unpaidAmount, unpaidCount,
+        dueSoonCount, overdueCount, today, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -64,6 +70,7 @@ export default function ExpensesIndex() {
         amount: string;
         description: string;
         spent_at: string;
+        due_date: string;
         method: string;
         status: string;
         attachment: File | null;
@@ -72,6 +79,7 @@ export default function ExpensesIndex() {
         amount: '',
         description: '',
         spent_at: today,
+        due_date: '',
         method: 'نقدي',
         status: 'مدفوع',
         attachment: null,
@@ -146,7 +154,22 @@ export default function ExpensesIndex() {
             header: '',
             align: 'end',
             cell: (e) => (
-                <RowActions destroy={{ url: route('admin.expenses.destroy', e.id), message: 'حذف هذا المصروف؟' }} />
+                <RowActions
+                    destroy={{ url: route('admin.expenses.destroy', e.id), message: 'حذف هذا المصروف؟' }}
+                    extra={
+                        e.status === 'مدفوع'
+                            ? []
+                            : [
+                                  {
+                                      // لحظة خروج المال هي لحظة قيده في الدفتر
+                                      label: 'تسجيل السداد',
+                                      icon: <CheckCircle2 className="size-4" />,
+                                      onSelect: () =>
+                                          router.post(route('admin.expenses.paid', e.id), {}, { preserveScroll: true }),
+                                  },
+                              ]
+                    }
+                />
             ),
         },
     ];
@@ -207,6 +230,35 @@ export default function ExpensesIndex() {
 
             <SectionTabs tabs={FINANCE_TABS} current="admin.expenses.index" variant="segmented" />
 
+            {/*
+                ما يستحقّ يُرى قبل أن يفوت لا بعده — والفائت أوّلًا.
+                ولا يظهر الشريط حين لا يكون له ما يقوله.
+            */}
+            {(overdueCount > 0 || dueSoonCount > 0) && (
+                <button
+                    type="button"
+                    onClick={() => router.get(route('admin.expenses.index'), { status: 'غير مدفوع' }, {
+                        preserveScroll: true,
+                        preserveState: true,
+                    })}
+                    className={cn(
+                        'mb-4 flex w-full items-center gap-2 rounded-[12px] border px-4 py-3 text-start text-[13px] transition-colors',
+                        overdueCount > 0
+                            ? 'border-[#fecaca] bg-[#fef2f2] text-[#b91c1c] hover:bg-[#fee2e2]'
+                            : 'border-[#fde68a] bg-[#fffbeb] text-[#b45309] hover:bg-[#fef3c7]',
+                    )}
+                >
+                    <AlertTriangle className="size-4 shrink-0" />
+                    <span className="font-medium">
+                        {overdueCount > 0
+                            ? t(':n فاتورة تجاوزت استحقاقها', { n: String(overdueCount) })
+                            : t(':n فاتورة تستحقّ خلال أسبوع', { n: String(dueSoonCount) })}
+                    </span>
+                    <span className="flex-1" />
+                    <span className="text-[12px] underline">{t('عرضها')}</span>
+                </button>
+            )}
+
             {/* تبويبات داخل الصفحة — بالخطّ السفلي فيتمايز مستواها عن شريط القسم */}
             <Tabs
                 tabs={[
@@ -249,8 +301,17 @@ export default function ExpensesIndex() {
                             }
                         />
                         <div className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm text-[#6b7280]">
-                            {t('المصروفات')}: {number(totalCount)} — {t('الإجمالي')}:{' '}
+                            {t('المصروفات')}: {number(totalCount)} — {t('المدفوع')}:{' '}
                             <span className="font-semibold text-[#111]">{m(totalAmount)}</span>
+                            {/* المستحقّ لا يُجمع مع المدفوع: الأول التزامٌ عليك والثاني نقدٌ خرج */}
+                            {unpaidCount > 0 && (
+                                <>
+                                    {' — '}
+                                    {t('مستحقّ عليك')}:{' '}
+                                    <span className="font-semibold text-[#b45309]">{m(unpaidAmount)}</span>
+                                    <span className="text-[#9ca3af]"> ({number(unpaidCount)})</span>
+                                </>
+                            )}
                         </div>
                     </Card>
                 )
@@ -346,7 +407,11 @@ export default function ExpensesIndex() {
                             </Field>
                         </div>
 
-                        <Field label="الحالة" error={expense.errors.status}>
+                        <Field
+                            label="الحالة"
+                            hint="«غير مدفوع» التزامٌ عليك لا نقدٌ خرج — لا يُخصم من الربح حتى تسدّده"
+                            error={expense.errors.status}
+                        >
                             <Select
                                 value={expense.data.status}
                                 onChange={(e) => expense.setData('status', e.target.value)}
@@ -356,6 +421,17 @@ export default function ExpensesIndex() {
                                 ]}
                             />
                         </Field>
+
+                        {/* تاريخ الاستحقاق لا معنى له على فاتورةٍ سُدِّدت */}
+                        {expense.data.status !== 'مدفوع' && (
+                            <Field label="تاريخ الاستحقاق" error={expense.errors.due_date}>
+                                <Input
+                                    type="date"
+                                    value={expense.data.due_date}
+                                    onChange={(e) => expense.setData('due_date', e.target.value)}
+                                />
+                            </Field>
+                        )}
 
                         <Field
                             label="المرفق"

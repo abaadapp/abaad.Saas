@@ -197,6 +197,11 @@ class TrashController extends Controller
         $row = self::findTrashed($type, $id);
         $row->restore();
 
+        // المصروف يعود ومعه قيده في الدفتر — بمرجعه نفسه لا بمرجعٍ جديد
+        if ($type === 'expense') {
+            $row->transaction()->withTrashed()->restore();
+        }
+
         $label = self::label($type, $row);
 
         Activity::log('restore', match ($type) {
@@ -274,6 +279,11 @@ class TrashController extends Controller
          */
         if ($type === 'product') {
             \App\Models\BranchStock::where('product_id', $row->id)->delete();
+        }
+
+        // ومحوُ المصروف يمحو قيده: لا يبقى في الدفتر سطرٌ لا أصل له
+        if ($type === 'expense') {
+            $row->transaction()->withTrashed()->forceDelete();
         }
 
         $row->forceDelete();

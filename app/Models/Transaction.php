@@ -4,9 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Transaction extends Model
 {
+    // القيد يتبع مصروفه: يُخفى معه ويعود معه بمرجعه نفسه
+    use SoftDeletes;
+
     protected $guarded = [];
     protected $casts = ['amount' => 'decimal:3', 'occurred_at' => 'datetime'];
 

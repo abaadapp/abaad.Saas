@@ -550,7 +550,7 @@ class Demo
         $count = $orders()->count();
         $avg = $count ? $sales / $count : 0;
         $newCustomers = Customer::where('business_id', $bid)->whereBetween('created_at', [$start, $end])->count();
-        $expenses = (float) Expense::where('business_id', $bid)->whereBetween('spent_at', [$start, $end])->sum('amount');
+        $expenses = (float) Expense::where('business_id', $bid)->paid()->whereBetween('spent_at', [$start, $end])->sum('amount');
 
         $top = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $bid)->where('is_held', false)
             ->whereBetween('ordered_at', [$start, $end]))
@@ -606,8 +606,8 @@ class Demo
         $lowStock = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')->count();
 
         // المصروفات وصافي الأرباح: هذا الشهر مقابل السابق
-        $expMonth = (float) Expense::where('business_id', $bid)->where('spent_at', '>=', $mStart)->sum('amount');
-        $expLastMonth = (float) Expense::where('business_id', $bid)->whereBetween('spent_at', [$lmStart, $mStart])->sum('amount');
+        $expMonth = (float) Expense::where('business_id', $bid)->paid()->where('spent_at', '>=', $mStart)->sum('amount');
+        $expLastMonth = (float) Expense::where('business_id', $bid)->paid()->whereBetween('spent_at', [$lmStart, $mStart])->sum('amount');
         $net = $salesMonth - $expMonth;
         $netLast = $salesLastMonth - $expLastMonth;
 
@@ -1194,7 +1194,7 @@ class Demo
             });
 
         // المصروفات التشغيلية في الفترة
-        $expenses = (float) Expense::where('business_id', $bid)
+        $expenses = (float) Expense::where('business_id', $bid)->paid()
             ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount');
 
         $grossProfit = $netRevenue - $cogs;
@@ -1920,7 +1920,7 @@ class Demo
             ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start));
         $sales = (float) (clone $ordersQ)->sum('total');
         $tax = (float) (clone $ordersQ)->sum('tax');
-        $expenses = (float) Expense::where('business_id', $bid)
+        $expenses = (float) Expense::where('business_id', $bid)->paid()
             ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount');
 
         return [

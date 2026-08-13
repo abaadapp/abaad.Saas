@@ -2516,5 +2516,14 @@
     "اتركها فارغة لتتبع نسبة المتجر": "Leave empty to follow the store rate",
     "نسبة المتجر": "Store rate",
     "صفرية (معفى)": "Zero-rated (exempt)",
-    "يُخصم من سعر الصنف عند البيع": "Deducted from the item price at checkout"
+    "يُخصم من سعر الصنف عند البيع": "Deducted from the item price at checkout",
+    "سُجّل السداد": "Payment recorded",
+    "الفاتورة مسدَّدة أصلًا": "This bill is already paid",
+    "المدفوع": "Paid",
+    "مستحقّ عليك": "Owed",
+    "تاريخ الاستحقاق": "Due date",
+    "«غير مدفوع» التزامٌ عليك لا نقدٌ خرج — لا يُخصم من الربح حتى تسدّده": "“Unpaid” is a liability, not money out — it is not deducted from profit until you pay it",
+    ":n فاتورة تجاوزت استحقاقها": ":n bills are past due",
+    ":n فاتورة تستحقّ خلال أسبوع": ":n bills are due within a week",
+    "عرضها": "Show them"
 }

@@ -48,8 +48,19 @@ class ExpenseController extends Controller
             'pagination' => \App\Support\Pagination::meta($expenses),
             'types' => Demo::expenseTypes(),
             'filters' => $request->only('q', 'type', 'status', 'tab'),
-            'totalAmount' => (float) Expense::where('business_id', $bid)->sum('amount'),
+            // المدفوع وحده هو المصروف — والمستحقّ يُعرض إلى جانبه لا يختفي:
+            // رقمٌ خرج من حسابٍ بلا أن يظهر في آخر يضيع
+            'totalAmount' => (float) Expense::where('business_id', $bid)->paid()->sum('amount'),
             'totalCount' => Expense::where('business_id', $bid)->count(),
+            'unpaidAmount' => (float) Expense::where('business_id', $bid)->unpaid()->sum('amount'),
+            'unpaidCount' => Expense::where('business_id', $bid)->unpaid()->count(),
+            // ما يستحقّ خلال أسبوع — ليُرى قبل أن يفوت لا بعده
+            'dueSoonCount' => Expense::where('business_id', $bid)->unpaid()
+                ->whereNotNull('due_date')
+                ->whereBetween('due_date', [now()->startOfDay(), now()->addDays(7)->endOfDay()])
+                ->count(),
+            'overdueCount' => Expense::where('business_id', $bid)->unpaid()
+                ->whereNotNull('due_date')->where('due_date', '<', now()->startOfDay())->count(),
             'today' => now()->format('Y-m-d'),
         ]);
     }
@@ -63,6 +74,9 @@ class ExpenseController extends Controller
             'amount' => ['required', 'numeric', 'min:0'],
             'method' => ['nullable', 'string', 'max:50'],
             'spent_at' => ['nullable', 'date'],
+            // كان عمودًا يُعرض في الجدول ويُرشَّح به ولا سبيل لإدخاله: النموذج
+            // لا يرسله والخادم لا يقبله، فيقول «—» إلى الأبد
+            'due_date' => ['nullable', 'date'],
             'status' => ['nullable', 'string', 'max:50'],
             'attachment' => ['nullable', 'file', 'max:10240', 'extensions:jpg,jpeg,png,pdf,webp,heic'],
         ], [
@@ -88,36 +102,80 @@ class ExpenseController extends Controller
         $data['attachment'] = $attachment;
         $data['attachment_name'] = $attachmentName;
 
+        $expense = Expense::create($data);
+
         /*
-         * المصروف يظهر في دفتر المالية أيضًا.
+         * المصروف يظهر في دفتر المالية أيضًا — إن كان قد دُفع.
          *
          * كان لكلّ منهما جدولُه: مصروفٌ من هذه الشاشة لا يُرى في المالية،
          * ومصروفٌ من المالية لا ينقص الربح. فصار المصدر واحدًا والدفتر
          * يعرضهما معًا — والربح يُقرأ من جدول المصروفات كما كان، فلا يُعدّ
          * المبلغ مرّتين.
+         *
+         * والقيد يوم خروج المال لا يوم تسجيل الورقة: فاتورةٌ سُجّلت اليوم
+         * وتُدفع بعد أسبوع ليست نقدًا خرج من الدرج.
          */
-        $transaction = \App\Models\Transaction::create([
-            'business_id' => $bid,
-            'reference' => \App\Models\Transaction::nextReference($bid),
-            // الوصف اختياريّ فقد يغيب عن الطلب أصلًا — لا يكفي أن يكون nullable
-            'description' => $data['type'] . (($data['description'] ?? '') !== '' ? ' — ' . $data['description'] : ''),
-            'method' => $data['method'],
-            'type' => 'مصروف',
-            'amount' => $data['amount'],
-            'employee_name' => $data['employee_name'],
-            'occurred_at' => $data['spent_at'],
-        ]);
-        $data['transaction_id'] = $transaction->id;
-
-        Expense::create($data);
+        if ($expense->isPaid()) {
+            $this->postToLedger($expense);
+        }
         \App\Support\Activity::log('created', 'سجّل مصروف ' . $data['type'] . ' بقيمة ' . $data['amount']);
 
         return redirect()->route('admin.expenses.index')->with('toast', ['msg' => __('تم تسجيل المصروف بنجاح'), 'type' => 'success']);
     }
 
+    /** يكتب قيد الدفتر المقابل ويربطه بالمصروف */
+    private function postToLedger(Expense $expense): void
+    {
+        $transaction = \App\Models\Transaction::create([
+            'business_id' => $expense->business_id,
+            'reference' => \App\Models\Transaction::nextReference($expense->business_id),
+            // الوصف اختياريّ فقد يغيب عن الطلب أصلًا — لا يكفي أن يكون nullable
+            'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
+            'method' => $expense->method,
+            'type' => 'مصروف',
+            'amount' => $expense->amount,
+            'employee_name' => $expense->employee_name,
+            'occurred_at' => $expense->spent_at,
+        ]);
+
+        $expense->update(['transaction_id' => $transaction->id]);
+    }
+
+    /**
+     * تسديد فاتورة مستحقّة.
+     *
+     * لحظةُ خروج المال هي لحظة قيده: قبلها الفاتورة التزامٌ عليك، وبعدها
+     * نقدٌ نقص. ولا تعديل للمصروفات بعدُ، فبدون هذا الزرّ تبقى «غير مدفوع»
+     * إلى الأبد.
+     */
+    public function markPaid($id)
+    {
+        $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
+
+        if ($expense->isPaid()) {
+            return back()->with('toast', ['msg' => __('الفاتورة مسدَّدة أصلًا'), 'type' => 'info']);
+        }
+
+        $expense->update(['status' => Expense::PAID, 'spent_at' => now()]);
+        $this->postToLedger($expense->fresh());
+
+        \App\Support\Activity::log('updated', 'سدّد المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
+
+        return back()->with('toast', ['msg' => __('سُجّل السداد'), 'type' => 'success']);
+    }
+
     public function destroy($id)
     {
         $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
+
+        /*
+         * القيد يتبع مصروفه.
+         *
+         * كان الحذف يُخفي المصروف ويترك سطره في دفتر المالية: تقرأ
+         * المصروفات فترى صفرًا، وتقرأ المالية فترى ٣٠٠. والقيد اليتيم يدخل
+         * المطابقة البنكية كأنّ مبلغًا خرج.
+         */
+        $expense->transaction()->delete();
         \App\Support\Activity::log('deleted', 'حذف المصروف: ' . $expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
 
         /*

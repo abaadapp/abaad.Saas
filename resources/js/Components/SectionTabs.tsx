@@ -159,6 +159,18 @@ export const REPORTS_TABS: SectionTab[] = [
     { label: 'ضريبة القيمة المضافة', routeName: 'admin.vat.index', section: 'vat' },
 ];
 
+/*
+ * قسم المشتريات — القائمة ثمّ السندات ثمّ الأوامر.
+ *
+ * الترتيب يتبع ما يُسأل عنه أكثر: «ماذا اشتريتُ؟» أوّلًا، ثمّ «ماذا عليّ؟»،
+ * ثمّ «ماذا طلبتُ ولم يصل؟».
+ */
+export const PURCHASE_TABS: SectionTab[] = [
+    { label: 'قائمة المشتريات', routeName: 'admin.purchases.index', section: 'purchases' },
+    { label: 'سندات الموردين', routeName: 'admin.purchases.invoices', section: 'purchases' },
+    { label: 'أوامر الشراء', routeName: 'admin.purchases.orders', section: 'purchases' },
+];
+
 export const INVENTORY_TABS: SectionTab[] = [
     { label: 'نظرة عامة', routeName: 'admin.inventory.overview', section: 'inventory' },
     { label: 'المنتجات والكميات', routeName: 'admin.inventory.index', section: 'inventory' },

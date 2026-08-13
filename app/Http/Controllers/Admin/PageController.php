@@ -313,28 +313,12 @@ class PageController extends Controller
         ]);
     }
 
-    public function purchasesIndex(): Response
-    {
-        $s = Demo::purchaseOrderStats();
-
-        return Inertia::render('Admin/Purchases/Index', [
-            'stats' => [
-                ['label' => __('إجمالي الأوامر'), 'value' => (string) $s['total'], 'icon' => 'clipboard-list', 'color' => 'primary'],
-                ['label' => __('قيد التنفيذ'), 'value' => (string) $s['pending'], 'icon' => 'clock', 'color' => 'warning'],
-                ['label' => __('مستلمة'), 'value' => (string) $s['received'], 'icon' => 'package-check', 'color' => 'success'],
-                ['label' => __('قيمة قيد الاستلام'), 'value' => Demo::money($s['value']), 'icon' => 'wallet', 'color' => 'info'],
-            ],
-            // رابط الإيصال يُبنى هنا: المسار وحده لا يكفي المتصفح لفتحه
-            'orders' => array_map(function ($o) {
-                $o['receipt'] = $o['receipt']
-                    ? \Illuminate\Support\Facades\Storage::disk('public')->url($o['receipt'])
-                    : null;
-
-                return $o;
-            }, Demo::purchaseOrders()),
-            'reorder' => Demo::reorderSuggestions(),
-        ]);
-    }
+    /*
+     * أوامر الشراء انتقلت إلى PurchaseOrderController::index.
+     *
+     * صار للقسم ثلاث شاشات — القائمة والسندات والأوامر — ولكلٍّ منها كتابة،
+     * فلم تعد صفحةَ عرضٍ تُقدَّم من هنا.
+     */
 
     public function purchasesCreate(\Illuminate\Http\Request $request): Response
     {

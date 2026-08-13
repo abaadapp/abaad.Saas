@@ -3,7 +3,7 @@ import { router, usePage } from '@inertiajs/react';
 import { AlertTriangle, ClipboardList, PackageCheck, Paperclip, Plus, Trash2, Truck, Upload } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
+import SectionTabs, { PURCHASE_TABS } from '@/Components/SectionTabs';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
 import SmartLink from '@/Components/SmartLink';
@@ -171,7 +171,11 @@ export default function PurchasesIndex() {
             <PageHeader
                 title="أوامر الشراء"
                 subtitle={t('طلبات التزويد من المورّدين واستلام البضاعة')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'أوامر الشراء' }]}
+                breadcrumbs={[
+                    { label: 'الرئيسية', href: route('admin.dashboard') },
+                    { label: 'المشتريات', href: route('admin.purchases.index') },
+                    { label: 'أوامر الشراء' },
+                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>
@@ -190,7 +194,7 @@ export default function PurchasesIndex() {
                 }
             />
 
-            <SectionTabs tabs={INVENTORY_TABS} current="admin.purchases.index" />
+            <SectionTabs tabs={PURCHASE_TABS} current="admin.purchases.orders" variant="segmented" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
                 {stats.map((s, i) => (

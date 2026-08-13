@@ -13,4 +13,7 @@ class PurchaseOrder extends Model
 
     public function supplier(): BelongsTo { return $this->belongsTo(Supplier::class); }
     public function items(): HasMany { return $this->hasMany(PurchaseOrderItem::class); }
+
+    /** سندات المورّد المحرَّرة على هذا الأمر — أمرٌ مفوتَر لا يُفوتَر ثانية */
+    public function invoices(): HasMany { return $this->hasMany(SupplierInvoice::class); }
 }

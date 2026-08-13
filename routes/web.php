@@ -333,8 +333,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::put('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'update'])->name('suppliers.update');
     Route::delete('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'destroy'])->name('suppliers.destroy');
 
-    // أوامر الشراء
-    Route::get('/purchases', [\App\Http\Controllers\Admin\PageController::class, 'purchasesIndex'])->name('purchases.index');
+    /*
+     * المشتريات — ثلاث شاشات على بابين.
+     *
+     * القائمة تجمع ما اشتُري من البابين معًا (أمرٌ استُلم، وسندٌ بلا أمر)،
+     * والسندات تحمل ما على المتجر لمورّديه، والأوامر تحمل ما طُلب ولم يصل.
+     */
+    Route::get('/purchases', [\App\Http\Controllers\Admin\Purchasing\PurchaseRegisterController::class, 'index'])->name('purchases.index');
+    Route::get('/purchases/invoices', [\App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController::class, 'index'])->name('purchases.invoices');
+    Route::post('/purchases/invoices', [\App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController::class, 'store'])->name('purchases.invoices.store');
+    Route::post('/purchases/invoices/{id}/pay', [\App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController::class, 'pay'])->name('purchases.invoices.pay');
+    Route::delete('/purchases/invoices/{id}', [\App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController::class, 'destroy'])->name('purchases.invoices.destroy');
+    Route::get('/purchases/orders', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'index'])->name('purchases.orders');
     Route::get('/purchases/create', [\App\Http\Controllers\Admin\PageController::class, 'purchasesCreate'])->name('purchases.create');
     Route::post('/purchases', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'store'])->name('purchases.store');
     Route::post('/purchases/{id}/receipt', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');

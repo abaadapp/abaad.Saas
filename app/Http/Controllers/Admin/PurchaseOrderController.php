@@ -14,6 +14,30 @@ class PurchaseOrderController extends Controller
 {
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
+    /** أوامر الشراء — ما طُلب، وما استُلم منه */
+    public function index(): \Inertia\Response
+    {
+        $s = Demo::purchaseOrderStats();
+
+        return \Inertia\Inertia::render('Admin/Purchases/Index', [
+            'stats' => [
+                ['label' => __('إجمالي الأوامر'), 'value' => (string) $s['total'], 'icon' => 'clipboard-list', 'color' => 'primary'],
+                ['label' => __('قيد التنفيذ'), 'value' => (string) $s['pending'], 'icon' => 'clock', 'color' => 'warning'],
+                ['label' => __('مستلمة'), 'value' => (string) $s['received'], 'icon' => 'package-check', 'color' => 'success'],
+                ['label' => __('قيمة قيد الاستلام'), 'value' => Demo::money($s['value']), 'icon' => 'wallet', 'color' => 'info'],
+            ],
+            // رابط الإيصال يُبنى هنا: المسار وحده لا يكفي المتصفح لفتحه
+            'orders' => array_map(function ($o) {
+                $o['receipt'] = $o['receipt']
+                    ? \Illuminate\Support\Facades\Storage::disk('public')->url($o['receipt'])
+                    : null;
+
+                return $o;
+            }, Demo::purchaseOrders()),
+            'reorder' => Demo::reorderSuggestions(),
+        ]);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -74,7 +98,7 @@ class PurchaseOrderController extends Controller
         }
         \App\Support\Activity::log('created', 'أنشأ أمر شراء ' . $po->number . ' لفرع ' . $branch->name . ' بقيمة ' . number_format($total, 3) . ' ر.ع', ['subject_id' => $po->id]);
 
-        return redirect()->route('admin.purchases.index')->with('toast', ['msg' => __('تم إنشاء أمر الشراء :number', ['number' => $po->number]), 'type' => 'success']);
+        return redirect()->route('admin.purchases.orders')->with('toast', ['msg' => __('تم إنشاء أمر الشراء :number', ['number' => $po->number]), 'type' => 'success']);
     }
 
     /** استلام أمر الشراء: يرفع كميات المنتجات ويسجّل حركة مخزون */

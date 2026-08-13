@@ -25,8 +25,8 @@ class OrderController extends Controller
         if ($pm = $request->query('payment')) { $q->where('payment_method', $pm); }
         // الملغى كان يجلس بين المكتمل بلا تمييز ولا فرز
         if ($st = $request->query('status')) { $q->where('status', $st); }
-        if ($d = $request->query('date')) { $q->whereDate('ordered_at', $d); }
-        // مدًى لا يومًا واحدًا: من أراد مبيعات أسبوع كان يفتح الشاشة سبع مرّات
+        // مدًى لا يومًا واحدًا: من أراد مبيعات أسبوع كان يفتح الشاشة سبع مرّات.
+        // وحقل «التاريخ» المفرد حُذف — كان ثالثًا بجانب الطرفين يفعل ما يفعلانه
         if ($from = $request->query('from')) { $q->whereDate('ordered_at', '>=', $from); }
         if ($to = $request->query('to')) { $q->whereDate('ordered_at', '<=', $to); }
 
@@ -52,7 +52,7 @@ class OrderController extends Controller
         return \Inertia\Inertia::render('Admin/Orders/Index', [
             'orders' => $orders->items(),
             'pagination' => \App\Support\Pagination::meta($orders),
-            'filters' => $request->only('q', 'payment', 'status', 'date', 'from', 'to'),
+            'filters' => $request->only('q', 'payment', 'status', 'from', 'to'),
             // المبلغ من المُباع وحده، والعدد من الكلّ — والملغى يُذكر صراحةً
             // كي لا يُقرأ الفرقُ بينهما خطأً في الجمع
             'totalAmount' => $totalAmount,

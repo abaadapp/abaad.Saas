@@ -407,14 +407,12 @@ class PageController extends Controller
         ]);
     }
 
-    public function marketing(): Response
-    {
-        return Inertia::render('Admin/Marketing', [
-            'stats' => Demo::couponStats(),
-            'coupons' => Demo::coupons(),
-            'segments' => Demo::marketingSegment(),
-        ]);
-    }
+    /*
+     * التسويق انتقل إلى App\Http\Controllers\Admin\Marketing.
+     *
+     * صار ستّ أدوات تُفتح كلٌّ منها بعنوانها، لا صفحةً جامعة تُفتح فيها
+     * الكوبونات ويُبحث عن الباقي.
+     */
 
     public function vat(\Illuminate\Http\Request $request): Response
     {

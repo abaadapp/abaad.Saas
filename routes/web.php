@@ -386,8 +386,28 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // تحليلات الربحية
     Route::get('/profitability', [\App\Http\Controllers\Admin\PageController::class, 'profitability'])->name('profitability.index');
 
-    // التسويق والكوبونات
-    Route::get('/marketing', [\App\Http\Controllers\Admin\PageController::class, 'marketing'])->name('marketing.index');
+    /*
+     * أدوات التسويق — ستّ أدوات تُفتح من قائمةٍ منسدلة لا من صفحةٍ جامعة.
+     *
+     * لكلٍّ منها عنوانها: من يريد إعدادات الموقع لا يمرّ بالكوبونات، ورابطُ
+     * كلٍّ منها يُحفظ ويُشارَك وحده.
+     */
+    Route::get('/marketing', fn () => redirect()->route('admin.marketing.website'))->name('marketing.index');
+    Route::get('/marketing/website', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'website'])->name('marketing.website');
+    Route::post('/marketing/website', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
+    Route::get('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'loyalty'])->name('marketing.loyalty');
+    Route::post('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveLoyalty'])->name('marketing.loyalty.save');
+    Route::get('/marketing/reviews', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'index'])->name('marketing.reviews');
+    Route::post('/marketing/reviews', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'store'])->name('marketing.reviews.store');
+    Route::post('/marketing/reviews/{id}/status', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'status'])->name('marketing.reviews.status');
+    Route::post('/marketing/reviews/{id}/reply', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'reply'])->name('marketing.reviews.reply');
+    Route::delete('/marketing/reviews/{id}', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'destroy'])->name('marketing.reviews.destroy');
+    Route::get('/marketing/coupons', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'coupons'])->name('marketing.coupons');
+    Route::get('/marketing/seo', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'seo'])->name('marketing.seo');
+    Route::post('/marketing/seo', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveSeo'])->name('marketing.seo.save');
+    Route::get('/marketing/whatsapp', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'whatsapp'])->name('marketing.whatsapp');
+    Route::post('/marketing/whatsapp', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveWhatsapp'])->name('marketing.whatsapp.save');
+
     Route::post('/coupons', [\App\Http\Controllers\Admin\CouponController::class, 'store'])->name('coupons.store');
     Route::post('/coupons/{id}/toggle', [\App\Http\Controllers\Admin\CouponController::class, 'toggle'])->name('coupons.toggle');
     Route::delete('/coupons/{id}', [\App\Http\Controllers\Admin\CouponController::class, 'destroy'])->name('coupons.destroy');

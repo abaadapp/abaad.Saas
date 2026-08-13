@@ -20,7 +20,7 @@ interface Props {
     coupons: Coupon[];
 }
 
-export default function Marketing() {
+export default function Coupons() {
     const { stats, coupons, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -53,11 +53,15 @@ export default function Marketing() {
     ];
 
     return (
-        <AdminLayout title="التسويق والكوبونات">
+        <AdminLayout title="الكوبونات والعروض">
             <PageHeader
-                title="التسويق والكوبونات"
+                title="الكوبونات والعروض"
                 subtitle={t('أكواد الخصم والعروض لاستهداف العملاء')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'التسويق' }]}
+                breadcrumbs={[
+                    { label: 'الرئيسية', href: route('admin.dashboard') },
+                    { label: 'أدوات التسويق' },
+                    { label: 'الكوبونات والعروض' },
+                ]}
                 actions={
                     <Button onClick={() => setAdding(true)}>
                         <Plus />

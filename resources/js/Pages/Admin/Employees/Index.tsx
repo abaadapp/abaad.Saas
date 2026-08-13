@@ -1,6 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { EMPLOYEE_TABS } from '@/Components/SectionTabs';
 import BackToSettings from '../Settings/partials/BackToSettings';
 import EmployeesPanel, { type JobTitle } from '../Settings/panels/EmployeesPanel';
 import { number } from '@/lib/format';
@@ -22,8 +23,13 @@ export default function EmployeesIndex() {
             <PageHeader
                 title="الموظفون"
                 subtitle={t(':n موظف', { n: number(employees.length) })}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الموظفون' }]}
+                breadcrumbs={[
+                    { label: 'الرئيسية', href: route('admin.dashboard') },
+                    { label: 'الرواتب والموظفين' },
+                ]}
             />
+
+            <SectionTabs tabs={EMPLOYEE_TABS} current="admin.employees.index" variant="segmented" />
 
             <BackToSettings />
             <EmployeesPanel employees={employees} jobTitles={jobTitles} />

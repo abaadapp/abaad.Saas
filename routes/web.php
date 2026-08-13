@@ -301,6 +301,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/employees', [\App\Http\Controllers\Admin\PageController::class, 'employeesIndex'])->name('employees.index');
     Route::get('/employees/create', [\App\Http\Controllers\Admin\PageController::class, 'employeesCreate'])->name('employees.create');
 
+    /*
+     * الرواتب — مسيرةٌ تُعتمد ثمّ تُصرف.
+     *
+     * الاعتماد يقيّد المستحقّ والصرف يُخرج المال، وهما قيدان لا واحد: راتبُ
+     * شهرٍ اعتُمد ولم يُصرف التزامٌ قائم، ودمجُهما يُخفيه حتى يخرج المال
+     * فيُقرأ الشهر ربحًا وهو مدين برواتبه.
+     */
+    Route::get('/payroll', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'index'])->name('payroll.index');
+    Route::post('/payroll', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'store'])->name('payroll.store');
+    Route::post('/payroll/{id}/approve', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'approve'])->name('payroll.approve');
+    Route::delete('/payroll/{id}', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'destroy'])->name('payroll.destroy');
+    Route::put('/payroll/lines/{id}', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'updateLine'])->name('payroll.lines.update');
+    Route::delete('/payroll/lines/{id}', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'destroyLine'])->name('payroll.lines.destroy');
+    Route::get('/payroll/payments', [\App\Http\Controllers\Admin\Payroll\PayrollPaymentController::class, 'index'])->name('payroll.payments');
+    Route::post('/payroll/{id}/pay', [\App\Http\Controllers\Admin\Payroll\PayrollPaymentController::class, 'pay'])->name('payroll.pay');
+
     // الوظائف
     Route::post('/job-titles', [\App\Http\Controllers\Admin\JobTitleController::class, 'store'])->name('jobTitles.store');
     Route::put('/job-titles/{id}', [\App\Http\Controllers\Admin\JobTitleController::class, 'update'])->name('jobTitles.update');

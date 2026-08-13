@@ -45,6 +45,14 @@ class EmployeeController extends Controller
              */
             'pin' => ['required_without:email', 'nullable', 'digits:4', new \App\Rules\StrongPin],
             /*
+             * الراتب وبدلاته — مصدرُ مسيرة الشهر.
+             *
+             * بلا حقلٍ يُدخلان منه كانت المسيرة تُفتح على أصفار: يفتحها
+             * التاجر فيجد كلّ موظّفيه بلا راتب ولا يعرف من أين يُدخلها.
+             */
+            'basic_salary' => ['nullable', 'numeric', 'min:0'],
+            'allowances' => ['nullable', 'numeric', 'min:0'],
+            /*
              * الصلاحيات إلزامية: قسمٌ واحد على الأقل. موظفٌ بلا صلاحية حسابٌ
              * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
              */
@@ -82,6 +90,9 @@ class EmployeeController extends Controller
             'avatar' => Demo::image('emp' . uniqid()),
             'password' => Hash::make($data['password'] ?? 'password'),
             'pin' => ! empty($data['pin']) ? $data['pin'] : null,
+            // العمودان لا يقبلان NULL، والحقل الفارغ يعني صفرًا لا فراغًا
+            'basic_salary' => $data['basic_salary'] ?? 0,
+            'allowances' => $data['allowances'] ?? 0,
             /*
              * الوظيفة تُقترح ولا تُلزم: صاحب النشاط يحدّد ما يفتحه الموظف منذ
              * لحظة إضافته. NULL تعني «اتبع الوظيفة» فتتغيّر صلاحياته معها،
@@ -162,6 +173,9 @@ class EmployeeController extends Controller
                 'status' => $employee->status,
                 'monthly_target' => $employee->monthly_target,
                 'commission_rate' => $employee->commission_rate,
+                // منهما تُملأ مسيرة الشهر — وحقلٌ لا يُرسل يُقرأ فارغًا فيُمسح عند الحفظ
+                'basic_salary' => $employee->basic_salary,
+                'allowances' => $employee->allowances,
                 // null تعني «اتبع الدور»؛ مصفوفة تعني قائمة يدوية
                 'permissions' => $employee->permissions,
                 'role_permissions' => collect(\App\Support\Permissions::sections())
@@ -202,6 +216,14 @@ class EmployeeController extends Controller
             'status' => ['nullable', 'boolean'],
             'monthly_target' => ['nullable', 'numeric', 'min:0'],
             'commission_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            /*
+             * الراتب وبدلاته — مصدرُ مسيرة الشهر.
+             *
+             * بلا حقلٍ يُدخلان منه كانت المسيرة تُفتح على أصفار: يفتحها
+             * التاجر فيجد كلّ موظّفيه بلا راتب ولا يعرف من أين يُدخلها.
+             */
+            'basic_salary' => ['nullable', 'numeric', 'min:0'],
+            'allowances' => ['nullable', 'numeric', 'min:0'],
             /*
              * الصلاحيات إلزامية: قسمٌ واحد على الأقل. موظفٌ بلا صلاحية حسابٌ
              * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
@@ -261,7 +283,7 @@ class EmployeeController extends Controller
         }
 
         // الأرقام الفارغة تعني «بلا هدف/عمولة» لا صفرًا مفروضًا
-        foreach (['monthly_target', 'commission_rate'] as $numeric) {
+        foreach (['monthly_target', 'commission_rate', 'basic_salary', 'allowances'] as $numeric) {
             if (array_key_exists($numeric, $data)) {
                 $data[$numeric] = $data[$numeric] === null || $data[$numeric] === '' ? 0 : $data[$numeric];
             }

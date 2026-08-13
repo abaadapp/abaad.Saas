@@ -229,6 +229,8 @@ class Permissions
         'branches' => 'branch',
         'addons' => 'products',
         'jobTitles' => 'employees',
+        // مسيرة الرواتب وصرفها من قسم «الرواتب والموظفين» — لا مفتاح ثالث لها
+        'payroll' => 'employees',
         'coupons' => 'marketing',
         'bank' => 'finance',
         'expenseTypes' => 'expenses',

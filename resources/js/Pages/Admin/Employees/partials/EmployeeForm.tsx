@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { Check, KeyRound, Plus, ShieldCheck, Target, UserRound } from 'lucide-react';
+import { Check, KeyRound, Plus, ShieldCheck, Target, UserRound, Wallet } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
@@ -33,6 +33,8 @@ export interface EmployeeFormValues {
     status?: string;
     monthly_target?: number | string | null;
     commission_rate?: number | string | null;
+    basic_salary?: number | string | null;
+    allowances?: number | string | null;
     /** null تعني «اتبع الدور»؛ مصفوفة تعني قائمة يدوية */
     permissions?: string[] | null;
     /** ما يمنحه الدور — يُعرض حين تكون الصلاحيات موروثة */
@@ -132,6 +134,8 @@ export default function EmployeeForm({
         // صفرٌ يعني «بلا هدف» — يُعرض فارغًا كما يقول التلميح، لا رقمًا مضبوطًا
         monthly_target: Number(employee?.monthly_target ?? 0) ? String(employee!.monthly_target) : '',
         commission_rate: Number(employee?.commission_rate ?? 0) ? String(employee!.commission_rate) : '',
+        basic_salary: Number(employee?.basic_salary ?? 0) ? String(employee!.basic_salary) : '',
+        allowances: Number(employee?.allowances ?? 0) ? String(employee!.allowances) : '',
         // علمٌ يُرسل دائمًا: مصفوفة فارغة تسقط من طلب HTTP، فبدونه لا يميّز
         // الخادم «لم تُرسل الصلاحيات» من «أُرسلت فارغة» — ولا يستطيع رفضها
         manual_permissions: true,
@@ -377,6 +381,38 @@ export default function EmployeeForm({
                             </div>
                         </Field>
                     )}
+                </div>
+            </Section>
+
+            {/*
+                الراتب قبل الهدف: هو ما يُدفع كلّ شهر، والهدف تقديرٌ يُقاس عليه.
+                ومنه تُملأ مسيرة الرواتب — فبلا إدخاله تُفتح المسيرة على أصفار.
+            */}
+            <Section
+                icon={Wallet}
+                title="الراتب"
+                hint="منه تُملأ مسيرة رواتب الشهر"
+            >
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Field label="الراتب الأساسي" hint="اتركه فارغًا لمن لا راتب له" error={form.errors.basic_salary}>
+                        <Input
+                            inputMode="decimal"
+                            dir="ltr"
+                            value={form.data.basic_salary}
+                            onChange={(e) => form.setData('basic_salary', e.target.value)}
+                            placeholder="0"
+                        />
+                    </Field>
+
+                    <Field label="البدلات" hint="سكن، مواصلات، وما يجري مجراها" error={form.errors.allowances}>
+                        <Input
+                            inputMode="decimal"
+                            dir="ltr"
+                            value={form.data.allowances}
+                            onChange={(e) => form.setData('allowances', e.target.value)}
+                            placeholder="0"
+                        />
+                    </Field>
                 </div>
             </Section>
 

@@ -160,6 +160,19 @@ export const REPORTS_TABS: SectionTab[] = [
 ];
 
 /*
+ * قسم الرواتب والموظفين.
+ *
+ * المسيرة والصرف شاشتان لا واحدة: الأولى تُحضّر وتعتمد، والثانية تُخرج المال.
+ * ودمجُهما يجعل زرَّ الاعتماد وزرَّ الصرف متجاورين على شاشةٍ واحدة، فيُضغط
+ * الثاني قبل مراجعة الأوّل.
+ */
+export const EMPLOYEE_TABS: SectionTab[] = [
+    { label: 'الموظفين', routeName: 'admin.employees.index', section: 'employees' },
+    { label: 'مسيرة الرواتب', routeName: 'admin.payroll.index', section: 'employees' },
+    { label: 'صرف الرواتب', routeName: 'admin.payroll.payments', section: 'employees' },
+];
+
+/*
  * قسم المشتريات — القائمة ثمّ السندات ثمّ الأوامر.
  *
  * الترتيب يتبع ما يُسأل عنه أكثر: «ماذا اشتريتُ؟» أوّلًا، ثمّ «ماذا عليّ؟»،

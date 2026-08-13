@@ -1,0 +1,197 @@
+<?php
+
+namespace App\Http\Controllers\Admin\Inventory;
+
+use App\Http\Controllers\Controller;
+use App\Models\BranchStock;
+use App\Models\InventoryMovement;
+use App\Models\Product;
+use App\Models\StockAdjustment;
+use App\Support\Demo;
+use App\Support\Ledger;
+use App\Support\Pagination;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+use RuntimeException;
+
+/**
+ * تعديلات المخزون — تلفٌ وفقدٌ وتصحيحُ عدّ.
+ *
+ * التعديل ليس تصحيحًا للرقم وحده: قطعةٌ تلفت مالٌ ضاع، فتنقص من المخزون
+ * وتُقيَّد خسارةً في الدفتر. والاكتفاء بتنقيص العدد يُبقي قيمة المخزون في
+ * الميزانية كما كانت — فيظهر المتجر أغنى ممّا هو بقيمة كلّ ما تلف عنده.
+ *
+ * والتكلفة تُنسخ لحظةَ التعديل: تكلفة المنتج متوسّطٌ يتحرّك مع كل شراء،
+ * فقراءتها اليوم عن تلفٍ وقع قبل سنة تُعطي رقمًا لم يقع.
+ */
+class StockAdjustmentController extends Controller
+{
+    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+
+    public function index(Request $request): Response
+    {
+        $bid = $this->bid();
+        Ledger::ensureSystemAccounts($bid);
+
+        $q = StockAdjustment::where('business_id', $bid)->with(['product', 'creator', 'branch']);
+
+        if ($s = trim((string) $request->query('q'))) {
+            $q->where(fn ($w) => $w->where('number', 'like', "%{$s}%")
+                ->orWhere('notes', 'like', "%{$s}%")
+                ->orWhereHas('product', fn ($p) => $p->where('name', 'like', "%{$s}%")));
+        }
+        if ($reason = $request->query('reason')) {
+            $q->where('reason', $reason);
+        }
+
+        $adjustments = $q->orderByDesc('adjusted_at')->orderByDesc('id')
+            ->paginate((int) $request->query('per_page', 20))->withQueryString();
+
+        $all = StockAdjustment::where('business_id', $bid)->get();
+
+        return Inertia::render('Admin/Inventory/Adjustments', [
+            'adjustments' => collect($adjustments->items())->map(fn ($a) => [
+                'id' => $a->id,
+                'number' => $a->number,
+                'product' => $a->product?->name ?? '—',
+                'sku' => $a->product?->sku,
+                'branch' => $a->branch?->name,
+                'delta' => (float) $a->quantity_delta,
+                'cost' => (float) $a->cost_at_time,
+                'value' => $a->valueImpact(),
+                'reason' => $a->reason,
+                'notes' => $a->notes,
+                'author' => $a->creator?->name,
+                'at' => optional($a->adjusted_at)->format('Y-m-d'),
+            ])->all(),
+            'pagination' => Pagination::meta($adjustments),
+            'filters' => $request->only('q', 'reason'),
+            'reasons' => StockAdjustment::REASONS,
+            'products' => Product::where('business_id', $bid)->orderBy('name')
+                ->get(['id', 'name', 'sku', 'quantity', 'cost'])
+                ->map(fn ($p) => [
+                    'value' => $p->id,
+                    'label' => $p->sku ? $p->name.' — '.$p->sku : $p->name,
+                    'quantity' => (int) $p->quantity,
+                    'cost' => (float) $p->cost,
+                ])->all(),
+            'summary' => [
+                'count' => $all->count(),
+                // الخسارة موجبةٌ في العرض: «خسرتَ ٤٠» أوضح من «‏−٤٠»
+                'loss' => round(abs($all->where('quantity_delta', '<', 0)->sum(fn ($a) => $a->valueImpact())), 3),
+                'gain' => round($all->where('quantity_delta', '>', 0)->sum(fn ($a) => $a->valueImpact()), 3),
+            ],
+            'today' => now()->format('Y-m-d'),
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $bid = $this->bid();
+
+        $data = $request->validate([
+            'product_id' => ['required', Rule::exists('products', 'id')->where('business_id', $bid)],
+            'quantity_delta' => ['required', 'numeric', 'not_in:0'],
+            'reason' => ['required', Rule::in(StockAdjustment::REASONS)],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'adjusted_at' => ['required', 'date'],
+        ], [
+            'quantity_delta.not_in' => __('تعديلٌ بصفرٍ لا يُغيّر شيئًا'),
+        ]);
+
+        $product = Product::where('business_id', $bid)->findOrFail($data['product_id']);
+        $delta = round((float) $data['quantity_delta'], 3);
+
+        /*
+         * الكمية لا تنزل تحت الصفر.
+         *
+         * رصيدٌ سالب يُفسد كلّ ما يُبنى عليه: قيمة المخزون تصير سالبة،
+         * و«المنخفض» يمتلئ بأصنافٍ لا وجود لها، ونقطة البيع تبيع ما ليس عندها.
+         */
+        if ($delta < 0 && abs($delta) > (float) $product->quantity) {
+            return back()->withInput()->withErrors([
+                'quantity_delta' => __('المتوفّر :n فقط', ['n' => (int) $product->quantity]),
+            ]);
+        }
+
+        $cost = round((float) $product->cost, 3);
+        $value = round(abs($delta) * $cost, 3);
+
+        try {
+            DB::transaction(function () use ($bid, $product, $delta, $cost, $value, $data) {
+                $adjustment = StockAdjustment::create([
+                    'business_id' => $bid,
+                    'branch_id' => Demo::currentBranchId(),
+                    'product_id' => $product->id,
+                    'number' => StockAdjustment::nextNumber($bid),
+                    'quantity_delta' => $delta,
+                    // تُنسخ لحظتها: المتوسّط يتحرّك مع كل شراء
+                    'cost_at_time' => $cost,
+                    'reason' => $data['reason'],
+                    'notes' => $data['notes'] ?? null,
+                    'created_by' => auth()->id(),
+                    'adjusted_at' => $data['adjusted_at'],
+                ]);
+
+                $product->increment('quantity', $delta);
+
+                if ($branchId = Demo::currentBranchId()) {
+                    BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
+                    BranchStock::adjust($bid, $branchId, $product->id, (int) $delta);
+                }
+
+                InventoryMovement::create([
+                    'business_id' => $bid,
+                    'branch_id' => Demo::currentBranchId(),
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'sku' => $product->sku,
+                    'type' => $delta > 0 ? 'إضافة كمية' : 'خصم كمية',
+                    'quantity' => ($delta > 0 ? '+' : '').$delta,
+                    'employee_name' => auth()->user()->name,
+                ]);
+
+                /*
+                 * القيد يتبع الحركة — إن كان لها قيمة.
+                 *
+                 * النقص خسارة: المخزون يُنقص ومصروفٌ يُقيَّد. والزيادة عكسها:
+                 * بضاعةٌ وُجدت لم تكن مسجَّلة، فتزيد الأصول ويقلّ ما حُمّل على
+                 * المصروف. ومنتجٌ بلا تكلفة لا قيد له — لا مبلغ يُقيَّد.
+                 */
+                if ($value > 0) {
+                    Ledger::post(
+                        $bid,
+                        __('تعديل مخزون: ').$data['reason'].' — '.$product->name,
+                        $delta < 0
+                            ? [
+                                ['account' => 'other_expenses', 'debit' => $value, 'memo' => $product->name],
+                                ['account' => 'inventory', 'credit' => $value],
+                            ]
+                            : [
+                                ['account' => 'inventory', 'debit' => $value, 'memo' => $product->name],
+                                ['account' => 'other_expenses', 'credit' => $value],
+                            ],
+                        \Illuminate\Support\Carbon::parse($data['adjusted_at']),
+                        'تعديل مخزون',
+                        Demo::currentBranchId(),
+                        auth()->id(),
+                        $adjustment,
+                    );
+                }
+            });
+        } catch (RuntimeException $e) {
+            return back()->withInput()->withErrors(['quantity_delta' => $e->getMessage()]);
+        }
+
+        \App\Support\Activity::log(
+            'created',
+            'عدّل مخزون '.$product->name.' بمقدار '.$delta.' — '.$data['reason'],
+            ['subject_id' => $product->id]
+        );
+
+        return back()->with('toast', ['msg' => __('سُجّل التعديل'), 'type' => 'success']);
+    }
+}

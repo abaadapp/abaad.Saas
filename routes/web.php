@@ -341,6 +341,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/inventory/transfer', [InventoryController::class, 'transfer'])->name('inventory.transfer');
     Route::post('/inventory/transfer', [InventoryController::class, 'applyTransfer'])->name('inventory.transfer.apply');
     Route::get('/inventory/movements', [\App\Http\Controllers\Admin\PageController::class, 'inventoryMovements'])->name('inventory.movements');
+
+    /*
+     * تعديلات المخزون وإشعارات التسليم.
+     *
+     * التعديل يُنقص المخزون ويُقيّد الخسارة معًا: الاكتفاء بتنقيص العدد يُبقي
+     * قيمة المخزون في الميزانية كما كانت، فيظهر المتجر أغنى ممّا هو بقيمة كلّ
+     * ما تلف عنده. والإشعار مستند حركةٍ لا مال — ولا يمسّ المخزون إن كان
+     * مربوطًا بطلبٍ أنقصه يوم البيع.
+     */
+    Route::get('/inventory/adjustments', [\App\Http\Controllers\Admin\Inventory\StockAdjustmentController::class, 'index'])->name('inventory.adjustments');
+    Route::post('/inventory/adjustments', [\App\Http\Controllers\Admin\Inventory\StockAdjustmentController::class, 'store'])->name('inventory.adjustments.store');
+    Route::get('/inventory/deliveries', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'index'])->name('inventory.deliveries');
+    Route::post('/inventory/deliveries', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'store'])->name('inventory.deliveries.store');
+    Route::post('/inventory/deliveries/{id}/deliver', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'deliver'])->name('inventory.deliveries.deliver');
+    Route::post('/inventory/deliveries/{id}/cancel', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'cancel'])->name('inventory.deliveries.cancel');
+    Route::delete('/inventory/deliveries/{id}', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'destroy'])->name('inventory.deliveries.destroy');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
     // المورّدون

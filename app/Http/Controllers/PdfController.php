@@ -217,7 +217,7 @@ class PdfController extends Controller
         $bid = auth()->user()->business_id ?? Demo::bid();
         $customer = \App\Models\Customer::where('business_id', $bid)->findOrFail($id);
 
-        $orders = Order::where('business_id', $bid)->where('customer_id', $customer->id)->where('is_held', false)
+        $orders = Order::where('business_id', $bid)->where('customer_id', $customer->id)->sold()
             ->orderBy('ordered_at')->get();
         $returns = collect();
 

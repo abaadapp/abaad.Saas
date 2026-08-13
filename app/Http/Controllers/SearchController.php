@@ -40,7 +40,7 @@ class SearchController extends Controller
                 'url' => route('admin.products.show', $p->id),
             ]) : collect();
 
-        $orders = $user->allows('orders') ? Order::where('business_id', $bid)->where('is_held', false)
+        $orders = $user->allows('orders') ? Order::where('business_id', $bid)->sold()
             ->where(fn ($w) => $w->where('number', 'like', $like)->orWhere('customer_name', 'like', $like))
             ->orderByDesc('id')->limit(5)->get()->map(fn ($o) => [
                 'label' => $o->number, 'meta' => $o->customer_name ?? __('عميل نقدي'),

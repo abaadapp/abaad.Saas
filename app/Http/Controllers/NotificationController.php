@@ -16,7 +16,7 @@ class NotificationController extends Controller
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
 
-        $latest = Order::where('business_id', $bid)->where('is_held', false)
+        $latest = Order::where('business_id', $bid)->sold()
             ->when(Demo::currentBranchId(), fn ($q) => $q->where('branch_id', Demo::currentBranchId()))
             ->orderByDesc('id')->first();
 

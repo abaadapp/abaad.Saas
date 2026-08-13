@@ -21,7 +21,7 @@ class BackfillSalesTransactions extends Command
     {
         $created = 0;
 
-        Order::where('is_held', false)
+        Order::sold()
             ->when($this->option('business'), fn ($q) => $q->where('business_id', $this->option('business')))
             ->whereNotIn('id', Transaction::whereNotNull('order_id')->pluck('order_id'))
             ->orderBy('id')

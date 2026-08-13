@@ -17,10 +17,14 @@ interface Props {
     orders: Order[];
     pagination: ServerPagination;
     filters: Record<string, string | null>;
+    totalAmount: number;
+    totalCount: number;
+    cancelledCount: number;
 }
 
 export default function OrdersIndex() {
-    const { orders, pagination, filters, context } = usePage<PageProps<Props>>().props;
+    const { orders, pagination, filters, totalAmount, totalCount, cancelledCount, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
 
@@ -77,7 +81,22 @@ export default function OrdersIndex() {
                 { label: 'تحويل بنكي', value: 'تحويل بنكي' },
             ],
         },
+        {
+            // الملغى كان يجلس بين المكتمل بلا تمييز ولا فرز
+            label: 'كل الحالات',
+            param: 'status',
+            options: [
+                { label: 'مكتمل', value: 'مكتمل' },
+                { label: 'قيد التجهيز', value: 'قيد التجهيز' },
+                { label: 'جاهز', value: 'جاهز' },
+                { label: 'خرج للتوصيل', value: 'خرج للتوصيل' },
+                { label: 'ملغي', value: 'ملغي' },
+            ],
+        },
         { label: 'التاريخ', type: 'date', param: 'date' },
+        // مدًى لا يومًا واحدًا: مبيعات أسبوعٍ كانت تُفتح سبع مرّات
+        { label: 'من تاريخ', type: 'date', param: 'from' },
+        { label: 'إلى تاريخ', type: 'date', param: 'to' },
     ];
 
     return (
@@ -108,12 +127,26 @@ export default function OrdersIndex() {
                     rows={orders}
                     columns={columns}
                     rowKey={(o) => o.id}
-                    searchPlaceholder="ابحث برقم الطلب أو العميل…"
+                    searchPlaceholder="ابحث برقم الطلب أو العميل أو الموظف…"
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا توجد طلبات بعد"
                     server={{ pagination, params: filters }}
                 />
+                {/*
+                    مجموع ما رُشّح لا مجموع الصفحة — والمبلغ من المُباع وحده،
+                    والملغى يُذكر صراحةً كي لا يُقرأ الفرقُ خطأً في الجمع.
+                */}
+                <div className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm text-[#6b7280]">
+                    {t('الطلبات')}: {number(totalCount)} — {t('المبيعات')}:{' '}
+                    <span className="font-semibold text-[#111]">{money(totalAmount, currency)}</span>
+                    {cancelledCount > 0 && (
+                        <span className="text-[#9ca3af]">
+                            {' '}
+                            ({t('منها :n ملغاة لا تُحسب', { n: String(cancelledCount) })})
+                        </span>
+                    )}
+                </div>
             </Card>
         </AdminLayout>
     );

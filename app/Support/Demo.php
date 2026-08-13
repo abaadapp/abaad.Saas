@@ -285,7 +285,7 @@ class Demo
     {
         return \App\Models\Branch::where('business_id', self::bid())
             ->withCount([
-                'orders as orders_count' => fn ($q) => $q->where('is_held', false),
+                'orders as orders_count' => fn ($q) => $q->sold(),
                 'devices as devices_count',
             ])
             ->orderBy('id')->get()
@@ -431,7 +431,7 @@ class Demo
                 'orders' => (int) $b->orders_count,
                 'status' => $b->status,
                 'plan' => $b->plan?->name ?? '—',
-                'sales' => (float) Order::where('business_id', $b->id)->where('is_held', false)->sum('total'),
+                'sales' => (float) Order::where('business_id', $b->id)->sold()->sum('total'),
             ])->all();
     }
 
@@ -544,7 +544,7 @@ class Demo
         $start = $date->copy()->startOfDay();
         $end = $date->copy()->endOfDay();
 
-        $orders = fn () => Order::where('business_id', $bid)->where('is_held', false)
+        $orders = fn () => Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$start, $end]);
         $sales = (float) $orders()->sum('total');
         $count = $orders()->count();
@@ -552,12 +552,12 @@ class Demo
         $newCustomers = Customer::where('business_id', $bid)->whereBetween('created_at', [$start, $end])->count();
         $expenses = (float) Expense::where('business_id', $bid)->paid()->whereBetween('spent_at', [$start, $end])->sum('amount');
 
-        $top = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $bid)->where('is_held', false)
+        $top = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$start, $end]))
             ->selectRaw('name, SUM(quantity) as q')->groupBy('name')->orderByDesc('q')->first();
 
         // مقارنة بأمس (لاتجاه المبيعات)
-        $prevSales = (float) Order::where('business_id', $bid)->where('is_held', false)
+        $prevSales = (float) Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$start->copy()->subDay(), $end->copy()->subDay()])->sum('total');
 
         return [
@@ -580,7 +580,7 @@ class Demo
         $mStart = now()->startOfMonth();
         $lmStart = now()->subMonthNoOverflow()->startOfMonth();
 
-        $orders = fn () => Order::where('business_id', $bid)->where('is_held', false)
+        $orders = fn () => Order::where('business_id', $bid)->sold()
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()));
 
         // المبيعات: اليوم/أمس، والشهر/الشهر السابق (بيانات حقيقية بلا تلفيق)
@@ -716,7 +716,7 @@ class Demo
 
     public static function orders(): array
     {
-        return Order::where('business_id', self::bid())->where('is_held', false)
+        return Order::where('business_id', self::bid())->sold()
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
             ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
                 'id' => $o->number,
@@ -805,7 +805,7 @@ class Demo
     /** طلبات عميل محدّد (سجل مشترياته) */
     public static function customerOrders($id): array
     {
-        return Order::where('business_id', self::bid())->where('customer_id', $id)->where('is_held', false)
+        return Order::where('business_id', self::bid())->where('customer_id', $id)->sold()
             ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
                 'id' => $o->number,
                 'items_count' => $o->items_count,
@@ -821,7 +821,7 @@ class Demo
         $bid = self::bid();
 
         // مبيعات كل موظف خلال الشهر الحالي (من الطلبات المرتبطة به)
-        $monthly = Order::where('business_id', $bid)->where('is_held', false)
+        $monthly = Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [now()->startOfMonth(), now()->endOfMonth()])
             ->whereNotNull('user_id')
             ->selectRaw('user_id, SUM(total) as s')->groupBy('user_id')->pluck('s', 'user_id');
@@ -986,7 +986,7 @@ class Demo
          * شهرين» — وهي القائمة التي صُنعت الصفحة لأجلها.
          */
         $sales = Order::where('business_id', $bid)
-            ->where('is_held', false)
+            ->sold()
             ->whereNotNull('customer_id')
             ->selectRaw('customer_id, MAX(ordered_at) as last_at, SUM(total) as spent')
             ->groupBy('customer_id')
@@ -1047,7 +1047,7 @@ class Demo
             default => [$now->copy()->startOfQuarter(), $now->copy()->endOfQuarter(), __('هذا الربع')],
         };
 
-        $orders = Order::where('business_id', $bid)->where('is_held', false)
+        $orders = Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$start, $end]);
         $outputVat = (float) (clone $orders)->sum('tax');
         $taxableSales = (float) (clone $orders)->sum('subtotal');
@@ -1065,8 +1065,8 @@ class Demo
         while ($cursor <= $end) {
             $mStart = $cursor->copy()->startOfMonth();
             $mEnd = $cursor->copy()->endOfMonth();
-            $mOut = (float) Order::where('business_id', $bid)->where('is_held', false)->whereBetween('ordered_at', [$mStart, $mEnd])->sum('tax');
-            $mSales = (float) Order::where('business_id', $bid)->where('is_held', false)->whereBetween('ordered_at', [$mStart, $mEnd])->sum('subtotal');
+            $mOut = (float) Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$mStart, $mEnd])->sum('tax');
+            $mSales = (float) Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$mStart, $mEnd])->sum('subtotal');
             $months[] = ['label' => $cursor->translatedFormat('F Y'), 'taxable' => round($mSales, 3), 'vat' => round($mOut, 3)];
             $cursor->addMonthNoOverflow();
         }
@@ -1097,7 +1097,7 @@ class Demo
         $start = self::rangeStart(self::range($range));
 
         // التكلفة من لقطة البيع — انظر التعليق في categoryProfitability
-        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false)
+        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('product_id, name, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
             ->groupBy('product_id', 'name')->get()->map(function ($r) use ($costs) {
@@ -1137,7 +1137,7 @@ class Demo
          * للبيعات التي سبقت اللقطة (صفرًا) فلا تنقلب أرقام ما مضى.
          */
         $agg = [];
-        $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false)
+        $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
             ->groupBy('product_id')->get();
@@ -1183,7 +1183,7 @@ class Demo
         $costs = Product::where('business_id', $bid)->pluck('cost', 'id');
         $cogs = 0.0;
         OrderItem::whereHas('order', function ($q) use ($bid, $start) {
-            $q->where('business_id', $bid)->where('is_held', false)
+            $q->where('business_id', $bid)->sold()
                 ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start));
         })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
             ->groupBy('product_id')->get()
@@ -1570,8 +1570,7 @@ class Demo
         };
 
         $rows = Order::where('business_id', $bid)
-            ->where('is_held', false)
-            ->where('status', '!=', 'ملغي')
+            ->sold()
             ->whereBetween('ordered_at', [$start, $cutoff])
             ->selectRaw("{$format} as bucket, SUM(total) as s, COUNT(*) as c")
             ->groupBy('bucket')
@@ -1652,8 +1651,7 @@ class Demo
         foreach (self::yearMonths() as $m) {
             // اسم الشهر بلغة الواجهة — SetLocale يضبط لغة Carbon لكل طلب
             $labels[] = self::monthLabel($m);
-            $data[] = round((float) Order::where('business_id', $bid)->where('is_held', false)
-                ->where('status', '!=', 'ملغي')
+            $data[] = round((float) Order::where('business_id', $bid)->sold()
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
         }
         return ['labels' => $labels, 'data' => $data];
@@ -1675,7 +1673,7 @@ class Demo
         foreach (self::yearMonths() as $m) {
             $labels[] = self::monthLabel($m);
             $data[] = $name === null ? 0 : round((float) Order::where('business_id', $bid)
-                ->where('is_held', false)->where('status', '!=', 'ملغي')
+                ->sold()
                 ->where('employee_name', $name)
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)
                 ->sum('total'), 3);
@@ -1704,7 +1702,7 @@ class Demo
     public static function paymentDistribution(string $range = 'month'): array
     {
         $start = self::rangeStart(self::range($range));
-        $rows = Order::where('business_id', self::bid())->where('is_held', false)
+        $rows = Order::where('business_id', self::bid())->sold()
             ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->selectRaw('payment_method, SUM(total) as s')->groupBy('payment_method')->pluck('s', 'payment_method');
         return [
@@ -1719,7 +1717,7 @@ class Demo
         $bid = self::bid();
         $start = self::rangeStart(self::range($range));
 
-        return OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false)
+        return OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('name, SUM(quantity) as q, SUM(total) as t')
             ->groupBy('name')->orderByDesc('q')->limit(5)->get()
@@ -1733,7 +1731,7 @@ class Demo
         $total = Customer::where('business_id', $bid)->count();
         $newThisMonth = Customer::where('business_id', $bid)
             ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->count();
-        $totalPurchases = (float) Order::where('business_id', $bid)->where('is_held', false)
+        $totalPurchases = (float) Order::where('business_id', $bid)->sold()
             ->whereNotNull('customer_id')->sum('total');
 
         return [
@@ -1748,13 +1746,13 @@ class Demo
     public static function productSold(int $productId): int
     {
         return (int) OrderItem::where('product_id', $productId)
-            ->whereHas('order', fn ($q) => $q->where('is_held', false))->sum('quantity');
+            ->whereHas('order', fn ($q) => $q->sold())->sum('quantity');
     }
 
     /** عدد طلبات موظف معيّن (حقيقي) */
     public static function employeeOrderCount(int $userId): int
     {
-        return (int) Order::where('user_id', $userId)->where('is_held', false)->count();
+        return (int) Order::where('user_id', $userId)->sold()->count();
     }
 
     /** أعداد نشاط معيّن للوحة المشرف (حقيقية) */
@@ -1763,7 +1761,7 @@ class Demo
         return [
             'employees' => User::where('business_id', $businessId)->where('role', '!=', 'super_admin')->count(),
             'products' => Product::where('business_id', $businessId)->count(),
-            'orders' => Order::where('business_id', $businessId)->where('is_held', false)->count(),
+            'orders' => Order::where('business_id', $businessId)->sold()->count(),
         ];
     }
 
@@ -1830,7 +1828,7 @@ class Demo
     /** آخر طلبات الشركة */
     public static function businessOrders(int $businessId, int $limit = 8): array
     {
-        return Order::where('business_id', $businessId)->where('is_held', false)
+        return Order::where('business_id', $businessId)->sold()
             ->withCount('items')->orderByDesc('ordered_at')->limit($limit)->get()
             ->map(fn ($o) => [
                 'id' => $o->number,
@@ -1846,7 +1844,7 @@ class Demo
     /** أرقام «نظرة عامة» للشركة — كانت ثلاثة أرقام مكتوبة يدويًا في القالب */
     public static function businessOverview(int $businessId): array
     {
-        $q = Order::where('business_id', $businessId)->where('is_held', false);
+        $q = Order::where('business_id', $businessId)->sold();
         $count = (clone $q)->count();
         $sales = (float) (clone $q)->sum('total');
 
@@ -1864,7 +1862,7 @@ class Demo
         $data = [];
         foreach (self::yearMonths() as $m) {
             $labels[] = self::monthLabel($m);
-            $data[] = round((float) Order::where('business_id', $businessId)->where('is_held', false)
+            $data[] = round((float) Order::where('business_id', $businessId)->sold()
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
         }
 
@@ -1916,7 +1914,7 @@ class Demo
          * الآن لا حصيلةُ فترة، و«منتجات تحت حدّ التنبيه» كذلك.
          */
         $start = self::rangeStart(self::range($range));
-        $ordersQ = Order::where('business_id', $bid)->where('is_held', false)
+        $ordersQ = Order::where('business_id', $bid)->sold()
             ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start));
         $sales = (float) (clone $ordersQ)->sum('total');
         $tax = (float) (clone $ordersQ)->sum('tax');
@@ -1941,7 +1939,7 @@ class Demo
     {
         $bid = self::bid();
         $start = self::rangeStart(self::range($range));
-        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->where('is_held', false)
+        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('name, SUM(quantity) as sold, SUM(total) as revenue')
             ->groupBy('name')->orderByDesc('revenue')->limit($limit)->get();
@@ -1967,7 +1965,7 @@ class Demo
         $bid = self::bid();
         $target = (float) (\App\Models\Setting::where('business_id', $bid)->where('key', 'monthly_target')->value('value') ?? 0);
         $now = now();
-        $achieved = (float) Order::where('business_id', $bid)->where('is_held', false)
+        $achieved = (float) Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()])->sum('total');
         $daysInMonth = $now->daysInMonth;
         $dayNow = max(1, $now->day);
@@ -1997,7 +1995,7 @@ class Demo
         $alerts = [];
 
         // تراجع المبيعات: هذا الشهر مقابل السابق
-        $sum = fn ($start, $end) => (float) Order::where('business_id', $bid)->where('is_held', false)
+        $sum = fn ($start, $end) => (float) Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$start, $end])->sum('total');
         $cur = $sum(now()->startOfMonth(), now()->endOfMonth());
         $prev = $sum(now()->subMonthNoOverflow()->startOfMonth(), now()->subMonthNoOverflow()->endOfMonth());
@@ -2033,7 +2031,7 @@ class Demo
         $range = self::range($range);
         $now = now();
         $metric = function ($start, $end) use ($bid) {
-            $q = Order::where('business_id', $bid)->where('is_held', false)->whereBetween('ordered_at', [$start, $end]);
+            $q = Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$start, $end]);
             $sales = (float) (clone $q)->sum('total');
             $orders = (clone $q)->count();
 
@@ -2102,7 +2100,7 @@ class Demo
         $labels = [__('الأحد'), __('الاثنين'), __('الثلاثاء'), __('الأربعاء'), __('الخميس'), __('الجمعة'), __('السبت')];
         $expr = self::datePartSql('dow', 'ordered_at');
         $start = self::rangeStart(self::range($range));
-        $rows = Order::where('business_id', self::bid())->where('is_held', false)
+        $rows = Order::where('business_id', self::bid())->sold()
             ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->selectRaw("{$expr} as w, SUM(total) as s")->groupBy('w')->pluck('s', 'w');
         $data = [];
@@ -2118,7 +2116,7 @@ class Demo
     {
         $expr = self::datePartSql('hour', 'ordered_at');
         $start = self::rangeStart(self::range($range));
-        $rows = Order::where('business_id', self::bid())->where('is_held', false)
+        $rows = Order::where('business_id', self::bid())->sold()
             ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->selectRaw("{$expr} as h, SUM(total) as s")->groupBy('h')->pluck('s', 'h');
         $labels = [];
@@ -2136,7 +2134,7 @@ class Demo
     {
         $start = self::rangeStart(self::range($range));
 
-        return Order::where('business_id', self::bid())->where('is_held', false)->whereNotNull('customer_name')
+        return Order::where('business_id', self::bid())->sold()->whereNotNull('customer_name')
             ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->selectRaw('customer_name, SUM(total) as t, COUNT(*) as c')
             ->groupBy('customer_name')->orderByDesc('t')->limit($limit)->get()
@@ -2155,7 +2153,9 @@ class Demo
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
             ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
+            // بيدٍ لأنه انضمام — انظر Order::scopeSold
             ->where('orders.business_id', self::bid())->where('orders.is_held', false)
+            ->where('orders.status', '!=', \App\Models\Order::CANCELLED)
             ->when($start, fn ($q) => $q->where('orders.ordered_at', '>=', $start))
             // علامة تنصيص مفردة لا مزدوجة: SQLite يتساهل ويعدّ "..." نصًّا،
             // أما PostgreSQL فيعدّها اسم عمود ويفشل بـ«column does not exist».
@@ -2294,7 +2294,7 @@ class Demo
         $phones = \App\Models\Customer::where('business_id', $bid)
             ->whereNotNull('phone')->pluck('phone', 'name');
 
-        $query = Order::where('business_id', $bid)->where('is_held', false)
+        $query = Order::where('business_id', $bid)->sold()
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
             // وردية بعينها: شاشة تقفيل الصندوق تسأل عن درجٍ واحد لا عن آخر ٣٠ بيعة
             ->when($shiftId, fn ($q) => $q->where('shift_id', $shiftId))
@@ -2458,7 +2458,7 @@ class Demo
             ]);
         }
 
-        $pending = Order::where('business_id', $bid)->where('is_held', false)
+        $pending = Order::where('business_id', $bid)->sold()
             ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit($limit)->get();
         foreach ($pending as $o) {
             $add('order-' . $o->number, [

@@ -2525,5 +2525,9 @@
     "«غير مدفوع» التزامٌ عليك لا نقدٌ خرج — لا يُخصم من الربح حتى تسدّده": "“Unpaid” is a liability, not money out — it is not deducted from profit until you pay it",
     ":n فاتورة تجاوزت استحقاقها": ":n bills are past due",
     ":n فاتورة تستحقّ خلال أسبوع": ":n bills are due within a week",
-    "عرضها": "Show them"
+    "عرضها": "Show them",
+    "من تاريخ": "From date",
+    "إلى تاريخ": "To date",
+    "ابحث برقم الطلب أو العميل أو الموظف…": "Search by order number, customer or cashier…",
+    "منها :n ملغاة لا تُحسب": "including :n cancelled, not counted"
 }

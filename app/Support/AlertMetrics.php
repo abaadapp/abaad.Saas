@@ -40,7 +40,7 @@ class AlertMetrics
 
         $lastOrder = Order::selectRaw('customer_id, MAX(ordered_at) as last_at')
             ->where('business_id', $businessId)
-            ->where('is_held', false)
+            ->sold()
             ->whereNotNull('customer_id')
             ->groupBy('customer_id');
 
@@ -105,7 +105,7 @@ class AlertMetrics
     {
         return match ($metric) {
             'daily_sales' => (float) Order::where('business_id', $businessId)
-                ->where('is_held', false)
+                ->sold()
                 ->whereDate('ordered_at', today())->sum('total'),
 
             'monthly_expenses' => (float) Expense::where('business_id', $businessId)
@@ -113,7 +113,7 @@ class AlertMetrics
                 ->sum('amount'),
 
             'pending_orders' => (float) Order::where('business_id', $businessId)
-                ->where('is_held', false)
+                ->sold()
                 ->whereIn('status', ['جديد', 'قيد التجهيز'])->count(),
 
             'low_stock_products' => (float) Product::where('business_id', $businessId)
@@ -143,13 +143,14 @@ class AlertMetrics
     private static function todayProfit(int $businessId): float
     {
         $revenue = (float) Order::where('business_id', $businessId)
-            ->where('is_held', false)->whereDate('ordered_at', today())->sum('total');
+            ->sold()->whereDate('ordered_at', today())->sum('total');
 
         $cost = (float) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
             ->where('orders.business_id', $businessId)
-            ->where('orders.is_held', false)
+            // الشرط بيدٍ هنا لأنه انضمام: النطاق يكتب `is_held` بلا بادئة
+            ->where('orders.is_held', false)->where('orders.status', '!=', \App\Models\Order::CANCELLED)
             ->whereDate('orders.ordered_at', today())
             ->sum(DB::raw('COALESCE(products.cost, 0) * order_items.quantity'));
 

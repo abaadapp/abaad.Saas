@@ -30,7 +30,7 @@ class EmailMonthlyReports extends Command
 
         $sent = 0;
         Business::whereNotNull('email')->each(function (Business $b) use ($start, $end, $period, &$sent) {
-            $q = Order::where('business_id', $b->id)->where('is_held', false)->whereBetween('ordered_at', [$start, $end]);
+            $q = Order::where('business_id', $b->id)->sold()->whereBetween('ordered_at', [$start, $end]);
             $sales = (float) (clone $q)->sum('total');
             $orders = (clone $q)->count();
 
@@ -38,7 +38,7 @@ class EmailMonthlyReports extends Command
                 return; // لا نرسل لمتجر بلا نشاط
             }
 
-            $topItem = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $b->id)->where('is_held', false)->whereBetween('ordered_at', [$start, $end]))
+            $topItem = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $b->id)->sold()->whereBetween('ordered_at', [$start, $end]))
                 ->selectRaw('name, SUM(quantity) as q')->groupBy('name')->orderByDesc('q')->first();
 
             $money = fn ($v) => number_format((float) $v, 3, '.', ',') . ' ' . __('ر.ع');

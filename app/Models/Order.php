@@ -16,8 +16,27 @@ class Order extends Model
         'ordered_at' => 'datetime',
     ];
 
+    /** الحالة التي تعني أن البيعة رُدَّت ولم تعد بيعًا */
+    public const CANCELLED = 'ملغي';
+
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
     public function branch(): BelongsTo { return $this->belongsTo(Branch::class); }
     public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
     public function items(): HasMany { return $this->hasMany(OrderItem::class); }
+
+    /**
+     * ما بيع فعلًا: لا سلّةً معلّقة ولا طلبًا ملغى.
+     *
+     * كان الشرط يُكتب بيدٍ في كل استعلام على حدة، فكُتب في ثلاثة مواضع
+     * ونُسي في أحدٍ وثلاثين: بطاقات التقارير تجمع الملغى والمخطّط تحتها
+     * يستثنيه، فتقرأ الشاشةُ الواحدة رقمين متناقضين عن الفترة نفسها.
+     * وأخطرها الإقرار الضريبي — ضريبةٌ تُقرّ على بيعةٍ أُلغيت.
+     *
+     * فصار موضعًا واحدًا يقرأ منه الجميع: من نسي «الملغى» لا يستطيع أن
+     * ينساه، لأن النطاق يحمله معه.
+     */
+    public function scopeSold($query)
+    {
+        return $query->where('is_held', false)->where('status', '!=', self::CANCELLED);
+    }
 }

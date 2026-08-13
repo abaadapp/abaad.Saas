@@ -22,7 +22,7 @@ class BusinessController extends Controller
         $q = Business::with('plan')->addSelect([
             'last_sale' => \App\Models\Order::selectRaw('MAX(ordered_at)')
                 ->whereColumn('orders.business_id', 'businesses.id')
-                ->where('is_held', false),
+                ->sold(),
 
             /*
              * بريد الدخول لا بريد التواصل.

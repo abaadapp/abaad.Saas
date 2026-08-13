@@ -125,7 +125,7 @@ class Shifts
     public static function totals(Shift $shift): array
     {
         $rows = Order::where('shift_id', $shift->id)
-            ->where('is_held', false)
+            ->sold()
             ->selectRaw('payment_method, COUNT(*) as n, SUM(total) as sum')
             ->groupBy('payment_method')
             ->get();

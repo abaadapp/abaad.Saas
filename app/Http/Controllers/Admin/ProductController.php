@@ -99,7 +99,7 @@ class ProductController extends Controller
                  */
                 $q->where('quantity', '>', 0)->whereDoesntHave('orderItems', fn ($w) => $w
                     ->whereHas('order', fn ($o) => $o
-                        ->where('is_held', false)
+                        ->sold()
                         ->where('ordered_at', '>=', now()->subDays(90))));
             }
         }

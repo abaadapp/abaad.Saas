@@ -230,15 +230,34 @@ export default function DataTable<T>({
                             if (server && filter.param) go({ [filter.param]: value || null, page: null });
                         };
 
+                        /*
+                         * التسمية مكتوبةً داخل الحقل لا في aria وحدها.
+                         *
+                         * حقل type="date" لا يقبل placeholder — فبينما تعلن
+                         * القائمةُ عن نفسها بـ«كل الحالات» مكتوبةً فيها، كان
+                         * حقل التاريخ يظهر «dd/mm/yyyy» فارغًا من أي عنوان.
+                         * ومتى وقف حقلان متجاوران هكذا لم يعرف الناظر أيّهما
+                         * «من» وأيّهما «إلى» إلا بالتجربة. والتسمية كانت في
+                         * aria-label: يقرؤها قارئ الشاشة ولا تراها العين.
+                         */
                         return filter.type === 'date' ? (
-                            <Input
+                            <label
                                 key={i}
-                                type="date"
-                                aria-label={t(filter.label)}
-                                value={active[i] ?? ''}
-                                onChange={(e) => onPick(e.target.value)}
-                                className="sm:w-44"
-                            />
+                                className={cn(
+                                    'flex h-10 items-center gap-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)]',
+                                    'bg-white px-3 text-sm transition-[border-color,box-shadow] sm:w-52',
+                                    'focus-within:border-[#d1d5db] focus-within:shadow-[0_0_0_3px_rgba(0,0,0,0.05)]',
+                                )}
+                            >
+                                <span className="whitespace-nowrap text-[#6b7280]">{t(filter.label)}</span>
+                                <Input
+                                    type="date"
+                                    aria-label={t(filter.label)}
+                                    value={active[i] ?? ''}
+                                    onChange={(e) => onPick(e.target.value)}
+                                    className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 focus:shadow-none"
+                                />
+                            </label>
                         ) : (
                             <Select
                                 key={i}

@@ -96,8 +96,8 @@ export default function OrdersIndex() {
         // مدًى لا يومًا واحدًا: مبيعات أسبوعٍ كانت تُفتح سبع مرّات.
         // ولا حقل ثالث لليوم الواحد — يُطلب بجعل الطرفين يومًا واحدًا،
         // وحقلان يفعلان الشيء نفسه يجعلان القارئ يسأل عن الفرق بينهما.
-        { label: 'من تاريخ', type: 'date', param: 'from' },
-        { label: 'إلى تاريخ', type: 'date', param: 'to' },
+        { label: 'من', type: 'date', param: 'from' },
+        { label: 'إلى', type: 'date', param: 'to' },
     ];
 
     return (

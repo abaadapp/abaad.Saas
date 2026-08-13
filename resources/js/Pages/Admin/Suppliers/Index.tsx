@@ -3,7 +3,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { ClipboardList, Phone, Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
+import SectionTabs, { CUSTOMER_TABS } from '@/Components/SectionTabs';
 import DataTable, { type Column } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
 import SmartLink from '@/Components/SmartLink';
@@ -173,7 +173,7 @@ export default function SuppliersIndex() {
                 }
             />
 
-            <SectionTabs tabs={INVENTORY_TABS} current="admin.suppliers.index" />
+            <SectionTabs tabs={CUSTOMER_TABS} current="admin.suppliers.index" variant="segmented" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 {stats.map((s, i) => (

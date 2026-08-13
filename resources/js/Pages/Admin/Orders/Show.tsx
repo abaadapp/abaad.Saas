@@ -54,7 +54,7 @@ export default function OrderShow() {
                 subtitle={order.date}
                 breadcrumbs={[
                     { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'الطلبات', href: route('admin.orders.index') },
+                    { label: 'المبيعات', href: route('admin.orders.index') },
                     { label: order.id },
                 ]}
                 actions={

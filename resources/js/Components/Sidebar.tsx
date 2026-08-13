@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { ChevronDown } from 'lucide-react';
 import Logo from '@/Components/Logo';
 import SmartLink from '@/Components/SmartLink';
 import { useTranslate } from '@/lib/i18n';
-import { NAV, type NavGroup } from '@/lib/nav';
+import { NAV, type NavGroup, type NavItem } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
@@ -32,14 +34,48 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
     /*
      * عنصرٌ مضيء واحد لا أكثر.
      *
-     * مسارُ العنصر نفسه يُقدَّم على ما يغطّيه: «المصروفات» في شريط المالية
-     * ولها مدخلها، فلولا هذا الترتيب لأضاء المدخلان معًا على صفحة واحدة.
-     * وما لا مدخل له — كالربحية والضريبة — يُضيء قسمه الذي يضمّه.
+     * مسارُ العنصر نفسه يُقدَّم على ما يغطّيه، وأبناءُ القائمة المنسدلة
+     * تُقدَّم على آبائها: «تقييمات العملاء» ابنُ «أدوات التسويق»، فلولا
+     * الترتيب لأضاء الأب وحده ولم يُعرف أيّ أداةٍ مفتوحة.
      */
-    const items = nav.flatMap((g) => g.items).filter((i) => can(i.section));
+    const flat = nav.flatMap((g) => g.items).filter((i) => can(i.section));
+    const leaves = flat.flatMap((i) => i.children ?? [i]);
+
     const activeRoute =
-        items.find((i) => matches(i.route))?.route ??
-        items.find((i) => i.covers?.some(matches))?.route;
+        leaves.find((i) => matches(i.route))?.route ??
+        flat.find((i) => i.covers?.some(matches))?.route;
+
+    /*
+     * القائمة المنسدلة تُفتح على الأداة المفتوحة.
+     *
+     * تركُها مطويّةً يُخفي أين المستخدم: يفتح «إشعارات واتساب» فيرى «أدوات
+     * التسويق» مطويّةً كما تركها، ولا شيء يقول إنّ ما يقرؤه من تحتها.
+     */
+    const openBranch = flat.find((i) => i.children?.some((c) => matches(c.route)))?.route ?? null;
+    const [expanded, setExpanded] = useState<string | null>(openBranch);
+
+    useEffect(() => {
+        if (openBranch) setExpanded(openBranch);
+    }, [openBranch]);
+
+    const link = (item: NavItem, depth = 0) => {
+        const Icon = item.icon;
+
+        return (
+            <SmartLink
+                key={item.route}
+                routeName={item.route}
+                href={route(item.route)}
+                onClick={onClose}
+                className={cn('ui-nav-link', item.route === activeRoute && 'is-active')}
+                // الإزاحة منطقية لا يمينية: تنقلب مع اتجاه المستند
+                style={depth ? { paddingInlineStart: `${12 + depth * 22}px` } : undefined}
+            >
+                <Icon className={cn('shrink-0', depth ? 'size-4' : 'size-[18px]')} />
+                <span className="truncate">{t(item.label)}</span>
+            </SmartLink>
+        );
+    };
 
     return (
         <>
@@ -82,32 +118,85 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
                     )}
                 </div>
 
-                <nav className="flex-1 overflow-y-auto px-3 pb-4">
+                <nav className="flex flex-1 flex-col overflow-y-auto px-3 pb-4">
                     {nav.map((group, gi) => {
                         const visible = group.items.filter((item) => can(item.section));
                         if (visible.length === 0) return null;
 
+                        /*
+                         * الفاصل بين المجموعات خطٌّ لا عنوان.
+                         *
+                         * العناوين («المتجر»، «الإدارة») تسميةٌ لا تُقرأ: لا
+                         * أحد يبحث عن «المالية» تحت «الإدارة»، ويبحث عن
+                         * «المالية». والخطّ يفصل بلا أن يشغل سطرًا ولا أن
+                         * يدّعي معنى. ولوحة المنصة تُبقي عناوينها كما هي.
+                         */
+                        const first = nav.slice(0, gi).every((g) => g.items.filter((i) => can(i.section)).length === 0);
+
                         return (
-                            <div key={gi} className="mb-1">
+                            <div
+                                key={gi}
+                                className={cn(
+                                    'mb-1',
+                                    // تُدفع «الإعدادات» إلى الأسفل، وخطُّها يفصلها عمّا فوقها
+                                    group.footer && 'mt-auto',
+                                    !group.heading && !first && 'border-t border-[var(--ui-border,#e8e8e8)] pt-2',
+                                )}
+                            >
                                 {group.heading && (
                                     <p className="px-3 pb-1.5 pt-4 text-[11px] font-semibold uppercase tracking-wide text-[#9ca3af]">
                                         {t(group.heading)}
                                     </p>
                                 )}
+
                                 {visible.map((item) => {
+                                    if (! item.children) {
+                                        return link(item);
+                                    }
+
                                     const Icon = item.icon;
+                                    const isOpen = expanded === item.route;
+                                    const holdsActive = item.children.some((c) => c.route === activeRoute);
 
                                     return (
-                                        <SmartLink
-                                            key={item.route}
-                                            routeName={item.route}
-                                            href={route(item.route)}
-                                            onClick={onClose}
-                                            className={cn('ui-nav-link', item.route === activeRoute && 'is-active')}
-                                        >
-                                            <Icon className="size-[18px] shrink-0" />
-                                            <span className="truncate">{t(item.label)}</span>
-                                        </SmartLink>
+                                        <div key={item.route}>
+                                            <button
+                                                type="button"
+                                                aria-expanded={isOpen}
+                                                onClick={() => setExpanded(isOpen ? null : item.route)}
+                                                className={cn(
+                                                    'ui-nav-link w-full',
+                                                    // الأب يُعلَّم حين تكون إحدى أدواته مفتوحة —
+                                                    // ولا يُضاء كالوجهة: هو لا ينقل إلى صفحة
+                                                    holdsActive && 'font-semibold text-[#111]',
+                                                )}
+                                            >
+                                                <Icon className="size-[18px] shrink-0" />
+                                                <span className="truncate">{t(item.label)}</span>
+                                                <ChevronDown
+                                                    className={cn(
+                                                        'ms-auto size-4 shrink-0 text-[#9ca3af] transition-transform',
+                                                        isOpen && 'rotate-180',
+                                                    )}
+                                                />
+                                            </button>
+
+                                            <AnimatePresence initial={false}>
+                                                {isOpen && (
+                                                    <motion.div
+                                                        initial={{ height: 0, opacity: 0 }}
+                                                        animate={{ height: 'auto', opacity: 1 }}
+                                                        exit={{ height: 0, opacity: 0 }}
+                                                        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                                                        className="overflow-hidden"
+                                                    >
+                                                        {item.children
+                                                            .filter((c) => can(c.section))
+                                                            .map((child) => link(child, 1))}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
                                     );
                                 })}
                             </div>

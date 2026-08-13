@@ -3,6 +3,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { Eye, FileDown, FileSpreadsheet, FileText, MoreVertical, Upload, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { CUSTOMER_TABS } from '@/Components/SectionTabs';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import Field, { Select } from '@/Components/Field';
@@ -210,6 +211,8 @@ export default function CustomersIndex() {
                     </>
                 }
             />
+
+            <SectionTabs tabs={CUSTOMER_TABS} current="admin.customers.index" variant="segmented" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {stats.map((s, i) => (

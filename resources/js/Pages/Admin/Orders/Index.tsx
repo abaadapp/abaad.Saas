@@ -101,11 +101,11 @@ export default function OrdersIndex() {
     ];
 
     return (
-        <AdminLayout title="الطلبات">
+        <AdminLayout title="المبيعات">
             <PageHeader
-                title="الطلبات"
+                title="المبيعات"
                 subtitle={t('متابعة وإدارة طلبات العملاء')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الطلبات' }]}
+                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'المبيعات' }]}
                 actions={
                     <>
                         <ExportMenu
@@ -139,7 +139,7 @@ export default function OrdersIndex() {
                     والملغى يُذكر صراحةً كي لا يُقرأ الفرقُ خطأً في الجمع.
                 */}
                 <div className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm text-[#6b7280]">
-                    {t('الطلبات')}: {number(totalCount)} — {t('المبيعات')}:{' '}
+                    {t('الفواتير')}: {number(totalCount)} — {t('الإجمالي')}:{' '}
                     <span className="font-semibold text-[#111]">{money(totalAmount, currency)}</span>
                     {cancelledCount > 0 && (
                         <span className="text-[#9ca3af]">

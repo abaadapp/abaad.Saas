@@ -112,7 +112,7 @@ class Permissions
     public const ROUTES = [
         'dashboard' => 'admin.dashboard', 'customers' => 'admin.customers.index',
         'products' => 'admin.products.index', 'orders' => 'admin.orders.index',
-        'marketing' => 'admin.marketing.index', 'inventory' => 'admin.inventory.index',
+        'marketing' => 'admin.marketing.website', 'inventory' => 'admin.inventory.index',
         'finance' => 'admin.finance.index', 'expenses' => 'admin.expenses.index',
         'reports' => 'admin.reports.index', 'settings' => 'admin.settings.index',
         'categories' => 'admin.categories.index', 'suppliers' => 'admin.suppliers.index',
@@ -163,10 +163,10 @@ class Permissions
     {
         $labels = [
             'dashboard' => 'لوحة التحكم', 'customers' => 'العملاء', 'products' => 'المنتجات',
-            'orders' => 'الطلبات', 'marketing' => 'التسويق', 'inventory' => 'المخزون',
+            'orders' => 'المبيعات', 'marketing' => 'التسويق', 'inventory' => 'المخزون',
             'finance' => 'المالية', 'expenses' => 'المصروفات', 'reports' => 'التقارير',
             'settings' => 'الإعدادات', 'categories' => 'الأقسام', 'suppliers' => 'المورّدون',
-            'purchases' => 'أوامر الشراء', 'profitability' => 'الربحية',
+            'purchases' => 'المشتريات', 'profitability' => 'الربحية',
             'vat' => 'ضريبة القيمة المضافة', 'employees' => 'الموظفون',
             'pos' => 'نقطة البيع', 'branch' => 'الفروع',
         ];

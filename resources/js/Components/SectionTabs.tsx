@@ -116,11 +116,25 @@ export default function SectionTabs({ tabs: all, current, className, variant = '
     );
 }
 
-/** تبويبات قسم المنتجات */
+/**
+ * قسم العملاء — العملاء والمورّدون.
+ *
+ * كلاهما جهةٌ يتعامل معها المتجر: هذه تشتري منه وتلك يشتري منها. وكان
+ * المورّدون في المخزون، فيبحث عنهم من يريد بياناتهم حيث تُعدّ البضاعة.
+ */
+export const CUSTOMER_TABS: SectionTab[] = [
+    { label: 'العملاء', routeName: 'admin.customers.index', section: 'customers' },
+    { label: 'الموردين', routeName: 'admin.suppliers.index', section: 'suppliers' },
+];
+
+/**
+ * قسم المنتجات — مدخلٌ واحد.
+ *
+ * الأقسام والإضافات حُذفتا، والشريط يختفي من نفسه حين لا يبقى إلا تبويب
+ * (انظر SectionTabs: تبويبٌ واحد ليس شريطًا).
+ */
 export const PRODUCT_TABS: SectionTab[] = [
-    { label: 'الأقسام', routeName: 'admin.categories.index', section: 'categories' },
     { label: 'المنتجات', routeName: 'admin.products.index', section: 'products' },
-    { label: 'الإضافات', routeName: 'admin.addons.index', section: 'products' },
 ];
 
 /** تبويبات قسم المخزون */

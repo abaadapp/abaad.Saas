@@ -1,25 +1,32 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+    CUSTOMER_TABS,
+    EMPLOYEE_TABS,
     FINANCE_TABS,
     INVENTORY_TABS,
-    PRODUCT_TABS,
-    REPORTS_TABS,
+    PURCHASE_TABS,
     type SectionTab,
 } from '@/Components/SectionTabs';
 import {
-    ArrowDownCircle,
     BarChart3,
     Boxes,
     Building2,
+    Globe,
     History,
     Layers,
     LayoutDashboard,
     Megaphone,
+    MessageCircle,
+    MessageSquare,
     Package,
     RefreshCw,
+    Search,
     Settings,
     ShoppingCart,
-    Store,
+    Star,
+    TicketPercent,
+    Truck,
+    UserCog,
     Users,
     Wallet,
 } from 'lucide-react';
@@ -37,23 +44,32 @@ export interface NavItem {
     /**
      * صفحات تتبع هذا العنصر ولا مدخل لها في القائمة — تُبقيه مضيئًا.
      *
-     * «تحليلات متقدمة» و«الربحية» و«الضريبة» صفحاتُ قسم التقارير، تُفتح من
-     * شريط تبويباته. وبلا هذا كان الضغط عليها يُطفئ القائمة كلّها: لا عنصر
-     * مضيء، فلا يعرف من فتحها أين هو من اللوحة ولا من أين جاء. والمالية
-     * والمصروفات لا تعانيان منه لأن لكلٍّ منهما مدخلها.
+     * كلّ ما يُفتح من شريط تبويبات القسم: «القيود اليومية» و«شجرة الحسابات»
+     * صفحتا المالية، و«سندات الموردين» صفحة المشتريات. وبلا هذا كان الضغط
+     * عليها يُطفئ القائمة كلّها: لا عنصر مضيء، فلا يعرف من فتحها أين هو.
      */
     covers?: string[];
+    /**
+     * قائمةٌ منسدلة تحت العنصر — لا وجهةَ له هو.
+     *
+     * «أدوات التسويق» ستّ أدوات لا تجمعها صفحة: من يريد إعدادات الموقع لا
+     * يمرّ بالكوبونات. فالعنصر يفتح ما تحته ولا ينقل إلى صفحةٍ جامعة.
+     */
+    children?: NavItem[];
 }
 
 export interface NavGroup {
     heading?: string;
+    /**
+     * مجموعةٌ تُدفع إلى أسفل الشريط.
+     *
+     * «الإعدادات» تُفتح مرّةً في الشهر ولا تُفتح مرّةً في الساعة، فمكانها
+     * أسفل القائمة لا وسطها بين ما يُستعمل كلّ يوم.
+     */
+    footer?: boolean;
     items: NavItem[];
 }
 
-/**
- * القائمة الجانبية — منقولة عن $menu في layouts/admin.blade.php.
- * التسميات بالعربية لأنها مفاتيح الترجمة نفسها (كما في __() داخل Blade).
- */
 /**
  * صفحات الشريط مصدرها شريط تبويبات القسم نفسه.
  *
@@ -62,58 +78,90 @@ export interface NavGroup {
  */
 const covers = (tabs: SectionTab[]) => tabs.map((tb) => tb.routeName);
 
+/**
+ * القائمة الجانبية للوحة التاجر.
+ *
+ * المجموعات تفصلها خطوط لا عناوين: العناوين («المتجر»، «الإدارة») تسمية
+ * لا تُقرأ — لا أحد يبحث عن «المالية» تحت «الإدارة»، ويبحث عن «المالية».
+ * والخطّ يفصل بلا أن يشغل سطرًا ولا أن يدّعي معنى.
+ */
 export const NAV: NavGroup[] = [
     {
         items: [
-            { label: 'الرئيسية', icon: LayoutDashboard, route: 'admin.dashboard', section: 'dashboard' },
-            { label: 'العملاء', icon: Users, route: 'admin.customers.index', section: 'customers' },
+            { label: 'لوحة التحكم', icon: LayoutDashboard, route: 'admin.dashboard', section: 'dashboard' },
+            {
+                label: 'العملاء',
+                icon: Users,
+                route: 'admin.customers.index',
+                section: 'customers',
+                covers: covers(CUSTOMER_TABS),
+            },
         ],
     },
     {
-        heading: 'المتجر',
         items: [
+            { label: 'المنتجات', icon: Package, route: 'admin.products.index', section: 'products' },
+            // «الطلبات» سابقًا: المتجر يبيع ولا يستقبل طلبات وحسب
+            { label: 'المبيعات', icon: ShoppingCart, route: 'admin.orders.index', section: 'orders' },
             {
-                label: 'المنتجات',
-                icon: Package,
-                route: 'admin.products.index',
-                section: 'products',
-                covers: covers(PRODUCT_TABS),
+                label: 'المشتريات',
+                icon: Truck,
+                route: 'admin.purchases.index',
+                section: 'purchases',
+                covers: covers(PURCHASE_TABS),
             },
-            { label: 'الطلبات', icon: ShoppingCart, route: 'admin.orders.index', section: 'orders' },
-            { label: 'التسويق والكوبونات', icon: Megaphone, route: 'admin.marketing.index', section: 'marketing' },
         ],
     },
     {
-        heading: 'الإدارة',
         items: [
-            {
-                label: 'المخزون',
-                icon: Boxes,
-                route: 'admin.inventory.overview',
-                section: 'inventory',
-                covers: covers(INVENTORY_TABS),
-            },
             {
                 label: 'المالية',
                 icon: Wallet,
                 route: 'admin.finance.index',
                 section: 'finance',
-                covers: covers(FINANCE_TABS),
+                covers: [...covers(FINANCE_TABS), 'admin.finance.statement'],
             },
-            { label: 'المصروفات', icon: ArrowDownCircle, route: 'admin.expenses.index', section: 'expenses' },
             {
-                label: 'التقارير',
-                icon: BarChart3,
-                route: 'admin.reports.index',
-                section: 'reports',
-                covers: covers(REPORTS_TABS),
+                label: 'الرواتب والموظفين',
+                icon: UserCog,
+                route: 'admin.employees.index',
+                section: 'employees',
+                covers: covers(EMPLOYEE_TABS),
             },
-            { label: 'الإعدادات', icon: Settings, route: 'admin.settings.index', section: 'settings' },
         ],
     },
     {
-        heading: 'نقطة البيع',
-        items: [{ label: 'فتح نقطة البيع', icon: Store, route: 'pos.index', section: 'pos' }],
+        items: [
+            {
+                label: 'المخزون',
+                icon: Boxes,
+                route: 'admin.inventory.index',
+                section: 'inventory',
+                covers: covers(INVENTORY_TABS),
+            },
+        ],
+    },
+    {
+        items: [
+            {
+                label: 'أدوات التسويق',
+                icon: Megaphone,
+                route: 'admin.marketing.website',
+                section: 'marketing',
+                children: [
+                    { label: 'الموقع الإلكتروني', icon: Globe, route: 'admin.marketing.website', section: 'marketing' },
+                    { label: 'برنامج ولاء', icon: Star, route: 'admin.marketing.loyalty', section: 'marketing' },
+                    { label: 'تقييمات العملاء', icon: MessageSquare, route: 'admin.marketing.reviews', section: 'marketing' },
+                    { label: 'الكوبونات والعروض', icon: TicketPercent, route: 'admin.marketing.coupons', section: 'marketing' },
+                    { label: 'تحسين محركات البحث', icon: Search, route: 'admin.marketing.seo', section: 'marketing' },
+                    { label: 'إشعارات واتساب', icon: MessageCircle, route: 'admin.marketing.whatsapp', section: 'marketing' },
+                ],
+            },
+        ],
+    },
+    {
+        footer: true,
+        items: [{ label: 'الإعدادات', icon: Settings, route: 'admin.settings.index', section: 'settings' }],
     },
 ];
 

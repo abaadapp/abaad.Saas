@@ -332,10 +332,33 @@ export default function DataTable<T>({
         ? columns.filter((c) => server.sorts?.includes(c.key))
         : columns.filter((c) => c.sortable && c.value);
 
+    /*
+     * هل في الشريط ما يُعرض أصلًا؟
+     *
+     * كان الشرط `filters.length > 0`، وهو يعدّ فلاتر الحالة وهي لا تسكن
+     * الشريط بل شريطَها فوق الجدول. فقائمةٌ كلُّ فلاترها تبويبات ولا بحث
+     * فيها كانت تُخرج صفًّا فارغًا — ولم يكن يُرى حتى صار له خطٌّ تحته.
+     */
+    const hasToolbar = !! (
+        searchable || unapplied.length > 0 || dateFilters.length > 0
+        || sortable.length > 0 || views || toolbar
+    );
+
     return (
         <div>
-            {(searchable || filters.length > 0 || toolbar) && (
-                <div className="flex flex-wrap items-center gap-1 px-4 py-2">
+            {hasToolbar && (
+                <div
+                    className={cn(
+                        'flex flex-wrap items-center gap-1 px-4 py-2',
+                        /*
+                         * الخطّ يفصل منطقة الأدوات عمّا تحتها — والشرائح
+                         * المطبَّقة منها، فإن وُجدت حملته هي وحُرم منه هذا
+                         * الصفّ: خطٌّ بين البحث وشرائحه يقطع الكتلة نصفين
+                         * ويجعل الشريحة تبدو من الجدول لا من الفلترة.
+                         */
+                        applied.length === 0 && 'border-b border-[var(--ui-border,#e8e8e8)]',
+                    )}
+                >
                     {/* البحث بلا إطار: حقلٌ محاطٌ بحدٍّ داخل بطاقةٍ محاطةٍ بحدّ
                         يُثقل الشريط، والأيقونة وحدها تقول ما هو */}
                     {searchable && (
@@ -459,9 +482,10 @@ export default function DataTable<T>({
                 </div>
             )}
 
-            {/* الفلاتر المطبَّقة — شريحةٌ لكلٍّ منها تُنزع بضغطة */}
+            {/* الفلاتر المطبَّقة — شريحةٌ لكلٍّ منها تُنزع بضغطة.
+                وهي آخر منطقة الأدوات، فتحمل خطّها */}
             {applied.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 px-4 pb-2">
+                <div className="flex flex-wrap items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-4 pb-2">
                     {applied.map(({ f, i }) => (
                         <span
                             key={i}

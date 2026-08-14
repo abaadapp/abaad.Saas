@@ -130,7 +130,7 @@ export default function InventoryIndex() {
                 }
             />
 
-            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.index" variant="segmented" />
+            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.index" />
 
             {updatedAt && (
                 <p className="mb-3 text-[12px] text-[#9ca3af]">

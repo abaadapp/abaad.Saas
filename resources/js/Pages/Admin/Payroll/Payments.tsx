@@ -95,7 +95,7 @@ export default function PayrollPayments() {
                 ]}
             />
 
-            <SectionTabs tabs={EMPLOYEE_TABS} current="admin.payroll.payments" variant="segmented" />
+            <SectionTabs tabs={EMPLOYEE_TABS} current="admin.payroll.payments" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard

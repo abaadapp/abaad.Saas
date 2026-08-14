@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import { AlertTriangle, Briefcase, Lock, LockOpen, Pencil, Plus } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
+import Tabs from '@/Components/Tabs';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
 import Field from '@/Components/Field';
@@ -13,7 +14,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { Input } from '@/Components/ui/input';
 import { initials, money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import type { Employee } from '@/types/models';
 
@@ -201,39 +201,27 @@ export default function EmployeesPanel({ employees, jobTitles }: { employees: Em
 
     return (
         <div className="min-w-0">
-            <div className="mb-6 flex items-center justify-between gap-3 border-b border-[var(--ui-border,#e8e8e8)]">
-                <div className="flex items-center gap-1">
-                    {TABS.map((x) => (
-                        <button
-                            key={x.key}
-                            type="button"
-                            onClick={() => setTab(x.key)}
-                            className={cn(
-                                '-mb-px whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                                tab === x.key
-                                    ? 'border-[#111] text-[#111]'
-                                    : 'border-transparent text-[#6b7280] hover:text-[#374151]',
-                            )}
-                        >
-                            {t(x.label)}
-                        </button>
-                    ))}
-                </div>
-
-                {tab === 'employees' ? (
-                    <Button asChild className="mb-2">
-                        <SmartLink routeName={'admin.employees.create'} href={route('admin.employees.create')}>
+            <Tabs
+                tabs={TABS.map((x) => ({ key: x.key, label: x.label }))}
+                current={tab}
+                onChange={(k) => setTab(k as typeof tab)}
+                className="mb-6"
+                trailing={
+                    tab === 'employees' ? (
+                        <Button asChild className="mb-2">
+                            <SmartLink routeName={'admin.employees.create'} href={route('admin.employees.create')}>
+                                <Plus />
+                                {t('موظف جديد')}
+                            </SmartLink>
+                        </Button>
+                    ) : (
+                        <Button onClick={() => openTitle()} className="mb-2">
                             <Plus />
-                            {t('موظف جديد')}
-                        </SmartLink>
-                    </Button>
-                ) : (
-                    <Button onClick={() => openTitle()} className="mb-2">
-                        <Plus />
-                        {t('إضافة وظيفة')}
-                    </Button>
-                )}
-            </div>
+                            {t('إضافة وظيفة')}
+                        </Button>
+                    )
+                }
+            />
 
             {tab === 'employees' ? (
                 <Card className="overflow-hidden">

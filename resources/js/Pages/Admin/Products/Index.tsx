@@ -17,6 +17,7 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PRODUCT_TABS } from '@/Components/SectionTabs';
+import Tabs from '@/Components/Tabs';
 import RowActions from '@/Components/RowActions';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
@@ -320,31 +321,23 @@ export default function ProductsIndex() {
 
             <SectionTabs tabs={PRODUCT_TABS} current="admin.products.index" />
 
-            {/* مبدّل العرض: شبكي أو جدول — كما كان في Alpine */}
-            <div className="mb-4 flex items-center gap-1 border-b border-[var(--ui-border,#e8e8e8)]">
-                {([
-                    { key: 'grid', label: 'عرض شبكي', Icon: LayoutGrid },
-                    { key: 'table', label: 'عرض جدول', Icon: List },
-                ] as const).map(({ key, label, Icon }) => (
-                    <button
-                        key={key}
-                        type="button"
-                        onClick={() => setView(key)}
-                        className={cn(
-                            '-mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors',
-                            view === key
-                                ? 'border-[#111] text-[#111]'
-                                : 'border-transparent text-[#6b7280] hover:text-[#374151]',
-                        )}
-                    >
-                        <Icon className="size-4" />
-                        {t(label)}
-                    </button>
-                ))}
-                <span className="ms-auto text-sm text-[#6b7280]">
-                    {number(pagination.total)} {t('منتج')}
-                </span>
-            </div>
+            {/* مبدّل العرض: شبكي أو جدول — كما كان في Alpine.
+                كان يُرسم هنا بيده صفًّا من الأزرار: نسخةً من صفوف Tabs نفسها،
+                تتبدّل التبويبات في النظام ويبقى هو على ما كان. */}
+            <Tabs
+                tabs={[
+                    { key: 'grid', label: 'عرض شبكي', icon: LayoutGrid },
+                    { key: 'table', label: 'عرض جدول', icon: List },
+                ]}
+                current={view}
+                onChange={(k) => setView(k as 'grid' | 'table')}
+                className="mb-4"
+                trailing={
+                    <span className="text-sm text-[#6b7280]">
+                        {number(pagination.total)} {t('منتج')}
+                    </span>
+                }
+            />
 
             {/* خارج البطاقة: Card بلا حشو داخلي (الحشو في CardHeader/CardContent)،
                 فالفقرة داخله تلتصق بالحد و overflow-hidden يقصّها */}

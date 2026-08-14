@@ -188,7 +188,7 @@ export default function Journal() {
                 }
             />
 
-            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.journal" variant="segmented" />
+            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.journal" />
 
             <Card className="overflow-hidden">
                 <DataTable

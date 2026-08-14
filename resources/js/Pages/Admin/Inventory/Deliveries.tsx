@@ -236,7 +236,7 @@ export default function Deliveries() {
                 }
             />
 
-            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.deliveries" variant="segmented" />
+            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.deliveries" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard

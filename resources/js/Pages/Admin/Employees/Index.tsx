@@ -29,7 +29,7 @@ export default function EmployeesIndex() {
                 ]}
             />
 
-            <SectionTabs tabs={EMPLOYEE_TABS} current="admin.employees.index" variant="segmented" />
+            <SectionTabs tabs={EMPLOYEE_TABS} current="admin.employees.index" />
 
             <BackToSettings />
             <EmployeesPanel employees={employees} jobTitles={jobTitles} />

@@ -104,7 +104,7 @@ export default function Banks() {
                 }
             />
 
-            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.index" variant="segmented" />
+            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.index" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <StatCard stat={{ label: t('حسابات مفعّلة'), value: number(summary.count), icon: 'landmark', color: 'info' }} index={0} />

@@ -215,7 +215,7 @@ export default function SupplierInvoices() {
                 }
             />
 
-            <SectionTabs tabs={PURCHASE_TABS} current="admin.purchases.invoices" variant="segmented" />
+            <SectionTabs tabs={PURCHASE_TABS} current="admin.purchases.invoices" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard stat={{ label: t('السندات'), value: number(summary.count), icon: 'file-text', color: 'info' }} index={0} />

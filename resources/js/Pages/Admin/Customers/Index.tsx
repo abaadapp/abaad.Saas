@@ -212,7 +212,7 @@ export default function CustomersIndex() {
                 }
             />
 
-            <SectionTabs tabs={CUSTOMER_TABS} current="admin.customers.index" variant="segmented" />
+            <SectionTabs tabs={CUSTOMER_TABS} current="admin.customers.index" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {stats.map((s, i) => (

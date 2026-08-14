@@ -261,7 +261,7 @@ export default function ExpensesIndex() {
                 }
             />
 
-            <SectionTabs tabs={FINANCE_TABS} current="admin.expenses.index" variant="segmented" />
+            <SectionTabs tabs={FINANCE_TABS} current="admin.expenses.index" />
 
             {/*
                 ما يستحقّ يُرى قبل أن يفوت لا بعده — والفائت أوّلًا.
@@ -292,7 +292,9 @@ export default function ExpensesIndex() {
                 </button>
             )}
 
-            {/* تبويبات داخل الصفحة — بالخطّ السفلي فيتمايز مستواها عن شريط القسم */}
+            {/* تبويبات داخل الصفحة: تبدّل جزءًا منها ولا تنقل إلى مسار.
+                وشكلها شكل شريط القسم فوقها — يفصل بينهما التباعد لا اختلاف
+                الشريط، منذ صار للنظام شكل تبويبٍ واحد. */}
             <Tabs
                 tabs={[
                     { key: 'expenses', label: 'المصروفات' },
@@ -300,7 +302,6 @@ export default function ExpensesIndex() {
                 ]}
                 current={tab}
                 onChange={(k) => setTab(k as 'expenses' | 'types')}
-                className="px-0"
             />
 
             {tab === 'expenses' ? (

@@ -122,7 +122,7 @@ export default function Assets() {
                 }
             />
 
-            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.assets" variant="segmented" />
+            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.assets" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard stat={{ label: t('أصول نشطة'), value: number(summary.count), icon: 'package', color: 'info' }} index={0} />

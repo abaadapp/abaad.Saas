@@ -306,7 +306,8 @@ export default function BusinessShow() {
             </div>
 
             <Card className="overflow-hidden">
-                <Tabs tabs={TABS} current={tab} onChange={setTab} />
+                {/* داخل بطاقة: الحشو يُبعد التبويبات عن حدّها */}
+                <Tabs tabs={TABS} current={tab} onChange={setTab} className="px-4" />
 
                 {tab === 'overview' && (
                     <div className="p-5">

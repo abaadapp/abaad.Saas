@@ -151,15 +151,15 @@ export default function FinanceStatement() {
             />
 
             {/* الشريط يُضيء «الحسابات البنكية»: هذه صفحةُ حسابٍ منها لا تبويبٌ سادس */}
-            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.index" variant="segmented" />
+            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.index" />
 
-            {/* تبويبات داخل الصفحة — بالخطّ السفلي لا المقسَّم، فيبقى مستوياها
-                متمايزين: المقسَّم ينقل بين صفحات القسم وهذا يبدّل جزءًا منها */}
+            {/* تبويبات داخل الصفحة: تبدّل جزءًا منها ولا تنقل بين صفحات القسم.
+                وشكلها شكل شريط القسم فوقها — يفصل بينهما التباعد لا اختلاف
+                الشريط، منذ صار للنظام شكل تبويبٍ واحد. */}
             <Tabs
                 tabs={TABS.map((x) => ({ key: x.key, label: x.label }))}
                 current={tab}
                 onChange={(k) => setTab(k as TabKey)}
-                className="px-0"
             />
 
             {/* ===== كشف الحساب المحسوب ===== */}

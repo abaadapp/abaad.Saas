@@ -80,7 +80,7 @@ export default function Stocktake() {
                 ]}
             />
 
-            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.stocktake" variant="segmented" />
+            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.stocktake" />
 
             <form onSubmit={submit}>
                 <Card className="mb-6 p-4">

@@ -160,7 +160,7 @@ export default function Adjustments() {
                 }
             />
 
-            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.adjustments" variant="segmented" />
+            <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.adjustments" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard stat={{ label: t('التعديلات'), value: number(summary.count), icon: 'clipboard-list', color: 'info' }} index={0} />

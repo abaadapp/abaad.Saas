@@ -165,7 +165,7 @@ export default function Chart() {
                 }
             />
 
-            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.chart" variant="segmented" />
+            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.chart" />
 
             <Card className="overflow-hidden">
                 <Table>

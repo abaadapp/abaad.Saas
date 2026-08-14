@@ -123,7 +123,7 @@ export default function PlatformSettings() {
                 ]}
             />
 
-            <Tabs tabs={TABS} current={tab} onChange={setTab} className="mb-6 px-0" />
+            <Tabs tabs={TABS} current={tab} onChange={setTab} className="mb-6" />
 
             <form onSubmit={submit}>
                 {tab === 'general' && (

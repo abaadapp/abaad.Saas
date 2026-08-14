@@ -15,6 +15,7 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import StatCard from '@/Components/StatCard';
+import Tabs from '@/Components/Tabs';
 import SmartLink from '@/Components/SmartLink';
 import ActivityFeed, { type ActivityItem } from '@/Components/ActivityFeed';
 import AreaChart from '@/Components/charts/AreaChart';
@@ -24,7 +25,6 @@ import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import type { Employee } from '@/types/models';
 
@@ -189,27 +189,17 @@ export default function EmployeeShow() {
                     </div>
 
                     <Card className="overflow-hidden">
-                        <div className="flex items-center gap-1 border-b border-[var(--ui-border,#e8e8e8)] px-5">
-                            {([
+                        {/* داخل بطاقة: الحشو يُبعد التبويبات عن حدّها */}
+                        <Tabs
+                            tabs={[
                                 { key: 'sales', label: 'المبيعات' },
                                 { key: 'activity', label: 'سجل النشاط' },
                                 { key: 'permissions', label: 'الصلاحيات' },
-                            ] as const).map(({ key, label }) => (
-                                <button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => setTab(key)}
-                                    className={cn(
-                                        '-mb-px border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-                                        tab === key
-                                            ? 'border-[#111] text-[#111]'
-                                            : 'border-transparent text-[#6b7280] hover:text-[#374151]',
-                                    )}
-                                >
-                                    {t(label)}
-                                </button>
-                            ))}
-                        </div>
+                            ]}
+                            current={tab}
+                            onChange={(k) => setTab(k as 'sales' | 'activity' | 'permissions')}
+                            className="px-5"
+                        />
 
                         {tab === 'sales' && (
                             <div className="p-6">

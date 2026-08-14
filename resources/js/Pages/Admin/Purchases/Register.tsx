@@ -130,7 +130,7 @@ export default function PurchaseRegister() {
                 }
             />
 
-            <SectionTabs tabs={PURCHASE_TABS} current="admin.purchases.index" variant="segmented" />
+            <SectionTabs tabs={PURCHASE_TABS} current="admin.purchases.index" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <StatCard

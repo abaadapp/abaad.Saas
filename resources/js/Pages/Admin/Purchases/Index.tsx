@@ -194,7 +194,7 @@ export default function PurchasesIndex() {
                 }
             />
 
-            <SectionTabs tabs={PURCHASE_TABS} current="admin.purchases.orders" variant="segmented" />
+            <SectionTabs tabs={PURCHASE_TABS} current="admin.purchases.orders" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
                 {stats.map((s, i) => (

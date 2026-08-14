@@ -184,7 +184,8 @@ export default function UserShow() {
 
                 <div className="lg:col-span-2">
                     <Card className="overflow-hidden">
-                        <Tabs tabs={TABS} current={tab} onChange={setTab} />
+                        {/* داخل بطاقة: الحشو يُبعد التبويبات عن حدّها */}
+                        <Tabs tabs={TABS} current={tab} onChange={setTab} className="px-4" />
 
                         {tab === 'activities' && (
                             <div className="p-6">

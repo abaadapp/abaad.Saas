@@ -115,7 +115,7 @@ export default function PayrollIndex() {
                 }
             />
 
-            <SectionTabs tabs={EMPLOYEE_TABS} current="admin.payroll.index" variant="segmented" />
+            <SectionTabs tabs={EMPLOYEE_TABS} current="admin.payroll.index" />
 
             {employeeCount === 0 ? (
                 <Card className="px-5 py-16 text-center">

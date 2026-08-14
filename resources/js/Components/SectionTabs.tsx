@@ -25,14 +25,6 @@ interface Props {
     /** اسم مسار التبويب النشط */
     current: string;
     className?: string;
-    /**
-     * `underline` خطٌّ تحت النشط — الافتراضي.
-     * `segmented` شريط مقسَّم: حاوية رمادية والنشط بطاقة بيضاء بعرض متساوٍ.
-     *
-     * يطابق نمط Tabs بالاسم نفسه، فلا يفترق شكل تبويبات المسارات عن تبويبات
-     * داخل الصفحة.
-     */
-    variant?: 'underline' | 'segmented';
 }
 
 /**
@@ -40,11 +32,16 @@ interface Props {
  *
  * النشط يُحدَّد باسم المسار لا بالرابط: مسارات مثل المنتجات لها صفحات فرعية
  * (إنشاء/تعديل/عرض) يجب أن تُبقي تبويبها مضيئًا.
+ *
+ * وشكلٌ واحد لا خيار فيه: خطٌّ تحت النشط. كان الشكل خيارًا بين `underline`
+ * و`segmented`، فانقسم النظام شريطين — تسعة عشر موضعًا على هذا وخمسةٌ على
+ * ذاك — لا لأن أحدًا قرّر، بل لأن كل شاشةٍ جديدة تنسخ ما جاورها. والخيار
+ * الذي لا يُتَّخذ مرّةً واحدة يُتَّخذ في كل ملفٍّ من جديد، فنُزع من جذره:
+ * لا يعود الانقسام إلا بتعديل هذا الملفّ نفسه.
  */
-export default function SectionTabs({ tabs: all, current, className, variant = 'underline' }: Props) {
+export default function SectionTabs({ tabs: all, current, className }: Props) {
     const t = useTranslate();
     const { auth } = usePage<PageProps>().props;
-    const segmented = variant === 'segmented';
 
     // بلا قسم يظهر التبويب دائمًا — انظر SectionTab.section
     const tabs = all.filter((tb) => !tb.section || (auth?.abilities.includes(tb.section) ?? false));
@@ -75,10 +72,7 @@ export default function SectionTabs({ tabs: all, current, className, variant = '
     return (
         <div
             className={cn(
-                'mb-6 flex items-center gap-1 overflow-x-auto',
-                segmented
-                    ? 'w-full rounded-[14px] bg-[#f4f4f2] p-1.5'
-                    : 'border-b border-[var(--ui-border,#e8e8e8)]',
+                'mb-6 flex items-center gap-1 overflow-x-auto border-b border-[var(--ui-border,#e8e8e8)]',
                 className,
             )}
         >
@@ -92,20 +86,13 @@ export default function SectionTabs({ tabs: all, current, className, variant = '
                         href={route(tab.routeName, tab.args as never)}
                         className={cn(
                             'whitespace-nowrap text-sm font-medium transition-colors',
-                            // النشط يتبدّل لونًا وظلًّا فقط — لا حدًّا ولا حجمًا
-                            segmented
-                                ? cn(
-                                      'flex-1 rounded-[10px] px-4 py-2.5 text-center',
-                                      active
-                                          ? 'bg-white text-[#111] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
-                                          : 'text-[#6b7280] hover:text-[#374151]',
-                                  )
-                                : cn(
-                                      '-mb-px border-b-2 px-4 py-3',
-                                      active
-                                          ? 'border-[#111] text-[#111]'
-                                          : 'border-transparent text-[#6b7280] hover:text-[#374151]',
-                                  ),
+                            // ‏-mb-px يرفع حدّ التبويب فوق حدّ الشريط فيحلّ محلّه،
+                            // ولولاه لظهر خطّان متجاوران تحت النشط
+                            '-mb-px border-b-2 px-4 py-3',
+                            // النشط يتبدّل لونًا لا حجمًا — فلا يقفز ما تحته
+                            active
+                                ? 'border-[#111] text-[#111]'
+                                : 'border-transparent text-[#6b7280] hover:text-[#374151]',
                         )}
                     >
                         {t(tab.label)}

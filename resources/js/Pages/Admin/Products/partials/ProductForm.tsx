@@ -154,7 +154,6 @@ export default function ProductForm({ categories, product, description, currency
                 }))}
                 current={tab}
                 onChange={(k) => pick(k as TabKey)}
-                variant="segmented"
                 className="mb-6"
             />
 

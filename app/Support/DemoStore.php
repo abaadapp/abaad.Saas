@@ -53,21 +53,33 @@ class DemoStore
 
     public const PIN = '4321';
 
+    /** بريد العرض — يُقال في الاجتماع ويُكتب على السبّورة، فليكن قصيرًا */
+    public const DEMO_EMAIL = 'demo@gmail.com';
+
+    public const DEMO_CASHIER_EMAIL = 'demo-cashier@gmail.com';
+
     /**
-     * البريد يحمل معرّف المتجر.
+     * بريدُ العرض ما دام حرًّا، وإلّا فبريدٌ يحمل معرّف المتجر.
      *
-     * كان ثابتًا (`Demo@abaadapp.om`)، فأوّل متجرٍ تجريبيّ ثانٍ يصطدم بقيد
-     * التفرّد على `users.email` ويسقط البناء في منتصفه. والمتاجر التجريبيّة
-     * تُنشأ أكثر من واحد: واحدٌ للعرض وآخرُ للتجربة على حجمٍ أكبر.
+     * الثابت وحده كان يسقط البناء: ثاني متجرٍ تجريبيّ يصطدم بقيد التفرّد على
+     * `users.email` في منتصف الإنشاء. والمعرّف وحده يجعل بريد العرض يتبدّل
+     * كلّما أُعيد البناء، وهو بريدٌ يُحفَظ ويُقال.
+     *
+     * فالأوّل يأخذ القصير، ومن بعده يأخذ المرقَّم — ولا يُكسر أيٌّ منهما.
      */
     public static function ownerEmail(int $businessId): string
     {
-        return "demo{$businessId}@abaadapp.om";
+        return self::freeEmail(self::DEMO_EMAIL, "demo{$businessId}@gmail.com");
     }
 
     public static function cashierEmail(int $businessId): string
     {
-        return "demo{$businessId}-cashier@abaadapp.om";
+        return self::freeEmail(self::DEMO_CASHIER_EMAIL, "demo{$businessId}-cashier@gmail.com");
+    }
+
+    private static function freeEmail(string $preferred, string $fallback): string
+    {
+        return User::where('email', $preferred)->exists() ? $fallback : $preferred;
     }
 
     /**

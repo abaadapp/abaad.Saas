@@ -9,6 +9,21 @@ use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
+    /**
+     * ما يُرتَّب في قائمة المبيعات.
+     *
+     * و«رقم الطلب» يُرتَّب بالرقم المتسلسل لا بنصّه: النصّ يرتّب #١٠ قبل #٩.
+     */
+    private const SORTS = [
+        'id' => 'number',
+        'customer' => 'customer_name',
+        'employee' => 'employee_name',
+        'items_count' => 'items_count',
+        'total' => 'total',
+        'payment' => 'payment_method',
+        'date' => 'ordered_at',
+    ];
+
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     public function index(Request $request)
@@ -41,7 +56,9 @@ class OrderController extends Controller
         $totalCount = $filtered->clone()->count();
         $cancelledCount = $filtered->clone()->where('status', Order::CANCELLED)->count();
 
-        $orders = $q->orderByDesc('ordered_at')->paginate(10)->withQueryString()->through(fn ($o) => [
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('ordered_at'));
+
+        $orders = $q->paginate(10)->withQueryString()->through(fn ($o) => [
             'id' => $o->number, 'customer' => \App\Support\Demo::customerLabel($o->customer_name),
             'employee' => $o->employee_name ?? '—', 'branch' => $o->branch,
             'items_count' => $o->items_count, 'total' => (float) $o->total,
@@ -52,7 +69,9 @@ class OrderController extends Controller
         return \Inertia\Inertia::render('Admin/Orders/Index', [
             'orders' => $orders->items(),
             'pagination' => \App\Support\Pagination::meta($orders),
-            'filters' => $request->only('q', 'payment', 'status', 'from', 'to'),
+            'filters' => $request->only('q', 'payment', 'status', 'from', 'to')
+                + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             // المبلغ من المُباع وحده، والعدد من الكلّ — والملغى يُذكر صراحةً
             // كي لا يُقرأ الفرقُ بينهما خطأً في الجمع
             'totalAmount' => $totalAmount,

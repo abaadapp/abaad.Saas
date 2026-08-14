@@ -43,6 +43,8 @@ interface Props {
     adjustments: Adjustment[];
     pagination: ServerPagination;
     filters: Record<string, string | null | undefined>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     reasons: string[];
     products: ProductOption[];
     summary: { count: number; loss: number; gain: number };
@@ -50,7 +52,7 @@ interface Props {
 }
 
 export default function Adjustments() {
-    const { adjustments, pagination, filters, reasons, products, summary, today, context } =
+    const { adjustments, pagination, filters, sorts, reasons, products, summary, today, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -175,7 +177,7 @@ export default function Adjustments() {
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا تعديلات بعد"
-                    server={{ pagination, params: filters }}
+                    server={{ pagination, params: filters, sorts }}
                 />
             </Card>
 

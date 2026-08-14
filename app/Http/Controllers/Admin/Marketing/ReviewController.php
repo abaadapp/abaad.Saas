@@ -24,6 +24,13 @@ use Inertia\Response;
  */
 class ReviewController extends Controller
 {
+    /** ما يُرتَّب في تقييمات العملاء */
+    private const SORTS = [
+        'author' => 'author_name',
+        'rating' => 'rating',
+        'status' => 'status',
+    ];
+
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     public function index(Request $request): Response
@@ -43,8 +50,9 @@ class ReviewController extends Controller
             $q->where('rating', (int) $rating);
         }
 
-        $reviews = $q->orderByDesc('id')
-            ->paginate((int) $request->query('per_page', 20))->withQueryString();
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
+
+        $reviews = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
         $all = Review::where('business_id', $bid)->get();
 
@@ -61,7 +69,9 @@ class ReviewController extends Controller
                 'at' => optional($r->created_at)->format('Y-m-d'),
             ])->all(),
             'pagination' => Pagination::meta($reviews),
-            'filters' => $request->only('q', 'status', 'rating'),
+            'filters' => $request->only('q', 'status', 'rating')
+                + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             'products' => Product::where('business_id', $bid)->orderBy('name')
                 ->get(['id', 'name'])->map(fn ($p) => ['value' => $p->id, 'label' => $p->name])->all(),
             'customers' => Customer::where('business_id', $bid)->orderBy('name')->limit(500)

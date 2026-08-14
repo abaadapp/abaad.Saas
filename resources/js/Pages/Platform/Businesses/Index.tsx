@@ -38,11 +38,13 @@ interface Props {
     businesses: BusinessRow[];
     pagination: ServerPagination;
     filters: Record<string, string | null>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     options: { types: string[]; statuses: string[]; plans: string[] };
 }
 
 export default function BusinessesIndex() {
-    const { businesses, pagination, filters, options } = usePage<PageProps<Props>>().props;
+    const { businesses, pagination, filters, sorts, options } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const columns: Column<BusinessRow>[] = [
@@ -262,7 +264,7 @@ export default function BusinessesIndex() {
                         {t('لا توجد شركات مسجلة بعد')}
                     </span>
                 }
-                server={{ pagination, params: filters }}
+                server={{ pagination, params: filters, sorts }}
             />
         </PlatformLayout>
     );

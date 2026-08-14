@@ -87,6 +87,14 @@ interface ServerMode {
     params: Record<string, string | null | undefined>;
     /** اسم معامل البحث (افتراضيًا q) */
     searchParam?: string;
+    /**
+     * مفاتيح الأعمدة التي يرتّبها الخادم فعلًا — كما تُرسلها `Sort::keys`.
+     *
+     * المتحكّم وحده يقرّر، ولا يُشتقّ من `column.sortable`: الاثنان ينحرفان،
+     * فيعرض الزرُّ عمودًا لا يرتّبه الخادم ويعود المستخدم إلى ترتيبٍ يدّعي
+     * نفسه — وهو العطب الذي كان.
+     */
+    sorts?: string[];
 }
 
 interface DataTableProps<T> {
@@ -158,7 +166,11 @@ export default function DataTable<T>({
             ]),
         ),
     );
-    const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+    // في الوضع الخادمي يعيش الترتيب في الرابط لا في الذاكرة: رابطٌ يُرسَل أو
+    // يُحفَظ يفتح على ما فُتح عليه، والرجوع بالمتصفّح يُرجع الترتيب معه
+    const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(
+        server?.params.sort ? { key: String(server.params.sort), dir: server.params.dir === 'asc' ? 'asc' : 'desc' } : null,
+    );
     const [page, setPage] = useState(0);
 
     /** يزور الرابط بالمعاملات الجديدة — يحذف الفارغ منها حتى يبقى الرابط نظيفًا */
@@ -233,11 +245,18 @@ export default function DataTable<T>({
     const emptyText = typeof empty === 'string' ? t(empty) : empty;
 
     const toggleSort = (key: string) => {
-        setSort((prev) =>
-            prev?.key === key
-                ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-                : { key, dir: 'asc' },
-        );
+        const next: { key: string; dir: 'asc' | 'desc' } =
+            sort?.key === key
+                ? { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+                : { key, dir: 'asc' };
+
+        setSort(next);
+        if (server) go({ sort: next.key, dir: next.dir, page: null });
+    };
+
+    const clearSort = () => {
+        setSort(null);
+        if (server) go({ sort: null, dir: null, page: null });
     };
 
     /** تطبيق قيمة فلتر — والوضع الخادمي يزور الرابط بها */
@@ -297,15 +316,17 @@ export default function DataTable<T>({
     };
 
     /*
-     * الترتيب محلّيٌّ وحده — انظر `filtered`: الوضع الخادمي يُرجع الصفوف كما
-     * جاءت لأن الخادم رتّبها، ولا يقرأ حالة `sort` أحد.
+     * ما يُرتَّب فعلًا — لا ما يُزعم أنه يُرتَّب.
      *
-     * فلا يُعرض زرُّ ترتيبٍ ولا سهمٌ على رأس عمود حيث لا يعمل. كان الرأس
-     * قابلًا للضغط في الحالتين: تضغط «المبلغ» في المنتجات فينقلب السهم ولا
-     * يتحرّك صفّ — وهو أسوأ من غياب الترتيب، لأنه يقول إنه رتّب.
+     * على الخادم: مفاتيحه هو (`server.sorts`)، فلا يُعرض عمودٌ لا يعرف كيف
+     * يرتّبه. وفي المحلّي: ما عُلِّم `sortable` وله `value` بدائيّة تُقارَن.
+     *
+     * وقبلُ كان الرأس قابلًا للضغط في الحالتين والوضعُ الخادميّ لا يرتّب —
+     * تضغط «المبلغ» في المنتجات فينقلب السهم ولا يتحرّك صفّ.
      */
-    const canSort = !server;
-    const sortable = canSort ? columns.filter((c) => c.sortable && c.value) : [];
+    const sortable = server
+        ? columns.filter((c) => server.sorts?.includes(c.key))
+        : columns.filter((c) => c.sortable && c.value);
 
     return (
         <div>
@@ -398,7 +419,7 @@ export default function DataTable<T>({
                                 {sort && (
                                     <>
                                         <DropdownMenuSeparator />
-                                        <DropdownMenuItem onSelect={() => setSort(null)}>
+                                        <DropdownMenuItem onSelect={clearSort}>
                                             {t('بلا ترتيب')}
                                         </DropdownMenuItem>
                                     </>
@@ -495,8 +516,8 @@ export default function DataTable<T>({
                 <TableHeader>
                     <TableRow className="hover:bg-transparent">
                         {columns.map((column) => {
-                            // يُرتَّب حيث يُرتَّب فعلًا — انظر `canSort`
-                            const sorts = canSort && column.sortable && !! column.value;
+                            // يُرتَّب حيث يُرتَّب فعلًا — انظر `sortable`
+                            const sorts = sortable.some((c) => c.key === column.key);
 
                             return (
                                 <TableHead

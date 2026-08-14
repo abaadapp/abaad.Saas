@@ -46,6 +46,8 @@ interface Props {
     entries: Entry[];
     pagination: ServerPagination;
     filters: Record<string, string | null | undefined>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     accounts: { value: number; label: string; type: string }[];
     sources: string[];
     today: string;
@@ -62,7 +64,7 @@ interface DraftLine {
 const emptyLine = (): DraftLine => ({ account_id: '', debit: '', credit: '', memo: '' });
 
 export default function Journal() {
-    const { entries, pagination, filters, accounts, sources, today, context } =
+    const { entries, pagination, filters, sorts, accounts, sources, today, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -194,7 +196,7 @@ export default function Journal() {
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا قيود في الدفتر بعد"
-                    server={{ pagination, params: filters }}
+                    server={{ pagination, params: filters, sorts }}
                 />
             </Card>
 

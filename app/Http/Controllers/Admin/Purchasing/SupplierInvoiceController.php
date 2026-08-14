@@ -30,6 +30,20 @@ use RuntimeException;
  */
 class SupplierInvoiceController extends Controller
 {
+    /**
+     * ما يُرتَّب في سندات الموردين.
+     *
+     * و«المتبقّي» عمودٌ محسوب (الإجمالي ناقص المدفوع) لا عمودَ قاعدة، فيُرتَّب
+     * بالفرق نفسه لا باسمٍ لا وجود له.
+     */
+    private const SORTS = [
+        'reference' => 'supplier_ref',
+        'issued_at' => 'issued_at',
+        'due_at' => 'due_at',
+        'total' => 'total',
+        'status' => 'status',
+    ];
+
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     public function index(Request $request): Response
@@ -51,8 +65,9 @@ class SupplierInvoiceController extends Controller
             $q->where('supplier_id', $supplier);
         }
 
-        $invoices = $q->orderByDesc('issued_at')->orderByDesc('id')
-            ->paginate((int) $request->query('per_page', 20))->withQueryString();
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('issued_at')->orderByDesc('id'));
+
+        $invoices = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
         $all = SupplierInvoice::where('business_id', $bid)->get();
 
@@ -75,7 +90,9 @@ class SupplierInvoiceController extends Controller
                 'notes' => $i->notes,
             ])->all(),
             'pagination' => Pagination::meta($invoices),
-            'filters' => $request->only('q', 'status', 'supplier'),
+            'filters' => $request->only('q', 'status', 'supplier')
+                + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             'suppliers' => Supplier::where('business_id', $bid)->orderBy('name')
                 ->get(['id', 'name'])->map(fn ($s) => ['value' => $s->id, 'label' => $s->name])->all(),
             // أوامرُ لم تُفوتَر بعد — ربط السند بأمره يمنع عدّ الشراء مرّتين

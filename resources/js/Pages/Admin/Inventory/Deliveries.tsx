@@ -58,6 +58,8 @@ interface Props {
     notes: Note[];
     pagination: ServerPagination;
     filters: Record<string, string | null | undefined>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     customers: { value: number; label: string }[];
     products: ProductOption[];
     orders: { value: number; label: string }[];
@@ -81,7 +83,7 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export default function Deliveries() {
-    const { notes, pagination, filters, customers, products, orders, summary, today } =
+    const { notes, pagination, filters, sorts, customers, products, orders, summary, today } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -254,7 +256,7 @@ export default function Deliveries() {
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا إشعارات بعد"
-                    server={{ pagination, params: filters }}
+                    server={{ pagination, params: filters, sorts }}
                 />
             </Card>
 

@@ -8,6 +8,22 @@ use Illuminate\Http\Request;
 
 class BusinessController extends Controller
 {
+    /**
+     * ما يُرتَّب في قائمة الأنشطة.
+     *
+     * والمالك والباقة عمودان هنا لا في جدولٍ آخر (`owner_name` و`plan_id`)،
+     * فيُرتَّبان بلا ضمّ. و«آخر بيع» محسوبٌ من الطلبات فلا يُرتَّب به.
+     */
+    private const SORTS = [
+        'name' => 'name',
+        'type' => 'type',
+        'owner' => 'owner_name',
+        'status' => 'status',
+        'registered' => 'starts_at',
+        'expires' => 'ends_at',
+        'branches' => 'branches_count',
+    ];
+
     public function index(Request $request)
     {
         /*
@@ -53,7 +69,9 @@ class BusinessController extends Controller
         if ($p = $request->query('plan')) { $q->whereHas('plan', fn ($w) => $w->where('name', $p)); }
         if ($st = $request->query('status')) { $q->where('status', $st); }
 
-        $businesses = $q->orderByDesc('id')->paginate(10)->withQueryString()->through(fn ($b) => [
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
+
+        $businesses = $q->paginate(10)->withQueryString()->through(fn ($b) => [
             'id' => $b->id, 'name' => $b->name, 'type' => $b->type, 'owner' => $b->owner_name,
             'phone' => $b->phone, 'email' => $b->owner_email, 'contactEmail' => $b->email,
             'plan' => $b->plan?->name ?? '—',
@@ -79,7 +97,9 @@ class BusinessController extends Controller
         return \Inertia\Inertia::render('Platform/Businesses/Index', [
             'businesses' => $businesses->items(),
             'pagination' => \App\Support\Pagination::meta($businesses),
-            'filters' => $request->only('q', 'type', 'plan', 'status'),
+            'filters' => $request->only('q', 'type', 'plan', 'status')
+                + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             'options' => PageController::filterOptions($request),
         ]);
     }

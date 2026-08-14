@@ -44,6 +44,8 @@ interface Props {
     pagination: ServerPagination;
     types: ExpenseType[];
     filters: Record<string, string | null>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     totalAmount: number;
     totalCount: number;
     unpaidAmount: number;
@@ -62,7 +64,7 @@ interface Props {
 }
 
 export default function ExpensesIndex() {
-    const { expenses, pagination, types, filters, totalAmount, totalCount, unpaidAmount, unpaidCount,
+    const { expenses, pagination, types, filters, sorts, totalAmount, totalCount, unpaidAmount, unpaidCount,
         dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
@@ -321,7 +323,7 @@ export default function ExpensesIndex() {
                             searchable={() => ''}
                             filters={expenseFilters}
                             empty="لا توجد مصروفات"
-                            server={{ pagination, params: filters }}
+                            server={{ pagination, params: filters, sorts }}
                             toolbar={
                                 <ExportMenu
                                     xlsx={route('admin.expenses.xlsx')}

@@ -10,6 +10,21 @@ use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
+    /**
+     * ما يُرتَّب في قائمة المنتجات — مفتاح العمود في الواجهة → عمود القاعدة.
+     *
+     * والقسم ليس منها: اسمه في جدولٍ آخر، وترتيبه يلزمه ضمٌّ يُثقل استعلامًا
+     * يُقرأ في كل فتحة. والهامش كذلك — يُحسب في الواجهة من السعر والتكلفة،
+     * وحسابُه في القاعدة يُكرّر معادلته في مكانين تفترقان.
+     */
+    private const SORTS = [
+        'name' => 'name',
+        'price' => 'price',
+        'cost' => 'cost',
+        'qty' => 'quantity',
+        'active' => 'active',
+    ];
+
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     /**
@@ -104,7 +119,9 @@ class ProductController extends Controller
             }
         }
 
-        $products = $q->orderBy('id')->paginate(12)->withQueryString()->through(fn ($p) => [
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderBy('id'));
+
+        $products = $q->paginate(12)->withQueryString()->through(fn ($p) => [
             'id' => $p->id, 'name' => $p->name, 'cat' => $p->category?->name ?? '—',
             'price' => (float) $p->price, 'cost' => (float) $p->cost, 'qty' => $p->quantity,
             'sku' => $p->sku, 'barcode' => $p->barcode, 'image' => $p->image,
@@ -117,7 +134,9 @@ class ProductController extends Controller
             // الترقيم يبقى خادميًا: DataTable في وضعه الخادمي يقرأ هذه الحقول
             'pagination' => \App\Support\Pagination::meta($products),
             'categories' => Demo::categories(),
-            'filters' => $request->only('q', 'category', 'status', 'stock'),
+            'filters' => $request->only('q', 'category', 'status', 'stock')
+                + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             // لاستيراد ملف: الكميات المستوردة يجب أن تُودَع في فرع محدّد،
             // وإلا اختلّ التوازن «مجموع الفروع = كمية المنتج»
             'branches' => \App\Models\Branch::where('business_id', $this->bid())

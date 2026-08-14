@@ -10,6 +10,20 @@ use Illuminate\Http\Request;
 
 class ExpenseController extends Controller
 {
+    /**
+     * ما يُرتَّب في قائمة المصروفات.
+     *
+     * والنوع نصٌّ في الصف نفسه فيُرتَّب، والمرفق لا — وجودُه من عدمه ليس
+     * ترتيبًا.
+     */
+    private const SORTS = [
+        'reference' => 'reference',
+        'due_date' => 'due_date',
+        'type' => 'type',
+        'amount' => 'amount',
+        'status' => 'status',
+    ];
+
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     public function index(Request $request)
@@ -52,8 +66,9 @@ class ExpenseController extends Controller
             $q->where('status', $status);
         }
 
-        $expenses = $q->orderByDesc('spent_at')->orderByDesc('id')
-            ->paginate((int) $request->query('per_page', 10))->withQueryString();
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('spent_at')->orderByDesc('id'));
+
+        $expenses = $q->paginate((int) $request->query('per_page', 10))->withQueryString();
 
         return \Inertia\Inertia::render('Admin/Expenses/Index', [
             'expenses' => collect($expenses->items())->map(fn ($e) => [
@@ -70,7 +85,9 @@ class ExpenseController extends Controller
             ])->all(),
             'pagination' => \App\Support\Pagination::meta($expenses),
             'types' => Demo::expenseTypes(),
-            'filters' => $request->only('q', 'type', 'status', 'tab') + ['month' => $month],
+            'filters' => $request->only('q', 'type', 'status', 'tab') + ['month' => $month]
+                + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             // الشهر المعروض ومجموعه — ما بعد الترقيم لا يُجمع في المتصفح
             'month' => $month,
             'monthTotal' => $month ? (float) (clone $base)->paid()->sum('amount') : null,

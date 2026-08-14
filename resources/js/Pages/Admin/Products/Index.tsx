@@ -47,13 +47,15 @@ interface Props {
     pagination: ServerPagination;
     categories: Category[];
     filters: Record<string, string | null>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     branches: { id: number; name: string }[];
     currentBranchId: number | null;
     lastImport: { file: string; added: number; updated: number; created_at: string } | null;
 }
 
 export default function ProductsIndex() {
-    const { products: serverProducts, pagination, categories, filters, branches, currentBranchId, lastImport, context } =
+    const { products: serverProducts, pagination, categories, filters, sorts, branches, currentBranchId, lastImport, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -347,7 +349,7 @@ export default function ProductsIndex() {
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا توجد منتجات بعد — أضف أول منتج"
-                    server={{ pagination, params: filters }}
+                    server={{ pagination, params: filters, sorts }}
                     views={{
                         current: view,
                         onChange: (k) => setView(k as 'grid' | 'table'),

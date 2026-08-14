@@ -9,6 +9,20 @@ use Illuminate\Http\Request;
 
 class CustomerController extends Controller
 {
+    /**
+     * ما يُرتَّب في قائمة العملاء.
+     *
+     * والمجاميع تُرتَّب بأسماء `withCount`/`withSum` نفسها: هي أعمدةٌ في
+     * الاستعلام المُنتَج، فترتيبها لا يحتاج ضمًّا زائدًا.
+     */
+    private const SORTS = [
+        'name' => 'name',
+        'orders' => 'orders_count',
+        'total_spent' => 'orders_sum_total',
+        'last_order' => 'orders_max_ordered_at',
+        'points' => 'points',
+    ];
+
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     public function index(Request $request)
@@ -23,14 +37,14 @@ class CustomerController extends Controller
                 ->orWhere('phone', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
         }
 
-        // الترتيب — الافتراضي: الأحدث تسجيلًا (حتى يظهر العميل المُضاف حديثًا في الأعلى)
-        match ($request->query('sort')) {
-            'spent' => $q->orderByDesc('orders_sum_total'),
-            'orders' => $q->orderByDesc('orders_count'),
-            'points' => $q->orderByDesc('points'),
-            'name' => $q->orderBy('name'),
-            default => $q->orderByDesc('id'),
-        };
+        /*
+         * الافتراضي: الأحدث تسجيلًا، حتى يظهر العميل المُضاف حديثًا في الأعلى.
+         *
+         * وكان الترتيب هنا `match` باتّجاهٍ مثبَّت لكل مفتاح — تنازليٌّ للمال
+         * وتصاعديٌّ للاسم — فلا سبيل إلى عكسه. صار كغيره: العمود من الرابط
+         * واتّجاهه معه.
+         */
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
 
         $customers = $q->paginate(10)->withQueryString()->through(fn ($c) => [
             'id' => $c->id, 'name' => $c->name, 'name_en' => $c->name_en,
@@ -48,7 +62,8 @@ class CustomerController extends Controller
         return \Inertia\Inertia::render('Admin/Customers/Index', [
             'customers' => $customers->items(),
             'pagination' => \App\Support\Pagination::meta($customers),
-            'filters' => $request->only('q', 'sort'),
+            'filters' => $request->only('q') + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             'stats' => [
                 ['label' => __('إجمالي العملاء'), 'value' => (string) $stats['total'], 'icon' => 'users', 'color' => 'primary'],
                 ['label' => __('عملاء جدد هذا الشهر'), 'value' => (string) $stats['new_this_month'], 'icon' => 'user-plus', 'color' => 'success'],

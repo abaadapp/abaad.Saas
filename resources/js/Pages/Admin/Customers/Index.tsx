@@ -5,7 +5,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { CUSTOMER_TABS } from '@/Components/SectionTabs';
 import StatCard, { type Stat } from '@/Components/StatCard';
-import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
+import DataTable, { type Column, type ServerPagination } from '@/Components/DataTable';
 import Field, { Select } from '@/Components/Field';
 import SmartLink from '@/Components/SmartLink';
 import { Badge } from '@/Components/ui/badge';
@@ -30,13 +30,15 @@ interface Props {
     customers: Customer[];
     pagination: ServerPagination;
     filters: Record<string, string | null>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     stats: Stat[];
     branches: Branch[];
     currentBranchId: number | null;
 }
 
 export default function CustomersIndex() {
-    const { customers, pagination, filters, stats, branches, currentBranchId, context } =
+    const { customers, pagination, filters, sorts, stats, branches, currentBranchId, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -148,19 +150,14 @@ export default function CustomersIndex() {
         },
     ];
 
-    const sortFilter: Filter<Customer>[] = [
-        {
-            label: 'الأحدث تسجيلًا',
-            param: 'sort',
-            options: [
-                { label: 'الأعلى إنفاقًا', value: 'spent' },
-                { label: 'الأكثر طلبات', value: 'orders' },
-                { label: 'الأعلى نقاطًا', value: 'points' },
-                { label: 'الاسم (أ - ي)', value: 'name' },
-            ],
-        },
-    ];
-
+    /*
+     * ولا فلتر ترتيبٍ هنا.
+     *
+     * كان الترتيب مُقنَّعًا فلترًا («الأعلى إنفاقًا»، «الأكثر طلبات») لأن
+     * الجدول لم يكن يرتّب على الخادم. وقد صار يرتّب، فبقاؤه يعني بابين
+     * للشيء نفسه: يختار المستخدم من القائمة ثمّ يضغط رأس العمود فينقض
+     * أحدهما الآخر بلا أن يقول أيّهما غلب.
+     */
     return (
         <AdminLayout title="العملاء">
             <PageHeader
@@ -226,9 +223,8 @@ export default function CustomersIndex() {
                     rowKey={(c) => c.id}
                     searchPlaceholder="ابحث بالاسم أو رقم الهاتف أو البريد…"
                     searchable={() => ''}
-                    filters={sortFilter}
                     empty="لا يوجد عملاء بعد"
-                    server={{ pagination, params: filters }}
+                    server={{ pagination, params: filters, sorts }}
                 />
             </Card>
 

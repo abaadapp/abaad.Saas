@@ -29,6 +29,14 @@ use RuntimeException;
  */
 class StockAdjustmentController extends Controller
 {
+    /** ما يُرتَّب في تعديلات المخزون */
+    private const SORTS = [
+        'number' => 'number',
+        'reason' => 'reason',
+        'delta' => 'quantity_delta',
+        'date' => 'adjusted_at',
+    ];
+
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     public function index(Request $request): Response
@@ -47,8 +55,9 @@ class StockAdjustmentController extends Controller
             $q->where('reason', $reason);
         }
 
-        $adjustments = $q->orderByDesc('adjusted_at')->orderByDesc('id')
-            ->paginate((int) $request->query('per_page', 20))->withQueryString();
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('adjusted_at')->orderByDesc('id'));
+
+        $adjustments = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
         $all = StockAdjustment::where('business_id', $bid)->get();
 
@@ -68,7 +77,9 @@ class StockAdjustmentController extends Controller
                 'at' => optional($a->adjusted_at)->format('Y-m-d'),
             ])->all(),
             'pagination' => Pagination::meta($adjustments),
-            'filters' => $request->only('q', 'reason'),
+            'filters' => $request->only('q', 'reason')
+                + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             'reasons' => StockAdjustment::REASONS,
             'products' => Product::where('business_id', $bid)->orderBy('name')
                 ->get(['id', 'name', 'sku', 'quantity', 'cost'])

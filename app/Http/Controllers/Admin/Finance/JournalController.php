@@ -24,6 +24,19 @@ use RuntimeException;
  */
 class JournalController extends Controller
 {
+    /**
+     * ما يُرتَّب في القيود اليومية.
+     *
+     * و«الإجمالي» مجموعُ سطور القيد لا عمودٌ فيه، فلا يُرتَّب به بلا ضمٍّ
+     * يُثقل استعلامًا يحمل سطوره وحساباتها أصلًا.
+     */
+    private const SORTS = [
+        'number' => 'number',
+        'date' => 'entry_date',
+        'description' => 'description',
+        'source' => 'source',
+    ];
+
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     public function index(Request $request): Response
@@ -47,8 +60,9 @@ class JournalController extends Controller
             $q->whereDate('entry_date', '<=', $to);
         }
 
-        $entries = $q->orderByDesc('entry_date')->orderByDesc('id')
-            ->paginate((int) $request->query('per_page', 20))->withQueryString();
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('entry_date')->orderByDesc('id'));
+
+        $entries = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
         return Inertia::render('Admin/Finance/Journal', [
             'entries' => collect($entries->items())->map(fn ($e) => [
@@ -67,7 +81,9 @@ class JournalController extends Controller
                 ])->all(),
             ])->all(),
             'pagination' => Pagination::meta($entries),
-            'filters' => $request->only('q', 'source', 'from', 'to'),
+            'filters' => $request->only('q', 'source', 'from', 'to')
+                + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             // الأوراق وحدها تقبل القيد — الآباء والمغلقة لا تُعرض أصلًا
             'accounts' => $this->postableAccounts($bid),
             'sources' => JournalEntry::where('business_id', $bid)->distinct()->pluck('source')->filter()->values()->all(),

@@ -17,13 +17,15 @@ interface Props {
     orders: Order[];
     pagination: ServerPagination;
     filters: Record<string, string | null>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     totalAmount: number;
     totalCount: number;
     cancelledCount: number;
 }
 
 export default function OrdersIndex() {
-    const { orders, pagination, filters, totalAmount, totalCount, cancelledCount, context } =
+    const { orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -132,7 +134,7 @@ export default function OrdersIndex() {
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا توجد طلبات بعد"
-                    server={{ pagination, params: filters }}
+                    server={{ pagination, params: filters, sorts }}
                 />
                 {/*
                     مجموع ما رُشّح لا مجموع الصفحة — والمبلغ من المُباع وحده،

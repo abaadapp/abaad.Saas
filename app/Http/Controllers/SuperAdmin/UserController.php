@@ -11,6 +11,15 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    /** ما يُرتَّب في قائمة المستخدمين */
+    private const SORTS = [
+        'name' => 'name',
+        'email' => 'email',
+        'role' => 'role',
+        'status' => 'status',
+        'last_login' => 'last_login_at',
+    ];
+
     public function index(Request $request)
     {
         $q = User::with('business');
@@ -21,7 +30,9 @@ class UserController extends Controller
         if ($r = $request->query('role')) { $q->where('role', $r); }
         if ($st = $request->query('status')) { $q->where('status', $st); }
 
-        $users = $q->orderByDesc('id')->paginate(10)->withQueryString()->through(fn ($u) => [
+        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
+
+        $users = $q->paginate(10)->withQueryString()->through(fn ($u) => [
             'id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'phone' => $u->phone,
             'business' => $u->business?->name ?? __('المنصة'), 'role' => $u->roleLabel(),
             'status' => $u->status, 'last_login' => optional($u->last_login_at)->format('Y-m-d H:i') ?? '—',
@@ -31,7 +42,9 @@ class UserController extends Controller
         return \Inertia\Inertia::render('Platform/Users/Index', [
             'users' => $users->items(),
             'pagination' => \App\Support\Pagination::meta($users),
-            'filters' => $request->only('q', 'role', 'status'),
+            'filters' => $request->only('q', 'role', 'status')
+                + \App\Support\Sort::params($request, self::SORTS),
+            'sorts' => \App\Support\Sort::keys(self::SORTS),
             'roles' => PageController::roles(),
             'businesses' => \App\Models\Business::orderBy('name')->get()
                 ->map(fn ($b) => ['label' => $b->name, 'value' => $b->id])->all(),

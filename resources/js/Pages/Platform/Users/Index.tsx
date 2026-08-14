@@ -29,12 +29,14 @@ interface Props {
     users: PlatformUser[];
     pagination: ServerPagination;
     filters: Record<string, string | null>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     roles: SelectOption[];
     businesses: SelectOption[];
 }
 
 export default function UsersIndex() {
-    const { users, pagination, filters, roles, businesses } = usePage<PageProps<Props>>().props;
+    const { users, pagination, filters, sorts, roles, businesses } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [adding, setAdding] = useState(false);
 
@@ -135,7 +137,7 @@ export default function UsersIndex() {
                 filters={tableFilters}
                 searchPlaceholder="ابحث بالاسم أو البريد…"
                 empty={t('لا يوجد مستخدمون بعد')}
-                server={{ pagination, params: filters }}
+                server={{ pagination, params: filters, sorts }}
             />
 
             {adding && <AddUserDialog roles={roles} businesses={businesses} onClose={() => setAdding(false)} />}

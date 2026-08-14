@@ -32,6 +32,8 @@ interface Props {
     reviews: Review[];
     pagination: ServerPagination;
     filters: Record<string, string | null | undefined>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     products: { value: number; label: string }[];
     customers: { value: number; label: string }[];
     summary: { count: number; pending: number; published: number; average: number };
@@ -58,7 +60,7 @@ function Stars({ value }: { value: number }) {
 }
 
 export default function Reviews() {
-    const { reviews, pagination, filters, products, customers, summary } = usePage<PageProps<Props>>().props;
+    const { reviews, pagination, filters, sorts, products, customers, summary } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const [adding, setAdding] = useState(false);
@@ -219,7 +221,7 @@ export default function Reviews() {
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا تقييمات بعد"
-                    server={{ pagination, params: filters }}
+                    server={{ pagination, params: filters, sorts }}
                 />
             </Card>
 

@@ -39,6 +39,8 @@ interface Props {
     invoices: Invoice[];
     pagination: ServerPagination;
     filters: Record<string, string | null | undefined>;
+    /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
+    sorts: string[];
     suppliers: { value: number; label: string }[];
     orders: { value: number; label: string; supplier_id: number | null; total: number }[];
     summary: { count: number; outstanding: number; overdue: number; overdue_value: number };
@@ -46,7 +48,7 @@ interface Props {
 }
 
 export default function SupplierInvoices() {
-    const { invoices, pagination, filters, suppliers, orders, summary, today, context } =
+    const { invoices, pagination, filters, sorts, suppliers, orders, summary, today, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -255,7 +257,7 @@ export default function SupplierInvoices() {
                         searchable={() => ''}
                         filters={tableFilters}
                         empty="لا سندات بعد"
-                        server={{ pagination, params: filters }}
+                        server={{ pagination, params: filters, sorts }}
                     />
                 </Card>
             )}

@@ -102,11 +102,6 @@ export default function PayrollIndex() {
             <PageHeader
                 title="مسيرة الرواتب"
                 subtitle={t('رواتب الشهر تُحضَّر ثم تُعتمد — والاعتماد يقيّد المستحقّ ولا يصرف مالًا')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'الرواتب والموظفين', href: route('admin.employees.index') },
-                    { label: 'مسيرة الرواتب' },
-                ]}
                 actions={
                     <Button onClick={() => setOpening(true)} disabled={openPeriods.length === 0}>
                         <Plus />

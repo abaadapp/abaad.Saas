@@ -67,11 +67,6 @@ export default function Loyalty() {
             <PageHeader
                 title="برنامج ولاء"
                 subtitle={t('نقاطٌ تُكتسب بالشراء وتُستبدل خصمًا')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'أدوات التسويق' },
-                    { label: 'برنامج ولاء' },
-                ]}
             />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

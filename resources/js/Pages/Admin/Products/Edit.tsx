@@ -21,11 +21,6 @@ export default function ProductEdit() {
             <PageHeader
                 title="تعديل المنتج"
                 subtitle={`${t('تعديل بيانات')}: ${product.name}`}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المنتجات', href: route('admin.products.index') },
-                    { label: 'تعديل المنتج' },
-                ]}
             />
 
             <ProductForm

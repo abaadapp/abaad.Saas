@@ -67,11 +67,6 @@ export default function ImportPreview() {
             <PageHeader
                 title="معاينة استيراد العملاء"
                 subtitle={t('راجع البيانات المستوردة من الملف قبل حفظها نهائيًا')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'العملاء', href: route('admin.customers.index') },
-                    { label: 'معاينة الاستيراد' },
-                ]}
                 actions={
                     <>
                         {/* المسار POST — router.get كان يردّ 405 فيبقى الملف معلّقًا في الجلسة */}

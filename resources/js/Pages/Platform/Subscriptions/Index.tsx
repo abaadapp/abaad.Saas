@@ -165,10 +165,6 @@ export default function SubscriptionsIndex() {
             <PageHeader
                 title="الاشتراكات"
                 subtitle={t('إدارة اشتراكات الشركات في المنصة ومتابعة حالة الدفع والتجديد')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'الاشتراكات' },
-                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

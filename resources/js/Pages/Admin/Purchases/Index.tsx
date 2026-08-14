@@ -171,11 +171,6 @@ export default function PurchasesIndex() {
             <PageHeader
                 title="أوامر الشراء"
                 subtitle={t('طلبات التزويد من المورّدين واستلام البضاعة')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المشتريات', href: route('admin.purchases.index') },
-                    { label: 'أوامر الشراء' },
-                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

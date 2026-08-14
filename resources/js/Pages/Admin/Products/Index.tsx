@@ -249,7 +249,6 @@ export default function ProductsIndex() {
             <PageHeader
                 title="المنتجات"
                 subtitle={t('إدارة منتجات محل الورود')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'المنتجات' }]}
                 actions={
                     <>
                         <DropdownMenu>

@@ -18,11 +18,6 @@ export default function Trash() {
             <PageHeader
                 title="المحذوفات"
                 subtitle={t('استعادة ما حُذف من المنتجات والمصروفات')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'الإعدادات', href: route('admin.settings.index') },
-                    { label: 'المحذوفات' },
-                ]}
             />
 
             <BackToSettings />

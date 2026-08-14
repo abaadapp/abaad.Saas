@@ -18,7 +18,6 @@ export default function Activity() {
             <PageHeader
                 title="سجل النشاط"
                 subtitle={t('سجلّ كامل بكل العمليات التي تمّت على النظام')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'سجل النشاط' }]}
             />
 
             <BackToSettings />

@@ -96,11 +96,6 @@ export default function CustomerShow() {
             <PageHeader
                 title="ملف العميل"
                 subtitle={t('سجل مشتريات العميل ونقاط ولائه')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'العملاء', href: route('admin.customers.index') },
-                    { label: customer.label || customer.name },
-                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

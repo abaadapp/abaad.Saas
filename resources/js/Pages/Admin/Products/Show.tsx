@@ -50,11 +50,6 @@ export default function ProductShow() {
             <PageHeader
                 title={product.label ?? product.name}
                 subtitle={`${product.cat} · ${product.sku}`}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المنتجات', href: route('admin.products.index') },
-                    { label: product.label ?? product.name },
-                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

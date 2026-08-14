@@ -52,11 +52,6 @@ export default function OrderShow() {
             <PageHeader
                 title={`${t('الطلب')} ${order.id}`}
                 subtitle={order.date}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المبيعات', href: route('admin.orders.index') },
-                    { label: order.id },
-                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

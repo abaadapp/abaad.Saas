@@ -14,11 +14,6 @@ export default function BusinessCreate() {
             <PageHeader
                 title="إضافة شركة جديدة"
                 subtitle={t('أدخل بيانات الشركة الجديدة لتسجيلها في المنصة')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'الشركات', href: route('super-admin.businesses.index') },
-                    { label: 'إضافة شركة' },
-                ]}
             />
 
             <BusinessForm

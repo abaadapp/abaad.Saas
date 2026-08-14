@@ -175,11 +175,6 @@ export default function Journal() {
             <PageHeader
                 title="القيود اليومية"
                 subtitle={t('كلّ ما دخل الدفتر — يدويًّا أو مُرحَّلًا عن مستند')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المالية', href: route('admin.finance.index') },
-                    { label: 'القيود اليومية' },
-                ]}
                 actions={
                     <Button onClick={() => setAdding(true)}>
                         <Plus />

@@ -118,7 +118,6 @@ export default function InventoryIndex() {
                     n: number(inventory.length),
                     total: money(totalValue, currency),
                 })}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'المخزون' }]}
                 actions={
                     <>
                         <ExportMenu

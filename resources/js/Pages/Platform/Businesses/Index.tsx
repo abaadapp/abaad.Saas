@@ -230,10 +230,6 @@ export default function BusinessesIndex() {
             <PageHeader
                 title="الشركات"
                 subtitle={t('إدارة جميع الشركات المسجلة في المنصة')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'الشركات' },
-                ]}
                 actions={
                     <>
                         <ExportMenu

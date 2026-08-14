@@ -227,11 +227,6 @@ export default function ExpensesIndex() {
             <PageHeader
                 title="مصاريف شهرية"
                 subtitle={t('ما أُنفق في الشهر المعروض — وأنواع المصروفات')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المالية', href: route('admin.finance.index') },
-                    { label: 'مصاريف شهرية' },
-                ]}
                 actions={
                     <>
                         {/*

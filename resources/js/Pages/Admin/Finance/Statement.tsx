@@ -122,11 +122,6 @@ export default function FinanceStatement() {
             <PageHeader
                 title="كشف الحساب البنكي"
                 subtitle={account.label}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'الحسابات البنكية', href: route('admin.finance.index') },
-                    { label: 'كشف الحساب' },
-                ]}
                 actions={
                     <>
                         {accounts.length > 1 && (

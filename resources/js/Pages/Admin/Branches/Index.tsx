@@ -24,7 +24,6 @@ export default function BranchesIndex() {
             <PageHeader
                 title="الفروع"
                 subtitle={t('أضِف فروع نشاطك وأدرها من مكان واحد')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الفروع' }]}
             />
 
             <BackToSettings />

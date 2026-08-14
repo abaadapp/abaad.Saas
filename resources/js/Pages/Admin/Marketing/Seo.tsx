@@ -43,11 +43,6 @@ export default function Seo() {
             <PageHeader
                 title="تحسين محركات البحث"
                 subtitle={t('كيف يظهر متجرك لمن يبحث عنه')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'أدوات التسويق' },
-                    { label: 'تحسين محركات البحث' },
-                ]}
             />
 
             {/*

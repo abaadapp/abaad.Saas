@@ -166,7 +166,6 @@ export default function CustomersIndex() {
             <PageHeader
                 title="العملاء"
                 subtitle={t('إدارة قاعدة عملاء المحل وسجل مشترياتهم ونقاط ولائهم')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'العملاء' }]}
                 actions={
                     <>
                         <DropdownMenu>

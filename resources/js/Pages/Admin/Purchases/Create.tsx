@@ -103,11 +103,6 @@ export default function PurchaseCreate() {
             <PageHeader
                 title="أمر شراء جديد"
                 subtitle={t('حدّد المورّد والأصناف المطلوبة')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'أوامر الشراء', href: route('admin.purchases.index') },
-                    { label: 'جديد' },
-                ]}
             />
 
             <form onSubmit={submit} className="grid grid-cols-1 gap-6 lg:grid-cols-3">

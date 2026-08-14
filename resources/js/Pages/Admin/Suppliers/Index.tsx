@@ -156,7 +156,6 @@ export default function SuppliersIndex() {
             <PageHeader
                 title="المورّدون"
                 subtitle={t('إدارة موردي البضاعة وبيانات التواصل معهم')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'المورّدون' }]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

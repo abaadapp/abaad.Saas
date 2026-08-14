@@ -107,11 +107,6 @@ export default function Invoices() {
             <PageHeader
                 title="الفواتير"
                 subtitle={t('سجل فواتير الاشتراكات وحالة السداد لكل شركة')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'الاشتراكات', href: route('super-admin.subscriptions.index') },
-                    { label: 'الفواتير' },
-                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

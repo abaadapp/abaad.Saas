@@ -57,11 +57,6 @@ export default function Coupons() {
             <PageHeader
                 title="الكوبونات والعروض"
                 subtitle={t('أكواد الخصم والعروض لاستهداف العملاء')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'أدوات التسويق' },
-                    { label: 'الكوبونات والعروض' },
-                ]}
                 actions={
                     <Button onClick={() => setAdding(true)}>
                         <Plus />

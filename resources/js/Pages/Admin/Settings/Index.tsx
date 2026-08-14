@@ -299,7 +299,6 @@ export default function SettingsIndex() {
             <PageHeader
                 title="الإعدادات"
                 subtitle={t('إعدادات المتجر والضرائب والفواتير والإشعارات')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'الإعدادات' }]}
             />
 
             {tab === null ? (

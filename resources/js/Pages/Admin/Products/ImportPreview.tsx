@@ -125,11 +125,6 @@ export default function ProductImportPreview() {
             <PageHeader
                 title="معاينة استيراد المنتجات"
                 subtitle={t('راجع البيانات المستوردة من الملف قبل حفظها نهائيًا')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المنتجات', href: route('admin.products.index') },
-                    { label: 'معاينة الاستيراد' },
-                ]}
                 actions={
                     <>
                         <Button

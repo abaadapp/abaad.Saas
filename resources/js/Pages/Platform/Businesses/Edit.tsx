@@ -32,11 +32,6 @@ export default function BusinessEdit() {
             <PageHeader
                 title="تعديل الشركة"
                 subtitle={`${t('تعديل بيانات:')} ${business.name}`}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'الشركات', href: route('super-admin.businesses.index') },
-                    { label: business.name },
-                ]}
             />
 
             <BusinessForm

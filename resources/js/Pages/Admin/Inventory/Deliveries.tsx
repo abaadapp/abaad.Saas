@@ -223,11 +223,6 @@ export default function Deliveries() {
             <PageHeader
                 title="إشعار تسليم شحنة"
                 subtitle={t('ورقةُ ما خرج من المخزن ومن استلمه — مستند حركةٍ لا مستند مال')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المخزون', href: route('admin.inventory.index') },
-                    { label: 'إشعار تسليم شحنة' },
-                ]}
                 actions={
                     <Button onClick={() => setAdding(true)}>
                         <Plus />

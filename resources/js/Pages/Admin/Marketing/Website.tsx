@@ -38,11 +38,6 @@ export default function Website() {
             <PageHeader
                 title="الموقع الإلكتروني"
                 subtitle={t('واجهة متجرك على الإنترنت — ما يراه من يبحث عنك')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'أدوات التسويق' },
-                    { label: 'الموقع الإلكتروني' },
-                ]}
                 actions={
                     form.data.site_enabled &&
                     form.data.site_domain && (

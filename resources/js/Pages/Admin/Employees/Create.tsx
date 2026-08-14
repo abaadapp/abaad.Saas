@@ -24,11 +24,6 @@ export default function EmployeeCreate() {
             <PageHeader
                 title="إضافة موظف"
                 subtitle={t('أضف موظفًا جديدًا وحدّد دوره وفرعه')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'الموظفون', href: route('admin.employees.index') },
-                    { label: 'إضافة موظف' },
-                ]}
             />
             <EmployeeForm
                 branches={branches}

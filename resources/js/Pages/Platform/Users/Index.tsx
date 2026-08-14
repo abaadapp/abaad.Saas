@@ -119,10 +119,6 @@ export default function UsersIndex() {
             <PageHeader
                 title="المستخدمون"
                 subtitle={t('إدارة مستخدمي المنصة وأدوارهم وصلاحياتهم')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'المستخدمون' },
-                ]}
                 actions={
                     <Button onClick={() => setAdding(true)}>
                         <UserPlus />

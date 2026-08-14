@@ -105,7 +105,6 @@ export default function OrdersIndex() {
             <PageHeader
                 title="المبيعات"
                 subtitle={t('متابعة وإدارة طلبات العملاء')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('admin.dashboard') }, { label: 'المبيعات' }]}
                 actions={
                     <>
                         <ExportMenu

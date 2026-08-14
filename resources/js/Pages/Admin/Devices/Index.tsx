@@ -19,10 +19,6 @@ export default function DevicesIndex() {
             <PageHeader
                 title="أجهزة نقاط البيع"
                 subtitle={t('كل جهاز مربوط بفرع واحد — منه تُنسب المبيعات والورديات')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'أجهزة نقاط البيع' },
-                ]}
             />
 
             <BackToSettings />

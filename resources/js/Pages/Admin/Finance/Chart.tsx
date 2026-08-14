@@ -152,11 +152,6 @@ export default function Chart() {
             <PageHeader
                 title="شجرة الحسابات"
                 subtitle={t('الهيكل الذي تُقرأ عليه كلّ أرقام النشاط')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المالية', href: route('admin.finance.index') },
-                    { label: 'شجرة الحسابات' },
-                ]}
                 actions={
                     <Button onClick={openAdd}>
                         <Plus />

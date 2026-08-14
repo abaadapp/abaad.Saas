@@ -15,11 +15,6 @@ export default function ProductCreate() {
             <PageHeader
                 title="إضافة منتج"
                 subtitle={t('أضف منتجًا جديدًا إلى متجرك')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المنتجات', href: route('admin.products.index') },
-                    { label: 'إضافة منتج' },
-                ]}
             />
 
             <ProductForm categories={categories} currencyLabel={context!.currency.symbol ?? t('ر.ع')} />

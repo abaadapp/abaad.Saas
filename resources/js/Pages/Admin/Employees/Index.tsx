@@ -23,10 +23,6 @@ export default function EmployeesIndex() {
             <PageHeader
                 title="الموظفون"
                 subtitle={t(':n موظف', { n: number(employees.length) })}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'الرواتب والموظفين' },
-                ]}
             />
 
             <SectionTabs tabs={EMPLOYEE_TABS} current="admin.employees.index" />

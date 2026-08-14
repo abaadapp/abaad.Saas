@@ -98,10 +98,6 @@ export default function PurchaseRegister() {
             <PageHeader
                 title="قائمة المشتريات"
                 subtitle={t('ما اشتراه المتجر في الشهر المعروض — من أوامر الشراء ومن سندات الموردين معًا')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المشتريات' },
-                ]}
                 actions={
                     <>
                         <Select

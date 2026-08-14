@@ -202,11 +202,6 @@ export default function SupplierInvoices() {
             <PageHeader
                 title="سندات الموردين"
                 subtitle={t('فواتير الموردين كما وصلت — وما بقي عليها')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المشتريات', href: route('admin.purchases.index') },
-                    { label: 'سندات الموردين' },
-                ]}
                 actions={
                     <Button onClick={() => setAdding(true)} disabled={suppliers.length === 0}>
                         <Plus />

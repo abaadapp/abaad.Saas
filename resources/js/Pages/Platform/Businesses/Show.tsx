@@ -120,11 +120,6 @@ export default function BusinessShow() {
             <PageHeader
                 title="ملف الشركة"
                 subtitle={business.name}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'الشركات', href: route('super-admin.businesses.index') },
-                    { label: business.name },
-                ]}
                 actions={
                     <>
                         {/* الدعم يحتاج أن يرى الشاشة التي يشكو منها التاجر لا وصفها */}

@@ -182,11 +182,6 @@ export default function Reviews() {
             <PageHeader
                 title="تقييمات العملاء"
                 subtitle={t('لا يُنشر منها إلا ما أُذن بنشره')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'أدوات التسويق' },
-                    { label: 'تقييمات العملاء' },
-                ]}
                 actions={
                     <Button onClick={() => setAdding(true)}>
                         <Plus />

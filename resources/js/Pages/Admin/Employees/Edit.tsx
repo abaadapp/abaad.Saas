@@ -24,11 +24,6 @@ export default function EmployeeEdit() {
             <PageHeader
                 title="تعديل الموظف"
                 subtitle={`${t('تعديل بيانات')}: ${employee.name}`}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'الموظفون', href: route('admin.employees.index') },
-                    { label: 'تعديل' },
-                ]}
             />
             <EmployeeForm
                 employee={employee}

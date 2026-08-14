@@ -76,11 +76,6 @@ export default function UserShow() {
             <PageHeader
                 title="ملف المستخدم"
                 subtitle={t('عرض تفاصيل المستخدم وصلاحياته ونشاطه')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'المستخدمون', href: route('super-admin.users.index') },
-                    { label: user.name },
-                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

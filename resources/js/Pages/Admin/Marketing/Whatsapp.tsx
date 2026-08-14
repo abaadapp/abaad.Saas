@@ -51,11 +51,6 @@ export default function Whatsapp() {
             <PageHeader
                 title="إشعارات واتساب"
                 subtitle={t('رسائل تُرسَل للعميل عند تغيّر حال طلبه')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'أدوات التسويق' },
-                    { label: 'إشعارات واتساب' },
-                ]}
             />
 
             <form

@@ -40,11 +40,6 @@ export default function Plans() {
             <PageHeader
                 title="الباقات"
                 subtitle={t('إدارة باقات الاشتراك والأسعار والمزايا المتاحة للشركات')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'الاشتراكات', href: route('super-admin.subscriptions.index') },
-                    { label: 'الباقات' },
-                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

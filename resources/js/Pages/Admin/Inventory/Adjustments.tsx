@@ -147,11 +147,6 @@ export default function Adjustments() {
             <PageHeader
                 title="تعديلات المخزون"
                 subtitle={t('تلفٌ وفقدٌ وتصحيحُ عدّ — كلٌّ منها يُنقص المخزون ويُقيّد أثره في الدفتر')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المخزون', href: route('admin.inventory.index') },
-                    { label: 'تعديلات المخزون' },
-                ]}
                 actions={
                     <Button onClick={() => setAdding(true)} disabled={products.length === 0}>
                         <Plus />

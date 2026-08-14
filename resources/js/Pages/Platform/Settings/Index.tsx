@@ -117,10 +117,6 @@ export default function PlatformSettings() {
             <PageHeader
                 title="الإعدادات"
                 subtitle={t('إدارة إعدادات المنصة العامة والاشتراكات والضرائب والإشعارات')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'الإعدادات' },
-                ]}
             />
 
             <Tabs tabs={TABS} current={tab} onChange={setTab} className="mb-6" />

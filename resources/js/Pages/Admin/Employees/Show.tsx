@@ -72,11 +72,6 @@ export default function EmployeeShow() {
             <PageHeader
                 title="ملف الموظف"
                 subtitle={t('عرض بيانات الموظف وأدائه وصلاحياته')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'الموظفون', href: route('admin.employees.index') },
-                    { label: employee.name },
-                ]}
                 actions={
                     <>
                         <Button variant="outline" asChild>

@@ -73,11 +73,6 @@ export default function Stocktake() {
             <PageHeader
                 title="الجرد الفعلي"
                 subtitle={t('أدخل الكمية المعدودة فعليًا لكل صنف — يعرض النظام الفرق ويسجّل تسوية تلقائية')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المخزون', href: route('admin.inventory.index') },
-                    { label: 'الجرد الفعلي' },
-                ]}
             />
 
             <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.stocktake" />

@@ -54,10 +54,6 @@ export default function Reports() {
             <PageHeader
                 title="التقارير"
                 subtitle={t('تقارير وتحليلات شاملة لأداء المنصة')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('super-admin.dashboard') },
-                    { label: 'التقارير' },
-                ]}
                 actions={
                     <>
                         {/* روابط تنزيل حقيقية: الاستجابة ملف لا صفحة Inertia */}

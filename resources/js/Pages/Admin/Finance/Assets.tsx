@@ -81,11 +81,6 @@ export default function Assets() {
             <PageHeader
                 title="الأصول الثابتة"
                 subtitle={t('ما يُشترى ليُستعمل سنين — وقسطُ إهلاكه شهرًا بشهر')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المالية', href: route('admin.finance.index') },
-                    { label: 'الأصول الثابتة' },
-                ]}
                 actions={
                     <>
                         {/* الشهر يُختار هنا: الإهلاك يُرحَّل عن شهرٍ بعينه لا عن «الآن» */}

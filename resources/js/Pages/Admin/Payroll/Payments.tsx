@@ -88,11 +88,6 @@ export default function PayrollPayments() {
             <PageHeader
                 title="صرف الرواتب"
                 subtitle={t('إخراج المال مقابل مستحقٍّ قُيّد يوم الاعتماد — سطرًا سطرًا أو دفعةً واحدة')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'الرواتب والموظفين', href: route('admin.employees.index') },
-                    { label: 'صرف الرواتب' },
-                ]}
             />
 
             <SectionTabs tabs={EMPLOYEE_TABS} current="admin.payroll.payments" />

@@ -92,10 +92,6 @@ export default function Banks() {
             <PageHeader
                 title="الحسابات البنكية"
                 subtitle={t('حسابات النشاط ورصيد كلٍّ منها، وكشفه ومطابقته مع الدفتر')}
-                breadcrumbs={[
-                    { label: 'الرئيسية', href: route('admin.dashboard') },
-                    { label: 'المالية' },
-                ]}
                 actions={
                     <Button onClick={() => open()}>
                         <Plus />

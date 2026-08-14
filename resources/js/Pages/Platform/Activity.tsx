@@ -107,7 +107,6 @@ export default function Activity() {
             <PageHeader
                 title="سجل النشاط"
                 subtitle={t('سجلّ كامل بكل العمليات على المنصة وكل الشركات')}
-                breadcrumbs={[{ label: 'الرئيسية', href: route('super-admin.dashboard') }, { label: 'سجل النشاط' }]}
             />
 
             <Card className="mb-6 p-4">

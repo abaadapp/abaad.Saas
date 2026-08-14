@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowUpDown, ChevronDown, ChevronUp, ListFilter, Search, X } from 'lucide-react';
 import Tabs from '@/Components/Tabs';
+import { statusDot } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import {
     DropdownMenu,
@@ -27,6 +28,9 @@ import {
 } from '@/Components/ui/table';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+
+/** رمادي «الكل» — غيابُ تصفية لا حالة، فلا يأخذ لون حالةٍ من الخريطة */
+const NEUTRAL_DOT = '#9ca3af';
 
 export interface Column<T> {
     key: string;
@@ -487,13 +491,27 @@ export default function DataTable<T>({
                 </div>
             )}
 
-            {/* فلتر الحالة شريطًا — أوّل ما يُسأل عنه لا يُخبَّأ خلف زرّ */}
+            {/* فلتر الحالة شريطًا — أوّل ما يُسأل عنه لا يُخبَّأ خلف زرّ.
+                ونقطةُ كلٍّ بلونها من خريطة الشارات، فيتّفق الشريط مع شارات
+                الصفوف تحته. و«الكل» رماديّة: ليست حالةً بل غيابُ تصفية. */}
             {tabFilters.map(({ f, i }) => (
                 <Tabs
                     key={i}
                     tabs={[
-                        { key: '', label: 'الكل' },
-                        ...(f.options ?? []).map((o) => ({ key: o.value, label: o.label })),
+                        { key: '', label: 'الكل', dot: NEUTRAL_DOT },
+                        /*
+                         * اللون من التسمية لا من القيمة.
+                         *
+                         * أكثر القوائم تجعلهما واحدًا («مدفوع» قيمةً واسمًا)،
+                         * لكنّ المنتجات تُرسل `active`/`inactive` إلى الخادم
+                         * وتكتب «مفعّل»/«غير مفعّل» للقارئ. والخريطة عربيّة،
+                         * فالقيمةُ فيها لا تُعرف وتسقط النقطتان إلى الرمادي.
+                         */
+                        ...(f.options ?? []).map((o) => ({
+                            key: o.value,
+                            label: o.label,
+                            dot: statusDot(o.label),
+                        })),
                     ]}
                     current={active[i] ?? ''}
                     onChange={(k) => pick(i, k)}

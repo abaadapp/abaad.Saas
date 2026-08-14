@@ -28,6 +28,14 @@ export interface TabItem {
      * الصفر لا يُعرض: «العناوين ٠» سطرٌ يشغل مكانًا ليقول لا شيء.
      */
     count?: number;
+    /**
+     * نقطةٌ ملوّنة قبل النصّ — لونها كما يُمرَّر (‏`statusDot` مصدرها).
+     *
+     * لتبويبات الحالة: اللون يُقرأ قبل النصّ، فيُعرف موضع «المتأخّر» من
+     * «المدفوع» بنظرةٍ لا بقراءة. وهي تُمرَّر ولا تُشتقّ هنا: هذا مكوّنٌ عامٌّ
+     * لا يعرف الحالات، ومَن يعرفها يُمرّر لونها.
+     */
+    dot?: string;
 }
 
 interface Props {
@@ -90,6 +98,13 @@ export default function Tabs({ tabs, current, onChange, className, trailing }: P
                         )}
                     >
                         {Icon && <Icon className="size-4 shrink-0" />}
+                        {tab.dot && (
+                            <span
+                                aria-hidden
+                                className="size-1.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: tab.dot }}
+                            />
+                        )}
                         {t(tab.label)}
                         {!! tab.count && (
                             <span className="text-[12px] text-[#9ca3af]">{number(tab.count)}</span>

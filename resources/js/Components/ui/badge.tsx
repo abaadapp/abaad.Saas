@@ -22,7 +22,13 @@ const badgeVariants = cva(
     },
 );
 
-/** خريطة حالات النظام العربية → لون الشارة */
+/**
+ * خريطة حالات النظام العربية → لون الشارة.
+ *
+ * ومصدرٌ واحد لا اثنان: تقرؤها الشارةُ في الصفّ، وتقرؤها نقطةُ تبويب الحالة
+ * فوق الجدول. ولو كان لكلٍّ خريطته لظهرت الحالة الواحدة بلونين على شاشةٍ
+ * واحدة — النقطة في الشريط والشارة في الصفّ تحتها.
+ */
 const STATUS_VARIANT: Record<string, VariantProps<typeof badgeVariants>['variant']> = {
     مكتمل: 'success',
     مدفوع: 'success',
@@ -36,7 +42,8 @@ const STATUS_VARIANT: Record<string, VariantProps<typeof badgeVariants>['variant
     'غير مدفوع': 'warning',
     منخفض: 'warning',
     ملغي: 'danger',
-    متوقف: 'danger',
+    // «متوقف» موقوفٌ لا عاطل: صفراءُ تنبيه لا حمراءُ خطأ
+    متوقف: 'warning',
     نفد: 'danger',
     مغلقة: 'neutral',
     // حالات لوحة المنصة — بنفس ألوان x-badge القديمة
@@ -44,8 +51,49 @@ const STATUS_VARIANT: Record<string, VariantProps<typeof badgeVariants>['variant
     'غير مدفوعة': 'danger',
     منتهي: 'danger',
     معطل: 'danger',
-    موقوف: 'danger',
+    موقوف: 'warning',
+    /*
+     * حالاتٌ لم تكن في الخريطة فكانت تسقط إلى الرمادي.
+     *
+     * والرمادي في الشارة يمرّ، أمّا في نقطة التبويب فيُبطل معناها: صفٌّ من
+     * نقاطٍ رماديّة لا يميّز شيئًا عن شيء — وهو ما وُضعت النقطة له.
+     */
+    مسودة: 'neutral',
+    'مستلم جزئيًا': 'info',
+    جزئي: 'warning',
+    ملغى: 'danger',
+    'مُسلَّم': 'success',
+    'مفعّل': 'success',
+    'غير مفعّل': 'neutral',
+    متوفر: 'success',
+    'نفد المخزون': 'danger',
+    راكد: 'warning',
+    منشور: 'success',
+    مرفوض: 'danger',
+    'قيد التجهيز': 'info',
+    'خرج للتوصيل': 'info',
 };
+
+/**
+ * لون نقطة الحالة — مصمتٌ لا خلفية.
+ *
+ * خلفيةُ الشارة فاتحةٌ جدًّا (‏#ecfdf5)، ونقطةٌ بقياس ٦ بكسل بهذا اللون لا
+ * تكاد تُرى على أبيض. فتُؤخذ نغمةُ النصّ وهي القويّة.
+ */
+const TONE_DOT: Record<string, string> = {
+    neutral: '#9ca3af',
+    success: '#059669',
+    warning: '#d97706',
+    danger: '#dc2626',
+    info: '#2563eb',
+    primary: '#6d28d9',
+    outline: '#9ca3af',
+};
+
+/** لون نقطة الحالة كما تراه الشارة — وما لا يُعرف رماديّ */
+export function statusDot(status: string): string {
+    return TONE_DOT[STATUS_VARIANT[status] ?? 'neutral'] ?? TONE_DOT.neutral;
+}
 
 export interface BadgeProps
     extends React.HTMLAttributes<HTMLSpanElement>,

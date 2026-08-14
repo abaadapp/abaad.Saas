@@ -220,6 +220,29 @@ class DemoIsolationTest extends TestCase
         $this->assertSame(0, Business::demo()->count());
     }
 
+    /**
+     * ويُدخَل المتجر التجريبيّ بزرّ، لا بنسخ بريدٍ وكلمة مرور.
+     *
+     * وهو الفرق الذي يجعل الشاشة تُستعمل: العرض يقع أمام عميل، وتسجيلُ خروجٍ
+     * ودخولٍ من جديد أمامه دقيقةٌ ضائعة وخطرُ أن تُكتب الكلمة خطأً مرّتين.
+     */
+    public function test_the_platform_admin_enters_a_demo_store_by_button(): void
+    {
+        $demo = DemoStore::create('متجر العرض', 'صغير');
+        $owner = User::where('business_id', $demo->id)->where('role', 'admin')->firstOrFail();
+
+        $this->actingAs($this->superAdmin)
+            ->from(route('super-admin.demo.index'))
+            ->post(route('super-admin.businesses.impersonate', $demo->id))
+            ->assertRedirect();
+
+        $this->assertAuthenticatedAs($owner);
+
+        // والعودةُ إلى الديمو: قائمة الشركات لا تعرض هذا المتجر أصلًا
+        $this->post(route('impersonate.stop'))->assertRedirect(route('super-admin.demo.index'));
+        $this->assertAuthenticatedAs($this->superAdmin);
+    }
+
     /** كل جدولٍ يحمل business_id يُمحى — بما يُستحدَث بعد كتابة هذا الاختبار */
     public function test_the_wipe_covers_every_scoped_table(): void
     {

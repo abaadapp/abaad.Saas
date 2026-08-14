@@ -1,9 +1,9 @@
 import { router, usePage } from '@inertiajs/react';
-import { Ban, Plus, Power } from 'lucide-react';
+import { Ban, LogIn, Plus, Power } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
-import RowActions from '@/Components/RowActions';
+import RowActions, { type RowAction } from '@/Components/RowActions';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import { Badge } from '@/Components/ui/badge';
@@ -187,12 +187,29 @@ export default function BusinessesIndex() {
              * «إعادة تشغيل» وحدها، والعاملة «تعطيل» وحده. وقائمةٌ فيها زرٌّ
              * لا يفعل شيئًا تجعل المشغّل يضغطه ليعرف.
              */
-            cell: (b) =>
-                isDisabled(b.status) ? (
+            cell: (b) => {
+                /*
+                 * الدخول في القائمة لا في ملفّ الشركة وحده.
+                 *
+                 * من يتلقّى مكالمةَ تاجرٍ يعرف اسمه لا رقمه، فكان يفتح ملفّه
+                 * ليضغط زرًّا واحدًا ثم يعود. وصفٌّ فيه اسمُ الشركة أولى
+                 * موضعٍ بالزرّ.
+                 *
+                 * ويعمل على المعطَّلة أيضًا — و`CheckTenantStatus` يستثني
+                 * المنتحِل عمدًا: منعُه في المعطَّل يمنع الإصلاح نفسه.
+                 */
+                const enter: RowAction = {
+                    label: 'دخول كتاجر',
+                    icon: <LogIn />,
+                    onSelect: () => router.post(route('super-admin.businesses.impersonate', b.id)),
+                };
+
+                return isDisabled(b.status) ? (
                     <RowActions
                         show={{ routeName: 'super-admin.businesses.show', href: route('super-admin.businesses.show', b.id) }}
                         edit={{ routeName: 'super-admin.businesses.edit', href: route('super-admin.businesses.edit', b.id) }}
                         extra={[
+                            enter,
                             {
                                 label: 'إعادة تشغيل',
                                 icon: <Power />,
@@ -209,6 +226,7 @@ export default function BusinessesIndex() {
                     <RowActions
                         show={{ routeName: 'super-admin.businesses.show', href: route('super-admin.businesses.show', b.id) }}
                         edit={{ routeName: 'super-admin.businesses.edit', href: route('super-admin.businesses.edit', b.id) }}
+                        extra={[enter]}
                         destroy={{
                             url: route('super-admin.businesses.destroy', b.id),
                             // «تعطيل» لا «حذف»: المتحكّم يغيّر الحالة ولا يمحو السجل،
@@ -217,7 +235,8 @@ export default function BusinessesIndex() {
                             message: 'سيُنقل هذا النشاط إلى حالة «معطل». هل تريد المتابعة؟',
                         }}
                     />
-                ),
+                );
+            },
         },
     ];
 

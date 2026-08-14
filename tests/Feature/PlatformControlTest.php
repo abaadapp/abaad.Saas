@@ -264,6 +264,36 @@ class PlatformControlTest extends TestCase
         $this->assertFalse(session()->has('impersonator_id'));
     }
 
+    /**
+     * والخروج يعيده إلى الشاشة التي دخل منها.
+     *
+     * قسم الديمو يستثني متاجره من قائمة الشركات — فالعودة الثابتة إلى تلك
+     * القائمة كانت تُنزل الخارجَ في مكانٍ لا أثر فيه لما خرج منه.
+     */
+    public function test_leaving_returns_to_the_screen_the_entry_started_from(): void
+    {
+        [$biz] = $this->tenant();
+
+        $this->actingAs($this->super)
+            ->from(route('super-admin.demo.index'))
+            ->post(route('super-admin.businesses.impersonate', $biz->id));
+
+        $this->post(route('impersonate.stop'))->assertRedirect(route('super-admin.demo.index'));
+    }
+
+    /** ولا يعود إلا داخل اللوحة: المرجع ترويسةُ متصفّحٍ تُزوَّر */
+    public function test_a_foreign_referrer_does_not_become_the_exit_destination(): void
+    {
+        [$biz] = $this->tenant();
+
+        $this->actingAs($this->super)
+            ->from('https://evil.example/hook')
+            ->post(route('super-admin.businesses.impersonate', $biz->id));
+
+        $this->post(route('impersonate.stop'))
+            ->assertRedirect(route('super-admin.businesses.index'));
+    }
+
     /** والانتحال يعمل داخل متجرٍ معطَّل: منعُه هناك يمنع الإصلاح نفسه */
     public function test_impersonation_works_inside_a_disabled_business(): void
     {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, Copy, FlaskConical, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import { AlertTriangle, Copy, FlaskConical, LogIn, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
@@ -135,6 +135,23 @@ export default function DemoIndex() {
                                     </p>
                                 </div>
                                 <Badge status={store.status} />
+
+                                {/*
+                                    الدخول أوّل ما يُضغط في هذه الشاشة — فهو
+                                    سببُ وجودها. والبديل كان نسخ البريد وكلمة
+                                    المرور ثمّ الخروج والدخول من جديد: خطواتٌ
+                                    تُفعل أمام العميل في العرض.
+                                */}
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() =>
+                                        router.post(route('super-admin.businesses.impersonate', store.id))
+                                    }
+                                >
+                                    <LogIn />
+                                    {t('دخول')}
+                                </Button>
 
                                 <Select
                                     value={reseed.data.size}

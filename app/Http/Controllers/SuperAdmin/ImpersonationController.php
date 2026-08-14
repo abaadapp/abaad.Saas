@@ -56,6 +56,22 @@ class ImpersonationController extends Controller
         Auth::login($target);
         $request->session()->put('impersonator_id', $impersonator);
 
+        /*
+         * والخروجُ يعيده إلى حيث دخل، لا إلى قائمة الشركات دائمًا.
+         *
+         * قسم الديمو يستثني متاجره من تلك القائمة عمدًا — فمن دخل متجرًا
+         * تجريبيًّا ثم خرج كان يقف أمام قائمةٍ لا يجد فيها ما خرج منه للتوّ.
+         *
+         * ويُقبل المرجع إن كان داخل لوحة المنصة وحدها: القيمة تأتي من ترويسة
+         * المتصفّح، وإعادةُ التوجيه إلى ما فيها بلا فحصٍ تُخرج المستخدم إلى
+         * أي موقع.
+         */
+        $back = (string) url()->previous();
+        $request->session()->put(
+            'impersonate_return',
+            str_starts_with($back, url('/super-admin')) ? $back : route('super-admin.businesses.index'),
+        );
+
         return redirect(Permissions::homeFor($target))->with('toast', [
             'msg' => __('تدخل الآن باسم :name', ['name' => $target->name]),
             'type' => 'info',
@@ -65,6 +81,7 @@ class ImpersonationController extends Controller
     public function stop(Request $request)
     {
         $id = $request->session()->pull('impersonator_id');
+        $return = (string) $request->session()->pull('impersonate_return');
         $admin = $id ? User::find($id) : null;
 
         if (! $admin || ! $admin->isSuperAdmin()) {
@@ -76,7 +93,7 @@ class ImpersonationController extends Controller
         Auth::login($admin);
         Activity::log('logout', 'خرج من حساب التاجر', ['business_id' => null]);
 
-        return redirect()->route('super-admin.businesses.index')->with('toast', [
+        return redirect($return ?: route('super-admin.businesses.index'))->with('toast', [
             'msg' => __('عدتَ إلى لوحة المنصة'),
             'type' => 'success',
         ]);

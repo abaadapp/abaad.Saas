@@ -35,7 +35,13 @@ class BusinessController extends Controller
          *
          * وبفرعٍ استعلاميّ لا بعلاقة: صفٌّ واحد لكل شركة، لا استعلامٌ لكلٍّ منها.
          */
-        $q = Business::with('plan')->addSelect([
+        /*
+         * متاجر التجّار وحدها — والتجريبيّة في قسم «الديمو».
+         *
+         * خلطُهما يجعل من يقرأ «١٤ شركة» يعدّ فيها متجرًا وهميًّا، ومن يبحث
+         * عن عميلٍ يمرّ على متجرٍ لا يدفع. ولها بابها الذي يُبنى ويُمحى منه.
+         */
+        $q = Business::real()->with('plan')->addSelect([
             'last_sale' => \App\Models\Order::selectRaw('MAX(ordered_at)')
                 ->whereColumn('orders.business_id', 'businesses.id')
                 ->sold(),

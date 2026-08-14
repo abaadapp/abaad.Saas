@@ -319,17 +319,17 @@ class Demo
         $lyStart = now()->subYear()->startOfYear();
 
         // القيم (إجمالي)
-        $total = Business::count();
-        $active = Business::where('status', 'نشط')->count();
+        $total = Business::real()->count();
+        $active = Business::real()->where('status', 'نشط')->count();
         $users = User::count();
         $activeSubs = Subscription::where('status', 'نشط')->count();
         $expiredSubs = Subscription::where('status', '!=', 'نشط')->count();
 
         // اتجاهات حقيقية = نمو التسجيلات (هذا الشهر مقابل الشهر السابق)
-        $bizNew = Business::where('starts_at', '>=', $mStart)->count();
-        $bizNewLast = Business::whereBetween('starts_at', [$lmStart, $mStart])->count();
-        $activeNew = Business::where('status', 'نشط')->where('starts_at', '>=', $mStart)->count();
-        $activeNewLast = Business::where('status', 'نشط')->whereBetween('starts_at', [$lmStart, $mStart])->count();
+        $bizNew = Business::real()->where('starts_at', '>=', $mStart)->count();
+        $bizNewLast = Business::real()->whereBetween('starts_at', [$lmStart, $mStart])->count();
+        $activeNew = Business::real()->where('status', 'نشط')->where('starts_at', '>=', $mStart)->count();
+        $activeNewLast = Business::real()->where('status', 'نشط')->whereBetween('starts_at', [$lmStart, $mStart])->count();
         $usersNew = User::where('created_at', '>=', $mStart)->count();
         $usersNewLast = User::whereBetween('created_at', [$lmStart, $mStart])->count();
         $subsNew = Subscription::where('status', 'نشط')->where('created_at', '>=', $mStart)->count();
@@ -366,11 +366,11 @@ class Demo
          * يُحسب من الحالة الفعلية لا من عدّاد «الاشتراكات المنتهية» — ذاك يعدّ
          * دوراتٍ قديمة لعملاء جدّدوا، فيقول إنك تخسر وأنت تكسب.
          */
-        $churned = Business::where('starts_at', '<', $mStart)
+        $churned = Business::real()->where('starts_at', '<', $mStart)
             ->where(fn ($q) => $q->whereIn('status', ['معطل', 'معطّل'])->orWhere('ends_at', '<', now()))
             ->where('updated_at', '>=', $mStart)
             ->count();
-        $activeAtStart = max(1, Business::where('starts_at', '<', $mStart)->count());
+        $activeAtStart = max(1, Business::real()->where('starts_at', '<', $mStart)->count());
         $churnLabel = $churned.' · '.round($churned / $activeAtStart * 100).'%';
 
         // الإيرادات: الشهر مقابل السابق، والسنة مقابل السابقة (فواتير مدفوعة فعليًا)
@@ -405,7 +405,7 @@ class Demo
 
     public static function businesses(): array
     {
-        return Business::with('plan')->orderByDesc('id')->get()->map(fn ($b) => [
+        return Business::real()->with('plan')->orderByDesc('id')->get()->map(fn ($b) => [
             'id' => $b->id,
             'name' => $b->name,
             'type' => $b->type,
@@ -2198,7 +2198,7 @@ class Demo
         $data = [];
         foreach (self::yearMonths() as $m) {
             $labels[] = self::monthLabel($m);
-            $data[] = Business::whereYear('starts_at', $m->year)->whereMonth('starts_at', $m->month)->count();
+            $data[] = Business::real()->whereYear('starts_at', $m->year)->whereMonth('starts_at', $m->month)->count();
         }
         return ['labels' => $labels, 'data' => $data];
     }

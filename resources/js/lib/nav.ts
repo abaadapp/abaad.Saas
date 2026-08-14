@@ -11,6 +11,7 @@ import {
     BarChart3,
     Boxes,
     Building2,
+    FlaskConical,
     Globe,
     History,
     Layers,
@@ -185,6 +186,8 @@ export const PLATFORM_NAV: NavGroup[] = [
     {
         heading: 'أخرى',
         items: [
+            // الديمو قسمٌ قائم بذاته لا زرٌّ في الإعدادات: يُفتح في كل عرض
+            { label: 'الديمو', icon: FlaskConical, route: 'super-admin.demo.index' },
             { label: 'التقارير', icon: BarChart3, route: 'super-admin.reports.index' },
             { label: 'سجل النشاط', icon: History, route: 'super-admin.activity.index' },
             { label: 'الإعدادات', icon: Settings, route: 'super-admin.settings.index' },

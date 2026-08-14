@@ -2835,5 +2835,22 @@
     "ترتيب": "Sort",
     "بلا ترتيب": "No sorting",
     "إزالة الفلتر": "Remove filter",
-    "مسح الكل": "Clear all"
+    "مسح الكل": "Clear all",
+    "الديمو": "Demo",
+    "متاجر تجريبيّة ممتلئة لعرض النظام — معزولة عن حسابات التجّار": "Fully populated demo stores for showcasing the system — isolated from merchant accounts",
+    "متجر تجريبيّ جديد": "New demo store",
+    "البيانات الوهميّة لا تدخل حساب تاجر": "Dummy data never enters a merchant account",
+    "البذر يرفض أي متجر غير موسوم تجريبيًّا، وإحصاءات المنصّة وتقاريرها تستثني هذه المتاجر. عدد متاجر التجّار الآن:": "Seeding refuses any store not marked as demo, and platform stats and reports exclude these stores. Merchant stores right now:",
+    "ولا يمسّها شيءٌ ممّا في هذه الشاشة.": "and nothing on this screen touches them.",
+    "لا متجر تجريبيّ بعد": "No demo store yet",
+    "أنشئ متجرًا ممتلئًا بالبيانات لعرض النظام كما يبدو بعد سنةٍ من العمل — لا كما يبدو في يومه الأوّل.": "Create a store full of data to show the system as it looks after a year of use — not as it looks on day one.",
+    "تجريبيّ": "Demo",
+    "حجم البيانات": "Data size",
+    "إعادة بناء البيانات": "Rebuild data",
+    "إنشاء وملء البيانات": "Create and populate",
+    "الأكبر يستغرق وقتًا أطول في البناء": "Larger sizes take longer to build",
+    "حذف المتجر التجريبيّ": "Delete demo store",
+    "يُحذف «:name» وكلّ صفٍّ يخصّه — المنتجات والفواتير والقيود والموظفون. ولا يُسترجع.": "“:name” and every row belonging to it will be deleted — products, invoices, journal entries and staff. This cannot be undone.",
+    "حذف نهائيًّا": "Delete permanently",
+    "نُسخ.": "Copied."
 }

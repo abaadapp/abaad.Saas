@@ -110,6 +110,17 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/dashboard', [SuperAdminPageController::class, 'dashboard'])->name('dashboard');
     Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'superStats'])->name('dashboard.stats');
 
+    /*
+     * الديمو — بناء المتاجر التجريبيّة ومحوُها.
+     *
+     * الحذف هنا يمحو متجرًا بكلّ صفوفه بضغطة، ولذلك لا يُقبل إلا معرّفُ
+     * متجرٍ موسوم: الحارس في المتحكّم لا في الشاشة (انظر DemoGuard).
+     */
+    Route::get('/demo', [\App\Http\Controllers\SuperAdmin\DemoController::class, 'index'])->name('demo.index');
+    Route::post('/demo', [\App\Http\Controllers\SuperAdmin\DemoController::class, 'store'])->name('demo.store');
+    Route::post('/demo/{id}/reseed', [\App\Http\Controllers\SuperAdmin\DemoController::class, 'reseed'])->name('demo.reseed');
+    Route::delete('/demo/{id}', [\App\Http\Controllers\SuperAdmin\DemoController::class, 'destroy'])->name('demo.destroy');
+
     // الشركات
     Route::get('/businesses', [BusinessController::class, 'index'])->name('businesses.index');
     // تصدير الشركات (قبل businesses/{id} حتى لا يبتلعها نمط المعرّف)

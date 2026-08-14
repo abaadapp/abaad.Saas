@@ -9,7 +9,26 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Business extends Model
 {
     protected $guarded = [];
-    protected $casts = ['starts_at' => 'date', 'ends_at' => 'date'];
+    protected $casts = ['starts_at' => 'date', 'ends_at' => 'date', 'is_demo' => 'boolean'];
+
+    /**
+     * المتجر تاجرٌ حقيقيّ ما لم يُوسَم تجريبيًّا — والقيمة هنا لا في القاعدة
+     * وحدها: قيمة العمود الافتراضية لا تصل إلى النموذج المُنشأ في الذاكرة،
+     * فمتجرٌ يُنشأ ويُسأل عن حاله في الطلب نفسه كان يُجيب بـnull.
+     */
+    protected $attributes = ['is_demo' => false];
+
+    /** متاجر التجّار وحدها — ما تُبنى عليه إحصاءات المنصّة وتقاريرها */
+    public function scopeReal($query)
+    {
+        return $query->where('is_demo', false);
+    }
+
+    /** المتاجر التجريبيّة وحدها */
+    public function scopeDemo($query)
+    {
+        return $query->where('is_demo', true);
+    }
 
     /** رابط الشعار: يدعم الروابط الخارجية والملفات المرفوعة */
     public function getLogoAttribute($value): string

@@ -22,7 +22,13 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        $q = User::with('business');
+        /*
+         * موظّفو التجّار وحدهم.
+         *
+         * متجرٌ تجريبيّ فيه ثمانية موظّفين، فلولا هذا لتصدّروا القائمة كأنّهم
+         * مستخدمون حقيقيّون — ومدير المنصّة نفسه بلا `business_id` فيبقى.
+         */
+        $q = User::with('business')->whereDoesntHave('business', fn ($w) => $w->where('is_demo', true));
 
         if ($s = trim((string) $request->query('q'))) {
             $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%")->orWhere('phone', 'like', "%{$s}%"));

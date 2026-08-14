@@ -244,7 +244,7 @@ class PageController extends Controller
                 ['title' => __('تقرير الاشتراكات'), 'desc' => __('الاشتراكات النشطة والمنتهية'), 'icon' => 'refresh-cw', 'color' => 'success',
                     'value' => (string) ($subs['active'] + $subs['expired'])],
                 ['title' => __('تقرير الشركات'), 'desc' => __('الشركات المسجلة في المنصة'), 'icon' => 'building-2', 'color' => 'info',
-                    'value' => (string) \App\Models\Business::count()],
+                    'value' => (string) \App\Models\Business::real()->count()],
                 ['title' => __('تقرير الأنشطة'), 'desc' => __('سجل الأنشطة والعمليات'), 'icon' => 'activity', 'color' => 'warning',
                     'value' => (string) \App\Models\ActivityLog::count()],
             ],
@@ -386,7 +386,7 @@ class PageController extends Controller
          * «مغسلة» تُسجَّل ثمّ لا سبيل إلى تصفيتها — مدخلٌ يقبل ما لا يستطيع
          * البحث عنه.
          */
-        $types = \App\Models\Business::whereNotNull('type')->distinct()->orderBy('type')->pluck('type')->all();
+        $types = \App\Models\Business::real()->whereNotNull('type')->distinct()->orderBy('type')->pluck('type')->all();
 
         return [
             'types' => collect(BusinessTypes::TYPES)->merge($types)->unique()->values()->all(),

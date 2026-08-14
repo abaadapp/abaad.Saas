@@ -84,6 +84,7 @@ export default function OrdersIndex() {
         {
             // الملغى كان يجلس بين المكتمل بلا تمييز ولا فرز
             label: 'كل الحالات',
+            asTabs: true,
             param: 'status',
             options: [
                 { label: 'مكتمل', value: 'مكتمل' },

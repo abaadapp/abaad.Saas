@@ -1,8 +1,20 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { motion } from 'framer-motion';
-import { ChevronDown, ChevronUp, Search } from 'lucide-react';
-import { Select } from '@/Components/Field';
+import type { LucideIcon } from 'lucide-react';
+import { ArrowUpDown, ChevronDown, ChevronUp, ListFilter, Search, X } from 'lucide-react';
+import Tabs from '@/Components/Tabs';
+import { Button } from '@/Components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
+    DropdownMenuTrigger,
+} from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
 import {
     Table,
@@ -45,6 +57,17 @@ export interface Filter<T> {
      * فيظنّ المستخدم أنه يرى القائمة كاملة.
      */
     initial?: string;
+    /**
+     * يُرسم شريطَ تبويباتٍ فوق الجدول بدل أن يسكن قائمة «أضف فلتر».
+     *
+     * لفلتر الحالة وحده: هو السؤال الأوّل عن أي قائمة — «ما غير المدفوع؟» —
+     * وإخفاؤه خلف زرّ يجعل أكثر ما يُسأل عنه أبعدَ ما يُوصل إليه. وما عداه
+     * (المورّد، النوع، الفرع) يُسأل عنه أحيانًا، فمكانه القائمة.
+     *
+     * ولا يُعلَّم به إلا فلترٌ خياراته قليلة: التبويبات لا تنكمش، وعشرون
+     * خيارًا تصير شريطًا ينزلق أفقيًّا لا يُقرأ.
+     */
+    asTabs?: boolean;
 }
 
 /** شكل الترقيم كما يُصدره paginate() في Laravel */
@@ -90,6 +113,18 @@ interface DataTableProps<T> {
      * والترقيم كما هو — فلا يفقد العرض الشبكي أدوات التصفية.
      */
     renderBody?: (rows: T[]) => ReactNode;
+    /**
+     * مبدّل شكل العرض في طرف الشريط — لمن عنده `renderBody`.
+     *
+     * أزرارُ أيقونةٍ لا شريطٌ مقسَّم: للنظام شكل تبويبٍ واحد هو الخطّ السفلي،
+     * وشريطٌ مقسَّم هنا يُعيد الشكل الذي نُزع. وهو تبديلُ هيئةٍ لا تنقّلٌ بين
+     * وجهات، فالأيقونة تكفيه.
+     */
+    views?: {
+        current: string;
+        onChange: (key: string) => void;
+        options: { key: string; label: string; icon: LucideIcon }[];
+    };
 }
 
 /**
@@ -110,6 +145,7 @@ export default function DataTable<T>({
     pageSize = 25,
     server,
     renderBody,
+    views,
 }: DataTableProps<T>) {
     const t = useTranslate();
     const searchParam = server?.searchParam ?? 'q';
@@ -204,77 +240,245 @@ export default function DataTable<T>({
         );
     };
 
+    /** تطبيق قيمة فلتر — والوضع الخادمي يزور الرابط بها */
+    const pick = (i: number, value: string) => {
+        setActive((prev) => ({ ...prev, [i]: value }));
+        setPage(0);
+        const filter = filters[i];
+        if (server && filter?.param) go({ [filter.param]: value || null, page: null });
+    };
+
+    /*
+     * الفلاتر بابان: شريطُ تبويبات فوق الجدول لفلتر الحالة، وقائمةٌ منسدلة
+     * لما عداه. والمطبَّق من الثانية يظهر شريحةً — وإلا صار الفلتر خفيًّا
+     * يعمل: تُخفيه القائمة بعد اختياره فيقرأ الناظر قائمةً منقوصة ولا شيء
+     * على الشاشة يقول لِمَ.
+     */
+    const indexed = filters.map((f, i) => ({ f, i }));
+    const tabFilters = indexed.filter(({ f }) => f.asTabs);
+    const rest = indexed.filter(({ f }) => !f.asTabs);
+
+    /*
+     * التاريخ يبقى في الشريط ولا يدخل القائمة.
+     *
+     * منتقي التاريخ الأصليّ يُفتح في طبقةٍ خارج القائمة المنسدلة، فتفقد
+     * القائمة التركيز وتنغلق قبل أن يُختار يوم — حقلٌ يُفتح ولا يُملأ.
+     * وهو أيضًا لا قيمة «كل» له تُعرض شريحةً: مداه مكتوبٌ في الحقل نفسه.
+     */
+    const dateFilters = rest.filter(({ f }) => f.type === 'date');
+    const menuFilters = rest.filter(({ f }) => f.type !== 'date');
+    const applied = menuFilters.filter(({ i }) => active[i]);
+    const unapplied = menuFilters.filter(({ i }) => !active[i]);
+
+    /** نصّ القيمة المختارة كما يقرؤه الإنسان — لا مفتاحها */
+    const valueLabel = (filter: Filter<T>, value: string) =>
+        filter.options?.find((o) => o.value === value)?.label ?? value;
+
+    /*
+     * «مسح الكل» يمسح التاريخ أيضًا.
+     *
+     * وشريط الحالة يبقى على ما هو: هو ظاهرٌ يقول نفسه، ومسحُه مع الشرائح
+     * يُعيد المستخدم إلى «الكل» وهو لم يطلب ذلك.
+     */
+    const clearable = [...menuFilters, ...dateFilters];
+
+    const clearFilters = () => {
+        setActive((prev) => {
+            const next = { ...prev };
+            clearable.forEach(({ i }) => { next[i] = ''; });
+            return next;
+        });
+        setPage(0);
+        if (server) {
+            const patch: Record<string, null> = {};
+            clearable.forEach(({ f }) => { if (f.param) patch[f.param] = null; });
+            go({ ...patch, page: null });
+        }
+    };
+
+    /*
+     * الترتيب محلّيٌّ وحده — انظر `filtered`: الوضع الخادمي يُرجع الصفوف كما
+     * جاءت لأن الخادم رتّبها، ولا يقرأ حالة `sort` أحد.
+     *
+     * فلا يُعرض زرُّ ترتيبٍ ولا سهمٌ على رأس عمود حيث لا يعمل. كان الرأس
+     * قابلًا للضغط في الحالتين: تضغط «المبلغ» في المنتجات فينقلب السهم ولا
+     * يتحرّك صفّ — وهو أسوأ من غياب الترتيب، لأنه يقول إنه رتّب.
+     */
+    const canSort = !server;
+    const sortable = canSort ? columns.filter((c) => c.sortable && c.value) : [];
+
     return (
         <div>
             {(searchable || filters.length > 0 || toolbar) && (
-                <div className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
+                <div className="flex flex-wrap items-center gap-1 px-4 py-2">
+                    {/* البحث بلا إطار: حقلٌ محاطٌ بحدٍّ داخل بطاقةٍ محاطةٍ بحدّ
+                        يُثقل الشريط، والأيقونة وحدها تقول ما هو */}
                     {searchable && (
-                        <div className="relative sm:w-72">
-                            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-[#9ca3af]" />
-                            <Input
+                        <div className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-[18rem]">
+                            <Search className="size-4 shrink-0 text-[#9ca3af]" />
+                            <input
                                 value={query}
                                 onChange={(e) => {
                                     setQuery(e.target.value);
                                     setPage(0);
                                 }}
                                 placeholder={t(searchPlaceholder)}
-                                className="ps-9"
+                                className="h-9 w-full min-w-0 border-0 bg-transparent text-sm text-[#111] placeholder:text-[#9ca3af] focus:outline-none"
                             />
                         </div>
                     )}
 
-                    {filters.map((filter, i) => {
-                        const onPick = (value: string) => {
-                            setActive((prev) => ({ ...prev, [i]: value }));
-                            setPage(0);
-                            if (server && filter.param) go({ [filter.param]: value || null, page: null });
-                        };
+                    {unapplied.length > 0 && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                    <ListFilter />
+                                    {t('أضف فلتر')}
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="min-w-52">
+                                {unapplied.map(({ f, i }) => (
+                                    <DropdownMenuSub key={i}>
+                                        <DropdownMenuSubTrigger>{t(f.label)}</DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                                            {(f.options ?? []).map((o) => (
+                                                <DropdownMenuItem
+                                                    key={o.value}
+                                                    onSelect={() => pick(i, o.value)}
+                                                >
+                                                    {t(o.label)}
+                                                </DropdownMenuItem>
+                                            ))}
+                                        </DropdownMenuSubContent>
+                                    </DropdownMenuSub>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
 
-                        /*
-                         * التسمية مكتوبةً داخل الحقل لا في aria وحدها.
-                         *
-                         * حقل type="date" لا يقبل placeholder — فبينما تعلن
-                         * القائمةُ عن نفسها بـ«كل الحالات» مكتوبةً فيها، كان
-                         * حقل التاريخ يظهر «dd/mm/yyyy» فارغًا من أي عنوان.
-                         * ومتى وقف حقلان متجاوران هكذا لم يعرف الناظر أيّهما
-                         * «من» وأيّهما «إلى» إلا بالتجربة. والتسمية كانت في
-                         * aria-label: يقرؤها قارئ الشاشة ولا تراها العين.
-                         */
-                        return filter.type === 'date' ? (
-                            <label
-                                key={i}
-                                className={cn(
-                                    'flex h-10 items-center gap-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)]',
-                                    'bg-white px-3 text-sm transition-[border-color,box-shadow] sm:w-52',
-                                    'focus-within:border-[#d1d5db] focus-within:shadow-[0_0_0_3px_rgba(0,0,0,0.05)]',
-                                )}
-                            >
-                                <span className="whitespace-nowrap text-[#6b7280]">{t(filter.label)}</span>
-                                <Input
-                                    type="date"
-                                    aria-label={t(filter.label)}
-                                    value={active[i] ?? ''}
-                                    onChange={(e) => onPick(e.target.value)}
-                                    className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 focus:shadow-none"
-                                />
-                            </label>
-                        ) : (
-                            <Select
-                                key={i}
+                    {/* المدى الزمنيّ في الشريط — انظر `dateFilters` */}
+                    {dateFilters.map(({ f, i }) => (
+                        <label
+                            key={i}
+                            className="flex h-8 items-center gap-1.5 rounded-[8px] px-2 text-[13px] transition-colors hover:bg-[rgba(17,17,17,0.045)] focus-within:bg-[rgba(17,17,17,0.045)]"
+                        >
+                            <span className="whitespace-nowrap text-[#6b7280]">{t(f.label)}</span>
+                            <Input
+                                type="date"
+                                aria-label={t(f.label)}
                                 value={active[i] ?? ''}
-                                onChange={(e) => onPick(e.target.value)}
-                                // التسمية هي خيار «الكل»: تظهر في الزر بلا تصفية وتبقى قابلة للاختيار للرجوع
-                                placeholder={filter.label}
-                                options={filter.options ?? []}
-                                aria-label={t(filter.label)}
-                                className="sm:w-48"
+                                onChange={(e) => pick(i, e.target.value)}
+                                className="h-auto w-[8.5rem] min-w-0 border-0 bg-transparent p-0 text-[13px] focus:shadow-none"
                             />
-                        );
-                    })}
+                        </label>
+                    ))}
 
-                    {toolbar && <div className="sm:ms-auto">{toolbar}</div>}
+                    {sortable.length > 0 && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                    <ArrowUpDown />
+                                    {sort
+                                        ? t(columns.find((c) => c.key === sort.key)?.header ?? 'ترتيب')
+                                        : t('ترتيب')}
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="min-w-48">
+                                {sortable.map((c) => (
+                                    <DropdownMenuItem key={c.key} onSelect={() => toggleSort(c.key)}>
+                                        <span className="flex-1">{t(c.header)}</span>
+                                        {sort?.key === c.key &&
+                                            (sort.dir === 'asc' ? (
+                                                <ChevronUp className="size-3.5" />
+                                            ) : (
+                                                <ChevronDown className="size-3.5" />
+                                            ))}
+                                    </DropdownMenuItem>
+                                ))}
+                                {sort && (
+                                    <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onSelect={() => setSort(null)}>
+                                            {t('بلا ترتيب')}
+                                        </DropdownMenuItem>
+                                    </>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
+
+                    {views && (
+                        <div className="ms-auto flex items-center gap-0.5">
+                            {views.options.map((v) => {
+                                const Icon = v.icon;
+                                const on = v.key === views.current;
+
+                                return (
+                                    <Button
+                                        key={v.key}
+                                        variant={on ? 'subtle' : 'ghost'}
+                                        size="icon-sm"
+                                        aria-pressed={on}
+                                        title={t(v.label)}
+                                        aria-label={t(v.label)}
+                                        onClick={() => views.onChange(v.key)}
+                                    >
+                                        <Icon />
+                                    </Button>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {toolbar && <div className={cn(!views && 'ms-auto')}>{toolbar}</div>}
                 </div>
             )}
+
+            {/* الفلاتر المطبَّقة — شريحةٌ لكلٍّ منها تُنزع بضغطة */}
+            {applied.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 px-4 pb-2">
+                    {applied.map(({ f, i }) => (
+                        <span
+                            key={i}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[#f2f2f0] py-1 pe-1.5 ps-3 text-[13px] text-[#111]"
+                        >
+                            <span className="text-[#6b7280]">{t(f.label)}:</span>
+                            {t(valueLabel(f, active[i]))}
+                            <button
+                                type="button"
+                                onClick={() => pick(i, '')}
+                                aria-label={t('إزالة الفلتر')}
+                                className="rounded-full p-0.5 text-[#6b7280] transition-colors hover:bg-[rgba(17,17,17,0.08)] hover:text-[#111]"
+                            >
+                                <X className="size-3.5" />
+                            </button>
+                        </span>
+                    ))}
+                    {clearable.filter(({ i }) => active[i]).length > 1 && (
+                        <button
+                            type="button"
+                            onClick={clearFilters}
+                            className="text-[13px] text-[#6b7280] transition-colors hover:text-[#111]"
+                        >
+                            {t('مسح الكل')}
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* فلتر الحالة شريطًا — أوّل ما يُسأل عنه لا يُخبَّأ خلف زرّ */}
+            {tabFilters.map(({ f, i }) => (
+                <Tabs
+                    key={i}
+                    tabs={[
+                        { key: '', label: 'الكل' },
+                        ...(f.options ?? []).map((o) => ({ key: o.value, label: o.label })),
+                    ]}
+                    current={active[i] ?? ''}
+                    onChange={(k) => pick(i, k)}
+                    className="px-4"
+                />
+            ))}
 
             {renderBody ? (
                 <div className="px-4 pb-4">
@@ -290,29 +494,34 @@ export default function DataTable<T>({
             <Table>
                 <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                        {columns.map((column) => (
-                            <TableHead
-                                key={column.key}
-                                className={cn(
-                                    column.align === 'end' && 'text-end',
-                                    column.align === 'center' && 'text-center',
-                                    column.sortable && 'cursor-pointer select-none hover:text-[#111]',
-                                    column.className,
-                                )}
-                                onClick={column.sortable ? () => toggleSort(column.key) : undefined}
-                            >
-                                <span className="inline-flex items-center gap-1">
-                                    {t(column.header)}
-                                    {column.sortable &&
-                                        sort?.key === column.key &&
-                                        (sort.dir === 'asc' ? (
-                                            <ChevronUp className="size-3.5" />
-                                        ) : (
-                                            <ChevronDown className="size-3.5" />
-                                        ))}
-                                </span>
-                            </TableHead>
-                        ))}
+                        {columns.map((column) => {
+                            // يُرتَّب حيث يُرتَّب فعلًا — انظر `canSort`
+                            const sorts = canSort && column.sortable && !! column.value;
+
+                            return (
+                                <TableHead
+                                    key={column.key}
+                                    className={cn(
+                                        column.align === 'end' && 'text-end',
+                                        column.align === 'center' && 'text-center',
+                                        sorts && 'cursor-pointer select-none hover:text-[#111]',
+                                        column.className,
+                                    )}
+                                    onClick={sorts ? () => toggleSort(column.key) : undefined}
+                                >
+                                    <span className="inline-flex items-center gap-1">
+                                        {t(column.header)}
+                                        {sorts &&
+                                            sort?.key === column.key &&
+                                            (sort.dir === 'asc' ? (
+                                                <ChevronUp className="size-3.5" />
+                                            ) : (
+                                                <ChevronDown className="size-3.5" />
+                                            ))}
+                                    </span>
+                                </TableHead>
+                            );
+                        })}
                     </TableRow>
                 </TableHeader>
 

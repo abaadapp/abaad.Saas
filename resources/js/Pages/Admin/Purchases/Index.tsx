@@ -161,6 +161,7 @@ export default function PurchasesIndex() {
     const filters: Filter<PurchaseOrder>[] = [
         {
             label: 'كل الحالات',
+            asTabs: true,
             options: ['مسودة', 'مُرسل', 'مستلم جزئيًا', 'مستلم', 'ملغي'].map((s) => ({ label: s, value: s })),
             match: (o, v) => o.status === v,
         },

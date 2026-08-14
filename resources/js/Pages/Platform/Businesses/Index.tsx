@@ -222,7 +222,7 @@ export default function BusinessesIndex() {
     const tableFilters: Filter<BusinessRow>[] = [
         { label: 'كل الأنواع', param: 'type', options: options.types.map((v) => ({ label: v, value: v })) },
         { label: 'كل الباقات', param: 'plan', options: options.plans.map((v) => ({ label: v, value: v })) },
-        { label: 'كل الحالات', param: 'status', options: options.statuses.map((v) => ({ label: v, value: v })) },
+        { label: 'كل الحالات', param: 'status', asTabs: true, options: options.statuses.map((v) => ({ label: v, value: v })) },
     ];
 
     return (

@@ -187,6 +187,7 @@ export default function SupplierInvoices() {
     const tableFilters: Filter<Invoice>[] = [
         {
             label: 'كل الحالات',
+            asTabs: true,
             param: 'status',
             options: [
                 { label: 'غير مدفوع', value: 'غير مدفوع' },

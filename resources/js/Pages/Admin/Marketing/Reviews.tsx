@@ -163,6 +163,7 @@ export default function Reviews() {
     const tableFilters: Filter<Review>[] = [
         {
             label: 'كل الحالات',
+            asTabs: true,
             param: 'status',
             options: [
                 { label: 'معلّق', value: 'معلّق' },

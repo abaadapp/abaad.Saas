@@ -2830,5 +2830,10 @@
     "ينتظر المراجعة": "Awaiting review",
     "يُسجَّل معلَّقًا ولا يظهر على الموقع حتى تنشره.": "Recorded as pending; it does not appear on the site until you publish it.",
     "يُقيَّد شراؤه في الدفتر — واتركه فارغًا إن كان مسجَّلًا أصلًا": "Its purchase is booked in the ledger — leave empty if it is already recorded",
-    "١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال": "100 points = one currency unit on redemption"
+    "١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال": "100 points = one currency unit on redemption",
+    "أضف فلتر": "Add filter",
+    "ترتيب": "Sort",
+    "بلا ترتيب": "No sorting",
+    "إزالة الفلتر": "Remove filter",
+    "مسح الكل": "Clear all"
 }

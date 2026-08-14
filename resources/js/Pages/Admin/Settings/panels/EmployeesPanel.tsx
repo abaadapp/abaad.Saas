@@ -191,6 +191,7 @@ export default function EmployeesPanel({ employees, jobTitles }: { employees: Em
         },
         {
             label: 'كل الحالات',
+            asTabs: true,
             options: [
                 { label: 'نشط', value: 'نشط' },
                 { label: 'متوقف', value: 'متوقف' },

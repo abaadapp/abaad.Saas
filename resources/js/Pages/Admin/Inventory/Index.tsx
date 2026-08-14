@@ -98,6 +98,7 @@ export default function InventoryIndex() {
     const filters: Filter<InventoryItem>[] = [
         {
             label: 'كل الحالات',
+            asTabs: true,
             options: [
                 { label: 'متوفر', value: 'متوفر' },
                 { label: 'منخفض', value: 'منخفض' },

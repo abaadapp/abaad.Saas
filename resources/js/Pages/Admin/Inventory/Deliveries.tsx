@@ -209,6 +209,7 @@ export default function Deliveries() {
     const tableFilters: Filter<Note>[] = [
         {
             label: 'كل الحالات',
+            asTabs: true,
             param: 'status',
             options: [
                 { label: 'مسودة', value: 'مسودة' },

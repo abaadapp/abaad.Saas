@@ -17,7 +17,6 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PRODUCT_TABS } from '@/Components/SectionTabs';
-import Tabs from '@/Components/Tabs';
 import RowActions from '@/Components/RowActions';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
@@ -225,6 +224,7 @@ export default function ProductsIndex() {
         },
         {
             label: 'كل الحالات',
+            asTabs: true,
             param: 'status',
             options: [
                 { label: 'مفعّل', value: 'active' },
@@ -320,31 +320,23 @@ export default function ProductsIndex() {
 
             <SectionTabs tabs={PRODUCT_TABS} current="admin.products.index" />
 
-            {/* مبدّل العرض: شبكي أو جدول — كما كان في Alpine.
-                كان يُرسم هنا بيده صفًّا من الأزرار: نسخةً من صفوف Tabs نفسها،
-                تتبدّل التبويبات في النظام ويبقى هو على ما كان. */}
-            <Tabs
-                tabs={[
-                    { key: 'grid', label: 'عرض شبكي', icon: LayoutGrid },
-                    { key: 'table', label: 'عرض جدول', icon: List },
-                ]}
-                current={view}
-                onChange={(k) => setView(k as 'grid' | 'table')}
-                className="mb-4"
-                trailing={
-                    <span className="text-sm text-[#6b7280]">
-                        {number(pagination.total)} {t('منتج')}
-                    </span>
-                }
-            />
+            {/* مبدّل العرض صار في شريط أدوات الجدول — انظر `views` أدناه.
+                كان شريطًا قائمًا بذاته فوق البطاقة، فيقف فوق شريط الحالة
+                داخلها: شريطان متجاوران يبدّل كلٌّ منهما شيئًا آخر. */}
 
             {/* خارج البطاقة: Card بلا حشو داخلي (الحشو في CardHeader/CardContent)،
-                فالفقرة داخله تلتصق بالحد و overflow-hidden يقصّها */}
-            {updatedAt && (
-                <p className="mb-3 text-[12px] text-[#9ca3af]">
-                    {t('الكميات محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
-                </p>
-            )}
+                فالفقرة داخله تلتصق بالحد و overflow-hidden يقصّها.
+                والعدد هنا لأن مبدّل العرض الذي كان يحمله في طرفه انتقل إلى
+                شريط الجدول — سطرٌ خافت أهون من شريطٍ لسطرٍ واحد. */}
+            <p className="mb-3 text-[12px] text-[#9ca3af]">
+                {number(pagination.total)} {t('منتج')}
+                {updatedAt && (
+                    <>
+                        {' — '}
+                        {t('الكميات محدّثة حتى')} <span dir="ltr">{updatedAt}</span>
+                    </>
+                )}
+            </p>
 
             <Card className="overflow-hidden">
                 <DataTable
@@ -356,6 +348,14 @@ export default function ProductsIndex() {
                     filters={tableFilters}
                     empty="لا توجد منتجات بعد — أضف أول منتج"
                     server={{ pagination, params: filters }}
+                    views={{
+                        current: view,
+                        onChange: (k) => setView(k as 'grid' | 'table'),
+                        options: [
+                            { key: 'grid', label: 'عرض شبكي', icon: LayoutGrid },
+                            { key: 'table', label: 'عرض جدول', icon: List },
+                        ],
+                    }}
                     /*
                         شريط الإجراء الجماعي لا يظهر إلا حين يكون له ما يعمل
                         عليه — وكان رفع أسعار قسمٍ يعني فتح كل صنفٍ على حدة.

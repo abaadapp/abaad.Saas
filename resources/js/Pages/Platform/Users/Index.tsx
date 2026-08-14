@@ -106,6 +106,7 @@ export default function UsersIndex() {
         { label: 'كل الأدوار', param: 'role', options: roles.map((r) => ({ label: r.label, value: String(r.value) })) },
         {
             label: 'كل الحالات',
+            asTabs: true,
             param: 'status',
             options: [
                 { label: 'نشط', value: 'نشط' },

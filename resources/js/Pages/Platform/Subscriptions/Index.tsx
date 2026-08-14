@@ -151,6 +151,7 @@ export default function SubscriptionsIndex() {
         },
         {
             label: 'كل الحالات',
+            asTabs: true,
             options: [
                 { label: 'نشط', value: 'نشط' },
                 { label: 'منتهي', value: 'منتهي' },

@@ -186,6 +186,7 @@ export default function ExpensesIndex() {
         { label: 'كل الأنواع', param: 'type', options: typeOptions },
         {
             label: 'كل الحالات',
+            asTabs: true,
             param: 'status',
             options: [
                 { label: 'مدفوع', value: 'مدفوع' },

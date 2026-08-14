@@ -94,6 +94,7 @@ export default function Invoices() {
     const filters: Filter<Invoice>[] = [
         {
             label: 'كل الحالات',
+            asTabs: true,
             options: [
                 { label: 'مدفوعة', value: 'مدفوعة' },
                 { label: 'غير مدفوعة', value: 'غير مدفوعة' },

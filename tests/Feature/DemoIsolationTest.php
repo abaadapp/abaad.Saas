@@ -164,6 +164,47 @@ class DemoIsolationTest extends TestCase
         $this->assertSame(1, Product::where('business_id', $merchant->id)->count());
     }
 
+    /**
+     * ولا يُفتح العرض على «انتهى اشتراك المتجر».
+     *
+     * كان `ends_at` سنةً بعد التسجيل، والتسجيل يُحسب بعُمق التاريخ: فحجم
+     * «متوسط» (١٢ شهرًا) ينتهي يوم إنشائه، و«كبير» (١٨) ينتهي قبله بستّة
+     * أشهر. والأحجام الثلاثة تُفحص لأن العطل كان يظهر في اثنين ويختفي في
+     * الثالث — فيُقرأ حالةً عارضة لا خطأً في الحساب.
+     */
+    public function test_no_demo_size_is_born_with_an_expired_subscription(): void
+    {
+        foreach (array_keys(DemoStore::SIZES) as $size) {
+            $demo = DemoStore::create("عرض {$size}", $size);
+
+            // نافذة التحذير أسبوع، وما دونها شريطٌ أصفر أو أحمر في أوّل شاشة
+            $this->assertTrue(
+                $demo->ends_at->greaterThan(now()->addDays(7)),
+                "حجم «{$size}»: ينتهي الاشتراك في {$demo->ends_at->toDateString()}",
+            );
+
+            $this->assertTrue(
+                \App\Models\Subscription::where('business_id', $demo->id)->value('ends_at') > now()->addDays(7),
+                "حجم «{$size}»: صفّ الاشتراك منتهٍ بينما المتجر سارٍ",
+            );
+
+            DemoStore::destroy($demo);
+        }
+    }
+
+    /** وإعادة البناء تُصلح متجرًا وُلد قبل الإصلاح ولا تتركه على تاريخه */
+    public function test_rebuilding_repairs_an_expired_demo_subscription(): void
+    {
+        $demo = DemoStore::create('متجر العرض', 'صغير');
+        $demo->update(['ends_at' => now()->subMonth()]);
+
+        $fixed = DemoStore::reseed($demo->fresh(), 'كبير');
+
+        $this->assertTrue($fixed->ends_at->greaterThan(now()->addDays(7)));
+        // والتسجيل يتبع الحجم الجديد: فواتير أقدم من تسجيل المتجر تناقض
+        $this->assertTrue($fixed->starts_at->lessThan($fixed->ends_at));
+    }
+
     /* --------------------------- فصلُ ما يُعرَض --------------------------- */
 
     public function test_platform_lists_and_counters_exclude_demo_stores(): void

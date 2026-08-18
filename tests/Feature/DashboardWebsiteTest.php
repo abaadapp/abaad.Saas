@@ -7,19 +7,20 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
- * زرّ «الموقع الإلكتروني».
+ * زرّ «الموقع الإلكتروني» في الترويسة.
  *
- * الزر كان موجودًا في النسخة القديمة بلا وجهة فحُذف. عاد بوجهة من إعدادات
- * النشاط — وهذا يعني أن قيمة يكتبها التاجر تصبح رابطًا قابلًا للنقر، فيلزم
- * تطبيعها والتحقق منها لا عرضها كما وصلت.
+ * قيمةٌ يكتبها التاجر تصبح رابطًا قابلًا للنقر، فتُطبَّع ويُتحقّق منها لا
+ * تُعرض كما وصلت. وموضع الزرّ الترويسة، والترويسة على كل صفحة — فالرابط في
+ * السياق المشترك (context.website) لا في بيانات صفحةٍ واحدة.
  *
- * وموضعه انتقل في 3.15 من اللوحة الرئيسية إلى الترويسة، فصار الرابط في
- * السياق المشترك (context.website) لا في بيانات صفحةٍ واحدة — وهو ما تقرؤه
- * هذه الاختبارات: الترويسة تُرسم على كل صفحة، والقيمة يجب أن تصلها هناك.
+ * ومصدره صار واحدًا: شاشة «الموقع الإلكتروني» في أدوات التسويق. كان مفتاحان
+ * لشيءٍ واحد — حقلٌ في بيانات النشاط ونطاقٌ في شاشة التسويق — فيضبط التاجر
+ * أحدهما ويقرأ الزرّ الآخر.
  */
 class DashboardWebsiteTest extends TestCase
 {
@@ -41,10 +42,10 @@ class DashboardWebsiteTest extends TestCase
         ]);
     }
 
-    private function setWebsite(?string $value): void
+    private function setDomain(?string $value): void
     {
         Setting::updateOrCreate(
-            ['business_id' => $this->business->id, 'key' => 'website'],
+            ['business_id' => $this->business->id, 'key' => 'site_domain'],
             ['value' => $value],
         );
     }
@@ -64,7 +65,7 @@ class DashboardWebsiteTest extends TestCase
     public function test_it_normalizes_what_the_merchant_typed(string $raw, string $expected): void
     {
         $this->actingAs($this->owner);
-        $this->setWebsite($raw);
+        $this->setDomain($raw);
 
         $this->assertSame($expected, Demo::websiteUrl());
     }
@@ -85,7 +86,7 @@ class DashboardWebsiteTest extends TestCase
     public function test_it_refuses_anything_that_is_not_a_web_address(string $raw): void
     {
         $this->actingAs($this->owner);
-        $this->setWebsite($raw);
+        $this->setDomain($raw);
 
         $this->assertNull(Demo::websiteUrl());
     }
@@ -108,7 +109,7 @@ class DashboardWebsiteTest extends TestCase
 
     public function test_the_shared_context_hands_the_link_to_the_button(): void
     {
-        $this->setWebsite('abaad.om');
+        $this->setDomain('abaad.om');
 
         $this->assertSame('https://abaad.om', $this->sharedWebsite());
     }
@@ -120,52 +121,76 @@ class DashboardWebsiteTest extends TestCase
          * اللوحة وحدها لظهر الزرّ فارغًا في كل ما سواها — وهو أسوأ من غيابه:
          * زرٌّ يُرى ولا يفتح شيئًا.
          */
-        $this->setWebsite('abaad.om');
+        $this->setDomain('abaad.om');
 
         $this->assertSame('https://abaad.om', $this->sharedWebsite('admin.products.index'));
         $this->assertSame('https://abaad.om', $this->sharedWebsite('admin.settings.index'));
     }
 
-    public function test_it_says_null_so_the_button_points_at_settings(): void
+    public function test_it_says_null_so_the_button_points_at_the_marketing_screen(): void
     {
         $this->assertNull($this->sharedWebsite());
+    }
+
+    /* ------------------------- المصدر واحد لا اثنان ------------------------- */
+
+    public function test_the_domain_is_read_from_the_marketing_screen(): void
+    {
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.website.save'), ['site_domain' => 'abaad.om'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('https://abaad.om', $this->sharedWebsite());
     }
 
     public function test_a_broken_address_is_refused_at_save_time_not_discovered_as_a_dead_link(): void
     {
         $this->actingAs($this->owner)
-            ->post(route('admin.settings.update'), ['website' => 'javascript:alert(1)'])
-            ->assertSessionHasErrors('website');
+            ->post(route('admin.marketing.website.save'), ['site_domain' => 'javascript:alert(1)'])
+            ->assertSessionHasErrors('site_domain');
 
-        $this->assertDatabaseMissing('settings', [
-            'business_id' => $this->business->id,
-            'key' => 'website',
-        ]);
-    }
-
-    public function test_a_valid_address_saves_and_reaches_the_dashboard(): void
-    {
-        $this->actingAs($this->owner)
-            ->post(route('admin.settings.update'), ['website' => 'abaad.om'])
-            ->assertSessionHasNoErrors();
-
-        $this->assertDatabaseHas('settings', [
-            'business_id' => $this->business->id,
-            'key' => 'website',
-            'value' => 'abaad.om',
-        ]);
-
-        $this->assertSame('https://abaad.om', $this->sharedWebsite());
+        $this->assertNull($this->sharedWebsite());
     }
 
     public function test_clearing_the_field_removes_the_button_again(): void
     {
-        $this->setWebsite('abaad.om');
+        $this->setDomain('abaad.om');
 
         $this->actingAs($this->owner)
-            ->post(route('admin.settings.update'), ['website' => ''])
+            ->post(route('admin.marketing.website.save'), ['site_domain' => ''])
             ->assertSessionHasNoErrors();
 
         $this->assertNull($this->sharedWebsite());
+    }
+
+    /**
+     * الحقل القديم في بيانات النشاط لم يعد يُقرأ — ولا يُحفظ.
+     *
+     * لو بقي يُحفظ لصار مقبضًا يُملأ ولا يفعل شيئًا: يكتب التاجر نطاقه فيه
+     * ويبقى الزرّ فارغًا، وهو أسوأ من غياب الحقل.
+     */
+    public function test_the_old_field_in_the_business_settings_no_longer_feeds_the_button(): void
+    {
+        Setting::create([
+            'business_id' => $this->business->id, 'key' => 'website', 'value' => 'old.om',
+        ]);
+
+        $this->assertNull($this->sharedWebsite());
+    }
+
+    /** وما ضُبط قبل هذه النسخة يُنقل ولا يضيع */
+    public function test_a_domain_set_before_this_version_was_carried_over(): void
+    {
+        Setting::create([
+            'business_id' => $this->business->id, 'key' => 'website', 'value' => 'https://old.om/shop',
+        ]);
+        DB::table('settings')->where('key', 'site_domain')->delete();
+
+        // الهجرة بعينها — لا تُعاد كل الهجرات لأجل واحدة
+        (require base_path('database/migrations/2026_08_18_090000_the_website_has_one_field_not_two.php'))->up();
+
+        $this->assertSame('old.om', Setting::where('business_id', $this->business->id)
+            ->where('key', 'site_domain')->value('value'));
+        $this->assertSame('https://old.om', $this->sharedWebsite());
     }
 }

@@ -26,10 +26,10 @@ class SettingController extends Controller
 
     public function update(Request $request)
     {
-        // الحفظ حرّ المفاتيح، لكن هذه تُعرض للناس: الموقع كزرّ قابل للنقر،
-        // والبريد كوسيلة تواصل. تُصحَّح عند الإدخال لا تُكتشف معطوبة لاحقًا.
+        // الحفظ حرّ المفاتيح، لكن هذه تُعرض للناس: البريد كوسيلة تواصل.
+        // تُصحَّح عند الإدخال لا تُكتشف معطوبة لاحقًا. والنطاق ليس منها —
+        // موضعه شاشة «الموقع الإلكتروني» في أدوات التسويق وحدها.
         $request->validate([
-            'website' => ['nullable', 'string', 'max:255', 'regex:#^(https?://)?[^\s:/]+\.[^\s:/]+(/\S*)?$#i'],
             'shop_name' => ['sometimes', 'required', 'string', 'max:120'],
             'email' => ['sometimes', 'nullable', 'email', 'max:120'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:40'],

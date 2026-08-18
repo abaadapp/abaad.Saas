@@ -31,7 +31,7 @@ export const SETTINGS_NAV = [
     {
         group: 'المتجر',
         items: [
-            { key: 'business', label: 'بيانات النشاط', desc: 'اسم المتجر ورقم التواصل والعنوان والموقع الإلكتروني', icon: Store },
+            { key: 'business', label: 'بيانات النشاط', desc: 'اسم المتجر ورقم التواصل والعنوان', icon: Store },
             { key: 'language', label: 'اللغة', desc: 'لغة واجهة النظام واتجاهها', icon: Languages },
         ],
     },

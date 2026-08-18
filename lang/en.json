@@ -2855,5 +2855,13 @@
     "نُسخ.": "Copied.",
     "قائمة الموردين": "Suppliers list",
     "العدد: :n مورّد": "Count: :n suppliers",
-    "ابحث في المنتجات والطلبات والعملاء والموردين…": "Search products, orders, customers and suppliers…"
+    "ابحث في المنتجات والطلبات والعملاء والموردين…": "Search products, orders, customers and suppliers…",
+    "استيراد الموردين من ملف": "Import suppliers from a file",
+    "ملف الموردين": "Suppliers file",
+    "الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، الهاتف، البريد، مسؤول التواصل، ملاحظات. يمكنك تصدير ملف ثم تعديله وإعادة استيراده.": "Supported formats: CSV, XLS, XLSX, XLSM — columns: name, phone, email, contact person, notes. You can export a file, edit it and import it back.",
+    "المورّد الموجود (بنفس الهاتف، أو بالاسم إن لم يكن له هاتف) يُحدَّث بدل تكراره. وستظهر معاينة كاملة قبل التأكيد.": "An existing supplier (same phone, or same name when it has no phone) is updated instead of duplicated. A full preview is shown before confirming.",
+    "معاينة استيراد الموردين": "Suppliers import preview",
+    "فتبقى كما هي في المورّدين الموجودين، ولا تُمسّ.": "so they stay as they are on existing suppliers, untouched.",
+    "المورّد الموجود يُحدَّث بدل تكراره — يُطابَق بالهاتف، وبالاسم إن لم يكن له هاتف.": "An existing supplier is updated instead of duplicated — matched by phone, or by name when it has no phone.",
+    "تم الاستيراد: أُضيف :added مورّدًا وحُدِّث :updated": "Imported: :added suppliers added, :updated updated."
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { ClipboardList, Phone, Plus } from 'lucide-react';
+import { ClipboardList, Eye, Phone, Plus, Upload } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
@@ -27,6 +27,14 @@ export default function SuppliersIndex() {
     const t = useTranslate();
     const [adding, setAdding] = useState(false);
     const [editing, setEditing] = useState<Supplier | null>(null);
+    const [importing, setImporting] = useState(false);
+
+    const upload = useForm<{ file: File | null }>({ file: null });
+
+    const submitImport = (e: React.FormEvent) => {
+        e.preventDefault();
+        upload.post(route('admin.suppliers.import.upload'), { forceFormData: true });
+    };
 
     const form = useForm({ ...BLANK });
 
@@ -159,12 +167,16 @@ export default function SuppliersIndex() {
                 subtitle={t('إدارة موردي البضاعة وبيانات التواصل معهم')}
                 actions={
                     <>
-                        {/* الموردون قائمةُ أسماءٍ وأرقامٍ كالعملاء — فتُصدَّر مثلهم */}
+                        {/* الموردون قائمةُ أسماءٍ وأرقامٍ كالعملاء — فتُصدَّر وتُستورد مثلهم */}
                         <ExportMenu
                             xlsx={route('admin.suppliers.export.xlsx')}
                             pdf={route('admin.suppliers.export.pdf')}
                             csv={route('admin.export.suppliers')}
                         />
+                        <Button variant="outline" onClick={() => setImporting(true)}>
+                            <Upload />
+                            {t('استيراد')}
+                        </Button>
                         <Button variant="outline" asChild>
                             <SmartLink routeName="admin.purchases.index" href={route('admin.purchases.index')}>
                                 <ClipboardList />
@@ -218,6 +230,44 @@ export default function SuppliersIndex() {
                             </Button>
                             <Button type="submit" loading={form.processing}>
                                 {t(editing ? 'حفظ' : 'إضافة')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={importing} onOpenChange={setImporting}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{t('استيراد الموردين من ملف')}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitImport} className="space-y-4 px-5 pb-5">
+                        <Field
+                            label="ملف الموردين"
+                            hint="الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، الهاتف، البريد، مسؤول التواصل، ملاحظات. يمكنك تصدير ملف ثم تعديله وإعادة استيراده."
+                            error={upload.errors.file}
+                            required
+                        >
+                            <Input
+                                type="file"
+                                accept=".csv,.xls,.xlsx,.xlsm"
+                                required
+                                onChange={(e) => upload.setData('file', e.target.files?.[0] ?? null)}
+                                className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
+                            />
+                        </Field>
+
+                        <p className="rounded-[12px] bg-[#f5f3ff] px-3 py-2.5 text-[12px] text-[#6d28d9]">
+                            {t('المورّد الموجود (بنفس الهاتف، أو بالاسم إن لم يكن له هاتف) يُحدَّث بدل تكراره. وستظهر معاينة كاملة قبل التأكيد.')}
+                        </p>
+
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="ghost" onClick={() => setImporting(false)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button type="submit" loading={upload.processing}>
+                                <Eye />
+                                {t('معاينة الملف')}
                             </Button>
                         </div>
                     </form>

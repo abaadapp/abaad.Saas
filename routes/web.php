@@ -358,6 +358,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // التصدير قبل {id}: لو جاء بعده لابتلع «export» مسارَ المورّد الواحد
     Route::get('/suppliers/export/xlsx', [\App\Http\Controllers\Admin\SupplierExportController::class, 'xlsx'])->name('suppliers.export.xlsx');
     Route::get('/suppliers/export/pdf', [\App\Http\Controllers\Admin\SupplierExportController::class, 'pdf'])->name('suppliers.export.pdf');
+    Route::post('/suppliers/import', [\App\Http\Controllers\Admin\SupplierExportController::class, 'upload'])->name('suppliers.import.upload');
+    Route::get('/suppliers/import/preview', [\App\Http\Controllers\Admin\SupplierExportController::class, 'preview'])->name('suppliers.import.preview');
+    Route::post('/suppliers/import/confirm', [\App\Http\Controllers\Admin\SupplierExportController::class, 'confirm'])->name('suppliers.import.confirm');
+    Route::post('/suppliers/import/cancel', [\App\Http\Controllers\Admin\SupplierExportController::class, 'cancel'])->name('suppliers.import.cancel');
     Route::post('/suppliers', [\App\Http\Controllers\Admin\SupplierController::class, 'store'])->name('suppliers.store');
     Route::put('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'update'])->name('suppliers.update');
     Route::delete('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'destroy'])->name('suppliers.destroy');

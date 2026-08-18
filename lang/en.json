@@ -2852,5 +2852,8 @@
     "حذف المتجر التجريبيّ": "Delete demo store",
     "يُحذف «:name» وكلّ صفٍّ يخصّه — المنتجات والفواتير والقيود والموظفون. ولا يُسترجع.": "“:name” and every row belonging to it will be deleted — products, invoices, journal entries and staff. This cannot be undone.",
     "حذف نهائيًّا": "Delete permanently",
-    "نُسخ.": "Copied."
+    "نُسخ.": "Copied.",
+    "قائمة الموردين": "Suppliers list",
+    "العدد: :n مورّد": "Count: :n suppliers",
+    "ابحث في المنتجات والطلبات والعملاء والموردين…": "Search products, orders, customers and suppliers…"
 }

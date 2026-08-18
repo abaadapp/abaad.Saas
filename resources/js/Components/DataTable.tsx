@@ -114,6 +114,14 @@ interface DataTableProps<T> {
     toolbar?: ReactNode;
     pageSize?: number;
     /**
+     * نصّ يبدأ به البحث المحلّي — مصدره الرابط.
+     *
+     * البحث الموحّد في الترويسة يقود إلى قوائمَ لا صفحةَ لكلّ صفٍّ فيها
+     * (المورّدون مثلًا)، فيصل الزائر إلى القائمة كاملةً ويبحث من جديد عمّا
+     * بحث عنه للتوّ. وبهذا تصل مُرشَّحةً بما كتب.
+     */
+    initialQuery?: string;
+    /**
      * وضع خادمي: البحث والتصفية والترقيم تمرّ بالخادم عبر معاملات الرابط.
      *
      * لازم للقوائم التي تُرقّم على الخادم (المنتجات والعملاء): تمرير الصفحة
@@ -155,13 +163,16 @@ export default function DataTable<T>({
     empty = 'لا توجد بيانات بعد',
     toolbar,
     pageSize = 25,
+    initialQuery,
     server,
     renderBody,
     views,
 }: DataTableProps<T>) {
     const t = useTranslate();
     const searchParam = server?.searchParam ?? 'q';
-    const [query, setQuery] = useState(server ? String(server.params[searchParam] ?? '') : '');
+    const [query, setQuery] = useState(
+        server ? String(server.params[searchParam] ?? '') : (initialQuery ?? ''),
+    );
     const [active, setActive] = useState<Record<number, string>>(() =>
         Object.fromEntries(
             filters.map((f, i) => [

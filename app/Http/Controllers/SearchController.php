@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Supplier;
 use App\Models\User;
 use App\Support\Demo;
 use Illuminate\Http\Request;
@@ -54,10 +55,26 @@ class SearchController extends Controller
                 'url' => route('admin.customers.show', $c->id),
             ]) : collect();
 
+        /*
+         * والمورّدون كذلك: البحث كان يعرف من نبيع له ولا يعرف ممّن نشتري.
+         *
+         * وقائمتهم لا تُفتح على صفحةٍ لكلّ مورّد — فالوجهة قائمتُهم مُرشَّحةً
+         * باسمه، لا رابطٌ يقود إلى صفحةٍ لا وجود لها.
+         */
+        $suppliers = $user->allows('suppliers') ? Supplier::where('business_id', $bid)
+            ->where(fn ($w) => $w->where('name', 'like', $like)
+                ->orWhere('phone', 'like', $like)
+                ->orWhere('contact_person', 'like', $like))
+            ->limit(5)->get()->map(fn ($s) => [
+                'label' => $s->name, 'meta' => $s->phone ?: ($s->contact_person ?: '—'),
+                'url' => route('admin.suppliers.index', ['q' => $s->name]),
+            ]) : collect();
+
         return response()->json(['groups' => array_values(array_filter([
             $this->group(__('المنتجات'), 'package', $products),
             $this->group(__('الطلبات'), 'shopping-cart', $orders),
             $this->group(__('العملاء'), 'users', $customers),
+            $this->group(__('الموردين'), 'truck', $suppliers),
         ]))]);
     }
 

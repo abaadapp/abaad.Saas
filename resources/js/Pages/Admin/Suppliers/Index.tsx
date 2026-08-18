@@ -3,6 +3,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { ClipboardList, Phone, Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import ExportMenu from '@/Components/ExportMenu';
 import SectionTabs, { CUSTOMER_TABS } from '@/Components/SectionTabs';
 import DataTable, { type Column } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
@@ -158,6 +159,12 @@ export default function SuppliersIndex() {
                 subtitle={t('إدارة موردي البضاعة وبيانات التواصل معهم')}
                 actions={
                     <>
+                        {/* الموردون قائمةُ أسماءٍ وأرقامٍ كالعملاء — فتُصدَّر مثلهم */}
+                        <ExportMenu
+                            xlsx={route('admin.suppliers.export.xlsx')}
+                            pdf={route('admin.suppliers.export.pdf')}
+                            csv={route('admin.export.suppliers')}
+                        />
                         <Button variant="outline" asChild>
                             <SmartLink routeName="admin.purchases.index" href={route('admin.purchases.index')}>
                                 <ClipboardList />
@@ -186,6 +193,8 @@ export default function SuppliersIndex() {
                     columns={columns}
                     rowKey={(s) => s.id}
                     searchPlaceholder="ابحث باسم المورّد أو الهاتف…"
+                    // القادم من البحث الموحّد يصل بالقائمة مُرشَّحةً بما بحث عنه
+                    initialQuery={new URLSearchParams(window.location.search).get('q') ?? ''}
                     searchable={(s) => `${s.name} ${s.phone} ${s.email} ${s.contact}`}
                     empty="أضِف أول مورّد لبدء إنشاء أوامر الشراء."
                 />

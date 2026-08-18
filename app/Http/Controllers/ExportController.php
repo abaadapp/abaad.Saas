@@ -47,6 +47,22 @@ class ExportController extends Controller
         return $this->stream('customers', [__('المعرّف'), __('الاسم'), __('الهاتف'), __('البريد'), __('عدد الطلبات'), __('إجمالي الإنفاق'), __('النقاط'), __('آخر طلب')], $rows);
     }
 
+    /**
+     * الموردون — قائمةُ أسماءٍ وأرقامِ تواصل كالعملاء، فتُصدَّر مثلهم.
+     *
+     * وعدد أوامر الشراء عمودٌ فيها: هو السؤال الأوّل عن أي مورّد — من
+     * يُشترى منه فعلًا، ومن بقي اسمًا بلا أمرٍ واحد.
+     */
+    public function suppliers()
+    {
+        $rows = array_map(fn ($s) => [
+            $s['id'], $s['name'], $s['phone'] ?? '', $s['email'] ?? '',
+            $s['contact'] ?? '', $s['orders_count'],
+        ], Demo::suppliers());
+
+        return $this->stream('suppliers', [__('المعرّف'), __('الاسم'), __('الهاتف'), __('البريد'), __('مسؤول التواصل'), __('أوامر الشراء')], $rows);
+    }
+
     public function transactions()
     {
         $rows = array_map(fn ($t) => [

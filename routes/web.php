@@ -355,6 +355,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
 
     // المورّدون
     Route::get('/suppliers', [\App\Http\Controllers\Admin\PageController::class, 'suppliersIndex'])->name('suppliers.index');
+    // التصدير قبل {id}: لو جاء بعده لابتلع «export» مسارَ المورّد الواحد
+    Route::get('/suppliers/export/xlsx', [\App\Http\Controllers\Admin\SupplierExportController::class, 'xlsx'])->name('suppliers.export.xlsx');
+    Route::get('/suppliers/export/pdf', [\App\Http\Controllers\Admin\SupplierExportController::class, 'pdf'])->name('suppliers.export.pdf');
     Route::post('/suppliers', [\App\Http\Controllers\Admin\SupplierController::class, 'store'])->name('suppliers.store');
     Route::put('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'update'])->name('suppliers.update');
     Route::delete('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'destroy'])->name('suppliers.destroy');
@@ -481,6 +484,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/export/products', [\App\Http\Controllers\ExportController::class, 'products'])->name('export.products');
     Route::get('/export/orders', [\App\Http\Controllers\ExportController::class, 'orders'])->name('export.orders');
     Route::get('/export/customers', [\App\Http\Controllers\ExportController::class, 'customers'])->name('export.customers');
+    Route::get('/export/suppliers', [\App\Http\Controllers\ExportController::class, 'suppliers'])->name('export.suppliers');
     Route::get('/export/transactions', [\App\Http\Controllers\ExportController::class, 'transactions'])->name('export.transactions');
     Route::get('/export/expenses', [\App\Http\Controllers\ExportController::class, 'expenses'])->name('export.expenses');
     Route::get('/export/inventory', [\App\Http\Controllers\ExportController::class, 'inventory'])->name('export.inventory');

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { LoaderCircle, Package, Search, ShoppingCart, Users } from 'lucide-react';
+import { Building2, LoaderCircle, Package, Search, ShoppingCart, Truck, Users } from 'lucide-react';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 
@@ -21,10 +21,13 @@ const ICONS: Record<string, typeof Package> = {
     package: Package,
     'shopping-cart': ShoppingCart,
     users: Users,
+    truck: Truck,
+    // بحث المنصّة يُرسل هذه منذ البداية، وكانت تسقط إلى أيقونة الصندوق
+    'building-2': Building2,
 };
 
 /**
- * البحث الموحّد — منتجات وطلبات وعملاء في قائمة منسدلة واحدة.
+ * البحث الموحّد — منتجات وطلبات وعملاء ومورّدون في قائمة منسدلة واحدة.
  *
  * كان الشريط العلوي يربط `admin.search` برابط عادي، والمسار يُعيد JSON لا
  * صفحة: فالنقر على «بحث» كان يعرض {"groups":[]} خامًا في المتصفح ويُخرج
@@ -92,7 +95,7 @@ export default function UnifiedSearch({ url }: { url: string }) {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onFocus={() => groups.length > 0 && setOpen(true)}
-                placeholder={t('ابحث في المنتجات والطلبات والعملاء…')}
+                placeholder={t('ابحث في المنتجات والطلبات والعملاء والموردين…')}
                 className="h-10 ps-9 pe-9"
             />
             {loading && (

@@ -35,7 +35,13 @@ import { decimalsFor, money as fmtMoney } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import useLiveStock from '@/hooks/useLiveStock';
-import { usePosCart, type LoyaltySettings, type PosCustomer, type ResumeCart } from '@/hooks/usePosCart';
+import {
+    usePosCart,
+    type LoyaltySettings,
+    type PosCustomer,
+    type ResumeCart,
+    type VatSettings,
+} from '@/hooks/usePosCart';
 import type { PageProps } from '@/types';
 import type { Addon, PosCoupon, Product } from '@/types/models';
 
@@ -46,7 +52,7 @@ interface Props {
     addons: Addon[];
     coupons: PosCoupon[];
     resumeCart: ResumeCart | null;
-    settings: LoyaltySettings & { loyaltyEnabled?: boolean; paymentMethods?: string[] };
+    settings: LoyaltySettings & { loyaltyEnabled?: boolean; paymentMethods?: string[]; vat?: VatSettings };
 }
 
 export default function PosIndex() {
@@ -106,6 +112,7 @@ export default function PosIndex() {
         customers,
         coupons,
         loyalty: settings,
+        vat: settings.vat,
         resume: resumeCart,
         currency,
         onToast: (msg, type) => {
@@ -604,10 +611,22 @@ export default function PosIndex() {
                             </div>
                         )}
 
-                        <div className="flex items-center justify-between text-sm text-gray-600">
-                            <span>{t('الضريبة (5%)')}</span>
-                            <span className="font-medium text-gray-800">{money(cart.taxAmount)}</span>
-                        </div>
+                        {/*
+                            النسبة من إعدادات المتجر — كانت «5%» مكتوبةً هنا.
+                            ومن أطفأ الضريبة لا يرى سطرها أصلًا: صفرٌ معروض
+                            يجعل الكاشير يسأل عن ضريبةٍ لا وجود لها.
+                        */}
+                        {cart.vatRate > 0 && (
+                            <div className="flex items-center justify-between text-sm text-gray-600">
+                                <span>
+                                    {t('الضريبة')} ({cart.vatRate}%)
+                                    {settings.vat?.inclusive && (
+                                        <span className="text-[10px] text-gray-400"> {t('(مشمولة)')}</span>
+                                    )}
+                                </span>
+                                <span className="font-medium text-gray-800">{money(cart.taxAmount)}</span>
+                            </div>
+                        )}
 
                         <div className="flex items-center justify-between border-t border-dashed border-gray-200 pt-2">
                             <span className="font-bold text-gray-800">{t('الإجمالي')}</span>

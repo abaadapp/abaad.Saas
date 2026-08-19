@@ -1054,6 +1054,12 @@ class Demo
         $bid = self::bid();
         $get = fn ($k, $d) => \App\Models\Setting::where('business_id', $bid)->where('key', $k)->value('value') ?? $d;
 
+        // مطفأةً: النسبة صفرٌ والرقم الضريبي لا يُطبع — ورقةٌ تحمل رقمًا
+        // ضريبيًّا لمتجرٍ لا يجبي الضريبة تدّعي تسجيلًا لا يخصّها
+        if (! \App\Support\Vat::enabled($bid)) {
+            return ['rate' => 0.0, 'number' => ''];
+        }
+
         return [
             'rate' => (float) $get('vat_rate', 5),
             'number' => $get('vat_number', ''),

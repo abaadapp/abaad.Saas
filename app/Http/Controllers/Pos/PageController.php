@@ -25,6 +25,18 @@ class PageController extends Controller
             // الوسائل المأذونة — والخادم يرفض ما عداها، فالإخفاء هنا عرضٌ لقرارٍ
             // مُنفَّذ لا حاجزٌ وحيد (انظر PosController::enabledPaymentMethods)
             'paymentMethods' => \App\Http\Controllers\Pos\PosController::enabledPaymentMethods($s),
+            /*
+             * الضريبة كما ضبطها التاجر — لا خمسةٌ مكتوبةٌ في شيفرة الشاشة.
+             *
+             * كانت السلّة تحسب ٥٪ ثابتة: من ضبط نسبته ١٠٪ يقرأ الكاشير على
+             * شاشته رقمًا والفاتورة تُسجَّل بآخر، فيُقال للزبون مبلغٌ ويُقبض
+             * منه غيره. ومن أطفأ الضريبة كان سطرُها يبقى في شاشته.
+             */
+            'vat' => [
+                'enabled' => \App\Support\Vat::enabled(Demo::bid()),
+                'rate' => \App\Support\Vat::rate(Demo::bid()),
+                'inclusive' => \App\Support\Vat::inclusive(Demo::bid()),
+            ],
         ];
     }
 

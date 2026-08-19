@@ -52,6 +52,20 @@ export interface LoyaltySettings {
     redeemMin: number;
 }
 
+/**
+ * ضريبة المتجر كما ضبطها صاحبه — لا رقمٌ مكتوب في شيفرة الشاشة.
+ *
+ * كانت السلّة تحسب ٥٪ ثابتة مهما ضُبط: من نسبته ١٠٪ يقرأ الكاشير رقمًا على
+ * شاشته وتُسجَّل الفاتورة بآخر، فيُقال للزبون مبلغٌ ويُقبض منه غيره. ومن
+ * أطفأ الضريبة كان سطرُها يبقى في شاشته ويُحسب في مجموعه.
+ */
+export interface VatSettings {
+    enabled: boolean;
+    rate: number;
+    /** مشمولة في السعر المعروض: تُستخرَج منه لا تُضاف فوقه */
+    inclusive: boolean;
+}
+
 export interface ResumeCart {
     id: number | null;
     customer: string | null;
@@ -75,7 +89,7 @@ export interface CheckoutResult {
 }
 
 const OUTBOX_KEY = 'abadpos:pos:outbox';
-const TAX_RATE = 5;
+/* لا نسبة في الشيفرة: النسبة تصل من إعدادات المتجر (انظر VatSettings) */
 /** 100 نقطة = وحدة واحدة من العملة الأساسية */
 const POINTS_PER_UNIT = 100;
 const CASH_CUSTOMER = 'عميل نقدي';
@@ -104,6 +118,7 @@ interface Options {
     customers: PosCustomer[];
     coupons: unknown[];
     loyalty: LoyaltySettings;
+    vat?: VatSettings;
     resume: ResumeCart | null;
     currency: Currency;
     onToast: (msg: string, type?: 'success' | 'warning' | 'danger' | 'info') => void;
@@ -122,7 +137,7 @@ interface Options {
  * بنفس المعادلات والسلوك: الخصم، الضريبة، سقف نقاط الولاء، وطابور
  * الانقطاع (outbox) الذي يكتب البيع محليًا أولًا ثم يرفعه.
  */
-export function usePosCart({ products, customers: initialCustomers, loyalty, resume, currency, onToast, onSynced }: Options) {
+export function usePosCart({ products, customers: initialCustomers, loyalty, vat, resume, currency, onToast, onSynced }: Options) {
     /*
      * إشعارات الكاشير تُترجَم هنا لا في موضع العرض.
      *
@@ -213,8 +228,19 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
     const redeemPointsUsed = Math.round(redeemDiscount * POINTS_PER_UNIT);
 
     const discountAmount = Math.min(couponDiscount + redeemDiscount, subtotal);
-    const taxAmount = ((subtotal - discountAmount) * TAX_RATE) / 100;
-    const total = subtotal - discountAmount + taxAmount;
+
+    /*
+     * الضريبة كما يحسبها الخادم لا كما تخمّنها الشاشة.
+     *
+     * ومطفأةً تساوي صفرًا فلا يظهر سطرها. و«مشمولة» تُستخرَج من السعر
+     * المعروض — ما على الرفّ هو ما يدفعه الزبون — فلا يُضاف فوقه شيء.
+     */
+    const vatRate = vat?.enabled === false ? 0 : Math.max(0, Number(vat?.rate ?? 0));
+    const taxable = subtotal - discountAmount;
+    const taxAmount = vat?.inclusive
+        ? (taxable * vatRate) / (100 + vatRate)
+        : (taxable * vatRate) / 100;
+    const total = vat?.inclusive ? subtotal - discountAmount : subtotal - discountAmount + taxAmount;
     const displayTotal = total * (currency.rate ?? 1);
 
     const pointsToEarn = useMemo(() => {
@@ -661,7 +687,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, res
         redeemActive, online, pendingCount: pending.length,
         customerLabel, isWalkIn,
         // المحسوبات
-        count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal,
+        count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal, vatRate,
         selectedCustomer, selectedPoints, canRedeem, pointsToThreshold,
         redeemCap, redeemDiscount, redeemPointsUsed, redeemMaxPct, redeemMin,
         pointsToEarn, hasStockWarning, filteredCustomers,

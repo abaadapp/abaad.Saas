@@ -23,10 +23,23 @@ class PosController extends Controller
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
-    /** نسبة ضريبة القيمة المضافة: إعداد النشاط، ثم الإعداد العام، ثم 5% */
+    /**
+     * نسبة ضريبة القيمة المضافة: إعداد النشاط، ثم الإعداد العام، ثم 5%.
+     *
+     * والمفتاح يُقرأ أوّلًا. كان في الإعدادات مقبضٌ يقول «تفعيل ضريبة القيمة
+     * المضافة — تُحتسب على كل فاتورة بيع» ولا يقرؤه شيء: يُطفئه من لا ضريبة
+     * عليه — ومعظم من يبيع في عُمان دون حدّ التسجيل كذلك — فتبقى الضريبة
+     * تُضاف إلى كل فاتورة، ويُقرّ بها في التقرير الضريبي، ويجبيها من زبائنه
+     * وهو غير مخوَّلٍ بجبايتها. مقبضٌ يطمئن ولا يفعل، في أخطر موضع.
+     */
     private function vatRate(): float
     {
         $bid = $this->bid();
+
+        if (! \App\Support\Vat::enabled($bid)) {
+            return 0.0;
+        }
+
         $v = \App\Models\Setting::where('business_id', $bid)->where('key', 'vat_rate')->value('value')
             ?? \App\Models\Setting::whereNull('business_id')->where('key', 'vat_rate')->value('value');
 
@@ -46,7 +59,19 @@ class PosController extends Controller
      */
     private function taxFor(array $lines, float $subtotal, float $discount): float
     {
+        /*
+         * الإطفاء يسبق كل نسبة — نسبة المتجر ونسبة الصنف معًا.
+         *
+         * ولا يكفي أن تصير نسبة المتجر صفرًا: الصنف الذي كُتبت له نسبةٌ خاصّة
+         * لا يقرأ نسبة المتجر أصلًا، فيبقى يُضرَّب بضريبته وحده في متجرٍ
+         * أطفأ الضريبة كلّها.
+         */
+        if (! \App\Support\Vat::enabled($this->bid())) {
+            return 0.0;
+        }
+
         $default = $this->vatRate();
+        $inclusive = \App\Support\Vat::inclusive($this->bid());
         $tax = 0.0;
 
         foreach ($lines as $l) {
@@ -54,7 +79,14 @@ class PosController extends Controller
             $share = $subtotal > 0 ? $net / $subtotal : 0;
             $taxable = $net - ($discount * $share);
             $rate = $l['product'] ? $l['product']->taxRate($default) : $default;
-            $tax += ($taxable * $rate) / 100;
+
+            /*
+             * «مشمولة» تُستخرَج ولا تُضاف: ما على الرفّ هو ما يدفعه الزبون،
+             * فالضريبة جزءٌ منه — ١٠٥ بنسبة ٥٪ ضريبتها ٥ لا ٥.٢٥.
+             */
+            $tax += $inclusive
+                ? ($taxable * $rate) / (100 + $rate)
+                : ($taxable * $rate) / 100;
         }
 
         return round($tax, 3);
@@ -468,6 +500,17 @@ class PosController extends Controller
             $discount = round(min($couponDiscount + $redeem['discount'], $subtotal), 3);
             $delivery = (float) ($data['delivery_fee'] ?? 0);
             $tax = $this->taxFor($lines, $subtotal, $discount);
+
+            /*
+             * «مشمولة»: المعروض هو المستحقّ، فالمجموع الفرعي يُنقص منه ما
+             * استُخرج ضريبةً — ويبقى `subtotal - discount + tax` مساويًا لما
+             * قرأه الزبون على الشاشة. وبلا هذا تُجمع الضريبة مرّتين: مرّةً
+             * داخل السعر ومرّةً فوقه.
+             */
+            if (\App\Support\Vat::inclusive($bid)) {
+                $subtotal = round($subtotal - $tax, 3);
+            }
+
             $total = round($subtotal - $discount + $tax + $delivery, 3);
 
             if ($couponApplied) {

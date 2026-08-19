@@ -413,6 +413,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::delete('/coupons/{id}', [\App\Http\Controllers\Admin\CouponController::class, 'destroy'])->name('coupons.destroy');
 
     // ضريبة القيمة المضافة
+    Route::get('/orders/{number}/tax-invoice', [\App\Http\Controllers\PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
 
     /*
      * المالية — خمس شاشات على دفترٍ واحد.

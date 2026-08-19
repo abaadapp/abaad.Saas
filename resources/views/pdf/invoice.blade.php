@@ -86,9 +86,9 @@
             <div class="cap">{{ __('العميل') }}</div>
             <div>{{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}</div>
             {{--
-                الرقم الضريبي للمشتري — انتقل إلى هنا حين حُذفت ورقة «فاتورة
-                ضريبية» المستقلّة. وبدونه لا تستطيع منشأةٌ مسجَّلة خصمَ ضريبة
-                ما اشترته منك، فتعود تطلب ورقةً أخرى.
+                الرقم الضريبي للمشتري هنا أيضًا لا في الورقة الأخرى وحدها:
+                بدونه لا تخصم منشأةٌ مسجَّلة ضريبة ما اشترته، فتعود تطلب
+                ورقةً ثانية لطلبٍ واحد.
             --}}
             @if (!empty($customerTax))
                 <div class="muted small" style="margin-top:4px">{{ __('الرقم الضريبي (TRN)') }}: <span dir="ltr">{{ $customerTax }}</span></div>
@@ -139,14 +139,12 @@
         @endif
         {{--
             النسبة مطبوعةٌ مع القيمة: فاتورةٌ تقول «الضريبة ١.٢٥٠» ولا تقول
-            على أي نسبة حُسبت لا تُراجَع — والمراجِع يحتاج أن يرى ٥٪ لا أن
-            يستنتجها بالقسمة. وتُقرأ من الفعل لا من الإعلان: نسبةٌ معلنة
-            تخالف المحتسبة فاتورةٌ تقول ما لا تفعل.
+            على أي نسبة حُسبت لا تُراجَع. وتُقرأ من الفعل لا من الإعلان —
+            نسبةٌ معلنة تخالف المحتسبة فاتورةٌ تقول ما لا تفعل.
         --}}
         @php
-            $vatRate = (float) $order->subtotal - (float) $order->discount > 0
-                ? round((float) $order->tax / ((float) $order->subtotal - (float) $order->discount) * 100, 2)
-                : 0;
+            $vatBase = (float) $order->subtotal - (float) $order->discount;
+            $vatRate = $vatBase > 0 ? round((float) $order->tax / $vatBase * 100, 2) : 0;
         @endphp
         <tr><td>{{ __('الضريبة') }}@if ($vatRate > 0) <span class="muted small">({{ rtrim(rtrim(number_format($vatRate, 2, '.', ''), '0'), '.') }}%)</span>@endif</td><td class="amt">{{ $money($order->tax) }}</td></tr>
         @if ((float) $order->delivery_fee > 0)

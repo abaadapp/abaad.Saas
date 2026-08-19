@@ -2867,5 +2867,9 @@
     "المشتركون": "Subscribers",
     "في التجربة": "On trial",
     "منتهية": "Expired",
-    "عدد الأصناف:": "Items count:"
+    "عدد الأصناف:": "Items count:",
+    "قوالب الفواتير": "Invoice templates",
+    "شكل الإيصال والفاتورة والفاتورة الضريبية وما يظهر فيها": "How the receipt, the invoice and the tax invoice look and what they show",
+    "يحكم الإيصال المطبوع وفاتورة A4 والفاتورة الضريبية معًا — والمعاينة على اليمين تتبع كل تغيير.": "Governs the printed receipt, the A4 invoice and the tax invoice together — the preview on the right follows every change.",
+    "شعار الفاتورة يُضبط من «قوالب الفواتير» — كان هنا مفتاحٌ ثانٍ لا يقرؤه شيء.": "The invoice logo is set in «Invoice templates» — there used to be a second switch here that nothing read."
 }

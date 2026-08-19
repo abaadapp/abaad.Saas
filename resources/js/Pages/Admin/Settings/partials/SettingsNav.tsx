@@ -55,7 +55,7 @@ export const SETTINGS_NAV = [
         group: 'الطباعة',
         items: [
             { key: 'printing', label: 'الطباعة', desc: 'مقاس ورق الإيصال', icon: Printer },
-            { key: 'templates', label: 'قالب الإيصال', desc: 'شكل الإيصال المطبوع وما يظهر فيه', icon: LayoutTemplate },
+            { key: 'templates', label: 'قوالب الفواتير', desc: 'شكل الإيصال والفاتورة والفاتورة الضريبية وما يظهر فيها', icon: LayoutTemplate },
         ],
     },
     {

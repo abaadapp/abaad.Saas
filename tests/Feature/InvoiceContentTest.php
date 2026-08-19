@@ -185,4 +185,58 @@ class InvoiceContentTest extends TestCase
 
         $this->assertNotEmpty($qr, 'لا رمز QR على الفاتورة الضريبية');
     }
+
+    /* ==================== الورقة تتبع قالب المتجر ==================== */
+
+    /** الفاتورة الضريبية كما تخرج، بقالبٍ مضبوط */
+    private function taxInvoiceHtml(\App\Models\Order $order, array $tpl = []): string
+    {
+        return view('pdf.tax-invoice', [
+            'order' => $order->fresh('items'),
+            'vat' => \App\Support\Demo::vatSettings(),
+            'business' => \App\Support\Demo::business($this->business->id),
+            'customerTax' => null,
+            'qr' => 'QRPAYLOAD',
+            'tpl' => $tpl + \App\Support\ReceiptTemplate::forBusiness($this->business->id),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+    }
+
+    public function test_the_tax_invoice_prints_the_header_and_footer_you_set(): void
+    {
+        $html = $this->taxInvoiceHtml($this->sell(1), [
+            'tpl_header' => 'مؤسسة النور للتجارة',
+            'tpl_footer' => "شكرًا لتعاملكم\nهاتف: 90000000",
+        ]);
+
+        $this->assertStringContainsString('مؤسسة النور للتجارة', $html);
+        $this->assertStringContainsString('شكرًا لتعاملكم', $html);
+        $this->assertStringContainsString('90000000', $html);
+    }
+
+    public function test_hiding_a_field_in_the_settings_hides_it_here_too(): void
+    {
+        $order = $this->sell(1);
+
+        $shown = $this->taxInvoiceHtml($order, ['tpl_show_employee' => true, 'tpl_show_qr' => true]);
+        $hidden = $this->taxInvoiceHtml($order, ['tpl_show_employee' => false, 'tpl_show_qr' => false]);
+
+        $this->assertStringContainsString(__('الموظف:'), $shown);
+        $this->assertStringNotContainsString(__('الموظف:'), $hidden);
+        $this->assertStringContainsString('QRPAYLOAD', $shown);
+        $this->assertStringNotContainsString('QRPAYLOAD', $hidden);
+    }
+
+    /**
+     * ورقةٌ عنوانها «فاتورة ضريبية» بلا رقم بائعها ليست فاتورةً ضريبية.
+     *
+     * فمفتاح «الرقم الضريبي» في الإعدادات لا يُخفيه هنا: إخفاؤه يجعل الورقة
+     * تدّعي ما ليست به، وهو سبب وجودها أصلًا.
+     */
+    public function test_the_seller_tax_number_is_not_hideable_on_this_paper(): void
+    {
+        $html = $this->taxInvoiceHtml($this->sell(1), ['tpl_show_vat_no' => false]);
+
+        $this->assertStringContainsString('OM1100234567', $html);
+    }
 }

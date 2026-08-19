@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { Calendar, FileText, Landmark, User } from 'lucide-react';
+import { Calendar, FileText, User } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import { Badge } from '@/Components/ui/badge';
@@ -53,20 +53,18 @@ export default function OrderShow() {
                 title={`${t('الطلب')} ${order.id}`}
                 subtitle={order.date}
                 actions={
-                    <>
-                        <Button variant="outline" asChild>
-                            <a href={route('admin.orders.pdf', order.id)} target="_blank" rel="noreferrer">
-                                <FileText />
-                                {t('تصدير PDF')}
-                            </a>
-                        </Button>
-                        <Button variant="outline" asChild>
-                            <a href={route('admin.orders.taxInvoice', order.id)} target="_blank" rel="noreferrer">
-                                <Landmark />
-                                {t('فاتورة ضريبية')}
-                            </a>
-                        </Button>
-                    </>
+                    /*
+                        زرٌّ واحد لا زرّان: «تصدير PDF» هو الفاتورة الضريبية
+                        نفسها — يحمل الرقم الضريبي ورمز QR، ويعنون نفسه
+                        «فاتورة ضريبية» متى كان للمتجر رقم. وورقتان لشيءٍ
+                        واحد تجعلان الكاشير يسأل أيّهما يُعطي الزبون.
+                    */
+                    <Button variant="outline" asChild>
+                        <a href={route('admin.orders.pdf', order.id)} target="_blank" rel="noreferrer">
+                            <FileText />
+                            {t('تصدير PDF')}
+                        </a>
+                    </Button>
                 }
             />
 

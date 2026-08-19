@@ -57,6 +57,38 @@ class InvoiceContentTest extends TestCase
     }
 
     /** يبيع فعليًا عبر نقطة البيع ويعيد الطلب الناتج */
+    /**
+     * ورقة A4 كما تخرج فعلًا — وهي الفاتورة الضريبية.
+     *
+     * كانت ورقتان لشيءٍ واحد: «تصدير PDF» و«فاتورة ضريبية»، والأولى تعنون
+     * نفسها «فاتورة ضريبية» متى كان للمتجر رقمٌ ضريبي. فحُذفت الثانية ونُقل
+     * منها ما لم يكن في الأولى — رقم المشتري الضريبي ونسبة الضريبة.
+     */
+    private function invoiceHtml(\App\Models\Order $order, ?string $customerTax = null): string
+    {
+        $tpl = \App\Support\ReceiptTemplate::forBusiness($this->business->id);
+        $tpl['paper'] = 'A4';
+
+        return view('pdf.invoice', [
+            'order' => $order->fresh('items'),
+            'tpl' => $tpl,
+            'customerTax' => $customerTax,
+            'qr' => \App\Support\EInvoice::forOrder(
+                $order,
+                \App\Support\Demo::vatSettings(),
+                \App\Support\Demo::business($this->business->id),
+            ),
+        ])->render();
+    }
+
+    public function test_the_buyer_tax_number_reaches_the_invoice(): void
+    {
+        // ما نُقل من الورقة المحذوفة: بدونه لا تخصم منشأةٌ مسجَّلة ضريبة شرائها
+        $html = $this->invoiceHtml($this->sell(1), 'OM9900112233');
+
+        $this->assertStringContainsString('OM9900112233', $html);
+    }
+
     private function sell(int $qty = 2): \App\Models\Order
     {
         $this->actingAs($this->owner)->postJson(route('pos.checkout'), [
@@ -87,14 +119,7 @@ class InvoiceContentTest extends TestCase
     {
         $order = $this->sell(2);
 
-        $html = view('pdf.tax-invoice', [
-            'order' => $order->fresh('items'),
-            'vat' => \App\Support\Demo::vatSettings(),
-            'business' => \App\Support\Demo::business($this->business->id),
-            'customerTax' => null,
-            'qr' => \App\Support\EInvoice::forOrder($order, \App\Support\Demo::vatSettings(), \App\Support\Demo::business($this->business->id)),
-            'generatedAt' => now()->format('Y-m-d H:i'),
-        ])->render();
+        $html = $this->invoiceHtml($order);
 
         // النصّ يحمل الأرقام بثلاث خانات عشرية كعملة عُمان
         $this->assertStringContainsString($order->number, $html);
@@ -117,13 +142,7 @@ class InvoiceContentTest extends TestCase
 
         $this->assertSame(2.5, (float) $order->tax, 'ضريبة 10٪ على 25');
 
-        $html = view('pdf.tax-invoice', [
-            'order' => $order->fresh('items'),
-            'vat' => \App\Support\Demo::vatSettings(),
-            'business' => \App\Support\Demo::business($this->business->id),
-            'customerTax' => null, 'qr' => null,
-            'generatedAt' => now()->format('Y-m-d H:i'),
-        ])->render();
+        $html = $this->invoiceHtml($order);
 
         $this->assertStringContainsString('(10%)', $html, 'النسبة المطبوعة');
         $this->assertStringContainsString('2.500', $html, 'قيمة الضريبة المطبوعة');
@@ -133,7 +152,7 @@ class InvoiceContentTest extends TestCase
     {
         $order = $this->sell(1);
 
-        $response = $this->actingAs($this->owner)->get(route('admin.orders.taxInvoice', $order->number));
+        $response = $this->actingAs($this->owner)->get(route('admin.orders.pdf', $order->number));
         $response->assertOk();
 
         $bytes = $response->getContent();

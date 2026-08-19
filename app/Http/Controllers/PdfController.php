@@ -31,6 +31,10 @@ class PdfController extends Controller
             'order' => $order,
             'qr' => \App\Support\EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
             'tpl' => $tpl,
+            // رقم المشتري الضريبي: تحتاجه منشأةٌ مسجَّلة لتخصم ضريبة شرائها
+            'customerTax' => $order->customer_id
+                ? optional(\App\Models\Customer::find($order->customer_id))->tax_number
+                : null,
         ])->render();
 
         // «A4» فاتورة كاملة و«58mm» شريط أضيق — ورقٌ لا يطابق الطابعة يخرج مقصوصًا
@@ -240,28 +244,6 @@ class PdfController extends Controller
         return $this->pdf($html, 'invoices-report-' . now()->format('Y-m-d'));
     }
 
-
-    public function taxInvoice($number)
-    {
-        $bid = auth()->user()->business_id ?? Demo::bid();
-        $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
-
-        $vat = Demo::vatSettings();
-        $business = Demo::business($bid);
-
-        $html = view('pdf.tax-invoice', [
-            'order' => $order,
-            'vat' => $vat,
-            'business' => $business,
-            'customerTax' => $order->customer_id ? optional(\App\Models\Customer::find($order->customer_id))->tax_number : null,
-            'qr' => \App\Support\EInvoice::forOrder($order, $vat, $business),
-            'generatedAt' => now()->format('Y-m-d H:i'),
-        ])->render();
-
-        \App\Support\Activity::log('report', 'أصدر فاتورة ضريبية للطلب: ' . $order->number, ['subject_id' => $order->id]);
-
-        return $this->pdf($html, 'tax-invoice-' . $order->number);
-    }
 
     /** مولّد A4 عربي/RTL */
     private function pdf(string $html, string $name)

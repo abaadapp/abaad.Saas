@@ -231,14 +231,6 @@ class ExportIntegrityTest extends TestCase
         );
     }
 
-    public function test_the_a4_tax_invoice_opens(): void
-    {
-        $this->assertRealFile(
-            $this->actingAs($this->owner)->get(route('admin.orders.taxInvoice', $this->order->number)),
-            'orders/tax-invoice/pdf',
-        );
-    }
-
     public function test_the_customer_statement_opens(): void
     {
         $this->assertRealFile(

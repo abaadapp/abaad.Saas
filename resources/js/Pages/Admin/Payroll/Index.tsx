@@ -348,7 +348,7 @@ export default function PayrollIndex() {
                                 onSuccess: () => setOpening(false),
                             });
                         }}
-                        className="space-y-4"
+                        className="space-y-4 px-5 pb-5"
                     >
                         <Field
                             label="الشهر"
@@ -392,7 +392,7 @@ export default function PayrollIndex() {
                                 onSuccess: () => setEditing(null),
                             });
                         }}
-                        className="space-y-4"
+                        className="space-y-4 px-5 pb-5"
                     >
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <Field label="الأساسي" required error={lineForm.errors.basic}>

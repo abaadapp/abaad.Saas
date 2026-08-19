@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { ClipboardList, Eye, Phone, Plus, Upload } from 'lucide-react';
+import {
+    ClipboardList,
+    Eye,
+    FileDown,
+    FileSpreadsheet,
+    FileText,
+    MoreVertical,
+    Phone,
+    Plus,
+    Upload,
+} from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import ExportMenu from '@/Components/ExportMenu';
 import SectionTabs, { CUSTOMER_TABS } from '@/Components/SectionTabs';
 import DataTable, { type Column } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
@@ -14,6 +23,14 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/Components/ui/dropdown-menu';
 import { Input, Textarea } from '@/Components/ui/input';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -167,16 +184,45 @@ export default function SuppliersIndex() {
                 subtitle={t('إدارة موردي البضاعة وبيانات التواصل معهم')}
                 actions={
                     <>
-                        {/* الموردون قائمةُ أسماءٍ وأرقامٍ كالعملاء — فتُصدَّر وتُستورد مثلهم */}
-                        <ExportMenu
-                            xlsx={route('admin.suppliers.export.xlsx')}
-                            pdf={route('admin.suppliers.export.pdf')}
-                            csv={route('admin.export.suppliers')}
-                        />
-                        <Button variant="outline" onClick={() => setImporting(true)}>
-                            <Upload />
-                            {t('استيراد')}
-                        </Button>
+                        {/*
+                            التصدير والاستيراد في قائمةٍ واحدة كما في العملاء.
+                            زرّان ظاهران لعملٍ يُطلب مرّةً في الشهر يزاحمان
+                            «مورّد جديد» وهو ما يُضغط كل يوم.
+                        */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="icon" aria-label={t('المزيد')}>
+                                    <MoreVertical />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-60">
+                                <DropdownMenuLabel>{t('تصدير')}</DropdownMenuLabel>
+                                <DropdownMenuItem asChild>
+                                    <a href={route('admin.suppliers.export.xlsx')}>
+                                        <FileSpreadsheet className="text-[#059669]" />
+                                        {t('تصدير Excel (xlsx)')}
+                                    </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                    <a href={route('admin.suppliers.export.pdf')} target="_blank" rel="noreferrer">
+                                        <FileText className="text-[#dc2626]" />
+                                        {t('تصدير PDF')}
+                                    </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild>
+                                    <a href={route('admin.export.suppliers')}>
+                                        <FileDown className="text-[#6b7280]" />
+                                        {t('تصدير CSV')}
+                                    </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>{t('استيراد')}</DropdownMenuLabel>
+                                <DropdownMenuItem onSelect={() => setImporting(true)}>
+                                    <Upload className="text-[#6d28d9]" />
+                                    {t('استيراد من ملف…')}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button variant="outline" asChild>
                             <SmartLink routeName="admin.purchases.index" href={route('admin.purchases.index')}>
                                 <ClipboardList />

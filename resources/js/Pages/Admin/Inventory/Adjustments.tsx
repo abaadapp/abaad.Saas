@@ -192,7 +192,7 @@ export default function Adjustments() {
                         <DialogTitle>{t('تعديل مخزون')}</DialogTitle>
                     </DialogHeader>
 
-                    <form onSubmit={submit} className="space-y-4">
+                    <form onSubmit={submit} className="space-y-4 px-5 pb-5">
                         <Field label="المنتج" required error={form.errors.product_id}>
                             <Select
                                 placeholder="اختر المنتج"

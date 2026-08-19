@@ -243,7 +243,7 @@ export default function Reviews() {
                                 },
                             });
                         }}
-                        className="space-y-4"
+                        className="space-y-4 px-5 pb-5"
                     >
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <Field label="العميل" error={form.errors.customer_id}>
@@ -316,7 +316,7 @@ export default function Reviews() {
                         <DialogTitle>{t('الردّ على التقييم')}</DialogTitle>
                     </DialogHeader>
 
-                    <div className="rounded-[12px] bg-[#fafafa] p-3">
+                    <div className="rounded-[12px] bg-[#fafafa] p-3 px-5 pb-5">
                         <div className="flex items-center gap-2">
                             <span className="font-medium text-[#111]">{replying?.author}</span>
                             <Stars value={replying?.rating ?? 0} />

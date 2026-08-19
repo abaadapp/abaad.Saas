@@ -212,7 +212,7 @@ export default function Banks() {
                         <DialogTitle>{t(editing ? 'تعديل الحساب البنكي' : 'حساب بنكي جديد')}</DialogTitle>
                     </DialogHeader>
 
-                    <form onSubmit={submit} className="space-y-4">
+                    <form onSubmit={submit} className="space-y-4 px-5 pb-5">
                         <Field
                             label="الاسم المختصر"
                             hint="ما يميّزه في القوائم — «التحصيل» أوضح من رقم الحساب"

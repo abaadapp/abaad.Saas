@@ -284,7 +284,7 @@ export default function Chart() {
                         <DialogTitle>{t(editing ? 'تعديل الحساب' : 'حساب جديد')}</DialogTitle>
                     </DialogHeader>
 
-                    <form onSubmit={submit} className="space-y-4">
+                    <form onSubmit={submit} className="space-y-4 px-5 pb-5">
                         <Field label="الحساب الأب" hint="اتركه فارغًا لحسابٍ رئيسي" error={form.errors.parent_id}>
                             <Select
                                 placeholder="بلا أب — حساب رئيسي"

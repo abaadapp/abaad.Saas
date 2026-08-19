@@ -296,7 +296,7 @@ export default function PayrollPayments() {
                                 },
                             });
                         }}
-                        className="space-y-4"
+                        className="space-y-4 px-5 pb-5"
                     >
                         <div className="flex items-center justify-between rounded-[12px] bg-[#fafafa] px-4 py-3 text-sm">
                             <span className="text-[#6b7280]">

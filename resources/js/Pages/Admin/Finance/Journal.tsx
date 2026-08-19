@@ -256,7 +256,7 @@ export default function Journal() {
                         <DialogTitle>{t('قيد جديد')}</DialogTitle>
                     </DialogHeader>
 
-                    <form onSubmit={submit} className="space-y-4">
+                    <form onSubmit={submit} className="space-y-4 px-5 pb-5">
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                             <Field label="التاريخ" required error={form.errors.entry_date}>
                                 <Input

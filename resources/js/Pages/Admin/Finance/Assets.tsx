@@ -256,7 +256,7 @@ export default function Assets() {
                                 },
                             });
                         }}
-                        className="space-y-4"
+                        className="space-y-4 px-5 pb-5"
                     >
                         <Field label="الاسم" required error={form.errors.name}>
                             <Input
@@ -380,7 +380,7 @@ export default function Assets() {
                                 onSuccess: () => setDisposing(null),
                             });
                         }}
-                        className="space-y-4"
+                        className="space-y-4 px-5 pb-5"
                     >
                         <div className="rounded-[12px] bg-[#fafafa] p-3 text-[13px] text-[#6b7280]">
                             <p className="flex justify-between">

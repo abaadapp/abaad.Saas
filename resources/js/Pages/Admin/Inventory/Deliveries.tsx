@@ -278,7 +278,7 @@ export default function Deliveries() {
                                 },
                             });
                         }}
-                        className="space-y-4"
+                        className="space-y-4 px-5 pb-5"
                     >
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <Field label="العميل" error={form.errors.customer_id}>
@@ -423,7 +423,7 @@ export default function Deliveries() {
                         </DialogTitle>
                     </DialogHeader>
 
-                    <div className="space-y-1 text-[13px] text-[#6b7280]">
+                    <div className="space-y-1 text-[13px] text-[#6b7280] px-5 pb-5">
                         <p>
                             {viewing?.delivered_at} · {t(viewing?.status ?? '')}
                             {viewing?.order ? ` · ${viewing.order}` : ''}

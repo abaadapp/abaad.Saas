@@ -2863,5 +2863,8 @@
     "معاينة استيراد الموردين": "Suppliers import preview",
     "فتبقى كما هي في المورّدين الموجودين، ولا تُمسّ.": "so they stay as they are on existing suppliers, untouched.",
     "المورّد الموجود يُحدَّث بدل تكراره — يُطابَق بالهاتف، وبالاسم إن لم يكن له هاتف.": "An existing supplier is updated instead of duplicated — matched by phone, or by name when it has no phone.",
-    "تم الاستيراد: أُضيف :added مورّدًا وحُدِّث :updated": "Imported: :added suppliers added, :updated updated."
+    "تم الاستيراد: أُضيف :added مورّدًا وحُدِّث :updated": "Imported: :added suppliers added, :updated updated.",
+    "المشتركون": "Subscribers",
+    "في التجربة": "On trial",
+    "منتهية": "Expired"
 }

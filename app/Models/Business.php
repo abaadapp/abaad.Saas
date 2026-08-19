@@ -30,6 +30,54 @@ class Business extends Model
         return $query->where('is_demo', true);
     }
 
+    /**
+     * ما يُعدّ اشتراكًا ساريًا — من صفّ المتجر نفسه لا من جدولٍ آخر.
+     *
+     * «هل هذا التاجر مشترك؟» كان جوابها مكتوبًا في مكانين: `status` و
+     * `ends_at` هنا — وهما ما يُقرّر فعلًا دخوله ومنعه — وجدول
+     * `subscriptions` وهو ما تقرؤه لوحة المنصّة. والثاني لا يُكتب إلا
+     * بضغطة «تجديد» يتذكّرها إنسان.
+     *
+     * فمن أُضيف ودفع ولم يُضغط له الزرّ كان يظهر في اللوحة صفرًا: تاجرٌ
+     * يعمل ويدفع، والرقم يقول لا أحد. والنظام يعرف الحقيقة ويمنع بها،
+     * واللوحة تقرأ من دفترٍ لا يمسكه أحد.
+     *
+     * فصار المصدر واحدًا: من كان نشطًا ولم تنتهِ مدّته فهو ساري — يُحسب
+     * من نفسه، اليوم وبعد مئة تاجر.
+     */
+    public function scopeLive($query)
+    {
+        return $query->real()
+            ->whereNotIn('status', ['معطل', 'معطّل'])
+            ->where(fn ($q) => $q->whereNull('ends_at')->orWhere('ends_at', '>=', now()->startOfDay()));
+    }
+
+    /**
+     * من يدفع فعلًا: ساري، وله فاتورةٌ مدفوعة واحدة على الأقل.
+     *
+     * والتجربة ليست اشتراكًا: من دخل بأربعة عشر يومًا مجّانًا لا هو إيراد
+     * ولا هو مدين، وخلطُه بالمشتركين يجعلك تقرأ خمسةً وأنت تعرف أن اثنين
+     * لم يدفعا ريالًا.
+     */
+    public function scopeSubscribed($query)
+    {
+        return $query->live()->whereExists(
+            fn ($q) => $q->selectRaw('1')->from('invoices')
+                ->whereColumn('invoices.business_id', 'businesses.id')
+                ->where('invoices.status', 'مدفوعة'),
+        );
+    }
+
+    /** في التجربة: ساري ولم يدفع بعد */
+    public function scopeTrialing($query)
+    {
+        return $query->live()->whereNotExists(
+            fn ($q) => $q->selectRaw('1')->from('invoices')
+                ->whereColumn('invoices.business_id', 'businesses.id')
+                ->where('invoices.status', 'مدفوعة'),
+        );
+    }
+
     /** رابط الشعار: يدعم الروابط الخارجية والملفات المرفوعة */
     public function getLogoAttribute($value): string
     {

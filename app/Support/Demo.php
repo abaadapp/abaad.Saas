@@ -320,8 +320,12 @@ class Demo
         $total = Business::real()->count();
         $active = Business::real()->where('status', 'نشط')->count();
         $users = User::count();
-        $activeSubs = Subscription::where('status', 'نشط')->count();
-        $expiredSubs = Subscription::where('status', '!=', 'نشط')->count();
+        /*
+         * المشتركون من صفوف المتاجر لا من جدول الاشتراكات — انظر
+         * Business::scopeSubscribed. والجدول يبقى للمال لا للعدّ.
+         */
+        $subscribed = Business::subscribed()->count();
+        $trialing = Business::trialing()->count();
 
         // اتجاهات حقيقية = نمو التسجيلات (هذا الشهر مقابل الشهر السابق)
         $bizNew = Business::real()->where('starts_at', '>=', $mStart)->count();
@@ -330,8 +334,8 @@ class Demo
         $activeNewLast = Business::real()->where('status', 'نشط')->whereBetween('starts_at', [$lmStart, $mStart])->count();
         $usersNew = User::where('created_at', '>=', $mStart)->count();
         $usersNewLast = User::whereBetween('created_at', [$lmStart, $mStart])->count();
-        $subsNew = Subscription::where('status', 'نشط')->where('created_at', '>=', $mStart)->count();
-        $subsNewLast = Subscription::where('status', 'نشط')->whereBetween('created_at', [$lmStart, $mStart])->count();
+        $subsNew = Business::subscribed()->where('starts_at', '>=', $mStart)->count();
+        $subsNewLast = Business::subscribed()->whereBetween('starts_at', [$lmStart, $mStart])->count();
 
         /*
          * الإيراد الشهري المتكرّر: الاشتراكات السارية منسوبةً إلى الشهر.
@@ -394,7 +398,17 @@ class Demo
                 // ارتفاع الفاقد ليس نموًّا: الاتجاه معكوس عمدًا
                 'trend' => $churned > 0 ? '−'.$churned : null, 'up' => false, 'color' => $churned > 0 ? 'danger' : 'success',
             ],
-            array_merge(['label' => __('الاشتراكات النشطة'), 'value' => (string) $activeSubs, 'icon' => 'badge-check', 'color' => 'success'], self::trend($subsNew, $subsNewLast)),
+            array_merge(['label' => __('المشتركون'), 'value' => (string) $subscribed, 'icon' => 'badge-check', 'color' => 'success'], self::trend($subsNew, $subsNewLast)),
+            /*
+             * التجربة بطاقةٌ مستقلّة لا رقمٌ مخلوطٌ بالمشتركين.
+             *
+             * من دخل بأربعة عشر يومًا مجّانًا ليس إيرادًا ولا مدينًا — وخلطه
+             * بمن يدفع يجعلك تقرأ خمسةً وأنت تعرف أن اثنين لم يدفعا ريالًا.
+             */
+            [
+                'label' => __('في التجربة'), 'value' => (string) $trialing, 'icon' => 'hourglass',
+                'color' => $trialing > 0 ? 'warning' : 'secondary', 'trend' => null, 'up' => null,
+            ],
             array_merge(['label' => __('المستخدمون'), 'value' => (string) $users, 'icon' => 'users', 'color' => 'info'], self::trend($usersNew, $usersNewLast)),
             array_merge(['label' => __('الإيرادات الشهرية'), 'value' => self::money($monthly), 'icon' => 'wallet', 'color' => 'warning'], self::trend($monthly, $monthlyLast)),
             array_merge(['label' => __('الإيرادات السنوية'), 'value' => self::money($yearly), 'icon' => 'trending-up', 'color' => 'primary'], self::trend($yearly, $yearlyLast)),
@@ -1892,14 +1906,29 @@ class Demo
             ])->all();
     }
 
-    /** أرقام بطاقات الاشتراكات (حقيقية) */
+    /**
+     * أرقام بطاقات الاشتراكات — من صفوف المتاجر لا من جدول الاشتراكات.
+     *
+     * الجدول يعدّ دوراتٍ لا تجّارًا: من جدّد ثلاث مرّات كان يُحسب اشتراكًا
+     * نشطًا وثلاثة منتهية، فتقول الشاشة إنك تخسر وأنت تكسب. والمتجر واحدٌ
+     * لا أربعة.
+     */
     public static function subscriptionStats(): array
     {
-        $active = Subscription::where('status', 'نشط')->count();
-        $expired = Subscription::where('status', '!=', 'نشط')->count();
-        $monthly = (float) Subscription::where('status', 'نشط')->sum('amount');
+        $subscribed = Business::subscribed()->count();
+        $trialing = Business::trialing()->count();
+        // المنتهي: تاجرٌ حقيقيّ لم يعد ساريًا — لا دورةٌ قديمة لمن جدّد
+        $expired = Business::real()->count() - Business::live()->count();
 
-        return ['active' => $active, 'expired' => $expired, 'monthly_revenue' => $monthly, 'yearly_revenue' => $monthly * 12];
+        // الإيراد المتكرّر من آخر اشتراكٍ لكل متجرٍ مشترك، لا من كل دوراته
+        $monthly = (float) Subscription::whereIn('business_id', Business::subscribed()->select('id'))
+            ->whereIn('id', Subscription::selectRaw('MAX(id)')->groupBy('business_id'))
+            ->sum('amount');
+
+        return [
+            'active' => $subscribed, 'trialing' => $trialing, 'expired' => $expired,
+            'monthly_revenue' => $monthly, 'yearly_revenue' => $monthly * 12,
+        ];
     }
 
     /** أرقام بطاقات فواتير الاشتراكات (حقيقية) */

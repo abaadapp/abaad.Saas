@@ -141,10 +141,12 @@ class PageController extends Controller
 
         return $this->page('Platform/Subscriptions/Index', [
             'stats' => [
-                ['label' => __('اشتراكات نشطة'), 'value' => (string) $s['active'], 'icon' => 'badge-check', 'color' => 'success'],
-                ['label' => __('اشتراكات منتهية'), 'value' => (string) $s['expired'], 'icon' => 'badge-x', 'color' => 'danger'],
-                ['label' => __('الإيراد الشهري'), 'value' => Demo::money($s['monthly_revenue']), 'icon' => 'wallet', 'color' => 'warning'],
-                ['label' => __('الإيراد السنوي'), 'value' => Demo::money($s['yearly_revenue']), 'icon' => 'trending-up', 'color' => 'primary'],
+                // المشتركون والمجرّبون رقمان لا رقم: خلطهما يقول خمسةً وفيهم
+                // اثنان لم يدفعا ريالًا
+                ['label' => __('المشتركون'), 'value' => (string) $s['active'], 'icon' => 'badge-check', 'color' => 'success'],
+                ['label' => __('في التجربة'), 'value' => (string) $s['trialing'], 'icon' => 'hourglass', 'color' => $s['trialing'] > 0 ? 'warning' : 'secondary'],
+                ['label' => __('منتهية'), 'value' => (string) $s['expired'], 'icon' => 'badge-x', 'color' => 'danger'],
+                ['label' => __('الإيراد الشهري'), 'value' => Demo::money($s['monthly_revenue']), 'icon' => 'wallet', 'color' => 'primary'],
             ],
             'subscriptions' => Demo::subscriptions(),
             'planNames' => Plan::orderBy('id')->pluck('name')->all(),
@@ -242,7 +244,7 @@ class PageController extends Controller
                 ['title' => __('تقرير الإيرادات'), 'desc' => __('إجمالي إيرادات الاشتراكات'), 'icon' => 'wallet', 'color' => 'primary',
                     'value' => Demo::money(\App\Models\Invoice::where('status', 'مدفوعة')->sum('amount'))],
                 ['title' => __('تقرير الاشتراكات'), 'desc' => __('الاشتراكات النشطة والمنتهية'), 'icon' => 'refresh-cw', 'color' => 'success',
-                    'value' => (string) ($subs['active'] + $subs['expired'])],
+                    'value' => (string) ($subs['active'] + $subs['trialing'] + $subs['expired'])],
                 ['title' => __('تقرير الشركات'), 'desc' => __('الشركات المسجلة في المنصة'), 'icon' => 'building-2', 'color' => 'info',
                     'value' => (string) \App\Models\Business::real()->count()],
                 ['title' => __('تقرير الأنشطة'), 'desc' => __('سجل الأنشطة والعمليات'), 'icon' => 'activity', 'color' => 'warning',

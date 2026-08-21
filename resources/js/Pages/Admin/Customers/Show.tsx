@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
-    Award, ArrowRight, Mail, MapPin, Pencil, Phone, Plus, Save, Receipt, Star, Trash2,
+    Award, ArrowRight, Mail, MapPin, MoreVertical, Pencil, Phone, Plus, Save, Receipt, Star, Trash2,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -12,6 +12,13 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/Components/ui/dropdown-menu';
 import Field, { Select } from '@/Components/Field';
 import { Input, Textarea } from '@/Components/ui/input';
 import {
@@ -131,23 +138,40 @@ export default function CustomerShow() {
                                 <Award />{t('صرف النقاط')}
                             </Button>
                         )}
-                        <Button variant="outline" onClick={() => setEditingProfile(true)}>
-                            <Pencil />{t('تعديل')}
-                        </Button>
                         {/*
-                            حذفٌ ناعم إلى «المحذوفات»: فواتير العميل تشير إليه،
-                            ومحوُه محوًا نهائيًّا يتركها تشير إلى رقمٍ لا وجود له.
+                            التعديل والحذف تحت النقاط الثلاث كما في المورّدين.
+                            خمسة أزرارٍ في الرأس تجعل «كشف حساب» — وهو ما
+                            يُطلب كل يوم — واحدًا في زحام. وما يُفعل مرّةً
+                            يسكن القائمة، وما يُفعل دائمًا يبقى ظاهرًا.
                         */}
-                        <Button
-                            variant="outline"
-                            className="text-[#b91c1c]"
-                            onClick={() => {
-                                if (!confirm(t('حذف هذا العميل؟ يمكن استعادته من المحذوفات.'))) return;
-                                router.delete(route('admin.customers.destroy', customer.id));
-                            }}
-                        >
-                            <Trash2 />{t('حذف')}
-                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="icon" aria-label={t('المزيد')}>
+                                    <MoreVertical />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                                <DropdownMenuItem onSelect={() => setEditingProfile(true)}>
+                                    <Pencil className="text-[#6b7280]" />
+                                    {t('تعديل بيانات العميل')}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                {/*
+                                    حذفٌ ناعم إلى «المحذوفات»: فواتيره تشير إليه،
+                                    ومحوُه نهائيًّا يتركها تشير إلى رقمٍ لا وجود له.
+                                */}
+                                <DropdownMenuItem
+                                    className="text-[#b91c1c]"
+                                    onSelect={() => {
+                                        if (!confirm(t('حذف هذا العميل؟ يمكن استعادته من المحذوفات.'))) return;
+                                        router.delete(route('admin.customers.destroy', customer.id));
+                                    }}
+                                >
+                                    <Trash2 className="text-[#b91c1c]" />
+                                    {t('حذف العميل')}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </>
                 }
             />

@@ -2879,5 +2879,6 @@
     "حُذف العميل «:name» — يمكن استعادته من المحذوفات": "Customer «:name» deleted — it can be restored from the trash",
     "نقاط الولاء تتبع الرقم — تغييره ينقلها معه": "Loyalty points follow the phone number — changing it moves them along",
     "يُطبع على فاتورته الضريبية": "Printed on their tax invoice",
-    "لا عملاء محذوفون.": "No deleted customers."
+    "لا عملاء محذوفون.": "No deleted customers.",
+    "حذف العميل": "Delete customer"
 }

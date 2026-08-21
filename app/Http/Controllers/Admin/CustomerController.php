@@ -114,6 +114,66 @@ class CustomerController extends Controller
         return redirect()->route('admin.customers.index')->with('toast', ['msg' => __('تم إضافة العميل بنجاح'), 'type' => 'success']);
     }
 
+    /**
+     * تعديل بيانات العميل.
+     *
+     * كان يُضاف ولا يُعدَّل: رقمٌ فيه خطأٌ واحد يبقى خطأً أبدًا. وهو أشدّ
+     * ممّا يبدو — نقاط الولاء تتبع الهاتف، فهاتفٌ خاطئ يعني عميلًا لا يجد
+     * نقاطه، ولا سبيل إلى إصلاحه إلا بعميلٍ ثانٍ فيصير في القائمة اسمان
+     * لشخصٍ واحد.
+     */
+    public function update(Request $request, $id)
+    {
+        $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            // يتجاوز نفسه: وإلّا لرفض حفظَ عميلٍ لم يُغيَّر رقمه
+            'phone' => \App\Support\Customers::phoneRule($this->bid(), $customer->id),
+            'email' => ['nullable', 'email'],
+            'tax_number' => ['nullable', 'string', 'max:50'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'branch_id' => ['nullable', 'integer'],
+        ], [
+            'phone.unique' => __('هذا الرقم مسجَّل لعميل آخر — نقاط الولاء تتبع الرقم.'),
+        ]);
+
+        $branchId = $data['branch_id'] ?? null;
+        $data['branch_id'] = $branchId && \App\Models\Branch::where('business_id', $this->bid())->whereKey($branchId)->exists()
+            ? $branchId
+            : null;
+
+        // الاسم الإنجليزي يُشتقّ من العربي — ولا يُترك على اسمٍ قديم بُدِّل
+        $data = \App\Support\Customers::localizeName($data);
+        $customer->update($data);
+
+        \App\Support\Activity::log('updated', 'عدّل بيانات العميل: '.$customer->name, ['subject_id' => $customer->id]);
+
+        return back()->with('toast', ['msg' => __('تم حفظ بيانات العميل'), 'type' => 'success']);
+    }
+
+    /**
+     * حذفٌ ناعم إلى «المحذوفات» — لا محوٌ.
+     *
+     * لصفّ العميل ذيلٌ طويل: فواتيره تشير إليه، ونقاطه، وعناوينه. ومحوُه
+     * محوًا نهائيًّا يترك فواتير تشير إلى رقمٍ لا وجود له. فيُخفى ويبقى
+     * قابلًا للاستعادة، وفواتيره تبقى كما هي في التقارير.
+     */
+    public function destroy($id)
+    {
+        $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
+        $name = $customer->name;
+
+        $customer->delete();
+        // subject_type لازم: شاشة المحذوفات تقرأ منه «من حذف»
+        \App\Support\Activity::log('deleted', 'حذف العميل: '.$name, [
+            'subject_id' => $customer->id, 'subject_type' => 'customer',
+        ]);
+
+        return redirect()->route('admin.customers.index')
+            ->with('toast', ['msg' => __('حُذف العميل «:name» — يمكن استعادته من المحذوفات', ['name' => $name]), 'type' => 'success']);
+    }
+
     public function saveNote(Request $request, $id)
     {
         $customer = Customer::where('business_id', $this->bid())->findOrFail($id);

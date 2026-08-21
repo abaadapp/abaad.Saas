@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Branch;
+use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\Product;
 use App\Support\Activity;
@@ -37,6 +38,7 @@ class TrashController extends Controller
         'product' => Product::class,
         'expense' => Expense::class,
         'branch' => Branch::class,
+        'customer' => Customer::class,
     ];
 
     /**
@@ -48,7 +50,8 @@ class TrashController extends Controller
      * كتابة تاريخ المتجر بصمت. ولذلك يُخفى الفرع ويبقى قابلًا للاستعادة
      * أبدًا — والمهلة لا تسري عليه.
      */
-    public const PURGEABLE = ['product', 'expense'];
+    // والعميل منها: من طلب حذف بياناته يجب أن تُمحى فعلًا لا أن تُخفى
+    public const PURGEABLE = ['product', 'expense', 'customer'];
 
     private static function bid(): int
     {
@@ -147,9 +150,24 @@ class TrashController extends Controller
             'deletedBy' => $b->deleted_by,
         ]);
 
+        /*
+         * والعملاء: صفٌّ يحمل نقاطًا وعناوين وفواتيرَ تشير إليه، فحذفه
+         * إخفاءٌ لا محو — ولا يكون له سبيلٌ إلى العودة إلا من هنا.
+         */
+        $customers = $trashed('customer')->get()->map(fn ($c) => [
+            'id' => $c->id,
+            'name' => $c->name,
+            'phone' => $c->phone,
+            'points' => (int) $c->points,
+            'deletedAt' => $c->deleted_at?->format('Y-m-d H:i'),
+            'deletedBy' => $c->deleted_by,
+            'daysLeft' => $left($c),
+        ]);
+
         return [
             'products' => $products,
             'expenses' => $expenses,
+            'customers' => $customers,
             /*
              * `trashedBranches` لا `branches`: قسم الفروع في الإعدادات يرسل
              * `branches` وهي الفروع العاملة. والمفتاحان يلتقيان في خصائص
@@ -208,6 +226,7 @@ class TrashController extends Controller
             'product' => 'استعاد المنتج: ',
             'expense' => 'استعاد المصروف: ',
             'branch' => 'استعاد الفرع: ',
+            'customer' => 'استعاد العميل: ',
         }.$label, ['subject_id' => $row->id, 'subject_type' => $type]);
 
         return back()->with('toast', [
@@ -239,6 +258,7 @@ class TrashController extends Controller
         Activity::log('deleted', match ($type) {
             'product' => 'محا المنتج نهائيًّا: ',
             'expense' => 'محا المصروف نهائيًّا: ',
+            'customer' => 'محا العميل نهائيًّا: ',
         }.$label, ['subject_id' => $id, 'subject_type' => $type]);
 
         return back()->with('toast', [

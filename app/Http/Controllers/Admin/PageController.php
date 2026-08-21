@@ -134,6 +134,8 @@ class PageController extends Controller
                     'street' => $a->street,
                     'is_default' => $a->is_default,
                 ])->all(),
+            // للتعديل: الفرع يُختار من فروع هذا النشاط لا من قائمةٍ مفتوحة
+            'branches' => Demo::branches(),
         ]);
     }
 

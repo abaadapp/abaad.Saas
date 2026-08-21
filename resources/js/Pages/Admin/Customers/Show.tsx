@@ -12,7 +12,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
-import Field from '@/Components/Field';
+import Field, { Select } from '@/Components/Field';
 import { Input, Textarea } from '@/Components/ui/input';
 import {
     Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
@@ -32,7 +32,8 @@ interface Address {
 }
 
 interface Props {
-    customer: Customer & { address?: string | null; notes?: string | null };
+    customer: Customer & { address?: string | null; notes?: string | null; branch_id?: number | null };
+    branches?: { id: number; name: string }[];
     orders: Order[];
     addresses: Address[];
 }
@@ -40,11 +41,28 @@ interface Props {
 const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 
 export default function CustomerShow() {
-    const { customer, orders, addresses, context } = usePage<PageProps<Props>>().props;
+    const { customer, orders, addresses, context, branches = [] } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
     const [redeeming, setRedeeming] = useState(false);
+    const [editingProfile, setEditingProfile] = useState(false);
+
+    /*
+     * التعديل والحذف — لم يكونا موجودين إطلاقًا.
+     *
+     * رقمٌ فيه خطأٌ واحد كان يبقى خطأً أبدًا. وهو أشدّ ممّا يبدو: نقاط
+     * الولاء تتبع الهاتف، فالخطأ يعني عميلًا لا يجد نقاطه، ولا سبيل إلى
+     * إصلاحه إلا بعميلٍ ثانٍ فيصير في القائمة اسمان لشخصٍ واحد.
+     */
+    const edit = useForm({
+        name: customer.name ?? '',
+        phone: customer.phone ?? '',
+        email: customer.email ?? '',
+        tax_number: customer.tax_number ?? '',
+        address: customer.address ?? '',
+        branch_id: customer.branch_id ? String(customer.branch_id) : '',
+    });
     const [tab, setTab] = useState<'orders' | 'addresses'>('orders');
 
     const notes = useForm({ notes: customer.notes ?? '' });
@@ -113,6 +131,23 @@ export default function CustomerShow() {
                                 <Award />{t('صرف النقاط')}
                             </Button>
                         )}
+                        <Button variant="outline" onClick={() => setEditingProfile(true)}>
+                            <Pencil />{t('تعديل')}
+                        </Button>
+                        {/*
+                            حذفٌ ناعم إلى «المحذوفات»: فواتير العميل تشير إليه،
+                            ومحوُه محوًا نهائيًّا يتركها تشير إلى رقمٍ لا وجود له.
+                        */}
+                        <Button
+                            variant="outline"
+                            className="text-[#b91c1c]"
+                            onClick={() => {
+                                if (!confirm(t('حذف هذا العميل؟ يمكن استعادته من المحذوفات.'))) return;
+                                router.delete(route('admin.customers.destroy', customer.id));
+                            }}
+                        >
+                            <Trash2 />{t('حذف')}
+                        </Button>
                     </>
                 }
             />
@@ -341,6 +376,62 @@ export default function CustomerShow() {
                             </Button>
                         </div>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={editingProfile} onOpenChange={setEditingProfile}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{t('تعديل بيانات العميل')}</DialogTitle>
+                    </DialogHeader>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            edit.put(route('admin.customers.update', customer.id), {
+                                preserveScroll: true,
+                                onSuccess: () => setEditingProfile(false),
+                            });
+                        }}
+                        className="space-y-4 px-5 pb-5"
+                    >
+                        <Field label="اسم العميل" required error={edit.errors.name}>
+                            <Input value={edit.data.name} onChange={(e) => edit.setData('name', e.target.value)} required />
+                        </Field>
+                        <Field
+                            label="رقم الهاتف"
+                            hint="نقاط الولاء تتبع الرقم — تغييره ينقلها معه"
+                            error={edit.errors.phone}
+                        >
+                            <Input dir="ltr" value={edit.data.phone} onChange={(e) => edit.setData('phone', e.target.value)} />
+                        </Field>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <Field label="البريد الإلكتروني" error={edit.errors.email}>
+                                <Input type="email" dir="ltr" value={edit.data.email} onChange={(e) => edit.setData('email', e.target.value)} />
+                            </Field>
+                            <Field label="الرقم الضريبي" hint="يُطبع على فاتورته الضريبية" error={edit.errors.tax_number}>
+                                <Input dir="ltr" value={edit.data.tax_number} onChange={(e) => edit.setData('tax_number', e.target.value)} />
+                            </Field>
+                        </div>
+                        <Field label="العنوان" error={edit.errors.address}>
+                            <Input value={edit.data.address} onChange={(e) => edit.setData('address', e.target.value)} />
+                        </Field>
+                        {branches.length > 0 && (
+                            <Field label="الفرع" error={edit.errors.branch_id}>
+                                <Select
+                                    value={edit.data.branch_id}
+                                    onChange={(e) => edit.setData('branch_id', e.target.value)}
+                                    options={branches.map((b) => ({ label: b.name, value: String(b.id) }))}
+                                    placeholder="بدون فرع"
+                                />
+                            </Field>
+                        )}
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="ghost" onClick={() => setEditingProfile(false)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button type="submit" loading={edit.processing}>{t('حفظ')}</Button>
+                        </div>
+                    </form>
                 </DialogContent>
             </Dialog>
         </AdminLayout>

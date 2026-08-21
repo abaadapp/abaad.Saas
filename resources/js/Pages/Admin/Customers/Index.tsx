@@ -139,6 +139,10 @@ export default function CustomersIndex() {
             key: 'actions',
             header: 'إجراءات',
             align: 'end',
+            /*
+                «تعديل» في الصفّ لا في الملفّ وحده: الخطأ في الاسم أو الرقم
+                يُلاحَظ وأنت تمرّ على القائمة، فيُصلَح من حيث رُئي.
+            */
             cell: (c) => (
                 <Button variant="outline" size="sm" asChild>
                     <SmartLink routeName="admin.customers.show" href={route('admin.customers.show', c.id)}>

@@ -2872,5 +2872,12 @@
     "شكل الإيصال والفاتورة والفاتورة الضريبية وما يظهر فيها": "How the receipt, the invoice and the tax invoice look and what they show",
     "يحكم الإيصال المطبوع وفاتورة A4 والفاتورة الضريبية معًا — والمعاينة على اليمين تتبع كل تغيير.": "Governs the printed receipt, the A4 invoice and the tax invoice together — the preview on the right follows every change.",
     "شعار الفاتورة يُضبط من «قوالب الفواتير» — كان هنا مفتاحٌ ثانٍ لا يقرؤه شيء.": "The invoice logo is set in «Invoice templates» — there used to be a second switch here that nothing read.",
-    "(مشمولة)": "(included)"
+    "(مشمولة)": "(included)",
+    "تعديل بيانات العميل": "Edit customer details",
+    "تم حفظ بيانات العميل": "Customer details saved",
+    "حذف هذا العميل؟ يمكن استعادته من المحذوفات.": "Delete this customer? It can be restored from the trash.",
+    "حُذف العميل «:name» — يمكن استعادته من المحذوفات": "Customer «:name» deleted — it can be restored from the trash",
+    "نقاط الولاء تتبع الرقم — تغييره ينقلها معه": "Loyalty points follow the phone number — changing it moves them along",
+    "يُطبع على فاتورته الضريبية": "Printed on their tax invoice",
+    "لا عملاء محذوفون.": "No deleted customers."
 }

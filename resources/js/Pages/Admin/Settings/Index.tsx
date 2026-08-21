@@ -67,6 +67,7 @@ interface Props {
     filters?: ActivityData['filters'];
     products?: TrashData['products'];
     trashedBranches?: TrashData['trashedBranches'];
+    customers?: TrashData['customers'];
     expenses?: TrashData['expenses'];
     windowDays?: number;
 }
@@ -153,7 +154,7 @@ const NOTIF_COLORS: Record<string, string> = {
 
 export default function SettingsIndex() {
     const { settings, business, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
-        logs, pagination, filters, products, expenses, trashedBranches, windowDays } =
+        logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState<TabKey | null>(tabFromUrl);
@@ -511,6 +512,7 @@ export default function SettingsIndex() {
                 <TrashPanel
                     products={products ?? []}
                     expenses={expenses ?? []}
+                    customers={trashedCustomers ?? []}
                     trashedBranches={trashedBranches ?? []}
                     windowDays={windowDays ?? 0}
                 />

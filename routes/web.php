@@ -289,6 +289,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/customers/import/cancel', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'cancel'])->name('customers.import.cancel');
     Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
+    Route::put('/customers/{id}', [CustomerController::class, 'update'])->name('customers.update');
+    Route::delete('/customers/{id}', [CustomerController::class, 'destroy'])->name('customers.destroy');
+    Route::post('/customers/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
+        ->defaults('type', 'customer')->name('customers.restore');
+    Route::delete('/customers/{id}/purge', [\App\Http\Controllers\Admin\TrashController::class, 'purge'])
+        ->defaults('type', 'customer')->name('customers.purge');
     Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');
     Route::post('/customers/{id}/addresses', [CustomerController::class, 'saveAddress'])->name('customers.addresses.save');
     Route::post('/customers/{id}/addresses/{addressId}/default', [CustomerController::class, 'defaultAddress'])->name('customers.addresses.default');

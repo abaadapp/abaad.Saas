@@ -10,7 +10,7 @@ import type { PageProps } from '@/types';
  * صفحة المحذوفات المستقلّة — الجسم نفسه الذي يُفتح داخل الإعدادات.
  */
 export default function Trash() {
-    const { products, expenses, trashedBranches, windowDays } = usePage<PageProps<TrashData>>().props;
+    const { products, expenses, customers, trashedBranches, windowDays } = usePage<PageProps<TrashData>>().props;
     const t = useTranslate();
 
     return (
@@ -21,7 +21,13 @@ export default function Trash() {
             />
 
             <BackToSettings />
-            <TrashPanel products={products} expenses={expenses} trashedBranches={trashedBranches} windowDays={windowDays} />
+            <TrashPanel
+                products={products}
+                expenses={expenses}
+                customers={customers}
+                trashedBranches={trashedBranches}
+                windowDays={windowDays}
+            />
         </AdminLayout>
     );
 }

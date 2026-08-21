@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { Building2, Package, Receipt, Trash2, Undo2 } from 'lucide-react';
+import { Building2, Package, Receipt, Trash2, Undo2, UserRound } from 'lucide-react';
 import DataTable, { type Column } from '@/Components/DataTable';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -33,6 +33,13 @@ interface TrashedExpense extends Trashed {
     daysLeft: number;
 }
 
+interface TrashedCustomer extends Trashed {
+    name: string;
+    phone: string | null;
+    points: number;
+    daysLeft: number;
+}
+
 interface TrashedBranch extends Trashed {
     name: string;
     address: string | null;
@@ -41,13 +48,14 @@ interface TrashedBranch extends Trashed {
 export interface TrashData {
     products: TrashedProduct[];
     expenses: TrashedExpense[];
+    customers: TrashedCustomer[];
     /* الاسم مميَّز لأن صفحة الإعدادات تستقبل `branches` للفروع العاملة في
        قسمها — انظر التعليق في TrashController::panelData */
     trashedBranches: TrashedBranch[];
     windowDays: number;
 }
 
-type PurgeTarget = { type: 'product' | 'expense'; id: number; label: string };
+type PurgeTarget = { type: 'product' | 'expense' | 'customer'; id: number; label: string };
 
 /**
  * جسم قسم «المحذوفات» بلا قشرة — في لوحة الإعدادات وفي صفحته المستقلّة.
@@ -55,7 +63,7 @@ type PurgeTarget = { type: 'product' | 'expense'; id: number; label: string };
  * وهو الزرّ المقابل للحذف: كان حذف المنتج والمصروف محوًا نهائيًّا، فضغطةٌ
  * خاطئة تُذهب التكلفة والباركود والمرفق، والسجلّ يقيّد ما جرى ولا يردّه.
  */
-export default function TrashPanel({ products, expenses, trashedBranches: branches, windowDays }: TrashData) {
+export default function TrashPanel({ products, expenses, customers, trashedBranches: branches, windowDays }: TrashData) {
     const { context } = usePage<PageProps>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -66,7 +74,7 @@ export default function TrashPanel({ products, expenses, trashedBranches: branch
      * لكل نوعٍ مسارُه: الاستعادة والمحو يقعان تحت صلاحية القسم الذي حُذف منه،
      * لا تحت «الإعدادات» — انظر TrashController::restore.
      */
-    const restore = (type: 'product' | 'expense' | 'branch', id: number) =>
+    const restore = (type: 'product' | 'expense' | 'branch' | 'customer', id: number) =>
         router.post(route(`admin.${type}s.restore`, id), {}, { preserveScroll: true });
 
     const purge = () => {
@@ -121,7 +129,7 @@ export default function TrashPanel({ products, expenses, trashedBranches: branch
 
     /** استعادة، ومحوٌ نهائيّ بجانبها لمن قرّر أنه لا يريده */
     const actions = <T extends Trashed>(
-        type: 'product' | 'expense',
+        type: 'product' | 'expense' | 'customer',
         label: (row: T) => string,
     ): Column<T> => ({
         key: 'actions',
@@ -179,6 +187,21 @@ export default function TrashPanel({ products, expenses, trashedBranches: branch
         actions<TrashedExpense>('expense', (e) => e.reference || e.title || '—'),
     ];
 
+    const customerColumns: Column<TrashedCustomer>[] = [
+        {
+            key: 'name',
+            header: 'العميل',
+            sortable: true,
+            value: (c) => c.name,
+            cell: (c) => icon(UserRound, c.name, c.phone),
+        },
+        { key: 'points', header: 'النقاط', align: 'center', cell: (c) => c.points },
+        deletedByColumn<TrashedCustomer>(),
+        { key: 'deletedAt', header: 'تاريخ الحذف', cell: (c) => c.deletedAt ?? '—' },
+        daysLeftColumn<TrashedCustomer>(),
+        actions<TrashedCustomer>('customer', (c) => c.name),
+    ];
+
     const branchColumns: Column<TrashedBranch>[] = [
         {
             key: 'name',
@@ -233,6 +256,18 @@ export default function TrashPanel({ products, expenses, trashedBranches: branch
                         rows={expenses}
                         rowKey={(e) => e.id}
                         empty={t('لا مصروفات محذوفة.')}
+                    />
+                </Card>
+            </div>
+
+            <div>
+                <h2 className="mb-3 text-[15px] font-bold text-[#111]">{t('العملاء')}</h2>
+                <Card className="p-0">
+                    <DataTable
+                        columns={customerColumns}
+                        rows={customers}
+                        rowKey={(c) => c.id}
+                        empty={t('لا عملاء محذوفون.')}
                     />
                 </Card>
             </div>

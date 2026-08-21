@@ -66,8 +66,6 @@ export default function CustomerShow() {
         name: customer.name ?? '',
         phone: customer.phone ?? '',
         email: customer.email ?? '',
-        tax_number: customer.tax_number ?? '',
-        address: customer.address ?? '',
         branch_id: customer.branch_id ? String(customer.branch_id) : '',
     });
     const [tab, setTab] = useState<'orders' | 'addresses'>('orders');
@@ -428,16 +426,8 @@ export default function CustomerShow() {
                         >
                             <Input dir="ltr" value={edit.data.phone} onChange={(e) => edit.setData('phone', e.target.value)} />
                         </Field>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Field label="البريد الإلكتروني" error={edit.errors.email}>
-                                <Input type="email" dir="ltr" value={edit.data.email} onChange={(e) => edit.setData('email', e.target.value)} />
-                            </Field>
-                            <Field label="الرقم الضريبي" hint="يُطبع على فاتورته الضريبية" error={edit.errors.tax_number}>
-                                <Input dir="ltr" value={edit.data.tax_number} onChange={(e) => edit.setData('tax_number', e.target.value)} />
-                            </Field>
-                        </div>
-                        <Field label="العنوان" error={edit.errors.address}>
-                            <Input value={edit.data.address} onChange={(e) => edit.setData('address', e.target.value)} />
+                        <Field label="البريد الإلكتروني" error={edit.errors.email}>
+                            <Input type="email" dir="ltr" value={edit.data.email} onChange={(e) => edit.setData('email', e.target.value)} />
                         </Field>
                         {branches.length > 0 && (
                             <Field label="الفرع" error={edit.errors.branch_id}>

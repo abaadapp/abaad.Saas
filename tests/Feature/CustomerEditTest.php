@@ -138,4 +138,25 @@ class CustomerEditTest extends TestCase
 
         $this->assertDatabaseMissing('customers', ['id' => $this->customer->id]);
     }
+
+    /**
+     * ما لا يُرسله النموذج لا يُمحى.
+     *
+     * حُذف حقلا الرقم الضريبي والعنوان من نافذة التعديل، فصارا لا يصلان
+     * الطلب. ولو أعادهما التحقّق فارغين لمحا رقمًا ضريبيًّا يُطبع على فاتورة
+     * العميل — بلا أن يلمسه أحد.
+     */
+    public function test_fields_the_form_no_longer_sends_are_not_wiped(): void
+    {
+        $this->customer->update(['tax_number' => 'OM7654321', 'address' => 'صلالة']);
+
+        $this->put(route('admin.customers.update', $this->customer->id), [
+            'name' => 'سالم', 'phone' => '90000001', 'email' => 's@x.om',
+        ])->assertSessionHasNoErrors();
+
+        $this->customer->refresh();
+
+        $this->assertSame('OM7654321', $this->customer->tax_number);
+        $this->assertSame('صلالة', $this->customer->address);
+    }
 }

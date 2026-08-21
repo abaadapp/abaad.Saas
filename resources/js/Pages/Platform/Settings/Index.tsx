@@ -3,7 +3,7 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import { AlertTriangle, CheckCircle2, Save, Send } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
-import Field, { Select } from '@/Components/Field';
+import Field, { Select, type SelectOption } from '@/Components/Field';
 import Tabs from '@/Components/Tabs';
 import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
@@ -40,7 +40,8 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail } = usePage<PageProps<{ settings: Settings; mail?: MailStatus }>>().props;
+    const { settings, locale, mail, plans } =
+        usePage<PageProps<{ settings: Settings; mail?: MailStatus; plans: SelectOption[] }>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('general');
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
@@ -180,9 +181,15 @@ export default function PlatformSettings() {
                                     hint: 'يعمل المتجر كاملًا فيها ويرى شريطًا يعدّ ما بقي',
                                 })}
                             </div>
-                            {text('default_plan', 'الباقة الافتراضية عند التسجيل', {
-                                hint: 'اسم باقةٍ قائمة بالحرف — تُسنَد لمن يُضاف بلا باقة',
-                            })}
+                            {/* تُختار من الباقات القائمة لا تُكتب: اسمٌ لا يطابق شيئًا يعني متجرًا بلا باقة */}
+                            <Field label={t('الباقة الافتراضية عند التسجيل')} error={form.errors.default_plan}>
+                                <Select
+                                    value={String(form.data.default_plan ?? '')}
+                                    onChange={(e) => form.setData('default_plan', e.target.value as never)}
+                                    options={plans}
+                                    placeholder="— بلا باقة —"
+                                />
+                            </Field>
                             <Toggle
                                 on={form.data.auto_suspend}
                                 onChange={(v) => form.setData('auto_suspend', v)}

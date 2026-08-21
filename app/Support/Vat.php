@@ -33,7 +33,18 @@ class Vat
      */
     public static function inclusive(int $businessId): bool
     {
-        return Setting::where('business_id', $businessId)->where('key', 'tax_mode')->value('value') === 'inclusive';
+        /*
+         * ويرجع إلى افتراضيّ المنصّة كما ترجع النسبة.
+         *
+         * كان يُقرأ صفُّ المتجر وحده، فمقبض «طريقة احتساب الضريبة» في إعدادات
+         * المنصّة يُحفظ ولا يقرؤه شيء — والشاشة نفسها تعد فوقه: «تُطبَّق على
+         * متجرٍ لم يضبط ضريبته». وعده صادقٌ في النسبة كاذبٌ في الطريقة، وهما
+         * في بطاقةٍ واحدة تحت عنوانٍ واحد.
+         */
+        $value = Setting::where('business_id', $businessId)->where('key', 'tax_mode')->value('value')
+            ?? Setting::whereNull('business_id')->where('key', 'tax_mode')->value('value');
+
+        return $value === 'inclusive';
     }
 
     /** نسبة المتجر — صفرٌ إن كانت الضريبة مطفأة */

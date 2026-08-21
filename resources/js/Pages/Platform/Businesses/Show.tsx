@@ -376,25 +376,33 @@ export default function BusinessShow() {
                                     : t('لا تاريخ انتهاء محدَّد')}
                             </span>
                             <span className="flex-1" />
-                            <Button
-                                variant="outline"
-                                onClick={() =>
-                                    router.post(route('super-admin.businesses.renew', business.id), {
-                                        cycle: 'monthly',
-                                    })
-                                }
-                            >
-                                {t('جدّد شهرًا')} · {money(renewal.monthly, currency)}
-                            </Button>
-                            <Button
-                                onClick={() =>
-                                    router.post(route('super-admin.businesses.renew', business.id), {
-                                        cycle: 'yearly',
-                                    })
-                                }
-                            >
-                                {t('جدّد سنة')} · {money(renewal.yearly, currency)}
-                            </Button>
+                            {/*
+                                يُستأذن قبل الضغط: التجديد يُصدر فاتورةً ويُطيل
+                                الاشتراك دورةً كاملة، والضغطتان تُصدران فاتورتين
+                                ودورتين — لا سبيل إلى ردّهما إلا بحذف الاشتراك.
+                            */}
+                            {(
+                                [
+                                    ['monthly', 'جدّد شهرًا', renewal.monthly, 'شهرًا'],
+                                    ['yearly', 'جدّد سنة', renewal.yearly, 'سنة'],
+                                ] as const
+                            ).map(([cycle, label, price, span]) => (
+                                <Button
+                                    key={cycle}
+                                    variant={cycle === 'monthly' ? 'outline' : undefined}
+                                    onClick={() => {
+                                        if (
+                                            !confirm(
+                                                `${t('تجديد')} ${t(span)} ${t('بمبلغ')} ${money(price, currency)}${t('؟ تُصدَر فاتورة بهذا المبلغ ويُمدَّد الاشتراك.')}`,
+                                            )
+                                        )
+                                            return;
+                                        router.post(route('super-admin.businesses.renew', business.id), { cycle });
+                                    }}
+                                >
+                                    {t(label)} · {money(price, currency)}
+                                </Button>
+                            ))}
                         </div>
                     </div>
                 )}

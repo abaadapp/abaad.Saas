@@ -22,6 +22,10 @@ interface Plan {
     color: string;
     popular: boolean;
     features: string[];
+    /** سقوف الباقة — null يعني بلا حدّ */
+    max_branches: number | null;
+    max_employees: number | null;
+    max_products: number | null;
 }
 
 interface Props {
@@ -151,6 +155,9 @@ function PlanDialog({ plan, onClose }: { plan: Plan | null; onClose: () => void 
         color: plan?.color ?? 'primary',
         features: (plan?.features ?? []).join('\n'),
         is_popular: plan?.popular ?? false,
+        max_branches: plan?.max_branches != null ? String(plan.max_branches) : '',
+        max_employees: plan?.max_employees != null ? String(plan.max_employees) : '',
+        max_products: plan?.max_products != null ? String(plan.max_products) : '',
     });
 
     const submit = (e: FormEvent) => {
@@ -204,6 +211,40 @@ function PlanDialog({ plan, onClose }: { plan: Plan | null; onClose: () => void 
                             />
                         </Field>
                     </div>
+
+                    {/*
+                        السقوف: تُكتب في «المزايا» نصًّا ويقرؤها التاجر وعدًا،
+                        وما كان يفرضها شيء لأن الحقول لم تكن في هذه النافذة —
+                        فتُولد كل باقةٍ جديدة بلا حدّ.
+                    */}
+                    <fieldset>
+                        <legend className="mb-2 text-sm font-medium text-[#374151]">
+                            {t('السقوف — تُفرض عند الإنشاء')}
+                        </legend>
+                        <div className="grid grid-cols-3 gap-3">
+                            {(
+                                [
+                                    ['max_branches', 'الفروع'],
+                                    ['max_employees', 'الموظفون'],
+                                    ['max_products', 'المنتجات'],
+                                ] as const
+                            ).map(([key, label]) => (
+                                <Field key={key} label={label} error={form.errors[key]}>
+                                    <Input
+                                        type="number"
+                                        min="1"
+                                        dir="ltr"
+                                        placeholder={t('بلا حدّ')}
+                                        value={form.data[key]}
+                                        onChange={(e) => form.setData(key, e.target.value)}
+                                    />
+                                </Field>
+                            ))}
+                        </div>
+                        <p className="mt-1.5 text-[12px] text-[#9ca3af]">
+                            {t('الفراغ يعني بلا حدّ — واكتبه فراغًا عن قصد لا سهوًا.')}
+                        </p>
+                    </fieldset>
 
                     <Field label="اللون" error={form.errors.color}>
                         <Select

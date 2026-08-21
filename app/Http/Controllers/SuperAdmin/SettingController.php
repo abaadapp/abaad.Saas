@@ -8,9 +8,61 @@ use Illuminate\Http\Request;
 
 class SettingController extends Controller
 {
+    /**
+     * ما تُغيّره هذه الشاشة — بالاسم وبقاعدةٍ لكلٍّ منه.
+     *
+     * كان المتحكّم يأخذ كل مفتاحٍ في الطلب ويكتبه في جدول الإعدادات العامّ
+     * بلا قائمةٍ ولا تحقّق. فحرفٌ زائد في اسم حقلٍ يصنع مفتاحًا ميتًا لا
+     * يقرؤه شيء ولا يشكو منه أحد، و«١٤ يوم» في مدّة التجربة تصير صفرًا
+     * صامتًا — فيُضاف تاجرٌ بتجربةٍ منتهيةٍ قبل أن تبدأ.
+     *
+     * @var array<string, array<int, string>>
+     */
+    private const KEYS = [
+        'app_name' => ['nullable', 'string', 'max:100'],
+        'locale' => ['nullable', 'in:ar,en'],
+        'maintenance_mode' => ['nullable', 'boolean'],
+
+        'company' => ['nullable', 'string', 'max:150'],
+        'official_email' => ['nullable', 'email', 'max:150'],
+        'phone' => ['nullable', 'string', 'max:50'],
+        'website' => ['nullable', 'string', 'max:200'],
+
+        'trial_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+        'grace_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+        'default_plan' => ['nullable', 'string', 'max:100'],
+        'auto_suspend' => ['nullable', 'boolean'],
+
+        'vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        'tax_mode' => ['nullable', 'in:inclusive,exclusive'],
+
+        'from_address' => ['nullable', 'email', 'max:150'],
+        'from_name' => ['nullable', 'string', 'max:100'],
+    ];
+
     public function update(Request $request)
     {
-        foreach ($request->except(['_token', '_method', 'tab']) as $key => $value) {
+        $data = $request->validate(self::KEYS, [], [
+            'trial_days' => __('مدة الفترة التجريبية'),
+            'grace_days' => __('مهلة السماح'),
+            'vat_rate' => __('نسبة الضريبة'),
+            'official_email' => __('البريد الرسمي'),
+            'from_address' => __('بريد المُرسِل'),
+        ]);
+
+        /*
+         * والباقة الافتراضية باسمٍ لا يطابق باقةً قائمة تُرفض هنا لا تُهمَل
+         * لاحقًا: كانت تُحفظ ثم تُقرأ عند إضافة متجر فلا تُطابق شيئًا، فيُضاف
+         * المتجر بلا باقة — بلا سعرٍ ولا فاتورة ولا سقف، ولا رسالةَ خطأ.
+         */
+        if (filled($data['default_plan'] ?? null)
+            && ! \App\Models\Plan::where('name', trim($data['default_plan']))->exists()) {
+            return back()->withErrors([
+                'default_plan' => __('لا باقة بهذا الاسم — اكتبه كما هو في شاشة الباقات.'),
+            ]);
+        }
+
+        foreach ($data as $key => $value) {
             if (is_array($value)) { $value = implode(',', $value); }
             // المفاتيح المنطقية تُخزَّن '1'/'0' لا true/false: القراءة تقارن بالنص،
             // و false يُكتب سلسلة فارغة فتُقرأ لاحقًا على أنها «مفعّل».

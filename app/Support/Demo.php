@@ -319,7 +319,15 @@ class Demo
         // القيم (إجمالي)
         $total = Business::real()->count();
         $active = Business::real()->where('status', 'نشط')->count();
-        $users = User::count();
+        /*
+         * المستخدمون: كما تعدّهم شاشتهم لا كما يعدّهم الجدول.
+         *
+         * كان `User::count()` يجمع موظّفي المتجر التجريبيّ الثمانية إلى
+         * الحقيقيّين — وقائمةُ «المستخدمون» تستثنيهم. فالبطاقة تقول أحد عشر
+         * والقائمة تعرض ثلاثة، والرقمان لشيءٍ واحد.
+         */
+        $realUsers = fn () => User::whereDoesntHave('business', fn ($w) => $w->where('is_demo', true));
+        $users = $realUsers()->count();
         /*
          * المشتركون من صفوف المتاجر لا من جدول الاشتراكات — انظر
          * Business::scopeSubscribed. والجدول يبقى للمال لا للعدّ.
@@ -332,8 +340,8 @@ class Demo
         $bizNewLast = Business::real()->whereBetween('starts_at', [$lmStart, $mStart])->count();
         $activeNew = Business::real()->where('status', 'نشط')->where('starts_at', '>=', $mStart)->count();
         $activeNewLast = Business::real()->where('status', 'نشط')->whereBetween('starts_at', [$lmStart, $mStart])->count();
-        $usersNew = User::where('created_at', '>=', $mStart)->count();
-        $usersNewLast = User::whereBetween('created_at', [$lmStart, $mStart])->count();
+        $usersNew = $realUsers()->where('created_at', '>=', $mStart)->count();
+        $usersNewLast = $realUsers()->whereBetween('created_at', [$lmStart, $mStart])->count();
         $subsNew = Business::subscribed()->where('starts_at', '>=', $mStart)->count();
         $subsNewLast = Business::subscribed()->whereBetween('starts_at', [$lmStart, $mStart])->count();
 
@@ -443,8 +451,17 @@ class Demo
      */
     public static function businessPerformance(): array
     {
-        return Business::with('plan')
-            ->withCount(['products', 'users', 'orders'])->get()->map(fn ($b) => [
+        /*
+         * والمتاجر الحقيقية وحدها، والمبيع من الطلبات وحده.
+         *
+         * كان التقرير يجمع المتجر التجريبيّ إلى التجّار فيتصدّرهم بمبيعاتٍ
+         * مخترَعة، ويعدّ الملغى والمعلّق طلبات — فرقمُ «الطلبات» في التقرير
+         * يخالف رقمَه في ملفّ المتجر نفسه، وكلاهما عن الشيء ذاته.
+         */
+        $sold = fn ($q) => $q->sold();
+
+        return Business::real()->with('plan')
+            ->withCount(['products', 'users', 'orders as orders_count' => $sold])->get()->map(fn ($b) => [
                 'id' => $b->id,
                 'name' => $b->name,
                 'logo' => $b->logo,

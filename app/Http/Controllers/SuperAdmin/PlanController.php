@@ -17,9 +17,25 @@ class PlanController extends Controller
             'color' => ['nullable', 'string', 'max:30'],
             'features' => ['nullable', 'string'],
             'is_popular' => ['nullable', 'boolean'],
+            /*
+             * سقوف الباقة — لم يكن لها حقلٌ في هذه الشاشة أصلًا.
+             *
+             * `PlanLimits` تفرضها عند الإنشاء، لكنّ الباقة المصنوعة من هنا
+             * تُولد بأعمدةٍ فارغة، و`cap()` تقرأ الفارغ «لا سقف». فتُباع باقةٌ
+             * مكتوبٌ في مزاياها «فرع واحد» ولا شيء يمنع فتح عشرة. والسقوف
+             * الوحيدة العاملة اليوم هي التي زُرعت مع النظام.
+             *
+             * والفارغ يبقى مسموحًا ويعني «بلا حدّ» صراحةً — لا سهوًا.
+             */
+            'max_branches' => ['nullable', 'integer', 'min:1'],
+            'max_employees' => ['nullable', 'integer', 'min:1'],
+            'max_products' => ['nullable', 'integer', 'min:1'],
         ]);
         Plan::create([
             'name' => $data['name'],
+            'max_branches' => $data['max_branches'] ?? null,
+            'max_employees' => $data['max_employees'] ?? null,
+            'max_products' => $data['max_products'] ?? null,
             'monthly_price' => $data['monthly_price'],
             'yearly_price' => $data['yearly_price'],
             'color' => $data['color'] ?? 'primary',
@@ -47,8 +63,23 @@ class PlanController extends Controller
             'color' => ['nullable', 'string', 'max:30'],
             'features' => ['nullable', 'string'],
             'is_popular' => ['nullable', 'boolean'],
+            // السقوف كما في الإنشاء — انظر التعليق هناك
+            'max_branches' => ['nullable', 'integer', 'min:1'],
+            'max_employees' => ['nullable', 'integer', 'min:1'],
+            'max_products' => ['nullable', 'integer', 'min:1'],
         ]);
-        $plan->update([
+        /*
+         * وما لم يُذكر في الطلب لا يُمسّ.
+         *
+         * `?? null` كان يعني أن نموذجًا لا يرسل السقوف يمحوها: تُعدَّل باقةٌ
+         * لتغيير سعرها فتفقد حدودها كلَّها بلا أن يظهر ذلك في شاشة.
+         */
+        $limits = collect(['max_branches', 'max_employees', 'max_products'])
+            ->filter(fn ($k) => array_key_exists($k, $data))
+            ->mapWithKeys(fn ($k) => [$k => $data[$k]])
+            ->all();
+
+        $plan->update($limits + [
             'name' => $data['name'],
             'monthly_price' => $data['monthly_price'],
             'yearly_price' => $data['yearly_price'],

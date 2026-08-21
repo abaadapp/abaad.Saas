@@ -80,7 +80,14 @@ class PageController extends Controller
                 // بريد الدخول — أوّل ما يُسأل عنه حين يتصل التاجر
                 'owner_email' => \App\Support\MerchantAccount::owner($model)?->email,
             ],
-            'subscription' => collect(Demo::subscriptions())->firstWhere('business', $business['name']),
+            /*
+             * اشتراك هذا المتجر بمعرّفه لا باسمه.
+             *
+             * مطابقةُ الاسم تخلط متجرين تسمّيا بالاسم نفسه — وهو وارد: «مخبز
+             * الرحمة» في صلالة وآخر في نزوى — فيُعرض في ملفّ أحدهما اشتراكُ
+             * الآخر وتاريخُ انتهائه. والأحدث أولى حين تكون له دورات كثيرة.
+             */
+            'subscription' => collect(Demo::subscriptions())->firstWhere('business_id', $business['id']),
             'stats' => [
                 ['label' => __('الفروع'), 'value' => (string) $business['branches'], 'icon' => 'git-branch', 'color' => 'primary'],
                 ['label' => __('الموظفون'), 'value' => (string) $counts['employees'], 'icon' => 'users', 'color' => 'info'],
@@ -165,6 +172,10 @@ class PageController extends Controller
                 'color' => $p->color,
                 'popular' => (bool) $p->is_popular,
                 'features' => $p->features ?? [],
+                // السقوف تُحرَّر من الشاشة الآن، فتُقرأ فيها
+                'max_branches' => $p->max_branches,
+                'max_employees' => $p->max_employees,
+                'max_products' => $p->max_products,
             ])->all(),
         ]);
     }
@@ -304,6 +315,15 @@ class PageController extends Controller
             'settings' => $this->platformSettings(),
             // حال البريد كما هو على الخادم — لا كما حُفظ في الشاشة
             'mail' => \App\Support\PlatformConfig::mailStatus(),
+            /*
+             * الباقات بأسمائها لتُختار لا لتُكتب.
+             *
+             * «الباقة الافتراضية» كانت حقلًا نصّيًّا يُطابَق بالحرف: مسافةٌ
+             * زائدة أو باقةٌ أُعيدت تسميتُها تعني متجرًا يُضاف بلا باقة —
+             * ولا شيء في الشاشة يقول إن الحقل لم يعد يطابق شيئًا.
+             */
+            'plans' => \App\Models\Plan::orderBy('id')->pluck('name')
+                ->map(fn ($n) => ['label' => $n, 'value' => $n])->all(),
         ]);
     }
 

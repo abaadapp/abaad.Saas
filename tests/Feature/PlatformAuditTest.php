@@ -203,6 +203,59 @@ class PlatformAuditTest extends TestCase
         $this->assertNotContains($demo->id, $ids);
     }
 
+    /* ------------------- صفُّ المتجر لأوراق الطباعة ------------------- */
+
+    public function test_a_demo_store_still_prints_under_its_own_name(): void
+    {
+        /*
+         * `Demo::business()` كانت تُلتقط من قائمةٍ مقصورة على `real()`،
+         * فترجع فارغةً لمتجرٍ تجريبيّ — وكلُّ ورقةٍ يطبعها تخرج باسم
+         * «Abad POS» لأن القوالب تسقط إلى ذلك عند غياب الاسم.
+         */
+        $demo = $this->demoStore();
+
+        $row = Demo::business($demo->id);
+
+        $this->assertSame($demo->name, $row['name'] ?? null);
+    }
+
+    public function test_the_tax_invoice_qr_names_the_actual_seller(): void
+    {
+        $demo = $this->demoStore();
+        $order = Order::create([
+            'business_id' => $demo->id, 'number' => 1, 'customer_name' => 'عميل نقدي',
+            'subtotal' => 10, 'tax' => 0.5, 'discount' => 0, 'total' => 10.5,
+            'payment_method' => 'نقدي', 'status' => 'مكتمل', 'is_held' => false, 'ordered_at' => now(),
+        ]);
+
+        $qr = \App\Support\EInvoice::forOrder($order, ['number' => 'OM1234567'], Demo::business($demo->id));
+
+        $this->assertStringContainsString($demo->name, base64_decode($qr));
+    }
+
+    public function test_reading_one_store_does_not_read_them_all(): void
+    {
+        foreach (range(1, 10) as $i) {
+            Business::create(['name' => "متجر {$i}", 'status' => 'نشط']);
+        }
+
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        Demo::business($this->business->id);
+        $rows = collect(\Illuminate\Support\Facades\DB::getQueryLog())
+            ->filter(fn ($q) => str_contains($q['query'], 'from "businesses"'))->count();
+        \Illuminate\Support\Facades\DB::disableQueryLog();
+
+        $this->assertSame(1, $rows);
+    }
+
+    public function test_the_platform_list_still_hides_the_demo_store(): void
+    {
+        // القائمة تبقى على `real()` — الإصلاح للصفّ الواحد لا للقائمة
+        $demo = $this->demoStore();
+
+        $this->assertNotContains($demo->id, collect(Demo::businesses())->pluck('id')->all());
+    }
+
     public function test_a_profile_shows_its_own_subscription_not_a_namesake(): void
     {
         // كانت المطابقة بالاسم: متجران بالاسم نفسه يتبادلان اشتراكيهما

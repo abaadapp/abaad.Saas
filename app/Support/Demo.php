@@ -423,9 +423,14 @@ class Demo
         ];
     }
 
-    public static function businesses(): array
+    /**
+     * صفُّ متجرٍ كما تقرؤه الشاشات وأوراق الطباعة — شكلٌ واحد لا شكلان.
+     *
+     * @return array<string, mixed>
+     */
+    private static function businessRow(Business $b): array
     {
-        return Business::real()->with('plan')->orderByDesc('id')->get()->map(fn ($b) => [
+        return [
             'id' => $b->id,
             'name' => $b->name,
             'type' => $b->type,
@@ -439,7 +444,14 @@ class Demo
             'logo' => $b->logo,
             'city' => $b->city,
             'country' => $b->country,
-        ])->all();
+        ];
+    }
+
+    /** قائمة المتاجر في لوحة المنصّة — الحقيقيّة وحدها */
+    public static function businesses(): array
+    {
+        return Business::real()->with('plan')->orderByDesc('id')->get()
+            ->map(fn ($b) => self::businessRow($b))->all();
     }
 
     /**
@@ -2290,7 +2302,22 @@ class Demo
     public static function order($id): array { return self::findById(self::orders(), $id); }
     public static function customer($id): array { return self::findById(self::customers(), $id); }
     public static function employee($id): array { return self::findById(self::employees(), $id); }
-    public static function business($id): array { return self::findById(self::businesses(), $id); }
+    /**
+     * متجرٌ بعينه — صفٌّ واحد باستعلامٍ واحد، والتجريبيّ منها.
+     *
+     * كانت تُنادى `businesses()` فتُحمَّل صفوف المتاجر كلُّها لتُلتقط منها
+     * واحدة. والأسوأ من الكلفة أن تلك القائمة مقصورةٌ على `real()`: فمتجرٌ
+     * تجريبيّ — أو متجرٌ رُفعت عنه صفة الحقيقة بالخطأ — يُرجَع فارغًا هنا.
+     * وأوراقه كلُّها تُطبع حينئذٍ باسم «Abad POS» بدل اسمه: كلّ فاتورة، وكلّ
+     * إيصال، وكلّ تصدير — ورمزُ الفاتورة الضريبيّة يحمل بائعًا ليس البائع.
+     * ولا رسالةَ خطأ في ذلك كلِّه، إنما اسمٌ آخر مكتوبٌ في مكان الاسم.
+     */
+    public static function business($id): array
+    {
+        $business = is_numeric($id) ? Business::with('plan')->find((int) $id) : null;
+
+        return $business ? self::businessRow($business) : [];
+    }
     public static function platformUser($id): array { return self::findById(self::platformUsers(), $id); }
 
     /* ============================ POS ============================ */

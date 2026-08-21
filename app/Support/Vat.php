@@ -60,9 +60,21 @@ class Vat
         return max(0.0, (float) ($value ?? 5));
     }
 
-    /** نسبة صنفٍ بعينه — نسبته الخاصّة إن كانت له، وإلا نسبة المتجر */
+    /**
+     * نسبة صنفٍ بعينه — نسبته الخاصّة إن كانت له، وإلا نسبة المتجر.
+     *
+     * والإطفاء يسبق الاثنتين: `rate()` تُرجع صفرًا للمتجر المطفأ، لكنّ
+     * `taxRate()` لا تقرأ ذلك الصفر أصلًا حين يحمل الصنفُ نسبةً مكتوبة —
+     * فيبقى يُضرَّب بضريبته في متجرٍ أطفأ الضريبة كلَّها. وهو المنطق نفسه
+     * الذي حُرِس في `PosController::taxFor` بحارسٍ مستقلّ، وبقي هنا مفتوحًا:
+     * فحصٌ في موضعٍ وغيابُه في موضع يعني أن أوّل من ينادي هذه يقع فيه.
+     */
     public static function rateFor(?Product $product, int $businessId): float
     {
+        if (! self::enabled($businessId)) {
+            return 0.0;
+        }
+
         $default = self::rate($businessId);
 
         return $product ? $product->taxRate($default) : $default;

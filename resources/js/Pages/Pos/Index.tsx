@@ -281,7 +281,7 @@ export default function PosIndex() {
                                         key={p.id}
                                         type="button"
                                         onClick={() =>
-                                            cart.add({ key: `p${p.id}`, id: p.id, name: p.label, price: p.price, image: p.image, stock: p.qty })
+                                            cart.add({ key: `p${p.id}`, id: p.id, name: p.label, price: p.price, image: p.image, stock: p.qty, tax: p.tax })
                                         }
                                         className="group select-none overflow-hidden rounded-2xl border border-gray-100 bg-white text-start shadow-sm transition-[border-color,box-shadow] hover:border-gray-300 hover:shadow-md"
                                     >

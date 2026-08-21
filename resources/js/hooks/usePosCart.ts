@@ -19,6 +19,14 @@ export interface CartItem {
     icon?: string | null;
     /** لقطة المخزون وقت الإضافة — تُستخدم للتحذير من التجاوز */
     stock?: number | null;
+    /**
+     * نسبة ضريبة هذا البند — نسبته الخاصّة إن كانت له، وإلا نسبة المتجر.
+     *
+     * الخادم يحتسب الضريبة سطرًا سطرًا بنسبة كل صنف. وكانت الشاشة تضرب
+     * السلّة كلَّها بنسبةٍ واحدة، فصنفٌ معفًى — أو نسبةُ متجرٍ غُيّرت وأصنافُه
+     * تحمل نسبةً مكتوبة — يجعل ما يقرؤه الزبون غير ما يُخصم منه.
+     */
+    tax?: number | null;
 }
 
 export interface PosCustomer {
@@ -38,6 +46,8 @@ export interface PosProduct {
     sku: string;
     barcode: string;
     stock: number;
+    /** النسبة الفعليّة للصنف — يُرسلها الخادم مشتقّةً لا خامًا */
+    tax?: number | null;
 }
 
 export interface AppliedCoupon {
@@ -236,10 +246,24 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
      * المعروض — ما على الرفّ هو ما يدفعه الزبون — فلا يُضاف فوقه شيء.
      */
     const vatRate = vat?.enabled === false ? 0 : Math.max(0, Number(vat?.rate ?? 0));
-    const taxable = subtotal - discountAmount;
-    const taxAmount = vat?.inclusive
-        ? (taxable * vatRate) / (100 + vatRate)
-        : (taxable * vatRate) / 100;
+    /*
+     * الضريبة سطرًا سطرًا كما يحتسبها الخادم تمامًا.
+     *
+     * الخصم يُوزَّع على البنود بنسبة قيمة كلٍّ منها من المجموع، ثم تُضرب حصّةُ
+     * البند الصافية بنسبته هو. وأيّ اختلافٍ في هذه المعادلة يعني رقمين
+     * لبيعةٍ واحدة: واحدًا على الشاشة وآخر في الفاتورة.
+     */
+    const taxAmount = useMemo(() => {
+        if (vat?.enabled === false || subtotal <= 0) return 0;
+
+        return items.reduce((sum, i) => {
+            const net = i.price * i.qty;
+            const taxableLine = net - discountAmount * (net / subtotal);
+            const rate = Math.max(0, Number(i.tax ?? vatRate) || 0);
+
+            return sum + (vat?.inclusive ? (taxableLine * rate) / (100 + rate) : (taxableLine * rate) / 100);
+        }, 0);
+    }, [items, subtotal, discountAmount, vat?.enabled, vat?.inclusive, vatRate]);
     const total = vat?.inclusive ? subtotal - discountAmount : subtotal - discountAmount + taxAmount;
     const displayTotal = total * (currency.rate ?? 1);
 
@@ -389,7 +413,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 setBarcode('');
                 return;
             }
-            add({ key: `p${p.id}`, id: p.id, name: p.label, price: p.price, image: p.image, stock: p.stock });
+            add({ key: `p${p.id}`, id: p.id, name: p.label, price: p.price, image: p.image, stock: p.stock, tax: p.tax });
             setBarcode('');
         },
         [products, add, onToast],

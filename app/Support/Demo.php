@@ -762,7 +762,15 @@ class Demo
                 'stock_status' => Product::statusFor($qty, (int) $p->alert_qty),
                 'active' => (bool) $p->active,
                 'alert' => $p->alert_qty,
-                'tax' => (float) $p->tax,
+                /*
+                 * النسبة الفعليّة من المصدر الذي يحتسب بها الخادم — لا العمود الخام.
+                 *
+                 * `(float) $p->tax` كانت تكتب صفرًا لصنفٍ لم تُحدَّد نسبتُه،
+                 * والخادم يقرأ الفارغ «نسبة المتجر». فتُعطى الشاشة صفرًا حيث
+                 * يحتسب الخادم خمسة — ونسبةٌ تُقرأ هنا وتُحتسب هناك لا يجوز
+                 * أن تُشتقّ بقاعدتين.
+                 */
+                'tax' => \App\Support\Vat::rateFor($p, self::bid()),
                 'discount' => (float) $p->discount,
             ];
         })->all();

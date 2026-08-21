@@ -135,7 +135,10 @@ const TEMPLATE_ROWS: { key: string; label: string; hint?: string }[] = [
     { key: 'tpl_show_logo', label: 'شعار المتجر', hint: 'يظهر فقط إن كان للنشاط شعار محفوظ' },
     { key: 'tpl_show_branch', label: 'اسم الفرع' },
     { key: 'tpl_show_employee', label: 'اسم الموظف' },
-    { key: 'tpl_show_customer', label: 'اسم العميل' },
+    /* الاستثناء يُقال لا يُسكت عنه: الفاتورة الضريبية تُعرّف مشتريها كي
+       يخصم ما دفعه، فإخفاؤه يُبطل الغرض منها — والمقبض يعمل في الورقتين
+       الأخريين. وصمتُ الشاشة عن ذلك كان يجعل التاجر يظنّ المقبض معطوبًا. */
+    { key: 'tpl_show_customer', label: 'اسم العميل', hint: 'يبقى ظاهرًا في الفاتورة الضريبية دائمًا — بدونه لا يخصم المشتري ضريبته' },
     { key: 'tpl_show_datetime', label: 'التاريخ والوقت' },
     { key: 'tpl_show_items_count', label: 'عدد الأصناف' },
     { key: 'tpl_show_vat_no', label: 'الرقم الضريبي' },

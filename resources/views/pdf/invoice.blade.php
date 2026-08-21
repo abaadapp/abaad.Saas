@@ -14,10 +14,12 @@
     $tpl = $tpl ?? [];
     $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
     $line = fn (string $k, string $default = '') => trim((string) ($tpl[$k] ?? $default));
+    /* حجم الخطّ كما في الورقتين الأخريين — «قوالب الفواتير» يحكم الثلاث */
+    $base = match ($tpl['tpl_font'] ?? 'عادي') { 'صغير' => 11, 'كبير' => 14, default => 12 };
 @endphp
 <style>
     * { font-family: sans-serif; }
-    body { direction: rtl; text-align: right; font-size: 12px; color: #111; }
+    body { direction: rtl; text-align: right; font-size: {{ $base }}px; color: #111; }
     .muted { color: #666; }
     .small { font-size: 10px; }
     h1 { font-size: 20px; margin: 0 0 2px; }
@@ -54,13 +56,17 @@
                 <img src="{{ $business->logo }}" style="max-height:52px; margin-bottom:4px;" alt="">
             @endif
             <h1>{{ $business->name ?? __('نظام Abad POS') }}</h1>
+            {{-- «سطر تحت اسم المتجر» كان يصل الإيصال والفاتورة الضريبية دون هذه --}}
+            @if ($line('tpl_header') !== '')
+                <div class="muted small">{{ $line('tpl_header') }}</div>
+            @endif
             <div class="muted small">
                 {{ $business->address ?? '' }}@if ($business && $business->city) — {{ $business->city }}@endif
             </div>
             @if ($business && $business->phone)
                 <div class="muted small">{{ __('هاتف') }}: <span dir="ltr">{{ $business->phone }}</span></div>
             @endif
-            @if ($line('vat_number') !== '')
+            @if ($show('tpl_show_vat_no', false) && $line('vat_number') !== '')
                 <div class="muted small">{{ __('الرقم الضريبي') }}: <span dir="ltr">{{ $line('vat_number') }}</span></div>
             @endif
         </td>
@@ -82,6 +88,7 @@
 
 <table class="parties">
     <tr>
+        @if ($show('tpl_show_customer'))
         <td>
             <div class="cap">{{ __('العميل') }}</div>
             <div>{{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}</div>
@@ -94,7 +101,8 @@
                 <div class="muted small" style="margin-top:4px">{{ __('الرقم الضريبي (TRN)') }}: <span dir="ltr">{{ $customerTax }}</span></div>
             @endif
         </td>
-        <td>
+        @endif
+        <td @if (! $show('tpl_show_customer')) colspan="2" @endif>
             <div class="cap">{{ __('وسيلة الدفع') }}</div>
             <div>{{ __($order->payment_method ?? 'نقدي') }}</div>
             @if ($show('tpl_show_employee'))
@@ -129,6 +137,12 @@
         @endforeach
     </tbody>
 </table>
+
+@if ($show('tpl_show_items_count'))
+    <div class="muted small" style="margin-bottom:8px">
+        {{ __('عدد الأصناف') }}: {{ $order->items->count() }}
+    </div>
+@endif
 
 {{-- الإجماليات إلى اليسار: العين تتبع عمود المبالغ حيث انتهى الجدول --}}
 <table style="width:100%"><tr><td style="width:58%"></td><td style="width:42%">

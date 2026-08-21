@@ -2094,12 +2094,23 @@ class Demo
             }
         }
 
-        $inactive = Customer::where('business_id', $bid)->whereHas('orders')->get()
-            ->filter(function ($c) {
-                $last = Order::where('customer_id', $c->id)->max('ordered_at');
-
-                return $last && \Illuminate\Support\Carbon::parse($last)->lt(now()->subDays(60));
-            })->take(3);
+        /*
+         * «عميل متعثّر»: آخر شراءٍ فعليّ لا آخر صفٍّ باسمه.
+         *
+         * كان يُقرأ `max(ordered_at)` من كل طلباته بلا تمييز، فطلبٌ ألغي —
+         * أو سلّةٌ عُلّقت ولم تُدفع — يجعله يبدو مشتريًا اليوم فيسقط من
+         * التنبيه. والتنبيه الذي لا يُطلق أسوأ من غيابه: صاحبه يظنّ أن لا
+         * متعثّر عنده لأن الشاشة ساكتة.
+         *
+         * وباستعلامٍ واحد: كان يُقرأ صفُّ كل عميلٍ على حدة، فمتجرٌ بألفَي
+         * عميل يدفع ألفَي استعلامٍ في مهمّةٍ مجدولة تعمل كل يوم.
+         */
+        $inactive = Customer::where('business_id', $bid)
+            ->withMax(['orders as last_sold_at' => fn ($q) => $q->sold()], 'ordered_at')
+            ->get()
+            ->filter(fn ($c) => $c->last_sold_at
+                && \Illuminate\Support\Carbon::parse($c->last_sold_at)->lt(now()->subDays(60)))
+            ->take(3);
         foreach ($inactive as $c) {
             $alerts[] = ['type' => __('عميل متعثّر'), 'text' => __('العميل «:name» لم يشترِ منذ أكثر من 60 يومًا', ['name' => $c->name]), 'icon' => 'user-x', 'color' => 'info', 'url' => route('admin.customers.show', $c->id)];
         }

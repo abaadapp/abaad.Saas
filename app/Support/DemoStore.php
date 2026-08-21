@@ -364,7 +364,7 @@ class DemoStore
             'rate' => 1, 'is_base' => true, 'active' => true,
         ]);
 
-        foreach (JobTitle::ROLES as $roleKey => $roleLabel) {
+        foreach (JobTitle::roles() as $roleKey => $roleLabel) {
             JobTitle::create(['business_id' => $bid, 'name' => $roleLabel, 'role' => $roleKey]);
         }
 

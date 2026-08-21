@@ -10,14 +10,11 @@ class JobTitle extends Model
     protected $guarded = [];
 
     /** أدوار النظام المسموح ربط الوظيفة بها (تحدّد صلاحيات الدخول) */
-    public const ROLES = [
-        'manager' => 'مدير',
-        'cashier' => 'كاشير',
-        'sales' => 'موظف مبيعات',
-        'accountant' => 'محاسب',
-        'inventory' => 'مسؤول مخزون',
-        'delivery' => 'مندوب توصيل',
-    ];
+    /** أدوار الموظّفين — مصدرها الوحيد `App\Support\Roles` */
+    public static function roles(): array
+    {
+        return \App\Support\Roles::staffLabels();
+    }
 
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
 }

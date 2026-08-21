@@ -27,7 +27,7 @@ class JobTitleController extends Controller
              * شاشته، فلم تعد الوظيفة تقرّرها. وحين تُترك، يُحفظ أدنى دور
              * معروف — لا قيمة فارغة تُسقط صاحبها خارج النظام.
              */
-            'role' => ['nullable', 'string', Rule::in(array_keys(JobTitle::ROLES))],
+            'role' => ['nullable', 'string', Rule::in(array_keys(JobTitle::roles()))],
             'description' => ['nullable', 'string', 'max:255'],
         ], [
             'name.unique' => __('هذه الوظيفة موجودة مسبقًا.'),
@@ -67,7 +67,7 @@ class JobTitleController extends Controller
                     ->where(fn ($q) => $q->where('business_id', $bid))
                     ->ignore($title->id),
             ],
-            'role' => ['nullable', 'string', Rule::in(array_keys(JobTitle::ROLES))],
+            'role' => ['nullable', 'string', Rule::in(array_keys(JobTitle::roles()))],
             'description' => ['nullable', 'string', 'max:255'],
         ], [
             'name.unique' => __('هذه الوظيفة موجودة مسبقًا.'),

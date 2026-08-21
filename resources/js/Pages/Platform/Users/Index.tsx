@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { UserPlus } from 'lucide-react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import { AlertTriangle, MoreVertical, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
@@ -9,6 +9,12 @@ import DataTable, { type Column, type Filter, type ServerPagination } from '@/Co
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -23,6 +29,9 @@ interface PlatformUser {
     role: string;
     status: string;
     last_login: string;
+    deleted: boolean;
+    /** ما يمنع الحساب من العمل فعلًا — null إن كان سليمًا */
+    blocked: string | null;
 }
 
 interface Props {
@@ -50,13 +59,22 @@ export default function UsersIndex() {
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#f2f2f0] text-[12px] font-medium text-[#4b4b4b]">
                         {initials(u.name)}
                     </span>
-                    <SmartLink
-                        routeName="super-admin.users.show"
-                        href={route('super-admin.users.show', u.id)}
-                        className="min-w-0 truncate font-medium hover:underline"
-                    >
-                        {u.name}
-                    </SmartLink>
+                    <div className="min-w-0">
+                        <SmartLink
+                            routeName="super-admin.users.show"
+                            href={route('super-admin.users.show', u.id)}
+                            className="block truncate font-medium hover:underline"
+                        >
+                            {u.name}
+                        </SmartLink>
+                        {/* شارةٌ خضراء فوق حسابٍ لا يستطيع الدخول تطمئن بلا وجه حقّ */}
+                        {u.blocked && (
+                            <span className="mt-0.5 flex items-center gap-1 text-[12px] text-[#b45309]">
+                                <AlertTriangle className="size-3.5 shrink-0" />
+                                {t(u.blocked)}
+                            </span>
+                        )}
+                    </div>
                 </div>
             ),
         },
@@ -80,7 +98,11 @@ export default function UsersIndex() {
         },
         { key: 'business', header: 'الشركة', cell: (u) => u.business },
         { key: 'role', header: 'الدور', cell: (u) => <Badge variant="info">{t(u.role)}</Badge> },
-        { key: 'status', header: 'الحالة', cell: (u) => <Badge status={u.status} /> },
+        {
+            key: 'status',
+            header: 'الحالة',
+            cell: (u) => (u.deleted ? <Badge variant="danger">{t('محذوف')}</Badge> : <Badge status={u.status} />),
+        },
         {
             key: 'last_login',
             header: 'آخر تسجيل دخول',
@@ -94,13 +116,48 @@ export default function UsersIndex() {
             key: 'actions',
             header: 'إجراءات',
             align: 'end',
-            cell: (u) => (
-                <Button variant="outline" size="sm" asChild>
-                    <SmartLink routeName="super-admin.users.show" href={route('super-admin.users.show', u.id)}>
-                        {t('عرض')}
-                    </SmartLink>
-                </Button>
-            ),
+            cell: (u) =>
+                u.deleted ? (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                            router.post(route('super-admin.users.restore', u.id), {}, { preserveScroll: true })
+                        }
+                    >
+                        <RotateCcw />
+                        {t('استعادة')}
+                    </Button>
+                ) : (
+                    <div className="flex items-center justify-end gap-1">
+                        <Button variant="outline" size="sm" asChild>
+                            <SmartLink routeName="super-admin.users.show" href={route('super-admin.users.show', u.id)}>
+                                {t('عرض')}
+                            </SmartLink>
+                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" aria-label={t('خيارات')}>
+                                    <MoreVertical />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                    destructive
+                                    onSelect={() => {
+                                        if (!confirm(t('حذف هذا المستخدم؟ يمكن استعادته من مرشّح «المحذوفون».'))) return;
+                                        router.delete(route('super-admin.users.destroy', u.id), {
+                                            preserveScroll: true,
+                                        });
+                                    }}
+                                >
+                                    <Trash2 />
+                                    {t('حذف المستخدم')}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                ),
         },
     ];
 
@@ -113,6 +170,8 @@ export default function UsersIndex() {
             options: [
                 { label: 'نشط', value: 'نشط' },
                 { label: 'موقوف', value: 'موقوف' },
+                // بابُ الاسترداد: بلا هذا المرشّح يكون الحذفُ الناعم اختفاءً أبديًّا
+                { label: 'محذوف', value: 'محذوف' },
             ],
         },
     ];
@@ -156,6 +215,7 @@ function AddUserDialog({
 }) {
     const t = useTranslate();
     const form = useForm({ name: '', phone: '', email: '', role: '', business_id: '', password: '' });
+    const isPlatform = form.data.role === 'super_admin';
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
@@ -207,20 +267,36 @@ function AddUserDialog({
                                 required
                             />
                         </Field>
-                        <Field label="النشاط التجاري" error={form.errors.business_id}>
+                        {/* لازمٌ لكل دورٍ يعمل داخل متجر — بلا متجرٍ يدخل صاحبه إلى نظامٍ فارغ */}
+                        <Field
+                            label="النشاط التجاري"
+                            required={!isPlatform}
+                            error={form.errors.business_id}
+                        >
                             <Select
-                                value={form.data.business_id}
+                                value={isPlatform ? '' : form.data.business_id}
                                 onChange={(e) => form.setData('business_id', e.target.value)}
                                 options={businesses}
-                                placeholder="— المنصة —"
+                                placeholder={isPlatform ? '— المنصة —' : 'اختر النشاط…'}
+                                disabled={isPlatform}
+                                required={!isPlatform}
                             />
                         </Field>
                     </div>
 
-                    <Field label="كلمة المرور" hint="تُترك فارغة لتكون: password" error={form.errors.password}>
+                    {/* كانت اختيارية وتُصبح `password` حرفيًّا إن تُركت — في نافذةٍ تُنشئ مدير منصّة */}
+                    <Field
+                        label="كلمة المرور"
+                        required
+                        hint="ثمانية أحرف على الأقل"
+                        error={form.errors.password}
+                    >
                         <Input
                             type="text"
                             dir="ltr"
+                            autoComplete="new-password"
+                            minLength={8}
+                            required
                             value={form.data.password}
                             onChange={(e) => form.setData('password', e.target.value)}
                         />

@@ -24,6 +24,8 @@ class PlatformPanelTest extends TestCase
 
     private Plan $plan;
 
+    private \App\Models\Business $business;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -36,6 +38,7 @@ class PlatformPanelTest extends TestCase
             'business_id' => null, 'name' => 'مدير المنصة', 'email' => 'super@abaad.om',
             'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
         ]);
+        $this->business = \App\Models\Business::create(['name' => 'متجر الفحص', 'status' => 'نشط']);
     }
 
     /* ------------------------------ الشركات ------------------------------ */
@@ -91,8 +94,8 @@ class PlatformPanelTest extends TestCase
     public function test_it_creates_a_platform_user(): void
     {
         $this->actingAs($this->super)->post(route('super-admin.users.store'), [
-            'name' => 'مستخدم الفحص', 'email' => 'u@abaad.om',
-            'role' => 'manager', 'password' => 'secret12345',
+            'name' => 'مستخدم الفحص', 'email' => 'u@abaad.om', 'role' => 'manager',
+            'business_id' => $this->business->id, 'password' => 'secret12345',
         ])->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('users', ['email' => 'u@abaad.om', 'role' => 'manager']);
@@ -108,8 +111,8 @@ class PlatformPanelTest extends TestCase
     public function test_the_stored_password_is_hashed_not_plain(): void
     {
         $this->actingAs($this->super)->post(route('super-admin.users.store'), [
-            'name' => 'مستخدم', 'email' => 'hash@abaad.om',
-            'role' => 'manager', 'password' => 'secret12345',
+            'name' => 'مستخدم', 'email' => 'hash@abaad.om', 'role' => 'manager',
+            'business_id' => $this->business->id, 'password' => 'secret12345',
         ]);
 
         $stored = User::where('email', 'hash@abaad.om')->value('password');

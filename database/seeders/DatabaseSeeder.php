@@ -125,7 +125,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // الوظائف الافتراضية مرتبطة بصلاحيات النظام
-        foreach (JobTitle::ROLES as $roleKey => $roleLabel) {
+        foreach (JobTitle::roles() as $roleKey => $roleLabel) {
             JobTitle::create([
                 'business_id' => $business->id,
                 'name' => $roleLabel,

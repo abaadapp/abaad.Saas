@@ -179,6 +179,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/users', [\App\Http\Controllers\SuperAdmin\UserController::class, 'store'])->name('users.store');
     Route::put('/users/{id}', [\App\Http\Controllers\SuperAdmin\UserController::class, 'update'])->name('users.update');
     Route::post('/users/{id}/toggle', [\App\Http\Controllers\SuperAdmin\UserController::class, 'toggleStatus'])->name('users.toggle');
+    Route::delete('/users/{id}', [\App\Http\Controllers\SuperAdmin\UserController::class, 'destroy'])->name('users.destroy');
+    Route::post('/users/{id}/restore', [\App\Http\Controllers\SuperAdmin\UserController::class, 'restore'])->name('users.restore');
     Route::get('/users/{id}', [SuperAdminPageController::class, 'usersShow'])->name('users.show');
 
     // الباقات

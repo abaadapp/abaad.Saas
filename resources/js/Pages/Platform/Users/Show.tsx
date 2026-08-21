@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
+    AlertTriangle,
     ArrowRight,
     Building2,
     Check,
@@ -8,7 +9,9 @@ import {
     Info,
     Lock,
     Mail,
+    MoreVertical,
     Pencil,
+    Trash2,
     Unlock,
     X,
 } from 'lucide-react';
@@ -22,6 +25,12 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -29,6 +38,7 @@ import type { PageProps } from '@/types';
 
 interface PlatformUser {
     id: number;
+    business_id: number | null;
     name: string;
     email: string;
     phone: string | null;
@@ -45,7 +55,10 @@ interface Props {
     user: PlatformUser;
     activities: ActivityItem[];
     roles: SelectOption[];
+    businesses: SelectOption[];
     permissions: { label: string; granted: boolean }[];
+    /** صلاحياته مخصَّصة يدويًّا — فلا تتبع دورَه */
+    permissions_manual: boolean;
 }
 
 const TABS = [
@@ -54,11 +67,19 @@ const TABS = [
 ];
 
 export default function UserShow() {
-    const { user, activities, roles, permissions } = usePage<PageProps<Props>>().props;
+    const { user, activities, roles, businesses, permissions, permissions_manual: manual } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('activities');
     const [editing, setEditing] = useState(false);
     const active = user.status === 'نشط';
+
+    /* ما يمنع هذا الحساب من العمل — لا ما تقوله شارتُه */
+    const blocked = !user.email
+        ? t('هذا الحساب بلا بريد إلكتروني — لا يستطيع تسجيل الدخول. أضِف بريدًا من زرّ «تعديل».')
+        : user.role_key !== 'super_admin' && !user.business_id
+          ? t('هذا الحساب غير مربوط بنشاط تجاري — يدخل إلى نظام فارغ. اربطه من زرّ «تعديل».')
+          : null;
 
     const contact = [
         { label: 'البريد الإلكتروني', value: user.email },
@@ -88,9 +109,41 @@ export default function UserShow() {
                             <Pencil />
                             {t('تعديل')}
                         </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" aria-label={t('خيارات')}>
+                                    <MoreVertical />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                                {/* حذفٌ ناعم: يُستعاد من مرشّح «المحذوفون» في قائمة المستخدمين */}
+                                <DropdownMenuItem
+                                    destructive
+                                    onSelect={() => {
+                                        if (!confirm(t('حذف هذا المستخدم؟ يمكن استعادته من مرشّح «المحذوفون».')))
+                                            return;
+                                        router.delete(route('super-admin.users.destroy', user.id));
+                                    }}
+                                >
+                                    <Trash2 />
+                                    {t('حذف المستخدم')}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </>
                 }
             />
+
+            {/*
+                شارةٌ خضراء فوق حسابٍ لا يستطيع الدخول تطمئن بلا وجه حقّ.
+                فيُقال السببُ صراحةً، ويُقال ما يُصلحه.
+            */}
+            {blocked && (
+                <div className="mb-6 flex items-start gap-3 rounded-[12px] border border-[#fcd34d] bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    <span>{blocked}</span>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-1">
@@ -190,10 +243,15 @@ export default function UserShow() {
 
                         {tab === 'permissions' && (
                             <div className="p-6">
-                                {/* للعرض فقط: الصلاحيات مشتقّة من الدور وهو ما يُفرض فعليًا.
-                                    القالب كان يعرض خانات اختيار قابلة للنقر وزرَّ حفظ لا يحفظ. */}
+                                {/* للعرض فقط، ومن `User::allows()` نفسها لا من الدور:
+                                    الصلاحيات المخصَّصة يدويًّا تُلغي خريطة الدور، فكانت
+                                    الشاشة تعرض عكس واقع صاحبها في كل خانة. */}
                                 <p className="mb-4 text-sm text-[#6b7280]">
-                                    {t('الصلاحيات تتبع دور المستخدم. لتغييرها غيّر الدور من زر «تعديل».')}
+                                    {t(
+                                        manual
+                                            ? 'صلاحيات هذا المستخدم مخصَّصة يدويًّا من شاشة موظفي النشاط — فهي لا تتبع دوره. وهذه هي المفروضة فعلًا.'
+                                            : 'الصلاحيات تتبع دور المستخدم. لتغييرها غيّر الدور من زر «تعديل».',
+                                    )}
                                 </p>
                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     {permissions.map((p) => (
@@ -222,7 +280,14 @@ export default function UserShow() {
                 </div>
             </div>
 
-            {editing && <EditUserDialog user={user} roles={roles} onClose={() => setEditing(false)} />}
+            {editing && (
+                <EditUserDialog
+                    user={user}
+                    roles={roles}
+                    businesses={businesses}
+                    onClose={() => setEditing(false)}
+                />
+            )}
         </PlatformLayout>
     );
 }
@@ -230,10 +295,12 @@ export default function UserShow() {
 function EditUserDialog({
     user,
     roles,
+    businesses,
     onClose,
 }: {
     user: PlatformUser;
     roles: SelectOption[];
+    businesses: SelectOption[];
     onClose: () => void;
 }) {
     const t = useTranslate();
@@ -242,8 +309,10 @@ function EditUserDialog({
         email: user.email,
         phone: user.phone ?? '',
         role: user.role_key ?? '',
+        business_id: user.business_id ? String(user.business_id) : '',
         password: '',
     });
+    const isPlatform = form.data.role === 'super_admin';
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
@@ -281,16 +350,33 @@ function EditUserDialog({
                         </Field>
                     </div>
 
-                    <Field label="الدور" required error={form.errors.role}>
-                        {/* القيمة مفتاح الدور لا تسميته المعروضة — القالب كان يمرّر التسمية أحيانًا */}
-                        <Select
-                            value={form.data.role}
-                            onChange={(e) => form.setData('role', e.target.value)}
-                            options={roles}
-                            placeholder="اختر الدور…"
-                            required
-                        />
-                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                        <Field label="الدور" required error={form.errors.role}>
+                            {/* القيمة مفتاح الدور لا تسميته المعروضة — القالب كان يمرّر التسمية أحيانًا */}
+                            <Select
+                                value={form.data.role}
+                                onChange={(e) => form.setData('role', e.target.value)}
+                                options={roles}
+                                placeholder="اختر الدور…"
+                                required
+                            />
+                        </Field>
+                        {/*
+                            ربطُ الحساب بمتجره: لم يكن في هذه النافذة أصلًا.
+                            فمن أُدخل تحت المتجر الخطأ — أو بلا متجر — لا يُصلح
+                            من الشاشة مهما فُتحت.
+                        */}
+                        <Field label="النشاط التجاري" required={!isPlatform} error={form.errors.business_id}>
+                            <Select
+                                value={isPlatform ? '' : form.data.business_id}
+                                onChange={(e) => form.setData('business_id', e.target.value)}
+                                options={businesses}
+                                placeholder={isPlatform ? '— المنصة —' : 'اختر النشاط…'}
+                                disabled={isPlatform}
+                                required={!isPlatform}
+                            />
+                        </Field>
+                    </div>
 
                     {/* كلمة المرور: الفارغ يعني «لا تغيّرها». ولولا الحقل لما
                         كان لمن فقد كلمته مخرجٌ من هذه الشاشة أصلًا. */}

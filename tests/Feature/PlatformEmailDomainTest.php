@@ -173,6 +173,8 @@ class PlatformEmailDomainTest extends TestCase
                 'name' => 'تاجر جديد',
                 'email' => 'newshop@gmail.com',
                 'role' => 'admin',
+                'business_id' => Business::create(['name' => 'متجر جديد', 'status' => 'نشط'])->id,
+                'password' => 'secret12345',
             ])
             ->assertSessionHasNoErrors();
 
@@ -201,6 +203,7 @@ class PlatformEmailDomainTest extends TestCase
                 'name' => 'تاجر',
                 'email' => 'shop@abaadapp.om',
                 'role' => 'admin',
+                'business_id' => $business->id,
                 'password' => 'brand-new-pass',
             ])
             ->assertSessionHasNoErrors();
@@ -228,6 +231,7 @@ class PlatformEmailDomainTest extends TestCase
                 'name' => 'اسم آخر',
                 'email' => 'shop2@abaadapp.om',
                 'role' => 'admin',
+                'business_id' => $business->id,
                 'password' => '',
             ])
             ->assertSessionHasNoErrors();

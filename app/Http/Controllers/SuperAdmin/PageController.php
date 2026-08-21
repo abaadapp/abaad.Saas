@@ -187,47 +187,64 @@ class PageController extends Controller
 
     public function usersShow(string $id): Response
     {
-        $user = Demo::platformUser($id);
-        abort_if(empty($user), 404);
-
-        $model = \App\Models\User::find($user['id']);
+        /*
+         * صفٌّ واحد باستعلامٍ واحد.
+         *
+         * كان يُنادى `Demo::platformUser` فيُحمّل كلَّ مستخدمي المنصّة بشركاتهم
+         * إلى الذاكرة ثمّ يلتقط منهم واحدًا. عشرة اليوم، وعشرة آلاف حين يكبر —
+         * وفتحُ ملفٍّ واحد يقرأ الجدول كلَّه.
+         */
+        $model = \App\Models\User::with('business.plan')->find($id);
+        abort_if($model === null, 404);
 
         return $this->page('Platform/Users/Show', [
             'user' => [
-                ...$user,
+                'id' => $model->id,
+                'name' => $model->name,
+                'email' => $model->email,
+                'phone' => $model->phone,
+                'business_id' => $model->business_id,
+                'business' => $model->business?->name ?? __('المنصة'),
+                'role' => $model->roleLabel(),
+                'status' => $model->status,
+                'last_login' => optional($model->last_login_at)->format('Y-m-d H:i') ?? '—',
+                'created' => optional($model->created_at)->format('Y-m-d') ?? '—',
                 // القيم القابلة للتعديل تُقرأ من السجل نفسه لا من التسمية المعروضة
-                'role_key' => $model?->role,
+                'role_key' => $model->role,
                 // كانت «الباقة الاحترافية» نصًّا ثابتًا تحت اسم الشركة
-                'business_plan' => $model?->business?->plan?->name,
+                'business_plan' => $model->business?->plan?->name,
             ],
-            'activities' => Demo::userActivities($user['id']),
+            'activities' => Demo::userActivities($model->id),
             'roles' => $this->roleOptions(),
-            'permissions' => $this->permissionsFor($model?->role),
+            // ربطُ الحساب بمتجره صار قابلًا للإصلاح — كان يُثبَّت عند الإنشاء وحده
+            'businesses' => \App\Models\Business::orderBy('name')->get()
+                ->map(fn ($b) => ['label' => $b->name, 'value' => $b->id])->all(),
+            'permissions' => $this->permissionsFor($model),
+            // «تتبع الدور» جملةٌ تكذب على من خُصّصت صلاحياته يدويًّا
+            'permissions_manual' => $model->hasManualPermissions(),
         ]);
     }
 
     /**
-     * صلاحيات الدور الفعلية للعرض فقط.
+     * صلاحيات المستخدم كما تُفرض فعلًا — لا كما يقترحها دورُه.
      *
-     * القالب كان يعرض ثماني خانات اختيار بقيم ثابتة وزرَّ حفظ لا يحفظ شيئًا —
-     * يُظهر toast نجاح ثم لا يتغيّر شيء. الصلاحيات هنا مشتقّة من الدور
-     * (App\Support\Permissions) وهي مصدر الفرض الحقيقي، فتُعرض كما هي.
+     * كانت تُشتقّ من الدور وحده، بينما `User::allows()` تقول غير ذلك: إن
+     * خصّص التاجرُ صلاحيات موظّفه يدويًّا فقائمتُه تُلغي خريطة الدور كلَّها.
+     * فكاشيرٌ مُنح «المخزون» وحده كان يظهر هنا: لوحة التحكم ✓ نقطة البيع ✓
+     * المخزون ✗ — عكسُ واقعه في الخانات الثلاث. وشاشةُ تدقيقٍ تُخطئ أسوأ من
+     * غيابها: من يقرؤها لا يعيد الفحص.
+     *
+     * والتسميات من `Permissions::sectionLabels()` لا من قائمةٍ محلّيّة كانت
+     * تُعدّد أقسامًا لا وجود لها (تقارير، ربحية، فروع…).
      */
-    private function permissionsFor(?string $role): array
+    private function permissionsFor(?\App\Models\User $user): array
     {
-        $labels = [
-            'dashboard' => __('لوحة التحكم'), 'customers' => __('العملاء'), 'products' => __('المنتجات'),
-            'orders' => __('الطلبات'), 'marketing' => __('التسويق'), 'inventory' => __('المخزون'),
-            'finance' => __('المالية'), 'expenses' => __('المصروفات'), 'reports' => __('التقارير'),
-            'settings' => __('الإعدادات'), 'categories' => __('الأقسام'), 'suppliers' => __('المورّدون'),
-            'purchases' => __('أوامر الشراء'), 'profitability' => __('الربحية'), 'vat' => __('الضريبة'),
-            'employees' => __('الموظفون'), 'pos' => __('نقطة البيع'), 'branch' => __('الفروع'),
-        ];
+        $labels = \App\Support\Permissions::sectionLabels();
 
         return collect(\App\Support\Permissions::sections())
             ->map(fn ($section) => [
                 'label' => $labels[$section] ?? $section,
-                'granted' => \App\Support\Permissions::allows($role, $section),
+                'granted' => (bool) $user?->allows($section),
             ])->all();
     }
 
@@ -360,16 +377,17 @@ class PageController extends Controller
     }
 
     /** الأدوار المعروضة في نماذج المستخدمين */
+    /**
+     * الأدوار: كلّها من `App\Support\Roles` لا ستّةً منتقاة.
+     *
+     * كانت القائمة تُعدّد ستّة وتُسقط `inventory` و`delivery`، وهما دوران
+     * يمنحهما التاجر لموظّفيه فعلًا. فيصل مسؤولُ مخزونٍ إلى هذه الشاشة
+     * ودورُه ليس بين الخيارات، فتُعرض خانةُ الدور فارغةً وهي مطلوبة: لا
+     * يُحفظ تعديلُ هاتفه حتى يُسنَد إليه دورٌ آخر.
+     */
     private function roleOptions(): array
     {
-        return [
-            ['label' => __('مدير المنصة'), 'value' => 'super_admin'],
-            ['label' => __('مدير نشاط'), 'value' => 'admin'],
-            ['label' => __('مدير فرع'), 'value' => 'manager'],
-            ['label' => __('كاشير'), 'value' => 'cashier'],
-            ['label' => __('موظف مبيعات'), 'value' => 'sales'],
-            ['label' => __('محاسب'), 'value' => 'accountant'],
-        ];
+        return \App\Support\Roles::options();
     }
 
     /** تُستدعى من UserController@index لتوحيد قائمة الأدوار بين الصفحتين */

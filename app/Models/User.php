@@ -4,12 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, SoftDeletes;
 
     protected $guarded = [];
 
@@ -144,15 +145,6 @@ class User extends Authenticatable
     /** الاسم العربي للدور */
     public function roleLabel(): string
     {
-        return [
-            'super_admin' => __('مدير المنصة'),
-            'admin' => __('مدير'),
-            'manager' => __('مدير'),
-            'cashier' => __('كاشير'),
-            'sales' => __('موظف مبيعات'),
-            'accountant' => __('محاسب'),
-            'inventory' => __('مسؤول مخزون'),
-            'delivery' => __('مندوب توصيل'),
-        ][$this->role] ?? $this->role;
+        return \App\Support\Roles::label($this->role);
     }
 }

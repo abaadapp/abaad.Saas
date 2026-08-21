@@ -281,9 +281,9 @@ class DemoSeeder extends Seeder
 
         // الوظائف الافتراضية لكل نشاط + ربط الموظفين الحاليين بها
         // (كل وظيفة مرتبطة بصلاحية نظام حتى لا يفقد الموظف الدخول)
-        $roleLabels = \App\Models\JobTitle::ROLES + ['admin' => 'مدير'];
+        $roleLabels = \App\Models\JobTitle::roles() + ['admin' => 'مدير نشاط'];
         foreach (Business::pluck('id') as $bizId) {
-            foreach (\App\Models\JobTitle::ROLES as $roleKey => $roleLabel) {
+            foreach (\App\Models\JobTitle::roles() as $roleKey => $roleLabel) {
                 \App\Models\JobTitle::firstOrCreate(
                     ['business_id' => $bizId, 'name' => $roleLabel],
                     ['role' => $roleKey]

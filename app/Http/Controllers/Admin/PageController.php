@@ -166,7 +166,7 @@ class PageController extends Controller
                     'id' => $t->id,
                     'name' => $t->name,
                     'role' => $t->role,
-                    'roleLabel' => \App\Models\JobTitle::ROLES[$t->role] ?? $t->role,
+                    'roleLabel' => \App\Support\Roles::label($t->role),
                     'description' => $t->description,
                     'usage' => (int) ($usage[$t->name] ?? 0),
                 ])->all(),

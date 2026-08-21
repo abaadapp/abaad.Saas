@@ -27,10 +27,20 @@ class CustomerController extends Controller
 
     public function index(Request $request)
     {
+        /*
+         * ما اشتراه العميل فعلًا — لا الملغى ولا سلّةً معلّقة.
+         *
+         * `withCount('orders')` تعدّ العلاقة كما هي فتتجاوز النطاق: فكانت
+         * البطاقة فوق الجدول تستثني الملغى وصفوفُه تحتها تجمعه — شاشةٌ
+         * واحدة تقول رقمين عن العميل نفسه. ومن ألغى فاتورةً بألف يبقى في
+         * القائمة «أنفق ١٠٠٠» بينما صفحته وكشف حسابه يقولان صفرًا.
+         */
+        $sold = fn ($q) => $q->sold();
+
         $q = Customer::where('business_id', $this->bid())
-            ->withCount('orders')
-            ->withSum('orders', 'total')
-            ->withMax('orders', 'ordered_at');
+            ->withCount(['orders as orders_count' => $sold])
+            ->withSum(['orders as orders_sum_total' => $sold], 'total')
+            ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at');
 
         if ($s = trim((string) $request->query('q'))) {
             $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('name_en', 'like', "%{$s}%")

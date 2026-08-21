@@ -795,22 +795,35 @@ class Demo
 
     public static function customers(): array
     {
-        return Customer::where('business_id', self::bid())->withCount('orders')->orderBy('id')->get()->map(fn ($c) => [
-            'id' => $c->id,
-            'name' => $c->name,
-            'name_en' => $c->name_en,
-            'label' => self::ln($c->name, $c->name_en),
-            'phone' => $c->phone,
-            'email' => $c->email,
-            'tax_number' => $c->tax_number,
-            'orders' => $c->orders_count,
-            'total_spent' => (float) Order::where('customer_id', $c->id)->sum('total'),
-            'last_order' => optional(Order::where('customer_id', $c->id)->max('ordered_at'))
-                ? \Illuminate\Support\Carbon::parse(Order::where('customer_id', $c->id)->max('ordered_at'))->format('Y-m-d')
-                : '—',
-            'points' => $c->points,
-            'avatar' => self::image('cust' . $c->id, 100, 100),
-        ])->all();
+        /*
+         * المُباع وحده، وباستعلامٍ واحد.
+         *
+         * كان الإنفاق وآخر طلبٍ يُسألان لكل عميل على حدة — ثلاثة استعلامات
+         * في كل صفّ، فمئتا عميلٍ ستّمئة استعلام — ويجمعان الملغى والمعلّق
+         * معًا، فيخالفان صفحة العميل نفسه.
+         */
+        $sold = fn ($q) => $q->sold();
+
+        return Customer::where('business_id', self::bid())
+            ->withCount(['orders as orders_count' => $sold])
+            ->withSum(['orders as orders_sum_total' => $sold], 'total')
+            ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at')
+            ->orderBy('id')->get()->map(fn ($c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+                'name_en' => $c->name_en,
+                'label' => self::ln($c->name, $c->name_en),
+                'phone' => $c->phone,
+                'email' => $c->email,
+                'tax_number' => $c->tax_number,
+                'orders' => $c->orders_count,
+                'total_spent' => (float) ($c->orders_sum_total ?? 0),
+                'last_order' => $c->orders_max_ordered_at
+                    ? \Illuminate\Support\Carbon::parse($c->orders_max_ordered_at)->format('Y-m-d')
+                    : '—',
+                'points' => $c->points,
+                'avatar' => self::image('cust' . $c->id, 100, 100),
+            ])->all();
     }
 
     /** عملات النشاط (مع العملة الأساسية) */

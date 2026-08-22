@@ -13,7 +13,8 @@ class Permissions
     public const MAP = [
         'admin' => ['*'],
         'manager' => ['*'],
-        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses', 'employees', 'pos'],
+        // المحاسب يقرأ التقارير: هي عملُه لا زينةٌ فوقه
+        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses', 'employees', 'pos', 'reports'],
         'inventory' => ['dashboard', 'products', 'inventory', 'suppliers', 'purchases', 'pos'],
         'sales' => ['dashboard', 'orders', 'customers', 'products', 'pos'],
         'cashier' => ['dashboard', 'pos'],
@@ -24,7 +25,7 @@ class Permissions
     public const SECTIONS = [
         'dashboard', 'customers', 'products', 'orders', 'marketing',
         'inventory', 'finance', 'expenses', 'settings',
-        'suppliers', 'purchases', 'employees', 'pos',
+        'suppliers', 'purchases', 'employees', 'pos', 'reports',
     ];
 
     /**

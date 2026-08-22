@@ -14,6 +14,47 @@ class ExportController extends Controller
     /* ------------------------------ النشاط التجاري ------------------------------ */
 
 
+    public function reports()
+    {
+        // الفترة التي كان التاجر ينظر إليها — الملفّ يغادر الشاشة ولا يصحّحه
+        // مبدّلٌ فوقه، فيحملها في أوّل سطرٍ منه وفي اسمه
+        $range = Demo::range(request()->query('range'));
+
+        $rows = [];
+        $rows[] = [__('الفترة'), Demo::rangeLabel($range), ''];
+        $rows[] = ['', '', ''];
+        $rows[] = [__('— المؤشرات الرئيسية —'), '', ''];
+        $rows[] = [__('المؤشر'), __('القيمة'), __('التغيّر')];
+        foreach (Demo::adminStats() as $s) {
+            $rows[] = [$s['label'], $s['value'], $s['trend'] ?? '—'];
+        }
+        $rows[] = ['', '', ''];
+        $rows[] = [__('— المبيعات —'), '', ''];
+        $rows[] = [__('الفترة'), __('المبيعات'), __('عدد الطلبات')];
+        $series = Demo::salesTrend($range);
+        foreach ($series['full'] as $i => $label) {
+            // ما لم يأتِ بعدُ لا يُكتب: صفٌّ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة
+            if (($series['data'][$i] ?? null) === null) {
+                continue;
+            }
+            $rows[] = [$label, number_format((float) $series['data'][$i], 3, '.', ''), (int) ($series['counts'][$i] ?? 0)];
+        }
+        $rows[] = ['', '', ''];
+        $rows[] = [__('— وسائل الدفع —'), '', ''];
+        $rows[] = [__('الوسيلة'), __('الإجمالي'), __('عدد العمليات')];
+        foreach (Demo::paymentMethods($range) as $m) {
+            $rows[] = [$m['name'], number_format((float) $m['total'], 3, '.', ''), $m['count']];
+        }
+        $rows[] = ['', '', ''];
+        $rows[] = [__('— أفضل المنتجات مبيعًا —'), '', ''];
+        $rows[] = [__('المنتج'), __('الكمية المباعة'), __('الإيراد')];
+        foreach (Demo::topProducts($range) as $p) {
+            $rows[] = [$p['name'], $p['qty'], number_format((float) $p['total'], 3, '.', '')];
+        }
+
+        return $this->stream('sales-report-'.$range, [__('العنصر'), __('القيمة 1'), __('القيمة 2')], $rows);
+    }
+
     public function products()
     {
         $rows = array_map(fn ($p) => [

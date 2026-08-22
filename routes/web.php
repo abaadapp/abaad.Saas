@@ -500,6 +500,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/backup/restore', [\App\Http\Controllers\BackupController::class, 'restore'])->name('backup.restore');
 
     // تصدير CSV
+    Route::get('/export/reports', [\App\Http\Controllers\ExportController::class, 'reports'])->name('export.reports');
     Route::get('/export/products', [\App\Http\Controllers\ExportController::class, 'products'])->name('export.products');
     Route::get('/export/orders', [\App\Http\Controllers\ExportController::class, 'orders'])->name('export.orders');
     Route::get('/export/customers', [\App\Http\Controllers\ExportController::class, 'customers'])->name('export.customers');
@@ -507,6 +508,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/export/transactions', [\App\Http\Controllers\ExportController::class, 'transactions'])->name('export.transactions');
     Route::get('/export/expenses', [\App\Http\Controllers\ExportController::class, 'expenses'])->name('export.expenses');
     Route::get('/export/inventory', [\App\Http\Controllers\ExportController::class, 'inventory'])->name('export.inventory');
+
+    /*
+     * التقارير — أُعيدت بعد حذفها في d34f32e.
+     *
+     * الفهرس بابٌ لا شاشةُ أرقام: يجمع ما تفرّق في اثنتي عشرة شاشة ويقود
+     * إليها. وملخّص المبيعات وحده تقريرٌ قائمٌ بذاته تحته.
+     */
+    Route::get('/reports', [\App\Http\Controllers\Admin\PageController::class, 'reportsIndex'])->name('reports.index');
+    Route::get('/reports/sales', [\App\Http\Controllers\Admin\PageController::class, 'reportsSales'])->name('reports.sales');
+    // بياناتٌ تُعرض في نافذة لا في صفحة — تقريرٌ من سطرين لا يستحقّ شاشة
+    Route::get('/reports/data/{key}', [\App\Http\Controllers\Admin\ReportDataController::class, 'show'])->name('reports.data');
+    // تغذية: صفحةٌ تُترك مفتوحة لا يجوز أن تتجمّد على أرقام الصباح
+    Route::get('/reports/feed', [\App\Http\Controllers\Admin\ReportFeedController::class, 'reports'])->name('reports.feed');
+    // والتصدير يتبع الفترة المعروضة — ملفٌّ يحمل غير ما على الشاشة يُقرأ خطأً
+    Route::get('/reports/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'xlsx'])->name('reports.xlsx');
+    Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'salesReport'])->name('reports.pdf');
 
     Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'adminIndex'])->name('activity.index');
     Route::get('/settings', [\App\Http\Controllers\Admin\PageController::class, 'settingsIndex'])->name('settings.index');

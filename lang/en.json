@@ -3085,5 +3085,8 @@
     "وسيلة الدفع لم تتغيّر.": "The payment method did not change.",
     "وسيلة دفع غير مأذون بها في هذا المتجر.": "That payment method is not permitted in this store.",
     "يتغيّر المتوقَّع في درج ورديتك المفتوحة فورًا. والورديات المقفلة تبقى على أرقامها — عدُّها وقع يومه.": "The expected cash in your open shift drawer changes at once. Closed shifts keep their numbers — they were counted on their own day.",
-    "يُعاد المخزون وتُحتسب الضريبة والنقاط من جديد، ويبقى هذا التصحيح مقيَّدًا باسمك في سجلّ الفاتورة.": "Stock is returned, tax and points are recalculated, and this correction stays recorded under your name in the invoice history."
+    "يُعاد المخزون وتُحتسب الضريبة والنقاط من جديد، ويبقى هذا التصحيح مقيَّدًا باسمك في سجلّ الفاتورة.": "Stock is returned, tax and points are recalculated, and this correction stays recorded under your name in the invoice history.",
+    "كل التقارير": "All reports",
+    "— المبيعات —": "— Sales —",
+    "— المصروفات —": "— Expenses —"
 }

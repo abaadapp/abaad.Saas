@@ -289,6 +289,41 @@ class PageController extends Controller
 
     /* ----------------------------- الإعدادات ----------------------------- */
 
+    /**
+     * فهرس التقارير — بابٌ واحد لما كان مبعثرًا في اثنتي عشرة شاشة.
+     *
+     * ولا يعرض إلا ما يفتحه صاحبه: `Reports::forUser` يرشّح بالصلاحية، فلا
+     * يرى المحاسب بطاقةً تقوده إلى ٤٠٣. والقائمة الجانبية تُخفي ما لا يُملك
+     * منذ البداية، فلولا الترشيح لافترق البابان على الشيء نفسه.
+     */
+    public function reportsIndex(): Response
+    {
+        return Inertia::render('Admin/Reports/Index', [
+            'reports' => \App\Support\Reports::forUser(auth()->user()),
+            'categories' => \App\Support\Reports::categoryLabels(),
+        ]);
+    }
+
+    /**
+     * ملخّص المبيعات — كلّه على فترةٍ واحدة يختارها التاجر.
+     *
+     * كانت البطاقات تجمع عمر المتجر كلّه والمخطّط يرسم السنة الجارية — رقمان
+     * لفترتين في شاشةٍ واحدة. والفترة في الرابط لا في الجلسة: رابطٌ يُرسَل
+     * أو يُحفَظ يفتح على ما فُتح عليه، ولا تتبدّل شاشة أحدٍ لأن آخر بدّلها.
+     */
+    public function reportsSales(\Illuminate\Http\Request $request): Response
+    {
+        $range = Demo::range($request->query('range'));
+
+        return Inertia::render('Admin/Reports/Sales', [
+            'summary' => Demo::reportSummary($range),
+            'salesSeries' => Demo::salesTrend($range),
+            'paymentDistribution' => Demo::paymentDistribution($range),
+            'topSellingProducts' => Demo::topSellingProducts(5, $range),
+            'range' => $range,
+        ]);
+    }
+
     public function settingsIndex(\Illuminate\Http\Request $request): Response
     {
         $b = \App\Models\Business::find(Demo::bid());

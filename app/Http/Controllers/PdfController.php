@@ -11,6 +11,28 @@ use Mpdf\Mpdf;
 class PdfController extends Controller
 {
     /** فاتورة طلب (نقطة البيع / لوحة النشاط) */
+    public function salesReport()
+    {
+        // الفترة تُورَث من الشاشة وتُطبع في الترويسة: ورقةٌ مطبوعة لا مبدّل
+        // فوقها، فإن لم تقل فترتها قُرئت على أنها فترة قارئها
+        $range = Demo::range(request()->query('range'));
+
+        $html = view('pdf.sales-report', [
+            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'branch' => Demo::currentBranchName(),
+            'stats' => Demo::adminStats(),
+            'salesSeries' => Demo::salesTrend($range),
+            'payments' => Demo::paymentMethods($range),
+            'topProducts' => Demo::topProducts($range),
+            'rangeLabel' => Demo::rangeLabel($range),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        \App\Support\Activity::log('report', 'صدّر تقرير المبيعات (PDF)');
+
+        return $this->pdf($html, 'sales-report-' . $range . '-' . now()->format('Y-m-d'));
+    }
+
     public function orderReceipt($number)
     {
         $bid = auth()->user()->business_id ?? Demo::bid();

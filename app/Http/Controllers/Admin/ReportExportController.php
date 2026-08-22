@@ -107,6 +107,70 @@ class ReportExportController extends Controller
 
 
     /** تصدير المنتجات كملف Excel حقيقي (xlsx) */
+    public function xlsx()
+    {
+        $range = $this->range();
+        $spreadsheet = new Spreadsheet();
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تقرير المبيعات'), $range);
+        $money = [];
+
+        // المؤشرات
+        $title(__('المؤشرات الرئيسية'));
+        $head([__('المؤشر'), __('القيمة'), __('التغيّر')]);
+        foreach (Demo::adminStats() as $s) {
+            $sheet->fromArray([$s['label'], $s['value'], $s['trend'] ?? '—'], null, 'A' . $this->row);
+            $this->row++;
+        }
+        $this->row++;
+
+        // المبيعات على محور الفترة — ساعاتٍ أو أيّامًا أو أشهرًا، وبعدد الطلبات
+        $series = Demo::salesTrend($range);
+        $title(__('المبيعات') . ' — ' . Demo::rangeLabel($range));
+        $head([__('الفترة'), __('المبيعات (ر.ع)'), __('عدد الطلبات')]);
+        foreach ($series['full'] as $i => $label) {
+            // ما لم يأتِ بعدُ لا يُكتب: صفٌّ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة
+            if (($series['data'][$i] ?? null) === null) {
+                continue;
+            }
+            $r = $this->row;
+            $sheet->setCellValue("A{$r}", $label);
+            $sheet->setCellValue("B{$r}", round((float) ($series['data'][$i] ?? 0), 3));
+            $sheet->setCellValue("C{$r}", (int) ($series['counts'][$i] ?? 0));
+            $money[] = "B{$r}";
+            $this->row++;
+        }
+        $this->row++;
+
+        // وسائل الدفع
+        $title(__('وسائل الدفع'));
+        $head([__('الوسيلة'), __('الإجمالي (ر.ع)'), __('عدد العمليات')]);
+        foreach (Demo::paymentMethods($range) as $m) {
+            $r = $this->row;
+            $sheet->setCellValue("A{$r}", $m['name']);
+            $sheet->setCellValue("B{$r}", round((float) $m['total'], 3));
+            $sheet->setCellValue("C{$r}", (int) $m['count']);
+            $money[] = "B{$r}";
+            $this->row++;
+        }
+        $this->row++;
+
+        // أفضل المنتجات
+        $title(__('أفضل المنتجات مبيعًا'));
+        $head([__('المنتج'), __('الكمية المباعة'), __('الإيراد (ر.ع)')]);
+        foreach (Demo::topProducts($range) as $p) {
+            $r = $this->row;
+            $sheet->setCellValue("A{$r}", $p['name']);
+            $sheet->setCellValue("B{$r}", (int) $p['qty']);
+            $sheet->setCellValue("C{$r}", round((float) $p['total'], 3));
+            $money[] = "C{$r}";
+            $this->row++;
+        }
+
+        Activity::log('report', 'صدّر تقرير المبيعات (Excel)');
+
+        return $this->download($spreadsheet, $sheet, $money, 'sales-report-' . $range . '-' . now()->format('Y-m-d') . '.xlsx');
+    }
+
     public function productsXlsx()
     {
         $spreadsheet = new Spreadsheet();

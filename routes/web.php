@@ -566,6 +566,7 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
      * ويسبق مسارَ العرض: «orders/{number}» يبتلع ما بعده لو تأخّر.
      */
     Route::put('/orders/{number}/items/{item}', [\App\Http\Controllers\Pos\OrderEditController::class, 'update'])->name('orders.items.update');
+    Route::put('/orders/{number}/payment', [\App\Http\Controllers\Pos\OrderEditController::class, 'payment'])->name('orders.payment.update');
     Route::get('/orders/{number}', [\App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
     // المدفوعات تسقط على صلاحية finance لا pos (انظر sectionFromRoute):
     // شاشةٌ مالية تعرض حصيلة الصندوق، فيراها صاحب النشاط والمدير والمحاسب

@@ -34,9 +34,12 @@ interface OrderDetail {
     items: { name: string; qty: number; price: number; total: number }[];
     /** تصحيحات وقعت على الفاتورة بعد بيعها — انظر App\Support\OrderCorrection */
     edits: {
-        item_name: string;
-        qty_before: number;
-        qty_after: number;
+        kind: string;
+        subject: string;
+        qty_before: number | null;
+        qty_after: number | null;
+        value_before: string | null;
+        value_after: string | null;
         total_before: number;
         total_after: number;
         reason: string;
@@ -190,14 +193,22 @@ export default function OrderShow() {
                                 {order.edits.map((e, i) => (
                                     <li key={i} className="rounded-[10px] bg-[#fffbeb] p-3">
                                         <p className="font-medium text-[#111]">
-                                            {e.qty_after === 0
-                                                ? `${t('حُذف')} «${e.item_name}»`
-                                                : `«${e.item_name}» ${e.qty_before} ← ${e.qty_after}`}
+                                            {e.kind === 'وسيلة دفع'
+                                                ? `${t('وسيلة الدفع')}: ${t(e.value_before ?? '')} ← ${t(e.value_after ?? '')}`
+                                                : e.qty_after === 0
+                                                  ? `${t('حُذف')} «${e.subject}»`
+                                                  : `«${e.subject}» ${e.qty_before} ← ${e.qty_after}`}
                                         </p>
                                         <p className="mt-0.5 text-[#92400e]">{e.reason}</p>
                                         <p className="mt-1 text-[12px] text-[#a16207]">
-                                            {money(e.total_before, currency)} ← {money(e.total_after, currency)}
-                                            {' · '}
+                                            {/* الإجمالي يُذكر حين يتغيّر — وسيلةُ الدفع لا تمسّه */}
+                                            {e.total_before !== e.total_after && (
+                                                <>
+                                                    {money(e.total_before, currency)} ←{' '}
+                                                    {money(e.total_after, currency)}
+                                                    {' · '}
+                                                </>
+                                            )}
                                             {e.by} · <span dir="ltr">{e.at}</span>
                                         </p>
                                     </li>

@@ -55,4 +55,34 @@ class OrderEditController extends Controller
             'type' => 'success',
         ]);
     }
+
+    /**
+     * تصحيح وسيلة الدفع.
+     *
+     * أثرها في الدرج لا في الرفّ: «نقدي» سُجّل على دفعةٍ بالبطاقة يجعل
+     * الإقفال يطلب مالًا لم يدخل الصندوق.
+     */
+    public function payment(Request $request, string $number)
+    {
+        $data = $request->validate([
+            'payment_method' => ['required', 'string', 'max:50'],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ], [
+            'reason.required' => __('اكتب سبب التصحيح — بدونه لا يُعرف لماذا تغيّرت الفاتورة.'),
+            'reason.min' => __('السبب قصير جدًّا — اكتب ما يفهمه من يقرأ الفاتورة لاحقًا.'),
+        ]);
+
+        $order = Order::where('business_id', $this->bid())
+            ->where('is_held', false)
+            ->where('number', $number)
+            ->firstOrFail();
+
+        try {
+            OrderCorrection::setPaymentMethod($order, $data['payment_method'], trim($data['reason']));
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['payment_method' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('صُحّحت وسيلة الدفع'), 'type' => 'success']);
+    }
 }

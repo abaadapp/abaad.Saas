@@ -6,7 +6,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
-import Field from '@/Components/Field';
+import Field, { Select } from '@/Components/Field';
 import { Input } from '@/Components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { money } from '@/lib/format';
@@ -41,13 +41,17 @@ interface OrderDetail {
     notes: string | null;
     items: OrderItem[];
     edits: OrderEdit[];
+    payment_methods: string[];
 }
 
 /** أثرُ تصحيحٍ وقع على هذه الفاتورة — يُعرض ولا يُخفى */
 interface OrderEdit {
-    item_name: string;
-    qty_before: number;
-    qty_after: number;
+    kind: string;
+    subject: string;
+    qty_before: number | null;
+    qty_after: number | null;
+    value_before: string | null;
+    value_after: string | null;
     total_before: number;
     total_after: number;
     reason: string;
@@ -59,6 +63,7 @@ export default function PosOrderDetails() {
     const { order, context } = usePage<PageProps<{ order: OrderDetail }>>().props;
     const t = useTranslate();
     const [editing, setEditing] = useState<OrderItem | null>(null);
+    const [fixingPayment, setFixingPayment] = useState(false);
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -67,7 +72,6 @@ export default function PosOrderDetails() {
         [t('الكاشير'), order.employee],
         [t('الفرع'), order.branch],
         [t('التاريخ'), order.date],
-        [t('وسيلة الدفع'), order.payment],
     ];
 
     return (
@@ -156,6 +160,27 @@ export default function PosOrderDetails() {
                                         <span className="truncate font-medium text-[#111]">{value || '—'}</span>
                                     </div>
                                 ))}
+                                {/*
+                                    وسيلة الدفع تُصحَّح كما تُصحَّح الكميّة: «نقدي»
+                                    على دفعةٍ بالبطاقة يجعل الإقفال يطلب مالًا لم
+                                    يدخل الدرج، ولا يظهر السبب في أيّ شاشة.
+                                */}
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-gray-500">{t('وسيلة الدفع')}</span>
+                                    <span className="flex items-center gap-1">
+                                        <span className="truncate font-medium text-[#111]">
+                                            {t(order.payment) || '—'}
+                                        </span>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            aria-label={t('تصحيح وسيلة الدفع')}
+                                            onClick={() => setFixingPayment(true)}
+                                        >
+                                            <Pencil />
+                                        </Button>
+                                    </span>
+                                </div>
                             </CardContent>
                         </Card>
 
@@ -220,17 +245,15 @@ export default function PosOrderDetails() {
                                     className="flex flex-col gap-1 rounded-[10px] bg-[#fafafa] p-3 sm:flex-row sm:items-start sm:justify-between"
                                 >
                                     <div className="min-w-0">
-                                        <p className="font-medium text-[#111]">
-                                            {e.qty_after === 0
-                                                ? `${t('حُذف')} «${e.item_name}»`
-                                                : `«${e.item_name}» ${e.qty_before} ← ${e.qty_after}`}
-                                        </p>
+                                        <p className="font-medium text-[#111]">{editLabel(e, t)}</p>
                                         <p className="text-gray-500">{e.reason}</p>
                                     </div>
                                     <div className="shrink-0 text-end text-[12px] text-gray-400">
-                                        <p className="tabular-nums">
-                                            {m(e.total_before)} ← {m(e.total_after)}
-                                        </p>
+                                        {e.total_before !== e.total_after && (
+                                            <p className="tabular-nums">
+                                                {m(e.total_before)} ← {m(e.total_after)}
+                                            </p>
+                                        )}
                                         <p>
                                             {e.by} · <span dir="ltr">{e.at}</span>
                                         </p>
@@ -239,6 +262,15 @@ export default function PosOrderDetails() {
                             ))}
                         </CardContent>
                     </Card>
+                )}
+
+                {fixingPayment && (
+                    <FixPaymentDialog
+                        orderNumber={order.id}
+                        current={order.payment}
+                        methods={order.payment_methods}
+                        onClose={() => setFixingPayment(false)}
+                    />
                 )}
 
                 {editing && (
@@ -327,6 +359,96 @@ function EditItemDialog({
                         <Button type="submit" loading={form.processing}>
                             {removing ? <Trash2 /> : <Pencil />}
                             {t(removing ? 'حذف البند' : 'حفظ التصحيح')}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/**
+ * سطرُ التصحيح كما يُقرأ.
+ *
+ * نوعان في قائمةٍ واحدة تحت الفاتورة: بندٌ تغيّرت كميّته أو حُذف، ووسيلة
+ * دفعٍ صُحّحت. وقائمتان منفصلتان كانتا ستجعلان القارئ يجمعهما بعينه ليعرف
+ * ما جرى على فاتورةٍ واحدة.
+ */
+function editLabel(e: OrderEdit, t: (s: string) => string): string {
+    if (e.kind === 'وسيلة دفع') {
+        return `${t('وسيلة الدفع')}: ${t(e.value_before ?? '')} ← ${t(e.value_after ?? '')}`;
+    }
+
+    return e.qty_after === 0
+        ? `${t('حُذف')} «${e.subject}»`
+        : `«${e.subject}» ${e.qty_before} ← ${e.qty_after}`;
+}
+
+function FixPaymentDialog({
+    orderNumber,
+    current,
+    methods,
+    onClose,
+}: {
+    orderNumber: string;
+    current: string;
+    methods: string[];
+    onClose: () => void;
+}) {
+    const t = useTranslate();
+    const form = useForm({ payment_method: current, reason: '' });
+
+    const submit = (e: FormEvent) => {
+        e.preventDefault();
+        form.put(route('pos.orders.payment.update', orderNumber), {
+            preserveScroll: true,
+            onSuccess: () => onClose(),
+        });
+    };
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>{t('تصحيح وسيلة الدفع')}</DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={submit} className="space-y-4 px-5 pb-5">
+                    <Field label="الوسيلة الصحيحة" required error={form.errors.payment_method}>
+                        <Select
+                            required
+                            value={form.data.payment_method}
+                            onChange={(e) => form.setData('payment_method', e.target.value)}
+                            options={methods.map((x) => ({ label: t(x === 'بطاقة' ? 'فيزا' : x), value: x }))}
+                        />
+                    </Field>
+
+                    <Field
+                        label="سبب التصحيح"
+                        required
+                        hint="يُقرأ في سجلّ الفاتورة — اكتب ما يفهمه غيرك"
+                        error={form.errors.reason}
+                    >
+                        <Input
+                            required
+                            minLength={3}
+                            placeholder={t('مثال: دفع بالبطاقة وسجّلتُها نقدًا')}
+                            value={form.data.reason}
+                            onChange={(e) => form.setData('reason', e.target.value)}
+                        />
+                    </Field>
+
+                    <p className="rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]">
+                        {t('يتغيّر المتوقَّع في درج ورديتك المفتوحة فورًا. والورديات المقفلة تبقى على أرقامها — عدُّها وقع يومه.')}
+                    </p>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                        <Button type="button" variant="outline" onClick={onClose}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button type="submit" loading={form.processing}>
+                            <Pencil />
+                            {t('حفظ التصحيح')}
                         </Button>
                     </div>
                 </form>

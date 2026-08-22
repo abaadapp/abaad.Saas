@@ -240,7 +240,7 @@ class OrderCorrectionTest extends TestCase
 
         $this->assertDatabaseHas('order_edits', [
             'order_id' => $order->id,
-            'item_name' => 'قميص',
+            'subject' => 'قميص',
             'qty_before' => 3,
             'qty_after' => 1,
             'reason' => 'أدخلتُ الكمية خطأً',
@@ -290,5 +290,114 @@ class OrderCorrectionTest extends TestCase
         $this->assertCount(1, $edits);
         $this->assertSame('أدخلتُ الكمية خطأً', $edits[0]['reason']);
         $this->assertSame('نورة', $edits[0]['by']);
+    }
+    /* --------------------- وسيلة الدفع --------------------- */
+
+    public function test_a_mis_keyed_payment_method_is_corrected(): void
+    {
+        $order = $this->sale(3);
+        $this->actingAs($this->cashier);
+
+        OrderCorrection::setPaymentMethod($order, 'بطاقة', 'دفع بالبطاقة وسجّلتُها نقدًا');
+
+        $this->assertSame('بطاقة', $order->fresh()->payment_method);
+        $this->assertSame('بطاقة', Transaction::where('order_id', $order->id)->value('method'));
+    }
+
+    public function test_the_open_shift_expected_cash_follows_the_correction(): void
+    {
+        /*
+         * هذا هو الضرر كلّه: «نقدي» على دفعةٍ بالبطاقة يجعل الإقفال يطلب
+         * مالًا لم يدخل الدرج، والكاشير يُحاسَب على نقصٍ لم يقع.
+         */
+        $shift = \App\Models\Shift::create([
+            'business_id' => $this->business->id, 'branch_id' => $this->branch->id,
+            'user_id' => $this->cashier->id, 'employee_name' => 'نورة',
+            'opening_balance' => 100, 'opened_at' => now(), 'status' => 'مفتوحة',
+        ]);
+        $order = $this->sale(3);
+        $order->update(['shift_id' => $shift->id]);
+
+        $this->assertSame(131.5, \App\Support\Shifts::expectedCash($shift->fresh()));
+
+        $this->actingAs($this->cashier);
+        OrderCorrection::setPaymentMethod($order, 'بطاقة', 'دفع بالبطاقة');
+
+        $this->assertSame(100.0, \App\Support\Shifts::expectedCash($shift->fresh()));
+    }
+
+    public function test_a_method_the_merchant_switched_off_is_refused(): void
+    {
+        // الباب المغلق مغلقٌ من الجهتين: لا يُباع به ولا يُصحَّح إليه
+        Setting::create(['business_id' => $this->business->id, 'key' => 'pay_transfer', 'value' => '0']);
+        $order = $this->sale(3);
+        $this->actingAs($this->cashier);
+
+        $this->expectException(RuntimeException::class);
+        OrderCorrection::setPaymentMethod($order, 'تحويل بنكي', 'تصحيح');
+    }
+
+    public function test_an_unchanged_method_is_refused_rather_than_logged(): void
+    {
+        $order = $this->sale(3);
+        $this->actingAs($this->cashier);
+
+        $this->expectException(RuntimeException::class);
+        OrderCorrection::setPaymentMethod($order, 'نقدي', 'لا شيء');
+    }
+
+    public function test_the_payment_correction_leaves_the_same_kind_of_trace(): void
+    {
+        $order = $this->sale(3);
+        $this->actingAs($this->cashier);
+
+        OrderCorrection::setPaymentMethod($order, 'بطاقة', 'دفع بالبطاقة وسجّلتُها نقدًا');
+
+        $this->assertDatabaseHas('order_edits', [
+            'order_id' => $order->id,
+            'kind' => \App\Models\OrderEdit::PAYMENT,
+            'value_before' => 'نقدي',
+            'value_after' => 'بطاقة',
+            'reason' => 'دفع بالبطاقة وسجّلتُها نقدًا',
+        ]);
+    }
+
+    public function test_the_invoice_total_is_untouched_by_a_payment_correction(): void
+    {
+        $order = $this->sale(3);
+        $this->actingAs($this->cashier);
+
+        OrderCorrection::setPaymentMethod($order, 'بطاقة', 'تصحيح');
+
+        $this->assertSame(31.5, (float) $order->fresh()->total);
+        $this->assertSame(3, (int) $order->fresh('items')->items->first()->quantity);
+    }
+
+    public function test_the_screen_refuses_a_payment_correction_with_no_reason(): void
+    {
+        $order = $this->sale(3);
+
+        $this->actingAs($this->cashier)
+            ->put(route('pos.orders.payment.update', $order->number), ['payment_method' => 'بطاقة'])
+            ->assertSessionHasErrors('reason');
+
+        $this->assertSame('نقدي', $order->fresh()->payment_method);
+    }
+
+    public function test_both_kinds_of_correction_read_from_one_list(): void
+    {
+        // قائمتان تحت فاتورةٍ واحدة تجعلان القارئ يجمعهما بعينه
+        $order = $this->sale(3);
+        $order->items()->create(['product_id' => null, 'name' => 'كيس', 'price' => 1, 'quantity' => 1, 'total' => 1]);
+        $this->actingAs($this->cashier);
+
+        OrderCorrection::setPaymentMethod($order, 'بطاقة', 'دفع بالبطاقة');
+        OrderCorrection::setQuantity($order->fresh('items'), $order->fresh('items')->items->first(), 1, 'خطأ كمية');
+
+        $edits = \App\Support\Demo::orderEdits($order->id);
+
+        $this->assertCount(2, $edits);
+        $this->assertSame(\App\Models\OrderEdit::PAYMENT, $edits[0]['kind']);
+        $this->assertSame(\App\Models\OrderEdit::LINE, $edits[1]['kind']);
     }
 }

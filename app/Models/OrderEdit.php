@@ -17,6 +17,10 @@ class OrderEdit extends Model
 
     public function order(): BelongsTo { return $this->belongsTo(Order::class); }
 
+    /** أنواع ما يُصحَّح — مرجعٌ واحد للكتابة والعرض */
+    public const LINE = 'بند';
+    public const PAYMENT = 'وسيلة دفع';
+
     /** حُذف البند أم نقصت كميّته؟ — تُقرأ من الأرقام لا من عمودٍ ثالث يفترق عنها */
-    public function removed(): bool { return $this->qty_after === 0; }
+    public function removed(): bool { return $this->kind === self::LINE && (int) $this->qty_after === 0; }
 }

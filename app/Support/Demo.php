@@ -828,6 +828,8 @@ class Demo
             'notes' => $o->notes,
             'items' => $items,
             'edits' => self::orderEdits($o->id),
+            // ما أذن به التاجر وحده يُعرض في التصحيح — لا يُصحَّح إلى وسيلةٍ مُطفأة
+            'payment_methods' => \App\Http\Controllers\Pos\PosController::enabledPaymentMethods(self::businessSettings()),
         ];
     }
 
@@ -840,9 +842,12 @@ class Demo
     public static function orderEdits(int $orderId): array
     {
         return \App\Models\OrderEdit::where('order_id', $orderId)->orderBy('id')->get()->map(fn ($e) => [
-            'item_name' => $e->item_name,
-            'qty_before' => (int) $e->qty_before,
-            'qty_after' => (int) $e->qty_after,
+            'kind' => $e->kind,
+            'subject' => $e->subject,
+            'qty_before' => $e->qty_before === null ? null : (int) $e->qty_before,
+            'qty_after' => $e->qty_after === null ? null : (int) $e->qty_after,
+            'value_before' => $e->value_before,
+            'value_after' => $e->value_after,
             'total_before' => (float) $e->order_total_before,
             'total_after' => (float) $e->order_total_after,
             'reason' => $e->reason,

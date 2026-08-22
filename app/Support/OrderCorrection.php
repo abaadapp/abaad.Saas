@@ -82,7 +82,8 @@ class OrderCorrection
                 'business_id' => $bid,
                 'order_id' => $order->id,
                 'order_item_id' => $newQty === 0 ? null : $itemId,
-                'item_name' => $itemName,
+                'kind' => OrderEdit::LINE,
+                'subject' => $itemName,
                 'qty_before' => $oldQty,
                 'qty_after' => $newQty,
                 'order_total_before' => $totalBefore,
@@ -200,6 +201,61 @@ class OrderCorrection
             'tax' => $tax,
             'total' => round($subtotal - $discount + $tax + (float) $order->delivery_fee, 3),
         ]);
+    }
+
+    /**
+     * تصحيح وسيلة الدفع — خطأٌ شائع كخطأ الكميّة، وأثره في الدرج لا في الرفّ.
+     *
+     * يضغط الكاشير «نقدي» والزبون دفع بالبطاقة، فيُنتظر في الدرج مالٌ لم
+     * يدخله ويظهر النقص عند الإقفال بلا سبب — أو العكس فيبدو الدرج زائدًا.
+     * والوردية المفتوحة تُعيد حساب المتوقَّع فورًا لأنها تقرأ الفواتير حيّةً؛
+     * والمقفلة تبقى على أرقامها المجمَّدة عمدًا: عدُّ الدرج وقع يومها فعلًا،
+     * وتغييره بأثرٍ رجعيّ يجعل سجلّ الوردية يكذب على قارئه.
+     *
+     * @throws RuntimeException برسالةٍ تُعرض للكاشير كما هي
+     */
+    public static function setPaymentMethod(Order $order, string $method, string $reason): OrderEdit
+    {
+        $allowed = \App\Http\Controllers\Pos\PosController::enabledPaymentMethods(
+            \App\Models\Setting::where('business_id', $order->business_id)->pluck('value', 'key')->all(),
+        );
+
+        // ولا تُصحَّح إلى وسيلةٍ أطفأها التاجر — الباب المغلق مغلقٌ من الجهتين
+        if (! in_array($method, $allowed, true)) {
+            throw new RuntimeException(__('وسيلة دفع غير مأذون بها في هذا المتجر.'));
+        }
+
+        $before = (string) $order->payment_method;
+
+        if ($before === $method) {
+            throw new RuntimeException(__('وسيلة الدفع لم تتغيّر.'));
+        }
+
+        return DB::transaction(function () use ($order, $before, $method, $reason) {
+            $order->update(['payment_method' => $method]);
+            Transaction::where('order_id', $order->id)->update(['method' => $method]);
+
+            $edit = OrderEdit::create([
+                'business_id' => (int) $order->business_id,
+                'order_id' => $order->id,
+                'kind' => OrderEdit::PAYMENT,
+                'subject' => __('وسيلة الدفع'),
+                'value_before' => $before,
+                'value_after' => $method,
+                // الإجمالي لا يتغيّر بتغيّر وسيلة الدفع — ويُقيَّد ليُقرأ السطر وحده
+                'order_total_before' => (float) $order->total,
+                'order_total_after' => (float) $order->total,
+                'reason' => $reason,
+                'user_id' => PosCashier::id() ?? auth()->id(),
+                'employee_name' => PosCashier::name() ?? auth()->user()?->name,
+            ]);
+
+            Activity::log('updated', 'صحّح وسيلة الدفع في الفاتورة '.$order->number
+                .' من «'.$before.'» إلى «'.$method.'» — '.$reason,
+                ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+            return $edit;
+        });
     }
 
     /** المعاملة المالية تتبع الفاتورة — رقمٌ في المالية لا يقابله بيعٌ يضلّل التقرير */

@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { Calendar, FileText, Landmark, PencilLine, User } from 'lucide-react';
+import { Calendar, FileText, PencilLine, User } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import { Badge } from '@/Components/ui/badge';
@@ -67,20 +67,13 @@ export default function OrderShow() {
                 title={`${t('الطلب')} ${order.id}`}
                 subtitle={order.date}
                 actions={
-                    <>
-                        <Button variant="outline" asChild>
-                            <a href={route('admin.orders.pdf', order.id)} target="_blank" rel="noreferrer">
-                                <FileText />
-                                {t('تصدير PDF')}
-                            </a>
-                        </Button>
-                        <Button variant="outline" asChild>
-                            <a href={route('admin.orders.taxInvoice', order.id)} target="_blank" rel="noreferrer">
-                                <Landmark />
-                                {t('فاتورة ضريبية')}
-                            </a>
-                        </Button>
-                    </>
+                    /* زرّ «فاتورة ضريبية» أُزيل من هنا بطلب صاحب النظام */
+                    <Button variant="outline" asChild>
+                        <a href={route('admin.orders.pdf', order.id)} target="_blank" rel="noreferrer">
+                            <FileText />
+                            {t('تصدير PDF')}
+                        </a>
+                    </Button>
                 }
             />
 

@@ -182,9 +182,7 @@ class AdminPanelAuditTest extends TestCase
             'pay_cash' => true, 'pay_card' => false, 'pay_transfer' => true,
             'inv_prefix' => 'INV-', 'inv_start' => '1', 'paper' => '80mm',
             'notify_new_order' => true, 'notify_smart_alerts' => true, 'notify_daily_summary' => false,
-            'loyalty_enabled' => true, 'loyalty_earn_rate' => '5',
-            'loyalty_redeem_max_pct' => '50', 'loyalty_redeem_min' => '100',
-            'require_open_shift' => false, 'shift_max_hours' => '18',
+
             'tpl_header' => 'سطر', 'tpl_footer' => "شكرًا\nمرحبًا", 'tpl_font' => 'عادي',
             'tpl_show_logo' => false, 'tpl_show_branch' => true, 'tpl_show_employee' => true,
             'tpl_show_customer' => true, 'tpl_show_datetime' => true, 'tpl_show_items_count' => true,
@@ -215,8 +213,8 @@ class AdminPanelAuditTest extends TestCase
     public function test_a_nonsense_value_is_refused_rather_than_saved(): void
     {
         $this->actingAs($this->owner)->post(route('admin.settings.update'), [
-            'shift_max_hours' => '900', 'vat_rate' => 'خمسة', 'paper' => 'A3',
-        ])->assertSessionHasErrors(['shift_max_hours', 'vat_rate', 'paper']);
+            'decimals' => '9', 'vat_rate' => 'خمسة', 'paper' => 'A3',
+        ])->assertSessionHasErrors(['decimals', 'vat_rate', 'paper']);
 
         $this->assertDatabaseMissing('settings', ['business_id' => $this->business->id, 'key' => 'paper']);
     }

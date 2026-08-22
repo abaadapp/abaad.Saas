@@ -12,7 +12,6 @@ import {
     Boxes,
     Building2,
     FlaskConical,
-    Globe,
     History,
     Layers,
     LayoutDashboard,
@@ -147,10 +146,9 @@ export const NAV: NavGroup[] = [
             {
                 label: 'أدوات التسويق',
                 icon: Megaphone,
-                route: 'admin.marketing.website',
+                route: 'admin.marketing.loyalty',
                 section: 'marketing',
                 children: [
-                    { label: 'الموقع الإلكتروني', icon: Globe, route: 'admin.marketing.website', section: 'marketing' },
                     { label: 'برنامج ولاء', icon: Star, route: 'admin.marketing.loyalty', section: 'marketing' },
                     { label: 'تقييمات العملاء', icon: MessageSquare, route: 'admin.marketing.reviews', section: 'marketing' },
                     { label: 'الكوبونات والعروض', icon: TicketPercent, route: 'admin.marketing.coupons', section: 'marketing' },

@@ -76,15 +76,19 @@ class SettingController extends Controller
         'notify_smart_alerts' => ['sometimes', 'boolean'],
         'notify_daily_summary' => ['sometimes', 'boolean'],
 
-        // الولاء
-        'loyalty_enabled' => ['sometimes', 'boolean'],
-        'loyalty_earn_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
-        'loyalty_redeem_max_pct' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100'],
-        'loyalty_redeem_min' => ['sometimes', 'nullable', 'integer', 'min:0'],
-
-        // الورديات — سقفٌ صفر يُقفل كل وردية لحظة فتحها، وسقفٌ بلا حدّ يُبطل الغرض
-        'require_open_shift' => ['sometimes', 'boolean'],
-        'shift_max_hours' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:72'],
+        /*
+         * لا ولاءَ ولا ورديةً هنا — وغيابُهما مقصود.
+         *
+         * الولاء كان يُحفظ من مسارين إلى المفاتيح نفسها: هذه الشاشة، وشاشةُ
+         * «برنامج ولاء» في التسويق التي تُظهر معها الأعضاء والنقاط. فبقي
+         * مالكٌ واحد — `MarketingController::saveLoyalty` — لأنّ المفتاح الذي
+         * يكتبه اثنان يقول أحدهما غير ما يقول الآخر.
+         *
+         * والوردية أُزيلت شاشتها بطلب صاحب النظام، فأُخرج مفتاحاها من القائمة
+         * المغلقة: بابُ حفظٍ يقبل ما لا مقبض له يُملأ من خارج الشاشة وحدها.
+         * و`Shifts` يبقى قارئًا لهما — `DEFAULT_MAX_HOURS` سقفُه، و
+         * `require_open_shift` أُطفئ في ترحيلٍ مرافق فلا يحبس صندوقًا.
+         */
 
         // قوالب الفواتير — تحكم الأوراق الثلاث
         'tpl_header' => ['sometimes', 'nullable', 'string', 'max:120'],

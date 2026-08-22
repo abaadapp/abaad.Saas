@@ -400,8 +400,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * لكلٍّ منها عنوانها: من يريد إعدادات الموقع لا يمرّ بالكوبونات، ورابطُ
      * كلٍّ منها يُحفظ ويُشارَك وحده.
      */
-    Route::get('/marketing', fn () => redirect()->route('admin.marketing.website'))->name('marketing.index');
-    Route::get('/marketing/website', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'website'])->name('marketing.website');
+    Route::get('/marketing', fn () => redirect()->route('admin.marketing.loyalty'))->name('marketing.index');
+    /*
+     * الموقع انتقل إلى الإعدادات ‹ المتجر — والمسار يبقى موجِّهًا لا شاشة.
+     *
+     * ما زال في العالم روابط محفوظة وإشاراتٌ مرجعيّة إليه، و404 على تاجرٍ
+     * حفظ رابط نطاقه ليس نقلًا بل فقدان. والحفظ يبقى هنا لأن مخزنه مجموعة
+     * `website` في `MarketingSettings` — الاسم يصف البيانات لا الشاشة.
+     */
+    Route::get('/marketing/website', fn () => redirect()->route('admin.settings.index', ['section' => 'domain']))->name('marketing.website');
     Route::post('/marketing/website', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
     Route::get('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'loyalty'])->name('marketing.loyalty');
     Route::post('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveLoyalty'])->name('marketing.loyalty.save');

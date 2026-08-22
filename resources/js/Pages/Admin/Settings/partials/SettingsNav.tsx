@@ -1,24 +1,20 @@
 import {
+    AppWindow,
     BellOff,
     BellRing,
-    Coins,
-    CreditCard,
     DatabaseBackup,
-    FileText,
-    Gift,
     GitBranch,
-    MonitorSmartphone,
+    Globe,
     History,
-    Languages,
     LayoutTemplate,
+    ListTree,
+    MonitorSmartphone,
     Percent,
-    Printer,
     ShieldCheck,
     Store,
     Target,
     Trash2,
     UserCog,
-    Wallet,
 } from 'lucide-react';
 
 /**
@@ -26,36 +22,33 @@ import {
  *
  * لكل بند وصفٌ قصير (`desc`) يظهر تحت الاسم في البطاقة، فيعرف المستخدم ما
  * وراء القسم قبل فتحه بدل أن يفتح كلًّا منها ليكتشف محتواه.
+ *
+ * والبطاقات ستّ عشرة صارت إحدى عشرة: القسم الذي حقلاه حقلان لا يستحقّ بطاقةً
+ * وصفحةً ونقرةً — «العملة» ثلاثة حقول، و«الطباعة» حقلٌ واحد، و«الفواتير»
+ * حقلان. جُمعت مع ما يُضبط معها في الجلسة نفسها: من يفتح الضريبة يفتح العملة،
+ * ومن يغيّر شكل الفاتورة يغيّر ترقيمها وورقها.
  */
 export const SETTINGS_NAV = [
     {
         group: 'المتجر',
         items: [
-            { key: 'business', label: 'بيانات النشاط', desc: 'اسم المتجر ورقم التواصل والعنوان', icon: Store },
-            { key: 'language', label: 'اللغة', desc: 'لغة واجهة النظام واتجاهها', icon: Languages },
+            /* اللغة هنا لا في بطاقةٍ وحدها: مفتاحٌ واحد بين خيارين لا يملأ شاشة */
+            { key: 'business', label: 'بيانات النشاط', desc: 'اسم المتجر ورقم التواصل والعنوان ولغة النظام', icon: Store },
+            { key: 'domain', label: 'إعدادات الدومين', desc: 'نطاق متجرك على الإنترنت ونشره للزوّار', icon: Globe },
+            { key: 'website', label: 'إعدادات الموقع', desc: 'ما يراه زائر موقعك — التعريف والتواصل والعرض', icon: AppWindow },
         ],
     },
     {
         group: 'المالية',
         items: [
-            { key: 'taxes', label: 'الضرائب', desc: 'ضريبة القيمة المضافة ونسبتها والرقم الضريبي', icon: Percent },
-            { key: 'currency', label: 'العملة', desc: 'رمز العملة والخانات العشرية وموضع الرمز', icon: Coins },
-            { key: 'payments', label: 'طرق الدفع', desc: 'وسائل الدفع المتاحة عند البيع', icon: CreditCard },
-            { key: 'loyalty', label: 'الولاء', desc: 'نقاط العملاء ومعدّل كسبها واستبدالها', icon: Gift },
-            { key: 'shifts', label: 'وردية الصندوق', desc: 'اشتراط فتح وردية قبل البيع', icon: Wallet },
+            { key: 'finance', label: 'الضرائب والعملة والدفع', desc: 'ضريبة القيمة المضافة ورمز العملة ووسائل الدفع', icon: Percent },
+            { key: 'chart', label: 'شجرة الحسابات', desc: 'حسابات الدفتر وأرصدتها وميزان المراجعة', icon: ListTree },
         ],
     },
     {
         group: 'المبيعات',
         items: [
-            { key: 'invoices', label: 'الفواتير', desc: 'بادئة رقم الفاتورة ورقمها الأول', icon: FileText },
-        ],
-    },
-    {
-        group: 'الطباعة',
-        items: [
-            { key: 'printing', label: 'الطباعة', desc: 'مقاس ورق الإيصال', icon: Printer },
-            { key: 'templates', label: 'قوالب الفواتير', desc: 'شكل الإيصال والفاتورة والفاتورة الضريبية وما يظهر فيها', icon: LayoutTemplate },
+            { key: 'templates', label: 'قوالب الفواتير', desc: 'ترقيم الفواتير ومقاس الورق وشكل كل ورقة تُطبع', icon: LayoutTemplate },
         ],
     },
     {

@@ -28,8 +28,20 @@ class ChartController extends Controller
 
     public function index(): Response
     {
-        $bid = $this->bid();
+        return Inertia::render('Admin/Finance/Chart', self::panelData($this->bid()));
+    }
 
+    /**
+     * بيانات الشجرة — للصفحة المستقلّة ولقسمها في الإعدادات ‹ المالية.
+     *
+     * ساكنةٌ لأن `PageController` يستدعيها وهو خارج هذا المتحكّم، كما يفعل
+     * `TrashController::panelData`. وحسابُها في موضعين كان سيَفترق: يُضاف
+     * عمودٌ هنا فلا يظهر هناك، ولا يُنبّه شيء.
+     *
+     * @return array<string, mixed>
+     */
+    public static function panelData(int $bid): array
+    {
         // متجرٌ أُنشئ قبل هذه النسخة لا شجرة له، وشاشةٌ فارغة لا تقول ماذا يفعل
         Ledger::ensureSystemAccounts($bid);
 
@@ -38,7 +50,7 @@ class ChartController extends Controller
         $hasLines = Account::where('business_id', $bid)->has('lines')->pluck('id')->all();
         $parents = $accounts->whereNotNull('parent_id')->pluck('parent_id')->unique()->all();
 
-        return Inertia::render('Admin/Finance/Chart', [
+        return [
             'accounts' => $accounts->map(fn ($a) => [
                 'id' => $a->id,
                 'parent_id' => $a->parent_id,
@@ -55,7 +67,7 @@ class ChartController extends Controller
             ])->values()->all(),
             'trial' => Ledger::trialBalance($bid),
             'types' => array_keys(Account::TYPES),
-        ]);
+        ];
     }
 
     public function store(Request $request)

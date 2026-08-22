@@ -6,6 +6,9 @@ import {
     BellRing,
     ChevronLeft,
     Download,
+    ExternalLink,
+    Globe,
+    Languages,
     Save,
     Trash2,
     Upload,
@@ -28,6 +31,8 @@ import EmployeesPanel, { type JobTitle } from './panels/EmployeesPanel';
 import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
 import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
+import ChartPanel, { type ChartData } from './panels/ChartPanel';
+import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -47,6 +52,10 @@ interface NotificationRow {
 interface Props {
     settings: Settings;
     business: { name: string; phone: string | null; email: string | null; address: string | null };
+    /** إعدادات الموقع والنطاق — مجموعة `website` في MarketingSettings */
+    site: Record<string, string>;
+    /** عدد المنتجات المعروضة على الموقع */
+    published: number;
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
@@ -70,6 +79,9 @@ interface Props {
     customers?: TrashData['customers'];
     expenses?: TrashData['expenses'];
     windowDays?: number;
+    accounts?: ChartData['accounts'];
+    trial?: ChartData['trial'];
+    types?: ChartData['types'];
 }
 
 /**
@@ -99,7 +111,7 @@ const EMPTY_PAGINATION: ActivityData['pagination'] = {
     next_page_url: null,
 };
 
-const SERVER_TABS = ['branches', 'employees', 'devices', 'activity', 'trash'] as const;
+const SERVER_TABS = ['branches', 'employees', 'devices', 'activity', 'trash', 'chart'] as const;
 
 /** مفاتيح كل الأقسام التي تُفتح داخل هذه الصفحة — وهي اليوم كلّها. */
 const TAB_KEYS = NAV.flatMap((g) => g.items.map((i) => i.key)) as readonly TabKey[];
@@ -156,8 +168,9 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
-        logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays } =
+    const { settings, business, site, published, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+        logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
+        accounts, trial, types } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState<TabKey | null>(tabFromUrl);
@@ -260,13 +273,16 @@ export default function SettingsIndex() {
         notify_smart_alerts: on('notify_smart_alerts'),
         notify_daily_summary: on('notify_daily_summary'),
 
-        loyalty_enabled: on('loyalty_enabled'),
-        // مطفأ افتراضيًّا: منعُ البيع أخطر تصرّف في نقطة بيع
-        require_open_shift: on('require_open_shift', '0'),
-        shift_max_hours: get('shift_max_hours', '18'),
-        loyalty_earn_rate: get('loyalty_earn_rate', '5'),
-        loyalty_redeem_max_pct: get('loyalty_redeem_max_pct', '50'),
-        loyalty_redeem_min: get('loyalty_redeem_min', '100'),
+        /*
+         * لا نقاط ولا وردية هنا.
+         *
+         * الولاء أقسامُه حيّةٌ في التسويق ‹ برنامج ولاء بالمفاتيح نفسها ومعها
+         * الأعضاء والنقاط — فبطاقتُه هنا كانت نسخةً ثانية لشيءٍ واحد، وتبديلُ
+         * إحداهما يترك الأخرى تقول غير الواقع.
+         *
+         * ووردية الصندوق أُزيلت بطلب صاحب النظام، ومفتاحُها أُطفئ في ترحيلٍ
+         * مرافق كي لا يبقى منعُ بيعٍ سارٍ بلا شاشةٍ تُطفئه.
+         */
 
         /* قوالب الطباعة — الافتراضات هي شكل الإيصال قبل وجود هذا القسم
            حرفيًّا: تاجرٌ لم يفتحه قطّ يطبع اليوم ما كان يطبعه أمس. */
@@ -286,6 +302,32 @@ export default function SettingsIndex() {
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         form.post(route('admin.settings.update'), { preserveScroll: true });
+    };
+
+    /*
+     * الموقع نموذجٌ ثانٍ لا حقولٌ في الأوّل.
+     *
+     * مفاتيحه تُخزَّن في مجموعة `website` عبر `MarketingSettings` لا في جدول
+     * إعدادات المتجر، ومساره غير مسار الحفظ هنا. وجمعُهما في نموذجٍ واحد كان
+     * يوجب على كل حفظِ اسمٍ أن يمرّ بمصادقة النطاق.
+     *
+     * والبطاقتان — الدومين والموقع — تتشاركانه: كلتاهما تحفظ الحقول الثمانية
+     * كاملةً، فلا يُمحى ما في إحداهما بحفظ الأخرى.
+     */
+    const siteForm = useForm({
+        site_enabled: (site?.site_enabled ?? '0') === '1',
+        site_domain: site?.site_domain ?? '',
+        site_tagline: site?.site_tagline ?? '',
+        site_about: site?.site_about ?? '',
+        site_whatsapp: site?.site_whatsapp ?? '',
+        site_instagram: site?.site_instagram ?? '',
+        site_show_prices: (site?.site_show_prices ?? '1') === '1',
+        site_allow_orders: (site?.site_allow_orders ?? '1') === '1',
+    });
+
+    const saveSite = (e: React.FormEvent) => {
+        e.preventDefault();
+        siteForm.post(route('admin.marketing.website.save'), { preserveScroll: true });
     };
 
     const saveBar = (
@@ -348,53 +390,161 @@ export default function SettingsIndex() {
                 <div className="min-w-0 scroll-mt-4">
                     {/* زرٌّ لا رابط: القسم يتبدّل هنا في مكانه بلا تنقّل */}
                     <BackToSettings as="button" onClick={goHub} />
-            {tab === 'language' ? (
-                <Card className="p-6">
-                    <h3 className="mb-4 font-bold text-[#111]">{t('لغة النظام')}</h3>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        {[
-                            { code: 'ar', label: 'العربية', hint: 'من اليمين إلى اليسار (RTL)' },
-                            { code: 'en', label: 'English', hint: 'من اليسار إلى اليمين (LTR)' },
-                        ].map((l) => (
-                            <label
-                                key={l.code}
-                                className={cn(
-                                    'flex cursor-pointer items-center justify-between rounded-[12px] border px-4 py-3.5 transition',
-                                    pickedLocale === l.code
-                                        ? 'border-[#111] bg-[#fafafa]'
-                                        : 'border-[var(--ui-border,#e8e8e8)] hover:bg-[#fafafa]',
-                                )}
-                            >
-                                <span>
-                                    <span className="block text-sm font-medium text-[#111]">{l.label}</span>
-                                    <span className="block text-[12px] text-[#9ca3af]">{t(l.hint)}</span>
-                                </span>
-                                <input
-                                    type="radio"
-                                    name="locale"
-                                    checked={pickedLocale === l.code}
-                                    onChange={() => setPickedLocale(l.code)}
-                                    className="size-5"
-                                />
-                            </label>
-                        ))}
-                    </div>
-                    <div className="mt-6 flex justify-end">
-                        <Button
-                            onClick={() =>
-                                // اتجاه المستند يُحسم في قالب الجذر، فنُعيد التحميل بعد الحفظ
-                                router.post(
-                                    route('admin.language.update'),
-                                    { locale: pickedLocale },
-                                    { onSuccess: () => window.location.reload() },
-                                )
-                            }
+            {tab === 'chart' ? (
+                <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
+            ) : tab === 'domain' ? (
+                /*
+                    الدومين وحده في بطاقة.
+
+                    هو أوّل ما يُضبط وآخر ما يُغيَّر: يُكتب مرّةً ثمّ تقرؤه
+                    شاشة السيو ورابط «الموقع» في الترويسة والفاتورة. وكان
+                    مدفونًا في أعلى شاشةٍ طويلة تحت «أدوات التسويق»، فمن يبحث
+                    عن نطاقه لا يخطر له أن يفتح قسم الكوبونات.
+                */
+                <form onSubmit={saveSite}>
+                    <Card className="p-6">
+                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 className="font-bold text-[#111]">{t('إعدادات الدومين')}</h3>
+                                <p className="mt-1 text-[13px] text-[#6b7280]">
+                                    {t('عنوان متجرك على الإنترنت — وهو ما يُكتب في الفاتورة ويقرؤه محرّك البحث.')}
+                                </p>
+                            </div>
+                            {siteForm.data.site_enabled && siteForm.data.site_domain && (
+                                <Button variant="outline" size="sm" asChild>
+                                    <a
+                                        href={`https://${siteForm.data.site_domain}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <ExternalLink />
+                                        {t('فتح الموقع')}
+                                    </a>
+                                </Button>
+                            )}
+                        </div>
+
+                        <Field
+                            label="النطاق"
+                            hint="اكتب النطاق وحده بلا https:// — مثل: mystore.om"
+                            error={siteForm.errors.site_domain}
                         >
-                            <Save />
-                            {t('حفظ اللغة')}
-                        </Button>
-                    </div>
-                </Card>
+                            <Input
+                                dir="ltr"
+                                value={siteForm.data.site_domain}
+                                onChange={(e) => siteForm.setData('site_domain', e.target.value)}
+                                placeholder="mystore.om"
+                            />
+                        </Field>
+
+                        <div className="mt-5 border-t border-[var(--ui-border,#e8e8e8)] pt-5">
+                            <Toggle
+                                label="نشر الموقع"
+                                hint="حتى تُفعّله يبقى الموقع مغلقًا على الزوّار."
+                                on={siteForm.data.site_enabled}
+                                onChange={(v) => siteForm.setData('site_enabled', v)}
+                            />
+                        </div>
+
+                        {/* رقمٌ قبل النشر لا بعده: موقعٌ يُفتح على متجرٍ بلا
+                            منتجات يبدو مهجورًا لأوّل زائر، وأوّل انطباعٍ لا يتكرّر */}
+                        {siteForm.data.site_enabled && published === 0 && (
+                            <p className="mt-4 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#b45309]">
+                                {t('لا منتجات في متجرك بعد — الموقع سيُفتح على صفحةٍ فارغة.')}
+                            </p>
+                        )}
+
+                        <div className="mt-6 flex items-center justify-between gap-3">
+                            <p className="flex items-center gap-1.5 text-[12px] text-[#9ca3af]">
+                                <Globe className="size-3.5" />
+                                {t(':n منتجًا يظهر في الموقع', { n: number(published) })}
+                            </p>
+                            <Button type="submit" loading={siteForm.processing}>
+                                <Save />
+                                {t('حفظ التغييرات')}
+                            </Button>
+                        </div>
+                    </Card>
+                </form>
+            ) : tab === 'website' ? (
+                <form onSubmit={saveSite}>
+                    <Card className="p-6">
+                        <h3 className="mb-1 font-bold text-[#111]">{t('إعدادات الموقع')}</h3>
+                        <p className="mb-5 text-[13px] text-[#6b7280]">
+                            {t('ما يراه من يفتح متجرك — تعريفُه ووسائل التواصل وما يُعرض من أسعار وطلبات.')}
+                        </p>
+
+                        <div className="space-y-4">
+                            <Field label="الجملة التعريفية" error={siteForm.errors.site_tagline}>
+                                <Input
+                                    value={siteForm.data.site_tagline}
+                                    onChange={(e) => siteForm.setData('site_tagline', e.target.value)}
+                                    placeholder={t('أجود المنتجات بأفضل الأسعار')}
+                                />
+                            </Field>
+
+                            <Field label="نبذة عن المتجر" error={siteForm.errors.site_about}>
+                                <Textarea
+                                    rows={4}
+                                    value={siteForm.data.site_about}
+                                    onChange={(e) => siteForm.setData('site_about', e.target.value)}
+                                />
+                            </Field>
+                        </div>
+
+                        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <h3 className="mb-4 font-bold text-[#111]">{t('التواصل')}</h3>
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <Field label="واتساب" hint="بصيغة دولية بلا +" error={siteForm.errors.site_whatsapp}>
+                                    <Input
+                                        dir="ltr"
+                                        value={siteForm.data.site_whatsapp}
+                                        onChange={(e) => siteForm.setData('site_whatsapp', e.target.value)}
+                                        placeholder="96890000000"
+                                    />
+                                </Field>
+                                <Field label="إنستغرام" error={siteForm.errors.site_instagram}>
+                                    <Input
+                                        dir="ltr"
+                                        value={siteForm.data.site_instagram}
+                                        onChange={(e) => siteForm.setData('site_instagram', e.target.value)}
+                                        placeholder="mystore"
+                                    />
+                                </Field>
+                            </div>
+                            {/* بيانات المتجر مصدرها «بيانات النشاط» — تُعرض هنا ولا تُكرَّر إدخالًا */}
+                            <p className="mt-4 text-[12px] text-[#9ca3af]">
+                                {t('الاسم والهاتف والعنوان تُقرأ من «بيانات النشاط»')}: {business.name || '—'}
+                                {business.phone ? ` · ${business.phone}` : ''}
+                            </p>
+                        </div>
+
+                        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <h3 className="mb-4 font-bold text-[#111]">{t('ما يراه الزائر')}</h3>
+                            <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                <Toggle
+                                    label="عرض الأسعار"
+                                    hint="بإطفائه يُعرض المنتج بلا سعر ويُطلب السعر بالتواصل."
+                                    on={siteForm.data.site_show_prices}
+                                    onChange={(v) => siteForm.setData('site_show_prices', v)}
+                                />
+                                <Toggle
+                                    label="قبول الطلبات"
+                                    hint="الطلبات الواردة من الموقع تدخل قائمة المبيعات كغيرها."
+                                    on={siteForm.data.site_allow_orders}
+                                    onChange={(v) => siteForm.setData('site_allow_orders', v)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex justify-end">
+                            <Button type="submit" loading={siteForm.processing}>
+                                <Save />
+                                {t('حفظ التغييرات')}
+                            </Button>
+                        </div>
+                    </Card>
+                </form>
             ) : tab === 'custom-alerts' ? (
                 <CustomAlerts
                     alerts={customAlerts ?? []}
@@ -586,10 +736,80 @@ export default function SettingsIndex() {
                                         <Textarea rows={2} value={form.data.address} onChange={(e) => form.setData('address', e.target.value)} />
                                     </Field>
                                 </div>
+
+                                {/*
+                                    اللغة هنا لا في بطاقةٍ وحدها.
+
+                                    مفتاحٌ واحد بين خيارين كان يشغل بطاقةً في اللوحة
+                                    وصفحةً كاملة، وهو أوّل ما يُضبط مع اسم المتجر
+                                    وعنوانه ثمّ لا يُفتح مرّةً أخرى.
+
+                                    ويُحفظ بزرّه لا بزرّ النموذج: مساره آخر
+                                    (`admin.language.update`)، واتجاه المستند يُحسم
+                                    في قالب الجذر فتلزم إعادة تحميلٍ بعده — وجمعُهما
+                                    في زرٍّ واحد يعيد تحميل الصفحة على كل حفظ اسم.
+                                */}
+                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                                    <h3 className="mb-4 font-bold text-[#111]">{t('لغة النظام')}</h3>
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        {[
+                                            { code: 'ar', label: 'العربية', hint: 'من اليمين إلى اليسار (RTL)' },
+                                            { code: 'en', label: 'English', hint: 'من اليسار إلى اليمين (LTR)' },
+                                        ].map((l) => (
+                                            <label
+                                                key={l.code}
+                                                className={cn(
+                                                    'flex cursor-pointer items-center justify-between rounded-[12px] border px-4 py-3.5 transition',
+                                                    pickedLocale === l.code
+                                                        ? 'border-[#111] bg-[#fafafa]'
+                                                        : 'border-[var(--ui-border,#e8e8e8)] hover:bg-[#fafafa]',
+                                                )}
+                                            >
+                                                <span>
+                                                    <span className="block text-sm font-medium text-[#111]">{l.label}</span>
+                                                    <span className="block text-[12px] text-[#9ca3af]">{t(l.hint)}</span>
+                                                </span>
+                                                <input
+                                                    type="radio"
+                                                    name="locale"
+                                                    checked={pickedLocale === l.code}
+                                                    onChange={() => setPickedLocale(l.code)}
+                                                    className="size-5"
+                                                />
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <div className="mt-4 flex justify-end">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={pickedLocale === locale}
+                                            onClick={() =>
+                                                router.post(
+                                                    route('admin.language.update'),
+                                                    { locale: pickedLocale },
+                                                    { onSuccess: () => window.location.reload() },
+                                                )
+                                            }
+                                        >
+                                            <Languages />
+                                            {t('حفظ اللغة')}
+                                        </Button>
+                                    </div>
+                                </div>
                             </>
                         )}
 
-                        {tab === 'taxes' && (
+                        {/*
+                            المالية صفحةٌ واحدة لا ثلاث.
+
+                            الضريبة والعملة وطرق الدفع كانت ثلاث بطاقاتٍ وثلاث
+                            صفحات، وهي تُضبط في جلسةٍ واحدة عند تجهيز المتجر ثمّ
+                            لا تُفتح إلا نادرًا. وثلاثُ نقراتٍ لثمانية حقول
+                            تُفرّق ما يُقرأ معًا: نسبة الضريبة بلا خانات العملة
+                            العشرية نصفُ الجواب.
+                        */}
+                        {tab === 'finance' && (
                             <>
                                 <h3 className="mb-4 font-bold text-[#111]">{t('الضرائب')}</h3>
                                 <Toggle
@@ -616,49 +836,45 @@ export default function SettingsIndex() {
                                         />
                                     </Field>
                                 </div>
-                            </>
-                        )}
 
-                        {tab === 'currency' && (
-                            <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('العملة')}</h3>
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <Field label="العملة" error={form.errors.currency}>
-                                        <Input dir="ltr" value={form.data.currency} onChange={(e) => form.setData('currency', e.target.value)} />
-                                    </Field>
-                                    <Field label="عدد الخانات العشرية" error={form.errors.decimals}>
-                                        <Select
-                                            value={form.data.decimals}
-                                            onChange={(e) => form.setData('decimals', e.target.value)}
-                                            options={[0, 1, 2, 3].map((n) => ({ label: String(n), value: n }))}
-                                        />
-                                    </Field>
-                                    <Field label="موضع الرمز" error={form.errors.symbol_pos}>
-                                        <Select
-                                            value={form.data.symbol_pos}
-                                            onChange={(e) => form.setData('symbol_pos', e.target.value)}
-                                            options={[
-                                                { label: 'بعد المبلغ', value: 'after' },
-                                                { label: 'قبل المبلغ', value: 'before' },
-                                            ]}
-                                        />
-                                    </Field>
+                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                                    <h3 className="mb-4 font-bold text-[#111]">{t('العملة')}</h3>
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <Field label="العملة" error={form.errors.currency}>
+                                            <Input dir="ltr" value={form.data.currency} onChange={(e) => form.setData('currency', e.target.value)} />
+                                        </Field>
+                                        <Field label="عدد الخانات العشرية" error={form.errors.decimals}>
+                                            <Select
+                                                value={form.data.decimals}
+                                                onChange={(e) => form.setData('decimals', e.target.value)}
+                                                options={[0, 1, 2, 3].map((n) => ({ label: String(n), value: n }))}
+                                            />
+                                        </Field>
+                                        <Field label="موضع الرمز" error={form.errors.symbol_pos}>
+                                            <Select
+                                                value={form.data.symbol_pos}
+                                                onChange={(e) => form.setData('symbol_pos', e.target.value)}
+                                                options={[
+                                                    { label: 'بعد المبلغ', value: 'after' },
+                                                    { label: 'قبل المبلغ', value: 'before' },
+                                                ]}
+                                            />
+                                        </Field>
+                                    </div>
                                 </div>
-                            </>
-                        )}
 
-                        {tab === 'payments' && (
-                            <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('طرق الدفع')}</h3>
-                                {PAYMENT_METHODS.map((m) => (
-                                    <Toggle
-                                        key={m.key}
-                                        on={form.data[m.key]}
-                                        onChange={(v) => form.setData(m.key, v)}
-                                        label={m.label}
-                                        hint={m.hint}
-                                    />
-                                ))}
+                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                                    <h3 className="mb-4 font-bold text-[#111]">{t('طرق الدفع')}</h3>
+                                    {PAYMENT_METHODS.map((m) => (
+                                        <Toggle
+                                            key={m.key}
+                                            on={form.data[m.key]}
+                                            onChange={(v) => form.setData(m.key, v)}
+                                            label={m.label}
+                                            hint={m.hint}
+                                        />
+                                    ))}
+                                </div>
                             </>
                         )}
 
@@ -707,27 +923,6 @@ export default function SettingsIndex() {
                             </>
                         )}
 
-                        {tab === 'invoices' && (
-                            <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('الفواتير')}</h3>
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <Field label="بادئة رقم الفاتورة" error={form.errors.inv_prefix}>
-                                        <Input dir="ltr" value={form.data.inv_prefix} onChange={(e) => form.setData('inv_prefix', e.target.value)} />
-                                    </Field>
-                                    <Field
-                                        label="رقم البداية"
-                                        error={form.errors.inv_start}
-                                        hint="يسري على أوّل فاتورةٍ بالبادئة الجديدة، ولا يمسّ ما صدر"
-                                    >
-                                        <Input type="number" min="1" dir="ltr" value={form.data.inv_start} onChange={(e) => form.setData('inv_start', e.target.value)} />
-                                    </Field>
-                                </div>
-                                <p className="mt-3 text-[12px] text-[#9ca3af]">
-                                    {t('شعار الفاتورة يُضبط من «قوالب الفواتير» — كان هنا مفتاحٌ ثانٍ لا يقرؤه شيء.')}
-                                </p>
-                            </>
-                        )}
-
                         {tab === 'templates' && (
                             <>
                                 {/*
@@ -744,6 +939,29 @@ export default function SettingsIndex() {
 
                                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_260px]">
                                     <div className="space-y-4">
+                                        {/*
+                                            الترقيم هنا لا في قسمٍ آخر.
+
+                                            كان «الفواتير» بطاقةً حقلاها بادئة
+                                            الرقم وأوّله، و«الطباعة» بطاقةً حقلها
+                                            مقاس الورق — وكلاهما يُقرأ في المعاينة
+                                            على اليمين: رقم الفاتورة يظهر فيها،
+                                            والمقاس مكتوبٌ تحتها. فمن يضبطهما بعيدًا
+                                            عنها يضبطهما بلا أن يرى أثرهما.
+                                        */}
+                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                            <Field label="بادئة رقم الفاتورة" error={form.errors.inv_prefix}>
+                                                <Input dir="ltr" value={form.data.inv_prefix} onChange={(e) => form.setData('inv_prefix', e.target.value)} />
+                                            </Field>
+                                            <Field
+                                                label="رقم البداية"
+                                                error={form.errors.inv_start}
+                                                hint="يسري على أوّل فاتورةٍ بالبادئة الجديدة، ولا يمسّ ما صدر"
+                                            >
+                                                <Input type="number" min="1" dir="ltr" value={form.data.inv_start} onChange={(e) => form.setData('inv_start', e.target.value)} />
+                                            </Field>
+                                        </div>
+
                                         <Field
                                             label="سطر تحت اسم المتجر"
                                             hint="شعار أو عبارة ترحيب — يُترك فارغًا فلا يظهر"
@@ -781,7 +999,7 @@ export default function SettingsIndex() {
                                             </Field>
                                             <Field
                                                 label="مقاس الورق"
-                                                hint="نفس إعداد قسم «الطباعة»"
+                                                hint="الإيصال الحراري 80 أو 58 ملم، والفاتورة على A4"
                                                 error={form.errors.paper}
                                             >
                                                 <Select
@@ -870,32 +1088,13 @@ export default function SettingsIndex() {
                                         <p className="mt-2 text-[11px] text-[#9ca3af]">
                                             {t('معاينة تقريبية — الشكل النهائي على ورق')} {form.data.paper}
                                         </p>
+                                        {/* كانت هذه الجملة في قسم «الطباعة» المستقلّ، فانتقلت
+                                            معه: من يبحث عن الطباعة التلقائية يبحث هنا الآن */}
+                                        <p className="mt-3 text-[11px] leading-relaxed text-[#9ca3af]">
+                                            {t('الطباعة التلقائية بعد البيع تُضبط لكل طابعة من «الأجهزة» — لأن الصندوق الذي فيه طابعة يطبع، وغيره لا.')}
+                                        </p>
                                     </div>
                                 </div>
-                            </>
-                        )}
-
-                        {tab === 'printing' && (
-                            <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('الطباعة')}</h3>
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <Field label="مقاس الورق" error={form.errors.paper}>
-                                        <Select
-                                            value={form.data.paper}
-                                            onChange={(e) => form.setData('paper', e.target.value)}
-                                            options={[
-                                                { label: '80mm', value: '80mm' },
-                                                { label: '58mm', value: '58mm' },
-                                                { label: 'A4', value: 'A4' },
-                                            ]}
-                                        />
-                                    </Field>
-                                </div>
-                                {/* الطباعة التلقائية تعمل من «الأجهزة» لكلّ طابعة على حدة —
-                                    وكان هنا مفتاحٌ ثالث لا يقرؤه شيء، فيُطفئه التاجر وتطبع. */}
-                                <p className="mt-3 text-[12px] text-[#9ca3af]">
-                                    {t('الطباعة التلقائية بعد البيع تُضبط لكل طابعة من «الأجهزة» — لأن الصندوق الذي فيه طابعة يطبع، وغيره لا.')}
-                                </p>
                             </>
                         )}
 
@@ -920,69 +1119,6 @@ export default function SettingsIndex() {
                                     label="ملخّص الأداء اليومي"
                                     hint="يصل آخر اليوم بمبيعات اليوم وأبرز أرقامه."
                                 />
-                            </>
-                        )}
-
-                        {tab === 'shifts' && (
-                            <>
-                                <h3 className="mb-2 font-bold text-[#111]">{t('وردية الصندوق')}</h3>
-                                <p className="mb-5 text-[13px] text-[#6b7280]">
-                                    {t('الوردية تُحسب وتُقفل دائمًا. هذا المفتاح يقرّر هل تمنع البيع أيضًا.')}
-                                </p>
-                                <Toggle
-                                    on={form.data.require_open_shift}
-                                    onChange={(v) => form.setData('require_open_shift', v)}
-                                    label="امنع البيع بلا وردية مفتوحة"
-                                    hint="بتفعيله لا تُقبل بيعة قبل فتح الوردية — كاشير ينسى الفتح يوقف الصندوق."
-                                />
-                                <p className="mt-4 flex items-start gap-2 rounded-[12px] bg-[#fffbeb] px-3 py-2.5 text-[12px] text-[#b45309]">
-                                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                                    <span>
-                                        {t('فعّله بعد أن يعتاد موظفوك فتح الوردية كل صباح — لا قبل ذلك.')}
-                                    </span>
-                                </p>
-
-                                {/* الوردية المنسيّة تبتلع مبيعات اليوم التالي — والسقف بالساعات
-                                    لا باليوم التقويميّ، فوردية تبدأ العاشرة مساءً شرعيّة */}
-                                <div className="mt-6 max-w-xs">
-                                    <Field
-                                        label="أقصى مدّة للوردية (ساعات)"
-                                        error={form.errors.shift_max_hours}
-                                        hint="ما تجاوزها يُعدّ منسيًّا فيُقفل تلقائيًّا بلا عدّ — وفرقُه يبقى مجهولًا لا صفرًا"
-                                    >
-                                        <Input
-                                            type="number"
-                                            min="1"
-                                            max="72"
-                                            dir="ltr"
-                                            value={form.data.shift_max_hours}
-                                            onChange={(e) => form.setData('shift_max_hours', e.target.value)}
-                                        />
-                                    </Field>
-                                </div>
-                            </>
-                        )}
-
-                        {tab === 'loyalty' && (
-                            <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('نقاط الولاء')}</h3>
-                                <Toggle
-                                    on={form.data.loyalty_enabled}
-                                    onChange={(v) => form.setData('loyalty_enabled', v)}
-                                    label="تفعيل برنامج الولاء"
-                                    hint="100 نقطة = وحدة عملة واحدة عند الاستبدال"
-                                />
-                                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                    <Field label="نقاط لكل وحدة شراء" error={form.errors.loyalty_earn_rate}>
-                                        <Input type="number" min="0" dir="ltr" value={form.data.loyalty_earn_rate} onChange={(e) => form.setData('loyalty_earn_rate', e.target.value)} />
-                                    </Field>
-                                    <Field label="أقصى نسبة استبدال (%)" error={form.errors.loyalty_redeem_max_pct}>
-                                        <Input type="number" min="0" max="100" dir="ltr" value={form.data.loyalty_redeem_max_pct} onChange={(e) => form.setData('loyalty_redeem_max_pct', e.target.value)} />
-                                    </Field>
-                                    <Field label="الحد الأدنى لبدء الاستبدال" error={form.errors.loyalty_redeem_min}>
-                                        <Input type="number" min="0" dir="ltr" value={form.data.loyalty_redeem_min} onChange={(e) => form.setData('loyalty_redeem_min', e.target.value)} />
-                                    </Field>
-                                </div>
                             </>
                         )}
 

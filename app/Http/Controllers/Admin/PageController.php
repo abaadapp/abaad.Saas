@@ -303,6 +303,19 @@ class PageController extends Controller
                 'email' => $b?->email,
                 'address' => $b?->address,
             ],
+            /*
+             * إعدادات الموقع والنطاق — انتقلت من «أدوات التسويق» إلى هنا.
+             *
+             * والنطاق إعدادُ متجرٍ لا أداةُ تسويق: يُكتب مرّةً عند التجهيز ثمّ
+             * تقرؤه شاشة السيو ورابط «الموقع» في الترويسة. وكان يُطلب من
+             * قسمٍ لا يفتحه إلا من يبحث عن الكوبونات.
+             *
+             * وتُرسل دائمًا لا عند طلب قسمها: ثمانية مفاتيح نصّية، وطلبُها
+             * برحلةٍ إلى الخادم أغلى من إرسالها.
+             */
+            'site' => \App\Support\MarketingSettings::group(Demo::bid(), 'website'),
+            // رقمٌ يقول إن كان الموقع سيُفتح على صفحةٍ فارغة
+            'published' => \App\Models\Product::where('business_id', Demo::bid())->count(),
             // القائمة الكاملة — تبويب «التنبيهات المرسلة» يعرضها بلا اختصار
             'notificationsAll' => Demo::allNotifications(),
             'customAlerts' => \App\Models\CustomAlert::where('business_id', Demo::bid())
@@ -389,6 +402,7 @@ class PageController extends Controller
             ),
             'activity' => \App\Http\Controllers\ActivityController::adminData($request),
             'trash' => \App\Http\Controllers\Admin\TrashController::panelData(),
+            'chart' => \App\Http\Controllers\Admin\Finance\ChartController::panelData(Demo::bid()),
             default => [],
         };
     }

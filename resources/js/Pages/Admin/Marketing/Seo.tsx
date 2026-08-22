@@ -54,8 +54,8 @@ export default function Seo() {
                 <div className="mb-6 rounded-[12px] border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#b45309]">
                     {t('الموقع الإلكتروني غير منشور — هذه الإعدادات لا أثر لها حتى تنشره.')}{' '}
                     <SmartLink
-                        routeName="admin.marketing.website"
-                        href={route('admin.marketing.website')}
+                        routeName="admin.settings.index"
+                        href={route('admin.settings.index', { section: 'domain' })}
                         className="underline"
                     >
                         {t('الذهاب إلى الموقع')}

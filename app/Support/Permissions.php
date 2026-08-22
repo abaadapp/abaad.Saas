@@ -111,7 +111,7 @@ class Permissions
     public const ROUTES = [
         'dashboard' => 'admin.dashboard', 'customers' => 'admin.customers.index',
         'products' => 'admin.products.index', 'orders' => 'admin.orders.index',
-        'marketing' => 'admin.marketing.website', 'inventory' => 'admin.inventory.index',
+        'marketing' => 'admin.marketing.loyalty', 'inventory' => 'admin.inventory.index',
         'finance' => 'admin.finance.index', 'expenses' => 'admin.expenses.index',
         'settings' => 'admin.settings.index', 'suppliers' => 'admin.suppliers.index',
         'purchases' => 'admin.purchases.index', 'employees' => 'admin.employees.index',

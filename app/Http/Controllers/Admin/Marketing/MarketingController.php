@@ -25,23 +25,6 @@ class MarketingController extends Controller
 
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
-    public function website(): Response
-    {
-        $bid = $this->bid();
-        $business = Business::find($bid);
-
-        return Inertia::render('Admin/Marketing/Website', [
-            'settings' => MarketingSettings::group($bid, 'website'),
-            'store' => [
-                'name' => $business?->name,
-                'phone' => $business?->phone,
-                'address' => $business?->address,
-            ],
-            // ما يُعرض على الموقع فعلًا — رقمٌ يقول إن كان الموقع سيبدو فارغًا
-            'published' => \App\Models\Product::where('business_id', $bid)->count(),
-        ]);
-    }
-
     public function saveWebsite(Request $request)
     {
         $data = $request->validate([

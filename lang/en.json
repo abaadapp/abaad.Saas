@@ -2909,5 +2909,12 @@
     "الشعار صورة — PNG أو JPG أو WEBP": "The logo must be an image — PNG, JPG or WEBP",
     "أقصى حجمٍ للشعار ٢ ميغابايت": "The logo may not exceed 2 MB",
     "حُفظ الشعار": "Logo saved",
-    "حُذف الشعار": "Logo deleted"
+    "حُذف الشعار": "Logo deleted",
+    "إصلاحه في إعدادات الدومين": "Fix it in Domain settings",
+    "الأساسية": "Basics",
+    "الذهاب إلى إعدادات الدومين": "Go to Domain settings",
+    "ينشره صاحب النشاط من الإعدادات ‹ إعدادات الدومين.": "The business owner publishes it from Settings › Domain settings.",
+    "الطباعة التلقائية بعد البيع تُضبط لكل طابعة من «الأجهزة» — لأن الصندوق الذي فيه طابعة يطبع، وغيره لا.": "Automatic printing after a sale is set per printer under Devices — a register with a printer prints, others do not.",
+    "يبقى ظاهرًا في الفاتورة الضريبية دائمًا — بدونه لا يخصم المشتري ضريبته": "Always shown on the tax invoice — without it the buyer cannot reclaim their tax",
+    "يسري على أوّل فاتورةٍ بالبادئة الجديدة، ولا يمسّ ما صدر": "Applies to the first invoice under the new prefix; already-issued ones are untouched"
 }

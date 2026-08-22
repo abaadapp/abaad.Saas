@@ -403,7 +403,18 @@ class PageController extends Controller
             ),
             'activity' => \App\Http\Controllers\ActivityController::adminData($request),
             'trash' => \App\Http\Controllers\Admin\TrashController::panelData(),
-            'chart' => \App\Http\Controllers\Admin\Finance\ChartController::panelData(Demo::bid()),
+            /*
+             * الشجرة صلاحيتها «المالية» لا «الإعدادات».
+             *
+             * المسار هنا `admin.settings.index`، و`CheckAbility` يشتقّ القسم
+             * من اسم المسار — فلولا هذا الفحص لقرأ كلُّ من يملك الإعدادات
+             * أرصدةَ الدفتر وميزانَ المراجعة من بابٍ خلفيّ، وهو ما يُمنع منه
+             * في `‎/finance/chart‎` نفسه. والأزرار بعدها ترفض بـ403: شاشةٌ
+             * تُعرض ولا يعمل فيها شيء.
+             */
+            'chart' => $request->user()?->allows('finance')
+                ? \App\Http\Controllers\Admin\Finance\ChartController::panelData(Demo::bid())
+                : [],
             default => [],
         };
     }

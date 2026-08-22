@@ -126,8 +126,11 @@ const TAB_KEYS = NAV.flatMap((g) => g.items.map((i) => i.key)) as readonly TabKe
  * القسم المطلوب من عنوان الصفحة.
  *
  * موضعان: `?section=branches` لأقسام النظام لأن الخادم يحتاج أن يقرأه،
- * و`#taxes` لبقيّتها. وكلاهما يُفتح مباشرةً، فرابطٌ مثل «أضِف الرقم الضريبي
+ * و`#finance` لبقيّتها. وكلاهما يُفتح مباشرةً، فرابطٌ مثل «أضِف الرقم الضريبي
  * من الإعدادات» في صفحة الضريبة يُنزل المستخدم في قسم الضريبة لا في اللوحة.
+ *
+ * والمعامل يُقدَّم على المرساة: هو وحده يصل الخادم، فلو غلبته المرساة لعُرض
+ * قسمٌ بلا البيانات التي يحتاجها.
  *
  * والقيمة الغريبة تعود إلى اللوحة (null) بدل أن تُظهر قسمًا فارغًا.
  */
@@ -178,7 +181,11 @@ export default function SettingsIndex() {
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
+    const { auth } = usePage<PageProps>().props;
     const t = useTranslate();
+    const abilities = auth?.abilities ?? [];
+    const visible = (item: { key: string }) => item.key !== 'chart' || abilities.includes('finance');
+
     const [tab, setTab] = useState<TabKey | null>(tabFromUrl);
 
     /*
@@ -188,6 +195,19 @@ export default function SettingsIndex() {
      * العنوان ولا يغيّر المعروض: لا تركيب جديد فلا قراءة جديدة. ومن ضغط
      * الزرّ وهو واقفٌ على الإعدادات لا يرى شيئًا يتحرّك.
      */
+    /*
+     * وما لا يُعرض لا يُفتح ولو كُتب في العنوان.
+     *
+     * إخفاء البطاقة يمنع النقر لا الكتابة: من يعرف `#chart` يكتبها. والخادم
+     * لا يرسل بياناتها له، فتُرسم شجرةٌ فارغة تقول «لا حسابات» — وهي كذبة:
+     * الحسابات موجودة وهو لا يملك رؤيتها.
+     */
+    useEffect(() => {
+        if (tab === 'chart' && !abilities.includes('finance')) {
+            goHub();
+        }
+    }, [tab, abilities]);
+
     useEffect(() => {
         const sync = () => setTab(tabFromUrl());
         window.addEventListener('hashchange', sync);
@@ -224,10 +244,20 @@ export default function SettingsIndex() {
         }
 
         setTab(tabKey);
-        // العنوان يتبع القسم المفتوح، فيبقى قابلًا للنسخ والمشاركة وإعادة
-        // التحميل. replaceState لا pushState: التنقّل بين الأقسام ليس تصفّحًا
-        // يستحقّ أن يمتلئ به زرّ الرجوع.
-        window.history.replaceState(null, '', `#${key}`);
+        /*
+         * العنوان يتبع القسم المفتوح، فيبقى قابلًا للنسخ والمشاركة وإعادة
+         * التحميل. replaceState لا pushState: التنقّل بين الأقسام ليس تصفّحًا
+         * يستحقّ أن يمتلئ به زرّ الرجوع.
+         *
+         * و`?section=` يُمحى معه، ولا يُكتفى بتبديل المرساة.
+         *
+         * `tabFromUrl` يقدّم المعامل على المرساة — فمن فتح «شجرة الحسابات»
+         * (‏?section=chart‎) ثمّ عاد إلى «بيانات النشاط» صار عنوانه
+         * ‎?section=chart#business‎: يقرأ صحيحًا الآن، فإذا حفظ عاد الخادم
+         * بـback() وقرأ المزامنُ المعاملَ فقفز به إلى الشجرة. يُحفظ ما كتب
+         * ويجد نفسه في شاشةٍ أخرى، فيظنّ الحفظ ضاع.
+         */
+        window.history.replaceState(null, '', `${window.location.pathname}#${key}`);
         // القسم يحلّ محلّ اللوحة كاملةً، فنبدأ المستخدم من رأسه لا من موضع
         // البطاقة التي نقرها.
         window.scrollTo({ top: 0 });
@@ -240,6 +270,14 @@ export default function SettingsIndex() {
         window.scrollTo({ top: 0 });
     };
 
+    /*
+     * بطاقةٌ لا تُعرض لمن لا يملك قسمها.
+     *
+     * «شجرة الحسابات» صلاحيتها «المالية»: تُفتح من هنا بمسار الإعدادات، فلا
+     * يحرسها `CheckAbility` — يشتقّ القسم من اسم المسار وهو `settings`.
+     * فيُحرس في الموضعين: الخادم لا يحسبها، والشاشة لا تعرض بابها. وإخفاء
+     * الباب وحده تجميل، وحجبُ البيانات وحده يترك بطاقةً تفتح على فراغ.
+     */
     const get = (k: string, fallback = '') => settings[k] ?? fallback;
     const on = (k: string, fallback = '1') => (settings[k] ?? fallback) === '1';
 
@@ -399,7 +437,7 @@ export default function SettingsIndex() {
                         <section key={g.group}>
                             <h3 className="mb-3 text-[13px] font-semibold text-[#6b7280]">{t(g.group)}</h3>
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {g.items.map((x) => {
+                                {g.items.filter(visible).map((x) => {
                                     const body = (
                                         <>
                                             <span className="flex size-[52px] shrink-0 items-center justify-center rounded-[14px] bg-[#f5f5f4] text-[#111] transition-colors group-hover:bg-[#111] group-hover:text-white">
@@ -522,6 +560,26 @@ export default function SettingsIndex() {
                             { key: 'display', label: 'ما يراه الزائر', icon: Eye },
                         ]}
                     />
+
+                    {/*
+                        النموذج يُرسل الحقول الثمانية من أي تبويب، والنطاق حقلٌ
+                        في بطاقةٍ أخرى — فخطؤه يقع حيث لا يراه من ضغط «حفظ»
+                        هنا: لا شيء يتحرّك، ولا رسالة، فيُعاد الضغط.
+                    */}
+                    {siteForm.errors.site_domain && (
+                        <p className="flex flex-wrap items-center gap-2 rounded-[12px] bg-[#fef2f2] px-4 py-3 text-[13px] text-[#b91c1c]">
+                            <AlertTriangle className="size-4 shrink-0" />
+                            <span>{siteForm.errors.site_domain}</span>
+                            <Button
+                                type="button"
+                                variant="link"
+                                size="sm"
+                                onClick={() => pick('domain')}
+                            >
+                                {t('إصلاحه في إعدادات الدومين')}
+                            </Button>
+                        </p>
+                    )}
 
                     {siteTab === 'basic' && (
                         <>

@@ -24,7 +24,8 @@ const TITLE_MAX = 60;
 const DESC_MAX = 160;
 
 export default function Seo() {
-    const { settings, domain, siteEnabled, storeName } = usePage<PageProps<Props>>().props;
+    const { settings, domain, siteEnabled, storeName, auth } = usePage<PageProps<Props>>().props;
+    const canSettings = auth?.abilities.includes('settings') ?? false;
     const t = useTranslate();
 
     const form = useForm({
@@ -53,13 +54,22 @@ export default function Seo() {
             {!siteEnabled && (
                 <div className="mb-6 rounded-[12px] border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#b45309]">
                     {t('الموقع الإلكتروني غير منشور — هذه الإعدادات لا أثر لها حتى تنشره.')}{' '}
-                    <SmartLink
-                        routeName="admin.settings.index"
-                        href={route('admin.settings.index', { section: 'domain' })}
-                        className="underline"
-                    >
-                        {t('الذهاب إلى الموقع')}
-                    </SmartLink>
+                    {/*
+                        النشر انتقل إلى الإعدادات، وصلاحيتُه «الإعدادات» لا
+                        «التسويق». فمن يملك هذه الشاشة وحدها لا يفتح تلك —
+                        ورابطٌ يقود إلى 403 أسوأ من جملةٍ تقول بمن يتّصل.
+                    */}
+                    {canSettings ? (
+                        <SmartLink
+                            routeName="admin.settings.index"
+                            href={route('admin.settings.index', { section: 'domain' })}
+                            className="underline"
+                        >
+                            {t('الذهاب إلى إعدادات الدومين')}
+                        </SmartLink>
+                    ) : (
+                        <span className="font-medium">{t('ينشره صاحب النشاط من الإعدادات ‹ إعدادات الدومين.')}</span>
+                    )}
                 </div>
             )}
 

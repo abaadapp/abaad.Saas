@@ -231,6 +231,62 @@ class SettingsLayoutTest extends TestCase
         $this->assertNotNull($this->business->fresh()->logo);
     }
 
+    /* ------------------------- صلاحية شجرة الحسابات ------------------------- */
+
+    /**
+     * الشجرة صلاحيتها «المالية» — والإعدادات ليست بابًا خلفيًّا إليها.
+     *
+     * `CheckAbility` يشتقّ القسم من اسم المسار، والمسار هنا
+     * `admin.settings.index` — أي «الإعدادات». فمن مُنع من `‎/finance/chart‎`
+     * كان يقرأ الأرصدة وميزان المراجعة من قسمٍ آخر بلا أن يُمنع.
+     */
+    public function test_the_chart_is_not_a_back_door_into_finance(): void
+    {
+        $clerk = User::create([
+            'business_id' => $this->business->id, 'name' => 'موظّف', 'email' => 'c@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'manager', 'status' => 'نشط',
+            'permissions' => ['settings'],
+        ]);
+
+        // البابُ الأماميّ مقفل
+        $this->actingAs($clerk)->get(route('admin.finance.chart'))->assertForbidden();
+
+        // والخلفيّ كذلك: القسم يُفتح ولا بيانات فيه
+        $props = $this->actingAs($clerk)
+            ->get(route('admin.settings.index', ['section' => 'chart']))
+            ->assertOk()->viewData('page')['props'];
+
+        $this->assertArrayNotHasKey('accounts', $props, 'أرصدة الدفتر تسرّبت عبر الإعدادات');
+    }
+
+    /** ومن يملك المالية يقرأها من القسمين */
+    public function test_the_owner_reads_the_chart_from_settings(): void
+    {
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.settings.index', ['section' => 'chart']))
+            ->assertOk()->viewData('page')['props'];
+
+        $this->assertNotEmpty($props['accounts']);
+    }
+
+    /* --------------------------- عنوان الصفحة --------------------------- */
+
+    /**
+     * فتحُ قسمٍ يمحو `?section=` ولا يكتفي بتبديل المرساة.
+     *
+     * `tabFromUrl` يقدّم المعامل على المرساة، فلو بقي لصار عنوانُ من فتح
+     * الشجرة ثمّ عاد إلى بيانات النشاط `?section=chart#business` — يقرأ
+     * صحيحًا، حتى إذا حفظ عاد الخادم بـback() فقفز به المزامنُ إلى الشجرة.
+     */
+    public function test_opening_a_section_clears_the_server_section_param(): void
+    {
+        $this->assertStringContainsString(
+            'replaceState(null, \'\', `${window.location.pathname}#${key}`)',
+            $this->screen(),
+            'المرساة تُبدَّل والمعامل يبقى، فيغلبه عند أوّل حفظ',
+        );
+    }
+
     /* ---------------------------- بوّابة الوردية ---------------------------- */
 
     /**

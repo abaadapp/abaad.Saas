@@ -558,6 +558,14 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
     Route::get('/orders', [\App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
+    /*
+     * تصحيح بندٍ في فاتورة — لا إلغاء لها.
+     *
+     * الكاشير يُخطئ أمام الزبون فيُصلح، والأثر يبقى: ما كان وما صار ومن
+     * غيّره ولماذا. والكتابة كلّها في `App\Support\OrderCorrection`.
+     * ويسبق مسارَ العرض: «orders/{number}» يبتلع ما بعده لو تأخّر.
+     */
+    Route::put('/orders/{number}/items/{item}', [\App\Http\Controllers\Pos\OrderEditController::class, 'update'])->name('orders.items.update');
     Route::get('/orders/{number}', [\App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
     // المدفوعات تسقط على صلاحية finance لا pos (انظر sectionFromRoute):
     // شاشةٌ مالية تعرض حصيلة الصندوق، فيراها صاحب النشاط والمدير والمحاسب

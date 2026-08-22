@@ -1,9 +1,13 @@
-import { usePage } from '@inertiajs/react';
-import { ArrowRight, Printer } from 'lucide-react';
+import { type FormEvent, useState } from 'react';
+import { useForm, usePage } from '@inertiajs/react';
+import { ArrowRight, Pencil, Printer, Trash2 } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import Field from '@/Components/Field';
+import { Input } from '@/Components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -36,11 +40,25 @@ interface OrderDetail {
     total: number;
     notes: string | null;
     items: OrderItem[];
+    edits: OrderEdit[];
+}
+
+/** أثرُ تصحيحٍ وقع على هذه الفاتورة — يُعرض ولا يُخفى */
+interface OrderEdit {
+    item_name: string;
+    qty_before: number;
+    qty_after: number;
+    total_before: number;
+    total_after: number;
+    reason: string;
+    by: string;
+    at: string;
 }
 
 export default function PosOrderDetails() {
     const { order, context } = usePage<PageProps<{ order: OrderDetail }>>().props;
     const t = useTranslate();
+    const [editing, setEditing] = useState<OrderItem | null>(null);
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -94,6 +112,7 @@ export default function PosOrderDetails() {
                                         <TableHead className="text-center">{t('الكمية')}</TableHead>
                                         <TableHead className="text-end">{t('السعر')}</TableHead>
                                         <TableHead className="text-end">{t('الإجمالي')}</TableHead>
+                                        <TableHead className="text-end">{t('تصحيح')}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -108,6 +127,16 @@ export default function PosOrderDetails() {
                                             <TableCell className="text-center tabular-nums">{it.qty}</TableCell>
                                             <TableCell className="text-end tabular-nums">{m(it.price)}</TableCell>
                                             <TableCell className="text-end tabular-nums font-medium">{m(it.total)}</TableCell>
+                                            <TableCell className="text-end">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    aria-label={t('تصحيح البند')}
+                                                    onClick={() => setEditing(it)}
+                                                >
+                                                    <Pencil />
+                                                </Button>
+                                            </TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -173,6 +202,135 @@ export default function PosOrderDetails() {
                     </div>
                 </div>
             </div>
+
+                {/*
+                    سجلّ التصحيحات — يُعرض في الشاشة نفسها لا في مكانٍ بعيد.
+                    من يقرأ فاتورةً نقص إجماليّها يسأل «لماذا؟» في اللحظة
+                    نفسها، والجواب تحتها لا في تقريرٍ آخر.
+                */}
+                {order.edits.length > 0 && (
+                    <Card className="mt-4">
+                        <CardHeader>
+                            <CardTitle>{t('تصحيحات على هذه الفاتورة')}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex flex-col gap-3 text-[13px]">
+                            {order.edits.map((e, i) => (
+                                <div
+                                    key={i}
+                                    className="flex flex-col gap-1 rounded-[10px] bg-[#fafafa] p-3 sm:flex-row sm:items-start sm:justify-between"
+                                >
+                                    <div className="min-w-0">
+                                        <p className="font-medium text-[#111]">
+                                            {e.qty_after === 0
+                                                ? `${t('حُذف')} «${e.item_name}»`
+                                                : `«${e.item_name}» ${e.qty_before} ← ${e.qty_after}`}
+                                        </p>
+                                        <p className="text-gray-500">{e.reason}</p>
+                                    </div>
+                                    <div className="shrink-0 text-end text-[12px] text-gray-400">
+                                        <p className="tabular-nums">
+                                            {m(e.total_before)} ← {m(e.total_after)}
+                                        </p>
+                                        <p>
+                                            {e.by} · <span dir="ltr">{e.at}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {editing && (
+                    <EditItemDialog
+                        orderNumber={order.id}
+                        item={editing}
+                        onClose={() => setEditing(null)}
+                    />
+                )}
         </PosLayout>
+    );
+}
+
+function EditItemDialog({
+    orderNumber,
+    item,
+    onClose,
+}: {
+    orderNumber: string;
+    item: OrderItem;
+    onClose: () => void;
+}) {
+    const t = useTranslate();
+    const form = useForm({ quantity: String(item.qty), reason: '' });
+
+    const submit = (e: FormEvent) => {
+        e.preventDefault();
+        form.put(route('pos.orders.items.update', [orderNumber, item.id]), {
+            preserveScroll: true,
+            onSuccess: () => onClose(),
+        });
+    };
+
+    const removing = Number(form.data.quantity) === 0;
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>
+                        {t('تصحيح')} «{item.name}»
+                    </DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={submit} className="space-y-4 px-5 pb-5">
+                    <Field
+                        label="الكمية الصحيحة"
+                        required
+                        hint="صفرٌ يحذف البند من الفاتورة"
+                        error={form.errors.quantity}
+                    >
+                        <Input
+                            type="number"
+                            min="0"
+                            dir="ltr"
+                            required
+                            value={form.data.quantity}
+                            onChange={(e) => form.setData('quantity', e.target.value)}
+                        />
+                    </Field>
+
+                    {/* السبب مطلوب: تصحيحٌ بلا سببٍ سطرٌ لا يُدقَّق */}
+                    <Field
+                        label="سبب التصحيح"
+                        required
+                        hint="يُقرأ في سجلّ الفاتورة — اكتب ما يفهمه غيرك"
+                        error={form.errors.reason}
+                    >
+                        <Input
+                            required
+                            minLength={3}
+                            placeholder={t('مثال: أدخلتُ الكمية خطأً')}
+                            value={form.data.reason}
+                            onChange={(e) => form.setData('reason', e.target.value)}
+                        />
+                    </Field>
+
+                    <p className="rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]">
+                        {t('يُعاد المخزون وتُحتسب الضريبة والنقاط من جديد، ويبقى هذا التصحيح مقيَّدًا باسمك في سجلّ الفاتورة.')}
+                    </p>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                        <Button type="button" variant="outline" onClick={onClose}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button type="submit" loading={form.processing}>
+                            {removing ? <Trash2 /> : <Pencil />}
+                            {t(removing ? 'حذف البند' : 'حفظ التصحيح')}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
     );
 }

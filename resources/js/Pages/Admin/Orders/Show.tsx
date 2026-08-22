@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { Calendar, FileText, Landmark, User } from 'lucide-react';
+import { Calendar, FileText, Landmark, PencilLine, User } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import { Badge } from '@/Components/ui/badge';
@@ -32,6 +32,17 @@ interface OrderDetail {
     delivery: number;
     total: number;
     items: { name: string; qty: number; price: number; total: number }[];
+    /** تصحيحات وقعت على الفاتورة بعد بيعها — انظر App\Support\OrderCorrection */
+    edits: {
+        item_name: string;
+        qty_before: number;
+        qty_after: number;
+        total_before: number;
+        total_after: number;
+        reason: string;
+        by: string;
+        at: string;
+    }[];
 }
 
 export default function OrderShow() {
@@ -161,6 +172,37 @@ export default function OrderShow() {
                         <Card className="p-6">
                             <h3 className="mb-3 font-bold text-[#111]">{t('ملاحظات الطلب')}</h3>
                             <p className="text-sm leading-relaxed text-[#4b4b4b]">{order.notes}</p>
+                        </Card>
+                    )}
+
+                    {/*
+                        ما غُيّر في هذه الفاتورة بعد بيعها.
+                        فاتورةٌ نقص إجماليّها تُسأل «لماذا؟» عند قراءتها، فالجواب
+                        بجانبها لا في سجلّ نشاطٍ يُفتح بقصد ويُبحث فيه.
+                    */}
+                    {order.edits.length > 0 && (
+                        <Card className="p-6">
+                            <h3 className="mb-3 flex items-center gap-2 font-bold text-[#111]">
+                                <PencilLine className="size-4 text-[#b45309]" />
+                                {t('تصحيحات بعد البيع')}
+                            </h3>
+                            <ul className="flex flex-col gap-3 text-sm">
+                                {order.edits.map((e, i) => (
+                                    <li key={i} className="rounded-[10px] bg-[#fffbeb] p-3">
+                                        <p className="font-medium text-[#111]">
+                                            {e.qty_after === 0
+                                                ? `${t('حُذف')} «${e.item_name}»`
+                                                : `«${e.item_name}» ${e.qty_before} ← ${e.qty_after}`}
+                                        </p>
+                                        <p className="mt-0.5 text-[#92400e]">{e.reason}</p>
+                                        <p className="mt-1 text-[12px] text-[#a16207]">
+                                            {money(e.total_before, currency)} ← {money(e.total_after, currency)}
+                                            {' · '}
+                                            {e.by} · <span dir="ltr">{e.at}</span>
+                                        </p>
+                                    </li>
+                                ))}
+                            </ul>
                         </Card>
                     )}
                 </div>

@@ -827,7 +827,28 @@ class Demo
             'total' => (float) $o->total,
             'notes' => $o->notes,
             'items' => $items,
+            'edits' => self::orderEdits($o->id),
         ];
+    }
+
+    /**
+     * تصحيحات فاتورةٍ بعينها — تُقرأ في شاشتي الكاشير وصاحب النشاط معًا.
+     *
+     * فاتورةٌ نقص إجماليّها تُسأل «لماذا؟» في اللحظة نفسها، فالجواب يُعرض
+     * تحتها لا في تقريرٍ آخر يُفتح بقصد.
+     */
+    public static function orderEdits(int $orderId): array
+    {
+        return \App\Models\OrderEdit::where('order_id', $orderId)->orderBy('id')->get()->map(fn ($e) => [
+            'item_name' => $e->item_name,
+            'qty_before' => (int) $e->qty_before,
+            'qty_after' => (int) $e->qty_after,
+            'total_before' => (float) $e->order_total_before,
+            'total_after' => (float) $e->order_total_after,
+            'reason' => $e->reason,
+            'by' => $e->employee_name ?? '—',
+            'at' => optional($e->created_at)->format('Y-m-d H:i') ?? '—',
+        ])->all();
     }
 
     public static function customers(): array

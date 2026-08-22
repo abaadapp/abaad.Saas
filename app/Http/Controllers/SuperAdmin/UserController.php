@@ -80,8 +80,19 @@ class UserController extends Controller
      */
     private static function blockedReason(User $user): ?string
     {
-        if (blank($user->email)) {
-            return __('بلا بريد — لا يستطيع تسجيل الدخول');
+        /*
+         * البابان لا بابٌ واحد.
+         *
+         * كان هذا الفحص يقيس البريد وحده فيقول عن كاشيرٍ بلا بريد «لا يستطيع
+         * تسجيل الدخول» — وهو يدخل صندوقه كل صباح برمزه. والنظام نفسه يقول
+         * غير ذلك: شاشة الموظفين تقبل الواحد منهما وتشترط أحدهما
+         * (`required_without:email`)، لأن الكاشير لا يدخل ببريد أصلًا.
+         *
+         * وتحذيرٌ يُطلق على حسابٍ سليم أسوأ من غيابه: من يقرؤه مرّةً ويجده
+         * كاذبًا لا يصدّقه حين يصدق.
+         */
+        if (blank($user->email) && blank($user->getRawOriginal('pin'))) {
+            return __('بلا بريد ولا رمز — لا باب يدخل منه');
         }
 
         if ($user->role !== 'super_admin' && ! $user->business_id) {

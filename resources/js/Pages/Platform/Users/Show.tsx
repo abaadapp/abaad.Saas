@@ -39,6 +39,8 @@ import type { PageProps } from '@/types';
 interface PlatformUser {
     id: number;
     business_id: number | null;
+    /** للكاشير بابٌ آخر: الرمز — فلا يُقاس دخولُه بالبريد وحده */
+    has_pin: boolean;
     name: string;
     email: string;
     phone: string | null;
@@ -74,12 +76,19 @@ export default function UserShow() {
     const [editing, setEditing] = useState(false);
     const active = user.status === 'نشط';
 
-    /* ما يمنع هذا الحساب من العمل — لا ما تقوله شارتُه */
-    const blocked = !user.email
-        ? t('هذا الحساب بلا بريد إلكتروني — لا يستطيع تسجيل الدخول. أضِف بريدًا من زرّ «تعديل».')
-        : user.role_key !== 'super_admin' && !user.business_id
-          ? t('هذا الحساب غير مربوط بنشاط تجاري — يدخل إلى نظام فارغ. اربطه من زرّ «تعديل».')
-          : null;
+    /*
+     * ما يمنع هذا الحساب من العمل — لا ما تقوله شارتُه.
+     *
+     * والبابان يُقاسان معًا: كاشيرٌ بلا بريدٍ يدخل صندوقه برمزه كل صباح،
+     * فوسمُه «لا يستطيع الدخول» تحذيرٌ كاذب — ومن يجده كاذبًا مرّةً لا
+     * يصدّقه حين يصدق.
+     */
+    const blocked =
+        !user.email && !user.has_pin
+            ? t('هذا الحساب بلا بريد ولا رمز دخول — لا باب يدخل منه. أضِف أحدهما.')
+            : user.role_key !== 'super_admin' && !user.business_id
+              ? t('هذا الحساب غير مربوط بنشاط تجاري — يدخل إلى نظام فارغ. اربطه من زرّ «تعديل».')
+              : null;
 
     const contact = [
         { label: 'البريد الإلكتروني', value: user.email },

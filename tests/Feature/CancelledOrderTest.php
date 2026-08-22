@@ -114,7 +114,6 @@ class CancelledOrderTest extends TestCase
         $this->order('ملغي', 900);
 
         $this->assertSame(100.0, (float) Demo::topSellingProducts(5, 'all')[0]['revenue']);
-        $this->assertSame(100.0, (float) Demo::topProducts('all')[0]['total']);
     }
 
     public function test_payment_distribution_leaves_it_out(): void
@@ -123,6 +122,13 @@ class CancelledOrderTest extends TestCase
         $this->order('ملغي', 900);
 
         $this->assertSame([100.0], Demo::paymentDistribution('all')['series']);
+
+        // والتوزيع الذي تقرؤه الملفّات هو مصدر المخطّط نفسه — عددًا ونسبةً
+        $rows = Demo::paymentBreakdown('all');
+        $this->assertCount(1, $rows);
+        $this->assertSame(100.0, (float) $rows[0]['total']);
+        $this->assertSame(1, $rows[0]['count']);
+        $this->assertSame(100, $rows[0]['percent']);
     }
 
     public function test_profit_does_not_count_a_cancelled_sale(): void

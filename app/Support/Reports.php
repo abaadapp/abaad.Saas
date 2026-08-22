@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\User;
+use App\Support\Demo;
 
 /**
  * فهرس التقارير — مصدرٌ واحد يقرؤه فهرس التقارير في اللوحة.
@@ -197,6 +198,80 @@ class Reports
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * القسم الذي ينتمي إليه تقريرُ نافذةٍ بمفتاح بياناته — أو null فلا يُفتح.
+     *
+     * حارس المسار يشتقّ القسم من اسم المسار، فكلّ ما تحت `admin.reports.*`
+     * يُقاس بصلاحية «التقارير» وحدها. وتقارير النافذة ليست تقاريرَ عن
+     * التقارير: فيها رواتب الموظفين وإنفاق العملاء ومقبوضات الصندوق. فمن
+     * مُنح «التقارير» وحدها كان يقرأها كلّها بكتابة عنوانها، والفهرس نفسه
+     * لا يعرض له منها بطاقةً واحدة — منعٌ في الشاشة لا وجود له عند الباب.
+     *
+     * والمفتاح المجهول يُردّ بـnull: يُغلق لا يُفتح.
+     */
+    public static function sectionForData(string $key): ?string
+    {
+        foreach (self::ALL as $report) {
+            if (($report['data'] ?? null) === $key) {
+                return $report['section'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * ما تعرضه شاشة «ملخّص المبيعات» — مصدرٌ واحد تقرؤه الشاشة والتغذية
+     * والملفّات الثلاثة (Excel وPDF وCSV).
+     *
+     * كانت الملفّات تجمع أرقامها بنفسها: مؤشّراتُها من `adminStats` — وهي
+     * أرقام اليوم والشهر مهما كانت الفترة المطلوبة، ومحصورةٌ بالفرع الحالي
+     * بينما ما تحتها ليس كذلك — وأفضلُ منتجاتها مرتّبةً بالكمية بينما
+     * الشاشة ترتّبها بالإيراد. فيخرج الملفّ بترويسةٍ تقول «اليوم» وجدولٍ
+     * يحمل الشهر، وبقائمةٍ لأفضل خمسةٍ غير التي رآها التاجر قبل ضغطه بثانية.
+     *
+     * وباجتماعها هنا لا يبقى للاختلاف موضع.
+     */
+    public static function salesReport(?string $range): array
+    {
+        $range = Demo::range($range);
+
+        return [
+            'summary' => Demo::reportSummary($range),
+            'salesSeries' => Demo::salesTrend($range),
+            'paymentDistribution' => Demo::paymentDistribution($range),
+            'topSellingProducts' => Demo::topSellingProducts(5, $range),
+            'range' => $range,
+        ];
+    }
+
+    /**
+     * بطاقات الملخّص صفوفًا لورقة: اسمٌ وقيمة، بترتيب الشاشة نفسه.
+     *
+     * والقيمة رقمٌ خام لا نصٌّ منسَّق: الورقة تريدها رقمًا يُجمع في خليّة،
+     * والـPDF يريدها منسَّقةً — فالتنسيق عند الكاتب لا هنا.
+     */
+    public static function summaryRows(array $summary): array
+    {
+        $rows = [
+            ['إجمالي المبيعات', 'sales', true],
+            ['صافي الربح', 'profit', true],
+            ['المصروفات', 'expenses', true],
+            ['الضريبة المحصّلة', 'tax', true],
+            ['المنتجات', 'products', false],
+            ['تنبيهات المخزون', 'inventory_alerts', false],
+            ['الموظفون', 'employees', false],
+            ['العملاء', 'customers', false],
+            ['وسائل الدفع', 'payment_methods', false],
+        ];
+
+        return collect($rows)->map(fn ($r) => [
+            'label' => __($r[0]),
+            'value' => $r[2] ? round((float) ($summary[$r[1]] ?? 0), 3) : (int) ($summary[$r[1]] ?? 0),
+            'money' => $r[2],
+        ])->all();
     }
 
     /** أسماء التصنيفات مترجمةً — الواجهة لا تخمّنها من المفتاح */

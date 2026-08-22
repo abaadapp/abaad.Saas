@@ -15,15 +15,17 @@ class PdfController extends Controller
     {
         // الفترة تُورَث من الشاشة وتُطبع في الترويسة: ورقةٌ مطبوعة لا مبدّل
         // فوقها، فإن لم تقل فترتها قُرئت على أنها فترة قارئها
-        $range = Demo::range(request()->query('range'));
+        // الورقة من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
+        $report = \App\Support\Reports::salesReport(request()->query('range'));
+        $range = $report['range'];
 
         $html = view('pdf.sales-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::currentBranchName(),
-            'stats' => Demo::adminStats(),
-            'salesSeries' => Demo::salesTrend($range),
-            'payments' => Demo::paymentMethods($range),
-            'topProducts' => Demo::topProducts($range),
+            'stats' => \App\Support\Reports::summaryRows($report['summary']),
+            'salesSeries' => $report['salesSeries'],
+            'payments' => Demo::paymentBreakdown($range),
+            'topProducts' => $report['topSellingProducts'],
             'rangeLabel' => Demo::rangeLabel($range),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();

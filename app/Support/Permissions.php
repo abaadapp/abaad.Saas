@@ -101,11 +101,11 @@ class Permissions
             return route('super-admin.dashboard');
         }
 
-        $section = collect(self::SECTIONS)
+        return collect(self::SECTIONS)
             ->reject(fn ($s) => in_array($s, self::OUTSIDE_PANEL, true))
-            ->first(fn ($s) => $user->allows($s));
-
-        return $section ? route(self::ROUTES[$section]) : null;
+            ->filter(fn ($s) => $user->allows($s))
+            ->map(fn ($s) => self::routeFor($s))
+            ->first(fn ($r) => $r !== null);
     }
 
     /** القسم → مساره. مصدرٌ واحد يقرؤه التوجيه بعد الدخول وروابط التنبيهات */
@@ -117,7 +117,23 @@ class Permissions
         'settings' => 'admin.settings.index', 'suppliers' => 'admin.suppliers.index',
         'purchases' => 'admin.purchases.index', 'employees' => 'admin.employees.index',
         'pos' => 'pos.index',
+        // «التقارير» كانت في SECTIONS ولا مسار لها هنا: من أوّلُ ما مُنح له
+        // التقاريرُ يسقط على `ROUTES['reports']` غير الموجود، فيرتفع خطأ
+        // مفتاحٍ ناقص داخل HandleInertiaRequests — أي ٥٠٠ على كل صفحةٍ يفتحها
+        'reports' => 'admin.reports.index',
     ];
+
+    /**
+     * مسار القسم إن كان له باب — وإلا null.
+     *
+     * القراءة المباشرة من ROUTES كانت تنفجر على قسمٍ نُسي فيها بدل أن تتخطّاه:
+     * والفشل هنا يقع في مشاركة Inertia، فيصير خمسمئةً على كلّ صفحة لا بابًا
+     * مفقودًا في قائمة.
+     */
+    private static function routeFor(string $section): ?string
+    {
+        return isset(self::ROUTES[$section]) ? route(self::ROUTES[$section]) : null;
+    }
 
     /**
      * أوّل صفحة يراها المستخدم بعد الدخول.
@@ -147,13 +163,8 @@ class Permissions
             return route(self::ROUTES['pos']);
         }
 
-        $first = $panel
-            ? collect(self::SECTIONS)->reject(fn ($s) => in_array($s, self::OUTSIDE_PANEL, true))
-                ->first(fn ($s) => $user->allows($s))
-            : null;
-
         // بلا صلاحية واحدة: تُرفض الآن عند الحفظ، لكن حسابًا قديمًا قد يسبقها
-        return $first ? route(self::ROUTES[$first]) : route('login');
+        return ($panel ? self::panelEntry($user) : null) ?? route('login');
     }
 
     /** أسماء الأقسام كما تُعرض للتاجر — الواجهة لا تخمّنها من المفتاح */
@@ -165,6 +176,8 @@ class Permissions
             'finance' => 'المالية', 'expenses' => 'مصاريف شهرية', 'settings' => 'الإعدادات',
             'suppliers' => 'الموردين', 'purchases' => 'المشتريات',
             'employees' => 'الرواتب والموظفين', 'pos' => 'نقطة البيع',
+            // كانت ساقطةً فتُعرض «reports» بحروفٍ لاتينية في قائمة صلاحيات عربية
+            'reports' => 'التقارير',
         ];
 
         return collect(self::SECTIONS)
@@ -251,10 +264,18 @@ class Permissions
         'devices' => 'settings',
     ];
 
-    /** التصدير يتبع قسم ما يُصدَّر: admin.export.orders → orders */
+    /**
+     * التصدير يتبع قسم ما يُصدَّر: admin.export.orders → orders.
+     *
+     * وما ليس هنا يسقط إلى «الإعدادات» — أضيقُ ما يُمنح. و`reports` كانت
+     * ساقطةً فيه: زرّ «CSV» في ملخّص المبيعات يُرسم لكل من يفتح الصفحة،
+     * ويُطالَب صاحبه عند الضغط بصلاحية الإعدادات. فالمحاسب — وهو أكثر من
+     * يُصدّر — يفتح تقريرًا مأذونًا له ويُردّ بـ٤٠٣ عن ملفّه.
+     */
     public const EXPORT_ALIASES = [
         'products' => 'products', 'orders' => 'orders', 'customers' => 'customers',
         'transactions' => 'finance', 'expenses' => 'expenses', 'inventory' => 'inventory',
+        'reports' => 'reports',
     ];
 
     /** هل هذا المسار من هيكل اللوحة لا من أقسامها؟ */

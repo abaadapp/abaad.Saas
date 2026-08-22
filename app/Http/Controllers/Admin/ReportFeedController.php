@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Support\Demo;
 use Illuminate\Http\Request;
 
 /**
@@ -25,14 +24,7 @@ class ReportFeedController extends Controller
      */
     public function reports(Request $request)
     {
-        $range = Demo::range($request->query('range'));
-
-        return $this->feed([
-            'summary' => Demo::reportSummary($range),
-            'salesSeries' => Demo::salesTrend($range),
-            'paymentDistribution' => Demo::paymentDistribution($range),
-            'topSellingProducts' => Demo::topSellingProducts(5, $range),
-        ]);
+        return $this->feed(\App\Support\Reports::salesReport($request->query('range')));
     }
 
     private function feed(array $payload)

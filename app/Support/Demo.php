@@ -1466,7 +1466,9 @@ class Demo
     public static function financeStats(string $range = 'month'): array
     {
         $bid = self::bid();
-        $start = self::rangeStart($range);
+        // الفترة تُردّ إلى المفهوم كما في أخواتها: فترةٌ مجهولة كانت تسقط إلى
+        // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
+        $start = self::rangeStart(self::range($range));
         $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $total = (float) (clone $income)->sum('amount');       // إجمالي المقبوض (شامل الضريبة)
@@ -1497,7 +1499,9 @@ class Demo
     public static function paymentMethods(string $range = 'month'): array
     {
         $bid = self::bid();
-        $start = self::rangeStart($range);
+        // الفترة تُردّ إلى المفهوم كما في أخواتها: فترةٌ مجهولة كانت تسقط إلى
+        // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
+        $start = self::rangeStart(self::range($range));
         $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $grand = max(0.001, (float) (clone $income)->sum('amount'));
@@ -1806,29 +1810,44 @@ class Demo
         return __(['بطاقة' => 'بطاقة (فيزا)'][$key] ?? $key);
     }
 
-    public static function paymentDistribution(string $range = 'month'): array
+    /**
+     * توزيع المبيعات على وسائل الدفع — بمبلغه وعدد عملياته ونسبته.
+     *
+     * مصدرٌ واحد يقرؤه مخطّط الشاشة وتقرؤه الملفّات الثلاثة. وكانت الملفّات
+     * تأخذ التوزيع من `paymentMethods` — وهي تقرأ دفتر المقبوضات لا الطلبات،
+     * فيخرج الملفّ بأرقامٍ غير التي على الشاشة تحت العنوان نفسه. ورقمان
+     * لاسمٍ واحد يُبطلان الاثنين: التاجر لا يعرف أيّهما يصدّق.
+     *
+     * والنسبة تُحسب من مجموع ما هنا لا من دفترٍ آخر، فتجمع مئةً دائمًا.
+     */
+    public static function paymentBreakdown(string $range = 'month'): array
     {
         $start = self::rangeStart(self::range($range));
         $rows = Order::where('business_id', self::bid())->sold()
             ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
-            ->selectRaw('payment_method, SUM(total) as s')->groupBy('payment_method')->pluck('s', 'payment_method');
-        return [
-            'labels' => $rows->keys()->map(fn ($k) => self::methodLabel((string) $k))->all(),
-            'series' => $rows->map(fn ($v) => round((float) $v, 3))->values()->all(),
-        ];
+            ->selectRaw('payment_method, SUM(total) as s, COUNT(*) as c')
+            ->groupBy('payment_method')->orderByDesc('s')->get();
+
+        $grand = (float) $rows->sum('s');
+
+        return $rows->map(fn ($r) => [
+            'key' => (string) $r->payment_method,
+            'name' => self::methodLabel((string) $r->payment_method),
+            'total' => round((float) $r->s, 3),
+            'count' => (int) $r->c,
+            'percent' => $grand > 0 ? (int) round((float) $r->s / $grand * 100) : 0,
+        ])->all();
     }
 
-    /** أفضل 5 منتجات مبيعًا للنشاط الحالي */
-    public static function topProducts(string $range = 'month'): array
+    /** المخطّط على الشاشة: أسماءٌ ومبالغ من التوزيع نفسه لا من استعلامٍ ثانٍ */
+    public static function paymentDistribution(string $range = 'month'): array
     {
-        $bid = self::bid();
-        $start = self::rangeStart(self::range($range));
+        $rows = self::paymentBreakdown($range);
 
-        return OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
-            ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
-            ->selectRaw('name, SUM(quantity) as q, SUM(total) as t')
-            ->groupBy('name')->orderByDesc('q')->limit(5)->get()
-            ->map(fn ($r) => ['name' => $r->name, 'qty' => (int) $r->q, 'total' => round((float) $r->t, 3)])->all();
+        return [
+            'labels' => array_column($rows, 'name'),
+            'series' => array_column($rows, 'total'),
+        ];
     }
 
     /** أرقام بطاقات صفحة العملاء — محسوبة فعليًا من قاعدة البيانات (صفر عند فراغها) */

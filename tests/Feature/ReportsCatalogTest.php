@@ -120,8 +120,115 @@ class ReportsCatalogTest extends TestCase
 
         $this->assertContains('sales', $shown);       // reports
         $this->assertContains('expenses', $shown);    // expenses
-        $this->assertNotContains('vat', $shown);      // vat — لم يُمنح
         $this->assertNotContains('staff', $shown);    // employees — لم يُمنح
+        $this->assertNotContains('customers', $shown); // customers — لم يُمنح
+
+        // كان هنا `assertNotContains('vat')` وهي لا تفحص شيئًا: لا بطاقة
+        // بهذا المفتاح في الفهرس أصلًا، فالتوكيد يمرّ ولو انفتح كل شيء
+    }
+
+    /**
+     * أهمّ من الذي قبله: الفهرس يُخفي، وهذا يفحص أنّ الباب يُغلق.
+     *
+     * حارس المسار يقيس `admin.reports.*` بصلاحية «التقارير» وحدها، وتقارير
+     * النافذة قراءاتٌ على أقسامٍ أخرى — إنفاق العملاء ومبيعات كل موظف
+     * ومقبوضات الصندوق. فمن مُنح «التقارير» وحدها كان يقرؤها كلّها بكتابة
+     * عنوانها، والفهرس لا يعرض له منها بطاقةً واحدة.
+     */
+    public function test_a_hidden_report_is_also_closed_at_its_door(): void
+    {
+        $user = $this->staff(['reports']);
+
+        foreach (Reports::ALL as $report) {
+            if (! isset($report['data'])) {
+                continue;
+            }
+
+            $this->actingAs($user)
+                ->getJson(route('admin.reports.data', $report['data']))
+                ->assertForbidden();
+        }
+    }
+
+    public function test_a_data_key_no_card_points_to_is_not_a_door(): void
+    {
+        // خمسةُ تقاريرَ كانت تُفتح بكتابة عنوانها ولا بطاقة تقصدها، وفيها
+        // «الضريبة» التي تخترع التزامًا ضريبيًّا بضرب المبيعات في نسبةٍ ثابتة
+        foreach (['sales', 'profit', 'expenses', 'tax', 'products', 'categories'] as $key) {
+            $this->assertNull(Reports::sectionForData($key), "«{$key}» ليس مفتاح بياناتٍ في الفهرس");
+
+            $this->actingAs($this->owner)
+                ->getJson(route('admin.reports.data', $key))
+                ->assertNotFound();
+        }
+    }
+
+    /**
+     * الملفّ يحمل ما على الشاشة — وإلا فهو ورقةٌ تناقضها ولا تقول ذلك.
+     *
+     * كانت مؤشّراته من `Demo::adminStats()`: أرقام اليوم والشهر مهما كانت
+     * الفترة المطلوبة، ومحصورةٌ بالفرع الحالي بينما ما تحتها ليس كذلك.
+     */
+    public function test_the_exported_file_carries_the_numbers_on_the_screen(): void
+    {
+        $screen = $this->actingAs($this->owner)
+            ->get(route('admin.reports.sales', ['range' => 'today']))->viewData('page')['props'];
+
+        $csv = $this->actingAs($this->owner)
+            ->get(route('admin.export.reports', ['range' => 'today']));
+        $csv->assertOk();
+
+        $body = $csv->streamedContent();
+
+        foreach (\App\Support\Reports::summaryRows($screen['summary']) as $row) {
+            $value = $row['money'] ? number_format((float) $row['value'], 3, '.', '') : (string) $row['value'];
+            $this->assertStringContainsString($row['label'], $body);
+            $this->assertStringContainsString($value, $body, "قيمة «{$row['label']}» ليست في الملفّ");
+        }
+    }
+
+    public function test_the_accountant_can_export_the_report_he_is_allowed_to_read(): void
+    {
+        /*
+         * `admin.export.reports` كان يشتقّ قسمه فلا يجده، فيسقط إلى
+         * «الإعدادات». والزرّ مرسومٌ لكل من يفتح الصفحة — فالمحاسب، وهو
+         * أكثر من يُصدّر، يفتح تقريرًا مأذونًا له ويُردّ بـ٤٠٣ عن ملفّه.
+         */
+        $user = $this->staff(['reports']);
+
+        $this->actingAs($user)->get(route('admin.reports.sales'))->assertOk();
+        $this->actingAs($user)->get(route('admin.export.reports'))->assertOk();
+        $this->actingAs($user)->get(route('admin.reports.xlsx'))->assertOk();
+        $this->actingAs($user)->get(route('admin.reports.pdf'))->assertOk();
+    }
+
+    /**
+     * القسم يُدرج في SECTIONS فيظهر في قائمة الصلاحيات — ثمّ يُنسى في ROUTES
+     * وفي أسماء الأقسام.
+     *
+     * ووقعت على «التقارير» بعينها: `panelEntry` تختار أوّل قسمٍ يملكه
+     * المستخدم ثمّ تقرأ مساره من ROUTES مباشرةً، فمن مُنحت له التقاريرُ
+     * وحدها كان يُرفَع عليه خطأ مفتاحٍ ناقص — داخل مشاركة Inertia، أي
+     * خمسمئةً على كلّ صفحةٍ يفتحها لا على صفحةٍ واحدة. واسمها كان يُعرض
+     * «reports» بحروفٍ لاتينية في قائمة صلاحياتٍ عربية.
+     */
+    public function test_every_section_has_a_door_and_a_name(): void
+    {
+        $labels = \App\Support\Permissions::sectionLabels();
+
+        foreach (\App\Support\Permissions::SECTIONS as $section) {
+            $this->assertArrayHasKey($section, \App\Support\Permissions::ROUTES, "القسم «{$section}» بلا مسار");
+            $this->assertTrue(\Illuminate\Support\Facades\Route::has(\App\Support\Permissions::ROUTES[$section]), "مسار «{$section}» لا وجود له");
+            $this->assertNotSame($section, $labels[$section] ?? $section, "القسم «{$section}» يُعرض بمفتاحه لا باسمه");
+        }
+    }
+
+    public function test_an_employee_given_only_reports_can_open_the_panel(): void
+    {
+        $user = $this->staff(['reports']);
+
+        $this->actingAs($user)->get(route('admin.reports.index'))->assertOk();
+        $this->assertSame(route('admin.reports.index'), \App\Support\Permissions::panelEntry($user));
     }
 
     public function test_the_sales_summary_kept_its_page_after_the_move(): void

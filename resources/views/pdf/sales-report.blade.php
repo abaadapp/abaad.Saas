@@ -49,7 +49,8 @@
     @foreach (array_chunk($stats, 4) as $chunk)
         <tr>
             @foreach ($chunk as $s)
-                <td><div class="card"><div class="lbl">{{ __($s['label']) }}</div><div class="val">{{ $s['value'] }}</div></div></td>
+                {{-- الرقم يُنسَّق هنا: الملخّص يعود خامًا ليُجمع في خليّة Excel --}}
+                <td><div class="card"><div class="lbl">{{ $s['label'] }}</div><div class="val">{{ $s['money'] ? \App\Support\Demo::moneyBase($s['value']) : $s['value'] }}</div></div></td>
             @endforeach
         </tr>
     @endforeach
@@ -85,13 +86,14 @@
     @endforeach
 </table>
 
-<h2>{{ __('أفضل المنتجات مبيعًا') }}</h2>
+{{-- الجدول نفسه الذي على الشاشة: مرتَّبٌ بالإيراد، وبقسم كل منتج ونسبته --}}
+<h2>{{ __('الأكثر مبيعًا') }}</h2>
 <table>
-    <tr><th>{{ __('المنتج') }}</th><th>{{ __('الكمية المباعة') }}</th><th>{{ __('الإيراد') }}</th></tr>
+    <tr><th>{{ __('المنتج') }}</th><th>{{ __('القسم') }}</th><th>{{ __('المُباع') }}</th><th>{{ __('الإيراد') }}</th><th>{{ __('النسبة') }}</th></tr>
     @forelse ($topProducts as $p)
-        <tr><td>{{ $p['name'] }}</td><td>{{ __(':n وحدة', ['n' => $p['qty']]) }}</td><td>{{ \App\Support\Demo::moneyBase($p['total']) }}</td></tr>
+        <tr><td>{{ $p['name'] }}</td><td>{{ $p['cat'] }}</td><td>{{ __(':n وحدة', ['n' => $p['sold']]) }}</td><td>{{ \App\Support\Demo::moneyBase($p['revenue']) }}</td><td>{{ $p['pct'] }}</td></tr>
     @empty
-        <tr><td colspan="3" style="text-align:center; color:#9ca3af;">{{ __('لا توجد بيانات مبيعات بعد') }}</td></tr>
+        <tr><td colspan="5" style="text-align:center; color:#9ca3af;">{{ __('لا توجد بيانات مبيعات بعد') }}</td></tr>
     @endforelse
 </table>
 

@@ -110,21 +110,34 @@ class ReportExportController extends Controller
     public function xlsx()
     {
         $range = $this->range();
+        // الورقة تُبنى من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
+        $report = \App\Support\Reports::salesReport($range);
         $spreadsheet = new Spreadsheet();
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تقرير المبيعات'), $range);
         $money = [];
 
-        // المؤشرات
+        /*
+         * المؤشرات: بطاقات الشاشة نفسها بفترتها.
+         *
+         * كانت `Demo::adminStats()` — أرقامُ اليوم والشهر مهما كانت الفترة
+         * المطلوبة، ومحصورةٌ بالفرع الحالي بينما ما تحتها في الورقة ليس
+         * كذلك. فتخرج ورقةٌ ترويستها «اليوم» وأوّل جدولٍ فيها الشهرُ كلّه.
+         */
         $title(__('المؤشرات الرئيسية'));
-        $head([__('المؤشر'), __('القيمة'), __('التغيّر')]);
-        foreach (Demo::adminStats() as $s) {
-            $sheet->fromArray([$s['label'], $s['value'], $s['trend'] ?? '—'], null, 'A' . $this->row);
+        $head([__('المؤشر'), __('القيمة')]);
+        foreach (\App\Support\Reports::summaryRows($report['summary']) as $s) {
+            $r = $this->row;
+            $sheet->setCellValue("A{$r}", $s['label']);
+            $sheet->setCellValue("B{$r}", $s['value']);
+            if ($s['money']) {
+                $money[] = "B{$r}";
+            }
             $this->row++;
         }
         $this->row++;
 
         // المبيعات على محور الفترة — ساعاتٍ أو أيّامًا أو أشهرًا، وبعدد الطلبات
-        $series = Demo::salesTrend($range);
+        $series = $report['salesSeries'];
         $title(__('المبيعات') . ' — ' . Demo::rangeLabel($range));
         $head([__('الفترة'), __('المبيعات (ر.ع)'), __('عدد الطلبات')]);
         foreach ($series['full'] as $i => $label) {
@@ -141,28 +154,29 @@ class ReportExportController extends Controller
         }
         $this->row++;
 
-        // وسائل الدفع
-        $title(__('وسائل الدفع'));
+        // وسائل الدفع — من الطلبات كما في مخطّط الشاشة، لا من دفتر المقبوضات
+        $title(__('توزيع وسائل الدفع'));
         $head([__('الوسيلة'), __('الإجمالي (ر.ع)'), __('عدد العمليات')]);
-        foreach (Demo::paymentMethods($range) as $m) {
+        foreach (Demo::paymentBreakdown($range) as $m) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $m['name']);
-            $sheet->setCellValue("B{$r}", round((float) $m['total'], 3));
-            $sheet->setCellValue("C{$r}", (int) $m['count']);
+            $sheet->setCellValue("B{$r}", $m['total']);
+            $sheet->setCellValue("C{$r}", $m['count']);
             $money[] = "B{$r}";
             $this->row++;
         }
         $this->row++;
 
-        // أفضل المنتجات
-        $title(__('أفضل المنتجات مبيعًا'));
-        $head([__('المنتج'), __('الكمية المباعة'), __('الإيراد (ر.ع)')]);
-        foreach (Demo::topProducts($range) as $p) {
+        // أفضل المنتجات — بترتيب الإيراد كما في جدول الشاشة، لا بترتيب الكمية
+        $title(__('الأكثر مبيعًا'));
+        $head([__('المنتج'), __('القسم'), __('المُباع'), __('الإيراد (ر.ع)')]);
+        foreach ($report['topSellingProducts'] as $p) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $p['name']);
-            $sheet->setCellValue("B{$r}", (int) $p['qty']);
-            $sheet->setCellValue("C{$r}", round((float) $p['total'], 3));
-            $money[] = "C{$r}";
+            $sheet->setCellValue("B{$r}", $p['cat']);
+            $sheet->setCellValue("C{$r}", (int) $p['sold']);
+            $sheet->setCellValue("D{$r}", $p['revenue']);
+            $money[] = "D{$r}";
             $this->row++;
         }
 

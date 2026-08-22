@@ -3088,5 +3088,7 @@
     "يُعاد المخزون وتُحتسب الضريبة والنقاط من جديد، ويبقى هذا التصحيح مقيَّدًا باسمك في سجلّ الفاتورة.": "Stock is returned, tax and points are recalculated, and this correction stays recorded under your name in the invoice history.",
     "كل التقارير": "All reports",
     "— المبيعات —": "— Sales —",
-    "— المصروفات —": "— Expenses —"
+    "— المصروفات —": "— Expenses —",
+    "— توزيع وسائل الدفع —": "— Payment Method Breakdown —",
+    "— الأكثر مبيعًا —": "— Best Sellers —"
 }

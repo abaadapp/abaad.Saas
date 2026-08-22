@@ -17,21 +17,23 @@ class ExportController extends Controller
     public function reports()
     {
         // الفترة التي كان التاجر ينظر إليها — الملفّ يغادر الشاشة ولا يصحّحه
-        // مبدّلٌ فوقه، فيحملها في أوّل سطرٍ منه وفي اسمه
-        $range = Demo::range(request()->query('range'));
+        // مبدّلٌ فوقه، فيحملها في أوّل سطرٍ منه وفي اسمه. والحمولة من مصدر
+        // الشاشة نفسه — انظر Support\Reports::salesReport
+        $report = \App\Support\Reports::salesReport(request()->query('range'));
+        $range = $report['range'];
 
         $rows = [];
         $rows[] = [__('الفترة'), Demo::rangeLabel($range), ''];
         $rows[] = ['', '', ''];
         $rows[] = [__('— المؤشرات الرئيسية —'), '', ''];
-        $rows[] = [__('المؤشر'), __('القيمة'), __('التغيّر')];
-        foreach (Demo::adminStats() as $s) {
-            $rows[] = [$s['label'], $s['value'], $s['trend'] ?? '—'];
+        $rows[] = [__('المؤشر'), __('القيمة'), ''];
+        foreach (\App\Support\Reports::summaryRows($report['summary']) as $s) {
+            $rows[] = [$s['label'], $s['money'] ? number_format((float) $s['value'], 3, '.', '') : $s['value'], ''];
         }
         $rows[] = ['', '', ''];
         $rows[] = [__('— المبيعات —'), '', ''];
         $rows[] = [__('الفترة'), __('المبيعات'), __('عدد الطلبات')];
-        $series = Demo::salesTrend($range);
+        $series = $report['salesSeries'];
         foreach ($series['full'] as $i => $label) {
             // ما لم يأتِ بعدُ لا يُكتب: صفٌّ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة
             if (($series['data'][$i] ?? null) === null) {
@@ -40,16 +42,16 @@ class ExportController extends Controller
             $rows[] = [$label, number_format((float) $series['data'][$i], 3, '.', ''), (int) ($series['counts'][$i] ?? 0)];
         }
         $rows[] = ['', '', ''];
-        $rows[] = [__('— وسائل الدفع —'), '', ''];
+        $rows[] = [__('— توزيع وسائل الدفع —'), '', ''];
         $rows[] = [__('الوسيلة'), __('الإجمالي'), __('عدد العمليات')];
-        foreach (Demo::paymentMethods($range) as $m) {
+        foreach (Demo::paymentBreakdown($range) as $m) {
             $rows[] = [$m['name'], number_format((float) $m['total'], 3, '.', ''), $m['count']];
         }
         $rows[] = ['', '', ''];
-        $rows[] = [__('— أفضل المنتجات مبيعًا —'), '', ''];
-        $rows[] = [__('المنتج'), __('الكمية المباعة'), __('الإيراد')];
-        foreach (Demo::topProducts($range) as $p) {
-            $rows[] = [$p['name'], $p['qty'], number_format((float) $p['total'], 3, '.', '')];
+        $rows[] = [__('— الأكثر مبيعًا —'), '', ''];
+        $rows[] = [__('المنتج'), __('المُباع'), __('الإيراد')];
+        foreach ($report['topSellingProducts'] as $p) {
+            $rows[] = [$p['name'], $p['sold'], number_format((float) $p['revenue'], 3, '.', '')];
         }
 
         return $this->stream('sales-report-'.$range, [__('العنصر'), __('القيمة 1'), __('القيمة 2')], $rows);

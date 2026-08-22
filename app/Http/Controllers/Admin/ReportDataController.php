@@ -4,124 +4,85 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Support\Demo;
+use App\Support\Reports;
 
 /**
  * بيانات التقارير للعرض داخل نافذة منبثقة (JSON) — كل تقرير له أعمدته وصفوفه.
  *
- * أُعيد مع القسم، وسقط منه تقريرا «المبيعات حسب القسم» و«المخزون»: الأقسام
- * حُذفت من النظام، ونظرة المخزون العامة كذلك. تقريرٌ يُحسب من جدولٍ لم يعد
- * موجودًا يُرجع صفوفًا فارغة — وهي أسوأ من غيابه: تُقرأ «لا مبيعات» لا «لا
- * تقرير».
+ * وهي ثلاثةٌ بعدد ما في الفهرس من بطاقاتٍ بلا صفحة، لا أكثر. كانت ثمانية:
+ * خمسةٌ منها لا تقصدها بطاقةٌ في الفهرس ولا يفتحها زرّ — تُفتح بكتابة عنوانها
+ * وحدها. وقاعدة الفهرس (Support\Reports) أن كل تقريرٍ إمّا صفحةٌ قائمة وإمّا
+ * مفتاح بيانات، ولا ثالث؛ ومفتاحٌ لا بطاقة له هو ذلك الثالث بعينه.
+ *
+ * وفي المحذوفة ما كان يكذب لا ما كان يكرّر فحسب: «الضريبة» تضرب المبيعات في
+ * نسبةٍ ثابتة، فلا تسأل هل الضريبة مفعَّلة أصلًا، ولا هل هي مضمَّنة في السعر
+ * أم فوقه، ولا هل لبعض الأصناف نسبةٌ خاصّة — فتُخرج للتاجر التزامًا ضريبيًّا
+ * مخترَعًا (انظر App\Support\Vat، وهي الباب الوحيد لهذا الحساب). و«الأرباح»
+ * تطابق التكلفة بالاسم لا بالمعرّف، وتحسبها على أفضل خمسةٍ ثم تسمّي الناتج
+ * «إجمالي الربح».
+ *
+ * والباقي — المبيعات والمصروفات والمنتجات — لكلٍّ منها في الفهرس بطاقةٌ تقود
+ * إلى شاشته الكاملة.
  */
 class ReportDataController extends Controller
 {
+    /**
+     * حارس المسار يقيس `admin.reports.*` بصلاحية «التقارير» وحدها — وهي
+     * صلاحيةُ فهرسٍ لا صلاحيةُ ما فيه. وهذه التقارير قراءاتٌ على أقسامٍ
+     * أخرى: إنفاق العملاء، ومبيعات كل موظف، ومقبوضات الصندوق. فمن مُنح
+     * «التقارير» وحدها كان يقرؤها كلّها بكتابة عنوانها، والفهرس نفسه لا
+     * يعرض له منها بطاقةً واحدة (انظر Reports::forUser) — منعٌ في الشاشة
+     * لا وجود له عند الباب.
+     *
+     * فيُسأل هنا عن قسم التقرير نفسه، والمجهول يُردّ بـ٤٠٤ لا بجدول.
+     */
     public function show(string $key)
     {
+        $section = Reports::sectionForData($key);
+        abort_if($section === null, 404);
+        abort_unless(auth()->user()?->allows($section), 403, __('ليس لديك صلاحية للوصول إلى قسم «:section».', ['section' => $section]));
+
         $report = match ($key) {
-            'sales' => $this->sales(),
-            'profit' => $this->profit(),
-            'expenses' => $this->expenses(),
-            'tax' => $this->tax(),
             'payments' => $this->payments(),
-            'products' => $this->products(),
             'employees' => $this->employees(),
             'customers' => $this->customers(),
-            default => null,
+            // لا يُبلَغ: sectionForData ردّ كل ما سواه قبل هذا السطر
+            default => abort(404),
         };
-
-        abort_if($report === null, 404);
 
         return response()->json($report);
     }
 
     private function money($v): string { return Demo::money($v); }
 
-    private function sales(): array
+    /**
+     * الفترة تُقال في الملخّص لا تُترك للتخمين.
+     *
+     * هذه التقارير تُحسب على الشهر الجاري ولا مبدّل فوقها يقول ذلك، فتُقرأ
+     * على أنها عمر المتجر كلّه — و«أكثر العملاء إنفاقًا» في شهرٍ غيرُ
+     * «أكثرهم إنفاقًا» منذ فُتح المحل.
+     */
+    private const RANGE = 'month';
+
+    private function summary(string $text): string
     {
-        $s = Demo::salesSeries();
-        $rows = [];
-        foreach ($s['labels'] as $i => $label) {
-            $rows[] = [$label, $this->money($s['data'][$i] ?? 0)];
-        }
-
-        return ['title' => __('تقرير المبيعات'), 'columns' => [__('الشهر'), __('المبيعات')], 'rows' => $rows,
-                'summary' => __('إجمالي المبيعات') . ': ' . $this->money(array_sum($s['data']))];
-    }
-
-    private function profit(): array
-    {
-        // topProducts لا تُرجع التكلفة — نأخذها من بطاقة المنتج بالاسم
-        $costs = collect(Demo::products())->pluck('cost', 'name');
-
-        $rows = [];
-        $totalRevenue = $totalProfit = 0;
-        foreach (Demo::topProducts() as $p) {
-            $revenue = (float) $p['total'];
-            $cost = (float) ($costs[$p['name']] ?? 0) * (int) $p['qty'];
-            $profit = $revenue - $cost;
-            $totalRevenue += $revenue;
-            $totalProfit += $profit;
-            $rows[] = [$p['name'], $this->money($revenue), $this->money($cost), $this->money($profit)];
-        }
-
-        return ['title' => __('تقرير الأرباح'), 'columns' => [__('المنتج'), __('الإيراد'), __('التكلفة'), __('الربح')], 'rows' => $rows,
-                'summary' => __('إجمالي الربح') . ': ' . $this->money($totalProfit) . ' ' . __('من إيراد') . ' ' . $this->money($totalRevenue)];
-    }
-
-    private function expenses(): array
-    {
-        $rows = [];
-        $total = 0;
-        foreach (Demo::expenses() as $e) {
-            $amount = abs((float) $e['amount']);
-            $total += $amount;
-            $rows[] = [$e['date'], $e['type'], $e['description'], $this->money($amount)];
-        }
-
-        return ['title' => __('تقرير المصروفات'), 'columns' => [__('التاريخ'), __('النوع'), __('البيان'), __('المبلغ')], 'rows' => $rows,
-                'summary' => __('إجمالي المصروفات') . ': ' . $this->money($total)];
-    }
-
-    private function tax(): array
-    {
-        $rate = (float) (\App\Models\Setting::where('business_id', Demo::bid())->where('key', 'vat_rate')->value('value') ?? 5);
-        $rows = [];
-        $totalTax = 0;
-        // مرّةً واحدة: كانت تُستدعى داخل الحلقة فتُعاد قراءة السنة كلّها لكل شهر
-        $series = Demo::salesSeries();
-        foreach ($series['labels'] as $i => $label) {
-            $sales = (float) ($series['data'][$i] ?? 0);
-            $tax = $sales * $rate / 100;
-            $totalTax += $tax;
-            $rows[] = [$label, $this->money($sales), $rate . '%', $this->money($tax)];
-        }
-
-        return ['title' => __('تقرير الضرائب'), 'columns' => [__('الشهر'), __('المبيعات'), __('النسبة'), __('الضريبة')], 'rows' => $rows,
-                'summary' => __('إجمالي الضريبة المستحقة') . ': ' . $this->money($totalTax)];
+        return $text . ' · ' . Demo::rangeLabel(self::RANGE);
     }
 
     private function payments(): array
     {
         $rows = [];
-        foreach (Demo::paymentMethods() as $m) {
+        $active = 0;
+        foreach (Demo::paymentMethods(self::RANGE) as $m) {
             $rows[] = [$m['name'], $this->money($m['total']), (string) $m['count']];
+            $active += $m['count'] > 0 ? 1 : 0;
         }
 
+        // «النشطة» ما تحرّك منها فعلًا: كان العدد مجموع الصفوف، وهي ثلاثةٌ
+        // دائمًا مهما كان في الدرج — رقمٌ لا يتغيّر ليس خبرًا
         return ['title' => __('وسائل الدفع'), 'columns' => [__('الوسيلة'), __('الإجمالي'), __('عدد العمليات')], 'rows' => $rows,
-                'summary' => __('عدد الوسائل النشطة') . ': ' . count($rows)];
+                'summary' => $this->summary(__('عدد الوسائل النشطة') . ': ' . $active)];
     }
-
-    private function products(): array
-    {
-        $rows = [];
-        foreach (Demo::products() as $p) {
-            $rows[] = [$p['name'], $p['cat'], $this->money($p['price']), (string) $p['qty'], $p['stock_status']];
-        }
-
-        return ['title' => __('تقرير المنتجات'), 'columns' => [__('المنتج'), __('القسم'), __('السعر'), __('الكمية'), __('حالة المخزون')], 'rows' => $rows,
-                'summary' => __('عدد المنتجات') . ': ' . count($rows)];
-    }
-
 
     private function employees(): array
     {
@@ -131,18 +92,17 @@ class ReportDataController extends Controller
         }
 
         return ['title' => __('تقرير الموظفين'), 'columns' => [__('الموظف'), __('الوظيفة'), __('الفرع'), __('مبيعات الشهر'), __('الحالة')], 'rows' => $rows,
-                'summary' => __('عدد الموظفين') . ': ' . count($rows)];
+                'summary' => $this->summary(__('عدد الموظفين') . ': ' . count($rows))];
     }
 
     private function customers(): array
     {
         $rows = [];
-        foreach (Demo::topCustomers(50) as $c) {
+        foreach (Demo::topCustomers(50, self::RANGE) as $c) {
             $rows[] = [$c['name'], (string) $c['orders'], $this->money($c['total'])];
         }
 
         return ['title' => __('تقرير العملاء'), 'columns' => [__('العميل'), __('عدد الطلبات'), __('إجمالي الإنفاق')], 'rows' => $rows,
-                'summary' => __('عدد العملاء الذين اشتروا') . ': ' . count($rows)];
+                'summary' => $this->summary(__('عدد العملاء الذين اشتروا') . ': ' . count($rows))];
     }
-
 }

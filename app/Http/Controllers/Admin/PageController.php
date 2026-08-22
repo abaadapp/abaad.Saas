@@ -313,15 +313,9 @@ class PageController extends Controller
      */
     public function reportsSales(\Illuminate\Http\Request $request): Response
     {
-        $range = Demo::range($request->query('range'));
-
-        return Inertia::render('Admin/Reports/Sales', [
-            'summary' => Demo::reportSummary($range),
-            'salesSeries' => Demo::salesTrend($range),
-            'paymentDistribution' => Demo::paymentDistribution($range),
-            'topSellingProducts' => Demo::topSellingProducts(5, $range),
-            'range' => $range,
-        ]);
+        // الحمولة من Support\Reports لا تُجمع هنا: الملفّات الثلاثة تقرأ
+        // المصدر نفسه، فلا يخرج ملفٌّ بغير ما على الشاشة
+        return Inertia::render('Admin/Reports/Sales', \App\Support\Reports::salesReport($request->query('range')));
     }
 
     public function settingsIndex(\Illuminate\Http\Request $request): Response

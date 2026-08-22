@@ -153,4 +153,44 @@ class SettingController extends Controller
 
         return back()->with('toast', ['msg' => __('تم حفظ الإعدادات بنجاح'), 'type' => 'success']);
     }
+
+    /**
+     * شعار النشاط — يرفعه صاحبه لا مديرُ المنصّة وحده.
+     *
+     * كان العمود موجودًا والرفعُ في لوحة المنصّة فقط، بينما في إعدادات
+     * التاجر مقبضٌ اسمه «شعار المتجر» وصفُه «يظهر فقط إن كان للنشاط شعار
+     * محفوظ» — مقبضٌ يشترط ما لا سبيل لصاحبه إليه. فمن أراد شعاره على
+     * فاتورته اتّصل بالدعم ليرفعه عنه.
+     *
+     * ومسارٌ مستقلّ لا حقلٌ في نموذج الإعدادات: الملفّ يحتاج
+     * `multipart/form-data`، وجعلُ النموذج كلّه كذلك يرسل كل مقبضٍ نصًّا
+     * فتنكسر مصادقة `boolean`.
+     */
+    public function logo(Request $request)
+    {
+        $request->validate([
+            'logo' => ['nullable', 'image', 'max:2048'],
+        ], [
+            'logo.image' => __('الشعار صورة — PNG أو JPG أو WEBP'),
+            'logo.max' => __('أقصى حجمٍ للشعار ٢ ميغابايت'),
+        ]);
+
+        $business = \App\Models\Business::findOrFail(Demo::bid());
+
+        if ($request->hasFile('logo')) {
+            $business->logo = $request->file('logo')->store('logos', 'public');
+        } elseif ($request->boolean('remove')) {
+            $business->logo = null;
+        } else {
+            return back();
+        }
+
+        $business->save();
+        \App\Support\Activity::log('settings', $business->logo ? 'حدّث شعار المتجر' : 'حذف شعار المتجر');
+
+        return back()->with('toast', [
+            'msg' => $business->logo ? __('حُفظ الشعار') : __('حُذف الشعار'),
+            'type' => 'success',
+        ]);
+    }
 }

@@ -7,16 +7,22 @@ import {
     ChevronLeft,
     Download,
     ExternalLink,
+    Eye,
     Globe,
+    Image as ImageIcon,
     Languages,
     Save,
+    Share2,
+    Store,
     Trash2,
+    Type,
     Upload,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
+import Tabs from '@/Components/Tabs';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
@@ -51,7 +57,7 @@ interface NotificationRow {
 
 interface Props {
     settings: Settings;
-    business: { name: string; phone: string | null; email: string | null; address: string | null };
+    business: { name: string; phone: string | null; email: string | null; address: string | null; logo: string | null };
     /** إعدادات الموقع والنطاق — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
     /** عدد المنتجات المعروضة على الموقع */
@@ -330,6 +336,43 @@ export default function SettingsIndex() {
         siteForm.post(route('admin.marketing.website.save'), { preserveScroll: true });
     };
 
+    /*
+     * تبويبات داخل «إعدادات الموقع».
+     *
+     * الشاشة كانت عمودًا واحدًا من ثلاث بطاقات يُمرَّر إليها، وما يُبحث عنه
+     * يُبحث عنه بالتمرير. والتبويب يقول ما في الصفحة قبل فتحها — والثلاثة
+     * هي ما لدينا فعلًا: لا تبويب لما لا حقل فيه.
+     */
+    const [siteTab, setSiteTab] = useState('basic');
+
+    /*
+     * الشعار مسارٌ آخر، فحالتُه هنا لا في `siteForm`.
+     *
+     * والمعاينة فوريّة من الملفّ المختار لا بعد الحفظ: من يرفع شعارًا يريد
+     * أن يراه قبل أن يعتمده، ورفعُ الخطأ ثم اكتشافُه على فاتورةٍ مطبوعة
+     * أسوأ من نقرةٍ زائدة.
+     */
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const [logoBusy, setLogoBusy] = useState(false);
+
+    const pickLogo = (file: File | null) => {
+        setLogoFile(file);
+        setLogoPreview(file ? URL.createObjectURL(file) : null);
+    };
+
+    const sendLogo = (payload: { logo: File } | { remove: true }) => {
+        setLogoBusy(true);
+        router.post(route('admin.settings.logo'), payload, {
+            forceFormData: true,
+            preserveScroll: true,
+            onFinish: () => {
+                setLogoBusy(false);
+                pickLogo(null);
+            },
+        });
+    };
+
     const saveBar = (
         <div className="mt-6 flex justify-end">
             <Button type="submit" loading={form.processing}>
@@ -467,84 +510,228 @@ export default function SettingsIndex() {
                     </Card>
                 </form>
             ) : tab === 'website' ? (
-                <form onSubmit={saveSite}>
-                    <Card className="p-6">
-                        <h3 className="mb-1 font-bold text-[#111]">{t('إعدادات الموقع')}</h3>
-                        <p className="mb-5 text-[13px] text-[#6b7280]">
-                            {t('ما يراه من يفتح متجرك — تعريفُه ووسائل التواصل وما يُعرض من أسعار وطلبات.')}
-                        </p>
+                <div className="space-y-6">
+                    {/* التبويب يقول ما في الصفحة قبل التمرير إليه — والشكل
+                        شكلُ تبويبات النظام كلّها: خطٌّ سفليّ لا حبّات */}
+                    <Tabs
+                        current={siteTab}
+                        onChange={setSiteTab}
+                        tabs={[
+                            { key: 'basic', label: 'الأساسية', icon: Store },
+                            { key: 'contact', label: 'التواصل', icon: Share2 },
+                            { key: 'display', label: 'ما يراه الزائر', icon: Eye },
+                        ]}
+                    />
 
-                        <div className="space-y-4">
-                            <Field label="الجملة التعريفية" error={siteForm.errors.site_tagline}>
-                                <Input
-                                    value={siteForm.data.site_tagline}
-                                    onChange={(e) => siteForm.setData('site_tagline', e.target.value)}
-                                    placeholder={t('أجود المنتجات بأفضل الأسعار')}
-                                />
-                            </Field>
+                    {siteTab === 'basic' && (
+                        <>
+                            {/*
+                                الشعار بطاقةٌ وحده ومسارٌ وحده.
 
-                            <Field label="نبذة عن المتجر" error={siteForm.errors.site_about}>
-                                <Textarea
-                                    rows={4}
-                                    value={siteForm.data.site_about}
-                                    onChange={(e) => siteForm.setData('site_about', e.target.value)}
-                                />
-                            </Field>
-                        </div>
+                                كان العمود موجودًا والرفع في لوحة المنصّة فقط،
+                                وفي قوالب الفواتير مقبضٌ اسمه «شعار المتجر»
+                                يشترط شعارًا لا سبيل لصاحبه إلى رفعه.
+                            */}
+                            <Card className="overflow-hidden">
+                                <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
+                                    <ImageIcon className="size-4 shrink-0 text-[#6b7280]" />
+                                    <h3 className="font-bold text-[#111]">{t('الشعار')}</h3>
+                                </div>
+                                <div className="p-5">
+                                    <p className="mb-4 text-[13px] text-[#6b7280]">
+                                        {t('يظهر في رأس موقعك وفي الفواتير — وقوالب الفواتير تُظهره أو تُخفيه.')}
+                                    </p>
 
-                        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                            <h3 className="mb-4 font-bold text-[#111]">{t('التواصل')}</h3>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <Field label="واتساب" hint="بصيغة دولية بلا +" error={siteForm.errors.site_whatsapp}>
-                                    <Input
-                                        dir="ltr"
-                                        value={siteForm.data.site_whatsapp}
-                                        onChange={(e) => siteForm.setData('site_whatsapp', e.target.value)}
-                                        placeholder="96890000000"
-                                    />
-                                </Field>
-                                <Field label="إنستغرام" error={siteForm.errors.site_instagram}>
-                                    <Input
-                                        dir="ltr"
-                                        value={siteForm.data.site_instagram}
-                                        onChange={(e) => siteForm.setData('site_instagram', e.target.value)}
-                                        placeholder="mystore"
-                                    />
-                                </Field>
-                            </div>
-                            {/* بيانات المتجر مصدرها «بيانات النشاط» — تُعرض هنا ولا تُكرَّر إدخالًا */}
-                            <p className="mt-4 text-[12px] text-[#9ca3af]">
-                                {t('الاسم والهاتف والعنوان تُقرأ من «بيانات النشاط»')}: {business.name || '—'}
-                                {business.phone ? ` · ${business.phone}` : ''}
-                            </p>
-                        </div>
+                                    <div className="flex flex-wrap items-center gap-5">
+                                        <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa]">
+                                            {logoPreview || business.logo ? (
+                                                <img
+                                                    src={logoPreview ?? business.logo ?? ''}
+                                                    alt=""
+                                                    className="size-full object-contain"
+                                                />
+                                            ) : (
+                                                <ImageIcon className="size-8 text-[#d1d5db]" />
+                                            )}
+                                        </span>
 
-                        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                            <h3 className="mb-4 font-bold text-[#111]">{t('ما يراه الزائر')}</h3>
-                            <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
-                                <Toggle
-                                    label="عرض الأسعار"
-                                    hint="بإطفائه يُعرض المنتج بلا سعر ويُطلب السعر بالتواصل."
-                                    on={siteForm.data.site_show_prices}
-                                    onChange={(v) => siteForm.setData('site_show_prices', v)}
-                                />
-                                <Toggle
-                                    label="قبول الطلبات"
-                                    hint="الطلبات الواردة من الموقع تدخل قائمة المبيعات كغيرها."
-                                    on={siteForm.data.site_allow_orders}
-                                    onChange={(v) => siteForm.setData('site_allow_orders', v)}
-                                />
-                            </div>
-                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <Input
+                                                type="file"
+                                                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                                onChange={(e) => pickLogo(e.target.files?.[0] ?? null)}
+                                                className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
+                                            />
+                                            <p className="mt-2 text-[12px] text-[#9ca3af]">
+                                                {t('أفضل مقاس: 400×100 بكسل · PNG بخلفيّة شفّافة · حتّى ٢ ميغابايت')}
+                                            </p>
 
-                        <div className="mt-6 flex justify-end">
-                            <Button type="submit" loading={siteForm.processing}>
-                                <Save />
-                                {t('حفظ التغييرات')}
-                            </Button>
-                        </div>
-                    </Card>
-                </form>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    disabled={!logoFile}
+                                                    loading={logoBusy && !!logoFile}
+                                                    onClick={() => logoFile && sendLogo({ logo: logoFile })}
+                                                >
+                                                    <Upload />
+                                                    {t('رفع الشعار')}
+                                                </Button>
+                                                {business.logo && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        loading={logoBusy && !logoFile}
+                                                        onClick={() => sendLogo({ remove: true })}
+                                                    >
+                                                        <Trash2 />
+                                                        {t('حذف الشعار')}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            <form onSubmit={saveSite}>
+                                <Card className="overflow-hidden">
+                                    <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
+                                        <Type className="size-4 shrink-0 text-[#6b7280]" />
+                                        <h3 className="font-bold text-[#111]">{t('تعريف المتجر')}</h3>
+                                    </div>
+                                    <div className="space-y-4 p-5">
+                                        <Field
+                                            label="الجملة التعريفية"
+                                            hint="سطرٌ واحد تحت اسم متجرك — أوّل ما يُقرأ"
+                                            error={siteForm.errors.site_tagline}
+                                        >
+                                            <Input
+                                                value={siteForm.data.site_tagline}
+                                                onChange={(e) => siteForm.setData('site_tagline', e.target.value)}
+                                                placeholder={t('أجود المنتجات بأفضل الأسعار')}
+                                            />
+                                        </Field>
+
+                                        <Field
+                                            label="نبذة عن المتجر"
+                                            hint="تظهر في صفحة «من نحن» وتقرؤها محرّكات البحث"
+                                            error={siteForm.errors.site_about}
+                                        >
+                                            <Textarea
+                                                rows={4}
+                                                value={siteForm.data.site_about}
+                                                onChange={(e) => siteForm.setData('site_about', e.target.value)}
+                                            />
+                                        </Field>
+
+                                        {/* الاسم مصدرُه «بيانات النشاط» — يُعرض ولا يُكرَّر إدخالًا */}
+                                        <p className="text-[12px] text-[#9ca3af]">
+                                            {t('اسم المتجر يُقرأ من «بيانات النشاط»')}: {business.name || '—'}
+                                        </p>
+                                    </div>
+                                    <div className="flex justify-end border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-5 py-3">
+                                        <Button type="submit" loading={siteForm.processing}>
+                                            <Save />
+                                            {t('حفظ التغييرات')}
+                                        </Button>
+                                    </div>
+                                </Card>
+                            </form>
+                        </>
+                    )}
+
+                    {siteTab === 'contact' && (
+                        <form onSubmit={saveSite}>
+                            <Card className="overflow-hidden">
+                                <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
+                                    <Share2 className="size-4 shrink-0 text-[#6b7280]" />
+                                    <h3 className="font-bold text-[#111]">{t('التواصل')}</h3>
+                                </div>
+                                <div className="p-5">
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <Field label="واتساب" hint="بصيغة دولية بلا + — مثل: 96890000000" error={siteForm.errors.site_whatsapp}>
+                                            <Input
+                                                dir="ltr"
+                                                value={siteForm.data.site_whatsapp}
+                                                onChange={(e) => siteForm.setData('site_whatsapp', e.target.value)}
+                                                placeholder="96890000000"
+                                            />
+                                        </Field>
+                                        <Field label="إنستغرام" hint="اسم الحساب وحده بلا @" error={siteForm.errors.site_instagram}>
+                                            <Input
+                                                dir="ltr"
+                                                value={siteForm.data.site_instagram}
+                                                onChange={(e) => siteForm.setData('site_instagram', e.target.value)}
+                                                placeholder="mystore"
+                                            />
+                                        </Field>
+                                    </div>
+
+                                    {/* بيانات المتجر مصدرها «بيانات النشاط» — تُعرض ولا تُكرَّر إدخالًا */}
+                                    <div className="mt-5 rounded-[12px] bg-[#fafafa] px-4 py-3 text-[12px] leading-relaxed text-[#6b7280]">
+                                        <p className="font-medium text-[#374151]">{t('يُعرض على موقعك أيضًا، ومصدره «بيانات النشاط»')}</p>
+                                        <p className="mt-1">
+                                            {business.name || '—'}
+                                            {business.phone ? ` · ${business.phone}` : ''}
+                                            {business.address ? ` · ${business.address}` : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex justify-end border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-5 py-3">
+                                    <Button type="submit" loading={siteForm.processing}>
+                                        <Save />
+                                        {t('حفظ التغييرات')}
+                                    </Button>
+                                </div>
+                            </Card>
+                        </form>
+                    )}
+
+                    {siteTab === 'display' && (
+                        <form onSubmit={saveSite}>
+                            <Card className="overflow-hidden">
+                                <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
+                                    <Eye className="size-4 shrink-0 text-[#6b7280]" />
+                                    <h3 className="font-bold text-[#111]">{t('ما يراه الزائر')}</h3>
+                                </div>
+                                <div className="p-5">
+                                    <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                        <Toggle
+                                            label="عرض الأسعار"
+                                            hint="بإطفائه يُعرض المنتج بلا سعر ويُطلب السعر بالتواصل."
+                                            on={siteForm.data.site_show_prices}
+                                            onChange={(v) => siteForm.setData('site_show_prices', v)}
+                                        />
+                                        <Toggle
+                                            label="قبول الطلبات"
+                                            hint="الطلبات الواردة من الموقع تدخل قائمة المبيعات كغيرها."
+                                            on={siteForm.data.site_allow_orders}
+                                            onChange={(v) => siteForm.setData('site_allow_orders', v)}
+                                        />
+                                    </div>
+
+                                    {/* الطلبات بلا أسعار تصل بلا مبالغ — والتناقض يُقال قبل الحفظ */}
+                                    {!siteForm.data.site_show_prices && siteForm.data.site_allow_orders && (
+                                        <p className="mt-4 flex items-start gap-2 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#b45309]">
+                                            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                                            <span>
+                                                {t('الأسعار مخفيّة والطلبات مفتوحة — يطلب الزبون بلا أن يعرف الثمن.')}
+                                            </span>
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex justify-end border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-5 py-3">
+                                    <Button type="submit" loading={siteForm.processing}>
+                                        <Save />
+                                        {t('حفظ التغييرات')}
+                                    </Button>
+                                </div>
+                            </Card>
+                        </form>
+                    )}
+                </div>
             ) : tab === 'custom-alerts' ? (
                 <CustomAlerts
                     alerts={customAlerts ?? []}

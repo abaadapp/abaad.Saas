@@ -148,6 +148,89 @@ class SettingsLayoutTest extends TestCase
         ]);
     }
 
+    /* ----------------------------- شكل الشاشة ----------------------------- */
+
+    /** «إعدادات الموقع» تبويباتٌ وبطاقات — لا عمودٌ يُمرَّر إليه */
+    public function test_the_website_screen_is_tabbed(): void
+    {
+        $tsx = $this->screen();
+
+        foreach (["siteTab === 'basic'", "siteTab === 'contact'", "siteTab === 'display'"] as $needle) {
+            $this->assertStringContainsString($needle, $tsx, "تبويب «{$needle}» غائب");
+        }
+    }
+
+    /* ------------------------------ الشعار ------------------------------ */
+
+    /**
+     * صاحب النشاط يرفع شعاره بنفسه.
+     *
+     * العمود كان موجودًا والرفع في لوحة المنصّة وحدها، بينما في قوالب
+     * الفواتير مقبضٌ «شعار المتجر» وصفُه «يظهر فقط إن كان للنشاط شعار محفوظ»
+     * — يشترط ما لا سبيل لصاحبه إليه، فيتّصل بالدعم ليرفعه عنه.
+     */
+    public function test_the_owner_uploads_the_logo_himself(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.settings.logo'), [
+                'logo' => \Illuminate\Http\UploadedFile::fake()->image('logo.png', 400, 100),
+            ])->assertSessionHasNoErrors();
+
+        // العمود الخام: الخاصيّة تردّ رابطًا، والقرص يعرف المسار
+        $stored = $this->business->fresh()->getRawOriginal('logo');
+        $this->assertNotNull($stored, 'لم يُحفظ الشعار');
+        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($stored);
+
+        // والشاشة تقرؤه رابطًا لا مسارًا خامًا
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.settings.index'))->assertOk()->viewData('page')['props'];
+        $this->assertStringContainsString($stored, (string) $props['business']['logo']);
+    }
+
+    public function test_the_logo_is_removed_when_asked(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        $this->business->update(['logo' => 'logos/old.png']);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.settings.logo'), ['remove' => true])
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull($this->business->fresh()->logo);
+    }
+
+    /** وما ليس صورةً يُرفض — لا يُخزَّن ثمّ يُكتشف على فاتورةٍ مطبوعة */
+    public function test_a_file_that_is_not_an_image_is_refused(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.settings.logo'), [
+                'logo' => \Illuminate\Http\UploadedFile::fake()->create('bill.pdf', 40, 'application/pdf'),
+            ])->assertSessionHasErrors('logo');
+
+        $this->assertNull($this->business->fresh()->logo);
+    }
+
+    /** ولا يرفع تاجرٌ شعارًا على متجر جاره */
+    public function test_the_logo_lands_on_the_owner_business_only(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $other = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.settings.logo'), [
+                'logo' => \Illuminate\Http\UploadedFile::fake()->image('logo.png'),
+                'business_id' => $other->id,
+            ])->assertSessionHasNoErrors();
+
+        $this->assertNull($other->fresh()->logo);
+        $this->assertNotNull($this->business->fresh()->logo);
+    }
+
     /* ---------------------------- بوّابة الوردية ---------------------------- */
 
     /**

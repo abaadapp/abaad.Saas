@@ -302,6 +302,7 @@ class PageController extends Controller
                 'phone' => $b?->phone,
                 'email' => $b?->email,
                 'address' => $b?->address,
+                'logo' => \App\Http\Controllers\SuperAdmin\PageController::logoUrl($b?->logo),
             ],
             /*
              * إعدادات الموقع والنطاق — انتقلت من «أدوات التسويق» إلى هنا.

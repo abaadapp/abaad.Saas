@@ -512,6 +512,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/settings', [\App\Http\Controllers\Admin\PageController::class, 'settingsIndex'])->name('settings.index');
     Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
     Route::post('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'update'])->name('settings.update');
+    // الشعار وحده: ملفٌّ يحتاج multipart، وخلطُه بنموذج الإعدادات يُرسل كل مقبضٍ نصًّا
+    Route::post('/settings/logo', [\App\Http\Controllers\Admin\SettingController::class, 'logo'])->name('settings.logo');
 
     // المحذوفات — استعادة ما أذهبته ضغطة (انظر TrashController)
     Route::get('/settings/trash', [\App\Http\Controllers\Admin\TrashController::class, 'index'])->name('settings.trash');

@@ -173,6 +173,18 @@ class InventoryDocumentsTest extends TestCase
             'total' => 20, 'created_at' => now(),
         ]);
 
+        /*
+         * والطلب يحمل ما يحمله الإشعار.
+         *
+         * كان يُنشأ هنا بلا بنودٍ أصلًا، والإشعار يدّعي أربعةً من شاي —
+         * فيمرّ. وهو الثغرة بعينها لا اختبارُها: طلبٌ لم يبع شيئًا يُعفي
+         * الإشعار من الخصم، فتخرج البضاعة بورقةٍ موقّعة ولا يُنقص منها شيء.
+         */
+        $order->items()->create([
+            'product_id' => $this->product->id, 'name' => 'شاي',
+            'price' => 5, 'quantity' => 4, 'total' => 20,
+        ]);
+
         $this->note(['order_id' => $order->id])->assertSessionHasNoErrors();
         $note = DeliveryNote::first();
 

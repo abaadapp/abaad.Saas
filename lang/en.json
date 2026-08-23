@@ -3108,5 +3108,11 @@
     "لا إشعارات استلام بعد — تُنشأ عند تأكيد استلام أمر شراء": "No goods receipt notes yet — they are created when a purchase order is received",
     "ابحث بالرقم أو المورّد أو أمر الشراء…": "Search by number, supplier, or purchase order…",
     "قيمة ما دخل": "Value received",
-    "تاريخ الاستلام": "Received on"
+    "تاريخ الاستلام": "Received on",
+    "الكمية المخصومة من المخزون لا تكون كسرًا — الرصيد يُعدّ بالوحدة: :items": "Stock is counted in whole units, so a deducted quantity cannot be fractional: :items",
+    "الإشعار المربوط بطلبٍ لا يحمل أكثر ممّا فيه: :items": "A note tied to an order cannot carry more than the order holds: :items",
+    "المتبقّي في الطلب": "remaining on the order",
+    "لا يُربط الإشعار بطلبٍ معلّق أو ملغى — بضاعته لم تُنقص من المخزون.": "A note cannot be tied to a held or cancelled order — its goods were never deducted from stock.",
+    "الطلب غير صالح للربط.": "That order cannot be linked.",
+    "المتوفّر في هذا الفرع أقلّ من المُسلَّم: :items": "This branch holds less than the delivered quantity: :items"
 }

@@ -354,9 +354,16 @@ export default function Deliveries() {
                                         />
                                     </div>
                                     <div className="col-span-3 sm:col-span-2">
+                                        {/*
+                                            بندٌ من الجرد يُعدّ بالوحدة، وبندٌ يُكتب
+                                            بيده يقبل الكسر: رصيد المنتج عمودٌ صحيح
+                                            في كل النظام، فكسرٌ عليه يُقصّ عند الخصم
+                                            — «٠٫٥» تخرج من المخزن ولا تنقص شيئًا.
+                                            والخطوة تقول القاعدة قبل أن يردّها الخادم.
+                                        */}
                                         <Input
                                             type="number"
-                                            step="0.001"
+                                            step={item.product_id ? '1' : '0.001'}
                                             min="0"
                                             dir="ltr"
                                             placeholder={t('الكمية')}

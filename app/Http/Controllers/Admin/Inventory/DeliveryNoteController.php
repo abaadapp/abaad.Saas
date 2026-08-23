@@ -108,6 +108,89 @@ class DeliveryNoteController extends Controller
         ]);
     }
 
+    /**
+     * الكميّة التي تمسّ المخزون لا تكون كسرًا.
+     *
+     * رصيد المنتج عمودٌ صحيح في كل النظام — نقطة البيع والشراء ورصيد الفرع —
+     * وحقلُ الإشعار `decimal(12,3)` يقبل الكسر. فكان التسليم يقصّه عند
+     * الخصم: ورقةٌ تقول «٢٫٥ كجم» ورصيدٌ ينقص ٢، وورقةٌ تقول «٠٫٥» ورصيدٌ لا
+     * ينقص شيئًا — بضاعةٌ تخرج من المخزن ولا أثر لها في رقمٍ ولا في حركة.
+     *
+     * والكسر يبقى مأذونًا لسطرٍ بلا منتج: بندٌ يُكتب بيده («رملٌ ٢٫٥ متر»)
+     * ليس في الجرد أصلًا، فلا شيء يُقصّ.
+     */
+    private function rejectFractionalStock(array $items): ?string
+    {
+        $bad = [];
+
+        foreach ($items as $item) {
+            if (empty($item['product_id'])) {
+                continue;
+            }
+            if (fmod((float) $item['quantity'], 1.0) !== 0.0) {
+                $bad[] = $item['name'].' ('.rtrim(rtrim(number_format((float) $item['quantity'], 3, '.', ''), '0'), '.').')';
+            }
+        }
+
+        return $bad
+            ? __('الكمية المخصومة من المخزون لا تكون كسرًا — الرصيد يُعدّ بالوحدة: :items', ['items' => implode('، ', $bad)])
+            : null;
+    }
+
+    /**
+     * الإشعار المربوط بطلبٍ لا يحمل غير ما فيه.
+     *
+     * القاعدة أنّ المربوط لا يمسّ المخزون — البضاعة خرجت يوم البيع. وكان
+     * الربط بلا فحص: تختار طلبًا ثمّ تكتب في الإشعار مئةً من صنفٍ ليس فيه،
+     * فتخرج البضاعة بورقةٍ موقّعة **ولا يُنقص منها شيء** — لا من الإجماليّ
+     * ولا من الفرع ولا في سجلّ الحركات. أوسعُ ثغرةٍ في الشاشة: لا تُكتشف إلا
+     * في جردٍ بعد أشهر.
+     *
+     * ولا يُربط إلا بطلبٍ بِيع فعلًا: طلبٌ معلَّق أو ملغى لم تُنقص نقطةُ
+     * البيع بضاعته، فالربط به يعني الإعفاء من الخصم بلا خصمٍ سابق.
+     *
+     * والمقارنة بمجموع ما سُلّم قبله: طلبٌ من عشرة لا يُسلَّم بإشعارين
+     * كلٌّ منهما عشرة.
+     */
+    private function rejectWhatTheOrderDoesNotHold(int $bid, int $orderId, array $items): ?string
+    {
+        $order = Order::where('business_id', $bid)->with('items')->find($orderId);
+
+        if (! $order) {
+            return __('الطلب غير صالح للربط.');
+        }
+
+        if ($order->is_held || $order->status === Order::CANCELLED) {
+            return __('لا يُربط الإشعار بطلبٍ معلّق أو ملغى — بضاعته لم تُنقص من المخزون.');
+        }
+
+        $sold = $order->items->groupBy('product_id')->map(fn ($g) => (float) $g->sum('quantity'));
+
+        $already = \App\Models\DeliveryNoteItem::whereHas('note', fn ($q) => $q
+            ->where('business_id', $bid)->where('order_id', $orderId)->where('status', '!=', 'ملغى'))
+            ->get()->groupBy('product_id')->map(fn ($g) => (float) $g->sum('quantity'));
+
+        $bad = [];
+
+        foreach ($items as $item) {
+            if (empty($item['product_id'])) {
+                // بندٌ بلا منتج لا يُقاس بالطلب — ولا يمسّ المخزون أصلًا
+                continue;
+            }
+
+            $pid = (int) $item['product_id'];
+            $left = ($sold[$pid] ?? 0.0) - ($already[$pid] ?? 0.0);
+
+            if ((float) $item['quantity'] > $left) {
+                $bad[] = $item['name'].' ('.__('المتبقّي في الطلب').' '.rtrim(rtrim(number_format(max(0, $left), 3, '.', ''), '0'), '.').')';
+            }
+        }
+
+        return $bad
+            ? __('الإشعار المربوط بطلبٍ لا يحمل أكثر ممّا فيه: :items', ['items' => implode('، ', $bad)])
+            : null;
+    }
+
     public function store(Request $request)
     {
         $bid = $this->bid();
@@ -127,10 +210,27 @@ class DeliveryNoteController extends Controller
             'items.*.unit' => ['nullable', 'string', 'max:20'],
         ]);
 
+        if ($error = $this->rejectFractionalStock($data['items'])) {
+            return back()->withInput()->withErrors(['items' => $error]);
+        }
+
+        if (! empty($data['order_id']) && ($error = $this->rejectWhatTheOrderDoesNotHold($bid, (int) $data['order_id'], $data['items']))) {
+            return back()->withInput()->withErrors(['items' => $error]);
+        }
+
         $note = DB::transaction(function () use ($bid, $data) {
             $note = DeliveryNote::create([
                 'business_id' => $bid,
-                'branch_id' => Demo::currentBranchId(),
+                /*
+                 * فرعٌ بعينه لا «كل الفروع».
+                 *
+                 * `currentBranchId` تُرجع null حين يكون المعروض «كل الفروع» —
+                 * وهو عرضٌ لا مخزنٌ تخرج منه بضاعة. فكان التسليم يُنقص الإجماليّ
+                 * ولا يُنقص رصيد فرعٍ واحد (`BranchStock::adjust` تنصرف عند
+                 * null)، فيفترق الإجماليّ عن مجموع الفروع ولا يعودان يلتقيان:
+                 * جردٌ يقول تسعين وفروعٌ تجمع مئة، ولا سطر يقول لماذا.
+                 */
+                'branch_id' => Demo::activeBranchId(),
                 'customer_id' => $data['customer_id'] ?? null,
                 'order_id' => $data['order_id'] ?? null,
                 'number' => DeliveryNote::nextNumber($bid),
@@ -162,72 +262,87 @@ class DeliveryNoteController extends Controller
     /**
      * التسليم — يُقفل الإشعار، ويُنقص المخزون إن لم يكن مربوطًا بطلب.
      *
-     * والفحص قبل الإنقاص لا بعده: إشعارٌ يُسلَّم بكميةٍ لا وجود لها يترك رصيدًا
-     * سالبًا تبيع عليه نقطة البيع ما ليس عندها.
+     * والمتاح يُقاس بالفرع لا بالنشاط كلّه — وهذا ما كان مكسورًا: الفحص كان
+     * على `products.quantity`، وهو مجموع الفروع. ففرعٌ فارغ يُسلَّم منه
+     * أربعون ما دام في الفرع الآخر مئة: يمرّ الفحص، ويهوي رصيد الفرع إلى
+     * سالبٍ تبيع عليه نقطة البيع ما ليس عندها.
+     *
+     * والقياس داخل المعاملة بقفل (`lock: true`) كما في نقطة البيع: فحصٌ
+     * قبلها يُقاس على رصيدٍ يتغيّر بينه وبين الخصم — بيعةٌ تقع في تلك الثغرة
+     * تُخرج الصنف مرّتين.
      */
     public function deliver($id)
     {
         $bid = $this->bid();
-        $note = DeliveryNote::where('business_id', $bid)->with('items')->findOrFail($id);
 
-        if ($note->status !== 'مسودة') {
-            return back()->with('toast', ['msg' => __('الإشعار سُلّم أو أُلغي'), 'type' => 'info']);
+        try {
+            $note = DB::transaction(function () use ($bid, $id) {
+                /*
+                 * الحالة تُقرأ بقفلٍ داخل المعاملة لا خارجها.
+                 *
+                 * ضغطتان متتاليتان — أو نقرةٌ مزدوجة — كانتا تمرّان بالفحص
+                 * معًا ثم تخصمان البضاعة مرّتين من إشعارٍ واحد.
+                 */
+                $note = DeliveryNote::where('business_id', $bid)->with('items')
+                    ->lockForUpdate()->findOrFail($id);
+
+                if ($note->status !== 'مسودة') {
+                    throw new \RuntimeException(__('الإشعار سُلّم أو أُلغي'));
+                }
+
+                if ($note->order_id === null) {
+                    $ids = $note->items->pluck('product_id')->filter()->all();
+                    $products = Product::where('business_id', $bid)->whereIn('id', $ids)->get()->keyBy('id');
+                    $available = \App\Support\Stock::availabilityResolver($bid, $note->branch_id, $ids, lock: true);
+
+                    $short = [];
+                    foreach ($note->items as $item) {
+                        $product = $item->product_id ? ($products[$item->product_id] ?? null) : null;
+                        if (! $product) {
+                            continue;
+                        }
+                        $here = $available($product->id, (int) $product->quantity);
+                        if ((int) $item->quantity > $here) {
+                            $short[] = $product->name.' ('.$here.')';
+                        }
+                    }
+
+                    if ($short) {
+                        throw new \RuntimeException(__('المتوفّر في هذا الفرع أقلّ من المُسلَّم: :items', ['items' => implode('، ', $short)]));
+                    }
+
+                    foreach ($note->items as $item) {
+                        $product = $item->product_id ? ($products[$item->product_id] ?? null) : null;
+                        if (! $product) {
+                            continue;
+                        }
+
+                        // صحيحٌ دائمًا: الكسر مرفوض عند الإنشاء لكل بندٍ له منتج
+                        $qty = (int) $item->quantity;
+                        BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
+                        $product->decrement('quantity', $qty);
+                        BranchStock::adjust($bid, $note->branch_id, $product->id, -$qty);
+
+                        InventoryMovement::create([
+                            'business_id' => $bid,
+                            'branch_id' => $note->branch_id,
+                            'product_id' => $product->id,
+                            'product_name' => $product->name,
+                            'sku' => $product->sku,
+                            'type' => 'خصم كمية',
+                            'quantity' => '-'.$qty,
+                            'employee_name' => auth()->user()->name,
+                        ]);
+                    }
+                }
+
+                $note->update(['status' => 'مُسلَّم']);
+
+                return $note;
+            });
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['deliver' => $e->getMessage()]);
         }
-
-        if ($note->order_id === null) {
-            $short = [];
-
-            foreach ($note->items as $item) {
-                if (! $item->product_id) {
-                    continue;
-                }
-                $product = Product::where('business_id', $bid)->find($item->product_id);
-                if ($product && (float) $item->quantity > (float) $product->quantity) {
-                    $short[] = $product->name.' ('.(int) $product->quantity.')';
-                }
-            }
-
-            if ($short) {
-                return back()->withErrors([
-                    'deliver' => __('المتوفّر أقلّ من المُسلَّم: :items', ['items' => implode('، ', $short)]),
-                ]);
-            }
-        }
-
-        DB::transaction(function () use ($bid, $note) {
-            if ($note->order_id === null) {
-                foreach ($note->items as $item) {
-                    if (! $item->product_id) {
-                        continue;
-                    }
-                    $product = Product::where('business_id', $bid)->find($item->product_id);
-                    if (! $product) {
-                        continue;
-                    }
-
-                    $qty = (int) $item->quantity;
-                    BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
-                    $product->decrement('quantity', $qty);
-
-                    if ($branchId = $note->branch_id) {
-                        BranchStock::adjust($bid, $branchId, $product->id, -$qty);
-                    }
-
-                    InventoryMovement::create([
-                        'business_id' => $bid,
-                        'branch_id' => $note->branch_id,
-                        'product_id' => $product->id,
-                        'product_name' => $product->name,
-                        'sku' => $product->sku,
-                        'type' => 'خصم كمية',
-                        'quantity' => '-'.$qty,
-                        'employee_name' => auth()->user()->name,
-                    ]);
-                }
-            }
-
-            $note->update(['status' => 'مُسلَّم']);
-        });
 
         \App\Support\Activity::log('updated', 'سلّم الإشعار '.$note->number, ['subject_id' => $note->id]);
 

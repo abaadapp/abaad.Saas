@@ -16,7 +16,4 @@ class PurchaseOrder extends Model
 
     /** سندات المورّد المحرَّرة على هذا الأمر — أمرٌ مفوتَر لا يُفوتَر ثانية */
     public function invoices(): HasMany { return $this->hasMany(SupplierInvoice::class); }
-
-    /** أوراق ما دخل من هذا الأمر — دفعةٌ دفعة (انظر GoodsReceiptNote) */
-    public function receiptNotes(): HasMany { return $this->hasMany(GoodsReceiptNote::class); }
 }

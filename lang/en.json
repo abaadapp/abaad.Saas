@@ -3114,8 +3114,5 @@
     "المتبقّي في الطلب": "remaining on the order",
     "لا يُربط الإشعار بطلبٍ معلّق أو ملغى — بضاعته لم تُنقص من المخزون.": "A note cannot be tied to a held or cancelled order — its goods were never deducted from stock.",
     "الطلب غير صالح للربط.": "That order cannot be linked.",
-    "المتوفّر في هذا الفرع أقلّ من المُسلَّم: :items": "This branch holds less than the delivered quantity: :items",
-    "وصل": "Arrived",
-    "إشعار الاستلام": "Goods receipt note",
-    "إشعارات الاستلام": "Goods receipt notes"
+    "المتوفّر في هذا الفرع أقلّ من المُسلَّم: :items": "This branch holds less than the delivered quantity: :items"
 }

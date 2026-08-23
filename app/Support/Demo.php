@@ -986,26 +986,11 @@ class Demo
          * استلامه لا يُفتح فيها أبدًا. وإرسال بنود الأوامر كلّها يضاعف
          * الحمولة بعدد أصناف كلّ أمرٍ أُغلق منذ سنة.
          */
-        return PurchaseOrder::where('business_id', self::bid())->withCount(['items', 'receiptNotes'])
+        return PurchaseOrder::where('business_id', self::bid())->withCount('items')
             ->with(['items' => fn ($q) => $q->orderBy('id')])
             ->orderByDesc('id')->get()->map(fn ($p) => [
                 'id' => $p->id,
                 'number' => $p->number,
-                /*
-                 * ما طُلب وما وصل — رقمان لا شارةٌ صامتة.
-                 *
-                 * كانت الشاشة تقول «مستلم جزئيًا» وكفى: لا كم وصل من كم، ولا
-                 * في أيّ يوم، ولا كم دفعة. فيخرج التاجر من المشتريات ويفتح
-                 * المخزون ويبحث برقم الأمر ليعرف ما في يده. واستلامٌ يُستعمل
-                 * ولا يُراجَع نصفُ ميزة.
-                 *
-                 * ويُحسبان قبل تفريغ البنود، فيُقالان للمكتمل كما للمفتوح.
-                 */
-                'ordered_qty' => (int) $p->items->sum('quantity'),
-                'received_qty' => (int) $p->items->sum('received_quantity'),
-                // عددُ الأوراق فعلًا لا استنتاجٌ من الحالة: أوامرُ ما قبل
-                // الإشعارات «مستلمة» ولا ورقة لها، ورابطٌ إليها يقود إلى فراغ
-                'receipts' => (int) $p->receipt_notes_count,
                 'items' => $p->status === 'مستلم' ? [] : $p->items->map(fn ($i) => [
                     'id' => $i->id,
                     'name' => $i->name,

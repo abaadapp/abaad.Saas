@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, ClipboardList, PackageCheck, PackagePlus, Paperclip, Plus, Trash2, Truck, Upload } from 'lucide-react';
+import { AlertTriangle, ClipboardList, PackageCheck, Paperclip, Plus, Trash2, Truck, Upload } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PURCHASE_TABS } from '@/Components/SectionTabs';
@@ -117,45 +117,7 @@ export default function PurchasesIndex() {
             align: 'end',
             cell: (o) => <span className="tabular-nums font-semibold">{m(o.total)}</span>,
         },
-        {
-            key: 'status',
-            header: 'الحالة',
-            cell: (o) => (
-                <>
-                    <Badge status={o.status}>{t(o.status)}</Badge>
-                    {/*
-                        الشارة تقول «مستلم جزئيًا» ولا تقول كم من كم. والرقمان
-                        تحتها هما ما يُسأل عنه أوّلًا: ماذا في يدي، وماذا ما زال
-                        عند المورّد.
-                    */}
-                    {o.received_qty > 0 && o.received_qty < o.ordered_qty && (
-                        <span className="mt-0.5 block text-[12px] tabular-nums text-[#b45309]">
-                            {t('وصل')} {number(o.received_qty)} {t('من')} {number(o.ordered_qty)}
-                        </span>
-                    )}
-                    {/*
-                        ورابطٌ إلى أوراقه — والبحث في شاشة الإشعارات يقبل رقم
-                        الأمر أصلًا، فلا مسار جديد ولا استعلام.
-
-                        ولا يُرسم إلا لأمرٍ له ورقةٌ فعلًا: أوامرُ ما قبل
-                        الإشعارات «مستلمة» ولا ورقة لها، ورابطٌ يقود إلى قائمةٍ
-                        فارغة يَعِد ولا يفي.
-                    */}
-                    {o.receipts > 0 && (
-                        <SmartLink
-                            routeName="admin.inventory.receipts"
-                            href={route('admin.inventory.receipts', { q: o.number })}
-                            className="mt-1 inline-flex items-center gap-1 text-[12px] text-[#4b4b4b] hover:text-[#111] hover:underline"
-                        >
-                            <PackagePlus className="size-3.5 text-[#9ca3af]" />
-                            {o.receipts === 1
-                                ? t('إشعار الاستلام')
-                                : `${t('إشعارات الاستلام')} (${number(o.receipts)})`}
-                        </SmartLink>
-                    )}
-                </>
-            ),
-        },
+        { key: 'status', header: 'الحالة', cell: (o) => <Badge status={o.status}>{t(o.status)}</Badge> },
         {
             key: 'receipt',
             header: 'إيصال الدفع',

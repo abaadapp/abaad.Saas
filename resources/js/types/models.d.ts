@@ -161,11 +161,6 @@ export interface PurchaseOrder {
     items_count: number;
     /** بنود الأمر — تُرسَل للمفتوح وحده، فالمستلَم لا يُفتح في نافذة الاستلام */
     items: PurchaseOrderLine[];
-    /** ما طُلب وما وصل — يُقالان للمكتمل كما للمفتوح */
-    ordered_qty: number;
-    received_qty: number;
-    /** عدد أوراق الاستلام المحرَّرة عليه — صفرٌ فلا رابط */
-    receipts: number;
     receipt: string | null;
     receipt_name: string | null;
     ordered: string;

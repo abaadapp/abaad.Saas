@@ -159,12 +159,18 @@ class PinScopeTest extends TestCase
     }
 
     /**
-     * وفي منصةٍ بمتجرٍ واحد يعمل بلا ربط.
+     * وحتى منصّةٌ بمتجرٍ واحد لا تفتح بابها بلا ربط.
      *
-     * التركيبة المفردة لا يُخلط فيها بأحد، فلا معنى لأن تُطالَب بخطوةٍ
-     * إضافية — والاشتراط عليها كان سيُعطّل كل تركيبٍ قائم اليوم.
+     * كانت تفتح، وحجّتُها: «التركيبة المفردة لا يُخلط فيها بأحد». والحجّة
+     * صحيحةٌ في محورها — لا متجرَ آخر يُخلط به — لكنّها تُجيب عن الخلط لا عن
+     * الباب: يصير باب الرمز مفتوحًا لأيّ متصفّحٍ في العالم بلا جهازٍ ولا
+     * تفعيل، ولا يبقى إلا أربعةُ أرقام. عشرةُ آلاف احتمال، وحدُّ المحاولات
+     * يُحسب لكلّ عنوانٍ على حدة فيُقسَّم على العناوين.
+     *
+     * وثمنُ الإغلاق لا شيء: النافذة الوحيدة التي كان يخدمها هي ما قبل تفعيل
+     * أوّل جهاز، وفيها يدخل صاحب المتجر ببريده وكلمة مرّه ليفعّله.
      */
-    public function test_a_single_business_platform_needs_no_binding(): void
+    public function test_a_single_business_platform_still_needs_a_bound_device(): void
     {
         User::where('business_id', $this->b->id)->delete();
         $this->b->delete();
@@ -172,7 +178,23 @@ class PinScopeTest extends TestCase
         $this->addCashier($this->ownerA, 'ca@abaad.om', '7361');
         $this->post(route('logout'));
 
-        $this->post(route('pin.attempt'), ['pin' => '7361'])->assertSessionHasNoErrors();
+        $this->post(route('pin.attempt'), ['pin' => '7361'])->assertSessionHasErrors('pin');
+
+        $this->assertGuest();
+    }
+
+    /** ويفتحه الربط — فالإغلاق على التخمين لا على الأجهزة */
+    public function test_but_a_bound_device_opens_it_on_a_single_business_platform(): void
+    {
+        User::where('business_id', $this->b->id)->delete();
+        $bid = $this->a->id;
+        $this->b->delete();
+
+        $this->addCashier($this->ownerA, 'ca@abaad.om', '7361');
+        $this->post(route('logout'));
+
+        $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $bid)
+            ->post(route('pin.attempt'), ['pin' => '7361'])->assertSessionHasNoErrors();
 
         $this->assertAuthenticated();
     }

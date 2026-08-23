@@ -354,6 +354,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/inventory/adjustments', [\App\Http\Controllers\Admin\Inventory\StockAdjustmentController::class, 'index'])->name('inventory.adjustments');
     Route::post('/inventory/adjustments', [\App\Http\Controllers\Admin\Inventory\StockAdjustmentController::class, 'store'])->name('inventory.adjustments.store');
+    /*
+     * إشعارات الاستلام — قراءةٌ فقط.
+     *
+     * لا تُكتب بيدٍ ولا تُحذف: تُنشئها لحظةُ استلام أمر الشراء شاهدةً على
+     * واقعةٍ جرت. ونموذجٌ يُنشئ إشعارًا بلا استلامٍ يجعل الورقة تقول ما لم
+     * يقله المخزون.
+     */
+    Route::get('/inventory/receipts', [\App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController::class, 'index'])->name('inventory.receipts');
     Route::get('/inventory/deliveries', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'index'])->name('inventory.deliveries');
     Route::post('/inventory/deliveries', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'store'])->name('inventory.deliveries.store');
     Route::post('/inventory/deliveries/{id}/deliver', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'deliver'])->name('inventory.deliveries.deliver');

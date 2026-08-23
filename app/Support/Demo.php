@@ -979,10 +979,26 @@ class Demo
     {
         $branches = \App\Models\Branch::where('business_id', self::bid())->pluck('name', 'id');
 
+        /*
+         * بنود الأوامر المفتوحة وحدها تُرسَل.
+         *
+         * نافذة الاستلام تحتاج البنود لتعرض ما بقي من كلّ صنف، وأمرٌ اكتمل
+         * استلامه لا يُفتح فيها أبدًا. وإرسال بنود الأوامر كلّها يضاعف
+         * الحمولة بعدد أصناف كلّ أمرٍ أُغلق منذ سنة.
+         */
         return PurchaseOrder::where('business_id', self::bid())->withCount('items')
+            ->with(['items' => fn ($q) => $q->orderBy('id')])
             ->orderByDesc('id')->get()->map(fn ($p) => [
                 'id' => $p->id,
                 'number' => $p->number,
+                'items' => $p->status === 'مستلم' ? [] : $p->items->map(fn ($i) => [
+                    'id' => $i->id,
+                    'name' => $i->name,
+                    'quantity' => (int) $i->quantity,
+                    'received' => (int) $i->received_quantity,
+                    'remaining' => $i->remaining,
+                    'cost' => (float) $i->cost,
+                ])->all(),
                 'branch' => $branches[$p->branch_id] ?? '—',
                 'supplier' => $p->supplier_name ?? optional($p->supplier)->name ?? '—',
                 'status' => $p->status,

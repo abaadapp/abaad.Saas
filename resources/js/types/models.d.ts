@@ -159,10 +159,21 @@ export interface PurchaseOrder {
     status: string;
     total: number;
     items_count: number;
+    /** بنود الأمر — تُرسَل للمفتوح وحده، فالمستلَم لا يُفتح في نافذة الاستلام */
+    items: PurchaseOrderLine[];
     receipt: string | null;
     receipt_name: string | null;
     ordered: string;
     received: string | null;
+}
+
+export interface PurchaseOrderLine {
+    id: number;
+    name: string;
+    quantity: number;
+    received: number;
+    remaining: number;
+    cost: number;
 }
 
 export interface Movement {

@@ -28,6 +28,7 @@ import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import { Input } from '@/Components/ui/input';
 import type { PurchaseOrder } from '@/types/models';
 
 interface ReorderRow {
@@ -54,13 +55,44 @@ export default function PurchasesIndex() {
     const [confirm, setConfirm] = useState<{ order: PurchaseOrder; kind: 'receive' | 'delete' } | null>(null);
     const uploads = useRef<Record<number, HTMLInputElement | null>>({});
 
+    /*
+     * الكمية المستلمة لكل بند — تبدأ بما بقي منه.
+     *
+     * البداية بالمتبقّي لا بصفر: الشحنة الكاملة هي الحال الغالب، فمن وصلته
+     * كاملةً يضغط «تأكيد» بلا كتابة، ومن نقصت شحنته يصحّح السطر الناقص وحده.
+     */
+    const [taking, setTaking] = useState<Record<number, string>>({});
+
+    const openReceive = (order: PurchaseOrder) => {
+        setTaking(Object.fromEntries(order.items.map((i) => [i.id, String(i.remaining)])));
+        setConfirm({ order, kind: 'receive' });
+    };
+
     const act = () => {
         if (!confirm) return;
         const { order, kind } = confirm;
         const done = { preserveScroll: true, onFinish: () => setConfirm(null) };
-        if (kind === 'receive') router.post(route('admin.purchases.receive', order.id), {}, done);
-        else router.delete(route('admin.purchases.destroy', order.id), done);
+
+        if (kind === 'receive') {
+            router.post(
+                route('admin.purchases.receive', order.id),
+                {
+                    items: order.items.map((i) => ({
+                        id: i.id,
+                        // حقلٌ فُرّغ يعني «لم يصل منه شيء» لا «وصل كلّه»
+                        quantity: Number(taking[i.id] ?? 0) || 0,
+                    })),
+                },
+                done,
+            );
+        } else {
+            router.delete(route('admin.purchases.destroy', order.id), done);
+        }
     };
+
+    const takingTotal = confirm?.order.items.reduce((sum, i) => sum + (Number(taking[i.id]) || 0), 0) ?? 0;
+    const partial =
+        confirm?.order.items.some((i) => (Number(taking[i.id]) || 0) < i.remaining) ?? false;
 
     const uploadReceipt = (order: PurchaseOrder, file: File) => {
         router.post(route('admin.purchases.receipt', order.id), { receipt: file }, {
@@ -138,7 +170,7 @@ export default function PurchasesIndex() {
                             variant="success"
                             size="sm"
                             className="rounded-full"
-                            onClick={() => setConfirm({ order: o, kind: 'receive' })}
+                            onClick={() => openReceive(o)}
                         >
                             <PackageCheck />
                             {t('استلام')}
@@ -278,27 +310,94 @@ export default function PurchasesIndex() {
             )}
 
             <Dialog open={confirm !== null} onOpenChange={(v) => !v && setConfirm(null)}>
-                <DialogContent className="max-w-sm">
+                <DialogContent className={cn(confirm?.kind === 'receive' ? 'sm:max-w-xl' : 'max-w-sm')}>
                     <DialogHeader>
                         <DialogTitle>
                             {confirm?.kind === 'receive' ? t('تأكيد الاستلام') : t('تأكيد الحذف')}
                         </DialogTitle>
                     </DialogHeader>
-                    <div className="px-5 pb-5">
-                        <p className="text-sm text-[#4b4b4b]">
-                            {confirm?.kind === 'receive'
-                                ? t('تأكيد استلام البضاعة ورفع المخزون؟')
-                                : t('حذف أمر الشراء؟')}
-                        </p>
-                        <div className="mt-5 flex justify-end gap-2">
-                            <Button variant="outline" onClick={() => setConfirm(null)}>
-                                {t('إلغاء')}
-                            </Button>
-                            <Button variant={confirm?.kind === 'receive' ? 'success' : 'danger'} onClick={act}>
-                                {confirm?.kind === 'receive' ? t('استلام') : t('حذف')}
-                            </Button>
+
+                    {confirm?.kind === 'receive' ? (
+                        <div className="px-5 pb-5">
+                            {/*
+                                الكمية تُكتب لكل صنف لا تُفترض.
+
+                                كان الزرّ يستلم الأمر كاملًا مهما وصل: مورّدٌ يشحن
+                                ثمانين من مئة يُسجَّل مئةً — فيزيد المخزون عشرين لم
+                                تصل، ويُحسب متوسّط التكلفة على مئةٍ دُفع ثمن ثمانين
+                                منها.
+                            */}
+                            <p className="mb-3 text-sm text-[#4b4b4b]">
+                                {t('اكتب ما وصلك من كل صنف — والباقي يبقى مفتوحًا لدفعةٍ قادمة.')}
+                            </p>
+
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead>{t('الصنف')}</TableHead>
+                                        <TableHead className="text-end">{t('المطلوب')}</TableHead>
+                                        <TableHead className="text-end">{t('استُلم')}</TableHead>
+                                        <TableHead className="text-end">{t('يُستلم الآن')}</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {confirm.order.items.map((i) => (
+                                        <TableRow key={i.id}>
+                                            <TableCell className="font-medium text-[#111]">{i.name}</TableCell>
+                                            <TableCell className="text-end tabular-nums text-[#6b7280]">
+                                                {number(i.quantity)}
+                                            </TableCell>
+                                            <TableCell className="text-end tabular-nums text-[#6b7280]">
+                                                {number(i.received)}
+                                            </TableCell>
+                                            <TableCell className="text-end">
+                                                <Input
+                                                    type="number"
+                                                    min={0}
+                                                    max={i.remaining}
+                                                    inputMode="numeric"
+                                                    value={taking[i.id] ?? ''}
+                                                    onChange={(e) =>
+                                                        setTaking((v) => ({ ...v, [i.id]: e.target.value }))
+                                                    }
+                                                    className="h-9 w-24 text-end tabular-nums"
+                                                    aria-label={`${t('يُستلم الآن')} — ${i.name}`}
+                                                />
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+
+                            <div className="mt-4 flex items-center justify-between gap-3">
+                                <p className="text-[13px] text-[#6b7280]">
+                                    {partial
+                                        ? t('استلامٌ جزئيّ — يبقى الأمر مفتوحًا')
+                                        : t('استلامٌ كامل — يُقفل الأمر')}
+                                </p>
+                                <div className="flex justify-end gap-2">
+                                    <Button variant="outline" onClick={() => setConfirm(null)}>
+                                        {t('إلغاء')}
+                                    </Button>
+                                    <Button variant="success" onClick={act} disabled={takingTotal <= 0}>
+                                        {t('استلام')}
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="px-5 pb-5">
+                            <p className="text-sm text-[#4b4b4b]">{t('حذف أمر الشراء؟')}</p>
+                            <div className="mt-5 flex justify-end gap-2">
+                                <Button variant="outline" onClick={() => setConfirm(null)}>
+                                    {t('إلغاء')}
+                                </Button>
+                                <Button variant="danger" onClick={act}>
+                                    {t('حذف')}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
         </AdminLayout>

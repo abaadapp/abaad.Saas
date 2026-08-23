@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePage } from '@inertiajs/react';
+import SmartLink from '@/Components/SmartLink';
 import { PackagePlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -80,8 +81,23 @@ export default function InventoryReceipts() {
             cell: (n) => (
                 <>
                     <span>{n.supplier ?? '—'}</span>
-                    {/* رقم الأمر تحت اسم المورّد: منه تُقابَل الورقة بأمرها */}
-                    {n.order && <span className="block font-mono text-[12px] text-[#9ca3af]">{n.order}</span>}
+                    {/*
+                        رقم الأمر تحت اسم المورّد: منه تُقابَل الورقة بأمرها.
+
+                        ورابطٌ يفتح الأمر نفسه لا قائمةً فيها أربعةٌ وستّون:
+                        الرقم يصل مع الرابط ويُملأ به حقل البحث في الشاشة
+                        الأخرى. ولا شاشةَ أمرٍ مفردة في النظام، ورابطٌ يُنزلك
+                        في رأس قائمةٍ ويتركك تبحث يَعِد ولا يفي.
+                    */}
+                    {n.order && (
+                        <SmartLink
+                            routeName="admin.purchases.orders"
+                            href={route('admin.purchases.orders', { q: n.order })}
+                            className="block font-mono text-[12px] text-[#6b7280] hover:text-[#111] hover:underline"
+                        >
+                            {n.order}
+                        </SmartLink>
+                    )}
                 </>
             ),
         },

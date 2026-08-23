@@ -18,7 +18,7 @@ class PurchaseOrderController extends Controller
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     /** أوامر الشراء — ما طُلب، وما استُلم منه */
-    public function index(): \Inertia\Response
+    public function index(Request $request): \Inertia\Response
     {
         $s = Demo::purchaseOrderStats();
 
@@ -38,6 +38,14 @@ class PurchaseOrderController extends Controller
                 return $o;
             }, Demo::purchaseOrders()),
             'reorder' => Demo::reorderSuggestions(),
+            /*
+             * بحثٌ يصل مع الرابط.
+             *
+             * إشعار الاستلام يقود إلى أمره، والقائمة أربعةٌ وستّون أمرًا:
+             * رابطٌ يُنزلك في أوّلها ويتركك تبحث ليس رابطًا. فيصل معه رقم
+             * الأمر ويُملأ به حقل البحث، فتفتح الصفحة على أمرٍ واحد.
+             */
+            'q' => trim((string) $request->query('q')) ?: null,
         ]);
     }
 

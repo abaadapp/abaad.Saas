@@ -201,6 +201,41 @@ class GoodsReceiptTest extends TestCase
         $this->assertSame($po->number, $props['notes'][0]['order']);
     }
 
+    /**
+     * إشعار الاستلام يقود إلى أمره — إلى الأمر نفسه لا إلى قائمةٍ فيه.
+     *
+     * لا شاشةَ أمرٍ مفردة في النظام، وقائمةُ الأوامر تُصفَّح: رابطٌ يُنزل
+     * التاجر في رأسها ويتركه يبحث بين عشرات الأوامر يَعِد ولا يفي. فيصل رقم
+     * الأمر مع الرابط ويُملأ به حقل البحث، فتفتح الشاشة على أمرٍ واحد.
+     */
+    public function test_the_note_points_at_its_own_order_not_at_a_list(): void
+    {
+        $product = $this->product('صنف', 0, 0);
+        $po = $this->order([['product' => $product, 'qty' => 3, 'cost' => 1]]);
+        $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+
+        // الورقة تحمل رقم أمرها — وعليه يقوم الرابط
+        $notes = $this->actingAs($this->owner)
+            ->get(route('admin.inventory.receipts'))->viewData('page')['props']['notes'];
+        $this->assertSame($po->number, $notes[0]['order']);
+
+        // والرقم يصل إلى الشاشة الأخرى فيُملأ به البحث
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.purchases.orders', ['q' => $po->number]))->viewData('page')['props'];
+
+        $this->assertSame($po->number, $props['q'], 'الرابط يصل والبحث لا يُملأ');
+        $this->assertContains($po->number, collect($props['orders'])->pluck('number')->all());
+    }
+
+    /** وبلا رابطٍ لا بحثَ مفروضًا: الشاشة تُفتح على أوامرها كلّها */
+    public function test_opening_the_orders_screen_plainly_filters_nothing(): void
+    {
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.purchases.orders'))->viewData('page')['props'];
+
+        $this->assertNull($props['q']);
+    }
+
     /** والإشعار لا يُدخل البضاعة ثانيةً: الاستلام أدخلها، وهذا ورقتُه */
     public function test_the_note_does_not_move_stock_a_second_time(): void
     {

@@ -44,10 +44,12 @@ interface Props {
     orders: PurchaseOrder[];
     stats: Stat[];
     reorder: ReorderRow[];
+    /** رقمٌ يصل مع الرابط من إشعار الاستلام — يُملأ به حقل البحث */
+    q: string | null;
 }
 
 export default function PurchasesIndex() {
-    const { orders, stats, reorder, context } = usePage<PageProps<Props>>().props;
+    const { orders, stats, reorder, q, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -303,6 +305,7 @@ export default function PurchasesIndex() {
                         rowKey={(o) => o.id}
                         searchPlaceholder="ابحث بالرقم أو المورّد…"
                         searchable={(o) => `${o.number} ${o.supplier} ${o.branch ?? ''}`}
+                        initialQuery={q ?? undefined}
                         filters={filters}
                         empty="لا توجد أوامر شراء بعد"
                     />

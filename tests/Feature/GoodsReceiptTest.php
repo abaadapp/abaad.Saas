@@ -201,6 +201,93 @@ class GoodsReceiptTest extends TestCase
         $this->assertSame($po->number, $props['notes'][0]['order']);
     }
 
+    /**
+     * شاشة أوامر الشراء تقول ما وصل من كم، وتقود إلى أوراقه.
+     *
+     * كانت تعرض شارة «مستلم جزئيًا» وكفى: لا كم وصل، ولا في أيّ يوم، ولا كم
+     * دفعة. فيخرج التاجر من المشتريات ويفتح المخزون ويبحث برقم الأمر ليعرف
+     * ما في يده — واستلامٌ يُستعمل ولا يُراجَع نصفُ ميزة.
+     */
+    public function test_the_orders_screen_shows_what_arrived_and_points_at_its_notes(): void
+    {
+        $product = $this->product('صنف', 0, 0);
+        $po = $this->order([['product' => $product, 'qty' => 100, 'cost' => 4]]);
+        $line = $po->items->first();
+
+        $before = collect($this->actingAs($this->owner)->get(route('admin.purchases.orders'))
+            ->viewData('page')['props']['orders'])->firstWhere('id', $po->id);
+
+        // قبل أيّ استلام: لا ورقة، فلا رابط
+        $this->assertSame(0, $before['receipts']);
+        $this->assertSame(0, $before['received_qty']);
+        $this->assertSame(100, $before['ordered_qty']);
+
+        $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id),
+            ['items' => [['id' => $line->id, 'quantity' => 80]]]);
+
+        $after = collect($this->actingAs($this->owner)->get(route('admin.purchases.orders'))
+            ->viewData('page')['props']['orders'])->firstWhere('id', $po->id);
+
+        $this->assertSame(80, $after['received_qty'], 'الشاشة لا تقول كم وصل');
+        $this->assertSame(100, $after['ordered_qty']);
+        $this->assertSame(1, $after['receipts']);
+    }
+
+    /** والرقمان يُقالان للمكتمل كما للمفتوح — وبنودُه تُفرَّغ لا أرقامُه */
+    public function test_a_closed_order_still_says_how_much_arrived(): void
+    {
+        $product = $this->product('صنف', 0, 0);
+        $po = $this->order([['product' => $product, 'qty' => 6, 'cost' => 1]]);
+
+        $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+
+        $row = collect($this->actingAs($this->owner)->get(route('admin.purchases.orders'))
+            ->viewData('page')['props']['orders'])->firstWhere('id', $po->id);
+
+        $this->assertSame('مستلم', $row['status']);
+        $this->assertSame([], $row['items'], 'أمرٌ اكتمل لا يُفتح في نافذة الاستلام فلا تُرسل بنوده');
+        $this->assertSame(6, $row['received_qty']);
+        $this->assertSame(6, $row['ordered_qty']);
+        $this->assertSame(1, $row['receipts']);
+    }
+
+    /**
+     * والرابط لا يُرسم لأمرٍ بلا ورقة.
+     *
+     * أوامرُ ما قبل الإشعارات «مستلمة» ولا ورقة لها — والرابط إليها يقود إلى
+     * قائمةٍ فارغة، وهو الزرّ الذي يَعِد ولا يفي.
+     */
+    public function test_an_order_received_before_notes_existed_shows_no_link(): void
+    {
+        $product = $this->product('صنف', 0, 0);
+        $po = $this->order([['product' => $product, 'qty' => 5, 'cost' => 1]]);
+        // استلامٌ قديم: الحالة مكتوبةٌ في القاعدة بلا مرورٍ بالمتحكّم
+        $po->items()->update(['received_quantity' => 5]);
+        $po->update(['status' => 'مستلم', 'received_at' => now()]);
+
+        $row = collect($this->actingAs($this->owner)->get(route('admin.purchases.orders'))
+            ->viewData('page')['props']['orders'])->firstWhere('id', $po->id);
+
+        $this->assertSame(0, $row['receipts']);
+    }
+
+    /** وبحث شاشة الإشعارات يقبل رقم الأمر — وعليه يقوم الرابط */
+    public function test_the_receipts_screen_is_searchable_by_the_order_number(): void
+    {
+        $product = $this->product('صنف', 0, 0);
+        $po = $this->order([['product' => $product, 'qty' => 2, 'cost' => 1]]);
+        $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+
+        $other = $this->order([['product' => $product, 'qty' => 2, 'cost' => 1]]);
+        $this->actingAs($this->owner)->post(route('admin.purchases.receive', $other->id));
+
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.inventory.receipts', ['q' => $po->number]))->viewData('page')['props'];
+
+        $this->assertCount(1, $props['notes'], 'الرابط يقود إلى أوراق الأمر وحده');
+        $this->assertSame($po->number, $props['notes'][0]['order']);
+    }
+
     /** والإشعار لا يُدخل البضاعة ثانيةً: الاستلام أدخلها، وهذا ورقتُه */
     public function test_the_note_does_not_move_stock_a_second_time(): void
     {

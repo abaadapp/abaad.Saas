@@ -90,8 +90,11 @@ class ServerSortTest extends TestCase
         $this->product('الأوّل', 5);
         $this->product('الثاني', 900);
 
-        $this->assertSame('الأوّل', $this->firstProduct(['sort' => 'password', 'dir' => 'asc']));
-        $this->assertSame('الأوّل', $this->firstProduct(['sort' => 'products.id; drop table users']));
+        // والسقوط إلى الترتيب الافتراضيّ للقائمة: الأحدث أوّلًا، كما لو لم
+        // يُذكر `sort` أصلًا — لا إلى ترتيبٍ ثالثٍ يخصّ الرابط الفاسد
+        $this->assertSame('الثاني', $this->firstProduct(['sort' => 'password', 'dir' => 'asc']));
+        $this->assertSame('الثاني', $this->firstProduct(['sort' => 'products.id; drop table users']));
+        $this->assertSame('الثاني', $this->firstProduct([]));
     }
 
     /** الترتيب المطبَّق يعود إلى الواجهة فتُضيء العمود الصحيح بعد إعادة التحميل */

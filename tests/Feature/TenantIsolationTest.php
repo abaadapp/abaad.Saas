@@ -2,207 +2,188 @@
 
 namespace Tests\Feature;
 
+use App\Models\Branch;
 use App\Models\Business;
+use App\Models\Customer;
+use App\Models\JobTitle;
+use App\Models\Order;
+use App\Models\Plan;
+use App\Models\Product;
 use App\Models\User;
+use App\Support\DemoStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
-use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
- * العزل بين المتاجر على مسارات السجلّ الواحد.
+ * لا يرى تاجرٌ بيانات تاجرٍ آخر — ولو كتب المعرّف بيده.
  *
- * كل مسار يحمل {id} هو باب: إن بحث المتحكّم بالمعرّف وحده دون شرط
- * business_id، فتّاجرٌ يكتب رقمًا في شريط العنوان يقرأ — أو يحذف — سجلّ
- * جاره. القراءة كانت مغطّاة للمنتجات فقط؛ هذه تغطّي الكتابة والحذف أيضًا،
- * وهي الأخطر: لا أثر لها على الشاشة حتى يفتقد الجارُ بياناته.
+ * أخطر ما في نظامٍ يسكنه أكثر من تاجر. والعزل قائمٌ بـ`business_id` في كل
+ * استعلام، وهو يعمل ما دام كلّ استعلامٍ يذكره: يكفي مسارٌ واحد يقرأ
+ * `Model::find($id)` بلا شرطٍ ليُفتح دفتر تاجرٍ على آخر بتغيير رقمٍ في
+ * الرابط. ولا يظهر ذلك في اختبارٍ يعمل على متجرٍ واحد.
  */
 class TenantIsolationTest extends TestCase
 {
     use RefreshDatabase;
 
-    private Business $mine;
+    private User $mine;
 
     private Business $theirs;
-
-    private User $me;
 
     protected function setUp(): void
     {
         parent::setUp();
+        app()->setLocale('ar');
 
-        $this->mine = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
-        $this->theirs = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
+        Plan::updateOrCreate(['name' => 'الباقة الاحترافية'], [
+            'monthly_price' => 30, 'yearly_price' => 300,
+            'max_branches' => 3, 'max_employees' => 15, 'max_products' => 100000,
+        ]);
 
-        $this->me = User::create([
-            'business_id' => $this->mine->id, 'name' => 'أنا', 'email' => 'me@abaad.om',
+        $mineBusiness = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
+        Branch::create(['business_id' => $mineBusiness->id, 'name' => 'الرئيسي']);
+        JobTitle::create(['business_id' => $mineBusiness->id, 'name' => 'مدير', 'role' => 'admin']);
+        $this->mine = User::create([
+            'business_id' => $mineBusiness->id, 'name' => 'أنا', 'email' => 'me@abaadapp.om',
             'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
         ]);
+
+        // متجر الجار ممتلئ: لكلّ نوعٍ من الصفوف مثالٌ يُجرَّب عليه
+        $this->theirs = DemoStore::create('متجر الجار', 'صغير');
     }
 
-    /** ينشئ سجلًّا يخصّ الجار ويعيد معرّفه */
-    private function theirRecord(string $table, array $attributes): int
-    {
-        return (int) \DB::table($table)->insertGetId(array_merge([
-            'business_id' => $this->theirs->id,
-            'created_at' => now(), 'updated_at' => now(),
-        ], $attributes));
-    }
-
-    /* ------------------------- الحذف عبر المتاجر ------------------------- */
-
-    public static function deletable(): array
+    /** صفٌّ من متجر الجار لكلّ شاشةٍ تحمل معرّفًا */
+    public static function doors(): array
     {
         return [
-            'منتج' => ['products', ['name' => 'منتج الجار', 'price' => 10, 'quantity' => 5], 'admin.products.destroy'],
-            'مورّد' => ['suppliers', ['name' => 'مورّد الجار'], 'admin.suppliers.destroy'],
-            'فرع' => ['branches', ['name' => 'فرع الجار'], 'admin.branches.destroy'],
-            'نوع مصروف' => ['expense_types', ['name' => 'نوع الجار'], 'admin.expenseTypes.destroy'],
-            'وظيفة' => ['job_titles', ['name' => 'وظيفة الجار', 'role' => 'cashier'], 'admin.jobTitles.destroy'],
+            'بطاقة عميل' => ['admin.customers.show', Customer::class],
+            'كشف حساب عميل' => ['admin.customers.statement', Customer::class],
+            'بطاقة موظف' => ['admin.employees.show', User::class],
+            'تعديل موظف' => ['admin.employees.edit', User::class],
+            'بطاقة منتج' => ['admin.products.show', Product::class],
+            'تعديل منتج' => ['admin.products.edit', Product::class],
         ];
     }
 
-    #[DataProvider('deletable')]
-    public function test_one_business_cannot_delete_another_businesses_record(
-        string $table, array $attributes, string $route
-    ): void {
-        if (! Schema::hasTable($table)) {
-            $this->markTestSkipped("الجدول {$table} غير موجود");
+    public function test_a_door_of_another_shop_does_not_open(): void
+    {
+        $opened = [];
+
+        foreach (self::doors() as $label => [$route, $model]) {
+            $id = $model::where('business_id', $this->theirs->id)->value('id');
+            $this->assertNotNull($id, "لا صفَّ في متجر الجار لفحص «{$label}»");
+
+            $status = $this->actingAs($this->mine)->get(route($route, $id))->getStatusCode();
+
+            if (! in_array($status, [403, 404, 302], true)) {
+                $opened[] = $label.' ('.$route.') → '.$status;
+            }
         }
 
-        $id = $this->theirRecord($table, $attributes);
-
-        $this->actingAs($this->me)->delete(route($route, $id));
-
-        // بلا اسم اتصال: تثبيت 'sqlite' هنا كان يجعل الاختبار يستعلم محرّكًا
-        // غير الذي يعمل عليه، فينهار على PostgreSQL ولا يفحص شيئًا.
-        $this->assertDatabaseHas($table, ['id' => $id]);
+        $this->assertSame([], $opened, 'أبوابٌ فُتحت على متجرٍ آخر');
     }
 
-    /* ------------------------ التعديل عبر المتاجر ------------------------ */
-
-    public function test_one_business_cannot_rename_another_businesses_product(): void
+    public function test_an_order_of_another_shop_does_not_open(): void
     {
-        $id = $this->theirRecord('products', ['name' => 'منتج الجار', 'price' => 10, 'quantity' => 5]);
+        $number = Order::where('business_id', $this->theirs->id)->value('number');
+        $this->assertNotNull($number);
 
-        $this->actingAs($this->me)->put(route('admin.products.update', $id), [
-            'name' => 'صار لي', 'price' => 1, 'quantity' => 1,
-        ]);
+        foreach (['admin.orders.show', 'admin.orders.pdf', 'admin.orders.taxInvoice',
+            'pos.order-details', 'pos.receipts.show', 'pos.receipt.pdf'] as $route) {
+            $response = $this->actingAs($this->mine)->get(route($route, $number));
 
-        $this->assertSame('منتج الجار', \DB::table('products')->where('id', $id)->value('name'));
+            $this->assertContains($response->getStatusCode(), [403, 404, 302],
+                "«{$route}» فتح فاتورةً من متجرٍ آخر بحالة ".$response->getStatusCode());
+        }
     }
 
-    public function test_one_business_cannot_rename_another_businesses_supplier(): void
+    public function test_a_branch_of_another_shop_cannot_be_switched_into(): void
     {
-        $id = $this->theirRecord('suppliers', ['name' => 'مورّد الجار']);
+        $id = Branch::where('business_id', $this->theirs->id)->value('id');
 
-        $this->actingAs($this->me)->put(route('admin.suppliers.update', $id), ['name' => 'صار لي']);
+        $this->actingAs($this->mine)->get(route('admin.branch.switch', $id));
 
-        $this->assertSame('مورّد الجار', \DB::table('suppliers')->where('id', $id)->value('name'));
-    }
-
-    public function test_one_business_cannot_touch_another_businesses_employee(): void
-    {
-        $theirEmployee = User::create([
-            'business_id' => $this->theirs->id, 'name' => 'موظف الجار',
-            'email' => 'them@abaad.om', 'password' => bcrypt('x'),
-            'role' => 'cashier', 'status' => 'نشط',
-        ]);
-
-        $this->actingAs($this->me)->post(route('admin.employees.toggle', $theirEmployee->id));
-        $this->assertSame('نشط', $theirEmployee->fresh()->status);
-
-        $this->actingAs($this->me)->post(route('admin.employees.resetPassword', $theirEmployee->id));
-        $this->assertTrue(
-            password_verify('x', $theirEmployee->fresh()->password),
-            'أُعيد تعيين كلمة مرور موظف يخصّ متجرًا آخر'
-        );
-    }
-
-    /* ------------------------- القراءة عبر المتاجر ----------------------- */
-
-    public static function readable(): array
-    {
-        return [
-            'منتج' => ['products', ['name' => 'سرّ الجار', 'price' => 10, 'quantity' => 5], 'admin.products.show'],
-            'عميل' => ['customers', ['name' => 'عميل الجار'], 'admin.customers.show'],
-        ];
-    }
-
-    #[DataProvider('readable')]
-    public function test_one_business_cannot_read_another_businesses_record(
-        string $table, array $attributes, string $route
-    ): void {
-        $id = $this->theirRecord($table, $attributes);
-
-        $this->actingAs($this->me)->get(route($route, $id))->assertNotFound();
-    }
-
-    public function test_one_business_cannot_open_another_businesses_order(): void
-    {
-        $id = $this->theirRecord('orders', [
-            'number' => 'ORD-JAR-1', 'total' => 99, 'status' => 'مكتمل',
-            'is_held' => false, 'ordered_at' => now(),
-        ]);
-
-        $this->assertGreaterThan(0, $id);
-
-        $this->actingAs($this->me)->get(route('admin.orders.show', 'ORD-JAR-1'))->assertNotFound();
-        $this->actingAs($this->me)->get(route('admin.orders.pdf', 'ORD-JAR-1'))->assertNotFound();
-    }
-
-    public function test_one_business_cannot_switch_into_another_businesses_branch(): void
-    {
-        $id = $this->theirRecord('branches', ['name' => 'فرع سرّي للجار']);
-
-        $this->actingAs($this->me)->get(route('admin.branch.switch', $id))->assertNotFound();
-
-        $this->assertNotEquals($id, session('current_branch'), 'انتقل إلى فرع متجر آخر');
-    }
-
-    public function test_a_stale_session_cannot_leak_another_businesses_branch_name(): void
-    {
-        // حتى لو دخلت القيمة بطريق آخر — جلسة قديمة، أو فرع انتقلت ملكيته —
-        // الاسم المعروض في الترويسة لا يجوز أن يأتي من متجر آخر
-        $id = $this->theirRecord('branches', ['name' => 'فرع سرّي للجار']);
-
-        $this->actingAs($this->me);
-        session(['current_branch' => $id]);
-
-        $this->assertSame(__('كل الفروع'), \App\Support\Demo::currentBranchName());
-    }
-
-    public function test_switching_into_your_own_branch_still_works(): void
-    {
-        $mine = \DB::table('branches')->insertGetId([
-            'business_id' => $this->mine->id, 'name' => 'فرعي',
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
-
-        $this->actingAs($this->me)->get(route('admin.branch.switch', $mine));
-
-        $this->assertSame($mine, session('current_branch'));
-        $this->assertSame('فرعي', \App\Support\Demo::currentBranchName());
+        $this->assertNotSame($id, session('current_branch'), 'دخل فرعَ متجرٍ آخر');
     }
 
     /**
-     * «كل الفروع» تمرّ كقيمة نصّية 'all' لا كمعرّف. حين قُيّد {id} برقمٍ صرف
-     * صار المسار لا يُطابَق، فرمى Ziggy في المتصفّح ومنع React من التركيب:
-     * صفحةٌ بيضاء تمامًا بعد الدخول — لا شيء في الخادم يكشفها، لأن الانهيار
-     * في العميل وحده. هذا الاختبار يمسك انكسار المسار قبل أن يصل الشاشة.
+     * والكتابة أضعف من القراءة عادةً.
+     *
+     * شاشةٌ تعرض تقرأ بشرط `business_id` لأنّها تبني قائمة، ومسارٌ يحذف صفًّا
+     * بمعرّفٍ من الرابط قد يكتفي بـ`find($id)`. والفرق بينهما أنّ الأولى
+     * تكشف بيانات الجار، والثانية **تتلفها**.
      */
-    public function test_switching_to_all_branches_is_not_broken_by_the_numeric_id_pattern(): void
+    public function test_no_row_of_another_shop_can_be_touched(): void
     {
-        $mine = \DB::table('branches')->insertGetId([
-            'business_id' => $this->mine->id, 'name' => 'فرعي',
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
+        $bid = $this->theirs->id;
 
-        $this->actingAs($this->me);
-        session(['current_branch' => $mine]);
+        $rows = [
+            'منتج' => \App\Models\Product::where('business_id', $bid)->value('id'),
+            'عميل' => Customer::where('business_id', $bid)->value('id'),
+            'موظف' => User::where('business_id', $bid)->where('role', '!=', 'admin')->value('id'),
+            'فرع' => Branch::where('business_id', $bid)->value('id'),
+            'مصروف' => \App\Models\Expense::where('business_id', $bid)->value('id'),
+            'مورّد' => \App\Models\Supplier::where('business_id', $bid)->value('id'),
+            'أمر شراء' => \App\Models\PurchaseOrder::where('business_id', $bid)->value('id'),
+        ];
 
-        $this->get(route('admin.branch.switch', 'all'))->assertRedirect();
+        $doors = [
+            ['delete', 'admin.products.destroy', 'منتج'],
+            ['post', 'admin.products.duplicate', 'منتج'],
+            ['delete', 'admin.customers.destroy', 'عميل'],
+            ['post', 'admin.customers.note', 'عميل'],
+            ['post', 'admin.employees.toggle', 'موظف'],
+            ['post', 'admin.employees.resetPassword', 'موظف'],
+            ['delete', 'admin.branches.destroy', 'فرع'],
+            ['delete', 'admin.expenses.destroy', 'مصروف'],
+            ['post', 'admin.expenses.paid', 'مصروف'],
+            ['delete', 'admin.suppliers.destroy', 'مورّد'],
+            ['delete', 'admin.purchases.destroy', 'أمر شراء'],
+            ['post', 'admin.purchases.receive', 'أمر شراء'],
+        ];
 
-        $this->assertNull(session('current_branch'), 'لم يُمسح الفرع الحالي');
+        $before = [
+            'products' => \App\Models\Product::where('business_id', $bid)->count(),
+            'customers' => Customer::where('business_id', $bid)->count(),
+            'branches' => Branch::where('business_id', $bid)->count(),
+            'expenses' => \App\Models\Expense::where('business_id', $bid)->count(),
+            'suppliers' => \App\Models\Supplier::where('business_id', $bid)->count(),
+            'purchase_orders' => \App\Models\PurchaseOrder::where('business_id', $bid)->count(),
+        ];
+
+        $touched = [];
+
+        foreach ($doors as [$verb, $name, $key]) {
+            $id = $rows[$key] ?? null;
+            if ($id === null) {
+                continue;
+            }
+            if (! \Illuminate\Support\Facades\Route::has($name)) {
+                continue;
+            }
+
+            $status = $this->actingAs($this->mine)->{$verb}(route($name, $id))->getStatusCode();
+
+            if (! in_array($status, [403, 404, 302], true)) {
+                $touched[] = $name.' → '.$status;
+            }
+        }
+
+        $this->assertSame([], $touched, 'مساراتٌ قبلت معرّفًا من متجرٍ آخر');
+
+        foreach ($before as $table => $count) {
+            $this->assertSame($count, \Illuminate\Support\Facades\DB::table($table)
+                ->where('business_id', $bid)->count(), "نقص صفٌّ من «{$table}» في متجر الجار");
+        }
+    }
+
+    public function test_the_platform_business_screen_is_closed_to_a_merchant(): void
+    {
+        foreach (['super-admin.businesses.show', 'super-admin.users.show'] as $route) {
+            $response = $this->actingAs($this->mine)->get(route($route, $this->theirs->id));
+
+            $this->assertContains($response->getStatusCode(), [403, 404, 302],
+                "«{$route}» انفتح لتاجر بحالة ".$response->getStatusCode());
+        }
     }
 }

@@ -160,9 +160,28 @@ class Ledger
         return $code;
     }
 
-    /** حسابٌ بمفتاحه النظاميّ — أو null إن لم تُبنَ الشجرة بعد */
+    /**
+     * حسابٌ بمفتاحه النظاميّ — ويُبنى إن غاب بدل أن يُردّ فارغًا.
+     *
+     * كانت `ensureSystemAccounts` تُستدعى في `index` كلّ شاشةٍ ماليّة ولا
+     * تُستدعى في كتاباتها: التسوية والسند والراتب والأصل كلّها تُرحّل بلا أن
+     * تسأل هل في الشجرة ما تُرحّل إليه. فالكتابة تعتمد على أنّ القراءة سبقتها
+     * — وهي تسبقها في المتصفّح دائمًا، فبقي العطب كامنًا لا ظاهرًا.
+     *
+     * وسبعةُ متحكّمات على هذا النسق، فالإصلاح في السطر الذي يقرأ الحساب لا في
+     * سبعة مواضع تُنسى الثامنةُ منها. والبناء عند الغياب وحده: الطريق المعتاد
+     * يجد الحساب من أوّل استعلامٍ ولا يدفع شيئًا.
+     */
     public static function account(int $businessId, string $systemKey): ?Account
     {
+        $account = Account::where('business_id', $businessId)->where('system_key', $systemKey)->first();
+
+        if ($account) {
+            return $account;
+        }
+
+        self::ensureSystemAccounts($businessId);
+
         return Account::where('business_id', $businessId)->where('system_key', $systemKey)->first();
     }
 

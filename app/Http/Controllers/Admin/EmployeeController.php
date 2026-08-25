@@ -3,14 +3,25 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
+use App\Models\JobTitle;
 use App\Models\User;
+use App\Rules\StrongPin;
+use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Permissions;
+use App\Support\PlanLimits;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
 
 class EmployeeController extends Controller
 {
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     public function store(Request $request)
     {
@@ -43,7 +54,7 @@ class EmployeeController extends Controller
              * بلا بريدٍ لا بدّ من رمز: حسابٌ بلا واحدٍ منهما لا سبيل إليه.
              * يُحفظ بنجاح ثمّ يقف صاحبه أمام شاشة الدخول ولا يجد بابًا.
              */
-            'pin' => ['required_without:email', 'nullable', 'digits:4', new \App\Rules\StrongPin],
+            'pin' => ['required_without:email', 'nullable', 'digits:4', new StrongPin],
             /*
              * الراتب وبدلاته — مصدرُ مسيرة الشهر.
              *
@@ -57,7 +68,7 @@ class EmployeeController extends Controller
              * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
              */
             'permissions' => ['required_with:manual_permissions', 'array', 'min:1'],
-            'permissions.*' => ['string', \Illuminate\Validation\Rule::in(\App\Support\Permissions::sections())],
+            'permissions.*' => ['string', Rule::in(Permissions::sections())],
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
@@ -75,7 +86,7 @@ class EmployeeController extends Controller
             return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
         }
 
-        \App\Support\PlanLimits::enforce(auth()->user()->business, 'employees');
+        PlanLimits::enforce(auth()->user()->business, 'employees');
 
         $employee = User::create([
             'business_id' => $this->bid(),
@@ -87,7 +98,7 @@ class EmployeeController extends Controller
             'job_title' => $title->name,
             'branch' => $data['branch'] ?? 'الفرع الرئيسي',
             'status' => 'نشط',
-            'avatar' => Demo::image('emp' . uniqid()),
+            'avatar' => Demo::image('emp'.uniqid()),
             'password' => Hash::make($data['password'] ?? 'password'),
             'pin' => ! empty($data['pin']) ? $data['pin'] : null,
             // العمودان لا يقبلان NULL، والحقل الفارغ يعني صفرًا لا فراغًا
@@ -103,7 +114,7 @@ class EmployeeController extends Controller
                 : null,
         ]);
         $this->syncBranches($employee, $data['branches'] ?? []);
-        \App\Support\Activity::log('created', 'أضاف موظفًا: ' . $data['name']);
+        Activity::log('created', 'أضاف موظفًا: '.$data['name']);
 
         return redirect()->route('admin.employees.index')->with('toast', ['msg' => __('تم إضافة الموظف بنجاح'), 'type' => 'success']);
     }
@@ -134,9 +145,9 @@ class EmployeeController extends Controller
     }
 
     /** وظيفة تابعة للمستأجر الحالي (تحمل الصلاحية المكافئة) */
-    private function findJobTitle(string $name): ?\App\Models\JobTitle
+    private function findJobTitle(string $name): ?JobTitle
     {
-        return \App\Models\JobTitle::where('business_id', $this->bid())->where('name', $name)->first();
+        return JobTitle::where('business_id', $this->bid())->where('name', $name)->first();
     }
 
     /** موظف تابع للمستأجر الحالي (باستثناء مدير المنصة) */
@@ -145,11 +156,33 @@ class EmployeeController extends Controller
         return User::where('business_id', $this->bid())->where('role', '!=', 'super_admin')->findOrFail($id);
     }
 
+    /**
+     * حساب صاحب النشاط لا يُمَسّ إلا بيد صاحب نشاطٍ مثله.
+     *
+     * قسم «الموظفون» يُمنح للمدير وللمحاسب — وهو في الأصل باب رواتبَ وأدوارٍ
+     * وأرقام هواتف. لكن أبوابه الأربعة كانت تفتح على صفّ صاحب النشاط نفسه:
+     * تُغيَّر كلمة مروره من شاشة التعديل، وتُعاد بزرّ «إعادة تعيين» الذي
+     * يعرض الكلمة الجديدة على الشاشة، ويُوقَف حسابه من الشاشة أو من المفتاح.
+     *
+     * والنتيجة استيلاءٌ كامل على المحلّ: يُوقف المحاسبُ صاحبَه فتُنهى جلسته
+     * ويُردّ إلى شاشة الدخول، أو يأخذ كلمة مروره فيدخل باسمه. ولا يستعيدها
+     * صاحب المحل إلا بالبريد — وهو ما يُعطَّل عند أول مزوّدٍ لا يُضبط.
+     *
+     * فيُشترط أن يكون الماسّ صاحبَ نشاطٍ هو الآخر. والقراءة تبقى مفتوحة:
+     * المحاسب يرى الصفّ في القائمة كما كان، ولا يكتب فيه.
+     */
+    private function refuseTouchingTheOwner(User $employee): void
+    {
+        if ($employee->role === 'admin' && auth()->user()?->role !== 'admin') {
+            abort(403, __('حساب صاحب النشاط لا يُعدَّل إلا بيده.'));
+        }
+    }
+
     public function edit($id)
     {
         $employee = $this->findEmployee($id);
 
-        return \Inertia\Inertia::render('Admin/Employees/Edit', [
+        return Inertia::render('Admin/Employees/Edit', [
             'employee' => [
                 'id' => $employee->id,
                 'name' => $employee->name,
@@ -178,25 +211,26 @@ class EmployeeController extends Controller
                 'allowances' => $employee->allowances,
                 // null تعني «اتبع الدور»؛ مصفوفة تعني قائمة يدوية
                 'permissions' => $employee->permissions,
-                'role_permissions' => collect(\App\Support\Permissions::sections())
-                    ->filter(fn ($s) => \App\Support\Permissions::allows($employee->role, $s))
+                'role_permissions' => collect(Permissions::sections())
+                    ->filter(fn ($s) => Permissions::allows($employee->role, $s))
                     ->values()->all(),
             ],
-            'sections' => \App\Support\Permissions::sectionLabels(),
+            'sections' => Permissions::sectionLabels(),
             'branches' => Demo::branches(),
-            'branchOptions' => \App\Models\Branch::where('business_id', Demo::bid())
+            'branchOptions' => Branch::where('business_id', Demo::bid())
                 ->orderBy('id')->get(['id', 'name'])
                 ->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
-            'jobTitles' => \App\Models\JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all(),
+            'jobTitles' => JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all(),
         ]);
     }
 
     public function update(Request $request, $id)
     {
         $employee = $this->findEmployee($id);
+        $this->refuseTouchingTheOwner($employee);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($employee->id)],
+            'email' => ['nullable', 'email', Rule::unique('users', 'email')->ignore($employee->id)],
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
@@ -209,7 +243,7 @@ class EmployeeController extends Controller
              */
             'branches' => ['nullable', 'array'],
             'branches.*' => ['integer'],
-            'pin' => ['nullable', 'digits:4', new \App\Rules\StrongPin],
+            'pin' => ['nullable', 'digits:4', new StrongPin],
             // كان النموذج يعرض حقل كلمة مرور والتحقق لا يقبله: كل محاولة
             // تغيير كانت تُبتلع بصمت ويظنّ المدير أنه غيّرها.
             'password' => ['nullable', 'string', 'min:4'],
@@ -229,7 +263,7 @@ class EmployeeController extends Controller
              * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
              */
             'permissions' => ['required_with:manual_permissions', 'array', 'min:1'],
-            'permissions.*' => ['string', \Illuminate\Validation\Rule::in(\App\Support\Permissions::sections())],
+            'permissions.*' => ['string', Rule::in(Permissions::sections())],
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
@@ -326,7 +360,7 @@ class EmployeeController extends Controller
         unset($data['branches']);
 
         $employee->update($data);
-        \App\Support\Activity::log('updated', 'عدّل بيانات الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
+        Activity::log('updated', 'عدّل بيانات الموظف: '.$employee->name, ['subject_id' => $employee->id]);
 
         return redirect()->route('admin.employees.show', $employee->id)->with('toast', ['msg' => __('تم تحديث بيانات الموظف'), 'type' => 'success']);
     }
@@ -339,7 +373,7 @@ class EmployeeController extends Controller
      */
     private function syncBranches(User $employee, array $ids): void
     {
-        $valid = \App\Models\Branch::where('business_id', $this->bid())
+        $valid = Branch::where('business_id', $this->bid())
             ->whereIn('id', $ids)->pluck('id')->all();
 
         $employee->branches()->sync($valid);
@@ -348,13 +382,14 @@ class EmployeeController extends Controller
     public function toggleStatus($id)
     {
         $employee = $this->findEmployee($id);
+        $this->refuseTouchingTheOwner($employee);
         if ($employee->id === auth()->id()) {
             return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'error']);
         }
         $employee->status = $employee->status === 'نشط' ? 'معطل' : 'نشط';
         $employee->save();
         $on = $employee->status === 'نشط';
-        \App\Support\Activity::log('status', ($on ? 'فعّل' : 'عطّل') . ' حساب الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
+        Activity::log('status', ($on ? 'فعّل' : 'عطّل').' حساب الموظف: '.$employee->name, ['subject_id' => $employee->id]);
 
         return back()->with('toast', ['msg' => $on ? __('تم تفعيل الحساب') : __('تم تعطيل الحساب'), 'type' => $on ? 'success' : 'warning']);
     }
@@ -362,13 +397,14 @@ class EmployeeController extends Controller
     public function resetPassword($id)
     {
         $employee = $this->findEmployee($id);
+        $this->refuseTouchingTheOwner($employee);
         if ($employee->id === auth()->id()) {
             return back()->with('toast', ['msg' => __('استخدم صفحة «الملف الشخصي» لتغيير كلمة مرورك'), 'type' => 'warning']);
         }
-        $temp = 'Ab' . random_int(1000, 9999);
+        $temp = 'Ab'.random_int(1000, 9999);
         $employee->password = Hash::make($temp);
         $employee->save();
-        \App\Support\Activity::log('updated', 'أعاد تعيين كلمة مرور الموظف: ' . $employee->name, ['subject_id' => $employee->id]);
+        Activity::log('updated', 'أعاد تعيين كلمة مرور الموظف: '.$employee->name, ['subject_id' => $employee->id]);
 
         return back()->with('toast', ['msg' => __('كلمة المرور الجديدة: :password', ['password' => $temp]), 'type' => 'info']);
     }

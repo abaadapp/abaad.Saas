@@ -1188,6 +1188,7 @@
     "تم إضافة المنتج بنجاح": "Product added successfully",
     "تم إضافة المورّد بنجاح": "Supplier added successfully",
     "تم إضافة الموظف بنجاح": "Employee added successfully",
+    "حساب صاحب النشاط لا يُعدَّل إلا بيده.": "The business owner's account can only be changed by the owner.",
     "تم إضافة الوظيفة": "Job title added",
     "تم إضافة نوع المصروف": "Expense type added",
     "تم إنشاء :count نسخة احتياطية في :path": ":count backups created in :path",

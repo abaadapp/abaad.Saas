@@ -8,8 +8,10 @@ use App\Models\BankStatementLine;
 use App\Support\Activity;
 use App\Support\Bank;
 use App\Support\Demo;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
 
 /**
  * كشف حساب الشركة البنكي ومطابقته مع معاملات النظام.
@@ -20,9 +22,13 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 class BankStatementController extends Controller
 {
     private const AMOUNT_TOLERANCE = 0.005;
+
     private const DAYS_TOLERANCE = 3;
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     /**
      * الحساب المقصود — المطلوب في الطلب، وإلا الرئيسيّ.
@@ -212,6 +218,21 @@ class BankStatementController extends Controller
      *
      * والمرشَّحون هم ما مرّ بالبنك وحده: كانت بيعةٌ نقدية تُطابَق بإيداعٍ
      * بالمبلغ نفسه فيُكتب «مطابق» عن شيئين لم يلتقيا قط.
+     *
+     * والأقرب أوّلًا، لا الأوّل الذي يصلح.
+     *
+     * كان كلّ سطرٍ يأخذ أوّل معاملةٍ تمرّ عليه في ترتيب القاعدة — أي بمعرّفها
+     * لا بتاريخها. فسطرٌ يصلح له مرشّحان يخطف البعيد منهما، ويبقى السطر الذي
+     * لا يملك سواه بلا مطابقة. وهذا يقع كثيرًا في محلٍّ يبيع بالبطاقة أكثر من
+     * مرّة بالمبلغ نفسه في الأسبوع — وهو حال أيّ محلّ.
+     *
+     * فتُجمع الأزواج الصالحة كلّها أوّلًا، وتُرتَّب بفارق الأيام تصاعديًّا، ثم
+     * تُوزَّع: الزوج الأقرب يظفر، ومن أُخذ طرفُه يسقط. فلا يُزاحَم البعيدُ
+     * القريبَ، ولا يُجوَّع سطرٌ له مرشّحٌ واحد.
+     *
+     * وعند تساوي الفارق يُرجَّح الأقدمُ تاريخًا ثم الأصغرُ معرّفًا: توزيعٌ
+     * واحدٌ لا يتبدّل بين استيرادٍ وآخر، فلا يرى التاجر مطابقةً تنتقل من سطرٍ
+     * إلى سطر بلا سبب.
      */
     private function reconcile(): int
     {
@@ -221,36 +242,55 @@ class BankStatementController extends Controller
             ->update(['transaction_id' => null, 'match_status' => 'غير مطابق']);
 
         $transactions = Bank::transactions($bid)->get();
-        $usedTransactions = [];
-        $matched = 0;
+        $lines = BankStatementLine::where('business_id', $bid)->orderBy('date')->orderBy('id')->get();
 
-        foreach (BankStatementLine::where('business_id', $bid)->orderBy('date')->get() as $line) {
+        // كلّ زوجٍ صالح، مع فارق أيامه
+        $pairs = [];
+        foreach ($lines as $line) {
             // مبالغ المصروفات مخزّنة بإشارة سالبة، لذا نقارن بالقيمة المطلقة
             $target = abs((float) $line->amount);
             $incoming = (float) $line->amount >= 0;
 
-            $hit = $transactions->first(function ($t) use ($target, $incoming, $line, $usedTransactions) {
-                if (in_array($t->id, $usedTransactions, true)) {
-                    return false;
-                }
+            foreach ($transactions as $t) {
                 if (($t->type === 'دخل') !== $incoming) {
-                    return false;
+                    continue;
                 }
                 if (abs(abs((float) $t->amount) - $target) > self::AMOUNT_TOLERANCE) {
-                    return false;
+                    continue;
                 }
                 if (! $t->occurred_at) {
-                    return false;
+                    continue;
                 }
 
-                return abs($t->occurred_at->startOfDay()->diffInDays($line->date->startOfDay(), false)) <= self::DAYS_TOLERANCE;
-            });
+                $days = abs($t->occurred_at->startOfDay()->diffInDays($line->date->startOfDay(), false));
+                if ($days > self::DAYS_TOLERANCE) {
+                    continue;
+                }
 
-            if ($hit) {
-                $usedTransactions[] = $hit->id;
-                $line->update(['transaction_id' => $hit->id, 'match_status' => 'مطابق']);
-                $matched++;
+                $pairs[] = ['line' => $line, 'transaction' => $t, 'days' => $days];
             }
+        }
+
+        // الأقرب أوّلًا، ثمّ الأقدم، ثمّ الأصغر معرّفًا — ترتيبٌ لا يتبدّل
+        usort($pairs, fn ($a, $b) => [$a['days'], $a['line']->date->timestamp, $a['line']->id, $a['transaction']->id]
+            <=> [$b['days'], $b['line']->date->timestamp, $b['line']->id, $b['transaction']->id]);
+
+        $usedLines = [];
+        $usedTransactions = [];
+        $matched = 0;
+
+        foreach ($pairs as $pair) {
+            $lineId = $pair['line']->id;
+            $trxId = $pair['transaction']->id;
+
+            if (isset($usedLines[$lineId]) || isset($usedTransactions[$trxId])) {
+                continue;
+            }
+
+            $usedLines[$lineId] = true;
+            $usedTransactions[$trxId] = true;
+            $pair['line']->update(['transaction_id' => $trxId, 'match_status' => 'مطابق']);
+            $matched++;
         }
 
         return $matched;
@@ -286,13 +326,13 @@ class BankStatementController extends Controller
         // أرقام إكسل التسلسلية للتاريخ
         if (is_numeric($raw)) {
             try {
-                return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $raw)->format('Y-m-d');
+                return Date::excelToDateTimeObject((float) $raw)->format('Y-m-d');
             } catch (\Throwable) {
                 return null;
             }
         }
         try {
-            return \Carbon\Carbon::parse((string) $raw)->format('Y-m-d');
+            return Carbon::parse((string) $raw)->format('Y-m-d');
         } catch (\Throwable) {
             return null;
         }

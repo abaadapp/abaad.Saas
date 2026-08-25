@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Bank;
 use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -157,7 +158,7 @@ class BankReconciliationTest extends TestCase
 
     public function test_an_empty_opening_balance_does_not_break_the_page(): void
     {
-        $account = \App\Support\Bank::account($this->business->id);
+        $account = Bank::account($this->business->id);
 
         // كان مسحُ الرقم لتصحيحه يُسقط الشاشة بخطأ ٥٠٠
         $this->put(route('admin.finance.banks.update', $account->id), [
@@ -235,6 +236,46 @@ class BankReconciliationTest extends TestCase
 
         $this->assertSame(1, $summary['matched']);
         $this->assertSame(1, $summary['unmatched_system'], 'عُدّت معاملات خارج مدى الكشف');
+    }
+
+    /* --------------------------- الأقرب لا الأوّل --------------------------- */
+
+    /**
+     * سطرٌ له مرشّحٌ واحد لا يُجوَّع.
+     *
+     * كانت المطابقة تعطي كلّ سطرٍ أوّلَ معاملةٍ تصلح له في ترتيب القاعدة — أي
+     * بمعرّفها لا بتاريخها. فالسطر الأوّل يخطف المرشّح البعيد، ويبقى السطر
+     * الذي لا يملك سواه بلا مطابقة، فيقرأ التاجر «ناقصٌ من البنك» عن حركةٍ
+     * موجودة عنده.
+     */
+    public function test_a_line_with_one_candidate_is_not_starved(): void
+    {
+        // الأبعد يُنشأ أوّلًا فيحمل معرّفًا أصغر — وهو ما كان يقرّر سابقًا
+        $this->trx('دخل', 50, 'بطاقة', '2026-01-08');   // يصلح للسطرين
+        $this->trx('دخل', 50, 'بطاقة', '2026-01-05');   // يصلح للأول وحده
+
+        $this->line(50, '2026-01-05');   // مرشّحان
+        $this->line(50, '2026-01-09');   // مرشّحٌ واحد: معاملة ٨ يناير
+
+        $this->post(route('admin.bank.rematch'));
+
+        $this->assertSame(2, BankStatementLine::where('match_status', 'مطابق')->count(),
+            'سطرٌ بقي بلا مطابقة مع أنّ لكلّ سطرٍ معاملةً تخصّه');
+    }
+
+    /** وعند التزاحم يُقترن السطر بأقرب معاملةٍ تاريخًا لا بأوّلها */
+    public function test_a_line_is_paired_with_the_nearest_transaction(): void
+    {
+        $far = $this->trx('دخل', 75, 'بطاقة', '2026-02-04');
+        $near = $this->trx('دخل', 75, 'بطاقة', '2026-02-01');
+
+        $this->line(75, '2026-02-01');
+
+        $this->post(route('admin.bank.rematch'));
+
+        $this->assertSame($near->id, BankStatementLine::first()->transaction_id,
+            'اقترن السطر بمعاملةٍ أبعد تاريخًا مع وجود واحدةٍ في اليوم نفسه');
+        $this->assertNotSame($far->id, BankStatementLine::first()->transaction_id);
     }
 
     public function test_another_business_statement_is_never_read(): void

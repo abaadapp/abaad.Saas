@@ -1239,6 +1239,8 @@
     "تم حذف الطلب :number": "Order :number deleted",
     "تم حذف العنوان": "Address deleted",
     "تم حذف الفرع": "Branch deleted",
+    "تم حذف الفرع، وأُبطل تفعيل :count من أجهزته.": "Branch deleted, and :count of its tills were deactivated.",
+    "في «:branch» ما زال :qty قطعة. انقلها إلى فرعٍ آخر ثم احذفه.": "«:branch» still holds :qty units. Move them to another branch, then delete it.",
     "تم حذف القسم": "Category deleted",
     "تم حذف الكشف المستورد": "Imported statement deleted",
     "تم حذف الكوبون": "Coupon deleted",

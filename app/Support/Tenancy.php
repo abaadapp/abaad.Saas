@@ -3,7 +3,9 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Models\Setting;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 
 /**
  * حالة المستأجر: هل يُسمح لهذا الحساب بالعمل الآن؟
@@ -18,6 +20,8 @@ use App\Models\User;
 class Tenancy
 {
     public const USER_SUSPENDED = 'user_suspended';
+
+    public const USER_REMOVED = 'user_removed';
 
     public const BUSINESS_DISABLED = 'business_disabled';
 
@@ -37,6 +41,24 @@ class Tenancy
     {
         if ($user === null || $user->isSuperAdmin()) {
             return null;
+        }
+
+        /*
+         * المحذوف قبل الموقوف: الحذف أشدّ، ورسالتُه غير رسالته.
+         *
+         * الحذف هنا ناعم — يبقى الصفّ ويُرفع عنه العلم — ومزوّد المصادقة
+         * يقرأ المستخدم بلا نطاقات، فالمحذوف يبقى مسجَّلًا في جلسته. فصاحب
+         * النشاط يطرد موظفًا ويحذفه من «الموظفون»، والموظف واقفٌ في الشارع
+         * ولوحتُه مفتوحة على هاتفه: يقرأ الزبائن، ويعدّل المنتجات، ويكتب —
+         * أثبتناه: صفٌّ كُتب بعد الحذف. والنافذة ١٢٠ دقيقة تتجدّد مع كل نقرة،
+         * أي ما دام يضغط.
+         *
+         * ودخولُه من جديد ممنوعٌ أصلًا: البحث بالبريد وبالرمز يمرّ بنطاق
+         * الحذف الناعم فلا يجده. فالثغرة في الجلسة القائمة وحدها — وهنا
+         * تُغلق، عند النقطة التي يقرؤها كلّ باب.
+         */
+        if (method_exists($user, 'trashed') && $user->trashed()) {
+            return self::USER_REMOVED;
         }
 
         if (in_array((string) $user->status, self::BLOCKED_USER, true)) {
@@ -88,7 +110,7 @@ class Tenancy
     /** إعدادٌ من إعدادات المنصة (business_id = null) */
     public static function platform(string $key, $default = null)
     {
-        $value = \App\Models\Setting::whereNull('business_id')->where('key', $key)->value('value');
+        $value = Setting::whereNull('business_id')->where('key', $key)->value('value');
 
         return $value === null || $value === '' ? $default : $value;
     }
@@ -106,7 +128,7 @@ class Tenancy
     }
 
     /** آخر لحظةٍ يعمل فيها المتجر — نهاية الاشتراك زائدَ المهلة */
-    public static function locksAt(?Business $business): ?\Illuminate\Support\Carbon
+    public static function locksAt(?Business $business): ?Carbon
     {
         return $business?->ends_at?->endOfDay()->addDays(self::graceDays());
     }
@@ -171,6 +193,7 @@ class Tenancy
     {
         return match ($reason) {
             self::USER_SUSPENDED => __('حسابك موقوف. راجع صاحب النشاط.'),
+            self::USER_REMOVED => __('لم يعد هذا الحساب موجودًا. راجع صاحب النشاط.'),
             self::BUSINESS_DISABLED => __('حساب المتجر معطَّل. تواصل مع الدعم.'),
             self::SUBSCRIPTION_EXPIRED => __('انتهى اشتراك المتجر. جدّده لمتابعة العمل.'),
             default => __('لا يمكن الدخول الآن.'),

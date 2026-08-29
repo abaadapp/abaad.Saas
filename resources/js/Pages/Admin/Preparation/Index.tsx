@@ -54,9 +54,23 @@ interface Props {
  * ولا يُعرض فيها سعرٌ ولا إجمالي: من يجهّز الورد لا يحتاج أن يعرف هامش
  * المحلّ ليضع ساقًا في مزهرية — والخادم لا يرسل تلك الأعمدة أصلًا.
  */
+const NO_COUNTS = { all: 0, overdue: 0, today: 0, tomorrow: 0 };
+const NO_TYPE_COUNTS = { all: 0, delivery: 0, pickup: 0 };
+
 export default function PreparationIndex() {
-    const { orders, filters, counts, typeCounts } = usePage<PageProps<Props>>().props;
+    const page = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+
+    /*
+     * قيمٌ بديلة لكل خاصيّة — لا لأنّ الخادم قد ينساها، بل لأنّ نسخة الشاشة
+     * ونسخة الخادم قد تفترقان لحظة النشر: المتصفّح يحمل ملفًّا جديدًا يقرأ
+     * `typeCounts` والخادم لم يُرسلها بعد. وقراءة حقلٍ من `undefined` تُسقط
+     * الشجرة كلّها فتبيضّ الشاشة — لأجل عدّادٍ لا لأجل الطلبات.
+     */
+    const orders = page.orders ?? [];
+    const filters = page.filters ?? { when: null, type: null };
+    const counts = page.counts ?? NO_COUNTS;
+    const typeCounts = page.typeCounts ?? NO_TYPE_COUNTS;
 
     const tabs: TabItem[] = [
         { key: 'all', label: 'الكل', count: counts.all },

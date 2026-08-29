@@ -3,6 +3,7 @@ import '../css/app.css';
 import { createInertiaApp, router } from '@inertiajs/react';
 import { createRoot } from 'react-dom/client';
 import type { ComponentType } from 'react';
+import ErrorBoundary from '@/Components/ErrorBoundary';
 import { enterEndsTypingOnTouch } from '@/lib/enter-key';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Abad POS';
@@ -53,7 +54,18 @@ createInertiaApp({
             router.on('success', (event) => {
                 syncDirection(event.detail.page.props as Record<string, unknown>);
             });
-            createRoot(el).render(<App {...props} />);
+            /*
+             * حدّ الانهيار صفحةٌ واحدة لا التطبيق كلّه.
+             *
+             * بدونه كان خطأٌ في مكوّنٍ واحد يُفرغ المستند فتظهر شاشةٌ بيضاء
+             * بلا رسالة ولا زرّ — والمستخدم لا يملك ممّا يُبلّغ به إلا أنّها
+             * «بيضاء».
+             */
+            createRoot(el).render(
+                <ErrorBoundary>
+                    <App {...props} />
+                </ErrorBoundary>,
+            );
         }
     },
 

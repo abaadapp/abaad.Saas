@@ -124,12 +124,18 @@ class LiveSettingsTest extends TestCase
         /*
          * الإخفاء من الشاشة لا يكفي: الطلب يصل من جهازٍ قد تكون شاشته قديمة،
          * ومن أطفأ البطاقة يريدها ممنوعةً لا مخفيّة.
+         *
+         * وكانت تُردّ إلى «نقدي» بصمت، فتُقيَّد بيعةُ بطاقةٍ نقدًا ويطلب
+         * الإقفال مالًا لم يدخل الصندوق. فصارت تُرفض: خطأٌ يُقرأ خيرٌ من
+         * تصحيحٍ لا يُرى.
          */
         $this->set('pay_card', '0');
 
-        $this->sell(method: 'بطاقة')->assertOk();
+        $this->sell(method: 'بطاقة')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('payment_method');
 
-        $this->assertSame('نقدي', Order::latest('id')->first()->payment_method);
+        $this->assertSame(0, Order::where('is_held', false)->count());
     }
 
     public function test_an_enabled_method_passes_untouched(): void
@@ -148,7 +154,11 @@ class LiveSettingsTest extends TestCase
             $this->set($key, '0');
         }
 
-        $this->sell(method: 'بطاقة')->assertOk();
+        // المُطفأة ممنوعة…
+        $this->sell(method: 'بطاقة', uuid: 'off-1')->assertStatus(422);
+
+        // …والنقد يبقى قائمًا وإن أُطفئ، فلا يقف البيع
+        $this->sell(method: 'نقدي', uuid: 'off-2')->assertOk();
 
         $this->assertSame('نقدي', Order::latest('id')->first()->payment_method);
     }

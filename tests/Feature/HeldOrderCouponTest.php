@@ -104,6 +104,7 @@ class HeldOrderCouponTest extends TestCase
             'resume_id' => $held->id,
             'coupon_code' => 'SAVE10',
             'client_uuid' => 'hold-test-1',
+            'payment_method' => 'نقدي',
         ])->assertOk();
 
         $sale = Order::where('is_held', false)->latest('id')->firstOrFail();
@@ -128,6 +129,7 @@ class HeldOrderCouponTest extends TestCase
             'resume_id' => $held->id,
             'coupon_code' => 'SAVE10',
             'client_uuid' => 'hold-test-2',
+            'payment_method' => 'نقدي',
         ])->assertOk();
 
         $sale = Order::where('is_held', false)->latest('id')->firstOrFail();

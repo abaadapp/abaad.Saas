@@ -230,6 +230,7 @@ class SilentDataLossTest extends TestCase
         $this->actingAs($this->owner)->postJson(route('pos.checkout'), [
             'items' => [['id' => $product->id, 'name' => $product->name, 'qty' => 1]],
             'coupon_code' => 'خصم',
+            'payment_method' => 'نقدي',
         ])->assertOk();
 
         $order = Order::latest('id')->first();

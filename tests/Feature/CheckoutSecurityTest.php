@@ -60,7 +60,7 @@ class CheckoutSecurityTest extends TestCase
     private function sell(array $payload)
     {
         return $this->actingAs($this->cashier)
-            ->postJson('/pos/checkout', $payload + ['client_uuid' => uniqid('t', true)]);
+            ->postJson('/pos/checkout', $payload + ['client_uuid' => uniqid('t', true), 'payment_method' => 'نقدي']);
     }
 
     public function test_it_ignores_the_price_sent_by_the_client(): void
@@ -195,11 +195,33 @@ class CheckoutSecurityTest extends TestCase
         $this->assertSame(1, \App\Models\InventoryMovement::where('product_id', $this->product->id)->count());
     }
 
+    /**
+     * بيعةٌ بلا وسيلة دفعٍ تُرفض ولا تُخمَّن.
+     *
+     * كانت تُردّ إلى أوّل المأذون بصمت، فتُقيَّد نقدًا وقد دُفعت بالبطاقة —
+     * ويظهر الأثر عند إقفال الوردية: عجزٌ في الدرج لم يُحدثه الكاشير. وهو
+     * أسوأ صنف من العطب لأنّ كلّ ما يُرى منه سليم.
+     */
+    public function test_a_sale_without_a_payment_method_is_refused(): void
+    {
+        // بلا مرور بـ`sell` — هي تضع الوسيلة، والمقصود غيابُها
+        $this->actingAs($this->cashier)
+            ->postJson('/pos/checkout', [
+                'items' => [['id' => $this->product->id, 'name' => 'x', 'qty' => 1]],
+                'client_uuid' => 'no-method-1',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('payment_method');
+
+        $this->assertSame(0, Order::where('is_held', false)->count());
+    }
+
     public function test_resubmitting_the_same_client_uuid_does_not_duplicate_the_sale(): void
     {
         $payload = [
             'items' => [['id' => $this->product->id, 'name' => 'x', 'qty' => 1]],
             'client_uuid' => 'offline-outbox-1',
+            'payment_method' => 'نقدي',
         ];
 
         $first = $this->actingAs($this->cashier)->postJson('/pos/checkout', $payload)->assertOk();

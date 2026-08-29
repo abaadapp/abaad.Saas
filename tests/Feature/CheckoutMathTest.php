@@ -65,7 +65,7 @@ class CheckoutMathTest extends TestCase
     private function sell(array $payload): Order
     {
         $this->actingAs($this->cashier)
-            ->postJson('/pos/checkout', $payload + ['client_uuid' => uniqid('m', true)])
+            ->postJson('/pos/checkout', $payload + ['client_uuid' => uniqid('m', true), 'payment_method' => 'نقدي'])
             ->assertOk()
             ->assertJsonPath('ok', true);
 

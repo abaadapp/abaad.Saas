@@ -3178,5 +3178,6 @@
     "اكتب اسم المناسبة.": "Enter the occasion name.",
     "اسم المناسبة قصير جدًّا.": "The occasion name is too short.",
     "لا طلبات توصيل تنتظر التجهيز": "No delivery orders awaiting preparation",
-    "لا طلبات استلام تنتظر التجهيز": "No pickup orders awaiting preparation"
+    "لا طلبات استلام تنتظر التجهيز": "No pickup orders awaiting preparation",
+    "اختر وسيلة الدفع.": "Choose a payment method."
 }

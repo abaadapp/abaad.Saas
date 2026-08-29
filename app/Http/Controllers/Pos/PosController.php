@@ -312,12 +312,29 @@ class PosController extends Controller
         return $on ?: ['نقدي'];
     }
 
-    /** يردّ الطريقة المطلوبة إن كانت مأذونة، وإلا أوّل المأذون */
+    /**
+     * وسيلة الدفع تُختار ولا تُخمَّن.
+     *
+     * كانت تُردّ إلى أوّل المأذون حين تغيب أو لا تُعرف — أي أنّ بيعةً بالبطاقة
+     * وصلت بوسيلةٍ خاطئة تُقيَّد «نقدي»، وبيعةً بلا وسيلةٍ أصلًا تُقيَّد نقدًا.
+     * وأثرُ ذلك في الدرج لا في الشاشة: إقفال الوردية يطلب مالًا لم يدخل
+     * الصندوق، فيقف الكاشير أمام عجزٍ لم يُحدثه ويُعوّضه من جيبه أو يُسجّله
+     * فرقًا. وهو أسوأ صنف من العطب: كلّ ما يُرى منه سليم.
+     *
+     * فصارت مطلوبةً في التحقّق، وهذه تحرس ما بعده: قيمةٌ خارج المأذون تُردّ
+     * بخطأ تحقّقٍ لا بتخمين.
+     */
     private function paymentMethod(?string $requested): string
     {
         $allowed = self::enabledPaymentMethods(Demo::businessSettings());
 
-        return in_array($requested, $allowed, true) ? $requested : $allowed[0];
+        if (! in_array($requested, $allowed, true)) {
+            throw ValidationException::withMessages([
+                'payment_method' => __('اختر وسيلة الدفع.'),
+            ]);
+        }
+
+        return $requested;
     }
 
     /** ينشئ الطلب برقم فريد، ويعيد المحاولة إن سبقه كاشير آخر إلى الرقم نفسه */
@@ -457,7 +474,8 @@ class PosController extends Controller
             // المعرّف هو ما تتبعه النقاط؛ والهاتف مرجعٌ ثانٍ حين يغيب
             'customer_id' => ['nullable', 'integer'],
             'customer_phone' => ['nullable', 'string', 'max:50'],
-            'payment_method' => ['nullable', 'string'],
+            // مطلوبة: انظر `paymentMethod` أدناه لأثر تخمينها في إقفال الوردية
+            'payment_method' => ['required', 'string'],
             'delivery_fee' => ['nullable', 'numeric', 'min:0'],
             'resume_id' => ['nullable', 'integer'],
             'coupon_code' => ['nullable', 'string', 'max:40'],
@@ -471,7 +489,9 @@ class PosController extends Controller
              * حقولًا لا معنى لها في نصف بيعات اليوم — فيملؤها بأيّ شيء،
              * وتصير البيانات أسوأ من غيابها.
              */
-        ] + \App\Support\FlowerOrder::rules(), \App\Support\FlowerOrder::messages());
+        ] + \App\Support\FlowerOrder::rules(), [
+            'payment_method.required' => __('اختر وسيلة الدفع.'),
+        ] + \App\Support\FlowerOrder::messages());
 
         // والتوصيل وحده يُسأل عن مستلِمه وعنوانه — شرطٌ بين حقول لا على حقل
         if ($flowerErrors = \App\Support\FlowerOrder::afterValidation($data)) {

@@ -79,8 +79,15 @@ export default function PaymentDialog({
         : ALL_METHODS;
     const [step, setStep] = useState<'pay' | 'success'>('pay');
     const [paid, setPaid] = useState('');
-    // أوّل وسيلةٍ مأذونة لا «نقدي» دائمًا: من أطفأ النقد لا يبدأ عليه
-    const [method, setMethod] = useState(METHODS[0]?.value ?? 'نقدي');
+    /*
+     * لا وسيلةَ مختارةً حتى تُختار.
+     *
+     * كانت أوّل المأذون محدَّدةً سلفًا، فتمرّ بيعةُ البطاقة مقيَّدةً «نقدي»
+     * لأنّ الكاشير ضغط «تأكيد الدفع» ولم ينتبه إلى ما فوقه. وأثرُ ذلك في
+     * الدرج: إقفال الوردية يطلب مالًا لم يدخل الصندوق.
+     */
+    const [method, setMethod] = useState('');
+    const [methodError, setMethodError] = useState(false);
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState<CheckoutResult | null>(null);
     /*
@@ -124,7 +131,8 @@ export default function PaymentDialog({
             setPaid('');
             setResult(null);
             setFlowerError(null);
-            setMethod((m) => (METHODS.some((x) => x.value === m) ? m : METHODS[0]?.value ?? 'نقدي'));
+            setMethod('');
+            setMethodError(false);
         }
     }, [open]);
 
@@ -179,6 +187,16 @@ export default function PaymentDialog({
     const change = Math.max(0, paidNum - displayTotal);
 
     const confirm = async () => {
+        /*
+         * الوسيلة أوّل ما يُسأل عنه: هي التي تفرّق بين ما يدخل الدرج وما لا
+         * يدخله، والخادم يرفض بدونها على أيّ حال — فيُقال هنا قبل أن يُرفع.
+         */
+        if (!METHODS.some((m) => m.value === method)) {
+            setMethodError(true);
+            return;
+        }
+        setMethodError(false);
+
         /*
          * الفحص هنا تسهيلٌ لا حراسة: الخادم يرفض التوصيل الناقص على أي حال.
          *
@@ -273,7 +291,7 @@ export default function PaymentDialog({
                         </div>
 
                         <div>
-                            <Label className="mb-1.5">{t('وسيلة الدفع')}</Label>
+                            <Label className="mb-1.5" required>{t('وسيلة الدفع')}</Label>
                             {/* الأعمدة بعدد المعروض: وسيلتان في ثلاثة أعمدة تتركان فراغًا يبدو عطلًا */}
                             <div
                                 className="grid gap-2"
@@ -286,7 +304,7 @@ export default function PaymentDialog({
                                         <button
                                             key={m.value}
                                             type="button"
-                                            onClick={() => setMethod(m.value)}
+                                            onClick={() => { setMethod(m.value); setMethodError(false); }}
                                             className={cn(
                                                 'flex flex-col items-center gap-1 rounded-full border py-2.5 text-xs font-medium transition-colors',
                                                 active
@@ -300,6 +318,11 @@ export default function PaymentDialog({
                                     );
                                 })}
                             </div>
+                            {methodError && (
+                                <p className="mt-1.5 text-[12px] text-[#b91c1c]">
+                                    {t('اختر وسيلة الدفع.')}
+                                </p>
+                            )}
                         </div>
 
                         {/*

@@ -27,6 +27,15 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
         $middleware->redirectGuestsTo(fn () => route('login'));
+
+        /*
+         * إشعارات ميتا لا تحمل رمز CSRF — وليست متصفّحًا.
+         *
+         * وحارسها ليس غياب الفحص: التوقيع (HMAC بسرّ التطبيق) يُفحص في
+         * المتحكّم، ولا يُقبل شيءٌ بدونه. واستثناءٌ بمسارٍ واحد لا بنمطٍ
+         * واسع — `webhooks/*` غدًا قد تشمل ما لا يُوقَّع.
+         */
+        $middleware->validateCsrfTokens(except: ['webhooks/whatsapp']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         /*

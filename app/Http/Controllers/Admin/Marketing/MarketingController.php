@@ -168,9 +168,18 @@ class MarketingController extends Controller
     {
         $bid = $this->bid();
 
+        $business = Business::findOrFail($bid);
+
         return Inertia::render('Admin/Marketing/Whatsapp', [
             'settings' => MarketingSettings::group($bid, 'whatsapp'),
-            'storeName' => Business::find($bid)?->name,
+            'storeName' => $business->name,
+            /*
+             * حال الأتمتة كما تراها المنصّة — لا كما يظنّها التاجر.
+             *
+             * ولا يخرج منها رمزٌ ولا معرّف وصلة أبعاد: الوضع المشترك يقول
+             * «يُرسل عبر أبعاد» ولا يقول بأيّ حسابٍ ولا بأيّ مفتاح.
+             */
+            'automation' => \App\Http\Controllers\Admin\WhatsAppController::view($business),
             // ما يقبله القالب من متغيّرات — تُعرض للتاجر بدل أن يخمّنها
             'variables' => [
                 ':store' => __('اسم المتجر'),
@@ -194,6 +203,7 @@ class MarketingController extends Controller
             'wa_number' => ['nullable', 'string', 'regex:/^\d{8,15}$/'],
             'wa_on_order' => ['nullable', 'boolean'],
             'wa_on_ready' => ['nullable', 'boolean'],
+            'wa_on_out_for_delivery' => ['nullable', 'boolean'],
             'wa_on_delivered' => ['nullable', 'boolean'],
             'wa_template_order' => ['nullable', 'string', 'max:500'],
             'wa_template_ready' => ['nullable', 'string', 'max:500'],

@@ -14,6 +14,16 @@ import type { PageProps } from '@/types';
 
 type Settings = Record<string, string>;
 
+/** حال وصلة الرقم المشترك — بلا رمزٍ ولا سرّ، انظر WhatsAppConnections::publicView */
+interface SharedConnection {
+    status: string;
+    usable: boolean;
+    display_phone_number: string | null;
+    connected_at: string | null;
+    waba_id?: string | null;
+    phone_number_id?: string | null;
+}
+
 /** حال البريد على الخادم كما تقرؤه PlatformConfig::mailStatus */
 interface MailStatus {
     mailer: string;
@@ -37,11 +47,17 @@ const TABS = [
     { key: 'subscriptions', label: 'الاشتراكات' },
     { key: 'taxes', label: 'الضريبة الافتراضية' },
     { key: 'mail', label: 'البريد' },
+    { key: 'whatsapp', label: 'واتساب' },
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans } =
-        usePage<PageProps<{ settings: Settings; mail?: MailStatus; plans: SelectOption[] }>>().props;
+    const { settings, locale, mail, plans, whatsapp } =
+        usePage<PageProps<{
+            settings: Settings;
+            mail?: MailStatus;
+            plans: SelectOption[];
+            whatsapp?: SharedConnection | null;
+        }>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('general');
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
@@ -74,6 +90,23 @@ export default function PlatformSettings() {
 
         from_address: get('from_address'),
         from_name: get('from_name'),
+
+        whatsapp_enabled: on('whatsapp_enabled'),
+        whatsapp_shared_enabled: on('whatsapp_shared_enabled'),
+        whatsapp_shared_default_monthly_limit: get('whatsapp_shared_default_monthly_limit'),
+    });
+
+    /*
+     * نموذج ربط الرقم المشترك — منفصلٌ عن نموذج الإعدادات.
+     *
+     * الرمز يُرسل مرّةً ولا يُعاد إلى الشاشة أبدًا، فلا يجوز أن يسكن في نموذجٍ
+     * يُعاد إرساله كلّما ضُغط «حفظ التغييرات».
+     */
+    const connectForm = useForm({
+        phone_number_id: '',
+        waba_id: '',
+        display_phone_number: '',
+        access_token: '',
     });
 
     type Key = keyof typeof form.data;
@@ -292,6 +325,135 @@ export default function PlatformSettings() {
                                 <Save />
                                 {t('حفظ التغييرات')}
                             </Button>
+                        </div>
+                    </Card>
+                )}
+
+                {tab === 'whatsapp' && (
+                    <Card className="p-6">
+                        <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('واتساب')}</h3>
+                        <p className="mb-6 text-[13px] text-[#6b7280]">
+                            {t('الرقم المشترك رقم أبعاد، ولكل متجرٍ حصّته الشهرية منه. ومن رُبط رقمه الخاص يُرسل على حسابه ولا يُخصم من الحصّة.')}
+                        </p>
+
+                        {/* حال الوصلة أوّل ما يُقرأ — مقابض بلا رقمٍ مربوط لا تُرسل شيئًا */}
+                        <div
+                            className={
+                                'mb-5 flex items-start gap-2 rounded-[10px] p-3 text-[13px] ' +
+                                (whatsapp?.usable
+                                    ? 'bg-[#f0fdf4] text-[#166534]'
+                                    : 'bg-[#fef2f2] text-[#b91c1c]')
+                            }
+                        >
+                            {whatsapp?.usable ? (
+                                <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                            ) : (
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                            )}
+                            <span>
+                                {whatsapp?.usable
+                                    ? `${t('الرقم المشترك مربوط')} — ${whatsapp.display_phone_number ?? whatsapp.phone_number_id ?? ''}`
+                                    : t('لا رقم مشترك مربوط — لن تخرج رسالة واحدة مهما فُعّلت المقابض.')}
+                            </span>
+                        </div>
+
+                        <div className="space-y-5">
+                            <Toggle
+                                on={form.data.whatsapp_enabled}
+                                onChange={(v) => form.setData('whatsapp_enabled', v)}
+                                label="تفعيل واتساب في المنصة"
+                                hint="إطفاؤه يوقف كل الرسائل في كل المتاجر — بالرقم المشترك وبأرقام المتاجر معًا"
+                            />
+                            <Toggle
+                                on={form.data.whatsapp_shared_enabled}
+                                onChange={(v) => form.setData('whatsapp_shared_enabled', v)}
+                                label="السماح بالرقم المشترك"
+                                hint="إطفاؤه يوقف من يُرسل عبر رقم أبعاد ولا يوقف من ربط رقمه الخاص"
+                            />
+                            {text('whatsapp_shared_default_monthly_limit', 'الحد الشهري الافتراضي للرسائل', {
+                                type: 'number',
+                                ltr: true,
+                                hint: 'يُطبَّق على كل متجرٍ لم يُحدَّد له حدٌّ خاص. و‎-1 تعني بلا حد.',
+                            })}
+                        </div>
+
+                        {saveBar}
+
+                        {/*
+                            ربط الرقم — نموذجٌ منفصل عن الإعدادات.
+                            الرمز يُرسل مرّةً ولا يُعاد إلى الشاشة أبدًا.
+                        */}
+                        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <h4 className="mb-4 font-bold text-[#111]">{t('ربط رقم أبعاد المشترك')}</h4>
+
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <Field label={t('معرّف الرقم (Phone Number ID)')} error={connectForm.errors.phone_number_id}>
+                                        <Input
+                                            dir="ltr"
+                                            value={connectForm.data.phone_number_id}
+                                            onChange={(e) => connectForm.setData('phone_number_id', e.target.value)}
+                                        />
+                                    </Field>
+                                    <Field label={t('معرّف حساب الأعمال (WABA ID)')} error={connectForm.errors.waba_id}>
+                                        <Input
+                                            dir="ltr"
+                                            value={connectForm.data.waba_id}
+                                            onChange={(e) => connectForm.setData('waba_id', e.target.value)}
+                                        />
+                                    </Field>
+                                </div>
+
+                                <Field label={t('الرقم كما يظهر للزبون')} error={connectForm.errors.display_phone_number}>
+                                    <Input
+                                        dir="ltr"
+                                        value={connectForm.data.display_phone_number}
+                                        onChange={(e) => connectForm.setData('display_phone_number', e.target.value)}
+                                    />
+                                </Field>
+
+                                <Field
+                                    label={t('رمز الوصول الدائم')}
+                                    hint={t('يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ — احتفظ بنسخةٍ منه عندك.')}
+                                    error={connectForm.errors.access_token}
+                                >
+                                    <Input
+                                        dir="ltr"
+                                        type="password"
+                                        value={connectForm.data.access_token}
+                                        onChange={(e) => connectForm.setData('access_token', e.target.value)}
+                                    />
+                                </Field>
+                            </div>
+
+                            <div className="mt-5 flex justify-end gap-2">
+                                {whatsapp && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() =>
+                                            router.delete(route('super-admin.whatsapp.shared.disconnect'), {
+                                                preserveScroll: true,
+                                            })
+                                        }
+                                    >
+                                        {t('فصل الرقم')}
+                                    </Button>
+                                )}
+                                <Button
+                                    type="button"
+                                    loading={connectForm.processing}
+                                    onClick={() =>
+                                        connectForm.post(route('super-admin.whatsapp.shared.connect'), {
+                                            preserveScroll: true,
+                                            onSuccess: () => connectForm.reset('access_token'),
+                                        })
+                                    }
+                                >
+                                    <Save />
+                                    {t('ربط الرقم')}
+                                </Button>
+                            </div>
                         </div>
                     </Card>
                 )}

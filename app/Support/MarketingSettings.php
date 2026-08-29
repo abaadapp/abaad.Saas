@@ -40,6 +40,14 @@ class MarketingSettings
             'wa_number' => '',
             'wa_on_order' => '1',
             'wa_on_ready' => '1',
+            /*
+             * «خرج للتوصيل» — المفتاح الوحيد الذي نقص.
+             *
+             * الثلاثة الأخرى قائمة منذ شاشة «افتح محادثة»، وتُعاد قراءتها
+             * كما هي: مفتاحٌ ثانٍ لنفس المقبض يعني تاجرًا يُطفئ أحدهما
+             * ويبقى الآخر يعمل.
+             */
+            'wa_on_out_for_delivery' => '1',
             'wa_on_delivered' => '0',
             'wa_template_order' => 'شكرًا لطلبك من :store — رقم طلبك :number بقيمة :total.',
             'wa_template_ready' => 'طلبك :number جاهز للاستلام من :store.',

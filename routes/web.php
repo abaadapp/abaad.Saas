@@ -197,6 +197,16 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/settings', [SuperAdminPageController::class, 'settings'])->name('settings.index');
     Route::post('/settings', [\App\Http\Controllers\SuperAdmin\SettingController::class, 'update'])->name('settings.update');
     Route::post('/settings/test-email', [\App\Http\Controllers\SuperAdmin\SettingController::class, 'testEmail'])->name('settings.testEmail');
+
+    /*
+     * واتساب — الرقم المشترك وأذونات المتاجر.
+     *
+     * داخل حارس `role:super_admin` لا خارجه: من يرفع حدّ متجرٍ أو يمنحه رقمًا
+     * خاصًّا هو مدير المنصّة وحده، والحارس على المجموعة لا في شاشةٍ تُخفي زرًّا.
+     */
+    Route::post('/whatsapp/shared', [\App\Http\Controllers\SuperAdmin\WhatsAppController::class, 'connectShared'])->name('whatsapp.shared.connect');
+    Route::delete('/whatsapp/shared', [\App\Http\Controllers\SuperAdmin\WhatsAppController::class, 'disconnectShared'])->name('whatsapp.shared.disconnect');
+    Route::put('/businesses/{id}/whatsapp', [\App\Http\Controllers\SuperAdmin\WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
 });
 
 /* ------------------------------- Admin ----------------------------- */
@@ -436,6 +446,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/marketing/website', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
     Route::get('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'loyalty'])->name('marketing.loyalty');
     Route::post('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveLoyalty'])->name('marketing.loyalty.save');
+    /*
+     * واتساب — ما يملكه التاجر: وضع الإرسال وربط رقمه.
+     *
+     * ومعرّف متجره يُقرأ من جلسته في المتحكّم لا ممّا يصل في الطلب — انظر
+     * `Admin\WhatsAppController::bid`.
+     */
+    Route::post('/marketing/whatsapp/mode', [\App\Http\Controllers\Admin\WhatsAppController::class, 'mode'])->name('marketing.whatsapp.mode');
+    Route::post('/marketing/whatsapp/connect', [\App\Http\Controllers\Admin\WhatsAppController::class, 'connect'])->name('marketing.whatsapp.connect');
+    Route::delete('/marketing/whatsapp/connect', [\App\Http\Controllers\Admin\WhatsAppController::class, 'disconnect'])->name('marketing.whatsapp.disconnect');
     Route::get('/marketing/reviews', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'index'])->name('marketing.reviews');
     Route::post('/marketing/reviews', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'store'])->name('marketing.reviews.store');
     Route::post('/marketing/reviews/{id}/status', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'status'])->name('marketing.reviews.status');
@@ -634,3 +653,13 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
     Route::get('/settings', [\App\Http\Controllers\Pos\PageController::class, 'settings'])->name('settings');
     Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
 });
+
+/*
+ * إشعارات ميتا — بابٌ عامّ بلا جلسة، وحارسه توقيعٌ لا كلمة سرّ.
+ *
+ * خارج مجموعات الحماية كلّها لأنّ من يُنادينا خادمُ ميتا لا متصفّح مستخدم:
+ * لا جلسة له ولا رمز CSRF. والتحقّق في المتحكّم — توقيع HMAC بسرّ التطبيق —
+ * ولا يُقبل شيءٌ بدونه.
+ */
+Route::get('/webhooks/whatsapp', [\App\Http\Controllers\WhatsApp\WebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
+Route::post('/webhooks/whatsapp', [\App\Http\Controllers\WhatsApp\WebhookController::class, 'handle'])->name('webhooks.whatsapp');

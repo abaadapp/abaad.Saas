@@ -57,6 +57,14 @@ class EveryPageAnswersTest extends TestCase
             ->reject(fn (string $uri) => str_contains($uri, '{')
                 || str_starts_with($uri, '_')
                 || $uri === 'up'
+                /*
+                 * الإشعارات الواردة ليست صفحة.
+                 *
+                 * `webhooks/whatsapp` بابٌ لخادم ميتا: يردّ ٤٠٣ على كلّ من
+                 * لا يحمل كلمة التسجيل — وهو الصواب لا سقوط. ولوحده اختبارٌ
+                 * يفحصه (WhatsAppWebhookTest).
+                 */
+                || str_starts_with($uri, 'webhooks/')
                 || str_starts_with($uri, 'storage'))
             ->unique()
             ->values()

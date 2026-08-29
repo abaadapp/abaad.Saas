@@ -114,6 +114,8 @@ class PageController extends Controller
                 'yearly' => \App\Support\Billing::price($model, 'yearly'),
                 'endsAt' => optional($model->ends_at)->format('Y-m-d'),
             ],
+            // واتساب هذا المتجر: حدُّه واستهلاكه وأذونه — بلا رمزٍ ولا سرّ
+            'whatsapp' => \App\Http\Controllers\SuperAdmin\WhatsAppController::businessView($model),
         ]);
     }
 
@@ -326,6 +328,16 @@ class PageController extends Controller
              */
             'plans' => \App\Models\Plan::orderBy('id')->pluck('name')
                 ->map(fn ($n) => ['label' => $n, 'value' => $n])->all(),
+            /*
+             * حال الوصلة المشتركة — بلا رمز.
+             *
+             * `publicView` هو الباب: تمرير النموذج نفسه كان يُخرج الرمز إلى
+             * المتصفّح مهما كان `$hidden` عليه.
+             */
+            'whatsapp' => \App\Support\WhatsAppConnections::publicView(
+                \App\Models\WhatsAppConnection::query()->platform()->orderByDesc('id')->first(),
+                withIds: true,
+            ),
         ]);
     }
 
@@ -366,6 +378,10 @@ class PageController extends Controller
         'tax_mode' => 'exclusive',
         'from_address' => 'no-reply@abad.om',
         'from_name' => 'Abad POS',
+        // واتساب مُطفأ حتى يُربط الرقم ويُقرَّر — لا يبدأ نظام إرسالٍ من نفسه
+        'whatsapp_enabled' => '0',
+        'whatsapp_shared_enabled' => '1',
+        'whatsapp_shared_default_monthly_limit' => (string) \App\Support\WhatsAppQuota::FALLBACK_DEFAULT,
     ];
 
     /* ------------------------------ مشتركات ------------------------------ */

@@ -38,6 +38,17 @@ class SettingController extends Controller
 
         'from_address' => ['nullable', 'email', 'max:150'],
         'from_name' => ['nullable', 'string', 'max:100'],
+
+        /*
+         * واتساب — ثلاثة مقابض تحكم المنصّة كلّها.
+         *
+         * والحدّ الافتراضي رقمٌ واحد يُقرأ لكلّ متجرٍ لا تخصيص له: تعديله
+         * هنا يسري على مئةٍ دفعةً واحدة، ولو نُسخ في صفوفهم لَما سرى على
+         * أحد.
+         */
+        'whatsapp_enabled' => ['nullable', 'boolean'],
+        'whatsapp_shared_enabled' => ['nullable', 'boolean'],
+        'whatsapp_shared_default_monthly_limit' => ['nullable', 'integer', 'min:-1', 'max:1000000'],
     ];
 
     public function update(Request $request)

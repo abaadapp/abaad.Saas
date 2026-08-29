@@ -11,6 +11,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import AccountCard from './partials/AccountCard';
+import WhatsAppCard, { type BusinessWhatsApp } from './partials/WhatsAppCard';
 import {
     Table,
     TableBody,
@@ -86,6 +87,7 @@ interface Props {
     branches: BranchRow[];
     orders: OrderRow[];
     currency: Currency;
+    whatsapp: BusinessWhatsApp | null;
 }
 
 const TABS = [
@@ -95,7 +97,7 @@ const TABS = [
 ];
 
 export default function BusinessShow() {
-    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency } =
+    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('overview');
@@ -225,6 +227,9 @@ export default function BusinessShow() {
                     </Button>
                 </Card>
             )}
+
+            {/* واتساب — بطاقةٌ في ملفّ المتجر لا شاشة ثالثة */}
+            {whatsapp && <WhatsAppCard businessId={business.id} data={whatsapp} />}
 
             <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
                 {stats.map((s, i) => (

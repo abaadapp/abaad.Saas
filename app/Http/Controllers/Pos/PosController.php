@@ -766,6 +766,32 @@ class PosController extends Controller
 
 
     /** إضافة عميل سريع من نقطة البيع */
+    /**
+     * إضافة مناسبةٍ للمتجر من نافذة الدفع.
+     *
+     * لا شاشة إعداداتٍ لها: من لم يجد مناسبته يجدها وهو واقفٌ أمام الزبون،
+     * لا بعد أن يخرج من الصندوق ويفتح الإعدادات ويعود. والزبون ينتظر.
+     */
+    public function storeOccasion(Request $request)
+    {
+        $data = $request->validate([
+            'label' => ['required', 'string', 'min:2', 'max:'.\App\Support\FlowerOrder::CUSTOM_LABEL_MAX],
+        ], [
+            'label.required' => __('اكتب اسم المناسبة.'),
+            'label.min' => __('اسم المناسبة قصير جدًّا.'),
+        ]);
+
+        try {
+            $added = \App\Support\FlowerOrder::addOccasion($data['label'], $this->bid());
+        } catch (\RuntimeException $e) {
+            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        \App\Support\Activity::log('created', 'أضاف مناسبة: '.$added['value']);
+
+        return response()->json(['ok' => true] + $added);
+    }
+
     public function storeCustomer(Request $request)
     {
         $data = $request->validate([

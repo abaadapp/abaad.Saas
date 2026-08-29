@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Order;
+use App\Models\Setting;
 use Illuminate\Validation\Rule;
 
 /**
@@ -31,6 +32,9 @@ class FlowerOrder
      * خلافًا للحالات: هذا عمودٌ جديد لا بيانات فيه، فلا ترحيل يُخشى. والمفتاح
      * اللاتينيّ يُترجَم إلى أيّ لغةٍ في الواجهة، والنصّ العربيّ لو خُزّن لصار
      * هو نفسه في الشاشة الإنجليزية.
+     *
+     * وهذه الثابتة وحدها؛ وما يضيفه المحلّ بيده يُخزَّن بنصّه — انظر
+     * `CUSTOM_KEY` أدناه وسببه.
      */
     public const OCCASIONS = [
         'birthday', 'anniversary', 'graduation', 'wedding', 'newborn',
@@ -49,6 +53,38 @@ class FlowerOrder
         'thank_you' => 'شكر',
         'love' => 'حبّ',
         'other' => 'أخرى',
+    ];
+
+    /**
+     * مناسبات المتجر — ما يضيفه صاحب المحل بنفسه.
+     *
+     * القائمة أعلاه ثابتةٌ في الكود لأنها المشترَك بين كل محلّ ورد. لكنّ
+     * المحلّات تبيع ما لا يخطر في بالٍ: «عقيقة»، «افتتاح فرع»، «يوم المعلّم».
+     * ومن لم يجد مناسبته كتبها في نصّ البطاقة أو في الملاحظات — فخرجت من كل
+     * ترشيحٍ وكل عدّ.
+     *
+     * وتُخزَّن بنصّها لا بمفتاحٍ لاتينيّ: مفتاحٌ يُترجَم يلزمه ملفّ ترجمة،
+     * وما يكتبه التاجر بيده لا ملفّ له. فالقيمة هي التسمية، وهي ما يُعرض.
+     */
+    public const CUSTOM_KEY = 'custom_occasions';
+
+    /**
+     * حدّ القائمة.
+     *
+     * الإضافة بيد الكاشير — وهو يبيع بسرعة ويكتب بسرعة. بلا حدٍّ تصير
+     * القائمة ثلاثين سطرًا، نصفها أخطاءٌ إملائية لمناسبةٍ واحدة، فلا يجد
+     * فيها أحدٌ ما يريد ولا يُرشَّح عليها شيء.
+     */
+    public const CUSTOM_MAX = 20;
+
+    /** أقصى طول للمناسبة المضافة */
+    public const CUSTOM_LABEL_MAX = 40;
+
+    /** حقول تفاصيل الطلب — مصدرٌ واحد للقواعد وللتعبئة (انظر الاختبار) */
+    public const FIELDS = [
+        'fulfillment_type', 'recipient_name', 'recipient_phone', 'scheduled_for',
+        'occasion_type', 'card_message', 'sender_name', 'hide_sender',
+        'delivery_address', 'delivery_notes', 'internal_notes',
     ];
 
     /** أقصى طول لبطاقة الإهداء — بطاقةٌ تُطبع لا رسالة */
@@ -77,7 +113,7 @@ class FlowerOrder
             'recipient_name' => ['sometimes', 'nullable', 'string', 'max:120'],
             'recipient_phone' => array_merge(['sometimes'], self::PHONE_RULE),
             'scheduled_for' => ['sometimes', 'nullable', 'date'],
-            'occasion_type' => ['sometimes', 'nullable', Rule::in(self::OCCASIONS)],
+            'occasion_type' => ['sometimes', 'nullable', Rule::in(self::allOccasions())],
             'card_message' => ['sometimes', 'nullable', 'string', 'max:'.self::CARD_MAX],
             'sender_name' => ['sometimes', 'nullable', 'string', 'max:120'],
             'hide_sender' => ['sometimes', 'boolean'],
@@ -150,7 +186,7 @@ class FlowerOrder
     {
         $out = [];
 
-        foreach (array_keys(self::rules()) as $field) {
+        foreach (self::FIELDS as $field) {
             if (! array_key_exists($field, $data)) {
                 continue;
             }
@@ -189,12 +225,114 @@ class FlowerOrder
     }
 
     /** خيارات المناسبات لقوائم الاختيار — مصدرٌ واحد للخادم والشاشة */
-    public static function occasionOptions(): array
+    public static function occasionOptions(?int $bid = null): array
     {
-        return array_map(
+        $built = array_map(
             fn ($k) => ['value' => $k, 'label' => __(self::OCCASION_LABELS[$k])],
             self::OCCASIONS
         );
+
+        // المضافة بعد الثابتة: «أخرى» تبقى آخر المعروف، وما أضافه المحلّ بعده
+        $custom = array_map(
+            fn ($label) => ['value' => $label, 'label' => $label],
+            self::customOccasions($bid)
+        );
+
+        return array_merge($built, $custom);
+    }
+
+    /** تسمية أي مناسبة — المضافة تسمية نفسها، والمجهولة تُعرض كما خُزّنت */
+    public static function occasionLabel(?string $value): ?string
+    {
+        if (blank($value)) {
+            return null;
+        }
+
+        return isset(self::OCCASION_LABELS[$value]) ? __(self::OCCASION_LABELS[$value]) : $value;
+    }
+
+    /** المفاتيح الثابتة ومناسبات المتجر معًا — ما يُقبل في `occasion_type` */
+    public static function allOccasions(?int $bid = null): array
+    {
+        return array_merge(self::OCCASIONS, self::customOccasions($bid));
+    }
+
+    /**
+     * مناسبات المتجر المحفوظة.
+     *
+     * صفٌّ واحد في الإعدادات لا جدولٌ جديد: قائمةُ نصوصٍ لا علاقة لها بغيرها،
+     * ولا يُسأل عنها إلا مع خيارات الطلب.
+     *
+     * @return array<int, string>
+     */
+    public static function customOccasions(?int $bid = null): array
+    {
+        $bid ??= Demo::bid();
+        if (! $bid) {
+            return [];
+        }
+
+        $raw = Setting::where('business_id', $bid)->where('key', self::CUSTOM_KEY)->value('value');
+        $list = json_decode((string) $raw, true);
+
+        if (! is_array($list)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($list as $v) {
+            $v = trim((string) $v);
+            if ($v !== '' && ! in_array($v, $clean, true)) {
+                $clean[] = $v;
+            }
+        }
+
+        return array_slice($clean, 0, self::CUSTOM_MAX);
+    }
+
+    /**
+     * إضافة مناسبةٍ للمتجر — تُعيد القائمة بعد الإضافة.
+     *
+     * والموجود لا يُضاف مرّتين: المقارنة بلا حساسيةٍ لحالة الأحرف ولا
+     * للمسافات، فـ«عقيقة » و«عقيقة» واحدة. والمطابق لتسمية مناسبةٍ ثابتة
+     * يُردّ إلى مفتاحها لا يُخزَّن نسخةً ثانية منها.
+     *
+     * @return array{value: string, options: array<int, array{value: string, label: string}>}
+     */
+    public static function addOccasion(string $label, ?int $bid = null): array
+    {
+        $bid ??= Demo::bid();
+        $label = trim(preg_replace('/\s+/u', ' ', $label));
+
+        $same = fn (string $a, string $b) => mb_strtolower($a) === mb_strtolower($b);
+
+        // ما يطابق ثابتًا يُختار لا يُضاف: قائمةٌ فيها «زواج» مرّتين تربك من يقرأها
+        foreach (self::OCCASION_LABELS as $key => $builtin) {
+            if ($same($label, $builtin) || $same($label, __($builtin)) || $same($label, $key)) {
+                return ['value' => $key, 'options' => self::occasionOptions($bid)];
+            }
+        }
+
+        $list = self::customOccasions($bid);
+
+        foreach ($list as $existing) {
+            if ($same($label, $existing)) {
+                return ['value' => $existing, 'options' => self::occasionOptions($bid)];
+            }
+        }
+
+        if (count($list) >= self::CUSTOM_MAX) {
+            throw new \RuntimeException(__('بلغت الحدّ الأقصى للمناسبات المضافة (:max) — احذف واحدة قبل الإضافة.', ['max' => self::CUSTOM_MAX]));
+        }
+
+        $list[] = $label;
+
+        Setting::updateOrCreate(
+            ['business_id' => $bid, 'key' => self::CUSTOM_KEY],
+            ['value' => json_encode(array_values($list), JSON_UNESCAPED_UNICODE)],
+        );
+
+        return ['value' => $label, 'options' => self::occasionOptions($bid)];
     }
 
     public static function fulfillmentOptions(): array

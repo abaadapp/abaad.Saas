@@ -265,6 +265,116 @@ class FlowerOrderTest extends TestCase
         $this->sell(['occasion_type' => 'لا-مناسبة'])->assertStatus(422);
     }
 
+    /* --------------------------- مناسبات المتجر --------------------------- */
+
+    /**
+     * ما ليس في القائمة يُضاف إليها — ثم يُقبل في البيع.
+     *
+     * وقبل الإضافة يُرفض: القائمة تُوسَّع بفعلٍ صريح لا بأوّل نصٍّ يمرّ في
+     * حقل، وإلا صار العمود نصًّا حرًّا مرّةً أخرى وهو ما هربنا منه.
+     */
+    public function test_an_occasion_the_shop_adds_becomes_sellable(): void
+    {
+        $this->sell(['occasion_type' => 'عقيقة'])->assertStatus(422);
+
+        $this->postJson(route('pos.occasions.store'), ['label' => 'عقيقة'])
+            ->assertOk()
+            ->assertJson(['ok' => true, 'value' => 'عقيقة']);
+
+        $this->sell(['occasion_type' => 'عقيقة'])->assertOk();
+        $this->assertSame('عقيقة', $this->lastOrder()->occasion_type);
+    }
+
+    /** وتظهر في خيارات الشاشة بعد إضافتها */
+    public function test_an_added_occasion_appears_in_the_options(): void
+    {
+        $before = collect(FlowerOrder::occasionOptions($this->business->id))->pluck('value');
+        $this->assertNotContains('افتتاح فرع', $before);
+
+        FlowerOrder::addOccasion('افتتاح فرع', $this->business->id);
+
+        $after = collect(FlowerOrder::occasionOptions($this->business->id));
+        $this->assertContains('افتتاح فرع', $after->pluck('value'));
+        // التسمية هي القيمة: ما يكتبه التاجر لا مفتاح له يُترجَم
+        $this->assertSame('افتتاح فرع', $after->firstWhere('value', 'افتتاح فرع')['label']);
+    }
+
+    /** المكرَّرة تُختار ولا تُضاف مرّةً ثانية */
+    public function test_adding_the_same_occasion_twice_keeps_one(): void
+    {
+        FlowerOrder::addOccasion('عقيقة', $this->business->id);
+        FlowerOrder::addOccasion('  عقيقة ', $this->business->id);
+
+        $this->assertSame(['عقيقة'], FlowerOrder::customOccasions($this->business->id));
+    }
+
+    /** والمطابقة لثابتٍ تُردّ إلى مفتاحه — لا «زواج» مرّتين في القائمة */
+    public function test_adding_a_builtin_occasion_returns_its_key(): void
+    {
+        $added = FlowerOrder::addOccasion('زواج', $this->business->id);
+
+        $this->assertSame('wedding', $added['value']);
+        $this->assertSame([], FlowerOrder::customOccasions($this->business->id));
+    }
+
+    /** والقائمة لا تنمو بلا حدّ */
+    public function test_the_added_occasions_have_a_ceiling(): void
+    {
+        for ($i = 1; $i <= FlowerOrder::CUSTOM_MAX; $i++) {
+            FlowerOrder::addOccasion('مناسبة '.$i, $this->business->id);
+        }
+
+        $this->postJson(route('pos.occasions.store'), ['label' => 'واحدة زائدة'])
+            ->assertStatus(422)
+            ->assertJson(['ok' => false]);
+
+        $this->assertCount(FlowerOrder::CUSTOM_MAX, FlowerOrder::customOccasions($this->business->id));
+    }
+
+    /**
+     * ومناسبة متجرٍ ليست مناسبة متجرٍ آخر.
+     *
+     * الإعداد يسكن صفًّا بـbusiness_id، فالخلط هنا يعني أن قائمة كل محلّ
+     * تمتلئ بمناسبات المحلّات الأخرى — وأنّ متجرًا يبيع على قيمةٍ لم يُنشئها.
+     */
+    public function test_an_added_occasion_does_not_cross_to_another_business(): void
+    {
+        FlowerOrder::addOccasion('عقيقة', $this->business->id);
+
+        $other = Business::create(['name' => 'ورد آخر', 'type' => 'محل ورود', 'status' => 'نشط']);
+        Branch::create(['business_id' => $other->id, 'name' => 'الرئيسي']);
+        $stranger = User::create([
+            'business_id' => $other->id, 'name' => 'غريب', 'email' => 'x@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
+        ]);
+        $product = Product::create([
+            'business_id' => $other->id, 'name' => 'باقة', 'price' => 10, 'cost' => 4, 'quantity' => 10,
+        ]);
+
+        $this->assertSame([], FlowerOrder::customOccasions($other->id));
+
+        $this->actingAs($stranger);
+        session(['current_branch' => Branch::where('business_id', $other->id)->value('id')]);
+
+        $this->postJson(route('pos.checkout'), [
+            'items' => [['id' => $product->id, 'name' => 'باقة', 'qty' => 1]],
+            'payment_method' => 'نقدي',
+            'occasion_type' => 'عقيقة',
+        ])->assertStatus(422);
+    }
+
+    /**
+     * حقول التفاصيل مصدرها واحد.
+     *
+     * `attributes()` تمرّ على `FIELDS` و`rules()` تكتب مفاتيحها — فحقلٌ يُضاف
+     * في إحداهما دون الأخرى إمّا يُتحقَّق منه ولا يُحفظ، وإمّا يُحفظ بلا
+     * تحقّق. والثاني هو الخطر.
+     */
+    public function test_the_detail_fields_and_their_rules_stay_one_list(): void
+    {
+        $this->assertSame(FlowerOrder::FIELDS, array_keys(FlowerOrder::rules()));
+    }
+
     public function test_an_invalid_schedule_is_refused(): void
     {
         $this->sell(['scheduled_for' => 'ليس تاريخًا'])->assertStatus(422);

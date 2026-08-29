@@ -629,6 +629,8 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
     Route::get('/receipt/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');
     Route::get('/customers', [\App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
+    // مناسبةٌ جديدة تُضاف من نافذة الدفع نفسها — تُحفظ للمتجر وتظهر في قائمته
+    Route::post('/occasions', [PosController::class, 'storeOccasion'])->name('occasions.store');
     Route::get('/settings', [\App\Http\Controllers\Pos\PageController::class, 'settings'])->name('settings');
     Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
 });

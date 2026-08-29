@@ -138,9 +138,7 @@ class PreparationController extends Controller
             'recipient' => $o->recipient_name,
             'recipient_phone' => $o->recipient_phone,
             'address' => $o->delivery_address,
-            'occasion' => $o->occasion_type
-                ? __(FlowerOrder::OCCASION_LABELS[$o->occasion_type] ?? $o->occasion_type)
-                : null,
+            'occasion' => FlowerOrder::occasionLabel($o->occasion_type),
             'card_message' => $o->card_message,
             // اسم المُهدي يبقى للموظّف: هو يكتب البطاقة، والإخفاء عن المستلِم
             // لا عن من يصنعها — انظر FlowerOrder::cardForRecipient

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Banknote, CheckCircle, ChevronDown, CreditCard, Landmark, Plus, Printer } from 'lucide-react';
+import { Banknote, Check, CheckCircle, ChevronDown, CreditCard, Landmark, Plus, Printer, X } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import {
@@ -94,6 +94,25 @@ export default function PaymentDialog({
     const [flowerOpen, setFlowerOpen] = useState(false);
     const [flower, setFlower] = useState<FlowerDetails>(BLANK);
     const [flowerError, setFlowerError] = useState<string | null>(null);
+    /*
+     * القسم يُنزَّل إليه عند فتحه.
+     *
+     * فتحُه يُضيف أحد عشر حقلًا تحت الزرّ مباشرة، فيبقى الكاشير ينظر إلى
+     * موضع الزرّ ولا يرى أنّ شيئًا ظهر — أو يراه ولا يعرف أين انتهى.
+     */
+    const flowerRef = useRef<HTMLDivElement>(null);
+
+    /*
+     * المناسبات نسخةٌ محليّة لا خاصيّةٌ مقروءة.
+     *
+     * ما يضيفه الكاشير يجب أن يظهر في القائمة في اللحظة نفسها، وخصائص
+     * الصفحة لا تتغيّر إلا بإعادة تحميلها — وهو ما لا يجوز وسط بيعة.
+     */
+    const [occasions, setOccasions] = useState(orderOptions?.occasions ?? []);
+    const [addingOccasion, setAddingOccasion] = useState(false);
+    const [newOccasion, setNewOccasion] = useState('');
+    const [occasionBusy, setOccasionBusy] = useState(false);
+    const [occasionError, setOccasionError] = useState<string | null>(null);
     const isDelivery = flower.fulfillment_type === 'delivery';
     const set = <K extends keyof FlowerDetails>(k: K, v: FlowerDetails[K]) =>
         setFlower((f) => ({ ...f, [k]: v }));
@@ -108,6 +127,52 @@ export default function PaymentDialog({
             setMethod((m) => (METHODS.some((x) => x.value === m) ? m : METHODS[0]?.value ?? 'نقدي'));
         }
     }, [open]);
+
+    // خيارات الخادم تسبق المحليّة: إعادة تحميل الصفحة تعيد القائمة الصحيحة
+    useEffect(() => {
+        if (orderOptions?.occasions) setOccasions(orderOptions.occasions);
+    }, [orderOptions?.occasions]);
+
+    useEffect(() => {
+        if (flowerOpen) {
+            flowerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }, [flowerOpen]);
+
+    /** إضافة مناسبةٍ للمتجر — تُحفظ ثم تُختار */
+    const addOccasion = async () => {
+        const label = newOccasion.trim();
+        if (!label) return;
+        setOccasionBusy(true);
+        setOccasionError(null);
+        try {
+            const res = await fetch(route('pos.occasions.store'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-XSRF-TOKEN': decodeURIComponent(
+                        document.cookie.split('; ').find((c) => c.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '',
+                    ),
+                },
+                body: JSON.stringify({ label }),
+            });
+            const body = await res.json();
+            if (!res.ok || !body.ok) {
+                setOccasionError(body?.message ?? body?.errors?.label?.[0] ?? t('تعذّرت إضافة المناسبة.'));
+                return;
+            }
+            setOccasions(body.options);
+            set('occasion_type', body.value);
+            setNewOccasion('');
+            setAddingOccasion(false);
+        } catch {
+            // بلا اتصال: المناسبة إعدادُ متجرٍ لا بيعة، فلا تدخل طابور الرفع
+            setOccasionError(t('لا يوجد اتصال — تُضاف المناسبة عند عودته.'));
+        } finally {
+            setOccasionBusy(false);
+        }
+    };
 
     const paidNum = Number(paid) || 0;
     const remaining = Math.max(0, displayTotal - paidNum);
@@ -157,8 +222,15 @@ export default function PaymentDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
+            {/*
+                النافذة عمودٌ لا كتلةٌ حرّة الطول.
+
+                كانت بلا سقف، ففتحُ «تفاصيل الطلب» يمدّها فوق الشاشة وتحتها:
+                العنوان يخرج من أعلاها وزرّ «تأكيد الدفع» من أسفلها، ولا شيء
+                يُمرَّر لأنّ النافذة نفسها هي ما تجاوز الشاشة لا ما فيها.
+            */}
+            <DialogContent className="flex max-h-[90dvh] max-w-lg flex-col">
+                <DialogHeader className="shrink-0">
                     <DialogTitle>{step === 'pay' ? t('إتمام الدفع') : t('تم الدفع بنجاح')}</DialogTitle>
                     {step === 'success' && (
                         <DialogDescription>
@@ -170,7 +242,8 @@ export default function PaymentDialog({
                 </DialogHeader>
 
                 {step === 'pay' ? (
-                    <div className="space-y-4 px-5 pb-5">
+                    <div className="flex min-h-0 flex-1 flex-col">
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4">
                         <div className="rounded-2xl bg-gray-100 p-4 text-center">
                             <p className="text-sm text-[#111]">{t('الإجمالي المطلوب')}</p>
                             <p className="mt-1 text-3xl font-extrabold text-[#111]">{money(total)}</p>
@@ -235,7 +308,7 @@ export default function PaymentDialog({
                             من يبيع باقةً من المنضدة.
                         */}
                         {orderOptions && (
-                            <div className="rounded-xl border border-gray-200">
+                            <div ref={flowerRef} className="rounded-xl border border-gray-200 scroll-mt-2">
                                 <button
                                     type="button"
                                     onClick={() => setFlowerOpen((o) => !o)}
@@ -303,13 +376,66 @@ export default function PaymentDialog({
                                             </>
                                         )}
 
-                                        <Field label="المناسبة">
-                                            <Select
-                                                placeholder="—"
-                                                options={orderOptions.occasions}
-                                                value={flower.occasion_type}
-                                                onChange={(e) => set('occasion_type', e.target.value)}
-                                            />
+                                        {/* المناسبة — وما ليس في القائمة يُضاف إليها هنا لا في الإعدادات */}
+                                        <Field label="المناسبة" error={occasionError ?? undefined}>
+                                            {addingOccasion ? (
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        autoFocus
+                                                        className="flex-1"
+                                                        value={newOccasion}
+                                                        maxLength={40}
+                                                        placeholder={t('اسم المناسبة')}
+                                                        onChange={(e) => setNewOccasion(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') { e.preventDefault(); addOccasion(); }
+                                                            if (e.key === 'Escape') { setAddingOccasion(false); setOccasionError(null); }
+                                                        }}
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        size="icon"
+                                                        variant="outline"
+                                                        className="shrink-0"
+                                                        disabled={occasionBusy || !newOccasion.trim()}
+                                                        onClick={addOccasion}
+                                                        aria-label={t('حفظ المناسبة')}
+                                                    >
+                                                        <Check className="size-4" />
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="shrink-0"
+                                                        onClick={() => { setAddingOccasion(false); setNewOccasion(''); setOccasionError(null); }}
+                                                        aria-label={t('إلغاء')}
+                                                    >
+                                                        <X className="size-4" />
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    <Select
+                                                        className="flex-1"
+                                                        placeholder="—"
+                                                        options={occasions}
+                                                        value={flower.occasion_type}
+                                                        onChange={(e) => set('occasion_type', e.target.value)}
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        size="icon"
+                                                        variant="outline"
+                                                        className="shrink-0"
+                                                        onClick={() => { setAddingOccasion(true); setOccasionError(null); }}
+                                                        aria-label={t('إضافة مناسبة')}
+                                                        title={t('إضافة مناسبة')}
+                                                    >
+                                                        <Plus className="size-4" />
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </Field>
 
                                         <Field
@@ -356,12 +482,17 @@ export default function PaymentDialog({
                             </div>
                         )}
 
+                    </div>
+
+                    {/* زرّ الدفع خارج المجرى: لا يُمرَّر بعيدًا مهما طال ما فوقه */}
+                    <div className="shrink-0 border-t border-gray-100 px-5 pb-5 pt-4">
                         <Button variant="success" size="lg" className="w-full rounded-full" disabled={busy} onClick={confirm}>
                             {busy ? '…' : t('تأكيد الدفع')}
                         </Button>
                     </div>
+                    </div>
                 ) : (
-                    <div className="space-y-4 px-5 pb-5 text-center">
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-5 text-center">
                         <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-[#ecfdf5] text-[#059669]">
                             <CheckCircle className="size-12" />
                         </div>

@@ -3168,5 +3168,13 @@
     "تهنئة": "Congratulations",
     "اعتذار": "Apology",
     "شكر": "Thank you",
-    "حبّ": "Love"
+    "حبّ": "Love",
+    "تعذّرت إضافة المناسبة.": "Could not add the occasion.",
+    "لا يوجد اتصال — تُضاف المناسبة عند عودته.": "No connection — the occasion will be added when it returns.",
+    "اسم المناسبة": "Occasion name",
+    "حفظ المناسبة": "Save occasion",
+    "إضافة مناسبة": "Add occasion",
+    "بلغت الحدّ الأقصى للمناسبات المضافة (:max) — احذف واحدة قبل الإضافة.": "You have reached the maximum number of added occasions (:max) — remove one before adding another.",
+    "اكتب اسم المناسبة.": "Enter the occasion name.",
+    "اسم المناسبة قصير جدًّا.": "The occasion name is too short."
 }

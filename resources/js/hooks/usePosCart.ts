@@ -620,7 +620,15 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
 
     /** يحفظ البيع محليًا أولًا ثم يحاول رفعه — لا ينتظر الشبكة لإتمامه */
     const checkoutSale = useCallback(
-        async (method: string): Promise<CheckoutResult> => {
+        /*
+         * `details` تفاصيل طلب الورد — اختياريّة كلّها.
+         *
+         * تُضمّ إلى الحمولة كما هي ولا تُحسب منها قيمة: الخادم يتحقّق منها
+         * ويقرّر الإلزام (التوصيل يلزمه مستلِمٌ وعنوان). وتدخل الطابور مع
+         * البيعة، فبيعةٌ سُجّلت بلا اتصال ترفع موعدها ومستلِمها معها عند
+         * عودة الشبكة — ولا تصل ناقصةً بعد ساعة.
+         */
+        async (method: string, details?: Record<string, unknown>): Promise<CheckoutResult> => {
             const id = uuid();
             const payload = {
                 client_uuid: id,
@@ -641,6 +649,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 resume_id: resumeId,
                 coupon_code: coupon?.code ?? null,
                 redeem_points: redeemPointsUsed,
+                ...(details ?? {}),
             };
 
             const queue = [...readOutbox(), { uuid: id, payload, at: Date.now() }];

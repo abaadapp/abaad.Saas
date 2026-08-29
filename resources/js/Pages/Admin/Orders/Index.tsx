@@ -22,10 +22,12 @@ interface Props {
     totalAmount: number;
     totalCount: number;
     cancelledCount: number;
+    /** الحالات من مصدرها الواحد في الخادم — انظر App\Support\OrderStatus */
+    statusOptions: { value: string; label: string }[];
 }
 
 export default function OrdersIndex() {
-    const { orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount, context } =
+    const { orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount, statusOptions, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -88,12 +90,25 @@ export default function OrdersIndex() {
             label: 'كل الحالات',
             asTabs: true,
             param: 'status',
+            // كانت خمس حالاتٍ مكتوبةً هنا بينما البذرة تكتب ستًّا: طلبٌ
+            // بحالة «جديد» لا يقصده تبويب، فلا يظهر في أيّ ترشيح
+            options: statusOptions,
+        },
+        {
+            /*
+             * موعد التسليم — على `scheduled_for` لا على `ordered_at`.
+             *
+             * «ما الذي يُسلَّم اليوم؟» سؤالٌ يُسأل كلّ صباح، وطلبٌ سُجّل الاثنين
+             * لتسليمه الجمعة يقع في يومين مختلفين بحسب أيّ عمودٍ يُقرأ. ومُرشِّحا
+             * «من/إلى» يبقيان على تاريخ التسجيل لأنّ التقارير المالية عليهما.
+             */
+            label: 'كل المواعيد',
+            param: 'when',
             options: [
-                { label: 'مكتمل', value: 'مكتمل' },
-                { label: 'قيد التجهيز', value: 'قيد التجهيز' },
-                { label: 'جاهز', value: 'جاهز' },
-                { label: 'خرج للتوصيل', value: 'خرج للتوصيل' },
-                { label: 'ملغي', value: 'ملغي' },
+                { label: 'متأخّر', value: 'overdue' },
+                { label: 'اليوم', value: 'today' },
+                { label: 'غدًا', value: 'tomorrow' },
+                { label: 'قادم', value: 'upcoming' },
             ],
         },
         // مدًى لا يومًا واحدًا: مبيعات أسبوعٍ كانت تُفتح سبع مرّات.

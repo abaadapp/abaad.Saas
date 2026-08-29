@@ -96,7 +96,18 @@ class EveryScreenOpensTest extends TestCase
     {
         $bid = $this->owner->business_id;
 
-        $order = \App\Models\Order::where('business_id', $bid)->sold()->firstOrFail();
+        /*
+         * طلبٌ من الفرع الذي تربط عليه نقطة البيع، وبترتيبٍ صريح.
+         *
+         * كان `firstOrFail()` بلا ترتيب: يُعيد ما يُعطيه المخطّط، وهو يتبدّل
+         * بتبدّل الفهارس. فحين أُضيف فهرسٌ على الطلبات تبدّل الصفّ المختار إلى
+         * طلبٍ في فرعٍ آخر، فردّت شاشة إيصالات الصندوق ٤٠٤ — وهي محقّة: الصندوق
+         * لا يقرأ إيصالات فرعٍ لا يقف فيه. فاختبارٌ يتبدّل مُدخلُه من تحته لا
+         * يقيس شيئًا.
+         */
+        $posBranch = \App\Models\Branch::where('business_id', $bid)->orderBy('id')->value('id');
+        $order = \App\Models\Order::where('business_id', $bid)->sold()
+            ->where('branch_id', $posBranch)->orderBy('id')->firstOrFail();
         $targets = [
             'admin.customers.show' => \App\Models\Customer::where('business_id', $bid)->value('id'),
             'admin.customers.statement' => \App\Models\Customer::where('business_id', $bid)->value('id'),

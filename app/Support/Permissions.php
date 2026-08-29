@@ -15,10 +15,12 @@ class Permissions
         'manager' => ['*'],
         // المحاسب يقرأ التقارير: هي عملُه لا زينةٌ فوقه
         'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses', 'employees', 'pos', 'reports'],
-        'inventory' => ['dashboard', 'products', 'inventory', 'suppliers', 'purchases', 'pos'],
-        'sales' => ['dashboard', 'orders', 'customers', 'products', 'pos'],
+        // من يجهّز البضاعة يرى لوحة التجهيز — وهي عملُه لا زينةٌ فوقه
+        'inventory' => ['dashboard', 'products', 'inventory', 'suppliers', 'purchases', 'pos', 'preparation'],
+        'sales' => ['dashboard', 'orders', 'customers', 'products', 'pos', 'preparation'],
         'cashier' => ['dashboard', 'pos'],
-        'delivery' => ['dashboard', 'orders', 'pos'],
+        // والسائق يقرأ ما سيحمله: العنوان والموعد والمستلِم
+        'delivery' => ['dashboard', 'orders', 'pos', 'preparation'],
     ];
 
     /** كل الأقسام التي تظهر في لوحة النشاط — مصدر واحد تقرأ منه الواجهة */
@@ -26,6 +28,14 @@ class Permissions
         'dashboard', 'customers', 'products', 'orders', 'marketing',
         'inventory', 'finance', 'expenses', 'settings',
         'suppliers', 'purchases', 'employees', 'pos', 'reports',
+        /*
+         * التجهيز قسمٌ مستقلّ لا جزءٌ من «المبيعات».
+         *
+         * «المبيعات» تفتح الفواتير وإجماليّاتها ومجموعَ ما رُشّح — وهي أوسع
+         * بكثير ممّا يحتاجه من يصنع الباقة. ومنحُها لعامل التجهيز يعني أنّ
+         * كلّ من يقف عند الطاولة يقرأ مبيعات المحلّ.
+         */
+        'preparation',
     ];
 
     /**
@@ -121,6 +131,7 @@ class Permissions
         // التقاريرُ يسقط على `ROUTES['reports']` غير الموجود، فيرتفع خطأ
         // مفتاحٍ ناقص داخل HandleInertiaRequests — أي ٥٠٠ على كل صفحةٍ يفتحها
         'reports' => 'admin.reports.index',
+        'preparation' => 'admin.preparation.index',
     ];
 
     /**
@@ -178,6 +189,7 @@ class Permissions
             'employees' => 'الرواتب والموظفين', 'pos' => 'نقطة البيع',
             // كانت ساقطةً فتُعرض «reports» بحروفٍ لاتينية في قائمة صلاحيات عربية
             'reports' => 'التقارير',
+            'preparation' => 'لوحة التجهيز',
         ];
 
         return collect(self::SECTIONS)

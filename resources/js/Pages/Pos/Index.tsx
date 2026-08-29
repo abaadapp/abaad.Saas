@@ -27,7 +27,7 @@ import {
 import { toast } from 'sonner';
 import PosLayout from '@/Layouts/PosLayout';
 import NewCustomerDialog from '@/Pages/Pos/partials/NewCustomerDialog';
-import PaymentDialog from '@/Pages/Pos/partials/PaymentDialog';
+import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDialog';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -53,10 +53,12 @@ interface Props {
     coupons: PosCoupon[];
     resumeCart: ResumeCart | null;
     settings: LoyaltySettings & { loyaltyEnabled?: boolean; paymentMethods?: string[]; vat?: VatSettings };
+    /** خيارات طلب الورد — تصل من الخادم فلا تُكتب هنا مرّةً ثانية */
+    orderOptions?: OrderOptions;
 }
 
 export default function PosIndex() {
-    const { products: serverProducts, categories, customers, addons, coupons, resumeCart, settings, context } =
+    const { products: serverProducts, categories, customers, addons, coupons, resumeCart, settings, orderOptions, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -699,6 +701,7 @@ export default function PosIndex() {
                 money={money}
                 fmt={fmt}
                 methods={settings.paymentMethods}
+                orderOptions={orderOptions}
                 onCheckout={cart.checkoutSale}
                 onNewOrder={() => { cart.clear(); toast.success(t('طلب جديد جاهز')); }}
             />

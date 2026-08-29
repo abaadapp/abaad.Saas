@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Banknote, CheckCircle, CreditCard, Landmark, Plus, Printer } from 'lucide-react';
+import { Banknote, CheckCircle, ChevronDown, CreditCard, Landmark, Plus, Printer } from 'lucide-react';
+import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import {
     Dialog,
@@ -22,9 +23,38 @@ const ALL_METHODS = [
     { value: 'تحويل بنكي', label: 'تحويل بنكي', icon: Landmark },
 ];
 
+export interface OrderOptions {
+    occasions: { value: string; label: string }[];
+    fulfillments: { value: string; label: string }[];
+    cardMax: number;
+}
+
+/** ما يُرسل مع البيعة من تفاصيل طلب الورد — كلّه اختياريّ */
+export interface FlowerDetails {
+    fulfillment_type: string;
+    recipient_name: string;
+    recipient_phone: string;
+    scheduled_for: string;
+    occasion_type: string;
+    card_message: string;
+    sender_name: string;
+    hide_sender: boolean;
+    delivery_address: string;
+    delivery_notes: string;
+    internal_notes: string;
+}
+
+const BLANK: FlowerDetails = {
+    fulfillment_type: '', recipient_name: '', recipient_phone: '', scheduled_for: '',
+    occasion_type: '', card_message: '', sender_name: '', hide_sender: false,
+    delivery_address: '', delivery_notes: '', internal_notes: '',
+};
+
 interface Props {
     /** الوسائل المأذونة من الإعدادات؛ غيابها يعني الثلاث (شاشة قديمة) */
     methods?: string[];
+    /** خيارات طلب الورد؛ غيابها يعني شاشةً قديمة فيُخفى القسم كلّه */
+    orderOptions?: OrderOptions;
     open: boolean;
     onOpenChange: (open: boolean) => void;
     total: number;
@@ -33,12 +63,12 @@ interface Props {
     money: (v: number) => string;
     /** تنسيق قيمة هي أصلًا بعملة العرض (بلا تحويل) */
     fmt: (v: number) => string;
-    onCheckout: (method: string) => Promise<CheckoutResult>;
+    onCheckout: (method: string, details?: Record<string, unknown>) => Promise<CheckoutResult>;
     onNewOrder: () => void;
 }
 
 export default function PaymentDialog({
-    open, onOpenChange, total, displayTotal, customer, money, fmt, onCheckout, onNewOrder, methods,
+    open, onOpenChange, total, displayTotal, customer, money, fmt, onCheckout, onNewOrder, methods, orderOptions,
 }: Props) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
@@ -53,6 +83,20 @@ export default function PaymentDialog({
     const [method, setMethod] = useState(METHODS[0]?.value ?? 'نقدي');
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState<CheckoutResult | null>(null);
+    /*
+     * تفاصيل طلب الورد — مطويّةٌ افتراضيًّا.
+     *
+     * أكثر بيعات اليوم باقةٌ تُؤخذ من المنضدة: تُدفع وتُحمل. ولو فُتحت هذه
+     * الحقول على كلّ بيعة لَصار الكاشير يمرّ على أحد عشر حقلًا فارغًا قبل كلّ
+     * دفعة — فيتجاهلها، أو يملؤها بأيّ شيء ليتخلّص منها. وتُفتح بضغطة لمن
+     * يبيع طلبًا بموعد.
+     */
+    const [flowerOpen, setFlowerOpen] = useState(false);
+    const [flower, setFlower] = useState<FlowerDetails>(BLANK);
+    const [flowerError, setFlowerError] = useState<string | null>(null);
+    const isDelivery = flower.fulfillment_type === 'delivery';
+    const set = <K extends keyof FlowerDetails>(k: K, v: FlowerDetails[K]) =>
+        setFlower((f) => ({ ...f, [k]: v }));
 
     // كل فتح جديد يبدأ من خطوة الدفع بمبلغ صفر
     useEffect(() => {
@@ -60,6 +104,7 @@ export default function PaymentDialog({
             setStep('pay');
             setPaid('');
             setResult(null);
+            setFlowerError(null);
             setMethod((m) => (METHODS.some((x) => x.value === m) ? m : METHODS[0]?.value ?? 'نقدي'));
         }
     }, [open]);
@@ -69,9 +114,26 @@ export default function PaymentDialog({
     const change = Math.max(0, paidNum - displayTotal);
 
     const confirm = async () => {
+        /*
+         * الفحص هنا تسهيلٌ لا حراسة: الخادم يرفض التوصيل الناقص على أي حال.
+         *
+         * لكنّ البيع يمرّ بطابور عدم الاتصال، فرفضُ الخادم قد يصل بعد دقائق
+         * والزبون قد مضى. فيُقال للكاشير الآن، وهو أمام الشاشة.
+         */
+        if (isDelivery && !(flower.recipient_name.trim() && flower.recipient_phone.trim() && flower.delivery_address.trim())) {
+            setFlowerOpen(true);
+            setFlowerError(t('طلب التوصيل يحتاج اسم المستلِم ورقمه وعنوانه.'));
+            return;
+        }
+        setFlowerError(null);
+
         setBusy(true);
         try {
-            const res = await onCheckout(method);
+            // المفاتيح الفارغة لا تُرسل: الخادم يقرأ الفراغ قيمةً تُكتب
+            const details = Object.fromEntries(
+                Object.entries(flower).filter(([, v]) => (typeof v === 'boolean' ? v : String(v).trim() !== '')),
+            );
+            const res = await onCheckout(method, details);
             setResult(res);
             setStep('success');
 
@@ -167,6 +229,133 @@ export default function PaymentDialog({
                             </div>
                         </div>
 
+                        {/*
+                            تفاصيل طلب الورد — داخل نافذة الدفع نفسها لا في خطوةٍ ثانية.
+                            التدفّق يبقى: أضف الأصناف ← ادفع. والقسم مطويّ فلا يراه
+                            من يبيع باقةً من المنضدة.
+                        */}
+                        {orderOptions && (
+                            <div className="rounded-xl border border-gray-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setFlowerOpen((o) => !o)}
+                                    className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-[#111]"
+                                >
+                                    <span>{t('تفاصيل الطلب (اختياري)')}</span>
+                                    <ChevronDown className={cn('size-4 text-gray-400 transition-transform', flowerOpen && 'rotate-180')} />
+                                </button>
+
+                                {flowerOpen && (
+                                    <div className="space-y-3 border-t border-gray-200 px-3 py-3">
+                                        {flowerError && (
+                                            <p className="text-[12px] text-[#b91c1c]">{flowerError}</p>
+                                        )}
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <Field label="نوع التنفيذ">
+                                                <Select
+                                                    placeholder="—"
+                                                    options={orderOptions.fulfillments}
+                                                    value={flower.fulfillment_type}
+                                                    onChange={(e) => set('fulfillment_type', e.target.value)}
+                                                />
+                                            </Field>
+                                            <Field label="موعد التسليم">
+                                                <Input
+                                                    type="datetime-local"
+                                                    value={flower.scheduled_for}
+                                                    onChange={(e) => set('scheduled_for', e.target.value)}
+                                                />
+                                            </Field>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <Field label="اسم المستلِم" required={isDelivery}>
+                                                <Input
+                                                    value={flower.recipient_name}
+                                                    onChange={(e) => set('recipient_name', e.target.value)}
+                                                />
+                                            </Field>
+                                            <Field label="هاتف المستلِم" required={isDelivery}>
+                                                <Input
+                                                    inputMode="tel"
+                                                    value={flower.recipient_phone}
+                                                    onChange={(e) => set('recipient_phone', e.target.value)}
+                                                />
+                                            </Field>
+                                        </div>
+
+                                        {/* حقول التوصيل تظهر عند التوصيل وحده — الاستلام لا يُسأل عن عنوان */}
+                                        {isDelivery && (
+                                            <>
+                                                <Field label="عنوان التوصيل" required>
+                                                    <Input
+                                                        value={flower.delivery_address}
+                                                        onChange={(e) => set('delivery_address', e.target.value)}
+                                                    />
+                                                </Field>
+                                                <Field label="تعليمات التوصيل">
+                                                    <Input
+                                                        value={flower.delivery_notes}
+                                                        onChange={(e) => set('delivery_notes', e.target.value)}
+                                                    />
+                                                </Field>
+                                            </>
+                                        )}
+
+                                        <Field label="المناسبة">
+                                            <Select
+                                                placeholder="—"
+                                                options={orderOptions.occasions}
+                                                value={flower.occasion_type}
+                                                onChange={(e) => set('occasion_type', e.target.value)}
+                                            />
+                                        </Field>
+
+                                        <Field
+                                            label="نصّ البطاقة"
+                                            hint={`${flower.card_message.length}/${orderOptions.cardMax}`}
+                                        >
+                                            <textarea
+                                                rows={2}
+                                                maxLength={orderOptions.cardMax}
+                                                value={flower.card_message}
+                                                onChange={(e) => set('card_message', e.target.value)}
+                                                className="w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-2 text-sm transition-[border-color,box-shadow] focus:border-[#d1d5db] focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)] focus:outline-none"
+                                            />
+                                        </Field>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <Field label="اسم المُهدي">
+                                                <Input
+                                                    value={flower.sender_name}
+                                                    onChange={(e) => set('sender_name', e.target.value)}
+                                                />
+                                            </Field>
+                                            <Field label="إخفاء المُهدي" hint="لا يظهر للمستلِم">
+                                                <label className="flex h-9 items-center gap-2 text-sm text-[#4b4b4b]">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={flower.hide_sender}
+                                                        onChange={(e) => set('hide_sender', e.target.checked)}
+                                                        className="size-4 accent-[#6d28d9]"
+                                                    />
+                                                    {t('إخفاء')}
+                                                </label>
+                                            </Field>
+                                        </div>
+
+                                        <Field label="ملاحظات داخلية" hint="لا تُطبع للزبون">
+                                            <Input
+                                                value={flower.internal_notes}
+                                                onChange={(e) => set('internal_notes', e.target.value)}
+                                            />
+                                        </Field>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <Button variant="success" size="lg" className="w-full rounded-full" disabled={busy} onClick={confirm}>
                             {busy ? '…' : t('تأكيد الدفع')}
                         </Button>
@@ -223,6 +412,8 @@ export default function PaymentDialog({
                                 className={cn('rounded-full', !(result?.synced && result.invoice) && 'col-span-2')}
                                 onClick={() => {
                                     onNewOrder();
+                                    setFlower(BLANK);
+                                    setFlowerOpen(false);
                                     onOpenChange(false);
                                 }}
                             >

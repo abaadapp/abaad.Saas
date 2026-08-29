@@ -14,10 +14,18 @@ class Order extends Model
         'delivery_fee' => 'decimal:3', 'total' => 'decimal:3', 'is_held' => 'boolean',
         'coupon_discount' => 'decimal:3',
         'ordered_at' => 'datetime',
+        'scheduled_for' => 'datetime',
+        'hide_sender' => 'boolean',
     ];
 
-    /** الحالة التي تعني أن البيعة رُدَّت ولم تعد بيعًا */
-    public const CANCELLED = 'ملغي';
+    /**
+     * الحالة التي تعني أن البيعة رُدَّت ولم تعد بيعًا.
+     *
+     * تبقى هنا وتُشير إلى `OrderStatus`: هذا الثابت مقروءٌ في نطاق `sold`
+     * وفي مواضع كثيرة سواه، وحذفُه ليس تنظيمًا بل كسرٌ لِما يعمل. والمصدر
+     * واحد — القيمة تُقرأ من هناك لا تُكتب هنا مرّةً ثانية.
+     */
+    public const CANCELLED = \App\Support\OrderStatus::CANCELLED;
 
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
     public function branch(): BelongsTo { return $this->belongsTo(Branch::class); }
@@ -38,5 +46,31 @@ class Order extends Model
     public function scopeSold($query)
     {
         return $query->where('is_held', false)->where('status', '!=', self::CANCELLED);
+    }
+
+    /**
+     * ما ينتظر التجهيز: طلبٌ حيّ له موعد.
+     *
+     * المغلق يخرج (سُلّم أو استُلم أو اكتمل أو أُلغي)، والمعلَّق يخرج لأنّه
+     * سلّةٌ لم تُبَع بعد. والطلب بلا موعد يخرج أيضًا — وهو بيعُ المنضدة:
+     * دُفع وأُخذ في اللحظة نفسها، ولا شيء فيه يُجهَّز. ولولا ذلك لَامتلأت
+     * اللوحة بمئات الفواتير التي أُغلقت منذ شهور.
+     */
+    public function scopeAwaitingPreparation($query)
+    {
+        return $query->where('is_held', false)
+            ->whereNotNull('scheduled_for')
+            ->whereNotIn('status', \App\Support\OrderStatus::CLOSED);
+    }
+
+    /**
+     * ما فات موعده ولم يُغلق — يتصدّر لوحة التجهيز.
+     *
+     * يُقاس بـ`scheduled_for` لا بـ`ordered_at`: طلبٌ سُجّل الاثنين لتسليمه
+     * الجمعة ليس متأخّرًا يوم الثلاثاء.
+     */
+    public function scopeOverdue($query)
+    {
+        return $query->awaitingPreparation()->where('scheduled_for', '<', now());
     }
 }

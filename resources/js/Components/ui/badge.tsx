@@ -72,6 +72,11 @@ const STATUS_VARIANT: Record<string, VariantProps<typeof badgeVariants>['variant
     مرفوض: 'danger',
     'قيد التجهيز': 'info',
     'خرج للتوصيل': 'info',
+    // حالاتٌ أُضيفت مع مسار طلب الورد — انظر App\Support\OrderStatus
+    'مؤكّد': 'primary',
+    'تم التسليم': 'success',
+    'تم الاستلام': 'success',
+    'تعذّر التوصيل': 'danger',
 };
 
 /**

@@ -826,6 +826,29 @@ class Demo
             'delivery' => (float) $o->delivery_fee,
             'total' => (float) $o->total,
             'notes' => $o->notes,
+            /*
+             * تفاصيل التنفيذ — تُرسل دائمًا ولو كانت فارغة.
+             *
+             * الشاشة تُخفي البطاقة حين لا شيء فيها، لكنّ الحقول تُملأ من هذه
+             * القيم في نموذج التعديل: لو غابت المفاتيح عن الطلبات القديمة
+             * لَبدأ النموذج غير مضبوط، فيصير أوّل حرفٍ يُكتب فيه تحذيرًا في
+             * المتصفّح وقيمةً لا تُحفظ.
+             */
+            'recipient_name' => $o->recipient_name,
+            'recipient_phone' => $o->recipient_phone,
+            'fulfillment_type' => $o->fulfillment_type,
+            'scheduled_for' => optional($o->scheduled_for)->format('Y-m-d\TH:i'),
+            'occasion_type' => $o->occasion_type,
+            'card_message' => $o->card_message,
+            'sender_name' => $o->sender_name,
+            'hide_sender' => (bool) $o->hide_sender,
+            'delivery_address' => $o->delivery_address,
+            'delivery_notes' => $o->delivery_notes,
+            'internal_notes' => $o->internal_notes,
+            // ما يجوز الانتقال إليه من الحالة الحالية — لا كلّ الحالات
+            'next_statuses' => \App\Support\OrderStatus::nextFrom($o->status),
+            'occasions' => \App\Support\FlowerOrder::occasionOptions(),
+            'fulfillments' => \App\Support\FlowerOrder::fulfillmentOptions(),
             'items' => $items,
             'edits' => self::orderEdits($o->id),
             // ما أذن به التاجر وحده يُعرض في التصحيح — لا يُصحَّح إلى وسيلةٍ مُطفأة

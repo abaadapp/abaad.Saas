@@ -87,6 +87,12 @@ class PageController extends Controller
             // سلة مستعادة من طلب معلّق (تُمرَّر عبر الجلسة من PosController::resume)
             'resumeCart' => session('resume_cart'),
             'settings' => $this->loyaltySettings(),
+            // خيارات طلب الورد من مصدرها الواحد — لا تُكتب في الشاشة ثانيةً
+            'orderOptions' => [
+                'occasions' => \App\Support\FlowerOrder::occasionOptions(),
+                'fulfillments' => \App\Support\FlowerOrder::fulfillmentOptions(),
+                'cardMax' => \App\Support\FlowerOrder::CARD_MAX,
+            ],
         ]);
     }
 

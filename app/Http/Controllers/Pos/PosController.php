@@ -463,7 +463,20 @@ class PosController extends Controller
             'coupon_code' => ['nullable', 'string', 'max:40'],
             'client_uuid' => ['nullable', 'string', 'max:64'],
             'redeem_points' => ['nullable', 'integer', 'min:0'],
-        ]);
+            /*
+             * تفاصيل طلب الورد — اختياريّةٌ كلّها.
+             *
+             * بيعةُ المارّ يجب أن تبقى ثلاث نقرات: يضع الباقة، يضغط الدفع،
+             * ينتهي. وإلزامُ المستلِم والموعد على كلّ بيعةٍ يجعل الكاشير يملأ
+             * حقولًا لا معنى لها في نصف بيعات اليوم — فيملؤها بأيّ شيء،
+             * وتصير البيانات أسوأ من غيابها.
+             */
+        ] + \App\Support\FlowerOrder::rules(), \App\Support\FlowerOrder::messages());
+
+        // والتوصيل وحده يُسأل عن مستلِمه وعنوانه — شرطٌ بين حقول لا على حقل
+        if ($flowerErrors = \App\Support\FlowerOrder::afterValidation($data)) {
+            throw \Illuminate\Validation\ValidationException::withMessages($flowerErrors);
+        }
 
         // صمود الانقطاع: لو أُعيد رفع نفس الطلب (بعد عودة الاتصال) نعيد الفاتورة الأصلية بدل تكراره
         if (! empty($data['client_uuid'])) {
@@ -493,6 +506,9 @@ class PosController extends Controller
             $coupon = $this->findCoupon($data['coupon_code'] ?? null);
             $couponApplied = $coupon && $coupon->isValid() && $subtotal >= (float) $coupon->min_order;
             $couponDiscount = $couponApplied ? min((float) $coupon->discountFor($subtotal), $subtotal) : 0.0;
+
+            // موعدٌ في المستقبل يعني طلبًا يُجهَّز لا بيعةً انتهت — انظر 'status' أدناه
+            $scheduled = filled($data['scheduled_for'] ?? null);
 
             $customer = $this->customerFor($data['customer'] ?? null, $data['customer_id'] ?? null, $data['customer_phone'] ?? null);
             $redeem = $this->resolveRedemption($customer, $subtotal, $couponDiscount, (int) ($data['redeem_points'] ?? 0));
@@ -539,7 +555,6 @@ class PosController extends Controller
                  * في محلٍّ فيه ثلاثة صناديق، هذا العمود وحده يقول أيّها.
                  */
                 'pos_device_id' => \App\Support\PosTerminal::current()?->id,
-                'status' => 'مكتمل',
                 'payment_method' => $this->paymentMethod($data['payment_method'] ?? null),
                 'payment_status' => 'مدفوع',
                 'subtotal' => $subtotal,
@@ -552,7 +567,20 @@ class PosController extends Controller
                 'delivery_fee' => $delivery,
                 'total' => $total,
                 'ordered_at' => now(),
-            ], $this->salePrefix(), max(1, (int) $this->setting('inv_start', 1)));
+                /*
+                 * الحالة تتبع الطلب لا العكس.
+                 *
+                 * بيعةُ المنضدة تُدفع وتُؤخذ في اللحظة نفسها فهي «مكتمل» كما
+                 * كانت. أمّا ما له موعدٌ في المستقبل فلم يكتمل شيء منه بعد:
+                 * يُسجَّل «جديد» ليدخل لوحة التجهيز. ولو بقي «مكتمل» لَما ظهر
+                 * لعامل التجهيز أبدًا — فيُجهَّز الطلب بورقةٍ على الجدار كما
+                 * كان قبل النظام.
+                 */
+                'status' => $scheduled
+                    ? \App\Support\OrderStatus::PENDING
+                    : \App\Support\OrderStatus::COMPLETED,
+            ] + \App\Support\FlowerOrder::attributes($data),
+                $this->salePrefix(), max(1, (int) $this->setting('inv_start', 1)));
 
             foreach ($lines as $l) {
                 $order->items()->create([

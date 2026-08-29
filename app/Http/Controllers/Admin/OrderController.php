@@ -22,6 +22,7 @@ class OrderController extends Controller
         'total' => 'total',
         'payment' => 'payment_method',
         'date' => 'ordered_at',
+        'scheduled' => 'scheduled_for',
     ];
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
@@ -46,6 +47,29 @@ class OrderController extends Controller
         if ($to = $request->query('to')) { $q->whereDate('ordered_at', '<=', $to); }
 
         /*
+         * مُرشِّح الموعد — على `scheduled_for` لا على `ordered_at`.
+         *
+         * السؤال الذي يُسأل كلّ صباح هو «ما الذي يُسلَّم اليوم؟» لا «ما الذي
+         * سُجّل اليوم». وطلبٌ سُجّل الاثنين لتسليمه الجمعة يقع في يومين
+         * مختلفين بحسب أيّ عمودٍ يُقرأ — فيُفصَل المُرشِّحان ولا يُستبدل أحدهما
+         * بالآخر: `from`/`to` يبقيان على `ordered_at` لأنّ التقارير عليهما.
+         *
+         * و«المتأخّر» يستثني المغلق: طلبٌ سُلّم أمس ليس متأخّرًا اليوم.
+         */
+        if ($when = $request->query('when')) {
+            match ($when) {
+                'today' => $q->whereBetween('scheduled_for', [now()->startOfDay(), now()->endOfDay()]),
+                'tomorrow' => $q->whereBetween('scheduled_for', [
+                    now()->addDay()->startOfDay(), now()->addDay()->endOfDay(),
+                ]),
+                'upcoming' => $q->where('scheduled_for', '>', now()->addDay()->endOfDay()),
+                'overdue' => $q->where('scheduled_for', '<', now())
+                    ->whereNotIn('status', \App\Support\OrderStatus::CLOSED),
+                default => null,
+            };
+        }
+
+        /*
          * مجموع ما رُشّح لا مجموع الصفحة.
          *
          * الجدول يعرض عشرة صفوف من مئة، فجمعُ المعروض يقول رقمًا لا معنى له.
@@ -64,12 +88,15 @@ class OrderController extends Controller
             'items_count' => $o->items_count, 'total' => (float) $o->total,
             'payment' => $o->payment_method, 'status' => $o->status,
             'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
+            // الموعد يُرسل ليُقرأ في العمود، و'—' لبيعة المنضدة التي لا موعد لها
+            'scheduled' => optional($o->scheduled_for)->format('Y-m-d H:i') ?? '—',
+            'fulfillment' => $o->fulfillment_type,
         ]);
 
         return \Inertia\Inertia::render('Admin/Orders/Index', [
             'orders' => $orders->items(),
             'pagination' => \App\Support\Pagination::meta($orders),
-            'filters' => $request->only('q', 'payment', 'status', 'from', 'to')
+            'filters' => $request->only('q', 'payment', 'status', 'from', 'to', 'when')
                 + \App\Support\Sort::params($request, self::SORTS),
             'sorts' => \App\Support\Sort::keys(self::SORTS),
             // المبلغ من المُباع وحده، والعدد من الكلّ — والملغى يُذكر صراحةً
@@ -77,6 +104,8 @@ class OrderController extends Controller
             'totalAmount' => $totalAmount,
             'totalCount' => $totalCount,
             'cancelledCount' => $cancelledCount,
+            // قائمة الحالات من مصدرها الواحد — لا تُكتب في الشاشة مرّةً ثانية
+            'statusOptions' => \App\Support\OrderStatus::options(),
         ]);
     }
 

@@ -11,6 +11,7 @@ import {
     BarChart3,
     Boxes,
     Building2,
+    ClipboardList,
     FlaskConical,
     History,
     Layers,
@@ -103,6 +104,8 @@ export const NAV: NavGroup[] = [
             { label: 'المنتجات', icon: Package, route: 'admin.products.index', section: 'products' },
             // «الطلبات» سابقًا: المتجر يبيع ولا يستقبل طلبات وحسب
             { label: 'المبيعات', icon: ShoppingCart, route: 'admin.orders.index', section: 'orders' },
+            // لوحة التجهيز — قسمٌ مستقلّ، فمن مُنحه وحده يراه ولا يرى المبيعات
+            { label: 'لوحة التجهيز', icon: ClipboardList, route: 'admin.preparation.index', section: 'preparation' },
             {
                 label: 'المشتريات',
                 icon: Truck,

@@ -204,6 +204,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'admin'])->name('dashboard');
     Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'adminStats'])->name('dashboard.stats');
 
+    /*
+     * لوحة التجهيز — قسمُها `preparation` يُشتقّ من اسم المسار.
+     *
+     * شاشةُ من يصنع الباقة لا من يحاسب عليها، فلا تتبع «المبيعات».
+     */
+    Route::get('/preparation', [\App\Http\Controllers\Admin\PreparationController::class, 'index'])->name('preparation.index');
+    Route::post('/preparation/{number}/move', [\App\Http\Controllers\Admin\PreparationController::class, 'move'])->name('preparation.move');
+
     // الفروع
     Route::get('/branches', [\App\Http\Controllers\Admin\PageController::class, 'branchesIndex'])->name('branches.index');
     Route::get('/branch/{branch}/switch', [\App\Http\Controllers\Admin\BranchController::class, 'switch'])->name('branch.switch');
@@ -275,6 +283,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/orders/export-xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'ordersXlsx'])->name('orders.xlsx');
     Route::get('/orders/export-pdf', [\App\Http\Controllers\PdfController::class, 'ordersReport'])->name('orders.exportPdf');
     Route::get('/orders/{number}', [\App\Http\Controllers\Admin\PageController::class, 'ordersShow'])->name('orders.show');
+    /*
+     * تعديل بيانات التنفيذ ونقل الحالة — قسمُهما «المبيعات» يُشتقّ من الاسم.
+     *
+     * ومنفصلان عن تصحيح الفاتورة (Pos\OrderEditController): ذاك يُحرّك
+     * المخزون والمال ويشترط سببًا، وهذا يُصحّح رقم هاتفٍ أو موعدًا.
+     */
+    Route::put('/orders/{number}/details', [\App\Http\Controllers\Admin\OrderDetailController::class, 'update'])->name('orders.details.update');
+    Route::post('/orders/{number}/status', [\App\Http\Controllers\Admin\OrderDetailController::class, 'status'])->name('orders.status');
     Route::get('/orders/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('orders.pdf');
 
     // العملات وأسعار الصرف

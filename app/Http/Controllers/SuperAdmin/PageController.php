@@ -381,7 +381,14 @@ class PageController extends Controller
         // واتساب مُطفأ حتى يُربط الرقم ويُقرَّر — لا يبدأ نظام إرسالٍ من نفسه
         'whatsapp_enabled' => '0',
         'whatsapp_shared_enabled' => '1',
-        'whatsapp_shared_default_monthly_limit' => (string) \App\Support\WhatsAppQuota::FALLBACK_DEFAULT,
+        /*
+         * الرقم مكتوبٌ حرفًا لا مُشتقًّا.
+         *
+         * `(string) WhatsAppQuota::FALLBACK_DEFAULT` تعبيرٌ لا يقبله PHP 8.4
+         * داخل `const` — يقبله 8.5 عندي ويرفضه الخادم، فيسقط الملفّ كلّه
+         * وتصير كلّ صفحةٍ خمسمئة. والقيمتان تبقيان متطابقتين باختبارٍ يقارنهما.
+         */
+        'whatsapp_shared_default_monthly_limit' => '100',
     ];
 
     /* ------------------------------ مشتركات ------------------------------ */

@@ -1,58 +1,87 @@
 # Active Task
 
 Status: ACTIVE — AUDIT ONLY
-Task ID: RELEASE-AUDIT-001
+Task ID: CUSTOMER-CORE-001
 Last updated: 2026-08-30
 
 ## Objective
 
-Perform a full launch-readiness audit of the existing Abaad system without redesigning or restructuring it.
+Audit and finish the first core area of the customer system: **Products + Inventory**.
 
-The system must be checked across:
-1. Platform / SaaS management
-2. Customer Admin system
-3. POS
-4. Supporting routes, controllers, services/domain logic, permissions, tenancy, database behavior, jobs/integrations and tests
+This is a launch-finishing task, not a redesign, rewrite, or architecture project.
 
-## Important
+## Current release strategy
 
-This task is AUDIT ONLY.
-Do not make product-code changes as part of this task unless the project owner explicitly authorizes a fix batch later.
+We will finish the customer-facing operational system section by section before touching SaaS/Platform management.
 
-Read `AI_COMMAND_CENTER/RELEASE_FINISHING_PLAN.md` before starting.
+**Platform / SaaS is explicitly out of scope until the customer Admin + POS system is approved.**
 
-## What to inspect
+Do not work on pricing, plans, subscriptions, SaaS administration, or cosmetic redesign in this task.
 
-Build an inventory of all production pages and workflows from the repository, then trace every meaningful interaction through the full stack.
+## Phase 1 scope — Products + Inventory
 
-For each page/workflow verify:
-- navigation works
-- every visible primary button/action is wired
-- form submit paths exist and validate correctly
-- routes point to real handlers
-- handlers call valid business logic
-- database/state changes are correct
-- response and frontend state are consistent
-- loading/success/error states are usable
-- permissions are enforced server-side
-- tenant isolation is preserved
-- financial/inventory/tax side-effects remain correct
-- relevant tests exist and genuinely cover the behavior
+Inspect the complete existing implementation related to products and inventory across:
+- Customer Admin pages
+- POS dependencies/integration points
+- routes
+- controllers
+- requests/validation
+- models
+- services/domain/support classes
+- database schema/migrations
+- permissions
+- tenant/branch isolation
+- tests
 
-## Required focus areas
+### Products
+Verify all existing product capabilities discovered in the repository, including where applicable:
+- product listing/search/filtering
+- create product
+- edit product
+- view/details
+- delete/archive/disable behavior
+- categories/types/variants/options if implemented
+- SKU/barcode behavior
+- pricing and tax fields only for functional correctness (do not redesign pricing strategy)
+- cost fields
+- inventory tracking flags
+- branch/product availability
+- images/media if production functionality exists
+- validation and duplicate prevention
+- permissions
+- POS visibility and product loading
 
-### Platform / SaaS
-Businesses, subscriptions, platform users, settings, reports, activity, dashboard, onboarding/provisioning/demo flows used in production.
+### Inventory
+Verify all existing inventory capabilities discovered in the repository, including where applicable:
+- stock overview
+- stock quantities by branch/location
+- stock addition/receiving
+- adjustments
+- stock counts
+- inventory movements/history
+- purchase-related stock effects
+- sale/POS stock deductions
+- order edits/cancellations effects where currently supported
+- low/out-of-stock behavior
+- negative-stock rules
+- supplier/purchase dependencies needed for inventory correctness
+- permissions
+- tenant and branch isolation
 
-### Customer Admin
-Dashboard, branches, customers, devices, employees/roles/permissions, products, orders, purchases, suppliers, inventory, expenses, finance, payroll, preparation, marketing, reports/settings and every other production module discovered during the audit.
+## Audit method
 
-### POS
-Device setup, cashier selection, shift open/close, product/cart flow, customer selection, sale creation, checkout, payment methods, receipts/invoices, orders/history, order details, settings, stock effects, failure/retry behavior.
+For every meaningful page/action:
+1. Identify the UI action/button/form.
+2. Trace it to its route.
+3. Trace route to controller/handler.
+4. Trace handler to domain/service/model/database behavior.
+5. Verify validation and authorization.
+6. Verify tenant/branch isolation.
+7. Verify downstream stock/product effects.
+8. Locate relevant automated tests.
+9. Classify the result.
 
-## Classification
-
-Each finding must be one of:
+Classification:
 - PASS
 - BUG
 - UNWIRED
@@ -62,30 +91,44 @@ Each finding must be one of:
 - DEFER
 
 Severity:
-- P0 launch blocker
-- P1 core operational issue
-- P2 secondary/management issue
-- P3 polish
+- P0 = prevents safe launch/use of Products or Inventory
+- P1 = core operational defect
+- P2 = important secondary issue
+- P3 = polish only
+
+## Important constraints
+
+- AUDIT FIRST. Do not modify product code yet.
+- Do not restructure existing architecture.
+- Do not perform broad refactors.
+- Do not add unrelated features.
+- Prefer the smallest safe correction when fixes are later authorized.
+- Repository reality beats assumptions/documentation.
+- Do not audit Platform/SaaS in this phase.
 
 ## Deliverable
 
-Create/update `AI_COMMAND_CENTER/RELEASE_AUDIT.md` with:
+Create/update `AI_COMMAND_CENTER/SECTION_AUDITS/PRODUCTS_INVENTORY.md` containing:
 
-1. Executive launch-readiness summary.
-2. System/module inventory.
-3. Audit coverage matrix.
-4. Findings grouped by P0/P1/P2/P3.
-5. Exact file paths/routes/controllers involved for every issue.
-6. Recommended minimal fix for each issue.
-7. Test coverage gaps.
-8. Production/deployment/configuration risks visible from the repo.
-9. A proposed sequence of small fix batches.
-10. A final section called `UNVERIFIED_RUNTIME ITEMS` for anything that cannot be proven from static repository inspection and requires manual/browser/runtime testing.
-
-Do not hide uncertainty. Static code inspection must not be described as proof that a browser interaction works in production.
+1. Products capability inventory.
+2. Inventory capability inventory.
+3. Page/action coverage matrix.
+4. Full-stack wiring status for each action.
+5. POS integration points.
+6. P0/P1/P2/P3 findings.
+7. Exact affected files/routes/controllers/services for each finding.
+8. Minimal recommended fix for each finding.
+9. Existing automated-test coverage and missing tests.
+10. `UNVERIFIED RUNTIME ITEMS` requiring browser/runtime/manual validation.
+11. Final readiness verdict for Products.
+12. Final readiness verdict for Inventory.
+13. Proposed small implementation batches, ordered by launch importance.
 
 ## Definition of done
 
-The audit is complete only when all discovered production modules under Platform, Admin and POS have been inventoried and reviewed enough to either PASS them or attach a finding/unverified-runtime item.
+This phase is complete when Products and Inventory can each be given one of:
+- READY
+- READY AFTER LISTED FIXES
+- NOT READY
 
-Do not begin fixes automatically after completing the audit. Wait for the next approved task.
+Do not start implementing fixes automatically after the audit. Wait for the project owner's next approval.

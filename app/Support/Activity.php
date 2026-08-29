@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\ActivityLog;
+use App\Models\User;
 
 /**
  * تسجيل النشاط (Audit Log) — استدعِ Activity::log(...) بعد أي عملية.
@@ -30,6 +31,24 @@ class Activity
         $u = auth()->user();
 
         /*
+         * دخول مدير المنصة إلى بابه هو وخروجه منه لا يُقيَّدان.
+         *
+         * السجلّ يُفتح ليُقرأ فيه ما جرى للمتاجر، وكان يزاحمه بأفعاله هو:
+         * اثنان وأربعون سطر دخولٍ وأربعةٌ وعشرون خروجًا يدفعان ما يُراقَب حقًّا
+         * خارج الصفحة الأولى — وهو يدخل كلّ يوم مرّاتٍ لأنّ عملَه هنا.
+         *
+         * والشرط `self` لا اسمُ الفعل وحده: «دخل كتاجر» يُقيَّد بفعل `login`
+         * أيضًا، وهو أهمّ سطرٍ في السجلّ كلّه — به يُعرف أنّ الدعم دخل متجرًا
+         * ومتى. فحصرُ الإسكات في المصدر الذي يعلن أنه بابُ صاحبه يُبقيه.
+         *
+         * ومحاولاتُ الدخول الفاشلة تبقى كذلك: إشارةُ أمنٍ لا ضجيجَ إدارة،
+         * وإخفاؤها يُعمي عن مَن يطرق الباب.
+         */
+        if (($opts['self'] ?? false) && $u?->isSuperAdmin()) {
+            return;
+        }
+
+        /*
          * من فعلها حقًّا.
          *
          * «الدخول كتاجر» كان يجعل كل عملية تُقيَّد باسم التاجر وحده، فيقول
@@ -38,7 +57,7 @@ class Activity
          * السجلّ أنّ أحدًا كان هناك.
          */
         $impersonatorId = session('impersonator_id');
-        $impersonator = $impersonatorId ? \App\Models\User::find($impersonatorId) : null;
+        $impersonator = $impersonatorId ? User::find($impersonatorId) : null;
 
         ActivityLog::create([
             'business_id' => $opts['business_id'] ?? $u?->business_id,

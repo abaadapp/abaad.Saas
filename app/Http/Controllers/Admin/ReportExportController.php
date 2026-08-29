@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Reports;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -38,13 +39,13 @@ class ReportExportController extends Controller
 
         $sheet->setCellValue('A1', $business['name'] ?? 'Abad POS');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
-        $sheet->setCellValue('A2', $reportTitle . ' — ' . now()->format('Y-m-d H:i'));
-        $sheet->setCellValue('A3', __('الفرع') . ': ' . Demo::currentBranchName());
+        $sheet->setCellValue('A2', $reportTitle.' — '.now()->format('Y-m-d H:i'));
+        $sheet->setCellValue('A3', __('الفرع').': '.Demo::currentBranchName());
 
         // الفترة تُطبع دائمًا حتى في الأوراق التي لا فترة لها (جرد، منتجات):
         // سطرٌ ناقص أسهل أن يُقرأ على أنه «كل شيء» من سطرٍ مكتوب
         if ($range !== null) {
-            $sheet->setCellValue('A4', __('الفترة') . ': ' . Demo::rangeLabel($range));
+            $sheet->setCellValue('A4', __('الفترة').': '.Demo::rangeLabel($range));
             $sheet->getStyle('A4')->getFont()->setBold(true);
         }
 
@@ -104,15 +105,13 @@ class ReportExportController extends Controller
         ]);
     }
 
-
-
     /** تصدير المنتجات كملف Excel حقيقي (xlsx) */
     public function xlsx()
     {
         $range = $this->range();
         // الورقة تُبنى من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
-        $report = \App\Support\Reports::salesReport($range);
-        $spreadsheet = new Spreadsheet();
+        $report = Reports::salesReport($range);
+        $spreadsheet = new Spreadsheet;
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تقرير المبيعات'), $range);
         $money = [];
 
@@ -125,7 +124,7 @@ class ReportExportController extends Controller
          */
         $title(__('المؤشرات الرئيسية'));
         $head([__('المؤشر'), __('القيمة')]);
-        foreach (\App\Support\Reports::summaryRows($report['summary']) as $s) {
+        foreach (Reports::summaryRows($report['summary']) as $s) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $s['label']);
             $sheet->setCellValue("B{$r}", $s['value']);
@@ -138,7 +137,7 @@ class ReportExportController extends Controller
 
         // المبيعات على محور الفترة — ساعاتٍ أو أيّامًا أو أشهرًا، وبعدد الطلبات
         $series = $report['salesSeries'];
-        $title(__('المبيعات') . ' — ' . Demo::rangeLabel($range));
+        $title(__('المبيعات').' — '.Demo::rangeLabel($range));
         $head([__('الفترة'), __('المبيعات (ر.ع)'), __('عدد الطلبات')]);
         foreach ($series['full'] as $i => $label) {
             // ما لم يأتِ بعدُ لا يُكتب: صفٌّ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة
@@ -182,12 +181,12 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر تقرير المبيعات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'sales-report-' . $range . '-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'sales-report-'.$range.'-'.now()->format('Y-m-d').'.xlsx');
     }
 
     public function productsXlsx()
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('المنتجات'));
 
         $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الاسم'), __('القسم'), 'SKU', __('الباركود'), __('السعر (ر.ع)'), __('التكلفة (ر.ع)'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')]);
@@ -215,13 +214,13 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر المنتجات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'products-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'products-'.now()->format('Y-m-d').'.xlsx');
     }
 
     /** تصدير جرد المخزون كملف Excel حقيقي (xlsx) */
     public function inventoryXlsx()
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('جرد المخزون'));
 
         $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('القيمة (ر.ع)'), __('حالة المخزون'), __('آخر تحديث')]);
@@ -252,28 +251,38 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر جرد المخزون (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'inventory-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'inventory-'.now()->format('Y-m-d').'.xlsx');
     }
 
     /** تصدير المعاملات المالية كملف Excel حقيقي (xlsx) */
     public function financeXlsx()
     {
-        $spreadsheet = new Spreadsheet();
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('المعاملات المالية'));
+        /*
+         * نصفا الملفّ على فترةٍ واحدة.
+         *
+         * كانت المؤشّرات تُقرأ بلا فترةٍ فتسقط على الشهر، والجدولُ بلا فترةٍ
+         * فيسقط على كلّ الفترات — فيقرأ التاجر «الدخل ١٠٠» فوق جدولٍ مجموعُه
+         * ألف، ولا سطر في الورقة يقول إنهما لا يقيسان الشيء نفسه. ولم يكن
+         * الملفّ يقبل فترةً أصلًا: يخرج بفترته الخاصّة مهما اختار.
+         */
+        $range = $this->range();
+
+        $spreadsheet = new Spreadsheet;
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('المعاملات المالية'), $range);
         $money = [];
 
         // المؤشرات المالية
         $title(__('المؤشرات المالية'));
         $head([__('المؤشر'), __('القيمة'), __('التغيّر')]);
-        foreach (Demo::financeStats() as $st) {
-            $sheet->fromArray([$st['label'], $st['value'], $st['trend'] ?? '—'], null, 'A' . $this->row);
+        foreach (Demo::financeStats($range) as $st) {
+            $sheet->fromArray([$st['label'], $st['value'], $st['trend'] ?? '—'], null, 'A'.$this->row);
             $this->row++;
         }
         $this->row++;
 
         // المعاملات
         $firstDataRow = $this->tableHead($sheet, [__('المرجع'), __('التاريخ'), __('البيان'), __('الوسيلة'), __('النوع'), __('المبلغ (ر.ع)'), __('الموظف')]);
-        foreach (Demo::transactions() as $t) {
+        foreach (Demo::transactions($range) as $t) {
             $r = $this->row;
             $sheet->setCellValueExplicit("A{$r}", (string) $t['id'], DataType::TYPE_STRING);
             $sheet->setCellValue("B{$r}", $t['date']);
@@ -294,13 +303,13 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر المعاملات المالية (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'finance-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'finance-'.now()->format('Y-m-d').'.xlsx');
     }
 
     /** تصدير قائمة الطلبات كملف Excel حقيقي (xlsx) */
     public function ordersXlsx()
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('الطلبات'));
         $money = [];
 
@@ -309,9 +318,9 @@ class ReportExportController extends Controller
         // ملخّص سريع
         $title(__('ملخّص الطلبات'));
         $head([__('عدد الطلبات'), __('إجمالي القيمة (ر.ع)')]);
-        $sheet->setCellValue('A' . $this->row, count($orders));
-        $sheet->setCellValue('B' . $this->row, round(array_sum(array_map(fn ($o) => (float) $o['total'], $orders)), 3));
-        $money[] = 'B' . $this->row;
+        $sheet->setCellValue('A'.$this->row, count($orders));
+        $sheet->setCellValue('B'.$this->row, round(array_sum(array_map(fn ($o) => (float) $o['total'], $orders)), 3));
+        $money[] = 'B'.$this->row;
         $this->row += 2;
 
         // جدول الطلبات
@@ -337,13 +346,13 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر قائمة الطلبات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'orders-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'orders-'.now()->format('Y-m-d').'.xlsx');
     }
 
     /** تصدير المصروفات كملف Excel */
     public function expensesXlsx()
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         [$sheet] = $this->sheet($spreadsheet, __('المصروفات'));
         $firstDataRow = $this->tableHead($sheet, [__('التاريخ'), __('النوع'), __('الوصف'), __('المبلغ (ر.ع)'), __('الطريقة'), __('الموظف')]);
         $money = [];
@@ -361,14 +370,13 @@ class ReportExportController extends Controller
         $sheet->freezePane("A{$firstDataRow}");
         Activity::log('report', 'صدّر المصروفات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'expenses-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'expenses-'.now()->format('Y-m-d').'.xlsx');
     }
-
 
     /** تصدير الشركات كملف Excel (لوحة المنصة) */
     public function businessesXlsx()
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         [$sheet] = $this->sheet($spreadsheet, __('الشركات'));
         $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الشركة'), __('النوع'), __('المالك'), __('الهاتف'), __('البريد'), __('المدينة'), __('الباقة'), __('الحالة'), __('الفروع'), __('التسجيل')]);
         foreach (Demo::businesses() as $b) {
@@ -389,13 +397,13 @@ class ReportExportController extends Controller
         $sheet->freezePane("A{$firstDataRow}");
         Activity::log('report', 'صدّر الشركات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, [], 'businesses-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, [], 'businesses-'.now()->format('Y-m-d').'.xlsx');
     }
 
     /** تصدير فواتير الاشتراكات كملف Excel (لوحة المنصة) */
     public function invoicesXlsx()
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         [$sheet] = $this->sheet($spreadsheet, __('فواتير الاشتراكات'));
         $firstDataRow = $this->tableHead($sheet, [__('رقم الفاتورة'), __('الشركة'), __('الباقة'), __('المبلغ (ر.ع)'), __('التاريخ'), __('الحالة')]);
         $money = [];
@@ -413,6 +421,6 @@ class ReportExportController extends Controller
         $sheet->freezePane("A{$firstDataRow}");
         Activity::log('report', 'صدّر فواتير الاشتراكات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'invoices-' . now()->format('Y-m-d') . '.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, 'invoices-'.now()->format('Y-m-d').'.xlsx');
     }
 }

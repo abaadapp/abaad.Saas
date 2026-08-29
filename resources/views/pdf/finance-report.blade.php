@@ -26,6 +26,7 @@
         <td style="border:none; text-align:left;">
             <div style="font-size:15px; font-weight:bold;">{{ __('التقرير المالي') }}</div>
             <div class="muted">{{ $branch }}</div>
+            <div class="muted">{{ __('الفترة') }}: {{ $rangeLabel }}</div>
             <div class="muted">{{ __('تاريخ الإصدار:') }} {{ $generatedAt }}</div>
         </td>
     </tr></table>

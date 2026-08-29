@@ -2,10 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\PosPeripheral;
+use App\Support\Activity;
 use App\Support\Demo;
-use Illuminate\Http\Request;
+use App\Support\EInvoice;
+use App\Support\PosTerminal;
+use App\Support\ReceiptTemplate;
+use App\Support\Reports;
 use Mpdf\Mpdf;
 
 class PdfController extends Controller
@@ -16,13 +22,13 @@ class PdfController extends Controller
         // الفترة تُورَث من الشاشة وتُطبع في الترويسة: ورقةٌ مطبوعة لا مبدّل
         // فوقها، فإن لم تقل فترتها قُرئت على أنها فترة قارئها
         // الورقة من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
-        $report = \App\Support\Reports::salesReport(request()->query('range'));
+        $report = Reports::salesReport(request()->query('range'));
         $range = $report['range'];
 
         $html = view('pdf.sales-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::currentBranchName(),
-            'stats' => \App\Support\Reports::summaryRows($report['summary']),
+            'stats' => Reports::summaryRows($report['summary']),
             'salesSeries' => $report['salesSeries'],
             'payments' => Demo::paymentBreakdown($range),
             'topProducts' => $report['topSellingProducts'],
@@ -30,9 +36,9 @@ class PdfController extends Controller
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر تقرير المبيعات (PDF)');
+        Activity::log('report', 'صدّر تقرير المبيعات (PDF)');
 
-        return $this->pdf($html, 'sales-report-' . $range . '-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'sales-report-'.$range.'-'.now()->format('Y-m-d'));
     }
 
     public function orderReceipt($number)
@@ -40,7 +46,7 @@ class PdfController extends Controller
         $bid = auth()->user()->business_id ?? Demo::bid();
         $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
-        $tpl = \App\Support\ReceiptTemplate::forBusiness($bid);
+        $tpl = ReceiptTemplate::forBusiness($bid);
 
         /*
          * A4 ورقةٌ أخرى لا شريطٌ مُمدَّد.
@@ -53,11 +59,11 @@ class PdfController extends Controller
 
         $html = view($onA4 ? 'pdf.invoice' : 'pdf.receipt', [
             'order' => $order,
-            'qr' => \App\Support\EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
+            'qr' => EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
             'tpl' => $tpl,
             // رقم المشتري الضريبي: تحتاجه منشأةٌ مسجَّلة لتخصم ضريبة شرائها
             'customerTax' => $order->customer_id
-                ? optional(\App\Models\Customer::find($order->customer_id))->tax_number
+                ? optional(Customer::find($order->customer_id))->tax_number
                 : null,
         ])->render();
 
@@ -79,9 +85,9 @@ class PdfController extends Controller
          * وA4 لا تُمسّ: من اختارها اختار فاتورةً كاملة لا شريطًا.
          */
         if (! $onA4
-            && ($width = \App\Support\PosTerminal::current()
+            && ($width = PosTerminal::current()
                 ?->peripherals()->where('active', true)
-                ->where('type', \App\Models\PosPeripheral::PRINTER)
+                ->where('type', PosPeripheral::PRINTER)
                 ->value('paper_width'))
         ) {
             $format = [(int) $width, 200];
@@ -99,29 +105,31 @@ class PdfController extends Controller
         ]);
         $mpdf->WriteHTML($html);
 
-        return response($mpdf->Output('receipt-' . $order->number . '.pdf', 'S'), 200, [
+        return response($mpdf->Output('receipt-'.$order->number.'.pdf', 'S'), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="receipt-' . $order->number . '.pdf"',
+            'Content-Disposition' => 'inline; filename="receipt-'.$order->number.'.pdf"',
         ]);
     }
-
-
 
     /** تقرير أداء المنصة (سوبر أدمن) */
     public function financeReport()
     {
+        // فترةٌ واحدة لكل ما في الورقة، وتُكتب فيها — انظر financeXlsx
+        $range = Demo::range(request()->query('range'));
+
         $html = view('pdf.finance-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::currentBranchName(),
-            'stats' => Demo::financeStats(),
-            'payments' => Demo::paymentMethods(),
-            'transactions' => Demo::transactions(),
+            'stats' => Demo::financeStats($range),
+            'payments' => Demo::paymentMethods($range),
+            'transactions' => Demo::transactions($range),
+            'rangeLabel' => Demo::rangeLabel($range),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر التقرير المالي (PDF)');
+        Activity::log('report', 'صدّر التقرير المالي (PDF)');
 
-        return $this->pdf($html, 'finance-report-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'finance-report-'.now()->format('Y-m-d'));
     }
 
     public function platformReport()
@@ -138,17 +146,16 @@ class PdfController extends Controller
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر تقرير أداء المنصة (PDF)', ['business_id' => null]);
+        Activity::log('report', 'صدّر تقرير أداء المنصة (PDF)', ['business_id' => null]);
 
-        return $this->pdf($html, 'platform-report-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'platform-report-'.now()->format('Y-m-d'));
     }
-
 
     /** كشف حساب عميل (PDF) */
     public function customerStatement($id)
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
-        $customer = \App\Models\Customer::where('business_id', $bid)->findOrFail($id);
+        $customer = Customer::where('business_id', $bid)->findOrFail($id);
 
         $orders = Order::where('business_id', $bid)->where('customer_id', $customer->id)->sold()
             ->orderBy('ordered_at')->get();
@@ -168,9 +175,9 @@ class PdfController extends Controller
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر كشف حساب العميل: ' . $customer->name, ['subject_id' => $customer->id]);
+        Activity::log('report', 'صدّر كشف حساب العميل: '.$customer->name, ['subject_id' => $customer->id]);
 
-        return $this->pdf($html, 'statement-' . $customer->id . '-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'statement-'.$customer->id.'-'.now()->format('Y-m-d'));
     }
 
     /** تقرير قائمة الطلبات (PDF) */
@@ -185,9 +192,9 @@ class PdfController extends Controller
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر قائمة الطلبات (PDF)');
+        Activity::log('report', 'صدّر قائمة الطلبات (PDF)');
 
-        return $this->pdf($html, 'orders-report-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'orders-report-'.now()->format('Y-m-d'));
     }
 
     /** تقرير المنتجات (PDF) */
@@ -201,9 +208,9 @@ class PdfController extends Controller
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر قائمة المنتجات (PDF)');
+        Activity::log('report', 'صدّر قائمة المنتجات (PDF)');
 
-        return $this->pdf($html, 'products-report-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'products-report-'.now()->format('Y-m-d'));
     }
 
     /** تقرير جرد المخزون (PDF) */
@@ -217,9 +224,9 @@ class PdfController extends Controller
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر جرد المخزون (PDF)');
+        Activity::log('report', 'صدّر جرد المخزون (PDF)');
 
-        return $this->pdf($html, 'inventory-report-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'inventory-report-'.now()->format('Y-m-d'));
     }
 
     /** تقرير المصروفات (PDF) */
@@ -234,9 +241,9 @@ class PdfController extends Controller
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر المصروفات (PDF)');
+        Activity::log('report', 'صدّر المصروفات (PDF)');
 
-        return $this->pdf($html, 'expenses-report-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'expenses-report-'.now()->format('Y-m-d'));
     }
 
     /** تقرير الشركات (PDF) — لوحة المنصة */
@@ -248,9 +255,9 @@ class PdfController extends Controller
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر الشركات (PDF)');
+        Activity::log('report', 'صدّر الشركات (PDF)');
 
-        return $this->pdf($html, 'businesses-report-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'businesses-report-'.now()->format('Y-m-d'));
     }
 
     /** تقرير فواتير الاشتراكات (PDF) — لوحة المنصة */
@@ -263,11 +270,10 @@ class PdfController extends Controller
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'صدّر فواتير الاشتراكات (PDF)');
+        Activity::log('report', 'صدّر فواتير الاشتراكات (PDF)');
 
-        return $this->pdf($html, 'invoices-report-' . now()->format('Y-m-d'));
+        return $this->pdf($html, 'invoices-report-'.now()->format('Y-m-d'));
     }
-
 
     public function taxInvoice($number)
     {
@@ -282,15 +288,15 @@ class PdfController extends Controller
             'vat' => $vat,
             'business' => $business,
             // القالب نفسه الذي يحكم فاتورة الطلب — «الإعدادات ‹ قوالب الفواتير»
-            'tpl' => \App\Support\ReceiptTemplate::forBusiness($bid),
-            'customerTax' => $order->customer_id ? optional(\App\Models\Customer::find($order->customer_id))->tax_number : null,
-            'qr' => \App\Support\EInvoice::forOrder($order, $vat, $business),
+            'tpl' => ReceiptTemplate::forBusiness($bid),
+            'customerTax' => $order->customer_id ? optional(Customer::find($order->customer_id))->tax_number : null,
+            'qr' => EInvoice::forOrder($order, $vat, $business),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
-        \App\Support\Activity::log('report', 'أصدر فاتورة ضريبية للطلب: ' . $order->number, ['subject_id' => $order->id]);
+        Activity::log('report', 'أصدر فاتورة ضريبية للطلب: '.$order->number, ['subject_id' => $order->id]);
 
-        return $this->pdf($html, 'tax-invoice-' . $order->number);
+        return $this->pdf($html, 'tax-invoice-'.$order->number);
     }
 
     /** مولّد A4 عربي/RTL */
@@ -303,9 +309,9 @@ class PdfController extends Controller
         ]);
         $mpdf->WriteHTML($html);
 
-        return response($mpdf->Output($name . '.pdf', 'S'), 200, [
+        return response($mpdf->Output($name.'.pdf', 'S'), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $name . '.pdf"',
+            'Content-Disposition' => 'inline; filename="'.$name.'.pdf"',
         ]);
     }
 
@@ -321,9 +327,9 @@ class PdfController extends Controller
         ]);
         $mpdf->WriteHTML($html);
 
-        return response($mpdf->Output('invoice-' . $invoice->number . '.pdf', 'S'), 200, [
+        return response($mpdf->Output('invoice-'.$invoice->number.'.pdf', 'S'), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="invoice-' . $invoice->number . '.pdf"',
+            'Content-Disposition' => 'inline; filename="invoice-'.$invoice->number.'.pdf"',
         ]);
     }
 }

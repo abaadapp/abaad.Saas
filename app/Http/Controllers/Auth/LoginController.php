@@ -4,11 +4,18 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\Activity;
+use App\Support\Mailer;
+use App\Support\Permissions;
+use App\Support\PosTerminal;
+use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class LoginController extends Controller
 {
@@ -59,7 +66,7 @@ class LoginController extends Controller
             RateLimiter::hit($slowKey, 3600);
 
             // يُسجَّل الفشل بلا كلمة المرور — والبريد يبقى ليُعرف الحسابُ المستهدف
-            \App\Support\Activity::log('login_failed', 'محاولة دخول فاشلة — '.$credentials['email']);
+            Activity::log('login_failed', 'محاولة دخول فاشلة — '.$credentials['email']);
 
             throw ValidationException::withMessages([
                 'email' => __('بيانات الدخول غير صحيحة.'),
@@ -76,7 +83,7 @@ class LoginController extends Controller
 
         // يوم التركيب يدخل صاحب المتجر ببريده على جهاز الصندوق، فيتذكّره
         // الجهاز ويعمل الكاشير بالرمز وحده بعدها — انظر PosTerminal
-        \App\Support\PosTerminal::rememberBusiness(Auth::user()->business_id);
+        PosTerminal::rememberBusiness(Auth::user()->business_id);
 
         return redirect()->intended($this->homeFor(Auth::user()));
     }
@@ -93,7 +100,7 @@ class LoginController extends Controller
      */
     private function refuseBlocked(?User $user, string $field): void
     {
-        $reason = \App\Support\Tenancy::blockReason($user);
+        $reason = Tenancy::blockReason($user);
         if (! $reason) {
             return;
         }
@@ -103,14 +110,14 @@ class LoginController extends Controller
          * يتجاوزها. وردُّه هنا برسالةٍ في حقل البريد كان يجعله يعيد كتابة
          * كلمة المرور ظنًّا أنه أخطأها.
          */
-        if (! \App\Support\Tenancy::isHard($reason)) {
+        if (! Tenancy::isHard($reason)) {
             return;
         }
 
         Auth::logout();
 
         throw ValidationException::withMessages([
-            $field => \App\Support\Tenancy::message($reason),
+            $field => Tenancy::message($reason),
         ]);
     }
 
@@ -124,17 +131,17 @@ class LoginController extends Controller
      * يجرّب. والجهاز الوحيد في المحل يُعرَف بعد أول دخولٍ ببريد وكلمة مرور،
      * فيصير له بابان: للمالك بريده، وللكاشير رمزه.
      */
-    public function showLogin(): \Inertia\Response
+    public function showLogin(): Response
     {
-        $device = \App\Support\PosTerminal::current();
+        $device = PosTerminal::current();
 
-        return \Inertia\Inertia::render('Auth/Login', [
+        return Inertia::render('Auth/Login', [
             /*
              * كتلةٌ واحدة لا حقول متفرّقة: وجودها هو الإذن بعرض التبويب،
              * فلا تنسى الواجهة شرطًا وتعرض لوحة أرقامٍ بلا متجرٍ خلفها.
              */
-            'pin' => \App\Support\PosTerminal::remembered() ? [
-                'business' => \App\Support\PosTerminal::businessName(),
+            'pin' => PosTerminal::remembered() ? [
+                'business' => PosTerminal::businessName(),
                 'branch' => $device?->branch?->name,
                 'device' => $device?->name,
                 /*
@@ -150,7 +157,7 @@ class LoginController extends Controller
             'year' => (int) now()->format('Y'),
             // بابٌ لا يفتح يُخفى: بلا بريدٍ مضبوط تقول شاشة الاستعادة
             // «أرسلنا الرابط» ولا تُرسل، فينتظر المستخدم رسالةً لن تأتي
-            'canRecover' => \App\Support\Mailer::configured(),
+            'canRecover' => Mailer::configured(),
         ]);
     }
 
@@ -168,7 +175,7 @@ class LoginController extends Controller
      */
     public function forgetDevice(Request $request)
     {
-        \App\Support\PosTerminal::forget();
+        PosTerminal::forget();
 
         return redirect()->route('login')->with('toast', [
             'msg' => __('نُسي هذا الجهاز. سجّل الدخول بالبريد لربطه من جديد.'),
@@ -177,13 +184,13 @@ class LoginController extends Controller
     }
 
     /** شاشة الدخول بالرمز (لوحة أرقام) — بالإنجليزية دائمًا */
-    public function pinForm(): \Inertia\Response
+    public function pinForm(): Response
     {
         app()->setLocale('en');
 
-        $device = \App\Support\PosTerminal::current();
+        $device = PosTerminal::current();
 
-        return \Inertia\Inertia::render('Auth/Pin', [
+        return Inertia::render('Auth/Pin', [
             /*
              * ما يقف عليه الموظف: متجره وفرعه وصندوقه.
              *
@@ -192,7 +199,7 @@ class LoginController extends Controller
              * يبقى صامتًا حتى يقف موظفٌ أمام شاشةٍ ترفض رمزه الصحيح ولا يفهم
              * لماذا.
              */
-            'deviceBusiness' => \App\Support\PosTerminal::businessName(),
+            'deviceBusiness' => PosTerminal::businessName(),
             'deviceBranch' => $device?->branch?->name,
             'deviceName' => $device?->name,
         ]);
@@ -232,8 +239,8 @@ class LoginController extends Controller
          * سيُدخل صاحبَ الرمز أيًّا كان متجره — وهو أسوأ من العطب الذي
          * أصلحناه: دخولٌ إلى متجرٍ غير متجرك.
          */
-        $device = \App\Support\PosTerminal::current();
-        $businessId = \App\Support\PosTerminal::businessId();
+        $device = PosTerminal::current();
+        $businessId = PosTerminal::businessId();
 
         if (! $businessId) {
             throw ValidationException::withMessages([
@@ -280,17 +287,17 @@ class LoginController extends Controller
          */
         $branchId = $device?->branch_id;
         // ومنتهي الاشتراك يمرّ من هنا كذلك: يقف عند صفحة التجديد لا عند الرمز
-        $reason = $user ? \App\Support\Tenancy::blockReason($user) : null;
+        $reason = $user ? Tenancy::blockReason($user) : null;
         $allowed = $user
             && (! $device || $user->worksAt($branchId))
-            && ($reason === null || ! \App\Support\Tenancy::isHard($reason));
+            && ($reason === null || ! Tenancy::isHard($reason));
 
         if (! $allowed) {
             RateLimiter::hit($key, 60);
             RateLimiter::hit($slowKey, 3600);
 
             // يُسجَّل الفشل بلا الرمز نفسه ولا اسم من طابقه
-            \App\Support\Activity::log('login_failed', 'محاولة دخول برمز فاشلة'
+            Activity::log('login_failed', 'محاولة دخول برمز فاشلة'
                 .($device ? ' — جهاز: '.$device->name : ''), [
                     'business_id' => $businessId,
                 ]);
@@ -315,7 +322,7 @@ class LoginController extends Controller
          */
         if ($device) {
             session(['current_branch' => $device->branch_id]);
-            \App\Support\PosTerminal::touch($device);
+            PosTerminal::touch($device);
         }
 
         return redirect($this->homeFor($user));
@@ -340,7 +347,7 @@ class LoginController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
         $this->markLogin($user);
-        \App\Support\PosTerminal::rememberBusiness($user->business_id);
+        PosTerminal::rememberBusiness($user->business_id);
 
         return redirect($this->homeFor($user));
     }
@@ -351,7 +358,7 @@ class LoginController extends Controller
         // خروج بسبب الخمول → يعود الموظف لشاشة الرمز مباشرةً
         $toPin = $request->query('to') === 'pin';
 
-        \App\Support\Activity::log('logout', $toPin ? 'خروج تلقائي بسبب الخمول' : 'سجّل الخروج من النظام');
+        Activity::log('logout', $toPin ? 'خروج تلقائي بسبب الخمول' : 'سجّل الخروج من النظام', ['self' => true]);
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
@@ -362,12 +369,12 @@ class LoginController extends Controller
     private function markLogin(User $user): void
     {
         $user->forceFill(['last_login_at' => now()])->save();
-        \App\Support\Activity::log('login', 'سجّل الدخول إلى النظام');
+        Activity::log('login', 'سجّل الدخول إلى النظام', ['self' => true]);
     }
 
     /** الصفحة الرئيسية حسب ما يملكه المستخدم فعلًا لا حسب دوره */
     private function homeFor(User $user): string
     {
-        return \App\Support\Permissions::homeFor($user);
+        return Permissions::homeFor($user);
     }
 }

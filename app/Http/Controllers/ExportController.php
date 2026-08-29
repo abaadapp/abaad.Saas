@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\Demo;
+use App\Support\Reports;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -13,13 +14,12 @@ class ExportController extends Controller
 {
     /* ------------------------------ النشاط التجاري ------------------------------ */
 
-
     public function reports()
     {
         // الفترة التي كان التاجر ينظر إليها — الملفّ يغادر الشاشة ولا يصحّحه
         // مبدّلٌ فوقه، فيحملها في أوّل سطرٍ منه وفي اسمه. والحمولة من مصدر
         // الشاشة نفسه — انظر Support\Reports::salesReport
-        $report = \App\Support\Reports::salesReport(request()->query('range'));
+        $report = Reports::salesReport(request()->query('range'));
         $range = $report['range'];
 
         $rows = [];
@@ -27,7 +27,7 @@ class ExportController extends Controller
         $rows[] = ['', '', ''];
         $rows[] = [__('— المؤشرات الرئيسية —'), '', ''];
         $rows[] = [__('المؤشر'), __('القيمة'), ''];
-        foreach (\App\Support\Reports::summaryRows($report['summary']) as $s) {
+        foreach (Reports::summaryRows($report['summary']) as $s) {
             $rows[] = [$s['label'], $s['money'] ? number_format((float) $s['value'], 3, '.', '') : $s['value'], ''];
         }
         $rows[] = ['', '', ''];
@@ -108,16 +108,16 @@ class ExportController extends Controller
 
     public function transactions()
     {
+        // الفترة تتبع الشاشة كما في أخواتها — انظر ReportExportController::financeXlsx
+        $range = Demo::range(request()->query('range'));
+
         $rows = array_map(fn ($t) => [
             $t['id'], $t['date'], $t['description'], $t['method'], $t['type'],
             number_format($t['amount'], 3, '.', ''), $t['employee'],
-        ], Demo::transactions());
+        ], Demo::transactions($range));
 
         return $this->stream('transactions', [__('المرجع'), __('التاريخ'), __('الوصف'), __('الطريقة'), __('النوع'), __('المبلغ'), __('الموظف')], $rows);
     }
-
-
-
 
     public function expenses()
     {
@@ -165,7 +165,7 @@ class ExportController extends Controller
 
     private function stream(string $name, array $headers, array $rows): StreamedResponse
     {
-        $filename = "abadpos-{$name}-" . now()->format('Y-m-d') . '.csv';
+        $filename = "abadpos-{$name}-".now()->format('Y-m-d').'.csv';
 
         return response()->streamDownload(function () use ($headers, $rows) {
             $out = fopen('php://output', 'w');

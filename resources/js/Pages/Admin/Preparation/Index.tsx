@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, Clock, Gift, MapPin, Phone, Truck, User } from 'lucide-react';
+import { AlertTriangle, Clock, Gift, MapPin, Phone, Store, Truck, User } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Tabs, { type TabItem } from '@/Components/Tabs';
@@ -7,6 +7,7 @@ import { Badge, statusDot } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface PrepItem {
@@ -39,8 +40,9 @@ interface PrepOrder {
 
 interface Props {
     orders: PrepOrder[];
-    filters: { when: string | null };
+    filters: { when: string | null; type: string | null };
     counts: { all: number; overdue: number; today: number; tomorrow: number };
+    typeCounts: { all: number; delivery: number; pickup: number };
 }
 
 /**
@@ -53,7 +55,7 @@ interface Props {
  * المحلّ ليضع ساقًا في مزهرية — والخادم لا يرسل تلك الأعمدة أصلًا.
  */
 export default function PreparationIndex() {
-    const { orders, filters, counts } = usePage<PageProps<Props>>().props;
+    const { orders, filters, counts, typeCounts } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const tabs: TabItem[] = [
@@ -63,11 +65,33 @@ export default function PreparationIndex() {
         { key: 'tomorrow', label: 'غدًا', count: counts.tomorrow },
     ];
 
-    const go = (key: string) =>
-        router.get(route('admin.preparation.index'), key === 'all' ? {} : { when: key }, {
-            preserveState: true,
-            preserveScroll: true,
-        });
+    /*
+     * التنفيذ مبدّلٌ بجانب التبويبات لا صفٌّ ثانٍ منها.
+     *
+     * ضربُه في النوافذ الأربع يعني ثمانية تبويبات، ولا أحد يقرأ ثمانية.
+     * والمرشّحان يعملان معًا: «توصيل اليوم» اختيارٌ واحد من كلٍّ منهما.
+     */
+    const types = [
+        { key: 'all', label: 'الكل', icon: null, count: typeCounts.all },
+        { key: 'delivery', label: 'توصيل', icon: Truck, count: typeCounts.delivery },
+        // «استلام» وحدها تُترجَم Receive في مواضع أخرى — والمقصود هنا الأخذ من المحلّ
+        { key: 'pickup', label: 'استلام من المحل', icon: Store, count: typeCounts.pickup },
+    ];
+
+    // المرشّحان يُحفظان معًا: تبديل النافذة لا يُسقط التنفيذ المختار
+    const go = (next: { when?: string | null; type?: string | null }) => {
+        const when = next.when !== undefined ? next.when : filters.when;
+        const type = next.type !== undefined ? next.type : filters.type;
+
+        router.get(
+            route('admin.preparation.index'),
+            {
+                ...(when && when !== 'all' ? { when } : {}),
+                ...(type && type !== 'all' ? { type } : {}),
+            },
+            { preserveState: true, preserveScroll: true },
+        );
+    };
 
     const move = (number: string, status: string) =>
         router.post(route('admin.preparation.move', number), { status }, { preserveScroll: true });
@@ -80,12 +104,49 @@ export default function PreparationIndex() {
             />
 
             <div className="mb-4">
-                <Tabs tabs={tabs} current={filters.when ?? 'all'} onChange={go} />
+                <Tabs
+                    tabs={tabs}
+                    current={filters.when ?? 'all'}
+                    onChange={(when) => go({ when })}
+                    trailing={
+                        <div className="mb-2 flex items-center gap-1">
+                            {types.map((x) => {
+                                const active = (filters.type ?? 'all') === x.key;
+                                const Icon = x.icon;
+
+                                return (
+                                    <Button
+                                        key={x.key}
+                                        type="button"
+                                        size="sm"
+                                        variant={active ? 'primary' : 'ghost'}
+                                        className="rounded-full"
+                                        aria-pressed={active}
+                                        onClick={() => go({ type: x.key })}
+                                    >
+                                        {Icon && <Icon className="size-4" />}
+                                        {t(x.label)}
+                                        {!! x.count && (
+                                            <span className={cn('text-[12px]', active ? 'opacity-70' : 'text-[#9ca3af]')}>
+                                                {x.count}
+                                            </span>
+                                        )}
+                                    </Button>
+                                );
+                            })}
+                        </div>
+                    }
+                />
             </div>
 
             {orders.length === 0 ? (
                 <Card className="p-6 text-center text-sm text-[#6b7280]">
-                    {t('لا طلبات تنتظر التجهيز')}
+                    {/* «لا شيء» مع مرشّحٍ قائم يُقرأ «لا شيء أبدًا» — فيُقال أيّهما أفرغها */}
+                    {filters.type === 'delivery'
+                        ? t('لا طلبات توصيل تنتظر التجهيز')
+                        : filters.type === 'pickup'
+                          ? t('لا طلبات استلام تنتظر التجهيز')
+                          : t('لا طلبات تنتظر التجهيز')}
                 </Card>
             ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

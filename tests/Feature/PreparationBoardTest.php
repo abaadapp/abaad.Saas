@@ -68,8 +68,14 @@ class PreparationBoardTest extends TestCase
 
     private function board(array $query = []): array
     {
+        return $this->props($query)['orders'];
+    }
+
+    /** خصائص الصفحة كاملةً — للعدّادات لا للبطاقات */
+    private function props(array $query = []): array
+    {
         return $this->get(route('admin.preparation.index', $query))
-            ->viewData('page')['props']['orders'];
+            ->viewData('page')['props'];
     }
 
     /* ------------------------------ ما يظهر ------------------------------ */
@@ -158,6 +164,87 @@ class PreparationBoardTest extends TestCase
         $this->assertContains($today->number, $todayList);
         $this->assertNotContains($tomorrow->number, $todayList);
         $this->assertNotContains($later->number, $todayList);
+    }
+
+    /* --------------------------- مرشّح التنفيذ --------------------------- */
+
+    public function test_the_fulfillment_filter_splits_the_board(): void
+    {
+        $delivery = $this->order(['fulfillment_type' => FlowerOrder::DELIVERY]);
+        $pickup = $this->order(['fulfillment_type' => FlowerOrder::PICKUP]);
+
+        $this->assertSame([$delivery->number], array_column($this->board(['type' => 'delivery']), 'number'));
+        $this->assertSame([$pickup->number], array_column($this->board(['type' => 'pickup']), 'number'));
+
+        $all = array_column($this->board(), 'number');
+        $this->assertContains($delivery->number, $all);
+        $this->assertContains($pickup->number, $all);
+    }
+
+    /**
+     * والمرشّحان يعملان معًا لا يُلغي أحدهما الآخر.
+     *
+     * «توصيل اليوم» هو السؤال الذي يُسأل صباحًا: أين تذهب سيّارة المحلّ.
+     */
+    public function test_the_time_window_and_the_fulfillment_filter_compose(): void
+    {
+        $wanted = $this->order(['fulfillment_type' => FlowerOrder::DELIVERY, 'scheduled_for' => now()->addHour()]);
+        $this->order(['fulfillment_type' => FlowerOrder::PICKUP, 'scheduled_for' => now()->addHour()]);
+        $this->order(['fulfillment_type' => FlowerOrder::DELIVERY, 'scheduled_for' => now()->addDays(4)]);
+
+        $this->assertSame(
+            [$wanted->number],
+            array_column($this->board(['when' => 'today', 'type' => 'delivery']), 'number')
+        );
+    }
+
+    /**
+     * والرقم على التبويب هو عدد ما يظهر عند الضغط عليه.
+     *
+     * عدّادٌ يُحسب بمعزلٍ عن المرشّح الآخر يَعِد بستّة ثم يفتح على اثنين —
+     * وهو أسوأ من ألّا يكون هناك عدّاد.
+     */
+    public function test_each_counter_is_measured_under_the_other_filter(): void
+    {
+        $this->order(['fulfillment_type' => FlowerOrder::DELIVERY, 'scheduled_for' => now()->addHour()]);
+        $this->order(['fulfillment_type' => FlowerOrder::PICKUP, 'scheduled_for' => now()->addHour()]);
+        $this->order(['fulfillment_type' => FlowerOrder::PICKUP, 'scheduled_for' => now()->addDay()->setTime(10, 0)]);
+
+        // نوافذ الزمن تُعدّ تحت «توصيل»
+        $counts = $this->props(['type' => 'delivery'])['counts'];
+        $this->assertSame(1, $counts['all']);
+        $this->assertSame(1, $counts['today']);
+        $this->assertSame(0, $counts['tomorrow']);
+
+        // ومبدّل التنفيذ يُعدّ تحت «اليوم»
+        $types = $this->props(['when' => 'today'])['typeCounts'];
+        $this->assertSame(2, $types['all']);
+        $this->assertSame(1, $types['delivery']);
+        $this->assertSame(1, $types['pickup']);
+    }
+
+    /**
+     * وطلبٌ بلا نوع تنفيذ يبقى في «الكلّ» وحده.
+     *
+     * لا هو توصيلٌ ولا استلام، فإسقاطه من الاثنين صحيح — لكنّ إسقاطه من
+     * «الكلّ» أيضًا يعني طلبًا له موعدٌ لا تراه اللوحة في أيّ وضع.
+     */
+    public function test_an_order_with_no_fulfillment_type_stays_under_all(): void
+    {
+        $vague = $this->order(['fulfillment_type' => null]);
+
+        $this->assertSame([$vague->number], array_column($this->board(), 'number'));
+        $this->assertSame([], $this->board(['type' => 'delivery']));
+        $this->assertSame([], $this->board(['type' => 'pickup']));
+        $this->assertSame(1, $this->props()['typeCounts']['all']);
+    }
+
+    /** ونوعٌ لا يُعرف يعني «الكلّ» لا لوحةً فارغة */
+    public function test_an_unknown_fulfillment_filter_shows_everything(): void
+    {
+        $order = $this->order(['fulfillment_type' => FlowerOrder::PICKUP]);
+
+        $this->assertSame([$order->number], array_column($this->board(['type' => 'لا-شيء']), 'number'));
     }
 
     /* ---------------------------- ما لا يظهر ---------------------------- */

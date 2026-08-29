@@ -3176,5 +3176,7 @@
     "إضافة مناسبة": "Add occasion",
     "بلغت الحدّ الأقصى للمناسبات المضافة (:max) — احذف واحدة قبل الإضافة.": "You have reached the maximum number of added occasions (:max) — remove one before adding another.",
     "اكتب اسم المناسبة.": "Enter the occasion name.",
-    "اسم المناسبة قصير جدًّا.": "The occasion name is too short."
+    "اسم المناسبة قصير جدًّا.": "The occasion name is too short.",
+    "لا طلبات توصيل تنتظر التجهيز": "No delivery orders awaiting preparation",
+    "لا طلبات استلام تنتظر التجهيز": "No pickup orders awaiting preparation"
 }

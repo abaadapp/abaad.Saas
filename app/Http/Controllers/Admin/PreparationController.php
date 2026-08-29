@@ -38,6 +38,19 @@ class PreparationController extends Controller
         $filter = $request->query('when');
 
         /*
+         * مرشّح التنفيذ — بُعدٌ ثانٍ لا صفٌّ ثانٍ من التبويبات.
+         *
+         * ضربُه في النوافذ الأربع يعني ثمانية تبويباتٍ على شاشةٍ واحدة، ولا
+         * أحد يقرأ ثمانية. فيبقى الزمن تبويبات ويصير التنفيذ مبدّلًا بجانبها،
+         * والاثنان يعملان معًا: «توصيل اليوم» اختيارٌ واحد من كلٍّ منهما.
+         *
+         * والمجهول يعني «الكلّ»: عنوانٌ يُكتب بيدٍ لا يُفرغ اللوحة بلا سبب.
+         */
+        $type = in_array($request->query('type'), FlowerOrder::FULFILLMENT, true)
+            ? $request->query('type')
+            : null;
+
+        /*
          * الاستعلام لا يحمل تاريخًا لا يلزم.
          *
          * `awaitingPreparation` يستبعد المغلق والمعلَّق وما لا موعد له، فلا
@@ -47,9 +60,8 @@ class PreparationController extends Controller
          * و`with('items')` لا حلقةٌ على الطلبات: بدونها استعلامٌ لكل طلب —
          * عشرون طلبًا على اللوحة تعني واحدًا وعشرين استعلامًا.
          */
-        $q = Order::where('business_id', $this->bid())
-            ->awaitingPreparation()
-            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()))
+        $q = $this->base()
+            ->when($type, fn ($w) => $w->where('fulfillment_type', $type))
             ->with([
                 'items:id,order_id,name,quantity,note,product_id',
                 // الصورة وحدها من المنتج — لا سعرَه ولا تكلفتَه
@@ -63,9 +75,18 @@ class PreparationController extends Controller
 
         return Inertia::render('Admin/Preparation/Index', [
             'orders' => $orders->map(fn ($o) => $this->card($o))->values()->all(),
-            'filters' => ['when' => $filter],
-            'counts' => $this->counts(),
+            'filters' => ['when' => $filter, 'type' => $type],
+            'counts' => $this->counts($type),
+            'typeCounts' => $this->typeCounts($filter),
         ]);
+    }
+
+    /** ما تنتظره اللوحة: متجرُ المستخدم، وفرعُه، وما لم يُغلق بعد */
+    private function base()
+    {
+        return Order::where('business_id', $this->bid())
+            ->awaitingPreparation()
+            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()));
     }
 
     /** نافذة الوقت المطلوبة — والمجهول يعني «الكلّ» لا يعني خطأً */
@@ -91,15 +112,17 @@ class PreparationController extends Controller
      * والجمع الشرطيّ يفعلها في مسحةٍ واحدة، ويعمل على PostgreSQL وSQLite معًا
      * (`case when` قياسيّ، خلافًا لـ`FILTER` التي لا يعرفها الثاني).
      *
+     * وتُعدّ تحت مرشّح التنفيذ المختار: رقمٌ على تبويبٍ يجب أن يكون عدد ما
+     * يظهر عند الضغط عليه، لا عدد ما كان يظهر قبل مرشّحٍ آخر.
+     *
      * @return array<string, int>
      */
-    private function counts(): array
+    private function counts(?string $type): array
     {
         $when = fn (string $expr) => "sum(case when {$expr} then 1 else 0 end)";
 
-        $row = Order::where('business_id', $this->bid())
-            ->awaitingPreparation()
-            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()))
+        $row = $this->base()
+            ->when($type, fn ($w) => $w->where('fulfillment_type', $type))
             ->selectRaw(
                 'count(*) as all_count, '
                 .$when('scheduled_for < ?').' as overdue_count, '
@@ -117,6 +140,37 @@ class PreparationController extends Controller
             'overdue' => (int) ($row->overdue_count ?? 0),
             'today' => (int) ($row->today_count ?? 0),
             'tomorrow' => (int) ($row->tomorrow_count ?? 0),
+        ];
+    }
+
+    /**
+     * أعداد مبدّل التنفيذ — تحت النافذة الزمنية المختارة، للسبب نفسه.
+     *
+     * و«الكلّ» ليس مجموع الاثنين: طلبٌ له موعدٌ ولم يُحدَّد تنفيذه ليس
+     * توصيلًا ولا استلامًا، فيسقط من كليهما ويبقى في «الكلّ» وحده — وهو
+     * الموضع الذي يُرى فيه أنّ في اللوحة ما ينقصه شيء.
+     *
+     * @return array<string, int>
+     */
+    private function typeCounts(?string $when): array
+    {
+        $q = $this->base();
+        $this->applyWindow($q, $when);
+
+        // قيمتان ثابتتان، ومع ذلك تُربَط لا تُدمَج: راويةُ SQL لا تُفتح لعادة
+        $case = 'sum(case when fulfillment_type = ? then 1 else 0 end)';
+
+        $row = $q->selectRaw(
+            'count(*) as all_count, '
+            .$case.' as delivery_count, '
+            .$case.' as pickup_count',
+            [FlowerOrder::DELIVERY, FlowerOrder::PICKUP]
+        )->first();
+
+        return [
+            'all' => (int) ($row->all_count ?? 0),
+            'delivery' => (int) ($row->delivery_count ?? 0),
+            'pickup' => (int) ($row->pickup_count ?? 0),
         ];
     }
 

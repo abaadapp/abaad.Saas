@@ -33,12 +33,14 @@ class InventoryDocumentsTest extends TestCase
 
     private Product $product;
 
+    private Branch $branch;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
-        Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
+        $this->branch = Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
 
         $owner = User::create([
             'business_id' => $this->business->id, 'name' => 'المالك', 'email' => 'o@abaad.om',
@@ -64,6 +66,8 @@ class InventoryDocumentsTest extends TestCase
     private function adjust(array $overrides = [])
     {
         return $this->post(route('admin.inventory.adjustments.store'), array_merge([
+            // الفرع صريحٌ في العقد منذ FIX-BATCH-001: التعديل يقع على رصيد فرع
+            'branch_id' => $this->branch->id,
             'product_id' => $this->product->id,
             'quantity_delta' => -10,
             'reason' => 'تلف',

@@ -7,6 +7,7 @@ use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Support\Demo;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class InventoryController extends Controller
 {
@@ -58,74 +59,109 @@ class InventoryController extends Controller
 
         $adjusted = 0;
         $shortage = 0.0;
-        foreach ($data['counts'] as $productId => $counted) {
-            if ($counted === null || $counted === '') {
-                continue;
-            }
-            $product = Product::where('business_id', $this->bid())->find((int) $productId);
-            if (! $product) {
-                continue;
-            }
-            $counted = (int) $counted;
-
-            /*
-             * الفرق من دفتر الفرع لا من إجمالي الشركة — والإجمالي يتحرّك
-             * بالفرق ولا يصير المعدود.
-             *
-             * كان يكتب المعدود في الإجمالي، فجردُ فرعٍ يمحو أرصدة بقيّة
-             * الفروع: تعدّ مسقط فتضيع صلالة. وجردٌ كامل يمرّ على الفروع
-             * واحدًا واحدًا كان ينتهي برصيد آخر فرعٍ في خانة الشركة كلّها.
-             */
-            $book = \App\Models\BranchStock::bookOf($this->bid(), $product->id, $branch->id);
-            $delta = $counted - $book;
-            if ($delta === 0) {
-                continue;
-            }
-            \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, (int) $product->quantity);
-            \App\Models\BranchStock::adjust($this->bid(), $branch->id, $product->id, $delta);
-            $product->quantity = max(0, (int) $product->quantity + $delta);
-            $product->save();
-
-            InventoryMovement::create([
-                'business_id' => $this->bid(),
-                'branch_id' => $branch->id,
-                'product_id' => $product->id,
-                'product_name' => $product->name,
-                'sku' => $product->sku,
-                'type' => 'تسوية جرد',
-                'quantity' => ($delta >= 0 ? '+' : '') . $delta,
-                'employee_name' => auth()->user()->name,
-            ]);
-            $adjusted++;
-            if ($delta < 0) {
-                $shortage += abs($delta) * (float) $product->cost;
-            }
-        }
 
         /*
-         * الفاقد يُقيَّد مصروفًا — وإلا اختفت الخسارة بدل أن تُقاس.
+         * دفتر الفروع يُقرأ مرّةً واحدة قبل الحلقة.
          *
-         * كان الجرد يصحّح الرقم ولا يمسّ شيئًا آخر: تجد خمسين قطعةً ناقصة
-         * فتُطرح من المخزون، ولا تظهر في الربح ولا في المصروفات. فيقرأ التاجر
-         * أرباحًا لم يجنها، ولا يرى كم يكلّفه الفاقد شهريًّا — وهو الرقم الذي
-         * يدفعه إلى تغيير شيء.
+         * كان `bookOf` يُنادى لكلّ صنف، وهي تُنادي `books` التي تُحمّل كلّ
+         * صفوف الفروع وكلّ منتجات النشاط في كلّ مرّة: جردُ خمسمئة صنفٍ
+         * خمسمئة قراءةٍ كاملة للجدولين. وكلّ صنفٍ يُقرأ مرّةً واحدة في
+         * الحلقة، فلا يُبطل التغييرُ اللاحق قراءةً سابقة.
          *
-         * والزيادة لا تُقيَّد إيرادًا: بضاعةٌ ظهرت في العدّ غالبًا خطأُ تسجيلٍ
-         * سابق لا ربحٌ جديد، وقيدُها دخلًا يضخّم الأرباح بلا بيعة.
+         * والقاعدة نفسها التي تطبّقها `books`: منتجٌ لا صفَّ فرعٍ له رصيدُه
+         * كلّه في الفرع الأوّل.
          */
-        if ($shortage > 0) {
-            \App\Models\Expense::create([
-                'business_id' => $this->bid(),
-                // لا عمود فرعٍ في المصروفات — فالفرع في الوصف ليُقرأ في التقرير
-                'reference' => 'SHR-'.now()->format('YmdHis'),
-                'type' => 'فاقد جرد',
-                'description' => __('فاقد جرد — :branch (:n صنفًا)', ['branch' => $branch->name, 'n' => $adjusted]),
-                'amount' => round($shortage, 3),
-                'method' => 'قيد داخلي',
-                'employee_name' => auth()->user()->name,
-                'spent_at' => now(),
-            ]);
-        }
+        $books = \App\Models\BranchStock::books($this->bid());
+
+        /*
+         * الجرد معاملةٌ واحدة.
+         *
+         * كانت الحلقة تكتب ثلاث كتاباتٍ لكلّ صنفٍ بلا غلاف: انقطاعٌ في
+         * منتصفها يترك الجرد مطبَّقًا على بعض الأصناف دون بعض — ولا شيء
+         * يقول أين وقف. والجرد هو اللحظة التي يقرّر فيها التاجر أيثق
+         * بأرقام المخزون أم لا.
+         */
+        DB::transaction(function () use ($data, $branch, $books, &$adjusted, &$shortage) {
+            foreach ($data['counts'] as $productId => $counted) {
+                if ($counted === null || $counted === '') {
+                    continue;
+                }
+                $product = Product::where('business_id', $this->bid())->find((int) $productId);
+                if (! $product) {
+                    continue;
+                }
+                $counted = (int) $counted;
+
+                /*
+                 * الفرق من دفتر الفرع لا من إجمالي الشركة — والإجمالي يتحرّك
+                 * بالفرق ولا يصير المعدود.
+                 *
+                 * كان يكتب المعدود في الإجمالي، فجردُ فرعٍ يمحو أرصدة بقيّة
+                 * الفروع: تعدّ مسقط فتضيع صلالة. وجردٌ كامل يمرّ على الفروع
+                 * واحدًا واحدًا كان ينتهي برصيد آخر فرعٍ في خانة الشركة كلّها.
+                 */
+                $book = (int) ($books[$product->id][$branch->id] ?? 0);
+                $delta = $counted - $book;
+                if ($delta === 0) {
+                    continue;
+                }
+                \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, (int) $product->quantity);
+                \App\Models\BranchStock::adjust($this->bid(), $branch->id, $product->id, $delta);
+                /*
+                 * الإجماليّ يتحرّك بالفرق كاملًا بلا قصّ.
+                 *
+                 * كان `max(0, …)` يقصّه عند الصفر بينما يأخذ رصيدُ الفرع
+                 * الفرقَ كلّه — فينكسر التوازن صامتًا في الحالة نفسها التي
+                 * يمنع `BranchStock::adjust` القصَّ فيها عمدًا. ورقمٌ سالب
+                 * إشارةُ خللٍ يجب أن تُرى لا أن تُخبَّأ.
+                 */
+                $product->quantity = (int) $product->quantity + $delta;
+                $product->save();
+
+                InventoryMovement::create([
+                    'business_id' => $this->bid(),
+                    'branch_id' => $branch->id,
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'sku' => $product->sku,
+                    'type' => 'تسوية جرد',
+                    'quantity' => ($delta >= 0 ? '+' : '') . $delta,
+                    'employee_name' => auth()->user()->name,
+                ]);
+                $adjusted++;
+                if ($delta < 0) {
+                    $shortage += abs($delta) * (float) $product->cost;
+                }
+            }
+
+            /*
+             * الفاقد يُقيَّد مصروفًا — وإلا اختفت الخسارة بدل أن تُقاس.
+             *
+             * كان الجرد يصحّح الرقم ولا يمسّ شيئًا آخر: تجد خمسين قطعةً ناقصة
+             * فتُطرح من المخزون، ولا تظهر في الربح ولا في المصروفات. فيقرأ التاجر
+             * أرباحًا لم يجنها، ولا يرى كم يكلّفه الفاقد شهريًّا — وهو الرقم الذي
+             * يدفعه إلى تغيير شيء.
+             *
+             * والزيادة لا تُقيَّد إيرادًا: بضاعةٌ ظهرت في العدّ غالبًا خطأُ تسجيلٍ
+             * سابق لا ربحٌ جديد، وقيدُها دخلًا يضخّم الأرباح بلا بيعة.
+             *
+             * وداخل المعاملة مع التسوية نفسها: قيدُ فاقدٍ بلا التسوية التي
+             * أنتجته — أو تسويةٌ بلا قيدها — أسوأ من كليهما.
+             */
+            if ($shortage > 0) {
+                \App\Models\Expense::create([
+                    'business_id' => $this->bid(),
+                    // لا عمود فرعٍ في المصروفات — فالفرع في الوصف ليُقرأ في التقرير
+                    'reference' => 'SHR-'.now()->format('YmdHis'),
+                    'type' => 'فاقد جرد',
+                    'description' => __('فاقد جرد — :branch (:n صنفًا)', ['branch' => $branch->name, 'n' => $adjusted]),
+                    'amount' => round($shortage, 3),
+                    'method' => 'قيد داخلي',
+                    'employee_name' => auth()->user()->name,
+                    'spent_at' => now(),
+                ]);
+            }
+        });
 
         \App\Support\Activity::log('updated', 'جرد فعلي: سوّى ' . $adjusted . ' صنفًا — فرع: ' . $branch->name);
 
@@ -192,7 +228,9 @@ class InventoryController extends Controller
         }
 
         \App\Models\BranchStock::adjust($this->bid(), $branch->id, $product->id, $delta);
-        $product->quantity = max(0, $old + $delta);
+        // بلا قصٍّ عند الصفر: رصيد الفرع يأخذ الفرق كاملًا، فقصُّ الإجماليّ
+        // وحده يكسر التوازن في صمت (والحارس أعلاه يمنع النزول تحت الصفر أصلًا)
+        $product->quantity = $old + $delta;
         $product->save();
 
         InventoryMovement::create([

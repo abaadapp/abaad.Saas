@@ -55,6 +55,20 @@ class StockStaysBalancedTest extends TestCase
         BranchStock::adjust($this->business->id, $this->b->id, $this->p->id, 40);
     }
 
+    /**
+     * الباب فُتح فعلًا.
+     *
+     * ثلاثةٌ من أبواب هذا الملفّ كانت تُردّ قبل أن تبلغ متحكّمها — بعقدٍ
+     * خاطئ أو بحقلٍ مطلوبٍ لم يُرسَل — فيقارن الاختبار مئةً بمئة وينجح على
+     * عمليةٍ لم تقع. فلا يكفي أن يُقاس التوازن بعد الطلب: يجب أن يُثبَت أوّلًا
+     * أنّ الطلب غيّر شيئًا.
+     */
+    private function assertDidSomething(int $before, string $door): void
+    {
+        $this->assertNotSame($before, (int) $this->p->fresh()->quantity,
+            "«{$door}» لم يغيّر الكمية — الطلب على الأرجح رُفض قبل أن يبلغ المتحكّم");
+    }
+
     private function assertBalanced(string $door): void
     {
         $total = (int) $this->p->fresh()->quantity;
@@ -66,12 +80,18 @@ class StockStaysBalancedTest extends TestCase
 
     public function test_a_pos_sale_keeps_it_balanced(): void
     {
+        $before = (int) $this->p->fresh()->quantity;
+
         $this->actingAs($this->owner)->withSession(['current_branch' => $this->b->id])
             ->postJson(route('pos.checkout'), [
-                'items' => [['product_id' => $this->p->id, 'quantity' => 3, 'price' => 10]],
+                // عقد الدفع الحقيقي: id/name/qty. كان المُرسَل product_id/quantity
+                // بلا name، فيُردّ الطلب ٤٢٢ ولا يبلغ المتحكّم — ثمّ يقارن
+                // الاختبار مئةً بمئة وينجح على بيعةٍ لم تقع
+                'items' => [['id' => $this->p->id, 'name' => 'صنف', 'qty' => 3, 'price' => 10]],
                 'payment_method' => 'نقدي', 'paid' => 30,
-            ]);
+            ])->assertOk();
 
+        $this->assertDidSomething($before, 'بيعة نقطة البيع');
         $this->assertBalanced('بيعة نقطة البيع');
     }
 
@@ -108,13 +128,18 @@ class StockStaysBalancedTest extends TestCase
     public function test_a_stock_adjustment_keeps_it_balanced(): void
     {
         foreach ([['delta' => -7, 'reason' => 'تلف'], ['delta' => 12, 'reason' => 'تصحيح']] as $case) {
-            $this->actingAs($this->owner)->withSession(['current_branch' => $this->b->id])
+            $before = (int) $this->p->fresh()->quantity;
+
+            $this->actingAs($this->owner)
                 ->post(route('admin.inventory.adjustments.store'), [
+                    'branch_id' => $this->b->id,
                     'product_id' => $this->p->id,
                     'quantity_delta' => $case['delta'],
                     'reason' => $case['reason'],
                     'adjusted_at' => now()->toDateString(),
                 ])->assertSessionHasNoErrors();
+
+            $this->assertDidSomething($before, 'تسوية مخزون');
 
             $this->assertBalanced('تسوية مخزون ('.$case['delta'].')');
         }
@@ -122,29 +147,43 @@ class StockStaysBalancedTest extends TestCase
 
     public function test_a_stocktake_keeps_it_balanced(): void
     {
-        $this->actingAs($this->owner)->withSession(['current_branch' => $this->a->id])
-            ->post(route('admin.inventory.stocktake.apply'), [
-                'counts' => [['product_id' => $this->p->id, 'counted' => 55]],
-            ]);
+        $before = (int) $this->p->fresh()->quantity;
 
+        $this->actingAs($this->owner)
+            ->post(route('admin.inventory.stocktake.apply'), [
+                // العقد الحقيقي: branch_id مطلوب، وcounts خريطة معرّف => المعدود.
+                // كان المُرسَل قائمةَ قواميس بلا فرع، فيُردّ ٣٠٢ بأخطاء تحقّق
+                'branch_id' => $this->a->id,
+                'counts' => [$this->p->id => 55],
+            ])->assertSessionHasNoErrors();
+
+        $this->assertDidSomething($before, 'جرد');
         $this->assertBalanced('جرد');
     }
 
     public function test_a_manual_movement_keeps_it_balanced(): void
     {
-        $this->actingAs($this->owner)->withSession(['current_branch' => $this->b->id])
-            ->post(route('admin.inventory.store'), [
-                'product_id' => $this->p->id, 'type' => 'إضافة كمية', 'quantity' => 9,
-            ]);
+        $before = (int) $this->p->fresh()->quantity;
 
+        $this->actingAs($this->owner)
+            ->post(route('admin.inventory.store'), [
+                // `branch_id` مطلوبٌ في المتحكّم منذ البداية ولم يكن يُرسَل:
+                // بابٌ ثالثٌ لا يُفتح، ظهر عند إصلاح البابين الأوّلين
+                'branch_id' => $this->b->id,
+                'product_id' => $this->p->id, 'type' => 'إضافة كمية', 'quantity' => 9,
+            ])->assertSessionHasNoErrors();
+
+        $this->assertDidSomething($before, 'حركة مخزون يدوية');
         $this->assertBalanced('حركة مخزون يدوية');
     }
 
     public function test_a_quick_quantity_edit_keeps_it_balanced(): void
     {
         $this->actingAs($this->owner)->withSession(['current_branch' => $this->a->id])
-            ->patch(route('admin.products.quick', $this->p->id), ['quantity' => 130]);
+            ->patch(route('admin.products.quick', $this->p->id), ['quantity' => 130])
+            ->assertSessionHasNoErrors();
 
+        $this->assertSame(130, (int) $this->p->fresh()->quantity, 'التعديل السريع لم يبلغ المتحكّم');
         $this->assertBalanced('تعديل سريع للكمية');
     }
 
@@ -153,8 +192,9 @@ class StockStaysBalancedTest extends TestCase
         $this->actingAs($this->owner)->withSession(['current_branch' => $this->a->id])
             ->put(route('admin.products.update', $this->p->id), [
                 'name' => 'صنف', 'price' => 10, 'cost' => 4, 'quantity' => 70, 'alert_qty' => 5,
-            ]);
+            ])->assertSessionHasNoErrors();
 
+        $this->assertSame(70, (int) $this->p->fresh()->quantity, 'تعديل المنتج لم يبلغ المتحكّم');
         $this->assertBalanced('تعديل المنتج');
     }
 }

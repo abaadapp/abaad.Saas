@@ -47,13 +47,18 @@ interface Props {
     sorts: string[];
     reasons: string[];
     products: ProductOption[];
+    branches: { id: number; name: string }[];
+    /** الفرع المختار في الشريط العلوي — قيمةٌ ابتدائية، وnull في وضع «كل الفروع» */
+    currentBranchId: number | null;
     summary: { count: number; loss: number; gain: number };
     today: string;
 }
 
 export default function Adjustments() {
-    const { adjustments, pagination, filters, sorts, reasons, products, summary, today, context } =
-        usePage<PageProps<Props>>().props;
+    const {
+        adjustments, pagination, filters, sorts, reasons, products,
+        branches, currentBranchId, summary, today, context,
+    } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -61,7 +66,15 @@ export default function Adjustments() {
     // اتجاهٌ منفصل في النموذج وحده — ويُدمج في رقمٍ بإشارة قبل الإرسال
     const [direction, setDirection] = useState<'-' | '+'>('-');
 
+    /*
+     * الفرع حقلٌ في النموذج لا قيمةٌ من الجلسة.
+     *
+     * كانت الشاشة الوحيدة الكاتبة للمخزون بلا مُنتقي فرع: في وضع «كل الفروع»
+     * — وهو الوضع الافتراضيّ — يمضي التعديل فيحرّك إجماليّ الشركة ولا يمسّ
+     * رصيد فرعٍ واحد. والخادم يرفض ذلك الآن، فيلزم أن تسأل الشاشة عنه.
+     */
     const form = useForm({
+        branch_id: currentBranchId ? String(currentBranchId) : '',
         product_id: '',
         quantity_delta: '',
         reason: 'تلف',
@@ -74,7 +87,9 @@ export default function Adjustments() {
         [products, form.data.product_id],
     );
 
-    const qty = Math.abs(parseFloat(form.data.quantity_delta) || 0);
+    // أعدادٌ صحيحة: العمودان في القاعدة صحيحان، والخادم يردّ الكسر
+    const qty = Math.abs(parseInt(form.data.quantity_delta, 10) || 0);
+    const fractional = /[.,]/.test(form.data.quantity_delta);
     const impact = qty * (product?.cost ?? 0);
     const tooMuch = direction === '-' && product ? qty > product.quantity : false;
 
@@ -85,7 +100,8 @@ export default function Adjustments() {
             preserveScroll: true,
             onSuccess: () => {
                 setAdding(false);
-                form.reset();
+                // الفرع يبقى: من يسجّل تلفًا في فرعٍ يسجّل التالي فيه غالبًا
+                form.reset('product_id', 'quantity_delta', 'notes');
             },
         });
     };
@@ -193,6 +209,16 @@ export default function Adjustments() {
                     </DialogHeader>
 
                     <form onSubmit={submit} className="space-y-4 px-5 pb-5">
+                        <Field label="الفرع" required error={form.errors.branch_id}>
+                            <Select
+                                placeholder="اختر الفرع…"
+                                value={form.data.branch_id}
+                                onChange={(e) => form.setData('branch_id', e.target.value)}
+                                options={branches.map((b) => ({ label: b.name, value: b.id }))}
+                                required
+                            />
+                        </Field>
+
                         <Field label="المنتج" required error={form.errors.product_id}>
                             <Select
                                 placeholder="اختر المنتج"
@@ -222,14 +248,20 @@ export default function Adjustments() {
                             <Field label="الكمية" required error={form.errors.quantity_delta}>
                                 <Input
                                     type="number"
-                                    step="0.001"
-                                    min="0"
+                                    step="1"
+                                    min="1"
                                     dir="ltr"
                                     value={form.data.quantity_delta}
                                     onChange={(e) => form.setData('quantity_delta', e.target.value)}
                                 />
                             </Field>
                         </div>
+
+                        {fractional && (
+                            <p className="text-[12px] text-[#b91c1c]">
+                                {t('الكمية أعدادٌ صحيحة — لا كسور')}
+                            </p>
+                        )}
 
                         {tooMuch && (
                             <p className="text-[12px] text-[#b91c1c]">
@@ -276,7 +308,10 @@ export default function Adjustments() {
                             <Button
                                 type="submit"
                                 loading={form.processing}
-                                disabled={!form.data.product_id || qty <= 0 || tooMuch}
+                                disabled={
+                                    !form.data.branch_id || !form.data.product_id
+                                    || qty <= 0 || tooMuch || fractional
+                                }
                             >
                                 <Check />
                                 {t('تسجيل')}

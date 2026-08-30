@@ -142,10 +142,24 @@ class OrderCorrection
             }
         }
 
+        /*
+         * التوزيع قبل التغيير لا بعده.
+         *
+         * `ensureAllocated` تُعطى كميّةَ ما قبل الحركة، لأنها تنقل رصيد
+         * المنتج غير الموزَّع إلى الفرع الأوّل. وكانت تُنادى بعد `increment`
+         * فتُعطى الكمية الجديدة: فصنفٌ لا صفَّ فرعٍ له يُعاد منه اثنان،
+         * فيُنشأ صفُّه بالكمية الجديدة ثمّ يُضاف الاثنان ثانيةً — ويصير في
+         * الفروع ما ليس في الإجماليّ.
+         *
+         * وهو الترتيب نفسه في البيع والاستلام وإشعار التسليم.
+         */
+        if ($branchId) {
+            \App\Models\BranchStock::ensureAllocated($order->business_id, $product->id, (int) $product->quantity);
+        }
+
         $product->increment('quantity', $delta);
 
         if ($branchId) {
-            \App\Models\BranchStock::ensureAllocated($order->business_id, $product->id, (int) $product->quantity);
             \App\Models\BranchStock::adjust($order->business_id, $branchId, $product->id, $delta);
         }
 

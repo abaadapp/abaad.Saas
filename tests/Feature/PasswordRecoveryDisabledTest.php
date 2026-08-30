@@ -90,7 +90,31 @@ class PasswordRecoveryDisabledTest extends TestCase
             ->assertInertia(fn ($page) => $page->where('canRecover', false));
     }
 
+    public function test_an_api_mailer_without_a_key_counts_as_no_mail(): void
+    {
+        /*
+         * نظير حالة smtp بلا مضيف، في مزوّدٍ يرسل عبر HTTPS: MAIL_MAILER=resend
+         * مضبوط والمفتاح فارغ. لارافيل تقبل الإعداد وتبني المُرسِل، ثم يرفض
+         * المزوّد الطلب وقت الإرسال — أي عند المستخدم لا عند من ضبط الخادم.
+         */
+        config(['mail.default' => 'resend', 'services.resend.key' => null]);
+
+        $this->get(route('password.request'))->assertNotFound();
+        $this->get(route('login'))
+            ->assertInertia(fn ($page) => $page->where('canRecover', false));
+    }
+
     /* --------------------------- البريد مضبوط --------------------------- */
+
+    public function test_an_api_mailer_with_a_key_opens_the_door(): void
+    {
+        // ولا مضيفَ ولا منفذ هنا: المزوّد يُنادى على 443، والمفتاح وحده اعتماده
+        config(['mail.default' => 'resend', 'services.resend.key' => 're_test_key']);
+
+        $this->get(route('password.request'))->assertOk();
+        $this->get(route('login'))
+            ->assertInertia(fn ($page) => $page->where('canRecover', true));
+    }
 
     public function test_a_real_mailer_reopens_the_door_by_itself(): void
     {

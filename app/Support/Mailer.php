@@ -35,6 +35,16 @@ class Mailer
             return false;
         }
 
+        /*
+         * ومزوّدُ HTTP بلا مفتاح مثله: لارافيل تقبل الإعداد وتبني المُرسِل،
+         * ثم يُرفض الطلب عند المزوّد وقت الإرسال. فيُسأل عن المفتاح هنا لا
+         * هناك — والشاشة تقول الحقيقة قبل أن يعتمد عليها أحد.
+         */
+        $keys = ['resend' => 'services.resend.key', 'postmark' => 'services.postmark.key'];
+        if (isset($keys[$driver]) && blank(config($keys[$driver]))) {
+            return false;
+        }
+
         return true;
     }
 }

@@ -116,6 +116,8 @@ class PageController extends Controller
             ],
             // واتساب هذا المتجر: حدُّه واستهلاكه وأذونه — بلا رمزٍ ولا سرّ
             'whatsapp' => \App\Http\Controllers\SuperAdmin\WhatsAppController::businessView($model),
+            // ووسيلة استعادته: العنوان وحاله — أوّل ما يُسأل عنه حين يتّصل صاحبه
+            'recovery' => \App\Http\Controllers\SuperAdmin\RecoveryController::view($model),
         ]);
     }
 

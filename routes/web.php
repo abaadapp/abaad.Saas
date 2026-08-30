@@ -66,6 +66,21 @@ Route::post('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetControl
 Route::get('/reset-password/{token}', [\App\Http\Controllers\Auth\PasswordResetController::class, 'reset'])
     ->where('token', '[A-Za-z0-9]{32,128}')->name('password.reset');
 Route::post('/reset-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'store'])->name('password.update');
+
+/*
+ * استعادة الحساب برمزٍ إلى بريدٍ موثّق — الطريق الأحدث.
+ *
+ * وتبقى مسارات الرابط أعلاه: من في صندوقه رسالةٌ قديمة يجد رابطها يعمل.
+ * والباب الجديد لا يقبل عنوانًا يكتبه الطالب — انظر AccountRecoveryController.
+ */
+Route::post('/recovery/start', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'start'])->name('recovery.start');
+Route::get('/recovery/verify/{challenge}', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'verify'])
+    ->where('challenge', '[A-Za-z0-9]{32,64}')->name('recovery.verify');
+Route::post('/recovery/verify', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'check'])->name('recovery.check');
+Route::post('/recovery/resend', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'resend'])->name('recovery.resend');
+Route::get('/recovery/password/{challenge}', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'password'])
+    ->where('challenge', '[A-Za-z0-9]{32,64}')->name('recovery.password');
+Route::post('/recovery/password', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'store'])->name('recovery.password.store');
 /*
  * الدخول التجريبي: يمنح جلسة كاملة بلا كلمة مرور، فلا يُسجَّل إلا حيث يُسمح به صراحةً.
  * تركُه مفتوحًا يعني أن أي زائر مجهول يصير مدير منصة بطلب GET واحد.
@@ -204,6 +219,15 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
      * داخل حارس `role:super_admin` لا خارجه: من يرفع حدّ متجرٍ أو يمنحه رقمًا
      * خاصًّا هو مدير المنصّة وحده، والحارس على المجموعة لا في شاشةٍ تُخفي زرًّا.
      */
+    /*
+     * وسيلة الاستعادة للمتاجر القديمة — المرّة الواحدة التي يمرّ فيها المتجر
+     * بإنسان. ومدير المنصّة يكتب العنوان ولا يختمه: الختم لا يضعه إلا رمزٌ
+     * عاد من الصندوق.
+     */
+    Route::post('/businesses/{id}/recovery-email', [\App\Http\Controllers\SuperAdmin\RecoveryController::class, 'setEmail'])->name('businesses.recovery.set');
+    Route::post('/businesses/{id}/recovery-email/resend', [\App\Http\Controllers\SuperAdmin\RecoveryController::class, 'resend'])->name('businesses.recovery.resend');
+    Route::delete('/businesses/{id}/recovery-email', [\App\Http\Controllers\SuperAdmin\RecoveryController::class, 'clear'])->name('businesses.recovery.clear');
+
     Route::post('/whatsapp/shared', [\App\Http\Controllers\SuperAdmin\WhatsAppController::class, 'connectShared'])->name('whatsapp.shared.connect');
     Route::delete('/whatsapp/shared', [\App\Http\Controllers\SuperAdmin\WhatsAppController::class, 'disconnectShared'])->name('whatsapp.shared.disconnect');
     Route::put('/businesses/{id}/whatsapp', [\App\Http\Controllers\SuperAdmin\WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
@@ -452,6 +476,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * ومعرّف متجره يُقرأ من جلسته في المتحكّم لا ممّا يصل في الطلب — انظر
      * `Admin\WhatsAppController::bid`.
      */
+    /*
+     * بريد الاستعادة — يضبطه صاحب الحساب وهو داخل، قبل أن يحتاج إليه.
+     * ويُشترط معه كلمةُ المرور الحالية: جلسةٌ مفتوحة وحدها لا تكفي.
+     */
+    Route::post('/settings/recovery-email', [\App\Http\Controllers\Admin\RecoveryEmailController::class, 'start'])->name('settings.recovery.start');
+    Route::post('/settings/recovery-email/confirm', [\App\Http\Controllers\Admin\RecoveryEmailController::class, 'confirm'])->name('settings.recovery.confirm');
     Route::post('/marketing/whatsapp/mode', [\App\Http\Controllers\Admin\WhatsAppController::class, 'mode'])->name('marketing.whatsapp.mode');
     Route::post('/marketing/whatsapp/connect', [\App\Http\Controllers\Admin\WhatsAppController::class, 'connect'])->name('marketing.whatsapp.connect');
     Route::delete('/marketing/whatsapp/connect', [\App\Http\Controllers\Admin\WhatsAppController::class, 'disconnect'])->name('marketing.whatsapp.disconnect');

@@ -12,6 +12,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import AccountCard from './partials/AccountCard';
 import WhatsAppCard, { type BusinessWhatsApp } from './partials/WhatsAppCard';
+import RecoveryCard, { type BusinessRecovery } from './partials/RecoveryCard';
 import {
     Table,
     TableBody,
@@ -88,6 +89,7 @@ interface Props {
     orders: OrderRow[];
     currency: Currency;
     whatsapp: BusinessWhatsApp | null;
+    recovery: BusinessRecovery;
 }
 
 const TABS = [
@@ -97,7 +99,7 @@ const TABS = [
 ];
 
 export default function BusinessShow() {
-    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp } =
+    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp, recovery } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('overview');
@@ -227,6 +229,9 @@ export default function BusinessShow() {
                     </Button>
                 </Card>
             )}
+
+            {/* وسيلة الاستعادة — أوّل ما يُسأل عنه حين يتّصل تاجرٌ نسي كلمته */}
+            {recovery && <RecoveryCard businessId={business.id} data={recovery} />}
 
             {/* واتساب — بطاقةٌ في ملفّ المتجر لا شاشة ثالثة */}
             {whatsapp && <WhatsAppCard businessId={business.id} data={whatsapp} />}

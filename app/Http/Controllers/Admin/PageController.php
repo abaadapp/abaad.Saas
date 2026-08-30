@@ -344,6 +344,13 @@ class PageController extends Controller
              * برحلةٍ إلى الخادم أغلى من إرسالها.
              */
             'site' => \App\Support\MarketingSettings::group(Demo::bid(), 'website'),
+            /*
+             * بريد الاستعادة — حالُه وحده، بلا رمزٍ ولا بصمة.
+             *
+             * ويُرسَل دائمًا لا عند طلب قسمه: أربعة حقول، وهو أوّل ما يجب أن
+             * يراه صاحبُ حسابٍ لم يضبطه بعد.
+             */
+            'recovery' => \App\Http\Controllers\Admin\RecoveryEmailController::view(auth()->user()),
             // رقمٌ يقول إن كان الموقع سيُفتح على صفحةٍ فارغة
             'published' => \App\Models\Product::where('business_id', Demo::bid())->count(),
             // القائمة الكاملة — تبويب «التنبيهات المرسلة» يعرضها بلا اختصار

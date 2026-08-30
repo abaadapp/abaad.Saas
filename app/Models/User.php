@@ -20,12 +20,29 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            /*
+             * ختم بريد الاستعادة.
+             *
+             * وجودُه هو الفرق بين عنوانٍ مكتوب وعنوانٍ يُرسَل إليه رمزُ
+             * استعادة — انظر App\Support\RecoveryEmail::verifiedFor.
+             */
+            'recovery_email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'password' => 'hashed',
             'pin' => 'hashed',
             'sales_total' => 'decimal:3',
             'permissions' => 'array',
         ];
+    }
+
+    /**
+     * هل لهذا الحساب بريد استعادةٍ مختوم؟
+     *
+     * تُقرأ في الشاشات لتُعرض الحال، وفي الاستعادة ليُقرَّر الطريق.
+     */
+    public function hasVerifiedRecoveryEmail(): bool
+    {
+        return \App\Support\RecoveryEmail::verifiedFor($this) !== null;
     }
 
     /** هل لدى المستخدم رمز دخول سريع (٤ أرقام) */

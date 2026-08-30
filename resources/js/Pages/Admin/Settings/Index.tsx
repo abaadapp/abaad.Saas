@@ -38,6 +38,7 @@ import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
 import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
+import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -58,6 +59,7 @@ interface NotificationRow {
 interface Props {
     settings: Settings;
     business: { name: string; phone: string | null; email: string | null; address: string | null; logo: string | null };
+    recovery: Recovery;
     /** إعدادات الموقع والنطاق — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
     /** عدد المنتجات المعروضة على الموقع */
@@ -177,7 +179,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, site, published, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, business, recovery, site, published, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
@@ -981,6 +983,14 @@ export default function SettingsIndex() {
                                         <Textarea rows={2} value={form.data.address} onChange={(e) => form.setData('address', e.target.value)} />
                                     </Field>
                                 </div>
+
+                                {/*
+                                    بريد الاستعادة — من جنس ما فوقه: بيانٌ
+                                    يُضبط مرّةً عند التجهيز. ومكانُه هنا لا في
+                                    صفحةٍ جديدة، ولا يراه صاحبه إلا حيث يضبط
+                                    اسم متجره وهاتفه.
+                                */}
+                                <RecoveryEmailSection recovery={recovery} />
 
                                 {/*
                                     اللغة هنا لا في بطاقةٍ وحدها.

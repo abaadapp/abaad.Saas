@@ -16,8 +16,9 @@ interface Props {
 /**
  * «نسيت كلمة المرور» — بابٌ يفتحه صاحبه بنفسه.
  *
- * كان في الشاشة رابطُ بريدٍ إلى الدعم لا استعادةً فعلية، فحُذف. وهذا بديله:
- * رابطٌ يصل إلى بريد التواصل المسجَّل ويعمل بلا وسيط.
+ * حقلٌ واحد: اسم الدخول. ولا حقلَ لوجهة الإرسال — الرمز يذهب إلى بريد
+ * الاستعادة المختوم المحفوظ سلفًا، أو لا يذهب. فمن كتب وجهته بنفسه يُثبت
+ * أنّه يملك صندوقًا أنشأه قبل ثانية، لا أنّه يملك المتجر.
  */
 export default function ForgotPassword() {
     const { year, locale, errors, flash } = usePage<PageProps<Props>>().props;
@@ -32,7 +33,7 @@ export default function ForgotPassword() {
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
-        form.post(route('password.email'));
+        form.post(route('recovery.start'));
     };
 
     return (
@@ -48,7 +49,7 @@ export default function ForgotPassword() {
                     <Card className="p-7">
                         <h1 className="text-[17px] font-bold text-[#111]">{t('نسيت كلمة المرور')}</h1>
                         <p className="mt-1 text-[13px] text-[#9ca3af]">
-                            {t('أدخل بريد الدخول ونرسل لك رابط إعادة التعيين')}
+                            {t('أدخل بريد الدخول ونرسل رمز التحقق إلى بريد الاستعادة المسجّل')}
                         </p>
 
                         {/*
@@ -97,7 +98,7 @@ export default function ForgotPassword() {
                             </Field>
 
                             <Button type="submit" size="lg" className="w-full" loading={form.processing}>
-                                {t('إرسال رابط إعادة التعيين')}
+                                {t('إرسال رمز التحقق')}
                             </Button>
                         </form>
 

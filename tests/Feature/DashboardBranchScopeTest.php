@@ -6,7 +6,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Order;
 use App\Models\User;
-use App\Support\Demo;
+use App\Support\DashboardMetrics;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -61,24 +61,24 @@ class DashboardBranchScopeTest extends TestCase
         ]);
     }
 
-    public function test_sales_trend_follows_the_selected_branch(): void
+    public function test_dashboard_sales_trend_follows_the_selected_branch(): void
     {
         $this->sale($this->muscat, 101, 10, 'نقدي');
         $this->sale($this->salalah, 102, 90, 'بطاقة');
         session(['current_branch' => $this->muscat->id]);
 
-        $trend = Demo::salesTrend('year');
+        $trend = DashboardMetrics::salesYear();
 
         $this->assertSame(10.0, (float) array_sum(array_filter($trend['data'], fn ($v) => $v !== null)));
     }
 
-    public function test_payment_distribution_follows_the_selected_branch(): void
+    public function test_dashboard_payment_distribution_follows_the_selected_branch(): void
     {
         $this->sale($this->muscat, 201, 10, 'نقدي');
         $this->sale($this->salalah, 202, 90, 'بطاقة');
         session(['current_branch' => $this->muscat->id]);
 
-        $distribution = Demo::paymentDistribution('month');
+        $distribution = DashboardMetrics::paymentDistribution();
 
         $this->assertSame([__('نقدي')], $distribution['labels']);
         $this->assertSame([10.0], array_map('floatval', $distribution['series']));

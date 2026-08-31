@@ -93,7 +93,9 @@ class PurchaseRegisterController extends Controller
             'month' => $month,
             'months' => $this->months($bid),
             'suppliers' => Supplier::where('business_id', $bid)->orderBy('name')
-                ->get(['id', 'name'])->map(fn ($s) => ['value' => $s->id, 'label' => $s->name])->all(),
+                // بلغة الواجهة — القائمة تُقرأ، و`name` يبقى ما يُبحث به
+                ->get(['id', 'name', 'name_en'])
+                ->map(fn ($s) => ['value' => $s->id, 'label' => \App\Support\Demo::ln($s->name, $s->name_en)])->all(),
             'filters' => ['supplier' => $supplierId],
         ]);
     }

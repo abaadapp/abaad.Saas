@@ -75,6 +75,9 @@ export interface Employee {
 export interface Supplier {
     id: number;
     name: string;
+    /** الاسم اللاتينيّ إن وُجد — و`label` هو ما يُعرض بلغة الواجهة */
+    name_en?: string | null;
+    label?: string;
     phone: string;
     email: string;
     contact: string;

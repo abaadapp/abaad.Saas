@@ -1040,6 +1040,9 @@ class Demo
         return Supplier::where('business_id', self::bid())->withCount('purchaseOrders')->orderBy('name')->get()->map(fn ($s) => [
             'id' => $s->id,
             'name' => $s->name,
+            'name_en' => $s->name_en,
+            // ما يُعرض — ويبقى `name` هو ما يُبحث به ويُطبع في أمر الشراء
+            'label' => self::ln($s->name, $s->name_en),
             'phone' => $s->phone,
             'email' => $s->email,
             'contact' => $s->contact_person,

@@ -88,9 +88,10 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            // لا name_en هنا: Customers::localizeName هو من يملأه من الاسم
-            // نفسه، فأي قيمة واردة تُكتب فوقها.
             'name' => ['required', 'string', 'max:255'],
+            // مكتوبًا بيدٍ يعلو على النقل الآليّ: النقل تخمينٌ يصيب ويخطئ،
+            // ومن كتب اسمه بنفسه أعلمُ بكتابته — انظر LocalName::apply
+            'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => \App\Support\Customers::phoneRule($this->bid()),
             'email' => ['nullable', 'email'],
             'tax_number' => ['nullable', 'string', 'max:50'],
@@ -128,6 +129,7 @@ class CustomerController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             // يتجاوز نفسه: وإلّا لرفض حفظَ عميلٍ لم يُغيَّر رقمه
             'phone' => \App\Support\Customers::phoneRule($this->bid(), $customer->id),
             'email' => ['nullable', 'email'],

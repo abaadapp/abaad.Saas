@@ -64,6 +64,7 @@ export default function CustomerShow() {
      */
     const edit = useForm({
         name: customer.name ?? '',
+        name_en: customer.name_en ?? '',
         phone: customer.phone ?? '',
         email: customer.email ?? '',
         branch_id: customer.branch_id ? String(customer.branch_id) : '',
@@ -418,6 +419,19 @@ export default function CustomerShow() {
                     >
                         <Field label="اسم العميل" required error={edit.errors.name}>
                             <Input value={edit.data.name} onChange={(e) => edit.setData('name', e.target.value)} required />
+                        </Field>
+                        {/* يُكتب بيدٍ حين لا يُشتقّ: الاسم اللاتينيّ يُنقل إلى
+                            العربية تلقائيًّا، أمّا العربيّ فلا صورة له تُخمَّن */}
+                        <Field
+                            label="الاسم بالإنجليزية (اختياري)"
+                            hint="يظهر عند تشغيل الواجهة بالإنجليزية"
+                            error={edit.errors.name_en}
+                        >
+                            <Input
+                                dir="ltr"
+                                value={edit.data.name_en}
+                                onChange={(e) => edit.setData('name_en', e.target.value)}
+                            />
                         </Field>
                         <Field
                             label="رقم الهاتف"

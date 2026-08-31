@@ -25,6 +25,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'claude:ready'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,19 +42,25 @@ jobs:
             echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Mark task as running
+      - name: Start task
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        shell: bash
         run: |
-          gh issue edit "$ISSUE_NUMBER" --remove-label "claude:ready" --add-label "claude:running" || true
+          set -euo pipefail
+          gh issue edit "$ISSUE_NUMBER" --remove-label "claude:ready" || true
+
+          BODY="$(gh issue view "$ISSUE_NUMBER" --json body --jq .body)"
+          UPDATED_BODY="$(printf '%s' "$BODY" | python3 -c 'import sys,re; s=sys.stdin.read(); print(re.sub(r"(?m)(^### Status\s*\n)[^\n]+", r"\1In Progress", s, count=1), end="")')"
+          gh issue edit "$ISSUE_NUMBER" --body "$UPDATED_BODY"
 
       - name: Execute task with Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ github.token }}
           prompt: |
             Work on GitHub issue #${{ steps.issue.outputs.number }} in this repository.
             Read the entire issue first. The issue is the canonical task specification.
@@ -72,21 +79,28 @@ jobs:
             - Review the final diff for unintended changes and merge-conflict risk.
             - Push commits and create or update a PR targeting main.
             - In the PR body reference the issue with "Closes #${{ steps.issue.outputs.number }}".
-            - Update the issue with the final branch, PR URL, test result and concise implementation summary.
+            - Update the issue with the final Branch, GitHub PR URL, test result and concise implementation summary.
             - Finish at review-ready state only. Do not merge.
 
-      - name: Mark successful execution
+      - name: Mark task in review
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        shell: bash
         run: |
-          gh issue edit "$ISSUE_NUMBER" --remove-label "claude:running" --add-label "claude:review" || true
+          set -euo pipefail
+          BODY="$(gh issue view "$ISSUE_NUMBER" --json body --jq .body)"
+          UPDATED_BODY="$(printf '%s' "$BODY" | python3 -c 'import sys,re; s=sys.stdin.read(); print(re.sub(r"(?m)(^### Status\s*\n)[^\n]+", r"\1In Review", s, count=1), end="")')"
+          gh issue edit "$ISSUE_NUMBER" --body "$UPDATED_BODY"
 
-      - name: Mark failed execution
+      - name: Mark task blocked on failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        shell: bash
         run: |
-          gh issue edit "$ISSUE_NUMBER" --remove-label "claude:running" --add-label "claude:failed" || true
+          BODY="$(gh issue view "$ISSUE_NUMBER" --json body --jq .body)"
+          UPDATED_BODY="$(printf '%s' "$BODY" | python3 -c 'import sys,re; s=sys.stdin.read(); print(re.sub(r"(?m)(^### Status\s*\n)[^\n]+", r"\1Blocked", s, count=1), end="")')"
+          gh issue edit "$ISSUE_NUMBER" --body "$UPDATED_BODY" || true

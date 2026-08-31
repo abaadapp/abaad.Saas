@@ -68,6 +68,8 @@ class Lexicon
         // العناية والمستلزمات
         'سماد' => 'Fertiliser', 'تربة' => 'Soil', 'أصيص' => 'Pot', 'أصص' => 'Pots',
         'ماء' => 'Water', 'رذاذ' => 'Spray', 'مقص' => 'Shears', 'أدوات' => 'Tools',
+        'مرشّة' => 'Mister', 'مرشة' => 'Mister', 'إكليل' => 'Wreath', 'أكاليل' => 'Wreaths',
+        'فواكه' => ['Fruit', 'Fruit'], 'فاكهة' => 'Fruit',
 
         // المناسبات
         'ميلاد' => 'Birthday', 'زواج' => 'Wedding', 'خطوبة' => 'Engagement',
@@ -111,6 +113,8 @@ class Lexicon
         'مشكّلة' => 'Assorted', 'مشكلة' => 'Assorted', 'متنوّع' => 'Assorted', 'متنوع' => 'Assorted',
         'فخم' => 'Luxury', 'فخمة' => 'Luxury', 'طبيعي' => 'Natural', 'طبيعية' => 'Natural',
         'صناعي' => 'Artificial', 'صناعية' => 'Artificial', 'يدوي' => 'Handmade', 'يدوية' => 'Handmade',
+        'زراعية' => 'Potting', 'زراعي' => 'Potting', 'زينة' => 'Ornamental', 'معطّرة' => 'Scented', 'معطرة' => 'Scented',
+        'معطّر' => 'Scented', 'معطر' => 'Scented', 'ملكي' => 'Royal', 'ملكية' => 'Royal',
     ];
 
     /** حروف الوصل — تقسم العبارة ولا تُعدّ لفظًا مجهولًا */
@@ -153,6 +157,19 @@ class Lexicon
 
             if (isset(self::JOINERS[$bare])) {
                 $segments[] = [];
+
+                continue;
+            }
+
+            /*
+             * الرقم يمرّ كما هو ولا يُعدّ مجهولًا.
+             *
+             * «باقة ورد أحمر 15» رقمُها تسلسلٌ أو مقاسٌ لا لغة له، ورفضُ
+             * العبارة لأجله يترك مئةَ صنفٍ بلا ترجمة لسببٍ لا علاقة له
+             * باللغة.
+             */
+            if (preg_match('/^[0-9٠-٩]+$/u', $bare)) {
+                $segments[count($segments) - 1][] = ['kind' => 'tail', 'head' => $bare, 'attr' => $bare];
 
                 continue;
             }
@@ -204,15 +221,24 @@ class Lexicon
     {
         $adjectives = [];
         $nouns = [];
+        $tail = [];
 
         foreach ($pieces as $piece) {
-            if ($piece['kind'] === 'adj') {
-                $adjectives[] = $piece['head'];
-            } else {
-                $nouns[] = $piece;
-            }
+            match ($piece['kind']) {
+                'adj' => $adjectives[] = $piece['head'],
+                'tail' => $tail[] = $piece['head'],
+                default => $nouns[] = $piece,
+            };
         }
 
+        /*
+         * والأوصاف تُقلَب هي أيضًا.
+         *
+         * العربية تُلحق الأقربَ وصفًا بالموصوف أوّلًا: «تربة زراعية حمراء»
+         * — الوظيفة ثمّ اللون. والإنجليزية تعكس الترتيب: اللونُ يسبق
+         * الوظيفة، فتُقال «red potting soil» لا «potting red soil».
+         */
+        $adjectives = array_reverse($adjectives);
         $nouns = array_reverse($nouns);
         $words = $adjectives;
 
@@ -221,7 +247,7 @@ class Lexicon
             $words[] = $i === count($nouns) - 1 ? $noun['head'] : $noun['attr'];
         }
 
-        return implode(' ', $words);
+        return implode(' ', array_merge($words, $tail));
     }
 
     /**

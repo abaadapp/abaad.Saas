@@ -54,6 +54,44 @@ class LexiconTest extends TestCase
         $this->assertSame('Premium chocolate box', Lexicon::translate('علبة شوكولاتة فاخرة'));
     }
 
+    /**
+     * والأوصاف تُقلَب هي أيضًا.
+     *
+     * العربية تُلحق الأقربَ وصفًا بالموصوف أوّلًا — الوظيفة ثمّ اللون؛
+     * والإنجليزية تعكسه فيسبق اللونُ الوظيفة.
+     */
+    public function test_two_adjectives_come_out_in_english_order(): void
+    {
+        $this->assertSame('Red potting soil', Lexicon::translate('تربة زراعية حمراء'));
+        $this->assertSame('Red scented candle', Lexicon::translate('شمعة معطّرة حمراء'));
+    }
+
+    /**
+     * والرقم يمرّ كما هو.
+     *
+     * «باقة ورد أحمر ١٥» رقمُها تسلسلٌ لا لغة له، ورفضُ العبارة لأجله
+     * يترك مئةَ صنفٍ بلا ترجمة لسببٍ لا علاقة له باللغة.
+     */
+    public function test_a_trailing_number_passes_through_untouched(): void
+    {
+        $this->assertSame('Red rose bouquet 15', Lexicon::translate('باقة ورد أحمر 15'));
+        $this->assertSame('White ornamental plant 21', Lexicon::translate('نبتة زينة أبيض 21'));
+    }
+
+    /**
+     * والاسمُ الشاعريّ يبقى كما هو — وهو الصواب.
+     *
+     * «شمس الورد» و«لؤلؤة التوليب» أسماءُ أصنافٍ اختارها صاحبُ المحلّ،
+     * وترجمتُها لفظًا بلفظٍ تعطي «Rose sun» — عبارةٌ لا يقصدها ولا يعرفها
+     * زبونُه. فتبقى كما سُمّيت.
+     */
+    public function test_a_poetic_product_name_is_left_as_the_shop_named_it(): void
+    {
+        foreach (['شمس الورد', 'لؤلؤة التوليب', 'غيمة وردية', 'باقة همس الربيع'] as $name) {
+            $this->assertNull(Lexicon::translate($name), $name);
+        }
+    }
+
     /** والاسمُ يُفرَد حين يصف غيره: «باقة ورد» لا تُقال «Roses bouquet» */
     public function test_a_noun_used_as_a_modifier_is_singular(): void
     {

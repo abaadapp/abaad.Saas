@@ -439,6 +439,9 @@ class DemoSeeder extends Seeder
                 ['code' => 'WELCOME10', 'type' => 'نسبة', 'value' => 10, 'min_order' => 5, 'max_uses' => 100, 'used_count' => 12],
                 ['code' => 'SUMMER5', 'type' => 'مبلغ', 'value' => 5, 'min_order' => 20, 'max_uses' => null, 'used_count' => 4],
                 ['code' => 'VIP20', 'type' => 'نسبة', 'value' => 20, 'min_order' => 50, 'max_uses' => 30, 'used_count' => 0],
+                ['code' => 'DEMO15', 'type' => 'نسبة', 'value' => 15, 'min_order' => 10, 'max_uses' => 75, 'used_count' => 0],
+                ['code' => 'SAVE3', 'type' => 'مبلغ', 'value' => 3, 'min_order' => 15, 'max_uses' => 50, 'used_count' => 0],
+                ['code' => 'WEEKEND25', 'type' => 'نسبة', 'value' => 25, 'min_order' => 100, 'max_uses' => 20, 'used_count' => 0],
             ];
             foreach ($coupons as $cp) {
                 \App\Models\Coupon::create(array_merge($cp, [

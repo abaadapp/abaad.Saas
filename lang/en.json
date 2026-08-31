@@ -3507,5 +3507,11 @@
     "سعر الإضافة رقمٌ.": "The add-on price must be a number.",
     "الكمية المستهلكة": "Quantity used",
     "نعم، مرتبطة بصنف": "Yes, tied to a stock item",
-    "منها ملغاة": "Of which cancelled"
+    "منها ملغاة": "Of which cancelled",
+    "اربط ملف نشاطك التجاري في Google للوصول إلى التقييمات": "Connect your Google Business profile to reach your reviews",
+    "ربط تقييمات Google Maps": "Connect Google Maps reviews",
+    "هذا الرقم مسجَّل لعميل محذوف: «:name» — استعِده من الإعدادات ← المحذوفات.": "This number belongs to a deleted customer (:name) — restore them from Settings → Trash.",
+    "الاسم أطول من ٢٥٥ حرفًا — يُتجاهل": "Name longer than 255 characters — skipped",
+    "رقمه مسجَّل لعميل محذوف — استعِده من المحذوفات أولًا": "Number belongs to a deleted customer — restore them from Trash first",
+    "ليس لديك صلاحية للمحو النهائي — وهو في الإعدادات.": "You do not have permission to erase permanently — that lives in Settings."
 }

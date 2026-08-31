@@ -208,6 +208,23 @@ class TrashController extends Controller
             : $row->name;
     }
 
+    /**
+     * المحو النهائي قرارُ صاحب المتجر وحده.
+     *
+     * كلّ زرٍّ هنا يتبع قسم صفِّه: `admin.customers.purge` قسمُه «العملاء»،
+     * و`admin.products.purge` قسمُه «المنتجات». والاستعادة تُراد كذلك — زرّ
+     * «تراجع» في إشعار الحذف يردّ ما حذفه صاحبُه من مكانه، ولو تبع الإعدادات
+     * لظهر الزرّ ثمّ رُدَّ ٤٠٣.
+     *
+     * أمّا المحو فلا زرّ تراجع بعده ولا شاشة له إلا المحذوفات — وهي في
+     * الإعدادات. فكان البائع يملك «العملاء»، ولا يرى تلك الشاشة، ويستطيع مع
+     * ذلك محوَ عميلٍ محوًا لا رجعة فيه بمسارٍ لم يُعرض له قطّ.
+     */
+    private static function gate(): void
+    {
+        abort_unless(auth()->user()?->allows('settings'), 403, __('ليس لديك صلاحية للمحو النهائي — وهو في الإعدادات.'));
+    }
+
     /** يردّ صفًّا مخفيًّا */
     public function restore(Request $request, int $id)
     {
@@ -245,6 +262,7 @@ class TrashController extends Controller
      */
     public function purge(Request $request, int $id)
     {
+        self::gate();
         $type = self::typeOf($request);
 
         // لا مسار محوٍ للفرع أصلًا، والحارس هنا كي لا يُفتح واحدٌ سهوًا

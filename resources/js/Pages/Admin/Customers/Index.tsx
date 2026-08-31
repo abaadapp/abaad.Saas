@@ -21,6 +21,7 @@ import {
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
+import { withFilters } from '@/lib/exportLink';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -183,19 +184,19 @@ export default function CustomersIndex() {
                             <DropdownMenuContent align="end" className="w-60">
                                 <DropdownMenuLabel>{t('تصدير')}</DropdownMenuLabel>
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.customers.export.xlsx')}>
+                                    <a href={withFilters(route('admin.customers.export.xlsx'))}>
                                         <FileSpreadsheet className="text-[#059669]" />
                                         {t('تصدير Excel (xlsx)')}
                                     </a>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.customers.export.pdf')} target="_blank" rel="noreferrer">
+                                    <a href={withFilters(route('admin.customers.export.pdf'))} target="_blank" rel="noreferrer">
                                         <FileText className="text-[#dc2626]" />
                                         {t('تصدير PDF')}
                                     </a>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.export.customers')}>
+                                    <a href={withFilters(route('admin.export.customers'))}>
                                         <FileDown className="text-[#6b7280]" />
                                         {t('تصدير CSV')}
                                     </a>

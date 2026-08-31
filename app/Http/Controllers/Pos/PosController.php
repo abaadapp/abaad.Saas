@@ -1163,8 +1163,6 @@ class PosController extends Controller
             'phone' => \App\Support\Customers::phoneRule($this->bid()),
             'email' => ['nullable', 'email'],
             'tax_number' => ['nullable', 'string', 'max:50'],
-        ], [
-            'phone.unique' => __('هذا الرقم مسجَّل لعميل آخر — نقاط الولاء تتبع الرقم.'),
         ]);
         $data['business_id'] = $this->bid();
         $data = \App\Support\Customers::localizeName($data);

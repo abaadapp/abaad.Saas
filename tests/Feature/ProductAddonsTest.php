@@ -560,4 +560,43 @@ class ProductAddonsTest extends TestCase
 
         $this->assertSame(1, Addon::where('id', $ribbon->id)->count());
     }
+    /**
+     * شاشةُ البيع لا تعرض على منتجٍ إضافةَ جاره.
+     *
+     * كانت تُرسل خريطة الربط الخام، وغيابُ الربط يُقرأ في الشاشة «كلّ
+     * إضافات المتجر». وإضافةُ المنتج الخاصّة لا صفَّ ربطٍ لها، فكانت
+     * تُعرض مع كلّ منتج — عكسُ معناها. والخادم يردّها عند الدفع، لكنّ
+     * الكاشير يكون قد عرضها على الزبون.
+     */
+    public function test_the_pos_screen_offers_a_private_addon_only_with_its_product(): void
+    {
+        $ribbon = Addon::create([
+            'business_id' => $this->business->id, 'product_id' => $this->bouquet->id,
+            'name' => 'شريط ذهبي', 'price' => 0.5, 'active' => true,
+        ]);
+
+        $fertiliser = Product::create([
+            'business_id' => $this->business->id, 'name' => 'كيس سماد',
+            'price' => 2, 'cost' => 1, 'quantity' => 20, 'active' => true,
+        ]);
+
+        $this->actingAs($this->owner);
+        $rows = collect(\App\Support\Demo::products())->keyBy('id');
+
+        $this->assertContains($ribbon->id, $rows[$this->bouquet->id]['addon_ids']);
+        $this->assertNotContains($ribbon->id, $rows[$fertiliser->id]['addon_ids']);
+
+        // وإضافةُ المتجر تبقى معروضةً مع الاثنين
+        $this->assertContains($this->wrapService->id, $rows[$this->bouquet->id]['addon_ids']);
+        $this->assertContains($this->wrapService->id, $rows[$fertiliser->id]['addon_ids']);
+    }
+
+    /** ومنتجٌ لم يُربط له شيء يبقى يعرض إضافات المتجر كلّها */
+    public function test_an_unlinked_product_still_offers_every_shop_addon(): void
+    {
+        $this->actingAs($this->owner);
+        $ids = collect(\App\Support\Demo::products())->firstWhere('id', $this->bouquet->id)['addon_ids'];
+
+        $this->assertEqualsCanonicalizing([$this->chocolate->id, $this->wrapService->id], $ids);
+    }
 }

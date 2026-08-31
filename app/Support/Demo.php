@@ -755,10 +755,11 @@ class Demo
         $variants = \App\Models\ProductVariant::where('business_id', self::bid())
             ->where('active', true)->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
         $addonMap = \App\Support\ProductAddons::map(self::bid());
+        $allAddons = \App\Models\Addon::where('business_id', self::bid())->orderBy('id')->get();
         $recipeOwners = \App\Models\RecipeItem::where('business_id', self::bid())->distinct()->pluck('product_id')
             ->flip()->all();
 
-        return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $recipeOwners) {
+        return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners) {
             $qty = $branchId ? $available($p->id, (int) $p->quantity) : (int) $p->quantity;
 
             return [
@@ -799,9 +800,19 @@ class Demo
                     'price' => (float) $v->price,
                     'sku' => $v->sku,
                 ])->values()->all(),
-                // معرّفات الإضافات المسموحة — والفراغ يعني «كلّها»، وهو سلوك
-                // ما قبل الربط. انظر ProductAddons.
-                'addon_ids' => $addonMap[$p->id] ?? null,
+                /*
+                 * معرّفات الإضافات المسموحة — قائمةٌ صريحة لا «فراغٌ يعني الكلّ».
+                 *
+                 * كانت تُرسل خريطة الربط الخام، وغيابُ الربط يُقرأ في الشاشة
+                 * «كلّ إضافات المتجر». وإضافةُ منتجٍ خاصّة لا صفَّ ربطٍ لها،
+                 * فكانت تُعرض مع كلّ منتج — عكسُ معناها تمامًا. الخادم كان
+                 * يردّها عند الدفع (ProductAddons::allows)، لكنّ الكاشير
+                 * يعرضها على الزبون ثمّ يُرفض.
+                 *
+                 * والقاعدة واحدة للشاشة والخادم: ProductAddons::for.
+                 */
+                'addon_ids' => \App\Support\ProductAddons::for($p, $allAddons, $addonMap)
+                    ->pluck('id')->map(fn ($i) => (int) $i)->all(),
                 // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — تقرؤه الشاشة كي لا
                 // تحذّر من نفادِ باقةٍ لا يُخصم رصيدها أصلًا
                 'has_recipe' => isset($recipeOwners[$p->id]),

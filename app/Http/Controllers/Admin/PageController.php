@@ -57,10 +57,17 @@ class PageController extends Controller
         $product = Demo::product($id);
         abort_if(empty($product), 404);
 
+        // التركيب لا يُعرض إلا لمنتجٍ محفوظ: مقاسٌ ووصفةٌ لمنتجٍ لم يُنشأ بعد
+        // لا موضع لهما — ولا معرّف يُعلَّقان به
+        $model = \App\Models\Product::where('business_id', auth()->user()->business_id ?? Demo::bid())->find($id);
+
         return Inertia::render('Admin/Products/Edit', [
             'product' => $product,
             'categories' => Demo::categories(),
             'description' => $product['description'] ?? '',
+            'composition' => $model
+                ? \App\Http\Controllers\Admin\ProductCompositionController::payload($model)
+                : null,
         ]);
     }
 

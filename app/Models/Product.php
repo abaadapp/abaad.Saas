@@ -17,6 +17,25 @@ class Product extends Model
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
     public function category(): BelongsTo { return $this->belongsTo(Category::class); }
 
+    /** مقاسات هذا المنتج — الفارغة تعني منتجًا بسيطًا يُباع بسعره */
+    public function variants(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ProductVariant::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /** مكوّناته ومكوّنات مقاساته جميعًا — التصفية على المقاس في Recipe */
+    public function recipeItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(RecipeItem::class);
+    }
+
+    /** الإضافات المسموحة معه — الفارغة تعني «كلّ إضافات المتجر» لا «لا شيء» */
+    public function allowedAddons(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Addon::class, 'product_addons')
+            ->withPivot('sort_order')->withTimestamps();
+    }
+
     /** بنود الطلبات التي بيع فيها — يقرؤها مرشّح «الراكد» */
     public function orderItems(): \Illuminate\Database\Eloquent\Relations\HasMany
     {

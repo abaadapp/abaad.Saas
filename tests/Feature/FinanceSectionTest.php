@@ -209,7 +209,15 @@ class FinanceSectionTest extends TestCase
 
         $this->post(route('admin.finance.assets.store'), array_merge([
             'name' => 'ثلاجة عرض',
-            'purchased_at' => now()->subMonths(2)->startOfMonth()->toDateString(),
+            /*
+             * أوّل الشهر ثم الطرح — لا العكس.
+             *
+             * `now()->subMonths(2)` يفيض في اليوم ٣١: ٣١ أغسطس ناقص شهرين
+             * تصير أوّل يوليو لا أوّل يونيو، فيصير الأصل ابنَ شهرين لا ثلاثة
+             * ويسقط الاختبار في ثلاثة أيّامٍ من كلّ شهر. والتثبيت على أوّل
+             * الشهر أوّلًا يجعل الحساب لا يعتمد على تاريخ التشغيل إطلاقًا.
+             */
+            'purchased_at' => now()->startOfMonth()->subMonths(2)->toDateString(),
             'cost' => 1200,
             'salvage_value' => 0,
             'life_months' => 12,

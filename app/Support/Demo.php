@@ -724,6 +724,8 @@ class Demo
     {
         return \App\Models\Addon::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($a) => [
             'id' => $a->id,
+            // للشاشة كي تعرف أنّ هذه الإضافة تنقص من الرفّ — لا لتحسبها
+            'inventory_product_id' => $a->inventory_product_id,
             'name' => $a->name,
             'name_en' => $a->name_en,
             'label' => self::ln($a->name, $a->name_en),
@@ -744,7 +746,19 @@ class Demo
     {
         $available = Stock::availabilityResolver(self::bid(), $branchId);
 
-        return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(function ($p) use ($branchId, $available) {
+        /*
+         * المقاسات والإضافات المسموحة تُحمَّل مرّةً للشاشة كلّها.
+         *
+         * استعلامان لا استعلامان في كلّ منتج: شاشةُ بيعٍ فيها مئتا صنف كانت
+         * ستُطلق أربعمئة استعلامٍ قبل أن تُرسم.
+         */
+        $variants = \App\Models\ProductVariant::where('business_id', self::bid())
+            ->where('active', true)->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
+        $addonMap = \App\Support\ProductAddons::map(self::bid());
+        $recipeOwners = \App\Models\RecipeItem::where('business_id', self::bid())->distinct()->pluck('product_id')
+            ->flip()->all();
+
+        return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $recipeOwners) {
             $qty = $branchId ? $available($p->id, (int) $p->quantity) : (int) $p->quantity;
 
             return [
@@ -771,6 +785,26 @@ class Demo
                  * أن تُشتقّ بقاعدتين.
                  */
                 'tax' => \App\Support\Vat::rateFor($p, self::bid()),
+                /*
+                 * المقاسات — الفعّالة منها وحدها.
+                 *
+                 * منتجٌ له مقاسات لا يدخل السلّة بضغطةٍ واحدة: الخادم يرفضه
+                 * بلا مقاس، فالشاشة تسأل قبل أن تُضيف. والقائمة الفارغة تعني
+                 * منتجًا بسيطًا يُباع كما كان.
+                 */
+                'variants' => ($variants[$p->id] ?? collect())->map(fn ($v) => [
+                    'id' => $v->id,
+                    'name' => $v->name,
+                    'label' => self::ln($v->name, $v->name_en),
+                    'price' => (float) $v->price,
+                    'sku' => $v->sku,
+                ])->values()->all(),
+                // معرّفات الإضافات المسموحة — والفراغ يعني «كلّها»، وهو سلوك
+                // ما قبل الربط. انظر ProductAddons.
+                'addon_ids' => $addonMap[$p->id] ?? null,
+                // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — تقرؤه الشاشة كي لا
+                // تحذّر من نفادِ باقةٍ لا يُخصم رصيدها أصلًا
+                'has_recipe' => isset($recipeOwners[$p->id]),
                 'discount' => (float) $p->discount,
             ];
         })->all();
@@ -796,7 +830,7 @@ class Demo
     /** تفاصيل طلب كامل بأصنافه الحقيقية (حسب رقم الطلب) */
     public static function orderDetails($number): array
     {
-        $o = Order::where('business_id', self::bid())->where('number', $number)->with('items')->first();
+        $o = Order::where('business_id', self::bid())->where('number', $number)->with('items.addons')->first();
         if (! $o) {
             return [];
         }
@@ -804,10 +838,15 @@ class Demo
         $items = $o->items->map(fn ($it) => [
             'id' => $it->id,
             'product_id' => $it->product_id,
-            'name' => $it->name,
+            'name' => $it->displayName(),
             'price' => (float) $it->price,
             'qty' => (int) $it->quantity,
-            'total' => (float) $it->total,
+            'total' => $it->lineTotal(),
+            'addons' => $it->addons->map(fn ($a) => [
+                'name' => $a->name,
+                'qty' => (int) $a->quantity,
+                'total' => (float) $a->total,
+            ])->all(),
         ])->all();
 
         return [
@@ -2504,7 +2543,7 @@ class Demo
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
             // وردية بعينها: شاشة تقفيل الصندوق تسأل عن درجٍ واحد لا عن آخر ٣٠ بيعة
             ->when($shiftId, fn ($q) => $q->where('shift_id', $shiftId))
-            ->with('items');
+            ->with('items.addons');
 
         $term = $search !== null ? trim($search) : '';
         if ($term !== '') {
@@ -2533,11 +2572,18 @@ class Demo
                 'time' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
                 'employee' => $o->employee_name ?? '—',
                 'lines' => $o->items->map(fn ($it) => [
-                    'name' => $it->name,
+                    // الاسم بمقاسه من لقطة البند لا من علاقةٍ حيّة: مقاسٌ
+                    // أُعيد تسميته لا يُغيّر فاتورةً طُبعت — انظر OrderItem::displayName
+                    'name' => $it->displayName(),
                     'qty' => $it->quantity,
                     'price' => (float) $it->price,
-                    'total' => (float) $it->total,
+                    'total' => $it->lineTotal(),
                     'note' => $it->note,
+                    'addons' => $it->addons->map(fn ($a) => [
+                        'name' => $a->name,
+                        'qty' => (int) $a->quantity,
+                        'total' => (float) $a->total,
+                    ])->all(),
                 ])->all(),
             ])->all();
     }

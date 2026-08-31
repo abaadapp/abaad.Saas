@@ -301,6 +301,20 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/products/{id}/edit', [\App\Http\Controllers\Admin\PageController::class, 'productsEdit'])->name('products.edit');
     Route::put('/products/{id}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
+
+    /*
+     * تركيب المنتج: مقاساتُه ووصفتُه وإضافاتُه.
+     *
+     * تحت `/products/{id}` عمدًا: الحارس يشتقّ القسم من اسم المسار، فتقع
+     * كلّها تحت صلاحية «المنتجات» بلا صلاحيةٍ جديدة تُخترع.
+     */
+    Route::post('/products/{id}/variants', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'storeVariant'])->name('products.variants.store');
+    Route::put('/products/{id}/variants/{variant}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'updateVariant'])->name('products.variants.update');
+    Route::delete('/products/{id}/variants/{variant}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'destroyVariant'])->name('products.variants.destroy');
+    Route::post('/products/{id}/recipe', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'storeRecipeItem'])->name('products.recipe.store');
+    Route::put('/products/{id}/recipe/{item}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'updateRecipeItem'])->name('products.recipe.update');
+    Route::delete('/products/{id}/recipe/{item}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'destroyRecipeItem'])->name('products.recipe.destroy');
+    Route::put('/products/{id}/addons', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'syncAddons'])->name('products.addons.sync');
     Route::post('/products/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
         ->defaults('type', 'product')->name('products.restore');
     // المحو النهائي يتبع صلاحية الحذف نفسها: من أخفاه يمحوه، ولا أحد سواه
@@ -597,6 +611,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // والتصدير يتبع الفترة المعروضة — ملفٌّ يحمل غير ما على الشاشة يُقرأ خطأً
     Route::get('/reports/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'xlsx'])->name('reports.xlsx');
     Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'salesReport'])->name('reports.pdf');
+    /*
+     * تحليلات الهالك.
+     *
+     * تحت `reports` لا تحت `inventory` كي يقيسها حارس المسار بصلاحية
+     * التقارير — وهي قراءةٌ لا كتابة. ومن يملك المخزون يملك تسجيل الهالك
+     * من شاشته، ومن يملك التقارير يقرأ أثره.
+     */
+    Route::get('/reports/waste', [\App\Http\Controllers\Admin\WasteAnalyticsController::class, 'index'])->name('reports.waste');
 
     Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'adminIndex'])->name('activity.index');
     Route::get('/settings', [\App\Http\Controllers\Admin\PageController::class, 'settingsIndex'])->name('settings.index');

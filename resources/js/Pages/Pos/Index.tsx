@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import PosLayout from '@/Layouts/PosLayout';
 import NewCustomerDialog from '@/Pages/Pos/partials/NewCustomerDialog';
 import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDialog';
+import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -137,6 +138,33 @@ export default function PosIndex() {
         })} ${currency.symbol || currency.code}`;
 
     const activeAddons = useMemo(() => addons.filter((a) => a.active), [addons]);
+
+    /*
+     * المنتج البسيط يدخل السلّة بنقرة، وذو الخيارات يُسأل.
+     *
+     * نافذةٌ تقفز عند كلّ ضغطة تجعل الكاشير يغلقها بلا قراءة — فتفقد
+     * الإضافات معناها. فلا تُفتح إلا لمن له مقاسٌ أو إضافةٌ مسموحة فعلًا.
+     */
+    const [optionsFor, setOptionsFor] = useState<(typeof products)[number] | null>(null);
+
+    const pick = (p: (typeof products)[number]) => {
+        const allowed = activeAddons.filter((a) => p.addon_ids == null || p.addon_ids.includes(a.id));
+        const needsChoice = (p.variants?.length ?? 0) > 0 || allowed.length > 0;
+
+        if (needsChoice) {
+            setOptionsFor(p);
+
+            return;
+        }
+
+        cart.add({
+            key: `p${p.id}`, id: p.id, name: p.label, price: p.price,
+            image: p.image,
+            // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها
+            stock: p.has_recipe ? null : p.qty,
+            tax: p.tax,
+        });
+    };
 
     const visibleProducts = useMemo(() => {
         const needle = q.trim();
@@ -283,7 +311,7 @@ export default function PosIndex() {
                                         key={p.id}
                                         type="button"
                                         onClick={() =>
-                                            cart.add({ key: `p${p.id}`, id: p.id, name: p.label, price: p.price, image: p.image, stock: p.qty, tax: p.tax })
+                                            pick(p)
                                         }
                                         className="group select-none overflow-hidden rounded-2xl border border-gray-100 bg-white text-start shadow-sm transition-[border-color,box-shadow] hover:border-gray-300 hover:shadow-md"
                                     >
@@ -443,6 +471,14 @@ export default function PosIndex() {
                                                 <div className="min-w-0 flex-1">
                                                     <p className="truncate text-sm font-semibold text-gray-800">{item.name}</p>
                                                     <p className="text-xs font-medium text-gray-900">{money(item.price)}</p>
+                                                    {/* الإضافات تحت بندها لا كسطورٍ منفصلة: الكاشير يقرأ
+                                                        «بوكيه + شوكولاتة» بندًا واحدًا كما يقرؤه الزبون */}
+                                                    {(item.addons ?? []).map((a) => (
+                                                        <p key={a.addon_id} className="text-[11px] text-[#7c3aed]">
+                                                            + {a.name}
+                                                            {a.qty > 1 && ` ×${a.qty}`} · {money(a.price * a.qty)}
+                                                        </p>
+                                                    ))}
                                                     {cart.overStock(item) && (
                                                         <p className="mt-0.5 text-[11px] font-bold text-[#dc2626]">
                                                             {item.stock! <= 0
@@ -470,7 +506,14 @@ export default function PosIndex() {
                                                         <Plus className="size-4" />
                                                     </button>
                                                 </div>
-                                                <p className="text-sm font-bold text-gray-800">{money(item.price * item.qty)}</p>
+                                                {/* ثمن البند كاملًا: سعره في كميّته وإضافاته — وهو ما
+                                                    يجمعه المجموع الفرعيّ في الخادم أيضًا */}
+                                                <p className="text-sm font-bold text-gray-800">
+                                                    {money(
+                                                        item.price * item.qty +
+                                                            (item.addons ?? []).reduce((s, a) => s + a.price * a.qty, 0),
+                                                    )}
+                                                </p>
                                             </div>
 
                                             <Input
@@ -704,6 +747,38 @@ export default function PosIndex() {
                 orderOptions={orderOptions}
                 onCheckout={cart.checkoutSale}
                 onNewOrder={() => { cart.clear(); toast.success(t('طلب جديد جاهز')); }}
+            />
+
+            <ItemOptionsDialog
+                product={optionsFor}
+                addons={activeAddons}
+                money={money}
+                onClose={() => setOptionsFor(null)}
+                onConfirm={(choice) => {
+                    const p = optionsFor!;
+                    /*
+                     * المفتاح يحمل المقاس والإضافات.
+                     *
+                     * «بوكيه وسط + شوكولاتة» و«بوكيه وسط» بندان مختلفان: ضمُّهما
+                     * تحت مفتاحٍ واحد كان سيُضيف شوكولاتةً لمن لم يطلبها حين
+                     * يضغط الكاشير المنتج مرّةً ثانية.
+                     */
+                    const signature = choice.addons.map((a) => `${a.addon_id}x${a.qty}`).sort().join(',');
+
+                    cart.add({
+                        key: `p${p.id}:v${choice.variantId ?? 0}:${signature}`,
+                        id: p.id,
+                        variant_id: choice.variantId,
+                        variant_name: choice.variantName,
+                        addons: choice.addons,
+                        name: choice.variantName ? `${p.label} — ${choice.variantName}` : p.label,
+                        price: choice.price,
+                        image: p.image,
+                        stock: p.has_recipe ? null : p.qty,
+                        tax: p.tax,
+                    });
+                    setOptionsFor(null);
+                }}
             />
 
             <NewCustomerDialog

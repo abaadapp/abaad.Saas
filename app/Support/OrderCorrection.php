@@ -67,6 +67,8 @@ class OrderCorrection
             self::moveStock($order, $item, $oldQty - $newQty);
 
             if ($newQty === 0) {
+                $item->loadMissing('addons.addon');
+                self::releaseAddons($order, $item);
                 $item->delete();
             } else {
                 $item->update(['quantity' => $newQty, 'total' => round((float) $item->price * $newQty, 3)]);
@@ -122,6 +124,29 @@ class OrderCorrection
 
         $branchId = $order->branch_id;
 
+        /*
+         * لذي الوصفة تعود مكوّناته لا هو.
+         *
+         * بيعُ الباقة أنقص الورد والتغليف ولم يمسّ الباقة — فتصحيحُ كميّتها
+         * يجب أن يسلك الطريق نفسه. وردُّ «الباقة» إلى الرفّ كان سيخلق رصيدًا
+         * لمنتجٍ لا رصيد له أصلًا، ويترك الورد منقوصًا إلى الأبد.
+         *
+         * والوصفة تُقرأ اليوم لا يوم البيع: لو غُيّرت بينهما لعاد غيرُ ما
+         * أُخذ. وهذا حدٌّ معروف — انظر التقرير — وعلاجُه لقطةُ وصفةٍ على
+         * البند، وهي كلفةٌ لا تُبرّرها ندرةُ الحالة اليوم.
+         */
+        $variant = $item->variant_id
+            ? \App\Models\ProductVariant::withTrashed()->find($item->variant_id)
+            : null;
+
+        $recipe = \App\Support\Recipe::forLine($product, $variant);
+
+        if ($recipe->isNotEmpty()) {
+            self::moveComponents($order, $product, $variant, $delta, $branchId);
+
+            return;
+        }
+
         // الزيادة تمرّ بحارس المخزون نفسه الذي يحرس البيع — وإلّا صار
         // التصحيح بابًا خلفيًّا يتجاوز الحدّ الذي يُغلق عند نقطة البيع
         if ($delta < 0) {
@@ -176,6 +201,100 @@ class OrderCorrection
     }
 
     /**
+     * يردّ مكوّنات الوصفة أو يأخذها — بحارس المخزون نفسه الذي يحرس البيع.
+     *
+     * والفحص على المجموع بعد الرفع لا على كلّ مكوّنٍ بكسره: هي القاعدة
+     * نفسها التي يطبّقها Recipe::units عند البيع، وتطبيقُ قاعدتين على
+     * الطريقين يجعل التصحيح يردّ غير ما أخذ.
+     */
+    private static function moveComponents(Order $order, Product $product, ?\App\Models\ProductVariant $variant, int $delta, ?int $branchId): void
+    {
+        $per = \App\Support\Recipe::consumptionFor($product, $variant, abs($delta));
+
+        $units = [];
+        foreach ($per as $pid => $q) {
+            $units[$pid] = \App\Support\Recipe::units($q) * ($delta > 0 ? 1 : -1);
+        }
+
+        if (! $units) {
+            return;
+        }
+
+        if ($delta < 0) {
+            self::assertAvailable($order, array_map('abs', $units), $branchId);
+        }
+
+        \App\Support\StockLedger::move(
+            (int) $order->business_id, $branchId, $units,
+            \App\Support\StockLedger::CORRECTION,
+            PosCashier::name() ?? auth()->user()?->name,
+            $order->number,
+        );
+    }
+
+    /**
+     * لا يُخصم أكثر من المتاح في تصحيحٍ أيضًا.
+     *
+     * وإلّا صار «زد الكمية» بابًا خلفيًّا يتجاوز الحدّ الذي يُغلق عند
+     * الصندوق — فيُباع ما ليس على الرفّ بشرط أن يُباع على دفعتين.
+     *
+     * @param  array<int, int>  $needed
+     */
+    private static function assertAvailable(Order $order, array $needed, ?int $branchId): void
+    {
+        $allowsNegative = (string) (\App\Models\Setting::where('business_id', $order->business_id)
+            ->where('key', 'allow_negative_stock')->value('value') ?? '0') === '1';
+
+        if ($allowsNegative || ! $needed) {
+            return;
+        }
+
+        $products = Product::where('business_id', $order->business_id)
+            ->whereIn('id', array_keys($needed))->get()->keyBy('id');
+
+        $resolve = Stock::availabilityResolver(
+            (int) $order->business_id, $branchId, array_keys($needed), lock: true,
+        );
+
+        foreach ($needed as $pid => $want) {
+            $p = $products->get($pid);
+            if (! $p) {
+                continue;
+            }
+            if ($resolve($pid, (int) $p->quantity) < $want) {
+                throw new RuntimeException(__(':name — المتوفر :have والمطلوب :want', [
+                    'name' => $p->name, 'have' => $resolve($pid, (int) $p->quantity), 'want' => $want,
+                ]));
+            }
+        }
+    }
+
+    /**
+     * يردّ بضاعة الإضافات حين يُحذف البند كلُّه.
+     *
+     * الإضافة كميّةٌ مطلقة على البند لا مضروبةٌ في كميّته: «شوكولاتة ×١»
+     * تبقى واحدة سواء بيعت باقةٌ أو اثنتان. فتغيير الكمية لا يمسّها، وحذفُ
+     * البند يردّها كاملة — وإلّا بقي الدبّ منقوصًا من الرفّ وهو في الثلاجة.
+     */
+    private static function releaseAddons(Order $order, OrderItem $item): void
+    {
+        $back = [];
+        foreach ($item->addons as $a) {
+            $pid = $a->addon?->inventory_product_id;
+            if ($pid) {
+                $back[(int) $pid] = ($back[(int) $pid] ?? 0) + (int) $a->quantity;
+            }
+        }
+
+        \App\Support\StockLedger::move(
+            (int) $order->business_id, $order->branch_id, $back,
+            \App\Support\StockLedger::CORRECTION,
+            PosCashier::name() ?? auth()->user()?->name,
+            $order->number,
+        );
+    }
+
+    /**
      * يُعيد حساب الفاتورة من بنودها الباقية — بالمعادلة نفسها التي بيعت بها.
      *
      * الخصم يبقى كما اتُّفق عليه إلّا أن يتجاوز المجموع الجديد فيُقصّ إليه:
@@ -187,7 +306,9 @@ class OrderCorrection
         $bid = (int) $order->business_id;
         $items = $order->items;
 
-        $gross = round($items->sum(fn ($i) => (float) $i->price * (int) $i->quantity), 3);
+        // ثمن البند كاملًا: مقاسه وإضافاته. وبإهمال الإضافات كان تصحيحُ
+        // كميّةٍ واحدة يُسقط ثمن الشوكولاتة من الفاتورة كلّها بلا أثر
+        $gross = round($items->sum(fn ($i) => (float) $i->price * (int) $i->quantity + (float) $i->addons_total), 3);
         $discount = round(min((float) $order->discount, $gross), 3);
         $couponDiscount = round(min((float) $order->coupon_discount, $discount), 3);
 
@@ -197,7 +318,7 @@ class OrderCorrection
             $products = Product::whereIn('id', $items->pluck('product_id')->filter())->get()->keyBy('id');
 
             foreach ($items as $i) {
-                $net = (float) $i->price * (int) $i->quantity;
+                $net = (float) $i->price * (int) $i->quantity + (float) $i->addons_total;
                 $taxable = $net - ($discount * ($net / $gross));
                 $rate = Vat::rateFor($products->get($i->product_id), $bid);
                 $tax += $inclusive ? ($taxable * $rate) / (100 + $rate) : ($taxable * $rate) / 100;

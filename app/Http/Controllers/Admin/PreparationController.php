@@ -63,9 +63,12 @@ class PreparationController extends Controller
         $q = $this->base()
             ->when($type, fn ($w) => $w->where('fulfillment_type', $type))
             ->with([
-                'items:id,order_id,name,quantity,note,product_id',
+                // `variant_name` في الانتقاء وإلّا عاد الاسم بلا مقاسه:
+                // عمودٌ لم يُنتقَ يُقرأ فارغًا لا مفقودًا، فيصمت العطب
+                'items:id,order_id,name,variant_name,quantity,note,product_id',
                 // الصورة وحدها من المنتج — لا سعرَه ولا تكلفتَه
                 'items.product:id,image',
+                'items.addons',
             ]);
 
         $this->applyWindow($q, $filter);
@@ -201,11 +204,17 @@ class PreparationController extends Controller
             'delivery_notes' => $o->delivery_notes,
             'internal_notes' => $o->internal_notes,
             'branch' => $o->branch,
+            // المقاس والإضافات على بطاقة التجهيز: من يجهّز «بوكيه» لا يعرف
+            // أيّ مقاسٍ يجهّز، ولا أنّ معه دبًّا — فيخرج الطلب ناقصًا
             'items' => $o->items->map(fn ($i) => [
-                'name' => $i->name,
+                'name' => $i->displayName(),
                 'qty' => (int) $i->quantity,
                 'note' => $i->note,
                 'image' => $i->product?->image,
+                'addons' => $i->addons->map(fn ($a) => [
+                    'name' => $a->name,
+                    'qty' => (int) $a->quantity,
+                ])->all(),
             ])->values()->all(),
             // ما يجوز الانتقال إليه من هنا — تُبنى منه أزرار البطاقة
             'next' => OrderStatus::nextFrom($o->status),

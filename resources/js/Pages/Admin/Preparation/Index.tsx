@@ -15,6 +15,8 @@ interface PrepItem {
     qty: number;
     note: string | null;
     image: string | null;
+    /** الإضافات المختارة — يراها من يجهّز الطلب */
+    addons?: { name: string; qty: number }[];
 }
 
 interface PrepOrder {
@@ -226,7 +228,16 @@ export default function PreparationIndex() {
                                         ) : (
                                             <span className="size-9 shrink-0 rounded-[8px] bg-gray-100" />
                                         )}
-                                        <span className="flex-1 text-[#111]">{i.name}</span>
+                                        <span className="flex-1 text-[#111]">
+                                            {i.name}
+                                            {/* من يجهّز يحتاج أن يرى الدبّ والشوكولاتة، لا الاسم وحده */}
+                                            {(i.addons ?? []).map((a, k) => (
+                                                <span key={k} className="block text-[12px] text-[#7c3aed]">
+                                                    + {a.name}
+                                                    {a.qty > 1 && ` ×${a.qty}`}
+                                                </span>
+                                            ))}
+                                        </span>
                                         <span className="font-bold tabular-nums text-[#111]">×{i.qty}</span>
                                     </li>
                                 ))}

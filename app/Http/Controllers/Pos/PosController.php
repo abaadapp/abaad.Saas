@@ -164,6 +164,18 @@ class PosController extends Controller
         $products = $query->get()->keyBy('id');
         $addons = \App\Models\Addon::where('business_id', $bid)->get();
 
+        // تُحمَّل مرّةً واحدة لكلّ السلّة: بلا هذا كان كلّ بندٍ يستعلم عن
+        // مقاساته ووصفته وإضافاته المسموحة — أربعة استعلامات في كلّ بند
+        $variants = \App\Models\ProductVariant::where('business_id', $bid)
+            ->whereIn('product_id', $products->keys())->get()->keyBy('id');
+        $recipes = \App\Models\RecipeItem::where('business_id', $bid)
+            ->whereIn('product_id', $products->keys())
+            ->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
+        $addonMap = \App\Support\ProductAddons::map($bid);
+        $componentCosts = Product::where('business_id', $bid)
+            ->whereIn('id', $recipes->flatten()->pluck('component_product_id')->unique())
+            ->pluck('cost', 'id')->map(fn ($c) => (float) $c)->all();
+
         $lines = [];
         $errors = [];
 
@@ -176,10 +188,72 @@ class PosController extends Controller
                     $errors["items.$idx.id"] = __('صنف غير موجود في هذا المتجر.');
                     continue;
                 }
-                // السعر بعد خصم الصنف — والسعر قبله يُحفظ ليُطبع على الفاتورة
-                $lines[] = ['product' => $product, 'name' => $product->name,
-                    'price' => $product->sellingPrice(), 'list_price' => (float) $product->price,
-                    'qty' => $qty, 'note' => $i['note'] ?? null];
+
+                /*
+                 * المقاس يُقرأ من القاعدة لا من الطلب.
+                 *
+                 * منتجٌ له مقاسات لا يُباع بنفسه: سعرُه عمودٌ لا معنى له بعد
+                 * أن صار لكلّ مقاسٍ سعره. وقبولُ بندٍ بلا مقاس كان يبيع
+                 * «بوكيه الحب» بسعر الصفر — أو بسعرٍ قديمٍ في العمود.
+                 */
+                $choices = $product->relationLoaded('variants')
+                    ? $product->variants
+                    : $variants->where('product_id', $product->id);
+                $variant = null;
+
+                if (! empty($i['variant_id'])) {
+                    $variant = $variants->get((int) $i['variant_id']);
+                    if (! $variant || (int) $variant->product_id !== (int) $product->id) {
+                        $errors["items.$idx.variant_id"] = __('مقاس غير موجود لهذا الصنف.');
+                        continue;
+                    }
+                    // مقاسٌ أُطفئ لا يُباع من جديد — والفواتير القديمة تبقى تعرضه
+                    if (! $variant->active) {
+                        $errors["items.$idx.variant_id"] = __('هذا المقاس غير متاح للبيع.');
+                        continue;
+                    }
+                } elseif ($choices->where('active', true)->isNotEmpty()) {
+                    $errors["items.$idx.variant_id"] = __('اختر مقاس :name.', ['name' => $product->name]);
+                    continue;
+                }
+
+                $preloaded = $recipes->get($product->id) ?? collect();
+                $hasRecipe = \App\Support\Recipe::has($product, $variant, $preloaded);
+
+                /*
+                 * تكلفة البند: من الوصفة إن كانت له، ومن عمود المنتج إن لم تكن.
+                 *
+                 * وتُلتقط هنا لا في التقرير: تكلفة الورد تتغيّر مع كلّ شحنة،
+                 * وقراءتها لاحقًا تجعل ربح الشهر الماضي يتحرّك بلا سبب.
+                 */
+                $cost = $hasRecipe
+                    ? \App\Support\Recipe::unitCost($product, $variant, $preloaded, $componentCosts)
+                    : (float) $product->cost;
+
+                [$chosen, $addonError] = $this->pickAddons($product, $i['addons'] ?? [], $addons, $addonMap);
+                if ($addonError) {
+                    $errors["items.$idx.addons"] = $addonError;
+                    continue;
+                }
+
+                $price = $variant
+                    ? round((float) $variant->price, 3)
+                    : $product->sellingPrice();
+
+                $lines[] = [
+                    'product' => $product,
+                    'variant' => $variant,
+                    'name' => $product->name,
+                    'price' => $price,
+                    'list_price' => $variant ? (float) $variant->price : (float) $product->price,
+                    'cost' => $cost,
+                    'has_recipe' => $hasRecipe,
+                    'recipe' => $preloaded,
+                    'qty' => $qty,
+                    'note' => $i['note'] ?? null,
+                    'addons' => $chosen,
+                    'addons_total' => round(collect($chosen)->sum('total'), 3),
+                ];
                 continue;
             }
 
@@ -192,9 +266,13 @@ class PosController extends Controller
                 $errors["items.$idx.name"] = __('صنف غير متاح للبيع.');
                 continue;
             }
-            $lines[] = ['product' => null, 'name' => $addon->name,
+            $lines[] = ['product' => null, 'variant' => null, 'name' => $addon->name,
                 'price' => (float) $addon->price, 'list_price' => (float) $addon->price,
-                'qty' => $qty, 'note' => $i['note'] ?? null];
+                'cost' => 0.0, 'has_recipe' => false, 'recipe' => collect(),
+                'qty' => $qty, 'note' => $i['note'] ?? null,
+                // إضافةٌ مستقلّة في السلّة (سلوك ما قبل الربط) — رصيدها يُخصم كما لو رُبطت ببند
+                'addons' => [], 'addons_total' => 0.0,
+                'standalone_addon' => $addon];
         }
 
         if ($errors) {
@@ -204,6 +282,99 @@ class PosController extends Controller
         return $lines;
     }
 
+    /**
+     * الإضافات المختارة على بند — بأسعار القاعدة وبإذن المنتج.
+     *
+     * السعر لا يُقرأ من الطلب أبدًا، والإذن يُسأل في الخادم: شاشةٌ قديمة —
+     * أو مُلاعَبة — قد ترسل دبًّا مع منتجٍ لا يسمح به، أو بأربعةٍ بدل خمسة.
+     *
+     * @return array{0: array<int, array<string, mixed>>, 1: ?string}
+     */
+    private function pickAddons(Product $product, array $requested, $addons, array $addonMap): array
+    {
+        $chosen = [];
+
+        foreach ($requested as $r) {
+            $id = (int) ($r['addon_id'] ?? $r['id'] ?? 0);
+            $addon = $id ? $addons->firstWhere('id', $id) : null;
+
+            if (! $addon || ! \App\Support\ProductAddons::allows($product, $addon, $addonMap)) {
+                return [[], __('إضافة غير متاحة مع هذا الصنف.')];
+            }
+
+            $qty = max(1, (int) ($r['qty'] ?? 1));
+            $price = round((float) $addon->price, 3);
+
+            $chosen[] = [
+                'addon' => $addon,
+                'qty' => $qty,
+                'price' => $price,
+                'total' => round($price * $qty, 3),
+                // تكلفةٌ للإضافة المرتبطة ببضاعة، وفراغٌ لخدمةٍ لا رصيد لها —
+                // وخلطُ الاثنين يجعل الربح يبدو أعلى ممّا هو
+                'cost' => $addon->inventory_product_id
+                    ? round((float) (Product::find($addon->inventory_product_id)?->cost ?? 0), 3)
+                    : null,
+            ];
+        }
+
+        return [$chosen, null];
+    }
+
+    /**
+     * ما يُخصم فعلًا من الرفّ مقابل هذه السلّة — بالأعداد الصحيحة.
+     *
+     * ثلاثة مصادر تجتمع في خريطةٍ واحدة:
+     *
+     *   - بندٌ بلا وصفة  →  الصنف نفسه ينقص، كما كان قبل هذا كلّه
+     *   - بندٌ بوصفة     →  مكوّناتُه تنقص وهو لا ينقص (وإلا خُصم مرّتين:
+     *                       مرّةً باقةً ومرّةً وردًا)
+     *   - إضافةٌ لها رصيد →  بضاعتُها تنقص
+     *
+     * والجمع قبل التقريب: انظر Recipe::units.
+     *
+     * @return array<int, int>  [معرّف المنتج => الكمية المطلوبة]
+     */
+    private function demand(array $lines): array
+    {
+        $exact = [];
+        $whole = [];
+
+        foreach ($lines as $l) {
+            $addonSource = $l['standalone_addon'] ?? null;
+            if ($addonSource && $addonSource->inventory_product_id) {
+                $pid = (int) $addonSource->inventory_product_id;
+                $whole[$pid] = ($whole[$pid] ?? 0) + $l['qty'];
+            }
+
+            foreach ($l['addons'] ?? [] as $a) {
+                if ($a['addon']->inventory_product_id) {
+                    $pid = (int) $a['addon']->inventory_product_id;
+                    $whole[$pid] = ($whole[$pid] ?? 0) + $a['qty'];
+                }
+            }
+
+            if (! $l['product']) {
+                continue;
+            }
+
+            if (! ($l['has_recipe'] ?? false)) {
+                $whole[$l['product']->id] = ($whole[$l['product']->id] ?? 0) + $l['qty'];
+                continue;
+            }
+
+            foreach (\App\Support\Recipe::consumptionFor($l['product'], $l['variant'] ?? null, $l['qty'], $l['recipe']) as $pid => $q) {
+                $exact[$pid] = ($exact[$pid] ?? 0.0) + $q;
+            }
+        }
+
+        foreach ($exact as $pid => $q) {
+            $whole[$pid] = ($whole[$pid] ?? 0) + \App\Support\Recipe::units($q);
+        }
+
+        return $whole;
+    }
+
     /** يمنع البيع بما يتجاوز المتوفر — إلا إذا سمح النشاط بالمخزون السالب صراحةً */
     private function assertStock(array $lines, ?int $branchId = null): void
     {
@@ -211,15 +382,15 @@ class PosController extends Controller
             return;
         }
 
-        // نفس المنتج قد يرد في أكثر من بند، فالحكم على المجموع لا على كل بند وحده
-        $needed = [];
-        $byId = [];
-        foreach ($lines as $l) {
-            if ($l['product']) {
-                $needed[$l['product']->id] = ($needed[$l['product']->id] ?? 0) + $l['qty'];
-                $byId[$l['product']->id] = $l['product'];
-            }
+        // نفس المنتج قد يرد في أكثر من بند — ومكوّنٌ واحد قد يدخل في باقاتٍ
+        // شتّى — فالحكم على المجموع لا على كل بند وحده
+        $needed = $this->demand($lines);
+
+        if (! $needed) {
+            return;
         }
+
+        $byId = Product::where('business_id', $this->bid())->whereIn('id', array_keys($needed))->get()->keyBy('id');
 
         // الحكم على رصيد الفرع الذي سيُخصم منه. الحكم على مجموع الشركة كان
         // يُجيز بيع خمس قطع من صلالة ورصيدها صفر لأن في مسقط عشرًا.
@@ -229,10 +400,14 @@ class PosController extends Controller
 
         $short = [];
         foreach ($needed as $pid => $want) {
-            $have = $available($pid, (int) $byId[$pid]->quantity);
+            $product = $byId->get($pid);
+            if (! $product) {
+                continue;
+            }
+            $have = $available($pid, (int) $product->quantity);
             if ($have < $want) {
                 $short[] = __(':name — المتوفر :have والمطلوب :want', [
-                    'name' => $byId[$pid]->name, 'have' => $have, 'want' => $want,
+                    'name' => $product->name, 'have' => $have, 'want' => $want,
                 ]);
             }
         }
@@ -465,6 +640,12 @@ class PosController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.id' => ['nullable', 'integer'],
             'items.*.addon_id' => ['nullable', 'integer'],
+            // المقاس والإضافات يُتحقّق منهما في priceItems: هناك وحده تُعرف
+            // مقاسات المنتج وإضافاته المسموحة، والقاعدة لا تُكتب مرّتين
+            'items.*.variant_id' => ['nullable', 'integer'],
+            'items.*.addons' => ['nullable', 'array'],
+            'items.*.addons.*.addon_id' => ['required_with:items.*.addons', 'integer'],
+            'items.*.addons.*.qty' => ['nullable', 'integer', 'min:1'],
             'items.*.name' => ['required', 'string'],
             // السعر يُقرأ من القاعدة لا من الطلب؛ يُقبل الحقل للتوافق ويُتجاهل
             'items.*.price' => ['nullable', 'numeric'],
@@ -520,7 +701,9 @@ class PosController extends Controller
             $lines = $this->priceItems($data['items'], lock: true);
             $this->assertStock($lines, $branch['id']);
 
-            $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty']), 3);
+            // الإضافات جزءٌ من ثمن البند لا سطرٌ منفصل: «بوكيه + شوكولاتة»
+            // بندٌ واحد يقرؤه الزبون على الفاتورة، ومجموعُه يدخل الحساب معه
+            $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0)), 3);
 
             // الكوبون: يُعاد التحقق منه خادميًا وتُحتسب قيمته من أسعارنا نحن
             $coupon = $this->findCoupon($data['coupon_code'] ?? null);
@@ -603,8 +786,18 @@ class PosController extends Controller
                 $this->salePrefix(), max(1, (int) $this->setting('inv_start', 1)));
 
             foreach ($lines as $l) {
-                $order->items()->create([
+                $item = $order->items()->create([
                     'product_id' => $l['product']?->id,
+                    /*
+                     * لقطة المقاس — لا علاقةٌ تُقرأ لاحقًا.
+                     *
+                     * مقاسٌ أُعيد تسميته «وسط فاخر» ورُفع سعره بعد شهر لا
+                     * يجوز أن يغيّر فاتورةً طُبعت. والمعرّف يبقى للتجميع،
+                     * والاسم والرمز هما ما يُعرض.
+                     */
+                    'variant_id' => $l['variant']?->id,
+                    'variant_name' => $l['variant']?->name,
+                    'variant_sku' => $l['variant']?->sku,
                     'name' => $l['name'],
                     'price' => $l['price'],
                     /*
@@ -612,34 +805,83 @@ class PosController extends Controller
                      *
                      * تكلفة المنتج تُكتب فوقها عند كل استلامٍ بآخر سعر شراء،
                      * فقراءتُها لاحقًا تجعل ربح الشهر الماضي يتغيّر لأن المورّد
-                     * رفع سعره اليوم. واللقطة تُثبّت ما مضى.
+                     * رفع سعره اليوم. واللقطة تُثبّت ما مضى. ولذي الوصفة
+                     * تكلفتُه مجموعُ مكوّناته بأسعار اليوم — انظر Recipe::unitCost.
                      */
-                    'cost' => (float) ($l['product']?->cost ?? 0),
+                    'cost' => (float) ($l['cost'] ?? 0),
                     'quantity' => $l['qty'],
                     'note' => $l['note'],
                     'total' => round($l['price'] * $l['qty'], 3),
+                    'addons_total' => (float) ($l['addons_total'] ?? 0),
                 ]);
+
+                foreach ($l['addons'] ?? [] as $a) {
+                    $item->addons()->create([
+                        'addon_id' => $a['addon']->id,
+                        'name' => $a['addon']->name,
+                        'name_en' => $a['addon']->name_en,
+                        'unit_price' => $a['price'],
+                        'quantity' => $a['qty'],
+                        'total' => $a['total'],
+                        'cost' => $a['cost'],
+                    ]);
+                }
+            }
+
+            /*
+             * المخزون يُخصم مرّةً واحدة للسلّة كلّها لا بندًا بندًا.
+             *
+             * لأنّ مكوّنًا واحدًا يدخل في باقاتٍ شتّى: خصمُه في كلّ بندٍ على
+             * حدة يقرّب كسرَه مرّاتٍ — انظر Recipe::units — ويكتب أربع حركات
+             * حيث تكفي واحدة، فيصير سجلّ التدقيق أطول وأقلّ إفادة.
+             *
+             * وذو الوصفة لا يُخصم هو: مكوّناته هي مخزونه. وخصمُه معها كان
+             * سيُنقص الباقة والورد معًا عن بيعةٍ واحدة.
+             */
+            $sale = [];
+            $recipeUse = [];
+            $addonUse = [];
+
+            foreach ($lines as $l) {
+                $standalone = $l['standalone_addon'] ?? null;
+                if ($standalone && $standalone->inventory_product_id) {
+                    $pid = (int) $standalone->inventory_product_id;
+                    $addonUse[$pid] = ($addonUse[$pid] ?? 0) + $l['qty'];
+                }
+
+                foreach ($l['addons'] ?? [] as $a) {
+                    if ($a['addon']->inventory_product_id) {
+                        $pid = (int) $a['addon']->inventory_product_id;
+                        $addonUse[$pid] = ($addonUse[$pid] ?? 0) + $a['qty'];
+                    }
+                }
 
                 if (! $l['product']) {
                     continue;
                 }
-                $product = $l['product'];
-                // التوزيع أولًا ثم الخصم — وإلا بدأ صفّ الفرع من صفر فصار سالبًا
-                \App\Models\BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
-                $product->decrement('quantity', $l['qty']);
-                \App\Models\BranchStock::adjust($bid, $branch['id'], $product->id, -$l['qty']);
-                // تسجيل البيع كحركة مخزون ليكتمل سجل التدقيق (كم نقص ولماذا)
-                \App\Models\InventoryMovement::create([
-                    'business_id' => $bid,
-                    'branch_id' => $branch['id'],
-                    'product_id' => $product->id,
-                    'product_name' => $product->name,
-                    'sku' => $product->sku,
-                    'type' => 'بيع',
-                    'quantity' => '-' . $l['qty'],
-                    'employee_name' => PosCashier::name(),
-                ]);
+
+                if (! ($l['has_recipe'] ?? false)) {
+                    $sale[$l['product']->id] = ($sale[$l['product']->id] ?? 0) + $l['qty'];
+                    continue;
+                }
+
+                foreach (\App\Support\Recipe::consumptionFor($l['product'], $l['variant'] ?? null, $l['qty'], $l['recipe']) as $pid => $q) {
+                    $recipeUse[$pid] = ($recipeUse[$pid] ?? 0.0) + $q;
+                }
             }
+
+            $cashier = PosCashier::name();
+
+            \App\Support\StockLedger::move($bid, $branch['id'],
+                array_map(fn ($q) => -$q, $sale), 'بيع', $cashier);
+
+            \App\Support\StockLedger::move($bid, $branch['id'],
+                array_map(fn ($q) => -\App\Support\Recipe::units($q), $recipeUse),
+                \App\Support\StockLedger::RECIPE, $cashier, $order->number);
+
+            \App\Support\StockLedger::move($bid, $branch['id'],
+                array_map(fn ($q) => -$q, $addonUse),
+                \App\Support\StockLedger::ADDON, $cashier, $order->number);
 
             // تسجيل البيع كمعاملة دخل في المالية تلقائيًا (لتظهر المبيعات في لوحات المالية فورًا)
             \App\Models\Transaction::create([
@@ -692,6 +934,10 @@ class PosController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.id' => ['nullable', 'integer'],
             'items.*.addon_id' => ['nullable', 'integer'],
+            'items.*.variant_id' => ['nullable', 'integer'],
+            'items.*.addons' => ['nullable', 'array'],
+            'items.*.addons.*.addon_id' => ['required_with:items.*.addons', 'integer'],
+            'items.*.addons.*.qty' => ['nullable', 'integer', 'min:1'],
             'items.*.name' => ['required', 'string'],
             'items.*.price' => ['nullable', 'numeric'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
@@ -708,7 +954,9 @@ class PosController extends Controller
         // ولا حارس مخزون هنا: التعليق لا يخصم شيئًا، والحارس يعمل عند الدفع.
         return DB::transaction(function () use ($data, $saved) {
             $lines = $this->priceItems($data['items']);
-            $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty']), 3);
+            // الإضافات جزءٌ من ثمن البند لا سطرٌ منفصل: «بوكيه + شوكولاتة»
+            // بندٌ واحد يقرؤه الزبون على الفاتورة، ومجموعُه يدخل الحساب معه
+            $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0)), 3);
             $branch = $this->branch();
 
             $order = $this->createNumbered([
@@ -731,18 +979,36 @@ class PosController extends Controller
                 'ordered_at' => now(),
             ], $saved ? 'SAVE-' : 'HOLD-');
 
-            // حفظ الأصناف — بدونها لا يمكن استكمال الطلب لاحقًا
+            // حفظ الأصناف — بدونها لا يمكن استكمال الطلب لاحقًا. والمقاس
+            // والإضافات معها: طلبٌ عُلّق بمقاسٍ وشوكولاتة يجب أن يعود كما
+            // عُلّق، لا مجرّدًا من نصف اختيار الزبون
             foreach ($lines as $l) {
-                $order->items()->create([
+                $item = $order->items()->create([
                     'product_id' => $l['product']?->id,
+                    'variant_id' => $l['variant']?->id,
+                    'variant_name' => $l['variant']?->name,
+                    'variant_sku' => $l['variant']?->sku,
                     'name' => $l['name'],
                     'price' => $l['price'],
                     // لقطة التكلفة — انظر التعليق في إتمام البيع
-                    'cost' => (float) ($l['product']?->cost ?? 0),
+                    'cost' => (float) ($l['cost'] ?? 0),
                     'quantity' => $l['qty'],
                     'note' => $l['note'],
                     'total' => round($l['price'] * $l['qty'], 3),
+                    'addons_total' => (float) ($l['addons_total'] ?? 0),
                 ]);
+
+                foreach ($l['addons'] ?? [] as $a) {
+                    $item->addons()->create([
+                        'addon_id' => $a['addon']->id,
+                        'name' => $a['addon']->name,
+                        'name_en' => $a['addon']->name_en,
+                        'unit_price' => $a['price'],
+                        'quantity' => $a['qty'],
+                        'total' => $a['total'],
+                        'cost' => $a['cost'],
+                    ]);
+                }
             }
 
             return response()->json(['ok' => true, 'number' => $order->number]);
@@ -753,17 +1019,27 @@ class PosController extends Controller
     public function resume($id)
     {
         $order = Order::where('business_id', $this->bid())->where('is_held', true)
-            ->with('items')->findOrFail($id);
+            ->with('items.addons')->findOrFail($id);
 
         session()->flash('resume_cart', [
             'id' => $order->id,
             'customer' => $order->customer_name,
             'items' => $order->items->map(fn ($i) => [
                 'id' => $i->product_id,
+                // المقاس يعود بمعرّفه: السلّة تُسعَّر من جديد عند الدفع،
+                // والاسم وحده لا يكفي الخادم ليعرف أيّ صفٍّ يقرأ
+                'variant_id' => $i->variant_id,
+                'variant_name' => $i->variant_name,
                 'name' => $i->name,
                 'price' => (float) $i->price,
                 'qty' => (int) $i->quantity,
                 'note' => $i->note ?? '',
+                'addons' => $i->addons->map(fn ($a) => [
+                    'addon_id' => $a->addon_id,
+                    'name' => $a->name,
+                    'price' => (float) $a->unit_price,
+                    'qty' => (int) $a->quantity,
+                ])->all(),
             ])->all(),
             // يعود الكود إلى السلة لتُعيد الواجهة تطبيقه، فيراه الكاشير
             // ويُحتسب عند الدفع. لا نُعيد قيمة الخصم — تُحسب من جديد.

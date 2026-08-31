@@ -172,6 +172,15 @@ class Reports
             'data' => 'customers',
         ],
         [
+            'key' => 'waste',
+            'category' => 'analytical',
+            'section' => 'reports',
+            'title' => 'تحليلات الهالك',
+            'desc' => 'ما تلف وما فُقد: قيمته واتجاهه، وأيّ صنفٍ وفرعٍ يبتلعه.',
+            'icon' => 'trash-2',
+            'route' => 'admin.reports.waste',
+        ],
+        [
             'key' => 'marketing',
             'category' => 'analytical',
             'section' => 'marketing',

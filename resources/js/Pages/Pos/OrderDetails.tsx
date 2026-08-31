@@ -19,8 +19,10 @@ interface OrderItem {
     name: string;
     price: number;
     qty: number;
+    /** ثمن البند كاملًا — سعره في كميّته وإضافاته */
     total: number;
     note?: string | null;
+    addons?: { name: string; qty: number; total: number }[];
 }
 
 interface OrderDetail {
@@ -124,6 +126,12 @@ export default function PosOrderDetails() {
                                         <TableRow key={it.id}>
                                             <TableCell>
                                                 <span className="font-medium">{it.name}</span>
+                                                {(it.addons ?? []).map((a, i) => (
+                                                    <span key={i} className="block text-[11px] text-[#7c3aed]">
+                                                        + {a.name}
+                                                        {a.qty > 1 && ` ×${a.qty}`}
+                                                    </span>
+                                                ))}
                                                 {it.note && (
                                                     <span className="block text-[11px] text-gray-400">{it.note}</span>
                                                 )}

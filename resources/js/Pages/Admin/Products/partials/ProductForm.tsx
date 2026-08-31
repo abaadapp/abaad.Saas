@@ -9,6 +9,8 @@ import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import Composition, { type CompositionData } from './Composition';
+import type { Currency } from '@/types';
 import type { Category, Product } from '@/types/models';
 
 interface Props {
@@ -17,13 +19,23 @@ interface Props {
     product?: Product;
     description?: string;
     currencyLabel: string;
+    /** المقاسات والوصفة والإضافات — لمنتجٍ محفوظ فقط */
+    composition?: CompositionData | null;
+    currency?: Currency;
 }
 
 const NAV = [
     { key: 'basic', label: 'المعلومات الأساسية' },
     { key: 'pricing', label: 'التسعير' },
     { key: 'stock', label: 'المخزون' },
-    { key: 'media', label: 'صور المنتج والإضافات' },
+    { key: 'media', label: 'صور المنتج' },
+    /*
+     * التركيب: المقاسات والوصفة والإضافات.
+     *
+     * لا يُعرض عند الإنشاء: مقاسٌ ووصفةٌ لمنتجٍ لم يُحفظ بعد لا معرّف
+     * يُعلَّقان به — والمطالبة بحفظه أوّلًا أوضح من نموذجٍ يقبل ثم يفقد.
+     */
+    { key: 'composition', label: 'التركيب' },
 ] as const;
 
 type TabKey = (typeof NAV)[number]['key'];
@@ -62,7 +74,7 @@ const FIELD_SECTION: Record<string, TabKey> = {
  * المستخدم يرى أين هو وكم بقي. والحقول المخفيّة تبقى قيمها محفوظة في حالة
  * النموذج، فالتنقّل بين الأقسام لا يفقد شيئًا.
  */
-export default function ProductForm({ categories, product, description, currencyLabel }: Props) {
+export default function ProductForm({ categories, product, description, currencyLabel, composition, currency }: Props) {
     const t = useTranslate();
     const editing = !!product;
     const [tab, setTab] = useState<TabKey>('basic');
@@ -398,21 +410,19 @@ export default function ProductForm({ categories, product, description, currency
                             )}
                         </Card>
 
-                        <Card className="p-6">
-                            <h3 className="mb-1 font-bold text-[#111]">{t('الإضافات')}</h3>
-                            {/* الإضافات اليوم على مستوى النشاط لا المنتج: لا عمود
-                                product_id في addons ولا جدول وسيط. فلا نعرض
-                                منتقيًا لا يحفظ اختياره — نصرّح بالواقع ونحيل إلى
-                                مكان إدارتها الفعلي. */}
-                            <p className="text-[13px] leading-relaxed text-[#6b7280]">
-                                {t(
-                                    'الإضافات حاليًا على مستوى المتجر لا المنتج — تظهر في نقطة البيع لكل المنتجات. ربطها بمنتج بعينه يحتاج تطويرًا في الخادم.',
-                                )}
-                            </p>
-                            
-                        </Card>
                     </div>
                 )}
+
+                {tab === 'composition' &&
+                    (composition && product && currency ? (
+                        <Composition productId={Number(product.id)} data={composition} currency={currency} />
+                    ) : (
+                        <Card className="p-6">
+                            <p className="text-[13px] leading-relaxed text-[#6b7280]">
+                                {t('احفظ المنتج أوّلًا، ثم أضف مقاساته ووصفته وإضافاته.')}
+                            </p>
+                        </Card>
+                    ))}
 
                 {/* شريط الحفظ ثابت أسفل كل قسم — فلا يضطر المستخدم للعودة
                     إلى قسم بعينه ليحفظ ما كتبه */}

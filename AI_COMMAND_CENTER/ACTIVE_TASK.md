@@ -1,134 +1,69 @@
 # Active Task
 
-Status: ACTIVE — AUDIT ONLY
-Task ID: CUSTOMER-CORE-001
-Last updated: 2026-08-30
+Status: IN REVIEW — AWAITING OWNER APPROVAL
+Task ID: CUSTOMER-AUDIT-01
+Notion Task: DEV-6 — 01 — تيست وتشييك وإصلاح: لوحة التحكم
+Last updated: 2026-09-01
 
-## Objective
+## Source of truth
 
-Audit and finish the first core area of the customer system: **Products + Inventory**.
+This file and the matching Notion task must remain synchronized.
 
-This is a launch-finishing task, not a redesign, rewrite, or architecture project.
+The previously recorded `CUSTOMER-CORE-001 — Products + Inventory / AUDIT ONLY` is no longer the active command. It is superseded by the section-by-section customer audit/fix sequence tracked in Notion.
 
-## Current release strategy
+## Current task — Dashboard
 
-We will finish the customer-facing operational system section by section before touching SaaS/Platform management.
+Scope: **Customer Admin Dashboard only**.
 
-**Platform / SaaS is explicitly out of scope until the customer Admin + POS system is approved.**
+Mode: **AUDIT + FIX**.
 
-Do not work on pricing, plans, subscriptions, SaaS administration, or cosmetic redesign in this task.
+The dashboard audit/fix has been implemented and merged through PR #9.
 
-## Phase 1 scope — Products + Inventory
+- PR: `#9 — Audit 01: fix dashboard branch-scope drift`
+- Merge SHA: `540ea7c8815e9bb8340a380bd99371855d470359`
+- Branch used: `review/customer-audit-01-dashboard`
+- SaaS / Super Admin: out of scope
 
-Inspect the complete existing implementation related to products and inventory across:
-- Customer Admin pages
-- POS dependencies/integration points
-- routes
-- controllers
-- requests/validation
-- models
-- services/domain/support classes
-- database schema/migrations
-- permissions
-- tenant/branch isolation
-- tests
+### Approval gate
 
-### Products
-Verify all existing product capabilities discovered in the repository, including where applicable:
-- product listing/search/filtering
-- create product
-- edit product
-- view/details
-- delete/archive/disable behavior
-- categories/types/variants/options if implemented
-- SKU/barcode behavior
-- pricing and tax fields only for functional correctness (do not redesign pricing strategy)
-- cost fields
-- inventory tracking flags
-- branch/product availability
-- images/media if production functionality exists
+Do **not** start the next section until the project owner explicitly approves this task.
+
+Current state: implementation is merged, but owner approval is still pending.
+
+## Next task — Customers
+
+Task: `02 — تيست وتشييك وإصلاح: العملاء`
+Notion Task ID: `DEV-7`
+Planned branch: `review/customer-audit-02-customers`
+Status: `BACKLOG — BLOCKED BY CUSTOMER-AUDIT-01 APPROVAL`
+Mode when authorized: **AUDIT + FIX**.
+
+When the current dashboard task is explicitly approved:
+
+1. Mark the dashboard task approved/done in Notion.
+2. Move the Customers task from Backlog to In Progress.
+3. Update this file so Customers becomes the active task.
+4. Audit the full Customers section and fix root causes with the smallest safe changes.
+5. Add/update regression tests.
+6. Do not touch SaaS / Super Admin.
+
+### Customers scope when authorized
+
+Inspect and validate, where implemented:
+- customer CRUD
+- search/filtering
+- addresses and related customer data
 - validation and duplicate prevention
-- permissions
-- POS visibility and product loading
+- permissions/authorization
+- tenant isolation
+- deletion/restoration behavior
+- sales and POS integration
+- relevant automated tests
 
-### Inventory
-Verify all existing inventory capabilities discovered in the repository, including where applicable:
-- stock overview
-- stock quantities by branch/location
-- stock addition/receiving
-- adjustments
-- stock counts
-- inventory movements/history
-- purchase-related stock effects
-- sale/POS stock deductions
-- order edits/cancellations effects where currently supported
-- low/out-of-stock behavior
-- negative-stock rules
-- supplier/purchase dependencies needed for inventory correctness
-- permissions
-- tenant and branch isolation
+Fix confirmed root causes and add regression coverage. Avoid broad refactors or unrelated features.
 
-## Audit method
+## Execution rule
 
-For every meaningful page/action:
-1. Identify the UI action/button/form.
-2. Trace it to its route.
-3. Trace route to controller/handler.
-4. Trace handler to domain/service/model/database behavior.
-5. Verify validation and authorization.
-6. Verify tenant/branch isolation.
-7. Verify downstream stock/product effects.
-8. Locate relevant automated tests.
-9. Classify the result.
+If Notion and this file disagree, **stop execution and repair the synchronization before touching product code**.
 
-Classification:
-- PASS
-- BUG
-- UNWIRED
-- INCOMPLETE
-- UX
-- BLOCKER
-- DEFER
-
-Severity:
-- P0 = prevents safe launch/use of Products or Inventory
-- P1 = core operational defect
-- P2 = important secondary issue
-- P3 = polish only
-
-## Important constraints
-
-- AUDIT FIRST. Do not modify product code yet.
-- Do not restructure existing architecture.
-- Do not perform broad refactors.
-- Do not add unrelated features.
-- Prefer the smallest safe correction when fixes are later authorized.
-- Repository reality beats assumptions/documentation.
-- Do not audit Platform/SaaS in this phase.
-
-## Deliverable
-
-Create/update `AI_COMMAND_CENTER/SECTION_AUDITS/PRODUCTS_INVENTORY.md` containing:
-
-1. Products capability inventory.
-2. Inventory capability inventory.
-3. Page/action coverage matrix.
-4. Full-stack wiring status for each action.
-5. POS integration points.
-6. P0/P1/P2/P3 findings.
-7. Exact affected files/routes/controllers/services for each finding.
-8. Minimal recommended fix for each finding.
-9. Existing automated-test coverage and missing tests.
-10. `UNVERIFIED RUNTIME ITEMS` requiring browser/runtime/manual validation.
-11. Final readiness verdict for Products.
-12. Final readiness verdict for Inventory.
-13. Proposed small implementation batches, ordered by launch importance.
-
-## Definition of done
-
-This phase is complete when Products and Inventory can each be given one of:
-- READY
-- READY AFTER LISTED FIXES
-- NOT READY
-
-Do not start implementing fixes automatically after the audit. Wait for the project owner's next approval.
+No new section may start merely because the previous code was merged. Explicit owner approval remains the gate between customer-system sections.

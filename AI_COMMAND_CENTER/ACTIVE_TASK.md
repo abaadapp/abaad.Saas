@@ -1,69 +1,64 @@
 # Active Task
 
-Status: IN REVIEW — AWAITING OWNER APPROVAL
-Task ID: CUSTOMER-AUDIT-01
-Notion Task: DEV-6 — 01 — تيست وتشييك وإصلاح: لوحة التحكم
+Status: IN PROGRESS — PARTIAL COVERAGE
+Task ID: CUSTOMER-AUDIT-02
+Notion Task: DEV-7 — 02 — تيست وتشييك وإصلاح: العملاء
 Last updated: 2026-09-01
 
 ## Source of truth
 
 This file and the matching Notion task must remain synchronized.
 
-The previously recorded `CUSTOMER-CORE-001 — Products + Inventory / AUDIT ONLY` is no longer the active command. It is superseded by the section-by-section customer audit/fix sequence tracked in Notion.
+## Current task — Customers
 
-## Current task — Dashboard
-
-Scope: **Customer Admin Dashboard only**.
+Scope: **Customer Admin Customers section**, including relevant sales/POS integration points.
 
 Mode: **AUDIT + FIX**.
 
-The dashboard audit/fix has been implemented and merged through PR #9.
+Execution has already occurred on `main` through Claude Code.
 
-- PR: `#9 — Audit 01: fix dashboard branch-scope drift`
-- Merge SHA: `540ea7c8815e9bb8340a380bd99371855d470359`
-- Branch used: `review/customer-audit-01-dashboard`
+- Commit: `41569920240568cd495cb3d4cd87e593877704d5`
+- Tag: `v6.19`
+- Tag message: `قسم العملاء: تدقيق وإصلاح`
+- Current remote branch containing the commit: `main`
 - SaaS / Super Admin: out of scope
 
-### Approval gate
+### Covered in v6.19
 
-Do **not** start the next section until the project owner explicitly approves this task.
-
-Current state: implementation is merged, but owner approval is still pending.
-
-## Next task — Customers
-
-Task: `02 — تيست وتشييك وإصلاح: العملاء`
-Notion Task ID: `DEV-7`
-Planned branch: `review/customer-audit-02-customers`
-Status: `BACKLOG — BLOCKED BY CUSTOMER-AUDIT-01 APPROVAL`
-Mode when authorized: **AUDIT + FIX**.
-
-When the current dashboard task is explicitly approved:
-
-1. Mark the dashboard task approved/done in Notion.
-2. Move the Customers task from Backlog to In Progress.
-3. Update this file so Customers becomes the active task.
-4. Audit the full Customers section and fix root causes with the smallest safe changes.
-5. Add/update regression tests.
-6. Do not touch SaaS / Super Admin.
-
-### Customers scope when authorized
-
-Inspect and validate, where implemented:
 - customer CRUD
-- search/filtering
-- addresses and related customer data
-- validation and duplicate prevention
-- permissions/authorization
-- tenant isolation
+- addresses and related customer data surfaced in the customer profile/edit flow
+- authorization, including permanent-delete permission hardening
+- tenant isolation across audited customer routes
 - deletion/restoration behavior
-- sales and POS integration
-- relevant automated tests
+- partial input validation: phone, soft-deleted customer handling, name length
+- export filtering consistency
+- soft-deleted-customer import protection
+- atomic customer import
+- conditional loyalty-points redemption
 
-Fix confirmed root causes and add regression coverage. Avoid broad refactors or unrelated features.
+### Remaining before task 02 can be closed
+
+1. **Sales / POS / loyalty integration**
+   - audit customer matching in `storeCustomer`: ID, then phone, then name
+   - verify behavior when deleting a customer with open invoices/orders
+   - test customer search behavior inside POS
+
+2. **Search runtime coverage**
+   - English customer names
+   - phone numbers in different formats
+   - `%` and other edge-case search input
+
+3. **Remaining validation coverage**
+   - email
+   - tax number
+   - prove by regression test that a `branch_id` belonging to another business is rejected
+
+## Approval / sequence note
+
+Task 01 — Dashboard is still **not owner-approved**. Task 02 nevertheless executed in reality and reached v6.19. This file records that factual state without inventing approval for task 01.
+
+Do not mark task 02 done and do not start task 03 until the three remaining areas above are completed and the owner approves the result.
 
 ## Execution rule
 
-If Notion and this file disagree, **stop execution and repair the synchronization before touching product code**.
-
-No new section may start merely because the previous code was merged. Explicit owner approval remains the gate between customer-system sections.
+If Notion and this file disagree, stop and repair synchronization before additional product-code work.

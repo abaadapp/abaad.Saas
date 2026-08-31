@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Check, MessageSquare, Plus, Star, Trash2, X } from 'lucide-react';
+import { Check, MapPin, MessageSquare, Plus, Star, Trash2, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import StatCard from '@/Components/StatCard';
@@ -186,10 +186,23 @@ export default function Reviews() {
                 title="تقييمات العملاء"
                 subtitle={t('لا يُنشر منها إلا ما أُذن بنشره')}
                 actions={
-                    <Button onClick={() => setAdding(true)}>
-                        <Plus />
-                        {t('تسجيل تقييم')}
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button asChild variant="outline">
+                            <a
+                                href="https://business.google.com/"
+                                target="_blank"
+                                rel="noreferrer"
+                                title={t('اربط ملف نشاطك التجاري في Google للوصول إلى التقييمات')}
+                            >
+                                <MapPin />
+                                {t('ربط تقييمات Google Maps')}
+                            </a>
+                        </Button>
+                        <Button onClick={() => setAdding(true)}>
+                            <Plus />
+                            {t('تسجيل تقييم')}
+                        </Button>
+                    </div>
                 }
             />
 

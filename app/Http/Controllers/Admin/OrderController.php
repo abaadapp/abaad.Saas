@@ -32,42 +32,8 @@ class OrderController extends Controller
         $q = Order::where('business_id', $this->bid())->where('is_held', false)->withCount('items')
             ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()));
 
-        if ($s = trim((string) $request->query('q'))) {
-            // والموظف من البحث: «من باع هذه الفاتورة؟» سؤالٌ يُبحث به كثيرًا
-            $q->where(fn ($w) => $w->where('number', 'like', "%{$s}%")
-                ->orWhere('customer_name', 'like', "%{$s}%")
-                ->orWhere('employee_name', 'like', "%{$s}%"));
-        }
-        if ($pm = $request->query('payment')) { $q->where('payment_method', $pm); }
-        // الملغى كان يجلس بين المكتمل بلا تمييز ولا فرز
-        if ($st = $request->query('status')) { $q->where('status', $st); }
-        // مدًى لا يومًا واحدًا: من أراد مبيعات أسبوع كان يفتح الشاشة سبع مرّات.
-        // وحقل «التاريخ» المفرد حُذف — كان ثالثًا بجانب الطرفين يفعل ما يفعلانه
-        if ($from = $request->query('from')) { $q->whereDate('ordered_at', '>=', $from); }
-        if ($to = $request->query('to')) { $q->whereDate('ordered_at', '<=', $to); }
-
-        /*
-         * مُرشِّح الموعد — على `scheduled_for` لا على `ordered_at`.
-         *
-         * السؤال الذي يُسأل كلّ صباح هو «ما الذي يُسلَّم اليوم؟» لا «ما الذي
-         * سُجّل اليوم». وطلبٌ سُجّل الاثنين لتسليمه الجمعة يقع في يومين
-         * مختلفين بحسب أيّ عمودٍ يُقرأ — فيُفصَل المُرشِّحان ولا يُستبدل أحدهما
-         * بالآخر: `from`/`to` يبقيان على `ordered_at` لأنّ التقارير عليهما.
-         *
-         * و«المتأخّر» يستثني المغلق: طلبٌ سُلّم أمس ليس متأخّرًا اليوم.
-         */
-        if ($when = $request->query('when')) {
-            match ($when) {
-                'today' => $q->whereBetween('scheduled_for', [now()->startOfDay(), now()->endOfDay()]),
-                'tomorrow' => $q->whereBetween('scheduled_for', [
-                    now()->addDay()->startOfDay(), now()->addDay()->endOfDay(),
-                ]),
-                'upcoming' => $q->where('scheduled_for', '>', now()->addDay()->endOfDay()),
-                'overdue' => $q->where('scheduled_for', '<', now())
-                    ->whereNotIn('status', \App\Support\OrderStatus::CLOSED),
-                default => null,
-            };
-        }
+        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
+        \App\Support\ListFilters::orders($q, $request);
 
         /*
          * مجموع ما رُشّح لا مجموع الصفحة.

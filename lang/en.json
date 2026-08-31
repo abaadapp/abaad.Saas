@@ -3506,5 +3506,6 @@
     "اكتب سعر الإضافة.": "Enter the add-on price.",
     "سعر الإضافة رقمٌ.": "The add-on price must be a number.",
     "الكمية المستهلكة": "Quantity used",
-    "نعم، مرتبطة بصنف": "Yes, tied to a stock item"
+    "نعم، مرتبطة بصنف": "Yes, tied to a stock item",
+    "منها ملغاة": "Of which cancelled"
 }

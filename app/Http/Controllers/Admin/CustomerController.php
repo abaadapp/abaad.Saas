@@ -42,10 +42,8 @@ class CustomerController extends Controller
             ->withSum(['orders as orders_sum_total' => $sold], 'total')
             ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at');
 
-        if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('name_en', 'like', "%{$s}%")
-                ->orWhere('phone', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
-        }
+        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
+        \App\Support\ListFilters::customers($q, $request);
 
         /*
          * الافتراضي: الأحدث تسجيلًا، حتى يظهر العميل المُضاف حديثًا في الأعلى.

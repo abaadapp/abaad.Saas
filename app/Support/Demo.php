@@ -742,7 +742,10 @@ class Demo
      * ولوحة المنتجات. أما نقطة البيع فتبيع من فرعٍ بعينه، فلا يجوز أن تعرض
      * لكاشير صلالة بضاعةً في مسقط.
      */
-    public static function products(?int $branchId = null): array
+    /**
+     * @param  \Illuminate\Http\Request|null  $filter  مُرشِّحات الشاشة — الملفّ يتبعها
+     */
+    public static function products(?int $branchId = null, ?\Illuminate\Http\Request $filter = null): array
     {
         $available = Stock::availabilityResolver(self::bid(), $branchId);
 
@@ -759,7 +762,14 @@ class Demo
         $recipeOwners = \App\Models\RecipeItem::where('business_id', self::bid())->distinct()->pluck('product_id')
             ->flip()->all();
 
-        return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners) {
+        $query = Product::where('business_id', self::bid())->with('category')->orderBy('id');
+
+        // الملفّ يتبع الشاشة: مَن رشّح «نفد المخزون» وصدّر لا يريد الجرد كلّه
+        if ($filter) {
+            ListFilters::products($query, $filter);
+        }
+
+        return $query->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners) {
             $qty = $branchId ? $available($p->id, (int) $p->quantity) : (int) $p->quantity;
 
             return [
@@ -821,11 +831,32 @@ class Demo
         })->all();
     }
 
-    public static function orders(): array
+    /**
+     * فواتير المتجر — بلا مُرشِّح للوحة، وبمُرشِّحات الشاشة للملفّ.
+     *
+     * وبلا `$filter` تبقى على `sold()` كما كانت: لوحةُ التحكّم تعرض آخر ما
+     * بيع لا آخر ما أُلغي. ومع مُرشِّحٍ تصير مرآةَ شاشة «المبيعات» بالضبط —
+     * والملغى فيها، لأنّ الشاشة تعرضه وتعدّه.
+     *
+     * وكان التصدير يقرأ الفرع الأوّل وحده: مَن رشّح الملغاة وصدّر لا يجد
+     * ملغاةً واحدة في ملفّه.
+     *
+     * @param  \Illuminate\Http\Request|null  $filter  مُرشِّحات الشاشة
+     */
+    public static function orders(?\Illuminate\Http\Request $filter = null): array
     {
-        return Order::where('business_id', self::bid())->sold()
+        $query = Order::where('business_id', self::bid())
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
-            ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
+            ->withCount('items')->orderByDesc('ordered_at');
+
+        if ($filter) {
+            $query->where('is_held', false);
+            ListFilters::orders($query, $filter);
+        } else {
+            $query->sold();
+        }
+
+        return $query->get()->map(fn ($o) => [
                 'id' => $o->number,
                 'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
                 'employee' => $o->employee_name ?? '—',
@@ -929,7 +960,10 @@ class Demo
         ])->all();
     }
 
-    public static function customers(): array
+    /**
+     * @param  \Illuminate\Http\Request|null  $filter  بحث الشاشة — الملفّ يتبعه
+     */
+    public static function customers(?\Illuminate\Http\Request $filter = null): array
     {
         /*
          * المُباع وحده، وباستعلامٍ واحد.
@@ -940,11 +974,18 @@ class Demo
          */
         $sold = fn ($q) => $q->sold();
 
-        return Customer::where('business_id', self::bid())
+        $query = Customer::where('business_id', self::bid())
             ->withCount(['orders as orders_count' => $sold])
             ->withSum(['orders as orders_sum_total' => $sold], 'total')
             ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at')
-            ->orderBy('id')->get()->map(fn ($c) => [
+            ->orderBy('id');
+
+        // الملفّ يتبع بحث الشاشة
+        if ($filter) {
+            ListFilters::customers($query, $filter);
+        }
+
+        return $query->get()->map(fn ($c) => [
                 'id' => $c->id,
                 'name' => $c->name,
                 'name_en' => $c->name_en,
@@ -1547,9 +1588,23 @@ class Demo
         ])->all();
     }
 
-    public static function expenses(): array
+    /**
+     * مصروفات المتجر — وشهرُ الشاشة معها حين يُصدَّر.
+     *
+     * الشاشة تفتح على الشهر الجاري، والملفّ كان يخرج بالتاريخ كلّه: يُرشِّح
+     * التاجر سبتمبر ويصدّر، فيفتح ملفًّا فيه ثلاث سنوات.
+     *
+     * @param  \Illuminate\Http\Request|null  $filter  مُرشِّحات الشاشة
+     */
+    public static function expenses(?\Illuminate\Http\Request $filter = null): array
     {
-        return Expense::where('business_id', self::bid())->orderByDesc('spent_at')->get()->map(fn ($e) => [
+        $query = Expense::where('business_id', self::bid())->orderByDesc('spent_at');
+
+        if ($filter) {
+            ListFilters::expenses($query, $filter);
+        }
+
+        return $query->get()->map(fn ($e) => [
             'type' => $e->type,
             'description' => $e->description,
             'amount' => (float) $e->amount,

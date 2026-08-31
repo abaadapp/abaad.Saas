@@ -83,41 +83,8 @@ class ProductController extends Controller
     {
         $q = Product::where('business_id', $this->bid())->with('category');
 
-        if ($s = trim((string) $request->query('q'))) {
-            /*
-             * والباركود من البحث.
-             *
-             * شاشة البيع تقرأ الماسح، فمن اعتاده يمرّره هنا فلا يجد شيئًا —
-             * ويظنّ الصنف غير مسجَّل فيُدخله ثانيةً بباركودٍ مكرّر.
-             */
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")
-                ->orWhere('sku', 'like', "%{$s}%")
-                ->orWhere('barcode', 'like', "%{$s}%"));
-        }
-        if ($c = $request->query('category')) {
-            $q->whereHas('category', fn ($w) => $w->where('name', $c));
-        }
-        if (($st = $request->query('status')) !== null && $st !== '') {
-            $q->where('active', $st === 'active');
-        }
-        if ($stock = $request->query('stock')) {
-            if ($stock === 'نفد المخزون') { $q->where('quantity', '<=', 0); }
-            elseif ($stock === 'منخفض') { $q->whereColumn('quantity', '<', 'alert_qty')->where('quantity', '>', 0); }
-            elseif ($stock === 'متوفر') { $q->whereColumn('quantity', '>=', 'alert_qty'); }
-            elseif ($stock === 'راكد') {
-                /*
-                 * ما لم يُبَع منذ تسعين يومًا وفي المخزن منه بضاعة.
-                 *
-                 * مالٌ نائم على الرفّ لا يراه أحد: الجرد يعرضه «متوفرًا»
-                 * كغيره، ولا شيء يفرّق بين صنفٍ يدور كل أسبوع وصنفٍ لم
-                 * يتحرّك منذ فصل.
-                 */
-                $q->where('quantity', '>', 0)->whereDoesntHave('orderItems', fn ($w) => $w
-                    ->whereHas('order', fn ($o) => $o
-                        ->sold()
-                        ->where('ordered_at', '>=', now()->subDays(90))));
-            }
-        }
+        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
+        \App\Support\ListFilters::products($q, $request);
 
         /*
          * الأحدث أوّلًا — كما في كلّ قائمةٍ أخرى في اللوحة.
@@ -131,6 +98,7 @@ class ProductController extends Controller
          * ونازلًا. يظهر بعد الصنف الثالث عشر، أي بعد أن يصير المتجر متجرًا.
          */
         \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
+
 
         $products = $q->paginate(12)->withQueryString()->through(fn ($p) => [
             'id' => $p->id, 'name' => $p->name, 'cat' => $p->category?->name ?? '—',

@@ -6,6 +6,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
+import { withFilters } from '@/lib/exportLink';
 import { useTranslate } from '@/lib/i18n';
 
 interface Props {
@@ -38,7 +39,7 @@ export default function ExportMenu({ xlsx, pdf, csv, label = 'تصدير' }: Pro
             <DropdownMenuContent align="end" className="w-56">
                 {xlsx && (
                     <DropdownMenuItem asChild>
-                        <a href={xlsx}>
+                        <a href={withFilters(xlsx)}>
                             <FileSpreadsheet className="text-[#9ca3af]" />
                             {t('تصدير كملف إكسل')}
                         </a>
@@ -46,7 +47,7 @@ export default function ExportMenu({ xlsx, pdf, csv, label = 'تصدير' }: Pro
                 )}
                 {pdf && (
                     <DropdownMenuItem asChild>
-                        <a href={pdf} target="_blank" rel="noreferrer">
+                        <a href={withFilters(pdf)} target="_blank" rel="noreferrer">
                             <FileText className="text-[#9ca3af]" />
                             {t('تصدير كملف PDF')}
                         </a>
@@ -54,7 +55,7 @@ export default function ExportMenu({ xlsx, pdf, csv, label = 'تصدير' }: Pro
                 )}
                 {csv && (
                     <DropdownMenuItem asChild>
-                        <a href={csv}>
+                        <a href={withFilters(csv)}>
                             <FileDown className="text-[#9ca3af]" />
                             {t('تصدير كملف CSV')}
                         </a>

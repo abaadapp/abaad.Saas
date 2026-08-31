@@ -38,15 +38,12 @@ class ExpenseController extends Controller
          * دفعةً واحدة لا تجيبه — يُجمع منها بالعين فيُخطئ الجمع. و«كل الشهور»
          * تبقى خيارًا لمن يبحث عن فاتورةٍ قديمة بعينها.
          */
-        $month = (string) $request->query('month', now()->format('Y-m'));
-        $span = null;
+        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
+        $span = \App\Support\ListFilters::expenseSpan($request);
+        $month = $span ? $span[0]->format('Y-m') : '';
 
-        if (preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $first = \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $month.'-01');
-            $span = [$first->copy()->startOfMonth(), $first->copy()->endOfMonth()];
+        if ($span) {
             $q->whereBetween('spent_at', $span);
-        } else {
-            $month = '';
         }
 
         // مجموع الشهر يُحسب على الشهر كلّه لا على صفحته: الترقيم يقصّ الصفوف
@@ -65,6 +62,7 @@ class ExpenseController extends Controller
         if ($status = $request->query('status')) {
             $q->where('status', $status);
         }
+
 
         \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('spent_at')->orderByDesc('id'));
 

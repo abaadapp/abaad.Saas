@@ -191,7 +191,7 @@ class ReportExportController extends Controller
 
         $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الاسم'), __('القسم'), 'SKU', __('الباركود'), __('السعر (ر.ع)'), __('التكلفة (ر.ع)'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')]);
         $money = [];
-        foreach (Demo::products() as $p) {
+        foreach (Demo::products(null, request()) as $p) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", (int) $p['id']);
             $sheet->setCellValue("B{$r}", $p['name']);
@@ -313,13 +313,25 @@ class ReportExportController extends Controller
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('الطلبات'));
         $money = [];
 
-        $orders = Demo::orders();
+        $orders = Demo::orders(request());
 
-        // ملخّص سريع
+        /*
+         * ملخّصٌ يقول ما تقوله الشاشة.
+         *
+         * والملغى خارج المجموع وداخل العدّ: الشاشة تعرضه في الجدول وتحسب
+         * إجماليّها بلا قيمته — وجمعُه هنا كان سيجعل الملفّ يقول مبيعاتٍ لم
+         * تقع، ويخالف الرقم الذي قرأه التاجر قبل أن يضغط «تصدير».
+         */
+        $cancelled = array_values(array_filter($orders, fn ($o) => $o['status'] === \App\Support\OrderStatus::CANCELLED));
+
         $title(__('ملخّص الطلبات'));
-        $head([__('عدد الطلبات'), __('إجمالي القيمة (ر.ع)')]);
+        $head([__('عدد الطلبات'), __('إجمالي القيمة (ر.ع)'), __('منها ملغاة')]);
         $sheet->setCellValue('A'.$this->row, count($orders));
-        $sheet->setCellValue('B'.$this->row, round(array_sum(array_map(fn ($o) => (float) $o['total'], $orders)), 3));
+        $sheet->setCellValue('B'.$this->row, round(array_sum(array_map(
+            fn ($o) => $o['status'] === \App\Support\OrderStatus::CANCELLED ? 0.0 : (float) $o['total'],
+            $orders,
+        )), 3));
+        $sheet->setCellValue('C'.$this->row, count($cancelled));
         $money[] = 'B'.$this->row;
         $this->row += 2;
 
@@ -356,7 +368,7 @@ class ReportExportController extends Controller
         [$sheet] = $this->sheet($spreadsheet, __('المصروفات'));
         $firstDataRow = $this->tableHead($sheet, [__('التاريخ'), __('النوع'), __('الوصف'), __('المبلغ (ر.ع)'), __('الطريقة'), __('الموظف')]);
         $money = [];
-        foreach (Demo::expenses() as $e) {
+        foreach (Demo::expenses(request()) as $e) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $e['date']);
             $sheet->setCellValue("B{$r}", $e['type']);

@@ -183,12 +183,16 @@ class PdfController extends Controller
     /** تقرير قائمة الطلبات (PDF) */
     public function ordersReport()
     {
-        $orders = Demo::orders();
+        $orders = Demo::orders(request());
         $html = view('pdf.orders-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::currentBranchName(),
             'orders' => $orders,
-            'total' => array_sum(array_map(fn ($o) => (float) $o['total'], $orders)),
+            // الملغى خارج المجموع كما في الشاشة — انظر ReportExportController::ordersXlsx
+            'total' => array_sum(array_map(
+                fn ($o) => $o['status'] === \App\Support\OrderStatus::CANCELLED ? 0.0 : (float) $o['total'],
+                $orders,
+            )),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
@@ -200,7 +204,7 @@ class PdfController extends Controller
     /** تقرير المنتجات (PDF) */
     public function productsReport()
     {
-        $products = Demo::products();
+        $products = Demo::products(null, request());
         $html = view('pdf.products-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::currentBranchName(),
@@ -232,7 +236,7 @@ class PdfController extends Controller
     /** تقرير المصروفات (PDF) */
     public function expensesReport()
     {
-        $expenses = Demo::expenses();
+        $expenses = Demo::expenses(request());
         $html = view('pdf.expenses-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::currentBranchName(),

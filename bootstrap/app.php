@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'pos.branch' => \App\Http\Middleware\BindPosBranch::class,
         ]);
         $middleware->web(append: [
+            \App\Http\Middleware\SecurityHeaders::class,
             \App\Http\Middleware\SetLocale::class,
             \App\Http\Middleware\NormalizeMoneyInput::class,
             \App\Http\Middleware\HandleInertiaRequests::class,

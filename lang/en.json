@@ -3470,5 +3470,6 @@
     "صدر من نظام أبعاد": "Issued by Abaad",
     "لم يُعدّ": "Not counted",
     "مجهول": "Unknown",
-    "المتجر «:name» ليس تجريبيًّا. البيانات الوهميّة لا تُكتب في حساب تاجر.": "The shop “:name” is not a demo. Dummy data is never written into a merchant’s account."
+    "المتجر «:name» ليس تجريبيًّا. البيانات الوهميّة لا تُكتب في حساب تاجر.": "The shop “:name” is not a demo. Dummy data is never written into a merchant’s account.",
+    "كميّةٌ أُضيفت بلا فرع فلم تكن تُباع — نُسبت إلى الفرع الأول": "Stock added without a branch and therefore unsellable — assigned to the first branch"
 }

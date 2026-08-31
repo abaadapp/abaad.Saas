@@ -27,6 +27,7 @@ use App\Models\StockAdjustment;
 use App\Models\Subscription;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -630,6 +631,9 @@ class DemoStore
             foreach ($items as [$p, $qty]) {
                 $order->items()->create([
                     'product_id' => $p->id, 'name' => $p->name, 'price' => $p->price,
+                    // لقطةُ التكلفة كما يكتبها الصندوق: بدونها يقرأ التقرير
+                    // بطاقةَ المنتج اليوم، فيتحرّك ربحُ الشهر الماضي مع كلّ شراء
+                    'cost' => $p->cost,
                     'quantity' => $qty, 'total' => round($p->price * $qty, 3),
                 ]);
             }
@@ -637,6 +641,34 @@ class DemoStore
             if ($status === 'ملغي') {
                 continue;
             }
+
+            /*
+             * وقيدُ الدخل مع الفاتورة — لا بعدها ولا بدلها.
+             *
+             * المالية كلُّها تقرأ `transactions`: إجمالي المبيعات، وصافي
+             * الإيراد، والضريبة المحصّلة، ووسائل الدفع. والربحية تقرأ منها
+             * الإيراد وتقرأ التكلفة من بنود الطلبات.
+             *
+             * فبذورٌ تكتب ألف فاتورةٍ بلا قيدٍ واحد تجعل الشاشة تقول: بيعٌ
+             * بأربعمئة ريال، وتكلفةُ مبيعاتٍ بمليون — وخسارةٌ صافية بمليون
+             * على متجرٍ باع مليونين وسبعمئة ألف. رقمٌ لا يصدّقه من يراه، وهو
+             * أوّل ما يراه من يجرّب النظام.
+             *
+             * ويُكتب هنا بما يكتبه الصندوق حرفًا بحرف — انظر
+             * PosController::checkout.
+             */
+            Transaction::create([
+                'business_id' => $bid,
+                'order_id' => $order->id,
+                'reference' => $order->number,
+                'description' => 'مبيعات نقطة البيع — ' . $order->customer_name,
+                'method' => $order->payment_method,
+                'type' => 'دخل',
+                'amount' => $total,
+                'tax_amount' => $tax,
+                'employee_name' => $seller->name,
+                'occurred_at' => $at,
+            ]);
 
             $key = $at->format('Y-m');
             $monthly[$key] ??= ['subtotal' => 0.0, 'tax' => 0.0, 'total' => 0.0, 'cost' => 0.0, 'date' => $at->copy()->endOfMonth()];

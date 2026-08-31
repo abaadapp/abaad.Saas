@@ -43,10 +43,19 @@ class Waste
      */
     public const LEGACY_REASONS = ['هالك', 'تالف'];
 
-    /** ما يُقاس عليه في القراءة — الحاضر والماضي معًا */
+    /**
+     * نقصٌ كشفه العدّ الفعليّ — هالكٌ بكلّ معنى الكلمة.
+     *
+     * ولهذا وجودُه هنا لا في `REASONS`: يكتبه الجرد ولا يُختار بيد. وكان
+     * الجرد قبل هذا يبتلع النقص في مصروفٍ واحدٍ مجمَّع بلا صنفٍ ولا تاريخ،
+     * فيقرأ صاحب المحلّ «لا هالك» وقد عُدم عنده مئتا وردة.
+     */
+    public const STOCKTAKE_REASON = StockAdjustment::STOCKTAKE_LOSS;
+
+    /** ما يُقاس عليه في القراءة — الحاضر والماضي والجرد */
     public static function all(): array
     {
-        return array_merge(self::REASONS, self::LEGACY_REASONS);
+        return array_merge(self::REASONS, [self::STOCKTAKE_REASON], self::LEGACY_REASONS);
     }
 
     public static function isWaste(?string $reason): bool

@@ -61,6 +61,21 @@ class InventoryController extends Controller
         $shortage = 0.0;
 
         /*
+         * كلّ فرقٍ يصير صفَّ تعديلِ مخزون — لا مصروفًا واحدًا مجمَّعًا.
+         *
+         * كان الجرد يكتب رصيد الفرع والإجماليّ وحركةً ومصروفًا واحدًا لكلّ
+         * الأصناف. فالورد الذي عُدم لا يظهر في تقرير الهالك ولا في شاشة
+         * التعديلات، ولا يُعرف أيُّ صنفٍ عُدم ولا بكم كلّف: سطرٌ واحد بمبلغٍ
+         * واحد. وهذا أخطر ما في محلّ ورد — الهالك هو مصروفه الأوّل، وكان
+         * النظام يبتلعه ثم يقول «لا هالك».
+         *
+         * والرقم يُحسب مرّةً ثم يُزاد في الذاكرة: `nextNumber` تقرأ الجدول،
+         * ومناداتها لكلّ صنفٍ تعني خمسمئة قراءةٍ في جردِ خمسمئة صنف.
+         */
+        $rows = [];
+        $serial = (int) substr(\App\Models\StockAdjustment::nextNumber($this->bid()), 3);
+
+        /*
          * دفتر الفروع يُقرأ مرّةً واحدة قبل الحلقة.
          *
          * كان `bookOf` يُنادى لكلّ صنف، وهي تُنادي `books` التي تُحمّل كلّ
@@ -81,7 +96,7 @@ class InventoryController extends Controller
          * يقول أين وقف. والجرد هو اللحظة التي يقرّر فيها التاجر أيثق
          * بأرقام المخزون أم لا.
          */
-        DB::transaction(function () use ($data, $branch, $books, &$adjusted, &$shortage) {
+        DB::transaction(function () use ($data, $branch, $books, &$adjusted, &$shortage, &$rows, &$serial) {
             foreach ($data['counts'] as $productId => $counted) {
                 if ($counted === null || $counted === '') {
                     continue;
@@ -128,10 +143,42 @@ class InventoryController extends Controller
                     'quantity' => ($delta >= 0 ? '+' : '') . $delta,
                     'employee_name' => auth()->user()->name,
                 ]);
+                /*
+                 * التكلفة تُنسخ لحظتها كما في التعديل اليدويّ: تكلفة الورد
+                 * متوسّطٌ يتحرّك مع كلّ شحنة، وقراءتها بعد شهرٍ تُعطي رقمًا
+                 * لم يقع.
+                 */
+                $cost = round((float) $product->cost, 3);
+
+                $rows[] = [
+                    'business_id' => $this->bid(),
+                    'branch_id' => $branch->id,
+                    'product_id' => $product->id,
+                    'number' => 'SA-'.str_pad((string) $serial++, 6, '0', STR_PAD_LEFT),
+                    'quantity_delta' => $delta,
+                    'cost_at_time' => $cost,
+                    // النقص هالكٌ يُقرأ في تقريره، والزيادة تصحيحُ دفترٍ لا ربح
+                    'reason' => $delta < 0
+                        ? \App\Models\StockAdjustment::STOCKTAKE_LOSS
+                        : \App\Models\StockAdjustment::STOCKTAKE_GAIN,
+                    'notes' => __('جرد فعلي — :branch: الدفتري :book والمعدود :counted', [
+                        'branch' => $branch->name, 'book' => $book, 'counted' => $counted,
+                    ]),
+                    'created_by' => auth()->id(),
+                    'adjusted_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+
                 $adjusted++;
                 if ($delta < 0) {
-                    $shortage += abs($delta) * (float) $product->cost;
+                    $shortage += abs($delta) * $cost;
                 }
+            }
+
+            // كتابةٌ واحدة لا واحدةٌ لكلّ صنف — والجرد قد يمسّ مئات الأصناف
+            if ($rows) {
+                \App\Models\StockAdjustment::insert($rows);
             }
 
             /*

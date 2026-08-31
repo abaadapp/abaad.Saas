@@ -3360,5 +3360,6 @@
     "مقاس غير موجود لهذا الصنف.": "That size does not belong to this item.",
     "هذا المقاس غير متاح للبيع.": "This size is not available for sale.",
     "اختر مقاس :name.": "Choose a size for :name.",
-    "إضافة غير متاحة مع هذا الصنف.": "That add-on is not available with this item."
+    "إضافة غير متاحة مع هذا الصنف.": "That add-on is not available with this item.",
+    "جرد فعلي — :branch: الدفتري :book والمعدود :counted": "Stocktake — :branch: book :book, counted :counted"
 }

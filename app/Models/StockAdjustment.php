@@ -24,6 +24,20 @@ class StockAdjustment extends Model
     /** أسباب التعديل — قائمةٌ مغلقة كي تُجمَّع التقارير عليها */
     public const REASONS = ['تلف', 'فقد', 'جرد', 'إهداء', 'تصحيح'];
 
+    /**
+     * سببُ النقص الذي يكشفه العدّ الفعليّ — يكتبه الجرد ولا يُختار بيد.
+     *
+     * خارج `REASONS` عمدًا: تلك ما يعرضه نموذج التعديل اليدويّ، وهذا ما
+     * يكتبه الجرد وحده. وخلطُهما كان سيجعل الموظّف يسجّل «فاقد جرد» بيده
+     * على صنفٍ لم يُجرد — فيصير السبب اسمًا لا مصدرًا.
+     *
+     * ويُقرأ هالكًا: انظر Waste::LOSS_REASONS.
+     */
+    public const STOCKTAKE_LOSS = 'فاقد جرد';
+
+    /** والزيادة التي يكشفها العدّ ليست ربحًا ولا هالكًا — تصحيحُ دفتر */
+    public const STOCKTAKE_GAIN = 'جرد';
+
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
 
     public function branch(): BelongsTo { return $this->belongsTo(Branch::class); }

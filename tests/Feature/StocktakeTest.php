@@ -195,4 +195,112 @@ class StocktakeTest extends TestCase
 
         $this->assertSame(10, $this->stock($this->muscat));
     }
+
+    /* ==================== الجرد يصل تقرير الهالك ==================== */
+
+    /**
+     * النقص الذي يكشفه العدّ هالكٌ يُقرأ باسم صنفه.
+     *
+     * كان الجرد يكتب رصيدًا وحركةً ومصروفًا واحدًا مجمَّعًا لكلّ الأصناف —
+     * فلا صفَّ تعديلٍ ولا تكلفةَ لحظة ولا صنفٌ يُعرف. ومحلُّ ورد هالكُه
+     * مصروفُه الأوّل، وكان النظام يبتلعه ثمّ يقول «لا هالك».
+     */
+    public function test_a_shortage_found_at_stocktake_lands_in_the_waste_report(): void
+    {
+        // عشرةٌ في الدفتر وسبعةٌ في اليد: ثلاثُ ورداتٍ عُدمت
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [$this->product->id => 7],
+        ])->assertSessionHasNoErrors();
+
+        $row = \App\Models\StockAdjustment::firstOrFail();
+
+        $this->assertSame(\App\Models\StockAdjustment::STOCKTAKE_LOSS, $row->reason);
+        $this->assertEqualsWithDelta(-3.0, (float) $row->quantity_delta, 0.001);
+        // تكلفة اللحظة لا تكلفة اليوم
+        $this->assertEqualsWithDelta(4.0, (float) $row->cost_at_time, 0.001);
+        $this->assertSame($this->muscat->id, (int) $row->branch_id);
+        $this->assertSame($this->product->id, (int) $row->product_id);
+
+        $totals = \App\Support\Waste::totals($this->business->id, [
+            'from' => now()->subDay()->toDateString(), 'to' => now()->addDay()->toDateString(),
+        ]);
+
+        $this->assertEqualsWithDelta(3.0, $totals['quantity'], 0.001);
+        $this->assertEqualsWithDelta(12.0, $totals['value'], 0.001);
+
+        // وباسم صنفه لا مجمَّعًا
+        $byProduct = \App\Support\Waste::groupedBy($this->business->id, 'product', [
+            'from' => now()->subDay()->toDateString(), 'to' => now()->addDay()->toDateString(),
+        ]);
+        $this->assertSame('باقة ورد', $byProduct[0]['label']);
+    }
+
+    /** والزيادة تصحيحُ دفترٍ لا هالك — ولا ربح */
+    public function test_a_surplus_found_at_stocktake_is_not_waste(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [$this->product->id => 13],
+        ])->assertSessionHasNoErrors();
+
+        $row = \App\Models\StockAdjustment::firstOrFail();
+
+        $this->assertSame(\App\Models\StockAdjustment::STOCKTAKE_GAIN, $row->reason);
+        $this->assertEqualsWithDelta(3.0, (float) $row->quantity_delta, 0.001);
+        $this->assertFalse(\App\Support\Waste::isWaste($row->reason));
+
+        $this->assertEqualsWithDelta(0.0, \App\Support\Waste::totals($this->business->id, [
+            'from' => now()->subDay()->toDateString(), 'to' => now()->addDay()->toDateString(),
+        ])['value'], 0.001);
+    }
+
+    /** ولا يُسجَّل صفٌّ لصنفٍ لم يتغيّر: جردٌ صحيح لا يُنتج ضجيجًا */
+    public function test_a_matching_count_writes_no_row_at_all(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [$this->product->id => 10],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(0, \App\Models\StockAdjustment::count());
+    }
+
+    /** ولا يُخصم المخزون مرّتين: الصفّ سجلٌّ لا حركة */
+    public function test_recording_the_row_does_not_move_the_stock_again(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [$this->product->id => 7],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(12, (int) $this->product->fresh()->quantity);   // 15 − 3
+        $this->assertSame(7, (int) BranchStock::where('branch_id', $this->muscat->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
+        $this->assertSame(5, (int) BranchStock::where('branch_id', $this->salalah->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
+    }
+
+    /** والأرقام المتسلسلة لا تتصادم حين يُجرد أكثر من صنف */
+    public function test_every_row_gets_its_own_reference(): void
+    {
+        $second = Product::create([
+            'business_id' => $this->business->id, 'name' => 'جيبسوفيلا',
+            'price' => 2, 'cost' => 1, 'quantity' => 20, 'alert_qty' => 2, 'active' => true,
+        ]);
+        BranchStock::create([
+            'business_id' => $this->business->id, 'branch_id' => $this->muscat->id,
+            'product_id' => $second->id, 'quantity' => 20,
+        ]);
+
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [$this->product->id => 7, $second->id => 15],
+        ])->assertSessionHasNoErrors();
+
+        $numbers = \App\Models\StockAdjustment::pluck('number')->all();
+
+        $this->assertCount(2, $numbers);
+        $this->assertSame($numbers, array_unique($numbers));
+    }
 }

@@ -1,0 +1,4 @@
+ID,Task,Type,Owner,Priority,Status,Branch,GitHub Issue / PR,Area / Files,Depends On,Started,Target,Last Update,Notes
+AB-001,Inventory integrity fixes,Fix,ChatGPT,P1,In Review,review/fix-batch-001-inventory-integrity,,Inventory / Products,,,,,Existing review branch
+AB-002,Example parallel task for Saad,Feature,Saad,P2,Ready,saad/feature/<short-name>,,,,,,,Create from latest main
+AB-003,Example parallel task for Udai,Fix,Udai,P2,Ready,udai/fix/<short-name>,,,,,,,Create from latest main

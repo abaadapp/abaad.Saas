@@ -308,6 +308,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * تحت `/products/{id}` عمدًا: الحارس يشتقّ القسم من اسم المسار، فتقع
      * كلّها تحت صلاحية «المنتجات» بلا صلاحيةٍ جديدة تُخترع.
      */
+    /*
+     * قسمٌ أو إضافةٌ تُنشأ من جانب الحقل الذي يحتاجها.
+     *
+     * قبل هذا لم يكن للأقسام ولا للإضافات بابُ إنشاءٍ إطلاقًا: تأتي من
+     * تهيئة نوع النشاط أو من استيراد ملفّ. وتُوضع تحت `/products/` كي
+     * يقيسها الحارس بصلاحية «المنتجات» بلا صلاحيةٍ جديدة.
+     */
+    Route::post('/products/categories', [\App\Http\Controllers\Admin\CatalogQuickAddController::class, 'storeCategory'])->name('products.categories.store');
+    Route::post('/products/addons', [\App\Http\Controllers\Admin\CatalogQuickAddController::class, 'storeAddon'])->name('products.addons.store');
+
     Route::post('/products/{id}/variants', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'storeVariant'])->name('products.variants.store');
     Route::put('/products/{id}/variants/{variant}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'updateVariant'])->name('products.variants.update');
     Route::delete('/products/{id}/variants/{variant}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'destroyVariant'])->name('products.variants.destroy');

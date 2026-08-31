@@ -303,4 +303,92 @@ class StocktakeTest extends TestCase
         $this->assertCount(2, $numbers);
         $this->assertSame($numbers, array_unique($numbers));
     }
+
+    /* ============== وضع «الكمية المعدومة» — الطرح لا الاعتماد ============== */
+
+    /**
+     * أخطرُ عطبٍ في هذه الشاشة: رقمٌ مشروع في حقلٍ مشروع يمحو تسعين وردة.
+     *
+     * الشاشة كانت تسأل «الكمية المعدودة» وتعتمدها رصيدًا جديدًا. ومن كتب
+     * فيها ما عُدم — ثلاث ورداتٍ تلفت — صار رصيده ثلاثًا بدل سبعٍ وتسعين،
+     * بلا رسالةٍ ولا أثر.
+     */
+    public function test_loss_mode_subtracts_and_never_becomes_the_balance(): void
+    {
+        // عشرةٌ في مسقط، وثلاثةٌ عُدمت
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'mode' => 'loss',
+            'counts' => [$this->product->id => 3],
+        ])->assertSessionHasNoErrors();
+
+        // سبعةٌ لا ثلاثة
+        $this->assertSame(7, (int) BranchStock::where('branch_id', $this->muscat->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
+        $this->assertSame(12, (int) $this->product->fresh()->quantity);   // 15 − 3
+        // ولا يُمَسّ فرعٌ آخر
+        $this->assertSame(5, (int) BranchStock::where('branch_id', $this->salalah->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
+    }
+
+    /** والمعدوم هالكٌ باسم صنفه في التقرير */
+    public function test_loss_mode_lands_in_the_waste_report_as_damage(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'mode' => 'loss',
+            'counts' => [$this->product->id => 3],
+        ])->assertSessionHasNoErrors();
+
+        $row = \App\Models\StockAdjustment::firstOrFail();
+
+        $this->assertSame('تلف', $row->reason);
+        $this->assertEqualsWithDelta(-3.0, (float) $row->quantity_delta, 0.001);
+        $this->assertEqualsWithDelta(4.0, (float) $row->cost_at_time, 0.001);
+        $this->assertTrue(\App\Support\Waste::isWaste($row->reason));
+
+        $window = ['from' => now()->subDay()->toDateString(), 'to' => now()->addDay()->toDateString()];
+
+        $this->assertEqualsWithDelta(3.0, \App\Support\Waste::totals($this->business->id, $window)['quantity'], 0.001);
+        $this->assertEqualsWithDelta(12.0, \App\Support\Waste::totals($this->business->id, $window)['value'], 0.001);
+    }
+
+    /** والوضع الافتراضيّ لم ينقلب: من لم يُرسل شيئًا يبقى على «المعدود» */
+    public function test_the_default_mode_is_still_counting(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [$this->product->id => 3],
+        ])->assertSessionHasNoErrors();
+
+        // المعدود يصير الرصيد كما كان
+        $this->assertSame(3, (int) BranchStock::where('branch_id', $this->muscat->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
+    }
+
+    /** وصفرُ معدومٍ لا يكتب شيئًا */
+    public function test_zero_loss_writes_nothing(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'mode' => 'loss',
+            'counts' => [$this->product->id => 0],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(0, \App\Models\StockAdjustment::count());
+        $this->assertSame(10, (int) BranchStock::where('branch_id', $this->muscat->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
+    }
+
+    /** ووضعٌ لا نعرفه يُردّ ولا يُخمَّن */
+    public function test_an_unknown_mode_is_refused(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'mode' => 'whatever',
+            'counts' => [$this->product->id => 3],
+        ])->assertSessionHasErrors('mode');
+
+        $this->assertSame(15, (int) $this->product->fresh()->quantity);
+    }
 }

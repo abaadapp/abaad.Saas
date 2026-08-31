@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { Check, Plus, Trash2 } from 'lucide-react';
+import { Check, Plus, Trash2, X } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { csrfHeaders } from '@/lib/csrf';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -78,6 +79,50 @@ export default function Composition({ productId, data, currency }: Props) {
     const [variantDraft, setVariantDraft] = useState({ name: '', name_en: '', price: '', sku: '' });
     const [componentDraft, setComponentDraft] = useState({ component_product_id: '', quantity: '', wastage_percent: '' });
     const [addonIds, setAddonIds] = useState<number[]>(data.addon_ids);
+
+    /*
+     * إضافةٌ تُنشأ من جانب قائمتها.
+     *
+     * لم يكن في النظام بابُ إنشاء إضافاتٍ إطلاقًا — تأتي من التهيئة وحدها.
+     * فمن أراد «دبًّا» جديدًا وهو يُعدّ باقته لم يكن أمامه شيء.
+     *
+     * وبـfetch لا بتنقّل: اختياراتُ الإضافات في هذه الشاشة لم تُحفظ بعد،
+     * وإعادةُ التحميل تمحوها.
+     */
+    const [addons, setAddons] = useState(data.addons);
+    const [draft, setDraft] = useState<{ name: string; price: string } | null>(null);
+    const [addonError, setAddonError] = useState<string | null>(null);
+    const [savingAddon, setSavingAddon] = useState(false);
+
+    const createAddon = async () => {
+        if (!draft?.name.trim()) return;
+
+        setSavingAddon(true);
+        setAddonError(null);
+        try {
+            const res = await fetch(route('admin.products.addons.store'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                body: JSON.stringify({ name: draft.name.trim(), price: draft.price || 0 }),
+            });
+            const body = await res.json();
+
+            if (!res.ok) {
+                setAddonError(body?.errors?.name?.[0] ?? body?.errors?.price?.[0] ?? t('تعذّر إضافة الإضافة'));
+
+                return;
+            }
+
+            setAddons((prev) => [...prev, body.addon]);
+            // تُختار فورًا: من أنشأها وهو يُعدّ هذا المنتج يريدها معه
+            setAddonIds((prev) => [...prev, body.addon.value]);
+            setDraft(null);
+        } catch {
+            setAddonError(t('تعذّر الاتصال بالخادم'));
+        } finally {
+            setSavingAddon(false);
+        }
+    };
 
     const variant = useMemo(
         () => data.variants.find((v) => String(v.id) === scope),
@@ -349,12 +394,61 @@ export default function Composition({ productId, data, currency }: Props) {
                     {t('بلا اختيار تظهر إضافات المتجر كلّها مع هذا المنتج — وهو السلوك السابق. واختيار بعضها يقصرها عليه.')}
                 </p>
 
-                {data.addons.length === 0 ? (
+                {/* إنشاءُ إضافةٍ متاحٌ ولو لم تكن في المتجر واحدة — وهي الحال
+                    التي يبدأ منها كلّ متجرٍ جديد */}
+                {draft === null ? (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mb-4"
+                        onClick={() => {
+                            setDraft({ name: '', price: '' });
+                            setAddonError(null);
+                        }}
+                    >
+                        <Plus />
+                        {t('إضافة جديدة')}
+                    </Button>
+                ) : (
+                    <div className="mb-4 grid grid-cols-1 gap-3 rounded-[12px] bg-[#fafafa] p-4 sm:grid-cols-3">
+                        <Field label="الاسم" required error={addonError ?? undefined}>
+                            <Input
+                                autoFocus
+                                value={draft.name}
+                                placeholder={t('دبّ')}
+                                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                                onKeyDown={(e) => e.key === 'Escape' && setDraft(null)}
+                            />
+                        </Field>
+                        <Field label="السعر" required>
+                            <Input
+                                type="number"
+                                step="0.001"
+                                min="0"
+                                dir="ltr"
+                                value={draft.price}
+                                onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+                            />
+                        </Field>
+                        <div className="flex items-end gap-2">
+                            <Button type="button" className="flex-1" loading={savingAddon} onClick={() => void createAddon()}>
+                                <Check />
+                                {t('حفظ')}
+                            </Button>
+                            <Button type="button" variant="outline" size="icon" aria-label={t('إلغاء')} onClick={() => setDraft(null)}>
+                                <X />
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {addons.length === 0 ? (
                     <p className="py-6 text-center text-[13px] text-[#9ca3af]">{t('لا إضافات في المتجر بعد')}</p>
                 ) : (
                     <>
                         <div className="mb-4 flex flex-wrap gap-2">
-                            {data.addons.map((a) => {
+                            {addons.map((a) => {
                                 const on = addonIds.includes(a.value);
 
                                 return (

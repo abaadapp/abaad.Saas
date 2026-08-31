@@ -3361,5 +3361,22 @@
     "هذا المقاس غير متاح للبيع.": "This size is not available for sale.",
     "اختر مقاس :name.": "Choose a size for :name.",
     "إضافة غير متاحة مع هذا الصنف.": "That add-on is not available with this item.",
-    "جرد فعلي — :branch: الدفتري :book والمعدود :counted": "Stocktake — :branch: book :book, counted :counted"
+    "جرد فعلي — :branch: الدفتري :book والمعدود :counted": "Stocktake — :branch: book :book, counted :counted",
+    "تعذّر إضافة الإضافة": "Could not add the add-on",
+    "تعذّر الاتصال بالخادم": "Could not reach the server",
+    "إضافة جديدة": "New add-on",
+    "دبّ": "Teddy bear",
+    "تعذّر إضافة القسم": "Could not add the category",
+    "اسم القسم الجديد": "New category name",
+    "اختر ماذا تُدخل: الكمية المعدودة فعليًا، أو الكمية المعدومة التي تُطرح من الرصيد": "Choose what you are entering: the quantity actually counted, or the quantity lost, which is subtracted from the balance",
+    "الأرقام تخصّ الفرع المختار وحده. اترك الحقل فارغًا لما لم تُدخله (لن يتغيّر).": "The figures are for the selected branch only. Leave a field empty for anything you have not entered — it will not change.",
+    "ماذا تُدخل؟": "What are you entering?",
+    "يوجد قسمٌ بهذا الاسم.": "A category with that name already exists.",
+    "توجد إضافةٌ بهذا الاسم.": "An add-on with that name already exists.",
+    "كمية معدومة — :branch: طُرح :counted من :book": "Loss — :branch: :counted subtracted from :book",
+    "خُصمت الكمية المعدومة من :n صنفًا": "Loss subtracted from :n items",
+    "الكمية المعدومة": "Quantity lost",
+    "ما وجدته على الرفّ — يصير هو الرصيد": "What you found on the shelf — becomes the balance",
+    "ما تلف — يُطرح من الرصيد ولا يحلّ محلّه": "What perished — subtracted from the balance, not substituted for it",
+    "خصم الكمية المعدومة": "Subtract the loss"
 }

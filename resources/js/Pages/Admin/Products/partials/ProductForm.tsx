@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { Check, ImagePlus } from 'lucide-react';
+import { Check, ImagePlus, Plus, X } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import Tabs from '@/Components/Tabs';
 import Field, { Select } from '@/Components/Field';
@@ -8,6 +8,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import { csrfHeaders } from '@/lib/csrf';
 import { cn } from '@/lib/utils';
 import Composition, { type CompositionData } from './Composition';
 import type { Currency } from '@/types';
@@ -100,6 +101,51 @@ export default function ProductForm({ categories, product, description, currency
     });
 
     const [preview, setPreview] = useState<string>(product?.image ?? '');
+
+    /*
+     * قسمٌ يُنشأ من جانب حقله.
+     *
+     * لم يكن في النظام بابُ إنشاء أقسامٍ إطلاقًا — تأتي من تهيئة نوع النشاط
+     * أو من استيراد ملفّ. فمن أراد قسمًا جديدًا وهو يُدخل منتجًا لم يكن
+     * أمامه إلّا أن يتركه بلا قسم.
+     *
+     * وبـfetch لا بتنقّل: النموذج نصفُه مملوء، وإعادةُ تحميل الصفحة تمحو ما
+     * كُتب ولم يُحفظ.
+     */
+    const [cats, setCats] = useState(categories);
+    const [newCat, setNewCat] = useState<string | null>(null);
+    const [catError, setCatError] = useState<string | null>(null);
+    const [savingCat, setSavingCat] = useState(false);
+
+    const addCategory = async () => {
+        const name = (newCat ?? '').trim();
+        if (!name) return;
+
+        setSavingCat(true);
+        setCatError(null);
+        try {
+            const res = await fetch(route('admin.products.categories.store'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                body: JSON.stringify({ name }),
+            });
+            const body = await res.json();
+
+            if (!res.ok) {
+                setCatError(body?.errors?.name?.[0] ?? t('تعذّر إضافة القسم'));
+
+                return;
+            }
+
+            setCats((prev) => [...prev, body.category]);
+            form.setData('category_id', String(body.category.id));
+            setNewCat(null);
+        } catch {
+            setCatError(t('تعذّر الاتصال بالخادم'));
+        } finally {
+            setSavingCat(false);
+        }
+    };
 
     /**
      * الشريط العلوي قد يخرج عن الشاشة بعد التمرير داخل قسم طويل، فالقفزُ إليه
@@ -207,16 +253,78 @@ export default function ProductForm({ categories, product, description, currency
                                     </Field>
                                 </div>
 
-                                <Field label="القسم" error={form.errors.category_id}>
-                                    <Select
-                                        value={form.data.category_id}
-                                        onChange={(e) => form.setData('category_id', e.target.value)}
-                                        options={categories.map((c) => ({
-                                            label: c.name,
-                                            value: c.id,
-                                        }))}
-                                        placeholder="اختر القسم"
-                                    />
+                                <Field label="القسم" error={form.errors.category_id ?? catError ?? undefined}>
+                                    {newCat === null ? (
+                                        <span className="flex items-center gap-2">
+                                            <Select
+                                                className="flex-1"
+                                                value={form.data.category_id}
+                                                onChange={(e) => form.setData('category_id', e.target.value)}
+                                                options={cats.map((c) => ({
+                                                    label: c.name,
+                                                    value: c.id,
+                                                }))}
+                                                placeholder="اختر القسم"
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                aria-label={t('إضافة قسم')}
+                                                title={t('إضافة قسم')}
+                                                onClick={() => {
+                                                    setNewCat('');
+                                                    setCatError(null);
+                                                }}
+                                            >
+                                                <Plus />
+                                            </Button>
+                                        </span>
+                                    ) : (
+                                        <span className="flex items-center gap-2">
+                                            <Input
+                                                autoFocus
+                                                className="flex-1"
+                                                value={newCat}
+                                                placeholder={t('اسم القسم الجديد')}
+                                                onChange={(e) => setNewCat(e.target.value)}
+                                                /* «إدخال» يحفظ القسم ولا يُرسل المنتج: النموذج
+                                                   محيطٌ بهذا الحقل، وتركُ الحدث يصعد كان يحفظ
+                                                   منتجًا نصفَ مكتمل */
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        void addCategory();
+                                                    }
+                                                    if (e.key === 'Escape') {
+                                                        setNewCat(null);
+                                                        setCatError(null);
+                                                    }
+                                                }}
+                                            />
+                                            <Button
+                                                type="button"
+                                                size="icon"
+                                                aria-label={t('حفظ القسم')}
+                                                loading={savingCat}
+                                                onClick={() => void addCategory()}
+                                            >
+                                                <Check />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                aria-label={t('إلغاء')}
+                                                onClick={() => {
+                                                    setNewCat(null);
+                                                    setCatError(null);
+                                                }}
+                                            >
+                                                <X />
+                                            </Button>
+                                        </span>
+                                    )}
                                 </Field>
                                 <div />
                                 <Field

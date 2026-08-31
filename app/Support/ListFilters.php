@@ -31,9 +31,10 @@ class ListFilters
     public static function orders(Builder $q, Request $request): Builder
     {
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('number', 'like', "%{$s}%")
-                ->orWhere('customer_name', 'like', "%{$s}%")
-                ->orWhere('employee_name', 'like', "%{$s}%"));
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('number', $like, "%{$s}%")
+                ->orWhere('customer_name', $like, "%{$s}%")
+                ->orWhere('employee_name', $like, "%{$s}%"));
         }
 
         if ($pm = $request->query('payment')) {
@@ -79,10 +80,11 @@ class ListFilters
     public static function products(Builder $q, Request $request): Builder
     {
         if ($s = trim((string) $request->query('q'))) {
+            $like = Search::like();
             // والباركود من البحث: من اعتاد الماسح يمرّره هنا
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")
-                ->orWhere('sku', 'like', "%{$s}%")
-                ->orWhere('barcode', 'like', "%{$s}%"));
+            $q->where(fn ($w) => $w->where('name', $like, "%{$s}%")
+                ->orWhere('sku', $like, "%{$s}%")
+                ->orWhere('barcode', $like, "%{$s}%"));
         }
 
         if ($c = $request->query('category')) {
@@ -112,11 +114,12 @@ class ListFilters
     public static function customers(Builder $q, Request $request): Builder
     {
         if ($s = trim((string) $request->query('q'))) {
+            $like = Search::like();
             // والاسم الإنجليزيّ معه: من كتبه بيده يبحث به
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")
-                ->orWhere('name_en', 'like', "%{$s}%")
-                ->orWhere('phone', 'like', "%{$s}%")
-                ->orWhere('email', 'like', "%{$s}%"));
+            $q->where(fn ($w) => $w->where('name', $like, "%{$s}%")
+                ->orWhere('name_en', $like, "%{$s}%")
+                ->orWhere('phone', $like, "%{$s}%")
+                ->orWhere('email', $like, "%{$s}%"));
         }
 
         return $q;
@@ -150,9 +153,10 @@ class ListFilters
         }
 
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('reference', 'like', "%{$s}%")
-                ->orWhere('description', 'like', "%{$s}%")
-                ->orWhere('type', 'like', "%{$s}%"));
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('reference', $like, "%{$s}%")
+                ->orWhere('description', $like, "%{$s}%")
+                ->orWhere('type', $like, "%{$s}%"));
         }
 
         if ($type = $request->query('type')) {

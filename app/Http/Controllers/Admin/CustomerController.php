@@ -91,7 +91,7 @@ class CustomerController extends Controller
             // ومن كتب اسمه بنفسه أعلمُ بكتابته — انظر LocalName::apply
             'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => \App\Support\Customers::phoneRule($this->bid()),
-            'email' => ['nullable', 'email'],
+            'email' => ['nullable', 'email', 'max:255'],
             'tax_number' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
             'branch_id' => ['nullable', 'integer'],
@@ -128,7 +128,7 @@ class CustomerController extends Controller
             'name_en' => ['nullable', 'string', 'max:255'],
             // يتجاوز نفسه: وإلّا لرفض حفظَ عميلٍ لم يُغيَّر رقمه
             'phone' => \App\Support\Customers::phoneRule($this->bid(), $customer->id),
-            'email' => ['nullable', 'email'],
+            'email' => ['nullable', 'email', 'max:255'],
             'tax_number' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
             'branch_id' => ['nullable', 'integer'],

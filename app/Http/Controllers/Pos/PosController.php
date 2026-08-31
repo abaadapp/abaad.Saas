@@ -1161,7 +1161,7 @@ class PosController extends Controller
             // لا name_en: localizeName أدناه يشتقّه من الاسم المُدخَل
             'name' => ['required', 'string', 'max:255'],
             'phone' => \App\Support\Customers::phoneRule($this->bid()),
-            'email' => ['nullable', 'email'],
+            'email' => ['nullable', 'email', 'max:255'],
             'tax_number' => ['nullable', 'string', 'max:50'],
         ]);
         $data['business_id'] = $this->bid();

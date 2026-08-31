@@ -25,6 +25,7 @@ class SearchController extends Controller
         $user = auth()->user();
         $bid = $user->business_id ?? Demo::bid();
         $like = "%{$q}%";
+        $op = \App\Support\Search::like();
 
         /*
          * البحث لا يتجاوز صلاحيات صاحبه.
@@ -35,21 +36,21 @@ class SearchController extends Controller
          * البيانات وصلته قبل الباب المغلق.
          */
         $products = $user->allows('products') ? Product::where('business_id', $bid)
-            ->where(fn ($w) => $w->where('name', 'like', $like)->orWhere('sku', 'like', $like))
+            ->where(fn ($w) => $w->where('name', $op, $like)->orWhere('sku', $op, $like))
             ->limit(5)->get()->map(fn ($p) => [
                 'label' => $p->name, 'meta' => $p->sku ?: '—',
                 'url' => route('admin.products.show', $p->id),
             ]) : collect();
 
         $orders = $user->allows('orders') ? Order::where('business_id', $bid)->sold()
-            ->where(fn ($w) => $w->where('number', 'like', $like)->orWhere('customer_name', 'like', $like))
+            ->where(fn ($w) => $w->where('number', $op, $like)->orWhere('customer_name', $op, $like))
             ->orderByDesc('id')->limit(5)->get()->map(fn ($o) => [
                 'label' => $o->number, 'meta' => $o->customer_name ?? __('عميل نقدي'),
                 'url' => route('admin.orders.show', $o->number),
             ]) : collect();
 
         $customers = $user->allows('customers') ? Customer::where('business_id', $bid)
-            ->where(fn ($w) => $w->where('name', 'like', $like)->orWhere('phone', 'like', $like))
+            ->where(fn ($w) => $w->where('name', $op, $like)->orWhere('phone', $op, $like))
             ->limit(5)->get()->map(fn ($c) => [
                 'label' => $c->name, 'meta' => $c->phone ?: '—',
                 'url' => route('admin.customers.show', $c->id),
@@ -62,9 +63,9 @@ class SearchController extends Controller
          * باسمه، لا رابطٌ يقود إلى صفحةٍ لا وجود لها.
          */
         $suppliers = $user->allows('suppliers') ? Supplier::where('business_id', $bid)
-            ->where(fn ($w) => $w->where('name', 'like', $like)
-                ->orWhere('phone', 'like', $like)
-                ->orWhere('contact_person', 'like', $like))
+            ->where(fn ($w) => $w->where('name', $op, $like)
+                ->orWhere('phone', $op, $like)
+                ->orWhere('contact_person', $op, $like))
             ->limit(5)->get()->map(fn ($s) => [
                 'label' => $s->name, 'meta' => $s->phone ?: ($s->contact_person ?: '—'),
                 'url' => route('admin.suppliers.index', ['q' => $s->name]),

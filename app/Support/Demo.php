@@ -2693,12 +2693,13 @@ class Demo
 
         $term = $search !== null ? trim($search) : '';
         if ($term !== '') {
+            $op = Search::like();
             // أسماء العملاء الذين يطابق هاتفهم كلمة البحث (للبحث برقم الهاتف)
             $namesByPhone = \App\Models\Customer::where('business_id', $bid)
-                ->where('phone', 'like', "%{$term}%")->pluck('name')->all();
-            $query->where(function ($w) use ($term, $namesByPhone) {
-                $w->where('number', 'like', "%{$term}%")
-                    ->orWhere('customer_name', 'like', "%{$term}%");
+                ->where('phone', $op, "%{$term}%")->pluck('name')->all();
+            $query->where(function ($w) use ($term, $namesByPhone, $op) {
+                $w->where('number', $op, "%{$term}%")
+                    ->orWhere('customer_name', $op, "%{$term}%");
                 if ($namesByPhone) {
                     $w->orWhereIn('customer_name', $namesByPhone);
                 }

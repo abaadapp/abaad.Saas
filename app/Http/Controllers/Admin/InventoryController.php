@@ -41,61 +41,35 @@ class InventoryController extends Controller
         ]);
     }
 
-    /**
-     * تطبيق الجرد — بعمودين لا بعمود.
-     *
-     *   الكمية المعدودة  →  ما وُجد على الرفّ، يصير هو الرصيد
-     *   الفاقد          →  ما عُدم، يُطرح من الرصيد ولا يحلّ محلّه
-     *
-     * وعمودٌ واحد كان أصل عطبٍ كبير: الشاشة تسأل «الكمية المعدودة» فيكتب
-     * فيها من عنده مئة وردةٍ تلفت ثلاثٌ منها «٣» — فيصير رصيده ثلاثًا بدل
-     * سبعٍ وتسعين. رقمٌ مشروع في حقلٍ مشروع، وتسعون وردةً تختفي بلا رسالة.
-     * والعمودان يفصلان السؤالين فلا يُخلطان.
-     */
+    /** تطبيق الجرد: تعيين الكمية المعدودة وتسجيل حركة تسوية لكل فرق */
     public function applyStocktake(Request $request)
     {
         $data = $request->validate([
             'branch_id' => ['required', 'integer'],
-            // ولا واحدٌ منهما «مطلوب» وحده: جردٌ كلّه فاقدٌ لا يرسل عدًّا،
-            // وجردٌ كلّه عدٌّ لا يرسل فاقدًا — والحقل الفارغ لا يُرسَل أصلًا
-            'counts' => ['nullable', 'array'],
+            /*
+             * وضعان لا واحد — وهذا أصل عطبٍ كبير.
+             *
+             * الشاشة كانت تسأل «الكمية المعدودة» وتعتمدها **رصيدًا جديدًا**.
+             * ومن كتب فيها الكمية المعدومة — ثلاث ورداتٍ تلفت — صار رصيده
+             * ثلاثًا بدل سبعٍ وتسعين. لا رسالةَ خطأ ولا شيء يوقفه: رقمٌ
+             * مشروع في حقلٍ مشروع، وتسعون وردةً تختفي.
+             *
+             *   count  — المعدود يصير الرصيد (السلوك القديم، وهو الافتراضيّ
+             *            كي لا ينقلب معنى شاشةٍ قائمة تحت يد من يستعملها)
+             *   loss   — المُدخَل يُطرح من الرصيد ولا يحلّ محلّه
+             */
+            'mode' => ['nullable', 'in:count,loss'],
+            'counts' => ['required', 'array'],
             'counts.*' => ['nullable', 'integer', 'min:0'],
-            'losses' => ['nullable', 'array'],
-            'losses.*' => ['nullable', 'integer', 'min:0'],
         ], [
             'branch_id.required' => __('يجب تحديد الفرع قبل تطبيق الجرد.'),
         ]);
 
-        if (empty($data['counts']) && empty($data['losses'])) {
-            return back()->withInput()->withErrors([
-                'counts' => __('لم تُدخل شيئًا — اكتب كميةً معدودة أو فاقدًا لصنفٍ واحد على الأقل.'),
-            ]);
-        }
+        $loss = ($data['mode'] ?? 'count') === 'loss';
 
         $branch = \App\Models\Branch::where('business_id', $this->bid())->find($data['branch_id']);
         if (! $branch) {
             return back()->withInput()->withErrors(['branch_id' => __('الفرع المحدد غير صالح.')]);
-        }
-
-        /*
-         * صنفٌ واحد لا يُجرَد بالطريقتين معًا.
-         *
-         * من كتب «معدود ٩٧» و«فاقد ٣» يقصد شيئًا واحدًا، والنظام لو أطاع
-         * الاثنين لَطرح ستًّا. والردّ خيرٌ من تخمينِ أيّهما أراد.
-         */
-        $counts = $data['counts'] ?? [];
-        $losses = array_filter(
-            $data['losses'] ?? [],
-            fn ($v) => $v !== null && $v !== '' && (int) $v !== 0,
-        );
-
-        foreach ($losses as $productId => $_) {
-            $counted = $counts[$productId] ?? null;
-            if ($counted !== null && $counted !== '') {
-                return back()->withInput()->withErrors([
-                    'losses' => __('لا تُدخل الكمية المعدودة والفاقد لصنفٍ واحد — اختر أحدهما.'),
-                ]);
-            }
         }
 
         $adjusted = 0;
@@ -137,31 +111,16 @@ class InventoryController extends Controller
          * يقول أين وقف. والجرد هو اللحظة التي يقرّر فيها التاجر أيثق
          * بأرقام المخزون أم لا.
          */
-        /*
-         * العمودان يُدمجان في مرورٍ واحد: `loss` علامةُ أنّ الرقم يُطرح.
-         *
-         * وحلقتان منفصلتان كانتا ستكرّران أربع الكتابات وقاعدةَ الدفتر —
-         * ومن عدّل واحدةً نسي أختها.
-         */
-        $lines = [];
-        foreach ($counts as $productId => $counted) {
-            if ($counted === null || $counted === '') {
-                continue;
-            }
-            $lines[] = ['id' => (int) $productId, 'value' => (int) $counted, 'loss' => false];
-        }
-        foreach ($losses as $productId => $loss) {
-            $lines[] = ['id' => (int) $productId, 'value' => (int) $loss, 'loss' => true];
-        }
-
-        DB::transaction(function () use ($lines, $branch, $books, &$adjusted, &$shortage, &$rows, &$serial) {
-            foreach ($lines as $line) {
-                $product = Product::where('business_id', $this->bid())->find($line['id']);
+        DB::transaction(function () use ($data, $branch, $books, $loss, &$adjusted, &$shortage, &$rows, &$serial) {
+            foreach ($data['counts'] as $productId => $counted) {
+                if ($counted === null || $counted === '') {
+                    continue;
+                }
+                $product = Product::where('business_id', $this->bid())->find((int) $productId);
                 if (! $product) {
                     continue;
                 }
-                $counted = $line['value'];
-                $loss = $line['loss'];
+                $counted = (int) $counted;
 
                 /*
                  * الفرق من دفتر الفرع لا من إجمالي الشركة — والإجمالي يتحرّك
@@ -174,10 +133,11 @@ class InventoryController extends Controller
                 $book = (int) ($books[$product->id][$branch->id] ?? 0);
 
                 /*
-                 * الفاقد يُطرح ولا يُقصّ عند الصفر: الجرد يُظهر الخلل ولا
-                 * يخبّئه — وهي القاعدة نفسها التي رفعت القصَّ عن الإجماليّ.
-                 * من طرح أكثر ممّا في دفتره يرى رقمًا سالبًا فيعرف أنّ
-                 * دفتره كان كاذبًا.
+                 * في وضع «المعدوم» الرقم طرحٌ لا رصيد.
+                 *
+                 * ولا يُقصّ عند الصفر: الجرد يُظهر الخلل ولا يخبّئه — وهي
+                 * القاعدة نفسها التي رفعت القصَّ عن الإجماليّ. من طرح أكثر
+                 * ممّا في دفتره يرى رقمًا سالبًا فيعرف أنّ دفتره كان كاذبًا.
                  */
                 $delta = $loss ? -$counted : $counted - $book;
                 if ($delta === 0) {
@@ -220,13 +180,12 @@ class InventoryController extends Controller
                     'number' => 'SA-'.str_pad((string) $serial++, 6, '0', STR_PAD_LEFT),
                     'quantity_delta' => $delta,
                     'cost_at_time' => $cost,
+                    // النقص هالكٌ يُقرأ في تقريره، والزيادة تصحيحُ دفترٍ لا ربح
                     /*
-                     * «تلف» للفاقد المُعلَن، و«فاقد جرد» لنقصٍ كشفه العدّ.
-                     *
-                     * الأول إقرارٌ من التاجر بأنّ بضاعةً عُدمت، والثاني فرقٌ
-                     * لا يُعرف سببه. والاثنان هالكٌ يُقرأ في تقريره — لكنّ
-                     * مصدرهما مختلف، وطمسُه يُفقد التقرير التمييز.
-                     * والزيادة تصحيحُ دفترٍ لا ربح.
+                     * «تلف» في وضع المعدوم لا «فاقد جرد»: هذا إقرارٌ من
+                     * التاجر بأنّ بضاعةً عُدمت، لا نقصٌ كشفه عدٌّ. والاثنان
+                     * هالكٌ يُقرأ في التقرير — لكنّ مصدرهما مختلف، وطمسُه
+                     * يُفقد التقرير القدرة على التمييز بينهما.
                      */
                     'reason' => $loss
                         ? 'تلف'
@@ -234,7 +193,7 @@ class InventoryController extends Controller
                             ? \App\Models\StockAdjustment::STOCKTAKE_LOSS
                             : \App\Models\StockAdjustment::STOCKTAKE_GAIN),
                     'notes' => $loss
-                        ? __('فاقد جرد — :branch: طُرح :counted من :book', [
+                        ? __('كمية معدومة — :branch: طُرح :counted من :book', [
                             'branch' => $branch->name, 'counted' => $counted, 'book' => $book,
                         ])
                         : __('جرد فعلي — :branch: الدفتري :book والمعدود :counted', [
@@ -286,12 +245,14 @@ class InventoryController extends Controller
             }
         });
 
-        \App\Support\Activity::log('updated', 'جرد فعلي: سوّى '
+        \App\Support\Activity::log('updated', ($loss ? 'كمية معدومة: خصم ' : 'جرد فعلي: سوّى ')
             . $adjusted . ' صنفًا — فرع: ' . $branch->name);
 
         return redirect()->route('admin.inventory.stocktake')
             ->with('toast', [
-                'msg' => __('تمت تسوية :n صنفًا بعد الجرد', ['n' => $adjusted]),
+                'msg' => $loss
+                    ? __('خُصمت الكمية المعدومة من :n صنفًا', ['n' => $adjusted])
+                    : __('تمت تسوية :n صنفًا بعد الجرد', ['n' => $adjusted]),
                 'type' => 'success',
             ]);
     }

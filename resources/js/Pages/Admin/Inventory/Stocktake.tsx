@@ -36,42 +36,26 @@ export default function Stocktake() {
     const t = useTranslate();
 
     /*
-     * عمودان لا عمود.
+     * وضعان لا واحد.
      *
-     *   الكمية المعدودة  →  ما وجدتَه على الرفّ، يصير هو الرصيد
-     *   الفاقد          →  ما عُدم، يُطرح من الرصيد ولا يحلّ محلّه
+     * كانت الشاشة تسأل «الكمية المعدودة» وتعتمدها رصيدًا جديدًا. ومن كتب
+     * فيها الكمية المعدومة — ثلاث ورداتٍ تلفت — صار رصيده ثلاثًا بدل سبعٍ
+     * وتسعين: رقمٌ مشروع في حقلٍ مشروع، وتسعون وردةً تختفي بلا رسالةٍ ولا
+     * أثر. فصار السؤال يُقال صراحةً قبل أن يُكتب رقم.
      *
-     * وعمودٌ واحد كان أصل عطبٍ كبير: الشاشة تسأل «الكمية المعدودة» فيكتب
-     * فيها من عنده مئة وردةٍ تلفت ثلاثٌ منها «٣» — فيصير رصيده ثلاثًا بدل
-     * سبعٍ وتسعين. رقمٌ مشروع في حقلٍ مشروع، وتسعون وردةً تختفي بلا رسالة.
-     *
-     * وعمود الفرق يعرض الرصيد الناتج بعده كي لا يبقى المعنى ضمنيًّا: من
-     * يكتب رقمًا يرى أين ينتهي الصنف قبل أن يضغط.
+     * والافتراضيّ «المعدود» كما كان: قلبُ معنى شاشةٍ تحت يد من يستعملها
+     * أخطر من العطب نفسه.
      */
-    const form = useForm<{
-        branch_id: string;
-        counts: Record<number, string>;
-        losses: Record<number, string>;
-    }>({
+    const form = useForm<{ branch_id: string; mode: 'count' | 'loss'; counts: Record<number, string> }>({
         branch_id: currentBranch ? String(currentBranch) : '',
+        mode: 'count',
         counts: {},
-        losses: {},
     });
+
+    const isLoss = form.data.mode === 'loss';
 
     const setCount = (id: number, value: string) =>
         form.setData('counts', { ...form.data.counts, [id]: value });
-
-    const setLoss = (id: number, value: string) =>
-        form.setData('losses', { ...form.data.losses, [id]: value });
-
-    /** رقمٌ مكتوب في الحقل، أو null إن تُرك فارغًا */
-    const entered = (bag: Record<number, string>, id: number): number | null => {
-        const raw = bag[id];
-        if (raw === undefined || raw === '') return null;
-        const n = Number(raw);
-
-        return Number.isFinite(n) ? n : null;
-    };
 
     /**
      * دفتر الفرع المختار — لا إجمالي الشركة.
@@ -87,31 +71,17 @@ export default function Stocktake() {
     /**
      * الفرق الذي سيُطبَّق — بالمعادلة نفسها التي يطبّقها الخادم.
      *
-     * null يعني «لم يُدخَل شيء» فلا يُحتسب. والفاقد طرحٌ لا رصيد، فالفرق
-     * فيه سالبٌ دائمًا.
+     * null يعني «لم يُدخَل شيء» فلا يُحتسب. وفي وضع المعدوم الرقم طرحٌ لا
+     * رصيد، فالفرق سالبٌ دائمًا.
      */
     const variance = (id: number, book: number): number | null => {
-        const loss = entered(form.data.losses, id);
-        if (loss !== null && loss !== 0) return -loss;
+        const raw = form.data.counts[id];
+        if (raw === undefined || raw === '') return null;
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return null;
 
-        const counted = entered(form.data.counts, id);
-
-        return counted === null ? null : counted - book;
+        return isLoss ? -n : n - book;
     };
-
-    /*
-     * الحقلان يتعارضان فيُقفل أحدهما.
-     *
-     * من كتب «معدود ٩٧» و«فاقد ٣» يقصد شيئًا واحدًا، والنظام لو أطاع
-     * الاثنين لَطرح ستًّا. والقفلُ في الشاشة يمنع الالتباس قبل أن يقع؛
-     * والخادم يردّه أيضًا، فالقاعدة ليست في الشاشة وحدها.
-     */
-    const hasLoss = (id: number) => {
-        const n = entered(form.data.losses, id);
-
-        return n !== null && n !== 0;
-    };
-    const hasCount = (id: number) => entered(form.data.counts, id) !== null;
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -122,7 +92,7 @@ export default function Stocktake() {
         <AdminLayout title="الجرد الفعلي">
             <PageHeader
                 title="الجرد الفعلي"
-                subtitle={t('الكمية المعدودة تصير هي الرصيد، والفاقد يُطرح منه')}
+                subtitle={t('اختر ماذا تُدخل: الكمية المعدودة فعليًا، أو الكمية المعدومة التي تُطرح من الرصيد')}
             />
 
             <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.stocktake" />
@@ -144,21 +114,40 @@ export default function Stocktake() {
                         </p>
                     </div>
 
-                    {form.errors.losses && (
-                        <p className="mt-3 text-[12px] text-[#b91c1c]">{form.errors.losses}</p>
-                    )}
-
-                    {/* معنى العمودين يُقال قبل أن يُكتب رقم — لا بعد أن يضيع رصيد */}
-                    <dl className="mt-4 grid grid-cols-1 gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3 text-[12px] sm:grid-cols-2">
-                        <div>
-                            <dt className="font-medium text-[#111]">{t('الكمية المعدودة')}</dt>
-                            <dd className="text-[#6b7280]">{t('ما وجدتَه على الرفّ — يصير هو الرصيد')}</dd>
+                    {/* المبدّل بجانب الفرع لا في زاوية: هو ما يقرّر معنى كلّ
+                        رقمٍ في الجدول، فيُقرأ قبل أن يُكتب رقم */}
+                    <div className="mt-4 border-t border-[var(--ui-border,#e8e8e8)] pt-4">
+                        <span className="mb-2 block text-[13px] font-medium text-[#111]">{t('ماذا تُدخل؟')}</span>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                            {[
+                                {
+                                    key: 'count' as const,
+                                    title: 'الكمية المعدودة',
+                                    hint: 'ما وجدته على الرفّ — يصير هو الرصيد',
+                                },
+                                {
+                                    key: 'loss' as const,
+                                    title: 'الكمية المعدومة',
+                                    hint: 'ما تلف — يُطرح من الرصيد ولا يحلّ محلّه',
+                                },
+                            ].map((option) => (
+                                <button
+                                    key={option.key}
+                                    type="button"
+                                    onClick={() => form.setData('mode', option.key)}
+                                    className={cn(
+                                        'flex-1 rounded-[12px] border p-3 text-start transition-colors',
+                                        form.data.mode === option.key
+                                            ? 'border-[#111] bg-[#111] text-white'
+                                            : 'border-[#e8e8e8] bg-white text-[#4b4b4b] hover:bg-[#f7f7f5]',
+                                    )}
+                                >
+                                    <span className="block text-[14px] font-semibold">{t(option.title)}</span>
+                                    <span className="mt-0.5 block text-[12px] opacity-80">{t(option.hint)}</span>
+                                </button>
+                            ))}
                         </div>
-                        <div>
-                            <dt className="font-medium text-[#111]">{t('الفاقد')}</dt>
-                            <dd className="text-[#6b7280]">{t('ما عُدم — يُطرح من رصيد النظام ولا يحلّ محلّه')}</dd>
-                        </div>
-                    </dl>
+                    </div>
                 </Card>
 
                 <Card className="overflow-hidden">
@@ -168,7 +157,7 @@ export default function Stocktake() {
                                 {/* «رصيد النظام» لا «الدفتري»: المصطلح المحاسبي يحتاج شرحًا، ومن
                                     يقف على الرفّ يعدّ لا يقرأ اصطلاحًا. والفرع مذكورٌ في
                                     أعلى الشاشة فلا يُكرَّر في رأس العمود. */}
-                                {['المنتج', 'SKU', 'رصيد النظام', 'الكمية المعدودة', 'الفاقد', 'الفرق'].map((h) => (
+                                {['المنتج', 'SKU', 'رصيد النظام', isLoss ? 'الكمية المعدومة' : 'الكمية المعدودة', 'الفرق'].map((h) => (
                                     <TableHead key={h}>{t(h)}</TableHead>
                                 ))}
                             </TableRow>
@@ -192,21 +181,10 @@ export default function Stocktake() {
                                                 dir="ltr"
                                                 value={form.data.counts[item.id] ?? ''}
                                                 onChange={(e) => setCount(item.id, e.target.value)}
-                                                placeholder={t('لم يُعَدّ')}
+                                                placeholder={t(isLoss ? 'لا شيء' : 'لم يُعَدّ')}
                                                 className="h-9 w-28"
                                                 // بلا فرعٍ لا معنى للعدّ: الرقم يُقيَّد على فرع
-                                                disabled={!form.data.branch_id || hasLoss(item.id)}
-                                            />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Input
-                                                inputMode="numeric"
-                                                dir="ltr"
-                                                value={form.data.losses[item.id] ?? ''}
-                                                onChange={(e) => setLoss(item.id, e.target.value)}
-                                                placeholder={t('لا شيء')}
-                                                className="h-9 w-28"
-                                                disabled={!form.data.branch_id || hasCount(item.id)}
+                                                disabled={!form.data.branch_id}
                                             />
                                         </TableCell>
                                         <TableCell>
@@ -244,7 +222,7 @@ export default function Stocktake() {
                 <div className="mt-5 flex items-center gap-3">
                     <Button type="submit" loading={form.processing}>
                         <CheckCheck />
-                        {t('تطبيق الجرد والتسوية')}
+                        {t(isLoss ? 'خصم الكمية المعدومة' : 'تطبيق الجرد والتسوية')}
                     </Button>
                     <Button variant="outline" asChild>
                         <SmartLink routeName="admin.inventory.index" href={route('admin.inventory.index')}>

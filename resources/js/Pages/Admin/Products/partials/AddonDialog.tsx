@@ -22,6 +22,14 @@ interface Props {
     productId?: number | null;
     /** غياب المعرّف يعني منتجًا لم يُحفظ بعد: تُكتب الإضافة مسوّدةً معه */
     drafting?: boolean;
+    /**
+     * مدى الإضافة الجديدة قبل أن يُغيّره المستخدم.
+     *
+     * قسمُ «إضافات هذا المنتج» يبدأ بـ«هذا المنتج فقط»: من فتحه يريد إضافةً
+     * لباقته هو. وكان يبدأ بـ«جميع المنتجات» فتُكتب إضافةُ متجرٍ من قسمٍ
+     * عنوانُه غير ذلك — ولا تظهر في قائمته بعد الحفظ، فتبدو كأنها ضاعت.
+     */
+    defaultScope?: Scope;
     stockItems: PickerOption[];
     products: PickerOption[];
     onClose: () => void;
@@ -44,11 +52,12 @@ type Scope = 'all' | 'selected' | 'product';
  * ولا تصميم جديد: نفس النافذة والحقول والأزرار التي في بقيّة الشاشات.
  */
 export default function AddonDialog({
-    addon, productId, drafting, stockItems, products, onClose, onSaved,
+    addon, productId, drafting, defaultScope, stockItems, products, onClose, onSaved,
 }: Props) {
     const t = useTranslate();
 
     const [name, setName] = useState(addon?.label ?? '');
+    const [nameEn, setNameEn] = useState(addon?.name_en ?? '');
     const [price, setPrice] = useState(addon ? String(addon.price) : '');
     const [stock, setStock] = useState<boolean>(!!addon?.inventory_product_id);
     const [stockId, setStockId] = useState<string>(
@@ -58,7 +67,7 @@ export default function AddonDialog({
         addon?.inventory_quantity != null ? String(addon.inventory_quantity) : '1',
     );
     const [scope, setScope] = useState<Scope>(
-        (addon?.scope as Scope) ?? (productId ? 'product' : 'all'),
+        (addon?.scope as Scope) ?? defaultScope ?? 'all',
     );
     const [picked, setPicked] = useState<number[]>(addon?.product_ids ?? []);
     const [search, setSearch] = useState('');
@@ -94,6 +103,9 @@ export default function AddonDialog({
 
         const body = {
             name: clean,
+            // مكتوبًا لا يُترجَم تلقائيًّا: من كتب الاسم بيده أعلمُ باسم
+            // بضاعته من قاموس. انظر Lexicon::fill
+            name_en: nameEn.trim() || null,
             price: price || 0,
             scope,
             product_id: scope === 'product' ? productId : null,
@@ -113,6 +125,7 @@ export default function AddonDialog({
             onSaved({
                 value: 0,
                 label: clean,
+                name_en: nameEn.trim() || null,
                 price: Number(price) || 0,
                 active: true,
                 private: true,
@@ -161,38 +174,52 @@ export default function AddonDialog({
         }
     };
 
-    /** بطاقةُ خيارٍ بجملةٍ تشرحه — نفس شكل مبدّل الجرد */
-    const choice = (active: boolean, title: string, hint: string, onClick: () => void) => (
+    /**
+     * بطاقةُ خيارٍ في سطرٍ واحد — نفس شكل مبدّل الجرد بلا سطره الثاني.
+     *
+     * كانت كلّ بطاقةٍ سطرين، فصارت النافذة أطول من الشاشة وتُمرَّر لتُقرأ.
+     * والشرح انتقل إلى تلميح الحقل الذي يخصّه.
+     */
+    const choice = (active: boolean, title: string, onClick: () => void) => (
         <button
             type="button"
             onClick={onClick}
             className={cn(
-                'flex-1 rounded-[12px] border p-3 text-start transition-colors',
+                'flex-1 rounded-[10px] border px-3 py-2 text-[13px] font-medium transition-colors',
                 active
                     ? 'border-[#111] bg-[#111] text-white'
                     : 'border-[#e8e8e8] bg-white text-[#4b4b4b] hover:bg-[#f7f7f5]',
             )}
         >
-            <span className="block text-[14px] font-semibold">{t(title)}</span>
-            {hint && <span className="mt-0.5 block text-[12px] opacity-80">{t(hint)}</span>}
+            {t(title)}
         </button>
     );
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[560px]">
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[600px]">
                 <DialogHeader>
                     <DialogTitle>{t(addon ? 'تعديل إضافة' : 'إضافة جديدة')}</DialogTitle>
                 </DialogHeader>
 
-                <div className="space-y-5">
-                    <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-[1fr_1fr_7rem]">
                         <Field label="الاسم" required error={error ?? undefined}>
                             <Input
                                 autoFocus
                                 value={name}
                                 placeholder={t('شوكولاتة')}
                                 onChange={(e) => setName(e.target.value)}
+                            />
+                        </Field>
+                        {/* مكتوبًا بيده لا مترجَمًا: القاموس يترجم «باقة ورد
+                            أحمر» ولا يترجم «شوكولاتة بلجيكية فاخرة» */}
+                        <Field label="الاسم بالإنجليزية">
+                            <Input
+                                dir="ltr"
+                                value={nameEn}
+                                placeholder="Chocolate"
+                                onChange={(e) => setNameEn(e.target.value)}
                             />
                         </Field>
                         <Field label="السعر">
@@ -208,17 +235,17 @@ export default function AddonDialog({
 
                     {/* ------------------------- المخزون ------------------------- */}
                     <div>
-                        <span className="mb-2 block text-[13px] font-medium text-[#111]">
+                        <span className="mb-1.5 block text-[13px] font-medium text-[#111]">
                             {t('هل تخصم هذه الإضافة من المخزون؟')}
                         </span>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                            {choice(!stock, 'لا، خدمة أو رسوم فقط', 'مثل كتابة اسم أو تغليف فاخر', () => setStock(false))}
-                            {choice(stock, 'نعم، مرتبطة بصنف في المخزون', 'مثل دبّ أو شوكولاتة أو ورد', () => setStock(true))}
+                        <div className="flex gap-2">
+                            {choice(!stock, 'لا، خدمة أو رسوم فقط', () => setStock(false))}
+                            {choice(stock, 'نعم، مرتبطة بصنف', () => setStock(true))}
                         </div>
                     </div>
 
                     {stock && (
-                        <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
                             <Field label="الصنف المخزني" required>
                                 <Select
                                     value={stockId}
@@ -230,10 +257,7 @@ export default function AddonDialog({
                                     placeholder={t('اختر الصنف…')}
                                 />
                             </Field>
-                            <Field
-                                label="الكمية المستهلكة عند كل إضافة"
-                                hint="مثال: إذا كانت الإضافة «زيادة 3 وردات» اختر صنف الورد واكتب الكمية 3."
-                            >
+                            <Field label="الكمية المستهلكة">
                                 <Input
                                     inputMode="decimal"
                                     dir="ltr"
@@ -241,17 +265,20 @@ export default function AddonDialog({
                                     onChange={(e) => setEach(e.target.value)}
                                 />
                             </Field>
+                            <p className="text-[12px] text-[#9ca3af] sm:col-span-2">
+                                {t('مثال: إذا كانت الإضافة «زيادة 3 وردات» اختر صنف الورد واكتب الكمية 3.')}
+                            </p>
                         </div>
                     )}
 
                     {/* -------------------------- المدى -------------------------- */}
                     <div>
-                        <span className="mb-2 block text-[13px] font-medium text-[#111]">{t('تظهر مع')}</span>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                            {choice(scope === 'all', 'جميع المنتجات', '', () => setScope('all'))}
-                            {choice(scope === 'selected', 'منتجات محددة', '', () => setScope('selected'))}
+                        <span className="mb-1.5 block text-[13px] font-medium text-[#111]">{t('تظهر مع')}</span>
+                        <div className="flex gap-2">
+                            {choice(scope === 'all', 'جميع المنتجات', () => setScope('all'))}
+                            {choice(scope === 'selected', 'منتجات محددة', () => setScope('selected'))}
                             {productId != null || drafting
-                                ? choice(scope === 'product', 'هذا المنتج فقط', '', () => setScope('product'))
+                                ? choice(scope === 'product', 'هذا المنتج فقط', () => setScope('product'))
                                 : null}
                         </div>
                     </div>
@@ -267,7 +294,7 @@ export default function AddonDialog({
                                     className="w-full bg-transparent text-[13px] outline-none"
                                 />
                             </div>
-                            <div className="max-h-52 overflow-y-auto p-1">
+                            <div className="max-h-40 overflow-y-auto p-1">
                                 {shown.length === 0 ? (
                                     <p className="p-3 text-[13px] text-[#9ca3af]">{t('لا نتائج')}</p>
                                 ) : (
@@ -289,7 +316,7 @@ export default function AddonDialog({
                         </div>
                     )}
 
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex gap-2">
                         <Button type="button" className="flex-1" loading={saving} onClick={() => void save()}>
                             {t('حفظ')}
                         </Button>

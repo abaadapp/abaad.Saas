@@ -422,6 +422,7 @@ class ProductCompositionController extends Controller
             'composition.addon_ids.*' => [Rule::exists('addons', 'id')->where('business_id', $businessId)->whereNull('product_id')],
             'composition.new_addons' => ['nullable', 'array', 'max:50'],
             'composition.new_addons.*.name' => ['required', 'string', 'max:100'],
+            'composition.new_addons.*.name_en' => ['nullable', 'string', 'max:100'],
             'composition.new_addons.*.price' => ['required', 'numeric', 'min:0'],
             'composition.new_addons.*.private' => ['nullable', 'boolean'],
             // والمسوّدة تربط بالمخزون كما تربط الشاشة المحفوظة: من يكتب
@@ -430,6 +431,33 @@ class ProductCompositionController extends Controller
             'composition.new_addons.*.inventory_product_id' => ['nullable',
                 Rule::exists('products', 'id')->where('business_id', $businessId)->whereNull('deleted_at')],
             'composition.new_addons.*.inventory_quantity' => ['nullable', 'numeric', 'gt:0', 'max:100000'],
+        ];
+    }
+
+    /**
+     * رسائل التركيب بالعربية لا بأسماء الحقول.
+     *
+     * الرسالة الافتراضية تقول «composition.recipe.0.quantity»، وهو اسمُ حقلٍ
+     * لا يعرفه من يملأ الشاشة. فيُردّ الحفظ برسالةٍ لا تدلّ على شيء — وهي
+     * أسوأ من الصمت لأنّها تبدو عطبًا في النظام.
+     *
+     * @return array<string, string>
+     */
+    public static function draftMessages(): array
+    {
+        return [
+            'composition.variants.*.name.required' => __('اكتب اسم المقاس.'),
+            'composition.variants.*.price.required' => __('اكتب سعر المقاس.'),
+            'composition.variants.*.price.numeric' => __('سعر المقاس رقمٌ.'),
+            'composition.recipe.*.component_product_id.required' => __('اختر المكوّن.'),
+            'composition.recipe.*.component_product_id.exists' => __('المكوّن غير موجود في هذا المتجر.'),
+            'composition.recipe.*.quantity.required' => __('اكتب كمية المكوّن.'),
+            'composition.recipe.*.quantity.gt' => __('كمية المكوّن تكون أكبر من صفر.'),
+            'composition.recipe.*.quantity.numeric' => __('كمية المكوّن رقمٌ.'),
+            'composition.new_addons.*.name.required' => __('اكتب اسم الإضافة.'),
+            'composition.new_addons.*.price.required' => __('اكتب سعر الإضافة.'),
+            'composition.new_addons.*.price.numeric' => __('سعر الإضافة رقمٌ.'),
+            'composition.new_addons.*.inventory_quantity.gt' => __('الكمية المستهلكة تكون أكبر من صفر.'),
         ];
     }
 
@@ -509,14 +537,20 @@ class ProductCompositionController extends Controller
                     : null;
 
                 $addon = $private
-                    ? Addon::create(\App\Support\Lexicon::fill(['name' => $a['name']]) + [
+                    ? Addon::create(\App\Support\Lexicon::fill([
+                        'name' => $a['name'],
+                        'name_en' => $a['name_en'] ?? null,
+                    ]) + [
                         'business_id' => $bid, 'product_id' => $product->id,
                         'price' => $a['price'], 'active' => true,
                         'inventory_product_id' => $stock, 'inventory_quantity' => $each,
                     ])
                     : Addon::firstOrCreate(
                         ['business_id' => $bid, 'product_id' => null, 'name' => $a['name']],
-                        ['price' => $a['price'], 'active' => true,
+                        \App\Support\Lexicon::fill([
+                            'name' => $a['name'],
+                            'name_en' => $a['name_en'] ?? null,
+                        ]) + ['price' => $a['price'], 'active' => true,
                             'inventory_product_id' => $stock, 'inventory_quantity' => $each],
                     );
 

@@ -3490,5 +3490,21 @@
     "الصنف المخزني": "Stock item",
     "الكمية المستهلكة عند كل إضافة": "Quantity used per add-on",
     "مثال: إذا كانت الإضافة «زيادة 3 وردات» اختر صنف الورد واكتب الكمية 3.": "Example: for an add-on named “3 extra roses”, choose the rose item and enter 3.",
-    "اضغط إضافةً لتعديل سعرها أو مداها أو ما تخصمه من المخزون.": "Tap an add-on to change its price, its scope, or what it draws from stock."
+    "اضغط إضافةً لتعديل سعرها أو مداها أو ما تخصمه من المخزون.": "Tap an add-on to change its price, its scope, or what it draws from stock.",
+    "اكتب اسم المنتج قبل الحفظ.": "Enter the product name before saving.",
+    "اكتب سعر البيع — ولو كان للمنتج مقاسات، يبقى سعرًا أساسًا له.": "Enter the selling price — even with sizes, the product keeps a base price.",
+    "لم يُحفظ المنتج:": "The product was not saved:",
+    "اكتب اسم المقاس.": "Enter the size name.",
+    "اكتب سعر المقاس.": "Enter the size price.",
+    "سعر المقاس رقمٌ.": "The size price must be a number.",
+    "اختر المكوّن.": "Choose the component.",
+    "المكوّن غير موجود في هذا المتجر.": "That component does not exist in this shop.",
+    "اكتب كمية المكوّن.": "Enter the component quantity.",
+    "كمية المكوّن تكون أكبر من صفر.": "The component quantity must be greater than zero.",
+    "كمية المكوّن رقمٌ.": "The component quantity must be a number.",
+    "اكتب اسم الإضافة.": "Enter the add-on name.",
+    "اكتب سعر الإضافة.": "Enter the add-on price.",
+    "سعر الإضافة رقمٌ.": "The add-on price must be a number.",
+    "الكمية المستهلكة": "Quantity used",
+    "نعم، مرتبطة بصنف": "Yes, tied to a stock item"
 }

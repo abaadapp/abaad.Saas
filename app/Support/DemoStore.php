@@ -11,7 +11,6 @@ use App\Models\Coupon;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerAddress;
-use App\Models\DeliveryNote;
 use App\Models\Expense;
 use App\Models\ExpenseType;
 use App\Models\FixedAsset;
@@ -838,20 +837,6 @@ class DemoStore
                 ? [['account' => 'other_expenses', 'debit' => $value], ['account' => 'inventory', 'credit' => $value]]
                 : [['account' => 'inventory', 'debit' => $value], ['account' => 'other_income', 'credit' => $value]],
                 $at, 'مخزون');
-        }
-
-        // إشعارات تسليم — بعضها مربوطٌ بطلبٍ وبعضها مستقلّ
-        $orders = Order::where('business_id', $bid)->where('status', 'خرج للتوصيل')->limit(12)->get();
-        foreach ($orders as $i => $order) {
-            DeliveryNote::create([
-                'business_id' => $bid, 'branch_id' => $branches[$i % count($branches)]->id,
-                'customer_id' => $order->customer_id, 'order_id' => $order->id,
-                'number' => 'DN-' . str_pad((string) ($i + 1), 5, '0', STR_PAD_LEFT),
-                'delivered_at' => $order->ordered_at,
-                'recipient' => $order->customer_name, 'driver' => 'ماجد المعمري',
-                'address' => self::CITIES[$i % count(self::CITIES)],
-                'status' => $i % 4 === 0 ? 'مسودة' : 'مُسلَّم',
-            ]);
         }
     }
 

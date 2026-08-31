@@ -288,4 +288,56 @@ class ProductCompositionDraftTest extends TestCase
                 ->where('composition.variants', [])
                 ->where('composition.addon_ids', []));
     }
+
+    /* ------------------------- الحفظ لا يصمت ------------------------- */
+
+    public function test_a_refused_composition_says_why_in_arabic(): void
+    {
+        /*
+         * الرسالة الافتراضية تقول «composition.recipe.0.quantity» — اسمُ
+         * حقلٍ لا يعرفه من يملأ الشاشة. فيبدو الحفظ كأنه لم يقع أصلًا.
+         */
+        $response = $this->create([
+            'recipe' => [
+                ['component_product_id' => $this->rose->id, 'quantity' => 0, 'variant_index' => null],
+            ],
+        ]);
+
+        $response->assertSessionHasErrors();
+
+        $message = (string) collect(session('errors')->getBag('default')->all())->first();
+
+        $this->assertStringContainsString('كمية المكوّن', $message);
+        $this->assertStringNotContainsString('composition', $message);
+    }
+
+    public function test_a_written_english_name_reaches_the_new_addon(): void
+    {
+        $this->create([
+            'new_addons' => [
+                ['name' => 'شوكولاتة بلجيكية', 'name_en' => 'Belgian chocolate', 'price' => 3, 'private' => true],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $addon = Addon::where('name', 'شوكولاتة بلجيكية')->firstOrFail();
+
+        // المكتوب بيده لا يُترجَم فوقه: القاموس لا يعرف «بلجيكية»
+        $this->assertSame('Belgian chocolate', $addon->name_en);
+        $this->assertSame($this->product()->id, (int) $addon->product_id);
+    }
+
+    public function test_a_new_addon_may_be_tied_to_stock_from_the_create_screen(): void
+    {
+        $this->create([
+            'new_addons' => [[
+                'name' => 'زيادة 3 وردات', 'price' => 2.5, 'private' => true,
+                'inventory_product_id' => $this->rose->id, 'inventory_quantity' => 3,
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $addon = Addon::where('name', 'زيادة 3 وردات')->firstOrFail();
+
+        $this->assertSame($this->rose->id, (int) $addon->inventory_product_id);
+        $this->assertEqualsWithDelta(3.0, (float) $addon->inventory_quantity, 0.0005);
+    }
 }

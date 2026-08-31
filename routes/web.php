@@ -440,11 +440,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * يقله المخزون.
      */
     Route::get('/inventory/receipts', [\App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController::class, 'index'])->name('inventory.receipts');
-    Route::get('/inventory/deliveries', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'index'])->name('inventory.deliveries');
-    Route::post('/inventory/deliveries', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'store'])->name('inventory.deliveries.store');
-    Route::post('/inventory/deliveries/{id}/deliver', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'deliver'])->name('inventory.deliveries.deliver');
-    Route::post('/inventory/deliveries/{id}/cancel', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'cancel'])->name('inventory.deliveries.cancel');
-    Route::delete('/inventory/deliveries/{id}', [\App\Http\Controllers\Admin\Inventory\DeliveryNoteController::class, 'destroy'])->name('inventory.deliveries.destroy');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
     // المورّدون

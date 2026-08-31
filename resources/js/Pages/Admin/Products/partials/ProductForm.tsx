@@ -203,6 +203,7 @@ export default function ProductForm({ categories, product, description, currency
             ...form.data.composition,
             new_addons: [...form.data.composition.new_addons, {
                 name: saved.label,
+                name_en: saved.name_en ?? null,
                 price: String(saved.price),
                 private: own,
                 inventory_product_id: saved.inventory_product_id,
@@ -227,24 +228,54 @@ export default function ProductForm({ categories, product, description, currency
         );
     };
 
-    const sectionsWithErrors = new Set(
-        Object.keys(form.errors).map((f) => FIELD_SECTION[f] ?? 'basic'),
-    );
+    /**
+     * القسم الذي يقع فيه الخطأ — والتركيب حقولُه مركّبة.
+     *
+     * `composition.recipe.0.quantity` لا يوجد في الخريطة، فكان يسقط على
+     * «المعلومات الأساسية» ولا حقلَ هناك يعرضه: يُردّ الحفظ ولا يُرى سببه،
+     * فيبدو الزرّ كأنه لا يعمل.
+     */
+    const sectionOf = (field: string): TabKey =>
+        field === 'composition' || field.startsWith('composition.')
+            ? 'composition'
+            : (FIELD_SECTION[field] ?? 'basic');
+
+    const sectionsWithErrors = new Set(Object.keys(form.errors).map(sectionOf));
+
+    /*
+     * كلّ رسائل الخطأ في مكانٍ واحد يُرى من أيّ قسم.
+     *
+     * الخطأ الذي لا يعرضه حقلٌ لا وجود له في نظر المستخدم — ورسالةٌ واحدة
+     * غير معروضة تكفي لأن يبدو «حفظ» ميّتًا.
+     */
+    const errorList = Object.values(form.errors).filter(Boolean) as string[];
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // الحقول الإلزامية قد تكون في قسم غير معروض، فلا يستطيع المتصفّح
-        // إبرازها ويبدو الزرّ كأنه لا يعمل. نكشفها بأنفسنا ونقفز إليها.
-        const missing = !form.data.name.trim()
-            ? ('basic' as TabKey)
-            : !String(form.data.price).trim()
-              ? ('pricing' as TabKey)
-              : null;
-        if (missing) {
-            pick(missing);
+        /*
+         * الحقول الإلزامية قد تكون في قسم غير معروض، فلا يستطيع المتصفّح
+         * إبرازها ويبدو الزرّ كأنه لا يعمل. نكشفها بأنفسنا ونقفز إليها.
+         *
+         * وتُكتب الرسالة قبل القفز: كان الخروج صامتًا — يضغط «حفظ» فلا يقع
+         * شيء يُرى، ولا سيّما إن كان واقفًا على القسم نفسه فلا يتبدّل شيء
+         * أمامه. ومن سعّر مقاساته يترك سعر المنتج فارغًا ولا يظنّه ناقصًا.
+         */
+        if (!form.data.name.trim()) {
+            form.setError('name', t('اكتب اسم المنتج قبل الحفظ.'));
+            pick('basic');
+
             return;
         }
+
+        if (!String(form.data.price).trim()) {
+            form.setError('price', t('اكتب سعر البيع — ولو كان للمنتج مقاسات، يبقى سعرًا أساسًا له.'));
+            pick('pricing');
+
+            return;
+        }
+
+        form.clearErrors();
 
         const url = editing
             ? route('admin.products.update', product!.id)
@@ -257,7 +288,7 @@ export default function ProductForm({ categories, product, description, currency
             preserveScroll: true,
             onError: (errors) => {
                 const first = Object.keys(errors)[0];
-                if (first) pick(FIELD_SECTION[first] ?? 'basic');
+                if (first) pick(sectionOf(first));
             },
         });
     };
@@ -659,6 +690,19 @@ export default function ProductForm({ categories, product, description, currency
                             </p>
                         </Card>
                     ))}
+
+                {errorList.length > 0 && (
+                    <Card className="mt-6 border-[#fca5a5] bg-[#fef2f2] p-4">
+                        <p className="mb-1 text-[13px] font-semibold text-[#b91c1c]">
+                            {t('لم يُحفظ المنتج:')}
+                        </p>
+                        <ul className="space-y-0.5 ps-4 text-[13px] text-[#b91c1c]">
+                            {errorList.map((message, i) => (
+                                <li key={i} className="list-disc">{message}</li>
+                            ))}
+                        </ul>
+                    </Card>
+                )}
 
                 {addonOpen !== undefined && (
                     <AddonDialog

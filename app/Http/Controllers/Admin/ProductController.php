@@ -188,7 +188,8 @@ class ProductController extends Controller
             'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'image' => ['nullable', 'image', 'max:4096'],
             // التركيب يُملأ مع المنتج لا بعده — انظر ProductCompositionController::draftRules
-        ] + ProductCompositionController::draftRules($this->bid()));
+        ] + ProductCompositionController::draftRules($this->bid()),
+            ProductCompositionController::draftMessages());
 
         // مسوّدةُ التركيب ليست عمودًا في products؛ تُنحّى قبل الإنشاء وتُكتب بعده
         $composition = $data['composition'] ?? [];

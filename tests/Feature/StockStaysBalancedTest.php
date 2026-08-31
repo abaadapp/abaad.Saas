@@ -110,21 +110,6 @@ class StockStaysBalancedTest extends TestCase
         $this->assertBalanced('استلام أمر شراء');
     }
 
-    public function test_a_delivery_note_keeps_it_balanced(): void
-    {
-        $this->actingAs($this->owner)->withSession(['current_branch' => $this->a->id])
-            ->post(route('admin.inventory.deliveries.store'), [
-                'delivered_at' => now()->toDateString(),
-                'items' => [['product_id' => $this->p->id, 'name' => 'صنف', 'quantity' => 5]],
-            ])->assertSessionHasNoErrors();
-
-        $note = \App\Models\DeliveryNote::latest('id')->firstOrFail();
-        $this->actingAs($this->owner)->withSession(['current_branch' => $this->a->id])
-            ->post(route('admin.inventory.deliveries.deliver', $note->id))->assertSessionHasNoErrors();
-
-        $this->assertBalanced('إشعار تسليم');
-    }
-
     public function test_a_stock_adjustment_keeps_it_balanced(): void
     {
         foreach ([['delta' => -7, 'reason' => 'تلف'], ['delta' => 12, 'reason' => 'تصحيح']] as $case) {

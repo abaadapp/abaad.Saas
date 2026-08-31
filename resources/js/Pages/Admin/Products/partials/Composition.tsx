@@ -47,6 +47,7 @@ export interface Variant {
 export interface AddonOption {
     value: number;
     label: string;
+    name_en?: string | null;
     price: number;
     active: boolean;
     /** خاصّةٌ بهذا المنتج وحده لا بالمتجر */
@@ -84,6 +85,7 @@ export interface DraftLine {
 }
 export interface DraftAddon {
     name: string;
+    name_en?: string | null;
     price: string;
     private: boolean;
     inventory_product_id?: number | null;
@@ -672,6 +674,7 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                         addon={editing}
                         productId={productId ?? null}
                         drafting={drafting}
+                        defaultScope="product"
                         stockItems={data.stock_items ?? []}
                         products={data.products ?? []}
                         onClose={() => setEditing(undefined)}
@@ -683,6 +686,7 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                                 patch({
                                     new_addons: [...d.new_addons, {
                                         name: saved.label,
+                                        name_en: saved.name_en ?? null,
                                         price: String(saved.price),
                                         private: true,
                                         inventory_product_id: saved.inventory_product_id,

@@ -307,12 +307,7 @@ class StocktakeTest extends TestCase
     /* ==================== الجرد يعدّ ولا يخصم ==================== */
 
     /**
-     * الرقم المكتوب هو الرصيد — لا كمّيةٌ تُطرح.
-     *
-     * جُرِّب وضعٌ ثانٍ في هذه الشاشة يطرح المُدخَل بدل أن يعتمده، ثم أُزيل
-     * بطلب صاحب النظام: الجرد عدٌّ، والكمية المعدومة لها بابها في «تعديلات
-     * المخزون» بسببٍ «تلف». وهذا الاختبار يحرس أن لا يعود الوضع من حيث لا
-     * يُقصَد: مفتاحٌ زائد في الطلب لا يغيّر المعنى.
+     * عمود العدّ يعتمد لا يطرح — مهما زُيد في الطلب.
      */
     public function test_the_counted_number_is_the_balance_and_no_stray_key_changes_that(): void
     {
@@ -332,5 +327,105 @@ class StocktakeTest extends TestCase
             \App\Models\StockAdjustment::STOCKTAKE_LOSS,
             \App\Models\StockAdjustment::firstOrFail()->reason,
         );
+    }
+    /* ==================== عمود الفاقد — يُطرح لا يُعتمد ==================== */
+
+    /**
+     * أخطرُ عطبٍ في هذه الشاشة كان عمودًا واحدًا يُسأل عنه سؤالان.
+     *
+     * من عنده مئة وردةٍ تلفت ثلاثٌ منها كان يكتب «٣» في «الكمية المعدودة»
+     * فيصير رصيده ثلاثًا بدل سبعٍ وتسعين: رقمٌ مشروع في حقلٍ مشروع، وتسعون
+     * وردةً تختفي بلا رسالةٍ ولا أثر. فصار للفاقد عمودُه.
+     */
+    public function test_the_loss_column_subtracts_and_never_becomes_the_balance(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [],
+            'losses' => [$this->product->id => 3],
+        ])->assertSessionHasNoErrors();
+
+        // سبعةٌ لا ثلاثة
+        $this->assertSame(7, (int) BranchStock::where('branch_id', $this->muscat->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
+        $this->assertSame(12, (int) $this->product->fresh()->quantity);   // 15 − 3
+        // ولا يُمَسّ فرعٌ آخر
+        $this->assertSame(5, (int) BranchStock::where('branch_id', $this->salalah->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
+    }
+
+    /** والفاقد هالكٌ باسم صنفه وبتكلفة لحظته في التقرير */
+    public function test_the_loss_column_lands_in_the_waste_report(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [],
+            'losses' => [$this->product->id => 3],
+        ])->assertSessionHasNoErrors();
+
+        $row = \App\Models\StockAdjustment::firstOrFail();
+
+        $this->assertSame('تلف', $row->reason);
+        $this->assertEqualsWithDelta(-3.0, (float) $row->quantity_delta, 0.001);
+        $this->assertEqualsWithDelta(4.0, (float) $row->cost_at_time, 0.001);
+        $this->assertTrue(\App\Support\Waste::isWaste($row->reason));
+
+        $window = ['from' => now()->subDay()->toDateString(), 'to' => now()->addDay()->toDateString()];
+
+        $this->assertEqualsWithDelta(3.0, \App\Support\Waste::totals($this->business->id, $window)['quantity'], 0.001);
+        $this->assertEqualsWithDelta(12.0, \App\Support\Waste::totals($this->business->id, $window)['value'], 0.001);
+    }
+
+    /** والعمودان يعملان في جردٍ واحد على صنفين مختلفين */
+    public function test_counting_one_item_and_writing_off_another_in_one_pass(): void
+    {
+        $other = Product::create([
+            'business_id' => $this->business->id, 'name' => 'ورق تغليف',
+            'price' => 1, 'cost' => 0.5, 'quantity' => 20, 'active' => true,
+        ]);
+        BranchStock::adjust($this->business->id, $this->muscat->id, $other->id, 20);
+
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [$this->product->id => 8],
+            'losses' => [$other->id => 2],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(8, (int) BranchStock::where('branch_id', $this->muscat->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
+        $this->assertSame(18, (int) BranchStock::where('branch_id', $this->muscat->id)
+            ->where('product_id', $other->id)->value('quantity'));
+    }
+
+    /**
+     * وصنفٌ واحد لا يُجرَد بالطريقتين معًا.
+     *
+     * من كتب «معدود ٩٧» و«فاقد ٣» يقصد شيئًا واحدًا، والطاعةُ للاثنين
+     * تطرح ستًّا. والردّ خيرٌ من تخمينِ أيّهما أراد.
+     */
+    public function test_one_item_cannot_be_both_counted_and_written_off(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [$this->product->id => 7],
+            'losses' => [$this->product->id => 3],
+        ])->assertSessionHasErrors('losses');
+
+        $this->assertSame(15, (int) $this->product->fresh()->quantity);
+        $this->assertSame(0, \App\Models\StockAdjustment::count());
+    }
+
+    /** وفاقدٌ بصفرٍ لا يكتب شيئًا */
+    public function test_a_zero_loss_writes_nothing(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->muscat->id,
+            'counts' => [],
+            'losses' => [$this->product->id => 0],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(0, \App\Models\StockAdjustment::count());
+        $this->assertSame(10, (int) BranchStock::where('branch_id', $this->muscat->id)
+            ->where('product_id', $this->product->id)->value('quantity'));
     }
 }

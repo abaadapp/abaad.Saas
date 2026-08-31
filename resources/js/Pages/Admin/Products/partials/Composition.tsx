@@ -128,7 +128,6 @@ export default function Composition({ productId, data, currency, draft, onDraft,
     const [addingVariant, setAddingVariant] = useState(false);
     const [variantDraft, setVariantDraft] = useState({ name: '', name_en: '', price: '', sku: '' });
     const [componentDraft, setComponentDraft] = useState({ component_product_id: '', quantity: '', wastage_percent: '' });
-    const [addonIds, setAddonIds] = useState<number[]>(data.addon_ids);
 
     /*
      * التحديث لا يُعيد بناء الشاشة.
@@ -287,20 +286,21 @@ export default function Composition({ productId, data, currency, draft, onDraft,
     /* ------------------------------ الإضافات ------------------------------ */
 
     /*
-     * إضافةٌ تُنشأ من جانب قائمتها.
+     * إضافات هذا المنتج وحده.
      *
-     * لم يكن في النظام بابُ إنشاء إضافاتٍ إطلاقًا — تأتي من التهيئة وحدها.
-     * فمن أراد «شريطًا ذهبيًّا» وهو يُعدّ باقته لم يكن أمامه شيء.
+     * لا تُعرض هنا إضافةُ متجرٍ ولا تُختار: تلك تظهر مع كلّ منتجٍ يبيعه
+     * المحلّ، ومكانُها الصفُّ الأوّل من شاشة المنتج بجانب القسم — حيث
+     * تُقرَّر مرّةً للجميع. وعرضُها هنا كان يجعل الشاشة تسأل سؤالًا لا
+     * يخصّ هذا المنتج، ويُوهم أنّ إطفاءها هنا يُطفئها عنه وحده.
      *
-     * وتُنشأ خاصّةً بهذا المنتج ما لم يُقَل غير ذلك: من صنعها لباقة الورد
-     * لا يريدها معروضةً مع كيس السماد — وهو ما كان يحدث، لأنّ غياب الربط
-     * عن كيس السماد معناه «كلّ إضافات المتجر».
+     * فهذا القسم لما يخصّه: «شريط ذهبي» لباقة الورد لا يراه كيس السماد.
      */
     const [addonDraft, setAddonDraft] = useState<DraftAddon | null>(null);
     const [addonError, setAddonError] = useState<string | null>(null);
     const [savingAddon, setSavingAddon] = useState(false);
 
     const openAddonDraft = () => {
+        // خاصّةٌ دائمًا: هذا قسمُ ما يخصّ المنتج، ولا خيارَ يُسأل عنه فيه
         setAddonDraft({ name: '', price: '', private: true });
         setAddonError(null);
     };
@@ -324,7 +324,7 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                 body: JSON.stringify({
                     name: addonDraft.name.trim(),
                     price: addonDraft.price || 0,
-                    product_id: addonDraft.private ? productId : null,
+                    product_id: productId,
                 }),
             });
             const body = await res.json();
@@ -335,9 +335,8 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                 return;
             }
 
+            // تُعرض مع المنتج فورًا: خاصّةٌ به فلا اختيارَ بعدها
             onAddonCreated(body.addon);
-            // تُختار فورًا: من أنشأها وهو يُعدّ هذا المنتج يريدها معه
-            setAddonIds((prev) => [...prev, body.addon.value]);
             setAddonDraft(null);
         } catch {
             setAddonError(t('تعذّر الاتصال بالخادم'));
@@ -346,46 +345,29 @@ export default function Composition({ productId, data, currency, draft, onDraft,
         }
     };
 
-    interface AddonRow { key: string; label: string; price: number; private: boolean; stock: boolean; on: boolean; toggle: () => void }
+    interface AddonRow { key: string; label: string; price: number; stock: boolean; remove: () => void }
 
-    const addonRows: AddonRow[] = drafting
-        ? [
-            ...addons.map((a) => ({
-                key: 'a' + a.value,
-                label: a.label,
-                price: a.price,
-                private: a.private,
-                stock: !!a.inventory_product_id,
-                on: d.addon_ids.includes(a.value),
-                toggle: () => patch({
-                    addon_ids: d.addon_ids.includes(a.value)
-                        ? d.addon_ids.filter((i) => i !== a.value)
-                        : [...d.addon_ids, a.value],
-                }),
-            })),
-            // إضافةٌ كُتبت الآن ولم تُحفظ بعد: نقرُها يحذفها — لا وجود لها
-            // خارج هذه الشاشة كي «تُلغى» بإبقائها غير مختارة
-            ...d.new_addons.map((a, i) => ({
-                key: 'n' + i,
-                label: a.name,
-                price: Number(a.price) || 0,
-                private: a.private,
-                stock: false,
-                on: true,
-                toggle: () => patch({ new_addons: d.new_addons.filter((_, j) => j !== i) }),
-            })),
-        ]
-        : addons.map((a) => ({
+    const addonRows: AddonRow[] = [
+        ...addons.filter((a) => a.private).map((a) => ({
             key: 'a' + a.value,
             label: a.label,
             price: a.price,
-            private: a.private,
             stock: !!a.inventory_product_id,
-            on: addonIds.includes(a.value),
-            toggle: () => setAddonIds(addonIds.includes(a.value)
-                ? addonIds.filter((i) => i !== a.value)
-                : [...addonIds, a.value]),
-        }));
+            remove: () => router.delete(route('admin.products.addons.destroy', [productId, a.value]), reload),
+        })),
+        // إضافةٌ كُتبت الآن ولم تُحفظ بعد: تُحذف من المسوّدة لا من القاعدة.
+        // والعامّة منها تُستثنى — مكانُها «المعلومات الأساسية» حيث كُتبت
+        ...d.new_addons
+            .map((a, i) => ({ a, i }))
+            .filter(({ a }) => a.private)
+            .map(({ a, i }) => ({
+                key: 'n' + i,
+                label: a.name,
+                price: Number(a.price) || 0,
+                stock: false,
+                remove: () => patch({ new_addons: d.new_addons.filter((_, j) => j !== i) }),
+            })),
+    ];
 
     return (
         <div className="space-y-6">
@@ -628,7 +610,7 @@ export default function Composition({ productId, data, currency, draft, onDraft,
             {/* ------------------------------ الإضافات ------------------------------ */}
             <Card className="p-6">
                 <div className="mb-1 flex items-center justify-between gap-3">
-                    <h3 className="font-bold text-[#111]">{t('الإضافات')}</h3>
+                    <h3 className="font-bold text-[#111]">{t('إضافات هذا المنتج')}</h3>
                     {/* إنشاءُ إضافةٍ متاحٌ ولو لم تكن في المتجر واحدة — وهي الحال
                         التي يبدأ منها كلّ متجرٍ جديد */}
                     <Button
@@ -643,7 +625,7 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                     </Button>
                 </div>
                 <p className="mb-4 text-[13px] text-[#6b7280]">
-                    {t('ما يُعرض على الكاشير مع هذا المنتج. والإضافة الخاصّة لا تظهر مع أي منتجٍ آخر.')}
+                    {t('تُعرض مع هذا المنتج وحده. وإضافات المتجر التي تظهر مع الجميع مكانها «المعلومات الأساسية».')}
                 </p>
 
                 {addonDraft !== null && (
@@ -685,74 +667,41 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                             </div>
                         </div>
 
-                        {/* المدى يُسأل عنه صراحةً: الافتراضيّ «خاصّة» لأنّ من
-                            يكتبها وهو داخل منتجٍ بعينه يقصده هو */}
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                            {[
-                                { on: true, title: 'خاصّة بهذا المنتج', hint: 'لا تظهر مع أي منتجٍ آخر' },
-                                { on: false, title: 'لكلّ المنتجات', hint: 'إضافةُ متجرٍ تُعرض مع الجميع' },
-                            ].map((option) => (
-                                <button
-                                    key={String(option.on)}
-                                    type="button"
-                                    onClick={() => setAddonDraft({ ...addonDraft, private: option.on })}
-                                    className={cn(
-                                        'flex-1 rounded-[10px] border p-3 text-start transition-colors',
-                                        addonDraft.private === option.on
-                                            ? 'border-[#111] bg-[#111] text-white'
-                                            : 'border-[#e8e8e8] bg-white text-[#4b4b4b] hover:bg-[#f7f7f5]',
-                                    )}
-                                >
-                                    <span className="block text-[13px] font-semibold">{t(option.title)}</span>
-                                    <span className="mt-0.5 block text-[12px] opacity-80">{t(option.hint)}</span>
-                                </button>
-                            ))}
-                        </div>
                     </div>
                 )}
 
                 {addonRows.length === 0 ? (
-                    <p className="py-6 text-center text-[13px] text-[#9ca3af]">{t('لا إضافات بعد')}</p>
+                    <p className="py-6 text-center text-[13px] text-[#9ca3af]">
+                        {t('لا إضافات خاصّة بهذا المنتج')}
+                    </p>
                 ) : (
-                    <>
-                        <div className="mb-4 flex flex-wrap gap-2">
-                            {addonRows.map((a) => (
-                                <button
-                                    key={a.key}
-                                    type="button"
-                                    onClick={a.toggle}
-                                    className={cn(
-                                        'rounded-[10px] border px-3 py-2 text-[13px] transition-colors',
-                                        a.on
-                                            ? 'border-[#111] bg-[#111] text-white'
-                                            : 'border-[#e8e8e8] text-[#4b4b4b] hover:bg-[#f7f7f5]',
-                                    )}
-                                >
-                                    {a.label}
-                                    <span className="ms-2 text-[12px] opacity-70">{m(a.price)}</span>
-                                    {a.private && <span className="ms-1 text-[12px] opacity-70">·{t('خاصّة')}</span>}
-                                    {a.stock && <span className="ms-1 text-[12px] opacity-70">·{t('مخزون')}</span>}
-                                </button>
-                            ))}
-                        </div>
-
-                        {drafting ? (
-                            <p className="text-[12px] text-[#9ca3af]">
-                                {t('تُحفظ مع المنتج. وبلا اختيارٍ تظهر إضافات المتجر العامّة كلّها معه.')}
-                            </p>
-                        ) : (
-                            <Button
-                                type="button"
-                                onClick={() =>
-                                    router.put(route('admin.products.addons.sync', productId), { addon_ids: addonIds }, reload)
-                                }
+                    <ul className="space-y-2">
+                        {addonRows.map((a) => (
+                            <li
+                                key={a.key}
+                                className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[#eee] px-3 py-2"
                             >
-                                <Check />
-                                {t('حفظ الإضافات')}
-                            </Button>
-                        )}
-                    </>
+                                <span className="flex items-center gap-2">
+                                    <span className="font-medium text-[#111]">{a.label}</span>
+                                    {a.stock && <Badge variant="info">{t('مخزون')}</Badge>}
+                                </span>
+                                <span className="flex items-center gap-3">
+                                    <span className="font-semibold tabular-nums text-[#111]">{m(a.price)}</span>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={t('حذف الإضافة')}
+                                        onClick={a.remove}
+                                    >
+                                        <Trash2 className="size-4 text-[#b91c1c]" />
+                                    </Button>
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
                 )}
+
             </Card>
         </div>
     );

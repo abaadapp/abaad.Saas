@@ -36,22 +36,42 @@ export default function Stocktake() {
     const t = useTranslate();
 
     /*
-     * الجرد يعدّ لا يخصم.
+     * عمودان لا عمود.
      *
-     * الرقم المكتوب هنا هو ما وُجد على الرفّ، فيصير هو الرصيد. والكمية
-     * المعدومة لها بابها: «تعديلات المخزون» بسببٍ «تلف» — تُطرح من الرصيد
-     * وتظهر في تقرير الهالك باسم صنفها.
+     *   الكمية المعدودة  →  ما وجدتَه على الرفّ، يصير هو الرصيد
+     *   الفاقد          →  ما عُدم، يُطرح من الرصيد ولا يحلّ محلّه
+     *
+     * وعمودٌ واحد كان أصل عطبٍ كبير: الشاشة تسأل «الكمية المعدودة» فيكتب
+     * فيها من عنده مئة وردةٍ تلفت ثلاثٌ منها «٣» — فيصير رصيده ثلاثًا بدل
+     * سبعٍ وتسعين. رقمٌ مشروع في حقلٍ مشروع، وتسعون وردةً تختفي بلا رسالة.
      *
      * وعمود الفرق يعرض الرصيد الناتج بعده كي لا يبقى المعنى ضمنيًّا: من
-     * يكتب «٣» يرى «← ٣» قبل أن يضغط، لا بعد أن يضيع تسعون.
+     * يكتب رقمًا يرى أين ينتهي الصنف قبل أن يضغط.
      */
-    const form = useForm<{ branch_id: string; counts: Record<number, string> }>({
+    const form = useForm<{
+        branch_id: string;
+        counts: Record<number, string>;
+        losses: Record<number, string>;
+    }>({
         branch_id: currentBranch ? String(currentBranch) : '',
         counts: {},
+        losses: {},
     });
 
     const setCount = (id: number, value: string) =>
         form.setData('counts', { ...form.data.counts, [id]: value });
+
+    const setLoss = (id: number, value: string) =>
+        form.setData('losses', { ...form.data.losses, [id]: value });
+
+    /** رقمٌ مكتوب في الحقل، أو null إن تُرك فارغًا */
+    const entered = (bag: Record<number, string>, id: number): number | null => {
+        const raw = bag[id];
+        if (raw === undefined || raw === '') return null;
+        const n = Number(raw);
+
+        return Number.isFinite(n) ? n : null;
+    };
 
     /**
      * دفتر الفرع المختار — لا إجمالي الشركة.
@@ -67,16 +87,31 @@ export default function Stocktake() {
     /**
      * الفرق الذي سيُطبَّق — بالمعادلة نفسها التي يطبّقها الخادم.
      *
-     * null يعني «لم يُدخَل شيء» فلا يُحتسب.
+     * null يعني «لم يُدخَل شيء» فلا يُحتسب. والفاقد طرحٌ لا رصيد، فالفرق
+     * فيه سالبٌ دائمًا.
      */
     const variance = (id: number, book: number): number | null => {
-        const raw = form.data.counts[id];
-        if (raw === undefined || raw === '') return null;
-        const n = Number(raw);
-        if (!Number.isFinite(n)) return null;
+        const loss = entered(form.data.losses, id);
+        if (loss !== null && loss !== 0) return -loss;
 
-        return n - book;
+        const counted = entered(form.data.counts, id);
+
+        return counted === null ? null : counted - book;
     };
+
+    /*
+     * الحقلان يتعارضان فيُقفل أحدهما.
+     *
+     * من كتب «معدود ٩٧» و«فاقد ٣» يقصد شيئًا واحدًا، والنظام لو أطاع
+     * الاثنين لَطرح ستًّا. والقفلُ في الشاشة يمنع الالتباس قبل أن يقع؛
+     * والخادم يردّه أيضًا، فالقاعدة ليست في الشاشة وحدها.
+     */
+    const hasLoss = (id: number) => {
+        const n = entered(form.data.losses, id);
+
+        return n !== null && n !== 0;
+    };
+    const hasCount = (id: number) => entered(form.data.counts, id) !== null;
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -87,7 +122,7 @@ export default function Stocktake() {
         <AdminLayout title="الجرد الفعلي">
             <PageHeader
                 title="الجرد الفعلي"
-                subtitle={t('أدخل الكمية المعدودة فعليًا على الرفّ — تصير هي الرصيد')}
+                subtitle={t('الكمية المعدودة تصير هي الرصيد، والفاقد يُطرح منه')}
             />
 
             <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.stocktake" />
@@ -108,6 +143,22 @@ export default function Stocktake() {
                             {t('الأرقام تخصّ الفرع المختار وحده. اترك الحقل فارغًا لما لم تُدخله (لن يتغيّر).')}
                         </p>
                     </div>
+
+                    {form.errors.losses && (
+                        <p className="mt-3 text-[12px] text-[#b91c1c]">{form.errors.losses}</p>
+                    )}
+
+                    {/* معنى العمودين يُقال قبل أن يُكتب رقم — لا بعد أن يضيع رصيد */}
+                    <dl className="mt-4 grid grid-cols-1 gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3 text-[12px] sm:grid-cols-2">
+                        <div>
+                            <dt className="font-medium text-[#111]">{t('الكمية المعدودة')}</dt>
+                            <dd className="text-[#6b7280]">{t('ما وجدتَه على الرفّ — يصير هو الرصيد')}</dd>
+                        </div>
+                        <div>
+                            <dt className="font-medium text-[#111]">{t('الفاقد')}</dt>
+                            <dd className="text-[#6b7280]">{t('ما عُدم — يُطرح من رصيد النظام ولا يحلّ محلّه')}</dd>
+                        </div>
+                    </dl>
                 </Card>
 
                 <Card className="overflow-hidden">
@@ -117,7 +168,7 @@ export default function Stocktake() {
                                 {/* «رصيد النظام» لا «الدفتري»: المصطلح المحاسبي يحتاج شرحًا، ومن
                                     يقف على الرفّ يعدّ لا يقرأ اصطلاحًا. والفرع مذكورٌ في
                                     أعلى الشاشة فلا يُكرَّر في رأس العمود. */}
-                                {['المنتج', 'SKU', 'رصيد النظام', 'الكمية المعدودة', 'الفرق'].map((h) => (
+                                {['المنتج', 'SKU', 'رصيد النظام', 'الكمية المعدودة', 'الفاقد', 'الفرق'].map((h) => (
                                     <TableHead key={h}>{t(h)}</TableHead>
                                 ))}
                             </TableRow>
@@ -144,7 +195,18 @@ export default function Stocktake() {
                                                 placeholder={t('لم يُعَدّ')}
                                                 className="h-9 w-28"
                                                 // بلا فرعٍ لا معنى للعدّ: الرقم يُقيَّد على فرع
-                                                disabled={!form.data.branch_id}
+                                                disabled={!form.data.branch_id || hasLoss(item.id)}
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <Input
+                                                inputMode="numeric"
+                                                dir="ltr"
+                                                value={form.data.losses[item.id] ?? ''}
+                                                onChange={(e) => setLoss(item.id, e.target.value)}
+                                                placeholder={t('لا شيء')}
+                                                className="h-9 w-28"
+                                                disabled={!form.data.branch_id || hasCount(item.id)}
                                             />
                                         </TableCell>
                                         <TableCell>

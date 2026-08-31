@@ -480,4 +480,84 @@ class ProductAddonsTest extends TestCase
             'name' => 'شريط', 'price' => 1, 'product_id' => $theirs->id,
         ])->assertStatus(422)->assertJsonValidationErrors('product_id');
     }
+    /**
+     * إضافةُ المنتج تُعرض معه ولو ضاق الربط على غيرها.
+     *
+     * قسمُ الإضافات في شاشة المنتج صار لما يخصّه وحده، فلا يُختار فيه شيء
+     * ولا يُلغى. وربطٌ قديم في `product_addons` يضيّق إضافات المتجر — ولا
+     * معنى لأن يُخرج إضافةً صُنعت لهذا المنتج بعينه.
+     */
+    public function test_a_private_addon_survives_an_old_narrowing_link(): void
+    {
+        $ribbon = Addon::create([
+            'business_id' => $this->business->id, 'product_id' => $this->bouquet->id,
+            'name' => 'شريط ذهبي', 'price' => 0.5, 'active' => true,
+        ]);
+
+        // ربطٌ لا يذكرها — كما لو كان قد كُتب قبل أن توجد
+        $this->actingAs($this->owner)
+            ->put(route('admin.products.addons.sync', $this->bouquet->id), ['addon_ids' => [$this->chocolate->id]])
+            ->assertSessionHasNoErrors();
+
+        $offered = ProductAddons::for($this->bouquet)->pluck('id')->all();
+
+        $this->assertContains($ribbon->id, $offered);
+        $this->assertContains($this->chocolate->id, $offered);
+        $this->assertNotContains($this->wrapService->id, $offered);
+
+        // وتُقبل في البيع كذلك، لا في العرض وحده
+        $this->sell([[
+            'id' => $this->bouquet->id, 'name' => 'بوكيه', 'qty' => 1,
+            'addons' => [['addon_id' => $ribbon->id, 'qty' => 1]],
+        ]]);
+    }
+
+    /** وتُحذف من شاشتها */
+    public function test_a_private_addon_can_be_deleted_from_its_product(): void
+    {
+        $ribbon = Addon::create([
+            'business_id' => $this->business->id, 'product_id' => $this->bouquet->id,
+            'name' => 'شريط ذهبي', 'price' => 0.5, 'active' => true,
+        ]);
+
+        $this->actingAs($this->owner)
+            ->delete(route('admin.products.addons.destroy', [$this->bouquet->id, $ribbon->id]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(0, Addon::where('id', $ribbon->id)->count());
+    }
+
+    /**
+     * وإضافةُ المتجر لا تُحذف من شاشة منتجٍ واحد.
+     *
+     * تُعرض مع كلّ ما يبيعه المحلّ، وحذفُها من هنا يمسّ ما لا يراه من ضغط
+     * الزرّ.
+     */
+    public function test_a_shop_wide_addon_cannot_be_deleted_from_a_product_screen(): void
+    {
+        $this->actingAs($this->owner)
+            ->delete(route('admin.products.addons.destroy', [$this->bouquet->id, $this->wrapService->id]))
+            ->assertNotFound();
+
+        $this->assertSame(1, Addon::where('id', $this->wrapService->id)->count());
+    }
+
+    /** ولا إضافةُ منتجٍ آخر */
+    public function test_another_products_addon_cannot_be_deleted_from_here(): void
+    {
+        $box = Product::create([
+            'business_id' => $this->business->id, 'name' => 'علبة',
+            'price' => 6, 'cost' => 3, 'quantity' => 4, 'active' => true,
+        ]);
+        $ribbon = Addon::create([
+            'business_id' => $this->business->id, 'product_id' => $box->id,
+            'name' => 'شريط', 'price' => 1, 'active' => true,
+        ]);
+
+        $this->actingAs($this->owner)
+            ->delete(route('admin.products.addons.destroy', [$this->bouquet->id, $ribbon->id]))
+            ->assertNotFound();
+
+        $this->assertSame(1, Addon::where('id', $ribbon->id)->count());
+    }
 }

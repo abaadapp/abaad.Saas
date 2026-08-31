@@ -3399,5 +3399,17 @@
     "اختر العميل من أعلى السلّة — اسمه يظهر على بطاقة التجهيز.": "Pick the customer at the top of the cart — the name shows on the preparation card.",
     "اسم العميل مطلوب للطلبات التي تُجهَّز.": "A customer name is required for orders that go to preparation.",
     "إضافات مع كلّ المنتجات": "Add-ons for all products",
-    "تظهر مع كلّ منتجات المتجر. والخاصّة بهذا المنتج في «التركيب».": "Shown with every product in the shop. Ones private to this product live under Composition."
+    "تظهر مع كلّ منتجات المتجر. والخاصّة بهذا المنتج في «التركيب».": "Shown with every product in the shop. Ones private to this product live under Composition.",
+    "إضافات هذا المنتج": "This product’s add-ons",
+    "تُعرض مع هذا المنتج وحده. وإضافات المتجر التي تظهر مع الجميع مكانها «المعلومات الأساسية».": "Shown with this product only. Shop-wide add-ons live under Basic information.",
+    "لا إضافات خاصّة بهذا المنتج": "No add-ons private to this product",
+    "حذف الإضافة": "Delete add-on",
+    "الكمية المعدودة تصير هي الرصيد، والفاقد يُطرح منه": "The counted quantity becomes the balance; the loss is subtracted from it",
+    "ما وجدتَه على الرفّ — يصير هو الرصيد": "What you found on the shelf — it becomes the balance",
+    "الفاقد": "Loss",
+    "ما عُدم — يُطرح من رصيد النظام ولا يحلّ محلّه": "What perished — subtracted from the system balance, it does not replace it",
+    "حُذفت الإضافة": "Add-on deleted",
+    "لا تُدخل الكمية المعدودة والفاقد لصنفٍ واحد — اختر أحدهما.": "Do not enter both a counted quantity and a loss for one item — pick one.",
+    "فاقد جرد — :branch: طُرح :counted من :book": "Stocktake loss — :branch: :counted subtracted from :book",
+    "لم تُدخل شيئًا — اكتب كميةً معدودة أو فاقدًا لصنفٍ واحد على الأقل.": "Nothing entered — write a counted quantity or a loss for at least one item."
 }

@@ -325,6 +325,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::put('/products/{id}/recipe/{item}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'updateRecipeItem'])->name('products.recipe.update');
     Route::delete('/products/{id}/recipe/{item}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'destroyRecipeItem'])->name('products.recipe.destroy');
     Route::put('/products/{id}/addons', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'syncAddons'])->name('products.addons.sync');
+    Route::delete('/products/{id}/addons/{addon}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'destroyAddon'])->name('products.addons.destroy');
     Route::post('/products/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
         ->defaults('type', 'product')->name('products.restore');
     // المحو النهائي يتبع صلاحية الحذف نفسها: من أخفاه يمحوه، ولا أحد سواه

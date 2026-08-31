@@ -225,6 +225,31 @@ class ProductCompositionController extends Controller
     }
 
     /**
+     * حذفُ إضافةٍ خاصّةٍ بهذا المنتج — ولا تُحذف من هنا إضافةُ متجر.
+     *
+     * الأخيرة تُعرض مع كلّ منتجات المحلّ، وحذفُها من شاشة منتجٍ واحد يمسّ
+     * ما لا يراه من ضغط الزرّ. بابُها في شاشة المنتج نفسها بجانب القسم.
+     *
+     * والحذف نهائيّ ولا يمسّ فاتورة: بند الطلب يحمل لقطته (الاسم والسعر)،
+     * و`addon_id` يُفرَّغ ولا يُسقط الصفّ — انظر الهجرة.
+     */
+    public function destroyAddon(int $id, int $addonId)
+    {
+        $product = $this->product($id);
+
+        $addon = Addon::where('business_id', $this->bid())
+            ->where('product_id', $product->id)
+            ->findOrFail($addonId);
+
+        DB::table('product_addons')->where('addon_id', $addon->id)->delete();
+        $addon->delete();
+
+        \App\Support\Activity::log('deleted', 'حذف إضافة «'.$addon->name.'» من '.$product->name, ['subject_id' => $product->id]);
+
+        return back()->with('toast', ['msg' => __('حُذفت الإضافة'), 'type' => 'warning']);
+    }
+
+    /**
      * ما تعرضه أقسام «المقاسات» و«الوصفة» و«الإضافات» في شاشة المنتج.
      *
      * الأرقام تُشتقّ في الخادم لا في المتصفّح: هامشٌ يُحسب في الشاشة يفترق

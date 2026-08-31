@@ -41,7 +41,11 @@ class ProductAddons
 
         return $all
             ->filter(fn (Addon $a) => (bool) $a->active && self::owned($a, $product))
-            ->when($allowed !== null, fn ($c) => $c->filter(fn (Addon $a) => in_array($a->id, $allowed, true)))
+            // والربط يضيّق إضافات المتجر وحدها: إضافةُ المنتج صُنعت له، ولا
+            // معنى لأن تُستثنى منه بقائمةٍ تخصّ غيرها
+            ->when($allowed !== null, fn ($c) => $c->filter(
+                fn (Addon $a) => $a->product_id !== null || in_array($a->id, $allowed, true),
+            ))
             ->values();
     }
 
@@ -81,7 +85,7 @@ class ProductAddons
         $map ??= self::map((int) $product->business_id);
         $allowed = $map[$product->id] ?? null;
 
-        return $allowed === null || in_array((int) $addon->id, $allowed, true);
+        return $addon->product_id !== null || $allowed === null || in_array((int) $addon->id, $allowed, true);
     }
 
     /**

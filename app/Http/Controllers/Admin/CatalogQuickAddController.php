@@ -48,7 +48,7 @@ class CatalogQuickAddController extends Controller
             'name.unique' => __('يوجد قسمٌ بهذا الاسم.'),
         ]);
 
-        $category = Category::create($data + ['business_id' => $bid]);
+        $category = Category::create(\App\Support\Lexicon::fill($data) + ['business_id' => $bid]);
 
         \App\Support\Activity::log('created', 'أضاف قسم «'.$category->name.'»', ['subject_id' => $category->id]);
 
@@ -99,7 +99,7 @@ class CatalogQuickAddController extends Controller
             'name.unique' => __('توجد إضافةٌ بهذا الاسم.'),
         ]);
 
-        $addon = Addon::create($data + ['business_id' => $bid, 'active' => true, 'product_id' => $owner]);
+        $addon = Addon::create(\App\Support\Lexicon::fill($data) + ['business_id' => $bid, 'active' => true, 'product_id' => $owner]);
 
         \App\Support\Activity::log('created', 'أضاف إضافة «'.$addon->name.'»', ['subject_id' => $addon->id]);
 

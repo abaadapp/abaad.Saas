@@ -54,7 +54,7 @@ class ProductCompositionController extends Controller
             'sort_order' => ['nullable', 'integer'],
         ]);
 
-        $variant = ProductVariant::create($data + [
+        $variant = ProductVariant::create(\App\Support\Lexicon::fill($data) + [
             'business_id' => $bid,
             'product_id' => $product->id,
             'active' => $data['active'] ?? true,
@@ -82,7 +82,7 @@ class ProductCompositionController extends Controller
             'sort_order' => ['nullable', 'integer'],
         ]);
 
-        $variant->update($data);
+        $variant->update(\App\Support\Lexicon::fill($data));
 
         return back()->with('toast', ['msg' => __('حُفظ المقاس'), 'type' => 'success']);
     }
@@ -411,11 +411,12 @@ class ProductCompositionController extends Controller
             $variantIds = [];
 
             foreach (array_values($composition['variants'] ?? []) as $i => $v) {
-                $variantIds[$i] = ProductVariant::create([
-                    'business_id' => $bid,
-                    'product_id' => $product->id,
+                $variantIds[$i] = ProductVariant::create(\App\Support\Lexicon::fill([
                     'name' => $v['name'],
                     'name_en' => $v['name_en'] ?? null,
+                ]) + [
+                    'business_id' => $bid,
+                    'product_id' => $product->id,
                     'sku' => $v['sku'] ?: null,
                     'price' => $v['price'],
                     'active' => true,
@@ -466,9 +467,9 @@ class ProductCompositionController extends Controller
                 // إضافةُ متجرٍ بالاسم نفسه تُعاد لا تُكرَّر: اسمان متطابقان في
                 // قائمة الكاشير يجعلانه يختار عشوائيًا
                 $addon = $private
-                    ? Addon::create([
+                    ? Addon::create(\App\Support\Lexicon::fill(['name' => $a['name']]) + [
                         'business_id' => $bid, 'product_id' => $product->id,
-                        'name' => $a['name'], 'price' => $a['price'], 'active' => true,
+                        'price' => $a['price'], 'active' => true,
                     ])
                     : Addon::firstOrCreate(
                         ['business_id' => $bid, 'product_id' => null, 'name' => $a['name']],

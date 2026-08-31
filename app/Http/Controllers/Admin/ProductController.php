@@ -207,6 +207,8 @@ class ProductController extends Controller
         $data['sku'] = ! empty($data['sku']) ? $data['sku'] : $this->generateSku();
         $data['barcode'] = ! empty($data['barcode']) ? $data['barcode'] : $this->generateBarcode();
         $data['active'] = $request->boolean('active', true);
+        // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
+        $data = \App\Support\Lexicon::fill($data);
         $data['image'] = $request->hasFile('image')
             ? $request->file('image')->store('products', 'public')
             : Demo::image('prod' . uniqid());
@@ -262,6 +264,8 @@ class ProductController extends Controller
         ]);
         $data['name_en'] = $data['name_en'] ?? null;
         $data['active'] = $request->boolean('active', true);
+        // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
+        $data = \App\Support\Lexicon::fill($data);
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL)
         $data['cost'] = $data['cost'] ?? 0;
         $data['quantity'] = $data['quantity'] ?? 0;

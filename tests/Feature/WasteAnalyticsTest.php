@@ -89,6 +89,24 @@ class WasteAnalyticsTest extends TestCase
         $this->assertFalse(Waste::isWaste(null));
     }
 
+    public function test_legacy_arabic_reasons_are_still_read_as_waste(): void
+    {
+        /*
+         * في قواعد الإنتاج صفوفٌ بأسباب «هالك» و«تالف» كتبها مولّد البيانات
+         * بمفرداتٍ غير التي يقبلها النموذج. وإهمالُها كان يجعل الشاشة تقول
+         * «لا هالك» في متجرٍ سجّل ثمانية صفوفٍ منه.
+         */
+        $this->adjust($this->rose, -5, 'هالك');
+        $this->adjust($this->rose, -3, 'تالف');
+        // و«مرتجع» ليس هالكًا: بضاعةٌ عادت لا بضاعةٌ ضاعت
+        $this->adjust($this->rose, -20, 'مرتجع');
+
+        $this->assertTrue(Waste::isWaste('هالك'));
+        $this->assertTrue(Waste::isWaste('تالف'));
+        $this->assertFalse(Waste::isWaste('مرتجع'));
+        $this->assertEqualsWithDelta(8.0, Waste::totals($this->business->id, $this->window())['quantity'], 0.001);
+    }
+
     public function test_a_stocktake_is_not_counted_in_the_waste_totals(): void
     {
         $this->adjust($this->rose, -10, 'تلف');

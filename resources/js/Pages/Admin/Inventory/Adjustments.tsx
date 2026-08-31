@@ -89,7 +89,7 @@ export default function Adjustments() {
      * السالب على أيّ حال (انظر Waste::normalizeDelta). فيُغلق الاختيار هنا
      * كي لا يرى المستخدم مقبضًا لا يفعل ما يقول.
      */
-    const WASTE_REASONS = ['تلف', 'فقد'];
+    const WASTE_REASONS = ['تلف', 'فقد', 'هالك', 'تالف'];
     const isWaste = WASTE_REASONS.includes(form.data.reason);
     const effectiveDirection: '-' | '+' = isWaste ? '-' : direction;
 

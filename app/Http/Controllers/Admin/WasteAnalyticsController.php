@@ -75,7 +75,9 @@ class WasteAnalyticsController extends Controller
                     ->get(['id', 'name'])->map(fn ($c) => ['value' => $c->id, 'label' => $c->name])->all(),
                 'products' => Product::where('business_id', $bid)->orderBy('name')
                     ->get(['id', 'name'])->map(fn ($p) => ['value' => $p->id, 'label' => $p->name])->all(),
-                'reasons' => Waste::REASONS,
+                // القديمة معها: صفوفٌ في القاعدة بأسبابٍ لم تعد تُكتب، وحذفُها
+                // من المنتقي يجعلها تُعدّ في المجموع ولا يمكن عزلها
+                'reasons' => Waste::all(),
             ],
         ]);
     }

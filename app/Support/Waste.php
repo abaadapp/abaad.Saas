@@ -20,17 +20,38 @@ use Illuminate\Support\Facades\DB;
 class Waste
 {
     /**
-     * ما يُعدّ خسارة.
+     * ما يُعدّ خسارة — من الأسباب التي يكتبها النموذج اليوم.
      *
      * «جرد» ليس منها عمدًا: عدٌّ أظهر نقصًا قد يكون خطأ إدخالٍ سابقًا لا
-     * بضاعةً تلفت، وحسبانُه هالكًا يضخّم الرقم ويُفقده معناه. ومن أراد
-     * تسجيل تلفٍ فله سببُه الصريح.
+     * بضاعةً تلفت، وحسبانُه هالكًا يضخّم الرقم ويُفقده معناه. و«إهداء»
+     * خروجٌ بقرارٍ لا بحادث. ومن أراد تسجيل تلفٍ فله سببُه الصريح.
      */
     public const REASONS = ['تلف', 'فقد'];
 
+    /**
+     * أسبابٌ قديمة تعني الشيء نفسه — تُقرأ ولا تُكتب.
+     *
+     * في قواعد الإنتاج صفوفٌ بأسباب «هالك» و«تالف» و«مرتجع»: كتبها مولّد
+     * البيانات (DemoStore) بمفرداتٍ غير التي يقبلها النموذج اليوم. فقائمةٌ
+     * مغلقة في الشاشة وقائمةٌ أخرى في القاعدة — وهو عطبٌ قائمٌ قبل هذا
+     * العمل، أُبلغ عنه ولم يُصلَح بأثرٍ رجعيّ.
+     *
+     * وإهمالُها كان يجعل شاشة التحليلات تقول «لا هالك» في متجرٍ سجّل ثمانية
+     * صفوفٍ منه — وهو أسوأ من ألّا تُبنى الشاشة أصلًا.
+     *
+     * و«مرتجع» ليس منها: بضاعةٌ عادت لا بضاعةٌ ضاعت.
+     */
+    public const LEGACY_REASONS = ['هالك', 'تالف'];
+
+    /** ما يُقاس عليه في القراءة — الحاضر والماضي معًا */
+    public static function all(): array
+    {
+        return array_merge(self::REASONS, self::LEGACY_REASONS);
+    }
+
     public static function isWaste(?string $reason): bool
     {
-        return in_array((string) $reason, self::REASONS, true);
+        return in_array((string) $reason, self::all(), true);
     }
 
     /**
@@ -58,7 +79,7 @@ class Waste
     public static function query(int $businessId, array $filters = [])
     {
         $q = StockAdjustment::where('stock_adjustments.business_id', $businessId)
-            ->whereIn('stock_adjustments.reason', self::REASONS)
+            ->whereIn('stock_adjustments.reason', self::all())
             ->where('stock_adjustments.quantity_delta', '<', 0);
 
         if (! empty($filters['from'])) {
@@ -209,7 +230,7 @@ class Waste
     public static function suspiciousRows(int $businessId): array
     {
         return StockAdjustment::where('business_id', $businessId)
-            ->whereIn('reason', self::REASONS)
+            ->whereIn('reason', self::all())
             ->where('quantity_delta', '>', 0)
             ->with('product')
             ->orderByDesc('adjusted_at')

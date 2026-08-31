@@ -1,0 +1,103 @@
+name: Abaad Development Task
+description: Canonical task record synced to Notion. Use for both Features and Fixes.
+title: "[Abaad] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This GitHub Issue is the **source of truth**. The matching Notion row is synchronized from these fields.
+        Keep field names and values intact so the sync validator can guarantee a deterministic mirror.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Feature
+        - Fix
+    validations:
+      required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: Status
+      options:
+        - Backlog
+        - Ready
+        - In Progress
+        - Blocked
+        - In Review
+        - Changes Requested
+        - Ready to Merge
+        - Merged
+        - Done
+    validations:
+      required: true
+
+  - type: dropdown
+    id: owner
+    attributes:
+      label: Owner
+      options:
+        - Saad
+        - Udai
+        - ChatGPT
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+
+  - type: input
+    id: area
+    attributes:
+      label: Area / Files
+      description: Main module, domain, or files expected to be touched.
+      placeholder: "Inventory / Products"
+
+  - type: input
+    id: branch
+    attributes:
+      label: Branch
+      description: Exact branch for this task. Never use main for implementation.
+      placeholder: "saad/feature/example"
+
+  - type: input
+    id: github_pr
+    attributes:
+      label: GitHub PR
+      description: Pull request URL when available.
+      placeholder: "https://github.com/abaadapp/abaad.Saas/pull/123"
+
+  - type: input
+    id: depends_on
+    attributes:
+      label: Depends On
+      description: Issue number, branch, PR, or prerequisite task.
+      placeholder: "#123"
+
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt
+      description: Exact execution prompt for ChatGPT, Claude, or Codex.
+      placeholder: |
+        Work only on this task and its branch. Inspect the existing implementation first, identify the root cause or required behavior, make the smallest safe change, preserve tenant isolation and data integrity, run the relevant tests, review the final diff, and do not merge to main. Report changed files, tests, risks, commit SHA and PR.
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Acceptance criteria, constraints, edge cases, and additional context.

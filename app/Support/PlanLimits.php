@@ -81,6 +81,35 @@ class PlanLimits
         ]);
     }
 
+    /**
+     * ما يتجاوز به المتجرُ باقةً بعينها — قائمةٌ تُقرأ، وفارغةٌ إن وسِعته.
+     *
+     * تُسأل قبل تنزيل الباقة: `reached` تحرس الإنشاء وتقيس السقف الحاليّ،
+     * وهذه تقيس سقفًا مقترَحًا على استهلاكٍ قائم.
+     *
+     * @return list<string>
+     */
+    public static function exceededBy(Business $business, \App\Models\Plan $plan): array
+    {
+        $over = [];
+
+        foreach (self::LIMITS as $key => $meta) {
+            $cap = $plan->{$meta['column']};
+            if (! $cap) {
+                continue;
+            }
+
+            $used = self::used($business->id, $key);
+            if ($used > (int) $cap) {
+                $over[] = __(':label :used من :cap', [
+                    'label' => __($meta['label']), 'used' => $used, 'cap' => (int) $cap,
+                ]);
+            }
+        }
+
+        return $over;
+    }
+
     /** الاستهلاك مقابل السقف — تعرضه لوحة المنصة في صفحة الشركة */
     public static function usage(Business $business): array
     {

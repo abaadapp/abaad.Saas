@@ -177,6 +177,31 @@ class BusinessController extends Controller
             $data['logo'] = null;
         }
 
+        /*
+         * لا تُنزَّل باقةٌ يتجاوزها المتجر أصلًا.
+         *
+         * كان التغيير يمرّ بلا فحص: متجرٌ بثلاثة فروع يُنقَل إلى «الأساسية»
+         * (فرعٌ واحد) فتبقى الثلاثة تعمل — و`PlanLimits` تحرس الإنشاء لا
+         * القائم، فلا شيء يُقفل الزائد ولا شيء يقول إنّه زائد. فالباقة
+         * تصير ورقةً في الفاتورة لا حدًّا في النظام.
+         *
+         * والمنع هنا لا الإقفال التلقائيّ: إقفالُ فرعٍ فيه بيعُ اليوم
+         * وموظّفوه قرارٌ لا يُتَّخذ بتغيير قائمةٍ منسدلة. يُقال للمشغّل ما
+         * الزائد، ويُرتَّب قبل التنزيل.
+         */
+        if (array_key_exists('plan_id', $data) && (int) ($data['plan_id'] ?? 0) !== (int) $business->plan_id) {
+            $target = $data['plan_id'] ? \App\Models\Plan::find($data['plan_id']) : null;
+
+            if ($target && $over = \App\Support\PlanLimits::exceededBy($business, $target)) {
+                return back()->withInput()->withErrors([
+                    'plan_id' => __('المتجر يتجاوز باقة «:plan»: :over. أنقص الزائد قبل التنزيل.', [
+                        'plan' => $target->name,
+                        'over' => implode('، ', $over),
+                    ]),
+                ]);
+            }
+        }
+
         $business->update($data);
         $extra = $this->syncAccount($request, $business);
         \App\Support\Activity::log('updated', 'عدّل الشركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
@@ -373,7 +398,15 @@ class BusinessController extends Controller
             'country' => ['nullable', 'string', 'max:100'],
             'city' => ['nullable', 'string', 'max:100'],
             'address' => ['nullable', 'string', 'max:255'],
-            'plan_id' => ['nullable', 'integer'],
+            /*
+             * الباقة تُتحقَّق من وجودها.
+             *
+             * `integer` وحدها كانت تقبل رقمًا لا باقةَ له، فيصير
+             * `$business->plan` فارغًا — و`PlanLimits::cap` تقرأ الفراغ
+             * «لا سقف». فمتجرٌ بباقةٍ وهميّة يفتح ما شاء من الفروع
+             * والموظفين، وهو عكس ما يُقصَد من إسناد باقة.
+             */
+            'plan_id' => ['nullable', 'integer', 'exists:plans,id'],
             'logo' => ['nullable', 'image', 'max:2048'],
             // لا يُحفظ في العمود — يُقرأ في update ويُستبعد هنا
             'remove_logo' => ['nullable', 'boolean'],

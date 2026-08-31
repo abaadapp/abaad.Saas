@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { Check, Plus, Trash2, X } from 'lucide-react';
+import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
-import { csrfHeaders } from '@/lib/csrf';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { Currency } from '@/types';
+import AddonDialog from './AddonDialog';
 
 export interface RecipeLine {
     id: number;
@@ -51,7 +51,13 @@ export interface AddonOption {
     active: boolean;
     /** خاصّةٌ بهذا المنتج وحده لا بالمتجر */
     private: boolean;
+    product_id?: number | null;
+    /** مداها: مع الجميع، أو مع منتجاتٍ محدّدة، أو مع مالكها وحده */
+    scope?: 'all' | 'selected' | 'product';
     inventory_product_id: number | null;
+    /** ما تأكله من ذلك الصنف في كلّ إضافةٍ تُباع — والفراغ واحدة */
+    inventory_quantity?: number | null;
+    product_ids?: number[];
 }
 
 export interface CompositionData {
@@ -60,6 +66,10 @@ export interface CompositionData {
     components: { value: number; label: string; cost: number; quantity: number }[];
     addons: AddonOption[];
     addon_ids: number[];
+    /** الأصناف الصالحة لأن تكون مخزونَ إضافة — بلا ما له وصفة */
+    stock_items: { value: number; label: string; quantity: number }[];
+    /** منتجات المتجر — لاختيار «تظهر مع: منتجات محدّدة» */
+    products: { value: number; label: string }[];
 }
 
 /* --------------------------- مسوّدة منتجٍ لم يُحفظ --------------------------- */
@@ -72,7 +82,13 @@ export interface DraftLine {
     /** موضع المقاس في القائمة، وnull تعني وصفة المنتج الأساس */
     variant_index: number | null;
 }
-export interface DraftAddon { name: string; price: string; private: boolean }
+export interface DraftAddon {
+    name: string;
+    price: string;
+    private: boolean;
+    inventory_product_id?: number | null;
+    inventory_quantity?: number | null;
+}
 
 export interface CompositionDraft {
     variants: DraftVariant[];
@@ -94,7 +110,8 @@ interface Props {
     onDraft?: (draft: CompositionDraft) => void;
     /** قائمة الإضافات — يملكها النموذج كي تُرى الإضافةُ الجديدة في القسمين معًا */
     addons: AddonOption[];
-    onAddonCreated: (addon: AddonOption) => void;
+    /** تُنشأ أو تُعدَّل — والقائمة يملكها النموذج كي يراها القسمان معًا */
+    onAddonSaved: (addon: AddonOption) => void;
 }
 
 /**
@@ -115,7 +132,7 @@ interface Props {
  * ولا نموذج داخل نموذج: شاشة المنتج نفسها `<form>`، وتعشيشُ نموذجٍ فيها
  * لا يصحّ في HTML — فالإرسال هنا بأزرارٍ تنادي المسار مباشرة.
  */
-export default function Composition({ productId, data, currency, draft, onDraft, addons, onAddonCreated }: Props) {
+export default function Composition({ productId, data, currency, draft, onDraft, addons, onAddonSaved }: Props) {
     const t = useTranslate();
     const m = (v: number) => money(v, currency);
 
@@ -295,55 +312,23 @@ export default function Composition({ productId, data, currency, draft, onDraft,
      *
      * فهذا القسم لما يخصّه: «شريط ذهبي» لباقة الورد لا يراه كيس السماد.
      */
-    const [addonDraft, setAddonDraft] = useState<DraftAddon | null>(null);
-    const [addonError, setAddonError] = useState<string | null>(null);
-    const [savingAddon, setSavingAddon] = useState(false);
+    /*
+     * الإضافة تُنشأ وتُعدَّل من نافذةٍ واحدة.
+     *
+     * وكان الإنشاء هنا حقلين لا أكثر — اسمًا وسعرًا — فلا سبيل إلى قول
+     * «هذه تنقص ثلاث ورداتٍ من الرفّ». والتعديل لم يكن له باب أصلًا.
+     */
+    const [editing, setEditing] = useState<AddonOption | null | undefined>(undefined);
 
-    const openAddonDraft = () => {
-        // خاصّةٌ دائمًا: هذا قسمُ ما يخصّ المنتج، ولا خيارَ يُسأل عنه فيه
-        setAddonDraft({ name: '', price: '', private: true });
-        setAddonError(null);
-    };
-
-    const createAddon = async () => {
-        if (!addonDraft?.name.trim()) return;
-
-        if (drafting) {
-            patch({ new_addons: [...d.new_addons, { ...addonDraft, name: addonDraft.name.trim() }] });
-            setAddonDraft(null);
-
-            return;
-        }
-
-        setSavingAddon(true);
-        setAddonError(null);
-        try {
-            const res = await fetch(route('admin.products.addons.store'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
-                body: JSON.stringify({
-                    name: addonDraft.name.trim(),
-                    price: addonDraft.price || 0,
-                    product_id: productId,
-                }),
-            });
-            const body = await res.json();
-
-            if (!res.ok) {
-                setAddonError(body?.errors?.name?.[0] ?? body?.errors?.price?.[0] ?? t('تعذّر إضافة الإضافة'));
-
-                return;
-            }
-
-            // تُعرض مع المنتج فورًا: خاصّةٌ به فلا اختيارَ بعدها
-            onAddonCreated(body.addon);
-            setAddonDraft(null);
-        } catch {
-            setAddonError(t('تعذّر الاتصال بالخادم'));
-        } finally {
-            setSavingAddon(false);
-        }
-    };
+    interface AddonRow {
+        key: string;
+        label: string;
+        price: number;
+        stock: boolean;
+        each: number | null;
+        edit?: () => void;
+        remove: () => void;
+    }
 
     interface AddonRow { key: string; label: string; price: number; stock: boolean; remove: () => void }
 
@@ -353,6 +338,8 @@ export default function Composition({ productId, data, currency, draft, onDraft,
             label: a.label,
             price: a.price,
             stock: !!a.inventory_product_id,
+            each: a.inventory_product_id ? (a.inventory_quantity ?? 1) : null,
+            edit: () => setEditing(a),
             remove: () => router.delete(route('admin.products.addons.destroy', [productId, a.value]), reload),
         })),
         // إضافةٌ كُتبت الآن ولم تُحفظ بعد: تُحذف من المسوّدة لا من القاعدة.
@@ -364,7 +351,8 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                 key: 'n' + i,
                 label: a.name,
                 price: Number(a.price) || 0,
-                stock: false,
+                stock: !!a.inventory_product_id,
+                each: a.inventory_product_id ? (a.inventory_quantity ?? 1) : null,
                 remove: () => patch({ new_addons: d.new_addons.filter((_, j) => j !== i) }),
             })),
     ];
@@ -619,7 +607,7 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                         size="icon"
                         aria-label={t('إضافة جديدة')}
                         title={t('إضافة جديدة')}
-                        onClick={openAddonDraft}
+                        onClick={() => setEditing(null)}
                     >
                         <Plus />
                     </Button>
@@ -627,48 +615,6 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                 <p className="mb-4 text-[13px] text-[#6b7280]">
                     {t('تُعرض مع هذا المنتج وحده. وإضافات المتجر التي تظهر مع الجميع مكانها «المعلومات الأساسية».')}
                 </p>
-
-                {addonDraft !== null && (
-                    <div className="mb-4 space-y-3 rounded-[12px] bg-[#fafafa] p-4">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <Field label="الاسم" required error={addonError ?? undefined}>
-                                <Input
-                                    autoFocus
-                                    value={addonDraft.name}
-                                    placeholder={t('شريط ذهبي')}
-                                    onChange={(e) => setAddonDraft({ ...addonDraft, name: e.target.value })}
-                                    onKeyDown={(e) => e.key === 'Escape' && setAddonDraft(null)}
-                                />
-                            </Field>
-                            <Field label="السعر" required>
-                                <Input
-                                    type="number"
-                                    step="0.001"
-                                    min="0"
-                                    dir="ltr"
-                                    value={addonDraft.price}
-                                    onChange={(e) => setAddonDraft({ ...addonDraft, price: e.target.value })}
-                                />
-                            </Field>
-                            <div className="flex items-end gap-2">
-                                <Button type="button" className="flex-1" loading={savingAddon} onClick={() => void createAddon()}>
-                                    <Check />
-                                    {t('حفظ')}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    aria-label={t('إلغاء')}
-                                    onClick={() => setAddonDraft(null)}
-                                >
-                                    <X />
-                                </Button>
-                            </div>
-                        </div>
-
-                    </div>
-                )}
 
                 {addonRows.length === 0 ? (
                     <p className="py-6 text-center text-[13px] text-[#9ca3af]">
@@ -683,10 +629,29 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                             >
                                 <span className="flex items-center gap-2">
                                     <span className="font-medium text-[#111]">{a.label}</span>
-                                    {a.stock && <Badge variant="info">{t('مخزون')}</Badge>}
+                                    {/* «تخصم ٣» لا «مخزون»: العدد هو ما يريد أن
+                                        يتحقّق منه من ربطها، والوسم وحده لا يقوله */}
+                                    {a.stock && (
+                                        <Badge variant="info">
+                                            {a.each && a.each !== 1
+                                                ? `${t('تخصم')} ${number(a.each)}`
+                                                : t('مخزون')}
+                                        </Badge>
+                                    )}
                                 </span>
                                 <span className="flex items-center gap-3">
                                     <span className="font-semibold tabular-nums text-[#111]">{m(a.price)}</span>
+                                    {a.edit && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            aria-label={t('تعديل الإضافة')}
+                                            onClick={a.edit}
+                                        >
+                                            <Pencil className="size-4 text-[#6b7280]" />
+                                        </Button>
+                                    )}
                                     <Button
                                         type="button"
                                         variant="ghost"
@@ -702,6 +667,36 @@ export default function Composition({ productId, data, currency, draft, onDraft,
                     </ul>
                 )}
 
+                {editing !== undefined && (
+                    <AddonDialog
+                        addon={editing}
+                        productId={productId ?? null}
+                        drafting={drafting}
+                        stockItems={data.stock_items ?? []}
+                        products={data.products ?? []}
+                        onClose={() => setEditing(undefined)}
+                        onSaved={(saved) => {
+                            // المعرّف صفرًا يعني مسوّدةً لم تُكتب في القاعدة بعد.
+                            // وما سواها حُفظ فعلًا — ولو كان المنتج نفسه مسوّدة:
+                            // إضافةُ المتجر لا تنتظر منتجًا لتوجد
+                            if (saved.value === 0) {
+                                patch({
+                                    new_addons: [...d.new_addons, {
+                                        name: saved.label,
+                                        price: String(saved.price),
+                                        private: true,
+                                        inventory_product_id: saved.inventory_product_id,
+                                        inventory_quantity: saved.inventory_quantity ?? null,
+                                    }],
+                                });
+
+                                return;
+                            }
+
+                            onAddonSaved(saved);
+                        }}
+                    />
+                )}
             </Card>
         </div>
     );

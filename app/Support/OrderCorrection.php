@@ -278,13 +278,19 @@ class OrderCorrection
      */
     private static function releaseAddons(Order $order, OrderItem $item): void
     {
-        $back = [];
-        foreach ($item->addons as $a) {
-            $pid = $a->addon?->inventory_product_id;
-            if ($pid) {
-                $back[(int) $pid] = ($back[(int) $pid] ?? 0) + (int) $a->quantity;
-            }
-        }
+        /*
+         * ويُقرأ ما أُخذ من لقطة البند لا من الإضافة اليوم.
+         *
+         * «زيادة ثلاث وردات» صارت خمسًا بعد شهر: قراءةُ الإضافة الحيّة تردّ
+         * خمسًا عن بيعةٍ أخذت ثلاثًا، فيربح الرفّ وردتين لا وجود لهما — ولا
+         * يظهر ذلك إلا في جردٍ يقول إنّ عندنا أكثر ممّا عندنا.
+         *
+         * والصفوف التي كُتبت قبل اللقطة تُقرأ بقاعدة يومها: واحدةٌ لكلّ
+         * إضافة. انظر AddonStock::snapshot.
+         */
+        $back = \App\Support\AddonStock::units(
+            \App\Support\AddonStock::consumedBy($item->addons),
+        );
 
         \App\Support\StockLedger::move(
             (int) $order->business_id, $order->branch_id, $back,
@@ -336,6 +342,112 @@ class OrderCorrection
             'tax' => $tax,
             'total' => round($subtotal - $discount + $tax + (float) $order->delivery_fee, 3),
         ]);
+    }
+
+    /**
+     * يُغيّر كميّة إضافةٍ على بند — والصفر يحذفها.
+     *
+     * الإضافة تُخطئ كما يُخطئ البند: يضغط الكاشير «شوكولاتة» مرّتين والزبون
+     * أخذ واحدة. وكان الطريق الوحيد لتصحيحها حذفَ البند كلّه ثم إعادة
+     * بيعه — فتُكسر الفاتورة لتُصلَح إضافة.
+     *
+     * وما يعود إلى الرفّ هو ما أُخذ منه: إضافةٌ تأكل ثلاث ورداتٍ تُنقص
+     * كميّتُها من اثنتين إلى واحدة فتردّ ثلاثًا لا واحدة. واللقطة هي
+     * المرجع لا إعدادُ الإضافة اليوم.
+     *
+     * @throws RuntimeException برسالةٍ تُعرض للكاشير كما هي
+     */
+    public static function setAddonQuantity(Order $order, \App\Models\OrderItemAddon $row, int $newQty, string $reason): OrderEdit
+    {
+        $item = $row->orderItem;
+
+        if (! $item || (int) $item->order_id !== (int) $order->id) {
+            throw new RuntimeException(__('هذه الإضافة ليست من هذه الفاتورة.'));
+        }
+
+        if ($newQty < 0) {
+            throw new RuntimeException(__('الكمية لا تكون سالبة.'));
+        }
+
+        $oldQty = (int) $row->quantity;
+
+        if ($newQty === $oldQty) {
+            throw new RuntimeException(__('لم تتغيّر الكمية.'));
+        }
+
+        return DB::transaction(function () use ($order, $item, $row, $oldQty, $newQty, $reason) {
+            $bid = (int) $order->business_id;
+            $totalBefore = (float) $order->total;
+            $name = $row->name;
+
+            [$pid, $each] = \App\Support\AddonStock::snapshot($row);
+
+            /*
+             * الفرق وحده يتحرّك — لا الكمية كلّها.
+             *
+             * ردُّ ما بيع ثم خصمُ الجديد يكتب حركتين حيث تكفي واحدة، ويفتح
+             * نافذةً يقول فيها الرفّ رقمًا لا يخصّ شيئًا. والزيادة تمرّ
+             * بحارس المخزون نفسه الذي يحرس البيع.
+             */
+            if ($pid && $each > 0) {
+                $delta = ($oldQty - $newQty) * $each;
+                $units = \App\Support\AddonStock::units([$pid => abs($delta)]);
+                $units = array_map(fn ($u) => $delta > 0 ? $u : -$u, $units);
+
+                if ($delta < 0) {
+                    self::assertAvailable($order, array_map('abs', $units), $order->branch_id);
+                }
+
+                \App\Support\StockLedger::move(
+                    $bid, $order->branch_id, $units,
+                    \App\Support\StockLedger::CORRECTION,
+                    PosCashier::name() ?? auth()->user()?->name,
+                    $order->number,
+                );
+            }
+
+            if ($newQty === 0) {
+                $row->delete();
+            } else {
+                $row->update([
+                    'quantity' => $newQty,
+                    'total' => round((float) $row->unit_price * $newQty, 3),
+                ]);
+            }
+
+            // مجموع إضافات البند يُعاد بناؤه من صفوفه لا يُعدَّل بالفرق:
+            // الجمع من المصدر لا يخطئ، والتعديل بالفرق يخطئ مرّةً فيبقى
+            $item->load('addons');
+            $item->update(['addons_total' => round($item->addons->sum(fn ($a) => (float) $a->total), 3)]);
+
+            self::recompute($order->fresh('items'));
+            $order->refresh();
+
+            self::syncTransaction($order);
+            self::syncLoyalty($order);
+
+            $edit = OrderEdit::create([
+                'business_id' => $bid,
+                'order_id' => $order->id,
+                'order_item_id' => $item->id,
+                'kind' => OrderEdit::ADDON,
+                'subject' => $name,
+                'qty_before' => $oldQty,
+                'qty_after' => $newQty,
+                'order_total_before' => $totalBefore,
+                'order_total_after' => (float) $order->total,
+                'reason' => $reason,
+                'user_id' => PosCashier::id() ?? auth()->id(),
+                'employee_name' => PosCashier::name() ?? auth()->user()?->name,
+            ]);
+
+            Activity::log('updated', $newQty === 0
+                ? 'حذف إضافة «'.$name.'» من الفاتورة '.$order->number.' — '.$reason
+                : 'عدّل كمية إضافة «'.$name.'» في الفاتورة '.$order->number.' من '.$oldQty.' إلى '.$newQty.' — '.$reason,
+                ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+            return $edit;
+        });
     }
 
     /**

@@ -266,9 +266,16 @@ class PosController extends Controller
                 $errors["items.$idx.name"] = __('صنف غير متاح للبيع.');
                 continue;
             }
+            // تكلفتُها تكلفةُ ما تأكله: إضافةٌ بيعت بندًا مستقلًّا كانت
+            // تُسجَّل بتكلفة صفر، فيظهر ربحُ الدبّ كاملًا وهو مشترًى
+            $standaloneCost = $addon->inventory_product_id
+                ? round((float) (Product::find($addon->inventory_product_id)?->cost ?? 0)
+                    * \App\Support\AddonStock::each($addon), 3)
+                : 0.0;
+
             $lines[] = ['product' => null, 'variant' => null, 'name' => $addon->name,
                 'price' => (float) $addon->price, 'list_price' => (float) $addon->price,
-                'cost' => 0.0, 'has_recipe' => false, 'recipe' => collect(),
+                'cost' => $standaloneCost, 'has_recipe' => false, 'recipe' => collect(),
                 'qty' => $qty, 'note' => $i['note'] ?? null,
                 // إضافةٌ مستقلّة في السلّة (سلوك ما قبل الربط) — رصيدها يُخصم كما لو رُبطت ببند
                 'addons' => [], 'addons_total' => 0.0,
@@ -298,22 +305,34 @@ class PosController extends Controller
             $id = (int) ($r['addon_id'] ?? $r['id'] ?? 0);
             $addon = $id ? $addons->firstWhere('id', $id) : null;
 
-            if (! $addon || ! \App\Support\ProductAddons::allows($product, $addon, $addonMap)) {
+            if (! $addon || ! \App\Support\ProductAddons::allows($product, $addon, $addonMap, $addons)) {
                 return [[], __('إضافة غير متاحة مع هذا الصنف.')];
             }
 
             $qty = max(1, (int) ($r['qty'] ?? 1));
             $price = round((float) $addon->price, 3);
 
+            /*
+             * ما تأكله الإضافةُ الواحدة — لا ما يُرسَل من الشاشة.
+             *
+             * «زيادة ثلاث وردات» تأكل ثلاثًا لا واحدة، واثنتان منها ستًّا.
+             * والرقم يُقرأ من القاعدة كالسعر تمامًا: شاشةٌ تقول واحدة تجعل
+             * الرفّ ينقص ثلاثًا والنظام يقول واحدة.
+             */
+            $each = \App\Support\AddonStock::each($addon);
+
             $chosen[] = [
                 'addon' => $addon,
                 'qty' => $qty,
                 'price' => $price,
                 'total' => round($price * $qty, 3),
+                'inventory_product_id' => $addon->inventory_product_id ? (int) $addon->inventory_product_id : null,
+                'each' => $each,
                 // تكلفةٌ للإضافة المرتبطة ببضاعة، وفراغٌ لخدمةٍ لا رصيد لها —
-                // وخلطُ الاثنين يجعل الربح يبدو أعلى ممّا هو
+                // وخلطُ الاثنين يجعل الربح يبدو أعلى ممّا هو.
+                // وهي تكلفةُ الإضافة الواحدة: ثمن الوردة في ثلاث، لا ثمن وردة
                 'cost' => $addon->inventory_product_id
-                    ? round((float) (Product::find($addon->inventory_product_id)?->cost ?? 0), 3)
+                    ? round((float) (Product::find($addon->inventory_product_id)?->cost ?? 0) * $each, 3)
                     : null,
             ];
         }
@@ -340,19 +359,11 @@ class PosController extends Controller
         $exact = [];
         $whole = [];
 
-        foreach ($lines as $l) {
-            $addonSource = $l['standalone_addon'] ?? null;
-            if ($addonSource && $addonSource->inventory_product_id) {
-                $pid = (int) $addonSource->inventory_product_id;
-                $whole[$pid] = ($whole[$pid] ?? 0) + $l['qty'];
-            }
+        // الإضافات تُجمع على حدة ثم تُرفع مرّةً واحدة — بالقاعدة نفسها التي
+        // يُرفع بها استهلاك الوصفة، وبنفس الفصل الذي يفصل حركتيهما في الدفتر
+        $addonExact = self::addonConsumption($lines);
 
-            foreach ($l['addons'] ?? [] as $a) {
-                if ($a['addon']->inventory_product_id) {
-                    $pid = (int) $a['addon']->inventory_product_id;
-                    $whole[$pid] = ($whole[$pid] ?? 0) + $a['qty'];
-                }
-            }
+        foreach ($lines as $l) {
 
             if (! $l['product']) {
                 continue;
@@ -372,7 +383,57 @@ class PosController extends Controller
             $whole[$pid] = ($whole[$pid] ?? 0) + \App\Support\Recipe::units($q);
         }
 
+        foreach (\App\Support\AddonStock::units($addonExact) as $pid => $u) {
+            $whole[$pid] = ($whole[$pid] ?? 0) + $u;
+        }
+
         return $whole;
+    }
+
+    /**
+     * ما تأكله إضافات السلّة من الرفّ — بالكسر قبل الرفع.
+     *
+     * موضعٌ واحد يقرأه الفحصُ قبل البيع والخصمُ بعده: لو حُسب مرّتين لجاز
+     * أن يفحص أحدهما خمسةَ عشر ويخصم الآخر ستّةَ عشر، فيُقبل بيعٌ لا رصيد
+     * له — أو يُردّ بيعٌ له رصيد.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array<int, float>
+     */
+    private static function addonConsumption(array $lines): array
+    {
+        $out = [];
+
+        foreach ($lines as $l) {
+            // إضافةٌ بيعت بندًا مستقلًّا في السلّة (سلوك ما قبل الربط):
+            // كميّتُها كميّةُ البند نفسه
+            $standalone = $l['standalone_addon'] ?? null;
+            if ($standalone) {
+                $each = \App\Support\AddonStock::each($standalone);
+                if ($each > 0) {
+                    $pid = (int) $standalone->inventory_product_id;
+                    $out[$pid] = ($out[$pid] ?? 0.0) + $each * (int) $l['qty'];
+                }
+            }
+
+            /*
+             * وإضافةُ البند كميّتُها مطلقة لا مضروبةٌ في كميّته.
+             *
+             * «شوكولاتة ×١» على بندٍ كميّتُه اثنتان تبقى واحدة — وهو ما
+             * يُحسب به ثمنُها في الفاتورة منذ البدء (addons_total تُضاف مرّةً
+             * للبند لا لكلّ قطعة). فضربُها في الكمية هنا كان سيجعل الرفّ
+             * ينقص ضِعفَ ما دُفع ثمنُه.
+             */
+            foreach ($l['addons'] ?? [] as $a) {
+                $each = (float) ($a['each'] ?? 0);
+                $pid = $a['inventory_product_id'] ?? null;
+                if ($pid && $each > 0) {
+                    $out[(int) $pid] = ($out[(int) $pid] ?? 0.0) + $each * (int) $a['qty'];
+                }
+            }
+        }
+
+        return $out;
     }
 
     /** يمنع البيع بما يتجاوز المتوفر — إلا إذا سمح النشاط بالمخزون السالب صراحةً */
@@ -824,6 +885,15 @@ class PosController extends Controller
                         'quantity' => $a['qty'],
                         'total' => $a['total'],
                         'cost' => $a['cost'],
+                        /*
+                         * لقطةُ ما أُخذ من الرفّ — لا علاقةٌ تُقرأ يوم الإلغاء.
+                         *
+                         * إضافةٌ كانت ثلاث ورداتٍ فصارت خمسًا تردّ خمسًا عن
+                         * بيعةٍ أخذت ثلاثًا لو قُرئت اليوم — فيربح الرفّ
+                         * وردتين لا وجود لهما.
+                         */
+                        'inventory_product_id' => $a['inventory_product_id'] ?? null,
+                        'inventory_quantity' => ($a['inventory_product_id'] ?? null) ? $a['each'] : null,
                     ]);
                 }
             }
@@ -840,22 +910,10 @@ class PosController extends Controller
              */
             $sale = [];
             $recipeUse = [];
-            $addonUse = [];
+            // الخصم يقرأ ما قرأه الفحص قبله بالحرف — نفس الدالّة لا نسختها
+            $addonUse = \App\Support\AddonStock::units(self::addonConsumption($lines));
 
             foreach ($lines as $l) {
-                $standalone = $l['standalone_addon'] ?? null;
-                if ($standalone && $standalone->inventory_product_id) {
-                    $pid = (int) $standalone->inventory_product_id;
-                    $addonUse[$pid] = ($addonUse[$pid] ?? 0) + $l['qty'];
-                }
-
-                foreach ($l['addons'] ?? [] as $a) {
-                    if ($a['addon']->inventory_product_id) {
-                        $pid = (int) $a['addon']->inventory_product_id;
-                        $addonUse[$pid] = ($addonUse[$pid] ?? 0) + $a['qty'];
-                    }
-                }
-
                 if (! $l['product']) {
                     continue;
                 }
@@ -1007,6 +1065,15 @@ class PosController extends Controller
                         'quantity' => $a['qty'],
                         'total' => $a['total'],
                         'cost' => $a['cost'],
+                        /*
+                         * لقطةُ ما أُخذ من الرفّ — لا علاقةٌ تُقرأ يوم الإلغاء.
+                         *
+                         * إضافةٌ كانت ثلاث ورداتٍ فصارت خمسًا تردّ خمسًا عن
+                         * بيعةٍ أخذت ثلاثًا لو قُرئت اليوم — فيربح الرفّ
+                         * وردتين لا وجود لهما.
+                         */
+                        'inventory_product_id' => $a['inventory_product_id'] ?? null,
+                        'inventory_quantity' => ($a['inventory_product_id'] ?? null) ? $a['each'] : null,
                     ]);
                 }
             }

@@ -3474,5 +3474,21 @@
     "كميّةٌ أُضيفت بلا فرع فلم تكن تُباع — نُسبت إلى الفرع الأول": "Stock added without a branch and therefore unsellable — assigned to the first branch",
     ":label :used من :cap": ":label :used of :cap",
     "المتجر يتجاوز باقة «:plan»: :over. أنقص الزائد قبل التنزيل.": "The shop exceeds the “:plan” plan: :over. Reduce the excess before downgrading.",
-    "إلغاء الطلب": "Order cancelled"
+    "إلغاء الطلب": "Order cancelled",
+    "هذه الإضافة ليست من هذه الفاتورة.": "This add-on does not belong to this invoice.",
+    "الكمية المستهلكة تكون أكبر من صفر.": "The consumed quantity must be greater than zero.",
+    "حُذفت الإضافة وصُحّحت الفاتورة": "The add-on was removed and the invoice corrected",
+    "اكتب اسم الإضافة": "Enter the add-on name",
+    "اختر الصنف المخزني": "Choose the stock item",
+    "اختر منتجًا واحدًا على الأقل": "Choose at least one product",
+    "تعذّر حفظ الإضافة": "The add-on could not be saved",
+    "هل تخصم هذه الإضافة من المخزون؟": "Does this add-on draw from stock?",
+    "اختر الصنف…": "Choose the item…",
+    "تظهر مع": "Shown with",
+    "تخصم": "Draws",
+    "منتجات محددة": "Selected products",
+    "الصنف المخزني": "Stock item",
+    "الكمية المستهلكة عند كل إضافة": "Quantity used per add-on",
+    "مثال: إذا كانت الإضافة «زيادة 3 وردات» اختر صنف الورد واكتب الكمية 3.": "Example: for an add-on named “3 extra roses”, choose the rose item and enter 3.",
+    "اضغط إضافةً لتعديل سعرها أو مداها أو ما تخصمه من المخزون.": "Tap an add-on to change its price, its scope, or what it draws from stock."
 }

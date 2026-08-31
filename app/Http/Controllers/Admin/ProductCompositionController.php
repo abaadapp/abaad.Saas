@@ -304,6 +304,8 @@ class ProductCompositionController extends Controller
             'recipe' => $recipeFor(null),
             'components' => self::componentOptions((int) $product->business_id, $product->id),
             'addons' => self::addonOptions((int) $product->business_id, $product->id),
+            'stock_items' => self::stockItemOptions((int) $product->business_id),
+            'products' => self::productOptions((int) $product->business_id),
             'addon_ids' => DB::table('product_addons')->where('product_id', $product->id)
                 ->orderBy('sort_order')->pluck('addon_id')->map(fn ($i) => (int) $i)->all(),
         ];
@@ -325,6 +327,8 @@ class ProductCompositionController extends Controller
             'recipe' => $empty,
             'components' => self::componentOptions($businessId, null),
             'addons' => self::addonOptions($businessId, null),
+            'stock_items' => self::stockItemOptions($businessId),
+            'products' => self::productOptions($businessId),
             'addon_ids' => [],
         ];
     }
@@ -353,13 +357,40 @@ class ProductCompositionController extends Controller
     {
         return Addon::where('business_id', $businessId)
             ->where(fn ($q) => $q->whereNull('product_id')->when($productId, fn ($w) => $w->orWhere('product_id', $productId)))
-            ->orderBy('id')->get()->map(fn (Addon $a) => [
-                'value' => $a->id,
-                'label' => $a->name,
-                'price' => (float) $a->price,
-                'active' => (bool) $a->active,
-                'private' => $a->product_id !== null,
-                'inventory_product_id' => $a->inventory_product_id,
+            ->orderBy('id')->get()
+            ->map(fn (Addon $a) => CatalogQuickAddController::addonPayload($a))
+            ->all();
+    }
+
+    /**
+     * الأصناف الصالحة لأن تكون مخزونَ إضافة — بالرمز والرصيد.
+     *
+     * الرصيد يُعرض لأنّ من يربط «دبًّا» يريد أن يعرف أعنده دببة. والرمز
+     * لأنّ في المحلّ «ورد أحمر» و«ورد أحمر مستورد» — والاسم وحده لا يفرّق.
+     *
+     * وما له وصفةٌ يُستثنى: باقةٌ تُصنع من غيرها ليست قطعةً على رفّ، وربطُ
+     * إضافةٍ بها كان سيُنقص رصيدًا لا وجود له بينما يبقى ورُدها كاملًا.
+     */
+    private static function stockItemOptions(int $businessId): array
+    {
+        return Product::where('business_id', $businessId)
+            ->whereNotIn('id', RecipeItem::where('business_id', $businessId)->distinct()->pluck('product_id'))
+            ->orderBy('name')->get(['id', 'name', 'sku', 'quantity'])
+            ->map(fn ($p) => [
+                'value' => $p->id,
+                'label' => $p->sku ? $p->name.' — '.$p->sku : $p->name,
+                'quantity' => (int) $p->quantity,
+            ])->all();
+    }
+
+    /** منتجات المتجر — لاختيار «تظهر مع: منتجات محدّدة» */
+    private static function productOptions(int $businessId): array
+    {
+        return Product::where('business_id', $businessId)
+            ->orderBy('name')->get(['id', 'name', 'sku'])
+            ->map(fn ($p) => [
+                'value' => $p->id,
+                'label' => $p->sku ? $p->name.' — '.$p->sku : $p->name,
             ])->all();
     }
 
@@ -393,6 +424,12 @@ class ProductCompositionController extends Controller
             'composition.new_addons.*.name' => ['required', 'string', 'max:100'],
             'composition.new_addons.*.price' => ['required', 'numeric', 'min:0'],
             'composition.new_addons.*.private' => ['nullable', 'boolean'],
+            // والمسوّدة تربط بالمخزون كما تربط الشاشة المحفوظة: من يكتب
+            // «زيادة ثلاث وردات» وهو ينشئ الباقة لا يُطالَب بحفظها ثم
+            // العودة إليها ليقول ممّ تُخصم
+            'composition.new_addons.*.inventory_product_id' => ['nullable',
+                Rule::exists('products', 'id')->where('business_id', $businessId)->whereNull('deleted_at')],
+            'composition.new_addons.*.inventory_quantity' => ['nullable', 'numeric', 'gt:0', 'max:100000'],
         ];
     }
 
@@ -466,14 +503,21 @@ class ProductCompositionController extends Controller
 
                 // إضافةُ متجرٍ بالاسم نفسه تُعاد لا تُكرَّر: اسمان متطابقان في
                 // قائمة الكاشير يجعلانه يختار عشوائيًا
+                $stock = ($a['inventory_product_id'] ?? null) ? (int) $a['inventory_product_id'] : null;
+                $each = $stock && ($a['inventory_quantity'] ?? null) !== null
+                    ? (float) $a['inventory_quantity']
+                    : null;
+
                 $addon = $private
                     ? Addon::create(\App\Support\Lexicon::fill(['name' => $a['name']]) + [
                         'business_id' => $bid, 'product_id' => $product->id,
                         'price' => $a['price'], 'active' => true,
+                        'inventory_product_id' => $stock, 'inventory_quantity' => $each,
                     ])
                     : Addon::firstOrCreate(
                         ['business_id' => $bid, 'product_id' => null, 'name' => $a['name']],
-                        ['price' => $a['price'], 'active' => true],
+                        ['price' => $a['price'], 'active' => true,
+                            'inventory_product_id' => $stock, 'inventory_quantity' => $each],
                     );
 
                 $ids[] = (int) $addon->id;

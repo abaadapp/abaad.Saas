@@ -317,6 +317,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::post('/products/categories', [\App\Http\Controllers\Admin\CatalogQuickAddController::class, 'storeCategory'])->name('products.categories.store');
     Route::post('/products/addons', [\App\Http\Controllers\Admin\CatalogQuickAddController::class, 'storeAddon'])->name('products.addons.store');
+    // تعديل إضافةٍ قائمة — سعرها ومداها وما تأكله من الرفّ. ويسبق مسار
+    // «products/{id}/addons» فلا يبتلعه: هذا معرّف إضافةٍ لا معرّف منتج
+    Route::put('/products/addons/{addon}', [\App\Http\Controllers\Admin\CatalogQuickAddController::class, 'updateAddon'])->name('products.addons.update');
 
     Route::post('/products/{id}/variants', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'storeVariant'])->name('products.variants.store');
     Route::put('/products/{id}/variants/{variant}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'updateVariant'])->name('products.variants.update');
@@ -698,6 +701,7 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
      * ويسبق مسارَ العرض: «orders/{number}» يبتلع ما بعده لو تأخّر.
      */
     Route::put('/orders/{number}/items/{item}', [\App\Http\Controllers\Pos\OrderEditController::class, 'update'])->name('orders.items.update');
+    Route::put('/orders/{number}/items/{item}/addons/{addon}', [\App\Http\Controllers\Pos\OrderEditController::class, 'addon'])->name('orders.items.addons.update');
     Route::put('/orders/{number}/payment', [\App\Http\Controllers\Pos\OrderEditController::class, 'payment'])->name('orders.payment.update');
     Route::get('/orders/{number}', [\App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
     // المدفوعات تسقط على صلاحية finance لا pos (انظر sectionFromRoute):

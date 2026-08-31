@@ -10,6 +10,7 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { csrfHeaders } from '@/lib/csrf';
 import { cn } from '@/lib/utils';
+import AddonDialog from './AddonDialog';
 import Composition, { emptyDraft, type AddonOption, type CompositionData, type CompositionDraft } from './Composition';
 import type { Currency } from '@/types';
 import type { Category, Product } from '@/types/models';
@@ -162,60 +163,55 @@ export default function ProductForm({ categories, product, description, currency
      * في اللحظة نفسها، وحالتان منفصلتان تفترقان بلا سبب.
      */
     const [addonList, setAddonList] = useState<AddonOption[]>(composition?.addons ?? []);
-    const [shopAddon, setShopAddon] = useState<{ name: string; price: string } | null>(null);
-    const [addonError, setAddonError] = useState<string | null>(null);
-    const [savingAddon, setSavingAddon] = useState(false);
+
+    /** النافذة مفتوحةٌ على إضافةٍ تُعدَّل، أو على `null` لواحدةٍ جديدة */
+    const [addonOpen, setAddonOpen] = useState<AddonOption | null | undefined>(undefined);
 
     const shopAddons = addonList.filter((a) => !a.private);
 
-    const addShopAddon = async () => {
-        const name = (shopAddon?.name ?? '').trim();
-        if (!name) return;
+    /**
+     * تُضاف أو تُستبدل — لا تُلحق دائمًا.
+     *
+     * تعديلُ إضافةٍ كان يُلحقها بالقائمة مرّةً ثانية، فيرى التاجر «شوكولاتة»
+     * مرّتين بسعرين ولا يعرف أيّهما حُفظ.
+     */
+    const upsertAddon = (saved: AddonOption) =>
+        setAddonList((prev) => {
+            const at = prev.findIndex((a) => a.value === saved.value);
 
-        // منتجٌ لم يُحفظ بعد: تُحمل في المسوّدة وتُنشأ مع المنتج في طلبٍ واحد
-        if (!editing) {
-            form.setData('composition', {
-                ...form.data.composition,
-                new_addons: [...form.data.composition.new_addons, {
-                    name, price: shopAddon?.price ?? '', private: false,
-                }],
-            });
-            setAddonList((prev) => [...prev, {
-                value: -(prev.length + 1),
-                label: name,
-                price: Number(shopAddon?.price) || 0,
-                active: true,
-                private: false,
-                inventory_product_id: null,
-            }]);
-            setShopAddon(null);
-
-            return;
-        }
-
-        setSavingAddon(true);
-        setAddonError(null);
-        try {
-            const res = await fetch(route('admin.products.addons.store'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
-                // بلا `product_id`: هذه إضافةُ متجرٍ تُعرض مع الجميع
-                body: JSON.stringify({ name, price: shopAddon?.price || 0 }),
-            });
-            const body = await res.json();
-
-            if (!res.ok) {
-                setAddonError(body?.errors?.name?.[0] ?? body?.errors?.price?.[0] ?? t('تعذّر إضافة الإضافة'));
-
-                return;
+            if (at === -1) {
+                return [...prev, saved];
             }
 
-            setAddonList((prev) => [...prev, body.addon]);
-            setShopAddon(null);
-        } catch {
-            setAddonError(t('تعذّر الاتصال بالخادم'));
-        } finally {
-            setSavingAddon(false);
+            const next = [...prev];
+            next[at] = saved;
+
+            return next;
+        });
+
+    /**
+     * منتجٌ لم يُحفظ بعد: الإضافة تبقى مسوّدةً وتُنشأ معه في طلبٍ واحد.
+     *
+     * ومعرّفُها سالبٌ للعرض وحده — لا يُرسل إلى الخادم، انظر تمرير `addons`
+     * إلى قسم التركيب أدناه. والخاصّةُ بالمنتج تُعرض هناك من `new_addons`
+     * نفسها، فلا تُضاف إلى قائمة الشرائح هنا مرّةً ثانية.
+     */
+    const draftAddon = (saved: AddonOption) => {
+        const own = saved.scope === 'product';
+
+        form.setData('composition', {
+            ...form.data.composition,
+            new_addons: [...form.data.composition.new_addons, {
+                name: saved.label,
+                price: String(saved.price),
+                private: own,
+                inventory_product_id: saved.inventory_product_id,
+                inventory_quantity: saved.inventory_quantity ?? null,
+            }],
+        });
+
+        if (! own) {
+            setAddonList((prev) => [...prev, { ...saved, value: -(prev.length + 1) }]);
         }
     };
 
@@ -404,95 +400,50 @@ export default function ProductForm({ categories, product, description, currency
                                     منتج */}
                                 <Field
                                     label="إضافات مع كلّ المنتجات"
-                                    hint="تظهر مع كلّ منتجات المتجر. والخاصّة بهذا المنتج في «التركيب»."
-                                    error={addonError ?? undefined}
+                                    hint="اضغط إضافةً لتعديل سعرها أو مداها أو ما تخصمه من المخزون."
                                 >
-                                    {shopAddon === null ? (
-                                        <span className="flex items-start gap-2">
-                                            <span className="flex min-h-[42px] flex-1 flex-wrap items-center gap-1.5 rounded-[10px] border border-[#e8e8e8] px-2 py-1.5">
-                                                {shopAddons.length === 0 ? (
-                                                    <span className="px-1 text-[13px] text-[#9ca3af]">{t('لا إضافات عامّة')}</span>
-                                                ) : (
-                                                    shopAddons.map((a) => (
-                                                        <span
-                                                            key={a.value}
-                                                            className="rounded-[8px] bg-[#f3f3f1] px-2 py-1 text-[12px] text-[#4b4b4b]"
-                                                        >
-                                                            {a.label}
-                                                            <span className="ms-1 tabular-nums opacity-60">
-                                                                {a.price} {currencyLabel}
-                                                            </span>
+                                    <span className="flex items-start gap-2">
+                                        <span className="flex min-h-[42px] flex-1 flex-wrap items-center gap-1.5 rounded-[10px] border border-[#e8e8e8] px-2 py-1.5">
+                                            {shopAddons.length === 0 ? (
+                                                <span className="px-1 text-[13px] text-[#9ca3af]">{t('لا إضافات عامّة')}</span>
+                                            ) : (
+                                                shopAddons.map((a) => (
+                                                    /* الشريحة نفسها هي بابُ التعديل: زرٌّ ثالث بجانب
+                                                       كلّ إضافةٍ يملأ الحقل بأزرارٍ لا بمعلومات */
+                                                    <button
+                                                        key={a.value}
+                                                        type="button"
+                                                        disabled={a.value < 0}
+                                                        onClick={() => setAddonOpen(a)}
+                                                        className="rounded-[8px] bg-[#f3f3f1] px-2 py-1 text-[12px] text-[#4b4b4b] enabled:hover:bg-[#e8e8e6]"
+                                                    >
+                                                        {a.label}
+                                                        <span className="ms-1 tabular-nums opacity-60">
+                                                            {a.price} {currencyLabel}
                                                         </span>
-                                                    ))
-                                                )}
-                                            </span>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                aria-label={t('إضافة جديدة')}
-                                                title={t('إضافة جديدة')}
-                                                onClick={() => {
-                                                    setShopAddon({ name: '', price: '' });
-                                                    setAddonError(null);
-                                                }}
-                                            >
-                                                <Plus />
-                                            </Button>
+                                                        {a.scope === 'selected' && (
+                                                            <span className="ms-1 opacity-60">· {t('منتجات محددة')}</span>
+                                                        )}
+                                                        {a.inventory_product_id && (
+                                                            <span className="ms-1 opacity-60">
+                                                                · {t('تخصم')} {a.inventory_quantity ?? 1}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                ))
+                                            )}
                                         </span>
-                                    ) : (
-                                        <span className="flex items-center gap-2">
-                                            <Input
-                                                autoFocus
-                                                className="flex-1"
-                                                value={shopAddon.name}
-                                                placeholder={t('اسم الإضافة')}
-                                                onChange={(e) => setShopAddon({ ...shopAddon, name: e.target.value })}
-                                                /* «إدخال» يحفظ الإضافة ولا يُرسل المنتج — كما في القسم */
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        void addShopAddon();
-                                                    }
-                                                    if (e.key === 'Escape') {
-                                                        setShopAddon(null);
-                                                        setAddonError(null);
-                                                    }
-                                                }}
-                                            />
-                                            <Input
-                                                type="number"
-                                                step="0.001"
-                                                min="0"
-                                                dir="ltr"
-                                                className="w-24"
-                                                value={shopAddon.price}
-                                                placeholder={t('السعر')}
-                                                onChange={(e) => setShopAddon({ ...shopAddon, price: e.target.value })}
-                                            />
-                                            <Button
-                                                type="button"
-                                                size="icon"
-                                                aria-label={t('حفظ الإضافة')}
-                                                loading={savingAddon}
-                                                onClick={() => void addShopAddon()}
-                                            >
-                                                <Check />
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                aria-label={t('إلغاء')}
-                                                onClick={() => {
-                                                    setShopAddon(null);
-                                                    setAddonError(null);
-                                                }}
-                                            >
-                                                <X />
-                                            </Button>
-                                        </span>
-                                    )}
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="icon"
+                                            aria-label={t('إضافة جديدة')}
+                                            title={t('إضافة جديدة')}
+                                            onClick={() => setAddonOpen(null)}
+                                        >
+                                            <Plus />
+                                        </Button>
+                                    </span>
                                 </Field>
                                 <Field
                                     label="رمز المنتج SKU"
@@ -699,7 +650,7 @@ export default function ProductForm({ categories, product, description, currency
                             /* المسوّدة تُعرض هناك من `new_addons` نفسها — ومعرّفها
                                الموجب لم يوجد بعد، فلا يُعرض مرّتين ولا يُرسَل */
                             addons={addonList.filter((a) => a.value > 0)}
-                            onAddonCreated={(addon) => setAddonList((prev) => [...prev, addon])}
+                            onAddonSaved={upsertAddon}
                         />
                     ) : (
                         <Card className="p-6">
@@ -708,6 +659,19 @@ export default function ProductForm({ categories, product, description, currency
                             </p>
                         </Card>
                     ))}
+
+                {addonOpen !== undefined && (
+                    <AddonDialog
+                        addon={addonOpen}
+                        productId={product ? Number(product.id) : null}
+                        drafting={!product}
+                        stockItems={composition?.stock_items ?? []}
+                        products={composition?.products ?? []}
+                        onClose={() => setAddonOpen(undefined)}
+                        /* المعرّف صفرًا يعني مسوّدةً لم تُكتب في القاعدة بعد */
+                        onSaved={(saved) => (saved.value === 0 ? draftAddon(saved) : upsertAddon(saved))}
+                    />
+                )}
 
                 {/* شريط الحفظ ثابت أسفل كل قسم — فلا يضطر المستخدم للعودة
                     إلى قسم بعينه ليحفظ ما كتبه */}

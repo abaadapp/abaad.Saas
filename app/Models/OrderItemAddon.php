@@ -20,7 +20,24 @@ class OrderItemAddon extends Model
         'total' => 'decimal:3',
         'cost' => 'decimal:3',
         'quantity' => 'integer',
+        // لقطةُ ما أُخذ من الرفّ لحظة البيع — لا علاقةٌ تُقرأ اليوم
+        'inventory_quantity' => 'decimal:3',
     ];
+
+    /**
+     * ما لا يُعرض للزبون.
+     *
+     * الفاتورة تقول «شوكولاتة ×١» ولا تقول من أيّ رفٍّ أُخذت ولا بكم كلّفت.
+     * والحجب هنا لا في كلّ شاشةٍ على حدة: شاشةٌ تنسى الحجب تُسرّب التكلفة
+     * إلى إيصالٍ يُطبع للزبون، ولا يُكتشف إلا حين يسأل عن الرقم.
+     */
+    protected $hidden = ['cost', 'inventory_product_id', 'inventory_quantity'];
+
+    /** الصنف الذي نقص من الرفّ لأجل هذه الإضافة — كما كان يوم البيع */
+    public function inventoryProduct(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'inventory_product_id');
+    }
 
     public function orderItem(): BelongsTo { return $this->belongsTo(OrderItem::class); }
 

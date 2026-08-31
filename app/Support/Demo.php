@@ -1288,6 +1288,38 @@ class Demo
 
     /* ============================ الربحية ============================ */
 
+    /**
+     * إيرادُ الإضافات وتكلفتُها — منسوبةً إلى المنتج الذي بيعت معه.
+     *
+     * الإضافة بيعٌ وشراءٌ لا رسمٌ صافٍ: «زيادة ثلاث وردات» بريالين ونصف
+     * تكلّف تسعمئة بيسة. وكانت غائبةً عن الربحية من الطرفين معًا — لا
+     * إيرادُها ولا تكلفتُها — بينما تدخل مجموعَ الفاتورة في المالية. فكان
+     * صافي الربح يظهر أعلى ممّا هو بمقدار تكلفة كلّ دبٍّ وشوكولاتةٍ بيعت.
+     *
+     * والقراءة من لقطة البند لا من الإضافة اليوم: تكلفتُها منسوخةٌ لحظة
+     * البيع مضروبةً فيما تأكله — انظر AddonStock.
+     *
+     * @return array<int, array{revenue: float, cost: float}>  [معرّف المنتج => ...]
+     */
+    private static function addonProfitByProduct(int $bid, ?string $start): array
+    {
+        $orders = Order::where('business_id', $bid)->sold()
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+            ->select('id');
+
+        return \App\Models\OrderItemAddon::query()
+            ->join('order_items', 'order_items.id', '=', 'order_item_addons.order_item_id')
+            ->whereIn('order_items.order_id', $orders)
+            ->groupBy('order_items.product_id')
+            ->selectRaw('order_items.product_id as pid, SUM(order_item_addons.total) as revenue, '
+                .'SUM(COALESCE(order_item_addons.cost, 0) * order_item_addons.quantity) as cost')
+            ->get()
+            ->mapWithKeys(fn ($r) => [(int) $r->pid => [
+                'revenue' => (float) $r->revenue,
+                'cost' => (float) $r->cost,
+            ]])->all();
+    }
+
     /** ربح كل منتج = (سعر البيع - التكلفة) × الكمية المباعة، من عناصر الطلبات الفعلية */
     public static function productProfitability(string $range = 'month'): array
     {
@@ -1296,13 +1328,26 @@ class Demo
         $start = self::rangeStart(self::range($range));
 
         // التكلفة من لقطة البيع — انظر التعليق في categoryProfitability
+        $addons = self::addonProfitByProduct($bid, $start);
+        // الصنف الواحد قد يظهر بصفّين لو أُعيدت تسميته بين بيعتين — وإضافاته
+        // تُنسب إلى أوّلهما مرّةً واحدة لا إلى كليهما
+        $spent = [];
+
         $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('product_id, name, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
-            ->groupBy('product_id', 'name')->get()->map(function ($r) use ($costs) {
+            ->groupBy('product_id', 'name')->get()->map(function ($r) use ($costs, $addons, &$spent) {
                 $cost = (float) ($costs[$r->product_id] ?? 0);
                 $cogs = (float) $r->cost_snapshot + $cost * ((int) $r->qty - (int) $r->costed_qty);
                 $revenue = (float) $r->revenue;
+
+                $pid = (int) $r->product_id;
+                if (isset($addons[$pid]) && ! isset($spent[$pid])) {
+                    $spent[$pid] = true;
+                    $revenue += $addons[$pid]['revenue'];
+                    $cogs += $addons[$pid]['cost'];
+                }
+
                 $profit = $revenue - $cogs;
 
                 return [
@@ -1336,6 +1381,7 @@ class Demo
          * للبيعات التي سبقت اللقطة (صفرًا) فلا تنقلب أرقام ما مضى.
          */
         $agg = [];
+        $addons = self::addonProfitByProduct($bid, $start);
         $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
@@ -1347,6 +1393,12 @@ class Demo
             $agg[$cat] ??= ['revenue' => 0, 'cost' => 0];
             $agg[$cat]['revenue'] += (float) $it->revenue;
             $agg[$cat]['cost'] += (float) $it->cost_snapshot + $info['cost'] * $uncosted;
+
+            $extra = $addons[(int) $it->product_id] ?? null;
+            if ($extra) {
+                $agg[$cat]['revenue'] += $extra['revenue'];
+                $agg[$cat]['cost'] += $extra['cost'];
+            }
         }
 
         $rows = [];
@@ -1391,6 +1443,17 @@ class Demo
                 $cogs += (float) $r->cost_snapshot
                     + (float) ($costs[$r->product_id] ?? 0) * ((int) $r->qty - (int) $r->costed_qty);
             });
+
+        /*
+         * وتكلفةُ الإضافات معها.
+         *
+         * الإيراد أعلاه من قيود الدخل، وهي تحمل مجموع الفاتورة بإضافاته.
+         * فإغفالُ تكلفتها هنا كان يجعل كلّ دبٍّ بيع يظهر ربحًا صافيًا وهو
+         * مشترًى — والفارق يكبر بمقدار ما يبيعه المحلّ من الإضافات.
+         */
+        foreach (self::addonProfitByProduct($bid, $start) as $extra) {
+            $cogs += $extra['cost'];
+        }
 
         // المصروفات التشغيلية في الفترة
         $expenses = (float) Expense::where('business_id', $bid)->paid()

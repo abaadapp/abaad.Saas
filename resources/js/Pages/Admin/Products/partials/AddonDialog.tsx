@@ -197,13 +197,15 @@ export default function AddonDialog({
 
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[600px]">
+            <DialogContent className="max-w-lg">
                 <DialogHeader>
                     <DialogTitle>{t(addon ? 'تعديل إضافة' : 'إضافة جديدة')}</DialogTitle>
                 </DialogHeader>
 
-                <div className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-[1fr_1fr_7rem]">
+                {/* نفس بنية بقيّة النوافذ: رأسٌ ثمّ جسمٌ بحشوةٍ واحدة وصفُّ
+                    أزرارٍ في آخره — max-w-lg وspace-y-4 وpx-5 pb-5 */}
+                <div className="space-y-4 px-5 pb-5">
+                    <div className="grid grid-cols-2 gap-3">
                         <Field label="الاسم" required error={error ?? undefined}>
                             <Input
                                 autoFocus
@@ -222,16 +224,17 @@ export default function AddonDialog({
                                 onChange={(e) => setNameEn(e.target.value)}
                             />
                         </Field>
-                        <Field label="السعر">
-                            <Input
-                                inputMode="decimal"
-                                dir="ltr"
-                                value={price}
-                                placeholder="0.000"
-                                onChange={(e) => setPrice(e.target.value)}
-                            />
-                        </Field>
                     </div>
+
+                    <Field label="السعر">
+                        <Input
+                            inputMode="decimal"
+                            dir="ltr"
+                            value={price}
+                            placeholder="0.000"
+                            onChange={(e) => setPrice(e.target.value)}
+                        />
+                    </Field>
 
                     {/* ------------------------- المخزون ------------------------- */}
                     <div>
@@ -245,7 +248,7 @@ export default function AddonDialog({
                     </div>
 
                     {stock && (
-                        <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
+                        <div className="grid grid-cols-2 gap-3">
                             <Field label="الصنف المخزني" required>
                                 <Select
                                     value={stockId}
@@ -265,7 +268,7 @@ export default function AddonDialog({
                                     onChange={(e) => setEach(e.target.value)}
                                 />
                             </Field>
-                            <p className="text-[12px] text-[#9ca3af] sm:col-span-2">
+                            <p className="col-span-2 text-[12px] text-[#9ca3af]">
                                 {t('مثال: إذا كانت الإضافة «زيادة 3 وردات» اختر صنف الورد واكتب الكمية 3.')}
                             </p>
                         </div>
@@ -316,12 +319,12 @@ export default function AddonDialog({
                         </div>
                     )}
 
-                    <div className="flex gap-2">
-                        <Button type="button" className="flex-1" loading={saving} onClick={() => void save()}>
-                            {t('حفظ')}
-                        </Button>
+                    <div className="flex justify-end gap-2 pt-1">
                         <Button type="button" variant="outline" onClick={onClose}>
                             {t('إلغاء')}
+                        </Button>
+                        <Button type="button" loading={saving} onClick={() => void save()}>
+                            {t('حفظ')}
                         </Button>
                     </div>
                 </div>

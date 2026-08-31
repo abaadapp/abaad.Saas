@@ -145,6 +145,15 @@ export const NAV: NavGroup[] = [
         ],
     },
     {
+        /*
+         * التقارير مجموعةٌ وحدها بين المخزون والتسويق.
+         *
+         * وهي بابٌ لا شاشةُ أرقام: تجمع ما تفرّق في اثنتي عشرة شاشة وتقود
+         * إليها.
+         */
+        items: [{ label: 'التقارير', icon: BarChart3, route: 'admin.reports.index', section: 'reports' }],
+    },
+    {
         items: [
             {
                 label: 'أدوات التسويق',
@@ -160,15 +169,6 @@ export const NAV: NavGroup[] = [
                 ],
             },
         ],
-    },
-    {
-        /*
-         * التقارير مجموعةٌ وحدها بين التسويق والإعدادات.
-         *
-         * وهي بابٌ لا شاشةُ أرقام: تجمع ما تفرّق في اثنتي عشرة شاشة وتقود
-         * إليها. وموضعُها آخر ما يُقرأ لأنّها تُفتح بعد العمل لا قبله.
-         */
-        items: [{ label: 'التقارير', icon: BarChart3, route: 'admin.reports.index', section: 'reports' }],
     },
     {
         footer: true,

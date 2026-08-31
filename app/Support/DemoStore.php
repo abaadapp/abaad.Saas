@@ -883,6 +883,9 @@ class DemoStore
             ['EID2026', 'نسبة', 15, 10, 500],
             ['FREESHIP', 'مبلغ', 2, 15, 300],
             ['VIP20', 'نسبة', 20, 30, 50],
+            ['DEMO15', 'نسبة', 15, 10, 150],
+            ['SAVE5', 'مبلغ', 5, 25, 100],
+            ['BIGORDER25', 'نسبة', 25, 100, 60],
         ] as $i => [$code, $type, $value, $min, $max]) {
             Coupon::create([
                 'business_id' => $bid, 'code' => $code, 'type' => $type, 'value' => $value,

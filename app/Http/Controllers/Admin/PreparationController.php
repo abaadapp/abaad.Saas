@@ -189,6 +189,9 @@ class PreparationController extends Controller
         return [
             'number' => $o->number,
             'status' => $o->status,
+            // اسم العميل — صاحبُ الطلب لا مستلِمُه. وكانا يُخلطان: بطاقةٌ
+            // تعرض المستلِم وحدها لا تقول لمن تُسلَّم عند الاستلام من المحل
+            'customer' => $o->customer_name,
             'fulfillment' => $o->fulfillment_type,
             'scheduled_for' => optional($o->scheduled_for)->format('Y-m-d H:i'),
             'overdue' => $o->scheduled_for && $o->scheduled_for->isPast(),

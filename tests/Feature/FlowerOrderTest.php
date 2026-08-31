@@ -60,6 +60,9 @@ class FlowerOrderTest extends TestCase
         return $this->postJson(route('pos.checkout'), array_merge([
             'items' => [['id' => $this->product->id, 'name' => 'باقة ورد', 'qty' => $qty]],
             'payment_method' => 'نقدي',
+            // اسمُ مشترٍ في الأساس: الطلب الذي له موعدٌ يذهب إلى لوحة
+            // التجهيز، وبطاقةٌ باسم «عميل نقدي» لا تُسلَّم لأحد
+            'customer' => 'خالد المشتري',
         ], $extra));
     }
 
@@ -241,6 +244,7 @@ class FlowerOrderTest extends TestCase
     public function test_a_future_order_starts_as_pending_not_completed(): void
     {
         $this->sell([
+            'fulfillment_type' => FlowerOrder::PICKUP,
             'scheduled_for' => now()->addDays(5)->format('Y-m-d H:i:s'),
         ])->assertOk();
 
@@ -251,7 +255,10 @@ class FlowerOrderTest extends TestCase
     public function test_the_order_time_and_the_delivery_time_are_two_columns(): void
     {
         $when = now()->addDays(5)->startOfHour();
-        $this->sell(['scheduled_for' => $when->format('Y-m-d H:i:s')])->assertOk();
+        $this->sell([
+            'fulfillment_type' => FlowerOrder::PICKUP,
+            'scheduled_for' => $when->format('Y-m-d H:i:s'),
+        ])->assertOk();
 
         $order = $this->lastOrder();
         $this->assertTrue($order->ordered_at->isToday());
@@ -477,5 +484,99 @@ class FlowerOrderTest extends TestCase
         $this->sell($payload)->assertOk()->assertJson(['duplicate' => true]);
 
         $this->assertSame(1, Order::where('business_id', $this->business->id)->count());
+    }
+
+    /* =============== بطاقةُ التجهيز لا تُقرأ ناقصة =============== */
+
+    /**
+     * طلبٌ له موعدٌ طلبٌ يقف عليه عاملٌ عند الطاولة — فيسأل: لمن؟
+     *
+     * وكان يُقبل بلا اسم، فتظهر على اللوحة عشرُ بطاقاتٍ تقول «عميل نقدي»
+     * في يومٍ واحد، لا تُميَّز إحداها عن الأخرى إلا برقمٍ لا يحفظه أحد.
+     */
+    public function test_a_scheduled_order_is_refused_without_a_customer(): void
+    {
+        $this->postJson(route('pos.checkout'), [
+            'items' => [['id' => $this->product->id, 'name' => 'باقة ورد', 'qty' => 1]],
+            'payment_method' => 'نقدي',
+            'fulfillment_type' => FlowerOrder::PICKUP,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertStatus(422)->assertJsonValidationErrors('customer');
+
+        $this->assertSame(0, Order::count());
+    }
+
+    /** و«عميل نقدي» ليس اسمًا — هو ما يكتبه النظام حين لا يُكتب شيء */
+    public function test_the_walk_in_placeholder_is_not_accepted_as_a_name(): void
+    {
+        $this->sell([
+            'customer' => FlowerOrder::WALK_IN,
+            'fulfillment_type' => FlowerOrder::PICKUP,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertStatus(422)->assertJsonValidationErrors('customer');
+    }
+
+    /** واللوحة تعرض «توصيل» أو «استلام»، فلا يُقبل طلبٌ لا يقول أيّهما */
+    public function test_a_scheduled_order_is_refused_without_a_fulfillment_type(): void
+    {
+        $this->sell([
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertStatus(422)->assertJsonValidationErrors('fulfillment_type');
+    }
+
+    /**
+     * وبيعةُ المنضدة تبقى ثلاث نقرات.
+     *
+     * أخطرُ ما في قاعدةٍ كهذه أن تتسرّب إلى كلّ بيعة: من يبيع عبوة ماءٍ لا
+     * يُستجوَب عن اسم مشتريها.
+     */
+    public function test_a_counter_sale_still_needs_no_customer_at_all(): void
+    {
+        $this->postJson(route('pos.checkout'), [
+            'items' => [['id' => $this->product->id, 'name' => 'باقة ورد', 'qty' => 1]],
+            'payment_method' => 'نقدي',
+        ])->assertOk();
+
+        $this->assertSame(FlowerOrder::WALK_IN, $this->lastOrder()->customer_name);
+    }
+
+    /**
+     * وطلبٌ قديم سابقٌ للقاعدة يبقى قابلًا للتصحيح.
+     *
+     * شاشة تعديل التفاصيل لا تعرض اسم العميل أصلًا، ففرضُ القاعدة فيها
+     * قفلٌ بلا مفتاح: صاحبُ المحلّ يريد تصحيح عنوانٍ فيُمنع بسبب حقلٍ لا
+     * يراه ولا يستطيع تغييره من هناك.
+     */
+    public function test_an_older_order_without_a_customer_can_still_be_edited(): void
+    {
+        $this->sell()->assertOk();
+        $order = $this->lastOrder();
+        $order->update([
+            'scheduled_for' => now()->addDay(),
+            'customer_name' => FlowerOrder::WALK_IN,
+            'fulfillment_type' => null,
+        ]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.orders.details.update', $order->number), [
+                'internal_notes' => 'يُغلَّف بورقٍ أسود',
+            ])->assertSessionHasNoErrors();
+
+        $this->assertSame('يُغلَّف بورقٍ أسود', $order->fresh()->internal_notes);
+    }
+
+    /** واسم العميل يصل إلى بطاقة التجهيز — هناك يُقرأ لا في الفاتورة */
+    public function test_the_preparation_card_carries_the_customer_name(): void
+    {
+        $this->sell([
+            'customer' => 'خالد المشتري',
+            'fulfillment_type' => FlowerOrder::PICKUP,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertOk();
+
+        $this->actingAs($this->owner)->get(route('admin.preparation.index'))->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('orders.0.customer', 'خالد المشتري')
+                ->where('orders.0.fulfillment', FlowerOrder::PICKUP));
     }
 }

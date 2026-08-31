@@ -92,6 +92,9 @@ interface Props {
     currency: Currency;
     draft?: CompositionDraft;
     onDraft?: (draft: CompositionDraft) => void;
+    /** قائمة الإضافات — يملكها النموذج كي تُرى الإضافةُ الجديدة في القسمين معًا */
+    addons: AddonOption[];
+    onAddonCreated: (addon: AddonOption) => void;
 }
 
 /**
@@ -112,7 +115,7 @@ interface Props {
  * ولا نموذج داخل نموذج: شاشة المنتج نفسها `<form>`، وتعشيشُ نموذجٍ فيها
  * لا يصحّ في HTML — فالإرسال هنا بأزرارٍ تنادي المسار مباشرة.
  */
-export default function Composition({ productId, data, currency, draft, onDraft }: Props) {
+export default function Composition({ productId, data, currency, draft, onDraft, addons, onAddonCreated }: Props) {
     const t = useTranslate();
     const m = (v: number) => money(v, currency);
 
@@ -293,7 +296,6 @@ export default function Composition({ productId, data, currency, draft, onDraft 
      * لا يريدها معروضةً مع كيس السماد — وهو ما كان يحدث، لأنّ غياب الربط
      * عن كيس السماد معناه «كلّ إضافات المتجر».
      */
-    const [addons, setAddons] = useState<AddonOption[]>(data.addons);
     const [addonDraft, setAddonDraft] = useState<DraftAddon | null>(null);
     const [addonError, setAddonError] = useState<string | null>(null);
     const [savingAddon, setSavingAddon] = useState(false);
@@ -333,7 +335,7 @@ export default function Composition({ productId, data, currency, draft, onDraft 
                 return;
             }
 
-            setAddons((prev) => [...prev, body.addon]);
+            onAddonCreated(body.addon);
             // تُختار فورًا: من أنشأها وهو يُعدّ هذا المنتج يريدها معه
             setAddonIds((prev) => [...prev, body.addon.value]);
             setAddonDraft(null);
@@ -348,7 +350,7 @@ export default function Composition({ productId, data, currency, draft, onDraft 
 
     const addonRows: AddonRow[] = drafting
         ? [
-            ...data.addons.map((a) => ({
+            ...addons.map((a) => ({
                 key: 'a' + a.value,
                 label: a.label,
                 price: a.price,

@@ -57,6 +57,9 @@ class OrderDetailController extends Controller
 
         if ($errors = FlowerOrder::afterValidation($data, $order->only([
             'fulfillment_type', 'recipient_name', 'recipient_phone', 'delivery_address',
+            // الموعد واسم العميل يدخلان في حكم «طلبٌ يُجهَّز» — وقيمتُهما
+            // المحفوظة هي المعتبَرة حين لا تفتحهما الشاشة
+            'scheduled_for', 'customer_name',
         ]))) {
             return back()->withInput()->withErrors($errors);
         }

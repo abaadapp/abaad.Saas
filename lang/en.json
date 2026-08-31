@@ -3388,5 +3388,16 @@
     "خاصّة بهذا المنتج": "Private to this product",
     "لا تظهر مع أي منتجٍ آخر": "Never shown with any other product",
     "لكلّ المنتجات": "For all products",
-    "إضافةُ متجرٍ تُعرض مع الجميع": "A shop add-on shown with everything"
+    "إضافةُ متجرٍ تُعرض مع الجميع": "A shop add-on shown with everything",
+    "لا إضافات عامّة": "No shop-wide add-ons",
+    "اسم الإضافة": "Add-on name",
+    "حفظ الإضافة": "Save add-on",
+    "بلا اسم": "No name",
+    "حدّد نوع التنفيذ: توصيل أو استلام من المحل.": "Choose a fulfilment type: delivery or shop pickup.",
+    "موعد التسليم مطلوب للطلبات التي تُجهَّز.": "A delivery time is required for orders that go to preparation.",
+    "اختر العميل أوّلًا — الطلب الذي يُجهَّز لا يُسجَّل باسم «عميل نقدي».": "Pick the customer first — an order that goes to preparation cannot be filed under “walk-in”.",
+    "اختر العميل من أعلى السلّة — اسمه يظهر على بطاقة التجهيز.": "Pick the customer at the top of the cart — the name shows on the preparation card.",
+    "اسم العميل مطلوب للطلبات التي تُجهَّز.": "A customer name is required for orders that go to preparation.",
+    "إضافات مع كلّ المنتجات": "Add-ons for all products",
+    "تظهر مع كلّ منتجات المتجر. والخاصّة بهذا المنتج في «التركيب».": "Shown with every product in the shop. Ones private to this product live under Composition."
 }

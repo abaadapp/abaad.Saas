@@ -121,6 +121,9 @@ export default function PaymentDialog({
     const [occasionBusy, setOccasionBusy] = useState(false);
     const [occasionError, setOccasionError] = useState<string | null>(null);
     const isDelivery = flower.fulfillment_type === 'delivery';
+    /** طلبٌ يُجهَّز: قيل عنه موعدٌ أو نوع تنفيذ — فيصير الباقي إلزامًا */
+    const scheduling = !!(flower.scheduled_for.trim() || flower.fulfillment_type.trim());
+    const namedCustomer = !!customer && customer.trim() !== '' && customer.trim() !== 'عميل نقدي';
     const set = <K extends keyof FlowerDetails>(k: K, v: FlowerDetails[K]) =>
         setFlower((f) => ({ ...f, [k]: v }));
 
@@ -203,6 +206,34 @@ export default function PaymentDialog({
          * لكنّ البيع يمرّ بطابور عدم الاتصال، فرفضُ الخادم قد يصل بعد دقائق
          * والزبون قد مضى. فيُقال للكاشير الآن، وهو أمام الشاشة.
          */
+        /*
+         * طلبٌ له موعدٌ طلبٌ يذهب إلى لوحة التجهيز — وبطاقته لا تُقرأ ناقصة.
+         *
+         * من يقف عند الطاولة يسأل: لمن؟ ومتى؟ وإلى أين؟ فبطاقةٌ تقول «عميل
+         * نقدي» لعشرة طلباتٍ في يومٍ واحد لا تُسلَّم لأحد. والشرط معلَّقٌ
+         * بالموعد وحده: بيعةُ المنضدة لا موعد لها ولا تدخل اللوحة أصلًا.
+         */
+        if (scheduling) {
+            if (!flower.fulfillment_type.trim()) {
+                setFlowerOpen(true);
+                setFlowerError(t('حدّد نوع التنفيذ: توصيل أو استلام من المحل.'));
+
+                return;
+            }
+            if (!flower.scheduled_for.trim()) {
+                setFlowerOpen(true);
+                setFlowerError(t('موعد التسليم مطلوب للطلبات التي تُجهَّز.'));
+
+                return;
+            }
+            if (!namedCustomer) {
+                setFlowerOpen(true);
+                setFlowerError(t('اختر العميل أوّلًا — الطلب الذي يُجهَّز لا يُسجَّل باسم «عميل نقدي».'));
+
+                return;
+            }
+        }
+
         if (isDelivery && !(flower.recipient_name.trim() && flower.recipient_phone.trim() && flower.delivery_address.trim())) {
             setFlowerOpen(true);
             setFlowerError(t('طلب التوصيل يحتاج اسم المستلِم ورقمه وعنوانه.'));
@@ -347,8 +378,16 @@ export default function PaymentDialog({
                                             <p className="text-[12px] text-[#b91c1c]">{flowerError}</p>
                                         )}
 
+                                        {/* يُقال قبل الحفظ لا بعده: تغيير العميل
+                                            بابُه فوق السلّة، لا داخل هذا الحوار */}
+                                        {scheduling && !namedCustomer && (
+                                            <p className="text-[12px] text-[#9a3412]">
+                                                {t('اختر العميل من أعلى السلّة — اسمه يظهر على بطاقة التجهيز.')}
+                                            </p>
+                                        )}
+
                                         <div className="grid grid-cols-2 gap-3">
-                                            <Field label="نوع التنفيذ">
+                                            <Field label="نوع التنفيذ" required={scheduling}>
                                                 <Select
                                                     placeholder="—"
                                                     options={orderOptions.fulfillments}
@@ -356,7 +395,7 @@ export default function PaymentDialog({
                                                     onChange={(e) => set('fulfillment_type', e.target.value)}
                                                 />
                                             </Field>
-                                            <Field label="موعد التسليم">
+                                            <Field label="موعد التسليم" required={scheduling}>
                                                 <Input
                                                     type="datetime-local"
                                                     value={flower.scheduled_for}

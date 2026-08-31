@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, Clock, Gift, MapPin, Phone, Store, Truck, User } from 'lucide-react';
+import { AlertTriangle, Clock, Gift, MapPin, Phone, StickyNote, Store, Truck, User } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Tabs, { type TabItem } from '@/Components/Tabs';
@@ -22,6 +22,8 @@ interface PrepItem {
 interface PrepOrder {
     number: string;
     status: string;
+    /** صاحب الطلب — لا مستلِمه */
+    customer: string | null;
     fulfillment: string | null;
     scheduled_for: string | null;
     overdue: boolean;
@@ -169,8 +171,12 @@ export default function PreparationIndex() {
                     {orders.map((o) => (
                         <Card key={o.number} className="flex flex-col gap-3 p-5">
                             <div className="flex items-start justify-between gap-2">
-                                <div>
-                                    <p className="font-bold text-[#111]">{o.number}</p>
+                                <div className="min-w-0">
+                                    {/* صاحب الطلب أوّلًا: هو أوّل ما يُسأل عنه عند
+                                        الطاولة وعند التسليم. والرقم تحته — يُقرأ
+                                        حين يُبحث عنه لا حين يُجهَّز */}
+                                    <p className="truncate font-bold text-[#111]">{o.customer ?? t('بلا اسم')}</p>
+                                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">{o.number}</p>
                                     <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[#6b7280]">
                                         <Clock className="size-3.5" />
                                         <span dir="ltr">{o.scheduled_for ?? '—'}</span>
@@ -261,6 +267,10 @@ export default function PreparationIndex() {
 
                             {(o.delivery_notes || o.internal_notes) && (
                                 <div className="rounded-[10px] bg-gray-50 p-3 text-[12px] text-[#6b7280]">
+                                    <p className="mb-1 flex items-center gap-1.5 font-medium text-[#4b4b4b]">
+                                        <StickyNote className="size-3.5" />
+                                        {t('ملاحظات')}
+                                    </p>
                                     {o.delivery_notes && <p>{o.delivery_notes}</p>}
                                     {o.internal_notes && <p className="mt-1">{o.internal_notes}</p>}
                                 </div>

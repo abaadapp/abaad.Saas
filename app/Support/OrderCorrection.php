@@ -394,6 +394,118 @@ class OrderCorrection
     }
 
     /** المعاملة المالية تتبع الفاتورة — رقمٌ في المالية لا يقابله بيعٌ يضلّل التقرير */
+    /**
+     * إلغاء الطلب — ولا يكفي أن تُكتب كلمة «ملغي» في عمود.
+     *
+     * البيعُ كان قد أخذ من الرفّ، وأعطى نقاطًا، وأحرق استعمالَ كوبون،
+     * وقيَّد دخلًا. وكان الإلغاء يقلب الحالة وحدها فيبقى ذلك كلُّه:
+     *
+     *   - خمسُ ورداتٍ خرجت من الدفتر ولم تخرج من المحلّ، فيقول الجرد
+     *     إنّها نقصت ولا أحد يعرف أين ذهبت.
+     *   - نقاطٌ يكسبها العميل على طلبٍ لم يقع، ويستبدلها بضاعةً تقع.
+     *   - كوبونٌ «مرّة واحدة» يُحرَق على طلبٍ أُلغي، فلا يستطيع صاحبه
+     *     استعماله ولا التاجر إعادته — لا باب لتعديل الكوبونات أصلًا.
+     *   - وقيدُ دخلٍ يبقى في المالية على بيعةٍ لم تكن.
+     *
+     * والتقارير كانت تستثني الملغى (`Order::scopeSold`) — فبدا الأمر
+     * سليمًا في الشاشة، والخلل تحتها في المخزون والنقاط والدفتر.
+     *
+     * ويُنفَّذ مرّةً واحدة: نقلٌ ثانٍ إلى «ملغي» لا يردّ المخزون مرّتين.
+     */
+    public static function cancel(Order $order, ?string $reason = null): void
+    {
+        if ($order->status === \App\Support\OrderStatus::CANCELLED) {
+            return;
+        }
+
+        DB::transaction(function () use ($order, $reason) {
+            $totalBefore = (float) $order->total;
+
+            $order->loadMissing('items.addons.addon');
+
+            // ما بيع يعود إلى الرفّ — بالطريق نفسه الذي خرج به
+            foreach ($order->items as $item) {
+                self::moveStock($order, $item, (int) $item->quantity);
+                self::releaseAddons($order, $item);
+            }
+
+            self::releaseCoupon($order);
+            self::reverseLoyalty($order);
+
+            // لا قيدَ دخلٍ على بيعةٍ لم تقع
+            Transaction::where('order_id', $order->id)->delete();
+
+            $order->update(['status' => \App\Support\OrderStatus::CANCELLED]);
+
+            OrderEdit::create([
+                'business_id' => $order->business_id,
+                'order_id' => $order->id,
+                'order_item_id' => null,
+                'kind' => OrderEdit::CANCEL,
+                'subject' => $order->number,
+                'order_total_before' => $totalBefore,
+                'order_total_after' => $totalBefore,
+                'reason' => $reason ?: __('إلغاء الطلب'),
+                'user_id' => PosCashier::id() ?? auth()->id(),
+                'employee_name' => PosCashier::name() ?? auth()->user()?->name,
+            ]);
+        });
+    }
+
+    /**
+     * يردّ استعمال الكوبون — ولا ينزل تحت الصفر.
+     *
+     * عدّادٌ سالب يجعل «مرّة واحدة» مرّتين، وهو عطبٌ في الجهة الأخرى.
+     */
+    private static function releaseCoupon(Order $order): void
+    {
+        if (blank($order->coupon_code)) {
+            return;
+        }
+
+        \App\Models\Coupon::where('business_id', $order->business_id)
+            ->where('code', $order->coupon_code)
+            ->where('used_count', '>', 0)
+            ->decrement('used_count');
+    }
+
+    /**
+     * النقاط: ما اكتُسب يُسحب، وما استُبدل يُردّ.
+     *
+     * والسحب لا يُنزل رصيد العميل تحت الصفر: قد يكون أنفق نقاطه بين
+     * البيعة والإلغاء، فسحبُ ما اكتسبه كاملًا يُنقصه ما لم يأخذه — وهي
+     * القاعدة نفسها التي يطبّقها تصحيح الفاتورة.
+     */
+    private static function reverseLoyalty(Order $order): void
+    {
+        $customer = $order->customer_id ? \App\Models\Customer::find($order->customer_id) : null;
+        if (! $customer) {
+            return;
+        }
+
+        $earned = (int) $order->points_earned;
+        $redeemed = (int) $order->redeemed_points;
+
+        if ($earned > 0) {
+            $take = min($earned, (int) $customer->points);
+            if ($take > 0) {
+                $customer->decrement('points', $take);
+                PointTransaction::record($customer, 'redeem', $take, (int) $customer->fresh()->points,
+                    $order->id, 'إلغاء فاتورة '.$order->number);
+            }
+            $order->points_earned = 0;
+        }
+
+        if ($redeemed > 0) {
+            $customer->increment('points', $redeemed);
+            PointTransaction::record($customer, 'earn', $redeemed, (int) $customer->fresh()->points,
+                $order->id, 'ردّ نقاط فاتورة ملغاة '.$order->number);
+            $order->redeemed_points = 0;
+        }
+
+        $order->save();
+    }
+
     private static function syncTransaction(Order $order): void
     {
         Transaction::where('order_id', $order->id)->update([

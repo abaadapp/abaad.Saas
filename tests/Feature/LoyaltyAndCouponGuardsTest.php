@@ -159,4 +159,30 @@ class LoyaltyAndCouponGuardsTest extends TestCase
 
         $this->assertSame(0.0, round((float) $order->coupon_discount, 3), 'صُرف كوبون متجرٍ آخر');
     }
+
+    /**
+     * ونسبةٌ فوق المئة لا تُكتب أصلًا.
+     *
+     * `discountFor` تقصّها عند المجموع فلا تصير الفاتورة سالبة — لكنّ من
+     * كتب «١٥٠٪» يظنّه يعمل ويقرؤه في القائمة كذلك. حدٌّ يُقصّ بصمت وعدٌ
+     * مكسور.
+     */
+    public function test_a_percentage_coupon_above_a_hundred_is_refused(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.coupons.store'), [
+            'code' => 'HALF150', 'type' => 'نسبة', 'value' => 150,
+        ])->assertSessionHasErrors('value');
+
+        $this->assertSame(0, \App\Models\Coupon::where('code', 'HALF150')->count());
+    }
+
+    /** والمبلغ لا يُحدّ بمئة — «خصم ٢٠٠ ريال» عرضٌ مشروع */
+    public function test_a_fixed_amount_coupon_may_exceed_a_hundred(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.coupons.store'), [
+            'code' => 'FLAT200', 'type' => 'مبلغ', 'value' => 200,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(1, \App\Models\Coupon::where('code', 'FLAT200')->count());
+    }
 }

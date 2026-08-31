@@ -18,7 +18,14 @@ class CouponController extends Controller
         $data = $request->validate([
             'code' => ['required', 'string', 'max:40', Rule::unique('coupons', 'code')->where('business_id', $bid)],
             'type' => ['required', 'in:نسبة,مبلغ'],
-            'value' => ['required', 'numeric', 'min:0'],
+            /*
+             * نسبةٌ فوق المئة لا معنى لها.
+             *
+             * `discountFor` تقصّها عند المجموع فلا تصير الفاتورة سالبة —
+             * لكنّ التاجر يكتب «١٥٠٪» ويظنّه يعمل، ويقرؤه في القائمة كذلك.
+             * حدٌّ يُقصّ بصمت وعدٌ مكسور.
+             */
+            'value' => ['required', 'numeric', 'min:0', 'max:'.($request->input('type') === 'نسبة' ? 100 : 1000000)],
             'min_order' => ['nullable', 'numeric', 'min:0'],
             'max_uses' => ['nullable', 'integer', 'min:1'],
             'expires_at' => ['nullable', 'date'],

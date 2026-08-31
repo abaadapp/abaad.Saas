@@ -21,6 +21,9 @@ class OrderEdit extends Model
     public const LINE = 'بند';
     public const PAYMENT = 'وسيلة دفع';
 
+    /** إلغاءُ الطلب كلّه — يردّ المخزون والنقاط والكوبون ويمحو قيد الدخل */
+    public const CANCEL = 'إلغاء';
+
     /** حُذف البند أم نقصت كميّته؟ — تُقرأ من الأرقام لا من عمودٍ ثالث يفترق عنها */
     public function removed(): bool { return $this->kind === self::LINE && (int) $this->qty_after === 0; }
 }

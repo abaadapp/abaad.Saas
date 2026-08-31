@@ -108,7 +108,19 @@ class OrderDetailController extends Controller
         }
 
         $from = $order->status;
-        $order->update(['status' => $data['status']]);
+
+        /*
+         * الإلغاء يردّ ما أخذه البيع — ولا يكفي أن تُكتب الكلمة في عمود.
+         *
+         * انظر `OrderCorrection::cancel`: المخزون والنقاط والكوبون وقيد
+         * الدخل. وكان الأربعة تبقى، والتقارير تستثني الملغى فيبدو الأمر
+         * سليمًا في الشاشة والخلل تحتها.
+         */
+        if ($data['status'] === OrderStatus::CANCELLED) {
+            \App\Support\OrderCorrection::cancel($order);
+        } else {
+            $order->update(['status' => $data['status']]);
+        }
 
         Activity::log('status', 'نقل الطلب '.$order->number.' من «'.$from.'» إلى «'.$data['status'].'»', [
             'subject_id' => $order->id,

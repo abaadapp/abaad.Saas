@@ -10,7 +10,7 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { csrfHeaders } from '@/lib/csrf';
 import { cn } from '@/lib/utils';
-import Composition, { type CompositionData } from './Composition';
+import Composition, { emptyDraft, type CompositionData, type CompositionDraft } from './Composition';
 import type { Currency } from '@/types';
 import type { Category, Product } from '@/types/models';
 
@@ -20,7 +20,7 @@ interface Props {
     product?: Product;
     description?: string;
     currencyLabel: string;
-    /** المقاسات والوصفة والإضافات — لمنتجٍ محفوظ فقط */
+    /** المقاسات والوصفة والإضافات — قوائمُ الاختيار في الحالتين */
     composition?: CompositionData | null;
     currency?: Currency;
 }
@@ -33,8 +33,9 @@ const NAV = [
     /*
      * التركيب: المقاسات والوصفة والإضافات.
      *
-     * لا يُعرض عند الإنشاء: مقاسٌ ووصفةٌ لمنتجٍ لم يُحفظ بعد لا معرّف
-     * يُعلَّقان به — والمطالبة بحفظه أوّلًا أوضح من نموذجٍ يقبل ثم يفقد.
+     * يُعرض عند الإنشاء أيضًا — يبقى مسوّدةً في الشاشة ويُكتب مع المنتج في
+     * طلب الحفظ نفسه. وكان يُخفى فيُجبَر التاجر على حفظ الباقة ثم العودة
+     * إليها ليقول ممّ تتركّب: خطوتان لفعلٍ واحد في ذهنه.
      */
     { key: 'composition', label: 'التركيب' },
 ] as const;
@@ -96,6 +97,9 @@ export default function ProductForm({ categories, product, description, currency
         alert_qty: product ? String(product.alert) : '',
         active: product ? product.active : true,
         image: null as File | null,
+        // مسوّدة التركيب — تُملأ عند الإنشاء وتُكتب في الخادم بعد إنشاء
+        // المنتج مباشرة. وفي التعديل تبقى فارغةً: هناك لكلّ فعلٍ مسارُه
+        composition: emptyDraft() as CompositionDraft,
         // Inertia لا يرسل PUT مع ملف؛ التزييف هو الطريق الرسمي
         ...(editing ? { _method: 'put' } : {}),
     });
@@ -522,8 +526,14 @@ export default function ProductForm({ categories, product, description, currency
                 )}
 
                 {tab === 'composition' &&
-                    (composition && product && currency ? (
-                        <Composition productId={Number(product.id)} data={composition} currency={currency} />
+                    (composition && currency ? (
+                        <Composition
+                            productId={product ? Number(product.id) : null}
+                            data={composition}
+                            currency={currency}
+                            draft={form.data.composition}
+                            onDraft={(next) => form.setData('composition', next)}
+                        />
                     ) : (
                         <Card className="p-6">
                             <p className="text-[13px] leading-relaxed text-[#6b7280]">

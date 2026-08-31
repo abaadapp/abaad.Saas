@@ -18,6 +18,10 @@ use Illuminate\Support\Collection;
  *
  *   - للمنتج صفوفٌ في product_addons  →  تلك وحدها
  *   - لا صفوف له                      →  إضافات المتجر كلّها (سلوك اليوم)
+ *
+ * ويسبق الحالتين حاجزٌ واحد: الإضافة المملوكة لمنتجٍ (addons.product_id)
+ * لا تخرج عنه. صُنعت لباقةٍ بعينها فلا تُعرض مع كيس السماد ولو لم يُربط
+ * لكيس السماد شيء — وغيابُ الربط عنه لا يعني أنّه يقبل كلّ ما صُنع لغيره.
  */
 class ProductAddons
 {
@@ -36,7 +40,7 @@ class ProductAddons
         $allowed = $map[$product->id] ?? null;
 
         return $all
-            ->filter(fn (Addon $a) => (bool) $a->active)
+            ->filter(fn (Addon $a) => (bool) $a->active && self::owned($a, $product))
             ->when($allowed !== null, fn ($c) => $c->filter(fn (Addon $a) => in_array($a->id, $allowed, true)))
             ->values();
     }
@@ -70,9 +74,21 @@ class ProductAddons
             return false;
         }
 
+        if (! self::owned($addon, $product)) {
+            return false;
+        }
+
         $map ??= self::map((int) $product->business_id);
         $allowed = $map[$product->id] ?? null;
 
         return $allowed === null || in_array((int) $addon->id, $allowed, true);
+    }
+
+    /**
+     * إضافةُ المتجر لكلٍّ، وإضافةُ المنتج لصاحبها وحده.
+     */
+    public static function owned(Addon $addon, Product $product): bool
+    {
+        return $addon->product_id === null || (int) $addon->product_id === (int) $product->id;
     }
 }

@@ -44,34 +44,81 @@ export interface Variant {
     recipe: RecipeBlock;
 }
 
+export interface AddonOption {
+    value: number;
+    label: string;
+    price: number;
+    active: boolean;
+    /** خاصّةٌ بهذا المنتج وحده لا بالمتجر */
+    private: boolean;
+    inventory_product_id: number | null;
+}
+
 export interface CompositionData {
     variants: Variant[];
     recipe: RecipeBlock;
     components: { value: number; label: string; cost: number; quantity: number }[];
-    addons: { value: number; label: string; price: number; active: boolean; inventory_product_id: number | null }[];
+    addons: AddonOption[];
     addon_ids: number[];
 }
 
+/* --------------------------- مسوّدة منتجٍ لم يُحفظ --------------------------- */
+
+export interface DraftVariant { name: string; name_en: string; price: string; sku: string }
+export interface DraftLine {
+    component_product_id: string;
+    quantity: string;
+    wastage_percent: string;
+    /** موضع المقاس في القائمة، وnull تعني وصفة المنتج الأساس */
+    variant_index: number | null;
+}
+export interface DraftAddon { name: string; price: string; private: boolean }
+
+export interface CompositionDraft {
+    variants: DraftVariant[];
+    recipe: DraftLine[];
+    addon_ids: number[];
+    new_addons: DraftAddon[];
+}
+
+export const emptyDraft = (): CompositionDraft => ({
+    variants: [], recipe: [], addon_ids: [], new_addons: [],
+});
+
 interface Props {
-    productId: number;
+    /** موجود = منتجٌ محفوظ تُكتب تعديلاته فورًا، غائب = مسوّدة تُحفظ معه */
+    productId?: number | null;
     data: CompositionData;
     currency: Currency;
+    draft?: CompositionDraft;
+    onDraft?: (draft: CompositionDraft) => void;
 }
 
 /**
  * تركيب المنتج: مقاساتُه ووصفتُه وإضافاتُه.
  *
  * قسمٌ يُضاف إلى شاشة المنتج لا شاشةٌ جديدة — بنفس البطاقات والحقول
- * والأزرار. وكلّ فعلٍ هنا يذهب إلى مساره وحده بدل أن يُحمَّل على حفظ
- * المنتج: من يضيف مقاسًا لا يريد أن يحفظ سعر المنتج ووصفه معه، ومن يغيّر
- * وصفًا لا يريد أن يفقد مقاسًا كتبه ولم يحفظه.
+ * والأزرار.
+ *
+ * ويعمل في وضعين:
+ *
+ *   - منتجٌ محفوظ: كلّ فعلٍ يذهب إلى مساره وحده بدل أن يُحمَّل على حفظ
+ *     المنتج. من يضيف مقاسًا لا يريد أن يحفظ سعر المنتج ووصفه معه.
+ *   - منتجٌ يُكتب الآن: لا معرّف يُعلَّق به شيء، فالتركيب يبقى مسوّدةً في
+ *     الشاشة ويُكتب مع المنتج في طلب الحفظ نفسه. وكان القسم يُخفى عند
+ *     الإنشاء فيُجبَر التاجر على حفظ الباقة ثم العودة إليها ليقول ممّ
+ *     تتركّب — خطوتان لفعلٍ واحد في ذهنه.
  *
  * ولا نموذج داخل نموذج: شاشة المنتج نفسها `<form>`، وتعشيشُ نموذجٍ فيها
  * لا يصحّ في HTML — فالإرسال هنا بأزرارٍ تنادي المسار مباشرة.
  */
-export default function Composition({ productId, data, currency }: Props) {
+export default function Composition({ productId, data, currency, draft, onDraft }: Props) {
     const t = useTranslate();
     const m = (v: number) => money(v, currency);
+
+    const drafting = !productId;
+    const d = draft ?? emptyDraft();
+    const patch = (part: Partial<CompositionDraft>) => onDraft?.({ ...d, ...part });
 
     /** المقاس الذي تُعرض وصفته — و«لا مقاس» تعني وصفة المنتج نفسه */
     const [scope, setScope] = useState<string>('');
@@ -81,21 +128,190 @@ export default function Composition({ productId, data, currency }: Props) {
     const [addonIds, setAddonIds] = useState<number[]>(data.addon_ids);
 
     /*
+     * التحديث لا يُعيد بناء الشاشة.
+     *
+     * كان `preserveState: false` يهدم حالة النموذج كلّها بعد كلّ إضافة:
+     * يعود التبويب إلى «المعلومات الأساسية» وينسى المقاس المختار. فمن أضاف
+     * مكوّنًا وجد نفسه في شاشةٍ أخرى، وظنّ أنّ إضافة أكثر من مكوّنٍ لا تعمل.
+     */
+    const reload = { preserveScroll: true, preserveState: true as const };
+
+    const unitCost = useMemo(
+        () => Object.fromEntries(data.components.map((c) => [String(c.value), c.cost])),
+        [data.components],
+    );
+    const componentName = useMemo(
+        () => Object.fromEntries(data.components.map((c) => [String(c.value), c.label])),
+        [data.components],
+    );
+
+    /* ------------------------------ المقاسات ------------------------------ */
+
+    interface VariantRow { key: string; name: string; price: number; active: boolean; lines: number; remove: () => void }
+
+    const variantRows: VariantRow[] = drafting
+        ? d.variants.map((v, i) => ({
+            key: String(i),
+            name: v.name,
+            price: Number(v.price) || 0,
+            active: true,
+            lines: d.recipe.filter((r) => r.variant_index === i).length,
+            // الوصفة تتبع مقاسها: صفوفٌ تشير إلى مقاسٍ حُذف تصير بلا معنى،
+            // وما بعده يزحف موضعًا فتنكسر الإشارة إن لم تُصحَّح
+            remove: () => {
+                patch({
+                    variants: d.variants.filter((_, j) => j !== i),
+                    recipe: d.recipe
+                        .filter((r) => r.variant_index !== i)
+                        .map((r) => (r.variant_index !== null && r.variant_index > i
+                            ? { ...r, variant_index: r.variant_index - 1 }
+                            : r)),
+                });
+                setScope('');
+            },
+        }))
+        : data.variants.map((v) => ({
+            key: String(v.id),
+            name: v.name,
+            price: v.price,
+            active: v.active,
+            lines: v.recipe.items.length,
+            remove: () => router.delete(route('admin.products.variants.destroy', [productId, v.id]), reload),
+        }));
+
+    const addVariant = () => {
+        if (!variantDraft.name.trim()) return;
+
+        if (drafting) {
+            patch({ variants: [...d.variants, { ...variantDraft }] });
+        } else {
+            router.post(route('admin.products.variants.store', productId), {
+                name: variantDraft.name,
+                name_en: variantDraft.name_en || null,
+                price: variantDraft.price,
+                sku: variantDraft.sku || null,
+            }, reload);
+        }
+
+        setAddingVariant(false);
+        setVariantDraft({ name: '', name_en: '', price: '', sku: '' });
+    };
+
+    /* ------------------------------- الوصفة ------------------------------- */
+
+    interface LineRow {
+        key: string;
+        component: string;
+        quantity: number;
+        wastage: number;
+        cost: number;
+        inherited: boolean;
+        remove: () => void;
+    }
+
+    const saved = useMemo(
+        () => data.variants.find((v) => String(v.id) === scope),
+        [data.variants, scope],
+    );
+    const block = saved ? saved.recipe : data.recipe;
+
+    /** الصفوف المعروضة تحت النطاق المختار — والموروث يُعلَّم لا يُخفى */
+    const lineRows: LineRow[] = useMemo(() => {
+        if (!drafting) {
+            return block.items.map((i) => ({
+                key: String(i.id),
+                component: i.component,
+                quantity: i.quantity,
+                wastage: i.wastage_percent,
+                cost: i.line_cost,
+                inherited: i.inherited,
+                remove: () => router.delete(route('admin.products.recipe.destroy', [productId, i.id]), reload),
+            }));
+        }
+
+        const scopeIndex = scope === '' ? null : Number(scope);
+        const indexed = d.recipe.map((r, i) => ({ r, i }));
+        const own = indexed.filter((x) => x.r.variant_index === scopeIndex);
+        const source = scopeIndex !== null && own.length === 0
+            ? indexed.filter((x) => x.r.variant_index === null)
+            : own;
+        const inherited = source !== own;
+
+        return source.map(({ r, i }) => {
+            const qty = Number(r.quantity) || 0;
+            const wastage = Number(r.wastage_percent) || 0;
+
+            return {
+                key: String(i),
+                component: componentName[r.component_product_id] ?? '—',
+                quantity: qty,
+                wastage,
+                cost: Math.round(qty * (1 + wastage / 100) * (unitCost[r.component_product_id] ?? 0) * 1000) / 1000,
+                inherited,
+                remove: () => patch({ recipe: d.recipe.filter((_, j) => j !== i) }),
+            };
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [drafting, block, d.recipe, scope, componentName, unitCost, productId]);
+
+    const draftCost = lineRows.reduce((sum, r) => sum + r.cost, 0);
+
+    const addComponent = () => {
+        if (!componentDraft.component_product_id || !componentDraft.quantity) return;
+
+        if (drafting) {
+            patch({
+                recipe: [...d.recipe, {
+                    component_product_id: componentDraft.component_product_id,
+                    quantity: componentDraft.quantity,
+                    wastage_percent: componentDraft.wastage_percent || '0',
+                    variant_index: scope === '' ? null : Number(scope),
+                }],
+            });
+        } else {
+            router.post(route('admin.products.recipe.store', productId), {
+                component_product_id: componentDraft.component_product_id,
+                variant_id: scope || null,
+                quantity: componentDraft.quantity,
+                wastage_percent: componentDraft.wastage_percent || 0,
+            }, reload);
+        }
+
+        // الحقول تُفرَغ للمكوّن التالي — وإضافة عدّة مكوّنات هي الحالة الغالبة
+        setComponentDraft({ component_product_id: '', quantity: '', wastage_percent: '' });
+    };
+
+    /* ------------------------------ الإضافات ------------------------------ */
+
+    /*
      * إضافةٌ تُنشأ من جانب قائمتها.
      *
      * لم يكن في النظام بابُ إنشاء إضافاتٍ إطلاقًا — تأتي من التهيئة وحدها.
-     * فمن أراد «دبًّا» جديدًا وهو يُعدّ باقته لم يكن أمامه شيء.
+     * فمن أراد «شريطًا ذهبيًّا» وهو يُعدّ باقته لم يكن أمامه شيء.
      *
-     * وبـfetch لا بتنقّل: اختياراتُ الإضافات في هذه الشاشة لم تُحفظ بعد،
-     * وإعادةُ التحميل تمحوها.
+     * وتُنشأ خاصّةً بهذا المنتج ما لم يُقَل غير ذلك: من صنعها لباقة الورد
+     * لا يريدها معروضةً مع كيس السماد — وهو ما كان يحدث، لأنّ غياب الربط
+     * عن كيس السماد معناه «كلّ إضافات المتجر».
      */
-    const [addons, setAddons] = useState(data.addons);
-    const [draft, setDraft] = useState<{ name: string; price: string } | null>(null);
+    const [addons, setAddons] = useState<AddonOption[]>(data.addons);
+    const [addonDraft, setAddonDraft] = useState<DraftAddon | null>(null);
     const [addonError, setAddonError] = useState<string | null>(null);
     const [savingAddon, setSavingAddon] = useState(false);
 
+    const openAddonDraft = () => {
+        setAddonDraft({ name: '', price: '', private: true });
+        setAddonError(null);
+    };
+
     const createAddon = async () => {
-        if (!draft?.name.trim()) return;
+        if (!addonDraft?.name.trim()) return;
+
+        if (drafting) {
+            patch({ new_addons: [...d.new_addons, { ...addonDraft, name: addonDraft.name.trim() }] });
+            setAddonDraft(null);
+
+            return;
+        }
 
         setSavingAddon(true);
         setAddonError(null);
@@ -103,7 +319,11 @@ export default function Composition({ productId, data, currency }: Props) {
             const res = await fetch(route('admin.products.addons.store'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
-                body: JSON.stringify({ name: draft.name.trim(), price: draft.price || 0 }),
+                body: JSON.stringify({
+                    name: addonDraft.name.trim(),
+                    price: addonDraft.price || 0,
+                    product_id: addonDraft.private ? productId : null,
+                }),
             });
             const body = await res.json();
 
@@ -116,7 +336,7 @@ export default function Composition({ productId, data, currency }: Props) {
             setAddons((prev) => [...prev, body.addon]);
             // تُختار فورًا: من أنشأها وهو يُعدّ هذا المنتج يريدها معه
             setAddonIds((prev) => [...prev, body.addon.value]);
-            setDraft(null);
+            setAddonDraft(null);
         } catch {
             setAddonError(t('تعذّر الاتصال بالخادم'));
         } finally {
@@ -124,39 +344,46 @@ export default function Composition({ productId, data, currency }: Props) {
         }
     };
 
-    const variant = useMemo(
-        () => data.variants.find((v) => String(v.id) === scope),
-        [data.variants, scope],
-    );
+    interface AddonRow { key: string; label: string; price: number; private: boolean; stock: boolean; on: boolean; toggle: () => void }
 
-    const block = variant ? variant.recipe : data.recipe;
-
-    const reload = { preserveScroll: true, preserveState: false as const };
-
-    const addVariant = () =>
-        router.post(route('admin.products.variants.store', productId), {
-            name: variantDraft.name,
-            name_en: variantDraft.name_en || null,
-            price: variantDraft.price,
-            sku: variantDraft.sku || null,
-        }, {
-            ...reload,
-            onSuccess: () => {
-                setAddingVariant(false);
-                setVariantDraft({ name: '', name_en: '', price: '', sku: '' });
-            },
-        });
-
-    const addComponent = () =>
-        router.post(route('admin.products.recipe.store', productId), {
-            component_product_id: componentDraft.component_product_id,
-            variant_id: scope || null,
-            quantity: componentDraft.quantity,
-            wastage_percent: componentDraft.wastage_percent || 0,
-        }, {
-            ...reload,
-            onSuccess: () => setComponentDraft({ component_product_id: '', quantity: '', wastage_percent: '' }),
-        });
+    const addonRows: AddonRow[] = drafting
+        ? [
+            ...data.addons.map((a) => ({
+                key: 'a' + a.value,
+                label: a.label,
+                price: a.price,
+                private: a.private,
+                stock: !!a.inventory_product_id,
+                on: d.addon_ids.includes(a.value),
+                toggle: () => patch({
+                    addon_ids: d.addon_ids.includes(a.value)
+                        ? d.addon_ids.filter((i) => i !== a.value)
+                        : [...d.addon_ids, a.value],
+                }),
+            })),
+            // إضافةٌ كُتبت الآن ولم تُحفظ بعد: نقرُها يحذفها — لا وجود لها
+            // خارج هذه الشاشة كي «تُلغى» بإبقائها غير مختارة
+            ...d.new_addons.map((a, i) => ({
+                key: 'n' + i,
+                label: a.name,
+                price: Number(a.price) || 0,
+                private: a.private,
+                stock: false,
+                on: true,
+                toggle: () => patch({ new_addons: d.new_addons.filter((_, j) => j !== i) }),
+            })),
+        ]
+        : addons.map((a) => ({
+            key: 'a' + a.value,
+            label: a.label,
+            price: a.price,
+            private: a.private,
+            stock: !!a.inventory_product_id,
+            on: addonIds.includes(a.value),
+            toggle: () => setAddonIds(addonIds.includes(a.value)
+                ? addonIds.filter((i) => i !== a.value)
+                : [...addonIds, a.value]),
+        }));
 
     return (
         <div className="space-y-6">
@@ -164,9 +391,15 @@ export default function Composition({ productId, data, currency }: Props) {
             <Card className="p-6">
                 <div className="mb-1 flex items-center justify-between gap-3">
                     <h3 className="font-bold text-[#111]">{t('المقاسات')}</h3>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setAddingVariant((v) => !v)}>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label={t('إضافة مقاس')}
+                        title={t('إضافة مقاس')}
+                        onClick={() => setAddingVariant((v) => !v)}
+                    >
                         <Plus />
-                        {t('إضافة مقاس')}
                     </Button>
                 </div>
                 <p className="mb-4 text-[13px] text-[#6b7280]">
@@ -177,6 +410,7 @@ export default function Composition({ productId, data, currency }: Props) {
                     <div className="mb-4 grid grid-cols-1 gap-3 rounded-[12px] bg-[#fafafa] p-4 sm:grid-cols-4">
                         <Field label="الاسم" required>
                             <Input
+                                autoFocus
                                 value={variantDraft.name}
                                 onChange={(e) => setVariantDraft({ ...variantDraft, name: e.target.value })}
                                 placeholder={t('وسط')}
@@ -208,22 +442,20 @@ export default function Composition({ productId, data, currency }: Props) {
                     </div>
                 )}
 
-                {data.variants.length === 0 ? (
+                {variantRows.length === 0 ? (
                     <p className="py-6 text-center text-[13px] text-[#9ca3af]">{t('لا مقاسات — منتج بسيط')}</p>
                 ) : (
                     <ul className="space-y-2">
-                        {data.variants.map((v) => (
+                        {variantRows.map((v) => (
                             <li
-                                key={v.id}
+                                key={v.key}
                                 className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[#eee] px-3 py-2"
                             >
                                 <span className="flex items-center gap-2">
                                     <span className="font-medium text-[#111]">{v.name}</span>
                                     {!v.active && <Badge variant="neutral">{t('غير مفعّل')}</Badge>}
-                                    {v.recipe.items.length > 0 && (
-                                        <Badge variant="info">
-                                            {t(':n مكوّن', { n: String(v.recipe.items.length) })}
-                                        </Badge>
+                                    {v.lines > 0 && (
+                                        <Badge variant="info">{t(':n مكوّن', { n: String(v.lines) })}</Badge>
                                     )}
                                 </span>
                                 <span className="flex items-center gap-3">
@@ -233,9 +465,7 @@ export default function Composition({ productId, data, currency }: Props) {
                                         variant="ghost"
                                         size="icon"
                                         aria-label={t('حذف المقاس')}
-                                        onClick={() =>
-                                            router.delete(route('admin.products.variants.destroy', [productId, v.id]), reload)
-                                        }
+                                        onClick={v.remove}
                                     >
                                         <Trash2 className="size-4 text-[#b91c1c]" />
                                     </Button>
@@ -253,7 +483,7 @@ export default function Composition({ productId, data, currency }: Props) {
                     {t('ما يُخصم من المخزون عند البيع. ومنتجٌ له وصفة يُخصم مكوّناته لا هو نفسه.')}
                 </p>
 
-                {data.variants.length > 0 && (
+                {variantRows.length > 0 && (
                     <div className="mb-4 max-w-xs">
                         <Field label="وصفة">
                             <Select
@@ -261,12 +491,12 @@ export default function Composition({ productId, data, currency }: Props) {
                                 onChange={(e) => setScope(e.target.value)}
                                 options={[
                                     { value: '', label: t('المنتج (الأساس)') },
-                                    ...data.variants.map((v) => ({ value: String(v.id), label: v.name })),
+                                    ...variantRows.map((v) => ({ value: v.key, label: v.name })),
                                 ]}
                             />
                         </Field>
                         {/* الموروث يُعلَّم كي لا يظنّ من يعدّله أنه يعدّل هذا المقاس وحده */}
-                        {variant && block.items.some((i) => i.inherited) && (
+                        {scope !== '' && lineRows.some((i) => i.inherited) && (
                             <p className="mt-2 text-[12px] text-[#9a3412]">
                                 {t('هذه مكوّنات المنتج الأساس — أضف مكوّنًا هنا ليصبح لهذا المقاس وصفته الخاصة.')}
                             </p>
@@ -312,13 +542,13 @@ export default function Composition({ productId, data, currency }: Props) {
                     </div>
                 </div>
 
-                {block.items.length === 0 ? (
+                {lineRows.length === 0 ? (
                     <p className="py-6 text-center text-[13px] text-[#9ca3af]">{t('لا مكوّنات بعد')}</p>
                 ) : (
                     <ul className="space-y-2">
-                        {block.items.map((i) => (
+                        {lineRows.map((i) => (
                             <li
-                                key={i.id}
+                                key={i.key}
                                 className={cn(
                                     'flex flex-wrap items-center justify-between gap-3 rounded-[10px] border px-3 py-2',
                                     i.inherited ? 'border-dashed border-[#e5e7eb] bg-[#fafafa]' : 'border-[#eee]',
@@ -326,25 +556,23 @@ export default function Composition({ productId, data, currency }: Props) {
                             >
                                 <span className="flex items-center gap-2">
                                     <span className="font-medium text-[#111]">{i.component}</span>
-                                    {i.wastage_percent > 0 && (
+                                    {i.wastage > 0 && (
                                         <Badge variant="warning">
-                                            {t('فاقد')} {number(i.wastage_percent)}%
+                                            {t('فاقد')} {number(i.wastage)}%
                                         </Badge>
                                     )}
                                     {i.inherited && <Badge variant="neutral">{t('موروث')}</Badge>}
                                 </span>
                                 <span className="flex items-center gap-3 text-[13px]">
                                     <span className="tabular-nums text-[#4b4b4b]">×{number(i.quantity)}</span>
-                                    <span className="tabular-nums text-[#6b7280]">{m(i.line_cost)}</span>
+                                    <span className="tabular-nums text-[#6b7280]">{m(i.cost)}</span>
                                     {!i.inherited && (
                                         <Button
                                             type="button"
                                             variant="ghost"
                                             size="icon"
                                             aria-label={t('حذف المكوّن')}
-                                            onClick={() =>
-                                                router.delete(route('admin.products.recipe.destroy', [productId, i.id]), reload)
-                                            }
+                                            onClick={i.remove}
                                         >
                                             <Trash2 className="size-4 text-[#b91c1c]" />
                                         </Button>
@@ -356,8 +584,16 @@ export default function Composition({ productId, data, currency }: Props) {
                 )}
 
                 {/* الأرقام مشتقّةٌ في الخادم — هامشٌ يُحسب هنا وهامشٌ يُحسب في
-                    التقرير يفترقان عند أوّل تقريبٍ مختلف */}
-                {block.items.length > 0 && (
+                    التقرير يفترقان عند أوّل تقريبٍ مختلف. وفي المسوّدة لا خادم
+                    بعد، فتُعرض التكلفة وحدها لا الهامش. */}
+                {lineRows.length > 0 && (drafting ? (
+                    <dl className="mt-4 rounded-[12px] bg-[#fafafa] p-4 text-[13px]">
+                        <div className="flex justify-between">
+                            <dt className="text-[#6b7280]">{t('التكلفة التقديرية')}</dt>
+                            <dd className="font-semibold tabular-nums text-[#111]">{m(draftCost)}</dd>
+                        </div>
+                    </dl>
+                ) : (
                     <dl className="mt-4 grid grid-cols-1 gap-2 rounded-[12px] bg-[#fafafa] p-4 text-[13px] sm:grid-cols-3">
                         <div className="flex justify-between sm:block">
                             <dt className="text-[#6b7280]">{t('التكلفة التقديرية')}</dt>
@@ -384,106 +620,135 @@ export default function Composition({ productId, data, currency }: Props) {
                             </dd>
                         </div>
                     </dl>
-                )}
+                ))}
             </Card>
 
             {/* ------------------------------ الإضافات ------------------------------ */}
             <Card className="p-6">
-                <h3 className="mb-1 font-bold text-[#111]">{t('الإضافات المسموحة')}</h3>
-                <p className="mb-4 text-[13px] text-[#6b7280]">
-                    {t('بلا اختيار تظهر إضافات المتجر كلّها مع هذا المنتج — وهو السلوك السابق. واختيار بعضها يقصرها عليه.')}
-                </p>
-
-                {/* إنشاءُ إضافةٍ متاحٌ ولو لم تكن في المتجر واحدة — وهي الحال
-                    التي يبدأ منها كلّ متجرٍ جديد */}
-                {draft === null ? (
+                <div className="mb-1 flex items-center justify-between gap-3">
+                    <h3 className="font-bold text-[#111]">{t('الإضافات')}</h3>
+                    {/* إنشاءُ إضافةٍ متاحٌ ولو لم تكن في المتجر واحدة — وهي الحال
+                        التي يبدأ منها كلّ متجرٍ جديد */}
                     <Button
                         type="button"
                         variant="outline"
-                        size="sm"
-                        className="mb-4"
-                        onClick={() => {
-                            setDraft({ name: '', price: '' });
-                            setAddonError(null);
-                        }}
+                        size="icon"
+                        aria-label={t('إضافة جديدة')}
+                        title={t('إضافة جديدة')}
+                        onClick={openAddonDraft}
                     >
                         <Plus />
-                        {t('إضافة جديدة')}
                     </Button>
-                ) : (
-                    <div className="mb-4 grid grid-cols-1 gap-3 rounded-[12px] bg-[#fafafa] p-4 sm:grid-cols-3">
-                        <Field label="الاسم" required error={addonError ?? undefined}>
-                            <Input
-                                autoFocus
-                                value={draft.name}
-                                placeholder={t('دبّ')}
-                                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                                onKeyDown={(e) => e.key === 'Escape' && setDraft(null)}
-                            />
-                        </Field>
-                        <Field label="السعر" required>
-                            <Input
-                                type="number"
-                                step="0.001"
-                                min="0"
-                                dir="ltr"
-                                value={draft.price}
-                                onChange={(e) => setDraft({ ...draft, price: e.target.value })}
-                            />
-                        </Field>
-                        <div className="flex items-end gap-2">
-                            <Button type="button" className="flex-1" loading={savingAddon} onClick={() => void createAddon()}>
-                                <Check />
-                                {t('حفظ')}
-                            </Button>
-                            <Button type="button" variant="outline" size="icon" aria-label={t('إلغاء')} onClick={() => setDraft(null)}>
-                                <X />
-                            </Button>
+                </div>
+                <p className="mb-4 text-[13px] text-[#6b7280]">
+                    {t('ما يُعرض على الكاشير مع هذا المنتج. والإضافة الخاصّة لا تظهر مع أي منتجٍ آخر.')}
+                </p>
+
+                {addonDraft !== null && (
+                    <div className="mb-4 space-y-3 rounded-[12px] bg-[#fafafa] p-4">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <Field label="الاسم" required error={addonError ?? undefined}>
+                                <Input
+                                    autoFocus
+                                    value={addonDraft.name}
+                                    placeholder={t('شريط ذهبي')}
+                                    onChange={(e) => setAddonDraft({ ...addonDraft, name: e.target.value })}
+                                    onKeyDown={(e) => e.key === 'Escape' && setAddonDraft(null)}
+                                />
+                            </Field>
+                            <Field label="السعر" required>
+                                <Input
+                                    type="number"
+                                    step="0.001"
+                                    min="0"
+                                    dir="ltr"
+                                    value={addonDraft.price}
+                                    onChange={(e) => setAddonDraft({ ...addonDraft, price: e.target.value })}
+                                />
+                            </Field>
+                            <div className="flex items-end gap-2">
+                                <Button type="button" className="flex-1" loading={savingAddon} onClick={() => void createAddon()}>
+                                    <Check />
+                                    {t('حفظ')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    aria-label={t('إلغاء')}
+                                    onClick={() => setAddonDraft(null)}
+                                >
+                                    <X />
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* المدى يُسأل عنه صراحةً: الافتراضيّ «خاصّة» لأنّ من
+                            يكتبها وهو داخل منتجٍ بعينه يقصده هو */}
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                            {[
+                                { on: true, title: 'خاصّة بهذا المنتج', hint: 'لا تظهر مع أي منتجٍ آخر' },
+                                { on: false, title: 'لكلّ المنتجات', hint: 'إضافةُ متجرٍ تُعرض مع الجميع' },
+                            ].map((option) => (
+                                <button
+                                    key={String(option.on)}
+                                    type="button"
+                                    onClick={() => setAddonDraft({ ...addonDraft, private: option.on })}
+                                    className={cn(
+                                        'flex-1 rounded-[10px] border p-3 text-start transition-colors',
+                                        addonDraft.private === option.on
+                                            ? 'border-[#111] bg-[#111] text-white'
+                                            : 'border-[#e8e8e8] bg-white text-[#4b4b4b] hover:bg-[#f7f7f5]',
+                                    )}
+                                >
+                                    <span className="block text-[13px] font-semibold">{t(option.title)}</span>
+                                    <span className="mt-0.5 block text-[12px] opacity-80">{t(option.hint)}</span>
+                                </button>
+                            ))}
                         </div>
                     </div>
                 )}
 
-                {addons.length === 0 ? (
-                    <p className="py-6 text-center text-[13px] text-[#9ca3af]">{t('لا إضافات في المتجر بعد')}</p>
+                {addonRows.length === 0 ? (
+                    <p className="py-6 text-center text-[13px] text-[#9ca3af]">{t('لا إضافات بعد')}</p>
                 ) : (
                     <>
                         <div className="mb-4 flex flex-wrap gap-2">
-                            {addons.map((a) => {
-                                const on = addonIds.includes(a.value);
-
-                                return (
-                                    <button
-                                        key={a.value}
-                                        type="button"
-                                        onClick={() =>
-                                            setAddonIds(on ? addonIds.filter((i) => i !== a.value) : [...addonIds, a.value])
-                                        }
-                                        className={cn(
-                                            'rounded-[10px] border px-3 py-2 text-[13px] transition-colors',
-                                            on
-                                                ? 'border-[#111] bg-[#111] text-white'
-                                                : 'border-[#e8e8e8] text-[#4b4b4b] hover:bg-[#f7f7f5]',
-                                        )}
-                                    >
-                                        {a.label}
-                                        <span className="ms-2 text-[12px] opacity-70">{m(a.price)}</span>
-                                        {a.inventory_product_id && (
-                                            <span className="ms-1 text-[12px] opacity-70">·{t('مخزون')}</span>
-                                        )}
-                                    </button>
-                                );
-                            })}
+                            {addonRows.map((a) => (
+                                <button
+                                    key={a.key}
+                                    type="button"
+                                    onClick={a.toggle}
+                                    className={cn(
+                                        'rounded-[10px] border px-3 py-2 text-[13px] transition-colors',
+                                        a.on
+                                            ? 'border-[#111] bg-[#111] text-white'
+                                            : 'border-[#e8e8e8] text-[#4b4b4b] hover:bg-[#f7f7f5]',
+                                    )}
+                                >
+                                    {a.label}
+                                    <span className="ms-2 text-[12px] opacity-70">{m(a.price)}</span>
+                                    {a.private && <span className="ms-1 text-[12px] opacity-70">·{t('خاصّة')}</span>}
+                                    {a.stock && <span className="ms-1 text-[12px] opacity-70">·{t('مخزون')}</span>}
+                                </button>
+                            ))}
                         </div>
 
-                        <Button
-                            type="button"
-                            onClick={() =>
-                                router.put(route('admin.products.addons.sync', productId), { addon_ids: addonIds }, reload)
-                            }
-                        >
-                            <Check />
-                            {t('حفظ الإضافات')}
-                        </Button>
+                        {drafting ? (
+                            <p className="text-[12px] text-[#9ca3af]">
+                                {t('تُحفظ مع المنتج. وبلا اختيارٍ تظهر إضافات المتجر العامّة كلّها معه.')}
+                            </p>
+                        ) : (
+                            <Button
+                                type="button"
+                                onClick={() =>
+                                    router.put(route('admin.products.addons.sync', productId), { addon_ids: addonIds }, reload)
+                                }
+                            >
+                                <Check />
+                                {t('حفظ الإضافات')}
+                            </Button>
+                        )}
                     </>
                 )}
             </Card>

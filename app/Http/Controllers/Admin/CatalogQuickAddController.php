@@ -67,18 +67,29 @@ class CatalogQuickAddController extends Controller
      *
      * تُنشأ فعّالةً: من يضيفها وهو يجهّز منتجًا يريدها الآن، ومطالبتُه
      * بتفعيلها في شاشةٍ أخرى مقبضٌ زائد بلا فائدة.
+     *
+     * و`product_id` يقرّر مداها: مذكورًا فهي خاصّةٌ بذلك المنتج لا تُعرض مع
+     * سواه، وغائبًا فهي إضافةُ متجرٍ كما كانت. والتفرّد يتبع المدى نفسه —
+     * «تغليف» لباقة الورد لا يمنع «تغليف» لعلبة الشوكولاتة.
      */
     public function storeAddon(Request $request): JsonResponse
     {
         $bid = $this->bid();
 
+        $owner = $request->input('product_id');
+        $owner = ($owner === null || $owner === '') ? null : (int) $owner;
+
         $data = $request->validate([
             'name' => [
                 'required', 'string', 'max:100',
-                Rule::unique('addons', 'name')->where('business_id', $bid),
+                Rule::unique('addons', 'name')->where('business_id', $bid)->where('product_id', $owner),
             ],
             'name_en' => ['nullable', 'string', 'max:100'],
             'price' => ['required', 'numeric', 'min:0'],
+            'product_id' => [
+                'nullable',
+                Rule::exists('products', 'id')->where('business_id', $bid)->whereNull('deleted_at'),
+            ],
             // البضاعة من هذا النشاط أو لا شيء — والقاعدة في الخادم لا في الشاشة
             'inventory_product_id' => [
                 'nullable',
@@ -88,7 +99,7 @@ class CatalogQuickAddController extends Controller
             'name.unique' => __('توجد إضافةٌ بهذا الاسم.'),
         ]);
 
-        $addon = Addon::create($data + ['business_id' => $bid, 'active' => true]);
+        $addon = Addon::create($data + ['business_id' => $bid, 'active' => true, 'product_id' => $owner]);
 
         \App\Support\Activity::log('created', 'أضاف إضافة «'.$addon->name.'»', ['subject_id' => $addon->id]);
 
@@ -99,6 +110,7 @@ class CatalogQuickAddController extends Controller
                 'label' => $addon->name,
                 'price' => (float) $addon->price,
                 'active' => true,
+                'private' => $addon->product_id !== null,
                 'inventory_product_id' => $addon->inventory_product_id,
             ],
         ]);

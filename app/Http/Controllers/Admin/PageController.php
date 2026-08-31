@@ -19,8 +19,13 @@ class PageController extends Controller
 
     public function productsCreate(): Response
     {
+        // التركيب يُملأ مع المنتج: القوائم (المكوّنات والإضافات) تُرسل فارغةَ
+        // الصفوف لا فارغةَ الخيارات — فمن يكتب باقةً يختار مكوّناتها الآن
         return Inertia::render('Admin/Products/Create', [
             'categories' => Demo::categories(),
+            'composition' => \App\Http\Controllers\Admin\ProductCompositionController::blank(
+                auth()->user()->business_id ?? Demo::bid(),
+            ),
         ]);
     }
 
@@ -57,8 +62,6 @@ class PageController extends Controller
         $product = Demo::product($id);
         abort_if(empty($product), 404);
 
-        // التركيب لا يُعرض إلا لمنتجٍ محفوظ: مقاسٌ ووصفةٌ لمنتجٍ لم يُنشأ بعد
-        // لا موضع لهما — ولا معرّف يُعلَّقان به
         $model = \App\Models\Product::where('business_id', auth()->user()->business_id ?? Demo::bid())->find($id);
 
         return Inertia::render('Admin/Products/Edit', [

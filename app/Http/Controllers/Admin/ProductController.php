@@ -187,7 +187,13 @@ class ProductController extends Controller
             'tax' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'image' => ['nullable', 'image', 'max:4096'],
-        ]);
+            // التركيب يُملأ مع المنتج لا بعده — انظر ProductCompositionController::draftRules
+        ] + ProductCompositionController::draftRules($this->bid()));
+
+        // مسوّدةُ التركيب ليست عمودًا في products؛ تُنحّى قبل الإنشاء وتُكتب بعده
+        $composition = $data['composition'] ?? [];
+        unset($data['composition']);
+
         $data['business_id'] = $this->bid();
         \App\Support\PlanLimits::enforce(auth()->user()->business, 'products');
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL؛ الفراغ يُحوَّل إلى null فيفشل)
@@ -208,6 +214,12 @@ class ProductController extends Controller
         // إسناد الكمية الافتتاحية إلى الفرع الحالي/الأول ليبقى مجموع الفروع = كمية المنتج
         \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) ($data['quantity'] ?? 0));
         \App\Support\Activity::log('created', 'أضاف منتجًا: ' . $data['name']);
+
+        // المقاسات والوصفة والإضافات التي كُتبت في نفس الشاشة — بعد أن صار
+        // للمنتج معرّفٌ تُعلَّق به
+        if ($composition) {
+            ProductCompositionController::applyDraft($product, $composition);
+        }
 
         /*
          * الإضافة تنتهي فيُخرَج منها، خلافًا للتعديل الذي يبقى في مكانه.

@@ -198,7 +198,10 @@ class ProductCompositionController extends Controller
 
         $data = $request->validate([
             'addon_ids' => ['present', 'array'],
-            'addon_ids.*' => [Rule::exists('addons', 'id')->where('business_id', $bid)],
+            // إضافةُ متجرٍ أو إضافةُ هذا المنتج — لا إضافةَ منتجٍ آخر ولو كانت
+            // في المتجر نفسه؛ صاحبُها هو من يقرّر أين تُعرض
+            'addon_ids.*' => [Rule::exists('addons', 'id')->where('business_id', $bid)
+                ->where(fn ($q) => $q->whereNull('product_id')->orWhere('product_id', $product->id))],
         ]);
 
         DB::transaction(function () use ($product, $bid, $data) {
@@ -274,26 +277,194 @@ class ProductCompositionController extends Controller
                 'recipe' => $recipeFor($v),
             ])->all(),
             'recipe' => $recipeFor(null),
-            'components' => Product::where('business_id', $product->business_id)
-                ->where('id', '!=', $product->id)
-                ->whereNotIn('id', RecipeItem::where('business_id', $product->business_id)->distinct()->pluck('product_id'))
-                ->orderBy('name')->get(['id', 'name', 'sku', 'cost', 'quantity'])
-                ->map(fn ($p) => [
-                    'value' => $p->id,
-                    'label' => $p->sku ? $p->name.' — '.$p->sku : $p->name,
-                    'cost' => (float) $p->cost,
-                    'quantity' => (int) $p->quantity,
-                ])->all(),
-            'addons' => Addon::where('business_id', $product->business_id)->orderBy('id')
-                ->get()->map(fn ($a) => [
-                    'value' => $a->id,
-                    'label' => $a->name,
-                    'price' => (float) $a->price,
-                    'active' => (bool) $a->active,
-                    'inventory_product_id' => $a->inventory_product_id,
-                ])->all(),
+            'components' => self::componentOptions((int) $product->business_id, $product->id),
+            'addons' => self::addonOptions((int) $product->business_id, $product->id),
             'addon_ids' => DB::table('product_addons')->where('product_id', $product->id)
                 ->orderBy('sort_order')->pluck('addon_id')->map(fn ($i) => (int) $i)->all(),
         ];
+    }
+
+    /**
+     * ما تعرضه الأقسام نفسها لمنتجٍ لم يُنشأ بعد.
+     *
+     * لأنّ التركيب صار يُملأ وهو يُكتب المنتج لا بعد حفظه: من يُدخل باقةً
+     * يُدخل مقاساتها ومكوّناتها في جلسةٍ واحدة، ومطالبتُه بالحفظ ثم العودة
+     * إلى الشاشة نفسها خطوةٌ لا تفيد شيئًا.
+     */
+    public static function blank(int $businessId): array
+    {
+        $empty = ['items' => [], 'cost' => 0.0, 'price' => 0.0, 'margin' => 0.0, 'margin_pct' => null];
+
+        return [
+            'variants' => [],
+            'recipe' => $empty,
+            'components' => self::componentOptions($businessId, null),
+            'addons' => self::addonOptions($businessId, null),
+            'addon_ids' => [],
+        ];
+    }
+
+    /**
+     * الأصناف الصالحة لأن تكون مكوّنات — بلا باقاتٍ لها وصفتها.
+     */
+    private static function componentOptions(int $businessId, ?int $exclude): array
+    {
+        return Product::where('business_id', $businessId)
+            ->when($exclude, fn ($q) => $q->where('id', '!=', $exclude))
+            ->whereNotIn('id', RecipeItem::where('business_id', $businessId)->distinct()->pluck('product_id'))
+            ->orderBy('name')->get(['id', 'name', 'sku', 'cost', 'quantity'])
+            ->map(fn ($p) => [
+                'value' => $p->id,
+                'label' => $p->sku ? $p->name.' — '.$p->sku : $p->name,
+                'cost' => (float) $p->cost,
+                'quantity' => (int) $p->quantity,
+            ])->all();
+    }
+
+    /**
+     * إضافات المتجر، وإضافات هذا المنتج وحده — لا إضافات جيرانه.
+     */
+    private static function addonOptions(int $businessId, ?int $productId): array
+    {
+        return Addon::where('business_id', $businessId)
+            ->where(fn ($q) => $q->whereNull('product_id')->when($productId, fn ($w) => $w->orWhere('product_id', $productId)))
+            ->orderBy('id')->get()->map(fn (Addon $a) => [
+                'value' => $a->id,
+                'label' => $a->name,
+                'price' => (float) $a->price,
+                'active' => (bool) $a->active,
+                'private' => $a->product_id !== null,
+                'inventory_product_id' => $a->inventory_product_id,
+            ])->all();
+    }
+
+    /**
+     * قواعد التركيب المرسَل مع نموذج الإنشاء.
+     *
+     * الأسماء تُرسل كمسوّدة لا كصفوف: لا معرّف للمنتج بعد، فالمقاس يُشار
+     * إليه برقم موضعه في القائمة (`variant_index`) ويُترجَم إلى معرّفه
+     * الحقيقيّ بعد الحفظ.
+     *
+     * @return array<string, mixed>
+     */
+    public static function draftRules(int $businessId): array
+    {
+        return [
+            'composition' => ['nullable', 'array'],
+            'composition.variants' => ['nullable', 'array', 'max:50'],
+            'composition.variants.*.name' => ['required', 'string', 'max:100'],
+            'composition.variants.*.name_en' => ['nullable', 'string', 'max:100'],
+            'composition.variants.*.sku' => ['nullable', 'string', 'max:100'],
+            'composition.variants.*.price' => ['required', 'numeric', 'min:0'],
+            'composition.recipe' => ['nullable', 'array', 'max:200'],
+            'composition.recipe.*.component_product_id' => ['required',
+                Rule::exists('products', 'id')->where('business_id', $businessId)->whereNull('deleted_at')],
+            'composition.recipe.*.quantity' => ['required', 'numeric', 'gt:0'],
+            'composition.recipe.*.wastage_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'composition.recipe.*.variant_index' => ['nullable', 'integer', 'min:0'],
+            'composition.addon_ids' => ['nullable', 'array'],
+            'composition.addon_ids.*' => [Rule::exists('addons', 'id')->where('business_id', $businessId)->whereNull('product_id')],
+            'composition.new_addons' => ['nullable', 'array', 'max:50'],
+            'composition.new_addons.*.name' => ['required', 'string', 'max:100'],
+            'composition.new_addons.*.price' => ['required', 'numeric', 'min:0'],
+            'composition.new_addons.*.private' => ['nullable', 'boolean'],
+        ];
+    }
+
+    /**
+     * يكتب مسوّدة التركيب على منتجٍ حُفظ لتوّه.
+     *
+     * وما لا يصحّ يُسقَط بصمت لا يُسقِط الحفظ: مكوّنٌ صار له وصفةٌ بين
+     * لحظة فتح الشاشة ولحظة الحفظ لا يستحقّ أن يضيع معه المنتج كلّه —
+     * والوصفة تُراجَع في شاشة التعديل على أي حال.
+     */
+    public static function applyDraft(Product $product, array $composition): void
+    {
+        $bid = (int) $product->business_id;
+
+        DB::transaction(function () use ($product, $bid, $composition) {
+            $variantIds = [];
+
+            foreach (array_values($composition['variants'] ?? []) as $i => $v) {
+                $variantIds[$i] = ProductVariant::create([
+                    'business_id' => $bid,
+                    'product_id' => $product->id,
+                    'name' => $v['name'],
+                    'name_en' => $v['name_en'] ?? null,
+                    'sku' => $v['sku'] ?: null,
+                    'price' => $v['price'],
+                    'active' => true,
+                    'sort_order' => $i,
+                ])->id;
+            }
+
+            // الأصناف التي لها وصفةٌ خاصّة لا تصلح مكوّنات — نفس قاعدة storeRecipeItem
+            $withRecipes = RecipeItem::where('business_id', $bid)->distinct()->pluck('product_id')
+                ->map(fn ($i) => (int) $i)->all();
+
+            $seen = [];
+            $order = 0;
+
+            foreach (array_values($composition['recipe'] ?? []) as $r) {
+                $componentId = (int) $r['component_product_id'];
+                $index = $r['variant_index'] ?? null;
+                $variantId = $index === null ? null : ($variantIds[(int) $index] ?? null);
+
+                if ($componentId === (int) $product->id || in_array($componentId, $withRecipes, true)) {
+                    continue;
+                }
+
+                // الصفّ المكرّر يُجمع لا يُضاف — نفس قاعدة الشاشة المحفوظة
+                $key = ($variantId ?? 0).':'.$componentId;
+                if (isset($seen[$key])) {
+                    $seen[$key]->update(['quantity' => (float) $seen[$key]->quantity + (float) $r['quantity']]);
+
+                    continue;
+                }
+
+                $seen[$key] = RecipeItem::create([
+                    'business_id' => $bid,
+                    'product_id' => $product->id,
+                    'variant_id' => $variantId,
+                    'component_product_id' => $componentId,
+                    'quantity' => $r['quantity'],
+                    'wastage_percent' => $r['wastage_percent'] ?? 0,
+                    'sort_order' => $order++,
+                ]);
+            }
+
+            $ids = array_map('intval', $composition['addon_ids'] ?? []);
+
+            foreach ($composition['new_addons'] ?? [] as $a) {
+                $private = filter_var($a['private'] ?? true, FILTER_VALIDATE_BOOLEAN);
+
+                // إضافةُ متجرٍ بالاسم نفسه تُعاد لا تُكرَّر: اسمان متطابقان في
+                // قائمة الكاشير يجعلانه يختار عشوائيًا
+                $addon = $private
+                    ? Addon::create([
+                        'business_id' => $bid, 'product_id' => $product->id,
+                        'name' => $a['name'], 'price' => $a['price'], 'active' => true,
+                    ])
+                    : Addon::firstOrCreate(
+                        ['business_id' => $bid, 'product_id' => null, 'name' => $a['name']],
+                        ['price' => $a['price'], 'active' => true],
+                    );
+
+                $ids[] = (int) $addon->id;
+            }
+
+            $ids = array_values(array_unique($ids));
+
+            foreach ($ids as $i => $addonId) {
+                DB::table('product_addons')->insert([
+                    'business_id' => $bid,
+                    'product_id' => $product->id,
+                    'addon_id' => $addonId,
+                    'sort_order' => $i,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        });
     }
 }

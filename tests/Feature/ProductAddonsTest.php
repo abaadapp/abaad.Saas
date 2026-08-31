@@ -333,4 +333,151 @@ class ProductAddonsTest extends TestCase
             ->where('order.items.0.addons.0.name', 'شوكولاتة')
             ->where('order.items.0.addons.0.qty', 1));
     }
+
+    /* ==================== الإضافة الخاصّة بمنتجٍ واحد ==================== */
+
+    /**
+     * «شريط ذهبي» صُنع لباقة الورد فلا يُعرض مع كيس السماد.
+     *
+     * والربط وحده لم يكن يكفي: غياب الربط عن كيس السماد معناه «كلّ إضافات
+     * المتجر»، فكلّ إضافةٍ جديدةٍ كانت تنهال على كلّ منتجٍ لم يُربط له شيء —
+     * وهم أكثر المنتجات.
+     */
+    public function test_a_private_addon_is_offered_only_with_its_own_product(): void
+    {
+        $ribbon = Addon::create([
+            'business_id' => $this->business->id, 'product_id' => $this->bouquet->id,
+            'name' => 'شريط ذهبي', 'price' => 0.5, 'active' => true,
+        ]);
+
+        $fertiliser = Product::create([
+            'business_id' => $this->business->id, 'name' => 'كيس سماد',
+            'price' => 2, 'cost' => 1, 'quantity' => 20, 'active' => true,
+        ]);
+
+        $this->assertTrue(ProductAddons::for($this->bouquet)->contains('id', $ribbon->id));
+        $this->assertFalse(ProductAddons::for($fertiliser)->contains('id', $ribbon->id));
+
+        // وإضافةُ المتجر تبقى للجميع كما كانت
+        $this->assertTrue(ProductAddons::for($fertiliser)->contains('id', $this->wrapService->id));
+    }
+
+    /** ولا تُباع مع سواه ولو حمل الطلب معرّفها */
+    public function test_a_private_addon_is_refused_on_another_product(): void
+    {
+        $ribbon = Addon::create([
+            'business_id' => $this->business->id, 'product_id' => $this->bouquet->id,
+            'name' => 'شريط ذهبي', 'price' => 0.5, 'active' => true,
+        ]);
+
+        $fertiliser = Product::create([
+            'business_id' => $this->business->id, 'name' => 'كيس سماد',
+            'price' => 2, 'cost' => 1, 'quantity' => 20, 'active' => true,
+        ]);
+
+        $this->sell([[
+            'id' => $fertiliser->id, 'name' => 'كيس سماد', 'qty' => 1,
+            'addons' => [['addon_id' => $ribbon->id, 'qty' => 1]],
+        ]], 422)->assertJsonValidationErrors('items.0.addons');
+
+        // ومع صاحبها تمرّ
+        $this->sell([[
+            'id' => $this->bouquet->id, 'name' => 'بوكيه', 'qty' => 1,
+            'addons' => [['addon_id' => $ribbon->id, 'qty' => 1]],
+        ]]);
+    }
+
+    /** وربطُها بمنتجٍ آخر يُردّ في بابه لا في نقطة البيع وحدها */
+    public function test_another_products_addon_cannot_be_linked_here(): void
+    {
+        $chocolateBox = Product::create([
+            'business_id' => $this->business->id, 'name' => 'علبة شوكولاتة',
+            'price' => 6, 'cost' => 3, 'quantity' => 10, 'active' => true,
+        ]);
+
+        $ribbon = Addon::create([
+            'business_id' => $this->business->id, 'product_id' => $chocolateBox->id,
+            'name' => 'شريط ذهبي', 'price' => 0.5, 'active' => true,
+        ]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.products.addons.sync', $this->bouquet->id), ['addon_ids' => [$ribbon->id]])
+            ->assertSessionHasErrors('addon_ids.0');
+
+        $this->assertDatabaseCount('product_addons', 0);
+    }
+
+    /** والشاشة لا تعرض على منتجٍ إضافاتِ جيرانه أصلًا */
+    public function test_the_product_screen_hides_another_products_addon(): void
+    {
+        $chocolateBox = Product::create([
+            'business_id' => $this->business->id, 'name' => 'علبة شوكولاتة',
+            'price' => 6, 'cost' => 3, 'quantity' => 10, 'active' => true,
+        ]);
+
+        Addon::create([
+            'business_id' => $this->business->id, 'product_id' => $chocolateBox->id,
+            'name' => 'شريط ذهبي', 'price' => 0.5, 'active' => true,
+        ]);
+
+        $mine = Addon::create([
+            'business_id' => $this->business->id, 'product_id' => $this->bouquet->id,
+            'name' => 'بطاقة معايدة', 'price' => 0.3, 'active' => true,
+        ]);
+
+        $names = collect(\App\Http\Controllers\Admin\ProductCompositionController::payload($this->bouquet)['addons'])
+            ->pluck('label')->all();
+
+        $this->assertContains('بطاقة معايدة', $names);
+        $this->assertContains('تغليف فاخر', $names);
+        $this->assertNotContains('شريط ذهبي', $names);
+
+        $this->assertTrue(
+            collect(\App\Http\Controllers\Admin\ProductCompositionController::payload($this->bouquet)['addons'])
+                ->firstWhere('value', $mine->id)['private'],
+        );
+    }
+
+    /** وإضافةٌ تُنشأ من شاشة المنتج تُولد خاصّةً به إن قيل ذلك */
+    public function test_the_quick_form_can_create_a_private_addon(): void
+    {
+        $this->actingAs($this->owner)->postJson(route('admin.products.addons.store'), [
+            'name' => 'شريط ذهبي', 'price' => 0.5, 'product_id' => $this->bouquet->id,
+        ])->assertOk()->assertJsonPath('addon.private', true);
+
+        $this->assertSame(
+            $this->bouquet->id,
+            (int) Addon::where('name', 'شريط ذهبي')->value('product_id'),
+        );
+    }
+
+    /** واسمٌ واحد يجوز لمنتجين: «تغليف» لكلٍّ تغليفُه وسعرُه */
+    public function test_the_same_private_name_is_free_on_another_product(): void
+    {
+        $chocolateBox = Product::create([
+            'business_id' => $this->business->id, 'name' => 'علبة شوكولاتة',
+            'price' => 6, 'cost' => 3, 'quantity' => 10, 'active' => true,
+        ]);
+
+        foreach ([$this->bouquet->id, $chocolateBox->id] as $id) {
+            $this->actingAs($this->owner)->postJson(route('admin.products.addons.store'), [
+                'name' => 'تغليف', 'price' => 1, 'product_id' => $id,
+            ])->assertOk();
+        }
+
+        $this->assertSame(2, Addon::where('name', 'تغليف')->count());
+    }
+
+    /** ولا تُنسب إضافةٌ إلى منتج متجرٍ آخر */
+    public function test_an_addon_cannot_be_owned_by_another_shops_product(): void
+    {
+        $other = Business::create(['name' => 'محل آخر', 'email' => 'own@a.local', 'status' => 'نشط']);
+        $theirs = Product::create([
+            'business_id' => $other->id, 'name' => 'باقتهم', 'price' => 9, 'cost' => 3, 'quantity' => 5,
+        ]);
+
+        $this->actingAs($this->owner)->postJson(route('admin.products.addons.store'), [
+            'name' => 'شريط', 'price' => 1, 'product_id' => $theirs->id,
+        ])->assertStatus(422)->assertJsonValidationErrors('product_id');
+    }
 }

@@ -3378,5 +3378,15 @@
     "الكمية المعدومة": "Quantity lost",
     "ما وجدته على الرفّ — يصير هو الرصيد": "What you found on the shelf — becomes the balance",
     "ما تلف — يُطرح من الرصيد ولا يحلّ محلّه": "What perished — subtracted from the balance, not substituted for it",
-    "خصم الكمية المعدومة": "Subtract the loss"
+    "خصم الكمية المعدومة": "Subtract the loss",
+    "ما يُعرض على الكاشير مع هذا المنتج. والإضافة الخاصّة لا تظهر مع أي منتجٍ آخر.": "What the cashier sees with this product. A private add-on never appears with any other.",
+    "شريط ذهبي": "Gold ribbon",
+    "لا إضافات بعد": "No add-ons yet",
+    "خاصّة": "private",
+    "تُحفظ مع المنتج. وبلا اختيارٍ تظهر إضافات المتجر العامّة كلّها معه.": "Saved with the product. With none selected, all shop-wide add-ons appear with it.",
+    "أدخل الكمية المعدودة فعليًا على الرفّ — تصير هي الرصيد": "Enter the quantity actually counted on the shelf — it becomes the balance",
+    "خاصّة بهذا المنتج": "Private to this product",
+    "لا تظهر مع أي منتجٍ آخر": "Never shown with any other product",
+    "لكلّ المنتجات": "For all products",
+    "إضافةُ متجرٍ تُعرض مع الجميع": "A shop add-on shown with everything"
 }

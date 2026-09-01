@@ -3680,5 +3680,13 @@
     "ما بيع من كل منتج وإيراده وربحه في الفترة المختارة": "What sold of each product, its revenue and profit in the selected period",
     "أوامر الشراء وقيمتها وحالة استلامها لكل مورّد": "Purchase orders, their value and receipt status per supplier",
     "تحت الحدّ فقط": "Below minimum only",
-    "حالة المطابقة": "Matching status"
+    "حالة المطابقة": "Matching status",
+    "عمليات الجرد": "Stocktakes",
+    "أصناف اختلفت": "Items with a difference",
+    "قيمة النقص": "Shortage value",
+    "صافي الفرق": "Net difference",
+    "النتيجة": "Result",
+    "لا عمليات جرد في هذه الفترة": "No stocktakes in this period",
+    "ما عُدّ وأين فارق الدفترُ الواقع: النقص والزيادة وقيمتهما لكل فرع": "What was counted and where the book parted from reality: shortages, surpluses and their value per branch",
+    "ما عُدّ وأين فارق الدفترُ الواقع: النقص والزيادة وقيمتهما لكل فرع.": "What was counted and where the book parted from reality: shortages, surpluses and their value per branch."
 }

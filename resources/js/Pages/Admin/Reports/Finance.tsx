@@ -1,6 +1,5 @@
 import { usePage } from '@inertiajs/react';
 import ReportScreen, { type Filter, type Option } from '@/Components/ReportScreen';
-import { type ReportTab } from '@/Components/ReportTabs';
 import { type ReportRange } from '@/Components/RangeTabs';
 import { Badge } from '@/Components/ui/badge';
 import { Card } from '@/Components/ui/card';
@@ -35,7 +34,6 @@ interface Props {
     truncated: { shown: number; total: number } | null;
     range: ReportRange;
     rangeLabel: string;
-    tabs: ReportTab[];
 }
 
 /**
@@ -45,7 +43,7 @@ interface Props {
  * مبدّل فترة. فمن أراد أن يعرف كم قُبض هذا الشهر لم يجد الرقم أصلًا.
  */
 export default function ReportsFinance() {
-    const { rows, summary, filters, options, truncated, range, rangeLabel, tabs, context } =
+    const { rows, summary, filters, options, truncated, range, rangeLabel, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -66,8 +64,6 @@ export default function ReportsFinance() {
         <ReportScreen
             title="الحركة المالية"
             subtitle="المقبوضات والمدفوعات وصافي الحركة في الفترة المختارة"
-            reportKey="finance"
-            tabs={tabs}
             range={range}
             rangeLabel={rangeLabel}
             filters={filters}

@@ -727,6 +727,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/reports/suppliers', [ReportPageController::class, 'suppliers'])->name('reports.suppliers');
     Route::get('/reports/activity', [ReportPageController::class, 'activity'])->name('reports.activity');
     Route::get('/reports/marketing', [ReportPageController::class, 'marketing'])->name('reports.marketing');
+    // عمليات جرد المخزون — أين فارق الدفترُ الواقع، وبكم
+    Route::get('/reports/stocktake', [ReportPageController::class, 'stocktake'])->name('reports.stocktake');
     // تغذية: صفحةٌ تُترك مفتوحة لا يجوز أن تتجمّد على أرقام الصباح
     Route::get('/reports/feed', [ReportFeedController::class, 'reports'])->name('reports.feed');
     // والتصدير يتبع الفترة المعروضة — ملفٌّ يحمل غير ما على الشاشة يُقرأ خطأً

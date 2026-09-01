@@ -11,6 +11,7 @@ use App\Models\Expense;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Models\StockAdjustment;
 use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\User;
@@ -483,6 +484,91 @@ class ReportData
                     ->get(['id', 'name'])->map(fn ($u) => ['value' => (string) $u->id, 'label' => $u->name])->all(),
                 'actions' => $byAction->pluck('action')->filter()->values()
                     ->map(fn ($a) => ['value' => $a, 'label' => $a])->all(),
+            ],
+        ]);
+    }
+
+    /* ======================== عمليات جرد المخزون ======================== */
+
+    /**
+     * الجرد — ما عُدّ، وأين فارق الدفترُ الواقع.
+     *
+     * والجردُ لا يُخزَّن عمليةً بذاتها: كلُّ تطبيقٍ يكتب صفَّ تعديلٍ لكلّ
+     * صنفٍ اختلف فيه المعدود عن الدفتري، وتحمل الصفوف كلُّها لحظةً واحدة
+     * وفرعًا واحدًا. فالعمليةُ تُستخرج منهما معًا — ولا تُخترع بمعرّفٍ لا
+     * وجود له في القاعدة.
+     *
+     * وأسبابُ الجرد ثلاثة يفرّقها النظام عمدًا (انظر StockAdjustment):
+     * «جرد» زيادةٌ كشفها العدّ، و«فاقد جرد» نقصٌ كشفه، و«تلف» إقرارٌ من
+     * التاجر بأنّ بضاعةً عُدمت. وطمسُها في واحدٍ يُفقد التقرير التمييز
+     * بين خطأ دفترٍ وخسارةٍ حقيقية.
+     */
+    public static function stocktake(int $bid, array $filters): array
+    {
+        $start = self::start($filters['range'] ?? 'month');
+        $branch = self::pick($filters, 'branch_id');
+        $reason = self::pick($filters, 'reason');
+
+        $reasons = [
+            StockAdjustment::STOCKTAKE_GAIN,
+            StockAdjustment::STOCKTAKE_LOSS,
+        ];
+
+        $base = StockAdjustment::where('business_id', $bid)
+            ->whereIn('reason', $reasons)
+            ->when($start, fn ($q) => $q->where('adjusted_at', '>=', $start))
+            ->when($branch, fn ($q) => $q->where('branch_id', $branch))
+            ->when($reason, fn ($q) => $q->where('reason', $reason));
+
+        $count = (clone $base)->count();
+
+        /*
+         * القيمة تُحسب بالتكلفة المنسوخة لحظة الجرد لا بتكلفة اليوم: تكلفة
+         * الورد متوسّطٌ يتحرّك مع كل شحنة، وقراءتها بعد شهرٍ تُعطي رقمًا لم يقع.
+         */
+        $shortage = (float) (clone $base)->where('quantity_delta', '<', 0)
+            ->selectRaw('COALESCE(SUM(-quantity_delta * cost_at_time), 0) as v')->value('v');
+        $surplus = (float) (clone $base)->where('quantity_delta', '>', 0)
+            ->selectRaw('COALESCE(SUM(quantity_delta * cost_at_time), 0) as v')->value('v');
+
+        /*
+         * العملية = فرعٌ ولحظة: صفوفُ التطبيق الواحد تحملهما معًا.
+         *
+         * والدمجُ في PHP لا في SQL: ربطُ عمودين بـ`||` يختلف بين SQLite
+         * وPostgreSQL في التحويل الضمنيّ، فيمرّ في الاختبار ويسقط على
+         * الإنتاج — وهو العطبُ نفسه الذي أوقعه `LIKE` من قبل.
+         */
+        $operations = (clone $base)->get(['branch_id', 'adjusted_at'])
+            ->map(fn ($a) => $a->branch_id.'|'.$a->adjusted_at)
+            ->unique()->count();
+
+        $rows = (clone $base)->with(['product:id,name', 'branch:id,name'])
+            ->orderByDesc('adjusted_at')->orderByDesc('id')->limit(self::LIMIT)->get()
+            ->map(fn ($a) => [
+                'id' => $a->id,
+                'number' => $a->number,
+                'product' => $a->product?->name,
+                'branch' => $a->branch?->name,
+                'reason' => $a->reason,
+                'delta' => (int) $a->quantity_delta,
+                'cost' => round((float) $a->cost_at_time, 3),
+                'value' => round(abs((int) $a->quantity_delta) * (float) $a->cost_at_time, 3),
+                'notes' => $a->notes,
+                'at' => optional($a->adjusted_at)->format('Y-m-d H:i'),
+            ]);
+
+        return array_merge(self::capped($rows, $count), [
+            'summary' => [
+                'operations' => $operations,
+                'items' => $count,
+                'shortage' => round($shortage, 3),
+                'surplus' => round($surplus, 3),
+                // الصافي يُقال: جردٌ نقصُه يوازي زيادتَه دفترٌ مضطرب لا خسارة
+                'net' => round($surplus - $shortage, 3),
+            ],
+            'options' => [
+                'branches' => self::branchOptions($bid),
+                'reasons' => collect($reasons)->map(fn ($r) => ['value' => $r, 'label' => $r])->all(),
             ],
         ]);
     }

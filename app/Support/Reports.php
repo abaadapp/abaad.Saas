@@ -127,6 +127,15 @@ class Reports
             'route' => 'admin.reports.inventory',
         ],
         [
+            'key' => 'stocktake',
+            'category' => 'operational',
+            'section' => 'inventory',
+            'title' => 'عمليات جرد المخزون',
+            'desc' => 'ما عُدّ وأين فارق الدفترُ الواقع: النقص والزيادة وقيمتهما لكل فرع.',
+            'icon' => 'clipboard-list',
+            'route' => 'admin.reports.stocktake',
+        ],
+        [
             'key' => 'purchases',
             'category' => 'operational',
             'section' => 'purchases',
@@ -248,28 +257,6 @@ class Reports
 
                 return $key === null || PlanFeatures::allows($user?->business, $key);
             });
-    }
-
-    /**
-     * شريط التنقّل بين تقارير قسم «التقارير» — ما يفتحه صاحبه منها.
-     *
-     * ويقتصر على ما تحت `admin.reports.*`: بقيّة بنود الفهرس شاشاتُ أقسامٍ
-     * أخرى — الطلبات والمنتجات والمخزون — ولكلٍّ منها تبويباتُ قسمها. ووضعُ
-     * شريط التقارير فوق شاشة المنتجات يقول إنها تقرير، وهي قسمٌ قائم.
-     *
-     * @return list<array{key: string, label: string, href: string}>
-     */
-    public static function tabsFor(?User $user): array
-    {
-        return self::visibleTo($user)
-            ->filter(fn ($r) => str_starts_with($r['route'], 'admin.reports.'))
-            ->map(fn ($r) => [
-                'key' => $r['key'],
-                'label' => __($r['title']),
-                'href' => route($r['route']),
-            ])
-            ->values()
-            ->all();
     }
 
     /**

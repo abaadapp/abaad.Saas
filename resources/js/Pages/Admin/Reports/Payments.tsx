@@ -2,7 +2,7 @@ import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import PrintReport from '@/Components/PrintReport';
-import ReportTabs, { type ReportTab } from '@/Components/ReportTabs';
+import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
 import BarChart from '@/Components/charts/BarChart';
@@ -32,7 +32,6 @@ interface Props {
     summary: { total: number; count: number; active: number; topName: string | null; topTotal: number };
     range: ReportRange;
     rangeLabel: string;
-    tabs: ReportTab[];
 }
 
 /**
@@ -43,7 +42,7 @@ interface Props {
  * بنظرة. فصار له فترتُه ومؤشّراتُه ومخطّطُه.
  */
 export default function ReportsPayments() {
-    const { methods, summary, range, rangeLabel, tabs, context } = usePage<PageProps<Props>>().props;
+    const { methods, summary, range, rangeLabel, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -64,14 +63,18 @@ export default function ReportsPayments() {
         <AdminLayout title="وسائل الدفع">
             {/* الكشف للطابعة: القاعدة العامة تُخفي الصفحة كلّها إلا الإيصال الحراري */}
             <div className="printable-report">
+                <div className="no-print">
+                    <BackToReports />
+                </div>
+
                 <PageHeader
                     title="وسائل الدفع"
                     subtitle={t('توزيع التحصيل على النقد والبطاقة وبقية الوسائل')}
                     actions={<PrintReport />}
                 />
 
+                {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}
                 <div className="no-print">
-                    <ReportTabs tabs={tabs} current="payments" />
                     <RangeTabs current={range} />
                 </div>
 

@@ -1,6 +1,5 @@
 import { usePage } from '@inertiajs/react';
 import ReportScreen from '@/Components/ReportScreen';
-import { type ReportTab } from '@/Components/ReportTabs';
 import { type ReportRange } from '@/Components/RangeTabs';
 import { Card } from '@/Components/ui/card';
 import {
@@ -34,7 +33,6 @@ interface Props {
     truncated: { shown: number; total: number } | null;
     range: ReportRange;
     rangeLabel: string;
-    tabs: ReportTab[];
 }
 
 /**
@@ -45,7 +43,7 @@ interface Props {
  * والقيمة معًا.
  */
 export default function ReportsMarketing() {
-    const { rows, summary, filters, truncated, range, rangeLabel, tabs, context } =
+    const { rows, summary, filters, truncated, range, rangeLabel, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -61,8 +59,6 @@ export default function ReportsMarketing() {
         <ReportScreen
             title="الكوبونات والتسويق"
             subtitle="استخدام الكوبونات وقيمة الخصومات والإيراد الذي جاءت به"
-            reportKey="marketing"
-            tabs={tabs}
             range={range}
             rangeLabel={rangeLabel}
             filters={filters}

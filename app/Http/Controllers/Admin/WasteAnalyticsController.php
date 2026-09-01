@@ -7,7 +7,6 @@ use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Product;
 use App\Support\Demo;
-use App\Support\Reports;
 use App\Support\Waste;
 use App\Support\WasteInsights;
 use Illuminate\Http\Request;
@@ -69,8 +68,6 @@ class WasteAnalyticsController extends Controller
             'overTime' => Waste::overTime($bid, $filters),
             'versusConsumption' => Waste::versusConsumption($bid, $filters),
             'insights' => WasteInsights::all($bid, $filters),
-            // شريط التنقّل بين التقارير — مصفًّى بصلاحية صاحبه وباقته
-            'tabs' => Reports::tabsFor(auth()->user()),
             // صفوفٌ قديمة تخالف القاعدة — تُعرض ولا تُصلَح
             'suspicious' => Waste::suspiciousRows($bid),
             'filters' => $filters,

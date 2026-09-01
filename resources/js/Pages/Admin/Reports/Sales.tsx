@@ -1,9 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import SmartLink from '@/Components/SmartLink';
-import { Button } from '@/Components/ui/button';
-import { ChevronRight } from 'lucide-react';
+import BackToReports from '@/Components/BackToReports';
 import ExportMenu from '@/Components/ExportMenu';
 import StatCard from '@/Components/StatCard';
 import AreaChart from '@/Components/charts/AreaChart';
@@ -20,7 +18,6 @@ import {
 } from '@/Components/ui/table';
 import useLiveFeed from '@/hooks/useLiveFeed';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
-import ReportTabs, { type ReportTab } from '@/Components/ReportTabs';
 import { money, number } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
@@ -53,7 +50,6 @@ interface Props {
     range: ReportRange;
     paymentDistribution: { labels: string[]; series: number[] };
     topSellingProducts: TopProduct[];
-    tabs: ReportTab[];
 }
 
 /** عنوان المخطّط بحسب دقّة محوره — انظر Demo::salesTrend */
@@ -125,14 +121,8 @@ export default function ReportsSales() {
             />
 
             {/* شريط أقسامٍ لتقريرٍ واحد لا معنى له — والعودة إلى الفهرس تُقال زرًّا */}
-            <div className="mb-4">
-                <Button variant="ghost" size="sm" asChild>
-                    <SmartLink routeName="admin.reports.index" href={route('admin.reports.index')}>
-                        <ChevronRight />
-                        {t('كل التقارير')}
-                    </SmartLink>
-                </Button>
-            </div>
+            {/* رجوعٌ واحد بشكلٍ واحد في التقارير كلّها */}
+            <BackToReports />
 
             {updatedAt && (
                 <p className="mb-3 text-[12px] text-[#9ca3af]">
@@ -140,7 +130,6 @@ export default function ReportsSales() {
                 </p>
             )}
 
-            <ReportTabs tabs={server.tabs} current="sales" />
             <RangeTabs current={server.range} />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

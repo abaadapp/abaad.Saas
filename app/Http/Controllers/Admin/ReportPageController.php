@@ -54,7 +54,6 @@ class ReportPageController extends Controller
         return [
             'range' => $range,
             'rangeLabel' => Demo::rangeLabel($range),
-            'tabs' => Reports::tabsFor(auth()->user()),
         ];
     }
 
@@ -132,6 +131,11 @@ class ReportPageController extends Controller
     public function marketing(Request $request): Response
     {
         return $this->report($request, 'marketing', 'Marketing');
+    }
+
+    public function stocktake(Request $request): Response
+    {
+        return $this->report($request, 'stocktake', 'Stocktake', ['branch_id', 'reason']);
     }
 
     public function payments(Request $request): Response

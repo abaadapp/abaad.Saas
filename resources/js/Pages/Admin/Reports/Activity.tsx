@@ -1,6 +1,5 @@
 import { usePage } from '@inertiajs/react';
 import ReportScreen, { type Filter, type Option } from '@/Components/ReportScreen';
-import { type ReportTab } from '@/Components/ReportTabs';
 import { type ReportRange } from '@/Components/RangeTabs';
 import { Badge } from '@/Components/ui/badge';
 import { Card } from '@/Components/ui/card';
@@ -33,7 +32,6 @@ interface Props {
     truncated: { shown: number; total: number } | null;
     range: ReportRange;
     rangeLabel: string;
-    tabs: ReportTab[];
 }
 
 /**
@@ -43,7 +41,7 @@ interface Props {
  * قرأ خمسمئة سطرٍ ليعدّها بنفسه.
  */
 export default function ReportsActivity() {
-    const { rows, summary, filters, options, truncated, range, rangeLabel, tabs } =
+    const { rows, summary, filters, options, truncated, range, rangeLabel } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const controls: Filter[] = [
@@ -61,8 +59,6 @@ export default function ReportsActivity() {
         <ReportScreen
             title="سجل النشاط"
             subtitle="من فعل ماذا ومتى على النظام"
-            reportKey="activity"
-            tabs={tabs}
             range={range}
             rangeLabel={rangeLabel}
             filters={filters}

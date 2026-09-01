@@ -2,7 +2,7 @@ import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import PrintReport from '@/Components/PrintReport';
-import ReportTabs, { type ReportTab } from '@/Components/ReportTabs';
+import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
 import { Card } from '@/Components/ui/card';
@@ -31,7 +31,6 @@ interface Props {
     summary: { total: number; customers: number; orders: number; average: number };
     range: ReportRange;
     rangeLabel: string;
-    tabs: ReportTab[];
 }
 
 /**
@@ -42,7 +41,7 @@ interface Props {
  * على الشاشة كان يقول أيَّهما تقرأ.
  */
 export default function ReportsCustomers() {
-    const { rows, limit, summary, range, rangeLabel, tabs, context } = usePage<PageProps<Props>>().props;
+    const { rows, limit, summary, range, rangeLabel, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -57,14 +56,18 @@ export default function ReportsCustomers() {
         <AdminLayout title="العملاء الأكثر إنفاقًا">
             {/* الكشف للطابعة: القاعدة العامة تُخفي الصفحة كلّها إلا الإيصال الحراري */}
             <div className="printable-report">
+                <div className="no-print">
+                    <BackToReports />
+                </div>
+
                 <PageHeader
                     title="العملاء الأكثر إنفاقًا"
                     subtitle={t('من يشتري أكثر، وكم طلبًا وكم أنفق')}
                     actions={<PrintReport />}
                 />
 
+                {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}
                 <div className="no-print">
-                    <ReportTabs tabs={tabs} current="customers" />
                     <RangeTabs current={range} />
                 </div>
 

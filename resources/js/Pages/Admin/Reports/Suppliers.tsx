@@ -1,6 +1,5 @@
 import { usePage } from '@inertiajs/react';
 import ReportScreen from '@/Components/ReportScreen';
-import { type ReportTab } from '@/Components/ReportTabs';
 import { type ReportRange } from '@/Components/RangeTabs';
 import { Card } from '@/Components/ui/card';
 import {
@@ -32,7 +31,6 @@ interface Props {
     truncated: { shown: number; total: number } | null;
     range: ReportRange;
     rangeLabel: string;
-    tabs: ReportTab[];
 }
 
 /**
@@ -42,7 +40,7 @@ interface Props {
  * قيمة. ومن يفاوض مورّدًا يحتاج المبلغ لا العدد.
  */
 export default function ReportsSuppliers() {
-    const { rows, summary, filters, truncated, range, rangeLabel, tabs, context } =
+    const { rows, summary, filters, truncated, range, rangeLabel, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -58,8 +56,6 @@ export default function ReportsSuppliers() {
         <ReportScreen
             title="المورّدون"
             subtitle="كل مورّد وعدد أوامره وقيمتها في الفترة المختارة"
-            reportKey="suppliers"
-            tabs={tabs}
             range={range}
             rangeLabel={rangeLabel}
             filters={filters}

@@ -3,7 +3,7 @@ import { router } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import PrintReport from '@/Components/PrintReport';
-import ReportTabs, { type ReportTab } from '@/Components/ReportTabs';
+import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
 import { Card } from '@/Components/ui/card';
@@ -29,9 +29,6 @@ export interface Stat {
 interface Props {
     title: string;
     subtitle: string;
-    /** مفتاح التقرير — يُبرز تبويبه في شريط التنقّل */
-    reportKey: string;
-    tabs: ReportTab[];
     /** الفترة، أو null لتقريرٍ لا معنى للفترة فيه (رصيدُ اليوم لا مدّته) */
     range: ReportRange | null;
     rangeLabel: string;
@@ -54,7 +51,7 @@ interface Props {
  * في واحدٍ منها كما نُسي حين كُتبت الصفحات الثلاث الأولى بأيديها.
  */
 export default function ReportScreen({
-    title, subtitle, reportKey, tabs, range, rangeLabel,
+    title, subtitle, range, rangeLabel,
     filters, controls, stats, truncated, children,
 }: Props) {
     const t = useTranslate();
@@ -76,11 +73,15 @@ export default function ReportScreen({
         <AdminLayout title={title}>
             {/* الكشف للطابعة: القاعدة العامة تُخفي الصفحة كلّها إلا الإيصال الحراري */}
             <div className="printable-report">
+                {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}
+                <div className="no-print">
+                    <BackToReports />
+                </div>
+
                 <PageHeader title={title} subtitle={t(subtitle)} actions={<PrintReport />} />
 
                 {/* الأدوات لا تُطبع: التقرير ورقةٌ لا لوحةُ تحكّم */}
                 <div className="no-print">
-                    <ReportTabs tabs={tabs} current={reportKey} />
                     {range && <RangeTabs current={range} params={filters} />}
 
                     {controls && controls.length > 0 && (

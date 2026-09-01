@@ -2,7 +2,7 @@ import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import PrintReport from '@/Components/PrintReport';
-import ReportTabs, { type ReportTab } from '@/Components/ReportTabs';
+import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
 import { Badge } from '@/Components/ui/badge';
@@ -35,7 +35,6 @@ interface Props {
     summary: { total: number; staff: number; sellers: number; average: number; topName: string | null; topSales: number };
     range: ReportRange;
     rangeLabel: string;
-    tabs: ReportTab[];
 }
 
 /**
@@ -46,7 +45,7 @@ interface Props {
  * بلا ما يقول ذلك.
  */
 export default function ReportsStaff() {
-    const { rows, summary, range, rangeLabel, tabs, context } = usePage<PageProps<Props>>().props;
+    const { rows, summary, range, rangeLabel, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -72,14 +71,18 @@ export default function ReportsStaff() {
         <AdminLayout title="أداء الموظفين">
             {/* الكشف للطابعة: القاعدة العامة تُخفي الصفحة كلّها إلا الإيصال الحراري */}
             <div className="printable-report">
+                <div className="no-print">
+                    <BackToReports />
+                </div>
+
                 <PageHeader
                     title="أداء الموظفين"
                     subtitle={t('مبيعات كل موظف في الفترة المختارة وفرعه وحالته')}
                     actions={<PrintReport />}
                 />
 
+                {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}
                 <div className="no-print">
-                    <ReportTabs tabs={tabs} current="staff" />
                     <RangeTabs current={range} />
                 </div>
 

@@ -6,6 +6,8 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\Order;
+use App\Models\Product;
+use App\Models\StockAdjustment;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Reports;
@@ -112,7 +114,6 @@ class ReportPagesTest extends TestCase
 
             $this->assertArrayHasKey('summary', $props, "«{$key}» بلا مؤشّرات");
             $this->assertArrayHasKey('range', $props, "«{$key}» بلا فترة");
-            $this->assertArrayHasKey('tabs', $props, "«{$key}» بلا تنقّل");
         }
     }
 
@@ -252,163 +253,154 @@ class ReportPagesTest extends TestCase
         }
     }
 
-    /* ====================== التنقّل بينها ====================== */
+    /* ====================== الرجوع إلى الفهرس ====================== */
 
-    public function test_the_navigation_carries_every_report_the_owner_can_open(): void
+    public function test_every_report_has_one_way_back_to_the_index(): void
     {
-        $tabs = collect($this->props('admin.reports.payments')['tabs'])->pluck('key')->all();
+        /*
+         * وحلّ الرجوعُ محلّ شريطٍ كان يعرض التقارير الستّة عشر كلَّها فوق كل
+         * صفحة: صفٌّ يفيض عن الشاشة ويُمرَّر أفقيًّا، ويأخذ من ارتفاع الطيّة
+         * أكثر ممّا يعطي — والقارئ جاء ليقرأ تقريرًا لا ليختار غيره.
+         *
+         * والشكل واحد في الجميع: صفحةٌ ترجع بزرٍّ وأخرى برابطٍ تجعل القارئ
+         * يبحث عن المخرج في كل شاشة.
+         */
+        $dir = resource_path('js/Pages/Admin/Reports');
 
-        foreach (['sales', 'payments', 'staff', 'customers', 'waste'] as $key) {
-            $this->assertContains($key, $tabs, "«{$key}» غائبٌ عن شريط التنقّل");
+        foreach (glob($dir.'/*.tsx') as $file) {
+            $screen = basename($file, '.tsx');
+            if ($screen === 'Index') {
+                continue;
+            }
+
+            $source = file_get_contents($file);
+            $viaShell = str_contains($source, 'ReportScreen');
+
+            $this->assertTrue(
+                $viaShell || str_contains($source, 'BackToReports'),
+                "«{$screen}» بلا طريقٍ للرجوع إلى الفهرس"
+            );
+        }
+
+        // والهيكل المشترك يحمله، فما بُني عليه يرثه
+        $this->assertStringContainsString(
+            'BackToReports',
+            file_get_contents(resource_path('js/Components/ReportScreen.tsx')),
+        );
+    }
+
+    public function test_the_crowded_tab_strip_is_gone_not_merely_hidden(): void
+    {
+        // مكوّنٌ متروكٌ يعود يومًا: يُحذف هو ومصدرُ بياناته في الخادم معًا
+        $this->assertFileDoesNotExist(resource_path('js/Components/ReportTabs.tsx'));
+        $this->assertFalse(method_exists(Reports::class, 'tabsFor'), 'مصدرُ الشريط ما زال في الخادم');
+
+        foreach (glob(resource_path('js/Pages/Admin/Reports').'/*.tsx') as $file) {
+            $this->assertStringNotContainsString('ReportTabs', file_get_contents($file), basename($file));
         }
     }
 
-    public function test_the_navigation_never_shows_a_door_that_will_not_open(): void
+    public function test_the_index_hides_what_its_owner_cannot_open(): void
     {
         /*
          * بابٌ معروضٌ لا يُفتح أسوأ من بابٍ لا يُعرض: من ضغطه اصطدم بـ٤٠٣
          * وظنّ العطب في النظام.
          */
-        $accountant = User::create([
-            'business_id' => $this->business->id, 'name' => 'محاسب', 'email' => 'a@abaadapp.om',
-            'password' => bcrypt('password'), 'role' => 'accountant', 'status' => 'نشط',
-            'permissions' => ['reports', 'finance'],
+        $accountant = $this->staff(['reports', 'finance']);
+
+        $shown = collect(Reports::forUser($accountant))->pluck('key')->all();
+
+        $this->assertContains('payments', $shown);        // finance — مُنح
+        $this->assertNotContains('staff', $shown);        // employees — لم يُمنح
+        $this->assertNotContains('stocktake', $shown);    // inventory — لم يُمنح
+
+        // وما غاب عن الفهرس مغلقٌ عند بابه أيضًا
+        $this->actingAs($accountant)->get(route('admin.reports.stocktake'))->assertForbidden();
+    }
+
+    /* ==================== عمليات جرد المخزون ==================== */
+
+    /** يطبّق جردًا على صنفٍ ويردّ فرقه */
+    private function stocktake(int $counted, int $book = 10): Product
+    {
+        $product = Product::create([
+            'business_id' => $this->business->id, 'name' => 'وردة'.uniqid(),
+            'price' => 5, 'cost' => 2, 'quantity' => $book, 'alert_qty' => 1, 'active' => true,
         ]);
 
-        $tabs = collect(Reports::tabsFor($accountant))->pluck('key')->all();
+        $this->post(route('admin.inventory.stocktake.apply'), [
+            'branch_id' => $this->business->branches()->first()->id,
+            'counts' => [$product->id => $counted],
+        ])->assertSessionHasNoErrors();
 
-        $this->assertContains('payments', $tabs);       // finance — مُنح
-        $this->assertNotContains('staff', $tabs);       // employees — لم يُمنح
-        $this->assertNotContains('customers', $tabs);   // customers — لم يُمنح
-
-        // وما غاب عن الشريط مغلقٌ عند بابه أيضًا
-        $this->actingAs($accountant)->get(route('admin.reports.staff'))->assertForbidden();
+        return $product;
     }
 
-    /* ============ ما انتقل من شاشة قسمه إلى صفحته ============ */
+    public function test_the_stocktake_report_reads_what_the_stocktake_wrote(): void
+    {
+        // نقصٌ كشفه العدّ: عشرةٌ في الدفتر وسبعةٌ في الرفّ
+        $this->stocktake(counted: 7, book: 10);
 
-    public function test_every_catalog_entry_now_has_a_report_page_of_its_own(): void
+        $props = $this->props('admin.reports.stocktake', ['range' => 'month']);
+
+        $this->assertCount(1, $props['rows'], 'لم يُقرأ ما كتبه الجرد');
+        $this->assertSame(-3, $props['rows'][0]['delta']);
+        $this->assertSame(StockAdjustment::STOCKTAKE_LOSS, $props['rows'][0]['reason']);
+
+        // ثلاثُ ورداتٍ بتكلفة اثنين = ستّة
+        $this->assertSame(6.0, $props['summary']['shortage']);
+        $this->assertSame(0.0, $props['summary']['surplus']);
+        $this->assertSame(-6.0, $props['summary']['net']);
+        $this->assertSame(1, $props['summary']['operations']);
+        $this->assertSame(1, $props['summary']['items']);
+    }
+
+    public function test_the_stocktake_report_separates_a_shortage_from_a_surplus(): void
     {
         /*
-         * كانت عشرُ بطاقاتٍ تقود إلى **شاشات الأقسام**: «تقرير الطلبات» يفتح
-         * شاشة إدارة الطلبات وفيها التعديل والحذف — فمن دخل ليقرأ وجد نفسه
-         * في موضع الكتابة، ولا فترةَ تُختار ولا مؤشّراتٍ فوق الجدول.
+         * جردٌ نقصُه يوازي زيادتَه دفترٌ مضطرب لا خسارة — والتاجر يحتاج أن
+         * يفرّق بين الاثنين قبل أن يتّهم أحدًا. فلو جُمعا في رقمٍ واحد ضاع الفرق.
          */
-        foreach (Reports::ALL as $report) {
-            $this->assertStringStartsWith(
-                'admin.reports.',
-                $report['route'],
-                "«{$report['key']}» ما زال يقود إلى شاشة قسمٍ لا إلى تقرير"
-            );
-        }
+        $this->stocktake(counted: 7, book: 10);   // نقص ٣ × ٢ = ٦
+        $this->stocktake(counted: 14, book: 10);  // زيادة ٤ × ٢ = ٨
+
+        $summary = $this->props('admin.reports.stocktake', ['range' => 'month'])['summary'];
+
+        $this->assertSame(6.0, $summary['shortage']);
+        $this->assertSame(8.0, $summary['surplus']);
+        $this->assertSame(2.0, $summary['net']);
+        $this->assertSame(2, $summary['items']);
     }
 
-    public function test_each_moved_report_carries_its_own_indicators_and_rows(): void
-    {
-        foreach (array_keys(self::MOVED) as $route) {
-            $props = $this->props($route);
-
-            $this->assertArrayHasKey('summary', $props, "«{$route}» بلا مؤشّرات");
-            $this->assertArrayHasKey('rows', $props, "«{$route}» بلا صفوف");
-            $this->assertArrayHasKey('filters', $props, "«{$route}» لا يعيد مرشّحاته");
-            $this->assertArrayHasKey('tabs', $props, "«{$route}» بلا تنقّل");
-            $this->assertNotEmpty($props['summary'], "«{$route}» مؤشّراتُه فارغة");
-        }
-    }
-
-    public function test_a_moved_report_is_measured_by_its_own_section_not_by_reports(): void
+    public function test_the_stocktake_report_ignores_damage_recorded_by_hand(): void
     {
         /*
-         * أخطرُ ما في النقل: صفحاتُها صارت تحت `admin.reports.*`، فحارس
-         * المسار يقيسها بصلاحية «التقارير» وحدها. ولولا حارسٌ ثانٍ لَقرأ من
-         * مُنح التقارير سجلَّ النشاط وأوامر الشراء وحركة المال كلَّها.
+         * التلفُ والفقدُ والإهداء تعديلاتٌ يكتبها التاجر بيده، ولها تقريرها
+         * (تحليلات الهالك). وخلطُها بالجرد يجعل «فرق الجرد» يشمل ما لم يكشفه
+         * عدٌّ أصلًا — فيُتَّهم الدفتر بما ليس فيه.
          */
-        $user = $this->staff(['reports']);
+        $this->stocktake(counted: 7, book: 10);
 
-        foreach (self::MOVED as $route => $section) {
-            $this->actingAs($user)->get(route($route))
-                ->assertForbidden("«{$route}» انفتح لمن لا يملك «{$section}»");
-        }
+        StockAdjustment::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->business->branches()->first()->id,
+            'product_id' => Product::first()->id,
+            'number' => 'SA-999999', 'quantity_delta' => -5, 'cost_at_time' => 2,
+            'reason' => 'تلف', 'adjusted_at' => now(),
+        ]);
+
+        $props = $this->props('admin.reports.stocktake', ['range' => 'month']);
+
+        $this->assertCount(1, $props['rows'], 'التلف اليدويّ دخل تقرير الجرد');
+        $this->assertSame(6.0, $props['summary']['shortage']);
     }
 
-    public function test_the_section_owner_still_opens_his_report(): void
+    public function test_the_stocktake_report_is_owned_by_inventory_not_by_reports(): void
     {
-        // الحارس يمنع الغريب لا الجميع
-        foreach (self::MOVED as $route => $section) {
-            $this->actingAs($this->staff(['reports', $section]))
-                ->get(route($route))->assertOk("«{$route}» أُغلق في وجه صاحب «{$section}»");
-        }
-    }
+        $this->actingAs($this->staff(['reports']))
+            ->get(route('admin.reports.stocktake'))->assertForbidden();
 
-    public function test_a_filter_actually_filters(): void
-    {
-        $this->sale(100, now()->toDateTimeString());
-        $cancelled = $this->sale(400, now()->toDateTimeString());
-        $cancelled->update(['status' => Order::CANCELLED]);
-
-        $all = $this->props('admin.reports.orders', ['range' => 'month']);
-        $this->assertCount(2, $all['rows']);
-        $this->assertSame(1, $all['summary']['cancelled']);
-        // المتوسّط على المُباع لا على الكلّ: الملغى يُنقصه بلا أن يُنقص الإيراد
-        $this->assertSame(100.0, $all['summary']['average']);
-
-        $only = $this->props('admin.reports.orders', ['range' => 'month', 'status' => Order::CANCELLED]);
-        $this->assertCount(1, $only['rows'], 'المرشّح لم يرشّح شيئًا');
-        $this->assertSame(Order::CANCELLED, $only['filters']['status'], 'المرشّح لا يعود إلى الشاشة');
-    }
-
-    public function test_changing_the_period_does_not_drop_the_other_filters(): void
-    {
-        /*
-         * مبدّلُ الفترة يكتب سلسلة الاستعلام كاملةً، فبلا حمل المرشّحات معه
-         * يعود الجدول إلى الكلّ بلا أن يلمس التاجر المنتقي — ويقرأ أرقامًا
-         * ليست التي رشّح عليها.
-         */
-        $source = file_get_contents(resource_path('js/Components/ReportScreen.tsx'));
-        $this->assertStringContainsString('params={filters}', $source, 'الفترة لا تحمل المرشّحات معها');
-
-        $range = file_get_contents(resource_path('js/Components/RangeTabs.tsx'));
-        $this->assertStringContainsString('...(params ?? {})', $range, 'مبدّل الفترة يمحو ما سواه');
-    }
-
-    public function test_a_truncated_table_says_so(): void
-    {
-        // جدولٌ مبتورٌ بلا ما يقول ذلك يُقرأ على أنه كلّ ما في المتجر
-        $this->assertNull($this->props('admin.reports.orders')['truncated'], 'أُعلن البتر بلا بتر');
-
-        $source = file_get_contents(resource_path('js/Components/ReportScreen.tsx'));
-        $this->assertStringContainsString('truncated', $source);
-    }
-
-    public function test_the_stock_report_has_no_period_switch_because_it_is_a_snapshot(): void
-    {
-        /*
-         * الرصيد رقمُ اليوم لا مجموعُ مدّة. ومبدّلٌ لا يغيّر شيئًا أسوأ من
-         * غيابه: يظنّه التاجر عاملًا فيبني على فرقٍ لا وجود له.
-         */
-        $source = file_get_contents(resource_path('js/Pages/Admin/Reports/Inventory.tsx'));
-
-        $this->assertStringContainsString('range={null}', $source, 'شاشة الرصيد تعرض مبدّل فترةٍ لا أثر له');
-    }
-
-    public function test_the_section_screens_they_came_from_still_work(): void
-    {
-        // تغيّرت وجهةُ البطاقة لا الشاشة: القائمة الجانبية تقصدها كما كانت
-        foreach (['admin.orders.index', 'admin.products.index', 'admin.inventory.index',
-            'admin.expenses.index', 'admin.suppliers.index', 'admin.activity.index'] as $route) {
-            $this->get(route($route))->assertOk("شاشة «{$route}» تأثّرت بنقل بطاقتها");
-        }
-    }
-
-    public function test_the_navigation_holds_only_reports_that_are_reports(): void
-    {
-        /*
-         * بقيّةُ بنود الفهرس شاشاتُ أقسامٍ أخرى — الطلبات والمنتجات
-         * والمخزون — ولكلٍّ تبويباتُ قسمها. ووضعُ شريط التقارير فوق شاشة
-         * المنتجات يقول إنها تقرير، وهي قسمٌ قائم.
-         */
-        foreach (Reports::tabsFor($this->owner) as $tab) {
-            $this->assertStringContainsString('/reports/', $tab['href'], "«{$tab['key']}» ليس تقريرًا في قسم التقارير");
-        }
+        $this->actingAs($this->staff(['reports', 'inventory']))
+            ->get(route('admin.reports.stocktake'))->assertOk();
     }
 }

@@ -1,6 +1,5 @@
 import { usePage } from '@inertiajs/react';
 import ReportScreen, { type Filter, type Option } from '@/Components/ReportScreen';
-import { type ReportTab } from '@/Components/ReportTabs';
 import { Card } from '@/Components/ui/card';
 import {
     Table,
@@ -34,7 +33,6 @@ interface Props {
     options: Record<string, Option[]>;
     truncated: { shown: number; total: number } | null;
     rangeLabel: string;
-    tabs: ReportTab[];
 }
 
 /**
@@ -44,7 +42,7 @@ interface Props {
  * لا يغيّر شيئًا أسوأ من غيابه — يظنّه التاجر عاملًا فيبني على فرقٍ لا وجود له.
  */
 export default function ReportsInventory() {
-    const { rows, summary, filters, options, truncated, rangeLabel, tabs, context } =
+    const { rows, summary, filters, options, truncated, rangeLabel, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -65,8 +63,6 @@ export default function ReportsInventory() {
         <ReportScreen
             title="المخزون والكميات"
             subtitle="رصيد كل صنف وحدّه الأدنى وقيمته وما بلغ حدّ إعادة الطلب"
-            reportKey="inventory"
-            tabs={tabs}
             range={null}
             rangeLabel={rangeLabel}
             filters={filters}

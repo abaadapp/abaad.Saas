@@ -100,26 +100,13 @@ class OrderDetailController extends Controller
             'status' => ['required', 'string', Rule::in(OrderStatus::ALL)],
         ]);
 
-        if (! OrderStatus::canMove($order->status, $data['status'])) {
-            return back()->withErrors(['status' => __(
-                'لا يمكن نقل الطلب من «:from» إلى «:to».',
-                ['from' => $order->status, 'to' => $data['status']]
-            )]);
-        }
-
         $from = $order->status;
 
-        /*
-         * الإلغاء يردّ ما أخذه البيع — ولا يكفي أن تُكتب الكلمة في عمود.
-         *
-         * انظر `OrderCorrection::cancel`: المخزون والنقاط والكوبون وقيد
-         * الدخل. وكان الأربعة تبقى، والتقارير تستثني الملغى فيبدو الأمر
-         * سليمًا في الشاشة والخلل تحتها.
-         */
-        if ($data['status'] === OrderStatus::CANCELLED) {
-            \App\Support\OrderCorrection::cancel($order);
-        } else {
-            $order->update(['status' => $data['status']]);
+        // بابٌ واحد للنقل تدخل منه هذه الشاشة ولوحة التجهيز — انظر OrderTransition
+        if ($error = \App\Support\OrderTransition::apply($order, $data['status'])) {
+            return back()
+                ->with('toast', ['msg' => $error, 'type' => 'danger'])
+                ->withErrors(['status' => $error]);
         }
 
         Activity::log('status', 'نقل الطلب '.$order->number.' من «'.$from.'» إلى «'.$data['status'].'»', [

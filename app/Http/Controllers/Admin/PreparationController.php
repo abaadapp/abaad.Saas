@@ -243,26 +243,19 @@ class PreparationController extends Controller
             ->where('number', $number)
             ->firstOrFail();
 
-        if (! OrderStatus::canMove($order->status, $data['status'])) {
-            return back()->withErrors(['status' => __(
-                'لا يمكن نقل الطلب من «:from» إلى «:to».',
-                ['from' => $order->status, 'to' => $data['status']]
-            )]);
-        }
-
         $from = $order->status;
 
-        /*
-         * الإلغاء يردّ ما أخذه البيع — ولا يكفي أن تُكتب الكلمة في عمود.
-         *
-         * انظر `OrderCorrection::cancel`: المخزون والنقاط والكوبون وقيد
-         * الدخل. وكان الأربعة تبقى، والتقارير تستثني الملغى فيبدو الأمر
-         * سليمًا في الشاشة والخلل تحتها.
-         */
-        if ($data['status'] === OrderStatus::CANCELLED) {
-            \App\Support\OrderCorrection::cancel($order);
-        } else {
-            $order->update(['status' => $data['status']]);
+        if ($error = \App\Support\OrderTransition::apply($order, $data['status'])) {
+            /*
+             * والرفض يُرى — واللوحة لا تعرض إلّا `flash.toast`.
+             *
+             * `withErrors` وحدها كانت تجعل الضغطة لا تفعل شيئًا ولا تقول
+             * شيئًا: طلبٌ ألغاه صاحب المحلّ قبل لحظة يبقى على شاشة العامل،
+             * فيضغط «جاهز» فلا يتحرّك ولا يُخبَر لماذا.
+             */
+            return back()
+                ->with('toast', ['msg' => $error, 'type' => 'danger'])
+                ->withErrors(['status' => $error]);
         }
 
         Activity::log('status', 'التجهيز: نقل الطلب '.$order->number.' من «'.$from.'» إلى «'.$data['status'].'»', [

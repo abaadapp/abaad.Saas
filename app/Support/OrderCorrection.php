@@ -531,6 +531,22 @@ class OrderCorrection
         }
 
         DB::transaction(function () use ($order, $reason) {
+            /*
+             * والحال تُقرأ ثانيةً تحت قفل — والقراءة الأولى لا تكفي.
+             *
+             * الفحص أعلاه يقع على نسخةٍ في الذاكرة قُرئت قبل المعاملة. فضغطتان
+             * على «إلغاء» — أو موظّفان يفتحان الطلب نفسه — تقرآن «مكتمل»
+             * كلتاهما فتدخلان معًا: يعود المخزون مرّتين، ويُردّ الكوبون مرّتين،
+             * وتُسحب النقاط مرّتين. والزيادة في الرفّ لا يكشفها شيء إلا الجرد،
+             * ولا يعرف أحدٌ حينها من أين جاءت خمسُ ورداتٍ لم تُشترَ.
+             *
+             * والقفل يُصفّ الطلبين: الثاني ينتظر ثمّ يقرأ «ملغي» فينصرف.
+             */
+            $fresh = Order::whereKey($order->id)->lockForUpdate()->first();
+            if (! $fresh || $fresh->status === \App\Support\OrderStatus::CANCELLED) {
+                return;
+            }
+
             $totalBefore = (float) $order->total;
 
             $order->loadMissing('items.addons.addon');

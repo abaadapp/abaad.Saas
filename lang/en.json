@@ -3515,5 +3515,6 @@
     "رقمه مسجَّل لعميل محذوف — استعِده من المحذوفات أولًا": "Number belongs to a deleted customer — restore them from Trash first",
     "ليس لديك صلاحية للمحو النهائي — وهو في الإعدادات.": "You do not have permission to erase permanently — that lives in Settings.",
     "تعذّرت الاستعادة: :code صار لمنتج «:name» — غيّره أولًا.": "Restore failed: :code now belongs to “:name” — change it first.",
-    "«:name» موقوف عن البيع.": "“:name” is stopped from selling."
+    "«:name» موقوف عن البيع.": "“:name” is stopped from selling.",
+    "هذه السلّة المعلّقة أُتمّت من جهازٍ آخر.": "This held cart was already checked out on another device."
 }

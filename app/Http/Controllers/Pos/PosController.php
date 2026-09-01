@@ -767,12 +767,81 @@ class PosController extends Controller
             }
         }
 
-        // البيع سبع كتابات مترابطة (طلب، بنود، مخزون، حركات، معاملة، نقاط، تنظيف
-        // المعلّق). انقطاعٌ في المنتصف كان يترك طلبًا بلا معاملة مالية أو مخزونًا
-        // منقوصًا بلا فاتورة — فتُنفَّذ كلها أو لا تُنفَّذ أيٌّ منها.
-        $result = DB::transaction(function () use ($data, $shift) {
+        /*
+         * ومن خسر السباق يُردّ إليه رقمُ الفاتورة الأولى — لا خطأُ خادم.
+         *
+         * الفحص أعلاه يسبق الكتابة، وبينهما فرجة. والقيد في القاعدة هو ما
+         * يمنع فعلًا (انظر الهجرة one_uuid_one_invoice): فحين يصل طلبان
+         * بالمفتاح نفسه معًا يكتب الأوّل ويُردّ الثاني بانتهاك القيد — وهو
+         * ليس عطبًا بل الحارس يعمل. فيُقرأ كما يُقرأ الفحص: بيعةٌ واحدة،
+         * وفاتورةٌ واحدة تُطبع، ولا مخزونَ يُخصم مرّتين ولا دخلَ يُقيَّد مرّتين.
+         */
+        try {
+            $result = $this->completeSale($data, $shift);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // وأيّ صنفٍ كان الاستثناء: الشاهد وجودُ التوأم لا اسمُ الخطأ
+            $twin = filled($data['client_uuid'] ?? null)
+                ? Order::where('business_id', $this->bid())->where('client_uuid', $data['client_uuid'])->first()
+                : null;
+
+            if (! $twin) {
+                throw $e;
+            }
+
+            return response()->json(['ok' => true, 'invoice' => $twin->number, 'duplicate' => true]);
+        }
+
+        $order = $result['order'];
+
+        \App\Support\Activity::log('checkout', 'أتمّ بيعًا ' . $order->number . ' بقيمة ' . number_format($order->total, 3) . ' ر.ع', ['subject_id' => $order->id]);
+
+        // البريد خارج المعاملة: بطؤه أو فشله يجب ألّا يُبقي القفل أو يُلغي بيعًا تمّ
+        $this->notifyNewOrder($order);
+
+        return response()->json([
+            'ok' => true,
+            'invoice' => $order->number,
+            'total' => (float) $order->total,
+            'points_earned' => $result['loyalty']['earned'],
+            'points_redeemed' => $result['loyalty']['redeemed'],
+        ]);
+    }
+
+
+    /**
+     * البيع سبع كتابات مترابطة (طلب، بنود، مخزون، حركات، معاملة، نقاط، تنظيف
+     * المعلّق). انقطاعٌ في المنتصف كان يترك طلبًا بلا معاملة مالية أو مخزونًا
+     * منقوصًا بلا فاتورة — فتُنفَّذ كلها أو لا تُنفَّذ أيٌّ منها.
+     *
+     * @return array{order: Order, loyalty: array{earned: int, redeemed: int}}
+     */
+    private function completeSale(array $data, $shift): array
+    {
+        return DB::transaction(function () use ($data, $shift) {
             $bid = $this->bid();
             $branch = $this->branch();
+
+            /*
+             * والسلّة المعلّقة تُحجَز أوّلًا — لا تُحذف آخرًا وحسب.
+             *
+             * كانت تُقرأ في نهاية المعاملة لتُمحى. فجهازان يستأنفان السلّة
+             * نفسها — وهي معروضةٌ على كلّ أجهزة الفرع — يقرآنها موجودةً
+             * كلاهما، فتصير سلّةٌ واحدة فاتورتين: بضاعةٌ تُخصم مرّتين وزبونٌ
+             * يُطالَب بضعف ثمنها.
+             *
+             * والقفل يُصفّهما: الثاني ينتظر، فلا يجدها، فيُقال له إنّها
+             * أُتمّت — وهو ما حدث فعلًا.
+             */
+            if (! empty($data['resume_id'])) {
+                $heldNow = Order::where('business_id', $bid)->where('is_held', true)
+                    ->lockForUpdate()->find($data['resume_id']);
+
+                if (! $heldNow) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'resume_id' => __('هذه السلّة المعلّقة أُتمّت من جهازٍ آخر.'),
+                    ]);
+                }
+            }
 
             // بقفل: الفحص والخصم يجب أن يقعا على كمية لا تتغيّر تحتهما،
             // وعلى رصيد الفرع الذي سيُخصم منه لا على مجموع الشركة
@@ -985,21 +1054,6 @@ class PosController extends Controller
 
             return ['order' => $order, 'loyalty' => $loyalty];
         });
-
-        $order = $result['order'];
-
-        \App\Support\Activity::log('checkout', 'أتمّ بيعًا ' . $order->number . ' بقيمة ' . number_format($order->total, 3) . ' ر.ع', ['subject_id' => $order->id]);
-
-        // البريد خارج المعاملة: بطؤه أو فشله يجب ألّا يُبقي القفل أو يُلغي بيعًا تمّ
-        $this->notifyNewOrder($order);
-
-        return response()->json([
-            'ok' => true,
-            'invoice' => $order->number,
-            'total' => (float) $order->total,
-            'points_earned' => $result['loyalty']['earned'],
-            'points_redeemed' => $result['loyalty']['redeemed'],
-        ]);
     }
 
     /** تعليق الطلب */

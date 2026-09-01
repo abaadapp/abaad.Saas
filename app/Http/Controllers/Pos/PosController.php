@@ -17,8 +17,8 @@ use Illuminate\Validation\ValidationException;
 
 class PosController extends Controller
 {
-    /** 100 نقطة = وحدة عملة واحدة — يجب أن تطابق POINTS_PER_UNIT في usePosCart.ts */
-    private const POINTS_PER_UNIT = 100;
+    /** صرفُ النقاط إلى مال — من بابه الواحد (انظر Support\Loyalty) */
+    private const POINTS_PER_UNIT = \App\Support\Loyalty::POINTS_PER_UNIT;
 
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
@@ -649,8 +649,15 @@ class PosController extends Controller
     }
 
     /** إتمام البيع وحفظ الطلب */
-    /** كوبون النشاط بالكود (غير حسّاس لحالة الأحرف) */
-    private function findCoupon(?string $code): ?Coupon
+    /**
+     * كوبون النشاط بالكود (غير حسّاس لحالة الأحرف).
+     *
+     * $lock: يُقرأ بقفلٍ عند الدفع — الفحص «هل بقيت مرّة؟» وزيادةُ العدّاد
+     * يجب أن يقعا على صفٍّ لا يتغيّر تحتهما. وبلا ذلك يمرّ صندوقان معًا على
+     * كوبونٍ محدودٍ بمرّةٍ واحدة فيستهلكانه مرّتين، ويخرج الخصم مرّتين من
+     * كوبونٍ بيع مرّة.
+     */
+    private function findCoupon(?string $code, bool $lock = false): ?Coupon
     {
         if (empty($code)) {
             return null;
@@ -658,6 +665,7 @@ class PosController extends Controller
 
         return Coupon::where('business_id', $this->bid())
             ->whereRaw('UPPER(code) = ?', [strtoupper(trim($code))])
+            ->when($lock, fn ($q) => $q->lockForUpdate())
             ->first();
     }
 
@@ -852,9 +860,38 @@ class PosController extends Controller
             // بندٌ واحد يقرؤه الزبون على الفاتورة، ومجموعُه يدخل الحساب معه
             $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0)), 3);
 
-            // الكوبون: يُعاد التحقق منه خادميًا وتُحتسب قيمته من أسعارنا نحن
-            $coupon = $this->findCoupon($data['coupon_code'] ?? null);
-            $couponApplied = $coupon && $coupon->isValid() && $subtotal >= (float) $coupon->min_order;
+            /*
+             * الكوبون: يُعاد التحقق منه خادميًا وتُحتسب قيمته من أسعارنا نحن.
+             *
+             * وما لا يصلح يُقال لا يُبتلع. كان يسقط صمتًا — `couponApplied`
+             * تصير false وتمضي البيعة — فيُقال للزبون سعرٌ عند السلّة ويُطبع
+             * له غيره على الفاتورة، ولا شيء على شاشة الكاشير يقول لماذا.
+             * وأكثر ما يقع بين اللحظتين: كوبونٌ نفدت مرّاته من صندوقٍ آخر،
+             * أو انتهت صلاحيته عند منتصف الليل والوردية ما زالت مفتوحة.
+             *
+             * وبقفلٍ: العدّاد يُقرأ ويُزاد على صفٍّ لا يتغيّر تحته.
+             */
+            $couponCode = $data['coupon_code'] ?? null;
+            $coupon = $this->findCoupon($couponCode, lock: true);
+
+            if (filled($couponCode)) {
+                $refusal = match (true) {
+                    ! $coupon => __('كود الخصم غير صحيح'),
+                    ! $coupon->active => __('هذا الكوبون موقوف'),
+                    $coupon->isExpired() => __('انتهت صلاحية الكوبون'),
+                    $coupon->max_uses !== null && $coupon->used_count >= $coupon->max_uses => __('انتهت مرات استخدام الكوبون'),
+                    $subtotal < (float) $coupon->min_order => __('الحد الأدنى للطلب :amount', ['amount' => Demo::money($coupon->min_order)]),
+                    default => null,
+                };
+
+                if ($refusal !== null) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'coupon_code' => $refusal,
+                    ]);
+                }
+            }
+
+            $couponApplied = $coupon !== null;
             $couponDiscount = $couponApplied ? min((float) $coupon->discountFor($subtotal), $subtotal) : 0.0;
 
             // موعدٌ في المستقبل يعني طلبًا يُجهَّز لا بيعةً انتهت — انظر 'status' أدناه
@@ -1356,7 +1393,28 @@ class PosController extends Controller
         }
 
         if ($redeemPoints > 0) {
-            $customer->decrement('points', $redeemPoints);
+            /*
+             * الرصيد يُخصم بشرطه لا بطرحٍ أعمى.
+             *
+             * `resolveRedemption` تقرأ الرصيد ثمّ يُخصم هنا، وبين القراءة
+             * والخصم بيعةٌ أخرى للزبون نفسه على صندوقٍ آخر: كلتاهما ترى خمسمئة
+             * نقطة، وكلتاهما تطرح خمسمئة — فيصير رصيده سالبًا، ويكون قد اشترى
+             * بخصمٍ لم يدفع ثمنه. والنقاط مالٌ لا عدّاد.
+             *
+             * فالشرط في جملة التحديث نفسها: من سبق أخذ، ومن تأخّر يُردّ بلا
+             * فاتورةٍ ناقصة الثمن.
+             */
+            $taken = \App\Models\Customer::whereKey($customer->id)
+                ->where('points', '>=', $redeemPoints)
+                ->update(['points' => \DB::raw('points - '.$redeemPoints), 'updated_at' => now()]);
+
+            if (! $taken) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'redeem_points' => __('تغيّر رصيد نقاط العميل — أعد احتساب الاستبدال.'),
+                ]);
+            }
+
+            $customer->refresh();
             \App\Models\PointTransaction::record($customer, 'redeem', $redeemPoints, (int) $customer->points, $order->id, 'استبدال عند البيع — فاتورة ' . $order->number);
         }
 

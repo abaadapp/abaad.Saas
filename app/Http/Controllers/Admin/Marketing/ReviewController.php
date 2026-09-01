@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Review;
+use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Pagination;
+use App\Support\Search;
+use App\Support\Sort;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -31,7 +34,10 @@ class ReviewController extends Controller
         'status' => 'status',
     ];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     public function index(Request $request): Response
     {
@@ -40,8 +46,12 @@ class ReviewController extends Controller
         $q = Review::where('business_id', $bid)->with(['customer', 'product']);
 
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('comment', 'like', "%{$s}%")
-                ->orWhere('author_name', 'like', "%{$s}%"));
+            // `like` على PostgreSQL يفرّق بين حالتَي الحرف، وأسماءُ المقيّمين
+            // وتعليقاتُهم تُكتب باللاتينية كثيرًا — فالبحث كان أعمى في الإنتاج
+            // ويعمل في الاختبار (SQLite متساهل). انظر Support\Search
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('comment', $like, "%{$s}%")
+                ->orWhere('author_name', $like, "%{$s}%"));
         }
         if ($status = $request->query('status')) {
             $q->where('status', $status);
@@ -50,7 +60,7 @@ class ReviewController extends Controller
             $q->where('rating', (int) $rating);
         }
 
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
+        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
 
         $reviews = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
@@ -70,8 +80,8 @@ class ReviewController extends Controller
             ])->all(),
             'pagination' => Pagination::meta($reviews),
             'filters' => $request->only('q', 'status', 'rating')
-                + \App\Support\Sort::params($request, self::SORTS),
-            'sorts' => \App\Support\Sort::keys(self::SORTS),
+                + Sort::params($request, self::SORTS),
+            'sorts' => Sort::keys(self::SORTS),
             'products' => Product::where('business_id', $bid)->orderBy('name')
                 ->get(['id', 'name'])->map(fn ($p) => ['value' => $p->id, 'label' => $p->name])->all(),
             'customers' => Customer::where('business_id', $bid)->orderBy('name')->limit(500)
@@ -102,7 +112,7 @@ class ReviewController extends Controller
         ]);
 
         Review::create($data + ['business_id' => $bid]);
-        \App\Support\Activity::log('created', 'سجّل تقييمًا بـ'.$data['rating'].' نجوم');
+        Activity::log('created', 'سجّل تقييمًا بـ'.$data['rating'].' نجوم');
 
         return back()->with('toast', ['msg' => __('سُجّل التقييم معلَّقًا'), 'type' => 'success']);
     }
@@ -152,7 +162,7 @@ class ReviewController extends Controller
     {
         $review = Review::where('business_id', $this->bid())->findOrFail($id);
 
-        \App\Support\Activity::log('deleted', 'حذف تقييمًا', ['subject_id' => $review->id]);
+        Activity::log('deleted', 'حذف تقييمًا', ['subject_id' => $review->id]);
         $review->delete();
 
         return back()->with('toast', ['msg' => __('حُذف التقييم'), 'type' => 'warning']);

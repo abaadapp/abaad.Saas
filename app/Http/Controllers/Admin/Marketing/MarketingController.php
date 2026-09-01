@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Admin\Marketing;
 
+use App\Http\Controllers\Admin\WhatsAppController;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\PointTransaction;
+use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Loyalty;
 use App\Support\MarketingSettings;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -21,7 +24,10 @@ use Inertia\Response;
  */
 class MarketingController extends Controller
 {
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
@@ -47,7 +53,7 @@ class MarketingController extends Controller
         ]);
 
         MarketingSettings::save($this->bid(), 'website', $data);
-        \App\Support\Activity::log('updated', 'حدّث إعدادات الموقع الإلكتروني');
+        Activity::log('updated', 'حدّث إعدادات الموقع الإلكتروني');
 
         return back()->with('toast', ['msg' => __('حُفظت إعدادات الموقع'), 'type' => 'success']);
     }
@@ -94,7 +100,15 @@ class MarketingController extends Controller
     {
         $data = $request->validate([
             'loyalty_enabled' => ['nullable', 'boolean'],
-            'loyalty_earn_rate' => ['required', 'numeric', 'min:0', 'max:1000'],
+            /*
+             * نسبةُ اكتسابٍ لا تطبع مالًا.
+             *
+             * كان السقف ألفًا، والاستبدال مئةُ نقطةٍ للريال: فمنحُ ألف نقطةٍ
+             * لكلّ ريالٍ يعيد إلى الزبون عشرة ريالاتٍ عن كلّ ريالٍ يدفعه.
+             * وهذا ليس سخاءً يُترك لصاحبه — هو حلقةٌ لا تُغلق: يشتري بنقاطٍ
+             * يكسب منها نقاطًا أكثر.
+             */
+            'loyalty_earn_rate' => ['required', 'numeric', 'min:0', 'max:'.Loyalty::maxEarnRate()],
             /*
              * سقف الاستبدال نسبةٌ من الفاتورة لا أكثر من مئة.
              *
@@ -103,10 +117,19 @@ class MarketingController extends Controller
              */
             'loyalty_redeem_max_pct' => ['required', 'integer', 'min:0', 'max:100'],
             'loyalty_redeem_min' => ['required', 'integer', 'min:0'],
+        ], [
+            'loyalty_earn_rate.max' => __(
+                'كلّ :unit نقطة تساوي وحدةَ عملةٍ عند الاستبدال، فمنحُ :rate نقطةً لكل وحدةٍ يعيد للزبون :pct٪ من فاتورته.',
+                [
+                    'unit' => Loyalty::POINTS_PER_UNIT,
+                    'rate' => (string) $request->input('loyalty_earn_rate'),
+                    'pct' => Loyalty::cashbackPercent((float) $request->input('loyalty_earn_rate')),
+                ],
+            ),
         ]);
 
         MarketingSettings::save($this->bid(), 'loyalty', $data);
-        \App\Support\Activity::log('updated', 'حدّث برنامج الولاء');
+        Activity::log('updated', 'حدّث برنامج الولاء');
 
         return back()->with('toast', ['msg' => __('حُفظ برنامج الولاء'), 'type' => 'success']);
     }
@@ -157,7 +180,7 @@ class MarketingController extends Controller
         ]);
 
         MarketingSettings::save($this->bid(), 'seo', $data);
-        \App\Support\Activity::log('updated', 'حدّث إعدادات محركات البحث');
+        Activity::log('updated', 'حدّث إعدادات محركات البحث');
 
         return back()->with('toast', ['msg' => __('حُفظت إعدادات البحث'), 'type' => 'success']);
     }
@@ -172,48 +195,34 @@ class MarketingController extends Controller
 
         return Inertia::render('Admin/Marketing/Whatsapp', [
             'settings' => MarketingSettings::group($bid, 'whatsapp'),
-            'storeName' => $business->name,
             /*
              * حال الأتمتة كما تراها المنصّة — لا كما يظنّها التاجر.
              *
              * ولا يخرج منها رمزٌ ولا معرّف وصلة أبعاد: الوضع المشترك يقول
              * «يُرسل عبر أبعاد» ولا يقول بأيّ حسابٍ ولا بأيّ مفتاح.
              */
-            'automation' => \App\Http\Controllers\Admin\WhatsAppController::view($business),
-            // ما يقبله القالب من متغيّرات — تُعرض للتاجر بدل أن يخمّنها
-            'variables' => [
-                ':store' => __('اسم المتجر'),
-                ':number' => __('رقم الطلب'),
-                ':total' => __('إجمالي الطلب'),
-                ':customer' => __('اسم العميل'),
-            ],
+            'automation' => WhatsAppController::view($business),
         ]);
     }
 
     public function saveWhatsapp(Request $request)
     {
+        /*
+         * أربعةُ مقابضَ وحدها — انظر MarketingSettings::GROUPS.
+         *
+         * ولا رقمَ ولا نصَّ رسالةٍ ولا مفتاحَ تفعيلٍ ثانٍ: كانت تُقبل وتُحفظ
+         * ولا يقرؤها مُرسِل الرسائل. والتفعيل من بطاقة الوصلة، والرقم رقمُها،
+         * والنصّ قالبٌ معتمَدٌ عند ميتا.
+         */
         $data = $request->validate([
-            'wa_enabled' => ['nullable', 'boolean'],
-            /*
-             * الرقم بصيغة دولية بلا رموز.
-             *
-             * واتساب لا يفتح محادثةً على رقمٍ بمسافاتٍ أو شرطات، ويردّ بصفحةٍ
-             * بيضاء لا برسالة — فيظنّ التاجر أن الإشعارات تعمل وهي لا تُرسل.
-             */
-            'wa_number' => ['nullable', 'string', 'regex:/^\d{8,15}$/'],
             'wa_on_order' => ['nullable', 'boolean'],
             'wa_on_ready' => ['nullable', 'boolean'],
             'wa_on_out_for_delivery' => ['nullable', 'boolean'],
             'wa_on_delivered' => ['nullable', 'boolean'],
-            'wa_template_order' => ['nullable', 'string', 'max:500'],
-            'wa_template_ready' => ['nullable', 'string', 'max:500'],
-            'wa_template_delivered' => ['nullable', 'string', 'max:500'],
-        ], [
-            'wa_number.regex' => __('الرقم بصيغة دولية بلا + ولا مسافات — مثل: 96890000000'),
         ]);
 
         MarketingSettings::save($this->bid(), 'whatsapp', $data);
-        \App\Support\Activity::log('updated', 'حدّث إشعارات واتساب');
+        Activity::log('updated', 'حدّث إشعارات واتساب');
 
         return back()->with('toast', ['msg' => __('حُفظت إعدادات واتساب'), 'type' => 'success']);
     }

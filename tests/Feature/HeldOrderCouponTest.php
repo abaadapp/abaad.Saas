@@ -124,18 +124,23 @@ class HeldOrderCouponTest extends TestCase
         // بين التعليق والاستكمال انتهت صلاحيته
         $coupon->update(['expires_at' => now()->subDay()]);
 
+        /*
+         * والانتهاء يُقال لا يُبتلع.
+         *
+         * السلّة عُلّقت بسعرٍ فيه الخصم، وقيل للزبون. فإتمامُها بواحدٍ
+         * وعشرين صمتًا يعني أن يدفع غير ما اتُّفق عليه ولا أحد يعلم —
+         * والكاشير أوّلُ من لا يعلم.
+         */
         $this->actingAs($this->cashier)->postJson('/pos/checkout', [
             'items' => [['id' => $this->product->id, 'name' => 'صنف', 'qty' => 2]],
             'resume_id' => $held->id,
             'coupon_code' => 'SAVE10',
             'client_uuid' => 'hold-test-2',
             'payment_method' => 'نقدي',
-        ])->assertOk();
+        ])->assertStatus(422)->assertJsonValidationErrors('coupon_code');
 
-        $sale = Order::where('is_held', false)->latest('id')->firstOrFail();
-
-        $this->assertEqualsWithDelta(0.0, $sale->discount, 0.0005, 'كوبون منتهٍ لا يُطبَّق ولو كان محفوظًا');
-        $this->assertEqualsWithDelta(21.0, $sale->total, 0.0005);
+        $this->assertSame(0, Order::where('is_held', false)->count(), 'أُتمّت بسعرٍ غير المتّفق عليه');
+        $this->assertSame(1, Order::where('is_held', true)->count(), 'والسلّة تبقى معلّقةً كما كانت');
     }
 
     public function test_an_order_held_without_a_coupon_stays_without_one(): void

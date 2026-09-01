@@ -125,27 +125,33 @@ class MarketingToolsTest extends TestCase
 
     /* -------------------------- إشعارات واتساب -------------------------- */
 
-    public function test_a_whatsapp_number_with_symbols_is_refused(): void
+    public function test_the_whatsapp_screen_saves_only_what_the_sender_reads(): void
     {
         /*
-         * واتساب يردّ على الرقم المعطوب بصفحةٍ بيضاء لا برسالة — فيظنّ التاجر
-         * أنّ الإشعارات تعمل وهي لا تُرسل.
+         * كان الحقل يقبل رقمًا ويفحص صيغته ويحفظه — ولا يقرؤه أحد: الرسائل
+         * تخرج من رقم الوصلة المعتمدة عند ميتا لا من رقمٍ يُكتب هنا. وحقلٌ
+         * يُفحص بدقّةٍ ولا أثر له أخدعُ من حقلٍ لا يُفحص.
          */
-        $this->post(route('admin.marketing.whatsapp.save'), ['wa_number' => '+968 9000 0000'])
-            ->assertSessionHasErrors('wa_number');
+        $this->post(route('admin.marketing.whatsapp.save'), [
+            'wa_number' => '96890000000',
+            'wa_template_order' => 'نصّ',
+            'wa_enabled' => true,
+        ])->assertSessionHasNoErrors();
 
-        $this->post(route('admin.marketing.whatsapp.save'), ['wa_number' => '96890000000'])
-            ->assertSessionHasNoErrors();
+        $saved = MarketingSettings::group($this->bid(), 'whatsapp');
+
+        $this->assertSame(['wa_on_order', 'wa_on_ready', 'wa_on_out_for_delivery', 'wa_on_delivered'], array_keys($saved));
+        $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => 'wa_number']);
     }
 
     public function test_saving_one_group_does_not_touch_another(): void
     {
         // مجموعةٌ تكتب فوق أخرى تمحو إعدادًا لم يفتح التاجر شاشته أصلًا
         $this->post(route('admin.marketing.website.save'), ['site_domain' => 'mystore.om']);
-        $this->post(route('admin.marketing.whatsapp.save'), ['wa_number' => '96890000000']);
+        $this->post(route('admin.marketing.whatsapp.save'), ['wa_on_delivered' => true]);
 
         $this->assertSame('mystore.om', MarketingSettings::group($this->bid(), 'website')['site_domain']);
-        $this->assertSame('96890000000', MarketingSettings::group($this->bid(), 'whatsapp')['wa_number']);
+        $this->assertSame('1', MarketingSettings::group($this->bid(), 'whatsapp')['wa_on_delivered']);
     }
 
     public function test_a_key_that_is_not_in_the_group_is_ignored(): void

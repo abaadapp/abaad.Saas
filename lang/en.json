@@ -3527,5 +3527,11 @@
     "مصروف: ": "Expense: ",
     "لا تملك صلاحية منح: :sections": "You cannot grant: :sections",
     "لا يمكنك تغيير وظيفتك بنفسك.": "You cannot change your own job title.",
-    "لا يمكنك رفع راتبك أو بدلاتك بنفسك.": "You cannot raise your own salary or allowances."
+    "لا يمكنك رفع راتبك أو بدلاتك بنفسك.": "You cannot raise your own salary or allowances.",
+    "متى تُرسَل الرسالة": "When the message is sent",
+    "نصّ الرسالة قالبٌ معتمَدٌ لدى واتساب ولا يُكتب هنا — وهذه الأحداث قرارُك.": "The message body is a WhatsApp-approved template and is not written here — these events are your call.",
+    "تاريخ الانتهاء مضى — الكوبون لن يعمل ولا مرّة.": "That expiry date has passed — the coupon would never work once.",
+    "كلّ :unit نقطة تساوي وحدةَ عملةٍ عند الاستبدال، فمنحُ :rate نقطةً لكل وحدةٍ يعيد للزبون :pct٪ من فاتورته.": "Every :unit points redeem for one currency unit, so awarding :rate points per unit gives the customer back :pct% of their bill.",
+    "تغيّر رصيد نقاط العميل — أعد احتساب الاستبدال.": "The customer's point balance changed — recalculate the redemption.",
+    "١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال — فما فوق ١٠٠ يعيد للزبون فاتورته كاملة": "100 points = one currency unit on redemption — above 100 gives the customer their whole bill back"
 }

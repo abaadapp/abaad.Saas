@@ -25,6 +25,44 @@ class MarketingController extends Controller
 
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
+    /**
+     * زرّ «الموقع الإلكتروني» في الترويسة — وجهةٌ واحدة لحالتين.
+     *
+     * المنشورُ يُفتح، وغيرُ المنشور يُقال عنه إنّه لم يُنشر. وكان الزرّ يقود
+     * إلى صفحة الإعدادات مباشرةً حين لا موقع: فمن ضغطه ليرى متجره يجد نفسه
+     * في نموذجٍ لا يفهم لماذا فُتح له.
+     *
+     * والوجهةُ واحدةٌ عمدًا: الترويسة تفرّق بين الحالتين لتفتح المنشور في
+     * تبويبٍ جديد، لكنّ من يصل إلى هذا المسار مباشرةً — برابطٍ محفوظ أو
+     * بعودةٍ في التاريخ — يجب أن يصل إلى الشيء نفسه.
+     */
+    public function websiteStatus()
+    {
+        if ($url = Demo::websiteUrl()) {
+            return redirect()->away($url);
+        }
+
+        $site = MarketingSettings::group($this->bid(), 'website');
+        $request = \App\Models\DomainRequest::where('business_id', $this->bid())
+            ->orderByDesc('id')->first();
+
+        /*
+         * أين وقف التاجر على طريق العنوان — لا «لا يوجد» وحدها.
+         *
+         * بلا نطاقٍ مضبوط أحوالٌ خمسة لا حالٌ واحدة: لم يختر بعد، أو اختار
+         * نطاقه ولم يكتبه، أو حجز اسمًا فرعيًّا ينتظر الاستضافة، أو طلب من
+         * أبعاد وينتظر ردًّا، أو رُدّ عليه بالرفض. وجملةٌ واحدة تصفها جميعًا
+         * لا تقول لأحدٍ منهم ما خطوته التالية.
+         */
+        return Inertia::render('Admin/Marketing/WebsiteInactive', [
+            'mode' => \App\Support\DomainOptions::mode($site),
+            'subdomain' => trim((string) $site['site_subdomain']) !== ''
+                ? \App\Support\DomainOptions::host(trim((string) $site['site_subdomain']))
+                : null,
+            'request' => $request?->only(['domain', 'note', 'status']),
+        ]);
+    }
+
     public function saveWebsite(Request $request)
     {
         $data = $request->validate([

@@ -268,6 +268,16 @@ class Demo
          * فبقي واحد: ما يُكتب في شاشة الموقع هو ما يفتحه الزرّ. والقديم
          * نُقل إليه بهجرة، فلم يضع نطاقٌ ضُبط قبل هذه النسخة.
          */
+        /*
+         * النطاق وحده — ولا مفتاح نشرٍ معه.
+         *
+         * كان هنا شرطُ `site_enabled`، ثمّ حُذف المفتاح من النظام كلّه لأنّه
+         * كان يُحفَظ ولا يقرؤه شيء. وشرطٌ على مفتاحٍ لا سبيل إلى رفعه يعني
+         * زرًّا لا يعمل عند أحدٍ أبدًا — وهو أسوأ من الزرّ الذي كان.
+         *
+         * فما دام لا واجهةَ متجرٍ في النظام، فالنطاق المضبوط هو كلّ ما يمكن
+         * أن يعنيه «للمتجر عنوان».
+         */
         $raw = trim((string) (self::businessSettings()['site_domain'] ?? ''));
 
         if ($raw === '') {
@@ -2639,6 +2649,38 @@ class Demo
                     'time' => $since->format('Y-m-d'),
                     'icon' => 'user-x', 'color' => 'warning',
                     'url' => route('admin.customers.show', $c->id),
+                ]);
+            }
+        }
+
+        /*
+         * ردُّ المشغّل على طلب النطاق — يصل صاحبه بدل أن ينتظره.
+         *
+         * كان الطلب يُغلق في لوحة المشغّل — قبولًا أو رفضًا — ولا يُبلَّغ
+         * التاجر بشيء: تتغيّر بطاقةٌ في شاشةٍ لا يفتحها إلا من كان يبحث عنها.
+         * فمن طلب نطاقًا ينتظر أسابيع ولا يعرف أنّ جوابه جاهزٌ منذ يومين،
+         * ومن رُفض طلبه لا يعرف أنّ عليه أن يطلب غيره.
+         *
+         * والمعلّق لا يُنبَّه عليه: انتظارٌ لم ينتهِ ليس خبرًا، وتكراره كلّ
+         * يومٍ في الجرس يجعل الجرس يُتجاهَل.
+         */
+        if (\Illuminate\Support\Facades\Schema::hasTable('domain_requests')) {
+            $handled = \App\Models\DomainRequest::where('business_id', $bid)
+                ->whereIn('status', [\App\Models\DomainRequest::DONE, \App\Models\DomainRequest::REJECTED])
+                ->whereNotNull('handled_at')
+                ->where('handled_at', '>=', now()->subDays(30))
+                ->orderByDesc('handled_at')->limit($limit)->get();
+
+            foreach ($handled as $req) {
+                $done = $req->status === \App\Models\DomainRequest::DONE;
+                $add('domain-req-'.$req->id, [
+                    'text' => $done
+                        ? __('جُهّز نطاقك :domain — صار عنوان متجرك.', ['domain' => $req->domain])
+                        : __('تعذّر تجهيز :domain — اقرأ السبب واطلب عنوانًا آخر.', ['domain' => $req->domain]),
+                    'time' => optional($req->handled_at)->format('Y-m-d'),
+                    'icon' => $done ? 'circle-check' : 'circle-alert',
+                    'color' => $done ? 'success' : 'danger',
+                    'url' => route('admin.settings.index', ['section' => 'domain']),
                 ]);
             }
         }

@@ -50,6 +50,14 @@ class DashboardWebsiteTest extends TestCase
         );
     }
 
+    private function setSetting(string $key, string $value): void
+    {
+        Setting::updateOrCreate(
+            ['business_id' => $this->business->id, 'key' => $key],
+            ['value' => $value],
+        );
+    }
+
     public static function normalizes(): array
     {
         return [
@@ -132,12 +140,128 @@ class DashboardWebsiteTest extends TestCase
         $this->assertNull($this->sharedWebsite());
     }
 
+    /* ------------------- وجهة الزرّ حين لا عنوان يُفتح ------------------- */
+
+    /** @return array<string, mixed> */
+    private function statusPage(): array
+    {
+        return $this->actingAs($this->owner)
+            ->get(route('admin.marketing.website.status'))
+            ->assertOk()
+            ->viewData('page');
+    }
+
+    /**
+     * من ضبط نطاقه يُنقل إليه — لا تُعرض عليه صفحة.
+     *
+     * ولا مفتاح نشرٍ في الشرط: كان `site_enabled` يُحفظ ولا يقرؤه شيء، فحُذف
+     * من النظام. واشتراطُ مفتاحٍ لا سبيل إلى رفعه يعني زرًّا لا يعمل عند أحد.
+     */
+    public function test_a_merchant_with_a_domain_goes_straight_to_it(): void
+    {
+        $this->setDomain('abaad.om');
+
+        $this->actingAs($this->owner)
+            ->get(route('admin.marketing.website.status'))
+            ->assertRedirect('https://abaad.om');
+    }
+
+    /** ومن لم يختر طريقه بعد يُعرض عليه أن يختار */
+    public function test_a_merchant_who_has_not_chosen_yet_is_asked_to_choose(): void
+    {
+        $page = $this->statusPage();
+
+        $this->assertSame('Admin/Marketing/WebsiteInactive', $page['component']);
+        $this->assertSame('', $page['props']['mode']);
+        $this->assertNull($page['props']['subdomain']);
+        $this->assertNull($page['props']['request']);
+    }
+
+    /** ومن حجز اسمًا فرعيًّا يُقال له إنّ الاستضافة قيد التجهيز — بعنوانه */
+    public function test_a_reserved_subdomain_is_shown_as_being_prepared(): void
+    {
+        $this->setSetting('site_domain_mode', 'subdomain');
+        $this->setSetting('site_subdomain', 'my-store');
+
+        $page = $this->statusPage();
+
+        $this->assertSame('subdomain', $page['props']['mode']);
+        $this->assertStringStartsWith('my-store.', (string) $page['props']['subdomain']);
+        // ولا يُفتح: لا شيء يخدم هذا العنوان بعد
+        $this->assertNull(Demo::websiteUrl());
+    }
+
+    /** ومن طلب من أبعاد وينتظر يُقال له إنّ طلبه قيد المعالجة — لا «اضبط نطاقك» */
+    public function test_a_pending_request_is_reported_instead_of_asking_again(): void
+    {
+        $this->setSetting('site_domain_mode', 'new');
+        \App\Models\DomainRequest::create([
+            'business_id' => $this->business->id,
+            'domain' => 'mystore.om',
+            'status' => \App\Models\DomainRequest::PENDING,
+        ]);
+
+        $page = $this->statusPage();
+
+        $this->assertSame('mystore.om', $page['props']['request']['domain']);
+        $this->assertSame(\App\Models\DomainRequest::PENDING, $page['props']['request']['status']);
+    }
+
+    /* ---------------- ردُّ المشغّل يصل صاحبه في الجرس ---------------- */
+
+    /** @return list<string> */
+    private function bellTexts(): array
+    {
+        return array_column($this->actingAs($this->owner)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->viewData('page')['props']['notifications']['items'] ?? [], 'text');
+    }
+
+    public function test_a_completed_request_reaches_the_merchant_bell(): void
+    {
+        \App\Models\DomainRequest::create([
+            'business_id' => $this->business->id, 'domain' => 'mystore.om',
+            'status' => \App\Models\DomainRequest::DONE, 'handled_at' => now(),
+        ]);
+
+        $this->assertNotEmpty(array_filter($this->bellTexts(),
+            fn ($t) => str_contains($t, 'mystore.om')),
+            'أُغلق الطلب ولم يصل صاحبه خبرٌ به');
+    }
+
+    public function test_a_rejected_request_reaches_him_too(): void
+    {
+        \App\Models\DomainRequest::create([
+            'business_id' => $this->business->id, 'domain' => 'taken.om',
+            'note' => 'النطاق محجوز', 'status' => \App\Models\DomainRequest::REJECTED,
+            'handled_at' => now(),
+        ]);
+
+        $this->assertNotEmpty(array_filter($this->bellTexts(),
+            fn ($t) => str_contains($t, 'taken.om')));
+    }
+
+    /** والمعلّق لا يُنبَّه عليه: انتظارٌ لم ينتهِ ليس خبرًا يُقرع له الجرس */
+    public function test_a_pending_request_does_not_ring_the_bell(): void
+    {
+        \App\Models\DomainRequest::create([
+            'business_id' => $this->business->id, 'domain' => 'waiting.om',
+            'status' => \App\Models\DomainRequest::PENDING,
+        ]);
+
+        $this->assertEmpty(array_filter($this->bellTexts(),
+            fn ($t) => str_contains($t, 'waiting.om')));
+    }
+
     /* ------------------------- المصدر واحد لا اثنان ------------------------- */
 
     public function test_the_domain_is_read_from_the_marketing_screen(): void
     {
         $this->actingAs($this->owner)
-            ->post(route('admin.marketing.website.save'), ['site_domain' => 'abaad.om'])
+            ->post(route('admin.marketing.website.save'), [
+                'site_domain' => 'abaad.om', 'site_enabled' => true,
+            ])
             ->assertSessionHasNoErrors();
 
         $this->assertSame('https://abaad.om', $this->sharedWebsite());

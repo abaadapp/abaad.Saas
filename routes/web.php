@@ -467,6 +467,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * `website` في `MarketingSettings` — الاسم يصف البيانات لا الشاشة.
      */
     Route::get('/marketing/website', fn () => redirect()->route('admin.settings.index', ['section' => 'domain']))->name('marketing.website');
+    /*
+     * وجهةُ زرّ «الموقع الإلكتروني» في الترويسة حين لا موقع يُفتح.
+     *
+     * مسارٌ مستقلٌّ عن الرابط القديم أعلاه: ذاك توجيهٌ توافقيّ إلى نموذج
+     * الإعدادات لمن حفظ العنوان، وهذا صفحةُ حالٍ تقول ما ينقص. وخلطُهما في
+     * عنوانٍ واحد يجعل أحدهما يسرق وظيفة الآخر.
+     */
+    Route::get('/marketing/website/status', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'websiteStatus'])->name('marketing.website.status');
     Route::post('/marketing/website', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
     Route::get('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'loyalty'])->name('marketing.loyalty');
     Route::post('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveLoyalty'])->name('marketing.loyalty.save');

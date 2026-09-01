@@ -4,9 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Business;
-use App\Models\Customer;
-use App\Models\JournalEntry;
-use App\Models\Order;
 use App\Models\Product;
 use App\Models\StockAdjustment;
 use App\Models\User;
@@ -60,7 +57,37 @@ class InventoryDocumentsTest extends TestCase
         return $this->business->id;
     }
 
-    /* --------------------------- تعديلات المخزون --------------------------- */
+    /* ---------------------------- سجل المخزون ---------------------------- */
+
+    public function test_the_screen_is_named_the_stock_log_wherever_it_shows(): void
+    {
+        /*
+         * اسمٌ واحد في موضعين: تبويبُ القسم وعنوانُ الصفحة. ولو تُرك أحدهما
+         * لَقرأ التاجر اسمًا في التبويب وآخر بعد الضغط عليه — فيظنّهما بابين.
+         *
+         * والمسارُ لا يُمسّ: `admin.inventory.adjustments` كما هو، فالروابط
+         * المحفوظة والصلاحيات لا تتغيّر بتغيّر الاسم.
+         */
+        $tabs = file_get_contents(resource_path('js/Components/SectionTabs.tsx'));
+        $screen = file_get_contents(resource_path('js/Pages/Admin/Inventory/Adjustments.tsx'));
+
+        $this->assertStringContainsString(
+            "{ label: 'سجل المخزون', routeName: 'admin.inventory.adjustments'",
+            $tabs,
+            'تبويبُ القسم لا يحمل الاسم الجديد'
+        );
+
+        $this->assertSame(2, substr_count($screen, 'سجل المخزون'), 'الشاشة تحمل الاسم في عنوانها وعنوان التبويب معًا');
+        $this->assertStringNotContainsString('تعديلات المخزون', $screen, 'بقي الاسمُ القديم على الشاشة');
+
+        // والترجمة تتبع الاسم، وإلّا ظهر مفتاحٌ عربيّ في الواجهة الإنجليزية
+        $en = json_decode(file_get_contents(lang_path('en.json')), true);
+        $this->assertArrayHasKey('سجل المخزون', $en);
+        $this->assertArrayNotHasKey('تعديلات المخزون', $en, 'بقي مفتاحُ ترجمةٍ يتيمٌ للاسم القديم');
+
+        // والصفحة تفتح كما كانت — الاسمُ تغيّر لا السلوك
+        $this->get(route('admin.inventory.adjustments'))->assertOk();
+    }
 
     private function adjust(array $overrides = [])
     {
@@ -137,5 +164,4 @@ class InventoryDocumentsTest extends TestCase
 
         $this->assertSame(50, (int) $theirs->fresh()->quantity);
     }
-
 }

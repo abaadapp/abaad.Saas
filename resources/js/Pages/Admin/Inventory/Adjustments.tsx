@@ -172,9 +172,9 @@ export default function Adjustments() {
     ];
 
     return (
-        <AdminLayout title="تعديلات المخزون">
+        <AdminLayout title="سجل المخزون">
             <PageHeader
-                title="تعديلات المخزون"
+                title="سجل المخزون"
                 subtitle={t('تلفٌ وفقدٌ وتصحيحُ عدّ — كلٌّ منها يُنقص المخزون ويُقيّد أثره في الدفتر')}
                 actions={
                     <Button onClick={() => setAdding(true)} disabled={products.length === 0}>

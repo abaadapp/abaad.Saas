@@ -54,7 +54,11 @@ export default function ReportsCustomers() {
 
     return (
         <AdminLayout title="العملاء الأكثر إنفاقًا">
-            {/* الكشف للطابعة: القاعدة العامة تُخفي الصفحة كلّها إلا الإيصال الحراري */}
+            {/*
+                الكشف للطابعة يبقى وإن رُفع زرّ الطباعة: القاعدة العامة تُخفي
+                الصفحة كلّها إلا الإيصال الحراري، فبلا هذا يُخرج Ctrl+P ورقةً
+                بيضاء. والتصدير هو الطريق المعتمد، وهذا لمن طبع بمتصفّحه.
+            */}
             <div className="printable-report">
                 <div className="no-print">
                     <BackToReports />

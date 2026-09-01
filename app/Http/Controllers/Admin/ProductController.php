@@ -274,11 +274,16 @@ class ProductController extends Controller
         } else {
             unset($data['image']);
         }
-        $oldQty = (int) $product->quantity;
-        \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, $oldQty);
-        $product->update($data);
-        // مزامنة رصيد الفرع بفارق الكمية إن عُدّلت يدويًا من نموذج المنتج
-        \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) $product->quantity - $oldQty);
+        // والقفل نفسه هنا: النموذج يكتب كميةً مطلقة، وفارقُها يذهب إلى الفرع
+        \DB::transaction(function () use ($product, $data) {
+            $locked = Product::where('business_id', $this->bid())->lockForUpdate()->findOrFail($product->id);
+            $oldQty = (int) $locked->quantity;
+            \App\Models\BranchStock::ensureAllocated($this->bid(), $locked->id, $oldQty);
+            $locked->update($data);
+            // مزامنة رصيد الفرع بفارق الكمية إن عُدّلت يدويًا من نموذج المنتج
+            \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $locked->id, (int) $locked->quantity - $oldQty);
+            $product->setRawAttributes($locked->getAttributes());
+        });
         \App\Support\Activity::log('updated', 'عدّل المنتج: ' . $product->name, ['subject_id' => $product->id]);
 
         // ويبقى في صفحة التعديل كذلك: من يصحّح سعرًا يريد أن يرى أنه ثبت،
@@ -371,20 +376,33 @@ class ProductController extends Controller
             'quantity' => ['nullable', 'integer', 'min:0'],
         ]);
 
-        if (array_key_exists('price', $data) && $data['price'] !== null) {
-            $product->price = $data['price'];
-        }
+        /*
+         * القراءة والكتابة تحت قفلٍ واحد.
+         *
+         * الفارق يُحسب من كميةٍ قُرئت قبل الحفظ. وتعديلان سريعان على الصنف
+         * نفسه — أو تعديلٌ وبيعةٌ — يقرآن الرقم نفسه، فيصير رصيد الفرع فرقًا
+         * عن إجماليٍّ لم يعد صحيحًا: «مجموع الفروع = كمية المنتج» ينكسر بلا
+         * أثرٍ في أيّ شاشة.
+         */
+        \DB::transaction(function () use ($product, $data) {
+            $locked = Product::where('business_id', $this->bid())->lockForUpdate()->findOrFail($product->id);
 
-        if (array_key_exists('quantity', $data) && $data['quantity'] !== null) {
-            // الفارق يذهب إلى الفرع الحالي كما في نموذج المنتج، فيبقى
-            // «مجموع الفروع = كمية المنتج»
-            $old = (int) $product->quantity;
-            \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, $old);
-            $product->quantity = (int) $data['quantity'];
-            \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) $data['quantity'] - $old);
-        }
+            if (array_key_exists('price', $data) && $data['price'] !== null) {
+                $locked->price = $data['price'];
+            }
 
-        $product->save();
+            if (array_key_exists('quantity', $data) && $data['quantity'] !== null) {
+                // الفارق يذهب إلى الفرع الحالي كما في نموذج المنتج، فيبقى
+                // «مجموع الفروع = كمية المنتج»
+                $old = (int) $locked->quantity;
+                \App\Models\BranchStock::ensureAllocated($this->bid(), $locked->id, $old);
+                $locked->quantity = (int) $data['quantity'];
+                \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $locked->id, (int) $data['quantity'] - $old);
+            }
+
+            $locked->save();
+            $product->setRawAttributes($locked->getAttributes());
+        });
         \App\Support\Activity::log('updated', 'عدّل سريعًا: '.$product->name, ['subject_id' => $product->id]);
 
         return back()->with('toast', ['msg' => __('حُفظ'), 'type' => 'success']);

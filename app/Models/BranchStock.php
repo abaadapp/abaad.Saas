@@ -85,17 +85,44 @@ class BranchStock extends Model
         return (int) (static::books($businessId)[$productId][$branchId] ?? 0);
     }
 
+    /**
+     * يطبّق الفرق بجملةٍ واحدة — لا قراءةً ثمّ كتابة.
+     *
+     * كان الصفّ يُقرأ ثمّ يُحسب ثمّ يُحفظ. وبيعتان لصنفٍ واحد في الفرع نفسه
+     * تقعان معًا تقرآن «عشرة» كلتاهما وتكتبان «تسعة» كلتاهما: قطعةٌ خرجت من
+     * الرفّ ولم تخرج من الدفتر. وينكسر التوازن الذي يقوم عليه النظام كلّه
+     * — «مجموع الفروع = كمية المنتج» — بلا أثرٍ يُقرأ في أيّ شاشة، ولا
+     * يظهر إلّا في جردٍ لا يُعرف من أين جاء فرقُه.
+     *
+     * والزيادة في القاعدة نفسها ذرّيّةٌ لا تحتاج قفلًا. ويبقى إنشاء الصفّ
+     * أوّل مرّة: قيد التفرّد على (الفرع، المنتج) يجعل الثاني ينكسر بدل أن
+     * يُنشئ صفًّا ثانيًا — فيُلتقط ويُطبَّق الفرق على ما أنشأه السابق.
+     */
     public static function adjust(int $businessId, ?int $branchId, int $productId, int $delta): void
     {
         if (! $branchId || $delta === 0) {
             return;
         }
-        $row = static::firstOrNew([
-            'branch_id' => $branchId,
-            'product_id' => $productId,
-        ]);
-        $row->business_id = $businessId;
-        $row->quantity = (int) $row->quantity + $delta;
-        $row->save();
+
+        $apply = fn () => static::where('branch_id', $branchId)->where('product_id', $productId)
+            ->update([
+                'quantity' => \Illuminate\Support\Facades\DB::raw('quantity + '.$delta),
+                'updated_at' => now(),
+            ]);
+
+        if ($apply()) {
+            return;
+        }
+
+        try {
+            static::create([
+                'business_id' => $businessId,
+                'branch_id' => $branchId,
+                'product_id' => $productId,
+                'quantity' => $delta,
+            ]);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            $apply();
+        }
     }
 }

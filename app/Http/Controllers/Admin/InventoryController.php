@@ -286,6 +286,16 @@ class InventoryController extends Controller
          * وخمسة، يُعدَّل مسقط إلى عشرة فيصير الإجمالي عشرة ورصيد مسقط خمسة.
          * والآن يُقاس الفرق من رصيد الفرع، ويتحرّك الإجمالي بالفرق نفسه.
          */
+        /*
+         * القراءة والكتابة في معاملةٍ واحدة، والصفّ مقفول بينهما.
+         *
+         * كان الرصيد يُقرأ ثمّ يُحسب الفرق ثمّ يُكتب المجموع. وحركتان تقعان
+         * معًا — أو حركةٌ وبيعةٌ — تقرآن الرقم نفسه فتكتب الثانية فوق الأولى:
+         * تسويةٌ سُجّلت وقُيّدت حركتُها ولا أثر لها في الرصيد. والدفتر يقول
+         * إنّ الجرد صحيح، والرفّ يقول غير ذلك.
+         */
+        return DB::transaction(function () use ($request, $data, $product, $branch) {
+        $product = Product::where('business_id', $this->bid())->lockForUpdate()->findOrFail($product->id);
         $old = (int) $product->quantity;
         \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, $old);
         $book = \App\Models\BranchStock::bookOf($this->bid(), $product->id, $branch->id);
@@ -318,8 +328,8 @@ class InventoryController extends Controller
         \App\Models\BranchStock::adjust($this->bid(), $branch->id, $product->id, $delta);
         // بلا قصٍّ عند الصفر: رصيد الفرع يأخذ الفرق كاملًا، فقصُّ الإجماليّ
         // وحده يكسر التوازن في صمت (والحارس أعلاه يمنع النزول تحت الصفر أصلًا)
-        $product->quantity = $old + $delta;
-        $product->save();
+        // وبزيادةٍ ذرّيّة لا بإسنادِ مجموعٍ حُسب قبل القفل
+        $product->increment('quantity', $delta);
 
         InventoryMovement::create([
             'business_id' => $this->bid(),
@@ -334,5 +344,6 @@ class InventoryController extends Controller
         \App\Support\Activity::log('updated', 'حركة مخزون (' . $data['type'] . ') على: ' . $product->name . ' — فرع: ' . $branch->name, ['subject_id' => $product->id]);
 
         return redirect()->route('admin.inventory.index')->with('toast', ['msg' => __('تم تسجيل حركة المخزون'), 'type' => 'success']);
+        });
     }
 }

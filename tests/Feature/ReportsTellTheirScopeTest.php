@@ -350,6 +350,38 @@ class ReportsTellTheirScopeTest extends TestCase
         $this->assertSame('2026-09-01 09:00:00', (string) Transaction::where('reference', 'TRX-NEW')->value('occurred_at'), 'وما كُتب بالساعة الصحيحة لا يُزاح مرّةً ثانية');
     }
 
+    public function test_the_cut_can_be_an_hour_not_only_a_day(): void
+    {
+        /*
+         * التصحيح وقع في منتصف يوم عمل: صفوفُ صباحه كُتبت بالساعة القديمة
+         * وصفوفُ مسائه بالجديدة. ويومٌ كاملًا حدًّا يُزيح المساء مرّةً ثانية
+         * — فيصير الجدول على ثلاث ساعات بدل اثنتين، ولا يُعرف أيُّ صفٍّ في
+         * أيّها. وهذا أسوأ من ترك القديم كما هو.
+         */
+        $this->actingAs($this->owner);
+
+        foreach ([['TRX-AM', '2026-09-01 08:18:00'], ['TRX-PM', '2026-09-01 13:05:00']] as [$ref, $at]) {
+            Transaction::create([
+                'business_id' => $this->business->id, 'reference' => $ref, 'description' => 'بيع',
+                'method' => 'نقدي', 'type' => 'دخل', 'amount' => 1, 'tax_amount' => 0,
+                'employee_name' => 'المالك', 'occurred_at' => $at,
+            ]);
+        }
+
+        $this->artisan('clock:shift', ['--before' => '2026-09-01 09:00:00', '--force' => true])
+            ->assertSuccessful();
+
+        $this->assertSame('2026-09-01 12:18:00', (string) Transaction::where('reference', 'TRX-AM')->value('occurred_at'));
+        $this->assertSame('2026-09-01 13:05:00', (string) Transaction::where('reference', 'TRX-PM')->value('occurred_at'), 'أُزيح ما كُتب بالساعة الصحيحة');
+    }
+
+    public function test_a_cut_that_is_not_a_moment_at_all_is_refused(): void
+    {
+        // حدٌّ يُقرأ خطأً يُزيح كلّ شيء أو لا شيء — والاثنان لا يُكتشفان إلا بعد الكتابة
+        $this->artisan('clock:shift', ['--before' => 'الأمس', '--force' => true])->assertFailed();
+        $this->artisan('clock:shift', ['--force' => true])->assertFailed();
+    }
+
     public function test_the_clock_the_shop_reads_is_the_clock_it_lives_by(): void
     {
         $this->assertSame(

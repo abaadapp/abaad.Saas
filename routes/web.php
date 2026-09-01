@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\GoalController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
 use App\Http\Controllers\Admin\Inventory\StockAdjustmentController;
+use App\Http\Controllers\Admin\Inventory\StockTransferController;
 use App\Http\Controllers\Admin\InventoryController;
 use App\Http\Controllers\Admin\JobTitleController;
 use App\Http\Controllers\Admin\LanguageController;
@@ -503,6 +504,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * واقعةٍ جرت. ونموذجٌ يُنشئ إشعارًا بلا استلامٍ يجعل الورقة تقول ما لم
      * يقله المخزون.
      */
+    /*
+     * سندات النقل بين الفروع — البابُ الذي لم يكن.
+     *
+     * وتحت `inventory` كأخواتها: من يملك المخزون ينقل بضاعته بين فروعه.
+     */
+    Route::get('/inventory/transfers', [StockTransferController::class, 'index'])->name('inventory.transfers');
+    Route::post('/inventory/transfers', [StockTransferController::class, 'store'])->name('inventory.transfers.store');
     Route::get('/inventory/receipts', [GoodsReceiptNoteController::class, 'index'])->name('inventory.receipts');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 

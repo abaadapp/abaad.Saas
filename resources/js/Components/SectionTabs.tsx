@@ -175,5 +175,6 @@ export const INVENTORY_TABS: SectionTab[] = [
     { label: 'المنتجات', routeName: 'admin.inventory.index', section: 'inventory' },
     { label: 'عمليات جرد المخزون', routeName: 'admin.inventory.stocktake', section: 'inventory' },
     { label: 'تعديلات المخزون', routeName: 'admin.inventory.adjustments', section: 'inventory' },
+    { label: 'النقل بين الفروع', routeName: 'admin.inventory.transfers', section: 'inventory' },
     { label: 'إشعار استلام بضاعة', routeName: 'admin.inventory.receipts', section: 'inventory' },
 ];

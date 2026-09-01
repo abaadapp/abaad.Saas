@@ -13,6 +13,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -167,26 +168,27 @@ class SettingsHoldTheirGroundTest extends TestCase
         $message = (string) session('errors')->first('branch');
 
         /*
-         * ولا تُحال إلى بابٍ لا وجود له.
+         * والنصيحة تُسمّي بابًا موجودًا.
          *
-         * كانت تقول «انقلها إلى فرعٍ آخر» — ولا نقلَ بين الفروع في النظام
-         * أصلًا: لا مسار ولا شاشة. فيبحث التاجر عن زرٍّ ليس موجودًا، ويظنّ
-         * العطب في بصره.
+         * كانت تقول «انقلها إلى فرعٍ آخر» ولا نقلَ في النظام، فيبحث التاجر
+         * عن زرٍّ ليس موجودًا ثمّ يظنّ العطب في بصره. ثمّ صارت تدلّه على
+         * حركتين يدويّتين — بابٌ أعرج لا وثيقةَ تربط طرفيه. واليوم للنقل
+         * سندُه، فتُسمّيه الرسالة باسمه.
          */
-        $this->assertStringNotContainsString('انقلها إلى فرعٍ آخر', $message);
-        $this->assertStringContainsString('تعديل يدوي', $message, 'النصيحة تُسمّي الشاشة التي تُنفَّذ منها');
+        $this->assertStringContainsString('النقل بين الفروع', $message, 'النصيحة تُسمّي الشاشة التي تُنفَّذ منها');
+        $this->assertStringContainsString($other->name, $message, 'ولا تقول «فرعٌ ما» — تسمّي الفرع وكميّته');
     }
 
-    public function test_the_system_still_has_no_branch_transfer_to_point_at(): void
+    public function test_the_screen_the_advice_names_is_actually_there(): void
     {
         /*
-         * حارسٌ على النصيحة: يوم يُبنى سندُ النقل تسقط هذه، فتُراجَع الرسالة
-         * وتُحال إليه بدل التعديل اليدويّ.
+         * حارسٌ على النصيحة نفسها — كان يقول «لا نقلَ بعد» ويسقط يوم يُبنى.
+         * وقد بُني، فصار يقول العكس: نصيحةٌ تُحيل إلى مسارٍ محذوف أسوأ من
+         * نصيحةٍ لا تُحيل إلى شيء، لأنّ الأولى تبدو صحيحةً حتى تُجرَّب.
          */
-        $named = collect(app('router')->getRoutes())->map(fn ($r) => (string) $r->getName())
-            ->filter(fn ($n) => str_contains($n, 'transfer'))->values()->all();
+        $this->assertTrue(Route::has('admin.inventory.transfers'));
 
-        $this->assertSame([], $named);
+        $this->actingAs($this->owner)->get(route('admin.inventory.transfers'))->assertOk();
     }
 
     /* ============ الإعداد يصل إلى موضعه، ولا يكسر ما قبله ============ */

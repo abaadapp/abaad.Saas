@@ -24,12 +24,19 @@ use Illuminate\Support\Facades\Schema;
  *
  *   php artisan clock:shift --before=2026-09-01 --dry-run
  *   php artisan clock:shift --before=2026-09-01 --force
+ *
+ * والحدّ يقبل ساعةً مع اليوم — ويلزمه أحيانًا: إن وقع التصحيح في منتصف يوم
+ * عملٍ فصفوفُ صباحه كُتبت بالساعة القديمة وصفوفُ مسائه بالجديدة، ويومٌ كامل
+ * حدًّا يُزيح المساء مرّةً ثانية أو يترك الصباح متأخّرًا. فيُكتب الحدّ عند
+ * لحظة النشر لا عند منتصف الليل:
+ *
+ *   php artisan clock:shift --before="2026-09-01 09:00:00" --force
  */
 class ShiftStoredClock extends Command
 {
     protected $signature = 'clock:shift
         {--hours=4 : كم ساعةً تُضاف إلى ما كُتب قبل التصحيح}
-        {--before= : التاريخ الذي بدأت عنده الساعة الصحيحة (YYYY-MM-DD) — مطلوب}
+        {--before= : اللحظة التي بدأت عندها الساعة الصحيحة (YYYY-MM-DD أو YYYY-MM-DD HH:MM:SS) — مطلوب}
         {--dry-run : عُدّ ولا تكتب}
         {--force : اكتب فعلًا}';
 
@@ -53,9 +60,17 @@ class ShiftStoredClock extends Command
 
     public function handle(): int
     {
-        $before = (string) $this->option('before');
-        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $before)) {
-            $this->error('يلزم ‎--before=YYYY-MM-DD — اليوم الذي صارت فيه الساعة صحيحة.');
+        /*
+         * الحدّ يومٌ أو لحظة — والمقارنة على القيمة المخزَّنة كما هي.
+         *
+         * اليوم وحده يكفي إن وقع التصحيح بين يومين. وإن وقع في منتصف يومٍ
+         * فيه بيع، لزمت الساعة: بدونها يُزاح مساءُ ذلك اليوم مرّةً ثانية —
+         * وهو أسوأ من ترك القديم كما هو، لأنّ الجدول يصير على ثلاث ساعات
+         * بدل اثنتين ولا يُعرف أيُّ صفٍّ في أيّها.
+         */
+        $before = trim((string) $this->option('before'));
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/', $before)) {
+            $this->error('يلزم ‎--before=YYYY-MM-DD أو ‎--before="YYYY-MM-DD HH:MM:SS" — اللحظة التي صارت عندها الساعة صحيحة.');
 
             return self::FAILURE;
         }

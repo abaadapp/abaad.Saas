@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\PayrollLine;
 use App\Models\PayrollRun;
 use App\Models\User;
+use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Ledger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
@@ -28,7 +30,10 @@ use RuntimeException;
  */
 class PayrollRunController extends Controller
 {
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     public function index(Request $request): Response
     {
@@ -104,7 +109,7 @@ class PayrollRunController extends Controller
             return $run;
         });
 
-        \App\Support\Activity::log('created', 'فتح مسيرة رواتب '.$period->format('Y-m'));
+        Activity::log('created', 'فتح مسيرة رواتب '.$period->format('Y-m'));
 
         return redirect()->route('admin.payroll.index', ['run' => $run->id])
             ->with('toast', ['msg' => __('فُتحت مسيرة :m', ['m' => $period->format('Y-m')]), 'type' => 'success']);
@@ -127,6 +132,29 @@ class PayrollRunController extends Controller
             'deductions' => ['required', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:255'],
         ]);
+
+        /*
+         * ولا يُخصم من أحدٍ أكثر ممّا استحقّ.
+         *
+         * الصافي يُقصّ عند الصفر (`PayrollLine::computeNet`) والخصمُ يُجمع
+         * كاملًا في مجاميع المسيرة، فيفترق ما يجب أن يجتمع: إجماليٌّ ناقصَ
+         * خصمٍ لا يساوي الصافي. وقيدُ الاعتماد يُبنى من هذه الثلاثة، فيخرج
+         * دائنُه أكبر من مدينه ويُرفض.
+         *
+         * فتصير المسيرة بابًا مسدودًا: تُحفظ ولا تُعتمد أبدًا، والرسالة تقول
+         * إنّ القيد لا يتوازن ولا تقول أيُّ موظّفٍ سبّب ذلك. والردّ هنا —
+         * حيث يُكتب الرقم ويُرى الموظّف — لا هناك.
+         */
+        $earned = round((float) $data['basic'] + (float) $data['allowances'] + (float) $data['overtime'], 3);
+
+        if (round((float) $data['deductions'], 3) > $earned) {
+            throw ValidationException::withMessages([
+                'deductions' => __('الخصم أكبر من مستحقّ :name (:earned) — لا يُخصم أكثر ممّا استحقّ.', [
+                    'name' => $line->employee_name,
+                    'earned' => Demo::money($earned),
+                ]),
+            ]);
+        }
 
         $line->fill($data);
         $line->net = $line->computeNet();
@@ -171,6 +199,23 @@ class PayrollRunController extends Controller
 
         if ($run->lines->isEmpty() || (float) $run->net <= 0) {
             return back()->withErrors(['approve' => __('مسيرةٌ بلا صافٍ لا تُعتمد')]);
+        }
+
+        /*
+         * وسطرٌ خصمُه أكبر من مستحقّه يُوقف الاعتماد باسمه.
+         *
+         * الحدُّ يقع عند حفظ السطر، لكنّ صفوفًا كُتبت قبله تبقى في القاعدة.
+         * والقيد يُبنى من مجاميع الثلاثة، فيخرج دائنُه أكبر من مدينه ويرفضه
+         * الدفتر برسالة «لا يتوازن» — صحيحةٌ ولا تدلّ على شيء يُصلَح.
+         */
+        foreach ($run->lines as $line) {
+            $earned = round((float) $line->basic + (float) $line->allowances + (float) $line->overtime, 3);
+
+            if (round((float) $line->deductions, 3) > $earned) {
+                return back()->withErrors(['approve' => __('خصم :name أكبر من مستحقّه — صحّح سطره قبل الاعتماد.', [
+                    'name' => $line->employee_name,
+                ])]);
+            }
         }
 
         try {
@@ -230,7 +275,7 @@ class PayrollRunController extends Controller
             return back()->withErrors(['approve' => $e->getMessage()]);
         }
 
-        \App\Support\Activity::log('updated', 'اعتمد مسيرة '.$run->period->format('Y-m'), ['subject_id' => $run->id]);
+        Activity::log('updated', 'اعتمد مسيرة '.$run->period->format('Y-m'), ['subject_id' => $run->id]);
 
         return back()->with('toast', ['msg' => __('اعتُمدت المسيرة وقُيّد المستحقّ'), 'type' => 'success']);
     }
@@ -248,7 +293,7 @@ class PayrollRunController extends Controller
             ]);
         }
 
-        \App\Support\Activity::log('deleted', 'حذف مسيرة '.$run->period->format('Y-m'), ['subject_id' => $run->id]);
+        Activity::log('deleted', 'حذف مسيرة '.$run->period->format('Y-m'), ['subject_id' => $run->id]);
         $run->delete();
 
         return redirect()->route('admin.payroll.index')

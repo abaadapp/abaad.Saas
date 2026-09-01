@@ -219,9 +219,13 @@ class PlanOpensWhatItSoldTest extends TestCase
 
         $wider = array_values(array_unique([...$this->roleSections($title), 'inventory']));
 
+        /*
+         * والرفضُ رسالةٌ في النموذج لا ٤٠٣ عارية — انظر
+         * `test_the_refusal_is_a_message_in_the_form_not_a_bare_403`.
+         */
         $this->actingAs($this->owner)
             ->post(route('admin.employees.store'), $this->employeePayload($title, $wider))
-            ->assertForbidden();
+            ->assertSessionHasErrors('permissions');
 
         $this->assertDatabaseMissing('users', ['business_id' => $this->business->id, 'name' => 'موظف']);
     }
@@ -239,6 +243,108 @@ class PlanOpensWhatItSoldTest extends TestCase
 
         $saved = User::where('business_id', $this->business->id)->where('name', 'موظف')->firstOrFail();
         $this->assertContains('inventory', $saved->permissions ?? []);
+    }
+
+    public function test_an_employee_hired_under_a_richer_plan_stays_editable_after_it_lapses(): void
+    {
+        /*
+         * أخطرُ ما في هذا الحارس، ووقع على متجرٍ حقيقيّ.
+         *
+         * موظّفٌ صلاحياتُه مخصّصة — منحها له مالكُه يوم كانت باقتُه تسمح، أو
+         * قبل أن يوجد الحدّ أصلًا. ثمّ صارت الباقة أساسية.
+         *
+         * والنموذج يرسل صلاحياته الحالية كما هي في كلّ حفظ، وهي تنحرف عن
+         * الدور، فيُقاس الانحرافُ ويُردّ الطلبُ بـ403 — **حتى لو لم يُغيَّر
+         * إلا رقمُ الهاتف**. فلا يستطيع المالك تعديل موظّفه إطلاقًا، ولا
+         * تعطيلَه، ولا حتى تصحيحَ اسمه.
+         *
+         * والحدُّ يمنع **إحداث** تخصيصٍ جديد، لا يمنع إبقاء ما وقع.
+         */
+        $this->onPlan(['custom_permissions']);
+        $title = $this->jobTitle();
+        $wider = array_values(array_unique([...$this->roleSections($title), 'inventory']));
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.employees.store'), $this->employeePayload($title, $wider))
+            ->assertSessionHasNoErrors();
+
+        $employee = User::where('business_id', $this->business->id)->where('name', 'موظف')->firstOrFail();
+
+        // ثمّ نزلت الباقة — والمستخدم يُقرأ من جديد وإلّا بقيت باقتُه محفوظةً على كائنه
+        $this->onPlan([]);
+
+        $this->actingAs(User::find($this->owner->id))
+            ->put(route('admin.employees.update', $employee->id), [
+                'name' => 'موظف', 'email' => $employee->email, 'phone' => '90000000',
+                'job_title' => $title->name,
+                'manual_permissions' => true, 'permissions' => $wider,
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $this->assertSame('90000000', $employee->fresh()->phone, 'تعذّر تعديل موظفٍ لم تُمسّ صلاحياته');
+    }
+
+    public function test_but_widening_them_further_still_needs_the_plan(): void
+    {
+        // الإبقاء مسموح، والزيادة ليست: وإلّا صار الحدُّ حبرًا
+        $this->onPlan(['custom_permissions']);
+        $title = $this->jobTitle();
+        $wider = array_values(array_unique([...$this->roleSections($title), 'inventory']));
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.employees.store'), $this->employeePayload($title, $wider))
+            ->assertSessionHasNoErrors();
+
+        $employee = User::where('business_id', $this->business->id)->where('name', 'موظف')->firstOrFail();
+        $this->onPlan([]);
+
+        $wider2 = array_values(array_unique([...$wider, 'customers']));
+
+        $this->actingAs(User::find($this->owner->id))
+            ->put(route('admin.employees.update', $employee->id), [
+                'name' => 'موظف', 'email' => $employee->email,
+                'job_title' => $title->name,
+                'manual_permissions' => true, 'permissions' => $wider2,
+            ])
+            ->assertSessionHasErrors('permissions');
+
+        $this->assertNotContains('customers', $employee->fresh()->permissions ?? []);
+    }
+
+    public function test_the_refusal_is_a_message_in_the_form_not_a_bare_403(): void
+    {
+        /*
+         * والرفضُ يُقال في النموذج لا يُصفع به.
+         *
+         * `abort(403)` على حفظِ نموذجٍ يُخرج صفحة خطأٍ كاملة: يفقد المالك ما
+         * كتبه، ولا يعرف أيُّ حقلٍ سبّبها ولا أنّ السبب باقتُه أصلًا.
+         */
+        $this->onPlan([]);
+        $title = $this->jobTitle();
+        $wider = array_values(array_unique([...$this->roleSections($title), 'inventory']));
+
+        $response = $this->actingAs($this->owner)
+            ->post(route('admin.employees.store'), $this->employeePayload($title, $wider));
+
+        $response->assertSessionHasErrors('permissions');
+        $this->assertStringContainsString(
+            'الصلاحيات المخصّصة',
+            session('errors')->first('permissions'),
+            'الرسالة لا تقول أيُّ ميزةٍ نقصت'
+        );
+    }
+
+    public function test_the_screen_knows_the_plan_before_the_owner_tries(): void
+    {
+        /*
+         * بابٌ معروضٌ لا يُفتح أسوأ من بابٍ لا يُعرض: كانت الشاشة ترسم
+         * مربّعات الصلاحيات كاملةً على الباقة الأساسية، فيؤشّرها المالك
+         * ويحفظ ثمّ يُردّ — والقاعدة في هذا المشروع أن يُخفى ما لا يُفتح.
+         */
+        $source = file_get_contents(resource_path('js/Pages/Admin/Employees/partials/EmployeeForm.tsx'));
+
+        $this->assertStringContainsString('custom_permissions', $source, 'شاشة الموظف لا تعرف الباقة');
     }
 
     /* ============================ الولاء ============================ */

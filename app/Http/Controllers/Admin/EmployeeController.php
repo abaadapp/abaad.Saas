@@ -14,6 +14,7 @@ use App\Support\PlanLimits;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class EmployeeController extends Controller
@@ -128,7 +129,7 @@ class EmployeeController extends Controller
      * فالقاعدة: ما يُمنح لا يتجاوز ما يملكه المانح. وصاحب النشاط خارجها —
      * هو مالكُ كلّ شيء أصلًا، ومن يقيّده يقفل المحلّ على صاحبه.
      *
-     * @param  array<int, string>|null  $manual قائمةٌ يدوية إن أُرسلت
+     * @param  array<int, string>|null  $manual  قائمةٌ يدوية إن أُرسلت
      */
     /**
      * الصلاحيات المخصّصة قدرةُ باقةٍ — والمقياس الانحرافُ عن الدور لا إرسالُ قائمة.
@@ -144,7 +145,7 @@ class EmployeeController extends Controller
      * و`null` — أي «اتبع الدور» — لا تُفحص أصلًا: الرجوع عن التخصيص يجب أن
      * يبقى مفتوحًا لمن نزلت باقتُه، وإلّا حُبس على ما خصّصه قبلها.
      */
-    private function refuseManualPermissionsBeyondPlan(JobTitle $title, ?array $manual): void
+    private function refuseManualPermissionsBeyondPlan(JobTitle $title, ?array $manual, ?User $employee = null): void
     {
         if ($manual === null) {
             return;
@@ -163,7 +164,39 @@ class EmployeeController extends Controller
             return;
         }
 
-        PlanFeatures::enforce(auth()->user()?->business, 'custom_permissions');
+        /*
+         * وما هو قائمٌ يبقى — الحدُّ يمنع إحداث تخصيصٍ لا الإبقاء عليه.
+         *
+         * موظّفٌ مُنح صلاحياتٍ مخصّصة يوم كانت الباقة تسمح، أو قبل أن يوجد
+         * هذا الحدّ أصلًا. والنموذج يرسل صلاحياته كما هي في كلّ حفظ، فكان
+         * الانحرافُ يُقاس ويُردّ الطلب — **حتى لو لم يُغيَّر إلا رقم الهاتف**.
+         * فلا يستطيع المالك تعديل موظّفه إطلاقًا: لا اسمَه ولا تعطيلَه.
+         *
+         * ولو أردنا نزعَها لكان النزعُ صريحًا في مكانه، لا أثرًا جانبيًّا
+         * لتغيير حقلٍ آخر.
+         */
+        if ($employee !== null) {
+            $current = array_values(array_unique($employee->permissions ?? []));
+            sort($current);
+
+            if ($current === $wanted) {
+                return;
+            }
+        }
+
+        if (PlanFeatures::allows(auth()->user()?->business, 'custom_permissions')) {
+            return;
+        }
+
+        /*
+         * والرفضُ يُقال في النموذج لا يُصفع به.
+         *
+         * `abort(403)` على حفظِ نموذجٍ يُخرج صفحة خطأٍ كاملة: يفقد المالك ما
+         * كتبه، ولا يعرف أيُّ حقلٍ سبّبها ولا أنّ السبب باقتُه أصلًا.
+         */
+        throw ValidationException::withMessages([
+            'permissions' => PlanFeatures::refusal(auth()->user()?->business, 'custom_permissions'),
+        ]);
     }
 
     private function refuseGrantingMoreThanIHave(JobTitle $title, ?array $manual): void
@@ -340,7 +373,7 @@ class EmployeeController extends Controller
         $manual = $request->has('manual_permissions') && $request->boolean('manual_permissions')
             ? array_values(array_unique($data['permissions'] ?? []))
             : null;
-        $this->refuseManualPermissionsBeyondPlan($title, $manual);
+        $this->refuseManualPermissionsBeyondPlan($title, $manual, $employee);
         $this->refuseGrantingMoreThanIHave($title, $manual);
 
         if ($refusal = $this->refuseRaisingMyself($employee, $title, $request)) {

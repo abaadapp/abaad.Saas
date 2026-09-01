@@ -49,6 +49,20 @@ class SettingController extends Controller
         'whatsapp_enabled' => ['nullable', 'boolean'],
         'whatsapp_shared_enabled' => ['nullable', 'boolean'],
         'whatsapp_shared_default_monthly_limit' => ['nullable', 'integer', 'min:-1', 'max:1000000'],
+
+        /*
+         * تسعير النطاقات — ما يراه التاجر في بطاقات «إعدادات الدومين».
+         *
+         * وهي هنا لا في الكود لأنّ السعر قرارُ مشغّلٍ لا ثابتُ برنامج: رقمٌ
+         * مكتوبٌ في ملفّ يعني نشرةً كاملة لتغيير ريال، ويعني أنّ ما يقرؤه
+         * التاجر على الشاشة قد لا يكون ما يبيعه المشغّل فعلًا.
+         *
+         * والفراغ ليس صفرًا: '' تُعرض «يُحدَّد بالتواصل»، و'0' تُعرض
+         * «مجاني». وخلطُهما وعدٌ بالمجّان لم يقطعه أحد.
+         */
+        'domain_subdomain_price' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+        'domain_setup_price' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+        'domain_subdomain_suffix' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9][a-z0-9\-\.]*\.[a-z]{2,}$/'],
     ];
 
     public function update(Request $request)
@@ -59,6 +73,11 @@ class SettingController extends Controller
             'vat_rate' => __('نسبة الضريبة'),
             'official_email' => __('البريد الرسمي'),
             'from_address' => __('بريد المُرسِل'),
+            'domain_subdomain_price' => __('سعر النطاق الفرعي'),
+            'domain_setup_price' => __('رسوم تجهيز نطاق جديد'),
+            'domain_subdomain_suffix' => __('لاحقة النطاقات الفرعية'),
+        ], [
+            'domain_subdomain_suffix.regex' => __('اكتب النطاق وحده بحروف صغيرة بلا https:// — مثل: abaadapp.om'),
         ]);
 
         /*

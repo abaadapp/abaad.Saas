@@ -13,6 +13,7 @@ import {
     Building2,
     ClipboardList,
     FlaskConical,
+    Globe,
     History,
     Layers,
     LayoutDashboard,
@@ -191,6 +192,13 @@ export const PLATFORM_NAV: NavGroup[] = [
             { label: 'الاشتراكات', icon: RefreshCw, route: 'super-admin.subscriptions.index' },
             { label: 'الباقات', icon: Layers, route: 'super-admin.subscriptions.plans' },
             { label: 'المستخدمون', icon: Users, route: 'super-admin.users.index' },
+            /*
+             * طلبات النطاقات — شاشةٌ في القائمة لا صفحةٌ تُعرف بالرابط.
+             *
+             * التاجر يضغط «اطلب من أبعاد تجهيز نطاق» وينتظر إنسانًا. وطلبٌ
+             * لا يظهر في قائمة المشغّل طلبٌ لا يراه إلا من كان يبحث عنه.
+             */
+            { label: 'طلبات النطاقات', icon: Globe, route: 'super-admin.domains.index' },
         ],
     },
     {

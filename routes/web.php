@@ -199,6 +199,15 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/users/{id}', [SuperAdminPageController::class, 'usersShow'])->name('users.show');
 
     // الباقات
+    /*
+     * طلبات النطاقات — الطرف الثاني لزرٍّ في لوحة التاجر.
+     *
+     * لا مسجّل نطاقاتٍ موصولٌ بالنظام، فالشراء عملُ إنسان: يقف الطلب هنا
+     * حتى يراه المشغّل. وبدون هذه الشاشة يكون زرّ التاجر مقبضًا لا يُمسك.
+     */
+    Route::get('/domains', [\App\Http\Controllers\SuperAdmin\DomainRequestController::class, 'index'])->name('domains.index');
+    Route::post('/domains/{id}/status', [\App\Http\Controllers\SuperAdmin\DomainRequestController::class, 'status'])->name('domains.status');
+
     Route::post('/plans', [\App\Http\Controllers\SuperAdmin\PlanController::class, 'store'])->name('plans.store');
     Route::put('/plans/{id}', [\App\Http\Controllers\SuperAdmin\PlanController::class, 'update'])->name('plans.update');
 
@@ -484,6 +493,19 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * ومعرّف متجره يُقرأ من جلسته في المتحكّم لا ممّا يصل في الطلب — انظر
      * `Admin\WhatsAppController::bid`.
      */
+    /*
+     * الدومين — أربعةُ أفعالٍ خارج «حفظ إعدادات الموقع».
+     *
+     * ذاك يحفظ الحقول الثمانية دفعةً واحدة، وهذه لكلٍّ منها تحقّقُه: اسمُ
+     * نطاقٍ فرعيّ لا يُقاس بمقياس نطاقٍ كامل، والطلب صفٌّ يُنشأ لا إعدادٌ
+     * يُكتب. وأسماؤها تحت `settings` فتقع على صلاحيّتها — انظر
+     * Permissions::sectionFromRoute.
+     */
+    Route::post('/settings/domain/mode', [\App\Http\Controllers\Admin\DomainController::class, 'mode'])->name('settings.domain.mode');
+    Route::post('/settings/domain/subdomain', [\App\Http\Controllers\Admin\DomainController::class, 'subdomain'])->name('settings.domain.subdomain');
+    Route::post('/settings/domain/request', [\App\Http\Controllers\Admin\DomainController::class, 'requestDomain'])->name('settings.domain.request');
+    Route::delete('/settings/domain/request/{id}', [\App\Http\Controllers\Admin\DomainController::class, 'cancelRequest'])->name('settings.domain.request.cancel');
+
     /*
      * بريد الاستعادة — يضبطه صاحب الحساب وهو داخل، قبل أن يحتاج إليه.
      * ويُشترط معه كلمةُ المرور الحالية: جلسةٌ مفتوحة وحدها لا تكفي.

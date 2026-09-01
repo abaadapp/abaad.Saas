@@ -6,9 +6,7 @@ import {
     BellRing,
     ChevronLeft,
     Download,
-    ExternalLink,
     Eye,
-    Globe,
     Image as ImageIcon,
     Languages,
     Save,
@@ -38,8 +36,8 @@ import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
 import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
+import DomainPanel, { type DomainData } from './panels/DomainPanel';
 import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
-import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -62,6 +60,8 @@ interface Props {
     recovery: Recovery;
     /** إعدادات الموقع والنطاق — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
+    /** الطرق الثلاث إلى عنوانٍ على الإنترنت وتكلفةُ كلٍّ منها — انظر DomainOptions */
+    domain: DomainData;
     /** عدد المنتجات المعروضة على الموقع */
     published: number;
     notificationsAll: NotificationRow[];
@@ -179,7 +179,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, recovery, site, published, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, business, recovery, site, domain, published, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
@@ -477,78 +477,22 @@ export default function SettingsIndex() {
                 <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
             ) : tab === 'domain' ? (
                 /*
-                    الدومين وحده في بطاقة.
+                    الدومين وحده في بطاقة — وسؤالٌ قبل حقل.
 
                     هو أوّل ما يُضبط وآخر ما يُغيَّر: يُكتب مرّةً ثمّ تقرؤه
                     شاشة السيو ورابط «الموقع» في الترويسة والفاتورة. وكان
                     مدفونًا في أعلى شاشةٍ طويلة تحت «أدوات التسويق»، فمن يبحث
                     عن نطاقه لا يخطر له أن يفتح قسم الكوبونات.
+
+                    ومحتواه في ملفٍّ وحده لأنّه صار ثلاثة مساراتٍ لا حقلًا:
+                    اختيارٌ أوّل، ثمّ نطاقٌ يُربط أو اسمٌ يُحجز أو طلبٌ يُرسل.
                 */
-                <form onSubmit={saveSite}>
-                    <Card className="p-6">
-                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                                <h3 className="font-bold text-[#111]">{t('إعدادات الدومين')}</h3>
-                                <p className="mt-1 text-[13px] text-[#6b7280]">
-                                    {t('عنوان متجرك على الإنترنت — وهو ما يُكتب في الفاتورة ويقرؤه محرّك البحث.')}
-                                </p>
-                            </div>
-                            {siteForm.data.site_enabled && siteForm.data.site_domain && (
-                                <Button variant="outline" size="sm" asChild>
-                                    <a
-                                        href={`https://${siteForm.data.site_domain}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                    >
-                                        <ExternalLink />
-                                        {t('فتح الموقع')}
-                                    </a>
-                                </Button>
-                            )}
-                        </div>
-
-                        <Field
-                            label="النطاق"
-                            hint="اكتب النطاق وحده بلا https:// — مثل: mystore.om"
-                            error={siteForm.errors.site_domain}
-                        >
-                            <Input
-                                dir="ltr"
-                                value={siteForm.data.site_domain}
-                                onChange={(e) => siteForm.setData('site_domain', e.target.value)}
-                                placeholder="mystore.om"
-                            />
-                        </Field>
-
-                        <div className="mt-5 border-t border-[var(--ui-border,#e8e8e8)] pt-5">
-                            <Toggle
-                                label="نشر الموقع"
-                                hint="حتى تُفعّله يبقى الموقع مغلقًا على الزوّار."
-                                on={siteForm.data.site_enabled}
-                                onChange={(v) => siteForm.setData('site_enabled', v)}
-                            />
-                        </div>
-
-                        {/* رقمٌ قبل النشر لا بعده: موقعٌ يُفتح على متجرٍ بلا
-                            منتجات يبدو مهجورًا لأوّل زائر، وأوّل انطباعٍ لا يتكرّر */}
-                        {siteForm.data.site_enabled && published === 0 && (
-                            <p className="mt-4 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#b45309]">
-                                {t('لا منتجات في متجرك بعد — الموقع سيُفتح على صفحةٍ فارغة.')}
-                            </p>
-                        )}
-
-                        <div className="mt-6 flex items-center justify-between gap-3">
-                            <p className="flex items-center gap-1.5 text-[12px] text-[#9ca3af]">
-                                <Globe className="size-3.5" />
-                                {t(':n منتجًا يظهر في الموقع', { n: number(published) })}
-                            </p>
-                            <Button type="submit" loading={siteForm.processing}>
-                                <Save />
-                                {t('حفظ التغييرات')}
-                            </Button>
-                        </div>
-                    </Card>
-                </form>
+                <DomainPanel
+                    domain={domain}
+                    siteForm={siteForm}
+                    published={published}
+                    onSaveSite={saveSite}
+                />
             ) : tab === 'website' ? (
                 <div className="space-y-6">
                     {/* التبويب يقول ما في الصفحة قبل التمرير إليه — والشكل

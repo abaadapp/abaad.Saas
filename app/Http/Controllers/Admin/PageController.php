@@ -323,6 +323,9 @@ class PageController extends Controller
         $b = \App\Models\Business::find(Demo::bid());
         $section = $request->query('section');
         $section = is_string($section) ? $section : null;
+        // تُقرأ مرّةً وتُستعمل مرّتين: بطاقة الموقع تعرضها، وشاشة الدومين
+        // تشتقّ منها الخيار المختار. وقراءتها مرّتين استعلامان لصفٍّ واحد.
+        $site = \App\Support\MarketingSettings::group(Demo::bid(), 'website');
 
         return Inertia::render('Admin/Settings/Index', [
             'settings' => Demo::businessSettings(),
@@ -343,7 +346,30 @@ class PageController extends Controller
              * وتُرسل دائمًا لا عند طلب قسمها: ثمانية مفاتيح نصّية، وطلبُها
              * برحلةٍ إلى الخادم أغلى من إرسالها.
              */
-            'site' => \App\Support\MarketingSettings::group(Demo::bid(), 'website'),
+            'site' => $site,
+            /*
+             * الطرق الثلاث إلى عنوانٍ على الإنترنت، وتكلفةُ كلٍّ منها.
+             *
+             * التسعير من إعدادات المنصّة لا من الواجهة: رقمٌ مكتوبٌ في ملفّ
+             * tsx يعني سعرًا يقوله المتجر ولا يعرفه المشغّل.
+             *
+             * وتُرسل دائمًا لا عند طلب قسمها — كما هي حال `site` فوقها.
+             */
+            'domain' => [
+                'mode' => \App\Support\DomainOptions::mode($site),
+                // الاسم المحجوز وحده بلا لاحقة — الشاشة تركّبهما للعرض
+                'subdomain' => $site['site_subdomain'],
+                // السعر واللاحقة من الجدول نفسه، فباستعلامٍ واحد لا اثنين
+                ...\App\Support\DomainOptions::view(),
+                /*
+                 * آخر طلبِ تجهيزٍ وحده — لا سجلّ الطلبات.
+                 *
+                 * ما يعني التاجر سؤالٌ واحد: أين طلبي الآن؟ وقائمةُ ما أُغلق
+                 * قبل سنة تُجيب سؤالًا لا يسأله.
+                 */
+                'request' => \App\Models\DomainRequest::where('business_id', Demo::bid())
+                    ->orderByDesc('id')->first()?->only(['id', 'domain', 'note', 'status']),
+            ],
             /*
              * بريد الاستعادة — حالُه وحده، بلا رمزٍ ولا بصمة.
              *

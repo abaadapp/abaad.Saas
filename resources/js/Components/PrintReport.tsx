@@ -16,7 +16,8 @@ export default function PrintReport() {
     const t = useTranslate();
 
     return (
-        <Button variant="outline" onClick={() => window.print()}>
+        // الزرّ لا يُطبع نفسه: أداةٌ على الشاشة لا سطرٌ في التقرير
+        <Button variant="outline" className="no-print" onClick={() => window.print()}>
             <Printer />
             {t('طباعة')}
         </Button>

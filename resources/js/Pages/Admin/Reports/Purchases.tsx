@@ -62,6 +62,7 @@ export default function ReportsPurchases() {
 
     return (
         <ReportScreen
+            reportKey="purchases"
             title="أوامر الشراء"
             subtitle="أوامر الشراء وقيمتها وحالة استلامها لكل مورّد"
             range={range}

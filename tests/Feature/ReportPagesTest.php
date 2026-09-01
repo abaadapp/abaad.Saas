@@ -10,6 +10,8 @@ use App\Models\Product;
 use App\Models\StockAdjustment;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\ReportColumns;
+use App\Support\ReportData;
 use App\Support\Reports;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -231,26 +233,140 @@ class ReportPagesTest extends TestCase
 
     /* ====================== ما لا يُفقد في النقل ====================== */
 
-    public function test_printing_survived_the_move_out_of_the_window(): void
+    public function test_every_report_offers_the_three_approved_exports(): void
     {
         /*
-         * النافذة المحذوفة كانت تحمل زرّ «طباعة»، والصفحات وُلدت بلا واحد:
-         * قدرةٌ كانت بيد التاجر تذهب في إعادة تنظيمٍ لم تُعلن أنها تأخذها.
+         * وحلّت محلّ زرّ الطباعة بطلب صاحب المشروع.
          *
-         * والزرّ وحده لا يكفي — قاعدةُ الطباعة العامة تُخفي الصفحة كلّها إلا
-         * الإيصال الحراري، فبلا `printable-report` تخرج ورقةٌ بيضاء: زرٌّ
-         * يقول شيئًا ولا يفعله. ويُطوى عن الورق ما ليس منها.
+         * والورقةُ من المتصفّح تخرج بهوامشه وترويسته ورابط الصفحة في قاعها،
+         * ولا تحمل اسم المتجر ولا فترة التقرير. والملفّ يخرج بترويسة المتجر
+         * وفترته، ويُرسَل، ويُجمع عمودُه في إكسل. ومن أراد ورقةً طبع الـPDF.
          */
-        $css = file_get_contents(resource_path('css/app.css'));
-        $this->assertStringContainsString('.printable-report', $css, 'الكشف للطابعة ذهب مع النافذة');
+        $dir = resource_path('js/Pages/Admin/Reports');
 
-        foreach (['Payments', 'Staff', 'Customers'] as $screen) {
-            $source = file_get_contents(resource_path("js/Pages/Admin/Reports/{$screen}.tsx"));
+        foreach (glob($dir.'/*.tsx') as $file) {
+            $screen = basename($file, '.tsx');
+            if (in_array($screen, ['Index', 'Waste'], true)) {
+                continue;
+            }
 
-            $this->assertStringContainsString('PrintReport', $source, "«{$screen}» بلا زرّ طباعة");
-            $this->assertStringContainsString('printable-report', $source, "«{$screen}» يُطبع ورقةً بيضاء");
-            $this->assertStringContainsString('no-print', $source, "«{$screen}» يطبع أدواته مع بياناته");
+            $source = file_get_contents($file);
+            $viaShell = str_contains($source, 'ReportScreen');
+
+            $this->assertTrue(
+                $viaShell || str_contains($source, 'ExportMenu'),
+                "«{$screen}» بلا تصدير"
+            );
+            $this->assertStringNotContainsString('PrintReport', $source, "«{$screen}» ما زال يعرض الطباعة");
         }
+
+        // والهيكل المشترك يحملها، فما بُني عليه يرثها بصيغها الثلاث
+        $shell = file_get_contents(resource_path('js/Components/ReportScreen.tsx'));
+        foreach (['export.xlsx', 'export.pdf', 'export.csv'] as $format) {
+            $this->assertStringContainsString($format, $shell, "الهيكل بلا {$format}");
+        }
+
+        $this->assertFileDoesNotExist(resource_path('js/Components/PrintReport.tsx'));
+    }
+
+    public function test_the_filters_use_the_systems_picker_not_the_native_one(): void
+    {
+        /*
+         * القائمة الأصلية يرسمها نظام التشغيل: نافذةٌ داكنةٌ ضيّقة تطفو فوق
+         * الحقل فتحجبه، ولا تحترم عرضه ولا خطّه ولا اتجاه الواجهة — والمشروع
+         * استبدلها بمنتقٍ مرسومٍ داخل الصفحة (انظر Components/ui/select).
+         */
+        $shell = file_get_contents(resource_path('js/Components/ReportScreen.tsx'));
+
+        $this->assertStringNotContainsString('<select', $shell, 'عاد المنتقي الذي يرسمه نظام التشغيل');
+        $this->assertStringContainsString('<Select', $shell, 'المرشّحات لا تستعمل منتقي النظام');
+    }
+
+    /* ================== التصديرات الثلاث ================== */
+
+    public function test_the_three_formats_download_for_every_report(): void
+    {
+        foreach (array_keys(ReportColumns::MAP) as $report) {
+            foreach (['xlsx', 'csv', 'pdf'] as $format) {
+                $this->get(route("admin.reports.export.{$format}", $report))
+                    ->assertOk("«{$report}» لا يُصدَّر بصيغة {$format}");
+            }
+        }
+    }
+
+    public function test_the_file_carries_what_the_screen_shows_not_another_period(): void
+    {
+        /*
+         * الملفّ يغادر الشاشة ولا مبدّلَ فوقه يصحّحه: خرج بفترته الخاصّة
+         * قُرئ على أنه الفترة التي كان ينظر إليها صاحبه.
+         */
+        $this->sale(100, now()->toDateTimeString());
+        $this->sale(500, now()->subMonths(6)->toDateTimeString());
+
+        $month = $this->get(route('admin.reports.export.csv', 'orders').'?range=month')->streamedContent();
+        $all = $this->get(route('admin.reports.export.csv', 'orders').'?range=all')->streamedContent();
+
+        $this->assertStringContainsString('100', $month);
+        $this->assertStringNotContainsString('500', $month, 'ملفُّ الشهر حمل بيعةً خارجه');
+        $this->assertStringContainsString('500', $all);
+    }
+
+    public function test_the_file_obeys_the_filters_the_screen_obeys(): void
+    {
+        $this->sale(100, now()->toDateTimeString());
+        $cancelled = $this->sale(400, now()->toDateTimeString());
+        $cancelled->update(['status' => Order::CANCELLED]);
+
+        $csv = $this->get(route('admin.reports.export.csv', 'orders')
+            .'?range=month&status='.urlencode(Order::CANCELLED))->streamedContent();
+
+        $this->assertStringContainsString('400', $csv);
+        $this->assertStringNotContainsString('100', $csv, 'الملفّ تجاهل المرشّح الذي رشّحت به الشاشة');
+    }
+
+    public function test_the_columns_a_file_writes_really_exist_in_the_rows(): void
+    {
+        /*
+         * الأعمدة معلنةٌ في `ReportColumns` والصفوف تُبنى في `ReportData`،
+         * وهما ملفّان. فمفتاحٌ يُعاد تسميته في أحدهما يُخرج عمودًا كاملًا
+         * من الشرطات — ولا شيء يشتكي.
+         */
+        $this->sale(100, now()->toDateTimeString());
+
+        foreach (array_keys(ReportColumns::MAP) as $report) {
+            $data = ReportData::$report($this->business->id, ['range' => 'all']);
+
+            foreach ($data['rows'] as $row) {
+                foreach (ReportColumns::for($report) as $column) {
+                    $this->assertArrayHasKey(
+                        $column['key'],
+                        $row,
+                        "عمود «{$column['label']}» في «{$report}» لا يقابله مفتاحٌ في الصفوف"
+                    );
+                }
+            }
+        }
+    }
+
+    public function test_an_export_is_measured_by_its_own_section_too(): void
+    {
+        /*
+         * والتنزيل يُخرج البيانات من النظام إلى ملفٍّ يُرسَل — فحراسته أولى
+         * لا أهون. ومساره تحت `admin.reports.*` فيقيسه حارس المسار بصلاحية
+         * الفهرس وحدها.
+         */
+        $user = $this->staff(['reports']);
+
+        foreach (['staff', 'customers', 'finance'] as $report) {
+            $this->actingAs($user)->get(route('admin.reports.export.csv', $report))
+                ->assertForbidden("«{$report}» نُزّل لمن لا يملك قسمه");
+        }
+    }
+
+    public function test_an_unknown_report_is_not_a_download(): void
+    {
+        $this->get(route('admin.reports.export.csv', 'sales'))->assertNotFound();
+        $this->get(route('admin.reports.export.xlsx', 'لا-شيء'))->assertNotFound();
     }
 
     /* ====================== الرجوع إلى الفهرس ====================== */

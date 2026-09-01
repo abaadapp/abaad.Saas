@@ -64,6 +64,7 @@ export default function ReportsProducts() {
 
     return (
         <ReportScreen
+            reportKey="products"
             title="المنتجات"
             subtitle="ما بيع من كل منتج وإيراده وربحه في الفترة المختارة"
             range={range}

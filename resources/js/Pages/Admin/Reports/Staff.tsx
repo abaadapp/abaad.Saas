@@ -1,7 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import PrintReport from '@/Components/PrintReport';
+import ExportMenu from '@/Components/ExportMenu';
 import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
@@ -78,7 +78,13 @@ export default function ReportsStaff() {
                 <PageHeader
                     title="أداء الموظفين"
                     subtitle={t('مبيعات كل موظف في الفترة المختارة وفرعه وحالته')}
-                    actions={<PrintReport />}
+                    actions={
+                        <ExportMenu
+                            xlsx={route('admin.reports.export.xlsx', 'staff')}
+                            pdf={route('admin.reports.export.pdf', 'staff')}
+                            csv={route('admin.reports.export.csv', 'staff')}
+                        />
+                    }
                 />
 
                 {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}

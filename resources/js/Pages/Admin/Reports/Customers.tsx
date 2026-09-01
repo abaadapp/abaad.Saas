@@ -1,7 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import PrintReport from '@/Components/PrintReport';
+import ExportMenu from '@/Components/ExportMenu';
 import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
@@ -63,7 +63,13 @@ export default function ReportsCustomers() {
                 <PageHeader
                     title="العملاء الأكثر إنفاقًا"
                     subtitle={t('من يشتري أكثر، وكم طلبًا وكم أنفق')}
-                    actions={<PrintReport />}
+                    actions={
+                        <ExportMenu
+                            xlsx={route('admin.reports.export.xlsx', 'customers')}
+                            pdf={route('admin.reports.export.pdf', 'customers')}
+                            csv={route('admin.reports.export.csv', 'customers')}
+                        />
+                    }
                 />
 
                 {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}

@@ -62,6 +62,7 @@ export default function ReportsFinance() {
 
     return (
         <ReportScreen
+            reportKey="finance"
             title="الحركة المالية"
             subtitle="المقبوضات والمدفوعات وصافي الحركة في الفترة المختارة"
             range={range}

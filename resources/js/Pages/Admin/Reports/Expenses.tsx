@@ -61,6 +61,7 @@ export default function ReportsExpenses() {
 
     return (
         <ReportScreen
+            reportKey="expenses"
             title="المصروفات"
             subtitle="المصروفات حسب النوع والتاريخ ومن سجّلها"
             range={range}

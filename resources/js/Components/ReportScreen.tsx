@@ -2,10 +2,11 @@ import { type ReactNode } from 'react';
 import { router } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import PrintReport from '@/Components/PrintReport';
+import ExportMenu from '@/Components/ExportMenu';
 import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
+import { Select } from '@/Components/Field';
 import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -28,6 +29,8 @@ export interface Stat {
 
 interface Props {
     title: string;
+    /** مفتاح التقرير — تُبنى منه روابط التنزيل الثلاثة */
+    reportKey: string;
     subtitle: string;
     /** الفترة، أو null لتقريرٍ لا معنى للفترة فيه (رصيدُ اليوم لا مدّته) */
     range: ReportRange | null;
@@ -51,7 +54,7 @@ interface Props {
  * في واحدٍ منها كما نُسي حين كُتبت الصفحات الثلاث الأولى بأيديها.
  */
 export default function ReportScreen({
-    title, subtitle, range, rangeLabel,
+    title, subtitle, reportKey, range, rangeLabel,
     filters, controls, stats, truncated, children,
 }: Props) {
     const t = useTranslate();
@@ -78,7 +81,23 @@ export default function ReportScreen({
                     <BackToReports />
                 </div>
 
-                <PageHeader title={title} subtitle={t(subtitle)} actions={<PrintReport />} />
+                {/*
+                    التصديرات الثلاث المعتمدة — إكسل وPDF وCSV.
+                    وحلّت محلّ زرّ الطباعة: الورقة تخرج من المتصفّح بهوامشه
+                    وترويسته، والملفّ يخرج بترويسة المتجر وفترته ويُرسَل
+                    ويُجمع عمودُه. ومن أراد ورقةً طبع الـPDF.
+                */}
+                <PageHeader
+                    title={title}
+                    subtitle={t(subtitle)}
+                    actions={
+                        <ExportMenu
+                            xlsx={route('admin.reports.export.xlsx', reportKey)}
+                            pdf={route('admin.reports.export.pdf', reportKey)}
+                            csv={route('admin.reports.export.csv', reportKey)}
+                        />
+                    }
+                />
 
                 {/* الأدوات لا تُطبع: التقرير ورقةٌ لا لوحةُ تحكّم */}
                 <div className="no-print">
@@ -90,18 +109,18 @@ export default function ReportScreen({
                                 c.kind === 'select' ? (
                                     <label key={c.key} className="flex min-w-[10rem] flex-1 flex-col gap-1">
                                         <span className="text-[12px] text-[#6b7280]">{t(c.label)}</span>
-                                        <select
+                                        {/*
+                                            منتقي النظام لا القائمة الأصلية: تلك يرسمها نظام
+                                            التشغيل نافذةً داكنةً ضيّقة تطفو فوق الحقل فتحجبه،
+                                            ولا تحترم عرضه ولا خطّه ولا اتجاه الواجهة.
+                                        */}
+                                        <Select
                                             value={filters[c.key] ?? ''}
                                             onChange={(e) => go({ [c.key]: e.target.value || null })}
-                                            className="h-10 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 text-[13px] text-[#111] focus:border-[#d1d5db] focus:outline-none"
-                                        >
-                                            <option value="">{t('الكل')}</option>
-                                            {c.options.map((o) => (
-                                                <option key={o.value} value={o.value}>
-                                                    {o.label}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            placeholder="الكل"
+                                            options={c.options}
+                                            aria-label={t(c.label)}
+                                        />
                                     </label>
                                 ) : (
                                     <label key={c.key} className="flex h-10 cursor-pointer items-center gap-2 text-[13px] text-[#111]">

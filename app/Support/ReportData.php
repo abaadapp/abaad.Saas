@@ -76,6 +76,89 @@ class ReportData
             ->get(['id', 'name'])->map(fn ($c) => ['value' => (string) $c->id, 'label' => $c->name])->all();
     }
 
+    /* ============================ وسائل الدفع ============================ */
+
+    public static function payments(int $bid, array $filters): array
+    {
+        $range = Demo::range($filters['range'] ?? 'month');
+        $methods = Demo::paymentMethods($range);
+
+        $rows = collect($methods)->map(fn ($m) => [
+            'id' => $m['key'],
+            'name' => $m['name'],
+            'total' => round((float) $m['total'], 3),
+            'count' => (int) $m['count'],
+            'percent' => (int) $m['percent'],
+        ])->sortByDesc('total')->values();
+
+        $top = $rows->first();
+
+        return array_merge(self::capped($rows, $rows->count()), [
+            'summary' => [
+                'total' => round((float) $rows->sum('total'), 3),
+                'count' => (int) $rows->sum('count'),
+                // «النشطة» ما تحرّك منها فعلًا: عددُ الصفوف ثابتٌ مهما كان في الدرج
+                'active' => $rows->where('count', '>', 0)->count(),
+                'topName' => ($top['count'] ?? 0) > 0 ? $top['name'] : null,
+                'topTotal' => ($top['count'] ?? 0) > 0 ? $top['total'] : 0.0,
+            ],
+            'options' => [],
+        ]);
+    }
+
+    /* =========================== أداء الموظفين =========================== */
+
+    public static function staff(int $bid, array $filters): array
+    {
+        $range = Demo::range($filters['range'] ?? 'month');
+        $rows = collect(Demo::staffPerformance($range));
+        $total = (float) $rows->sum('sales');
+
+        /*
+         * المتوسّط على من باع لا على من في الكشف: قسمةُ المبيعات على الجميع
+         * تُظهر البائعين أضعف ممّا هم كلّما كبر عدد غير البائعين.
+         */
+        $sellers = $rows->where('orders', '>', 0)->values();
+
+        return array_merge(self::capped($rows, $rows->count()), [
+            'summary' => [
+                'total' => round($total, 3),
+                'staff' => $rows->count(),
+                'sellers' => $sellers->count(),
+                'average' => $sellers->count() > 0 ? round($total / $sellers->count(), 3) : 0.0,
+                'topName' => $sellers->first()['name'] ?? null,
+                'topSales' => $sellers->first()['sales'] ?? 0.0,
+            ],
+            'options' => [],
+        ]);
+    }
+
+    /* ====================== العملاء الأكثر إنفاقًا ====================== */
+
+    public static function customers(int $bid, array $filters): array
+    {
+        $range = Demo::range($filters['range'] ?? 'month');
+
+        // سقفٌ يُقال على الشاشة لا يُخفى: قائمةُ «الأكثر إنفاقًا» مبتورةٌ عمدًا
+        $limit = 50;
+        $rows = collect(Demo::topCustomers($limit, $range))
+            ->map(fn ($c, $i) => ['id' => $i + 1] + $c);
+
+        $total = (float) $rows->sum('total');
+        $orders = (int) $rows->sum('orders');
+
+        return array_merge(self::capped($rows, $rows->count()), [
+            'limit' => $limit,
+            'summary' => [
+                'total' => round($total, 3),
+                'customers' => $rows->count(),
+                'orders' => $orders,
+                'average' => $orders > 0 ? round($total / $orders, 3) : 0.0,
+            ],
+            'options' => [],
+        ]);
+    }
+
     /* ========================== الحركة المالية ========================== */
 
     public static function finance(int $bid, array $filters): array

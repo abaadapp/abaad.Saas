@@ -65,6 +65,7 @@ export default function ReportsOrders() {
 
     return (
         <ReportScreen
+            reportKey="orders"
             title="الطلبات"
             subtitle="كل طلبٍ بحالته وفرعه وقيمته ووسيلة دفعه"
             range={range}

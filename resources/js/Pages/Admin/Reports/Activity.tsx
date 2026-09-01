@@ -57,6 +57,7 @@ export default function ReportsActivity() {
 
     return (
         <ReportScreen
+            reportKey="activity"
             title="سجل النشاط"
             subtitle="من فعل ماذا ومتى على النظام"
             range={range}

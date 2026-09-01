@@ -57,6 +57,7 @@ export default function ReportsMarketing() {
 
     return (
         <ReportScreen
+            reportKey="marketing"
             title="الكوبونات والتسويق"
             subtitle="استخدام الكوبونات وقيمة الخصومات والإيراد الذي جاءت به"
             range={range}

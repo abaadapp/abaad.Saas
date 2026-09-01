@@ -54,6 +54,7 @@ export default function ReportsSuppliers() {
 
     return (
         <ReportScreen
+            reportKey="suppliers"
             title="المورّدون"
             subtitle="كل مورّد وعدد أوامره وقيمتها في الفترة المختارة"
             range={range}

@@ -40,6 +40,7 @@ use App\Http\Controllers\Admin\PurchaseOrderController;
 use App\Http\Controllers\Admin\Purchasing\PurchaseRegisterController;
 use App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController;
 use App\Http\Controllers\Admin\RecoveryEmailController;
+use App\Http\Controllers\Admin\ReportDownloadController;
 use App\Http\Controllers\Admin\ReportExportController;
 use App\Http\Controllers\Admin\ReportFeedController;
 use App\Http\Controllers\Admin\ReportPageController;
@@ -729,6 +730,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/reports/marketing', [ReportPageController::class, 'marketing'])->name('reports.marketing');
     // عمليات جرد المخزون — أين فارق الدفترُ الواقع، وبكم
     Route::get('/reports/stocktake', [ReportPageController::class, 'stocktake'])->name('reports.stocktake');
+
+    /*
+     * تنزيلُ أيّ تقريرٍ بالصيغ الثلاث المعتمدة.
+     *
+     * وبابٌ واحد لا ثلاثةٌ لكل تقرير: ستّةَ عشرَ تقريرًا في ثلاث صيغ تعني
+     * ثمانيةً وأربعين مسارًا تتفرّق أعمدتُها عن أعمدة الشاشة. والحارس على
+     * قسم التقرير نفسه لا على «التقارير» — انظر ReportDownloadController.
+     */
+    Route::get('/reports/{report}/export/xlsx', [ReportDownloadController::class, 'xlsx'])->name('reports.export.xlsx');
+    Route::get('/reports/{report}/export/csv', [ReportDownloadController::class, 'csv'])->name('reports.export.csv');
+    Route::get('/reports/{report}/export/pdf', [ReportDownloadController::class, 'pdf'])->name('reports.export.pdf');
     // تغذية: صفحةٌ تُترك مفتوحة لا يجوز أن تتجمّد على أرقام الصباح
     Route::get('/reports/feed', [ReportFeedController::class, 'reports'])->name('reports.feed');
     // والتصدير يتبع الفترة المعروضة — ملفٌّ يحمل غير ما على الشاشة يُقرأ خطأً

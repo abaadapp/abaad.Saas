@@ -3691,5 +3691,8 @@
     "ما عُدّ وأين فارق الدفترُ الواقع: النقص والزيادة وقيمتهما لكل فرع.": "What was counted and where the book parted from reality: shortages, surpluses and their value per branch.",
     "الصلاحيات المخصّصة ليست في باقتك الحالية — تُتبع صلاحيات الوظيفة. وما مُنح سابقًا يبقى كما هو.": "Custom permissions are not in your current plan — the job title's permissions apply. Anything already granted stays as it is.",
     "الخصم أكبر من مستحقّ :name (:earned) — لا يُخصم أكثر ممّا استحقّ.": "The deduction exceeds :name's earnings (:earned) — no one is deducted more than they earned.",
-    "خصم :name أكبر من مستحقّه — صحّح سطره قبل الاعتماد.": "The deduction for :name exceeds their earnings — fix their line before approving."
+    "خصم :name أكبر من مستحقّه — صحّح سطره قبل الاعتماد.": "The deduction for :name exceeds their earnings — fix their line before approving.",
+    "تقرير": "Report",
+    "لا بيانات في هذه الفترة": "No data in this period",
+    "تُعرض :shown من :total صفًّا.": "Showing :shown of :total rows."
 }

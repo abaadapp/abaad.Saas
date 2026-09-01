@@ -1,7 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import PrintReport from '@/Components/PrintReport';
+import ExportMenu from '@/Components/ExportMenu';
 import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
@@ -20,7 +20,8 @@ import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
-interface Method {
+interface Row {
+    id: string;
     name: string;
     total: number;
     count: number;
@@ -28,7 +29,7 @@ interface Method {
 }
 
 interface Props {
-    methods: Method[];
+    rows: Row[];
     summary: { total: number; count: number; active: number; topName: string | null; topTotal: number };
     range: ReportRange;
     rangeLabel: string;
@@ -42,7 +43,7 @@ interface Props {
  * بنظرة. فصار له فترتُه ومؤشّراتُه ومخطّطُه.
  */
 export default function ReportsPayments() {
-    const { methods, summary, range, rangeLabel, context } = usePage<PageProps<Props>>().props;
+    const { rows, summary, range, rangeLabel, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -70,7 +71,13 @@ export default function ReportsPayments() {
                 <PageHeader
                     title="وسائل الدفع"
                     subtitle={t('توزيع التحصيل على النقد والبطاقة وبقية الوسائل')}
-                    actions={<PrintReport />}
+                    actions={
+                        <ExportMenu
+                            xlsx={route('admin.reports.export.xlsx', 'payments')}
+                            pdf={route('admin.reports.export.pdf', 'payments')}
+                            csv={route('admin.reports.export.csv', 'payments')}
+                        />
+                    }
                 />
 
                 {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}
@@ -90,7 +97,7 @@ export default function ReportsPayments() {
                             <CardTitle>{t('التحصيل حسب الوسيلة')}</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <BarChart labels={methods.map((x) => x.name)} series={methods.map((x) => x.total)} format={m} />
+                            <BarChart labels={rows.map((x) => x.name)} series={rows.map((x) => x.total)} format={m} />
                         </CardContent>
                     </Card>
                 )}
@@ -114,8 +121,8 @@ export default function ReportsPayments() {
                             {summary.count === 0 ? (
                                 <TableEmpty colSpan={4}>{t('لا تحصيل في هذه الفترة')}</TableEmpty>
                             ) : (
-                                methods.map((x) => (
-                                    <TableRow key={x.name}>
+                                rows.map((x) => (
+                                    <TableRow key={x.id}>
                                         <TableCell className="font-medium text-[#111]">{x.name}</TableCell>
                                         <TableCell className="text-end tabular-nums">{m(x.total)}</TableCell>
                                         <TableCell className="text-end tabular-nums">{number(x.count)}</TableCell>

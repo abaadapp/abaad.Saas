@@ -60,6 +60,7 @@ export default function ReportsBank() {
 
     return (
         <ReportScreen
+            reportKey="bank"
             title="كشف الحساب البنكي"
             subtitle="مطابقة حركات البنك بحركات النظام، وما لم يُطابَق منها"
             range={range}

@@ -61,6 +61,7 @@ export default function ReportsInventory() {
 
     return (
         <ReportScreen
+            reportKey="inventory"
             title="المخزون والكميات"
             subtitle="رصيد كل صنف وحدّه الأدنى وقيمته وما بلغ حدّ إعادة الطلب"
             range={null}

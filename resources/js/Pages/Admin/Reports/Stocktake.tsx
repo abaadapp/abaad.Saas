@@ -79,6 +79,7 @@ export default function ReportsStocktake() {
 
     return (
         <ReportScreen
+            reportKey="stocktake"
             title="عمليات جرد المخزون"
             subtitle="ما عُدّ وأين فارق الدفترُ الواقع: النقص والزيادة وقيمتهما لكل فرع"
             range={range}

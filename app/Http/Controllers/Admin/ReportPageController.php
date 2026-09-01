@@ -140,76 +140,16 @@ class ReportPageController extends Controller
 
     public function payments(Request $request): Response
     {
-        $this->guard('admin.reports.payments');
-        $range = $this->range($request);
-
-        $methods = Demo::paymentMethods($range);
-        $total = array_sum(array_column($methods, 'total'));
-        $count = array_sum(array_column($methods, 'count'));
-
-        // «النشطة» ما تحرّك منها فعلًا: عددُ الصفوف ثابتٌ مهما كان في الدرج،
-        // ورقمٌ لا يتغيّر ليس خبرًا
-        $active = count(array_filter($methods, fn ($m) => $m['count'] > 0));
-        $top = collect($methods)->sortByDesc('total')->first();
-
-        return Inertia::render('Admin/Reports/Payments', array_merge($this->shell($range), [
-            'methods' => $methods,
-            'summary' => [
-                'total' => round((float) $total, 3),
-                'count' => (int) $count,
-                'active' => $active,
-                'topName' => ($top['count'] ?? 0) > 0 ? $top['name'] : null,
-                'topTotal' => ($top['count'] ?? 0) > 0 ? round((float) $top['total'], 3) : 0.0,
-            ],
-        ]));
+        return $this->report($request, 'payments', 'Payments');
     }
 
     public function staff(Request $request): Response
     {
-        $this->guard('admin.reports.staff');
-        $range = $this->range($request);
-
-        $rows = Demo::staffPerformance($range);
-        $total = array_sum(array_column($rows, 'sales'));
-
-        // المتوسّط على من باع لا على من في الكشف: قسمةُ المبيعات على الجميع
-        // تُظهر البائعين أضعف ممّا هم كلّما كبر عدد غير البائعين
-        $sellers = array_values(array_filter($rows, fn ($r) => $r['orders'] > 0));
-
-        return Inertia::render('Admin/Reports/Staff', array_merge($this->shell($range), [
-            'rows' => $rows,
-            'summary' => [
-                'total' => round((float) $total, 3),
-                'staff' => count($rows),
-                'sellers' => count($sellers),
-                'average' => count($sellers) > 0 ? round((float) $total / count($sellers), 3) : 0.0,
-                'topName' => $sellers[0]['name'] ?? null,
-                'topSales' => $sellers[0]['sales'] ?? 0.0,
-            ],
-        ]));
+        return $this->report($request, 'staff', 'Staff');
     }
 
     public function customers(Request $request): Response
     {
-        $this->guard('admin.reports.customers');
-        $range = $this->range($request);
-
-        // سقفٌ يُقال على الشاشة لا يُخفى: قائمةُ «الأكثر إنفاقًا» مبتورةٌ
-        // عمدًا، ومن لا يعرف السقف يظنّها كلَّ عملائه
-        $limit = 50;
-        $rows = Demo::topCustomers($limit, $range);
-        $total = array_sum(array_column($rows, 'total'));
-        $orders = array_sum(array_column($rows, 'orders'));
-
-        return Inertia::render('Admin/Reports/Customers', array_merge($this->shell($range), [
-            'rows' => $rows,
-            'limit' => $limit,
-            'summary' => [
-                'total' => round((float) $total, 3),
-                'customers' => count($rows),
-                'orders' => (int) $orders,
-                'average' => $orders > 0 ? round((float) $total / $orders, 3) : 0.0,
-            ],
-        ]));
+        return $this->report($request, 'customers', 'Customers');
     }
 }

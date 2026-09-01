@@ -205,6 +205,22 @@ class Demo
             ?? \App\Models\Branch::where('business_id', self::bid())->orderBy('id')->value('id');
     }
 
+    /**
+     * ما تقيسه ورقةٌ بعينها — لا ما يختاره الشريط فوق الشاشة.
+     *
+     * كانت ترويسة كلّ ملفٍّ تكتب اسم الفرع المختار مهما كان ما تحتها، وأكثر
+     * الأوراق لا تعرف الفروع أصلًا: المبيعات والمصروفات والحركة المالية
+     * والمنتجات تُجمع على المتجر كلّه. فيُرسَل الملفّ إلى المحاسب بترويسةٍ
+     * تنسبه إلى فرعٍ واحد وجدولٍ يحمل ثلاثة — ولا تُكتشف إلا حين تُقارَن
+     * أوراق الفروع فيوجد كلٌّ منها يحمل أرقام الشركة نفسها.
+     *
+     * $perBranch: هل رشّح هذا التقرير بالفرع فعلًا؟
+     */
+    public static function scopeName(bool $perBranch): string
+    {
+        return $perBranch ? self::currentBranchName() : __('كل الفروع');
+    }
+
     public static function currentBranchName(): string
     {
         $id = self::currentBranchId();
@@ -1472,6 +1488,40 @@ class Demo
     }
 
     /**
+     * تكلفة البضاعة المباعة في فترة — بابٌ واحد يقرؤه كلّ من يقول «ربح».
+     *
+     * واللقطة أوّلًا وبطاقةُ المنتج بعدها: `receive` تكتب آخر سعر شراء فوق
+     * تكلفة المنتج، فحسابُ الربح من البطاقة وحدها يجعل رفعَ المورّد سعرَه
+     * اليوم يُنقص ربحَ الشهر الماضي — تقريرٌ يتغيّر بأثرٍ رجعيّ كلّما اشتريت،
+     * ولا يُرى لأنّ الأرقام تبقى معقولة. و`cost_snapshot` مجموعُ ما التُقط،
+     * ويعود إلى البطاقة لما بيع قبل وجود اللقطة.
+     *
+     * وتكلفة الإضافات معها: الإيراد يحمل مجموع الفاتورة بإضافاتها، فإغفالُ
+     * تكلفتها يجعل كلّ دبٍّ بيع يظهر ربحًا صافيًا وهو مشترًى.
+     */
+    public static function cogsFor(int $bid, ?\Illuminate\Support\Carbon $start): float
+    {
+        $costs = Product::where('business_id', $bid)->pluck('cost', 'id');
+        $cogs = 0.0;
+
+        OrderItem::whereHas('order', function ($q) use ($bid, $start) {
+            $q->where('business_id', $bid)->sold()
+                ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start));
+        })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
+            ->groupBy('product_id')->get()
+            ->each(function ($r) use (&$cogs, $costs) {
+                $cogs += (float) $r->cost_snapshot
+                    + (float) ($costs[$r->product_id] ?? 0) * ((int) $r->qty - (int) $r->costed_qty);
+            });
+
+        foreach (self::addonProfitByProduct($bid, $start) as $extra) {
+            $cogs += $extra['cost'];
+        }
+
+        return $cogs;
+    }
+
+    /**
      * صورة الربح الكاملة لفترة: صافي الإيرادات − تكلفة البضاعة المباعة − المصروفات = صافي الربح.
      * صافي الإيراد من معاملات الدخل (بلا ضريبة)، والتكلفة من تكلفة المنتجات × الكميات المباعة.
      */
@@ -1485,30 +1535,8 @@ class Demo
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $netRevenue = (float) (clone $income)->sum('amount') - (float) (clone $income)->sum('tax_amount');
 
-        // تكلفة البضاعة المباعة (COGS) = تكلفة المنتج × الكمية المباعة في الفترة
-        $costs = Product::where('business_id', $bid)->pluck('cost', 'id');
-        $cogs = 0.0;
-        OrderItem::whereHas('order', function ($q) use ($bid, $start) {
-            $q->where('business_id', $bid)->sold()
-                ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start));
-        })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
-            ->groupBy('product_id')->get()
-            ->each(function ($r) use (&$cogs, $costs) {
-                // اللقطة أولًا، وبطاقةُ المنتج لما بيع قبل وجودها
-                $cogs += (float) $r->cost_snapshot
-                    + (float) ($costs[$r->product_id] ?? 0) * ((int) $r->qty - (int) $r->costed_qty);
-            });
-
-        /*
-         * وتكلفةُ الإضافات معها.
-         *
-         * الإيراد أعلاه من قيود الدخل، وهي تحمل مجموع الفاتورة بإضافاته.
-         * فإغفالُ تكلفتها هنا كان يجعل كلّ دبٍّ بيع يظهر ربحًا صافيًا وهو
-         * مشترًى — والفارق يكبر بمقدار ما يبيعه المحلّ من الإضافات.
-         */
-        foreach (self::addonProfitByProduct($bid, $start) as $extra) {
-            $cogs += $extra['cost'];
-        }
+        // تكلفة البضاعة المباعة — من الباب الواحد لا بحسابٍ ثانٍ هنا
+        $cogs = self::cogsFor($bid, $start);
 
         // المصروفات التشغيلية في الفترة
         $expenses = (float) Expense::where('business_id', $bid)->paid()
@@ -1574,7 +1602,17 @@ class Demo
                 ? Product::statusFor((int) ($books[$p->id][$here] ?? 0), (int) $p->alert_qty)
                 : $p->stock_status,
             'cost' => (float) $p->cost,
-            'value' => round((float) $p->cost * (int) $p->quantity, 3),
+            /*
+             * القيمة تقيس ما تقيسه الكمية — الفرع لا الشركة.
+             *
+             * كانت الكمية من الفرع المختار والقيمة من إجمالي الشركة: سطرٌ
+             * واحد نصفُه هنا ونصفُه هناك. والشاشة كانت تُعيد حسابها بنفسها
+             * (cost × qty) فتقرأ الصواب، والملفّ يأخذ ما أُرسل — فيختلف
+             * الرقم بين ما رآه التاجر وما أرسله إلى محاسبه.
+             */
+            'value' => round((float) $p->cost * ($here ? (int) ($books[$p->id][$here] ?? 0) : (int) $p->quantity), 3),
+            // وقيمة الشركة تبقى معروضةً باسمها لا تحت اسم الفرع
+            'totalValue' => round((float) $p->cost * (int) $p->quantity, 3),
             'updated' => optional($p->updated_at)->format('Y-m-d') ?? '—',
             'branches' => ($stocks[$p->id] ?? collect())
                 ->map(fn ($s) => ['name' => $branchNames[$s->branch_id] ?? '—', 'qty' => (int) $s->quantity])
@@ -1650,12 +1688,26 @@ class Demo
 
     /* ============================ المالية ============================ */
 
+    /**
+     * أوّل أيّام الأسبوع وآخرها — بتقويم عُمان لا بتقويم Carbon.
+     *
+     * الافتراضيّ في Carbon الاثنين، وأسبوع العمل هنا يبدأ الأحد. فمبيعاتُ
+     * الأحد كانت تقع في «الأسبوع الماضي» طوال الأسبوع، ومن يفتح تقرير
+     * الأسبوع صباح الاثنين يجد يومَ أمسِه غائبًا عنه ولا شيء يقول لماذا.
+     *
+     * وموضعٌ واحد لهما: خمسة مواضع كانت تكتب startOfWeek() بيدها، وواحدٌ
+     * يُنسى يكفي ليفترق التقرير عن مقارنته.
+     */
+    public const WEEK_START = \Carbon\CarbonInterface::SUNDAY;
+
+    public const WEEK_END = \Carbon\CarbonInterface::SATURDAY;
+
     /** بداية الفترة المختارة (اليوم/الأسبوع/الشهر/السنة) — null تعني كل الفترات */
     public static function rangeStart(string $range): ?\Illuminate\Support\Carbon
     {
         return match ($range) {
             'today' => now()->startOfDay(),
-            'week' => now()->startOfWeek(),
+            'week' => now()->startOfWeek(self::WEEK_START),
             'year' => now()->startOfYear(),
             'month' => now()->startOfMonth(),
             default => null,
@@ -1667,7 +1719,7 @@ class Demo
     {
         return match ($range) {
             'today' => [now()->subDay()->startOfDay(), now()->startOfDay()],
-            'week' => [now()->subWeek()->startOfWeek(), now()->startOfWeek()],
+            'week' => [now()->subWeek()->startOfWeek(self::WEEK_START), now()->startOfWeek(self::WEEK_START)],
             'year' => [now()->subYear()->startOfYear(), now()->startOfYear()],
             'month' => [now()->subMonthNoOverflow()->startOfMonth(), now()->startOfMonth()],
             default => null,
@@ -1754,12 +1806,17 @@ class Demo
      * والتصفية في الجدول تعملان على ما وصل، وبترُها إلى صفحاتٍ يجعل البحث
      * يفتّش صفحةً واحدة ويقول «لا نتائج». وللدفتر كاملًا: التصدير.
      */
-    public static function transactions(string $range = 'all', int $limit = 500): array
+    public static function transactions(string $range = 'all', ?int $limit = 500): array
     {
         $start = self::rangeStart($range);
         return Transaction::where('business_id', self::bid())
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start))
-            ->orderByDesc('occurred_at')->limit($limit)->get()->map(fn ($t) => [
+            // والسقف للشاشة وحدها: null يعني الدفتر كاملًا، وهو ما يَعِد به
+            // هذا التعليق نفسه منذ كُتب. كان التصدير يقرأ الدالة بسقفها،
+            // فيخرج ملفُّ «كل الحركات» بأحدث خمسمئةٍ ولا سطرَ فيه يقول ذلك —
+            // ومحاسبٌ يجمع عمودًا مبتورًا لا يعرف أنه مبتور.
+            ->when($limit !== null, fn ($q) => $q->limit($limit))
+            ->orderByDesc('occurred_at')->get()->map(fn ($t) => [
             // المرجع للعرض، والمفتاح للهوية: مرجعان متطابقان (تصحيح يشير
             // لفاتورة أصلية مثلًا) كانا يجعلان React يُسقط صفًّا من دفتر مالي
             'key' => $t->id,
@@ -1832,7 +1889,7 @@ class Demo
     {
         [$name, $start] = match (self::range($range)) {
             'today' => [__('اليوم'), now()->startOfDay()],
-            'week' => [__('هذا الأسبوع'), now()->startOfWeek()],
+            'week' => [__('هذا الأسبوع'), now()->startOfWeek(self::WEEK_START)],
             'year' => [__('هذه السنة'), now()->startOfYear()],
             'all' => [__('كل الفترات'), null],
             default => [__('هذا الشهر'), now()->startOfMonth()],
@@ -1878,7 +1935,7 @@ class Demo
 
         [$unit, $start, $end] = match ($range) {
             'today' => ['hour', now()->startOfDay(), now()->endOfDay()],
-            'week' => ['day', now()->startOfWeek(), now()->endOfWeek()],
+            'week' => ['day', now()->startOfWeek(self::WEEK_START), now()->endOfWeek(self::WEEK_END)],
             'year' => ['month', now()->startOfYear(), now()->endOfYear()],
             // الكلّ: آخر اثني عشر شهرًا — عمر المتجر كلّه على محورٍ واحد يصير خطًّا لا يُقرأ
             'all' => ['month', now()->copy()->subMonths(11)->startOfMonth(), now()->endOfMonth()],
@@ -2286,9 +2343,25 @@ class Demo
         $expenses = (float) Expense::where('business_id', $bid)->paid()
             ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount');
 
+        /*
+         * «صافي الربح» ربحٌ لا فرقُ طرحٍ بين رقمين.
+         *
+         * كان `المبيعات − المصروفات`: بلا تكلفةِ بضاعةٍ أصلًا، وبالضريبة
+         * داخلَ الإيراد. فمحلٌّ باع بألفٍ اشتراه بستّمئة وأنفق مئتين يقرأ
+         * «صافي ربح ٨٠٠» وربحُه مئتان — أربعةُ أضعاف، على بطاقة الصدارة في
+         * شاشة التقارير وفي الملفّات الثلاثة التي تخرج منها إلى المحاسب.
+         *
+         * والتعريف واحدٌ في النظام كلّه (انظر profitStats):
+         *   (المبيعات − الضريبة) − تكلفة البضاعة المباعة − المصروفات
+         *
+         * والضريبة تُطرح لأنها التزامٌ يُورَّد لا إيرادٌ يُملك.
+         */
+        $cogs = self::cogsFor($bid, $start);
+
         return [
             'sales' => $sales,
-            'profit' => $sales - $expenses,
+            'profit' => round($sales - $tax - $cogs - $expenses, 3),
+            'cogs' => round($cogs, 3),
             'expenses' => $expenses,
             'tax' => $tax,
             'products' => Product::where('business_id', $bid)->count(),
@@ -2415,7 +2488,7 @@ class Demo
         };
         [$curStart, $curEnd] = match ($range) {
             'today' => [$now->copy()->startOfDay(), $now->copy()->endOfDay()],
-            'week' => [$now->copy()->startOfWeek(), $now->copy()->endOfWeek()],
+            'week' => [$now->copy()->startOfWeek(self::WEEK_START), $now->copy()->endOfWeek(self::WEEK_END)],
             'year' => [$now->copy()->startOfYear(), $now->copy()->endOfYear()],
             // «الكلّ» لا سابقَ له يُقارَن به: يُقرأ شهرًا كي تبقى المقارنة ذات معنى
             default => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()],

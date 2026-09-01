@@ -136,7 +136,13 @@ class CancelledOrderTest extends TestCase
         $this->order('مكتمل', 100);
         $this->order('ملغي', 900);
 
-        $this->assertSame(100.0, Demo::reportSummary('all')['profit']);
+        $summary = Demo::reportSummary('all');
+
+        // ١٠٠ بيعًا − ٦٠ تكلفةً = ٤٠. والملغى خارج الطرفين: لا إيرادُه
+        // يُجمع ولا تكلفتُه تُخصم — وتكلفةُ بضاعةٍ لم تُبع كانت ستأكل
+        // ربحًا حقيقيًّا كما كان إيرادُها ينفخه
+        $this->assertSame(60.0, $summary['cogs']);
+        $this->assertSame(40.0, $summary['profit']);
     }
 
     /* ------------------------------ الشاشة ------------------------------ */

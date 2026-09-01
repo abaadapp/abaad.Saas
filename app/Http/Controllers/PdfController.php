@@ -9,6 +9,7 @@ use App\Models\PosPeripheral;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\EInvoice;
+use App\Support\OrderStatus;
 use App\Support\PosTerminal;
 use App\Support\ReceiptTemplate;
 use App\Support\Reports;
@@ -27,7 +28,7 @@ class PdfController extends Controller
 
         $html = view('pdf.sales-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'branch' => Demo::currentBranchName(),
+            'branch' => Demo::scopeName(false),
             'stats' => Reports::summaryRows($report['summary']),
             'salesSeries' => $report['salesSeries'],
             'payments' => Demo::paymentBreakdown($range),
@@ -119,10 +120,10 @@ class PdfController extends Controller
 
         $html = view('pdf.finance-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'branch' => Demo::currentBranchName(),
+            'branch' => Demo::scopeName(false),
             'stats' => Demo::financeStats($range),
             'payments' => Demo::paymentMethods($range),
-            'transactions' => Demo::transactions($range),
+            'transactions' => Demo::transactions($range, null),
             'rangeLabel' => Demo::rangeLabel($range),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
@@ -186,11 +187,11 @@ class PdfController extends Controller
         $orders = Demo::orders(request());
         $html = view('pdf.orders-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'branch' => Demo::currentBranchName(),
+            'branch' => Demo::scopeName(true),
             'orders' => $orders,
             // الملغى خارج المجموع كما في الشاشة — انظر ReportExportController::ordersXlsx
             'total' => array_sum(array_map(
-                fn ($o) => $o['status'] === \App\Support\OrderStatus::CANCELLED ? 0.0 : (float) $o['total'],
+                fn ($o) => $o['status'] === OrderStatus::CANCELLED ? 0.0 : (float) $o['total'],
                 $orders,
             )),
             'generatedAt' => now()->format('Y-m-d H:i'),
@@ -207,7 +208,7 @@ class PdfController extends Controller
         $products = Demo::products(null, request());
         $html = view('pdf.products-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'branch' => Demo::currentBranchName(),
+            'branch' => Demo::scopeName(false),
             'products' => $products,
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
@@ -223,7 +224,7 @@ class PdfController extends Controller
         $inventory = Demo::inventory();
         $html = view('pdf.inventory-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'branch' => Demo::currentBranchName(),
+            'branch' => Demo::scopeName(true),
             'inventory' => $inventory,
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
@@ -239,7 +240,7 @@ class PdfController extends Controller
         $expenses = Demo::expenses(request());
         $html = view('pdf.expenses-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'branch' => Demo::currentBranchName(),
+            'branch' => Demo::scopeName(false),
             'expenses' => $expenses,
             'total' => array_sum(array_map(fn ($e) => (float) $e['amount'], $expenses)),
             'generatedAt' => now()->format('Y-m-d H:i'),

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\OrderStatus;
 use App\Support\Reports;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -28,8 +29,14 @@ class ReportExportController extends Controller
         return Demo::range(request()->query('range'));
     }
 
-    /** تجهيز ورقة RTL بترويسة موحّدة، وإرجاع [الورقة، دالة العنوان، دالة رأس الجدول] */
-    private function sheet(Spreadsheet $spreadsheet, string $reportTitle, ?string $range = null): array
+    /**
+     * تجهيز ورقة RTL بترويسة موحّدة، وإرجاع [الورقة، دالة العنوان، دالة رأس الجدول].
+     *
+     * $perBranch: هل يرشّح هذا التقرير بالفرع فعلًا؟ — انظر Demo::scopeName.
+     * الورقة التي تُجمع على المتجر كلّه لا تنسب نفسها إلى فرعٍ مختارٍ في
+     * الشريط، وإلا خرج ملفّان لفرعين يحملان الأرقام نفسها بترويستين.
+     */
+    private function sheet(Spreadsheet $spreadsheet, string $reportTitle, ?string $range = null, bool $perBranch = false): array
     {
         $business = Demo::business(auth()->user()->business_id ?? Demo::bid());
 
@@ -40,7 +47,7 @@ class ReportExportController extends Controller
         $sheet->setCellValue('A1', $business['name'] ?? 'Abad POS');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
         $sheet->setCellValue('A2', $reportTitle.' — '.now()->format('Y-m-d H:i'));
-        $sheet->setCellValue('A3', __('الفرع').': '.Demo::currentBranchName());
+        $sheet->setCellValue('A3', __('الفرع').': '.Demo::scopeName($perBranch));
 
         // الفترة تُطبع دائمًا حتى في الأوراق التي لا فترة لها (جرد، منتجات):
         // سطرٌ ناقص أسهل أن يُقرأ على أنه «كل شيء» من سطرٍ مكتوب
@@ -221,7 +228,7 @@ class ReportExportController extends Controller
     public function inventoryXlsx()
     {
         $spreadsheet = new Spreadsheet;
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('جرد المخزون'));
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('جرد المخزون'), null, perBranch: true);
 
         $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('القيمة (ر.ع)'), __('حالة المخزون'), __('آخر تحديث')]);
         $money = [];
@@ -282,7 +289,8 @@ class ReportExportController extends Controller
 
         // المعاملات
         $firstDataRow = $this->tableHead($sheet, [__('المرجع'), __('التاريخ'), __('البيان'), __('الوسيلة'), __('النوع'), __('المبلغ (ر.ع)'), __('الموظف')]);
-        foreach (Demo::transactions($range) as $t) {
+        // بلا سقف: هذا هو الباب إلى الدفتر كاملًا (انظر Demo::transactions)
+        foreach (Demo::transactions($range, null) as $t) {
             $r = $this->row;
             $sheet->setCellValueExplicit("A{$r}", (string) $t['id'], DataType::TYPE_STRING);
             $sheet->setCellValue("B{$r}", $t['date']);
@@ -310,7 +318,7 @@ class ReportExportController extends Controller
     public function ordersXlsx()
     {
         $spreadsheet = new Spreadsheet;
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('الطلبات'));
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('الطلبات'), null, perBranch: true);
         $money = [];
 
         $orders = Demo::orders(request());
@@ -322,13 +330,13 @@ class ReportExportController extends Controller
          * إجماليّها بلا قيمته — وجمعُه هنا كان سيجعل الملفّ يقول مبيعاتٍ لم
          * تقع، ويخالف الرقم الذي قرأه التاجر قبل أن يضغط «تصدير».
          */
-        $cancelled = array_values(array_filter($orders, fn ($o) => $o['status'] === \App\Support\OrderStatus::CANCELLED));
+        $cancelled = array_values(array_filter($orders, fn ($o) => $o['status'] === OrderStatus::CANCELLED));
 
         $title(__('ملخّص الطلبات'));
         $head([__('عدد الطلبات'), __('إجمالي القيمة (ر.ع)'), __('منها ملغاة')]);
         $sheet->setCellValue('A'.$this->row, count($orders));
         $sheet->setCellValue('B'.$this->row, round(array_sum(array_map(
-            fn ($o) => $o['status'] === \App\Support\OrderStatus::CANCELLED ? 0.0 : (float) $o['total'],
+            fn ($o) => $o['status'] === OrderStatus::CANCELLED ? 0.0 : (float) $o['total'],
             $orders,
         )), 3));
         $sheet->setCellValue('C'.$this->row, count($cancelled));

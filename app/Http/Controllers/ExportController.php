@@ -114,7 +114,7 @@ class ExportController extends Controller
         $rows = array_map(fn ($t) => [
             $t['id'], $t['date'], $t['description'], $t['method'], $t['type'],
             number_format($t['amount'], 3, '.', ''), $t['employee'],
-        ], Demo::transactions($range));
+        ], Demo::transactions($range, null));   // بلا سقف: الملفّ هو الدفتر كاملًا
 
         return $this->stream('transactions', [__('المرجع'), __('التاريخ'), __('الوصف'), __('الطريقة'), __('النوع'), __('المبلغ'), __('الموظف')], $rows);
     }

@@ -230,6 +230,7 @@ class Permissions
         if (in_array($section, self::ALWAYS_OPEN, true)) {
             return true;
         }
+
         return in_array($section, $abilities, true);
     }
 
@@ -288,6 +289,11 @@ class Permissions
         'products' => 'products', 'orders' => 'orders', 'customers' => 'customers',
         'transactions' => 'finance', 'expenses' => 'expenses', 'inventory' => 'inventory',
         'reports' => 'reports',
+        // و«الموردون» كانت ساقطةً مثلها: زرّ CSV في شاشة المورّدين يُرسم لمن
+        // يملك القسم، ويُطالَب عند الضغط بصلاحية الإعدادات — وأمين المخزن
+        // يملك المورّدين ولا يملك الإعدادات، فلا يُنزِّل ملفّ شاشته أبدًا.
+        // وحارسٌ في ReportsTellTheirScopeTest يمنع سقوط الثامن.
+        'suppliers' => 'suppliers',
     ];
 
     /** هل هذا المسار من هيكل اللوحة لا من أقسامها؟ */

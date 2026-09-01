@@ -27,6 +27,7 @@ import type { PageProps } from '@/types';
 
 interface Summary {
     sales: number;
+    cogs: number;
     profit: number;
     expenses: number;
     tax: number;
@@ -84,6 +85,8 @@ export default function ReportsSales() {
 
     const stats = [
         { label: t('إجمالي المبيعات'), value: m(summary.sales), icon: 'wallet', color: 'primary' },
+        // التكلفة بجانب الربح لا في ورقةٍ أخرى: من يقرأ ربحًا يحتاج أن يرى ممّ طُرح
+        { label: t('تكلفة البضاعة المباعة'), value: m(summary.cogs), icon: 'package', color: 'info' },
         {
             label: t('صافي الربح'),
             value: m(summary.profit),

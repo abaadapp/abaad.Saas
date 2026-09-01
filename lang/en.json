@@ -3517,5 +3517,9 @@
     "تعذّرت الاستعادة: :code صار لمنتج «:name» — غيّره أولًا.": "Restore failed: :code now belongs to “:name” — change it first.",
     "«:name» موقوف عن البيع.": "“:name” is stopped from selling.",
     "هذه السلّة المعلّقة أُتمّت من جهازٍ آخر.": "This held cart was already checked out on another device.",
-    "لم يعد هذا الطلب موجودًا.": "This order no longer exists."
+    "لم يعد هذا الطلب موجودًا.": "This order no longer exists.",
+    "أمر الشراء ليس لهذا المورّد": "This purchase order does not belong to this supplier",
+    "هذا الأمر مفوتَرٌ بسندٍ سابق": "This order is already covered by an earlier invoice",
+    "استُلمت بضاعةٌ على هذا الأمر — لا يُحذف بعد أن دخلت الرفّ": "Goods were received on this order — it cannot be deleted once they reached the shelf",
+    "حُرّر سندُ مورّدٍ على هذا الأمر — لا يُحذف": "A supplier invoice was issued against this order — it cannot be deleted"
 }

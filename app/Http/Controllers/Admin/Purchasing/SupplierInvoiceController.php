@@ -123,13 +123,29 @@ class SupplierInvoiceController extends Controller
 
         $data = $request->validate([
             'supplier_id' => ['required', Rule::exists('suppliers', 'id')->where('business_id', $bid)],
-            'purchase_order_id' => ['nullable', Rule::exists('purchase_orders', 'id')->where('business_id', $bid)],
+            /*
+             * وأمرُ الشراء يكون لهذا المورّد، ولا يكون مفوتَرًا من قبل.
+             *
+             * القائمة في الشاشة تعرض غير المفوتَر وحده — والتحقّق كان يقبل أيّ
+             * رقم. فسندان على أمرٍ واحد يعدّان الشراء مرّتين: دَينٌ مضاعف على
+             * المتجر في حساب الموردين، وتكلفةٌ مضاعفة في المخزون بالدفتر.
+             * وأمرُ مورّدٍ آخر يُعلَّق على سند هذا فيختلط الحسابان.
+             */
+            'purchase_order_id' => [
+                'nullable',
+                Rule::exists('purchase_orders', 'id')->where('business_id', $bid)
+                    ->where(fn ($q) => $q->where('supplier_id', $request->input('supplier_id'))),
+                Rule::unique('supplier_invoices', 'purchase_order_id')->where('business_id', $bid),
+            ],
             'supplier_ref' => ['required', 'string', 'max:60'],
             'issued_at' => ['required', 'date'],
             'due_at' => ['nullable', 'date', 'after_or_equal:issued_at'],
             'subtotal' => ['required', 'numeric', 'min:0'],
             'tax' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'purchase_order_id.exists' => __('أمر الشراء ليس لهذا المورّد'),
+            'purchase_order_id.unique' => __('هذا الأمر مفوتَرٌ بسندٍ سابق'),
         ]);
 
         /*
@@ -233,6 +249,24 @@ class SupplierInvoiceController extends Controller
 
         try {
             DB::transaction(function () use ($bid, $invoice, $amount, $data) {
+                /*
+                 * والمستحقّ يُقرأ ثانيةً تحت قفل.
+                 *
+                 * الفحص أعلاه يقع على نسخةٍ قُرئت قبل المعاملة. فضغطتان على
+                 * «سداد» بالمبلغ نفسه — وهي أشيع ما يقع حين يبطؤ الردّ —
+                 * تمرّان كلتاهما: يخرج المال مرّتين من الصندوق، ويصير المدفوع
+                 * أكبر من الإجمالي، فيُقرأ المستحقّ سالبًا في مجموع الذمم
+                 * كأنّ المورّد يدين لنا.
+                 */
+                $locked = SupplierInvoice::where('business_id', $bid)
+                    ->lockForUpdate()->findOrFail($invoice->id);
+
+                if ($amount - $locked->outstanding() > 0.0005) {
+                    throw new RuntimeException(__('المستحقّ على هذا السند :v فقط', [
+                        'v' => number_format($locked->outstanding(), 3),
+                    ]));
+                }
+
                 Ledger::post(
                     $bid,
                     __('سداد سند مورّد: ').$invoice->supplier_ref,
@@ -247,8 +281,9 @@ class SupplierInvoiceController extends Controller
                     $invoice,
                 );
 
-                $invoice->update(['paid' => round((float) $invoice->paid + $amount, 3)]);
-                $invoice->syncStatus();
+                $locked->update(['paid' => round((float) $locked->paid + $amount, 3)]);
+                $locked->syncStatus();
+                $invoice->setAttribute('paid', $locked->paid);
             });
         } catch (RuntimeException $e) {
             return back()->withErrors(['amount' => $e->getMessage()]);

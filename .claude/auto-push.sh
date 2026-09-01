@@ -35,6 +35,9 @@ if ! out=$(git commit -m "$subject" -m "Co-Authored-By: Claude Opus 5 (1M contex
   exit 0
 fi
 
+# موضع الريموت قبل الدفع: منه نعرف ما الذي دُفع فعلًا، فيُقرَّر أيُنشر أم لا
+before=$(git rev-parse "origin/$branch" 2>/dev/null || true)
+
 if ! out=$(git push origin "$branch" 2>&1); then
   msg "دفع تلقائي: الكوميت تم لكن الدفع فشل — $(printf '%s' "$out" | tail -1)"
   exit 0
@@ -87,15 +90,36 @@ fi
 # فلا يبقى النشر بلا جواب: ما نُشر قبل قليل يُقال في رسالة ما بعده.
 # ---------------------------------------------------------------------------
 SERVER="${ABAAD_SERVER:-root@165.227.145.219}"
-SSH=(ssh -o BatchMode=yes -o ConnectTimeout=10 "$SERVER")
 
-# نتيجة النشرة السابقة أولًا — قبل أن تُطلق التالية وتكتب فوقها
-prev=$("${SSH[@]}" 'tail -1 /root/pre-deploy/LAST_DEPLOY 2>/dev/null' 2>/dev/null || true)
-[ -n "$prev" ] && prev=" · سابقتها: $prev"
+# ---------------------------------------------------------------------------
+# ما لا يقرأه الخادم لا يُنشر.
+#
+# كوميتٌ لا يمسّ إلا `.claude/` أو وثيقةً في `docs/` كان يستدعي النشرة كاملةً:
+# نسخةُ قاعدة، وcomposer، وبناءُ واجهةٍ يستغرق دقائق، وهجرةٌ وإعادةُ تحميل
+# php-fpm — كلُّ ذلك لملفٍّ لا يصل الخادم أصلًا. وهي ليست كلفةَ وقتٍ فقط:
+# كلُّ نشرةٍ تُخلّف نسخةَ قاعدة على القرص.
+# ---------------------------------------------------------------------------
+if [ -n "$before" ]; then
+  changed=$(git diff --name-only "$before" HEAD 2>/dev/null)
+else
+  changed=$(git show --name-only --pretty= HEAD 2>/dev/null)
+fi
 
-if ! out=$("${SSH[@]}" 'bash -s' <<'REMOTE' 2>&1
+if ! printf '%s\n' "$changed" | grep -qvE '^(\.claude/|\.github/|docs/|AI_COMMAND_CENTER/|project-tracking/|[^/]*\.md$)'; then
+  msg "$pushed · الوسم $tag — بلا نشر: لا شيء مما دُفع يصل الخادم"
+  exit 0
+fi
+
+# نداءٌ واحد لا اثنان: يقرأ نتيجة النشرة السابقة ثمّ يُطلق التالية.
+# نداءان يعنيان مهلتَي اتصالٍ حين يكون الجهاز خارج الشبكة.
+if ! out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$SERVER" 'bash -s' <<'REMOTE' 2>&1
 set -u
 mkdir -p /root/pre-deploy
+
+# مصير النشرة السابقة — يُقرأ قبل أن تكتب التالية فوقه
+prev=$(tail -1 /root/pre-deploy/LAST_DEPLOY 2>/dev/null || true)
+[ -n "$prev" ] && echo "PREV $prev"
+
 stamp=$(date +%Y%m%d-%H%M%S)
 log="/root/pre-deploy/deploy-$stamp.log"
 
@@ -112,20 +136,34 @@ if bash /var/www/abaad/scripts/deploy.sh > "$log" 2>&1; then
     code=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://app.abaadapp.om/health || echo 000)
     printf 'OK %s %s health=%s\n' "$stamp" "\$(git -C /var/www/abaad rev-parse --short HEAD)" "\$code" >> /root/pre-deploy/LAST_DEPLOY
 else
-    # آخر سطرٍ ذي معنى من السجلّ: السبب يُقال هنا لا يُبحث عنه في ملفّ
-    why=\$(grep -v '^\\s*$' "$log" | tail -1 | tr -d '\\r' | cut -c1-120)
+    # السبب لا آخرُ سطر: آخر سطرٍ في فشل السحب كان «and the repository exists»
+    # — جملةٌ من ذيل رسالة git لا تقول شيئًا. نبحث عن سطر العطب نفسه، وننزع
+    # ألوان الطرفية وإلا وصلت رموزها إلى الرسالة
+    clean=\$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -v '^[[:space:]]*\$')
+    why=\$(printf '%s\n' "\$clean" | grep -iE '✗|fatal|error|denied|cannot|Killed|No such|refus' | head -1 | cut -c1-140)
+    [ -z "\$why" ] && why=\$(printf '%s\n' "\$clean" | tail -1 | cut -c1-140)
     printf 'FAIL %s — %s — %s\n' "$stamp" "\$why" "$log" >> /root/pre-deploy/LAST_DEPLOY
 fi
+
+# لا تتراكم النسخ والسجلّات: نشرةٌ بعد كل تعديل تعني عشراتٍ في اليوم.
+# يبقى أحدث عشرين من كلٍّ — والرجوع لا يحتاج أبعد من ذلك عمليًّا
+ls -1t /root/pre-deploy/*.dump 2>/dev/null | tail -n +21 | xargs -r rm -f
+ls -1t /root/pre-deploy/*.log  2>/dev/null | tail -n +21 | xargs -r rm -f
+
 rm -f "$runner"
 RUN
 
 chmod +x "$runner"
 setsid nohup "$runner" >/dev/null 2>&1 &
-echo "$log"
+echo "LOG $log"
 REMOTE
 ); then
-  msg "$pushed · الوسم $tag — لكن تعذّر إطلاق النشر: $(printf '%s' "$out" | tail -1)$prev"
+  msg "$pushed · الوسم $tag — لكن تعذّر إطلاق النشر: $(printf '%s' "$out" | tail -1)"
   exit 0
 fi
 
-msg "$pushed · الوسم $tag · انطلق النشر ($(printf '%s' "$out" | tail -1))$prev"
+prev=$(printf '%s\n' "$out" | sed -n 's/^PREV //p' | tail -1)
+log=$(printf '%s\n' "$out" | sed -n 's/^LOG //p' | tail -1)
+[ -n "$prev" ] && prev=" · سابقتها: $prev"
+
+msg "$pushed · الوسم $tag · انطلق النشر (${log:-?})${prev:-}"

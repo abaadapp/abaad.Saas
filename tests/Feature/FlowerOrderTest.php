@@ -565,6 +565,98 @@ class FlowerOrderTest extends TestCase
         $this->assertSame('يُغلَّف بورقٍ أسود', $order->fresh()->internal_notes);
     }
 
+    /* --------------------- صفحة الطلب: قسمان لا كومة --------------------- */
+
+    /**
+     * الصفحة تحمل القسمين معًا: مالَ الطلب وورقةَ تنفيذه.
+     *
+     * صارت الصفحة تبويبين — «بيانات الطلب» و«ورقة التفاصيل» — وكلاهما يُرسم
+     * من الحمولة نفسها بلا نداءٍ ثانٍ. فلو سقط حقلٌ من الحمولة لَظهر التبويب
+     * فارغًا بلا خطأ يُنبّه.
+     */
+    public function test_the_order_page_carries_both_the_money_and_the_sheet(): void
+    {
+        $this->sell([
+            'fulfillment_type' => FlowerOrder::DELIVERY,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+            'recipient_name' => 'ليلى',
+            'recipient_phone' => '+968 90000000',
+            'delivery_address' => 'الخوير، شارع 33',
+            'card_message' => 'كل عام وأنت بخير',
+        ])->assertOk();
+
+        $order = $this->lastOrder();
+
+        $this->actingAs($this->owner)->get(route('admin.orders.show', $order->number))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Admin/Orders/Show')
+                // قسم البيانات
+                ->where('order.total', (float) $order->total)
+                ->where('order.status', $order->status)
+                ->has('order.items', 1)
+                // قسم الورقة
+                ->where('order.recipient_name', 'ليلى')
+                ->where('order.delivery_address', 'الخوير، شارع 33')
+                ->where('order.card_message', 'كل عام وأنت بخير')
+                // وما تُبنى منه قوائم التعديل في المكان نفسه
+                ->has('order.fulfillments')
+                ->has('order.occasions'));
+    }
+
+    /**
+     * وتعديل الورقة لا يمسّ ريالًا ولا يُقدّم الطلب في مساره.
+     *
+     * التعديل صار في الصفحة نفسها، فقُربُه من المبالغ يجعل الخلط ممكنًا:
+     * حقلٌ زائد في الطلب، أو إعادةُ حسبةٍ «تصحيحًا»، فتقول الفاتورة غير ما
+     * يقوله الدفتر. والمقياس هنا: الأرقام كما هي، والحالة كما هي، بعد تعديلٍ
+     * يمسّ كل حقول الورقة.
+     */
+    public function test_editing_the_sheet_touches_neither_money_nor_status(): void
+    {
+        $this->sell([
+            'fulfillment_type' => FlowerOrder::DELIVERY,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+            'recipient_name' => 'ليلى',
+            'recipient_phone' => '+968 90000000',
+            'delivery_address' => 'الخوير',
+        ])->assertOk();
+
+        $order = $this->lastOrder();
+        $before = $order->only([
+            'subtotal', 'discount', 'tax', 'delivery_fee', 'total',
+            'status', 'payment_method', 'payment_status',
+        ]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.orders.details.update', $order->number), [
+                'fulfillment_type' => FlowerOrder::DELIVERY,
+                'scheduled_for' => now()->addDays(2)->format('Y-m-d\TH:i'),
+                'recipient_name' => 'ليلى الهنائي',
+                'recipient_phone' => '+968 91111111',
+                'delivery_address' => 'السيب، شارع 5',
+                'delivery_notes' => 'اتّصل قبل الوصول',
+                'card_message' => 'تهانينا',
+                'sender_name' => 'خالد',
+                'hide_sender' => true,
+                'internal_notes' => 'يُغلَّف بورقٍ أسود',
+            ])->assertSessionHasNoErrors();
+
+        $order->refresh();
+
+        $this->assertSame('ليلى الهنائي', $order->recipient_name);
+        $this->assertSame('السيب، شارع 5', $order->delivery_address);
+        $this->assertSame('يُغلَّف بورقٍ أسود', $order->internal_notes);
+
+        foreach ($before as $field => $value) {
+            $this->assertSame(
+                (string) $value,
+                (string) $order->$field,
+                "تعديل الورقة غيّر «{$field}» — وهو ليس من شأنها"
+            );
+        }
+    }
+
     /** واسم العميل يصل إلى بطاقة التجهيز — هناك يُقرأ لا في الفاتورة */
     public function test_the_preparation_card_carries_the_customer_name(): void
     {

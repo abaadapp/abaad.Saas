@@ -3600,6 +3600,15 @@
     "به يدخل الموظف — ولا يتكرّر على المنصة": "The employee signs in with it — unique across the platform",
     "هذا الجهاز يعمل على فرعٍ لست مُسنَدًا إليه. راجع مديرك.": "This device serves a branch you are not assigned to. Contact your manager.",
     "الرمز غير صحيح أو منتهي الصلاحية.": "The code is wrong or has expired.",
+    "بيانات الطلب": "Order data",
+    "ورقة التفاصيل": "Details sheet",
+    "ورقة تفاصيل الطلب": "Order details sheet",
+    "بيانات التنفيذ وحدها — لا تمسّ المبالغ ولا حالة الطلب": "Fulfilment data only — it changes neither the amounts nor the order status",
+    "التنفيذ والموعد": "Fulfilment and time",
+    "العنوان والتعليمات": "Address and instructions",
+    "المناسبة والبطاقة": "Occasion and card",
+    "لا تفاصيل تنفيذ لهذا الطلب بعد": "This order has no fulfilment details yet",
+    "أضِف التفاصيل": "Add details",
     "صورةٌ أثقل من :n ميغابايت لا تُرفع: :names": "Images heavier than :n MB are not uploaded: :names",
     "حجم الصورة يتجاوز :n ميغابايت.": "The image is larger than :n MB."
 }

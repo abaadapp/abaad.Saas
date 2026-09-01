@@ -200,6 +200,30 @@ class ReportPagesTest extends TestCase
         }
     }
 
+    /* ====================== ما لا يُفقد في النقل ====================== */
+
+    public function test_printing_survived_the_move_out_of_the_window(): void
+    {
+        /*
+         * النافذة المحذوفة كانت تحمل زرّ «طباعة»، والصفحات وُلدت بلا واحد:
+         * قدرةٌ كانت بيد التاجر تذهب في إعادة تنظيمٍ لم تُعلن أنها تأخذها.
+         *
+         * والزرّ وحده لا يكفي — قاعدةُ الطباعة العامة تُخفي الصفحة كلّها إلا
+         * الإيصال الحراري، فبلا `printable-report` تخرج ورقةٌ بيضاء: زرٌّ
+         * يقول شيئًا ولا يفعله. ويُطوى عن الورق ما ليس منها.
+         */
+        $css = file_get_contents(resource_path('css/app.css'));
+        $this->assertStringContainsString('.printable-report', $css, 'الكشف للطابعة ذهب مع النافذة');
+
+        foreach (['Payments', 'Staff', 'Customers'] as $screen) {
+            $source = file_get_contents(resource_path("js/Pages/Admin/Reports/{$screen}.tsx"));
+
+            $this->assertStringContainsString('PrintReport', $source, "«{$screen}» بلا زرّ طباعة");
+            $this->assertStringContainsString('printable-report', $source, "«{$screen}» يُطبع ورقةً بيضاء");
+            $this->assertStringContainsString('no-print', $source, "«{$screen}» يطبع أدواته مع بياناته");
+        }
+    }
+
     /* ====================== التنقّل بينها ====================== */
 
     public function test_the_navigation_carries_every_report_the_owner_can_open(): void

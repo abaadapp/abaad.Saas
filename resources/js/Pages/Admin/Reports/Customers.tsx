@@ -1,6 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import PrintReport from '@/Components/PrintReport';
 import ReportTabs, { type ReportTab } from '@/Components/ReportTabs';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
@@ -54,57 +55,63 @@ export default function ReportsCustomers() {
 
     return (
         <AdminLayout title="العملاء الأكثر إنفاقًا">
-            <PageHeader
-                title="العملاء الأكثر إنفاقًا"
-                subtitle={t('من يشتري أكثر، وكم طلبًا وكم أنفق')}
-            />
+            {/* الكشف للطابعة: القاعدة العامة تُخفي الصفحة كلّها إلا الإيصال الحراري */}
+            <div className="printable-report">
+                <PageHeader
+                    title="العملاء الأكثر إنفاقًا"
+                    subtitle={t('من يشتري أكثر، وكم طلبًا وكم أنفق')}
+                    actions={<PrintReport />}
+                />
 
-            <ReportTabs tabs={tabs} current="customers" />
-            <RangeTabs current={range} />
-
-            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {stats.map((s, i) => (
-                    <StatCard key={s.label} stat={s} index={i} />
-                ))}
-            </div>
-
-            <Card className="overflow-hidden">
-                <div className="border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
-                    <h3 className="font-bold text-[#111]">{t('التفصيل')}</h3>
-                    <p className="mt-0.5 text-[13px] text-[#9ca3af]">{rangeLabel}</p>
+                <div className="no-print">
+                    <ReportTabs tabs={tabs} current="customers" />
+                    <RangeTabs current={range} />
                 </div>
-                <Table>
-                    <TableHeader>
-                        <TableRow className="hover:bg-transparent">
-                            <TableHead className="w-14 text-center">#</TableHead>
-                            <TableHead>{t('العميل')}</TableHead>
-                            <TableHead className="text-end">{t('عدد الطلبات')}</TableHead>
-                            <TableHead className="text-end">{t('إجمالي الإنفاق')}</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {rows.length === 0 ? (
-                            <TableEmpty colSpan={4}>{t('لا مشتريات في هذه الفترة')}</TableEmpty>
-                        ) : (
-                            rows.map((r, i) => (
-                                <TableRow key={`${r.name}-${i}`}>
-                                    <TableCell className="text-center tabular-nums text-[#9ca3af]">{i + 1}</TableCell>
-                                    <TableCell className="font-medium text-[#111]">{r.name}</TableCell>
-                                    <TableCell className="text-end tabular-nums">{number(r.orders)}</TableCell>
-                                    <TableCell className="text-end tabular-nums">{m(r.total)}</TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </Card>
 
-            {/* السقف يُقال ولا يُخفى: قائمةٌ مبتورةٌ بلا ما يقول ذلك تُقرأ على أنها كلُّ العملاء */}
-            {rows.length >= limit && (
-                <p className="mt-3 text-[12px] text-[#9ca3af]">
-                    {t('تُعرض أعلى :n عميلًا إنفاقًا في هذه الفترة.', { n: limit })}
-                </p>
-            )}
+                <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {stats.map((s, i) => (
+                        <StatCard key={s.label} stat={s} index={i} />
+                    ))}
+                </div>
+
+                <Card className="overflow-hidden">
+                    <div className="border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
+                        <h3 className="font-bold text-[#111]">{t('التفصيل')}</h3>
+                        <p className="mt-0.5 text-[13px] text-[#9ca3af]">{rangeLabel}</p>
+                    </div>
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="hover:bg-transparent">
+                                <TableHead className="w-14 text-center">#</TableHead>
+                                <TableHead>{t('العميل')}</TableHead>
+                                <TableHead className="text-end">{t('عدد الطلبات')}</TableHead>
+                                <TableHead className="text-end">{t('إجمالي الإنفاق')}</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {rows.length === 0 ? (
+                                <TableEmpty colSpan={4}>{t('لا مشتريات في هذه الفترة')}</TableEmpty>
+                            ) : (
+                                rows.map((r, i) => (
+                                    <TableRow key={`${r.name}-${i}`}>
+                                        <TableCell className="text-center tabular-nums text-[#9ca3af]">{i + 1}</TableCell>
+                                        <TableCell className="font-medium text-[#111]">{r.name}</TableCell>
+                                        <TableCell className="text-end tabular-nums">{number(r.orders)}</TableCell>
+                                        <TableCell className="text-end tabular-nums">{m(r.total)}</TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </Card>
+
+                {/* السقف يُقال ولا يُخفى: قائمةٌ مبتورةٌ بلا ما يقول ذلك تُقرأ على أنها كلُّ العملاء */}
+                {rows.length >= limit && (
+                    <p className="mt-3 text-[12px] text-[#9ca3af]">
+                        {t('تُعرض أعلى :n عميلًا إنفاقًا في هذه الفترة.', { n: limit })}
+                    </p>
+                )}
+            </div>
         </AdminLayout>
     );
 }

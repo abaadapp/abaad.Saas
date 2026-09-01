@@ -18,6 +18,7 @@
     .card { background: #f9fafb; border: 1px solid #f3f4f6; border-radius: 8px; padding: 10px; }
     .card .lbl { color: #6b7280; font-size: 9px; }
     .card .val { font-size: 14px; font-weight: bold; color: #111827; margin-top: 3px; }
+    h2 { font-size: 13px; color: #111111; margin: 16px 0 6px; border-right: 4px solid #111111; padding-right: 8px; }
     .note { margin-top: 10px; color: #9a3412; font-size: 10px; }
     .foot { margin-top: 24px; border-top: 1px solid #e5e7eb; padding-top: 8px; color: #9ca3af; font-size: 9px; text-align: center; }
 </style>
@@ -51,18 +52,37 @@
     </tr></table>
 @endif
 
-<table>
-    <thead><tr>@foreach ($headings as $h)<th>{{ $h }}</th>@endforeach</tr></thead>
-    <tbody>
-        @forelse ($rows as $row)
-            <tr>@foreach ($row as $cell)<td>{{ $cell }}</td>@endforeach</tr>
-        @empty
-            <tr><td colspan="{{ max(1, count($headings)) }}" style="text-align:center; color:#9ca3af;">
-                {{ __('لا بيانات في هذه الفترة') }}
-            </td></tr>
-        @endforelse
-    </tbody>
-</table>
+@if (count($sections ?? []))
+    {{-- تقريرٌ ليس جدولًا واحدًا: كلُّ قراءةٍ بعنوانها، وإلّا التصق جدولٌ بجدول --}}
+    @foreach ($sections as $section)
+        <h2>{{ $section['title'] }}</h2>
+        <table>
+            <thead><tr>@foreach ($section['headings'] as $h)<th>{{ $h }}</th>@endforeach</tr></thead>
+            <tbody>
+                @forelse ($section['rows'] as $row)
+                    <tr>@foreach ($row as $cell)<td>{{ $cell }}</td>@endforeach</tr>
+                @empty
+                    <tr><td colspan="{{ max(1, count($section['headings'])) }}" style="text-align:center; color:#9ca3af;">
+                        {{ __('لا بيانات في هذه الفترة') }}
+                    </td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    @endforeach
+@else
+    <table>
+        <thead><tr>@foreach ($headings as $h)<th>{{ $h }}</th>@endforeach</tr></thead>
+        <tbody>
+            @forelse ($rows as $row)
+                <tr>@foreach ($row as $cell)<td>{{ $cell }}</td>@endforeach</tr>
+            @empty
+                <tr><td colspan="{{ max(1, count($headings)) }}" style="text-align:center; color:#9ca3af;">
+                    {{ __('لا بيانات في هذه الفترة') }}
+                </td></tr>
+            @endforelse
+        </tbody>
+    </table>
+@endif
 
 {{-- البتر يُقال على الورق كما يُقال على الشاشة، وإلّا قُرئت الورقة على أنها الكلّ --}}
 @if ($truncated)

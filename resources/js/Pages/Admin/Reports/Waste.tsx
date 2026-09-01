@@ -3,6 +3,7 @@ import { AlertTriangle, Info, Lightbulb, TrendingDown, TrendingUp } from 'lucide
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import BackToReports from '@/Components/BackToReports';
+import ExportMenu from '@/Components/ExportMenu';
 import StatCard from '@/Components/StatCard';
 import BarChart from '@/Components/charts/BarChart';
 import { Select } from '@/Components/Field';
@@ -106,6 +107,14 @@ export default function WasteAnalytics() {
             <PageHeader
                 title="تحليلات الهالك"
                 subtitle="ما تلف وما فُقد: قيمته واتجاهه، وأيّ صنفٍ وفرعٍ يبتلعه."
+                actions={
+                    /* الملفّ يحمل المرشّحات المعروضة — `withFilters` تُلحق سلسلة الاستعلام */
+                    <ExportMenu
+                        xlsx={route('admin.reports.export.xlsx', 'waste')}
+                        pdf={route('admin.reports.export.pdf', 'waste')}
+                        csv={route('admin.reports.export.csv', 'waste')}
+                    />
+                }
             />
 
             {/* الرجوع فوق الترويسة: الباب واحد وإليه يُرجع بضغطة */}

@@ -14,6 +14,7 @@ use App\Support\ReportColumns;
 use App\Support\ReportData;
 use App\Support\Reports;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 /**
@@ -246,7 +247,7 @@ class ReportPagesTest extends TestCase
 
         foreach (glob($dir.'/*.tsx') as $file) {
             $screen = basename($file, '.tsx');
-            if (in_array($screen, ['Index', 'Waste'], true)) {
+            if ($screen === 'Index') {
                 continue;
             }
 
@@ -367,6 +368,83 @@ class ReportPagesTest extends TestCase
     {
         $this->get(route('admin.reports.export.csv', 'sales'))->assertNotFound();
         $this->get(route('admin.reports.export.xlsx', 'لا-شيء'))->assertNotFound();
+    }
+
+    /* ============ الهالك: ستُّ قراءاتٍ لا جدولٌ واحد ============ */
+
+    public function test_the_waste_report_exports_all_six_readings(): void
+    {
+        /*
+         * وتصديرُ قراءةٍ واحدةٍ وترْكُ خمسٍ يُخرج ملفًّا يقول أقلَّ ممّا على
+         * الشاشة، ومن يقارنه بها يظنّ أنّ شيئًا سقط في الطريق.
+         */
+        $sections = ReportColumns::sectionsOf('waste');
+        $this->assertCount(6, $sections, 'قراءةٌ من الستّ غائبةٌ عن التصدير');
+
+        $csv = $this->get(route('admin.reports.export.csv', 'waste'))->streamedContent();
+
+        foreach ($sections as $section) {
+            $this->assertStringContainsString($section, $csv, "«{$section}» ليست في الملفّ");
+        }
+    }
+
+    public function test_each_waste_reading_becomes_its_own_sheet(): void
+    {
+        // إكسل يحتمل الألسنة، فستُّ قراءاتٍ ستُّ أوراقٍ لا ستّةُ جداولَ ملصوقة
+        $path = tempnam(sys_get_temp_dir(), 'waste').'.xlsx';
+        file_put_contents($path, $this->get(route('admin.reports.export.xlsx', 'waste'))->streamedContent());
+
+        $book = IOFactory::load($path);
+        @unlink($path);
+
+        $this->assertSame(6, $book->getSheetCount(), 'الأوراق ليست بعدد القراءات');
+        // والملفّ يُفتح على أوّل قراءةٍ لا على آخر ما كُتب
+        $this->assertSame(0, $book->getActiveSheetIndex());
+    }
+
+    public function test_the_waste_file_obeys_the_dates_on_the_screen(): void
+    {
+        /*
+         * والهالك يُرشَّح بمدّةٍ بحدّين لا بفترةٍ مسمّاة — شاشتُه تقارن المدّة
+         * بسابقتها. وإقحامُ `range` عليه يُخرج ملفًّا بمدّةٍ غير المعروضة.
+         */
+        $from = now()->subMonth()->toDateString();
+        $to = now()->toDateString();
+
+        $response = $this->get(route('admin.reports.export.csv', 'waste')."?from={$from}&to={$to}");
+        $csv = $response->streamedContent();
+
+        $this->assertStringContainsString($from, $csv, 'الملفّ لا يقول مدّته');
+        $this->assertStringContainsString($to, $csv);
+
+        /*
+         * واسمُ الملفّ يحمل مدّته لا فترةً مسمّاة: ملفّاتٌ عدّة في مجلّد
+         * التنزيلات كلُّها «waste-month» لا يُعرف أيُّها لأيّ مدّة.
+         */
+        $this->assertStringContainsString(
+            $from,
+            $response->headers->get('content-disposition') ?? '',
+            'اسمُ الملفّ يقول فترةً مسمّاة لا مدّته'
+        );
+    }
+
+    public function test_the_waste_export_is_measured_by_the_reports_section(): void
+    {
+        $this->actingAs($this->staff(['orders']))
+            ->get(route('admin.reports.export.csv', 'waste'))->assertForbidden();
+
+        $this->actingAs($this->staff(['reports']))
+            ->get(route('admin.reports.export.csv', 'waste'))->assertOk();
+    }
+
+    public function test_the_waste_screen_offers_the_same_three_formats(): void
+    {
+        $source = file_get_contents(resource_path('js/Pages/Admin/Reports/Waste.tsx'));
+
+        $this->assertStringContainsString('ExportMenu', $source, 'شاشة الهالك بلا تصدير');
+        foreach (['export.xlsx', 'export.pdf', 'export.csv'] as $format) {
+            $this->assertStringContainsString($format, $source, "شاشة الهالك بلا {$format}");
+        }
     }
 
     /* ====================== الرجوع إلى الفهرس ====================== */

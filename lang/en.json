@@ -3694,5 +3694,6 @@
     "خصم :name أكبر من مستحقّه — صحّح سطره قبل الاعتماد.": "The deduction for :name exceeds their earnings — fix their line before approving.",
     "تقرير": "Report",
     "لا بيانات في هذه الفترة": "No data in this period",
-    "تُعرض :shown من :total صفًّا.": "Showing :shown of :total rows."
+    "تُعرض :shown من :total صفًّا.": "Showing :shown of :total rows.",
+    "المدّة": "Period"
 }

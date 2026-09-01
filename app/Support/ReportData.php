@@ -159,6 +159,51 @@ class ReportData
         ]);
     }
 
+    /* ========================== تحليلات الهالك ========================== */
+
+    /**
+     * الهالك — ستُّ قراءاتٍ على الصفوف نفسها، لا جدولٌ واحد.
+     *
+     * ومرشّحاتُه مدّةٌ بحدّين لا فترةً مسمّاة: الشاشة تقارن المدّة بسابقتها،
+     * والمقارنةُ تفقد معناها بلا حدّين. فتُقرأ `from` و`to` كما تقرؤهما
+     * الشاشة بالضبط — انظر WasteAnalyticsController — فلا يخرج الملفّ بمدّةٍ
+     * غير التي كانت معروضة.
+     */
+    public static function waste(int $bid, array $filters): array
+    {
+        $scope = [
+            'from' => $filters['from'] ?? now()->startOfMonth()->toDateString(),
+            'to' => $filters['to'] ?? now()->toDateString(),
+            'branch_id' => $filters['branch_id'] ?? null,
+            'category_id' => $filters['category_id'] ?? null,
+            'product_id' => $filters['product_id'] ?? null,
+            'reason' => $filters['reason'] ?? null,
+        ];
+
+        $totals = Waste::totals($bid, $scope);
+
+        return [
+            'sections' => [
+                'بالصنف' => Waste::groupedBy($bid, 'product', $scope),
+                'بالقسم' => Waste::groupedBy($bid, 'category', $scope),
+                'بالفرع' => Waste::groupedBy($bid, 'branch', $scope),
+                'بالسبب' => Waste::groupedBy($bid, 'reason', $scope),
+                'عبر الزمن' => Waste::overTime($bid, $scope),
+                'مقابل الاستهلاك' => Waste::versusConsumption($bid, $scope),
+            ],
+            'summary' => [
+                'count' => $totals['count'],
+                'quantity' => $totals['quantity'],
+                'value' => $totals['value'],
+            ],
+            // مدّةٌ بحدّين تُكتب في الترويسة: ورقةٌ لا تقول مدّتها تُقرأ على أنها العمر كلّه
+            'periodLabel' => $scope['from'].' → '.$scope['to'],
+            'rows' => [],
+            'truncated' => null,
+            'options' => [],
+        ];
+    }
+
     /* ========================== الحركة المالية ========================== */
 
     public static function finance(int $bid, array $filters): array

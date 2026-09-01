@@ -81,6 +81,67 @@ class ReportColumns
         ],
     ];
 
+    /**
+     * التقارير التي ليست جدولًا واحدًا — لكلٍّ منها أقسامٌ تُصدَّر معًا.
+     *
+     * وتحليلاتُ الهالك أوّلُها: شاشتُها ستُّ قراءاتٍ على الصفوف نفسها — بالصنف
+     * وبالقسم وبالفرع وبالسبب وعبر الزمن ومقابل الاستهلاك. وتصديرُ واحدةٍ
+     * منها وترْكُ خمسٍ يُخرج ملفًّا يقول أقلَّ ممّا على الشاشة، ومن يقارنه بها
+     * يظنّ أنّ شيئًا سقط.
+     *
+     * @var array<string, array<string, list<array{0: string, 1: string, 2: string}>>>
+     */
+    public const SECTIONS = [
+        'waste' => [
+            'بالصنف' => [
+                ['label', 'الصنف', 'text'], ['quantity', 'الكمية', 'number'], ['value', 'القيمة', 'money'],
+            ],
+            'بالقسم' => [
+                ['label', 'القسم', 'text'], ['quantity', 'الكمية', 'number'], ['value', 'القيمة', 'money'],
+            ],
+            'بالفرع' => [
+                ['label', 'الفرع', 'text'], ['quantity', 'الكمية', 'number'], ['value', 'القيمة', 'money'],
+            ],
+            'بالسبب' => [
+                ['label', 'السبب', 'text'], ['quantity', 'الكمية', 'number'], ['value', 'القيمة', 'money'],
+            ],
+            'عبر الزمن' => [
+                ['label', 'الشهر', 'text'], ['quantity', 'الكمية', 'number'], ['value', 'القيمة', 'money'],
+            ],
+            'مقابل الاستهلاك' => [
+                ['label', 'الصنف', 'text'], ['consumed', 'المستهلَك', 'number'],
+                ['waste', 'الهالك', 'number'], ['rate', 'النسبة %', 'number'], ['value', 'القيمة', 'money'],
+            ],
+        ],
+    ];
+
+    /** هل هذا التقرير أقسامٌ لا جدولًا واحدًا؟ */
+    public static function sectioned(string $report): bool
+    {
+        return array_key_exists($report, self::SECTIONS);
+    }
+
+    /** أسماءُ أقسام تقريرٍ متعدّد — بترتيب الشاشة */
+    public static function sectionsOf(string $report): array
+    {
+        return array_keys(self::SECTIONS[$report] ?? []);
+    }
+
+    /** @return list<array{key: string, label: string, kind: string}> */
+    public static function sectionColumns(string $report, string $section): array
+    {
+        return array_map(
+            fn ($c) => ['key' => $c[0], 'label' => __($c[1]), 'kind' => $c[2]],
+            self::SECTIONS[$report][$section] ?? [],
+        );
+    }
+
+    /** صفٌّ واحد بترتيب أعمدة قسمٍ بعينه */
+    public static function sectionCells(string $report, string $section, array $row): array
+    {
+        return self::write(self::sectionColumns($report, $section), $row);
+    }
+
     /** هل يُصدَّر هذا التقرير من الباب العام؟ */
     public static function has(string $report): bool
     {
@@ -110,6 +171,12 @@ class ReportColumns
      */
     public static function cells(string $report, array $row): array
     {
+        return self::write(self::for($report), $row);
+    }
+
+    /** كتابةُ صفٍّ بأعمدةٍ معطاة — موضعٌ واحد للجدول الواحد وللأقسام */
+    private static function write(array $columns, array $row): array
+    {
         return array_map(function ($c) use ($row) {
             $value = $row[$c['key']] ?? null;
 
@@ -118,6 +185,6 @@ class ReportColumns
             }
 
             return $value === null || $value === '' ? '—' : (string) $value;
-        }, self::for($report));
+        }, $columns);
     }
 }

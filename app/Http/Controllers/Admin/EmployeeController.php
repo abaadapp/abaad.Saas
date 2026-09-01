@@ -86,6 +86,11 @@ class EmployeeController extends Controller
             return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
         }
 
+        $this->refuseGrantingMoreThanIHave(
+            $title,
+            $request->boolean('manual_permissions') ? array_values(array_unique($data['permissions'] ?? [])) : null,
+        );
+
         PlanLimits::enforce(auth()->user()->business, 'employees');
 
         $employee = User::create([
@@ -117,6 +122,74 @@ class EmployeeController extends Controller
         Activity::log('created', 'أضاف موظفًا: '.$data['name']);
 
         return redirect()->route('admin.employees.index')->with('toast', ['msg' => __('تم إضافة الموظف بنجاح'), 'type' => 'success']);
+    }
+
+    /**
+     * لا يُعطي أحدٌ ما لا يملك.
+     *
+     * قسم «الموظفون» يُمنح للمحاسب — وهو بابُ رواتبَ وأرقام هواتف في الأصل.
+     * وكان يفتح على أوسع من ذلك بكثير:
+     *
+     *   يُنشئ المحاسب موظّفًا بوظيفةٍ دورُها «مدير فرع» — ومدير الفرع يملك
+     *   كلّ الأقسام — ويضع له كلمة مرورٍ يعرفها، ثمّ يدخل بها. أو يفتح صفّه
+     *   هو ويبدّل وظيفته إلى تلك، فيصير عنده الإعدادات والمالية والنسخ
+     *   الاحتياطية. ولا شيء في المسار يمنعه: الدور يُشتقّ من الوظيفة، وحارسُ
+     *   الصلاحيات لا يعمل إلّا حين تُرسَل قائمةٌ يدوية.
+     *
+     * فالقاعدة: ما يُمنح لا يتجاوز ما يملكه المانح. وصاحب النشاط خارجها —
+     * هو مالكُ كلّ شيء أصلًا، ومن يقيّده يقفل المحلّ على صاحبه.
+     *
+     * @param  array<int, string>|null  $manual قائمةٌ يدوية إن أُرسلت
+     */
+    private function refuseGrantingMoreThanIHave(JobTitle $title, ?array $manual): void
+    {
+        $actor = auth()->user();
+
+        if (! $actor || $actor->role === 'admin') {
+            return;
+        }
+
+        $granted = $manual !== null
+            ? $manual
+            : array_values(array_filter(Permissions::sections(), fn ($s) => Permissions::allows($title->role, $s)));
+
+        $beyond = array_values(array_filter($granted, fn ($s) => ! $actor->allows($s)));
+
+        if ($beyond) {
+            abort(403, __('لا تملك صلاحية منح: :sections', [
+                'sections' => implode('، ', array_map(
+                    fn ($s) => Permissions::sectionLabels()[$s] ?? $s,
+                    $beyond,
+                )),
+            ]));
+        }
+    }
+
+    /**
+     * ولا يرفع أحدٌ نفسه — لا رتبةً ولا راتبًا.
+     *
+     * تعديلُ صلاحيات النفس ممنوعٌ أصلًا، لكنّ الدور يأتي من الوظيفة لا من
+     * حقل الصلاحيات: فبدَلُ الوظيفة وحده كان يرفع صاحبه. والراتب مثله —
+     * مسيرةُ الشهر تقرأ العمود، فمن رفع راتبه رفع ما يُصرف له.
+     */
+    private function refuseRaisingMyself(User $employee, JobTitle $title, Request $request): ?string
+    {
+        if ($employee->id !== auth()->id() || auth()->user()?->role === 'admin') {
+            return null;
+        }
+
+        if ($title->role !== $employee->role) {
+            return __('لا يمكنك تغيير وظيفتك بنفسك.');
+        }
+
+        foreach (['basic_salary' => $employee->basic_salary, 'allowances' => $employee->allowances,
+            'commission_rate' => $employee->commission_rate] as $field => $current) {
+            if ($request->has($field) && (float) $request->input($field) > (float) $current) {
+                return __('لا يمكنك رفع راتبك أو بدلاتك بنفسك.');
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -273,6 +346,17 @@ class EmployeeController extends Controller
         if (! $title) {
             return back()->withInput()->withErrors(['job_title' => __('الوظيفة المحددة غير موجودة.')]);
         }
+        $this->refuseGrantingMoreThanIHave(
+            $title,
+            $request->has('manual_permissions')
+                ? ($request->boolean('manual_permissions') ? array_values(array_unique($data['permissions'] ?? [])) : null)
+                : null,
+        );
+
+        if ($refusal = $this->refuseRaisingMyself($employee, $title, $request)) {
+            return back()->withInput()->withErrors(['job_title' => $refusal]);
+        }
+
         $data['job_title'] = $title->name;
         $data['role'] = $title->role;
 

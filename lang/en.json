@@ -3524,5 +3524,8 @@
     "حُرّر سندُ مورّدٍ على هذا الأمر — لا يُحذف": "A supplier invoice was issued against this order — it cannot be deleted",
     "بيع — فاتورة ": "Sale — invoice ",
     "تكلفة بيع — فاتورة ": "Cost of sale — invoice ",
-    "مصروف: ": "Expense: "
+    "مصروف: ": "Expense: ",
+    "لا تملك صلاحية منح: :sections": "You cannot grant: :sections",
+    "لا يمكنك تغيير وظيفتك بنفسك.": "You cannot change your own job title.",
+    "لا يمكنك رفع راتبك أو بدلاتك بنفسك.": "You cannot raise your own salary or allowances."
 }

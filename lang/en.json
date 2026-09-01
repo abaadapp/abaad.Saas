@@ -1241,7 +1241,6 @@
     "تم حذف العنوان": "Address deleted",
     "تم حذف الفرع": "Branch deleted",
     "تم حذف الفرع، وأُبطل تفعيل :count من أجهزته.": "Branch deleted, and :count of its tills were deactivated.",
-    "في «:branch» ما زال :qty قطعة. انقلها إلى فرعٍ آخر ثم احذفه.": "«:branch» still holds :qty units. Move them to another branch, then delete it.",
     "تم حذف القسم": "Category deleted",
     "تم حذف الكشف المستورد": "Imported statement deleted",
     "تم حذف الكوبون": "Coupon deleted",
@@ -3533,5 +3532,8 @@
     "تاريخ الانتهاء مضى — الكوبون لن يعمل ولا مرّة.": "That expiry date has passed — the coupon would never work once.",
     "كلّ :unit نقطة تساوي وحدةَ عملةٍ عند الاستبدال، فمنحُ :rate نقطةً لكل وحدةٍ يعيد للزبون :pct٪ من فاتورته.": "Every :unit points redeem for one currency unit, so awarding :rate points per unit gives the customer back :pct% of their bill.",
     "تغيّر رصيد نقاط العميل — أعد احتساب الاستبدال.": "The customer's point balance changed — recalculate the redemption.",
-    "١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال — فما فوق ١٠٠ يعيد للزبون فاتورته كاملة": "100 points = one currency unit on redemption — above 100 gives the customer their whole bill back"
+    "١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال — فما فوق ١٠٠ يعيد للزبون فاتورته كاملة": "100 points = one currency unit on redemption — above 100 gives the customer their whole bill back",
+    "بلغت حدّ باقة «:plan»: :cap من :label. رقِّ الباقة قبل الاستعادة.": "You have reached the «:plan» plan limit: :cap :label. Upgrade the plan before restoring.",
+    "لديك فرعٌ بهذا الاسم — الفرع يُعرَف باسمه في كل شاشة.": "You already have a branch with this name — a branch is identified by its name on every screen.",
+    "في «:branch» ما زال :qty قطعة. اصرفها منه وأضفها إلى فرعٍ آخر من المخزون ← تعديل يدوي، ثم احذفه.": "«:branch» still holds :qty units. Issue them out of it and add them to another branch from Inventory → Manual adjustment, then delete it."
 }

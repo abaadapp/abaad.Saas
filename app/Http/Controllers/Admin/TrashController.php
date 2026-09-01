@@ -5,14 +5,19 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Branch;
+use App\Models\BranchStock;
 use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\Product;
 use App\Support\Activity;
+use App\Support\Books;
 use App\Support\Demo;
+use App\Support\PlanLimits;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
+use Inertia\Response;
 
 /**
  * المحذوفات — الزرّ الذي يردّ ما أذهبته ضغطة.
@@ -58,9 +63,9 @@ class TrashController extends Controller
         return auth()->user()->business_id ?? Demo::bid();
     }
 
-    public function index(): \Inertia\Response
+    public function index(): Response
     {
-        return \Inertia\Inertia::render('Admin/Settings/Trash', self::panelData());
+        return Inertia::render('Admin/Settings/Trash', self::panelData());
     }
 
     /**
@@ -251,6 +256,17 @@ class TrashController extends Controller
     }
 
     /** يردّ صفًّا مخفيًّا */
+    /** ما يعدّه سقفُ الباقة — يُفحص عند الاستعادة كما يُفحص عند الإنشاء */
+    private const CAPPED = [
+        'branch' => 'branches',
+        'product' => 'products',
+    ];
+
+    private const CAP_LABELS = [
+        'branches' => 'الفروع',
+        'products' => 'المنتجات',
+    ];
+
     public function restore(Request $request, int $id)
     {
         $type = self::typeOf($request);
@@ -275,6 +291,33 @@ class TrashController extends Controller
             ]);
         }
 
+        /*
+         * والسقف يُفحص قبل الإحياء.
+         *
+         * `PlanLimits` تُفرَض عند الإنشاء وحده، والاستعادة إنشاءٌ في أثرها:
+         * يُحذف الفرع، ويُفتح غيرُه في مكانه، ثمّ تُضغط «تراجع» — فيصير
+         * فرعان لباقةٍ بيعت بفرعٍ واحد. والحدُّ الذي يُلتفّ عليه بضغطتين ليس
+         * حدًّا، وإنما وعدٌ يكسره أوّل من ينتبه إليه.
+         *
+         * والردّ في القناتين معًا: زرّ «تراجع» يعيش في شريط التنبيه، وهو لا
+         * يعرض أخطاء النموذج — فرفضٌ في `withErrors` وحدها لا يراه أحد.
+         */
+        if ($capped = self::CAPPED[$type] ?? null) {
+            $business = auth()->user()?->business;
+
+            if (PlanLimits::reached($business, $capped)) {
+                $refusal = __('بلغت حدّ باقة «:plan»: :cap من :label. رقِّ الباقة قبل الاستعادة.', [
+                    'plan' => $business->plan->name,
+                    'cap' => PlanLimits::cap($business, $capped),
+                    'label' => __(self::CAP_LABELS[$capped]),
+                ]);
+
+                return back()
+                    ->with('toast', ['msg' => $refusal, 'type' => 'danger'])
+                    ->withErrors(['restore' => $refusal]);
+            }
+        }
+
         $row->restore();
 
         // المصروف يعود ومعه قيده في الدفتر — بمرجعه نفسه لا بمرجعٍ جديد
@@ -283,7 +326,7 @@ class TrashController extends Controller
 
             // وقيدُه المزدوج يُعاد بناؤه: حُذف مع المصروف فلا يُستعاد بالإحياء
             if ($row->isPaid()) {
-                \App\Support\Books::recordExpense($row);
+                Books::recordExpense($row);
             }
         }
 
@@ -366,13 +409,13 @@ class TrashController extends Controller
          * لمنتجٍ لا وجود له، ويحسبها تقرير «قيمة المخزون» في مجموعه.
          */
         if ($type === 'product') {
-            \App\Models\BranchStock::where('product_id', $row->id)->delete();
+            BranchStock::where('product_id', $row->id)->delete();
         }
 
         // ومحوُ المصروف يمحو قيده: لا يبقى في الدفتر سطرٌ لا أصل له
         if ($type === 'expense') {
             $row->transaction()->withTrashed()->forceDelete();
-            \App\Support\Books::forgetExpense($row);
+            Books::forgetExpense($row);
         }
 
         $row->forceDelete();

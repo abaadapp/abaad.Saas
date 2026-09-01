@@ -33,8 +33,21 @@ class Demo
     private static $baseCur = null;
     private static $displayCur = null;
 
-    /** صاحب العملة المحفوظة في الذاكرة — تُعاد القراءة إن تغيّر */
-    private static ?int $curBid = null;
+    /**
+     * صاحبُ كلّ ذاكرةٍ على حدة — تُعاد قراءتُها إن تغيّر.
+     *
+     * كان مفتاحًا واحدًا للذاكرتين، وكلٌّ منهما تُملأ وحدها: فمتجرٌ نُسّق له
+     * مبلغٌ (فامتلأت ذاكرة العرض باسمه) ثمّ قُرئ لمتجرٍ آخر أساسُه (فتبدّل
+     * المفتاح إلى اسم الثاني) — تصير ذاكرةُ العرض الأولى «صالحةً» لصاحبٍ لم
+     * تُملأ له، فيُخدَم بعملة جاره.
+     *
+     * ولا يقع هذا تحت php-fpm — العمليّة تموت مع الطلب — بل تحت عاملِ طابورٍ
+     * يعالج متجرين بالتتابع، أو تحت Octane. وهناك لا شاشة تكشفه: ملخّصٌ
+     * يوميّ يُرسَل بالبريد بأرقامٍ صحيحة وعملةٍ ليست عملة صاحبه.
+     */
+    private static ?int $baseBid = null;
+
+    private static ?int $displayBid = null;
 
     /**
      * تفريغ ذاكرة العملة المؤقّتة.
@@ -48,7 +61,8 @@ class Demo
     {
         self::$baseCur = null;
         self::$displayCur = null;
-        self::$curBid = null;
+        self::$baseBid = null;
+        self::$displayBid = null;
     }
 
     /** رموز العملات الشائعة في المنطقة — لمن ضبط عملته من الإعدادات بلا جدول عملات */
@@ -85,10 +99,10 @@ class Demo
     {
         // الذاكرة مربوطةٌ بصاحبها: بلا ذلك يُخدَم متجرٌ بعملة متجرٍ سبقه في
         // العمليّة نفسها — تحت Octane أو عامل طابور يعالج متجرين بالتتابع
-        if (self::$baseCur !== null && self::$curBid === self::bid()) {
+        if (self::$baseCur !== null && self::$baseBid === self::bid()) {
             return self::$baseCur;
         }
-        self::$curBid = self::bid();
+        self::$baseBid = self::bid();
         $s = self::businessSettings();
         $c = \App\Models\Currency::where('business_id', self::bid())->where('is_base', true)->first();
 
@@ -108,10 +122,10 @@ class Demo
     /** عملة العرض المختارة (من الجلسة) أو الأساسية */
     public static function displayCurrency(): array
     {
-        if (self::$displayCur !== null && self::$curBid === self::bid()) {
+        if (self::$displayCur !== null && self::$displayBid === self::bid()) {
             return self::$displayCur;
         }
-        self::$curBid = self::bid();
+        self::$displayBid = self::bid();
         $code = session('display_currency');
         if ($code) {
             $c = \App\Models\Currency::where('business_id', self::bid())->where('code', $code)->where('active', true)->first();

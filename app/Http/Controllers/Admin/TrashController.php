@@ -13,6 +13,7 @@ use App\Support\Activity;
 use App\Support\Books;
 use App\Support\Demo;
 use App\Support\PlanLimits;
+use App\Support\ProductImages;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -392,15 +393,22 @@ class TrashController extends Controller
          * وتمرير الرابط إلى `delete` لا يجد شيئًا ولا يشتكي — فيُمحى الصفّ
          * ويبقى الملفّ. عطبٌ صامت لا يظهر إلا بعدّ ما على القرص.
          */
-        $file = match ($type) {
-            'product' => $row->getRawOriginal('image'),
-            'expense' => $row->getRawOriginal('attachment'),
-            default => null,
+        $files = match ($type) {
+            /*
+             * ومنذ صار للمنتج معرضٌ لا صورةً واحدة، لم يعد العمود وحده كافيًا:
+             * صفوفُ `product_images` يأخذها قيدُ المفتاح عند المحو، وملفّاتُها
+             * لا يأخذها شيء — فتبقى على القرص بلا صفٍّ يشير إليها.
+             */
+            'product' => ProductImages::files($row),
+            'expense' => array_values(array_filter([$row->getRawOriginal('attachment')])),
+            default => [],
         };
 
-        // رابطٌ خارجيّ لا ملفّ على قرصنا — لا يُمَسّ
-        if ($file && ! str_starts_with($file, 'http')) {
-            Storage::disk('public')->delete($file);
+        foreach ($files as $file) {
+            // رابطٌ خارجيّ لا ملفّ على قرصنا — لا يُمَسّ
+            if ($file && ! str_starts_with($file, 'http')) {
+                Storage::disk('public')->delete($file);
+            }
         }
 
         /*

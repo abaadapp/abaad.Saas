@@ -137,6 +137,23 @@ class ProductImages
         });
     }
 
+    /**
+     * كلُّ ملفّات المنتج على القرص — الرئيسية والمعرض معًا.
+     *
+     * لمن يمحو المنتج نهائيًّا: الصفوف يأخذها قيدُ المفتاح، والملفّات لا
+     * يأخذها شيء. ومتجرٌ يمحو موسمه كلَّه يترك عشرات الميغابايت لصورٍ لا
+     * صفَّ يشير إليها — عطبٌ صامت لا يظهر إلا بعدّ ما على القرص.
+     *
+     * @return list<string>
+     */
+    public static function files(Product $product): array
+    {
+        return array_values(array_filter([
+            $product->getRawOriginal('image'),
+            ...ProductImage::where('product_id', $product->id)->pluck('path')->all(),
+        ], fn ($path) => filled($path) && ! str_starts_with((string) $path, 'http')));
+    }
+
     /** يمحو ملفًّا من القرص — والرابط الخارجيّ ليس ملفًّا فلا يُمسّ */
     public static function forgetFile(?string $path): void
     {
@@ -153,7 +170,11 @@ class ProductImages
      * وباب واحد تقرأ منه الشاشات كلّها — البطاقة والمعرض والتعديل — فلا
      * يفترق ترتيبٌ عن ترتيب، ولا تُعرض الرئيسية ثانيةً في آخر الصفّ.
      *
-     * @return list<array{id: int|null, url: string, main: bool}>
+     * وبديلُ النظام يُعلَّم `placeholder`: هو صورةٌ تُعرض ولا يملكها أحد —
+     * لا تُحذف ولا تُحسب في السقف. ولولا العَلَم لَعدّته الشاشةُ صورةً،
+     * فقالت «١ / ٨» لمنتجٍ لا صورةَ له، وعرضت زرَّ حذفٍ لملفٍّ لا وجود له.
+     *
+     * @return list<array{id: int|null, url: string, main: bool, placeholder: bool}>
      */
     public static function gallery(Product $product): array
     {
@@ -162,10 +183,11 @@ class ProductImages
             'id' => null,
             'url' => $product->image,
             'main' => true,
+            'placeholder' => ! self::hasRealMain($product),
         ]];
 
         foreach ($product->images as $image) {
-            $out[] = ['id' => $image->id, 'url' => $image->url, 'main' => false];
+            $out[] = ['id' => $image->id, 'url' => $image->url, 'main' => false, 'placeholder' => false];
         }
 
         return $out;

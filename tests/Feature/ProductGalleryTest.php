@@ -380,4 +380,47 @@ class ProductGalleryTest extends TestCase
         $this->get(route('admin.products.show', $this->product->id))
             ->assertInertia(fn ($p) => $p->has('thumbs', 3)->etc());
     }
+
+    /* =================== بديلُ النظام ليس صورةً =================== */
+
+    public function test_the_system_placeholder_is_marked_as_one(): void
+    {
+        /*
+         * ولولا العَلَم لَعدّته الشاشةُ صورةً: «١ / ٨» لمنتجٍ لا صورةَ له،
+         * وزرُّ حذفٍ لملفٍّ لا وجود له، وسقفٌ يُبلَغ عند سبعٍ لا ثمانٍ.
+         */
+        $empty = ProductImages::gallery($this->product->fresh()->load('images'));
+
+        $this->assertCount(1, $empty);
+        $this->assertTrue($empty[0]['placeholder'], 'بديلُ النظام يُعرض كأنّه صورةٌ رفعها التاجر');
+
+        $this->upload(2);
+        $filled = ProductImages::gallery($this->product->fresh()->load('images'));
+
+        $this->assertSame([false, false], array_column($filled, 'placeholder'));
+    }
+
+    /* ================= المحو النهائي لا يترك ملفًّا ================= */
+
+    public function test_purging_a_product_takes_every_image_off_the_disk(): void
+    {
+        /*
+         * صفوفُ المعرض يأخذها قيدُ المفتاح، وملفّاتُها لا يأخذها شيء —
+         * فتبقى على القرص بلا صفٍّ يشير إليها، ولا يظهر ذلك إلا بعدّ ما عليه.
+         */
+        $this->upload(3);
+
+        $paths = ProductImages::files($this->product->fresh());
+        $this->assertCount(3, $paths);
+
+        $this->delete(route('admin.products.destroy', $this->product->id));
+        $this->delete(route('admin.products.purge', $this->product->id))
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull(Product::withTrashed()->find($this->product->id));
+
+        foreach ($paths as $path) {
+            Storage::disk('public')->assertMissing($path);
+        }
+    }
 }

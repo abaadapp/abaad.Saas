@@ -19,6 +19,8 @@ export interface GalleryImage {
     id: number | null;
     url: string;
     main: boolean;
+    /** بديلُ النظام: صورةٌ تُعرض ولا يملكها أحد — لا تُحذف ولا تُحسب */
+    placeholder?: boolean;
 }
 
 interface Props {
@@ -45,7 +47,14 @@ export default function Gallery({ productId, images, max }: Props) {
     /** الصورة المرشّحة للحذف — والحذف لا يقع بضغطةٍ واحدة */
     const [confirming, setConfirming] = useState<GalleryImage | null>(null);
 
-    const full = images.length >= max;
+    /*
+     * ما يملكه التاجر فعلًا — لا ما يُعرض.
+     *
+     * منتجٌ بلا صورةٍ يحمل بديل النظام في عموده، فيُعرض ويُعدّ لو قيس بالطول:
+     * «١ / ٨» لمنتجٍ لا صورةَ له، وزرُّ حذفٍ لملفٍّ لا وجود له.
+     */
+    const stored = images.filter((i) => ! i.placeholder);
+    const full = stored.length >= max;
 
     const upload = (files: FileList | null) => {
         if (! files || files.length === 0) return;
@@ -97,7 +106,7 @@ export default function Gallery({ productId, images, max }: Props) {
                     </p>
                 </div>
                 <span className="shrink-0 text-[12px] text-[#9ca3af]">
-                    {images.length} / {max}
+                    {stored.length} / {max}
                 </span>
             </div>
 
@@ -107,7 +116,7 @@ export default function Gallery({ productId, images, max }: Props) {
                         key={image.id ?? 'main'}
                         className={cn(
                             'group relative aspect-square overflow-hidden rounded-[12px] border bg-[#fafafa]',
-                            image.main
+                            image.main && ! image.placeholder
                                 ? 'border-[#8b5cf6] ring-2 ring-[#8b5cf6]/20'
                                 : 'border-[var(--ui-border,#e8e8e8)]',
                         )}
@@ -115,9 +124,14 @@ export default function Gallery({ productId, images, max }: Props) {
                         <img src={image.url} alt="" className="size-full object-cover" />
 
                         {image.main && (
-                            <span className="absolute start-2 top-2 flex items-center gap-1 rounded-full bg-[#8b5cf6] px-2 py-0.5 text-[11px] font-medium text-white">
+                            <span
+                                className={cn(
+                                    'absolute start-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white',
+                                    image.placeholder ? 'bg-[#9ca3af]' : 'bg-[#8b5cf6]',
+                                )}
+                            >
                                 <Star className="size-3" />
-                                {t('الرئيسية')}
+                                {image.placeholder ? t('بديل مؤقّت') : t('الرئيسية')}
                             </span>
                         )}
 
@@ -126,7 +140,14 @@ export default function Gallery({ productId, images, max }: Props) {
                             فتبقى ظاهرةً عليها دائمًا (focus-within يُبقيها
                             لمن يتنقّل بلوحة المفاتيح كذلك).
                         */}
-                        <div className="absolute inset-x-0 bottom-0 flex justify-center gap-1.5 bg-black/50 p-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
+                        {/* والبديل لا زرَّ له: لا يُحذف ما ليس بملفّ، ولا
+                            تُرقّى صورةٌ هي رئيسيةٌ أصلًا */}
+                        <div
+                            className={cn(
+                                'absolute inset-x-0 bottom-0 flex justify-center gap-1.5 bg-black/50 p-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100',
+                                image.placeholder && 'hidden',
+                            )}
+                        >
                             {! image.main && (
                                 <Button
                                     type="button"
@@ -164,7 +185,7 @@ export default function Gallery({ productId, images, max }: Props) {
                     >
                         <ImagePlus className="size-7" />
                         <span className="px-2 text-center text-[12px]">
-                            {images.length === 0 ? t('أضف صورة') : t('أضف صورة أخرى')}
+                            {stored.length === 0 ? t('أضف صورة') : t('أضف صورة أخرى')}
                         </span>
                         <input
                             ref={input}
@@ -194,7 +215,7 @@ export default function Gallery({ productId, images, max }: Props) {
                             {/* والخلافة تُقال قبل الحذف لا بعده: من يحذف الرئيسية
                                 يريد أن يعرف ماذا سيظهر مكانها */}
                             {confirming?.main
-                                ? images.length > 1
+                                ? stored.length > 1
                                     ? t('ستصير الصورة التالية هي الرئيسية. لن تتأثّر بقيّة بيانات المنتج.')
                                     : t('لن تبقى للمنتج صورة. لن تتأثّر بقيّة بيانات المنتج.')
                                 : t('تُحذف هذه الصورة وحدها. لن تتأثّر بقيّة بيانات المنتج.')}

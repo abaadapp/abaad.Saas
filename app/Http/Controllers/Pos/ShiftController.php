@@ -3,9 +3,14 @@
 namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
+use App\Models\Shift;
+use App\Models\ShiftMovement;
+use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\ReceiptVisibility;
 use App\Support\Shifts;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -21,7 +26,7 @@ class ShiftController extends Controller
     public function show(): Response
     {
         $shift = Shifts::current();
-        $showsAmounts = \App\Support\ReceiptVisibility::showsAmounts();
+        $showsAmounts = ReceiptVisibility::showsAmounts();
 
         $payload = null;
         if ($shift) {
@@ -36,7 +41,7 @@ class ShiftController extends Controller
                 'byMethod' => $showsAmounts ? $totals['byMethod'] : null,
                 'sales' => $showsAmounts ? $totals['sales'] : null,
                 'expected' => $showsAmounts ? Shifts::expectedCash($shift) : null,
-                'movements' => \App\Models\ShiftMovement::where('shift_id', $shift->id)
+                'movements' => ShiftMovement::where('shift_id', $shift->id)
                     ->latest('id')->limit(20)->get()
                     ->map(fn ($m) => [
                         'id' => $m->id,
@@ -55,9 +60,9 @@ class ShiftController extends Controller
             'shift' => $payload,
             'showsAmounts' => $showsAmounts,
             'branchName' => Demo::currentBranchName(),
-            'lastClosed' => \App\Models\Shift::where('business_id', Demo::bid())
+            'lastClosed' => Shift::where('business_id', Demo::bid())
                 ->where('branch_id', Demo::activeBranchId())
-                ->where('status', \App\Models\Shift::CLOSED)
+                ->where('status', Shift::CLOSED)
                 ->latest('closed_at')->first()?->only(['closed_at', 'actual_balance']),
         ]);
     }
@@ -73,7 +78,7 @@ class ShiftController extends Controller
         }
 
         $shift = Shifts::open((float) $data['opening_balance']);
-        \App\Support\Activity::log('shift', 'فتح وردية الصندوق', ['subject_id' => $shift->id]);
+        Activity::log('shift', 'فتح وردية الصندوق', ['subject_id' => $shift->id]);
 
         return redirect()->route('pos.index')->with('toast', ['msg' => __('فُتحت الوردية'), 'type' => 'success']);
     }
@@ -101,25 +106,55 @@ class ShiftController extends Controller
         }
 
         /*
-         * لا يُسحب من الدرج أكثر ممّا فيه.
+         * لا يُسحب من الدرج أكثر ممّا فيه — والفحصُ والكتابة معاملةٌ واحدة.
          *
          * المتوقّع السالب لا معنى له: لا أحد يُخرج خمسين من درجٍ فيه اثنان.
          * وقبولُه يُفسد الفرق ويجعل الإقفال يقرأ رقمًا مستحيلًا — ويفتح بابًا
          * لتغطية نقصٍ بسحبٍ وهمي.
+         *
+         * وكان يُقرأ المتوقّع ثمّ يُكتب السحب بلا شيءٍ بينهما: سحبان يقعان
+         * معًا — ضغطتان، أو صندوقان على الدرج الواحد — يقرآن «فيه ستّون»
+         * كلاهما فيخرج منه مئة. والدرجُ ما خرج منه لا يعود، ولا يُكتشف نقصُه
+         * إلا عند العدّ حين يكون سببُه قد نُسي.
          */
         $amount = (float) $data['amount'];
-        if ($data['type'] === \App\Models\ShiftMovement::OUT) {
-            $available = Shifts::expectedCash($shift);
-            if ($amount > $available) {
-                return back()->withErrors([
-                    'amount' => __('لا يمكن سحب أكثر ممّا في الدرج (:n).', [
-                        'n' => number_format($available, 3),
-                    ]),
-                ]);
-            }
-        }
+        $shortfall = null;
 
-        Shifts::move($shift, $data['type'], $amount, $data['reason']);
+        DB::transaction(function () use ($shift, $data, $amount, &$shortfall) {
+            $locked = Shift::whereKey($shift->id)->lockForUpdate()->first();
+
+            if (! $locked || ! $locked->isOpen()) {
+                $shortfall = __('لا توجد وردية مفتوحة.');
+
+                return;
+            }
+
+            if ($data['type'] === ShiftMovement::OUT) {
+                $available = Shifts::expectedCash($locked);
+
+                if ($amount > $available) {
+                    /*
+                     * والرقم لا يُقال لمن لا يراه.
+                     *
+                     * العدّ أعمى عن قصد — «من يرى المتوقّع قبل العدّ يميل إلى
+                     * كتابته بدل ما عدّه». وكانت رسالة الرفض تقوله بالحرف:
+                     * يجرّب الكاشير سحبًا كبيرًا فيُردّ برقم الدرج كاملًا،
+                     * فيبطل الحجب كلّه بمحاولةٍ واحدة.
+                     */
+                    $shortfall = ReceiptVisibility::showsAmounts()
+                        ? __('لا يمكن سحب أكثر ممّا في الدرج (:n).', ['n' => number_format($available, 3)])
+                        : __('لا يمكن سحب أكثر ممّا في الدرج.');
+
+                    return;
+                }
+            }
+
+            Shifts::move($locked, $data['type'], $amount, $data['reason']);
+        });
+
+        if ($shortfall !== null) {
+            return back()->withErrors(['amount' => $shortfall]);
+        }
 
         return back()->with('toast', [
             'msg' => $data['type'] === 'out' ? __('سُجّل السحب') : __('سُجّل الإيداع'),
@@ -142,7 +177,7 @@ class ShiftController extends Controller
         $closed = Shifts::close($shift, (float) $data['counted'], $data['note'] ?? null);
 
         // الفرق لا يُعرض إلا لمن يرى المبالغ — وإلا كشفه رسالةُ النجاح
-        $msg = \App\Support\ReceiptVisibility::showsAmounts()
+        $msg = ReceiptVisibility::showsAmounts()
             ? __('أُقفلت الوردية · الفرق: :n', ['n' => number_format((float) $closed->difference, 3)])
             : __('أُقفلت الوردية');
 

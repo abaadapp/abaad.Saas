@@ -105,7 +105,14 @@ class SaleHappensOnceTest extends TestCase
     public function test_the_racer_who_lost_is_handed_the_winners_invoice(): void
     {
         $source = file_get_contents(base_path('app/Http/Controllers/Pos/PosController.php'));
-        $catch = substr($source, strpos($source, 'catch (\Illuminate\Database\QueryException'), 700);
+
+        // يُلتقط الموضع باسم الصنف لا بمساره الكامل: المنسّق يختصره إلى
+        // `use` فيصير البحث عن النصّ الطويل لا يجد شيئًا، وتمرّ الأسطر
+        // الأربعة أدناه على أوّل سبعمئة حرفٍ من الملفّ بلا معنى
+        $at = strpos($source, 'catch (QueryException');
+        $this->assertNotFalse($at, 'لم يعد انكسار القيد يُلتقط عند إتمام البيع');
+
+        $catch = substr($source, $at, 700);
 
         $this->assertStringContainsString('client_uuid', $catch);
         $this->assertStringContainsString('$twin->number', $catch);

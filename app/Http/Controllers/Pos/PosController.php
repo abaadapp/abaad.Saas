@@ -3,25 +3,52 @@
 namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
+use App\Mail\NewOrderMail;
+use App\Models\Addon;
+use App\Models\Branch;
+use App\Models\Business;
 use App\Models\Coupon;
+use App\Models\Customer;
 use App\Models\Order;
+use App\Models\PointTransaction;
 use App\Models\Product;
-use App\Models\Shift;
+use App\Models\ProductVariant;
+use App\Models\RecipeItem;
+use App\Models\Setting;
+use App\Models\Transaction;
+use App\Support\Activity;
+use App\Support\AddonStock;
+use App\Support\Books;
+use App\Support\Customers;
 use App\Support\Demo;
+use App\Support\FlowerOrder;
+use App\Support\Loyalty;
+use App\Support\OrderStatus;
 use App\Support\PosCashier;
+use App\Support\PosTerminal;
+use App\Support\ProductAddons;
+use App\Support\ReceiptVisibility;
+use App\Support\Recipe;
+use App\Support\Shifts;
 use App\Support\Stock;
+use App\Support\StockLedger;
+use App\Support\Vat;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class PosController extends Controller
 {
     /** صرفُ النقاط إلى مال — من بابه الواحد (انظر Support\Loyalty) */
-    private const POINTS_PER_UNIT = \App\Support\Loyalty::POINTS_PER_UNIT;
+    private const POINTS_PER_UNIT = Loyalty::POINTS_PER_UNIT;
 
-
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     /**
      * نسبة ضريبة القيمة المضافة: إعداد النشاط، ثم الإعداد العام، ثم 5%.
@@ -36,12 +63,12 @@ class PosController extends Controller
     {
         $bid = $this->bid();
 
-        if (! \App\Support\Vat::enabled($bid)) {
+        if (! Vat::enabled($bid)) {
             return 0.0;
         }
 
-        $v = \App\Models\Setting::where('business_id', $bid)->where('key', 'vat_rate')->value('value')
-            ?? \App\Models\Setting::whereNull('business_id')->where('key', 'vat_rate')->value('value');
+        $v = Setting::where('business_id', $bid)->where('key', 'vat_rate')->value('value')
+            ?? Setting::whereNull('business_id')->where('key', 'vat_rate')->value('value');
 
         return max(0.0, (float) ($v ?? 5));
     }
@@ -66,12 +93,12 @@ class PosController extends Controller
          * لا يقرأ نسبة المتجر أصلًا، فيبقى يُضرَّب بضريبته وحده في متجرٍ
          * أطفأ الضريبة كلّها.
          */
-        if (! \App\Support\Vat::enabled($this->bid())) {
+        if (! Vat::enabled($this->bid())) {
             return 0.0;
         }
 
         $default = $this->vatRate();
-        $inclusive = \App\Support\Vat::inclusive($this->bid());
+        $inclusive = Vat::inclusive($this->bid());
         $tax = 0.0;
 
         foreach ($lines as $l) {
@@ -94,7 +121,7 @@ class PosController extends Controller
 
     private function setting(string $key, $default = null)
     {
-        return \App\Models\Setting::where('business_id', $this->bid())->where('key', $key)->value('value') ?? $default;
+        return Setting::where('business_id', $this->bid())->where('key', $key)->value('value') ?? $default;
     }
 
     /**
@@ -162,16 +189,16 @@ class PosController extends Controller
         }
 
         $products = $query->get()->keyBy('id');
-        $addons = \App\Models\Addon::where('business_id', $bid)->get();
+        $addons = Addon::where('business_id', $bid)->get();
 
         // تُحمَّل مرّةً واحدة لكلّ السلّة: بلا هذا كان كلّ بندٍ يستعلم عن
         // مقاساته ووصفته وإضافاته المسموحة — أربعة استعلامات في كلّ بند
-        $variants = \App\Models\ProductVariant::where('business_id', $bid)
+        $variants = ProductVariant::where('business_id', $bid)
             ->whereIn('product_id', $products->keys())->get()->keyBy('id');
-        $recipes = \App\Models\RecipeItem::where('business_id', $bid)
+        $recipes = RecipeItem::where('business_id', $bid)
             ->whereIn('product_id', $products->keys())
             ->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
-        $addonMap = \App\Support\ProductAddons::map($bid);
+        $addonMap = ProductAddons::map($bid);
         $componentCosts = Product::where('business_id', $bid)
             ->whereIn('id', $recipes->flatten()->pluck('component_product_id')->unique())
             ->pluck('cost', 'id')->map(fn ($c) => (float) $c)->all();
@@ -186,6 +213,7 @@ class PosController extends Controller
                 $product = $products->get((int) $i['id']);
                 if (! $product) {
                     $errors["items.$idx.id"] = __('صنف غير موجود في هذا المتجر.');
+
                     continue;
                 }
 
@@ -203,6 +231,7 @@ class PosController extends Controller
                  */
                 if (! $product->active) {
                     $errors["items.$idx.id"] = __('«:name» موقوف عن البيع.', ['name' => $product->name]);
+
                     continue;
                 }
 
@@ -222,20 +251,23 @@ class PosController extends Controller
                     $variant = $variants->get((int) $i['variant_id']);
                     if (! $variant || (int) $variant->product_id !== (int) $product->id) {
                         $errors["items.$idx.variant_id"] = __('مقاس غير موجود لهذا الصنف.');
+
                         continue;
                     }
                     // مقاسٌ أُطفئ لا يُباع من جديد — والفواتير القديمة تبقى تعرضه
                     if (! $variant->active) {
                         $errors["items.$idx.variant_id"] = __('هذا المقاس غير متاح للبيع.');
+
                         continue;
                     }
                 } elseif ($choices->where('active', true)->isNotEmpty()) {
                     $errors["items.$idx.variant_id"] = __('اختر مقاس :name.', ['name' => $product->name]);
+
                     continue;
                 }
 
                 $preloaded = $recipes->get($product->id) ?? collect();
-                $hasRecipe = \App\Support\Recipe::has($product, $variant, $preloaded);
+                $hasRecipe = Recipe::has($product, $variant, $preloaded);
 
                 /*
                  * تكلفة البند: من الوصفة إن كانت له، ومن عمود المنتج إن لم تكن.
@@ -244,12 +276,13 @@ class PosController extends Controller
                  * وقراءتها لاحقًا تجعل ربح الشهر الماضي يتحرّك بلا سبب.
                  */
                 $cost = $hasRecipe
-                    ? \App\Support\Recipe::unitCost($product, $variant, $preloaded, $componentCosts)
+                    ? Recipe::unitCost($product, $variant, $preloaded, $componentCosts)
                     : (float) $product->cost;
 
                 [$chosen, $addonError] = $this->pickAddons($product, $i['addons'] ?? [], $addons, $addonMap);
                 if ($addonError) {
                     $errors["items.$idx.addons"] = $addonError;
+
                     continue;
                 }
 
@@ -271,6 +304,7 @@ class PosController extends Controller
                     'addons' => $chosen,
                     'addons_total' => round(collect($chosen)->sum('total'), 3),
                 ];
+
                 continue;
             }
 
@@ -281,13 +315,14 @@ class PosController extends Controller
 
             if (! $addon || ! $addon->active) {
                 $errors["items.$idx.name"] = __('صنف غير متاح للبيع.');
+
                 continue;
             }
             // تكلفتُها تكلفةُ ما تأكله: إضافةٌ بيعت بندًا مستقلًّا كانت
             // تُسجَّل بتكلفة صفر، فيظهر ربحُ الدبّ كاملًا وهو مشترًى
             $standaloneCost = $addon->inventory_product_id
                 ? round((float) (Product::find($addon->inventory_product_id)?->cost ?? 0)
-                    * \App\Support\AddonStock::each($addon), 3)
+                    * AddonStock::each($addon), 3)
                 : 0.0;
 
             $lines[] = ['product' => null, 'variant' => null, 'name' => $addon->name,
@@ -322,7 +357,7 @@ class PosController extends Controller
             $id = (int) ($r['addon_id'] ?? $r['id'] ?? 0);
             $addon = $id ? $addons->firstWhere('id', $id) : null;
 
-            if (! $addon || ! \App\Support\ProductAddons::allows($product, $addon, $addonMap, $addons)) {
+            if (! $addon || ! ProductAddons::allows($product, $addon, $addonMap, $addons)) {
                 return [[], __('إضافة غير متاحة مع هذا الصنف.')];
             }
 
@@ -336,7 +371,7 @@ class PosController extends Controller
              * والرقم يُقرأ من القاعدة كالسعر تمامًا: شاشةٌ تقول واحدة تجعل
              * الرفّ ينقص ثلاثًا والنظام يقول واحدة.
              */
-            $each = \App\Support\AddonStock::each($addon);
+            $each = AddonStock::each($addon);
 
             $chosen[] = [
                 'addon' => $addon,
@@ -369,7 +404,7 @@ class PosController extends Controller
      *
      * والجمع قبل التقريب: انظر Recipe::units.
      *
-     * @return array<int, int>  [معرّف المنتج => الكمية المطلوبة]
+     * @return array<int, int> [معرّف المنتج => الكمية المطلوبة]
      */
     private function demand(array $lines): array
     {
@@ -388,19 +423,20 @@ class PosController extends Controller
 
             if (! ($l['has_recipe'] ?? false)) {
                 $whole[$l['product']->id] = ($whole[$l['product']->id] ?? 0) + $l['qty'];
+
                 continue;
             }
 
-            foreach (\App\Support\Recipe::consumptionFor($l['product'], $l['variant'] ?? null, $l['qty'], $l['recipe']) as $pid => $q) {
+            foreach (Recipe::consumptionFor($l['product'], $l['variant'] ?? null, $l['qty'], $l['recipe']) as $pid => $q) {
                 $exact[$pid] = ($exact[$pid] ?? 0.0) + $q;
             }
         }
 
         foreach ($exact as $pid => $q) {
-            $whole[$pid] = ($whole[$pid] ?? 0) + \App\Support\Recipe::units($q);
+            $whole[$pid] = ($whole[$pid] ?? 0) + Recipe::units($q);
         }
 
-        foreach (\App\Support\AddonStock::units($addonExact) as $pid => $u) {
+        foreach (AddonStock::units($addonExact) as $pid => $u) {
             $whole[$pid] = ($whole[$pid] ?? 0) + $u;
         }
 
@@ -426,7 +462,7 @@ class PosController extends Controller
             // كميّتُها كميّةُ البند نفسه
             $standalone = $l['standalone_addon'] ?? null;
             if ($standalone) {
-                $each = \App\Support\AddonStock::each($standalone);
+                $each = AddonStock::each($standalone);
                 if ($each > 0) {
                     $pid = (int) $standalone->inventory_product_id;
                     $out[$pid] = ($out[$pid] ?? 0.0) + $each * (int) $l['qty'];
@@ -517,7 +553,7 @@ class PosController extends Controller
         };
 
         $last = Order::where('business_id', $this->bid())
-            ->where('number', 'like', $prefix . '%')
+            ->where('number', 'like', $prefix.'%')
             ->orderByRaw("{$suffix} DESC")
             ->value('number');
 
@@ -525,7 +561,7 @@ class PosController extends Controller
         // يتبع الأخير. ولذلك تغيير البادئة يفتح تسلسلًا جديدًا لا يصطدم بالقديم.
         $n = $last ? (int) substr($last, strlen($prefix)) : max(0, $start - 1);
 
-        return $prefix . str_pad((string) ($n + 1), 6, '0', STR_PAD_LEFT);
+        return $prefix.str_pad((string) ($n + 1), 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -609,7 +645,7 @@ class PosController extends Controller
     /** فرع الطلب: الفرع المختار حاليًا، وإلا أول فرع للنشاط — حتى يظهر الطلب تحت فلتر الفروع */
     private function branch(): array
     {
-        $branch = \App\Models\Branch::where('business_id', $this->bid())
+        $branch = Branch::where('business_id', $this->bid())
             ->find(Demo::activeBranchId());
 
         return [
@@ -629,7 +665,7 @@ class PosController extends Controller
         // نفس التجريد المطبَّق على القائمة: البحث بلا هذا يُبطل الحجب كلّه،
         // لأنه يتجاوز الثلاثين إلى تاريخ الفرع كلّه
         return response()->json([
-            'receipts' => \App\Support\ReceiptVisibility::filter(Demo::receipts($q, 50)),
+            'receipts' => ReceiptVisibility::filter(Demo::receipts($q, 50)),
         ]);
     }
 
@@ -713,8 +749,8 @@ class PosController extends Controller
          * يكشف شيئًا. والباب هنا لا في الواجهة وحدها: الطلب يصل من جهازٍ
          * قد تكون شاشته قديمة.
          */
-        $shift = \App\Support\Shifts::current();
-        if (! $shift && \App\Support\Shifts::blocksSelling()) {
+        $shift = Shifts::current();
+        if (! $shift && Shifts::blocksSelling()) {
             return response()->json([
                 'ok' => false,
                 'shift_required' => true,
@@ -756,13 +792,13 @@ class PosController extends Controller
              * حقولًا لا معنى لها في نصف بيعات اليوم — فيملؤها بأيّ شيء،
              * وتصير البيانات أسوأ من غيابها.
              */
-        ] + \App\Support\FlowerOrder::rules(), [
+        ] + FlowerOrder::rules(), [
             'payment_method.required' => __('اختر وسيلة الدفع.'),
-        ] + \App\Support\FlowerOrder::messages());
+        ] + FlowerOrder::messages());
 
         // والتوصيل وحده يُسأل عن مستلِمه وعنوانه — شرطٌ بين حقول لا على حقل
-        if ($flowerErrors = \App\Support\FlowerOrder::afterValidation($data)) {
-            throw \Illuminate\Validation\ValidationException::withMessages($flowerErrors);
+        if ($flowerErrors = FlowerOrder::afterValidation($data)) {
+            throw ValidationException::withMessages($flowerErrors);
         }
 
         // صمود الانقطاع: لو أُعيد رفع نفس الطلب (بعد عودة الاتصال) نعيد الفاتورة الأصلية بدل تكراره
@@ -786,7 +822,7 @@ class PosController extends Controller
          */
         try {
             $result = $this->completeSale($data, $shift);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             // وأيّ صنفٍ كان الاستثناء: الشاهد وجودُ التوأم لا اسمُ الخطأ
             $twin = filled($data['client_uuid'] ?? null)
                 ? Order::where('business_id', $this->bid())->where('client_uuid', $data['client_uuid'])->first()
@@ -801,7 +837,7 @@ class PosController extends Controller
 
         $order = $result['order'];
 
-        \App\Support\Activity::log('checkout', 'أتمّ بيعًا ' . $order->number . ' بقيمة ' . number_format($order->total, 3) . ' ر.ع', ['subject_id' => $order->id]);
+        Activity::log('checkout', 'أتمّ بيعًا '.$order->number.' بقيمة '.number_format($order->total, 3).' ر.ع', ['subject_id' => $order->id]);
 
         // البريد خارج المعاملة: بطؤه أو فشله يجب ألّا يُبقي القفل أو يُلغي بيعًا تمّ
         $this->notifyNewOrder($order);
@@ -814,7 +850,6 @@ class PosController extends Controller
             'points_redeemed' => $result['loyalty']['redeemed'],
         ]);
     }
-
 
     /**
      * البيع سبع كتابات مترابطة (طلب، بنود، مخزون، حركات، معاملة، نقاط، تنظيف
@@ -845,7 +880,7 @@ class PosController extends Controller
                     ->lockForUpdate()->find($data['resume_id']);
 
                 if (! $heldNow) {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
+                    throw ValidationException::withMessages([
                         'resume_id' => __('هذه السلّة المعلّقة أُتمّت من جهازٍ آخر.'),
                     ]);
                 }
@@ -885,7 +920,7 @@ class PosController extends Controller
                 };
 
                 if ($refusal !== null) {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
+                    throw ValidationException::withMessages([
                         'coupon_code' => $refusal,
                     ]);
                 }
@@ -910,7 +945,7 @@ class PosController extends Controller
              * قرأه الزبون على الشاشة. وبلا هذا تُجمع الضريبة مرّتين: مرّةً
              * داخل السعر ومرّةً فوقه.
              */
-            if (\App\Support\Vat::inclusive($bid)) {
+            if (Vat::inclusive($bid)) {
                 $subtotal = round($subtotal - $tax, 3);
             }
 
@@ -941,7 +976,7 @@ class PosController extends Controller
                  * رمز الجهاز في الكوكي الموقَّعة. وحين ينقص الدرج عشرين ريالًا
                  * في محلٍّ فيه ثلاثة صناديق، هذا العمود وحده يقول أيّها.
                  */
-                'pos_device_id' => \App\Support\PosTerminal::current()?->id,
+                'pos_device_id' => PosTerminal::current()?->id,
                 'payment_method' => $this->paymentMethod($data['payment_method'] ?? null),
                 'payment_status' => 'مدفوع',
                 'subtotal' => $subtotal,
@@ -964,9 +999,9 @@ class PosController extends Controller
                  * كان قبل النظام.
                  */
                 'status' => $scheduled
-                    ? \App\Support\OrderStatus::PENDING
-                    : \App\Support\OrderStatus::COMPLETED,
-            ] + \App\Support\FlowerOrder::attributes($data),
+                    ? OrderStatus::PENDING
+                    : OrderStatus::COMPLETED,
+            ] + FlowerOrder::attributes($data),
                 $this->salePrefix(), max(1, (int) $this->setting('inv_start', 1)));
 
             foreach ($lines as $l) {
@@ -1034,7 +1069,7 @@ class PosController extends Controller
             $sale = [];
             $recipeUse = [];
             // الخصم يقرأ ما قرأه الفحص قبله بالحرف — نفس الدالّة لا نسختها
-            $addonUse = \App\Support\AddonStock::units(self::addonConsumption($lines));
+            $addonUse = AddonStock::units(self::addonConsumption($lines));
 
             foreach ($lines as $l) {
                 if (! $l['product']) {
@@ -1043,33 +1078,34 @@ class PosController extends Controller
 
                 if (! ($l['has_recipe'] ?? false)) {
                     $sale[$l['product']->id] = ($sale[$l['product']->id] ?? 0) + $l['qty'];
+
                     continue;
                 }
 
-                foreach (\App\Support\Recipe::consumptionFor($l['product'], $l['variant'] ?? null, $l['qty'], $l['recipe']) as $pid => $q) {
+                foreach (Recipe::consumptionFor($l['product'], $l['variant'] ?? null, $l['qty'], $l['recipe']) as $pid => $q) {
                     $recipeUse[$pid] = ($recipeUse[$pid] ?? 0.0) + $q;
                 }
             }
 
             $cashier = PosCashier::name();
 
-            \App\Support\StockLedger::move($bid, $branch['id'],
+            StockLedger::move($bid, $branch['id'],
                 array_map(fn ($q) => -$q, $sale), 'بيع', $cashier);
 
-            \App\Support\StockLedger::move($bid, $branch['id'],
-                array_map(fn ($q) => -\App\Support\Recipe::units($q), $recipeUse),
-                \App\Support\StockLedger::RECIPE, $cashier, $order->number);
+            StockLedger::move($bid, $branch['id'],
+                array_map(fn ($q) => -Recipe::units($q), $recipeUse),
+                StockLedger::RECIPE, $cashier, $order->number);
 
-            \App\Support\StockLedger::move($bid, $branch['id'],
+            StockLedger::move($bid, $branch['id'],
                 array_map(fn ($q) => -$q, $addonUse),
-                \App\Support\StockLedger::ADDON, $cashier, $order->number);
+                StockLedger::ADDON, $cashier, $order->number);
 
             // تسجيل البيع كمعاملة دخل في المالية تلقائيًا (لتظهر المبيعات في لوحات المالية فورًا)
-            \App\Models\Transaction::create([
+            Transaction::create([
                 'business_id' => $bid,
                 'order_id' => $order->id,
                 'reference' => $order->number,
-                'description' => 'مبيعات نقطة البيع — ' . ($order->customer_name ?? 'عميل نقدي'),
+                'description' => 'مبيعات نقطة البيع — '.($order->customer_name ?? 'عميل نقدي'),
                 'method' => $order->payment_method ?? 'نقدي',
                 'type' => 'دخل',
                 'amount' => $order->total,
@@ -1098,9 +1134,9 @@ class PosController extends Controller
              * الإخفاق في السجلّ باسمه ليُستدرَك بأمر finance:post-missing-sales.
              */
             try {
-                \App\Support\Books::recordSale($order);
+                Books::recordSale($order);
             } catch (\Throwable $e) {
-                \App\Support\Activity::log('updated', 'تعذّر ترحيل قيد البيع '.$order->number.': '.$e->getMessage(), [
+                Activity::log('updated', 'تعذّر ترحيل قيد البيع '.$order->number.': '.$e->getMessage(), [
                     'subject_id' => $order->id, 'subject_type' => 'order',
                 ]);
             }
@@ -1207,10 +1243,27 @@ class PosController extends Controller
     }
 
     /** استكمال طلب معلّق/محفوظ: يعيد أصنافه إلى السلة */
+    /**
+     * السلّة المعلّقة يقيّدها فرعُها كما تقيّده قائمتُها.
+     *
+     * `Demo::heldOrders` تعرض سلال الفرع الحالي وحدها، والاستئنافُ والحذف
+     * كانا يقرآن بالمعرّف على المتجر كلّه: منعٌ في الشاشة لا وجود له عند
+     * الباب. والحذف أشدّ من الاطّلاع — القائمة تُخفي سلّة الفرع الآخر،
+     * فصاحبُها لا يعلم أنها ذهبت: يقف الزبون في صلالة، والسلّةُ التي جُمعت
+     * له محاها كاشيرٌ في مسقط بمعرّفٍ مُخمَّن.
+     *
+     * و«كل الفروع» يبقى بلا قيد كما في القائمة: هو عرضُ الشركة لا موضعُ بيع.
+     */
+    private function heldOrder(int $id): Order
+    {
+        return Order::where('business_id', $this->bid())->where('is_held', true)
+            ->when(Demo::currentBranchId(), fn ($q) => $q->where('branch_id', Demo::currentBranchId()))
+            ->with('items.addons')->findOrFail($id);
+    }
+
     public function resume($id)
     {
-        $order = Order::where('business_id', $this->bid())->where('is_held', true)
-            ->with('items.addons')->findOrFail($id);
+        $order = $this->heldOrder((int) $id);
 
         session()->flash('resume_cart', [
             'id' => $order->id,
@@ -1243,14 +1296,13 @@ class PosController extends Controller
     /** حذف طلب معلّق/محفوظ */
     public function discard($id)
     {
-        $order = Order::where('business_id', $this->bid())->where('is_held', true)->findOrFail($id);
+        $order = $this->heldOrder((int) $id);
         $number = $order->number;
         $order->items()->delete();
         $order->delete();
 
         return back()->with('toast', ['msg' => __('تم حذف الطلب :number', ['number' => $number]), 'type' => 'warning']);
     }
-
 
     /** إضافة عميل سريع من نقطة البيع */
     /**
@@ -1262,19 +1314,19 @@ class PosController extends Controller
     public function storeOccasion(Request $request)
     {
         $data = $request->validate([
-            'label' => ['required', 'string', 'min:2', 'max:'.\App\Support\FlowerOrder::CUSTOM_LABEL_MAX],
+            'label' => ['required', 'string', 'min:2', 'max:'.FlowerOrder::CUSTOM_LABEL_MAX],
         ], [
             'label.required' => __('اكتب اسم المناسبة.'),
             'label.min' => __('اسم المناسبة قصير جدًّا.'),
         ]);
 
         try {
-            $added = \App\Support\FlowerOrder::addOccasion($data['label'], $this->bid());
+            $added = FlowerOrder::addOccasion($data['label'], $this->bid());
         } catch (\RuntimeException $e) {
             return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
         }
 
-        \App\Support\Activity::log('created', 'أضاف مناسبة: '.$added['value']);
+        Activity::log('created', 'أضاف مناسبة: '.$added['value']);
 
         return response()->json(['ok' => true] + $added);
     }
@@ -1284,14 +1336,14 @@ class PosController extends Controller
         $data = $request->validate([
             // لا name_en: localizeName أدناه يشتقّه من الاسم المُدخَل
             'name' => ['required', 'string', 'max:255'],
-            'phone' => \App\Support\Customers::phoneRule($this->bid()),
+            'phone' => Customers::phoneRule($this->bid()),
             'email' => ['nullable', 'email', 'max:255'],
             'tax_number' => ['nullable', 'string', 'max:50'],
         ]);
         $data['business_id'] = $this->bid();
-        $data = \App\Support\Customers::localizeName($data);
-        $customer = \App\Models\Customer::create($data);
-        \App\Support\Activity::log('created', 'أضاف عميلًا من نقطة البيع: ' . $data['name']);
+        $data = Customers::localizeName($data);
+        $customer = Customer::create($data);
+        Activity::log('created', 'أضاف عميلًا من نقطة البيع: '.$data['name']);
 
         // طلب AJAX من السلة: نُعيد العميل ليُحدَّد تلقائيًا للطلب الجاري بلا إعادة تحميل
         if ($request->wantsJson()) {
@@ -1326,9 +1378,9 @@ class PosController extends Controller
      * وحين يبقى الاسم وحده ويطابق أكثر من واحد: لا يُربط أحد. بيعةٌ بلا نقاط
      * يشتكي منها العميل فتُصحَّح، ونقاطٌ تذهب لغير صاحبها لا يلحظها أحد.
      */
-    private function customerFor(?string $name, ?int $id = null, ?string $phone = null): ?\App\Models\Customer
+    private function customerFor(?string $name, ?int $id = null, ?string $phone = null): ?Customer
     {
-        $scope = fn () => \App\Models\Customer::where('business_id', $this->bid());
+        $scope = fn () => Customer::where('business_id', $this->bid());
 
         if ($id) {
             return $scope()->find($id);
@@ -1360,7 +1412,7 @@ class PosController extends Controller
      * يطابق سقف usePosCart: نسبة من المجموع الفرعي، ولا يتجاوز المتبقّي بعد الكوبون،
      * ولا رصيد العميل. النقاط مالٌ فعلي، فلا تُؤخذ قيمة الخصم من العميل.
      */
-    private function resolveRedemption(?\App\Models\Customer $customer, float $subtotal, float $couponDiscount, int $requested): array
+    private function resolveRedemption(?Customer $customer, float $subtotal, float $couponDiscount, int $requested): array
     {
         $none = ['points' => 0, 'discount' => 0.0];
 
@@ -1386,7 +1438,7 @@ class PosController extends Controller
     }
 
     /** يقيّد الاستبدال والاكتساب على العميل بعد اكتمال الفاتورة */
-    private function recordLoyalty(Order $order, ?\App\Models\Customer $customer, int $redeemPoints): array
+    private function recordLoyalty(Order $order, ?Customer $customer, int $redeemPoints): array
     {
         if (! $customer || (string) $this->setting('loyalty_enabled', '1') === '0') {
             return ['earned' => 0, 'redeemed' => 0];
@@ -1404,18 +1456,18 @@ class PosController extends Controller
              * فالشرط في جملة التحديث نفسها: من سبق أخذ، ومن تأخّر يُردّ بلا
              * فاتورةٍ ناقصة الثمن.
              */
-            $taken = \App\Models\Customer::whereKey($customer->id)
+            $taken = Customer::whereKey($customer->id)
                 ->where('points', '>=', $redeemPoints)
                 ->update(['points' => \DB::raw('points - '.$redeemPoints), 'updated_at' => now()]);
 
             if (! $taken) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'redeem_points' => __('تغيّر رصيد نقاط العميل — أعد احتساب الاستبدال.'),
                 ]);
             }
 
             $customer->refresh();
-            \App\Models\PointTransaction::record($customer, 'redeem', $redeemPoints, (int) $customer->points, $order->id, 'استبدال عند البيع — فاتورة ' . $order->number);
+            PointTransaction::record($customer, 'redeem', $redeemPoints, (int) $customer->points, $order->id, 'استبدال عند البيع — فاتورة '.$order->number);
         }
 
         // اكتساب نقاط الشراء (على الإجمالي بعد الخصم)
@@ -1425,7 +1477,7 @@ class PosController extends Controller
             $earned = (int) floor((float) $order->total * $rate);
             if ($earned > 0) {
                 $customer->increment('points', $earned);
-                \App\Models\PointTransaction::record($customer, 'earn', $earned, (int) $customer->points, $order->id, 'اكتساب من الشراء — فاتورة ' . $order->number);
+                PointTransaction::record($customer, 'earn', $earned, (int) $customer->points, $order->id, 'اكتساب من الشراء — فاتورة '.$order->number);
             }
         }
 
@@ -1439,16 +1491,16 @@ class PosController extends Controller
     /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */
     private function notifyNewOrder(Order $order): void
     {
-        $business = \App\Models\Business::find($this->bid());
+        $business = Business::find($this->bid());
         if (! $business || ! $business->email) {
             return;
         }
-        $enabled = \App\Models\Setting::where('business_id', $this->bid())->where('key', 'notify_new_order')->value('value');
+        $enabled = Setting::where('business_id', $this->bid())->where('key', 'notify_new_order')->value('value');
         if ($enabled === '0') {
             return;
         }
         try {
-            \Illuminate\Support\Facades\Mail::to($business->email)->send(new \App\Mail\NewOrderMail($order));
+            Mail::to($business->email)->send(new NewOrderMail($order));
         } catch (\Throwable $e) {
             report($e); // لا نُفشل عملية البيع بسبب البريد
         }

@@ -3535,5 +3535,6 @@
     "١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال — فما فوق ١٠٠ يعيد للزبون فاتورته كاملة": "100 points = one currency unit on redemption — above 100 gives the customer their whole bill back",
     "بلغت حدّ باقة «:plan»: :cap من :label. رقِّ الباقة قبل الاستعادة.": "You have reached the «:plan» plan limit: :cap :label. Upgrade the plan before restoring.",
     "لديك فرعٌ بهذا الاسم — الفرع يُعرَف باسمه في كل شاشة.": "You already have a branch with this name — a branch is identified by its name on every screen.",
-    "في «:branch» ما زال :qty قطعة. اصرفها منه وأضفها إلى فرعٍ آخر من المخزون ← تعديل يدوي، ثم احذفه.": "«:branch» still holds :qty units. Issue them out of it and add them to another branch from Inventory → Manual adjustment, then delete it."
+    "في «:branch» ما زال :qty قطعة. اصرفها منه وأضفها إلى فرعٍ آخر من المخزون ← تعديل يدوي، ثم احذفه.": "«:branch» still holds :qty units. Issue them out of it and add them to another branch from Inventory → Manual adjustment, then delete it.",
+    "لا يمكن سحب أكثر ممّا في الدرج.": "You cannot take out more than the drawer holds."
 }

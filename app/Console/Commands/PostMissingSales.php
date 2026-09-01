@@ -22,7 +22,7 @@ use Illuminate\Console\Command;
  */
 class PostMissingSales extends Command
 {
-    protected $signature = 'finance:post-missing-sales {--business= : متجرٌ بعينه} {--dry-run : عدٌّ بلا كتابة}';
+    protected $signature = 'finance:post-missing-sales {--business= : متجرٌ بعينه} {--dry-run : عدٌّ بلا كتابة} {--force : رحّل ولو كانت مبيعاتُه ملخَّصةً شهريًّا}';
 
     protected $description = 'ترحيل قيود المبيعات الغائبة عن دفتر الأستاذ';
 
@@ -48,6 +48,23 @@ class PostMissingSales extends Command
                 ->orderBy('id')->get();
 
             if ($orders->isEmpty()) {
+                continue;
+            }
+
+            /*
+             * ومتجرٌ رُحّلت مبيعاتُه ملخَّصًا شهريًّا لا يُرحَّل ثانيةً بالفاتورة.
+             *
+             * المتجر التجريبيّ يُبنى بقيدٍ واحد لكل شهر — ثلاثة آلاف قيدٍ
+             * تُبنى في دقائق وتُقرأ في ثوانٍ. وتلك القيود لا تشير إلى فواتيرها،
+             * فيراها هذا الأمر «غائبة» ويكتبها من جديد: إيرادُ سنةٍ كاملة
+             * مرّتين في الشجرة. وهو عين ازدواج التسجيل الذي كُتب هذا الأمر
+             * ليمنعه.
+             */
+            $summarised = JournalEntry::where('business_id', $business->id)
+                ->where('source', Books::SALE)->whereNull('sourceable_id')->exists();
+
+            if ($summarised && ! $this->option('force')) {
+                $this->warn("  تُخُطّي {$business->name}: مبيعاتُه مرحَّلةٌ ملخَّصًا شهريًّا — استعمل --force إن كنت متأكّدًا");
                 continue;
             }
 

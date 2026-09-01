@@ -173,6 +173,28 @@ class BooksHoldTheShopTest extends TestCase
         $this->assertSame($posted, $this->balance('sales'), 'كُتب القيد مرّتين');
     }
 
+    /**
+     * ومتجرٌ رُحّلت مبيعاتُه ملخَّصًا شهريًّا لا يُرحَّل ثانيةً بالفاتورة.
+     *
+     * تلك القيود لا تشير إلى فواتيرها، فيراها الأمر «غائبة» ويكتبها من
+     * جديد: إيرادُ سنةٍ كاملة مرّتين في الشجرة.
+     */
+    public function test_the_repair_command_will_not_post_over_a_monthly_summary(): void
+    {
+        $this->sell()->assertOk();
+        $order = Order::where('is_held', false)->firstOrFail();
+        Books::forgetSale($order);
+
+        Ledger::post($this->business->id, 'مبيعات شهر', [
+            ['account' => 'cash', 'debit' => 30],
+            ['account' => 'sales', 'credit' => 30],
+        ], null, Books::SALE);
+
+        $this->artisan('finance:post-missing-sales')->assertSuccessful();
+
+        $this->assertSame(30.0, round($this->balance('sales'), 3), 'كُتب الإيراد مرّتين');
+    }
+
     /* ------------------- الإلغاء يمحو قيده ------------------- */
 
     public function test_cancelling_a_sale_takes_its_ledger_entries_with_it(): void

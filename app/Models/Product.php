@@ -4,7 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 class Product extends Model
 {
@@ -12,40 +15,71 @@ class Product extends Model
     use SoftDeletes;
 
     protected $guarded = [];
+
     protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean'];
 
-    public function business(): BelongsTo { return $this->belongsTo(Business::class); }
-    public function category(): BelongsTo { return $this->belongsTo(Category::class); }
+    public function business(): BelongsTo
+    {
+        return $this->belongsTo(Business::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
 
     /** مقاسات هذا المنتج — الفارغة تعني منتجًا بسيطًا يُباع بسعره */
-    public function variants(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class)->orderBy('sort_order')->orderBy('id');
     }
 
     /** مكوّناته ومكوّنات مقاساته جميعًا — التصفية على المقاس في Recipe */
-    public function recipeItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function recipeItems(): HasMany
     {
         return $this->hasMany(RecipeItem::class);
     }
 
     /** الإضافات المسموحة معه — الفارغة تعني «كلّ إضافات المتجر» لا «لا شيء» */
-    public function allowedAddons(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function allowedAddons(): BelongsToMany
     {
         return $this->belongsToMany(Addon::class, 'product_addons')
             ->withPivot('sort_order')->withTimestamps();
     }
 
     /** بنود الطلبات التي بيع فيها — يقرؤها مرشّح «الراكد» */
-    public function orderItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    /**
+     * الصور الإضافية — والرئيسية ليست منها، هي في `image`.
+     *
+     * مرتّبةٌ بموضعها ثمّ بمعرّفها: ترتيبان متساويان يجب أن يُقرآ بالترتيب
+     * نفسه في كلّ مرّة، وإلّا تحرّكت الصور في الشاشة بلا سبب.
+     */
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
 
     // مفاتيح متوافقة مع الواجهات (Demo shape)
-    public function getQtyAttribute() { return $this->quantity; }
-    public function getAlertAttribute() { return $this->alert_qty; }
-    public function getCatAttribute() { return $this->category?->name; }
+    public function getQtyAttribute()
+    {
+        return $this->quantity;
+    }
+
+    public function getAlertAttribute()
+    {
+        return $this->alert_qty;
+    }
+
+    public function getCatAttribute()
+    {
+        return $this->category?->name;
+    }
+
     public function getStockStatusAttribute(): string
     {
         return self::statusFor((int) $this->quantity, (int) $this->alert_qty);
@@ -105,11 +139,12 @@ class Product extends Model
     public function getImageAttribute($value): string
     {
         if (! $value) {
-            return 'https://picsum.photos/seed/prod' . $this->id . '/400/400';
+            return 'https://picsum.photos/seed/prod'.$this->id.'/400/400';
         }
         if (str_starts_with($value, 'http')) {
             return $value;
         }
-        return \Illuminate\Support\Facades\Storage::url($value);
+
+        return Storage::url($value);
     }
 }

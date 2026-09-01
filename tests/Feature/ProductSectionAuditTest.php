@@ -6,6 +6,7 @@ use App\Models\Addon;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Category;
+use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\RecipeItem;
@@ -128,14 +129,14 @@ class ProductSectionAuditTest extends TestCase
         // ماسحٌ يقرأ الباركود لا يسأل الشاشة، وسلّةٌ عُلّقت قبل الإيقاف تُستأنف بعده
         $this->sell($p)->assertStatus(422);
 
-        $this->assertSame(0, \App\Models\Order::where('is_held', false)->count());
+        $this->assertSame(0, Order::where('is_held', false)->count());
     }
 
     public function test_a_live_product_still_sells(): void
     {
         $this->sell($this->product())->assertOk();
 
-        $this->assertSame(1, \App\Models\Order::where('is_held', false)->count());
+        $this->assertSame(1, Order::where('is_held', false)->count());
     }
 
     public function test_the_till_screen_hides_what_was_stopped(): void
@@ -270,27 +271,46 @@ class ProductSectionAuditTest extends TestCase
         ]);
     }
 
-    /* ------------------- الصورة المستبدلة لا تبقى ------------------- */
+    /* ------------------- الصورة المحذوفة لا تبقى ------------------- */
 
-    public function test_replacing_the_image_removes_the_old_file(): void
+    /**
+     * والصورة صارت بابًا آخر — انظر ProductImageController.
+     *
+     * كانت تُرفع مع السعر والكمية في طلبٍ واحد، وهذا النموذج يكتب الكمية
+     * مطلقةً ويُزيح رصيد الفرع بفارقها: فمن بدّل صورةً أعاد الكمية إلى ما
+     * كانت عليه قبل أيّ بيعةٍ وقعت بينهما. والثابت المحروس هنا واحدٌ لم
+     * يتغيّر: **ما زال الملفّ يُمحى من القرص مع صفّه.**
+     */
+    public function test_a_removed_image_does_not_stay_on_disk(): void
     {
         Storage::fake('public');
         $p = $this->product();
 
-        $this->put(route('admin.products.update', $p->id), [
-            'name' => 'قميص', 'price' => 10,
-            'image' => UploadedFile::fake()->image('one.jpg'),
+        $this->post(route('admin.products.images.store', $p->id), [
+            'images' => [UploadedFile::fake()->image('one.jpg')],
         ])->assertSessionHasNoErrors();
 
         $first = $p->fresh()->getRawOriginal('image');
         Storage::disk('public')->assertExists($first);
 
-        $this->put(route('admin.products.update', $p->id), [
-            'name' => 'قميص', 'price' => 10,
-            'image' => UploadedFile::fake()->image('two.jpg'),
-        ])->assertSessionHasNoErrors();
+        $this->delete(route('admin.products.images.destroyMain', $p->id))->assertSessionHasNoErrors();
 
         Storage::disk('public')->assertMissing($first);
-        Storage::disk('public')->assertExists($p->fresh()->getRawOriginal('image'));
+    }
+
+    /** ونموذج المنتج ما عاد يقبلها: بابٌ مغلقٌ لا يُكتب منه شيء */
+    public function test_the_product_form_no_longer_carries_the_image(): void
+    {
+        Storage::fake('public');
+        $p = $this->product();
+        $before = $p->getRawOriginal('image');
+
+        $this->put(route('admin.products.update', $p->id), [
+            'name' => 'قميص', 'price' => 10,
+            'image' => UploadedFile::fake()->image('sneaked.jpg'),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($before, $p->fresh()->getRawOriginal('image'), 'كُتبت الصورة من بابٍ أُغلق');
+        $this->assertSame(0, Storage::disk('public')->files('products') === [] ? 0 : count(Storage::disk('public')->files('products')));
     }
 }

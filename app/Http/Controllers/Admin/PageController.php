@@ -17,6 +17,7 @@ use App\Support\Demo;
 use App\Support\Emojis;
 use App\Support\MarketingSettings;
 use App\Support\Permissions;
+use App\Support\ProductImages;
 use App\Support\Reports;
 use App\Support\Roles;
 use Illuminate\Http\Request;
@@ -50,6 +51,10 @@ class PageController extends Controller
         $product = Demo::product($id);
         abort_if(empty($product), 404);
 
+        // الصفّ نفسه لا نسخته المسطّحة: المعرض علاقةٌ لا عمود
+        $model = Product::where('business_id', auth()->user()->business_id ?? Demo::bid())
+            ->with('images')->find($id);
+
         $margin = $product['price'] - $product['cost'];
         $marginPct = $product['price'] > 0 ? round(($margin / $product['price']) * 100) : 0;
 
@@ -67,7 +72,16 @@ class PageController extends Controller
                 Demo::movements(),
                 fn ($m) => $m['product'] === $product['name'],
             )), 0, 6),
-            'thumbs' => array_values(array_filter([$product['image']])),
+            /*
+             * المعرض من بابه الواحد — الرئيسية أوّلًا ثمّ ما بعدها.
+             *
+             * كان سطرًا يبني قائمةً من صورةٍ واحدة، فالمصفوفة موجودةٌ
+             * والمعرض لا. والشاشة تعرض المصغّرات حين تزيد على واحدة —
+             * فبقيت لا تعرضها أبدًا.
+             */
+            'thumbs' => $model
+                ? array_column(ProductImages::gallery($model), 'url')
+                : array_values(array_filter([$product['image']])),
             'description' => $product['description']
                 ?? __('باقة أنيقة من الورود الطبيعية الطازجة مناسبة لجميع المناسبات، منسّقة بعناية بأيدي خبراء التنسيق لدينا لتمنح لمسة جمالية مميزة.'),
         ]);
@@ -78,7 +92,8 @@ class PageController extends Controller
         $product = Demo::product($id);
         abort_if(empty($product), 404);
 
-        $model = Product::where('business_id', auth()->user()->business_id ?? Demo::bid())->find($id);
+        $model = Product::where('business_id', auth()->user()->business_id ?? Demo::bid())
+            ->with('images')->find($id);
 
         return Inertia::render('Admin/Products/Edit', [
             'product' => $product,
@@ -87,6 +102,15 @@ class PageController extends Controller
             'composition' => $model
                 ? ProductCompositionController::payload($model)
                 : null,
+            /*
+             * المعرض يصل إلى شاشة التعديل لتُدار منه الصور.
+             *
+             * والسقف معه: الشاشة تُخفي زرّ الرفع عند بلوغه بدل أن تقبل الملفّ
+             * ثمّ تردّه — ورفضٌ بعد انتظار رفعِ أربعة ميغابايت أسوأ من زرٍّ
+             * مطفأ يقول لماذا.
+             */
+            'gallery' => $model ? ProductImages::gallery($model) : [],
+            'galleryMax' => ProductImages::MAX,
         ]);
     }
 

@@ -3,10 +3,20 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
+use App\Models\BranchStock;
+use App\Models\ImportBatch;
 use App\Models\Product;
+use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Lexicon;
+use App\Support\ListFilters;
+use App\Support\Pagination;
+use App\Support\PlanLimits;
+use App\Support\Sort;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Inertia\Inertia;
 
 class ProductController extends Controller
 {
@@ -25,7 +35,10 @@ class ProductController extends Controller
         'active' => 'active',
     ];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     /**
      * القسم من أقسام هذا المتجر — لا من قائمةٍ مفتوحة.
@@ -55,7 +68,7 @@ class ProductController extends Controller
      */
     public function stockFeed()
     {
-        $products = \App\Models\Product::where('business_id', $this->bid())
+        $products = Product::where('business_id', $this->bid())
             ->orderBy('id')->get(['id', 'quantity', 'alert_qty'])
             ->map(fn ($p) => [
                 'id' => $p->id,
@@ -79,7 +92,7 @@ class ProductController extends Controller
     private function generateSku(): string
     {
         do {
-            $sku = 'FLW-' . str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT);
+            $sku = 'FLW-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT);
         } while (Product::where('business_id', $this->bid())->where('sku', $sku)->exists());
 
         return $sku;
@@ -89,7 +102,7 @@ class ProductController extends Controller
     private function generateBarcode(): string
     {
         do {
-            $barcode = '628' . str_pad((string) random_int(0, 9999999999), 10, '0', STR_PAD_LEFT);
+            $barcode = '628'.str_pad((string) random_int(0, 9999999999), 10, '0', STR_PAD_LEFT);
         } while (Product::where('business_id', $this->bid())->where('barcode', $barcode)->exists());
 
         return $barcode;
@@ -100,7 +113,7 @@ class ProductController extends Controller
         $q = Product::where('business_id', $this->bid())->with('category');
 
         // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
-        \App\Support\ListFilters::products($q, $request);
+        ListFilters::products($q, $request);
 
         /*
          * الأحدث أوّلًا — كما في كلّ قائمةٍ أخرى في اللوحة.
@@ -113,8 +126,7 @@ class ProductController extends Controller
          * ولا يظهر هذا في متجرٍ جديد: صنفٌ واحد في صفحةٍ واحدة يُرى صاعدًا
          * ونازلًا. يظهر بعد الصنف الثالث عشر، أي بعد أن يصير المتجر متجرًا.
          */
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
-
+        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
 
         $products = $q->paginate(12)->withQueryString()->through(fn ($p) => [
             'id' => $p->id, 'name' => $p->name, 'cat' => $p->category?->name ?? '—',
@@ -124,21 +136,21 @@ class ProductController extends Controller
             'alert' => $p->alert_qty, 'tax' => (float) $p->tax, 'discount' => (float) $p->discount,
         ]);
 
-        return \Inertia\Inertia::render('Admin/Products/Index', [
+        return Inertia::render('Admin/Products/Index', [
             'products' => $products->items(),
             // الترقيم يبقى خادميًا: DataTable في وضعه الخادمي يقرأ هذه الحقول
-            'pagination' => \App\Support\Pagination::meta($products),
+            'pagination' => Pagination::meta($products),
             'categories' => Demo::categories(),
             'filters' => $request->only('q', 'category', 'status', 'stock')
-                + \App\Support\Sort::params($request, self::SORTS),
-            'sorts' => \App\Support\Sort::keys(self::SORTS),
+                + Sort::params($request, self::SORTS),
+            'sorts' => Sort::keys(self::SORTS),
             // لاستيراد ملف: الكميات المستوردة يجب أن تُودَع في فرع محدّد،
             // وإلا اختلّ التوازن «مجموع الفروع = كمية المنتج»
-            'branches' => \App\Models\Branch::where('business_id', $this->bid())
+            'branches' => Branch::where('business_id', $this->bid())
                 ->orderBy('id')->get(['id', 'name']),
             'currentBranchId' => Demo::activeBranchId(),
             // زرّ التراجع لا يظهر إلا حين يكون له ما يتراجع عنه
-            'lastImport' => \App\Models\ImportBatch::lastUndoable($this->bid())?->only(
+            'lastImport' => ImportBatch::lastUndoable($this->bid())?->only(
                 ['file', 'added', 'updated', 'created_at'],
             ),
         ]);
@@ -180,7 +192,7 @@ class ProductController extends Controller
         unset($data['composition']);
 
         $data['business_id'] = $this->bid();
-        \App\Support\PlanLimits::enforce(auth()->user()->business, 'products');
+        PlanLimits::enforce(auth()->user()->business, 'products');
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL؛ الفراغ يُحوَّل إلى null فيفشل)
         $data['cost'] = $data['cost'] ?? 0;
         $data['quantity'] = $data['quantity'] ?? 0;
@@ -193,14 +205,14 @@ class ProductController extends Controller
         $data['barcode'] = ! empty($data['barcode']) ? $data['barcode'] : $this->generateBarcode();
         $data['active'] = $request->boolean('active', true);
         // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
-        $data = \App\Support\Lexicon::fill($data);
+        $data = Lexicon::fill($data);
         $data['image'] = $request->hasFile('image')
             ? $request->file('image')->store('products', 'public')
-            : Demo::image('prod' . uniqid());
+            : Demo::image('prod'.uniqid());
         $product = Product::create($data);
         // إسناد الكمية الافتتاحية إلى الفرع الحالي/الأول ليبقى مجموع الفروع = كمية المنتج
-        \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) ($data['quantity'] ?? 0));
-        \App\Support\Activity::log('created', 'أضاف منتجًا: ' . $data['name']);
+        BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) ($data['quantity'] ?? 0));
+        Activity::log('created', 'أضاف منتجًا: '.$data['name']);
 
         // المقاسات والوصفة والإضافات التي كُتبت في نفس الشاشة — بعد أن صار
         // للمنتج معرّفٌ تُعلَّق به
@@ -245,12 +257,24 @@ class ProductController extends Controller
             // وضريبةٌ ٩٠٠٪ تُخرج فاتورةً بعشرة أضعاف ثمنها. كانا يُقبلان
             'tax' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'image' => ['nullable', 'image', 'max:4096'],
+            /*
+             * والصورة ليست من هذا النموذج — بابها مسارُها.
+             *
+             * كانت تُرفع مع السعر والكمية والوصف في طلبٍ واحد، وهذا النموذج
+             * يكتب الكمية **مطلقةً** ويُزيح رصيد الفرع بفارقها. فمن فتح
+             * الشاشة ثمّ باع صنفًا على الصندوق ثمّ بدّل الصورة، أعاد الكمية
+             * إلى ما كانت عليه قبل البيعة — بضاعةٌ تعود إلى الرفّ لأنّ أحدًا
+             * غيّر صورة.
+             *
+             * فصارت الصور تُدار بطلباتٍ صغيرة لا تمسّ عمودًا آخر: انظر
+             * `ProductImageController`. والإنشاء يبقى على حاله — لا معرّض
+             * قبل أن يوجد المنتج.
+             */
         ], ['category_id.exists' => __('قسم غير معروف')]);
         $data['name_en'] = $data['name_en'] ?? null;
         $data['active'] = $request->boolean('active', true);
         // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
-        $data = \App\Support\Lexicon::fill($data);
+        $data = Lexicon::fill($data);
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL)
         $data['cost'] = $data['cost'] ?? 0;
         $data['quantity'] = $data['quantity'] ?? 0;
@@ -258,33 +282,17 @@ class ProductController extends Controller
         // الضريبة الفارغة تبقى فارغة: «اتبع نسبة المتجر» لا «صفر»
         $data['tax'] = ($data['tax'] ?? '') === '' ? null : $data['tax'];
         $data['discount'] = $data['discount'] ?? 0;
-        if ($request->hasFile('image')) {
-            /*
-             * والقديمة تُمحى — وإلّا بقيت على القرص بلا شيء يشير إليها.
-             *
-             * القيمة الخام لا المقروءة: `getImageAttribute` يردّ رابطًا جاهزًا
-             * للعرض، وتمريره إلى `delete` لا يجد شيئًا ولا يشتكي. ومتجرٌ يبدّل
-             * صور بضاعته كلّ موسم يترك أضعاف ما يعرضه على القرص.
-             */
-            $previous = $product->getRawOriginal('image');
-            $data['image'] = $request->file('image')->store('products', 'public');
-            if ($previous && ! str_starts_with($previous, 'http')) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($previous);
-            }
-        } else {
-            unset($data['image']);
-        }
         // والقفل نفسه هنا: النموذج يكتب كميةً مطلقة، وفارقُها يذهب إلى الفرع
         \DB::transaction(function () use ($product, $data) {
             $locked = Product::where('business_id', $this->bid())->lockForUpdate()->findOrFail($product->id);
             $oldQty = (int) $locked->quantity;
-            \App\Models\BranchStock::ensureAllocated($this->bid(), $locked->id, $oldQty);
+            BranchStock::ensureAllocated($this->bid(), $locked->id, $oldQty);
             $locked->update($data);
             // مزامنة رصيد الفرع بفارق الكمية إن عُدّلت يدويًا من نموذج المنتج
-            \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $locked->id, (int) $locked->quantity - $oldQty);
+            BranchStock::adjust($this->bid(), $this->defaultBranchId(), $locked->id, (int) $locked->quantity - $oldQty);
             $product->setRawAttributes($locked->getAttributes());
         });
-        \App\Support\Activity::log('updated', 'عدّل المنتج: ' . $product->name, ['subject_id' => $product->id]);
+        Activity::log('updated', 'عدّل المنتج: '.$product->name, ['subject_id' => $product->id]);
 
         // ويبقى في صفحة التعديل كذلك: من يصحّح سعرًا يريد أن يرى أنه ثبت،
         // وغالبًا يتبعه بتعديل الكمية أو الصورة في القسم المجاور
@@ -301,7 +309,7 @@ class ProductController extends Controller
     public function duplicate($id)
     {
         $source = Product::where('business_id', $this->bid())->findOrFail($id);
-        \App\Support\PlanLimits::enforce(auth()->user()->business, 'products');
+        PlanLimits::enforce(auth()->user()->business, 'products');
 
         $copy = $source->replicate(['sku', 'barcode', 'quantity', 'created_at', 'updated_at']);
         $copy->name = $source->name.' — '.__('نسخة');
@@ -356,7 +364,7 @@ class ProductController extends Controller
             }
         });
 
-        \App\Support\Activity::log('created', 'نسخ المنتج: '.$source->name, ['subject_id' => $copy->id]);
+        Activity::log('created', 'نسخ المنتج: '.$source->name, ['subject_id' => $copy->id]);
 
         return redirect()->route('admin.products.edit', $copy->id)
             ->with('toast', ['msg' => __('نُسخ المنتج — عدّل اسمه وكميته'), 'type' => 'success']);
@@ -395,15 +403,15 @@ class ProductController extends Controller
                 // الفارق يذهب إلى الفرع الحالي كما في نموذج المنتج، فيبقى
                 // «مجموع الفروع = كمية المنتج»
                 $old = (int) $locked->quantity;
-                \App\Models\BranchStock::ensureAllocated($this->bid(), $locked->id, $old);
+                BranchStock::ensureAllocated($this->bid(), $locked->id, $old);
                 $locked->quantity = (int) $data['quantity'];
-                \App\Models\BranchStock::adjust($this->bid(), $this->defaultBranchId(), $locked->id, (int) $data['quantity'] - $old);
+                BranchStock::adjust($this->bid(), $this->defaultBranchId(), $locked->id, (int) $data['quantity'] - $old);
             }
 
             $locked->save();
             $product->setRawAttributes($locked->getAttributes());
         });
-        \App\Support\Activity::log('updated', 'عدّل سريعًا: '.$product->name, ['subject_id' => $product->id]);
+        Activity::log('updated', 'عدّل سريعًا: '.$product->name, ['subject_id' => $product->id]);
 
         return back()->with('toast', ['msg' => __('حُفظ'), 'type' => 'success']);
     }
@@ -459,7 +467,7 @@ class ProductController extends Controller
                      * بلا موضوع، فيظهر ما حُذف بالعشرات بلا فاعل — وأوّل سؤالٍ
                      * لصاحب متجرٍ فيه موظّفون هو مَن، لا ماذا.
                      */
-                    \App\Support\Activity::log('deleted', 'حذف المنتج: '.$p->name, [
+                    Activity::log('deleted', 'حذف المنتج: '.$p->name, [
                         'subject_id' => $p->id, 'subject_type' => 'product',
                     ]);
                     $p->delete();   // إلى السلة لا إعدامًا — تُستعاد من المحذوفات
@@ -468,7 +476,7 @@ class ProductController extends Controller
                 break;
         }
 
-        \App\Support\Activity::log('updated', "إجراء جماعي ({$data['action']}) على {$count} منتجًا");
+        Activity::log('updated', "إجراء جماعي ({$data['action']}) على {$count} منتجًا");
 
         return back()->with('toast', ['msg' => __('طُبّق على :n منتجًا', ['n' => $count]), 'type' => 'success']);
     }
@@ -476,7 +484,7 @@ class ProductController extends Controller
     public function destroy($id)
     {
         $product = Product::where('business_id', $this->bid())->findOrFail($id);
-        \App\Support\Activity::log('deleted', 'حذف المنتج: ' . $product->name, ['subject_id' => $product->id, 'subject_type' => 'product']);
+        Activity::log('deleted', 'حذف المنتج: '.$product->name, ['subject_id' => $product->id, 'subject_type' => 'product']);
         $product->delete();
 
         /*

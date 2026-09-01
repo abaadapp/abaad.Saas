@@ -12,6 +12,7 @@ import { csrfHeaders } from '@/lib/csrf';
 import { cn } from '@/lib/utils';
 import AddonDialog from './AddonDialog';
 import Composition, { emptyDraft, type AddonOption, type CompositionData, type CompositionDraft } from './Composition';
+import Gallery, { type GalleryImage } from './Gallery';
 import type { Currency } from '@/types';
 import type { Category, Product } from '@/types/models';
 
@@ -24,6 +25,9 @@ interface Props {
     /** المقاسات والوصفة والإضافات — قوائمُ الاختيار في الحالتين */
     composition?: CompositionData | null;
     currency?: Currency;
+    /** معرض الصور — في التعديل وحده: المعرّض يُعلَّق بمنتجٍ له معرّف */
+    gallery?: GalleryImage[];
+    galleryMax?: number;
 }
 
 const NAV = [
@@ -77,7 +81,7 @@ const FIELD_SECTION: Record<string, TabKey> = {
  * المستخدم يرى أين هو وكم بقي. والحقول المخفيّة تبقى قيمها محفوظة في حالة
  * النموذج، فالتنقّل بين الأقسام لا يفقد شيئًا.
  */
-export default function ProductForm({ categories, product, description, currencyLabel, composition, currency }: Props) {
+export default function ProductForm({ categories, product, description, currencyLabel, composition, currency, gallery, galleryMax }: Props) {
     const t = useTranslate();
     const editing = !!product;
     const [tab, setTab] = useState<TabKey>('basic');
@@ -631,6 +635,26 @@ export default function ProductForm({ categories, product, description, currency
 
                 {tab === 'media' && (
                     <div className="space-y-6">
+                        {/*
+                            بابان لا يجتمعان.
+
+                            في التعديل يملك المعرضُ الصورَ كلَّها: الرئيسية
+                            والإضافية، والترقية والحذف. وإبقاءُ حقل الرفع
+                            الواحد بجانبه يعني بابين إلى الشيء نفسه — أحدهما
+                            يمرّ بنموذج المنتج فيكتب السعر والكمية معه.
+
+                            وفي الإنشاء لا معرض: المعرّض يُعلَّق بمنتجٍ له
+                            معرّف، ولا معرّف قبل الحفظ. فيبقى الحقل الواحد،
+                            وتُقال الخطوة التالية صراحةً — كما في تبويب
+                            التركيب.
+                        */}
+                        {editing ? (
+                            <Gallery
+                                productId={product!.id}
+                                images={gallery ?? []}
+                                max={galleryMax ?? 8}
+                            />
+                        ) : (
                         <Card className="p-6">
                             <h3 className="mb-4 font-bold text-[#111]">{t('صورة المنتج')}</h3>
                             <label className="group relative block aspect-video cursor-pointer overflow-hidden rounded-[12px] border-2 border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] transition-colors hover:border-[#8b5cf6]">
@@ -665,8 +689,11 @@ export default function ProductForm({ categories, product, description, currency
                             {form.errors.image && (
                                 <p className="mt-2 text-[12px] text-[#b91c1c]">{form.errors.image}</p>
                             )}
+                            <p className="mt-3 text-[12px] text-[#9ca3af]">
+                                {t('احفظ المنتج أوّلًا لتضيف صورًا أخرى وتختار الرئيسية بينها.')}
+                            </p>
                         </Card>
-
+                        )}
                     </div>
                 )}
 

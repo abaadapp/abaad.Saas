@@ -34,6 +34,7 @@ use App\Http\Controllers\Admin\Payroll\PayrollRunController;
 use App\Http\Controllers\Admin\PreparationController;
 use App\Http\Controllers\Admin\ProductCompositionController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\ProductImageController;
 use App\Http\Controllers\Admin\ProductImportExportController;
 use App\Http\Controllers\Admin\PurchaseOrderController;
 use App\Http\Controllers\Admin\Purchasing\PurchaseRegisterController;
@@ -366,6 +367,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/products/{id}/edit', [PageController::class, 'productsEdit'])->name('products.edit');
     Route::put('/products/{id}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
+
+    /*
+     * صور المنتج — مسارٌ بذاته لا حقلٌ في نموذج المنتج.
+     *
+     * نموذج المنتج يكتب الكمية مطلقةً ويُزيح رصيد الفرع بفارقها، فمن بدّل
+     * صورةً بحفظ النموذج كلِّه كتب فوق كلّ ما تغيّر بينه وبين فتحه الشاشة.
+     * فالصور تُدار بطلباتٍ صغيرة لا تمسّ عمودًا آخر.
+     */
+    Route::post('/products/{id}/images', [ProductImageController::class, 'store'])->name('products.images.store');
+    Route::post('/products/{id}/images/{imageId}/main', [ProductImageController::class, 'promote'])->name('products.images.promote');
+    Route::delete('/products/{id}/images/{imageId}', [ProductImageController::class, 'destroy'])->name('products.images.destroy');
+    Route::delete('/products/{id}/image', [ProductImageController::class, 'destroyMain'])->name('products.images.destroyMain');
 
     /*
      * تركيب المنتج: مقاساتُه ووصفتُه وإضافاتُه.

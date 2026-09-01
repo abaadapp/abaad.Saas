@@ -706,6 +706,27 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/reports/payments', [ReportPageController::class, 'payments'])->name('reports.payments');
     Route::get('/reports/staff', [ReportPageController::class, 'staff'])->name('reports.staff');
     Route::get('/reports/customers', [ReportPageController::class, 'customers'])->name('reports.customers');
+    /*
+     * وبقيّةُ الفهرس تبعتها.
+     *
+     * كانت بطاقاتُها تقود إلى **شاشات الأقسام**: «تقرير الطلبات» يفتح شاشة
+     * إدارة الطلبات وفيها زرُّ تعديلٍ وزرُّ حذف — فمن دخل ليقرأ وجد نفسه في
+     * موضع الكتابة. وشاشةُ القسم لا تُجيب سؤال التقرير أصلًا: لا فترةَ
+     * تُختار ولا مؤشّراتٍ فوق الجدول.
+     *
+     * وشاشاتُ الأقسام باقيةٌ في القائمة الجانبية كما هي — تغيّرت وجهةُ
+     * البطاقة لا الشاشة.
+     */
+    Route::get('/reports/finance', [ReportPageController::class, 'finance'])->name('reports.finance');
+    Route::get('/reports/expenses', [ReportPageController::class, 'expenses'])->name('reports.expenses');
+    Route::get('/reports/bank', [ReportPageController::class, 'bank'])->name('reports.bank');
+    Route::get('/reports/orders', [ReportPageController::class, 'orders'])->name('reports.orders');
+    Route::get('/reports/products', [ReportPageController::class, 'products'])->name('reports.products');
+    Route::get('/reports/inventory', [ReportPageController::class, 'inventory'])->name('reports.inventory');
+    Route::get('/reports/purchases', [ReportPageController::class, 'purchases'])->name('reports.purchases');
+    Route::get('/reports/suppliers', [ReportPageController::class, 'suppliers'])->name('reports.suppliers');
+    Route::get('/reports/activity', [ReportPageController::class, 'activity'])->name('reports.activity');
+    Route::get('/reports/marketing', [ReportPageController::class, 'marketing'])->name('reports.marketing');
     // تغذية: صفحةٌ تُترك مفتوحة لا يجوز أن تتجمّد على أرقام الصباح
     Route::get('/reports/feed', [ReportFeedController::class, 'reports'])->name('reports.feed');
     // والتصدير يتبع الفترة المعروضة — ملفٌّ يحمل غير ما على الشاشة يُقرأ خطأً

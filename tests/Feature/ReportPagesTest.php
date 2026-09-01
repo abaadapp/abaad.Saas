@@ -33,6 +33,20 @@ class ReportPagesTest extends TestCase
         'admin.reports.customers' => 'customers',
     ];
 
+    /** التقارير التي انتقلت من شاشات أقسامها إلى صفحاتٍ خاصّة بها */
+    private const MOVED = [
+        'admin.reports.finance' => 'finance',
+        'admin.reports.expenses' => 'expenses',
+        'admin.reports.bank' => 'finance',
+        'admin.reports.orders' => 'orders',
+        'admin.reports.products' => 'products',
+        'admin.reports.inventory' => 'inventory',
+        'admin.reports.purchases' => 'purchases',
+        'admin.reports.suppliers' => 'suppliers',
+        'admin.reports.activity' => 'settings',
+        'admin.reports.marketing' => 'marketing',
+    ];
+
     private Business $business;
 
     private User $owner;
@@ -52,6 +66,20 @@ class ReportPagesTest extends TestCase
         ]);
 
         $this->actingAs($this->owner);
+    }
+
+    /** @param  string[]  $permissions */
+    private function staff(array $permissions): User
+    {
+        return User::create([
+            'business_id' => $this->business->id,
+            'name' => 'موظف',
+            'email' => 'staff'.uniqid().'@abaadapp.om',
+            'password' => bcrypt('password'),
+            'role' => 'accountant',
+            'status' => 'نشط',
+            'permissions' => $permissions,
+        ]);
     }
 
     private function props(string $route, array $query = []): array
@@ -255,6 +283,121 @@ class ReportPagesTest extends TestCase
 
         // وما غاب عن الشريط مغلقٌ عند بابه أيضًا
         $this->actingAs($accountant)->get(route('admin.reports.staff'))->assertForbidden();
+    }
+
+    /* ============ ما انتقل من شاشة قسمه إلى صفحته ============ */
+
+    public function test_every_catalog_entry_now_has_a_report_page_of_its_own(): void
+    {
+        /*
+         * كانت عشرُ بطاقاتٍ تقود إلى **شاشات الأقسام**: «تقرير الطلبات» يفتح
+         * شاشة إدارة الطلبات وفيها التعديل والحذف — فمن دخل ليقرأ وجد نفسه
+         * في موضع الكتابة، ولا فترةَ تُختار ولا مؤشّراتٍ فوق الجدول.
+         */
+        foreach (Reports::ALL as $report) {
+            $this->assertStringStartsWith(
+                'admin.reports.',
+                $report['route'],
+                "«{$report['key']}» ما زال يقود إلى شاشة قسمٍ لا إلى تقرير"
+            );
+        }
+    }
+
+    public function test_each_moved_report_carries_its_own_indicators_and_rows(): void
+    {
+        foreach (array_keys(self::MOVED) as $route) {
+            $props = $this->props($route);
+
+            $this->assertArrayHasKey('summary', $props, "«{$route}» بلا مؤشّرات");
+            $this->assertArrayHasKey('rows', $props, "«{$route}» بلا صفوف");
+            $this->assertArrayHasKey('filters', $props, "«{$route}» لا يعيد مرشّحاته");
+            $this->assertArrayHasKey('tabs', $props, "«{$route}» بلا تنقّل");
+            $this->assertNotEmpty($props['summary'], "«{$route}» مؤشّراتُه فارغة");
+        }
+    }
+
+    public function test_a_moved_report_is_measured_by_its_own_section_not_by_reports(): void
+    {
+        /*
+         * أخطرُ ما في النقل: صفحاتُها صارت تحت `admin.reports.*`، فحارس
+         * المسار يقيسها بصلاحية «التقارير» وحدها. ولولا حارسٌ ثانٍ لَقرأ من
+         * مُنح التقارير سجلَّ النشاط وأوامر الشراء وحركة المال كلَّها.
+         */
+        $user = $this->staff(['reports']);
+
+        foreach (self::MOVED as $route => $section) {
+            $this->actingAs($user)->get(route($route))
+                ->assertForbidden("«{$route}» انفتح لمن لا يملك «{$section}»");
+        }
+    }
+
+    public function test_the_section_owner_still_opens_his_report(): void
+    {
+        // الحارس يمنع الغريب لا الجميع
+        foreach (self::MOVED as $route => $section) {
+            $this->actingAs($this->staff(['reports', $section]))
+                ->get(route($route))->assertOk("«{$route}» أُغلق في وجه صاحب «{$section}»");
+        }
+    }
+
+    public function test_a_filter_actually_filters(): void
+    {
+        $this->sale(100, now()->toDateTimeString());
+        $cancelled = $this->sale(400, now()->toDateTimeString());
+        $cancelled->update(['status' => Order::CANCELLED]);
+
+        $all = $this->props('admin.reports.orders', ['range' => 'month']);
+        $this->assertCount(2, $all['rows']);
+        $this->assertSame(1, $all['summary']['cancelled']);
+        // المتوسّط على المُباع لا على الكلّ: الملغى يُنقصه بلا أن يُنقص الإيراد
+        $this->assertSame(100.0, $all['summary']['average']);
+
+        $only = $this->props('admin.reports.orders', ['range' => 'month', 'status' => Order::CANCELLED]);
+        $this->assertCount(1, $only['rows'], 'المرشّح لم يرشّح شيئًا');
+        $this->assertSame(Order::CANCELLED, $only['filters']['status'], 'المرشّح لا يعود إلى الشاشة');
+    }
+
+    public function test_changing_the_period_does_not_drop_the_other_filters(): void
+    {
+        /*
+         * مبدّلُ الفترة يكتب سلسلة الاستعلام كاملةً، فبلا حمل المرشّحات معه
+         * يعود الجدول إلى الكلّ بلا أن يلمس التاجر المنتقي — ويقرأ أرقامًا
+         * ليست التي رشّح عليها.
+         */
+        $source = file_get_contents(resource_path('js/Components/ReportScreen.tsx'));
+        $this->assertStringContainsString('params={filters}', $source, 'الفترة لا تحمل المرشّحات معها');
+
+        $range = file_get_contents(resource_path('js/Components/RangeTabs.tsx'));
+        $this->assertStringContainsString('...(params ?? {})', $range, 'مبدّل الفترة يمحو ما سواه');
+    }
+
+    public function test_a_truncated_table_says_so(): void
+    {
+        // جدولٌ مبتورٌ بلا ما يقول ذلك يُقرأ على أنه كلّ ما في المتجر
+        $this->assertNull($this->props('admin.reports.orders')['truncated'], 'أُعلن البتر بلا بتر');
+
+        $source = file_get_contents(resource_path('js/Components/ReportScreen.tsx'));
+        $this->assertStringContainsString('truncated', $source);
+    }
+
+    public function test_the_stock_report_has_no_period_switch_because_it_is_a_snapshot(): void
+    {
+        /*
+         * الرصيد رقمُ اليوم لا مجموعُ مدّة. ومبدّلٌ لا يغيّر شيئًا أسوأ من
+         * غيابه: يظنّه التاجر عاملًا فيبني على فرقٍ لا وجود له.
+         */
+        $source = file_get_contents(resource_path('js/Pages/Admin/Reports/Inventory.tsx'));
+
+        $this->assertStringContainsString('range={null}', $source, 'شاشة الرصيد تعرض مبدّل فترةٍ لا أثر له');
+    }
+
+    public function test_the_section_screens_they_came_from_still_work(): void
+    {
+        // تغيّرت وجهةُ البطاقة لا الشاشة: القائمة الجانبية تقصدها كما كانت
+        foreach (['admin.orders.index', 'admin.products.index', 'admin.inventory.index',
+            'admin.expenses.index', 'admin.suppliers.index', 'admin.activity.index'] as $route) {
+            $this->get(route($route))->assertOk("شاشة «{$route}» تأثّرت بنقل بطاقتها");
+        }
     }
 
     public function test_the_navigation_holds_only_reports_that_are_reports(): void

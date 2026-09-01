@@ -68,7 +68,7 @@ class Reports
              */
             'desc' => 'أرصدة الحسابات البنكية، وتقرير المقبوضات والمدفوعات يُنزَّل من زرّ «الحركة المالية».',
             'icon' => 'wallet',
-            'route' => 'admin.finance.index',
+            'route' => 'admin.reports.finance',
         ],
         [
             'key' => 'expenses',
@@ -77,7 +77,7 @@ class Reports
             'title' => 'المصروفات',
             'desc' => 'المصروفات حسب النوع والتاريخ ومن سجّلها.',
             'icon' => 'arrow-down-circle',
-            'route' => 'admin.expenses.index',
+            'route' => 'admin.reports.expenses',
         ],
         [
             'key' => 'payments',
@@ -95,7 +95,7 @@ class Reports
             'title' => 'كشف الحساب البنكي',
             'desc' => 'مطابقة حركات البنك بحركات النظام، وما لم يُطابَق منها.',
             'icon' => 'landmark',
-            'route' => 'admin.finance.statement',
+            'route' => 'admin.reports.bank',
         ],
 
         /* ----------------------------- تشغيلية ----------------------------- */
@@ -106,7 +106,7 @@ class Reports
             'title' => 'الطلبات',
             'desc' => 'كل طلبٍ بحالته وفرعه وقيمته ووسيلة دفعه.',
             'icon' => 'shopping-cart',
-            'route' => 'admin.orders.index',
+            'route' => 'admin.reports.orders',
         ],
         [
             'key' => 'products',
@@ -115,7 +115,7 @@ class Reports
             'title' => 'المنتجات',
             'desc' => 'المنتجات وأسعارها وأقسامها وكمياتها المتاحة.',
             'icon' => 'package',
-            'route' => 'admin.products.index',
+            'route' => 'admin.reports.products',
         ],
         [
             'key' => 'inventory',
@@ -124,7 +124,7 @@ class Reports
             'title' => 'المخزون والكميات',
             'desc' => 'رصيد كل صنف وحدّه الأدنى وما بلغ حدّ إعادة الطلب.',
             'icon' => 'boxes',
-            'route' => 'admin.inventory.index',
+            'route' => 'admin.reports.inventory',
         ],
         [
             'key' => 'purchases',
@@ -133,7 +133,7 @@ class Reports
             'title' => 'أوامر الشراء',
             'desc' => 'أوامر الشراء وقيمتها وحالة استلامها لكل مورّد.',
             'icon' => 'truck',
-            'route' => 'admin.purchases.index',
+            'route' => 'admin.reports.purchases',
         ],
         [
             'key' => 'suppliers',
@@ -142,7 +142,7 @@ class Reports
             'title' => 'المورّدون',
             'desc' => 'بيانات المورّدين وعدد أوامر الشراء لكل واحد.',
             'icon' => 'store',
-            'route' => 'admin.suppliers.index',
+            'route' => 'admin.reports.suppliers',
         ],
         [
             'key' => 'staff',
@@ -160,7 +160,7 @@ class Reports
             'title' => 'سجل النشاط',
             'desc' => 'من فعل ماذا ومتى على النظام.',
             'icon' => 'history',
-            'route' => 'admin.activity.index',
+            'route' => 'admin.reports.activity',
         ],
 
         /* ----------------------------- تحليلات ----------------------------- */
@@ -191,7 +191,7 @@ class Reports
             'icon' => 'ticket-percent',
             // إلى الشاشة نفسها لا إلى تحويلٍ إليها: بطاقةٌ تقود إلى ٣٠٢
             // تصل إلى وجهتها اليوم، وتصل إلى غيرها يوم يتبدّل التحويل
-            'route' => 'admin.marketing.coupons',
+            'route' => 'admin.reports.marketing',
         ],
     ];
 

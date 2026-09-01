@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Support\Demo;
+use App\Support\ReportData;
 use App\Support\Reports;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -47,7 +48,7 @@ class ReportPageController extends Controller
         return Demo::range($request->query('range'));
     }
 
-    /** ما تشترك فيه الصفحات الثلاث: الفترة واسمها وشريط التنقّل */
+    /** ما تشترك فيه صفحات التقارير: الفترة واسمها وشريط التنقّل */
     private function shell(string $range): array
     {
         return [
@@ -55,6 +56,82 @@ class ReportPageController extends Controller
             'rangeLabel' => Demo::rangeLabel($range),
             'tabs' => Reports::tabsFor(auth()->user()),
         ];
+    }
+
+    /**
+     * تقريرٌ يقرأ بياناته من `ReportData` — الطريق نفسه لعشرة تقارير.
+     *
+     * والمرشّحات تعود إلى الشاشة كما وصلت: بلا ذلك تُفرَّغ المنتقيات بعد كل
+     * تحميل، فيختار التاجر فرعًا فتُعرض بياناته ويقول المنتقي «الكل».
+     */
+    private function report(Request $request, string $key, string $screen, array $filterKeys = []): Response
+    {
+        $route = 'admin.reports.'.$key;
+        $this->guard($route);
+
+        $range = $this->range($request);
+        $filters = ['range' => $range];
+        foreach ($filterKeys as $name) {
+            $value = $request->query($name);
+            $filters[$name] = is_string($value) && $value !== '' ? $value : null;
+        }
+
+        $data = ReportData::$key(Demo::bid(), $filters);
+
+        return Inertia::render('Admin/Reports/'.$screen, array_merge($this->shell($range), $data, [
+            'filters' => $filters,
+            'limit' => ReportData::LIMIT,
+        ]));
+    }
+
+    public function finance(Request $request): Response
+    {
+        return $this->report($request, 'finance', 'Finance', ['method', 'type']);
+    }
+
+    public function expenses(Request $request): Response
+    {
+        return $this->report($request, 'expenses', 'Expenses', ['type']);
+    }
+
+    public function bank(Request $request): Response
+    {
+        return $this->report($request, 'bank', 'Bank', ['match_status']);
+    }
+
+    public function orders(Request $request): Response
+    {
+        return $this->report($request, 'orders', 'Orders', ['status', 'branch_id', 'payment_method']);
+    }
+
+    public function products(Request $request): Response
+    {
+        return $this->report($request, 'products', 'Products', ['category_id']);
+    }
+
+    public function inventory(Request $request): Response
+    {
+        return $this->report($request, 'inventory', 'Inventory', ['category_id', 'below']);
+    }
+
+    public function purchases(Request $request): Response
+    {
+        return $this->report($request, 'purchases', 'Purchases', ['status', 'supplier_id']);
+    }
+
+    public function suppliers(Request $request): Response
+    {
+        return $this->report($request, 'suppliers', 'Suppliers');
+    }
+
+    public function activity(Request $request): Response
+    {
+        return $this->report($request, 'activity', 'Activity', ['user_id', 'action']);
+    }
+
+    public function marketing(Request $request): Response
+    {
+        return $this->report($request, 'marketing', 'Marketing');
     }
 
     public function payments(Request $request): Response

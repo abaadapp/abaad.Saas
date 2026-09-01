@@ -16,6 +16,14 @@ interface Props {
     current: ReportRange;
     /** أعمدة الصفحة كلّها تُعاد من الخادم — الفترة تغيّر الأرقام لا شكلها */
     only?: string[];
+    /**
+     * بقيّةُ المرشّحات لتُحمل مع الفترة.
+     *
+     * الانتقال يكتب سلسلة الاستعلام كاملةً، فبلا حملها يُفقد كلُّ مرشّحٍ
+     * آخر عند تبديل الفترة: يختار التاجر فرعًا ثم يبدّل من «الشهر» إلى
+     * «السنة» فيعود الجدول إلى الفروع كلّها بلا أن يلمس المنتقي.
+     */
+    params?: Record<string, string | null | undefined>;
 }
 
 /**
@@ -33,11 +41,11 @@ interface Props {
  * الذي أُلغي حين وُحّدت التبويبات على الخطّ السفليّ. فعاد المبدّل ولم يعد
  * شكلُه معه — يُبنى على `Tabs` فلا يفترق عمّا حوله مرّةً أخرى.
  */
-export default function RangeTabs({ current, only }: Props) {
+export default function RangeTabs({ current, only, params }: Props) {
     const go = (range: string) => {
         if (range === current) return;
 
-        router.get(window.location.pathname, { range }, {
+        router.get(window.location.pathname, { ...(params ?? {}), range }, {
             preserveState: true,
             preserveScroll: true,
             replace: true,

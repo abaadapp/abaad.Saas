@@ -29,7 +29,6 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import ReportViewer from './partials/ReportViewer';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -40,10 +39,8 @@ interface Report {
     title: string;
     desc: string;
     icon: string;
-    /** صفحةٌ تفتحه — أو null فيفتحه العارض */
-    href: string | null;
-    /** مفتاح بياناته في ReportDataController — أو null فله صفحة */
-    data: string | null;
+    /** الصفحة التي تفتحه — ولكلّ تقريرٍ صفحته */
+    href: string;
 }
 
 interface Props {
@@ -92,7 +89,6 @@ export default function ReportsIndex() {
 
     const [query, setQuery] = useState('');
     const [category, setCategory] = useState<string | null>(null);
-    const [viewing, setViewing] = useState<string | null>(null);
 
     /* البحث في الاسم والوصف معًا: من يبحث عن «ضريبة» يجدها في اسمها، ومن
        يبحث عن «الإقرار» لا يجدها إلا في وصفها. */
@@ -210,15 +206,13 @@ export default function ReportsIndex() {
 
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 {g.items.map((r) => (
-                                    <ReportCard key={r.key} report={r} onView={setViewing} />
+                                    <ReportCard key={r.key} report={r} />
                                 ))}
                             </div>
                         </section>
                     ))}
                 </div>
             )}
-
-            <ReportViewer dataKey={viewing} onClose={() => setViewing(null)} />
         </AdminLayout>
     );
 }
@@ -228,8 +222,11 @@ export default function ReportsIndex() {
  *
  * البطاقة كلّها هي المقبض لا كلمة «فتح» وحدها: هدفٌ بحجم البطاقة لا يُخطئه
  * إصبعٌ على الآيباد. و«فتح» تبقى مرسومةً لأنها تقول ما يحدث عند النقر.
+ *
+ * وكلُّها رابطٌ الآن: كان بعضها زرًّا يفتح نافذة، فيقود المظهرُ الواحد إلى
+ * سلوكين — بطاقةٌ يفتحها الوسط في تبويبٍ جديد وأخرى لا تُفتح إلا مكانها.
  */
-function ReportCard({ report, onView }: { report: Report; onView: (key: string) => void }) {
+function ReportCard({ report }: { report: Report }) {
     const t = useTranslate();
     const Icon = ICONS[report.icon] ?? LineChart;
 
@@ -257,13 +254,9 @@ function ReportCard({ report, onView }: { report: Report; onView: (key: string) 
     const cls =
         'group flex h-full flex-col rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white p-5 text-start transition hover:border-[#d4d4d4] hover:shadow-[0_8px_30px_-12px_rgba(17,17,17,0.14)]';
 
-    return report.href ? (
+    return (
         <Link href={report.href} className={cls}>
             {body}
         </Link>
-    ) : (
-        <button type="button" onClick={() => onView(report.data!)} className={cls}>
-            {body}
-        </button>
     );
 }

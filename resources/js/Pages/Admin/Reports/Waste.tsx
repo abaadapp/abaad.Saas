@@ -2,6 +2,7 @@ import { router, usePage } from '@inertiajs/react';
 import { AlertTriangle, Info, Lightbulb, TrendingDown, TrendingUp } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import ReportTabs, { type ReportTab } from '@/Components/ReportTabs';
 import StatCard from '@/Components/StatCard';
 import BarChart from '@/Components/charts/BarChart';
 import { Select } from '@/Components/Field';
@@ -65,6 +66,7 @@ interface Props {
         products: Option[];
         reasons: string[];
     };
+    tabs: ReportTab[];
 }
 
 const TONE: Record<string, string> = {
@@ -82,7 +84,7 @@ const TONE: Record<string, string> = {
 export default function WasteAnalytics() {
     const {
         totals, previous, change, byProduct, byCategory, byBranch, byReason,
-        overTime, versusConsumption, insights, suspicious, filters, options, context,
+        overTime, versusConsumption, insights, suspicious, filters, options, tabs, context,
     } = usePage<PageProps<Props>>().props;
 
     const t = useTranslate();
@@ -102,6 +104,8 @@ export default function WasteAnalytics() {
                 title="تحليلات الهالك"
                 subtitle="ما تلف وما فُقد: قيمته واتجاهه، وأيّ صنفٍ وفرعٍ يبتلعه."
             />
+
+            <ReportTabs tabs={tabs} current="waste" />
 
             {/* المرشّحات — بنفس عناصر بقية الشاشات، لا منتقي تواريخ جديد */}
             <Card className="mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">

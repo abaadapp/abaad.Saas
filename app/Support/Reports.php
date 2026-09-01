@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Http\Middleware\CheckPlanFeature;
 use App\Models\User;
+use Illuminate\Support\Collection;
 
 /**
  * فهرس التقارير — مصدرٌ واحد يقرؤه فهرس التقارير في اللوحة.
@@ -85,7 +86,7 @@ class Reports
             'title' => 'وسائل الدفع',
             'desc' => 'توزيع التحصيل على النقد والبطاقة وبقية الوسائل.',
             'icon' => 'credit-card',
-            'data' => 'payments',
+            'route' => 'admin.reports.payments',
         ],
         [
             'key' => 'bank',
@@ -150,7 +151,7 @@ class Reports
             'title' => 'أداء الموظفين',
             'desc' => 'مبيعات كل موظف هذا الشهر وفرعه وحالته.',
             'icon' => 'users',
-            'data' => 'employees',
+            'route' => 'admin.reports.staff',
         ],
         [
             'key' => 'activity',
@@ -170,7 +171,7 @@ class Reports
             'title' => 'العملاء الأكثر إنفاقًا',
             'desc' => 'من يشتري أكثر، وكم طلبًا وكم أنفق.',
             'icon' => 'star',
-            'data' => 'customers',
+            'route' => 'admin.reports.customers',
         ],
         [
             'key' => 'waste',
@@ -202,6 +203,37 @@ class Reports
      */
     public static function forUser(?User $user): array
     {
+        return self::visibleTo($user)
+            /*
+             * وما لا تفتحه الباقة لا تُعرض بطاقتُه.
+             *
+             * الفهرس بابٌ يقود إلى شاشات، وبطاقةٌ تقود إلى 403 تجعل صاحبها
+             * يظنّ العطب في النظام. والقدرة تُقرأ من مصدر الحارس نفسه — انظر
+             * `CheckPlanFeature::featureFor` — فلا تفترق بطاقةٌ عن بابها.
+             */
+            ->map(fn ($r) => [
+                'key' => $r['key'],
+                'category' => $r['category'],
+                'title' => __($r['title']),
+                'desc' => __($r['desc']),
+                'icon' => $r['icon'],
+                'href' => route($r['route']),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * البنود التي يفتحها هذا المستخدم فعلًا — مصفاةً بصلاحيته وبباقته.
+     *
+     * موضعٌ واحد للتصفية يقرؤه الفهرس وشريطُ التنقّل معًا: لو صفّى كلٌّ
+     * بنفسه لَعرض أحدهما تقريرًا يُخفيه الآخر، وصار للشيء الواحد بابان
+     * يختلفان — وأحدهما يقود إلى ٤٠٣.
+     *
+     * @return Collection<int, array>
+     */
+    private static function visibleTo(?User $user): Collection
+    {
         return collect(self::ALL)
             ->filter(fn ($r) => $user?->allows($r['section']) ?? false)
             /*
@@ -212,40 +244,50 @@ class Reports
              * `CheckPlanFeature::featureFor` — فلا تفترق بطاقةٌ عن بابها.
              */
             ->filter(function ($r) use ($user) {
-                $key = isset($r['route'])
-                    ? CheckPlanFeature::featureFor($r['route'])
-                    : null;
+                $key = CheckPlanFeature::featureFor($r['route']);
 
                 return $key === null || PlanFeatures::allows($user?->business, $key);
-            })
+            });
+    }
+
+    /**
+     * شريط التنقّل بين تقارير قسم «التقارير» — ما يفتحه صاحبه منها.
+     *
+     * ويقتصر على ما تحت `admin.reports.*`: بقيّة بنود الفهرس شاشاتُ أقسامٍ
+     * أخرى — الطلبات والمنتجات والمخزون — ولكلٍّ منها تبويباتُ قسمها. ووضعُ
+     * شريط التقارير فوق شاشة المنتجات يقول إنها تقرير، وهي قسمٌ قائم.
+     *
+     * @return list<array{key: string, label: string, href: string}>
+     */
+    public static function tabsFor(?User $user): array
+    {
+        return self::visibleTo($user)
+            ->filter(fn ($r) => str_starts_with($r['route'], 'admin.reports.'))
             ->map(fn ($r) => [
                 'key' => $r['key'],
-                'category' => $r['category'],
-                'title' => __($r['title']),
-                'desc' => __($r['desc']),
-                'icon' => $r['icon'],
-                'href' => isset($r['route']) ? route($r['route']) : null,
-                'data' => $r['data'] ?? null,
+                'label' => __($r['title']),
+                'href' => route($r['route']),
             ])
             ->values()
             ->all();
     }
 
     /**
-     * القسم الذي ينتمي إليه تقريرُ نافذةٍ بمفتاح بياناته — أو null فلا يُفتح.
+     * القسم الذي يُقاس به تقريرٌ بمساره — أو null فلا يُفتح.
      *
      * حارس المسار يشتقّ القسم من اسم المسار، فكلّ ما تحت `admin.reports.*`
-     * يُقاس بصلاحية «التقارير» وحدها. وتقارير النافذة ليست تقاريرَ عن
-     * التقارير: فيها رواتب الموظفين وإنفاق العملاء ومقبوضات الصندوق. فمن
-     * مُنح «التقارير» وحدها كان يقرأها كلّها بكتابة عنوانها، والفهرس نفسه
-     * لا يعرض له منها بطاقةً واحدة — منعٌ في الشاشة لا وجود له عند الباب.
+     * يُقاس بصلاحية «التقارير» وحدها. وليست هذه تقاريرَ عن التقارير: فيها
+     * مبيعاتُ كل موظف، وإنفاقُ كل عميل، ومقبوضاتُ الصندوق. فمن مُنح
+     * «التقارير» وحدها يقرؤها كلّها بكتابة عنوانها، والفهرس نفسه لا يعرض
+     * له منها بطاقةً واحدة — منعٌ في الشاشة لا وجود له عند الباب.
      *
-     * والمفتاح المجهول يُردّ بـnull: يُغلق لا يُفتح.
+     * فيُسأل هذا الفهرس عن قسم التقرير نفسه قبل أن تُبنى الصفحة.
+     * والمسار المجهول يُردّ بـnull: يُغلق لا يُفتح.
      */
-    public static function sectionForData(string $key): ?string
+    public static function sectionForRoute(string $route): ?string
     {
         foreach (self::ALL as $report) {
-            if (($report['data'] ?? null) === $key) {
+            if ($report['route'] === $route) {
                 return $report['section'];
             }
         }

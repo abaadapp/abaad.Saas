@@ -40,9 +40,9 @@ use App\Http\Controllers\Admin\PurchaseOrderController;
 use App\Http\Controllers\Admin\Purchasing\PurchaseRegisterController;
 use App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController;
 use App\Http\Controllers\Admin\RecoveryEmailController;
-use App\Http\Controllers\Admin\ReportDataController;
 use App\Http\Controllers\Admin\ReportExportController;
 use App\Http\Controllers\Admin\ReportFeedController;
+use App\Http\Controllers\Admin\ReportPageController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\SupplierExportController;
 use App\Http\Controllers\Admin\TrashController;
@@ -695,8 +695,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/reports', [PageController::class, 'reportsIndex'])->name('reports.index');
     Route::get('/reports/sales', [PageController::class, 'reportsSales'])->name('reports.sales');
-    // بياناتٌ تُعرض في نافذة لا في صفحة — تقريرٌ من سطرين لا يستحقّ شاشة
-    Route::get('/reports/data/{key}', [ReportDataController::class, 'show'])->name('reports.data');
+    /*
+     * ولكلِّ تقريرٍ صفحته.
+     *
+     * كانت هذه الثلاثة تُعرض في نافذةٍ واحدة بقالبٍ واحد: بلا مبدّل فترة —
+     * محسوبةً على الشهر وحده ولا شيء يقول ذلك — وبلا مؤشّرات، وبلا رابطٍ
+     * يُفتح أو يُرسَل. وصلاحيةُ كلٍّ قسمُه لا «التقارير» (انظر الحارس في
+     * ReportPageController): فيها مبيعاتُ الموظفين وإنفاقُ العملاء.
+     */
+    Route::get('/reports/payments', [ReportPageController::class, 'payments'])->name('reports.payments');
+    Route::get('/reports/staff', [ReportPageController::class, 'staff'])->name('reports.staff');
+    Route::get('/reports/customers', [ReportPageController::class, 'customers'])->name('reports.customers');
     // تغذية: صفحةٌ تُترك مفتوحة لا يجوز أن تتجمّد على أرقام الصباح
     Route::get('/reports/feed', [ReportFeedController::class, 'reports'])->name('reports.feed');
     // والتصدير يتبع الفترة المعروضة — ملفٌّ يحمل غير ما على الشاشة يُقرأ خطأً

@@ -3611,5 +3611,22 @@
     "أضِف التفاصيل": "Add details",
     "صورةٌ أثقل من :n ميغابايت لا تُرفع: :names": "Images heavier than :n MB are not uploaded: :names",
     "حجم الصورة يتجاوز :n ميغابايت.": "The image is larger than :n MB.",
-    "مجموع الصور المختارة :got ميغابايت، والحدّ :n — ارفعها على دفعات.": "The selected images total :got MB and the limit is :n — upload them in batches."
+    "مجموع الصور المختارة :got ميغابايت، والحدّ :n — ارفعها على دفعات.": "The selected images total :got MB and the limit is :n — upload them in batches.",
+    "إجمالي التحصيل": "Total collected",
+    "الوسائل النشطة": "Active methods",
+    "الأعلى تحصيلًا": "Top method",
+    "توزيع التحصيل على النقد والبطاقة وبقية الوسائل": "How collection splits across cash, card and the rest",
+    "التحصيل حسب الوسيلة": "Collection by method",
+    "التفصيل": "Breakdown",
+    "لا تحصيل في هذه الفترة": "Nothing collected in this period",
+    "من باع في الفترة": "Sold in this period",
+    "متوسّط البائع": "Average per seller",
+    "الأعلى مبيعًا": "Top seller",
+    "مبيعات كل موظف في الفترة المختارة وفرعه وحالته": "Each employee's sales in the selected period, with their branch and status",
+    "لا موظفين بعد": "No employees yet",
+    "عملاء اشتروا": "Customers who bought",
+    "متوسّط قيمة الطلب": "Average order value",
+    "من يشتري أكثر، وكم طلبًا وكم أنفق": "Who buys most, how many orders and how much they spent",
+    "لا مشتريات في هذه الفترة": "No purchases in this period",
+    "تُعرض أعلى :n عميلًا إنفاقًا في هذه الفترة.": "Showing the top :n customers by spending in this period."
 }

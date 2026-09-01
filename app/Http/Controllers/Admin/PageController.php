@@ -355,7 +355,11 @@ class PageController extends Controller
     {
         // الحمولة من Support\Reports لا تُجمع هنا: الملفّات الثلاثة تقرأ
         // المصدر نفسه، فلا يخرج ملفٌّ بغير ما على الشاشة
-        return Inertia::render('Admin/Reports/Sales', Reports::salesReport($request->query('range')));
+        return Inertia::render('Admin/Reports/Sales', array_merge(
+            Reports::salesReport($request->query('range')),
+            // شريط التنقّل بين التقارير — مصفًّى بصلاحية صاحبه وباقته
+            ['tabs' => Reports::tabsFor(auth()->user())],
+        ));
     }
 
     public function settingsIndex(Request $request): Response

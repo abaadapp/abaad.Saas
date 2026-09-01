@@ -1104,6 +1104,43 @@ class Demo
             })->all();
     }
 
+    /**
+     * أداء الموظفين في فترةٍ يختارها التاجر — لتقرير الموظفين وحده.
+     *
+     * ولم تُوسَّع `employees()` بفترة: تقرؤها شاشة الموظفين ولوحة الأداء
+     * وبطاقاتُها، وكلُّها تقصد الشهر الجاري. وتغييرُ معناها لأجل تقريرٍ
+     * واحد يبدّل أرقامًا في شاشاتٍ لم يطلب أحدٌ تبديلها.
+     *
+     * والصفوف تُرتَّب بالمبيعات لا بالمعرّف: تقريرُ أداءٍ أوّلُ سطرٍ فيه
+     * أقدمُ موظفٍ لا أعلاهم بيعًا لا يُقرأ بنظرة.
+     */
+    public static function staffPerformance(string $range = 'month'): array
+    {
+        $bid = self::bid();
+        $start = self::rangeStart(self::range($range));
+
+        $sold = Order::where('business_id', $bid)->sold()
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+            ->whereNotNull('user_id')
+            ->selectRaw('user_id, SUM(total) as s, COUNT(*) as c')
+            ->groupBy('user_id')->get()->keyBy('user_id');
+
+        return User::where('business_id', $bid)->where('role', '!=', 'super_admin')
+            ->orderBy('id')->get()->map(function ($u) use ($sold) {
+                $row = $sold->get($u->id);
+
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'role' => $u->job_title ?: $u->roleLabel(),
+                    'branch' => $u->branch ?? __('الفرع الرئيسي'),
+                    'status' => $u->status,
+                    'sales' => round((float) ($row->s ?? 0), 3),
+                    'orders' => (int) ($row->c ?? 0),
+                ];
+            })->sortByDesc('sales')->values()->all();
+    }
+
     /** ترتيب الموظفين حسب مبيعات الشهر (لوحة الأداء) */
     public static function employeeLeaderboard(): array
     {

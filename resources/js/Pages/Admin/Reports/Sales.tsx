@@ -20,6 +20,7 @@ import {
 } from '@/Components/ui/table';
 import useLiveFeed from '@/hooks/useLiveFeed';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
+import ReportTabs, { type ReportTab } from '@/Components/ReportTabs';
 import { money, number } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
@@ -52,6 +53,7 @@ interface Props {
     range: ReportRange;
     paymentDistribution: { labels: string[]; series: number[] };
     topSellingProducts: TopProduct[];
+    tabs: ReportTab[];
 }
 
 /** عنوان المخطّط بحسب دقّة محوره — انظر Demo::salesTrend */
@@ -138,6 +140,7 @@ export default function ReportsSales() {
                 </p>
             )}
 
+            <ReportTabs tabs={server.tabs} current="sales" />
             <RangeTabs current={server.range} />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -184,6 +184,21 @@ class ExpenseController extends Controller
         ]);
 
         $expense->update(['transaction_id' => $transaction->id]);
+
+        /*
+         * وقيدٌ مزدوج معه.
+         *
+         * الصفّ أعلاه دفترُ صندوق: مبلغٌ ونوع. والدفتر المحاسبيّ يريد طرفين
+         * — مصروفٌ مدين ونقدٌ دائن — وبدونهما يظهر في الشجرة إيرادٌ بلا ما
+         * يقابله من مصروفات المحلّ، فيُقرأ ربحٌ لم يتحقّق.
+         */
+        try {
+            \App\Support\Books::recordExpense($expense->fresh());
+        } catch (\Throwable $e) {
+            \App\Support\Activity::log('updated', 'تعذّر ترحيل قيد المصروف '.$expense->id.': '.$e->getMessage(), [
+                'subject_id' => $expense->id, 'subject_type' => 'expense',
+            ]);
+        }
     }
 
     /**
@@ -221,6 +236,8 @@ class ExpenseController extends Controller
          * المطابقة البنكية كأنّ مبلغًا خرج.
          */
         $expense->transaction()->delete();
+        // والقيد المزدوج معه — والقاعدة واحدة: قيدٌ بلا مستند يُبقي مبلغًا في الميزان
+        \App\Support\Books::forgetExpense($expense);
         \App\Support\Activity::log('deleted', 'حذف المصروف: ' . $expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
 
         /*

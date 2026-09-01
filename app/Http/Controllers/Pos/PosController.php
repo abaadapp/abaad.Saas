@@ -1052,6 +1052,22 @@ class PosController extends Controller
 
             $loyalty = $this->recordLoyalty($order, $customer, $redeem['points']);
 
+            /*
+             * والبيعة تصل إلى دفتر الأستاذ — لا إلى دفتر الصندوق وحده.
+             *
+             * وترحيلٌ يسقط لا يُسقط بيعةً وقعت: شجرةُ حساباتٍ عدّلها التاجر —
+             * حسابٌ أُغلق أو صار له فرعٌ تحته — تجعل `Ledger::post` ترفض،
+             * ولو رُبط بها البيع لتوقّف الصندوق عن العمل والزبون واقف. فيُقيَّد
+             * الإخفاق في السجلّ باسمه ليُستدرَك بأمر finance:post-missing-sales.
+             */
+            try {
+                \App\Support\Books::recordSale($order);
+            } catch (\Throwable $e) {
+                \App\Support\Activity::log('updated', 'تعذّر ترحيل قيد البيع '.$order->number.': '.$e->getMessage(), [
+                    'subject_id' => $order->id, 'subject_type' => 'order',
+                ]);
+            }
+
             return ['order' => $order, 'loyalty' => $loyalty];
         });
     }

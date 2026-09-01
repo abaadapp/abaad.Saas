@@ -3521,5 +3521,8 @@
     "أمر الشراء ليس لهذا المورّد": "This purchase order does not belong to this supplier",
     "هذا الأمر مفوتَرٌ بسندٍ سابق": "This order is already covered by an earlier invoice",
     "استُلمت بضاعةٌ على هذا الأمر — لا يُحذف بعد أن دخلت الرفّ": "Goods were received on this order — it cannot be deleted once they reached the shelf",
-    "حُرّر سندُ مورّدٍ على هذا الأمر — لا يُحذف": "A supplier invoice was issued against this order — it cannot be deleted"
+    "حُرّر سندُ مورّدٍ على هذا الأمر — لا يُحذف": "A supplier invoice was issued against this order — it cannot be deleted",
+    "بيع — فاتورة ": "Sale — invoice ",
+    "تكلفة بيع — فاتورة ": "Cost of sale — invoice ",
+    "مصروف: ": "Expense: "
 }

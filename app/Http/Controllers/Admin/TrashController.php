@@ -280,6 +280,11 @@ class TrashController extends Controller
         // المصروف يعود ومعه قيده في الدفتر — بمرجعه نفسه لا بمرجعٍ جديد
         if ($type === 'expense') {
             $row->transaction()->withTrashed()->restore();
+
+            // وقيدُه المزدوج يُعاد بناؤه: حُذف مع المصروف فلا يُستعاد بالإحياء
+            if ($row->isPaid()) {
+                \App\Support\Books::recordExpense($row);
+            }
         }
 
         $label = self::label($type, $row);
@@ -367,6 +372,7 @@ class TrashController extends Controller
         // ومحوُ المصروف يمحو قيده: لا يبقى في الدفتر سطرٌ لا أصل له
         if ($type === 'expense') {
             $row->transaction()->withTrashed()->forceDelete();
+            \App\Support\Books::forgetExpense($row);
         }
 
         $row->forceDelete();

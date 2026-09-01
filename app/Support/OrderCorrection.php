@@ -560,8 +560,9 @@ class OrderCorrection
             self::releaseCoupon($order);
             self::reverseLoyalty($order);
 
-            // لا قيدَ دخلٍ على بيعةٍ لم تقع
+            // لا قيدَ دخلٍ على بيعةٍ لم تقع — في الدفترين معًا
             Transaction::where('order_id', $order->id)->delete();
+            \App\Support\Books::forgetSale($fresh);
 
             $order->update(['status' => \App\Support\OrderStatus::CANCELLED]);
 

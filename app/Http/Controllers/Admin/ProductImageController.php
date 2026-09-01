@@ -61,11 +61,11 @@ class ProductImageController extends Controller
 
         $request->validate([
             'images' => ['required', 'array', 'min:1'],
-            'images.*' => ['image', 'max:4096'],
+            'images.*' => ['image', 'max:'.ProductImages::MAX_KB],
         ], [
             'images.required' => __('اختر صورةً واحدة على الأقل.'),
             'images.*.image' => __('الملفّ ليس صورة.'),
-            'images.*.max' => __('حجم الصورة يتجاوز ٤ ميغابايت.'),
+            'images.*.max' => __('حجم الصورة يتجاوز :n ميغابايت.', ['n' => ProductImages::MAX_KB / 1024]),
         ], ['images' => __('الصور')]);
 
         $files = $request->file('images');

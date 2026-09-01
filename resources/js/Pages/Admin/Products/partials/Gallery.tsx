@@ -27,6 +27,8 @@ interface Props {
     productId: number | string;
     images: GalleryImage[];
     max: number;
+    /** أقصى حجمٍ للصورة الواحدة بالكيلوبايت — يأتي من الخادم فلا يفترق الحدّان */
+    maxKb: number;
 }
 
 /**
@@ -39,7 +41,7 @@ interface Props {
  * والصفحة تُعاد قراءتها بعد كلّ فعل (`preserveScroll`)، فما تراه هو ما في
  * القاعدة لا ما خمّنته الشاشة.
  */
-export default function Gallery({ productId, images, max }: Props) {
+export default function Gallery({ productId, images, max, maxKb }: Props) {
     const t = useTranslate();
     const input = useRef<HTMLInputElement>(null);
     const [busy, setBusy] = useState(false);
@@ -59,8 +61,32 @@ export default function Gallery({ productId, images, max }: Props) {
     const upload = (files: FileList | null) => {
         if (! files || files.length === 0) return;
 
+        const chosen = Array.from(files);
+
+        /*
+         * الحجم يُقاس هنا قبل الإرسال — لا لتوفير الوقت وحده.
+         *
+         * PHP يطرح ما تجاوز `upload_max_filesize` قبل أن تصل لارافيل، فلا
+         * يرى التاجر رسالةَ رفض. وما تجاوز `post_max_size` أسوأ: يُلقى الطلبُ
+         * كلُّه بما فيه رمزُ الحماية، فتظهر «انتهت صلاحية الصفحة» بدل سببٍ
+         * مفهوم. والرفضُ من هنا يقول أيُّ ملفٍّ ثقيل، باسمه.
+         */
+        const heavy = chosen.filter((f) => f.size > maxKb * 1024);
+
+        if (heavy.length > 0) {
+            setError(
+                t('صورةٌ أثقل من :n ميغابايت لا تُرفع: :names', {
+                    n: Math.round(maxKb / 1024),
+                    names: heavy.map((f) => f.name).join('، '),
+                }),
+            );
+            if (input.current) input.current.value = '';
+
+            return;
+        }
+
         const data = new FormData();
-        Array.from(files).forEach((f) => data.append('images[]', f));
+        chosen.forEach((f) => data.append('images[]', f));
 
         setBusy(true);
         setError(null);

@@ -381,6 +381,34 @@ class ProductGalleryTest extends TestCase
             ->assertInertia(fn ($p) => $p->has('thumbs', 3)->etc());
     }
 
+    /* ================= الحدُّ الذي تقرؤه الشاشة ================= */
+
+    public function test_the_size_limit_is_one_number_the_screen_can_read(): void
+    {
+        /*
+         * ورقمان يقولان الشيء نفسه يفترقان يومًا: لو قاست الشاشةُ بحدٍّ
+         * والخادمُ بآخر، رُفعت أربعةُ ميغابايت على شبكةِ هاتفٍ ثمّ رُدّت —
+         * أو منعت الشاشةُ ما كان الخادم ليقبله.
+         */
+        $this->upload(1);
+
+        $this->get(route('admin.products.edit', $this->product->id))
+            ->assertInertia(fn ($p) => $p->where('galleryMaxKb', ProductImages::MAX_KB)->etc());
+
+        // والمُدقّق يقيس بالرقم نفسه لا برقمٍ مكتوبٍ في مكانه
+        $this->post(route('admin.products.images.store', $this->product->id), [
+            'images' => [UploadedFile::fake()->create('big.jpg', ProductImages::MAX_KB + 1, 'image/jpeg')],
+        ])->assertSessionHasErrors('images.0');
+
+        /*
+         * والطرفُ الآخر لازم: مُدقّقٌ أضيقُ ممّا وعدت به الشاشة يردّ ملفًّا
+         * سمحت الشاشةُ برفعه — فينتظر التاجر رفعَ أربعةِ ميغابايت ثمّ يُردّ.
+         */
+        $this->post(route('admin.products.images.store', $this->product->id), [
+            'images' => [UploadedFile::fake()->create('just-under.jpg', ProductImages::MAX_KB - 1, 'image/jpeg')],
+        ])->assertSessionHasNoErrors();
+    }
+
     /* =================== بديلُ النظام ليس صورةً =================== */
 
     public function test_the_system_placeholder_is_marked_as_one(): void

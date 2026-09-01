@@ -111,6 +111,7 @@ class PageController extends Controller
              */
             'gallery' => $model ? ProductImages::gallery($model) : [],
             'galleryMax' => ProductImages::MAX,
+            'galleryMaxKb' => ProductImages::MAX_KB,
         ]);
     }
 

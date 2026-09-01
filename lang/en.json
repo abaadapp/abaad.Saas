@@ -3599,5 +3599,7 @@
     "بالبريد وكلمة المرور يدخل الموظف — اللوحة ونقطة البيع معًا.": "The employee signs in with email and password — both the dashboard and the POS.",
     "به يدخل الموظف — ولا يتكرّر على المنصة": "The employee signs in with it — unique across the platform",
     "هذا الجهاز يعمل على فرعٍ لست مُسنَدًا إليه. راجع مديرك.": "This device serves a branch you are not assigned to. Contact your manager.",
-    "الرمز غير صحيح أو منتهي الصلاحية.": "The code is wrong or has expired."
+    "الرمز غير صحيح أو منتهي الصلاحية.": "The code is wrong or has expired.",
+    "صورةٌ أثقل من :n ميغابايت لا تُرفع: :names": "Images heavier than :n MB are not uploaded: :names",
+    "حجم الصورة يتجاوز :n ميغابايت.": "The image is larger than :n MB."
 }

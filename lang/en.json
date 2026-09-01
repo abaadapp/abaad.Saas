@@ -3513,5 +3513,7 @@
     "هذا الرقم مسجَّل لعميل محذوف: «:name» — استعِده من الإعدادات ← المحذوفات.": "This number belongs to a deleted customer (:name) — restore them from Settings → Trash.",
     "الاسم أطول من ٢٥٥ حرفًا — يُتجاهل": "Name longer than 255 characters — skipped",
     "رقمه مسجَّل لعميل محذوف — استعِده من المحذوفات أولًا": "Number belongs to a deleted customer — restore them from Trash first",
-    "ليس لديك صلاحية للمحو النهائي — وهو في الإعدادات.": "You do not have permission to erase permanently — that lives in Settings."
+    "ليس لديك صلاحية للمحو النهائي — وهو في الإعدادات.": "You do not have permission to erase permanently — that lives in Settings.",
+    "تعذّرت الاستعادة: :code صار لمنتج «:name» — غيّره أولًا.": "Restore failed: :code now belongs to “:name” — change it first.",
+    "«:name» موقوف عن البيع.": "“:name” is stopped from selling."
 }

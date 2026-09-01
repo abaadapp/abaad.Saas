@@ -169,6 +169,8 @@ export default function PosIndex() {
     const visibleProducts = useMemo(() => {
         const needle = q.trim();
         return products.filter((p) => {
+            // الموقوف لا يُعرض — والخادم يردّه كذلك (PosController::checkout)
+            if (p.active === false) return false;
             const inCat = cat === 'الكل' || cat === p.cat;
             const inSearch = !needle || `${p.name} ${p.label}`.includes(needle);
             return inCat && inSearch;

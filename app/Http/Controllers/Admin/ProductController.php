@@ -28,6 +28,22 @@ class ProductController extends Controller
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     /**
+     * القسم من أقسام هذا المتجر — لا من قائمةٍ مفتوحة.
+     *
+     * كان الحارس في الإجراء الجماعي وحده: `bulk` تردّ «قسم غير معروف»،
+     * وإضافةُ منتجٍ واحد وتعديلُه يقبلان أيّ رقم. فقسمُ متجرٍ آخر يُكتب في
+     * `category_id` كما وصل، ثمّ يُقرأ اسمُه بالضمّ فيظهر في قائمة المنتجات
+     * وفي الملفّات وفي تقرير «المبيعات حسب القسم» — اسمٌ من متجر الجار على
+     * شاشة صاحبه. ولا خطأ يُرفع، لأنّ الصفّ صحيحٌ في نفسه.
+     *
+     * وموضعٌ واحد للقاعدة كي لا يفترق البابان ثانيةً.
+     */
+    private function categoryRule(): array
+    {
+        return ['nullable', 'integer', Rule::exists('categories', 'id')->where('business_id', $this->bid())];
+    }
+
+    /**
      * تغذية كميات لجداول اللوحة.
      *
      * كانت بطاقة «منتجات منخفضة المخزون» تتحدّث كل 15 ثانية بينما جدول
@@ -134,7 +150,7 @@ class ProductController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'name_en' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'category_id' => ['nullable', 'integer'],
+            'category_id' => $this->categoryRule(),
             /*
              * الرمز والباركود فريدان داخل المتجر.
              *
@@ -157,7 +173,7 @@ class ProductController extends Controller
             'image' => ['nullable', 'image', 'max:4096'],
             // التركيب يُملأ مع المنتج لا بعده — انظر ProductCompositionController::draftRules
         ] + ProductCompositionController::draftRules($this->bid()),
-            ProductCompositionController::draftMessages());
+            ['category_id.exists' => __('قسم غير معروف')] + ProductCompositionController::draftMessages());
 
         // مسوّدةُ التركيب ليست عمودًا في products؛ تُنحّى قبل الإنشاء وتُكتب بعده
         $composition = $data['composition'] ?? [];
@@ -209,7 +225,7 @@ class ProductController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'name_en' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'category_id' => ['nullable', 'integer'],
+            'category_id' => $this->categoryRule(),
             /*
              * الرمز والباركود فريدان داخل المتجر.
              *
@@ -230,7 +246,7 @@ class ProductController extends Controller
             'tax' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'image' => ['nullable', 'image', 'max:4096'],
-        ]);
+        ], ['category_id.exists' => __('قسم غير معروف')]);
         $data['name_en'] = $data['name_en'] ?? null;
         $data['active'] = $request->boolean('active', true);
         // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
@@ -243,7 +259,18 @@ class ProductController extends Controller
         $data['tax'] = ($data['tax'] ?? '') === '' ? null : $data['tax'];
         $data['discount'] = $data['discount'] ?? 0;
         if ($request->hasFile('image')) {
+            /*
+             * والقديمة تُمحى — وإلّا بقيت على القرص بلا شيء يشير إليها.
+             *
+             * القيمة الخام لا المقروءة: `getImageAttribute` يردّ رابطًا جاهزًا
+             * للعرض، وتمريره إلى `delete` لا يجد شيئًا ولا يشتكي. ومتجرٌ يبدّل
+             * صور بضاعته كلّ موسم يترك أضعاف ما يعرضه على القرص.
+             */
+            $previous = $product->getRawOriginal('image');
             $data['image'] = $request->file('image')->store('products', 'public');
+            if ($previous && ! str_starts_with($previous, 'http')) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($previous);
+            }
         } else {
             unset($data['image']);
         }
@@ -276,7 +303,53 @@ class ProductController extends Controller
         $copy->sku = $this->generateSku();
         $copy->barcode = $this->generateBarcode();
         $copy->quantity = 0;
-        $copy->save();
+
+        /*
+         * وتركيبُه معه: المقاسات والوصفة والإضافات.
+         *
+         * كان يُنسخ الصفّ وحده. فنسخةُ باقةٍ مركّبة تبدو في كل شاشةٍ نسخةً
+         * طبق الأصل — الاسم والسعر والتكلفة والقسم — وتسلك سلوكًا آخر
+         * تمامًا: تُباع فلا تُنقص من الرفّ ساقًا واحدة، لأنّ وصفتها فارغة.
+         * ولا شيء يقول ذلك: التاجر نسخ «بوكيه الحب» ليصنع «بوكيه الحب
+         * الكبير»، فصار عنده صنفٌ يبيع ورودًا لا يخصمها أحد، ويُقرأ ربحه
+         * كاملًا لأنّ مكوّناته لم تُحتسب قطّ.
+         *
+         * والوصفة قد تتعلّق بمقاسٍ بعينه، فتُنسخ المقاسات أوّلًا ويُترجَم
+         * مرجعُها — وإلّا أشارت وصفةُ النسخة إلى مقاسٍ في الأصل.
+         */
+        \DB::transaction(function () use ($source, $copy) {
+            $copy->save();
+
+            $variantMap = [];
+            foreach ($source->variants()->get() as $variant) {
+                $newVariant = $variant->replicate(['created_at', 'updated_at']);
+                $newVariant->product_id = $copy->id;
+                $newVariant->save();
+                $variantMap[$variant->id] = $newVariant->id;
+            }
+
+            foreach ($source->recipeItems()->get() as $item) {
+                $newItem = $item->replicate(['created_at', 'updated_at']);
+                $newItem->product_id = $copy->id;
+                $newItem->variant_id = $item->variant_id ? ($variantMap[$item->variant_id] ?? null) : null;
+                $newItem->save();
+            }
+
+            // والجدول الوسيط يحمل `business_id` — فيُكتب صراحةً كما في syncAddons
+            $links = \DB::table('product_addons')->where('product_id', $source->id)
+                ->orderBy('sort_order')->get(['addon_id', 'sort_order', 'business_id']);
+
+            foreach ($links as $link) {
+                \DB::table('product_addons')->insert([
+                    'business_id' => $link->business_id,
+                    'product_id' => $copy->id,
+                    'addon_id' => $link->addon_id,
+                    'sort_order' => $link->sort_order,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        });
 
         \App\Support\Activity::log('created', 'نسخ المنتج: '.$source->name, ['subject_id' => $copy->id]);
 
@@ -328,10 +401,10 @@ class ProductController extends Controller
             'action' => ['required', 'in:activate,deactivate,category,price,delete'],
             'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer'],
-            'category_id' => ['nullable', 'integer'],
+            'category_id' => $this->categoryRule(),
             // ±٩٠٪ سقفٌ يمنع الغلطة المطبعية: «٥٠٠» بدل «٥» تمسح تسعيرة متجر
             'percent' => ['nullable', 'numeric', 'min:-90', 'max:900'],
-        ]);
+        ], ['category_id.exists' => __('قسم غير معروف')]);
 
         $query = Product::where('business_id', $this->bid())->whereIn('id', $data['ids']);
         $count = 0;
@@ -343,11 +416,8 @@ class ProductController extends Controller
                 break;
 
             case 'category':
-                $categoryId = $data['category_id'] ?? null;
-                if ($categoryId && ! \App\Models\Category::where('business_id', $this->bid())->whereKey($categoryId)->exists()) {
-                    return back()->with('toast', ['msg' => __('قسم غير معروف'), 'type' => 'error']);
-                }
-                $count = $query->update(['category_id' => $categoryId]);
+                // القسم مفحوصٌ في التحقّق أعلاه — انظر categoryRule
+                $count = $query->update(['category_id' => $data['category_id'] ?? null]);
                 break;
 
             case 'price':
@@ -363,6 +433,17 @@ class ProductController extends Controller
 
             case 'delete':
                 foreach ($query->get() as $p) {
+                    /*
+                     * ويُقيَّد لكلّ صنفٍ باسمه ونوعه — كما يفعل الحذف المفرد.
+                     *
+                     * شاشة المحذوفات تقرأ «من حذف» من سجلّ النشاط بالنوع
+                     * والمعرّف معًا. والإجراء الجماعي كان يكتب سطرًا واحدًا
+                     * بلا موضوع، فيظهر ما حُذف بالعشرات بلا فاعل — وأوّل سؤالٍ
+                     * لصاحب متجرٍ فيه موظّفون هو مَن، لا ماذا.
+                     */
+                    \App\Support\Activity::log('deleted', 'حذف المنتج: '.$p->name, [
+                        'subject_id' => $p->id, 'subject_type' => 'product',
+                    ]);
                     $p->delete();   // إلى السلة لا إعدامًا — تُستعاد من المحذوفات
                     $count++;
                 }

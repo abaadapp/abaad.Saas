@@ -78,6 +78,8 @@ export interface PosProduct {
     has_recipe?: boolean;
     /** النسبة الفعليّة للصنف — يُرسلها الخادم مشتقّةً لا خامًا */
     tax?: number | null;
+    /** الموقوف لا يُعرض ولا يُمسح ولا يُباع — والخادم يردّه كذلك */
+    active?: boolean;
 }
 
 export interface AppliedCoupon {
@@ -437,10 +439,12 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         (code: string) => {
             const c = (code || '').trim();
             if (!c) return;
+            // والماسح لا يستثني نفسه من الإيقاف: صنفٌ موقوف لا يدخل السلة
             const p = products.find(
                 (x) =>
-                    (x.barcode && String(x.barcode) === c) ||
-                    (x.sku && String(x.sku).toLowerCase() === c.toLowerCase()),
+                    x.active !== false &&
+                    ((x.barcode && String(x.barcode) === c) ||
+                        (x.sku && String(x.sku).toLowerCase() === c.toLowerCase())),
             );
             if (!p) {
                 onToast(`لا يوجد منتج بهذا الباركود: ${c}`, 'warning');

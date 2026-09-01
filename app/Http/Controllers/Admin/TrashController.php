@@ -201,6 +201,31 @@ class TrashController extends Controller
             ->findOrFail($id);
     }
 
+    /**
+     * هل صار رمز المنتج المخفيّ أو باركودُه لمنتجٍ حيّ؟
+     *
+     * @return array{code: string, name: string}|null
+     */
+    private static function codeClash(Product $row): ?array
+    {
+        foreach (['sku', 'barcode'] as $column) {
+            if (blank($row->{$column})) {
+                continue;
+            }
+
+            $holder = Product::where('business_id', $row->business_id)
+                ->where($column, $row->{$column})
+                ->whereKeyNot($row->id)
+                ->first();
+
+            if ($holder) {
+                return ['code' => (string) $row->{$column}, 'name' => (string) $holder->name];
+            }
+        }
+
+        return null;
+    }
+
     private static function label(string $type, $row): string
     {
         return $type === 'expense'
@@ -230,6 +255,26 @@ class TrashController extends Controller
     {
         $type = self::typeOf($request);
         $row = self::findTrashed($type, $id);
+
+        /*
+         * والرمزُ المخفيّ يُفرَج عنه عند الحذف — فقد يكون شُغل.
+         *
+         * قيدُ التفرّد في نموذج المنتج يتجاوز المحذوف عمدًا: صنفٌ حُذف لا
+         * يحجز رمزه ولا باركوده. فيُحذف «أ» ويُضاف «ب» بالباركود نفسه —
+         * وكلاهما صحيح. ثمّ تُضغط «تراجع» فيعود «أ» حيًّا: صنفان حيّان
+         * بباركودٍ واحد، والماسح يختار أحدهما فيُخصم من صنفٍ ويبقى الآخر
+         * على الرفّ. ويظهر الفرق في الجرد بلا سبب يُعرف.
+         *
+         * والردّ هنا أسلم من التغيير الصامت: تسميةُ رمزٍ جديد لمنتجٍ يعود
+         * تكتب في بضاعة التاجر ما لم يطلبه.
+         */
+        if ($type === 'product' && ($clash = self::codeClash($row))) {
+            return back()->with('toast', [
+                'msg' => __('تعذّرت الاستعادة: :code صار لمنتج «:name» — غيّره أولًا.', $clash),
+                'type' => 'danger',
+            ]);
+        }
+
         $row->restore();
 
         // المصروف يعود ومعه قيده في الدفتر — بمرجعه نفسه لا بمرجعٍ جديد

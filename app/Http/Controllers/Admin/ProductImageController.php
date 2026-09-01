@@ -59,13 +59,15 @@ class ProductImageController extends Controller
     {
         $product = $this->product($id);
 
+        $limits = ProductImages::uploadLimits();
+
         $request->validate([
             'images' => ['required', 'array', 'min:1'],
-            'images.*' => ['image', 'max:'.ProductImages::MAX_KB],
+            'images.*' => ['image', 'max:'.$limits['perFile']],
         ], [
             'images.required' => __('اختر صورةً واحدة على الأقل.'),
             'images.*.image' => __('الملفّ ليس صورة.'),
-            'images.*.max' => __('حجم الصورة يتجاوز :n ميغابايت.', ['n' => ProductImages::MAX_KB / 1024]),
+            'images.*.max' => __('حجم الصورة يتجاوز :n ميغابايت.', ['n' => round($limits['perFile'] / 1024, 1)]),
         ], ['images' => __('الصور')]);
 
         $files = $request->file('images');

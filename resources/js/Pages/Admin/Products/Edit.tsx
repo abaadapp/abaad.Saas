@@ -16,11 +16,11 @@ interface Props {
     /** معرض الصور — الرئيسية أوّلًا ثمّ ما بعدها */
     gallery: GalleryImage[];
     galleryMax: number;
-    galleryMaxKb: number;
+    galleryLimits: { perFile: number; batch: number };
 }
 
 export default function ProductEdit() {
-    const { product, categories, description, composition, gallery, galleryMax, galleryMaxKb, context } =
+    const { product, categories, description, composition, gallery, galleryMax, galleryLimits, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -40,7 +40,7 @@ export default function ProductEdit() {
                 currency={context!.currency}
                 gallery={gallery}
                 galleryMax={galleryMax}
-                galleryMaxKb={galleryMaxKb}
+                galleryLimits={galleryLimits}
             />
         </AdminLayout>
     );

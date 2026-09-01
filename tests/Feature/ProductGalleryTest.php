@@ -383,30 +383,63 @@ class ProductGalleryTest extends TestCase
 
     /* ================= الحدُّ الذي تقرؤه الشاشة ================= */
 
-    public function test_the_size_limit_is_one_number_the_screen_can_read(): void
+    public function test_the_screen_is_told_the_limits_the_server_really_has(): void
     {
         /*
          * ورقمان يقولان الشيء نفسه يفترقان يومًا: لو قاست الشاشةُ بحدٍّ
-         * والخادمُ بآخر، رُفعت أربعةُ ميغابايت على شبكةِ هاتفٍ ثمّ رُدّت —
+         * والخادمُ بآخر، رُفعت الصورةُ كاملةً على شبكةِ هاتفٍ ثمّ رُدّت —
          * أو منعت الشاشةُ ما كان الخادم ليقبله.
          */
+        $limits = ProductImages::uploadLimits();
+
         $this->upload(1);
 
         $this->get(route('admin.products.edit', $this->product->id))
-            ->assertInertia(fn ($p) => $p->where('galleryMaxKb', ProductImages::MAX_KB)->etc());
+            ->assertInertia(fn ($p) => $p->where('galleryLimits', $limits)->etc());
 
         // والمُدقّق يقيس بالرقم نفسه لا برقمٍ مكتوبٍ في مكانه
         $this->post(route('admin.products.images.store', $this->product->id), [
-            'images' => [UploadedFile::fake()->create('big.jpg', ProductImages::MAX_KB + 1, 'image/jpeg')],
+            'images' => [UploadedFile::fake()->create('big.jpg', $limits['perFile'] + 1, 'image/jpeg')],
         ])->assertSessionHasErrors('images.0');
 
         /*
          * والطرفُ الآخر لازم: مُدقّقٌ أضيقُ ممّا وعدت به الشاشة يردّ ملفًّا
-         * سمحت الشاشةُ برفعه — فينتظر التاجر رفعَ أربعةِ ميغابايت ثمّ يُردّ.
+         * سمحت الشاشةُ برفعه — فينتظر التاجر الرفعَ كلَّه ثمّ يُردّ.
          */
         $this->post(route('admin.products.images.store', $this->product->id), [
-            'images' => [UploadedFile::fake()->create('just-under.jpg', ProductImages::MAX_KB - 1, 'image/jpeg')],
+            'images' => [UploadedFile::fake()->create('just-under.jpg', $limits['perFile'] - 1, 'image/jpeg')],
         ])->assertSessionHasNoErrors();
+    }
+
+    public function test_the_limit_never_promises_more_than_php_accepts(): void
+    {
+        /*
+         * وهذا ما لا يكشفه اختبارٌ عاديّ: `UploadedFile::fake()` لا يمرّ
+         * بحدود PHP، فالمُدقّق يَعِد بأربعة ميغابايت والاختبار يصدّقه، وعلى
+         * خادمٍ حدُّه ٢ ميغا يطرح PHP الملفَّ قبل أن يصل لارافيل.
+         */
+        $limits = ProductImages::uploadLimits();
+        $allowed = (int) preg_replace('/[^0-9]/', '', (string) ini_get('upload_max_filesize')) * 1024;
+
+        $this->assertLessThanOrEqual(ProductImages::MAX_KB, $limits['perFile'], 'وُعِد بأكثر ممّا نقبله');
+
+        if ($allowed > 0) {
+            $this->assertLessThanOrEqual($allowed, $limits['perFile'], 'وُعِد بأكثر ممّا يقبله PHP');
+        }
+
+        // ودفعةٌ كاملةٌ لا تتجاوز حدَّ الطلب، وإلّا أُلقي الطلبُ بلا رسالة
+        $this->assertGreaterThanOrEqual($limits['perFile'], $limits['batch']);
+
+        /*
+         * ودون حدِّ الطلب بهامش: الطلبُ يحمل رمزَ الحماية وحدودَ multipart
+         * وأسماءَ الحقول. ودفعةٌ تساوي الحدَّ بالضبط تتجاوزه بها — فيُلقى
+         * الطلبُ كلُّه، وهو الفشل الصامت نفسه الذي نتجنّبه.
+         */
+        $post = (int) preg_replace('/[^0-9]/', '', (string) ini_get('post_max_size')) * 1024;
+
+        if ($post > 0) {
+            $this->assertLessThan($post, $limits['batch'], 'حدُّ الدفعة لا يترك هامشًا لبقيّة الطلب');
+        }
     }
 
     /* =================== بديلُ النظام ليس صورةً =================== */

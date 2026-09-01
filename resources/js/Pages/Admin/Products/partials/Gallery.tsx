@@ -27,8 +27,11 @@ interface Props {
     productId: number | string;
     images: GalleryImage[];
     max: number;
-    /** أقصى حجمٍ للصورة الواحدة بالكيلوبايت — يأتي من الخادم فلا يفترق الحدّان */
-    maxKb: number;
+    /**
+     * حدودُ الرفع بالكيلوبايت كما يسمح بها الخادمُ فعلًا — تأتي منه فلا
+     * يفترق ما تعِد به الشاشةُ عمّا يقبله الباب.
+     */
+    limits: { perFile: number; batch: number };
 }
 
 /**
@@ -41,7 +44,7 @@ interface Props {
  * والصفحة تُعاد قراءتها بعد كلّ فعل (`preserveScroll`)، فما تراه هو ما في
  * القاعدة لا ما خمّنته الشاشة.
  */
-export default function Gallery({ productId, images, max, maxKb }: Props) {
+export default function Gallery({ productId, images, max, limits }: Props) {
     const t = useTranslate();
     const input = useRef<HTMLInputElement>(null);
     const [busy, setBusy] = useState(false);
@@ -71,16 +74,40 @@ export default function Gallery({ productId, images, max, maxKb }: Props) {
          * كلُّه بما فيه رمزُ الحماية، فتظهر «انتهت صلاحية الصفحة» بدل سببٍ
          * مفهوم. والرفضُ من هنا يقول أيُّ ملفٍّ ثقيل، باسمه.
          */
-        const heavy = chosen.filter((f) => f.size > maxKb * 1024);
+        const mb = (kb: number) => Math.round((kb / 1024) * 10) / 10;
+        const clear = () => {
+            if (input.current) input.current.value = '';
+        };
+
+        const heavy = chosen.filter((f) => f.size > limits.perFile * 1024);
 
         if (heavy.length > 0) {
             setError(
                 t('صورةٌ أثقل من :n ميغابايت لا تُرفع: :names', {
-                    n: Math.round(maxKb / 1024),
+                    n: mb(limits.perFile),
                     names: heavy.map((f) => f.name).join('، '),
                 }),
             );
-            if (input.current) input.current.value = '';
+            clear();
+
+            return;
+        }
+
+        /*
+         * ومجموعُ الدفعة يُقاس كذلك: ثلاثُ صورٍ كلٌّ منها دون الحدّ قد تتجاوز
+         * `post_max_size` مجتمعةً — وعندها يُلقى الطلبُ كلُّه بلا رسالة.
+         * فيُقال هنا صراحةً: ارفعها على دفعات.
+         */
+        const total = chosen.reduce((sum, f) => sum + f.size, 0);
+
+        if (total > limits.batch * 1024) {
+            setError(
+                t('مجموع الصور المختارة :got ميغابايت، والحدّ :n — ارفعها على دفعات.', {
+                    got: mb(Math.round(total / 1024)),
+                    n: mb(limits.batch),
+                }),
+            );
+            clear();
 
             return;
         }

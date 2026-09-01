@@ -3610,5 +3610,6 @@
     "لا تفاصيل تنفيذ لهذا الطلب بعد": "This order has no fulfilment details yet",
     "أضِف التفاصيل": "Add details",
     "صورةٌ أثقل من :n ميغابايت لا تُرفع: :names": "Images heavier than :n MB are not uploaded: :names",
-    "حجم الصورة يتجاوز :n ميغابايت.": "The image is larger than :n MB."
+    "حجم الصورة يتجاوز :n ميغابايت.": "The image is larger than :n MB.",
+    "مجموع الصور المختارة :got ميغابايت، والحدّ :n — ارفعها على دفعات.": "The selected images total :got MB and the limit is :n — upload them in batches."
 }

@@ -28,7 +28,7 @@ interface Props {
     /** معرض الصور — في التعديل وحده: المعرّض يُعلَّق بمنتجٍ له معرّف */
     gallery?: GalleryImage[];
     galleryMax?: number;
-    galleryMaxKb?: number;
+    galleryLimits?: { perFile: number; batch: number };
 }
 
 const NAV = [
@@ -82,7 +82,7 @@ const FIELD_SECTION: Record<string, TabKey> = {
  * المستخدم يرى أين هو وكم بقي. والحقول المخفيّة تبقى قيمها محفوظة في حالة
  * النموذج، فالتنقّل بين الأقسام لا يفقد شيئًا.
  */
-export default function ProductForm({ categories, product, description, currencyLabel, composition, currency, gallery, galleryMax, galleryMaxKb }: Props) {
+export default function ProductForm({ categories, product, description, currencyLabel, composition, currency, gallery, galleryMax, galleryLimits }: Props) {
     const t = useTranslate();
     const editing = !!product;
     const [tab, setTab] = useState<TabKey>('basic');
@@ -653,7 +653,7 @@ export default function ProductForm({ categories, product, description, currency
                             <Gallery
                                 productId={product!.id}
                                 images={gallery ?? []}
-                                max={galleryMax ?? 8} maxKb={galleryMaxKb ?? 4096}
+                                max={galleryMax ?? 8} limits={galleryLimits ?? { perFile: 2048, batch: 7680 }}
                             />
                         ) : (
                         <Card className="p-6">

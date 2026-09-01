@@ -41,6 +41,57 @@ class ProductImages
      */
     public const MAX_KB = 4096;
 
+    /**
+     * حدودُ الرفع كما يسمح بها هذا الخادمُ فعلًا — لا كما نتمنّى.
+     *
+     * وهذا هو الفرق بين اختبارٍ أخضر وشاشةٍ تعمل: `UploadedFile::fake()` لا
+     * يمرّ بحدود PHP أصلًا، فالمُدقّق يَعِد بأربعة ميغابايت والاختبار يصدّقه،
+     * وعلى خادمٍ حدُّه ٢ ميغا **يطرح PHP الملفَّ قبل أن يصل لارافيل** فلا
+     * رسالةَ رفضٍ ولا صورة.
+     *
+     * وتجاوزُ `post_max_size` أسوأ: يُلقى الطلبُ كلُّه بما فيه رمزُ الحماية،
+     * فيرى التاجر «انتهت صلاحية الصفحة» ولا يعرف أنّ صوره كانت ثقيلة.
+     *
+     * فتُقرأ الحدود من `ini` ويُؤخذ الأضيقُ منها ومن وعدنا. والشاشةُ تقرأ
+     * الرقم نفسه، فتردّ قبل الإرسال بدل أن تُرسل إلى بابٍ مغلق.
+     *
+     * @return array{perFile: int, batch: int} بالكيلوبايت
+     */
+    public static function uploadLimits(): array
+    {
+        $allowed = self::iniKb('upload_max_filesize');
+        $perFile = $allowed > 0 ? min(self::MAX_KB, $allowed) : self::MAX_KB;
+
+        $post = self::iniKb('post_max_size');
+
+        /*
+         * وهامشٌ يُطرح من حدّ الطلب: الطلبُ يحمل معه رمزَ الحماية وحدودَ
+         * multipart وأسماءَ الحقول. ودفعةٌ تساوي الحدَّ بالضبط تتجاوزه بها.
+         */
+        $batch = $post > 0 ? max($perFile, $post - 512) : $perFile * self::MAX;
+
+        return ['perFile' => $perFile, 'batch' => $batch];
+    }
+
+    /** يقرأ قيمة `ini` المختصرة (2M، 512K، 1G) كيلوبايتاتٍ — و«بلا حدّ» صفرٌ */
+    private static function iniKb(string $key): int
+    {
+        $raw = trim((string) ini_get($key));
+
+        if ($raw === '' || $raw === '-1' || $raw === '0') {
+            return 0;
+        }
+
+        $number = (int) $raw;
+
+        return match (strtolower(substr($raw, -1))) {
+            'g' => $number * 1024 * 1024,
+            'm' => $number * 1024,
+            'k' => $number,
+            default => intdiv($number, 1024),
+        };
+    }
+
     /** المجلّد على قرص `public` — واحدٌ للرئيسية والإضافية */
     private const DISK = 'public';
 

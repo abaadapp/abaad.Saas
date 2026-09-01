@@ -921,11 +921,7 @@ class DemoStore
             ]);
         }
 
-        MarketingSettings::save($bid, 'website', [
-            'site_domain' => 'demo-flowers.abaadapp.om',
-            'site_title' => 'متجر أبعاد للورود',
-            'site_tagline' => 'ورودٌ تصل في وقتها',
-        ]);
+        MarketingSettings::save($bid, 'website', ['site_domain' => 'demo-flowers.abaadapp.om']);
     }
 
     /* -------------------------- المنصّة وسجل النشاط -------------------------- */

@@ -31,10 +31,21 @@ class MarketingController extends Controller
 
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
+    /**
+     * النطاق يُحفظ — وما كان معه رُفع.
+     *
+     * كانت الشاشة تحفظ ثمانية مفاتيح: جملةً تعريفية، ونبذةً، وواتساب
+     * وإنستغرام، و«نشر الموقع» و«عرض الأسعار» و«قبول الطلبات». تُملأ وتُحفظ
+     * ولا يقرؤها شيء — لا واجهةَ متجرٍ في النظام تعرضها لأحد. فالتاجر يرفع
+     * «نشر الموقع» ويظنّ أنّه نشر متجرًا، وينتظر طلبًا لا يأتي.
+     *
+     * وبقي النطاق وحده لأنّه وحده يُقرأ: يصير زرًّا في الشريط يفتح موقع
+     * التاجر خارج النظام — انظر `Demo::websiteUrl`. وما حُفظ من المرفوع باقٍ
+     * في القاعدة لم يُمحَ: إن بُنيت الواجهة يومًا وجدَ ما كُتب مكانَه.
+     */
     public function saveWebsite(Request $request)
     {
         $data = $request->validate([
-            'site_enabled' => ['nullable', 'boolean'],
             /*
              * النطاق اسمٌ لا رابط.
              *
@@ -42,20 +53,14 @@ class MarketingController extends Controller
              * (https://https://…)، ولا يظهر العطب إلا حين يفتحها زبون.
              */
             'site_domain' => ['nullable', 'string', 'max:255', 'regex:/^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$/'],
-            'site_tagline' => ['nullable', 'string', 'max:255'],
-            'site_about' => ['nullable', 'string', 'max:2000'],
-            'site_whatsapp' => ['nullable', 'string', 'max:30'],
-            'site_instagram' => ['nullable', 'string', 'max:100'],
-            'site_show_prices' => ['nullable', 'boolean'],
-            'site_allow_orders' => ['nullable', 'boolean'],
         ], [
             'site_domain.regex' => __('اكتب النطاق وحده بلا https:// ولا مسار — مثل: mystore.om'),
         ]);
 
         MarketingSettings::save($this->bid(), 'website', $data);
-        Activity::log('updated', 'حدّث إعدادات الموقع الإلكتروني');
+        Activity::log('updated', 'حدّث رابط الموقع');
 
-        return back()->with('toast', ['msg' => __('حُفظت إعدادات الموقع'), 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('حُفظ رابط الموقع'), 'type' => 'success']);
     }
 
     /* ----------------------------- برنامج الولاء ----------------------------- */
@@ -143,46 +148,6 @@ class MarketingController extends Controller
             'coupons' => Demo::coupons(),
             'segments' => Demo::marketingSegment(),
         ]);
-    }
-
-    /* ------------------------ تحسين محركات البحث ------------------------ */
-
-    public function seo(): Response
-    {
-        $bid = $this->bid();
-        $business = Business::find($bid);
-        $website = MarketingSettings::group($bid, 'website');
-
-        return Inertia::render('Admin/Marketing/Seo', [
-            'settings' => MarketingSettings::group($bid, 'seo'),
-            'domain' => $website['site_domain'],
-            'siteEnabled' => $website['site_enabled'] === '1',
-            'storeName' => $business?->name,
-        ]);
-    }
-
-    public function saveSeo(Request $request)
-    {
-        $data = $request->validate([
-            /*
-             * حدود العنوان والوصف ليست تجميلًا: ما زاد عنها تقصّه محرّكات
-             * البحث في منتصف الجملة، فيظهر الوصف مبتورًا لكل من يبحث.
-             */
-            'seo_title' => ['nullable', 'string', 'max:60'],
-            'seo_description' => ['nullable', 'string', 'max:160'],
-            'seo_keywords' => ['nullable', 'string', 'max:255'],
-            'seo_index' => ['nullable', 'boolean'],
-            'seo_ga_id' => ['nullable', 'string', 'max:40', 'regex:/^(G-[A-Z0-9]+|UA-\d+-\d+)?$/'],
-        ], [
-            'seo_title.max' => __('العنوان يُقصّ بعد ٦٠ محرفًا في نتائج البحث'),
-            'seo_description.max' => __('الوصف يُقصّ بعد ١٦٠ محرفًا في نتائج البحث'),
-            'seo_ga_id.regex' => __('معرّف Google Analytics يبدأ بـG- أو UA-'),
-        ]);
-
-        MarketingSettings::save($this->bid(), 'seo', $data);
-        Activity::log('updated', 'حدّث إعدادات محركات البحث');
-
-        return back()->with('toast', ['msg' => __('حُفظت إعدادات البحث'), 'type' => 'success']);
     }
 
     /* -------------------------- إشعارات واتساب -------------------------- */

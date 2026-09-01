@@ -1,8 +1,20 @@
 <?php
 
+use App\Http\Middleware\BindPosBranch;
+use App\Http\Middleware\CheckAbility;
+use App\Http\Middleware\CheckPlanFeature;
+use App\Http\Middleware\CheckRole;
+use App\Http\Middleware\CheckTenantStatus;
+use App\Http\Middleware\EntersPanel;
+use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\NormalizeMoneyInput;
+use App\Http\Middleware\RequiresBusiness;
+use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -13,19 +25,21 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'role' => \App\Http\Middleware\CheckRole::class,
-            'ability' => \App\Http\Middleware\CheckAbility::class,
-            'panel' => \App\Http\Middleware\EntersPanel::class,
-            'business' => \App\Http\Middleware\RequiresBusiness::class,
-            'tenant' => \App\Http\Middleware\CheckTenantStatus::class,
-            'pos.branch' => \App\Http\Middleware\BindPosBranch::class,
+            'role' => CheckRole::class,
+            'ability' => CheckAbility::class,
+            // قدرات الباقة — أخو 'ability' وليس هو: ذاك يسأل عن الموظّف وهذا عن المشترَك
+            'plan' => CheckPlanFeature::class,
+            'panel' => EntersPanel::class,
+            'business' => RequiresBusiness::class,
+            'tenant' => CheckTenantStatus::class,
+            'pos.branch' => BindPosBranch::class,
         ]);
         $middleware->web(append: [
-            \App\Http\Middleware\SecurityHeaders::class,
-            \App\Http\Middleware\SetLocale::class,
-            \App\Http\Middleware\NormalizeMoneyInput::class,
-            \App\Http\Middleware\HandleInertiaRequests::class,
-            \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+            SecurityHeaders::class,
+            SetLocale::class,
+            NormalizeMoneyInput::class,
+            HandleInertiaRequests::class,
+            AddLinkHeadersForPreloadedAssets::class,
         ]);
         $middleware->redirectGuestsTo(fn () => route('login'));
 

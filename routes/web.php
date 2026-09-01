@@ -1,15 +1,80 @@
 <?php
 
+use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\Admin\BankStatementController;
+use App\Http\Controllers\Admin\BranchController;
+use App\Http\Controllers\Admin\CatalogQuickAddController;
+use App\Http\Controllers\Admin\CouponController;
+use App\Http\Controllers\Admin\CurrencyController;
+use App\Http\Controllers\Admin\CustomAlertController;
 use App\Http\Controllers\Admin\CustomerController;
+use App\Http\Controllers\Admin\CustomerImportExportController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\ExpenseController;
+use App\Http\Controllers\Admin\ExpenseTypeController;
+use App\Http\Controllers\Admin\Finance\BankAccountController;
+use App\Http\Controllers\Admin\Finance\ChartController;
+use App\Http\Controllers\Admin\Finance\FixedAssetController;
+use App\Http\Controllers\Admin\Finance\JournalController;
 use App\Http\Controllers\Admin\FinanceController;
+use App\Http\Controllers\Admin\GoalController;
+use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
+use App\Http\Controllers\Admin\Inventory\StockAdjustmentController;
 use App\Http\Controllers\Admin\InventoryController;
+use App\Http\Controllers\Admin\JobTitleController;
+use App\Http\Controllers\Admin\LanguageController;
+use App\Http\Controllers\Admin\Marketing\MarketingController;
+use App\Http\Controllers\Admin\Marketing\ReviewController;
+use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\OrderDetailController;
+use App\Http\Controllers\Admin\PageController;
+use App\Http\Controllers\Admin\Payroll\PayrollPaymentController;
+use App\Http\Controllers\Admin\Payroll\PayrollRunController;
+use App\Http\Controllers\Admin\PreparationController;
+use App\Http\Controllers\Admin\ProductCompositionController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\ProductImportExportController;
+use App\Http\Controllers\Admin\PurchaseOrderController;
+use App\Http\Controllers\Admin\Purchasing\PurchaseRegisterController;
+use App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController;
+use App\Http\Controllers\Admin\RecoveryEmailController;
+use App\Http\Controllers\Admin\ReportDataController;
+use App\Http\Controllers\Admin\ReportExportController;
+use App\Http\Controllers\Admin\ReportFeedController;
+use App\Http\Controllers\Admin\SupplierController;
+use App\Http\Controllers\Admin\SupplierExportController;
+use App\Http\Controllers\Admin\TrashController;
+use App\Http\Controllers\Admin\WasteAnalyticsController;
+use App\Http\Controllers\Auth\AccountRecoveryController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\BackupController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExportController;
+use App\Http\Controllers\HealthController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PdfController;
+use App\Http\Controllers\Pos\CashierController;
+use App\Http\Controllers\Pos\DeviceController;
+use App\Http\Controllers\Pos\OrderEditController;
+use App\Http\Controllers\Pos\PeripheralController;
 use App\Http\Controllers\Pos\PosController;
+use App\Http\Controllers\Pos\ShiftController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SearchController;
+use App\Http\Controllers\SubscriptionExpiredController;
+use App\Http\Controllers\SuperAdmin\BillingController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
+use App\Http\Controllers\SuperAdmin\DemoController;
+use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
+use App\Http\Controllers\SuperAdmin\PlanController;
+use App\Http\Controllers\SuperAdmin\RecoveryController;
+use App\Http\Controllers\SuperAdmin\SettingController;
+use App\Http\Controllers\SuperAdmin\SubscriptionController;
+use App\Http\Controllers\SuperAdmin\UserController;
+use App\Http\Controllers\SuperAdmin\WhatsAppController;
+use App\Http\Controllers\WhatsApp\WebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -53,7 +118,7 @@ Route::post('/forget-device', [LoginController::class, 'forgetDevice'])->name('d
  * تفحص القاعدة والتخزين والذاكرة وتردّ 503 إن سقط واحد: صفحةٌ تعيد 200 لأن
  * nginx حيّ لا تقول شيئًا عن قاعدةٍ ساقطة، والمتجر بلا قاعدة متجرٌ ساقط.
  */
-Route::get('/health', \App\Http\Controllers\HealthController::class)->name('health');
+Route::get('/health', HealthController::class)->name('health');
 
 /*
  * استعادة كلمة المرور — الباب الذي لا يمرّ بالدعم.
@@ -61,11 +126,11 @@ Route::get('/health', \App\Http\Controllers\HealthController::class)->name('heal
  * الرمز في المسار لا في الاستعلام: الرابط يُنسخ من الرسالة كاملًا، وحصرُه
  * بستّين محرفًا يمنع أن يبتلع مسارًا آخر.
  */
-Route::get('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'request'])->name('password.request');
-Route::post('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'send'])->name('password.email');
-Route::get('/reset-password/{token}', [\App\Http\Controllers\Auth\PasswordResetController::class, 'reset'])
+Route::get('/forgot-password', [PasswordResetController::class, 'request'])->name('password.request');
+Route::post('/forgot-password', [PasswordResetController::class, 'send'])->name('password.email');
+Route::get('/reset-password/{token}', [PasswordResetController::class, 'reset'])
     ->where('token', '[A-Za-z0-9]{32,128}')->name('password.reset');
-Route::post('/reset-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'store'])->name('password.update');
+Route::post('/reset-password', [PasswordResetController::class, 'store'])->name('password.update');
 
 /*
  * استعادة الحساب برمزٍ إلى بريدٍ موثّق — الطريق الأحدث.
@@ -73,14 +138,14 @@ Route::post('/reset-password', [\App\Http\Controllers\Auth\PasswordResetControll
  * وتبقى مسارات الرابط أعلاه: من في صندوقه رسالةٌ قديمة يجد رابطها يعمل.
  * والباب الجديد لا يقبل عنوانًا يكتبه الطالب — انظر AccountRecoveryController.
  */
-Route::post('/recovery/start', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'start'])->name('recovery.start');
-Route::get('/recovery/verify/{challenge}', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'verify'])
+Route::post('/recovery/start', [AccountRecoveryController::class, 'start'])->name('recovery.start');
+Route::get('/recovery/verify/{challenge}', [AccountRecoveryController::class, 'verify'])
     ->where('challenge', '[A-Za-z0-9]{32,64}')->name('recovery.verify');
-Route::post('/recovery/verify', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'check'])->name('recovery.check');
-Route::post('/recovery/resend', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'resend'])->name('recovery.resend');
-Route::get('/recovery/password/{challenge}', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'password'])
+Route::post('/recovery/verify', [AccountRecoveryController::class, 'check'])->name('recovery.check');
+Route::post('/recovery/resend', [AccountRecoveryController::class, 'resend'])->name('recovery.resend');
+Route::get('/recovery/password/{challenge}', [AccountRecoveryController::class, 'password'])
     ->where('challenge', '[A-Za-z0-9]{32,64}')->name('recovery.password');
-Route::post('/recovery/password', [\App\Http\Controllers\Auth\AccountRecoveryController::class, 'store'])->name('recovery.password.store');
+Route::post('/recovery/password', [AccountRecoveryController::class, 'store'])->name('recovery.password.store');
 /*
  * الدخول التجريبي: يمنح جلسة كاملة بلا كلمة مرور، فلا يُسجَّل إلا حيث يُسمح به صراحةً.
  * تركُه مفتوحًا يعني أن أي زائر مجهول يصير مدير منصة بطلب GET واحد.
@@ -91,7 +156,7 @@ if (config('app.demo_login')) {
 }
 
 // تبديل لغة شاشة الدخول — متاح للزائر، ويكتب في الجلسة فقط
-Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'guest'])->name('language.guest');
+Route::post('/language', [LanguageController::class, 'guest'])->name('language.guest');
 
 Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->name('logout');
 
@@ -102,7 +167,7 @@ Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->na
  * داخل مجموعة المنصة كان يعني بابًا لا يُفتح من الداخل: يدخل ولا يخرج إلا
  * بتسجيل خروجٍ كامل. والحارس هنا مفتاح الجلسة نفسه.
  */
-Route::post('/stop-impersonating', [\App\Http\Controllers\SuperAdmin\ImpersonationController::class, 'stop'])
+Route::post('/stop-impersonating', [ImpersonationController::class, 'stop'])
     ->middleware('auth')->name('impersonate.stop');
 
 /*
@@ -111,19 +176,19 @@ Route::post('/stop-impersonating', [\App\Http\Controllers\SuperAdmin\Impersonati
  * هي وجهةُ الحارس نفسه، فلو وقعت تحته لدارت الإحالة على نفسها إلى الأبد.
  * وحارسها الخاصّ في المتحكّم: من لم ينتهِ اشتراكه يُعاد إلى لوحته.
  */
-Route::get('/subscription-expired', \App\Http\Controllers\SubscriptionExpiredController::class)
+Route::get('/subscription-expired', SubscriptionExpiredController::class)
     ->middleware('auth')->name('subscription.expired');
 
 /* ------------------------- الملف الشخصي (كل الأدوار) ------------------------- */
 Route::middleware('auth')->group(function () {
-    Route::get('/profile', [\App\Http\Controllers\ProfileController::class, 'edit'])->name('profile.edit');
-    Route::put('/profile', [\App\Http\Controllers\ProfileController::class, 'update'])->name('profile.update');
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
 });
 
 /* --------------------------- Super Admin --------------------------- */
 Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:super_admin'])->group(function () {
     Route::get('/dashboard', [SuperAdminPageController::class, 'dashboard'])->name('dashboard');
-    Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'superStats'])->name('dashboard.stats');
+    Route::get('/dashboard/stats', [DashboardController::class, 'superStats'])->name('dashboard.stats');
 
     /*
      * الديمو — بناء المتاجر التجريبيّة ومحوُها.
@@ -131,16 +196,16 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
      * الحذف هنا يمحو متجرًا بكلّ صفوفه بضغطة، ولذلك لا يُقبل إلا معرّفُ
      * متجرٍ موسوم: الحارس في المتحكّم لا في الشاشة (انظر DemoGuard).
      */
-    Route::get('/demo', [\App\Http\Controllers\SuperAdmin\DemoController::class, 'index'])->name('demo.index');
-    Route::post('/demo', [\App\Http\Controllers\SuperAdmin\DemoController::class, 'store'])->name('demo.store');
-    Route::post('/demo/{id}/reseed', [\App\Http\Controllers\SuperAdmin\DemoController::class, 'reseed'])->name('demo.reseed');
-    Route::delete('/demo/{id}', [\App\Http\Controllers\SuperAdmin\DemoController::class, 'destroy'])->name('demo.destroy');
+    Route::get('/demo', [DemoController::class, 'index'])->name('demo.index');
+    Route::post('/demo', [DemoController::class, 'store'])->name('demo.store');
+    Route::post('/demo/{id}/reseed', [DemoController::class, 'reseed'])->name('demo.reseed');
+    Route::delete('/demo/{id}', [DemoController::class, 'destroy'])->name('demo.destroy');
 
     // الشركات
     Route::get('/businesses', [BusinessController::class, 'index'])->name('businesses.index');
     // تصدير الشركات (قبل businesses/{id} حتى لا يبتلعها نمط المعرّف)
-    Route::get('/businesses/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'businessesXlsx'])->name('businesses.xlsx');
-    Route::get('/businesses/export-pdf', [\App\Http\Controllers\PdfController::class, 'businessesReport'])->name('businesses.exportPdf');
+    Route::get('/businesses/xlsx', [ReportExportController::class, 'businessesXlsx'])->name('businesses.xlsx');
+    Route::get('/businesses/export-pdf', [PdfController::class, 'businessesReport'])->name('businesses.exportPdf');
     Route::get('/businesses/create', [SuperAdminPageController::class, 'businessesCreate'])->name('businesses.create');
     Route::post('/businesses', [BusinessController::class, 'store'])->name('businesses.store');
     Route::get('/businesses/{id}', [SuperAdminPageController::class, 'businessesShow'])->name('businesses.show');
@@ -151,7 +216,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/businesses/{id}/activate', [BusinessController::class, 'activate'])->name('businesses.activate');
 
     // دخول كتاجر — الخروج منه خارج هذه المجموعة (انظر أسفل الملف)
-    Route::post('/businesses/{id}/impersonate', [\App\Http\Controllers\SuperAdmin\ImpersonationController::class, 'start'])->name('businesses.impersonate');
+    Route::post('/businesses/{id}/impersonate', [ImpersonationController::class, 'start'])->name('businesses.impersonate');
     // حساب دخول التاجر وحده — لا يمرّ بنموذج الشركة كاملًا
     Route::post('/businesses/{id}/account', [BusinessController::class, 'account'])->name('businesses.account');
 
@@ -168,50 +233,49 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/flower-shops/{id}', fn ($id) => redirect()->route('super-admin.businesses.show', $id))->name('flower-shops.show');
     Route::get('/flower-shops/{id}/edit', fn ($id) => redirect()->route('super-admin.businesses.edit', $id))->name('flower-shops.edit');
 
-
     // الاشتراكات والباقات
     Route::get('/subscriptions', [SuperAdminPageController::class, 'subscriptionsIndex'])->name('subscriptions.index');
     Route::get('/subscriptions/plans', [SuperAdminPageController::class, 'plans'])->name('subscriptions.plans');
     Route::get('/subscriptions/invoices', [SuperAdminPageController::class, 'invoices'])->name('subscriptions.invoices');
-    Route::get('/invoices/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'platformInvoice'])->name('invoices.pdf');
-    Route::get('/subscriptions/invoices/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'invoicesXlsx'])->name('invoices.xlsx');
-    Route::get('/subscriptions/invoices/pdf', [\App\Http\Controllers\PdfController::class, 'invoicesReport'])->name('invoices.exportPdf');
+    Route::get('/invoices/{number}/pdf', [PdfController::class, 'platformInvoice'])->name('invoices.pdf');
+    Route::get('/subscriptions/invoices/xlsx', [ReportExportController::class, 'invoicesXlsx'])->name('invoices.xlsx');
+    Route::get('/subscriptions/invoices/pdf', [PdfController::class, 'invoicesReport'])->name('invoices.exportPdf');
     // التجديد وتسجيل السداد — الجدولان كانا يُقرآن ولا يُكتب فيهما
-    Route::post('/businesses/{id}/renew', [\App\Http\Controllers\SuperAdmin\BillingController::class, 'renew'])->name('businesses.renew');
-    Route::post('/invoices/{id}/pay', [\App\Http\Controllers\SuperAdmin\BillingController::class, 'pay'])->name('invoices.pay');
-    Route::put('/subscriptions/{id}', [\App\Http\Controllers\SuperAdmin\SubscriptionController::class, 'update'])->name('subscriptions.update');
-    Route::delete('/subscriptions/{id}', [\App\Http\Controllers\SuperAdmin\SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
+    Route::post('/businesses/{id}/renew', [BillingController::class, 'renew'])->name('businesses.renew');
+    Route::post('/invoices/{id}/pay', [BillingController::class, 'pay'])->name('invoices.pay');
+    Route::put('/subscriptions/{id}', [SubscriptionController::class, 'update'])->name('subscriptions.update');
+    Route::delete('/subscriptions/{id}', [SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
 
     // تصدير CSV
-    Route::get('/export/businesses', [\App\Http\Controllers\ExportController::class, 'businesses'])->name('export.businesses');
-    Route::get('/export/invoices', [\App\Http\Controllers\ExportController::class, 'invoices'])->name('export.invoices');
+    Route::get('/export/businesses', [ExportController::class, 'businesses'])->name('export.businesses');
+    Route::get('/export/invoices', [ExportController::class, 'invoices'])->name('export.invoices');
 
     // البحث الموحّد
-    Route::get('/search', [\App\Http\Controllers\SearchController::class, 'super'])->name('search');
+    Route::get('/search', [SearchController::class, 'super'])->name('search');
 
     // المستخدمون
-    Route::get('/users', [\App\Http\Controllers\SuperAdmin\UserController::class, 'index'])->name('users.index');
-    Route::post('/users', [\App\Http\Controllers\SuperAdmin\UserController::class, 'store'])->name('users.store');
-    Route::put('/users/{id}', [\App\Http\Controllers\SuperAdmin\UserController::class, 'update'])->name('users.update');
-    Route::post('/users/{id}/toggle', [\App\Http\Controllers\SuperAdmin\UserController::class, 'toggleStatus'])->name('users.toggle');
-    Route::delete('/users/{id}', [\App\Http\Controllers\SuperAdmin\UserController::class, 'destroy'])->name('users.destroy');
-    Route::post('/users/{id}/restore', [\App\Http\Controllers\SuperAdmin\UserController::class, 'restore'])->name('users.restore');
+    Route::get('/users', [UserController::class, 'index'])->name('users.index');
+    Route::post('/users', [UserController::class, 'store'])->name('users.store');
+    Route::put('/users/{id}', [UserController::class, 'update'])->name('users.update');
+    Route::post('/users/{id}/toggle', [UserController::class, 'toggleStatus'])->name('users.toggle');
+    Route::delete('/users/{id}', [UserController::class, 'destroy'])->name('users.destroy');
+    Route::post('/users/{id}/restore', [UserController::class, 'restore'])->name('users.restore');
     Route::get('/users/{id}', [SuperAdminPageController::class, 'usersShow'])->name('users.show');
 
     // الباقات
-    Route::post('/plans', [\App\Http\Controllers\SuperAdmin\PlanController::class, 'store'])->name('plans.store');
-    Route::put('/plans/{id}', [\App\Http\Controllers\SuperAdmin\PlanController::class, 'update'])->name('plans.update');
+    Route::post('/plans', [PlanController::class, 'store'])->name('plans.store');
+    Route::put('/plans/{id}', [PlanController::class, 'update'])->name('plans.update');
 
     // اللغة — مسار المنصة، فمسار لوحة التاجر يحرسه middleware أدوار لا يشمل مدير المنصة
-    Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
+    Route::post('/language', [LanguageController::class, 'update'])->name('language.update');
 
     // التقارير والإعدادات وسجل النشاط
     Route::get('/reports', [SuperAdminPageController::class, 'reports'])->name('reports.index');
-    Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'platformReport'])->name('reports.pdf');
-    Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'superIndex'])->name('activity.index');
+    Route::get('/reports/pdf', [PdfController::class, 'platformReport'])->name('reports.pdf');
+    Route::get('/activity', [ActivityController::class, 'superIndex'])->name('activity.index');
     Route::get('/settings', [SuperAdminPageController::class, 'settings'])->name('settings.index');
-    Route::post('/settings', [\App\Http\Controllers\SuperAdmin\SettingController::class, 'update'])->name('settings.update');
-    Route::post('/settings/test-email', [\App\Http\Controllers\SuperAdmin\SettingController::class, 'testEmail'])->name('settings.testEmail');
+    Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
+    Route::post('/settings/test-email', [SettingController::class, 'testEmail'])->name('settings.testEmail');
 
     /*
      * واتساب — الرقم المشترك وأذونات المتاجر.
@@ -224,44 +288,44 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
      * بإنسان. ومدير المنصّة يكتب العنوان ولا يختمه: الختم لا يضعه إلا رمزٌ
      * عاد من الصندوق.
      */
-    Route::post('/businesses/{id}/recovery-email', [\App\Http\Controllers\SuperAdmin\RecoveryController::class, 'setEmail'])->name('businesses.recovery.set');
-    Route::post('/businesses/{id}/recovery-email/resend', [\App\Http\Controllers\SuperAdmin\RecoveryController::class, 'resend'])->name('businesses.recovery.resend');
-    Route::delete('/businesses/{id}/recovery-email', [\App\Http\Controllers\SuperAdmin\RecoveryController::class, 'clear'])->name('businesses.recovery.clear');
+    Route::post('/businesses/{id}/recovery-email', [RecoveryController::class, 'setEmail'])->name('businesses.recovery.set');
+    Route::post('/businesses/{id}/recovery-email/resend', [RecoveryController::class, 'resend'])->name('businesses.recovery.resend');
+    Route::delete('/businesses/{id}/recovery-email', [RecoveryController::class, 'clear'])->name('businesses.recovery.clear');
 
-    Route::post('/whatsapp/shared', [\App\Http\Controllers\SuperAdmin\WhatsAppController::class, 'connectShared'])->name('whatsapp.shared.connect');
-    Route::delete('/whatsapp/shared', [\App\Http\Controllers\SuperAdmin\WhatsAppController::class, 'disconnectShared'])->name('whatsapp.shared.disconnect');
-    Route::put('/businesses/{id}/whatsapp', [\App\Http\Controllers\SuperAdmin\WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
+    Route::post('/whatsapp/shared', [WhatsAppController::class, 'connectShared'])->name('whatsapp.shared.connect');
+    Route::delete('/whatsapp/shared', [WhatsAppController::class, 'disconnectShared'])->name('whatsapp.shared.disconnect');
+    Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
 });
 
 /* ------------------------------- Admin ----------------------------- */
-Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business', 'panel', 'ability'])->group(function () {
-    Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'admin'])->name('dashboard');
-    Route::get('/dashboard/stats', [\App\Http\Controllers\DashboardController::class, 'adminStats'])->name('dashboard.stats');
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business', 'panel', 'ability', 'plan'])->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'admin'])->name('dashboard');
+    Route::get('/dashboard/stats', [DashboardController::class, 'adminStats'])->name('dashboard.stats');
 
     /*
      * لوحة التجهيز — قسمُها `preparation` يُشتقّ من اسم المسار.
      *
      * شاشةُ من يصنع الباقة لا من يحاسب عليها، فلا تتبع «المبيعات».
      */
-    Route::get('/preparation', [\App\Http\Controllers\Admin\PreparationController::class, 'index'])->name('preparation.index');
-    Route::post('/preparation/{number}/move', [\App\Http\Controllers\Admin\PreparationController::class, 'move'])->name('preparation.move');
+    Route::get('/preparation', [PreparationController::class, 'index'])->name('preparation.index');
+    Route::post('/preparation/{number}/move', [PreparationController::class, 'move'])->name('preparation.move');
 
     // الفروع
-    Route::get('/branches', [\App\Http\Controllers\Admin\PageController::class, 'branchesIndex'])->name('branches.index');
-    Route::get('/branch/{branch}/switch', [\App\Http\Controllers\Admin\BranchController::class, 'switch'])->name('branch.switch');
-    Route::post('/branches', [\App\Http\Controllers\Admin\BranchController::class, 'store'])->name('branches.store');
+    Route::get('/branches', [PageController::class, 'branchesIndex'])->name('branches.index');
+    Route::get('/branch/{branch}/switch', [BranchController::class, 'switch'])->name('branch.switch');
+    Route::post('/branches', [BranchController::class, 'store'])->name('branches.store');
 
     // أجهزة نقطة البيع — تسقط على صلاحية الإعدادات (انظر Permissions::ALIASES)
-    Route::get('/devices', [\App\Http\Controllers\Pos\DeviceController::class, 'index'])->name('devices.index');
-    Route::put('/devices/{id}', [\App\Http\Controllers\Pos\DeviceController::class, 'update'])->name('devices.update');
-    Route::delete('/devices/{id}', [\App\Http\Controllers\Pos\DeviceController::class, 'revoke'])->name('devices.revoke');
+    Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
+    Route::put('/devices/{id}', [DeviceController::class, 'update'])->name('devices.update');
+    Route::delete('/devices/{id}', [DeviceController::class, 'revoke'])->name('devices.revoke');
 
     // الأجهزة الملحقة بكل صندوق: طابعة، ماسح، درج… — تحت صلاحية الإعدادات
     // نفسها: من يبدّل طابعة صندوق يوجّه إيصالات فرعٍ إلى ورق فرعٍ آخر
-    Route::post('/devices/{device}/peripherals', [\App\Http\Controllers\Pos\PeripheralController::class, 'store'])->name('devices.peripherals.store');
-    Route::put('/devices/{device}/peripherals/{id}', [\App\Http\Controllers\Pos\PeripheralController::class, 'update'])->name('devices.peripherals.update');
-    Route::delete('/devices/{device}/peripherals/{id}', [\App\Http\Controllers\Pos\PeripheralController::class, 'destroy'])->name('devices.peripherals.destroy');
-    Route::delete('/branches/{id}', [\App\Http\Controllers\Admin\BranchController::class, 'destroy'])->name('branches.destroy');
+    Route::post('/devices/{device}/peripherals', [PeripheralController::class, 'store'])->name('devices.peripherals.store');
+    Route::put('/devices/{device}/peripherals/{id}', [PeripheralController::class, 'update'])->name('devices.peripherals.update');
+    Route::delete('/devices/{device}/peripherals/{id}', [PeripheralController::class, 'destroy'])->name('devices.peripherals.destroy');
+    Route::delete('/branches/{id}', [BranchController::class, 'destroy'])->name('branches.destroy');
     /*
      * التراجع تحت صلاحية القسم الذي حُذف منه، لا تحت «الإعدادات».
      *
@@ -269,36 +333,36 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * ضغط الحذف: من يملك حذف الفروع ولا يملك الإعدادات يرى الزرّ ويُردّ ٤٠٣.
      * ومن يُؤذن له بالحذف يُؤذن له بردّه — الردّ أقلّ خطرًا من الحذف نفسه.
      */
-    Route::post('/branches/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
+    Route::post('/branches/{id}/restore', [TrashController::class, 'restore'])
         ->defaults('type', 'branch')->name('branches.restore');
 
     // البحث الموحّد
-    Route::get('/search', [\App\Http\Controllers\SearchController::class, 'admin'])->name('search');
+    Route::get('/search', [SearchController::class, 'admin'])->name('search');
 
     // المنتجات
     Route::get('/products', [ProductController::class, 'index'])->name('products.index');
-    Route::get('/products/create', [\App\Http\Controllers\Admin\PageController::class, 'productsCreate'])->name('products.create');
+    Route::get('/products/create', [PageController::class, 'productsCreate'])->name('products.create');
     // يجب أن يسبق products/{id} وإلا التقطه كمعرّف
-    Route::get('/products/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'productsXlsx'])->name('products.xlsx');
-    Route::get('/products/export-pdf', [\App\Http\Controllers\PdfController::class, 'productsReport'])->name('products.exportPdf');
+    Route::get('/products/xlsx', [ReportExportController::class, 'productsXlsx'])->name('products.xlsx');
+    Route::get('/products/export-pdf', [PdfController::class, 'productsReport'])->name('products.exportPdf');
     // تغذية كميات للوحة — بإجمالي الشركة كما تعرضه جداولها، لا برصيد فرع
     Route::get('/products/stock-feed', [ProductController::class, 'stockFeed'])->name('products.stockFeed');
     // تصدير/استيراد المنتجات — بيانات قابلة للدوران، لنقل التاجر من نظامه السابق
-    Route::get('/products/export/xlsx', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'exportXlsx'])->name('products.export.xlsx');
-    Route::get('/products/export/pdf', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'exportPdf'])->name('products.export.pdf');
-    Route::post('/products/import', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'upload'])->name('products.import.upload');
-    Route::get('/products/import/preview', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'preview'])->name('products.import.preview');
-    Route::post('/products/import/remap', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'remap'])->name('products.import.remap');
-    Route::post('/products/import/undo', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'undo'])->name('products.import.undo');
-    Route::post('/products/import/confirm', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'confirm'])->name('products.import.confirm');
-    Route::post('/products/import/cancel', [\App\Http\Controllers\Admin\ProductImportExportController::class, 'cancel'])->name('products.import.cancel');
+    Route::get('/products/export/xlsx', [ProductImportExportController::class, 'exportXlsx'])->name('products.export.xlsx');
+    Route::get('/products/export/pdf', [ProductImportExportController::class, 'exportPdf'])->name('products.export.pdf');
+    Route::post('/products/import', [ProductImportExportController::class, 'upload'])->name('products.import.upload');
+    Route::get('/products/import/preview', [ProductImportExportController::class, 'preview'])->name('products.import.preview');
+    Route::post('/products/import/remap', [ProductImportExportController::class, 'remap'])->name('products.import.remap');
+    Route::post('/products/import/undo', [ProductImportExportController::class, 'undo'])->name('products.import.undo');
+    Route::post('/products/import/confirm', [ProductImportExportController::class, 'confirm'])->name('products.import.confirm');
+    Route::post('/products/import/cancel', [ProductImportExportController::class, 'cancel'])->name('products.import.cancel');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     // الإجراء الجماعي قبل نمط المعرّف حتى لا يبتلعه
     Route::post('/products/bulk', [ProductController::class, 'bulk'])->name('products.bulk');
-    Route::get('/products/{id}', [\App\Http\Controllers\Admin\PageController::class, 'productsShow'])->name('products.show');
+    Route::get('/products/{id}', [PageController::class, 'productsShow'])->name('products.show');
     Route::post('/products/{id}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
     Route::patch('/products/{id}/quick', [ProductController::class, 'quickUpdate'])->name('products.quick');
-    Route::get('/products/{id}/edit', [\App\Http\Controllers\Admin\PageController::class, 'productsEdit'])->name('products.edit');
+    Route::get('/products/{id}/edit', [PageController::class, 'productsEdit'])->name('products.edit');
     Route::put('/products/{id}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
 
@@ -315,24 +379,24 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * تهيئة نوع النشاط أو من استيراد ملفّ. وتُوضع تحت `/products/` كي
      * يقيسها الحارس بصلاحية «المنتجات» بلا صلاحيةٍ جديدة.
      */
-    Route::post('/products/categories', [\App\Http\Controllers\Admin\CatalogQuickAddController::class, 'storeCategory'])->name('products.categories.store');
-    Route::post('/products/addons', [\App\Http\Controllers\Admin\CatalogQuickAddController::class, 'storeAddon'])->name('products.addons.store');
+    Route::post('/products/categories', [CatalogQuickAddController::class, 'storeCategory'])->name('products.categories.store');
+    Route::post('/products/addons', [CatalogQuickAddController::class, 'storeAddon'])->name('products.addons.store');
     // تعديل إضافةٍ قائمة — سعرها ومداها وما تأكله من الرفّ. ويسبق مسار
     // «products/{id}/addons» فلا يبتلعه: هذا معرّف إضافةٍ لا معرّف منتج
-    Route::put('/products/addons/{addon}', [\App\Http\Controllers\Admin\CatalogQuickAddController::class, 'updateAddon'])->name('products.addons.update');
+    Route::put('/products/addons/{addon}', [CatalogQuickAddController::class, 'updateAddon'])->name('products.addons.update');
 
-    Route::post('/products/{id}/variants', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'storeVariant'])->name('products.variants.store');
-    Route::put('/products/{id}/variants/{variant}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'updateVariant'])->name('products.variants.update');
-    Route::delete('/products/{id}/variants/{variant}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'destroyVariant'])->name('products.variants.destroy');
-    Route::post('/products/{id}/recipe', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'storeRecipeItem'])->name('products.recipe.store');
-    Route::put('/products/{id}/recipe/{item}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'updateRecipeItem'])->name('products.recipe.update');
-    Route::delete('/products/{id}/recipe/{item}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'destroyRecipeItem'])->name('products.recipe.destroy');
-    Route::put('/products/{id}/addons', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'syncAddons'])->name('products.addons.sync');
-    Route::delete('/products/{id}/addons/{addon}', [\App\Http\Controllers\Admin\ProductCompositionController::class, 'destroyAddon'])->name('products.addons.destroy');
-    Route::post('/products/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
+    Route::post('/products/{id}/variants', [ProductCompositionController::class, 'storeVariant'])->name('products.variants.store');
+    Route::put('/products/{id}/variants/{variant}', [ProductCompositionController::class, 'updateVariant'])->name('products.variants.update');
+    Route::delete('/products/{id}/variants/{variant}', [ProductCompositionController::class, 'destroyVariant'])->name('products.variants.destroy');
+    Route::post('/products/{id}/recipe', [ProductCompositionController::class, 'storeRecipeItem'])->name('products.recipe.store');
+    Route::put('/products/{id}/recipe/{item}', [ProductCompositionController::class, 'updateRecipeItem'])->name('products.recipe.update');
+    Route::delete('/products/{id}/recipe/{item}', [ProductCompositionController::class, 'destroyRecipeItem'])->name('products.recipe.destroy');
+    Route::put('/products/{id}/addons', [ProductCompositionController::class, 'syncAddons'])->name('products.addons.sync');
+    Route::delete('/products/{id}/addons/{addon}', [ProductCompositionController::class, 'destroyAddon'])->name('products.addons.destroy');
+    Route::post('/products/{id}/restore', [TrashController::class, 'restore'])
         ->defaults('type', 'product')->name('products.restore');
     // المحو النهائي يتبع صلاحية الحذف نفسها: من أخفاه يمحوه، ولا أحد سواه
-    Route::delete('/products/{id}/purge', [\App\Http\Controllers\Admin\TrashController::class, 'purge'])
+    Route::delete('/products/{id}/purge', [TrashController::class, 'purge'])
         ->defaults('type', 'product')->name('products.purge');
 
     // التصنيفات
@@ -340,51 +404,51 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // الإضافات
 
     // الطلبات
-    Route::get('/orders', [\App\Http\Controllers\Admin\OrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     // تصدير قائمة الطلبات (قبل /orders/{id} حتى لا يبتلعها نمط المعرّف)
-    Route::get('/orders/export-xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'ordersXlsx'])->name('orders.xlsx');
-    Route::get('/orders/export-pdf', [\App\Http\Controllers\PdfController::class, 'ordersReport'])->name('orders.exportPdf');
-    Route::get('/orders/{number}', [\App\Http\Controllers\Admin\PageController::class, 'ordersShow'])->name('orders.show');
+    Route::get('/orders/export-xlsx', [ReportExportController::class, 'ordersXlsx'])->name('orders.xlsx');
+    Route::get('/orders/export-pdf', [PdfController::class, 'ordersReport'])->name('orders.exportPdf');
+    Route::get('/orders/{number}', [PageController::class, 'ordersShow'])->name('orders.show');
     /*
      * تعديل بيانات التنفيذ ونقل الحالة — قسمُهما «المبيعات» يُشتقّ من الاسم.
      *
      * ومنفصلان عن تصحيح الفاتورة (Pos\OrderEditController): ذاك يُحرّك
      * المخزون والمال ويشترط سببًا، وهذا يُصحّح رقم هاتفٍ أو موعدًا.
      */
-    Route::put('/orders/{number}/details', [\App\Http\Controllers\Admin\OrderDetailController::class, 'update'])->name('orders.details.update');
-    Route::post('/orders/{number}/status', [\App\Http\Controllers\Admin\OrderDetailController::class, 'status'])->name('orders.status');
-    Route::get('/orders/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('orders.pdf');
+    Route::put('/orders/{number}/details', [OrderDetailController::class, 'update'])->name('orders.details.update');
+    Route::post('/orders/{number}/status', [OrderDetailController::class, 'status'])->name('orders.status');
+    Route::get('/orders/{number}/pdf', [PdfController::class, 'orderReceipt'])->name('orders.pdf');
 
     // العملات وأسعار الصرف
-    Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
+    Route::get('/currency/{code}/switch', [CurrencyController::class, 'switch'])->name('currency.switch');
 
     // العملاء
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
     // تصدير/استيراد العملاء (Excel/PDF + معاينة قبل التأكيد)
-    Route::get('/customers/export/xlsx', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'exportXlsx'])->name('customers.export.xlsx');
-    Route::get('/customers/export/pdf', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'exportPdf'])->name('customers.export.pdf');
-    Route::post('/customers/import', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'upload'])->name('customers.import.upload');
-    Route::get('/customers/import/preview', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'preview'])->name('customers.import.preview');
-    Route::post('/customers/import/confirm', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'confirm'])->name('customers.import.confirm');
-    Route::post('/customers/import/cancel', [\App\Http\Controllers\Admin\CustomerImportExportController::class, 'cancel'])->name('customers.import.cancel');
+    Route::get('/customers/export/xlsx', [CustomerImportExportController::class, 'exportXlsx'])->name('customers.export.xlsx');
+    Route::get('/customers/export/pdf', [CustomerImportExportController::class, 'exportPdf'])->name('customers.export.pdf');
+    Route::post('/customers/import', [CustomerImportExportController::class, 'upload'])->name('customers.import.upload');
+    Route::get('/customers/import/preview', [CustomerImportExportController::class, 'preview'])->name('customers.import.preview');
+    Route::post('/customers/import/confirm', [CustomerImportExportController::class, 'confirm'])->name('customers.import.confirm');
+    Route::post('/customers/import/cancel', [CustomerImportExportController::class, 'cancel'])->name('customers.import.cancel');
     Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
     Route::put('/customers/{id}', [CustomerController::class, 'update'])->name('customers.update');
     Route::delete('/customers/{id}', [CustomerController::class, 'destroy'])->name('customers.destroy');
-    Route::post('/customers/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
+    Route::post('/customers/{id}/restore', [TrashController::class, 'restore'])
         ->defaults('type', 'customer')->name('customers.restore');
-    Route::delete('/customers/{id}/purge', [\App\Http\Controllers\Admin\TrashController::class, 'purge'])
+    Route::delete('/customers/{id}/purge', [TrashController::class, 'purge'])
         ->defaults('type', 'customer')->name('customers.purge');
     Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');
     Route::post('/customers/{id}/addresses', [CustomerController::class, 'saveAddress'])->name('customers.addresses.save');
     Route::post('/customers/{id}/addresses/{addressId}/default', [CustomerController::class, 'defaultAddress'])->name('customers.addresses.default');
     Route::delete('/customers/{id}/addresses/{addressId}', [CustomerController::class, 'deleteAddress'])->name('customers.addresses.delete');
-    Route::get('/customers/{id}/statement', [\App\Http\Controllers\PdfController::class, 'customerStatement'])->name('customers.statement');
-    Route::get('/customers/{id}', [\App\Http\Controllers\Admin\PageController::class, 'customersShow'])->name('customers.show');
+    Route::get('/customers/{id}/statement', [PdfController::class, 'customerStatement'])->name('customers.statement');
+    Route::get('/customers/{id}', [PageController::class, 'customersShow'])->name('customers.show');
 
     // الموظفون
-    Route::get('/employees', [\App\Http\Controllers\Admin\PageController::class, 'employeesIndex'])->name('employees.index');
-    Route::get('/employees/create', [\App\Http\Controllers\Admin\PageController::class, 'employeesCreate'])->name('employees.create');
+    Route::get('/employees', [PageController::class, 'employeesIndex'])->name('employees.index');
+    Route::get('/employees/create', [PageController::class, 'employeesCreate'])->name('employees.create');
 
     /*
      * الرواتب — مسيرةٌ تُعتمد ثمّ تُصرف.
@@ -393,31 +457,31 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * شهرٍ اعتُمد ولم يُصرف التزامٌ قائم، ودمجُهما يُخفيه حتى يخرج المال
      * فيُقرأ الشهر ربحًا وهو مدين برواتبه.
      */
-    Route::get('/payroll', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'index'])->name('payroll.index');
-    Route::post('/payroll', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'store'])->name('payroll.store');
-    Route::post('/payroll/{id}/approve', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'approve'])->name('payroll.approve');
-    Route::delete('/payroll/{id}', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'destroy'])->name('payroll.destroy');
-    Route::put('/payroll/lines/{id}', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'updateLine'])->name('payroll.lines.update');
-    Route::delete('/payroll/lines/{id}', [\App\Http\Controllers\Admin\Payroll\PayrollRunController::class, 'destroyLine'])->name('payroll.lines.destroy');
-    Route::get('/payroll/payments', [\App\Http\Controllers\Admin\Payroll\PayrollPaymentController::class, 'index'])->name('payroll.payments');
-    Route::post('/payroll/{id}/pay', [\App\Http\Controllers\Admin\Payroll\PayrollPaymentController::class, 'pay'])->name('payroll.pay');
+    Route::get('/payroll', [PayrollRunController::class, 'index'])->name('payroll.index');
+    Route::post('/payroll', [PayrollRunController::class, 'store'])->name('payroll.store');
+    Route::post('/payroll/{id}/approve', [PayrollRunController::class, 'approve'])->name('payroll.approve');
+    Route::delete('/payroll/{id}', [PayrollRunController::class, 'destroy'])->name('payroll.destroy');
+    Route::put('/payroll/lines/{id}', [PayrollRunController::class, 'updateLine'])->name('payroll.lines.update');
+    Route::delete('/payroll/lines/{id}', [PayrollRunController::class, 'destroyLine'])->name('payroll.lines.destroy');
+    Route::get('/payroll/payments', [PayrollPaymentController::class, 'index'])->name('payroll.payments');
+    Route::post('/payroll/{id}/pay', [PayrollPaymentController::class, 'pay'])->name('payroll.pay');
 
     // الوظائف
-    Route::post('/job-titles', [\App\Http\Controllers\Admin\JobTitleController::class, 'store'])->name('jobTitles.store');
-    Route::put('/job-titles/{id}', [\App\Http\Controllers\Admin\JobTitleController::class, 'update'])->name('jobTitles.update');
-    Route::delete('/job-titles/{id}', [\App\Http\Controllers\Admin\JobTitleController::class, 'destroy'])->name('jobTitles.destroy');
+    Route::post('/job-titles', [JobTitleController::class, 'store'])->name('jobTitles.store');
+    Route::put('/job-titles/{id}', [JobTitleController::class, 'update'])->name('jobTitles.update');
+    Route::delete('/job-titles/{id}', [JobTitleController::class, 'destroy'])->name('jobTitles.destroy');
     Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
     Route::get('/employees/{id}/edit', [EmployeeController::class, 'edit'])->name('employees.edit');
     Route::put('/employees/{id}', [EmployeeController::class, 'update'])->name('employees.update');
     Route::post('/employees/{id}/toggle', [EmployeeController::class, 'toggleStatus'])->name('employees.toggle');
     Route::post('/employees/{id}/reset-password', [EmployeeController::class, 'resetPassword'])->name('employees.resetPassword');
-    Route::get('/employees/{id}', [\App\Http\Controllers\Admin\PageController::class, 'employeesShow'])->name('employees.show');
+    Route::get('/employees/{id}', [PageController::class, 'employeesShow'])->name('employees.show');
 
     // المخزون
     // نظرة عامة على المخزون — لا تسبق inventory.index في المطابقة لأن مسارها أخصّ
-    Route::get('/inventory', [\App\Http\Controllers\Admin\PageController::class, 'inventoryIndex'])->name('inventory.index');
-    Route::get('/inventory/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'inventoryXlsx'])->name('inventory.xlsx');
-    Route::get('/inventory/export-pdf', [\App\Http\Controllers\PdfController::class, 'inventoryReport'])->name('inventory.exportPdf');
+    Route::get('/inventory', [PageController::class, 'inventoryIndex'])->name('inventory.index');
+    Route::get('/inventory/xlsx', [ReportExportController::class, 'inventoryXlsx'])->name('inventory.xlsx');
+    Route::get('/inventory/export-pdf', [PdfController::class, 'inventoryReport'])->name('inventory.exportPdf');
     Route::get('/inventory/stocktake', [InventoryController::class, 'stocktake'])->name('inventory.stocktake');
     Route::post('/inventory/stocktake', [InventoryController::class, 'applyStocktake'])->name('inventory.stocktake.apply');
     // التحويل بين الفروع — حركة واحدة بدل «صرف» ثم «إضافة»
@@ -430,8 +494,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * ما تلف عنده. والإشعار مستند حركةٍ لا مال — ولا يمسّ المخزون إن كان
      * مربوطًا بطلبٍ أنقصه يوم البيع.
      */
-    Route::get('/inventory/adjustments', [\App\Http\Controllers\Admin\Inventory\StockAdjustmentController::class, 'index'])->name('inventory.adjustments');
-    Route::post('/inventory/adjustments', [\App\Http\Controllers\Admin\Inventory\StockAdjustmentController::class, 'store'])->name('inventory.adjustments.store');
+    Route::get('/inventory/adjustments', [StockAdjustmentController::class, 'index'])->name('inventory.adjustments');
+    Route::post('/inventory/adjustments', [StockAdjustmentController::class, 'store'])->name('inventory.adjustments.store');
     /*
      * إشعارات الاستلام — قراءةٌ فقط.
      *
@@ -439,21 +503,21 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * واقعةٍ جرت. ونموذجٌ يُنشئ إشعارًا بلا استلامٍ يجعل الورقة تقول ما لم
      * يقله المخزون.
      */
-    Route::get('/inventory/receipts', [\App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController::class, 'index'])->name('inventory.receipts');
+    Route::get('/inventory/receipts', [GoodsReceiptNoteController::class, 'index'])->name('inventory.receipts');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
     // المورّدون
-    Route::get('/suppliers', [\App\Http\Controllers\Admin\PageController::class, 'suppliersIndex'])->name('suppliers.index');
+    Route::get('/suppliers', [PageController::class, 'suppliersIndex'])->name('suppliers.index');
     // التصدير قبل {id}: لو جاء بعده لابتلع «export» مسارَ المورّد الواحد
-    Route::get('/suppliers/export/xlsx', [\App\Http\Controllers\Admin\SupplierExportController::class, 'xlsx'])->name('suppliers.export.xlsx');
-    Route::get('/suppliers/export/pdf', [\App\Http\Controllers\Admin\SupplierExportController::class, 'pdf'])->name('suppliers.export.pdf');
-    Route::post('/suppliers/import', [\App\Http\Controllers\Admin\SupplierExportController::class, 'upload'])->name('suppliers.import.upload');
-    Route::get('/suppliers/import/preview', [\App\Http\Controllers\Admin\SupplierExportController::class, 'preview'])->name('suppliers.import.preview');
-    Route::post('/suppliers/import/confirm', [\App\Http\Controllers\Admin\SupplierExportController::class, 'confirm'])->name('suppliers.import.confirm');
-    Route::post('/suppliers/import/cancel', [\App\Http\Controllers\Admin\SupplierExportController::class, 'cancel'])->name('suppliers.import.cancel');
-    Route::post('/suppliers', [\App\Http\Controllers\Admin\SupplierController::class, 'store'])->name('suppliers.store');
-    Route::put('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'update'])->name('suppliers.update');
-    Route::delete('/suppliers/{id}', [\App\Http\Controllers\Admin\SupplierController::class, 'destroy'])->name('suppliers.destroy');
+    Route::get('/suppliers/export/xlsx', [SupplierExportController::class, 'xlsx'])->name('suppliers.export.xlsx');
+    Route::get('/suppliers/export/pdf', [SupplierExportController::class, 'pdf'])->name('suppliers.export.pdf');
+    Route::post('/suppliers/import', [SupplierExportController::class, 'upload'])->name('suppliers.import.upload');
+    Route::get('/suppliers/import/preview', [SupplierExportController::class, 'preview'])->name('suppliers.import.preview');
+    Route::post('/suppliers/import/confirm', [SupplierExportController::class, 'confirm'])->name('suppliers.import.confirm');
+    Route::post('/suppliers/import/cancel', [SupplierExportController::class, 'cancel'])->name('suppliers.import.cancel');
+    Route::post('/suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
+    Route::put('/suppliers/{id}', [SupplierController::class, 'update'])->name('suppliers.update');
+    Route::delete('/suppliers/{id}', [SupplierController::class, 'destroy'])->name('suppliers.destroy');
 
     /*
      * المشتريات — ثلاث شاشات على بابين.
@@ -461,17 +525,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * القائمة تجمع ما اشتُري من البابين معًا (أمرٌ استُلم، وسندٌ بلا أمر)،
      * والسندات تحمل ما على المتجر لمورّديه، والأوامر تحمل ما طُلب ولم يصل.
      */
-    Route::get('/purchases', [\App\Http\Controllers\Admin\Purchasing\PurchaseRegisterController::class, 'index'])->name('purchases.index');
-    Route::get('/purchases/invoices', [\App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController::class, 'index'])->name('purchases.invoices');
-    Route::post('/purchases/invoices', [\App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController::class, 'store'])->name('purchases.invoices.store');
-    Route::post('/purchases/invoices/{id}/pay', [\App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController::class, 'pay'])->name('purchases.invoices.pay');
-    Route::delete('/purchases/invoices/{id}', [\App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController::class, 'destroy'])->name('purchases.invoices.destroy');
-    Route::get('/purchases/orders', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'index'])->name('purchases.orders');
-    Route::get('/purchases/create', [\App\Http\Controllers\Admin\PageController::class, 'purchasesCreate'])->name('purchases.create');
-    Route::post('/purchases', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'store'])->name('purchases.store');
-    Route::post('/purchases/{id}/receipt', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');
-    Route::post('/purchases/{id}/receive', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'receive'])->name('purchases.receive');
-    Route::delete('/purchases/{id}', [\App\Http\Controllers\Admin\PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
+    Route::get('/purchases', [PurchaseRegisterController::class, 'index'])->name('purchases.index');
+    Route::get('/purchases/invoices', [SupplierInvoiceController::class, 'index'])->name('purchases.invoices');
+    Route::post('/purchases/invoices', [SupplierInvoiceController::class, 'store'])->name('purchases.invoices.store');
+    Route::post('/purchases/invoices/{id}/pay', [SupplierInvoiceController::class, 'pay'])->name('purchases.invoices.pay');
+    Route::delete('/purchases/invoices/{id}', [SupplierInvoiceController::class, 'destroy'])->name('purchases.invoices.destroy');
+    Route::get('/purchases/orders', [PurchaseOrderController::class, 'index'])->name('purchases.orders');
+    Route::get('/purchases/create', [PageController::class, 'purchasesCreate'])->name('purchases.create');
+    Route::post('/purchases', [PurchaseOrderController::class, 'store'])->name('purchases.store');
+    Route::post('/purchases/{id}/receipt', [PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');
+    Route::post('/purchases/{id}/receive', [PurchaseOrderController::class, 'receive'])->name('purchases.receive');
+    Route::delete('/purchases/{id}', [PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
 
     // تحليلات الربحية
 
@@ -490,9 +554,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * `website` في `MarketingSettings` — الاسم يصف البيانات لا الشاشة.
      */
     Route::get('/marketing/website', fn () => redirect()->route('admin.settings.index', ['section' => 'domain']))->name('marketing.website');
-    Route::post('/marketing/website', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
-    Route::get('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'loyalty'])->name('marketing.loyalty');
-    Route::post('/marketing/loyalty', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveLoyalty'])->name('marketing.loyalty.save');
+    Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
+    Route::get('/marketing/loyalty', [MarketingController::class, 'loyalty'])->name('marketing.loyalty');
+    Route::post('/marketing/loyalty', [MarketingController::class, 'saveLoyalty'])->name('marketing.loyalty.save');
     /*
      * واتساب — ما يملكه التاجر: وضع الإرسال وربط رقمه.
      *
@@ -503,28 +567,26 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * بريد الاستعادة — يضبطه صاحب الحساب وهو داخل، قبل أن يحتاج إليه.
      * ويُشترط معه كلمةُ المرور الحالية: جلسةٌ مفتوحة وحدها لا تكفي.
      */
-    Route::post('/settings/recovery-email', [\App\Http\Controllers\Admin\RecoveryEmailController::class, 'start'])->name('settings.recovery.start');
-    Route::post('/settings/recovery-email/confirm', [\App\Http\Controllers\Admin\RecoveryEmailController::class, 'confirm'])->name('settings.recovery.confirm');
-    Route::post('/marketing/whatsapp/mode', [\App\Http\Controllers\Admin\WhatsAppController::class, 'mode'])->name('marketing.whatsapp.mode');
-    Route::post('/marketing/whatsapp/connect', [\App\Http\Controllers\Admin\WhatsAppController::class, 'connect'])->name('marketing.whatsapp.connect');
-    Route::delete('/marketing/whatsapp/connect', [\App\Http\Controllers\Admin\WhatsAppController::class, 'disconnect'])->name('marketing.whatsapp.disconnect');
-    Route::get('/marketing/reviews', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'index'])->name('marketing.reviews');
-    Route::post('/marketing/reviews', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'store'])->name('marketing.reviews.store');
-    Route::post('/marketing/reviews/{id}/status', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'status'])->name('marketing.reviews.status');
-    Route::post('/marketing/reviews/{id}/reply', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'reply'])->name('marketing.reviews.reply');
-    Route::delete('/marketing/reviews/{id}', [\App\Http\Controllers\Admin\Marketing\ReviewController::class, 'destroy'])->name('marketing.reviews.destroy');
-    Route::get('/marketing/coupons', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'coupons'])->name('marketing.coupons');
-    Route::get('/marketing/seo', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'seo'])->name('marketing.seo');
-    Route::post('/marketing/seo', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveSeo'])->name('marketing.seo.save');
-    Route::get('/marketing/whatsapp', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'whatsapp'])->name('marketing.whatsapp');
-    Route::post('/marketing/whatsapp', [\App\Http\Controllers\Admin\Marketing\MarketingController::class, 'saveWhatsapp'])->name('marketing.whatsapp.save');
+    Route::post('/settings/recovery-email', [RecoveryEmailController::class, 'start'])->name('settings.recovery.start');
+    Route::post('/settings/recovery-email/confirm', [RecoveryEmailController::class, 'confirm'])->name('settings.recovery.confirm');
+    Route::post('/marketing/whatsapp/mode', [App\Http\Controllers\Admin\WhatsAppController::class, 'mode'])->name('marketing.whatsapp.mode');
+    Route::post('/marketing/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'connect'])->name('marketing.whatsapp.connect');
+    Route::delete('/marketing/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'disconnect'])->name('marketing.whatsapp.disconnect');
+    Route::get('/marketing/reviews', [ReviewController::class, 'index'])->name('marketing.reviews');
+    Route::post('/marketing/reviews', [ReviewController::class, 'store'])->name('marketing.reviews.store');
+    Route::post('/marketing/reviews/{id}/status', [ReviewController::class, 'status'])->name('marketing.reviews.status');
+    Route::post('/marketing/reviews/{id}/reply', [ReviewController::class, 'reply'])->name('marketing.reviews.reply');
+    Route::delete('/marketing/reviews/{id}', [ReviewController::class, 'destroy'])->name('marketing.reviews.destroy');
+    Route::get('/marketing/coupons', [MarketingController::class, 'coupons'])->name('marketing.coupons');
+    Route::get('/marketing/whatsapp', [MarketingController::class, 'whatsapp'])->name('marketing.whatsapp');
+    Route::post('/marketing/whatsapp', [MarketingController::class, 'saveWhatsapp'])->name('marketing.whatsapp.save');
 
-    Route::post('/coupons', [\App\Http\Controllers\Admin\CouponController::class, 'store'])->name('coupons.store');
-    Route::post('/coupons/{id}/toggle', [\App\Http\Controllers\Admin\CouponController::class, 'toggle'])->name('coupons.toggle');
-    Route::delete('/coupons/{id}', [\App\Http\Controllers\Admin\CouponController::class, 'destroy'])->name('coupons.destroy');
+    Route::post('/coupons', [CouponController::class, 'store'])->name('coupons.store');
+    Route::post('/coupons/{id}/toggle', [CouponController::class, 'toggle'])->name('coupons.toggle');
+    Route::delete('/coupons/{id}', [CouponController::class, 'destroy'])->name('coupons.destroy');
 
     // ضريبة القيمة المضافة
-    Route::get('/orders/{number}/tax-invoice', [\App\Http\Controllers\PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
+    Route::get('/orders/{number}/tax-invoice', [PdfController::class, 'taxInvoice'])->name('orders.taxInvoice');
 
     /*
      * المالية — خمس شاشات على دفترٍ واحد.
@@ -533,77 +595,78 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * والأصول الثابتة. وكلّها تكتب من باب `Ledger::post` وحده، فلا يدخل
      * الدفترَ قيدٌ لم يُفحص توازنه.
      */
-    Route::get('/finance', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'index'])->name('finance.index');
-    Route::post('/finance/banks', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'store'])->name('finance.banks.store');
-    Route::put('/finance/banks/{id}', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'update'])->name('finance.banks.update');
-    Route::post('/finance/banks/{id}/primary', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'primary'])->name('finance.banks.primary');
-    Route::delete('/finance/banks/{id}', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'destroy'])->name('finance.banks.destroy');
+    Route::get('/finance', [BankAccountController::class, 'index'])->name('finance.index');
+    Route::post('/finance/banks', [BankAccountController::class, 'store'])->name('finance.banks.store');
+    Route::put('/finance/banks/{id}', [BankAccountController::class, 'update'])->name('finance.banks.update');
+    Route::post('/finance/banks/{id}/primary', [BankAccountController::class, 'primary'])->name('finance.banks.primary');
+    Route::delete('/finance/banks/{id}', [BankAccountController::class, 'destroy'])->name('finance.banks.destroy');
     // كشف الحساب البنكي والمطابقة — بلا معرّف: الحساب الرئيسيّ
-    Route::get('/finance/statement/{id?}', [\App\Http\Controllers\Admin\Finance\BankAccountController::class, 'statement'])->name('finance.statement');
+    Route::get('/finance/statement/{id?}', [BankAccountController::class, 'statement'])->name('finance.statement');
 
     // شجرة الحسابات
-    Route::get('/finance/chart', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'index'])->name('finance.chart');
-    Route::post('/finance/chart', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'store'])->name('finance.chart.store');
-    Route::put('/finance/chart/{id}', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'update'])->name('finance.chart.update');
-    Route::post('/finance/chart/{id}/toggle', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'toggle'])->name('finance.chart.toggle');
-    Route::delete('/finance/chart/{id}', [\App\Http\Controllers\Admin\Finance\ChartController::class, 'destroy'])->name('finance.chart.destroy');
+    Route::get('/finance/chart', [ChartController::class, 'index'])->name('finance.chart');
+    Route::post('/finance/chart', [ChartController::class, 'store'])->name('finance.chart.store');
+    Route::put('/finance/chart/{id}', [ChartController::class, 'update'])->name('finance.chart.update');
+    Route::post('/finance/chart/{id}/toggle', [ChartController::class, 'toggle'])->name('finance.chart.toggle');
+    Route::delete('/finance/chart/{id}', [ChartController::class, 'destroy'])->name('finance.chart.destroy');
 
     // القيود اليومية
-    Route::get('/finance/journal', [\App\Http\Controllers\Admin\Finance\JournalController::class, 'index'])->name('finance.journal');
-    Route::post('/finance/journal', [\App\Http\Controllers\Admin\Finance\JournalController::class, 'store'])->name('finance.journal.store');
+    Route::get('/finance/journal', [JournalController::class, 'index'])->name('finance.journal');
+    Route::post('/finance/journal', [JournalController::class, 'store'])->name('finance.journal.store');
 
     // الأصول الثابتة وإهلاكها
-    Route::get('/finance/assets', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'index'])->name('finance.assets');
-    Route::post('/finance/assets', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'store'])->name('finance.assets.store');
-    Route::post('/finance/assets/depreciate', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'depreciate'])->name('finance.assets.depreciate');
-    Route::post('/finance/assets/{id}/dispose', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'dispose'])->name('finance.assets.dispose');
-    Route::delete('/finance/assets/{id}', [\App\Http\Controllers\Admin\Finance\FixedAssetController::class, 'destroy'])->name('finance.assets.destroy');
+    Route::get('/finance/assets', [FixedAssetController::class, 'index'])->name('finance.assets');
+    Route::post('/finance/assets', [FixedAssetController::class, 'store'])->name('finance.assets.store');
+    Route::post('/finance/assets/depreciate', [FixedAssetController::class, 'depreciate'])->name('finance.assets.depreciate');
+    Route::post('/finance/assets/{id}/dispose', [FixedAssetController::class, 'dispose'])->name('finance.assets.dispose');
+    Route::delete('/finance/assets/{id}', [FixedAssetController::class, 'destroy'])->name('finance.assets.destroy');
     // الورديات المُقفلة وفروقها — يقرؤها من يملك «المالية» (sectionFromRoute)
     // تقرير إقفال الوردية (Z) — على ورق الإيصال، يُوقَّع عند تسليم الدرج
     // إقفال وردية نسيها الكاشير — بلا عدّ، وفرقُها يبقى مجهولًا
-    Route::post('/bank/import', [\App\Http\Controllers\Admin\BankStatementController::class, 'import'])->name('bank.import');
-    Route::post('/bank/rematch', [\App\Http\Controllers\Admin\BankStatementController::class, 'rematch'])->name('bank.rematch');
-    Route::delete('/bank/clear', [\App\Http\Controllers\Admin\BankStatementController::class, 'clear'])->name('bank.clear');
-    Route::get('/finance/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'financeXlsx'])->name('finance.xlsx');
-    Route::get('/finance/pdf', [\App\Http\Controllers\PdfController::class, 'financeReport'])->name('finance.pdf');
+    Route::post('/bank/import', [BankStatementController::class, 'import'])->name('bank.import');
+    Route::post('/bank/rematch', [BankStatementController::class, 'rematch'])->name('bank.rematch');
+    Route::delete('/bank/clear', [BankStatementController::class, 'clear'])->name('bank.clear');
+    Route::get('/finance/xlsx', [ReportExportController::class, 'financeXlsx'])->name('finance.xlsx');
+    Route::get('/finance/pdf', [PdfController::class, 'financeReport'])->name('finance.pdf');
     Route::post('/finance/transactions', [FinanceController::class, 'store'])->name('finance.store');
     Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
-    Route::get('/expenses/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'expensesXlsx'])->name('expenses.xlsx');
-    Route::get('/expenses/export-pdf', [\App\Http\Controllers\PdfController::class, 'expensesReport'])->name('expenses.exportPdf');
+    Route::get('/expenses/xlsx', [ReportExportController::class, 'expensesXlsx'])->name('expenses.xlsx');
+    Route::get('/expenses/export-pdf', [PdfController::class, 'expensesReport'])->name('expenses.exportPdf');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
     Route::post('/expenses/{id}/paid', [ExpenseController::class, 'markPaid'])->name('expenses.paid');
     Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
-    Route::post('/expenses/{id}/restore', [\App\Http\Controllers\Admin\TrashController::class, 'restore'])
+    Route::post('/expenses/{id}/restore', [TrashController::class, 'restore'])
         ->defaults('type', 'expense')->name('expenses.restore');
-    Route::delete('/expenses/{id}/purge', [\App\Http\Controllers\Admin\TrashController::class, 'purge'])
+    Route::delete('/expenses/{id}/purge', [TrashController::class, 'purge'])
         ->defaults('type', 'expense')->name('expenses.purge');
     // أنواع المصروفات
-    Route::post('/expense-types', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'store'])->name('expenseTypes.store');
-    Route::delete('/expense-types/{id}', [\App\Http\Controllers\Admin\ExpenseTypeController::class, 'destroy'])->name('expenseTypes.destroy');
+    Route::post('/expense-types', [ExpenseTypeController::class, 'store'])->name('expenseTypes.store');
+    Route::put('/expense-types/{id}', [ExpenseTypeController::class, 'update'])->name('expenseTypes.update');
+    Route::delete('/expense-types/{id}', [ExpenseTypeController::class, 'destroy'])->name('expenseTypes.destroy');
     // ملخّص المبيعات — كان محتوى /reports نفسه قبل أن يصير الفهرس بابها
 
     // تغذية التقارير (Polling) — صفحة تُترك مفتوحة لا يجوز أن تتجمّد على أرقام الصباح
 
-    Route::post('/goals', [\App\Http\Controllers\Admin\GoalController::class, 'update'])->name('goals.update');
+    Route::post('/goals', [GoalController::class, 'update'])->name('goals.update');
 
     // إشعارات المتصفح (Polling)
-    Route::get('/notifications/feed', [\App\Http\Controllers\NotificationController::class, 'feed'])->name('notifications.feed');
-    Route::post('/notifications/dismiss', [\App\Http\Controllers\NotificationController::class, 'dismiss'])->name('notifications.dismiss');
-    Route::post('/notifications/clear', [\App\Http\Controllers\NotificationController::class, 'clear'])->name('notifications.clear');
+    Route::get('/notifications/feed', [NotificationController::class, 'feed'])->name('notifications.feed');
+    Route::post('/notifications/dismiss', [NotificationController::class, 'dismiss'])->name('notifications.dismiss');
+    Route::post('/notifications/clear', [NotificationController::class, 'clear'])->name('notifications.clear');
 
     // النسخ الاحتياطي والاستعادة
-    Route::get('/backup/download', [\App\Http\Controllers\BackupController::class, 'download'])->name('backup.download');
-    Route::post('/backup/restore', [\App\Http\Controllers\BackupController::class, 'restore'])->name('backup.restore');
+    Route::get('/backup/download', [BackupController::class, 'download'])->name('backup.download');
+    Route::post('/backup/restore', [BackupController::class, 'restore'])->name('backup.restore');
 
     // تصدير CSV
-    Route::get('/export/reports', [\App\Http\Controllers\ExportController::class, 'reports'])->name('export.reports');
-    Route::get('/export/products', [\App\Http\Controllers\ExportController::class, 'products'])->name('export.products');
-    Route::get('/export/orders', [\App\Http\Controllers\ExportController::class, 'orders'])->name('export.orders');
-    Route::get('/export/customers', [\App\Http\Controllers\ExportController::class, 'customers'])->name('export.customers');
-    Route::get('/export/suppliers', [\App\Http\Controllers\ExportController::class, 'suppliers'])->name('export.suppliers');
-    Route::get('/export/transactions', [\App\Http\Controllers\ExportController::class, 'transactions'])->name('export.transactions');
-    Route::get('/export/expenses', [\App\Http\Controllers\ExportController::class, 'expenses'])->name('export.expenses');
-    Route::get('/export/inventory', [\App\Http\Controllers\ExportController::class, 'inventory'])->name('export.inventory');
+    Route::get('/export/reports', [ExportController::class, 'reports'])->name('export.reports');
+    Route::get('/export/products', [ExportController::class, 'products'])->name('export.products');
+    Route::get('/export/orders', [ExportController::class, 'orders'])->name('export.orders');
+    Route::get('/export/customers', [ExportController::class, 'customers'])->name('export.customers');
+    Route::get('/export/suppliers', [ExportController::class, 'suppliers'])->name('export.suppliers');
+    Route::get('/export/transactions', [ExportController::class, 'transactions'])->name('export.transactions');
+    Route::get('/export/expenses', [ExportController::class, 'expenses'])->name('export.expenses');
+    Route::get('/export/inventory', [ExportController::class, 'inventory'])->name('export.inventory');
 
     /*
      * التقارير — أُعيدت بعد حذفها في d34f32e.
@@ -611,15 +674,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * الفهرس بابٌ لا شاشةُ أرقام: يجمع ما تفرّق في اثنتي عشرة شاشة ويقود
      * إليها. وملخّص المبيعات وحده تقريرٌ قائمٌ بذاته تحته.
      */
-    Route::get('/reports', [\App\Http\Controllers\Admin\PageController::class, 'reportsIndex'])->name('reports.index');
-    Route::get('/reports/sales', [\App\Http\Controllers\Admin\PageController::class, 'reportsSales'])->name('reports.sales');
+    Route::get('/reports', [PageController::class, 'reportsIndex'])->name('reports.index');
+    Route::get('/reports/sales', [PageController::class, 'reportsSales'])->name('reports.sales');
     // بياناتٌ تُعرض في نافذة لا في صفحة — تقريرٌ من سطرين لا يستحقّ شاشة
-    Route::get('/reports/data/{key}', [\App\Http\Controllers\Admin\ReportDataController::class, 'show'])->name('reports.data');
+    Route::get('/reports/data/{key}', [ReportDataController::class, 'show'])->name('reports.data');
     // تغذية: صفحةٌ تُترك مفتوحة لا يجوز أن تتجمّد على أرقام الصباح
-    Route::get('/reports/feed', [\App\Http\Controllers\Admin\ReportFeedController::class, 'reports'])->name('reports.feed');
+    Route::get('/reports/feed', [ReportFeedController::class, 'reports'])->name('reports.feed');
     // والتصدير يتبع الفترة المعروضة — ملفٌّ يحمل غير ما على الشاشة يُقرأ خطأً
-    Route::get('/reports/xlsx', [\App\Http\Controllers\Admin\ReportExportController::class, 'xlsx'])->name('reports.xlsx');
-    Route::get('/reports/pdf', [\App\Http\Controllers\PdfController::class, 'salesReport'])->name('reports.pdf');
+    Route::get('/reports/xlsx', [ReportExportController::class, 'xlsx'])->name('reports.xlsx');
+    Route::get('/reports/pdf', [PdfController::class, 'salesReport'])->name('reports.pdf');
     /*
      * تحليلات الهالك.
      *
@@ -627,22 +690,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * التقارير — وهي قراءةٌ لا كتابة. ومن يملك المخزون يملك تسجيل الهالك
      * من شاشته، ومن يملك التقارير يقرأ أثره.
      */
-    Route::get('/reports/waste', [\App\Http\Controllers\Admin\WasteAnalyticsController::class, 'index'])->name('reports.waste');
+    Route::get('/reports/waste', [WasteAnalyticsController::class, 'index'])->name('reports.waste');
 
-    Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'adminIndex'])->name('activity.index');
-    Route::get('/settings', [\App\Http\Controllers\Admin\PageController::class, 'settingsIndex'])->name('settings.index');
-    Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
-    Route::post('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'update'])->name('settings.update');
+    Route::get('/activity', [ActivityController::class, 'adminIndex'])->name('activity.index');
+    Route::get('/settings', [PageController::class, 'settingsIndex'])->name('settings.index');
+    Route::post('/language', [LanguageController::class, 'update'])->name('language.update');
+    Route::post('/settings', [App\Http\Controllers\Admin\SettingController::class, 'update'])->name('settings.update');
     // الشعار وحده: ملفٌّ يحتاج multipart، وخلطُه بنموذج الإعدادات يُرسل كل مقبضٍ نصًّا
-    Route::post('/settings/logo', [\App\Http\Controllers\Admin\SettingController::class, 'logo'])->name('settings.logo');
+    Route::post('/settings/logo', [App\Http\Controllers\Admin\SettingController::class, 'logo'])->name('settings.logo');
 
     // المحذوفات — استعادة ما أذهبته ضغطة (انظر TrashController)
-    Route::get('/settings/trash', [\App\Http\Controllers\Admin\TrashController::class, 'index'])->name('settings.trash');
+    Route::get('/settings/trash', [TrashController::class, 'index'])->name('settings.trash');
 
     // تنبيهات يعرّفها صاحب النشاط — قواعد على مقاييس النظام، وتذكيرات بموعد
-    Route::post('/alerts', [\App\Http\Controllers\Admin\CustomAlertController::class, 'store'])->name('alerts.store');
-    Route::put('/alerts/{id}', [\App\Http\Controllers\Admin\CustomAlertController::class, 'update'])->name('alerts.update');
-    Route::delete('/alerts/{id}', [\App\Http\Controllers\Admin\CustomAlertController::class, 'destroy'])->name('alerts.destroy');
+    Route::post('/alerts', [CustomAlertController::class, 'store'])->name('alerts.store');
+    Route::put('/alerts/{id}', [CustomAlertController::class, 'update'])->name('alerts.update');
+    Route::delete('/alerts/{id}', [CustomAlertController::class, 'destroy'])->name('alerts.destroy');
 });
 
 /* -------------------------------- POS ------------------------------ */
@@ -654,38 +717,38 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
  * البيع» عن موظف فلا يتغيّر شيء — يكتب العنوان فتُفتح له.
  */
 Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'ability', 'pos.branch'])->group(function () {
-    Route::get('/', [\App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
+    Route::get('/', [App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
 
     /*
      * إعداد الجهاز: يقع مرّةً واحدة يوم التركيب، بيد مديرٍ يملك الإعدادات.
      * بعده لا يرى الكاشير هذه الشاشة أبدًا — يفتح فيجد لوحة الأرقام.
      */
-    Route::get('/setup', [\App\Http\Controllers\Pos\DeviceController::class, 'setup'])->name('setup');
-    Route::post('/setup', [\App\Http\Controllers\Pos\DeviceController::class, 'activate'])->name('setup.activate');
+    Route::get('/setup', [DeviceController::class, 'setup'])->name('setup');
+    Route::post('/setup', [DeviceController::class, 'activate'])->name('setup.activate');
 
     /*
      * قفل الشاشة: يُنهي جلسة الموظف ويُبقي تفعيل الجهاز.
      * تبديل الكاشير عشر ثوانٍ، لا دخول مديرٍ من جديد.
      */
-    Route::post('/lock', [\App\Http\Controllers\Pos\PageController::class, 'lock'])->name('lock');
+    Route::post('/lock', [App\Http\Controllers\Pos\PageController::class, 'lock'])->name('lock');
 
     // اختيار الموظف الواقف على الصندوق. ليس دخولًا ولا خروجًا — الصلاحيات
     // تبقى للمستخدم المسجَّل، وهذا يحدّد من تُنسب إليه البيعة فقط.
-    Route::get('/cashier', [\App\Http\Controllers\Pos\CashierController::class, 'choose'])->name('cashier');
-    Route::post('/cashier', [\App\Http\Controllers\Pos\CashierController::class, 'select'])->name('cashier.select');
-    Route::post('/cashier/leave', [\App\Http\Controllers\Pos\CashierController::class, 'leave'])->name('cashier.leave');
-    Route::get('/currency/{code}/switch', [\App\Http\Controllers\Admin\CurrencyController::class, 'switch'])->name('currency.switch');
+    Route::get('/cashier', [CashierController::class, 'choose'])->name('cashier');
+    Route::post('/cashier', [CashierController::class, 'select'])->name('cashier.select');
+    Route::post('/cashier/leave', [CashierController::class, 'leave'])->name('cashier.leave');
+    Route::get('/currency/{code}/switch', [CurrencyController::class, 'switch'])->name('currency.switch');
 
     // وردية الصندوق: فتحٌ برصيد ابتدائي، وإقفالٌ بعدٍّ فعليّ
-    Route::get('/shift', [\App\Http\Controllers\Pos\ShiftController::class, 'show'])->name('shift');
-    Route::post('/shift/open', [\App\Http\Controllers\Pos\ShiftController::class, 'open'])->name('shift.open');
-    Route::post('/shift/close', [\App\Http\Controllers\Pos\ShiftController::class, 'close'])->name('shift.close');
-    Route::post('/shift/move', [\App\Http\Controllers\Pos\ShiftController::class, 'move'])->name('shift.move');
+    Route::get('/shift', [ShiftController::class, 'show'])->name('shift');
+    Route::post('/shift/open', [ShiftController::class, 'open'])->name('shift.open');
+    Route::post('/shift/close', [ShiftController::class, 'close'])->name('shift.close');
+    Route::post('/shift/move', [ShiftController::class, 'move'])->name('shift.move');
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
     Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');
     Route::get('/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
-    Route::get('/orders', [\App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
+    Route::get('/orders', [App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
     /*
@@ -695,25 +758,25 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
      * غيّره ولماذا. والكتابة كلّها في `App\Support\OrderCorrection`.
      * ويسبق مسارَ العرض: «orders/{number}» يبتلع ما بعده لو تأخّر.
      */
-    Route::put('/orders/{number}/items/{item}', [\App\Http\Controllers\Pos\OrderEditController::class, 'update'])->name('orders.items.update');
-    Route::put('/orders/{number}/items/{item}/addons/{addon}', [\App\Http\Controllers\Pos\OrderEditController::class, 'addon'])->name('orders.items.addons.update');
-    Route::put('/orders/{number}/payment', [\App\Http\Controllers\Pos\OrderEditController::class, 'payment'])->name('orders.payment.update');
-    Route::get('/orders/{number}', [\App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
+    Route::put('/orders/{number}/items/{item}', [OrderEditController::class, 'update'])->name('orders.items.update');
+    Route::put('/orders/{number}/items/{item}/addons/{addon}', [OrderEditController::class, 'addon'])->name('orders.items.addons.update');
+    Route::put('/orders/{number}/payment', [OrderEditController::class, 'payment'])->name('orders.payment.update');
+    Route::get('/orders/{number}', [App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
     // المدفوعات تسقط على صلاحية finance لا pos (انظر sectionFromRoute):
     // شاشةٌ مالية تعرض حصيلة الصندوق، فيراها صاحب النشاط والمدير والمحاسب
     // ويُمنع منها الكاشير — وإن كان يملك نقطة البيع.
-    Route::get('/payments', [\App\Http\Controllers\Pos\PageController::class, 'payments'])->name('payments');
-    Route::get('/receipts', [\App\Http\Controllers\Pos\PageController::class, 'receipts'])->name('receipts');
+    Route::get('/payments', [App\Http\Controllers\Pos\PageController::class, 'payments'])->name('payments');
+    Route::get('/receipts', [App\Http\Controllers\Pos\PageController::class, 'receipts'])->name('receipts');
     Route::get('/receipts/search', [PosController::class, 'searchReceipts'])->name('receipts.search');
     // تفصيل فاتورة واحدة — تُطلب عند النقر، فلا تُرسَل مبالغ الثلاثين دفعةً
     Route::get('/receipts/{number}', [PosController::class, 'showReceipt'])->name('receipts.show');
-    Route::get('/receipt/{number}/pdf', [\App\Http\Controllers\PdfController::class, 'orderReceipt'])->name('receipt.pdf');
-    Route::get('/customers', [\App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
+    Route::get('/receipt/{number}/pdf', [PdfController::class, 'orderReceipt'])->name('receipt.pdf');
+    Route::get('/customers', [App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
     // مناسبةٌ جديدة تُضاف من نافذة الدفع نفسها — تُحفظ للمتجر وتظهر في قائمته
     Route::post('/occasions', [PosController::class, 'storeOccasion'])->name('occasions.store');
-    Route::get('/settings', [\App\Http\Controllers\Pos\PageController::class, 'settings'])->name('settings');
-    Route::post('/language', [\App\Http\Controllers\Admin\LanguageController::class, 'update'])->name('language.update');
+    Route::get('/settings', [App\Http\Controllers\Pos\PageController::class, 'settings'])->name('settings');
+    Route::post('/language', [LanguageController::class, 'update'])->name('language.update');
 });
 
 /*
@@ -723,5 +786,5 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
  * لا جلسة له ولا رمز CSRF. والتحقّق في المتحكّم — توقيع HMAC بسرّ التطبيق —
  * ولا يُقبل شيءٌ بدونه.
  */
-Route::get('/webhooks/whatsapp', [\App\Http\Controllers\WhatsApp\WebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
-Route::post('/webhooks/whatsapp', [\App\Http\Controllers\WhatsApp\WebhookController::class, 'handle'])->name('webhooks.whatsapp');
+Route::get('/webhooks/whatsapp', [WebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
+Route::post('/webhooks/whatsapp', [WebhookController::class, 'handle'])->name('webhooks.whatsapp');

@@ -14,7 +14,7 @@ class SeedData
     /** تنسيق مبلغ بالريال العماني: 12.500 ر.ع */
     public static function money($value): string
     {
-        return number_format((float) $value, 3, '.', ',') . ' ر.ع';
+        return number_format((float) $value, 3, '.', ',').' ر.ع';
     }
 
     /** صورة Placeholder */
@@ -55,17 +55,18 @@ class SeedData
                 'name' => $names[$i],
                 'type' => $i < 5 ? 'محل ورود' : $types[$i % count($types)],
                 'owner' => $owners[$i],
-                'phone' => '+968 9' . rand(1000000, 9999999),
-                'email' => 'info' . $i . '@example.com',
+                'phone' => '+968 9'.rand(1000000, 9999999),
+                'email' => 'info'.$i.'@example.com',
                 'plan' => $plans[$i % 3],
                 'status' => $status,
-                'registered' => '2025-0' . (($i % 9) + 1) . '-1' . ($i % 9),
+                'registered' => '2025-0'.(($i % 9) + 1).'-1'.($i % 9),
                 'branches' => rand(1, 6),
-                'logo' => self::image('biz' . $i, 100, 100),
+                'logo' => self::image('biz'.$i, 100, 100),
                 'city' => $cities[$i % count($cities)],
                 'country' => 'عُمان',
             ];
         }
+
         return $rows;
     }
 
@@ -80,7 +81,7 @@ class SeedData
             $rows[] = [
                 'id' => 2000 + $i,
                 'name' => $names[$i],
-                'logo' => self::image('flower' . $i, 200, 200),
+                'logo' => self::image('flower'.$i, 200, 200),
                 'owner' => $owners[$i],
                 'city' => $cities[$i],
                 'branches' => rand(1, 4),
@@ -92,6 +93,7 @@ class SeedData
                 'sales' => rand(3000, 22000),
             ];
         }
+
         return $rows;
     }
 
@@ -101,14 +103,24 @@ class SeedData
             [
                 'name' => 'الباقة الأساسية', 'monthly' => 9.900, 'yearly' => 99.000, 'color' => 'primary', 'popular' => false,
                 'features' => ['فرع واحد', '3 موظفين', '100 منتج', 'تقارير أساسية', 'دعم بالبريد الإلكتروني'],
+                /*
+                 * وما تفتحه الباقة يُكتب مفتاحًا لا سطرًا.
+                 *
+                 * السطر أعلاه يُقرأ في صفحة التسعير، وهذه يقرؤها الحارس —
+                 * انظر `PlanFeatures`. و«تقارير أساسية» تعني أنّ التحليل
+                 * والتصدير ليسا فيها، و«الصلاحيات المخصّصة» ليست في سطورها.
+                 */
+                'capabilities' => ['loyalty', 'whatsapp'],
             ],
             [
                 'name' => 'الباقة الاحترافية', 'monthly' => 24.900, 'yearly' => 249.000, 'color' => 'secondary', 'popular' => true,
                 'features' => ['3 فروع', '15 موظف', 'منتجات غير محدودة', 'تقارير متقدمة', 'صلاحيات مخصصة', 'دعم فني على مدار الساعة'],
+                'capabilities' => ['loyalty', 'whatsapp', 'reports_advanced', 'custom_permissions'],
             ],
             [
                 'name' => 'باقة المؤسسات', 'monthly' => 59.900, 'yearly' => 599.000, 'color' => 'primary', 'popular' => false,
-                'features' => ['فروع غير محدودة', 'موظفون غير محدودين', 'منتجات غير محدودة', 'تقارير مؤسسية', 'API ووصول كامل', 'مدير حساب مخصص'],
+                'features' => ['فروع غير محدودة', 'موظفون غير محدودين', 'منتجات غير محدودة', 'تقارير مؤسسية', 'مدير حساب مخصص'],
+                'capabilities' => ['loyalty', 'whatsapp', 'reports_advanced', 'custom_permissions'],
             ],
         ];
     }
@@ -121,13 +133,14 @@ class SeedData
             $rows[] = [
                 'business' => $b['name'],
                 'plan' => $b['plan'],
-                'start' => '2025-0' . (($i % 9) + 1) . '-01',
-                'end' => '2026-0' . (($i % 9) + 1) . '-01',
+                'start' => '2025-0'.(($i % 9) + 1).'-01',
+                'end' => '2026-0'.(($i % 9) + 1).'-01',
                 'amount' => [99, 249, 599][$i % 3],
                 'payment' => $i % 3 === 0 ? 'غير مدفوع' : 'مدفوع',
                 'status' => $b['status'],
             ];
         }
+
         return $rows;
     }
 
@@ -137,14 +150,15 @@ class SeedData
         $rows = [];
         foreach ($biz as $i => $b) {
             $rows[] = [
-                'number' => 'INV-' . (2025000 + $i),
+                'number' => 'INV-'.(2025000 + $i),
                 'business' => $b['name'],
                 'plan' => $b['plan'],
                 'amount' => [99, 249, 599][$i % 3],
-                'date' => '2025-0' . (($i % 9) + 1) . '-05',
+                'date' => '2025-0'.(($i % 9) + 1).'-05',
                 'status' => $i % 4 === 0 ? 'غير مدفوعة' : 'مدفوعة',
             ];
         }
+
         return $rows;
     }
 
@@ -158,15 +172,16 @@ class SeedData
             $rows[] = [
                 'id' => 5000 + $i,
                 'name' => $n,
-                'email' => 'user' . $i . '@example.com',
-                'phone' => '+968 9' . rand(1000000, 9999999),
+                'email' => 'user'.$i.'@example.com',
+                'phone' => '+968 9'.rand(1000000, 9999999),
                 'business' => $biz[$i % count($biz)],
                 'role' => $roles[$i % count($roles)],
                 'status' => $i % 5 === 0 ? 'موقوف' : 'نشط',
-                'last_login' => '2026-07-1' . ($i % 7) . ' 0' . (($i % 9) + 1) . ':30',
-                'avatar' => self::image('user' . $i, 100, 100),
+                'last_login' => '2026-07-1'.($i % 7).' 0'.(($i % 9) + 1).':30',
+                'avatar' => self::image('user'.$i, 100, 100),
             ];
         }
+
         return $rows;
     }
 
@@ -242,9 +257,9 @@ class SeedData
             $status = $it['qty'] === 0 ? 'نفد المخزون' : ($it['qty'] < 10 ? 'منخفض' : 'متوفر');
             $rows[] = array_merge($it, [
                 'id' => 3000 + $i,
-                'sku' => 'FLW-' . str_pad((string) ($i + 1), 4, '0', STR_PAD_LEFT),
-                'barcode' => '628' . rand(100000000, 999999999),
-                'image' => self::image('prod' . $i, 400, 400),
+                'sku' => 'FLW-'.str_pad((string) ($i + 1), 4, '0', STR_PAD_LEFT),
+                'barcode' => '628'.rand(100000000, 999999999),
+                'image' => self::image('prod'.$i, 400, 400),
                 'stock_status' => $status,
                 'active' => $i % 7 !== 0,
                 'alert' => 10,
@@ -252,6 +267,7 @@ class SeedData
                 'discount' => $i % 3 === 0 ? 10 : 0,
             ]);
         }
+
         return $rows;
     }
 
@@ -264,7 +280,7 @@ class SeedData
         $rows = [];
         for ($i = 0; $i < 14; $i++) {
             $rows[] = [
-                'id' => 'ORD-' . (10500 + $i),
+                'id' => 'ORD-'.(10500 + $i),
                 'customer' => $customers[$i % count($customers)],
                 'employee' => $employees[$i % count($employees)],
                 'branch' => 'الفرع الرئيسي',
@@ -272,9 +288,10 @@ class SeedData
                 'total' => rand(5, 90) + (rand(0, 999) / 1000),
                 'payment' => $payments[$i % count($payments)],
                 'status' => $statuses[$i % count($statuses)],
-                'date' => '2026-07-' . str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT) . ' 1' . ($i % 9) . ':2' . ($i % 9),
+                'date' => '2026-07-'.str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT).' 1'.($i % 9).':2'.($i % 9),
             ];
         }
+
         return $rows;
     }
 
@@ -286,15 +303,16 @@ class SeedData
             $rows[] = [
                 'id' => 6000 + $i,
                 'name' => $n,
-                'phone' => '+968 9' . rand(1000000, 9999999),
-                'email' => 'customer' . $i . '@example.com',
+                'phone' => '+968 9'.rand(1000000, 9999999),
+                'email' => 'customer'.$i.'@example.com',
                 'orders' => rand(1, 40),
                 'total_spent' => rand(20, 900) + (rand(0, 999) / 1000),
-                'last_order' => '2026-07-' . str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT),
+                'last_order' => '2026-07-'.str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT),
                 'points' => rand(0, 800),
-                'avatar' => self::image('cust' . $i, 100, 100),
+                'avatar' => self::image('cust'.$i, 100, 100),
             ];
         }
+
         return $rows;
     }
 
@@ -307,15 +325,16 @@ class SeedData
             $rows[] = [
                 'id' => 7000 + $i,
                 'name' => $n,
-                'avatar' => self::image('emp' . $i, 100, 100),
+                'avatar' => self::image('emp'.$i, 100, 100),
                 'role' => $roles[$i % count($roles)],
                 'branch' => 'الفرع الرئيسي',
-                'phone' => '+968 9' . rand(1000000, 9999999),
-                'email' => 'emp' . $i . '@example.com',
+                'phone' => '+968 9'.rand(1000000, 9999999),
+                'email' => 'emp'.$i.'@example.com',
                 'sales' => rand(500, 8000),
                 'status' => $i % 6 === 0 ? 'موقوف' : 'نشط',
             ];
         }
+
         return $rows;
     }
 
@@ -329,9 +348,10 @@ class SeedData
                 'qty' => $p['qty'],
                 'min' => $p['alert'],
                 'status' => $p['stock_status'],
-                'updated' => '2026-07-1' . rand(0, 7),
+                'updated' => '2026-07-1'.rand(0, 7),
             ];
         }
+
         return $rows;
     }
 
@@ -346,11 +366,12 @@ class SeedData
                 'product' => $p['name'],
                 'sku' => $p['sku'],
                 'type' => $types[$i % count($types)],
-                'qty' => ($i % 2 === 0 ? '+' : '-') . rand(1, 25),
+                'qty' => ($i % 2 === 0 ? '+' : '-').rand(1, 25),
                 'employee' => ['أحمد محمد', 'سارة حسن', 'خالد علي'][$i % 3],
-                'date' => '2026-07-' . str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT),
+                'date' => '2026-07-'.str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT),
             ];
         }
+
         return $rows;
     }
 
@@ -361,13 +382,14 @@ class SeedData
         for ($i = 0; $i < 10; $i++) {
             $rows[] = [
                 'type' => $types[$i % count($types)],
-                'description' => 'مصروف ' . $types[$i % count($types)] . ' لشهر يوليو',
+                'description' => 'مصروف '.$types[$i % count($types)].' لشهر يوليو',
                 'amount' => rand(20, 600) + (rand(0, 999) / 1000),
-                'date' => '2026-07-' . str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT),
+                'date' => '2026-07-'.str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT),
                 'employee' => ['أحمد محمد', 'سارة حسن', 'خالد علي'][$i % 3],
                 'method' => ['نقدي', 'بطاقة', 'تحويل بنكي'][$i % 3],
             ];
         }
+
         return $rows;
     }
 
@@ -409,8 +431,8 @@ class SeedData
         for ($i = 0; $i < 14; $i++) {
             $isIncome = $i % 3 !== 0;
             $rows[] = [
-                'id' => 'TRX-' . (52100 + $i),
-                'date' => '2026-07-' . str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT) . ' 1' . ($i % 9) . ':' . str_pad((string) (($i * 7) % 60), 2, '0', STR_PAD_LEFT),
+                'id' => 'TRX-'.(52100 + $i),
+                'date' => '2026-07-'.str_pad((string) (17 - ($i % 15)), 2, '0', STR_PAD_LEFT).' 1'.($i % 9).':'.str_pad((string) (($i * 7) % 60), 2, '0', STR_PAD_LEFT),
                 'description' => $isIncome ? $income[$i % count($income)] : $expense[$i % count($expense)],
                 'method' => $methods[$i % count($methods)],
                 'type' => $isIncome ? 'دخل' : 'مصروف',
@@ -418,6 +440,7 @@ class SeedData
                 'employee' => ['أحمد محمد', 'سارة حسن', 'خالد علي'][$i % 3],
             ];
         }
+
         return $rows;
     }
 
@@ -434,14 +457,15 @@ class SeedData
         $rows = [];
         for ($i = 0; $i < 5; $i++) {
             $rows[] = [
-                'id' => 'HOLD-' . (300 + $i),
+                'id' => 'HOLD-'.(300 + $i),
                 'customer' => $customers[$i % count($customers)],
                 'items' => rand(1, 5),
                 'total' => rand(5, 70) + (rand(0, 999) / 1000),
-                'time' => '1' . (2 + $i) . ':' . rand(10, 59),
+                'time' => '1'.(2 + $i).':'.rand(10, 59),
                 'employee' => 'سارة حسن',
             ];
         }
+
         return $rows;
     }
 
@@ -450,14 +474,15 @@ class SeedData
         $rows = [];
         for ($i = 0; $i < 10; $i++) {
             $rows[] = [
-                'number' => 'INV-' . (78900 + $i),
+                'number' => 'INV-'.(78900 + $i),
                 'customer' => ['محمد سالم', 'فاطمة أحمد', 'عميل نقدي'][$i % 3],
                 'total' => rand(5, 80) + (rand(0, 999) / 1000),
                 'payment' => ['نقدي', 'بطاقة', 'تحويل بنكي'][$i % 3],
-                'time' => '2026-07-17 1' . ($i % 9) . ':3' . ($i % 6),
+                'time' => '2026-07-17 1'.($i % 9).':3'.($i % 6),
                 'employee' => 'سارة حسن',
             ];
         }
+
         return $rows;
     }
 }

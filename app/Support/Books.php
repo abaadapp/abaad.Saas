@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Expense;
+use App\Models\ExpenseType;
 use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\Product;
@@ -133,7 +134,7 @@ class Books
      * لما بيع قبل وجودها، وتكلفةُ الإضافات معها. وقاعدتان لرقمٍ واحد تعنيان
      * دفترًا يخالف تقريره.
      *
-     * @see \App\Support\Demo::reportSummary
+     * @see Demo::reportSummary
      */
     public static function costOf(Order $order): float
     {
@@ -179,7 +180,7 @@ class Books
             $expense->business_id,
             __('مصروف: ').$expense->type,
             [
-                ['account' => self::expenseAccount($expense->type), 'debit' => $amount, 'memo' => $expense->description],
+                ['account' => self::expenseAccount($expense->type, $expense->business_id), 'debit' => $amount, 'memo' => $expense->description],
                 ['account' => self::payingAccount($expense->method), 'credit' => $amount],
             ],
             Carbon::parse($expense->spent_at ?? now()),
@@ -196,18 +197,83 @@ class Books
     }
 
     /**
-     * حسابُ المصروف من نوعه — والافتراض «مصروفات أخرى».
+     * دليلُ الاسم إلى الحساب — لمن لم يختر حسابًا لنوعه.
+     *
+     * قائمةٌ في الكود لا تكفي وحدها: النوع يكتبه التاجر بيده، ومن كتب
+     * «كهرباء» بدل «كهرباء وماء» يسقط منها. فهذه للأنواع الافتراضية التي
+     * يبدأ بها كلّ متجر، والاختيار المحفوظ على النوع يسبقها.
      *
      * والرواتب ليست منها عمدًا: مسيرةُ الرواتب تُرحّل إلى «الرواتب والأجور»
      * بنفسها، فربطُ نوعٍ مكتوبٍ باليد بالحساب نفسه يجعل راتبًا واحدًا
      * يُقيَّد مرّتين. ومن كتبه هنا يريد مصروفًا نقديًّا لا مسيرة.
      */
-    public static function expenseAccount(?string $type): string
+    public const TYPE_ACCOUNTS = [
+        'إيجار' => 'rent',
+        'كهرباء وماء' => 'utilities',
+        'تسويق' => 'marketing',
+        'صيانة' => 'maintenance',
+        'نقل وتوصيل' => 'transport',
+        'مواد خام' => 'direct_purchases',
+    ];
+
+    /**
+     * الحسابات التي يجوز للتاجر أن يربط نوع مصروفٍ بها — ولا شيء سواها.
+     *
+     * قائمةٌ مغلقة لا شجرةٌ مفتوحة: من يربط مصروفًا بحساب «الصندوق» أو
+     * «إيراد المبيعات» يقلب قيدَه رأسًا على عقب، والدفتر يتوازن ويكذب.
+     * والرواتب ليست منها — مسيرةُ الرواتب تُرحّل بنفسها.
+     *
+     * والاسم يُقرأ من الشجرة الافتراضية لا يُكتب هنا مرّتين.
+     */
+    public const EXPENSE_ACCOUNTS = [
+        'rent', 'utilities', 'marketing', 'maintenance',
+        'transport', 'direct_purchases', 'other_expenses',
+    ];
+
+    /**
+     * خياراتُ الحساب كما تُعرض في الشاشة — مفتاحٌ واسمٌ عربيّ.
+     *
+     * @return list<array{key: string, label: string}>
+     */
+    public static function expenseAccountOptions(): array
     {
-        return match (trim((string) $type)) {
-            'إيجار' => 'rent',
-            default => 'other_expenses',
-        };
+        $names = [];
+
+        foreach (Ledger::DEFAULT_CHART as [, , , , , $children]) {
+            foreach ($children as [, $name, , , $key]) {
+                $names[$key] = $name;
+            }
+        }
+
+        return array_map(
+            fn (string $key) => ['key' => $key, 'label' => __($names[$key] ?? $key)],
+            self::EXPENSE_ACCOUNTS,
+        );
+    }
+
+    /**
+     * حسابُ المصروف — اختيارُ التاجر أوّلًا، ثمّ اسمُ النوع، ثمّ «أخرى».
+     *
+     * كان يقرأ الاسم وحده ويطابقه بسطرٍ واحد، فيسقط كلّ ما عدا الإيجار في
+     * «مصروفات أخرى»: دفترٌ يعرف أنّ المال خرج ولا يعرف من أيّ باب.
+     *
+     * والمعرّف يصل ليُسأل جدولُ الأنواع عن اختيار صاحبه — ونوعٌ لا يُعرف
+     * صاحبُه يُقرأ باسمه وحده، فلا يسقط الترحيل لأجل معرّفٍ غائب.
+     */
+    public static function expenseAccount(?string $type, ?int $businessId = null): string
+    {
+        $name = trim((string) $type);
+
+        if ($businessId !== null && $name !== '') {
+            $chosen = ExpenseType::where('business_id', $businessId)
+                ->where('name', $name)->value('account_key');
+
+            if (in_array($chosen, self::EXPENSE_ACCOUNTS, true)) {
+                return $chosen;
+            }
+        }
+
+        return self::TYPE_ACCOUNTS[$name] ?? 'other_expenses';
     }
 
     /** من أين خرج المال — والافتراض الصندوق */

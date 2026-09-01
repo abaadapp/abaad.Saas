@@ -114,6 +114,7 @@ export default function ReportsSales() {
                 actions={
                     /* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */
                     <ExportMenu
+                        feature="reports_advanced"
                         xlsx={route('admin.reports.xlsx', { range: server.range })}
                         pdf={route('admin.reports.pdf', { range: server.range })}
                         csv={route('admin.export.reports', { range: server.range })}

@@ -4,9 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Expense;
-use App\Models\ExpenseType;
+use App\Models\Transaction;
+use App\Support\Activity;
+use App\Support\Books;
 use App\Support\Demo;
+use App\Support\ListFilters;
+use App\Support\Pagination;
+use App\Support\Search;
+use App\Support\Sort;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
 
 class ExpenseController extends Controller
 {
@@ -24,7 +32,10 @@ class ExpenseController extends Controller
         'status' => 'status',
     ];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     public function index(Request $request)
     {
@@ -39,7 +50,7 @@ class ExpenseController extends Controller
          * تبقى خيارًا لمن يبحث عن فاتورةٍ قديمة بعينها.
          */
         // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
-        $span = \App\Support\ListFilters::expenseSpan($request);
+        $span = ListFilters::expenseSpan($request);
         $month = $span ? $span[0]->format('Y-m') : '';
 
         if ($span) {
@@ -52,9 +63,10 @@ class ExpenseController extends Controller
             ->when($span, fn ($w) => $w->whereBetween('spent_at', $span));
 
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('reference', 'like', "%{$s}%")
-                ->orWhere('description', 'like', "%{$s}%")
-                ->orWhere('type', 'like', "%{$s}%"));
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('reference', $like, "%{$s}%")
+                ->orWhere('description', $like, "%{$s}%")
+                ->orWhere('type', $like, "%{$s}%"));
         }
         if ($type = $request->query('type')) {
             $q->where('type', $type);
@@ -63,12 +75,11 @@ class ExpenseController extends Controller
             $q->where('status', $status);
         }
 
-
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('spent_at')->orderByDesc('id'));
+        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('spent_at')->orderByDesc('id'));
 
         $expenses = $q->paginate((int) $request->query('per_page', 10))->withQueryString();
 
-        return \Inertia\Inertia::render('Admin/Expenses/Index', [
+        return Inertia::render('Admin/Expenses/Index', [
             'expenses' => collect($expenses->items())->map(fn ($e) => [
                 'id' => $e->id,
                 'reference' => $e->reference,
@@ -77,15 +88,17 @@ class ExpenseController extends Controller
                 'amount' => (float) $e->amount,
                 'status' => $e->status,
                 // رابط المرفق يُبنى هنا؛ المسار وحده لا يفتحه المتصفح
-                'attachment' => $e->attachment ? \Illuminate\Support\Facades\Storage::url($e->attachment) : null,
+                'attachment' => $e->attachment ? Storage::url($e->attachment) : null,
                 'attachment_name' => $e->attachment_name,
                 'description' => $e->description,
             ])->all(),
-            'pagination' => \App\Support\Pagination::meta($expenses),
+            'pagination' => Pagination::meta($expenses),
             'types' => Demo::expenseTypes(),
+            // خيارات الحساب — مصدرها واحد مع ما يقبله التحقّق
+            'accountOptions' => Books::expenseAccountOptions(),
             'filters' => $request->only('q', 'type', 'status', 'tab') + ['month' => $month]
-                + \App\Support\Sort::params($request, self::SORTS),
-            'sorts' => \App\Support\Sort::keys(self::SORTS),
+                + Sort::params($request, self::SORTS),
+            'sorts' => Sort::keys(self::SORTS),
             // الشهر المعروض ومجموعه — ما بعد الترقيم لا يُجمع في المتصفح
             'month' => $month,
             'monthTotal' => $month ? (float) (clone $base)->paid()->sum('amount') : null,
@@ -163,7 +176,7 @@ class ExpenseController extends Controller
         if ($expense->isPaid()) {
             $this->postToLedger($expense);
         }
-        \App\Support\Activity::log('created', 'سجّل مصروف ' . $data['type'] . ' بقيمة ' . $data['amount']);
+        Activity::log('created', 'سجّل مصروف '.$data['type'].' بقيمة '.$data['amount']);
 
         return redirect()->route('admin.expenses.index')->with('toast', ['msg' => __('تم تسجيل المصروف بنجاح'), 'type' => 'success']);
     }
@@ -171,9 +184,9 @@ class ExpenseController extends Controller
     /** يكتب قيد الدفتر المقابل ويربطه بالمصروف */
     private function postToLedger(Expense $expense): void
     {
-        $transaction = \App\Models\Transaction::create([
+        $transaction = Transaction::create([
             'business_id' => $expense->business_id,
-            'reference' => \App\Models\Transaction::nextReference($expense->business_id),
+            'reference' => Transaction::nextReference($expense->business_id),
             // الوصف اختياريّ فقد يغيب عن الطلب أصلًا — لا يكفي أن يكون nullable
             'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
             'method' => $expense->method,
@@ -193,9 +206,9 @@ class ExpenseController extends Controller
          * يقابله من مصروفات المحلّ، فيُقرأ ربحٌ لم يتحقّق.
          */
         try {
-            \App\Support\Books::recordExpense($expense->fresh());
+            Books::recordExpense($expense->fresh());
         } catch (\Throwable $e) {
-            \App\Support\Activity::log('updated', 'تعذّر ترحيل قيد المصروف '.$expense->id.': '.$e->getMessage(), [
+            Activity::log('updated', 'تعذّر ترحيل قيد المصروف '.$expense->id.': '.$e->getMessage(), [
                 'subject_id' => $expense->id, 'subject_type' => 'expense',
             ]);
         }
@@ -219,7 +232,7 @@ class ExpenseController extends Controller
         $expense->update(['status' => Expense::PAID, 'spent_at' => now()]);
         $this->postToLedger($expense->fresh());
 
-        \App\Support\Activity::log('updated', 'سدّد المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
+        Activity::log('updated', 'سدّد المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
 
         return back()->with('toast', ['msg' => __('سُجّل السداد'), 'type' => 'success']);
     }
@@ -237,8 +250,8 @@ class ExpenseController extends Controller
          */
         $expense->transaction()->delete();
         // والقيد المزدوج معه — والقاعدة واحدة: قيدٌ بلا مستند يُبقي مبلغًا في الميزان
-        \App\Support\Books::forgetExpense($expense);
-        \App\Support\Activity::log('deleted', 'حذف المصروف: ' . $expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
+        Books::forgetExpense($expense);
+        Activity::log('deleted', 'حذف المصروف: '.$expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
 
         /*
          * المرفق يبقى مع المصروف المحذوف.
@@ -280,6 +293,6 @@ class ExpenseController extends Controller
         $last = Expense::where('business_id', $bid)->whereNotNull('reference')->orderByDesc('id')->value('reference');
         $n = ($last && preg_match('/(\d+)$/', $last, $m)) ? ((int) $m[1] + 1) : 1001;
 
-        return 'EXP-' . $n;
+        return 'EXP-'.$n;
     }
 }

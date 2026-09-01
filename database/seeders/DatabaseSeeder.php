@@ -57,6 +57,8 @@ class DatabaseSeeder extends Seeder
                 'max_employees' => $employees,
                 'max_products' => $products,
                 'features' => $p['features'],
+                // ما يُعرض سطرًا، وما يُفرض مفتاحًا — انظر PlanFeatures
+                'capabilities' => $p['capabilities'],
                 'color' => $p['color'],
                 'is_popular' => $p['popular'],
             ]);

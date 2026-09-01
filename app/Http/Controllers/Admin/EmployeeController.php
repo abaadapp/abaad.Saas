@@ -10,6 +10,7 @@ use App\Rules\StrongPin;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Permissions;
+use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -86,10 +87,11 @@ class EmployeeController extends Controller
             return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
         }
 
-        $this->refuseGrantingMoreThanIHave(
-            $title,
-            $request->boolean('manual_permissions') ? array_values(array_unique($data['permissions'] ?? [])) : null,
-        );
+        $manual = $request->boolean('manual_permissions')
+            ? array_values(array_unique($data['permissions'] ?? []))
+            : null;
+        $this->refuseManualPermissionsBeyondPlan($title, $manual);
+        $this->refuseGrantingMoreThanIHave($title, $manual);
 
         PlanLimits::enforce(auth()->user()->business, 'employees');
 
@@ -141,6 +143,42 @@ class EmployeeController extends Controller
      *
      * @param  array<int, string>|null  $manual قائمةٌ يدوية إن أُرسلت
      */
+    /**
+     * الصلاحيات المخصّصة قدرةُ باقةٍ — والمقياس الانحرافُ عن الدور لا إرسالُ قائمة.
+     *
+     * النموذج يرسل `manual_permissions` دائمًا ومعه القائمة، حتّى حين يتركها
+     * المدير كما جاءت من الدور. فقياسُ القدرة بمجرّد وصول القائمة كان يقفل
+     * إضافةَ الموظّفين كلَّها على الباقة الأساسية — وهو ما لم يعده أحد.
+     *
+     * فالمقياس أن تختلف عمّا يمنحه الدور: من عيّن «كاشيرًا» فأخذ ما للكاشير
+     * لم يخصّص شيئًا، ومن نزع عنه قسمًا أو زاده قسمًا فقد خصّص. وهو المعنى
+     * المكتوب في صفحة التسعير حرفًا بحرف.
+     *
+     * و`null` — أي «اتبع الدور» — لا تُفحص أصلًا: الرجوع عن التخصيص يجب أن
+     * يبقى مفتوحًا لمن نزلت باقتُه، وإلّا حُبس على ما خصّصه قبلها.
+     */
+    private function refuseManualPermissionsBeyondPlan(JobTitle $title, ?array $manual): void
+    {
+        if ($manual === null) {
+            return;
+        }
+
+        $byRole = array_values(array_filter(
+            Permissions::sections(),
+            fn ($s) => Permissions::allows($title->role, $s),
+        ));
+
+        $wanted = array_values(array_unique($manual));
+        sort($byRole);
+        sort($wanted);
+
+        if ($byRole === $wanted) {
+            return;
+        }
+
+        PlanFeatures::enforce(auth()->user()?->business, 'custom_permissions');
+    }
+
     private function refuseGrantingMoreThanIHave(JobTitle $title, ?array $manual): void
     {
         $actor = auth()->user();
@@ -346,12 +384,11 @@ class EmployeeController extends Controller
         if (! $title) {
             return back()->withInput()->withErrors(['job_title' => __('الوظيفة المحددة غير موجودة.')]);
         }
-        $this->refuseGrantingMoreThanIHave(
-            $title,
-            $request->has('manual_permissions')
-                ? ($request->boolean('manual_permissions') ? array_values(array_unique($data['permissions'] ?? [])) : null)
-                : null,
-        );
+        $manual = $request->has('manual_permissions') && $request->boolean('manual_permissions')
+            ? array_values(array_unique($data['permissions'] ?? []))
+            : null;
+        $this->refuseManualPermissionsBeyondPlan($title, $manual);
+        $this->refuseGrantingMoreThanIHave($title, $manual);
 
         if ($refusal = $this->refuseRaisingMyself($employee, $title, $request)) {
             return back()->withInput()->withErrors(['job_title' => $refusal]);

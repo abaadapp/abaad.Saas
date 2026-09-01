@@ -24,6 +24,7 @@ use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\Loyalty;
 use App\Support\OrderStatus;
+use App\Support\PlanFeatures;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\ProductAddons;
@@ -1422,6 +1423,22 @@ class PosController extends Controller
     }
 
     /**
+     * هل الولاء عاملٌ في هذا المتجر الآن؟ — مفتاحُ التاجر وباقتُه معًا.
+     *
+     * والباقة تُسأل هنا لا في الشاشة وحدها: النقاط تُمنح عند إتمام البيعة
+     * لا عند فتح شاشة الولاء، فقفلٌ في اللوحة يترك الرصيد ينمو لمن لم يشترِ
+     * البرنامج — ثمّ يُستبدَل. والنقاط مالٌ لا عدّاد.
+     */
+    private function loyaltyOn(): bool
+    {
+        if ((string) $this->setting('loyalty_enabled', '1') === '0') {
+            return false;
+        }
+
+        return PlanFeatures::allows(auth()->user()?->business, 'loyalty');
+    }
+
+    /**
      * كم نقطة تُستبدَل فعلًا وكم تساوي خصمًا — يُحتسب قبل بناء الفاتورة.
      *
      * يطابق سقف usePosCart: نسبة من المجموع الفرعي، ولا يتجاوز المتبقّي بعد الكوبون،
@@ -1431,7 +1448,7 @@ class PosController extends Controller
     {
         $none = ['points' => 0, 'discount' => 0.0];
 
-        if (! $customer || $requested <= 0 || (string) $this->setting('loyalty_enabled', '1') === '0') {
+        if (! $customer || $requested <= 0 || ! $this->loyaltyOn()) {
             return $none;
         }
 
@@ -1455,7 +1472,7 @@ class PosController extends Controller
     /** يقيّد الاستبدال والاكتساب على العميل بعد اكتمال الفاتورة */
     private function recordLoyalty(Order $order, ?Customer $customer, int $redeemPoints): array
     {
-        if (! $customer || (string) $this->setting('loyalty_enabled', '1') === '0') {
+        if (! $customer || ! $this->loyaltyOn()) {
             return ['earned' => 0, 'redeemed' => 0];
         }
 

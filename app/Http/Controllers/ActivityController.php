@@ -3,17 +3,24 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
+use App\Models\User;
 use App\Support\Demo;
+use App\Support\Pagination;
+use App\Support\Search;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 
 class ActivityController extends Controller
 {
     private static function shape($q, Request $request)
     {
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('description', 'like', "%{$s}%")->orWhere('user_name', 'like', "%{$s}%"));
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('description', $like, "%{$s}%")->orWhere('user_name', $like, "%{$s}%"));
         }
-        if ($a = $request->query('action')) { $q->where('action', $a); }
+        if ($a = $request->query('action')) {
+            $q->where('action', $a);
+        }
 
         return $q->latest('id')->paginate(15)->withQueryString()->through(fn ($l) => [
             'user' => $l->user_name, 'action' => $l->action, 'description' => $l->description,
@@ -34,16 +41,16 @@ class ActivityController extends Controller
     {
         $logs = self::shape(ActivityLog::query(), $request);
 
-        return \Inertia\Inertia::render('Platform/Activity', [
+        return Inertia::render('Platform/Activity', [
             'logs' => $logs->items(),
-            'pagination' => \App\Support\Pagination::meta($logs),
+            'pagination' => Pagination::meta($logs),
             'filters' => $request->only('q', 'action'),
         ]);
     }
 
     public function adminIndex(Request $request)
     {
-        return \Inertia\Inertia::render('Admin/Activity', self::adminData($request));
+        return Inertia::render('Admin/Activity', self::adminData($request));
     }
 
     /**
@@ -67,7 +74,7 @@ class ActivityController extends Controller
          * وما يفعله الدعم داخل الحساب لا يختفي، بل ينتقل إلى موضعه: سجلّ
          * المنصة يحتفظ بكل شيء بلا استثناء، والدليل هناك.
          */
-        $notStaff = \App\Models\User::whereIn('role', ['admin', 'super_admin'])->select('id');
+        $notStaff = User::whereIn('role', ['admin', 'super_admin'])->select('id');
 
         $logs = self::shape(
             ActivityLog::where('business_id', $bid)
@@ -80,7 +87,7 @@ class ActivityController extends Controller
 
         return [
             'logs' => $logs->items(),
-            'pagination' => \App\Support\Pagination::meta($logs),
+            'pagination' => Pagination::meta($logs),
             'filters' => $request->only('q', 'action'),
         ];
     }

@@ -9,6 +9,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\MarketingSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -46,21 +47,30 @@ class MarketingToolsTest extends TestCase
 
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
-    public function test_website_settings_are_saved_and_read_back(): void
+    /**
+     * النطاق يُحفظ — وما كان معه لا يُحفظ لأنّه لا يُقرأ.
+     *
+     * كانت الشاشة تحفظ ثمانية مفاتيح تصف واجهة متجرٍ لا وجود لها في النظام:
+     * «نشر الموقع» و«عرض الأسعار» وجملةً تعريفية ونبذة. يملؤها التاجر فتُحفظ
+     * ولا يقرؤها شيء — فيظنّ أنّه نشر متجرًا وينتظر طلبًا لا يأتي.
+     */
+    public function test_only_the_domain_is_saved_from_the_website_form(): void
     {
         $this->post(route('admin.marketing.website.save'), [
-            'site_enabled' => true,
             'site_domain' => 'mystore.om',
+            'site_enabled' => true,
             'site_tagline' => 'أجود المنتجات',
             'site_show_prices' => false,
         ])->assertSessionHasNoErrors();
 
         $saved = MarketingSettings::group($this->bid(), 'website');
 
-        $this->assertSame('1', $saved['site_enabled']);
         $this->assertSame('mystore.om', $saved['site_domain']);
-        // القيمة المحفوظة فارغةً أو مطفأةً قصدٌ لا غياب: لا تُستبدل بالافتراضيّ
-        $this->assertSame('0', $saved['site_show_prices'], 'عاد الإعداد المطفأ إلى افتراضيّه');
+        $this->assertSame(['site_domain'], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
+
+        foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {
+            $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => $dead]);
+        }
     }
 
     public function test_a_domain_written_as_a_url_is_refused(): void
@@ -104,23 +114,20 @@ class MarketingToolsTest extends TestCase
         ])->assertSessionHasErrors('loyalty_redeem_max_pct');
     }
 
-    /* ------------------------ تحسين محركات البحث ------------------------ */
-
-    public function test_a_description_longer_than_the_snippet_is_refused(): void
+    /**
+     * وشاشةُ السيو رُفعت كلّها — ولا مسار لها.
+     *
+     * كانت تضبط عنوانًا ووصفًا وكلماتٍ ومعرّفَ تحليلاتٍ ومفتاح «اسمح
+     * بالفهرسة» لصفحاتٍ لا يفهرسها محرّكٌ لأنّها غير منشورة أصلًا. والحدودُ
+     * فيها كانت مضبوطةً بدقّة — ٦٠ محرفًا و١٦٠ — على شيءٍ لا يقرؤه أحد.
+     */
+    public function test_the_seo_screen_that_configured_nothing_is_gone(): void
     {
-        // ما زاد تقصّه محركات البحث في منتصف الجملة، فيظهر الوصف مبتورًا
-        $this->post(route('admin.marketing.seo.save'), [
-            'seo_description' => str_repeat('ا', 200),
-        ])->assertSessionHasErrors('seo_description');
-    }
-
-    public function test_an_analytics_id_of_the_wrong_shape_is_refused(): void
-    {
-        $this->post(route('admin.marketing.seo.save'), ['seo_ga_id' => 'my-analytics'])
-            ->assertSessionHasErrors('seo_ga_id');
-
-        $this->post(route('admin.marketing.seo.save'), ['seo_ga_id' => 'G-ABC123'])
-            ->assertSessionHasNoErrors();
+        $this->assertFalse(
+            Route::has('admin.marketing.seo'),
+            'شاشة السيو ما زالت مفتوحة وهي لا تضبط شيئًا',
+        );
+        $this->assertFalse(Route::has('admin.marketing.seo.save'));
     }
 
     /* -------------------------- إشعارات واتساب -------------------------- */

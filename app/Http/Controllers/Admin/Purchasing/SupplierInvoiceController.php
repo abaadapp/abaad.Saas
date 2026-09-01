@@ -7,9 +7,12 @@ use App\Models\JournalEntry;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
+use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Pagination;
+use App\Support\Search;
+use App\Support\Sort;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -44,7 +47,10 @@ class SupplierInvoiceController extends Controller
         'status' => 'status',
     ];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     public function index(Request $request): Response
     {
@@ -54,9 +60,10 @@ class SupplierInvoiceController extends Controller
         $q = SupplierInvoice::where('business_id', $bid)->with(['supplier', 'purchaseOrder']);
 
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('supplier_ref', 'like', "%{$s}%")
-                ->orWhere('notes', 'like', "%{$s}%")
-                ->orWhereHas('supplier', fn ($sp) => $sp->where('name', 'like', "%{$s}%")));
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('supplier_ref', $like, "%{$s}%")
+                ->orWhere('notes', $like, "%{$s}%")
+                ->orWhereHas('supplier', fn ($sp) => $sp->where('name', $like, "%{$s}%")));
         }
         if ($status = $request->query('status')) {
             $q->where('status', $status);
@@ -65,7 +72,7 @@ class SupplierInvoiceController extends Controller
             $q->where('supplier_id', $supplier);
         }
 
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('issued_at')->orderByDesc('id'));
+        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('issued_at')->orderByDesc('id'));
 
         $invoices = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
@@ -91,12 +98,12 @@ class SupplierInvoiceController extends Controller
             ])->all(),
             'pagination' => Pagination::meta($invoices),
             'filters' => $request->only('q', 'status', 'supplier')
-                + \App\Support\Sort::params($request, self::SORTS),
-            'sorts' => \App\Support\Sort::keys(self::SORTS),
+                + Sort::params($request, self::SORTS),
+            'sorts' => Sort::keys(self::SORTS),
             'suppliers' => Supplier::where('business_id', $bid)->orderBy('name')
                 // بلغة الواجهة — القائمة تُقرأ، و`name` يبقى ما يُبحث به
                 ->get(['id', 'name', 'name_en'])
-                ->map(fn ($s) => ['value' => $s->id, 'label' => \App\Support\Demo::ln($s->name, $s->name_en)])->all(),
+                ->map(fn ($s) => ['value' => $s->id, 'label' => Demo::ln($s->name, $s->name_en)])->all(),
             // أوامرُ لم تُفوتَر بعد — ربط السند بأمره يمنع عدّ الشراء مرّتين
             'orders' => PurchaseOrder::where('business_id', $bid)
                 ->whereDoesntHave('invoices')->orderByDesc('id')->limit(100)
@@ -215,7 +222,7 @@ class SupplierInvoiceController extends Controller
             return back()->withInput()->withErrors(['subtotal' => $e->getMessage()]);
         }
 
-        \App\Support\Activity::log('created', 'سجّل سند مورّد '.$data['supplier_ref'].' بقيمة '.$total);
+        Activity::log('created', 'سجّل سند مورّد '.$data['supplier_ref'].' بقيمة '.$total);
 
         return back()->with('toast', ['msg' => __('سُجّل السند'), 'type' => 'success']);
     }
@@ -289,7 +296,7 @@ class SupplierInvoiceController extends Controller
             return back()->withErrors(['amount' => $e->getMessage()]);
         }
 
-        \App\Support\Activity::log('updated', 'سدّد '.$amount.' على السند '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
+        Activity::log('updated', 'سدّد '.$amount.' على السند '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
 
         return back()->with('toast', ['msg' => __('سُجّل السداد'), 'type' => 'success']);
     }
@@ -319,7 +326,7 @@ class SupplierInvoiceController extends Controller
             $invoice->delete();
         });
 
-        \App\Support\Activity::log('deleted', 'حذف السند: '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
+        Activity::log('deleted', 'حذف السند: '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
 
         return back()->with('toast', ['msg' => __('حُذف السند'), 'type' => 'warning']);
     }

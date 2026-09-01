@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Http\Middleware\CheckPlanFeature;
 use App\Models\User;
 
 /**
@@ -203,6 +204,20 @@ class Reports
     {
         return collect(self::ALL)
             ->filter(fn ($r) => $user?->allows($r['section']) ?? false)
+            /*
+             * وما لا تفتحه الباقة لا تُعرض بطاقتُه.
+             *
+             * الفهرس بابٌ يقود إلى شاشات، وبطاقةٌ تقود إلى 403 تجعل صاحبها
+             * يظنّ العطب في النظام. والقدرة تُقرأ من مصدر الحارس نفسه — انظر
+             * `CheckPlanFeature::featureFor` — فلا تفترق بطاقةٌ عن بابها.
+             */
+            ->filter(function ($r) use ($user) {
+                $key = isset($r['route'])
+                    ? CheckPlanFeature::featureFor($r['route'])
+                    : null;
+
+                return $key === null || PlanFeatures::allows($user?->business, $key);
+            })
             ->map(fn ($r) => [
                 'key' => $r['key'],
                 'category' => $r['category'],

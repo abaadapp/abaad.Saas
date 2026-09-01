@@ -47,6 +47,8 @@ interface Props {
     filters: { when: string | null; type: string | null };
     counts: { all: number; overdue: number; today: number; tomorrow: number };
     typeCounts: { all: number; delivery: number; pickup: number };
+    /** يصل حين تُقصّ اللوحة عند سقفها — وnull حين تُعرض كاملة */
+    truncated: { shown: number; total: number } | null;
 }
 
 /**
@@ -75,6 +77,7 @@ export default function PreparationIndex() {
     const filters = page.filters ?? { when: null, type: null };
     const counts = page.counts ?? NO_COUNTS;
     const typeCounts = page.typeCounts ?? NO_TYPE_COUNTS;
+    const truncated = page.truncated ?? null;
 
     const tabs: TabItem[] = [
         { key: 'all', label: 'الكل', count: counts.all },
@@ -156,6 +159,25 @@ export default function PreparationIndex() {
                     }
                 />
             </div>
+
+            {/*
+              * ما لم يُعرض يُقال عددُه.
+              *
+              * اللوحة تُرسم حتى سقفها ثم تنتهي؛ وكانت تنتهي صامتة — فيقرأ من
+              * يجهّز آخرَ بطاقةٍ ويظنّ أنّه فرغ. والفرق بين «فرغتُ» و«بقي
+              * خمسون» هو الفرق بين باقةٍ تصل وباقةٍ لا تصل.
+              */}
+            {truncated && (
+                <Card className="mb-4 flex items-center gap-2 border-[#fde68a] bg-[#fffbeb] p-4 text-sm text-[#92400e]">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    <span>
+                        {t('تُعرض :shown من :total طلبًا. ضيّق بالتبويبات أو بنوع التنفيذ لرؤية الباقي.', {
+                            shown: truncated.shown,
+                            total: truncated.total,
+                        })}
+                    </span>
+                </Card>
+            )}
 
             {orders.length === 0 ? (
                 <Card className="p-6 text-center text-sm text-[#6b7280]">

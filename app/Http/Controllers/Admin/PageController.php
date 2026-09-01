@@ -2,8 +2,24 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\Admin\Finance\ChartController;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Pos\DeviceController;
+use App\Models\Branch;
+use App\Models\Business;
+use App\Models\CustomAlert;
+use App\Models\CustomerAddress;
+use App\Models\JobTitle;
+use App\Models\Product;
+use App\Models\User;
 use App\Support\Demo;
+use App\Support\Emojis;
+use App\Support\MarketingSettings;
+use App\Support\Permissions;
+use App\Support\Reports;
+use App\Support\Roles;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -23,7 +39,7 @@ class PageController extends Controller
         // الصفوف لا فارغةَ الخيارات — فمن يكتب باقةً يختار مكوّناتها الآن
         return Inertia::render('Admin/Products/Create', [
             'categories' => Demo::categories(),
-            'composition' => \App\Http\Controllers\Admin\ProductCompositionController::blank(
+            'composition' => ProductCompositionController::blank(
                 auth()->user()->business_id ?? Demo::bid(),
             ),
         ]);
@@ -43,7 +59,7 @@ class PageController extends Controller
                 ['label' => __('الكمية المتوفرة'), 'value' => __(':n قطعة', ['n' => $product['qty']]), 'icon' => 'package', 'color' => 'primary'],
                 ['label' => __('إجمالي المبيعات'), 'value' => __(':n قطعة', ['n' => Demo::productSold($id)]), 'icon' => 'shopping-cart', 'color' => 'success'],
                 ['label' => __('سعر التكلفة'), 'value' => Demo::money($product['cost']), 'icon' => 'wallet', 'color' => 'info'],
-                ['label' => __('هامش الربح'), 'value' => $marginPct . '%', 'icon' => 'trending-up', 'color' => 'primary',
+                ['label' => __('هامش الربح'), 'value' => $marginPct.'%', 'icon' => 'trending-up', 'color' => 'primary',
                     'trend' => Demo::money($margin), 'up' => true],
             ],
             // حركات هذا المنتج وحده، لا كل حركات المتجر
@@ -62,23 +78,19 @@ class PageController extends Controller
         $product = Demo::product($id);
         abort_if(empty($product), 404);
 
-        $model = \App\Models\Product::where('business_id', auth()->user()->business_id ?? Demo::bid())->find($id);
+        $model = Product::where('business_id', auth()->user()->business_id ?? Demo::bid())->find($id);
 
         return Inertia::render('Admin/Products/Edit', [
             'product' => $product,
             'categories' => Demo::categories(),
             'description' => $product['description'] ?? '',
             'composition' => $model
-                ? \App\Http\Controllers\Admin\ProductCompositionController::payload($model)
+                ? ProductCompositionController::payload($model)
                 : null,
         ]);
     }
 
-
     /* ----------------------------- التصنيفات ----------------------------- */
-
-
-
 
     /** ألوان الأقسام — نفس اللوحة التي كانت مضمّنة في القالب */
     private const PALETTE = [
@@ -90,12 +102,11 @@ class PageController extends Controller
 
     /* ------------------------------ الإضافات ------------------------------ */
 
-
     /** مجموعات الإيموجي بصيغة منتقي الواجهة — مصدرها App\Support\Emojis وحدها */
     private static function emojiGroups(): array
     {
         $out = [];
-        foreach (\App\Support\Emojis::groups() as $label => $items) {
+        foreach (Emojis::groups() as $label => $items) {
             $out[__($label)] = array_map(fn ($it) => ['e' => $it[0], 'k' => mb_strtolower($it[1])], $items);
         }
 
@@ -134,7 +145,7 @@ class PageController extends Controller
             'customer' => $customer,
             'orders' => Demo::customerOrders($id),
             // الافتراضي أولًا ثم الأقدم — ترتيب ثابت لا يقفز بين التحميلات
-            'addresses' => \App\Models\CustomerAddress::where('customer_id', $id)
+            'addresses' => CustomerAddress::where('customer_id', $id)
                 ->orderByDesc('is_default')->orderBy('id')->get()
                 ->map(fn ($a) => [
                     'id' => $a->id,
@@ -166,17 +177,17 @@ class PageController extends Controller
     {
         $bid = Demo::bid();
         // كم موظفًا يشغل كل مسمّى — عمود «الاستخدام» في تبويب الوظائف
-        $usage = \App\Models\User::where('business_id', $bid)
+        $usage = User::where('business_id', $bid)
             ->selectRaw('job_title, COUNT(*) as c')->groupBy('job_title')->pluck('c', 'job_title');
 
         return [
             'employees' => Demo::employees(),
-            'jobTitles' => \App\Models\JobTitle::where('business_id', $bid)->orderBy('name')->get()
+            'jobTitles' => JobTitle::where('business_id', $bid)->orderBy('name')->get()
                 ->map(fn ($t) => [
                     'id' => $t->id,
                     'name' => $t->name,
                     'role' => $t->role,
-                    'roleLabel' => \App\Support\Roles::label($t->role),
+                    'roleLabel' => Roles::label($t->role),
                     'description' => $t->description,
                     'usage' => (int) ($usage[$t->name] ?? 0),
                 ])->all(),
@@ -187,12 +198,12 @@ class PageController extends Controller
     {
         return Inertia::render('Admin/Employees/Create', [
             'branches' => Demo::branches(),
-            'branchOptions' => \App\Models\Branch::where('business_id', Demo::bid())
+            'branchOptions' => Branch::where('business_id', Demo::bid())
                 ->orderBy('id')->get(['id', 'name'])
                 ->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
             'jobTitles' => self::jobTitles(),
             'currentBranchName' => Demo::currentBranchName(),
-            'sections' => \App\Support\Permissions::sectionLabels(),
+            'sections' => Permissions::sectionLabels(),
         ]);
     }
 
@@ -227,7 +238,7 @@ class PageController extends Controller
     /** مسمّيات الوظائف المعرّفة للنشاط */
     private static function jobTitles(): array
     {
-        return \App\Models\JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all();
+        return JobTitle::where('business_id', Demo::bid())->orderBy('name')->pluck('name')->all();
     }
 
     /* ------------------------------ المخزون ------------------------------ */
@@ -246,7 +257,6 @@ class PageController extends Controller
         ]);
     }
 
-
     /* ----------------------- المورّدون وأوامر الشراء ----------------------- */
 
     public function suppliersIndex(): Response
@@ -263,7 +273,7 @@ class PageController extends Controller
      * فلم تعد صفحةَ عرضٍ تُقدَّم من هنا.
      */
 
-    public function purchasesCreate(\Illuminate\Http\Request $request): Response
+    public function purchasesCreate(Request $request): Response
     {
         return Inertia::render('Admin/Purchases/Create', [
             'suppliers' => Demo::suppliers(),
@@ -285,17 +295,12 @@ class PageController extends Controller
      * كتابةٌ تمرّ بـ`Ledger::post` — فلم تعد صفحاتِ عرضٍ تُقدَّم من هنا.
      */
 
-
-
-
-
     /*
      * التسويق انتقل إلى App\Http\Controllers\Admin\Marketing.
      *
      * صار ستّ أدوات تُفتح كلٌّ منها بعنوانها، لا صفحةً جامعة تُفتح فيها
      * الكوبونات ويُبحث عن الباقي.
      */
-
 
     /* ----------------------------- الإعدادات ----------------------------- */
 
@@ -309,8 +314,8 @@ class PageController extends Controller
     public function reportsIndex(): Response
     {
         return Inertia::render('Admin/Reports/Index', [
-            'reports' => \App\Support\Reports::forUser(auth()->user()),
-            'categories' => \App\Support\Reports::categoryLabels(),
+            'reports' => Reports::forUser(auth()->user()),
+            'categories' => Reports::categoryLabels(),
         ]);
     }
 
@@ -321,16 +326,16 @@ class PageController extends Controller
      * لفترتين في شاشةٍ واحدة. والفترة في الرابط لا في الجلسة: رابطٌ يُرسَل
      * أو يُحفَظ يفتح على ما فُتح عليه، ولا تتبدّل شاشة أحدٍ لأن آخر بدّلها.
      */
-    public function reportsSales(\Illuminate\Http\Request $request): Response
+    public function reportsSales(Request $request): Response
     {
         // الحمولة من Support\Reports لا تُجمع هنا: الملفّات الثلاثة تقرأ
         // المصدر نفسه، فلا يخرج ملفٌّ بغير ما على الشاشة
-        return Inertia::render('Admin/Reports/Sales', \App\Support\Reports::salesReport($request->query('range')));
+        return Inertia::render('Admin/Reports/Sales', Reports::salesReport($request->query('range')));
     }
 
-    public function settingsIndex(\Illuminate\Http\Request $request): Response
+    public function settingsIndex(Request $request): Response
     {
-        $b = \App\Models\Business::find(Demo::bid());
+        $b = Business::find(Demo::bid());
         $section = $request->query('section');
         $section = is_string($section) ? $section : null;
 
@@ -353,19 +358,17 @@ class PageController extends Controller
              * وتُرسل دائمًا لا عند طلب قسمها: ثمانية مفاتيح نصّية، وطلبُها
              * برحلةٍ إلى الخادم أغلى من إرسالها.
              */
-            'site' => \App\Support\MarketingSettings::group(Demo::bid(), 'website'),
+            'site' => MarketingSettings::group(Demo::bid(), 'website'),
             /*
              * بريد الاستعادة — حالُه وحده، بلا رمزٍ ولا بصمة.
              *
              * ويُرسَل دائمًا لا عند طلب قسمه: أربعة حقول، وهو أوّل ما يجب أن
              * يراه صاحبُ حسابٍ لم يضبطه بعد.
              */
-            'recovery' => \App\Http\Controllers\Admin\RecoveryEmailController::view(auth()->user()),
-            // رقمٌ يقول إن كان الموقع سيُفتح على صفحةٍ فارغة
-            'published' => \App\Models\Product::where('business_id', Demo::bid())->count(),
+            'recovery' => RecoveryEmailController::view(auth()->user()),
             // القائمة الكاملة — تبويب «التنبيهات المرسلة» يعرضها بلا اختصار
             'notificationsAll' => Demo::allNotifications(),
-            'customAlerts' => \App\Models\CustomAlert::where('business_id', Demo::bid())
+            'customAlerts' => CustomAlert::where('business_id', Demo::bid())
                 ->orderByDesc('id')->get()->map(fn ($a) => [
                     'id' => $a->id,
                     'type' => $a->type,
@@ -378,12 +381,12 @@ class PageController extends Controller
                     'due_at' => optional($a->due_at)->format('Y-m-d\\TH:i'),
                     'active' => $a->active,
                 ])->all(),
-            'alertMetrics' => collect(\App\Models\CustomAlert::METRICS)
+            'alertMetrics' => collect(CustomAlert::METRICS)
                 ->map(fn ($m, $k) => ['key' => $k, 'label' => __($m['label']), 'unit' => $m['unit'], 'section' => $m['section']])
                 ->values()->all(),
-            'alertSections' => \App\Support\Permissions::sectionLabels(),
+            'alertSections' => Permissions::sectionLabels(),
             // قسم «صلاحيات الموظفين»: الموظفون الفعليون وحالة صلاحية كلٍّ منهم
-            'staffPermissions' => \App\Models\User::where('business_id', Demo::bid())
+            'staffPermissions' => User::where('business_id', Demo::bid())
                 ->where('role', '!=', 'super_admin')->orderBy('name')->get()
                 ->map(fn ($u) => [
                     'id' => $u->id,
@@ -431,7 +434,7 @@ class PageController extends Controller
         return $data;
     }
 
-    private function settingsSection(?string $section, \Illuminate\Http\Request $request): array
+    private function settingsSection(?string $section, Request $request): array
     {
         return match ($section) {
             'branches' => ['branches' => Demo::branches()],
@@ -443,12 +446,12 @@ class PageController extends Controller
              * الجدول صفوفًا فارغة بلا خطأٍ يُنبّه.
              */
             'devices' => $this->renameKey(
-                \App\Http\Controllers\Pos\DeviceController::panelData(),
+                DeviceController::panelData(),
                 'branches',
                 'branchOptions',
             ),
-            'activity' => \App\Http\Controllers\ActivityController::adminData($request),
-            'trash' => \App\Http\Controllers\Admin\TrashController::panelData(),
+            'activity' => ActivityController::adminData($request),
+            'trash' => TrashController::panelData(),
             /*
              * الشجرة صلاحيتها «المالية» لا «الإعدادات».
              *
@@ -459,7 +462,7 @@ class PageController extends Controller
              * تُعرض ولا يعمل فيها شيء.
              */
             'chart' => $request->user()?->allows('finance')
-                ? \App\Http\Controllers\Admin\Finance\ChartController::panelData(Demo::bid())
+                ? ChartController::panelData(Demo::bid())
                 : [],
             default => [],
         };

@@ -57,4 +57,7 @@ class WhatsAppStatus
     public const SKIP_QUOTA = 'quota_exceeded';
 
     public const SKIP_OWN_NOT_ALLOWED = 'own_mode_not_entitled';
+
+    /** باقةُ المتجر لا تفتح إشعارات واتساب — سببٌ يُقرأ، لا صمت */
+    public const SKIP_PLAN = 'plan_excluded';
 }

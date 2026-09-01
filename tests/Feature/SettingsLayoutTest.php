@@ -2,9 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Admin\SettingController;
 use App\Models\Business;
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -82,15 +86,52 @@ class SettingsLayoutTest extends TestCase
             "tab === 'finance'", 'vat_rate', 'tax_mode', 'symbol_pos', 'decimals', 'PAYMENT_METHODS',
             // الترقيم والورق → قوالب الفواتير
             'inv_prefix', 'inv_start',
-            // الموقع والنطاق → الإعدادات
-            "tab === 'domain'", "tab === 'website'",
-            'site_domain', 'site_enabled', 'site_tagline', 'site_about',
-            'site_whatsapp', 'site_instagram', 'site_show_prices', 'site_allow_orders',
+            // النطاق → الإعدادات، والشعار معه
+            "tab === 'domain'", "tab === 'website'", 'site_domain',
         ];
 
         foreach ($moved as $needle) {
             $this->assertStringContainsString($needle, $tsx, "«{$needle}» ضاع في النقل");
         }
+    }
+
+    /**
+     * ومقابضُ المتجر التي لا واجهةَ لها لا تبقى في شاشة.
+     *
+     * كانت تُملأ وتُحفظ ولا يقرؤها شيء: لا صفحةَ متجرٍ في النظام تعرضها
+     * لزائر. فالتاجر يرفع «نشر الموقع» ويظنّ أنّه نشر متجرًا، وينتظر طلبًا
+     * لا يأتي. والحقلُ الذي لا يُقرأ ليس زائدًا — هو وعدٌ مكذوب.
+     */
+    public function test_the_storefront_controls_that_lead_nowhere_are_gone(): void
+    {
+        $tsx = $this->screen();
+
+        $dead = [
+            'site_enabled', 'site_tagline', 'site_about',
+            'site_whatsapp', 'site_instagram', 'site_show_prices', 'site_allow_orders',
+        ];
+
+        foreach ($dead as $needle) {
+            $this->assertStringNotContainsString($needle, $tsx, "«{$needle}» مقبضٌ لا يقرؤه شيء وما زال معروضًا");
+        }
+    }
+
+    /** ولا يُحفظ ما رُفع: مفتاحٌ يصل الخادم فيُكتب في القاعدة يعود شاشةً غدًا */
+    public function test_the_dead_storefront_keys_are_not_written_even_if_sent(): void
+    {
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.website.save'), [
+                'site_domain' => 'mystore.om',
+                'site_enabled' => true,
+                'site_tagline' => 'ورودٌ تصل في وقتها',
+            ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseMissing('settings', [
+            'business_id' => $this->business->id, 'key' => 'site_enabled',
+        ]);
+        $this->assertDatabaseMissing('settings', [
+            'business_id' => $this->business->id, 'key' => 'site_tagline',
+        ]);
     }
 
     /* ------------------------- ما يصل من الخادم ------------------------- */
@@ -103,7 +144,6 @@ class SettingsLayoutTest extends TestCase
 
         $this->assertArrayHasKey('site', $props, 'إعدادات الموقع لا تصل الشاشة');
         $this->assertArrayHasKey('site_domain', $props['site']);
-        $this->assertArrayHasKey('published', $props);
     }
 
     /** وشجرة الحسابات تُحسب لقسمها وحده — لا تُجرّ مع كل فتحةِ إعدادات */
@@ -138,10 +178,8 @@ class SettingsLayoutTest extends TestCase
     public function test_the_domain_still_saves_from_settings(): void
     {
         $this->actingAs($this->owner)
-            ->post(route('admin.marketing.website.save'), [
-                'site_domain' => 'mystore.om',
-                'site_enabled' => true,
-            ])->assertSessionHasNoErrors();
+            ->post(route('admin.marketing.website.save'), ['site_domain' => 'mystore.om'])
+            ->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('settings', [
             'business_id' => $this->business->id, 'key' => 'site_domain', 'value' => 'mystore.om',
@@ -150,13 +188,18 @@ class SettingsLayoutTest extends TestCase
 
     /* ----------------------------- شكل الشاشة ----------------------------- */
 
-    /** «إعدادات الموقع» تبويباتٌ وبطاقات — لا عمودٌ يُمرَّر إليه */
-    public function test_the_website_screen_is_tabbed(): void
+    /**
+     * والشاشة ما عادت تحتاج تبويبات: بطاقةٌ واحدة بقيت فيها.
+     *
+     * التبويبُ يقسم ما يكثر؛ وثلاثةُ تبويباتٍ فوق بطاقةٍ واحدة تَعِد بشيءٍ
+     * تحتها ليس هناك.
+     */
+    public function test_the_website_screen_is_no_longer_tabbed(): void
     {
         $tsx = $this->screen();
 
         foreach (["siteTab === 'basic'", "siteTab === 'contact'", "siteTab === 'display'"] as $needle) {
-            $this->assertStringContainsString($needle, $tsx, "تبويب «{$needle}» غائب");
+            $this->assertStringNotContainsString($needle, $tsx, "تبويب «{$needle}» بقي فوق بطاقةٍ واحدة");
         }
     }
 
@@ -171,17 +214,17 @@ class SettingsLayoutTest extends TestCase
      */
     public function test_the_owner_uploads_the_logo_himself(): void
     {
-        \Illuminate\Support\Facades\Storage::fake('public');
+        Storage::fake('public');
 
         $this->actingAs($this->owner)
             ->post(route('admin.settings.logo'), [
-                'logo' => \Illuminate\Http\UploadedFile::fake()->image('logo.png', 400, 100),
+                'logo' => UploadedFile::fake()->image('logo.png', 400, 100),
             ])->assertSessionHasNoErrors();
 
         // العمود الخام: الخاصيّة تردّ رابطًا، والقرص يعرف المسار
         $stored = $this->business->fresh()->getRawOriginal('logo');
         $this->assertNotNull($stored, 'لم يُحفظ الشعار');
-        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($stored);
+        Storage::disk('public')->assertExists($stored);
 
         // والشاشة تقرؤه رابطًا لا مسارًا خامًا
         $props = $this->actingAs($this->owner)
@@ -191,7 +234,7 @@ class SettingsLayoutTest extends TestCase
 
     public function test_the_logo_is_removed_when_asked(): void
     {
-        \Illuminate\Support\Facades\Storage::fake('public');
+        Storage::fake('public');
         $this->business->update(['logo' => 'logos/old.png']);
 
         $this->actingAs($this->owner)
@@ -204,11 +247,11 @@ class SettingsLayoutTest extends TestCase
     /** وما ليس صورةً يُرفض — لا يُخزَّن ثمّ يُكتشف على فاتورةٍ مطبوعة */
     public function test_a_file_that_is_not_an_image_is_refused(): void
     {
-        \Illuminate\Support\Facades\Storage::fake('public');
+        Storage::fake('public');
 
         $this->actingAs($this->owner)
             ->post(route('admin.settings.logo'), [
-                'logo' => \Illuminate\Http\UploadedFile::fake()->create('bill.pdf', 40, 'application/pdf'),
+                'logo' => UploadedFile::fake()->create('bill.pdf', 40, 'application/pdf'),
             ])->assertSessionHasErrors('logo');
 
         $this->assertNull($this->business->fresh()->logo);
@@ -217,13 +260,13 @@ class SettingsLayoutTest extends TestCase
     /** ولا يرفع تاجرٌ شعارًا على متجر جاره */
     public function test_the_logo_lands_on_the_owner_business_only(): void
     {
-        \Illuminate\Support\Facades\Storage::fake('public');
+        Storage::fake('public');
 
         $other = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
 
         $this->actingAs($this->owner)
             ->post(route('admin.settings.logo'), [
-                'logo' => \Illuminate\Http\UploadedFile::fake()->image('logo.png'),
+                'logo' => UploadedFile::fake()->image('logo.png'),
                 'business_id' => $other->id,
             ])->assertSessionHasNoErrors();
 
@@ -299,11 +342,11 @@ class SettingsLayoutTest extends TestCase
     {
         $this->assertNotContains(
             'require_open_shift',
-            array_keys((new \ReflectionClass(\App\Http\Controllers\Admin\SettingController::class))->getConstant('KEYS')),
+            array_keys((new \ReflectionClass(SettingController::class))->getConstant('KEYS')),
             'مفتاحٌ يمنع البيع ما زال يُقبل من بابٍ بلا شاشة',
         );
 
-        \App\Models\Setting::create([
+        Setting::create([
             'business_id' => $this->business->id, 'key' => 'require_open_shift', 'value' => '1',
         ]);
 
@@ -314,7 +357,7 @@ class SettingsLayoutTest extends TestCase
         // القائمة المغلقة تتجاهله: لا يُرفع من هنا بعد اليوم
         $this->assertSame(
             '1',
-            \App\Models\Setting::where('business_id', $this->business->id)
+            Setting::where('business_id', $this->business->id)
                 ->where('key', 'require_open_shift')->value('value'),
         );
     }

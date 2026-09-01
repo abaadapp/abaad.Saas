@@ -21,7 +21,6 @@ import {
     MessageSquare,
     Package,
     RefreshCw,
-    Search,
     Settings,
     ShoppingCart,
     Star,
@@ -42,6 +41,13 @@ export interface NavItem {
      * (role:super_admin) لا صلاحيات الأقسام، فلا معنى لتصفيتها هنا.
      */
     section?: string;
+    /**
+     * قدرةُ الباقة التي يفتحها هذا العنصر — يُخفى إن لم تشمله باقة المتجر.
+     *
+     * غير `section`: ذاك صلاحيةُ الموظّف، وهذا ما اشتراه صاحب المتجر. وبابٌ
+     * يُعرض ويردّ بـ403 يجعل صاحبه يظنّ العطب في النظام ويعيد المحاولة.
+     */
+    feature?: string;
     /**
      * صفحات تتبع هذا العنصر ولا مدخل لها في القائمة — تُبقيه مضيئًا.
      *
@@ -161,11 +167,10 @@ export const NAV: NavGroup[] = [
                 route: 'admin.marketing.loyalty',
                 section: 'marketing',
                 children: [
-                    { label: 'برنامج ولاء', icon: Star, route: 'admin.marketing.loyalty', section: 'marketing' },
+                    { label: 'برنامج ولاء', icon: Star, route: 'admin.marketing.loyalty', section: 'marketing', feature: 'loyalty' },
                     { label: 'تقييمات العملاء', icon: MessageSquare, route: 'admin.marketing.reviews', section: 'marketing' },
                     { label: 'الكوبونات والعروض', icon: TicketPercent, route: 'admin.marketing.coupons', section: 'marketing' },
-                    { label: 'تحسين محركات البحث', icon: Search, route: 'admin.marketing.seo', section: 'marketing' },
-                    { label: 'إشعارات واتساب', icon: MessageCircle, route: 'admin.marketing.whatsapp', section: 'marketing' },
+                    { label: 'إشعارات واتساب', icon: MessageCircle, route: 'admin.marketing.whatsapp', section: 'marketing', feature: 'whatsapp' },
                 ],
             },
         ],

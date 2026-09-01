@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Models\Setting;
 
 /**
  * من يملك أن يفعل ماذا — الإذن في موضعٍ واحد.
@@ -28,7 +29,7 @@ class WhatsAppFeature
 
     private static function platformFlag(string $key, bool $default): bool
     {
-        $raw = \App\Models\Setting::whereNull('business_id')->where('key', $key)->value('value');
+        $raw = Setting::whereNull('business_id')->where('key', $key)->value('value');
 
         return $raw === null || $raw === '' ? $default : $raw !== '0';
     }
@@ -83,6 +84,20 @@ class WhatsAppFeature
 
         if (! $business->whatsapp_enabled) {
             return WhatsAppStatus::SKIP_AUTOMATION_OFF;
+        }
+
+        /*
+         * والباقة تُسأل قبل الإرسال لا بعده.
+         *
+         * القدرة تُغلق الشاشة، والشاشةُ ليست البابَ الوحيد: الإشعار يُرسل من
+         * الطلب حين تتغيّر حالته، لا من زرٍّ يضغطه أحد. فقفلٌ في الشاشة وحدها
+         * يعني رسائل تُرسَل — وتُحاسَب على المنصّة — لباقةٍ لا تشملها.
+         *
+         * والسبب يُكتب في السجلّ باسمه: «امتنع لأنّ الباقة لا تشمله» يُقرأ
+         * ويُرقّى، و«الأتمتة مطفأة» يُبحث عن مفتاحٍ لا وجود له.
+         */
+        if (! PlanFeatures::allows($business, 'whatsapp')) {
+            return WhatsAppStatus::SKIP_PLAN;
         }
 
         $mode = self::effectiveMode($business);

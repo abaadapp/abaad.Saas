@@ -4,6 +4,10 @@ namespace App\Http\Middleware;
 
 use App\Support\Demo;
 use App\Support\Permissions;
+use App\Support\PlanFeatures;
+use App\Support\PosCashier;
+use App\Support\PosTerminal;
+use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -55,6 +59,17 @@ class HandleInertiaRequests extends Middleware
                     ->filter(fn ($section) => $user->allows($section))
                     ->values()
                     ->all(),
+                /*
+                 * وما تفتحه الباقة — سؤالٌ آخر غير `abilities`.
+                 *
+                 * ذاك يسأل «هل يملك هذا الموظّف هذا القسم؟» وهذا «هل اشترى
+                 * صاحبُ المتجر هذه القدرة؟». والاثنان يقعان على البند الواحد:
+                 * مالكٌ يملك كلّ الأقسام في متجرٍ على الباقة الأساسية.
+                 *
+                 * وتُرسل ليُخفى ما لا يُفتح: بابٌ يُعرض ويردّ بـ403 يجعل صاحبه
+                 * يظنّ العطب في النظام ويعيد المحاولة — انظر `Permissions::panelEntry`.
+                 */
+                'planFeatures' => PlanFeatures::map($user->business),
             ] : null,
 
             // سياق المتجر: الفرع الحالي والعملة المعروضة ومنازل الكسر
@@ -67,7 +82,7 @@ class HandleInertiaRequests extends Middleware
                 'branchName' => Demo::currentBranchName(),
                 'branches' => Demo::branches(),
                 // اسم الصندوق الذي يقف عليه — يُعرض في ترويسة نقطة البيع
-                'deviceName' => \App\Support\PosTerminal::current()?->name,
+                'deviceName' => PosTerminal::current()?->name,
                 /*
                  * ملحقات هذا الصندوق وحده — لا ملحقات المتجر كلّه.
                  *
@@ -76,7 +91,7 @@ class HandleInertiaRequests extends Middleware
                  * وتُرسل النشطة فقط: ملحقٌ عُطِّل من الإعدادات لأنه معطوب يجب
                  * ألّا يُطبع عليه.
                  */
-                'peripherals' => \App\Support\PosTerminal::current()
+                'peripherals' => PosTerminal::current()
                     ?->peripherals()->where('active', true)->get()
                     ->map(fn ($p) => [
                         'type' => $p->type,
@@ -96,13 +111,13 @@ class HandleInertiaRequests extends Middleware
                 'subscription' => ($ends = $user->business?->ends_at)
                     ? [
                         'endsAt' => $ends->format('Y-m-d'),
-                        'daysLeft' => \App\Support\Tenancy::daysLeft($user->business),
+                        'daysLeft' => Tenancy::daysLeft($user->business),
                         /*
                          * أيّام المهلة الباقية بعد الانتهاء — الرقم الذي يدفع
                          * إلى الدفع. «انتهى اشتراكك» وحدها لا تقول متى يقف
                          * الصندوق، ومن لا يعرف الموعد يؤجّل إلى أن يفاجئه.
                          */
-                        'graceLeft' => \App\Support\Tenancy::graceLeft($user->business),
+                        'graceLeft' => Tenancy::graceLeft($user->business),
                     ]
                     : null,
             ] : null,
@@ -110,7 +125,7 @@ class HandleInertiaRequests extends Middleware
             // الموظف الواقف على الصندوق — تعرضه ترويسة نقطة البيع، وهو غير
             // الحساب المسجَّل دخوله (انظر App\Support\PosCashier)
             'posCashier' => fn () => $user?->business_id
-                ? (\App\Support\PosCashier::current()?->only(['id', 'name']))
+                ? (PosCashier::current()?->only(['id', 'name']))
                 : null,
 
             'notifications' => fn () => $user?->business_id ? [

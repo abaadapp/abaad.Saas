@@ -3,11 +3,26 @@
 namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
+use App\Models\Business;
+use App\Models\Invoice;
 use App\Models\Plan;
 use App\Models\Setting;
+use App\Models\Subscription;
+use App\Models\User;
+use App\Models\WhatsAppConnection;
+use App\Support\Billing;
 use App\Support\BusinessTypes;
 use App\Support\Demo;
+use App\Support\MerchantAccount;
+use App\Support\Permissions;
+use App\Support\PlanFeatures;
+use App\Support\PlanLimits;
+use App\Support\PlatformConfig;
+use App\Support\Roles;
+use App\Support\WhatsAppConnections;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -71,14 +86,14 @@ class PageController extends Controller
 
         $counts = Demo::businessCounts($business['id']);
         $overview = Demo::businessOverview($business['id']);
-        $model = \App\Models\Business::with('plan')->findOrFail($business['id']);
+        $model = Business::with('plan')->findOrFail($business['id']);
 
         return $this->page('Platform/Businesses/Show', [
             'business' => [
                 ...$business,
                 'logo' => self::logoUrl($business['logo']),
                 // بريد الدخول — أوّل ما يُسأل عنه حين يتصل التاجر
-                'owner_email' => \App\Support\MerchantAccount::owner($model)?->email,
+                'owner_email' => MerchantAccount::owner($model)?->email,
             ],
             /*
              * اشتراك هذا المتجر بمعرّفه لا باسمه.
@@ -108,16 +123,16 @@ class PageController extends Controller
              * حدٌّ يُفرض عند الإنشاء يجب أن يُرى قبل أن يُصطدَم به: من بلغ
              * سقفه هو المرشَّح للترقية، ولا سبيل لمعرفته إن لم يُعرض.
              */
-            'usage' => \App\Support\PlanLimits::usage($model),
+            'usage' => PlanLimits::usage($model),
             'renewal' => [
-                'monthly' => \App\Support\Billing::price($model, 'monthly'),
-                'yearly' => \App\Support\Billing::price($model, 'yearly'),
+                'monthly' => Billing::price($model, 'monthly'),
+                'yearly' => Billing::price($model, 'yearly'),
                 'endsAt' => optional($model->ends_at)->format('Y-m-d'),
             ],
             // واتساب هذا المتجر: حدُّه واستهلاكه وأذونه — بلا رمزٍ ولا سرّ
-            'whatsapp' => \App\Http\Controllers\SuperAdmin\WhatsAppController::businessView($model),
+            'whatsapp' => WhatsAppController::businessView($model),
             // ووسيلة استعادته: العنوان وحاله — أوّل ما يُسأل عنه حين يتّصل صاحبه
-            'recovery' => \App\Http\Controllers\SuperAdmin\RecoveryController::view($model),
+            'recovery' => RecoveryController::view($model),
         ]);
     }
 
@@ -126,7 +141,7 @@ class PageController extends Controller
         $business = Demo::business($id);
         abort_if(empty($business), 404);
 
-        $model = \App\Models\Business::find($business['id']);
+        $model = Business::find($business['id']);
 
         return $this->page('Platform/Businesses/Edit', [
             'business' => [
@@ -138,7 +153,7 @@ class PageController extends Controller
                 'ends_at' => optional($model?->ends_at)->format('Y-m-d'),
                 'logo_url' => self::logoUrl($model?->logo),
                 // حساب الدخول يُعرض ولا يُعاد إنشاؤه من هنا
-                'owner_email' => $model ? \App\Support\MerchantAccount::owner($model)?->email : null,
+                'owner_email' => $model ? MerchantAccount::owner($model)?->email : null,
             ],
             'options' => $this->businessOptions(),
         ]);
@@ -180,7 +195,16 @@ class PageController extends Controller
                 'max_branches' => $p->max_branches,
                 'max_employees' => $p->max_employees,
                 'max_products' => $p->max_products,
+                /*
+                 * ما تفتحه الباقة — و`null` تعني «كلّ شيء» لا «لا شيء».
+                 *
+                 * تُرسل كما هي لا مُسوّاةً إلى قائمةٍ فارغة: الفرق بينهما هو
+                 * الفرق بين باقةٍ لم تُضبط بعد وباقةٍ أُغلقت عمدًا، والشاشة
+                 * تحتاج أن تقول أيّهما.
+                 */
+                'capabilities' => $p->capabilities,
             ])->all(),
+            'capabilityOptions' => PlanFeatures::options(),
         ]);
     }
 
@@ -209,7 +233,7 @@ class PageController extends Controller
          * إلى الذاكرة ثمّ يلتقط منهم واحدًا. عشرة اليوم، وعشرة آلاف حين يكبر —
          * وفتحُ ملفٍّ واحد يقرأ الجدول كلَّه.
          */
-        $model = \App\Models\User::with('business.plan')->find($id);
+        $model = User::with('business.plan')->find($id);
         abort_if($model === null, 404);
 
         return $this->page('Platform/Users/Show', [
@@ -234,7 +258,7 @@ class PageController extends Controller
             'activities' => Demo::userActivities($model->id),
             'roles' => $this->roleOptions(),
             // ربطُ الحساب بمتجره صار قابلًا للإصلاح — كان يُثبَّت عند الإنشاء وحده
-            'businesses' => \App\Models\Business::orderBy('name')->get()
+            'businesses' => Business::orderBy('name')->get()
                 ->map(fn ($b) => ['label' => $b->name, 'value' => $b->id])->all(),
             'permissions' => $this->permissionsFor($model),
             // «تتبع الدور» جملةٌ تكذب على من خُصّصت صلاحياته يدويًّا
@@ -254,11 +278,11 @@ class PageController extends Controller
      * والتسميات من `Permissions::sectionLabels()` لا من قائمةٍ محلّيّة كانت
      * تُعدّد أقسامًا لا وجود لها (تقارير، ربحية، فروع…).
      */
-    private function permissionsFor(?\App\Models\User $user): array
+    private function permissionsFor(?User $user): array
     {
-        $labels = \App\Support\Permissions::sectionLabels();
+        $labels = Permissions::sectionLabels();
 
-        return collect(\App\Support\Permissions::sections())
+        return collect(Permissions::sections())
             ->map(fn ($section) => [
                 'label' => $labels[$section] ?? $section,
                 'granted' => (bool) $user?->allows($section),
@@ -276,13 +300,13 @@ class PageController extends Controller
             // كانت هذه البطاقات أرقامًا ثابتة (52,640 ر.ع و120 و128 …)
             'cards' => [
                 ['title' => __('تقرير الإيرادات'), 'desc' => __('إجمالي إيرادات الاشتراكات'), 'icon' => 'wallet', 'color' => 'primary',
-                    'value' => Demo::money(\App\Models\Invoice::where('status', 'مدفوعة')->sum('amount'))],
+                    'value' => Demo::money(Invoice::where('status', 'مدفوعة')->sum('amount'))],
                 ['title' => __('تقرير الاشتراكات'), 'desc' => __('الاشتراكات النشطة والمنتهية'), 'icon' => 'refresh-cw', 'color' => 'success',
                     'value' => (string) ($subs['active'] + $subs['trialing'] + $subs['expired'])],
                 ['title' => __('تقرير الشركات'), 'desc' => __('الشركات المسجلة في المنصة'), 'icon' => 'building-2', 'color' => 'info',
-                    'value' => (string) \App\Models\Business::real()->count()],
+                    'value' => (string) Business::real()->count()],
                 ['title' => __('تقرير الأنشطة'), 'desc' => __('سجل الأنشطة والعمليات'), 'icon' => 'activity', 'color' => 'warning',
-                    'value' => (string) \App\Models\ActivityLog::count()],
+                    'value' => (string) ActivityLog::count()],
             ],
             'revenueSeries' => Demo::revenueSeries(),
             'planDistribution' => $dist,
@@ -296,7 +320,7 @@ class PageController extends Controller
      */
     private function planSummary(): array
     {
-        $rows = \App\Models\Subscription::with('plan')->where('status', 'نشط')->get()
+        $rows = Subscription::with('plan')->where('status', 'نشط')->get()
             ->groupBy(fn ($s) => $s->plan?->name ?? __('بدون باقة'));
         $totalSubs = $rows->sum(fn ($g) => $g->count());
 
@@ -320,7 +344,7 @@ class PageController extends Controller
         return $this->page('Platform/Settings/Index', [
             'settings' => $this->platformSettings(),
             // حال البريد كما هو على الخادم — لا كما حُفظ في الشاشة
-            'mail' => \App\Support\PlatformConfig::mailStatus(),
+            'mail' => PlatformConfig::mailStatus(),
             /*
              * الباقات بأسمائها لتُختار لا لتُكتب.
              *
@@ -328,7 +352,7 @@ class PageController extends Controller
              * زائدة أو باقةٌ أُعيدت تسميتُها تعني متجرًا يُضاف بلا باقة —
              * ولا شيء في الشاشة يقول إن الحقل لم يعد يطابق شيئًا.
              */
-            'plans' => \App\Models\Plan::orderBy('id')->pluck('name')
+            'plans' => Plan::orderBy('id')->pluck('name')
                 ->map(fn ($n) => ['label' => $n, 'value' => $n])->all(),
             /*
              * حال الوصلة المشتركة — بلا رمز.
@@ -336,8 +360,8 @@ class PageController extends Controller
              * `publicView` هو الباب: تمرير النموذج نفسه كان يُخرج الرمز إلى
              * المتصفّح مهما كان `$hidden` عليه.
              */
-            'whatsapp' => \App\Support\WhatsAppConnections::publicView(
-                \App\Models\WhatsAppConnection::query()->platform()->orderByDesc('id')->first(),
+            'whatsapp' => WhatsAppConnections::publicView(
+                WhatsAppConnection::query()->platform()->orderByDesc('id')->first(),
                 withIds: true,
             ),
         ]);
@@ -410,7 +434,7 @@ class PageController extends Controller
 
         return str_starts_with($logo, 'http')
             ? $logo
-            : \Illuminate\Support\Facades\Storage::disk('public')->url($logo);
+            : Storage::disk('public')->url($logo);
     }
 
     private function businessOptions(): array
@@ -434,7 +458,7 @@ class PageController extends Controller
      */
     private function roleOptions(): array
     {
-        return \App\Support\Roles::options();
+        return Roles::options();
     }
 
     /** تُستدعى من UserController@index لتوحيد قائمة الأدوار بين الصفحتين */
@@ -453,7 +477,7 @@ class PageController extends Controller
          * «مغسلة» تُسجَّل ثمّ لا سبيل إلى تصفيتها — مدخلٌ يقبل ما لا يستطيع
          * البحث عنه.
          */
-        $types = \App\Models\Business::real()->whereNotNull('type')->distinct()->orderBy('type')->pluck('type')->all();
+        $types = Business::real()->whereNotNull('type')->distinct()->orderBy('type')->pluck('type')->all();
 
         return [
             'types' => collect(BusinessTypes::TYPES)->merge($types)->unique()->values()->all(),

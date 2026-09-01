@@ -8,6 +8,7 @@ use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\OrderStatus;
+use App\Support\OrderTransition;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -28,6 +29,9 @@ use Inertia\Inertia;
  */
 class PreparationController extends Controller
 {
+    /** أقصى ما يُرسم على اللوحة دفعةً واحدة — وما زاد يُقال عددُه لا يُبتلع */
+    private const BOARD_LIMIT = 200;
+
     private function bid(): int
     {
         return auth()->user()->business_id ?? Demo::bid();
@@ -73,14 +77,32 @@ class PreparationController extends Controller
 
         $this->applyWindow($q, $filter);
 
-        // المتأخّر أوّلًا لأنّه أقدم موعدًا — والترتيب التصاعديّ يُقدّمه وحده
-        $orders = $q->orderBy('scheduled_for')->limit(200)->get();
+        /*
+         * السقف يبقى، والصمتُ عنه لا يبقى.
+         *
+         * مئتا بطاقةٍ على شاشةٍ واحدة حدٌّ معقول — لكنّ اللوحة كانت تقطع عندها
+         * بلا كلمة: العدّاد فوقها يقول «٢٥٠» والقائمة تحته تنتهي عند المئتين،
+         * فيظنّ من يجهّز أنّه أنهى ما عليه وخمسون طلبًا لم تُعرض له أصلًا.
+         *
+         * والترتيب بالموعد يُخفي الأبعد لا الأقرب — وهو أرحم ممّا لو كان
+         * عشوائيًّا، لكنّ الطلب المؤجَّل يصير متأخّرًا بعد يومين، فيظهر حينها
+         * وقد فات موعدُه. وباقةٌ لا تصل صاحبها في يومها ليست سطرًا ناقصًا في
+         * شاشة.
+         *
+         * فيُقال العدد صراحةً ويُدلّ على المرشّح الذي يُظهر الباقي — والعدّ
+         * على الاستعلام نفسه بنافذته ومرشّحه، لا على «الكلّ» فوقه.
+         */
+        $total = (clone $q)->count();
+        $orders = $q->orderBy('scheduled_for')->limit(self::BOARD_LIMIT)->get();
 
         return Inertia::render('Admin/Preparation/Index', [
             'orders' => $orders->map(fn ($o) => $this->card($o))->values()->all(),
             'filters' => ['when' => $filter, 'type' => $type],
             'counts' => $this->counts($type),
             'typeCounts' => $this->typeCounts($filter),
+            'truncated' => $total > self::BOARD_LIMIT
+                ? ['shown' => $orders->count(), 'total' => $total]
+                : null,
         ]);
     }
 
@@ -245,7 +267,7 @@ class PreparationController extends Controller
 
         $from = $order->status;
 
-        if ($error = \App\Support\OrderTransition::apply($order, $data['status'])) {
+        if ($error = OrderTransition::apply($order, $data['status'])) {
             /*
              * والرفض يُرى — واللوحة لا تعرض إلّا `flash.toast`.
              *

@@ -5,10 +5,14 @@ namespace App\Http\Controllers\Admin\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\JournalEntry;
+use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Pagination;
+use App\Support\Search;
+use App\Support\Sort;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -37,7 +41,10 @@ class JournalController extends Controller
         'source' => 'source',
     ];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     public function index(Request $request): Response
     {
@@ -47,8 +54,9 @@ class JournalController extends Controller
         $q = JournalEntry::where('business_id', $bid)->with(['lines.account', 'creator']);
 
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('number', 'like', "%{$s}%")
-                ->orWhere('description', 'like', "%{$s}%"));
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('number', $like, "%{$s}%")
+                ->orWhere('description', $like, "%{$s}%"));
         }
         if ($source = $request->query('source')) {
             $q->where('source', $source);
@@ -60,7 +68,7 @@ class JournalController extends Controller
             $q->whereDate('entry_date', '<=', $to);
         }
 
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('entry_date')->orderByDesc('id'));
+        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('entry_date')->orderByDesc('id'));
 
         $entries = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
@@ -82,8 +90,8 @@ class JournalController extends Controller
             ])->all(),
             'pagination' => Pagination::meta($entries),
             'filters' => $request->only('q', 'source', 'from', 'to')
-                + \App\Support\Sort::params($request, self::SORTS),
-            'sorts' => \App\Support\Sort::keys(self::SORTS),
+                + Sort::params($request, self::SORTS),
+            'sorts' => Sort::keys(self::SORTS),
             // الأوراق وحدها تقبل القيد — الآباء والمغلقة لا تُعرض أصلًا
             'accounts' => $this->postableAccounts($bid),
             'sources' => JournalEntry::where('business_id', $bid)->distinct()->pluck('source')->filter()->values()->all(),
@@ -118,7 +126,7 @@ class JournalController extends Controller
                     'credit' => (float) ($l['credit'] ?? 0),
                     'memo' => $l['memo'] ?? null,
                 ])->all(),
-                \Illuminate\Support\Carbon::parse($data['entry_date']),
+                Carbon::parse($data['entry_date']),
                 'يدوي',
                 Demo::currentBranchId(),
                 auth()->id(),
@@ -133,7 +141,7 @@ class JournalController extends Controller
             return back()->withInput()->withErrors(['lines' => $e->getMessage()]);
         }
 
-        \App\Support\Activity::log('created', 'قيّد: '.$data['description']);
+        Activity::log('created', 'قيّد: '.$data['description']);
 
         return back()->with('toast', ['msg' => __('رُحّل القيد'), 'type' => 'success']);
     }

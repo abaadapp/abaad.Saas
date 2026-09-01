@@ -8,6 +8,7 @@ import {
 } from '@/Components/ui/dropdown-menu';
 import { withFilters } from '@/lib/exportLink';
 import { useTranslate } from '@/lib/i18n';
+import { usePlanFeature } from '@/lib/plan';
 
 interface Props {
     /** أي منها اختياري — يظهر البند فقط إذا مُرِّر رابطه */
@@ -15,6 +16,13 @@ interface Props {
     pdf?: string;
     csv?: string;
     label?: string;
+    /**
+     * قدرةُ الباقة التي يفتحها هذا التصدير — تُمرَّر حيث يكون التصدير مُباعًا.
+     *
+     * وتُترك فارغةً حيث لا يكون: تصديرُ قائمة العملاء أو المنتجات ليس تقريرًا،
+     * وقفلُه على «التقارير المتقدّمة» يسحب من التاجر ما لم يُوعَد بسحبه.
+     */
+    feature?: string;
 }
 
 /**
@@ -23,10 +31,15 @@ interface Props {
  * روابط تنزيل حقيقية لا روابط Inertia: الاستجابة ملف لا صفحة،
  * وزيارتها عبر <Link> تُفشل التنزيل.
  */
-export default function ExportMenu({ xlsx, pdf, csv, label = 'تصدير' }: Props) {
+export default function ExportMenu({ xlsx, pdf, csv, label = 'تصدير', feature }: Props) {
     const t = useTranslate();
+    /*
+     * والزرّ يُخفى لا يُعطَّل: زرٌّ يُضغط فيردّ بـ403 يجعل صاحبه يظنّ العطب في
+     * النظام. ولوحة المنصّة لا تتأثّر — لا باقة لصاحبها، فكلّ شيء مفتوح.
+     */
+    const licensed = usePlanFeature(feature ?? '');
 
-    if (!xlsx && !pdf && !csv) return null;
+    if ((!xlsx && !pdf && !csv) || !licensed) return null;
 
     return (
         <DropdownMenu>

@@ -2,25 +2,35 @@
 
 namespace Database\Seeders;
 
+use App\Models\ActivityLog;
+use App\Models\Addon;
+use App\Models\BranchStock;
 use App\Models\Business;
 use App\Models\Category;
+use App\Models\Coupon;
+use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\Expense;
+use App\Models\ExpenseType;
 use App\Models\InventoryMovement;
 use App\Models\Invoice;
+use App\Models\JobTitle;
 use App\Models\Order;
-use App\Models\OrderItem;
 use App\Models\Plan;
 use App\Models\Product;
+use App\Models\PurchaseOrder;
 use App\Models\Setting;
 use App\Models\Shift;
 use App\Models\Subscription;
+use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\SeedData;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class DemoSeeder extends Seeder
 {
@@ -50,7 +60,7 @@ class DemoSeeder extends Seeder
             );
         }
 
-        \Illuminate\Support\Facades\DB::transaction(fn () => $this->seed());
+        DB::transaction(fn () => $this->seed());
     }
 
     private function seed(): void
@@ -72,6 +82,8 @@ class DemoSeeder extends Seeder
                 'max_employees' => $lim[1],
                 'max_products' => $lim[2],
                 'features' => $p['features'],
+                // ما يُعرض سطرًا، وما يُفرض مفتاحًا — انظر PlanFeatures
+                'capabilities' => $p['capabilities'],
                 'color' => $p['color'],
                 'is_popular' => $p['popular'],
             ]);
@@ -97,7 +109,7 @@ class DemoSeeder extends Seeder
                 'email' => $b['email'],
                 'country' => $b['country'],
                 'city' => $b['city'],
-                'address' => $b['city'] . ' — عُمان',
+                'address' => $b['city'].' — عُمان',
                 'plan_id' => $planByName[$b['plan']] ?? null,
                 'logo' => $b['logo'],
                 'status' => $b['status'],
@@ -123,12 +135,12 @@ class DemoSeeder extends Seeder
 
         // مالك لكل نشاط
         foreach ($bizByName as $name => $biz) {
-            $email = $biz->id === $primary->id ? 'admin@abadpos.com' : 'owner' . $biz->id . '@abadpos.com';
+            $email = $biz->id === $primary->id ? 'admin@abadpos.com' : 'owner'.$biz->id.'@abadpos.com';
             User::create([
                 'business_id' => $biz->id, 'name' => $biz->owner_name, 'email' => $email,
                 'role' => 'admin', 'phone' => $biz->phone, 'password' => Hash::make('password'),
                 'status' => 'نشط', 'branch' => 'الفرع الرئيسي',
-                'avatar' => SeedData::image('owner' . $biz->id, 100, 100), 'last_login_at' => now(),
+                'avatar' => SeedData::image('owner'.$biz->id, 100, 100), 'last_login_at' => now(),
             ]);
         }
 
@@ -171,7 +183,7 @@ class DemoSeeder extends Seeder
         }
 
         foreach (SeedData::addons() as $a) {
-            \App\Models\Addon::create([
+            Addon::create([
                 'business_id' => $primary->id, 'name' => $a['name'],
                 'price' => $a['price'], 'icon' => $a['icon'], 'active' => true,
             ]);
@@ -181,7 +193,7 @@ class DemoSeeder extends Seeder
         foreach (SeedData::products() as $p) {
             $products[] = Product::create([
                 'business_id' => $primary->id, 'category_id' => $catByName[$p['cat']] ?? null,
-                'name' => $p['name'], 'description' => 'منتج ' . $p['name'] . ' من متجر زهرة مسقط.',
+                'name' => $p['name'], 'description' => 'منتج '.$p['name'].' من متجر زهرة مسقط.',
                 'sku' => $p['sku'], 'barcode' => $p['barcode'], 'price' => $p['price'], 'cost' => $p['cost'],
                 'quantity' => $p['qty'], 'alert_qty' => $p['alert'], 'tax' => $p['tax'],
                 'discount' => $p['discount'], 'image' => $p['image'], 'active' => $p['active'],
@@ -190,7 +202,7 @@ class DemoSeeder extends Seeder
 
         // رصيد افتتاحي لكل منتج على الفرع الرئيسي (يبقى مجموع الفروع = كمية المنتج)
         foreach ($products as $p) {
-            \App\Models\BranchStock::create([
+            BranchStock::create([
                 'business_id' => $primary->id, 'branch_id' => $branches[0]->id,
                 'product_id' => $p->id, 'quantity' => (int) $p->quantity,
             ]);
@@ -251,7 +263,7 @@ class DemoSeeder extends Seeder
             $spentAt = Carbon::parse($e['date']);
             Expense::create([
                 'business_id' => $primary->id,
-                'reference' => 'EXP-' . (1001 + $i),
+                'reference' => 'EXP-'.(1001 + $i),
                 'type' => $e['type'], 'description' => $e['description'],
                 'amount' => $e['amount'], 'method' => $e['method'], 'employee_name' => $e['employee'],
                 'spent_at' => $spentAt,
@@ -272,7 +284,7 @@ class DemoSeeder extends Seeder
         ];
         foreach (Business::pluck('id') as $bizId) {
             foreach ($defaultExpenseTypes as $typeName => $typeDesc) {
-                \App\Models\ExpenseType::firstOrCreate(
+                ExpenseType::firstOrCreate(
                     ['business_id' => $bizId, 'name' => $typeName],
                     ['description' => $typeDesc]
                 );
@@ -281,10 +293,10 @@ class DemoSeeder extends Seeder
 
         // الوظائف الافتراضية لكل نشاط + ربط الموظفين الحاليين بها
         // (كل وظيفة مرتبطة بصلاحية نظام حتى لا يفقد الموظف الدخول)
-        $roleLabels = \App\Models\JobTitle::roles() + ['admin' => 'مدير نشاط'];
+        $roleLabels = JobTitle::roles() + ['admin' => 'مدير نشاط'];
         foreach (Business::pluck('id') as $bizId) {
-            foreach (\App\Models\JobTitle::roles() as $roleKey => $roleLabel) {
-                \App\Models\JobTitle::firstOrCreate(
+            foreach (JobTitle::roles() as $roleKey => $roleLabel) {
+                JobTitle::firstOrCreate(
                     ['business_id' => $bizId, 'name' => $roleLabel],
                     ['role' => $roleKey]
                 );
@@ -316,7 +328,9 @@ class DemoSeeder extends Seeder
         /* ---------------- الاشتراكات والفواتير ---------------- */
         foreach (SeedData::subscriptions() as $s) {
             $biz = $bizByName[$s['business']] ?? null;
-            if (! $biz) continue;
+            if (! $biz) {
+                continue;
+            }
             Subscription::create([
                 'business_id' => $biz->id, 'plan_id' => $planByName[$s['plan']] ?? null,
                 'starts_at' => Carbon::parse($s['start']), 'ends_at' => Carbon::parse($s['end']),
@@ -325,7 +339,9 @@ class DemoSeeder extends Seeder
         }
         foreach (SeedData::invoices() as $ii => $inv) {
             $biz = $bizByName[$inv['business']] ?? null;
-            if (! $biz) continue;
+            if (! $biz) {
+                continue;
+            }
             Invoice::create([
                 'number' => $inv['number'], 'business_id' => $biz->id,
                 'plan_id' => $planByName[$inv['plan']] ?? null, 'amount' => $inv['amount'],
@@ -359,7 +375,7 @@ class DemoSeeder extends Seeder
             [null, 'مدير المنصة', 'settings', 'حدّث إعدادات المنصة', 'settings', 'primary'],
         ];
         foreach ($acts as $ai => [$bid, $name, $action, $desc, $icon, $color]) {
-            \App\Models\ActivityLog::create([
+            ActivityLog::create([
                 'business_id' => $bid, 'user_name' => $name, 'action' => $action,
                 'description' => $desc, 'icon' => $icon, 'color' => $color, 'ip' => '127.0.0.1',
                 'created_at' => now()->subHours($ai * 3), 'updated_at' => now()->subHours($ai * 3),
@@ -370,14 +386,14 @@ class DemoSeeder extends Seeder
         $defaultCurrencies = [
             ['code' => 'OMR', 'name' => 'ريال عماني', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true],
         ];
-        foreach (\App\Models\Business::pluck('id') as $bizId) {
+        foreach (Business::pluck('id') as $bizId) {
             foreach ($defaultCurrencies as $cur) {
-                \App\Models\Currency::create(array_merge($cur, ['business_id' => $bizId, 'active' => true]));
+                Currency::create(array_merge($cur, ['business_id' => $bizId, 'active' => true]));
             }
         }
 
         // أهداف وعمولات تجريبية للموظفين
-        foreach (\App\Models\User::where('role', '!=', 'super_admin')->get() as $i => $u) {
+        foreach (User::where('role', '!=', 'super_admin')->get() as $i => $u) {
             $u->update([
                 'monthly_target' => [3000, 4500, 6000, 2500, 5000][$i % 5],
                 'commission_rate' => [2, 3, 2.5, 1.5, 4][$i % 5],
@@ -390,20 +406,20 @@ class DemoSeeder extends Seeder
             ['name' => 'شركة النور للجملة', 'phone' => '96824703344', 'contact_person' => 'يوسف البلوشي'],
             ['name' => 'مزارع ظفار', 'phone' => '96823805566', 'contact_person' => 'أحمد المعشني'],
         ];
-        foreach (\App\Models\Business::pluck('id') as $bizId) {
+        foreach (Business::pluck('id') as $bizId) {
             $supplierIds = [];
             foreach ($supplierNames as $sn) {
-                $supplierIds[] = \App\Models\Supplier::create(array_merge($sn, [
+                $supplierIds[] = Supplier::create(array_merge($sn, [
                     'business_id' => $bizId,
-                    'email' => 'sales@' . \Illuminate\Support\Str::random(6) . '.com',
+                    'email' => 'sales@'.Str::random(6).'.com',
                 ]))->id;
             }
 
-            $products = \App\Models\Product::where('business_id', $bizId)->take(4)->get();
+            $products = Product::where('business_id', $bizId)->take(4)->get();
             if ($products->count()) {
                 // أمر شراء مُرسل (لم يُستلم بعد)
-                $po1 = \App\Models\PurchaseOrder::create([
-                    'business_id' => $bizId, 'number' => 'PO-' . rand(10000, 99999),
+                $po1 = PurchaseOrder::create([
+                    'business_id' => $bizId, 'number' => 'PO-'.rand(10000, 99999),
                     'supplier_id' => $supplierIds[0], 'supplier_name' => $supplierNames[0]['name'],
                     'status' => 'مُرسل', 'total' => 0, 'ordered_at' => now()->subDays(3),
                 ]);
@@ -416,8 +432,8 @@ class DemoSeeder extends Seeder
                 $po1->update(['total' => $t1]);
 
                 // أمر شراء مستلم
-                $po2 = \App\Models\PurchaseOrder::create([
-                    'business_id' => $bizId, 'number' => 'PO-' . rand(10000, 99999),
+                $po2 = PurchaseOrder::create([
+                    'business_id' => $bizId, 'number' => 'PO-'.rand(10000, 99999),
                     'supplier_id' => $supplierIds[1], 'supplier_name' => $supplierNames[1]['name'],
                     'status' => 'مستلم', 'total' => 0, 'ordered_at' => now()->subDays(15), 'received_at' => now()->subDays(12),
                 ]);
@@ -432,8 +448,8 @@ class DemoSeeder extends Seeder
         }
 
         // كوبونات تجريبية + ورديات مغلقة + إعدادات ضريبية (للمتجر الأساسي)
-        $mainBiz = \App\Models\Business::whereHas('users', fn ($q) => $q->where('role', 'admin'))->value('id')
-            ?? \App\Models\Business::value('id');
+        $mainBiz = Business::whereHas('users', fn ($q) => $q->where('role', 'admin'))->value('id')
+            ?? Business::value('id');
         if ($mainBiz) {
             $coupons = [
                 ['code' => 'WELCOME10', 'type' => 'نسبة', 'value' => 10, 'min_order' => 5, 'max_uses' => 100, 'used_count' => 12],
@@ -444,25 +460,25 @@ class DemoSeeder extends Seeder
                 ['code' => 'WEEKEND25', 'type' => 'نسبة', 'value' => 25, 'min_order' => 100, 'max_uses' => 20, 'used_count' => 0],
             ];
             foreach ($coupons as $cp) {
-                \App\Models\Coupon::create(array_merge($cp, [
+                Coupon::create(array_merge($cp, [
                     'business_id' => $mainBiz, 'active' => true,
                     'expires_at' => now()->addMonths(2),
                 ]));
             }
 
             // إعدادات الضريبة
-            \App\Models\Setting::updateOrCreate(['business_id' => $mainBiz, 'key' => 'vat_rate'], ['value' => '5']);
-            \App\Models\Setting::updateOrCreate(['business_id' => $mainBiz, 'key' => 'vat_number'], ['value' => 'OM1100234567']);
+            Setting::updateOrCreate(['business_id' => $mainBiz, 'key' => 'vat_rate'], ['value' => '5']);
+            Setting::updateOrCreate(['business_id' => $mainBiz, 'key' => 'vat_number'], ['value' => 'OM1100234567']);
 
             // ورديات مغلقة سابقة
-            $adminUser = \App\Models\User::where('business_id', $mainBiz)->where('role', 'admin')->first();
+            $adminUser = User::where('business_id', $mainBiz)->where('role', 'admin')->first();
             $shifts = [
                 ['days' => 2, 'open' => 50, 'cash' => 320.500, 'card' => 180.000, 'actual' => 370.000],
                 ['days' => 1, 'open' => 50, 'cash' => 415.750, 'card' => 210.250, 'actual' => 465.750],
             ];
             foreach ($shifts as $sh) {
                 $expected = $sh['open'] + $sh['cash'];
-                \App\Models\Shift::create([
+                Shift::create([
                     'business_id' => $mainBiz, 'user_id' => $adminUser?->id, 'employee_name' => $adminUser?->name ?? 'الكاشير',
                     'opened_at' => now()->subDays($sh['days'])->setTime(8, 0), 'closed_at' => now()->subDays($sh['days'])->setTime(22, 0),
                     'opening_balance' => $sh['open'], 'cash_sales' => $sh['cash'], 'card_sales' => $sh['card'],

@@ -1695,6 +1695,8 @@ class Demo
             'id' => $t->id,
             'name' => $t->name,
             'description' => $t->description,
+            // الحساب الذي يُرحَّل إليه — فارغًا يعني «يُقرأ من الاسم»
+            'account_key' => $t->account_key,
             'count' => (int) ($usage[$t->name]->cnt ?? 0),
             'total' => (float) ($usage[$t->name]->total ?? 0),
         ])->all();

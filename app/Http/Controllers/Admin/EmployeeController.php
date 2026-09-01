@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\JobTitle;
 use App\Models\User;
-use App\Rules\StrongPin;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Permissions;
@@ -29,15 +28,15 @@ class EmployeeController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             /*
-             * البريد اختياري، والرمز يقوم مقامه.
+             * البريد إلزاميّ: هو الباب الوحيد.
              *
-             * كان إلزاميًّا وفريدًا على مستوى المنصة، فأوّل متجرين يريدان
-             * `cashier@` أو `info@` يصطدمان ولا يفهم الثاني السبب — ويخترع
-             * لموظفه بريدًا وهميًّا لا يقرأه أحد. والبريد معرّفُ دخولٍ لا
-             * بيانَ اتصال، فعالميّةُ تفرّده صحيحة ولا تُمسّ؛ الخطأ كان في
-             * إلزامه من لا يدخل به أصلًا: الكاشير يدخل برمزه.
+             * كان اختياريًّا لأن الكاشير يدخل بأربعة أرقام. ولمّا رُفع الدخول
+             * بالرمز صار الحسابُ بلا بريدٍ حسابًا بلا باب — يُحفظ بنجاح ثمّ
+             * يقف صاحبه أمام الشاشة ولا يجد ما يدخل به.
+             *
+             * وتفرّده على مستوى المنصة يبقى: هو معرّف الدخول لا بيان اتصال.
              */
-            'email' => ['nullable', 'email', 'unique:users,email'],
+            'email' => ['required', 'email', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
@@ -51,11 +50,6 @@ class EmployeeController extends Controller
             'branches' => ['nullable', 'array'],
             'branches.*' => ['integer'],
             'password' => ['nullable', 'string', 'min:4'],
-            /*
-             * بلا بريدٍ لا بدّ من رمز: حسابٌ بلا واحدٍ منهما لا سبيل إليه.
-             * يُحفظ بنجاح ثمّ يقف صاحبه أمام شاشة الدخول ولا يجد بابًا.
-             */
-            'pin' => ['required_without:email', 'nullable', 'digits:4', new StrongPin],
             /*
              * الراتب وبدلاته — مصدرُ مسيرة الشهر.
              *
@@ -73,18 +67,13 @@ class EmployeeController extends Controller
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
-            'pin.required_without' => __('بلا بريد إلكتروني يلزم رمز دخول — وإلا تعذّر على الموظف الدخول.'),
+            'email.required' => __('البريد الإلكتروني مطلوب — وبه يدخل الموظف إلى النظام.'),
         ]);
 
         // الوظيفة اسم ظاهر — الصلاحية تُشتق منها، فلا يُحفظ دور غير معروف يمنع الموظف من الدخول
         $title = $this->findJobTitle($data['job_title']);
         if (! $title) {
             return back()->withInput()->withErrors(['job_title' => __('الوظيفة المحددة غير موجودة.')]);
-        }
-
-        // رمز الدخول السريع: يجب أن يكون فريدًا على مستوى النظام
-        if (! empty($data['pin']) && $this->pinTaken($data['pin'])) {
-            return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
         }
 
         $manual = $request->boolean('manual_permissions')
@@ -98,8 +87,7 @@ class EmployeeController extends Controller
         $employee = User::create([
             'business_id' => $this->bid(),
             'name' => $data['name'],
-            // nullable: المفتاح يغيب عن $data حين لا يُرسل، ولا يأتي null
-            'email' => $data['email'] ?? null,
+            'email' => $data['email'],
             'phone' => $data['phone'] ?? null,
             'role' => $title->role,
             'job_title' => $title->name,
@@ -107,7 +95,6 @@ class EmployeeController extends Controller
             'status' => 'نشط',
             'avatar' => Demo::image('emp'.uniqid()),
             'password' => Hash::make($data['password'] ?? 'password'),
-            'pin' => ! empty($data['pin']) ? $data['pin'] : null,
             // العمودان لا يقبلان NULL، والحقل الفارغ يعني صفرًا لا فراغًا
             'basic_salary' => $data['basic_salary'] ?? 0,
             'allowances' => $data['allowances'] ?? 0,
@@ -230,31 +217,6 @@ class EmployeeController extends Controller
         return null;
     }
 
-    /**
-     * هل رمز الدخول (٤ أرقام) مستخدم داخل هذا المتجر؟
-     *
-     * كان فريدًا على مستوى المنصة كلّها، وفي ذلك عطبان:
-     *
-     * ١) تسريبٌ صغير: متجرٌ يُخبَر أن رمزًا «مستخدم بالفعل» وهو لا يرى من
-     *    يستعمله ولا يعرف بوجوده.
-     *
-     * ٢) وهو الأخطر: الرموز عشرة آلاف لا غير. مئة متجرٍ بعشرين موظفًا تشغل
-     *    خُمس الفضاء، فتخمينٌ عشوائي واحد يصيب بنسبة واحدٍ من خمسة — ويُدخل
-     *    متجرًا ما، أيًّا كان. والخطر ينمو مع كل متجرٍ يُضاف، أي أن نجاح
-     *    المنصة نفسه هو ما يفتح الباب.
-     *
-     * وبالحصر داخل المتجر يعود لكل متجرٍ فضاؤه كاملًا، ولا يتغيّر بعدد
-     * الجيران. ويقابله أن شاشة الرمز صارت تعرف متجرها (انظر PosDevice).
-     */
-    private function pinTaken(string $pin, ?int $exceptId = null): bool
-    {
-        return User::where('business_id', $this->bid())
-            ->whereNotNull('pin')
-            ->when($exceptId, fn ($q) => $q->where('id', '!=', $exceptId))
-            ->get()
-            ->contains(fn ($u) => Hash::check($pin, $u->getRawOriginal('pin')));
-    }
-
     /** وظيفة تابعة للمستأجر الحالي (تحمل الصلاحية المكافئة) */
     private function findJobTitle(string $name): ?JobTitle
     {
@@ -301,16 +263,6 @@ class EmployeeController extends Controller
                 'branch' => $employee->branch,
                 'phone' => $employee->phone,
                 'email' => $employee->email,
-                /**
-                 * الرمز لا يُرسل أبدًا — وهو مخزَّن مشفّرًا أصلًا فلا يُقرأ.
-                 *
-                 * كان يُرسل `$employee->pin` فيصل الهاش إلى المتصفح ويُملأ به
-                 * الحقل، فيسقط التحقق («يجب أن يتكون من 4 أرقام») عند كل حفظ:
-                 * تعديل أي موظف له رمز دخول كان مستحيلًا. نرسل علمًا فقط:
-                 * هل له رمز؟ ليقول النموذج «اتركه فارغًا للإبقاء عليه».
-                 */
-                'pin' => '',
-                'has_pin' => filled($employee->pin),
                 // الفارغة تعني «كل الفروع» — انظر User::worksAt
                 'branches' => $employee->branches()->pluck('branches.id')->all(),
                 'avatar' => $employee->avatar,
@@ -341,7 +293,8 @@ class EmployeeController extends Controller
         $this->refuseTouchingTheOwner($employee);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', Rule::unique('users', 'email')->ignore($employee->id)],
+            // إلزاميّ كما في الإنشاء: هو الباب الوحيد بعد رفع الدخول بالرمز
+            'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($employee->id)],
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
@@ -354,7 +307,6 @@ class EmployeeController extends Controller
              */
             'branches' => ['nullable', 'array'],
             'branches.*' => ['integer'],
-            'pin' => ['nullable', 'digits:4', new StrongPin],
             // كان النموذج يعرض حقل كلمة مرور والتحقق لا يقبله: كل محاولة
             // تغيير كانت تُبتلع بصمت ويظنّ المدير أنه غيّرها.
             'password' => ['nullable', 'string', 'min:4'],
@@ -378,6 +330,7 @@ class EmployeeController extends Controller
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
+            'email.required' => __('البريد الإلكتروني مطلوب — وبه يدخل الموظف إلى النظام.'),
         ]);
 
         $title = $this->findJobTitle($data['job_title']);
@@ -397,34 +350,11 @@ class EmployeeController extends Controller
         $data['job_title'] = $title->name;
         $data['role'] = $title->role;
 
-        /*
-         * لا يبقى الحساب بلا بابٍ واحد.
-         *
-         * البريد صار اختياريًّا، والرمز يُترك فارغًا ليبقى كما هو — فمحوُ
-         * البريد عن موظفٍ لا رمز له كان يُنتج حسابًا سليمًا في القاعدة لا
-         * سبيل إلى الدخول به، ولا يظهر عطله إلا حين يقف صاحبه أمام الشاشة.
-         */
-        if (blank($data['email'] ?? null) && blank($data['pin'] ?? null) && ! filled($employee->pin)) {
-            return back()->withInput()->withErrors([
-                'pin' => __('بلا بريد إلكتروني يلزم رمز دخول — وإلا تعذّر على الموظف الدخول.'),
-            ]);
-        }
-
-        // رمز الدخول السريع: يُحدَّث فقط إذا أُدخل، ويجب أن يكون فريدًا
-        $pin = $data['pin'] ?? null;
-        unset($data['pin']);
-        if (! empty($pin)) {
-            if ($this->pinTaken($pin, $employee->id)) {
-                return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
-            }
-            $data['pin'] = $pin; // يُجزَّأ تلقائيًا عبر cast
-        }
-
         // كلمة المرور تُغيَّر فقط إن أُدخلت — والفراغ يعني «أبقِها»
         $password = $data['password'] ?? null;
         unset($data['password']);
         if (! empty($password)) {
-            $data['password'] = $password; // يُجزَّأ تلقائيًا عبر cast، كما الرمز
+            $data['password'] = $password; // يُجزَّأ تلقائيًا عبر cast
         }
 
         // الحالة: لا يُعطّل المستخدم حسابه بنفسه فيُقفل خارج النظام

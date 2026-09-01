@@ -102,8 +102,6 @@ Route::pattern('addressId', '[0-9]+');
 Route::get('/', [LoginController::class, 'showLogin'])->name('login');
 Route::get('/login', [LoginController::class, 'showLogin'])->name('login.form');
 Route::post('/login', [LoginController::class, 'attempt'])->name('login.attempt');
-Route::get('/pin-login', [LoginController::class, 'pinForm'])->name('pin.form');
-Route::post('/pin-login', [LoginController::class, 'pinAttempt'])->name('pin.attempt');
 
 /*
  * نسيان الجهاز — المخرج من شاشةٍ صارت مقفلة على متجرٍ واحد.

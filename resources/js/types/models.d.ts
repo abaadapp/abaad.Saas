@@ -68,7 +68,6 @@ export interface Employee {
     sales: number;
     status: string;
     joined: string;
-    has_pin: boolean;
     achieved: number;
 }
 

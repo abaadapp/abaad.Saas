@@ -52,7 +52,6 @@ class DemoController extends Controller
             ])->all(),
             'credentials' => [
                 'password' => DemoStore::PASSWORD,
-                'pin' => DemoStore::PIN,
             ],
             /* عددُ متاجر التجّار — ليُقرأ الفصل بالأرقام لا بالثقة وحدها */
             'realCount' => Business::real()->count(),
@@ -117,11 +116,11 @@ class DemoController extends Controller
     /** بريدا الدخول كما هما في صفوف المتجر */
     private function login(Business $business): array
     {
-        $users = $business->users()->orderBy('id')->get(['email', 'role', 'pin']);
+        $users = $business->users()->orderBy('id')->get(['email', 'role']);
 
         return [
             'owner' => $users->firstWhere('role', 'admin')?->email,
-            'cashier' => $users->first(fn ($u) => $u->role === 'cashier' && $u->pin)?->email,
+            'cashier' => $users->firstWhere('role', 'cashier')?->email,
         ];
     }
 

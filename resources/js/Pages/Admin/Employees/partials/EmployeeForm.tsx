@@ -26,9 +26,6 @@ export interface EmployeeFormValues {
     branch: string | null;
     phone: string | null;
     email: string;
-    pin: string | null;
-    /** هل للموظف رمز دخول محفوظ؟ الرمز نفسه لا يصل أبدًا (مخزَّن مشفّرًا) */
-    has_pin?: boolean;
     avatar?: string | null;
     status?: string;
     monthly_target?: number | string | null;
@@ -129,7 +126,6 @@ export default function EmployeeForm({
         phone: employee?.phone ?? '',
         email: employee?.email ?? '',
         password: '',
-        pin: employee?.pin ?? '',
         status: (employee?.status ?? 'نشط') === 'نشط',
         // صفرٌ يعني «بلا هدف» — يُعرض فارغًا كما يقول التلميح، لا رقمًا مضبوطًا
         monthly_target: Number(employee?.monthly_target ?? 0) ? String(employee!.monthly_target) : '',
@@ -313,18 +309,18 @@ export default function EmployeeForm({
             <Section
                 icon={KeyRound}
                 title="الدخول والأمان"
-                hint="البريد لدخول اللوحة، والرمز لدخول نقطة البيع. واحدٌ منهما يكفي."
+                hint="بالبريد وكلمة المرور يدخل الموظف — اللوحة ونقطة البيع معًا."
             >
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {/*
-                        اختياري: الكاشير يدخل برمزه لا ببريده. وإلزامُه كان
-                        يدفع التاجر إلى اختراع بريدٍ وهميّ لا يقرأه أحد —
-                        والبريد فريدٌ على المنصة كلّها، فأوّل متجرين يريدان
-                        `cashier@` يصطدمان.
+                        إلزاميّ: هو الباب الوحيد بعد رفع الدخول بالرمز.
+                        وهو فريدٌ على المنصة كلّها، فأوّل متجرين يريدان
+                        `cashier@` يصطدمان — والتلميح يقول ذلك قبل الاصطدام.
                     */}
                     <Field
                         label="البريد الإلكتروني"
-                        hint="اختياري لمن يدخل بالرمز وحده"
+                        required
+                        hint="به يدخل الموظف — ولا يتكرّر على المنصة"
                         error={form.errors.email}
                     >
                         <Input
@@ -346,27 +342,6 @@ export default function EmployeeForm({
                             autoComplete="new-password"
                             value={form.data.password}
                             onChange={(e) => form.setData('password', e.target.value)}
-                        />
-                    </Field>
-
-                    <Field
-                        label="رمز الدخول السريع (4 أرقام)"
-                        /* الشرط يُقال قبل أن يُصطدم به: من يكتب 1234 ويُرفض بلا
-                           سابق إنذار يظنّ العطب في الحقل لا في اختياره */
-                        hint={
-                            employee?.has_pin
-                                ? 'اتركه فارغًا للإبقاء على الرمز الحالي — ولا يُقبل متسلسل ولا مكرّر ولا سنة ميلاد'
-                                : 'يلزم إن تُرك البريد فارغًا — ولا يُقبل متسلسل (1234) ولا مكرّر (1111) ولا سنة ميلاد'
-                        }
-                        error={form.errors.pin}
-                    >
-                        <Input
-                            inputMode="numeric"
-                            maxLength={4}
-                            dir="ltr"
-                            value={form.data.pin}
-                            onChange={(e) => form.setData('pin', e.target.value.replace(/\D/g, ''))}
-                            placeholder="••••"
                         />
                     </Field>
 

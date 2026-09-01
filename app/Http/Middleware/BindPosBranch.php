@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Support\PosTerminal;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * فرع نقطة البيع يأتي من الجهاز، لا من الجلسة.
@@ -19,13 +20,56 @@ use Illuminate\Http\Request;
  *
  * ولوحة الإدارة تبقى على حالها — «كل الفروع» عرضٌ مشروع فيها. الحظر هنا على
  * البيع وحده: البيعة تقع في فرعٍ بعينه أو لا تقع.
+ *
+ * وهنا يُفرض إسناد الفرع كذلك.
+ *
+ * كان يُفرض عند الدخول بالرمز: من لا يعمل في فرع الجهاز يُردّ عند لوحة
+ * الأرقام. ولمّا رُفع ذلك الباب بقي الفرض بلا موضع — فكاشير الخوير يدخل
+ * ببريده على جهاز السيب ويبيع عليه، وهو العطب نفسه الذي أُصلح يوم صار
+ * `users.branch` قائمةَ إسنادٍ تُفحص. فانتقل الفرض إلى هنا: يُقاس في كل
+ * طلبٍ لا مرّةً عند الباب.
  */
 class BindPosBranch
 {
     public function handle(Request $request, Closure $next)
     {
-        if ($branchId = PosTerminal::branchId()) {
-            session(['current_branch' => $branchId]);
+        $branchId = PosTerminal::branchId();
+
+        if (! $branchId) {
+            return $next($request);
+        }
+
+        $user = Auth::user();
+
+        /*
+         * الخروج لا الرفض في المكان: الكاشير هنا مصادَقٌ فعلًا (دخل ببريده)،
+         * لكن هذا الصندوق ليس صندوقه. وردُّه إلى صفحته الرئيسية يدور بلا
+         * نهاية — صفحة الكاشير هي نقطة البيع نفسها. فيُنهى الجلسة ويُقال له
+         * السبب عند الباب، كما كانت شاشة الرمز تردّه.
+         */
+        if ($user && ! $user->worksAt($branchId)) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()->route('login')->withErrors([
+                'email' => __('هذا الجهاز يعمل على فرعٍ لست مُسنَدًا إليه. راجع مديرك.'),
+            ]);
+        }
+
+        session(['current_branch' => $branchId]);
+
+        /*
+         * ختمُ آخر ظهور كان يُكتب عند الدخول بالرمز، فلمّا رُفع بقي عمود
+         * `last_seen_at` جامدًا وشاشة الأجهزة تقول عن صندوقٍ يبيع اليوم إنه
+         * لم يُرَ منذ أسابيع. ويُكتب بفاصلٍ لا مع كل طلب: نقطة البيع تنادي
+         * الخادم عشرات المرّات في الدقيقة، وكتابةُ صفٍّ لكل نداء ثمنٌ بلا
+         * مقابل — والدقّة إلى الدقيقة تكفي «آخر ظهور».
+         */
+        if ($device = PosTerminal::current()) {
+            if (! $device->last_seen_at || $device->last_seen_at->lt(now()->subMinute())) {
+                PosTerminal::touch($device);
+            }
         }
 
         return $next($request);

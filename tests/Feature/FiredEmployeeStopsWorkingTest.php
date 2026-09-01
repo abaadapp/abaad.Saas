@@ -84,7 +84,7 @@ class FiredEmployeeStopsWorkingTest extends TestCase
         $this->assertGuest();
     }
 
-    /** ولا يعود من الباب: لا ببريده ولا برمزه */
+    /** ولا يعود من الباب — وهو بريده وكلمة مروره */
     public function test_a_deleted_employee_cannot_log_back_in(): void
     {
         $this->employee->delete();
@@ -94,20 +94,20 @@ class FiredEmployeeStopsWorkingTest extends TestCase
         $this->assertGuest();
     }
 
-    public function test_a_deleted_employee_cannot_return_by_pin(): void
+    /** ولا يبيع على صندوقٍ مفعَّل: الجلسة تُقطع عند حارس الطلب */
+    public function test_a_deleted_employee_cannot_sell_on_an_active_register(): void
     {
         $branch = Branch::where('business_id', $this->business->id)->first();
         $owner = User::create([
             'business_id' => $this->business->id, 'name' => 'المالك', 'email' => 'o@abaad.om',
             'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
         ]);
-        $device = PosTerminal::activate($branch, 'صندوق', $owner->id);
+        PosTerminal::activate($branch, 'صندوق', $owner->id);
 
         $this->employee->delete();
 
-        $this->withCookie(PosTerminal::LEGACY_COOKIE, (string) $this->business->id)
-            ->post(route('pin.attempt'), ['pin' => '7361'])
-            ->assertSessionHasErrors('pin');
+        $this->post(route('login.attempt'), ['email' => 'e@abaad.om', 'password' => 'password'])
+            ->assertSessionHasErrors();
         $this->assertGuest();
     }
 

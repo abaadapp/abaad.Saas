@@ -250,8 +250,6 @@ class PageController extends Controller
                 'created' => optional($model->created_at)->format('Y-m-d') ?? '—',
                 // القيم القابلة للتعديل تُقرأ من السجل نفسه لا من التسمية المعروضة
                 'role_key' => $model->role,
-                // للكاشير بابٌ آخر: الرمز. والتحذير يقيس البابين لا أحدهما
-                'has_pin' => filled($model->getRawOriginal('pin')),
                 // كانت «الباقة الاحترافية» نصًّا ثابتًا تحت اسم الشركة
                 'business_plan' => $model->business?->plan?->name,
             ],

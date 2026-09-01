@@ -1098,7 +1098,6 @@ class Demo
                     'sales' => (float) $u->sales_total,
                     'status' => $u->status,
                     'joined' => optional($u->created_at)->format('Y-m-d') ?? '—',
-                    'has_pin' => $u->hasPin(),
                     // يُستخدم لترتيب لوحة الأداء
                     'achieved' => (float) ($monthly[$u->id] ?? 0),
                 ];

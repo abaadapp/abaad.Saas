@@ -9,7 +9,7 @@ import {
     LockOpen,
     Mail,
     Pencil,
-    ScanBarcode,
+    TriangleAlert,
     X,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -109,13 +109,18 @@ export default function EmployeeShow() {
                         <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                             <Badge variant="primary">{t(employee.role)}</Badge>
                             <Badge status={employee.status}>{t(employee.status)}</Badge>
-                            {employee.has_pin && (
+                            {/*
+                                حسابٌ بلا بريد لا باب له بعد رفع الدخول
+                                بالرمز — والوسم يقوله هنا لا عند أوّل محاولةٍ
+                                فاشلة يقف فيها الموظف أمام الشاشة.
+                            */}
+                            {!employee.email && (
                                 <span
-                                    title={t('يدخل نقطة البيع برمز سريع')}
-                                    className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf5] px-2.5 py-1 text-[12px] font-medium text-[#047857]"
+                                    title={t('أضِف بريدًا من «تعديل» ليستطيع الدخول')}
+                                    className="inline-flex items-center gap-1 rounded-full bg-[#fef2f2] px-2.5 py-1 text-[12px] font-medium text-[#b91c1c]"
                                 >
-                                    <ScanBarcode className="size-3.5" />
-                                    {t('رمز دخول سريع مفعّل')}
+                                    <TriangleAlert className="size-3.5" />
+                                    {t('بلا بريد — لا يستطيع الدخول')}
                                 </span>
                             )}
                         </div>

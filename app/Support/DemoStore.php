@@ -51,8 +51,6 @@ class DemoStore
 {
     public const PASSWORD = 'abaad@12345';
 
-    public const PIN = '4321';
-
     /** بريد العرض — يُقال في الاجتماع ويُكتب على السبّورة، فليكن قصيرًا */
     public const DEMO_EMAIL = 'demo@gmail.com';
 
@@ -347,7 +345,7 @@ class DemoStore
         $users[] = User::create([
             'business_id' => $bid, 'name' => 'نورة البلوشي', 'email' => self::cashierEmail($bid),
             'role' => 'cashier', 'phone' => '+968 90000001', 'password' => Hash::make(self::PASSWORD),
-            'pin' => self::PIN, 'status' => 'نشط', 'branch' => $main, 'job_title' => 'كاشير',
+            'status' => 'نشط', 'branch' => $main, 'job_title' => 'كاشير',
             'basic_salary' => 420, 'allowances' => 60, 'last_login_at' => now()->subHours(3),
         ]);
 

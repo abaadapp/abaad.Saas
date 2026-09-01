@@ -199,6 +199,6 @@ class PageController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('pin.form');
+        return redirect()->route('login');
     }
 }

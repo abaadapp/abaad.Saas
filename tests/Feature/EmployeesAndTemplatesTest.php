@@ -85,8 +85,8 @@ class EmployeesAndTemplatesTest extends TestCase
         $this->assertSame('نشط', $props['status']);
         $this->assertSame('500', (string) (int) $props['monthly_target']);
         $this->assertArrayHasKey('avatar', $props);
-        // الرمز لا يصل أبدًا — يصل علمٌ بوجوده فقط
-        $this->assertSame('', $props['pin']);
+        // الرمز رُفع من النظام كلّه، فلا يصل حقلُه أصلًا
+        $this->assertArrayNotHasKey('pin', $props);
     }
 
     public function test_a_new_password_typed_on_the_edit_form_actually_changes_it(): void

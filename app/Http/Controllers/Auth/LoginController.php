@@ -11,7 +11,6 @@ use App\Support\PosTerminal;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -37,12 +36,11 @@ class LoginController extends Controller
         $remember = $request->boolean('remember');
 
         /*
-         * الحدّ نفسه الذي يحرس رمز الكاشير — ومن باب أخطر.
+         * حدّان لا واحد: خمسٌ في الدقيقة، وعشرون في الساعة.
          *
-         * كان دخول الرمز محروسًا بحدَّين وقفل، ودخول البريد بلا حدّ إطلاقًا:
-         * فمن يجرّب كلمات المرور على شاشة الرمز يُقفل بعد خمس، ومن يجرّبها
-         * على هذه الشاشة يجرّب ما شاء إلى الأبد. وخلف هذا الباب حساب مدير
-         * المنصة، لا درج صندوقٍ واحد.
+         * وهو الباب الوحيد الآن، فلا يُترك بلا حدّ: من يجرّب كلمات المرور
+         * يجرّب ما شاء إلى الأبد، وخلف هذا الباب حساب مدير المنصة لا درج
+         * صندوقٍ واحد.
          *
          * والمفتاح بريدٌ وعنوان معًا: العنوان وحده يوقف مكتبًا كاملًا خلف
          * موجّهٍ واحد لأن موظفًا أخطأ، والبريد وحده يجعل من يملك آلاف
@@ -82,7 +80,7 @@ class LoginController extends Controller
         $this->markLogin(Auth::user());
 
         // يوم التركيب يدخل صاحب المتجر ببريده على جهاز الصندوق، فيتذكّره
-        // الجهاز ويعمل الكاشير بالرمز وحده بعدها — انظر PosTerminal
+        // الجهاز ويعرف فرعَه بعدها — انظر PosTerminal
         PosTerminal::rememberBusiness(Auth::user()->business_id);
 
         return redirect()->intended($this->homeFor(Auth::user()));
@@ -91,9 +89,8 @@ class LoginController extends Controller
     /**
      * يُنهي الجلسة ويرفض الدخول إن كان الحساب أو متجره أو اشتراكه موقوفًا.
      *
-     * كان الباب مفتوحًا كلّه: `Auth::attempt` لا تقرأ حالة الحساب، ودخولُ
-     * الرمز يقرأ حالة الموظف وحده — فموظفٌ نشطٌ في متجرٍ معطَّل انتهى
-     * اشتراكه منذ أشهر كان يدخل ويبيع.
+     * كان الباب مفتوحًا: `Auth::attempt` لا تقرأ حالة الحساب — فموظفٌ نشطٌ
+     * في متجرٍ معطَّل انتهى اشتراكه منذ أشهر كان يدخل ويبيع.
      *
      * والمنع عند الباب لا يكفي وحده: حارسُ الطلب (CheckTenantStatus) يقطع
      * جلسةً فُتحت قبل الإيقاف. وهذا يمنع فتح واحدةٍ جديدة.
@@ -122,14 +119,15 @@ class LoginController extends Controller
     }
 
     /**
-     * شاشة الدخول — أول ما يراه المستخدم.
+     * شاشة الدخول — أول ما يراه المستخدم: بريد وكلمة مرور، لا غير.
      *
-     * تبويب «رمز الموظف» لا يظهر إلا على جهازٍ سبق أن دخل منه أحد.
+     * كان لها بابٌ ثانٍ: أربعة أرقامٍ يدخل بها الكاشير بلا بريدٍ ولا كلمة
+     * مرور، ويُفتح تبويبه افتراضيًّا على كل جهازٍ سبق أن دخل منه أحد. فرُفع
+     * الباب كلّه: فضاءُ الرموز عشرة آلاف لا غير، وما يُفتح بأربعة أرقام
+     * ليس حسابًا. من كان يدخل برمزه يدخل الآن ببريده وكلمة مروره.
      *
-     * كان زرًّا ثابتًا على كل متصفّح: يفتح الرابطَ زائرٌ من أي مكان فيجد بابًا
-     * لا يعنيه، ويصل منه إلى شاشة أرقامٍ تسأله رمزًا لا يملكه — أو أسوأ:
-     * يجرّب. والجهاز الوحيد في المحل يُعرَف بعد أول دخولٍ ببريد وكلمة مرور،
-     * فيصير له بابان: للمالك بريده، وللكاشير رمزه.
+     * وهوية الجهاز تبقى: هي مصدر الفرع في نقطة البيع، واسم المتجر فوق
+     * البطاقة يقول للواقف أمامها أين هو — انظر PosTerminal.
      */
     public function showLogin(): Response
     {
@@ -137,10 +135,10 @@ class LoginController extends Controller
 
         return Inertia::render('Auth/Login', [
             /*
-             * كتلةٌ واحدة لا حقول متفرّقة: وجودها هو الإذن بعرض التبويب،
-             * فلا تنسى الواجهة شرطًا وتعرض لوحة أرقامٍ بلا متجرٍ خلفها.
+             * كتلةٌ واحدة لا حقول متفرّقة: وجودها هو الإذن بعرض اسم المتجر
+             * وبابِ نسيانه، فلا تعرض الواجهة اسمًا بلا متجرٍ خلفه.
              */
-            'pin' => PosTerminal::remembered() ? [
+            'device' => PosTerminal::remembered() ? [
                 'business' => PosTerminal::businessName(),
                 'branch' => $device?->branch?->name,
                 'device' => $device?->name,
@@ -148,9 +146,9 @@ class LoginController extends Controller
                  * جهازٌ مفعَّل أم متجرٌ متذكَّر وحسب؟
                  *
                  * الفرق ثمن النسيان: كوكي المتجر تُكتب من جديد عند أي دخولٍ
-                 * بالبريد، أما الجهاز المفعَّل فيحتاج مديرًا يعيد تفعيله من
-                 * «فتح نقطة البيع». والواجهة تُحذّر بحسب ذلك بدل أن تُسوّي
-                 * بينهما.
+                 * بالبريد، أما الجهاز المفعَّل فيحمل فرعَه — ونسيانه يحتاج
+                 * مديرًا يعيد تفعيله من «فتح نقطة البيع». والواجهة تُحذّر
+                 * بحسب ذلك بدل أن تُسوّي بينهما.
                  */
                 'activated' => $device !== null,
             ] : null,
@@ -170,7 +168,7 @@ class LoginController extends Controller
      *
      * ولا حارس عليه عمدًا: لا يمسّ إلا كوكي الطالب نفسه، ولا يُلغي تفعيل
      * الجهاز في السجلّ. من يستطيع مسح كوكيّاته من المتصفّح يستطيع هذا.
-     * والإلغاء الحقيقي (إبطال الرمز في القاعدة) يبقى في الإعدادات خلف
+     * والإلغاء الحقيقي (إبطال الجهاز في القاعدة) يبقى في الإعدادات خلف
      * صلاحيته.
      */
     public function forgetDevice(Request $request)
@@ -181,151 +179,6 @@ class LoginController extends Controller
             'msg' => __('نُسي هذا الجهاز. سجّل الدخول بالبريد لربطه من جديد.'),
             'type' => 'info',
         ]);
-    }
-
-    /** شاشة الدخول بالرمز (لوحة أرقام) — بالإنجليزية دائمًا */
-    public function pinForm(): Response
-    {
-        app()->setLocale('en');
-
-        $device = PosTerminal::current();
-
-        return Inertia::render('Auth/Pin', [
-            /*
-             * ما يقف عليه الموظف: متجره وفرعه وصندوقه.
-             *
-             * صار الرمز فريدًا داخل المتجر ومقيَّدًا بفرع الجهاز، فمن الواجب
-             * أن يرى الكاشير أين يدخل: جهازٌ فُعّل على الفرع الخطأ يوم التركيب
-             * يبقى صامتًا حتى يقف موظفٌ أمام شاشةٍ ترفض رمزه الصحيح ولا يفهم
-             * لماذا.
-             */
-            'deviceBusiness' => PosTerminal::businessName(),
-            'deviceBranch' => $device?->branch?->name,
-            'deviceName' => $device?->name,
-        ]);
-    }
-
-    /**
-     * دخول الموظف برمز من ٤ أرقام — بلا بريد أو كلمة مرور.
-     *
-     * المصدر الموثوق للمتجر والفرع هو الجهاز على الخادم، لا شيء يصل من
-     * المتصفّح. الموظف يعرف رمزه وحده.
-     */
-    public function pinAttempt(Request $request)
-    {
-        /*
-         * لغة الرسالة تتبع الشاشة التي أُرسل منها الرمز.
-         *
-         * شاشة الرمز المستقلّة إنجليزية دائمًا — يقف أمامها موظفون لا يقرؤون
-         * العربية. أما تبويب الرمز في شاشة الدخول فيتبع لغة الصفحة التي يقف
-         * عليها المستخدم: كان الفرض المطلق يردّ خطأً إنجليزيًّا على صفحةٍ
-         * عربية بكاملها.
-         */
-        if ($request->input('from') !== 'login') {
-            app()->setLocale('en');
-        }
-
-        $data = $request->validate([
-            'pin' => ['required', 'digits:4'],
-        ], [
-            'pin.required' => __('أدخل رمز الدخول.'),
-            'pin.digits' => __('رمز الدخول يجب أن يكون 4 أرقام.'),
-        ]);
-
-        /*
-         * الرمز يُقرأ داخل متجر هذا الجهاز وحده.
-         *
-         * صار «1234» ممكنًا في متجرين، فالبحث في المستخدمين كلّهم كان
-         * سيُدخل صاحبَ الرمز أيًّا كان متجره — وهو أسوأ من العطب الذي
-         * أصلحناه: دخولٌ إلى متجرٍ غير متجرك.
-         */
-        $device = PosTerminal::current();
-        $businessId = PosTerminal::businessId();
-
-        if (! $businessId) {
-            throw ValidationException::withMessages([
-                'pin' => __('هذا الجهاز غير مفعَّل. اطلب من المدير تفعيله من «فتح نقطة البيع».'),
-            ]);
-        }
-
-        /*
-         * حدّان لا واحد: ٥ في الدقيقة، و٣٠ في الساعة.
-         *
-         * الحدّ الدقيقيّ وحده يُبطئ ولا يمنع — من يصبر يجرّب سبعة آلاف رمز
-         * في اليوم، وهو أكثر من فضاء الرموز كلّه. والحدّ الساعيّ يجعل مسحَ
-         * الفضاء يستغرق سنة.
-         *
-         * والمفتاح يضمّ الجهاز إلى العنوان: محلٌّ بثلاثة صناديق خلف موجّهٍ
-         * واحد كان صندوقٌ فيه يستهلك حصّة إخوته، فيقف البيع في المحل كلّه
-         * لأن كاشيرًا واحدًا أخطأ خمس مرّات.
-         */
-        $who = $device ? 'dev'.$device->id : 'ip'.$request->ip();
-        $key = 'pin-login:'.$who;
-        $slowKey = 'pin-login-hour:'.$who;
-
-        foreach ([[$key, 5], [$slowKey, 30]] as [$k, $max]) {
-            if (RateLimiter::tooManyAttempts($k, $max)) {
-                throw ValidationException::withMessages([
-                    'pin' => __('محاولات كثيرة. حاول بعد :seconds ثانية.', [
-                        'seconds' => RateLimiter::availableIn($k),
-                    ]),
-                ]);
-            }
-        }
-
-        // البحث عن مستخدم يطابق رمزه المُجزّأ داخل متجر الجهاز
-        $user = User::where('business_id', $businessId)->whereNotNull('pin')->get()
-            ->first(fn ($u) => Hash::check($data['pin'], $u->getRawOriginal('pin')));
-
-        /*
-         * الرفض واحدٌ لكل الأسباب: رمزٌ خاطئ، أو موظف موقوف، أو ممنوع من
-         * هذا الفرع.
-         *
-         * التمييز بينها يقول لمن يجرّب الأرقام «هذا الرمز صحيح لكن…» —
-         * فيعرف أنه أصاب رمزًا ويكمل على فرعٍ آخر. والرسالة الواحدة تكلّف
-         * الموظفَ الصادق سؤالًا لمديره، وتكلّف المخمّن كل شيء.
-         */
-        $branchId = $device?->branch_id;
-        // ومنتهي الاشتراك يمرّ من هنا كذلك: يقف عند صفحة التجديد لا عند الرمز
-        $reason = $user ? Tenancy::blockReason($user) : null;
-        $allowed = $user
-            && (! $device || $user->worksAt($branchId))
-            && ($reason === null || ! Tenancy::isHard($reason));
-
-        if (! $allowed) {
-            RateLimiter::hit($key, 60);
-            RateLimiter::hit($slowKey, 3600);
-
-            // يُسجَّل الفشل بلا الرمز نفسه ولا اسم من طابقه
-            Activity::log('login_failed', 'محاولة دخول برمز فاشلة'
-                .($device ? ' — جهاز: '.$device->name : ''), [
-                    'business_id' => $businessId,
-                ]);
-
-            throw ValidationException::withMessages([
-                'pin' => __('رمز غير صحيح أو غير مسموح في هذا الفرع.'),
-            ]);
-        }
-
-        RateLimiter::clear($key);
-        RateLimiter::clear($slowKey);
-        Auth::login($user);
-        $request->session()->regenerate();
-        $this->markLogin($user);
-
-        /*
-         * فرع الجهاز يُفرض على الجلسة، ولا يُقرأ من مبدّل الفروع.
-         *
-         * كان الكاشير يرث الفرع الذي اختاره المدير في تبويبٍ آخر — أو «كل
-         * الفروع» فيسقط على أوّل فرعٍ في القائمة. فتُسجَّل مبيعات الخوير على
-         * السيب، ولا يُكتشف إلا عند جرد آخر الشهر.
-         */
-        if ($device) {
-            session(['current_branch' => $device->branch_id]);
-            PosTerminal::touch($device);
-        }
-
-        return redirect($this->homeFor($user));
     }
 
     /** دخول تجريبي سريع بدور محدّد — محليًا فقط */
@@ -352,18 +205,22 @@ class LoginController extends Controller
         return redirect($this->homeFor($user));
     }
 
-    /** تسجيل الخروج */
+    /**
+     * تسجيل الخروج — إلى شاشة الدخول دائمًا.
+     *
+     * كان الخروج بسبب الخمول (`?to=pin`) يعيد الموظف إلى لوحة الأرقام. ولمّا
+     * رُفع الدخول بالرمز صار البابُ واحدًا، فلا وجهة إلا هو.
+     */
     public function logout(Request $request)
     {
-        // خروج بسبب الخمول → يعود الموظف لشاشة الرمز مباشرةً
-        $toPin = $request->query('to') === 'pin';
+        $idle = $request->query('to') === 'pin';
 
-        Activity::log('logout', $toPin ? 'خروج تلقائي بسبب الخمول' : 'سجّل الخروج من النظام', ['self' => true]);
+        Activity::log('logout', $idle ? 'خروج تلقائي بسبب الخمول' : 'سجّل الخروج من النظام', ['self' => true]);
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route($toPin ? 'pin.form' : 'login');
+        return redirect()->route('login');
     }
 
     private function markLogin(User $user): void

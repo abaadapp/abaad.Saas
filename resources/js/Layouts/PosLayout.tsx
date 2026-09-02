@@ -282,7 +282,13 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
 
             <main className={cn(fill ? 'min-h-0 flex-1' : 'flex-1')}>{children}</main>
 
-            <Toaster position="bottom-center" richColors />
+            {/* والرسالة لا تُدفن تحت اللوحة: «أُضيف إلى السلّة» يقع في القاع نفسه */}
+            <Toaster
+                position="bottom-center"
+                richColors
+                offset={{ bottom: 'calc(24px + var(--kb, 0px))' }}
+                mobileOffset={{ bottom: 'calc(16px + var(--kb, 0px))' }}
+            />
         </div>
     );
 }

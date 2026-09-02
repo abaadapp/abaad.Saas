@@ -35,7 +35,7 @@ export default function DeviceSetup() {
     };
 
     return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-[#f7f8f9] px-4 py-10">
+        <div className="flex min-h-dvh flex-col items-center justify-center bg-[#f7f8f9] px-4 py-10">
             <Head title={t('إعداد نقطة البيع')} />
 
             <div className="w-full max-w-[420px]">

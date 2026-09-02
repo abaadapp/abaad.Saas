@@ -38,7 +38,7 @@ export default function ResetPassword() {
     const failure = errors.email ?? errors.password ?? errors.token;
 
     return (
-        <div className="flex min-h-screen flex-col bg-[#f7f8f9] px-4 py-8">
+        <div className="flex min-h-dvh flex-col bg-[#f7f8f9] px-4 py-8">
             <Head title={t('كلمة مرور جديدة')} />
 
             <div className="flex flex-1 items-center justify-center">

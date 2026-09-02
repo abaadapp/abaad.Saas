@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use Tests\TestCase;
 
 /**
- * نقطة البيع على الآيباد — وما تفعله لوحةُ المفاتيح بها.
+ * النظام على الآيباد — وما تفعله لوحةُ المفاتيح به.
  *
  * العطبُ الذي جاء هذا الحارس ليمنع عودتَه أنّ لوحة المفاتيح على الآيباد **لا
  * تُقلّص صفحة الويب**: `100dvh` تبقى كما هي، فتحسب الواجهة أنّها تملك الشاشة
@@ -14,11 +14,14 @@ use Tests\TestCase;
  * الكاشير حتى أن يمرّرها ليصل إليها — يفتح الحقل فيختفي الزرّ، ولا مخرج إلّا
  * إغلاق اللوحة.
  *
+ * ثمّ خرج التصحيح من الصندوق إلى اللوحة: أكثرُ ما يُكتب هناك يُكتب في نافذةٍ
+ * منبثقة موسّطةٍ رأسيًّا، فزرُّ الحفظ تحت اللوحة كزرّ الدفع سواء.
+ *
  * وهذه الحالات تفحص الشيفرة المصدرية لا الشاشة: لا متصفّحَ في الاختبارات
- * يفتح لوحةَ مفاتيح. فتُثبَّت القواعدُ الثلاث التي تُبنى عليها المعالجة —
- * وأيُّ رجوعٍ عنها يسقط هنا قبل أن يصل إلى صندوقٍ في محلّ.
+ * يفتح لوحةَ مفاتيح. فتُثبَّت القواعدُ التي تُبنى عليها المعالجة — وأيُّ
+ * رجوعٍ عنها يسقط هنا قبل أن يصل إلى صندوقٍ في محلّ.
  */
-class PosOnTabletTest extends TestCase
+class TabletKeyboardTest extends TestCase
 {
     private function read(string $path): string
     {
@@ -110,6 +113,58 @@ class PosOnTabletTest extends TestCase
             $css,
             'حقلٌ أصغر من ١٦ بكسل على اللمس — سفاري يُكبّر الصفحة ولا يُرجعها',
         );
+    }
+
+    /**
+     * ولوحةُ النشاط تقرأ اللوحة كما تقرؤها نقطة البيع.
+     *
+     * أكثرُ ما يُكتب في اللوحة يُكتب في نافذةٍ منبثقة — منتجٌ وقيدٌ وموظّف —
+     * وهي موسّطةٌ رأسيًّا. وتصحيحُ النوافذ لا يعمل بلا من يقيس اللوحة: بلا
+     * `--kb` تُقرأ صفرًا فتبقى النافذةُ حيث كانت، وزرُّ الحفظ تحتها.
+     */
+    public function test_the_admin_panel_measures_the_keyboard_too(): void
+    {
+        $layout = $this->read('resources/js/Layouts/AdminLayout.tsx');
+
+        $this->assertStringContainsString('useOnScreenKeyboard', $layout);
+    }
+
+    /** ورسالةُ «تم الحفظ» تقع في القاع نفسه، فتُرفع فوق اللوحة */
+    public function test_the_toast_is_lifted_above_the_keyboard(): void
+    {
+        foreach (['resources/js/Layouts/AdminLayout.tsx', 'resources/js/Layouts/PosLayout.tsx'] as $path) {
+            $this->assertStringContainsString(
+                "bottom: 'calc(24px + var(--kb, 0px))'",
+                $this->read($path),
+                basename($path).': الرسالة تُدفن تحت لوحة المفاتيح',
+            );
+        }
+    }
+
+    /**
+     * ولا `100vh` في النظام كلّه.
+     *
+     * على الآيباد تقيس شاشةً بشريط سفاري مطويًّا، فيتغيّر الارتفاع عند أوّل
+     * تمرير وتقفز الواجهة تحت الإصبع — وأوّلُ ما يقع ذلك عليه شاشةُ الدخول.
+     */
+    public function test_nothing_is_built_on_the_old_viewport_unit(): void
+    {
+        $guilty = [];
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(resource_path('js')));
+
+        foreach ($files as $file) {
+            if ($file->isDir() || ! in_array($file->getExtension(), ['tsx', 'ts'], true)) {
+                continue;
+            }
+
+            $source = file_get_contents($file->getPathname());
+
+            if (str_contains($source, 'min-h-screen') || str_contains($source, '100vh')) {
+                $guilty[] = basename($file->getPathname());
+            }
+        }
+
+        $this->assertSame([], $guilty, 'شاشةٌ مبنيّةٌ على vh — تقفز على الآيباد');
     }
 
     /** والحوافّ الآمنة لا تُقرأ بلا `viewport-fit=cover` */

@@ -39,7 +39,7 @@ export default class ErrorBoundary extends React.Component<{ children: React.Rea
                 style={{
                     // أنماطٌ مباشرة لا أصنافٌ من الورقة: العطل قد يكون في التنسيق نفسه،
                     // فشاشةُ الخطأ لا تعتمد على ما لا تثق به
-                    minHeight: '100vh',
+                    minHeight: '100dvh',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',

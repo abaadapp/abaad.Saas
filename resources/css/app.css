@@ -203,19 +203,23 @@ i[data-lucide] {
      * الكاشير يضغط المنتجات بسرعة، والضغطةُ التي تطول قليلًا كانت تفتح
      * قائمةَ النظام فوق الشبكة.
      */
-    .pos-scope {
+    .pos-scope,
+    .admin-ui {
         -webkit-tap-highlight-color: transparent;
     }
 
     .pos-scope button,
     .pos-scope a,
-    .pos-scope [role='button'] {
+    .pos-scope [role='button'],
+    .admin-ui button,
+    .admin-ui [role='button'] {
         -webkit-touch-callout: none;
     }
 }
 
 /* ما تحت الشريط السفليّ للجهاز لا يُبنى عليه — يحتاج viewport-fit=cover */
-.pos-scope {
+.pos-scope,
+.admin-ui {
     padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 

@@ -23,7 +23,7 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
                 ref={attach}
                 dir={dir ?? (isDateTime ? 'ltr' : undefined)}
                 className={cn(
-                    'flex h-10 w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-2',
+                    'flex h-10 w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-2 pointer-coarse:h-11',
                     'text-sm text-[#111] placeholder:text-[#9ca3af]',
                     'transition-[border-color,box-shadow] focus:border-[#d1d5db] focus:outline-none',
                     'focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)]',

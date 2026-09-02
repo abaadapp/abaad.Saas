@@ -65,7 +65,7 @@ export default function Login() {
     const failure = errors.email ?? errors.password;
 
     return (
-        <div className="flex min-h-screen flex-col bg-[#f7f8f9] px-4 py-8">
+        <div className="flex min-h-dvh flex-col bg-[#f7f8f9] px-4 py-8">
             <Head title={t('تسجيل الدخول')} />
 
             {/* flex-1 يبتلع الفراغ فيبقى النموذج في وسط الشاشة والتذييل ملتصقًا بأسفلها */}

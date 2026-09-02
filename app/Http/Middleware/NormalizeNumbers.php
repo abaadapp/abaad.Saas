@@ -36,12 +36,33 @@ class NormalizeNumbers
      */
     private const UNTOUCHED = ['password', 'secret', 'token'];
 
-    /** أسماء الحقول المالية (على أي عمق، وبأي فهرس مثل items.*.price) */
-    private array $fields = [
+    /**
+     * أسماء الحقول العدديّة (على أي عمق، وبأي فهرس مثل items.*.price).
+     *
+     * وهي قائمةٌ تُكتب باليد — وقائمةٌ كذلك تنسى التاليَ دائمًا. فحرسها
+     * اختبارٌ يمسح قواعد التحقّق كلَّها: كلُّ حقلٍ يُصادَق بـ`numeric` يجب أن
+     * يكون هنا. وقد نسيت هذه القائمةُ عشرةً منها — ومنها **الرواتب كلُّها**:
+     * `basic_salary` و`allowances` و`deductions` و`overtime`. فيكتب المدير
+     * راتبًا بفاصلةٍ عربية فيُردّ بـ«يجب أن يكون رقمًا» على رقمٍ صحيح.
+     *
+     * @var list<string>
+     */
+    public const FIELDS = [
+        // المال
         'price', 'cost', 'amount', 'discount', 'tax', 'total', 'subtotal',
         'delivery_fee', 'opening_balance', 'monthly', 'yearly', 'monthly_price',
-        'yearly_price', 'free_threshold', 'fee', 'paid', 'unit_price', 'salary',
-        'monthly_target', 'balance', 'min_order',
+        'yearly_price', 'free_threshold', 'fee', 'paid', 'unit_price', 'balance',
+        'min_order', 'value', 'salvage_value',
+
+        // الرواتب — وكانت كلُّها خارج القائمة
+        'salary', 'basic_salary', 'basic', 'allowances', 'deductions', 'overtime',
+
+        // النسب والحدود
+        'commission_rate', 'vat_rate', 'loyalty_earn_rate', 'percent',
+        'wastage_percent', 'threshold', 'monthly_target',
+
+        // الكميّات — عشريّةٌ في التركيب والاستلام
+        'quantity', 'inventory_quantity',
     ];
 
     public function handle(Request $request, Closure $next)
@@ -55,7 +76,7 @@ class NormalizeNumbers
 
             $value = Numerals::toAscii($value);
 
-            if (in_array($key, $this->fields, true)) {
+            if (in_array($key, self::FIELDS, true)) {
                 $value = self::normalize($value);
             }
         });

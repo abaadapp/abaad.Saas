@@ -261,6 +261,45 @@ class ArabicNumeralsTest extends TestCase
     }
 
     /**
+     * ولا حقلَ يُصادَق رقمًا يبقى خارج قائمة التوحيد.
+     *
+     * القائمة تُكتب باليد، وقائمةٌ كذلك تنسى التاليَ دائمًا. وقد نسيت عشرة
+     * حقول — ومنها **الرواتب كلُّها**: يكتب المدير راتبًا «٥٠٠،٧٥» بلوحةٍ
+     * عربية فيُردّ بـ«يجب أن يكون رقمًا» على رقمٍ صحيح، ويبقى الراتب القديم.
+     *
+     * فيُقرأ الواجبُ من قواعد التحقّق نفسها لا من ذاكرة من كتبها.
+     */
+    public function test_every_field_validated_as_a_number_is_normalised(): void
+    {
+        $missing = [];
+
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(app_path('Http'), \FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($files as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            // 'اسم_الحقل' => [ … 'numeric' … ] — على سطرٍ واحد كما تُكتب في النظام
+            preg_match_all(
+                '/[\'"]([a-z_]+)[\'"]\s*=>\s*\[[^\]]*[\'"]numeric[\'"][^\]]*\]/',
+                file_get_contents($file->getPathname()),
+                $matches,
+            );
+
+            foreach ($matches[1] as $field) {
+                if (! in_array($field, NormalizeNumbers::FIELDS, true)) {
+                    $missing[$field] = $file->getFilename();
+                }
+            }
+        }
+
+        $this->assertSame([], $missing, 'حقلٌ يُصادَق رقمًا ولا تُوحَّد فواصلُه');
+    }
+
+    /**
      * ولا حقلَ عشريٍّ يبقى `type="number"`.
      *
      * حقلُ الأرقام يرفض ما لا يكتمل: «4.» قيمةٌ غير صالحة عنده فيُفرغ نفسه،

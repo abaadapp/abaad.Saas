@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Business;
+use App\Models\JobTitle;
 use App\Models\JournalEntry;
 use App\Models\PayrollLine;
 use App\Models\PayrollRun;
@@ -282,6 +283,37 @@ class PayrollTest extends TestCase
         ])->assertSessionHasErrors('lines');
 
         $this->assertSame(0.0, Ledger::account($this->bid(), 'cash')->balance());
+    }
+
+    /**
+     * والراتب يُكتب بلوحةٍ عربية كما يُكتب بغيرها.
+     *
+     * `basic_salary` و`allowances` كانتا خارج قائمة توحيد الأرقام، فراتبٌ
+     * يُكتب «٥٠٠،٧٥» — والفاصلةُ ما تُخرجه لوحتُه حين يعني الفاصل العشريّ —
+     * يُردّ بـ«يجب أن يكون رقمًا» على رقمٍ صحيح، ويبقى الراتب القديم كما هو
+     * ولا تظهر المسيرةُ التالية بما قرّره المدير.
+     */
+    public function test_a_salary_typed_on_an_arabic_keyboard_reaches_the_employee(): void
+    {
+        $employee = $this->employee('سالم', 300);
+        $employee->update(['email' => 'salem@abaad.om']);
+        $title = JobTitle::create([
+            'business_id' => $this->bid(), 'name' => 'كاشير', 'role' => 'cashier',
+        ]);
+
+        $this->actingAs($this->owner)->put(route('admin.employees.update', $employee->id), [
+            'name' => $employee->name,
+            'email' => 'salem@abaad.om',
+            'role' => 'cashier',
+            'job_title' => $title->name,
+            'basic_salary' => '٥٠٠،٧٥',
+            'allowances' => '٢٥٫٥',
+        ])->assertSessionHasNoErrors();
+
+        $fresh = $employee->fresh();
+
+        $this->assertSame(500.75, (float) $fresh->basic_salary, 'الراتب رُدّ أو ضاعت فاصلتُه');
+        $this->assertSame(25.5, (float) $fresh->allowances);
     }
 
     public function test_another_stores_run_is_out_of_reach(): void

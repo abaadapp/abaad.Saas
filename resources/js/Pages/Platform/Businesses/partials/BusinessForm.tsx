@@ -9,6 +9,7 @@ import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { UsernameInput } from '@/Components/ui/username-input';
 import { useTranslate } from '@/lib/i18n';
+import { randomPassword } from '@/lib/password';
 import AccountCard from './AccountCard';
 
 export interface BusinessOptions {
@@ -54,15 +55,6 @@ interface Props {
     method: 'post' | 'put';
     submitLabel: string;
     cancelHref: string;
-}
-
-/** كلمة مرور مقروءة: بلا حروف تلتبس (l/1/O/0) لأنها تُملى في الهاتف */
-export function randomPassword(): string {
-    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    return Array.from(
-        crypto.getRandomValues(new Uint32Array(10)),
-        (n) => chars[n % chars.length],
-    ).join('');
 }
 
 /**

@@ -522,11 +522,17 @@ class EmployeeController extends Controller
         if ($employee->id === auth()->id()) {
             return back()->with('toast', ['msg' => __('استخدم صفحة «الملف الشخصي» لتغيير كلمة مرورك'), 'type' => 'warning']);
         }
-        $temp = 'Ab'.random_int(1000, 9999);
+        $temp = MerchantAccount::temporaryPassword();
         $employee->password = Hash::make($temp);
         $employee->save();
         Activity::log('updated', 'أعاد تعيين كلمة مرور الموظف: '.$employee->name, ['subject_id' => $employee->id]);
 
-        return back()->with('toast', ['msg' => __('كلمة المرور الجديدة: :password', ['password' => $temp]), 'type' => 'info']);
+        /*
+         * تُعرض في الشاشة لتُنسخ، ولا تُكتب في سجلّ النشاط ولا في القاعدة:
+         * المحفوظ تجزئتُها وحدها، وهذه آخر مرّة تُقرأ فيها.
+         */
+        return back()
+            ->with('issued_password', $temp)
+            ->with('toast', ['msg' => __('وُلِّدت كلمة مرور جديدة — انسخها قبل إغلاق النافذة'), 'type' => 'info']);
     }
 }

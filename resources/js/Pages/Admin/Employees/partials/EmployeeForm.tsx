@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { Check, KeyRound, Plus, ShieldCheck, Target, UserRound, Wallet } from 'lucide-react';
+import { Check, Copy, KeyRound, Plus, RefreshCw, ShieldCheck, Target, UserRound, Wallet } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
@@ -19,6 +19,7 @@ import { UsernameInput, usernameOf } from '@/Components/ui/username-input';
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
+import { randomPassword } from '@/lib/password';
 import { usePlanFeature } from '@/lib/plan';
 import type { Branch } from '@/types/models';
 
@@ -169,6 +170,9 @@ export default function EmployeeForm({
      * حسابٌ قديم خارج نطاق أبعاد — يُعرض عنوانه ولا يُنقل حتى يُطلب النقل.
      */
     const [moving, setMoving] = useState(false);
+
+    /* «نُسخت» تظهر لحظةً ثمّ تعود: تأكيدٌ بلا نافذةٍ تُغلق */
+    const [copied, setCopied] = useState(false);
     const legacyEmail = editing && employee?.on_domain === false && !moving;
 
     useEffect(() => {
@@ -381,16 +385,55 @@ export default function EmployeeForm({
                         )}
                     </Field>
 
+                    {/*
+                        الكلمة القائمة لا تُعرض هنا ولا في أيّ شاشة: تُحفظ
+                        مُجزَّأةً بلا طريقٍ يعود منها إلى نصّها. ومن يفتح ملفّ
+                        موظّفٍ يقرأ كلمته يفتح كلمةَ صاحبها في كل موقعٍ آخر
+                        يستعملها فيه — والناس يعيدون كلماتهم.
+                        فالمعروض هنا ما يُكتب الآن: يُولَّد، ويُرى بالعين،
+                        ويُنسخ، ثمّ يُملى على صاحبه.
+                    */}
                     <Field
                         label={editing ? 'كلمة مرور جديدة' : 'كلمة المرور'}
-                        hint={editing ? 'اتركها فارغة للإبقاء على الحالية' : 'أربعة أحرف على الأقل'}
+                        hint={
+                            editing
+                                ? 'اتركها فارغة للإبقاء على الحالية — والقديمة لا تُعرض لأنها لا تُقرأ'
+                                : 'أربعة أحرف على الأقل'
+                        }
                         error={form.errors.password}
                     >
-                        <PasswordInput
-                            autoComplete="new-password"
-                            value={form.data.password}
-                            onChange={(e) => form.setData('password', e.target.value)}
-                        />
+                        <div className="flex items-stretch gap-2">
+                            <PasswordInput
+                                className="w-full"
+                                autoComplete="new-password"
+                                value={form.data.password}
+                                onChange={(e) => form.setData('password', e.target.value)}
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => form.setData('password', randomPassword())}
+                                title={t('ولّد كلمة مرور')}
+                                aria-label={t('ولّد كلمة مرور')}
+                            >
+                                <RefreshCw />
+                            </Button>
+                            {/* النسخ لا التحديد باليد: تُلصق في رسالةٍ إلى صاحبها بلا حرفٍ ناقص */}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={form.data.password === ''}
+                                onClick={() => {
+                                    navigator.clipboard?.writeText(form.data.password);
+                                    setCopied(true);
+                                    window.setTimeout(() => setCopied(false), 1500);
+                                }}
+                                title={t(copied ? 'نُسخت' : 'نسخ')}
+                                aria-label={t(copied ? 'نُسخت' : 'نسخ')}
+                            >
+                                {copied ? <Check /> : <Copy />}
+                            </Button>
+                        </div>
                     </Field>
 
                     {editing && (

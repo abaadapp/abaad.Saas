@@ -101,6 +101,8 @@ export interface SharedProps {
     flash: {
         toast: Toast | null;
         status: string | null;
+        /** كلمة مرورٍ وُلِّدت الآن — تمرّ مرّةً واحدة ولا تُحفظ */
+        password?: string | null;
     };
     /** رمز CSRF الخام — يتجدّد مع كل استجابة، بخلاف وسم <meta> */
     csrf: string;

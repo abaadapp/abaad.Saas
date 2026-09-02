@@ -137,6 +137,14 @@ class HandleInertiaRequests extends Middleware
             'flash' => fn () => [
                 'toast' => $request->session()->get('toast'),
                 'status' => $request->session()->get('status'),
+                /*
+                 * كلمةُ مرورٍ وُلِّدت الآن — تمرّ مرّةً واحدة ولا تُحفظ.
+                 *
+                 * كانت تُرسل داخل نصّ التوست فتختفي بعد ثوانٍ: يقرؤها المدير
+                 * نصفَ قراءة، ولا سبيل إلى استرجاعها لأنّها تُحفظ مُجزَّأةً.
+                 * فيُعيد التوليد مرّةً بعد مرّة.
+                 */
+                'password' => $request->session()->get('issued_password'),
             ],
 
             // الرمز الخام مع كل استجابة: وسم <meta> يُطبع مرّة عند أول تحميل

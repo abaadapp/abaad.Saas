@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { useTranslate } from '@/lib/i18n';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { MERCHANT_DOMAIN, UsernameInput } from '@/Components/ui/username-input';
-import { randomPassword } from './BusinessForm';
+import { randomPassword } from '@/lib/password';
 
 interface Props {
     businessId: number;

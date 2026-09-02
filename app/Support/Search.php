@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -26,6 +27,26 @@ class Search
     public static function like(?string $connection = null): string
     {
         return self::operatorFor(DB::connection($connection)->getDriverName());
+    }
+
+    /**
+     * نصّ البحث كما يُبحث به — لا كما وصل.
+     *
+     * `%` في `LIKE` تعني «أيّ شيء»، وهي تصل من صندوق البحث كما يكتبها صاحبها.
+     * فمن كتب `%` وحده رأى **كلّ** ما يُؤذن له به: المنتجات والطلبات والعملاء
+     * والموردين دفعةً واحدة. ولا تسرّب في ذلك — القيود على المتجر والصلاحية
+     * قائمة — لكنّه بحثٌ لا يبحث.
+     *
+     * وأسوأ منه أنّ ما يُطلب لا يُوجد: صنفٌ اسمه «خصم 50%» يُكتب اسمه كاملًا
+     * فتُرَدّ الشاشة بكلّ شيءٍ إلّاه.
+     *
+     * و`_` تبقى: هي «أيّ حرفٍ واحد»، ونزعُها يمنع إيجاد ما فيه شرطةٌ سفليّة
+     * أصلًا — `SKU_12` يصير `SKU12` فلا يطابق شيئًا. وإبقاؤها يوسّع المطابقة
+     * حرفًا واحدًا لا أكثر، وذلك أهون من ألّا يُوجد ما هو موجود.
+     */
+    public static function term(Request $request, string $key = 'q'): string
+    {
+        return trim(str_replace('%', '', (string) $request->query($key)));
     }
 
     /** مفصولٌ عن الاتصال ليُختبَر لكل محرّك دون قاعدةٍ منه */

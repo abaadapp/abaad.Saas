@@ -3,26 +3,37 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
+use App\Models\BranchStock;
 use App\Models\GoodsReceiptNote;
 use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
+use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\ReceiveRefused;
+use App\Support\Search;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class PurchaseOrderController extends Controller
 {
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     /** أوامر الشراء — ما طُلب، وما استُلم منه */
-    public function index(Request $request): \Inertia\Response
+    public function index(Request $request): Response
     {
         $s = Demo::purchaseOrderStats();
 
-        return \Inertia\Inertia::render('Admin/Purchases/Index', [
+        return Inertia::render('Admin/Purchases/Index', [
             'stats' => [
                 ['label' => __('إجمالي الأوامر'), 'value' => (string) $s['total'], 'icon' => 'clipboard-list', 'color' => 'primary'],
                 ['label' => __('قيد التنفيذ'), 'value' => (string) $s['pending'], 'icon' => 'clock', 'color' => 'warning'],
@@ -32,7 +43,7 @@ class PurchaseOrderController extends Controller
             // رابط الإيصال يُبنى هنا: المسار وحده لا يكفي المتصفح لفتحه
             'orders' => array_map(function ($o) {
                 $o['receipt'] = $o['receipt']
-                    ? \Illuminate\Support\Facades\Storage::disk('public')->url($o['receipt'])
+                    ? Storage::disk('public')->url($o['receipt'])
                     : null;
 
                 return $o;
@@ -45,7 +56,7 @@ class PurchaseOrderController extends Controller
              * رابطٌ يُنزلك في أوّلها ويتركك تبحث ليس رابطًا. فيصل معه رقم
              * الأمر ويُملأ به حقل البحث، فتفتح الصفحة على أمرٍ واحد.
              */
-            'q' => trim((string) $request->query('q')) ?: null,
+            'q' => Search::term($request) ?: null,
         ]);
     }
 
@@ -70,7 +81,7 @@ class PurchaseOrderController extends Controller
         $bid = $this->bid();
 
         // الفرع يجب أن يخصّ نفس النشاط
-        $branch = \App\Models\Branch::where('business_id', $bid)->find($data['branch_id']);
+        $branch = Branch::where('business_id', $bid)->find($data['branch_id']);
         if (! $branch) {
             return back()->withInput()->withErrors(['branch_id' => __('الفرع المحدد غير صالح.')]);
         }
@@ -89,7 +100,7 @@ class PurchaseOrderController extends Controller
         $po = PurchaseOrder::create([
             'business_id' => $bid,
             'branch_id' => $branch->id,
-            'number' => 'PO-' . random_int(10000, 99999),
+            'number' => 'PO-'.random_int(10000, 99999),
             'supplier_id' => $supplier?->id,
             'supplier_name' => $supplier?->name,
             'status' => 'مُرسل',
@@ -107,7 +118,7 @@ class PurchaseOrderController extends Controller
                 'quantity' => $i['quantity'],
             ]);
         }
-        \App\Support\Activity::log('created', 'أنشأ أمر شراء ' . $po->number . ' لفرع ' . $branch->name . ' بقيمة ' . number_format($total, 3) . ' ر.ع', ['subject_id' => $po->id]);
+        Activity::log('created', 'أنشأ أمر شراء '.$po->number.' لفرع '.$branch->name.' بقيمة '.number_format($total, 3).' ر.ع', ['subject_id' => $po->id]);
 
         return redirect()->route('admin.purchases.orders')->with('toast', ['msg' => __('تم إنشاء أمر الشراء :number', ['number' => $po->number]), 'type' => 'success']);
     }
@@ -163,7 +174,7 @@ class PurchaseOrderController extends Controller
                 $items = $po->items()->lockForUpdate()->get();
 
                 if ($po->status === 'مستلم') {
-                    throw new \App\Support\ReceiveRefused(__('أمر الشراء مستلم مسبقًا'), 'info');
+                    throw new ReceiveRefused(__('أمر الشراء مستلم مسبقًا'), 'info');
                 }
 
                 /*
@@ -193,13 +204,13 @@ class PurchaseOrderController extends Controller
                 }
 
                 if ($over) {
-                    throw new \App\Support\ReceiveRefused(
+                    throw new ReceiveRefused(
                         __('الكمية المستلمة أكبر من المتبقّي: :items', ['items' => implode('، ', $over)]),
                     );
                 }
 
                 if (! $lines) {
-                    throw new \App\Support\ReceiveRefused(__('لا كميةَ لاستلامها — اكتب ما وصلك من كل صنف.'));
+                    throw new ReceiveRefused(__('لا كميةَ لاستلامها — اكتب ما وصلك من كل صنف.'));
                 }
 
                 $po->setRelation('items', $items);
@@ -215,10 +226,10 @@ class PurchaseOrderController extends Controller
                     if ($item->product_id) {
                         $product = Product::where('business_id', $bid)->find($item->product_id);
                         if ($product) {
-                            \App\Models\BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
+                            BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
                             $onHand = (int) $product->quantity;
                             $product->increment('quantity', $qty);
-                            \App\Models\BranchStock::adjust($bid, $po->branch_id, $product->id, $qty);
+                            BranchStock::adjust($bid, $po->branch_id, $product->id, $qty);
 
                             /*
                              * متوسّطٌ مرجّح لا آخر سعر.
@@ -293,7 +304,7 @@ class PurchaseOrderController extends Controller
 
                 return $note;
             });
-        } catch (\App\Support\ReceiveRefused $e) {
+        } catch (ReceiveRefused $e) {
             return $e->tone === 'info'
                 ? back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'info'])
                 : back()->withErrors(['receive' => $e->getMessage()]);
@@ -301,7 +312,7 @@ class PurchaseOrderController extends Controller
 
         $po->refresh();
 
-        \App\Support\Activity::log('updated', 'استلم من أمر الشراء '.$po->number.' بإشعار '.$note->number, ['subject_id' => $po->id]);
+        Activity::log('updated', 'استلم من أمر الشراء '.$po->number.' بإشعار '.$note->number, ['subject_id' => $po->id]);
 
         return back()->with('toast', [
             'msg' => $po->status === 'مستلم'
@@ -324,14 +335,14 @@ class PurchaseOrderController extends Controller
 
         // استبدال الإيصال القديم بدل تركه يتراكم على القرص
         if ($po->receipt) {
-            \Illuminate\Support\Facades\Storage::disk('public')->delete($po->receipt);
+            Storage::disk('public')->delete($po->receipt);
         }
         $file = $request->file('receipt');
         $po->update([
-            'receipt' => $file->store('purchase-receipts/' . $this->bid(), 'public'),
+            'receipt' => $file->store('purchase-receipts/'.$this->bid(), 'public'),
             'receipt_name' => $file->getClientOriginalName(),
         ]);
-        \App\Support\Activity::log('updated', 'أرفق إيصال دفع لأمر الشراء ' . $po->number, ['subject_id' => $po->id]);
+        Activity::log('updated', 'أرفق إيصال دفع لأمر الشراء '.$po->number, ['subject_id' => $po->id]);
 
         return back()->with('toast', ['msg' => __('تم رفع إيصال الدفع'), 'type' => 'success']);
     }
@@ -350,7 +361,7 @@ class PurchaseOrderController extends Controller
     {
         $po = PurchaseOrder::where('business_id', $this->bid())->findOrFail($id);
 
-        if (\App\Models\GoodsReceiptNote::where('purchase_order_id', $po->id)->exists()) {
+        if (GoodsReceiptNote::where('purchase_order_id', $po->id)->exists()) {
             return back()->with('toast', [
                 'msg' => __('استُلمت بضاعةٌ على هذا الأمر — لا يُحذف بعد أن دخلت الرفّ'),
                 'type' => 'warning',
@@ -366,10 +377,10 @@ class PurchaseOrderController extends Controller
 
         $num = $po->number;
         if ($po->receipt) {
-            \Illuminate\Support\Facades\Storage::disk('public')->delete($po->receipt);
+            Storage::disk('public')->delete($po->receipt);
         }
         $po->delete();
-        \App\Support\Activity::log('deleted', 'حذف أمر الشراء: ' . $num);
+        Activity::log('deleted', 'حذف أمر الشراء: '.$num);
 
         return back()->with('toast', ['msg' => __('تم حذف أمر الشراء'), 'type' => 'warning']);
     }

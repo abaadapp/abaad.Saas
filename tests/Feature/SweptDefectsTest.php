@@ -132,7 +132,9 @@ class SweptDefectsTest extends TestCase
         foreach ($screens as $screen) {
             $source = file_get_contents(app_path('Http/Controllers/'.$screen));
 
-            $at = strpos($source, "\$request->query('q')");
+            // المرساة هي قراءةُ النصّ — وقد صارت تمرّ بـ`Search::term` لتُنزع
+            // منها حروفُ البدل (انظر `Search::term`)
+            $at = strpos($source, 'Search::term($request)');
             $this->assertNotFalse($at, "شاشة «{$screen}» لا بحث فيها — تغيّر الملفّ والاختبار يقيس فراغًا");
 
             $block = substr($source, $at, 600);

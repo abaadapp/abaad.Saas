@@ -59,7 +59,7 @@ class SupplierInvoiceController extends Controller
 
         $q = SupplierInvoice::where('business_id', $bid)->with(['supplier', 'purchaseOrder']);
 
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             $q->where(fn ($w) => $w->where('supplier_ref', $like, "%{$s}%")
                 ->orWhere('notes', $like, "%{$s}%")

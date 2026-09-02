@@ -14,7 +14,7 @@ class ActivityController extends Controller
 {
     private static function shape($q, Request $request)
     {
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             $q->where(fn ($w) => $w->where('description', $like, "%{$s}%")->orWhere('user_name', $like, "%{$s}%"));
         }

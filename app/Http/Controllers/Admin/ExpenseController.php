@@ -62,7 +62,7 @@ class ExpenseController extends Controller
         $base = Expense::where('business_id', $bid)
             ->when($span, fn ($w) => $w->whereBetween('spent_at', $span));
 
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             $q->where(fn ($w) => $w->where('reference', $like, "%{$s}%")
                 ->orWhere('description', $like, "%{$s}%")

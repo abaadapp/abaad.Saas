@@ -53,7 +53,7 @@ class JournalController extends Controller
 
         $q = JournalEntry::where('business_id', $bid)->with(['lines.account', 'creator']);
 
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             $q->where(fn ($w) => $w->where('number', $like, "%{$s}%")
                 ->orWhere('description', $like, "%{$s}%"));

@@ -30,7 +30,7 @@ class ListFilters
      */
     public static function orders(Builder $q, Request $request): Builder
     {
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             $q->where(fn ($w) => $w->where('number', $like, "%{$s}%")
                 ->orWhere('customer_name', $like, "%{$s}%")
@@ -79,7 +79,7 @@ class ListFilters
     /** المنتجات — كما ترشّحها شاشة «المنتجات» */
     public static function products(Builder $q, Request $request): Builder
     {
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             // والباركود من البحث: من اعتاد الماسح يمرّره هنا
             $q->where(fn ($w) => $w->where('name', $like, "%{$s}%")
@@ -113,7 +113,7 @@ class ListFilters
     /** العملاء — كما ترشّحهم شاشة «العملاء» */
     public static function customers(Builder $q, Request $request): Builder
     {
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             // والاسم الإنجليزيّ معه: من كتبه بيده يبحث به
             $q->where(fn ($w) => $w->where('name', $like, "%{$s}%")
@@ -152,7 +152,7 @@ class ListFilters
             $q->whereBetween('spent_at', $span);
         }
 
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             $q->where(fn ($w) => $w->where('reference', $like, "%{$s}%")
                 ->orWhere('description', $like, "%{$s}%")

@@ -55,7 +55,7 @@ class StockAdjustmentController extends Controller
 
         $q = StockAdjustment::where('business_id', $bid)->with(['product', 'creator', 'branch']);
 
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             $q->where(fn ($w) => $w->where('number', $like, "%{$s}%")
                 ->orWhere('notes', $like, "%{$s}%")

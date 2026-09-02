@@ -36,7 +36,7 @@ class UserController extends Controller
         // «محذوف» حالةٌ ثالثة: بابُ الاسترداد لا يُفتح إلا من هنا
         if ($request->query('status') === self::TRASHED) { $q->onlyTrashed(); }
 
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = \App\Support\Search::term($request)) {
             // المعامل يُسأل ولا يُكتب — انظر `Search`
             $op = \App\Support\Search::like();
             $q->where(fn ($w) => $w->where('name', $op, "%{$s}%")->orWhere('email', $op, "%{$s}%")->orWhere('phone', $op, "%{$s}%"));

@@ -64,7 +64,7 @@ class BusinessController extends Controller
                 ->limit(1),
         ]);
 
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = \App\Support\Search::term($request)) {
             // ويُبحث في بريد الدخول أيضًا: هو ما يعرفه الدعم عن التاجر
             // والمعامل يُسأل ولا يُكتب: `like` تفرّق بين الكبير والصغير في
             // PostgreSQL — انظر `Search`

@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\Search;
 use Illuminate\Http\Request;
 
 /**
@@ -18,14 +19,14 @@ class SearchController extends Controller
 {
     public function admin(Request $request)
     {
-        $q = trim((string) $request->query('q'));
+        $q = Search::term($request);
         if (mb_strlen($q) < 2) {
             return response()->json(['groups' => []]);
         }
         $user = auth()->user();
         $bid = $user->business_id ?? Demo::bid();
         $like = "%{$q}%";
-        $op = \App\Support\Search::like();
+        $op = Search::like();
 
         /*
          * البحث لا يتجاوز صلاحيات صاحبه.
@@ -81,7 +82,7 @@ class SearchController extends Controller
 
     public function super(Request $request)
     {
-        $q = trim((string) $request->query('q'));
+        $q = Search::term($request);
         if (mb_strlen($q) < 2) {
             return response()->json(['groups' => []]);
         }
@@ -94,7 +95,7 @@ class SearchController extends Controller
          * فمن كتب بريد تاجرٍ بحرفٍ كبيرٍ واحد لم يجده — وهذه الشاشة أوّل ما
          * يُفتح حين يتّصل التاجر.
          */
-        $op = \App\Support\Search::like();
+        $op = Search::like();
 
         $businesses = Business::where(fn ($w) => $w->where('name', $op, $like)->orWhere('owner_name', $op, $like))
             ->limit(6)->get()->map(fn ($b) => [

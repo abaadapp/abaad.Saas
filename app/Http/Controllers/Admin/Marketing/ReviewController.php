@@ -45,7 +45,7 @@ class ReviewController extends Controller
 
         $q = Review::where('business_id', $bid)->with(['customer', 'product']);
 
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             // `like` على PostgreSQL يفرّق بين حالتَي الحرف، وأسماءُ المقيّمين
             // وتعليقاتُهم تُكتب باللاتينية كثيرًا — فالبحث كان أعمى في الإنتاج
             // ويعمل في الاختبار (SQLite متساهل). انظر Support\Search

@@ -44,7 +44,7 @@ class GoodsReceiptNoteController extends Controller
         $q = GoodsReceiptNote::where('business_id', $bid)
             ->with(['supplier', 'branch', 'purchaseOrder', 'items']);
 
-        if ($s = trim((string) $request->query('q'))) {
+        if ($s = Search::term($request)) {
             $like = Search::like();
             $q->where(fn ($w) => $w->where('number', $like, "%{$s}%")
                 ->orWhere('receiver', $like, "%{$s}%")

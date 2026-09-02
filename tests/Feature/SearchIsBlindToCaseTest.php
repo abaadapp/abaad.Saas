@@ -56,6 +56,42 @@ class SearchIsBlindToCaseTest extends TestCase
         $this->assertSame([], $hand, 'بحثٌ يكتب المعامل بيده — استعمل Search::like()');
     }
 
+    /**
+     * ولا صندوقَ بحثٍ يقرأ ما كُتب فيه خامًا.
+     *
+     * `%` تعني «أيّ شيء» في `LIKE`، وتصل من الصندوق كما يكتبها صاحبها: فمن
+     * كتبها وحدها رأى كلّ ما يُؤذن له به دفعةً واحدة — بحثٌ لا يبحث. وأسوأ
+     * منه أنّ ما يُطلب لا يُوجد: صنفٌ اسمه «خصم 50%» يُكتب اسمه كاملًا فتُرَدّ
+     * الشاشة بكلّ شيءٍ إلّاه.
+     */
+    public function test_no_search_box_reads_its_query_raw(): void
+    {
+        $raw = [];
+
+        foreach ($this->php(app_path()) as $file) {
+            foreach (file($file) as $n => $line) {
+                if (str_contains($line, "\$request->query('q')") && ! str_contains($line, 'Search::term')) {
+                    $raw[] = str_replace(app_path().'/', '', $file).':'.($n + 1);
+                }
+            }
+        }
+
+        $this->assertSame([], $raw, 'صندوق بحثٍ يقرأ نصّه خامًا — استعمل Search::term()');
+    }
+
+    /** والنزعُ يقع على `%` وحدها */
+    public function test_the_wildcard_is_stripped_but_the_rest_survives(): void
+    {
+        $term = fn (string $q) => Search::term(\Illuminate\Http\Request::create('/?q='.urlencode($q)));
+
+        $this->assertSame('', $term('%'));
+        $this->assertSame('', $term('%%'));
+        $this->assertSame('50', $term('50%'));
+        $this->assertSame('عدي', $term('  عدي  '));
+        // و`_` تبقى: نزعُها يمنع إيجاد ما فيه شرطةٌ سفليّة أصلًا
+        $this->assertSame('SKU_12', $term('SKU_12'));
+    }
+
     /** والبحثان الموحّدان قائمان: مسحٌ لا يجد شيئًا ليس دليلَ سلامة */
     public function test_both_unified_search_routes_exist(): void
     {

@@ -66,10 +66,13 @@ class BusinessController extends Controller
 
         if ($s = trim((string) $request->query('q'))) {
             // ويُبحث في بريد الدخول أيضًا: هو ما يعرفه الدعم عن التاجر
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")
-                ->orWhere('owner_name', 'like', "%{$s}%")
-                ->orWhere('email', 'like', "%{$s}%")
-                ->orWhereHas('users', fn ($u) => $u->where('role', 'admin')->where('email', 'like', "%{$s}%")));
+            // والمعامل يُسأل ولا يُكتب: `like` تفرّق بين الكبير والصغير في
+            // PostgreSQL — انظر `Search`
+            $op = \App\Support\Search::like();
+            $q->where(fn ($w) => $w->where('name', $op, "%{$s}%")
+                ->orWhere('owner_name', $op, "%{$s}%")
+                ->orWhere('email', $op, "%{$s}%")
+                ->orWhereHas('users', fn ($u) => $u->where('role', 'admin')->where('email', $op, "%{$s}%")));
         }
         if ($t = $request->query('type')) { $q->where('type', $t); }
         if ($p = $request->query('plan')) { $q->whereHas('plan', fn ($w) => $w->where('name', $p)); }

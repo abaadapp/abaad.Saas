@@ -37,7 +37,9 @@ class UserController extends Controller
         if ($request->query('status') === self::TRASHED) { $q->onlyTrashed(); }
 
         if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%")->orWhere('phone', 'like', "%{$s}%"));
+            // المعامل يُسأل ولا يُكتب — انظر `Search`
+            $op = \App\Support\Search::like();
+            $q->where(fn ($w) => $w->where('name', $op, "%{$s}%")->orWhere('email', $op, "%{$s}%")->orWhere('phone', $op, "%{$s}%"));
         }
         if ($r = $request->query('role')) { $q->where('role', $r); }
         if (($st = $request->query('status')) && $st !== self::TRASHED) { $q->where('status', $st); }

@@ -86,14 +86,23 @@ class SearchController extends Controller
             return response()->json(['groups' => []]);
         }
         $like = "%{$q}%";
+        /*
+         * والمعامل يُسأل هنا كما يُسأل في بحث اللوحة.
+         *
+         * كانت هذه الدالّة وحدها تكتب `like` نصًّا: تجري الاختبارات على SQLite
+         * فتمرّ، ويجري الإنتاج على PostgreSQL فتفرّق بين الحرف الكبير والصغير.
+         * فمن كتب بريد تاجرٍ بحرفٍ كبيرٍ واحد لم يجده — وهذه الشاشة أوّل ما
+         * يُفتح حين يتّصل التاجر.
+         */
+        $op = \App\Support\Search::like();
 
-        $businesses = Business::where(fn ($w) => $w->where('name', 'like', $like)->orWhere('owner_name', 'like', $like))
+        $businesses = Business::where(fn ($w) => $w->where('name', $op, $like)->orWhere('owner_name', $op, $like))
             ->limit(6)->get()->map(fn ($b) => [
                 'label' => $b->name, 'meta' => $b->owner_name ?: '—',
                 'url' => route('super-admin.businesses.show', $b->id),
             ]);
 
-        $users = User::where(fn ($w) => $w->where('name', 'like', $like)->orWhere('email', 'like', $like))
+        $users = User::where(fn ($w) => $w->where('name', $op, $like)->orWhere('email', $op, $like))
             ->limit(6)->get()->map(fn ($u) => [
                 'label' => $u->name, 'meta' => $u->email ?: '—',
                 'url' => route('super-admin.users.show', $u->id),

@@ -316,6 +316,72 @@ class PayrollTest extends TestCase
         $this->assertSame(25.5, (float) $fresh->allowances);
     }
 
+    /* ------------------------- حذف سطرٍ من المسيرة ------------------------- */
+
+    /**
+     * السطر يُحذف، **والمسيرة تُعاد حسابًا**.
+     *
+     * وهذا هو الحرس كلُّه: مسيرةٌ صافيها يقول رقمًا وسطورُها تقول غيره تُعتمد
+     * فتقيّد التزامًا لا يقابله أحد، ثمّ يُصرف على أسماءٍ أقلّ من المبلغ —
+     * فيبقى في «الرواتب المستحقّة» رصيدٌ لا صاحب له، ولا شيء يقول من أين جاء.
+     */
+    public function test_deleting_a_line_recalculates_the_run(): void
+    {
+        $this->employee('سالم', 300);
+        $this->employee('مريم', 200);
+        $this->openRun();
+
+        $run = PayrollRun::first();
+        $this->assertSame(500.0, (float) $run->net);
+
+        $line = PayrollLine::where('employee_name', 'مريم')->firstOrFail();
+
+        $this->delete(route('admin.payroll.lines.destroy', $line->id))->assertRedirect();
+
+        $this->assertNull(PayrollLine::find($line->id));
+        $this->assertSame(300.0, (float) $run->fresh()->net);
+        $this->assertSame(1, $run->fresh()->lines()->count());
+    }
+
+    /** والمعتمدة وثيقةٌ لا تُنقَص: الدفتر قُيّد على سطورها */
+    public function test_a_line_in_an_approved_run_is_not_deleted(): void
+    {
+        $this->employee('سالم', 300);
+        $this->openRun();
+        $run = PayrollRun::first();
+        $line = PayrollLine::first();
+
+        $this->post(route('admin.payroll.approve', $run->id));
+        $this->delete(route('admin.payroll.lines.destroy', $line->id));
+
+        $this->assertNotNull(PayrollLine::find($line->id));
+        $this->assertSame(300.0, (float) $run->fresh()->net);
+        $this->assertTrue(Ledger::trialBalance($this->bid())['balanced']);
+    }
+
+    /** وسطرُ الجار لا يُمسّ برقمٍ مُخمَّن */
+    public function test_a_neighbours_line_is_out_of_reach(): void
+    {
+        $other = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
+        $theirRun = PayrollRun::create([
+            'business_id' => $other->id, 'number' => 'PR-00009',
+            'period' => now()->startOfMonth()->toDateString(), 'status' => 'مسودة',
+        ]);
+        $theirEmployee = User::create([
+            'business_id' => $other->id, 'name' => 'موظفهم', 'email' => 'x@abaadapp.om',
+            'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
+            'basic_salary' => 400, 'allowances' => 0,
+        ]);
+        $theirLine = PayrollLine::create([
+            'payroll_run_id' => $theirRun->id, 'user_id' => $theirEmployee->id, 'employee_name' => 'موظفهم',
+            'basic' => 400, 'allowances' => 0, 'overtime' => 0, 'deductions' => 0, 'net' => 400,
+        ]);
+
+        $this->delete(route('admin.payroll.lines.destroy', $theirLine->id))->assertNotFound();
+
+        $this->assertNotNull(PayrollLine::find($theirLine->id));
+    }
+
     public function test_another_stores_run_is_out_of_reach(): void
     {
         $other = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);

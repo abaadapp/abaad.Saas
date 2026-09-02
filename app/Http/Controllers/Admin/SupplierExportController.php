@@ -8,7 +8,7 @@ use App\Support\Activity;
 use App\Support\Demo;
 use Illuminate\Http\Request;
 use Mpdf\Mpdf;
-use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Support\Sheet;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -129,9 +129,8 @@ class SupplierExportController extends Controller
         }
 
         try {
-            $reader = IOFactory::createReaderForFile($file->getRealPath());
-            $reader->setReadDataOnly(true);
-            $data = $reader->load($file->getRealPath())->getActiveSheet()->toArray(null, true, false, false);
+            // والترميز يُقرأ لا يُفترض — انظر `Sheet`
+            $data = Sheet::rows($file->getRealPath());
         } catch (\Throwable $e) {
             return back()->with('toast', ['msg' => __('تعذّر قراءة الملف. تأكد أنه ملف صالح.'), 'type' => 'danger']);
         }

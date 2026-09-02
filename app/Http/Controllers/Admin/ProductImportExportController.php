@@ -16,7 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Mpdf\Mpdf;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
-use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Support\Sheet;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -186,9 +186,8 @@ class ProductImportExportController extends Controller
         $branchId ??= Demo::activeBranchId();
 
         try {
-            $reader = IOFactory::createReaderForFile($file->getRealPath());
-            $reader->setReadDataOnly(true);
-            $spreadsheet = $reader->load($file->getRealPath());
+            // والترميز يُقرأ لا يُفترض — انظر `Sheet`: إكسل العربيّ يحفظ CSV بـWindows-1256
+            $spreadsheet = Sheet::spreadsheet($file->getRealPath());
             $sheets = $spreadsheet->getSheetNames();
             $data = $spreadsheet->getActiveSheet()->toArray(null, true, false, false);
         } catch (\Throwable $e) {

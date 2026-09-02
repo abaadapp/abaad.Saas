@@ -10,7 +10,7 @@ use App\Support\Bank;
 use App\Support\Demo;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Support\Sheet;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
 
 /**
@@ -66,7 +66,8 @@ class BankStatementController extends Controller
             'statement.extensions' => __('الصيغ المدعومة: XLSX، XLS، XLSM، CSV.'),
         ], ['statement' => __('ملف الكشف')]);
 
-        $rows = IOFactory::load($request->file('statement')->getRealPath())
+        // والترميز يُقرأ لا يُفترض — انظر `Sheet`: كشوف البنوك تُحفظ CSV كما تُحفظ الجداول
+        $rows = Sheet::spreadsheet($request->file('statement')->getRealPath())
             ->getActiveSheet()->toArray(null, true, true, false);
 
         if (count($rows) < 2) {

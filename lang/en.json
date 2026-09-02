@@ -3975,5 +3975,8 @@
     "وُلِّدت كلمة مرور جديدة — انسخها قبل إغلاق النافذة": "A new password was generated — copy it before closing the dialog.",
     "انسخها الآن وأرسلها إلى الموظف — لا تُعرض بعد إغلاق النافذة.": "Copy it now and send it to the employee — it is not shown again after this dialog closes.",
     "الكلمة الحالية لا تُعرض — لا تُحفظ إلا مُجزَّأة، فلا تُقرأ.": "The current password is not shown — only its hash is stored, so it cannot be read.",
-    "آخر فاتورة": "Last invoice"
+    "آخر فاتورة": "Last invoice",
+    "إعادة الافتراضي": "Restore defaults",
+    "كل البطاقات مخفية — اضغط «تخصيص» ثمّ «إعادة الافتراضي».": "All cards are hidden — press “Customise”, then “Restore defaults”.",
+    "كل القدرات": "All capabilities"
 }

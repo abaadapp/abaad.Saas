@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { Check, Plus, SlidersHorizontal, X } from 'lucide-react';
+import { Check, Plus, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
@@ -61,6 +61,20 @@ export default function StatGrid({ stats, storageKey, catalog = [] }: Props) {
         } catch {
             // وضع التصفّح الخاص قد يمنع الكتابة — الاختيار يبقى لهذه الجلسة
         }
+    };
+
+    /**
+     * العودة إلى الافتراضي — بضغطة، لا بطاقةً بطاقة.
+     *
+     * من أخفى ستّ بطاقاتٍ وأراد ردَّها كان يضغط ستّ مرّات على أسمائها في شريط
+     * «أضف»، ولا شيء يقول له إنّ الافتراضيّ شيءٌ يُستعاد. والحفظ في المتصفّح
+     * وحده — لا سبيل إلى ردّه من الخادم، فالسبيل زرٌّ هنا.
+     */
+    const customised = hidden.length > 0 || added.length > 0;
+
+    const restore = () => {
+        write(key, [], setHidden);
+        write(addedKey, [], setAdded);
     };
 
     // بطاقة أُزيلت من الخادم لا يجوز أن تبقى عالقة في قائمة المخفيّات
@@ -127,6 +141,12 @@ export default function StatGrid({ stats, storageKey, catalog = [] }: Props) {
                         )}
                     </div>
                 )}
+                {editing && customised && (
+                    <Button type="button" variant="outline" size="sm" onClick={restore}>
+                        <RotateCcw />
+                        {t('إعادة الافتراضي')}
+                    </Button>
+                )}
                 <Button
                     type="button"
                     variant={editing ? 'primary' : 'outline'}
@@ -171,7 +191,7 @@ export default function StatGrid({ stats, storageKey, catalog = [] }: Props) {
 
             {shown.length === 0 && (
                 <p className="rounded-[14px] border border-dashed border-[var(--ui-border,#e8e8e8)] py-10 text-center text-sm text-[#9ca3af]">
-                    {t('كل البطاقات مخفية — اضغط «تخصيص» لإظهارها.')}
+                    {t('كل البطاقات مخفية — اضغط «تخصيص» ثمّ «إعادة الافتراضي».')}
                 </p>
             )}
         </div>

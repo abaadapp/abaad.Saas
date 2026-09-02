@@ -83,6 +83,8 @@ export default function ReportsVat() {
     return (
         <ReportScreen
             reportKey="vat"
+            /* ملفُّ الإقرار يخرج لكلّ باقة — انظر CheckPlanFeature::OPEN_EXPORTS */
+            exportFeature={null}
             title="ضريبة القيمة المضافة"
             subtitle="ما حصّلتَه من ضريبة وما دفعتَه، والفرقُ المستحقّ — شهرًا بشهر"
             range={range}

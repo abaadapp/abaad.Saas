@@ -60,16 +60,35 @@ class CheckPlanFeature
         'admin.marketing.whatsapp*' => 'whatsapp',
     ];
 
+    /**
+     * تقاريرُ يخرج ملفُّها لكلّ باقة.
+     *
+     * و«ضريبة القيمة المضافة» منها: ملفُّها ليس تحليلًا يُشترى، هو الورقةُ
+     * التي يُقدَّم بها إقرارٌ إلى جهةٍ حكومية. وتقريرُ ضريبةٍ لا يخرج ملفُّه
+     * لا يؤدّي الغرضَ الوحيد الذي وُجد له — يُقرأ على الشاشة ثم يُنقل رقمًا
+     * رقمًا بيد.
+     */
+    public const OPEN_EXPORTS = ['vat'];
+
     public function handle(Request $request, Closure $next): Response
     {
-        $name = (string) $request->route()?->getName();
+        $route = $request->route();
+        $name = (string) $route?->getName();
         $key = self::featureFor($name);
 
-        if ($key !== null) {
+        if ($key !== null && ! self::isOpenExport($name, $route?->parameter('report'))) {
             PlanFeatures::enforce($request->user()?->business, $key);
         }
 
         return $next($request);
+    }
+
+    /** هل هذا تنزيلُ تقريرٍ مفتوحٍ للجميع؟ — يُقاس بالمعامل لا بالاسم */
+    public static function isOpenExport(string $route, ?string $report): bool
+    {
+        return str_starts_with($route, 'admin.reports.export.')
+            && $report !== null
+            && in_array($report, self::OPEN_EXPORTS, true);
     }
 
     /** القدرة التي يحتاجها هذا المسار — أو null إن كان مفتوحًا */

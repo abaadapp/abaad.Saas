@@ -51,7 +51,6 @@ class LiveSettingsTest extends TestCase
             'price' => 10, 'cost' => 4, 'quantity' => 50, 'active' => true,
         ]);
 
-        $this->openShiftFor($this->business->id);
     }
 
     private function set(string $key, string $value): void

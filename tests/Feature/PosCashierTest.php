@@ -57,8 +57,6 @@ class PosCashierTest extends TestCase
             'price' => 10, 'cost' => 4, 'quantity' => 50, 'alert_qty' => 2, 'active' => true,
         ]);
 
-        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
-        $this->openShiftFor($this->business->id);
         // البيع صار يتطلّب جهازًا مفعَّلًا — شرط السيناريو لا موضوعه
         $this->activatePosDevice($this->business->id);
     }

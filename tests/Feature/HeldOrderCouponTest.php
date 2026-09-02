@@ -51,8 +51,6 @@ class HeldOrderCouponTest extends TestCase
 
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_rate', 'value' => '5']);
 
-        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
-        $this->openShiftFor($this->business->id);
     }
 
     private function coupon(array $attrs = []): Coupon

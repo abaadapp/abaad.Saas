@@ -30,7 +30,6 @@ use App\Support\PosTerminal;
 use App\Support\ProductAddons;
 use App\Support\ReceiptVisibility;
 use App\Support\Recipe;
-use App\Support\Shifts;
 use App\Support\Stock;
 use App\Support\StockLedger;
 use App\Support\Vat;
@@ -757,23 +756,6 @@ class PosController extends Controller
 
     public function checkout(Request $request)
     {
-        /*
-         * لا بيع بلا وردية مفتوحة.
-         *
-         * بيعةٌ خارج وردية لا تدخل في حساب أي درج: تُقبض نقدًا وتغيب عن
-         * المتوقّع، فيظهر الدرج زائدًا بلا تفسير — ويصير الإقفال طقسًا لا
-         * يكشف شيئًا. والباب هنا لا في الواجهة وحدها: الطلب يصل من جهازٍ
-         * قد تكون شاشته قديمة.
-         */
-        $shift = Shifts::current();
-        if (! $shift && Shifts::blocksSelling()) {
-            return response()->json([
-                'ok' => false,
-                'shift_required' => true,
-                'message' => __('افتح وردية الصندوق قبل البيع.'),
-            ], 409);
-        }
-
         $data = $request->validate([
             'items' => ['required', 'array', 'min:1'],
             'items.*.id' => ['nullable', 'integer'],
@@ -837,7 +819,7 @@ class PosController extends Controller
          * وفاتورةٌ واحدة تُطبع، ولا مخزونَ يُخصم مرّتين ولا دخلَ يُقيَّد مرّتين.
          */
         try {
-            $result = $this->completeSale($data, $shift);
+            $result = $this->completeSale($data);
         } catch (QueryException $e) {
             // وأيّ صنفٍ كان الاستثناء: الشاهد وجودُ التوأم لا اسمُ الخطأ
             $twin = filled($data['client_uuid'] ?? null)
@@ -874,9 +856,9 @@ class PosController extends Controller
      *
      * @return array{order: Order, loyalty: array{earned: int, redeemed: int}}
      */
-    private function completeSale(array $data, $shift): array
+    private function completeSale(array $data): array
     {
-        return DB::transaction(function () use ($data, $shift) {
+        return DB::transaction(function () use ($data) {
             $bid = $this->bid();
             $branch = $this->branch();
 
@@ -983,8 +965,6 @@ class PosController extends Controller
                 'user_id' => PosCashier::id(),
                 'branch_id' => $branch['id'],
                 'branch' => $branch['name'],
-                // تُنسب إلى الوردية إن كانت مفتوحة، ولو كان المنع مطفأً
-                'shift_id' => $shift?->id,
                 /*
                  * الصندوق الذي خرجت منه الفاتورة.
                  *

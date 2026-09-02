@@ -54,7 +54,6 @@ class ProductVariantsTest extends TestCase
             'price' => 2, 'cost' => 1, 'quantity' => 200, 'active' => true,
         ]);
 
-        $this->openShiftFor($this->business->id);
     }
 
     private function variant(array $attributes = []): ProductVariant

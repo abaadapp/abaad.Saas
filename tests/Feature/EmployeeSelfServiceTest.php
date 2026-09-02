@@ -8,7 +8,6 @@ use App\Models\Currency;
 use App\Models\Order;
 use App\Models\PayrollLine;
 use App\Models\PayrollRun;
-use App\Models\Shift;
 use App\Models\User;
 use App\Support\OrderStatus;
 use App\Support\Permissions;
@@ -193,20 +192,6 @@ class EmployeeSelfServiceTest extends TestCase
 
         $this->assertSame(1, $sales['allCount']);
         $this->assertEqualsWithDelta(20.0, $sales['monthTotal'], 0.001);
-    }
-
-    public function test_the_shifts_listed_are_his_alone(): void
-    {
-        foreach ([$this->cashier, $this->colleague] as $user) {
-            Shift::create([
-                'business_id' => $this->business->id, 'user_id' => $user->id,
-                'employee_name' => $user->name, 'opened_at' => now(), 'status' => Shift::OPEN,
-            ]);
-        }
-
-        $shifts = $this->page($this->cashier)['shifts'];
-
-        $this->assertCount(1, $shifts);
     }
 
     /**

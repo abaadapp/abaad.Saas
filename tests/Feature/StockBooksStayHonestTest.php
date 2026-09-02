@@ -315,7 +315,6 @@ class StockBooksStayHonestTest extends TestCase
 
     public function test_a_sale_takes_from_the_branch_that_sold(): void
     {
-        $this->openShiftFor($this->business->id, $this->main->id);
 
         $this->postJson(route('pos.checkout'), [
             'items' => [['id' => $this->product->id, 'name' => 'وردة', 'qty' => 4]],
@@ -338,7 +337,6 @@ class StockBooksStayHonestTest extends TestCase
             'business_id' => $this->business->id, 'branch_id' => $this->second->id,
             'product_id' => $this->product->id, 'quantity' => 18,
         ]);
-        $this->openShiftFor($this->business->id, $this->main->id);
 
         // في الشركة عشرون، وفي هذا الفرع اثنتان — والبيع من الفرع
         $this->postJson(route('pos.checkout'), [

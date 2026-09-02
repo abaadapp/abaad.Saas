@@ -34,7 +34,6 @@ class CustomAlert extends Model
         'open_purchase_orders' => ['label' => 'أوامر شراء لم تُستلم', 'unit' => 'count', 'section' => 'purchases'],
         'today_profit' => ['label' => 'صافي ربح اليوم', 'unit' => 'money', 'section' => 'profitability'],
         // وردية تُترك مفتوحة لا يلاحظها أحد: تتراكم ويصير فرقها بلا معنى
-        'open_shift_hours' => ['label' => 'ساعات الوردية المفتوحة', 'unit' => 'count', 'section' => 'pos'],
     ];
 
     public const OPERATORS = ['>', '<'];

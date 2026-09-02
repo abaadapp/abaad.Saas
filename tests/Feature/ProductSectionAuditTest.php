@@ -114,7 +114,6 @@ class ProductSectionAuditTest extends TestCase
     private function sell(Product $p)
     {
         session(['current_branch' => $this->branch->id]);
-        $this->openShiftFor($this->business->id, $this->branch->id);
 
         return $this->postJson(route('pos.checkout'), [
             'items' => [['id' => $p->id, 'name' => $p->name, 'qty' => 1]],

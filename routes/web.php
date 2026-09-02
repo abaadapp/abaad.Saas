@@ -63,7 +63,6 @@ use App\Http\Controllers\Pos\MeController;
 use App\Http\Controllers\Pos\OrderEditController;
 use App\Http\Controllers\Pos\PeripheralController;
 use App\Http\Controllers\Pos\PosController;
-use App\Http\Controllers\Pos\ShiftController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SubscriptionExpiredController;
@@ -818,11 +817,6 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
     Route::post('/cashier/leave', [CashierController::class, 'leave'])->name('cashier.leave');
     Route::get('/currency/{code}/switch', [CurrencyController::class, 'switch'])->name('currency.switch');
 
-    // وردية الصندوق: فتحٌ برصيد ابتدائي، وإقفالٌ بعدٍّ فعليّ
-    Route::get('/shift', [ShiftController::class, 'show'])->name('shift');
-    Route::post('/shift/open', [ShiftController::class, 'open'])->name('shift.open');
-    Route::post('/shift/close', [ShiftController::class, 'close'])->name('shift.close');
-    Route::post('/shift/move', [ShiftController::class, 'move'])->name('shift.move');
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
     Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');

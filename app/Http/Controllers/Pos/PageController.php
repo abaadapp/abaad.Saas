@@ -11,7 +11,6 @@ use App\Support\PlanFeatures;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\ReceiptVisibility;
-use App\Support\Shifts;
 use App\Support\Vat;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -83,17 +82,6 @@ class PageController extends Controller
             return redirect()->route('pos.setup');
         }
 
-        /*
-         * لا شاشة بيع بلا وردية مفتوحة.
-         *
-         * الترتيب مقصود: يُختار الواقف على الصندوق أولًا، لأن الوردية تُسجَّل
-         * باسمه. والتوجيه هنا لا تعطيلُ زرٍّ في الواجهة: الكاشير يجد نفسه
-         * أمام شاشة الفتح فيفتح ويعود، بدل أن يجمع سلّة ثم يُرفض دفعُها.
-         */
-        if (! Shifts::isOpen() && Shifts::blocksSelling()) {
-            return redirect()->route('pos.shift');
-        }
-
         return Inertia::render('Pos/Index', [
             // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة
             'products' => Demo::products(Demo::activeBranchId()),
@@ -131,25 +119,21 @@ class PageController extends Controller
     }
 
     /**
-     * مقبوضات الوردية المفتوحة — لا آخر ثلاثين فاتورة.
+     * مقبوضات اليوم — لا آخر ثلاثين فاتورة.
      *
-     * كانت تعرض آخر ٣٠ فاتورة للفرع بلا حدٍّ زمني، وهي شاشة تقفيل صندوق:
-     * فمحلٌّ يبيع ٥٠ مرّة يوميًّا كان يرى جزء يومه، ومحلٌّ يبيع ٥ مرّات يرى
-     * ستّة أيام مخلوطة. وفي الحالتين لا يطابق الرقم ما في الدرج — رقمٌ يبدو
-     * دقيقًا وهو ليس كذلك، وذلك أسوأ من غياب الشاشة.
+     * كانت تعرض آخر ٣٠ فاتورة للفرع بلا حدٍّ زمني: فمحلٌّ يبيع ٥٠ مرّة يوميًّا
+     * يرى جزء يومه، ومحلٌّ يبيع ٥ مرّات يرى ستّة أيام مخلوطة. وفي الحالتين لا
+     * يطابق الرقم ما قُبض اليوم — رقمٌ يبدو دقيقًا وهو ليس كذلك.
+     *
+     * ثمّ صارت مدى الوردية المفتوحة، فلمّا رُفعت الوردية صار المدى **يومًا
+     * من منتصف الليل**: حدٌّ يعرفه كلُّ من يقف على الصندوق بلا أن يُفتح له
+     * شيءٌ أو يُقفل. والمدى يُقال في الشاشة صراحةً لا يُترك للتخمين.
      */
     public function payments(): Response
     {
-        $shift = Shifts::current();
-
         return Inertia::render('Pos/Payments', [
-            // سقفٌ يسع يومًا مزدحمًا: بترُ الوردية عند ٣٠ يُنقص المجموع بلا أن يقول
-            'receipts' => $shift ? Demo::receipts(limit: 500, shiftId: $shift->id) : [],
-            'shift' => $shift ? [
-                'opened_at' => $shift->opened_at?->format('Y-m-d H:i'),
-                'opening_balance' => (float) $shift->opening_balance,
-                'expected' => Shifts::expectedCash($shift),
-            ] : null,
+            // سقفٌ يسع يومًا مزدحمًا: بترٌ عند ٣٠ يُنقص المجموع بلا أن يقول
+            'receipts' => Demo::receipts(limit: 500, today: true),
         ]);
     }
 

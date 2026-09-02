@@ -314,14 +314,6 @@ class Permissions
         if ($route === 'pos.payments') {
             return 'finance';
         }
-        // الورديات وفروقها قراءةٌ مالية لا قسمٌ قائم بذاته: من يراجع حصيلة
-        // الصندوق هو من يملك «المالية»، فلا يُخترع مفتاح صلاحية ثالث لها
-        // وتقرير الإقفال (Z) معها: هو الأرقام نفسها على ورق
-        // كل ما تحت الورديات — والحصر بأسماءٍ معدودة كان ينسى المسار التالي
-        if (str_starts_with($route, 'admin.shifts.')) {
-            return 'finance';
-        }
-
         if (str_starts_with($route, 'pos.')) {
             return 'pos';
         }

@@ -41,8 +41,6 @@ class ManualPermissionsTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط', 'job_title' => 'كاشير',
         ]);
 
-        // نقطة البيع صارت تتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
-        $this->openShiftFor($this->business->id);
     }
 
     private function save(array $extra)

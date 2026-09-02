@@ -61,7 +61,6 @@ class HeldOrdersTest extends TestCase
 
         $this->actingAs($this->owner);
         session(['current_branch' => $this->branch->id]);
-        $this->openShiftFor($this->business->id, $this->branch->id);
     }
 
     private function hold(string $kind = 'hold')
@@ -145,7 +144,6 @@ class HeldOrdersTest extends TestCase
     {
         $other = Branch::create(['business_id' => $this->business->id, 'name' => 'صلالة']);
         session(['current_branch' => $other->id]);
-        $this->openShiftFor($this->business->id, $other->id);
         $this->hold();
 
         session(['current_branch' => $this->branch->id]);

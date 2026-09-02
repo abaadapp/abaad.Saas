@@ -102,7 +102,6 @@ class BouquetEndToEndTest extends TestCase
             'business_id' => $this->business->id, 'name' => 'بطاقة فاخرة', 'price' => 1, 'active' => true,
         ]);
 
-        $this->openShiftFor($this->business->id);
     }
 
     private function sell(int $qty = 1, array $addons = []): Order

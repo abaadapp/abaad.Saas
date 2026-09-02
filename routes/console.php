@@ -47,4 +47,3 @@ Schedule::command('report:daily-summary')->dailyAt('23:55')->withoutOverlapping(
  * فموعدٌ يوميٌّ واحد كان يترك ورديةً تجاوزت سقفها تُجمَع فيها مبيعات نصف
  * يومٍ آخر قبل أن يمرّ عليها أحد.
  */
-Schedule::command('shifts:auto-close')->hourly()->withoutOverlapping();

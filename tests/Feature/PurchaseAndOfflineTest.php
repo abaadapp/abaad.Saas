@@ -54,8 +54,6 @@ class PurchaseAndOfflineTest extends TestCase
             'price' => 10, 'cost' => 4, 'quantity' => 5, 'active' => true,
         ]);
 
-        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
-        $this->openShiftFor($this->business->id);
     }
 
     private function purchaseOrder(int $qty = 20, float $cost = 6): PurchaseOrder
@@ -203,7 +201,6 @@ class PurchaseAndOfflineTest extends TestCase
             'business_id' => $theirs->id, 'name' => 'جارهم', 'email' => 'n@abaad.om',
             'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
         ]);
-        $this->openShiftFor($theirs->id);
 
         $mine = $this->sell('same-uuid')->assertOk()->json();
 

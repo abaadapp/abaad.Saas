@@ -2803,7 +2803,7 @@ class Demo
      * فواتير المتجر. بلا بحث: أحدث $limit فاتورة. مع $search: يبحث في كل الفواتير
      * (بلا حدّ الأحدث) برقم الفاتورة أو اسم العميل أو رقم هاتفه.
      */
-    public static function receipts(?string $search = null, int $limit = 30, ?int $shiftId = null): array
+    public static function receipts(?string $search = null, int $limit = 30, bool $today = false): array
     {
         $bid = self::bid();
         // خريطة الاسم → الهاتف لعملاء النشاط (لعرض الهاتف والبحث به)
@@ -2812,8 +2812,8 @@ class Demo
 
         $query = Order::where('business_id', $bid)->sold()
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
-            // وردية بعينها: شاشة تقفيل الصندوق تسأل عن درجٍ واحد لا عن آخر ٣٠ بيعة
-            ->when($shiftId, fn ($q) => $q->where('shift_id', $shiftId))
+            // يومٌ بعينه: شاشة المقبوضات تسأل «ماذا قُبض اليوم؟» لا «ما آخر ٣٠ بيعة؟»
+            ->when($today, fn ($q) => $q->whereDate('ordered_at', today()))
             ->with('items.addons');
 
         $term = $search !== null ? trim($search) : '';

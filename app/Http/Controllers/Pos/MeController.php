@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Pos;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\PayrollLine;
-use App\Models\Shift;
 use App\Support\Demo;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
@@ -27,8 +26,6 @@ class MeController extends Controller
 {
     /** كم مسيرةً يراها — سنةٌ تكفي لمراجعة راتبٍ، وما قبلها يُطلب من المحاسب */
     private const PAYSLIPS = 12;
-
-    private const SHIFTS = 8;
 
     public function show(): Response
     {
@@ -60,7 +57,6 @@ class MeController extends Controller
             ],
             'payslips' => $this->payslips((int) $user->id, $bid),
             'sales' => $this->sales((int) $user->id, $bid),
-            'shifts' => $this->shifts((int) $user->id, $bid),
         ]);
     }
 
@@ -105,21 +101,5 @@ class MeController extends Controller
                 ->count(),
             'allCount' => (int) $mine()->count(),
         ];
-    }
-
-    /** ورديّاته هو — متى فتح ومتى أقفل */
-    private function shifts(int $userId, int $bid): array
-    {
-        return Shift::where('business_id', $bid)->where('user_id', $userId)
-            ->latest('opened_at')
-            ->limit(self::SHIFTS)
-            ->get()
-            ->map(fn ($s) => [
-                'id' => $s->id,
-                'openedAt' => optional($s->opened_at)->format('Y-m-d H:i'),
-                'closedAt' => optional($s->closed_at)->format('Y-m-d H:i'),
-                'status' => $s->status,
-                'sales' => round((float) $s->cash_sales + (float) $s->card_sales, 3),
-            ])->values()->all();
     }
 }

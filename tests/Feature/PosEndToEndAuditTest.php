@@ -7,10 +7,7 @@ use App\Models\Business;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Setting;
-use App\Models\Shift;
-use App\Models\ShiftMovement;
 use App\Models\User;
-use App\Support\Shifts;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -132,110 +129,18 @@ class PosEndToEndAuditTest extends TestCase
         $this->at($this->muscat)->delete(route('pos.orders.discard', $theirs->id))->assertNotFound();
     }
 
-    /* ============ الدرج ============ */
+    /* ============ البيعة تقع في فرعها ============ */
 
-    private function openShift(float $float = 100): Shift
+    /**
+     * الفرع يُقرأ من الجهاز لا من تبويبٍ مفتوح.
+     *
+     * كانت هذه الحالة تفحص الدرج مع الفرع، ورُفعت الوردية من نقطة البيع
+     * فبقي ما يهمّ: بيعةُ مسقط تُكتب على مسقط. وخطؤها لا يُكتشف إلا في جرد
+     * آخر الشهر — حين يَنقص فرعٌ ويَزيد آخر بالمقدار نفسه.
+     */
+    public function test_a_sale_is_counted_in_the_branch_that_made_it(): void
     {
-        $this->at($this->muscat);
         session(['current_branch' => $this->muscat->id]);
-
-        return Shifts::open($float, $this->owner->id);
-    }
-
-    public function test_the_drawer_never_pays_out_more_than_it_holds(): void
-    {
-        $this->openShift(60);
-
-        $this->at($this->muscat)->post(route('pos.shift.move'), [
-            'type' => 'out', 'amount' => 50, 'reason' => 'شراء عاجل',
-        ])->assertRedirect();
-
-        $this->at($this->muscat)->post(route('pos.shift.move'), [
-            'type' => 'out', 'amount' => 50, 'reason' => 'شراء ثانٍ',
-        ])->assertSessionHasErrors('amount');
-
-        $this->assertSame(10.0, round(Shifts::expectedCash(Shifts::current()), 3));
-    }
-
-    public function test_the_payout_is_weighed_against_the_drawer_under_a_lock(): void
-    {
-        /*
-         * سحبان يقعان معًا لا يُصنعان في عمليّةٍ واحدة، فيُقرأ الحارس من
-         * مصدره: القراءة والكتابة داخل معاملةٍ واحدة، والوردية مقفولة بينهما.
-         * وبلا ذلك يقرأ السحبان «في الدرج ستّون» ويخرج منهما مئة.
-         */
-        $src = file_get_contents(app_path('Http/Controllers/Pos/ShiftController.php'));
-
-        $move = strpos($src, 'public function move(');
-        $this->assertNotFalse($move);
-
-        $body = substr($src, $move, 2200);
-        $this->assertStringContainsString('DB::transaction', $body, 'الفحص والكتابة خارج معاملةٍ واحدة');
-        $this->assertStringContainsString('lockForUpdate', $body, 'الوردية تُقرأ بلا قفل بين الفحص والسحب');
-    }
-
-    public function test_the_refusal_does_not_read_the_drawer_out_to_someone_forbidden_to_see_it(): void
-    {
-        /*
-         * العدّ أعمى عن قصد — «من يرى الرقم المتوقّع قبل العدّ يميل إلى
-         * كتابته بدل ما عدّه». ورسالةُ الرفض كانت تقوله بالحرف: يجرّب
-         * الكاشير سحبًا كبيرًا فيُردّ برقم الدرج كاملًا.
-         */
-        $this->openShift(60);
-
-        $this->at($this->muscat, $this->cashier)->post(route('pos.shift.move'), [
-            'type' => 'out', 'amount' => 500, 'reason' => 'تجربة',
-        ])->assertSessionHasErrors('amount');
-
-        $message = (string) session('errors')->first('amount');
-        $this->assertStringNotContainsString('60', $message, 'أُفشي المتوقّع لمن لا يراه');
-    }
-
-    public function test_whoever_may_see_the_amounts_is_still_told_the_number(): void
-    {
-        $this->openShift(60);
-
-        $this->at($this->muscat)->post(route('pos.shift.move'), [
-            'type' => 'out', 'amount' => 500, 'reason' => 'تجربة',
-        ])->assertSessionHasErrors('amount');
-
-        $this->assertStringContainsString('60', (string) session('errors')->first('amount'));
-    }
-
-    public function test_a_deposit_is_never_refused_for_lack_of_cash(): void
-    {
-        $this->openShift(0);
-
-        $this->at($this->muscat)->post(route('pos.shift.move'), [
-            'type' => 'in', 'amount' => 25, 'reason' => 'إيداع',
-        ])->assertSessionHasNoErrors();
-
-        $this->assertSame(25.0, round(Shifts::expectedCash(Shifts::current()), 3));
-    }
-
-    public function test_a_movement_needs_a_reason_that_can_be_read_later(): void
-    {
-        $this->openShift(100);
-
-        $this->at($this->muscat)->post(route('pos.shift.move'), ['type' => 'out', 'amount' => 10])
-            ->assertSessionHasErrors('reason');
-
-        $this->assertSame(0, ShiftMovement::count());
-    }
-
-    /* ============ الوردية تتبع فرعها ============ */
-
-    public function test_a_shift_belongs_to_its_branch_not_to_the_shop(): void
-    {
-        $this->openShift(100);
-
-        session(['current_branch' => $this->salalah->id]);
-        $this->assertNull(Shifts::current(), 'وردية مسقط قُرئت درجًا لصلالة');
-    }
-
-    public function test_a_sale_is_counted_in_the_drawer_of_the_branch_that_made_it(): void
-    {
-        $shift = $this->openShift(0);
 
         $this->at($this->muscat)->postJson(route('pos.checkout'), [
             'items' => [['id' => $this->product->id, 'name' => 'صنف', 'qty' => 1]],
@@ -245,20 +150,6 @@ class PosEndToEndAuditTest extends TestCase
         $order = Order::latest('id')->firstOrFail();
 
         $this->assertSame($this->muscat->id, (int) $order->branch_id);
-        $this->assertSame($shift->id, (int) $order->shift_id);
-        $this->assertSame(100.0, round(Shifts::expectedCash($shift->fresh()), 3));
-    }
-
-    public function test_a_card_sale_puts_nothing_in_the_drawer(): void
-    {
-        $shift = $this->openShift(0);
-
-        $this->at($this->muscat)->postJson(route('pos.checkout'), [
-            'items' => [['id' => $this->product->id, 'name' => 'صنف', 'qty' => 1]],
-            'payment_method' => 'بطاقة', 'client_uuid' => uniqid('e', true),
-        ])->assertOk();
-
-        $this->assertSame(0.0, round(Shifts::expectedCash($shift->fresh()), 3));
     }
 
     /* ============ الفاتورة تقع مرّةً واحدة ============ */

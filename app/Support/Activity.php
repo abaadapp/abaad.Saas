@@ -14,6 +14,8 @@ class Activity
         'created' => 'plus-circle', 'updated' => 'pencil', 'deleted' => 'trash-2',
         'login' => 'log-in', 'logout' => 'log-out', 'checkout' => 'shopping-cart',
         'status' => 'refresh-cw', 'settings' => 'settings', 'hold' => 'pause-circle',
+        // «وردية» بقيت وإن رُفعت الميزة: سجلّاتٌ قديمة تحمل النوع، وبلا
+        // اسمٍ لها تُعرض في شاشة النشاط بمفتاحها اللاتينيّ
         'shift' => 'clock', 'report' => 'file-text', 'backup' => 'database-backup', 'restore' => 'database',
         'return' => 'undo-2',
     ];

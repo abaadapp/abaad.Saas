@@ -68,7 +68,6 @@ class ProductAddonsTest extends TestCase
             'business_id' => $this->business->id, 'name' => 'تغليف فاخر', 'price' => 1, 'active' => true,
         ]);
 
-        $this->openShiftFor($this->business->id);
     }
 
     private function sell(array $items, int $expect = 200): \Illuminate\Testing\TestResponse

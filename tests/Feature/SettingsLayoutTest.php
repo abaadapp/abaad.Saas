@@ -2,9 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\Admin\SettingController;
 use App\Models\Business;
-use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -333,32 +331,33 @@ class SettingsLayoutTest extends TestCase
     /* ---------------------------- بوّابة الوردية ---------------------------- */
 
     /**
-     * منعُ البيع لا يبقى ساريًا بلا مفتاحٍ يُطفئه.
+     * ما رُفع لا يبقى له قارئ.
      *
-     * القسم أُزيل، ولو بقي المفتاح مرفوعًا على متجرٍ رفعه لوقف صندوقُه بلا
-     * شاشةٍ يُطفأ منها — والكاشير يرى المنع صباحًا ولا يجد له سببًا.
+     * الوردية رُفعت من نقطة البيع كلّها، ومفتاحاها بقيا في `settings` عند
+     * متاجرَ ضبطتهما. فلو بقي في الشيفرة سطرٌ واحد يقرأ `require_open_shift`
+     * لَوقف صندوقُ من رفعه — بلا شاشةٍ يُطفئه منها، والكاشير يرى المنع صباحًا
+     * ولا يجد له سببًا ولا مقبضًا.
      */
-    public function test_the_shift_gate_is_not_left_raised_without_a_switch(): void
+    public function test_the_removed_shift_keys_have_no_reader_left(): void
     {
-        $this->assertNotContains(
-            'require_open_shift',
-            array_keys((new \ReflectionClass(SettingController::class))->getConstant('KEYS')),
-            'مفتاحٌ يمنع البيع ما زال يُقبل من بابٍ بلا شاشة',
-        );
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(app_path()));
+        $guilty = [];
 
-        Setting::create([
-            'business_id' => $this->business->id, 'key' => 'require_open_shift', 'value' => '1',
-        ]);
+        foreach ($files as $file) {
+            if ($file->isDir() || $file->getExtension() !== 'php') {
+                continue;
+            }
 
-        $this->actingAs($this->owner)
-            ->post(route('admin.settings.update'), ['require_open_shift' => true])
-            ->assertSessionHasNoErrors();
+            $src = file_get_contents($file->getPathname());
 
-        // القائمة المغلقة تتجاهله: لا يُرفع من هنا بعد اليوم
-        $this->assertSame(
-            '1',
-            Setting::where('business_id', $this->business->id)
-                ->where('key', 'require_open_shift')->value('value'),
-        );
+            foreach (['require_open_shift', 'shift_max_hours'] as $key) {
+                // التعليق يذكرهما ليُعرف لماذا رُفعا — والقراءة وحدها هي الممنوعة
+                if (preg_match('/[\'"]'.$key.'[\'"]/', $src)) {
+                    $guilty[] = basename($file->getPathname()).": {$key}";
+                }
+            }
+        }
+
+        $this->assertSame([], $guilty, 'مفتاحُ ورديةٍ مرفوعة ما زال يُقرأ');
     }
 }

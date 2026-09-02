@@ -71,7 +71,6 @@ class AddonConsumesStockTest extends TestCase
         $this->extraRoses = $this->addon('زيادة 3 وردات', 2.500, $this->rose->id, 3);
         $this->styling = $this->addon('تنسيق فاخر', 1.500, $this->rose->id, 2);
 
-        $this->openShiftFor($this->business->id, $this->branch->id);
     }
 
     /* ------------------------------ أدواتٌ ------------------------------ */

@@ -23,14 +23,6 @@ interface Payslip {
     status: string | null;
 }
 
-interface ShiftRow {
-    id: number;
-    openedAt: string | null;
-    closedAt: string | null;
-    status: string;
-    sales: number;
-}
-
 interface Props {
     me: {
         name: string;
@@ -46,7 +38,6 @@ interface Props {
     salary: { basic: number; allowances: number; monthly: number };
     payslips: Payslip[];
     sales: { todayTotal: number; todayCount: number; monthTotal: number; monthCount: number; allCount: number };
-    shifts: ShiftRow[];
 }
 
 /**
@@ -56,7 +47,7 @@ interface Props {
  * عن زميلٍ ولا عن المحلّ — والحصر في الخادم لا هنا (انظر MeController).
  */
 export default function Me() {
-    const { me, salary, payslips, sales, shifts, context } = usePage<PageProps<Props>>().props;
+    const { me, salary, payslips, sales, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -192,41 +183,6 @@ export default function Me() {
                                                 ) : (
                                                     <span className="text-gray-400">{t('لم يُصرف بعد')}</span>
                                                 )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </CardContent>
-                </Card>
-
-                {/* ------------------------------ ورديّاتي ------------------------------ */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>{t('ورديّاتي')}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>{t('الفتح')}</TableHead>
-                                    <TableHead>{t('الإقفال')}</TableHead>
-                                    <TableHead>{t('مبيعات الوردية')}</TableHead>
-                                    <TableHead>{t('الحالة')}</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {shifts.length === 0 ? (
-                                    <TableEmpty colSpan={4}>{t('لا ورديّات بعد.')}</TableEmpty>
-                                ) : (
-                                    shifts.map((s) => (
-                                        <TableRow key={s.id}>
-                                            <TableCell className="text-gray-900">{s.openedAt ?? '—'}</TableCell>
-                                            <TableCell>{s.closedAt ?? '—'}</TableCell>
-                                            <TableCell>{m(s.sales)}</TableCell>
-                                            <TableCell>
-                                                <Badge status={s.status}>{t(s.status)}</Badge>
                                             </TableCell>
                                         </TableRow>
                                     ))

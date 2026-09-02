@@ -64,7 +64,6 @@ class CancelReleasesTest extends TestCase
             'business_id' => $this->business->id, 'name' => 'خالد', 'phone' => '91234567', 'points' => 0,
         ]);
 
-        $this->openShiftFor($this->business->id);
     }
 
     private function sellAndCancel(array $extra = []): Order

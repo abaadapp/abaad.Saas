@@ -66,7 +66,6 @@ class ProductRecipeTest extends TestCase
             'price' => 1, 'cost' => 0.25, 'quantity' => 40, 'active' => true,
         ]);
 
-        $this->openShiftFor($this->business->id);
     }
 
     private function ingredient(Product $component, float $qty, ?ProductVariant $variant = null, float $wastage = 0): RecipeItem

@@ -181,7 +181,6 @@ class CustomerSearchAndPosTest extends TestCase
     private function sell(array $extra = [])
     {
         session(['current_branch' => $this->branch->id]);
-        $this->openShiftFor($this->business->id, $this->branch->id);
 
         return $this->postJson(route('pos.checkout'), array_merge([
             'items' => [['id' => $this->product->id, 'name' => 'باقة', 'qty' => 1]],

@@ -304,28 +304,6 @@ class OrderCorrectionTest extends TestCase
         $this->assertSame('بطاقة', Transaction::where('order_id', $order->id)->value('method'));
     }
 
-    public function test_the_open_shift_expected_cash_follows_the_correction(): void
-    {
-        /*
-         * هذا هو الضرر كلّه: «نقدي» على دفعةٍ بالبطاقة يجعل الإقفال يطلب
-         * مالًا لم يدخل الدرج، والكاشير يُحاسَب على نقصٍ لم يقع.
-         */
-        $shift = \App\Models\Shift::create([
-            'business_id' => $this->business->id, 'branch_id' => $this->branch->id,
-            'user_id' => $this->cashier->id, 'employee_name' => 'نورة',
-            'opening_balance' => 100, 'opened_at' => now(), 'status' => 'مفتوحة',
-        ]);
-        $order = $this->sale(3);
-        $order->update(['shift_id' => $shift->id]);
-
-        $this->assertSame(131.5, \App\Support\Shifts::expectedCash($shift->fresh()));
-
-        $this->actingAs($this->cashier);
-        OrderCorrection::setPaymentMethod($order, 'بطاقة', 'دفع بالبطاقة');
-
-        $this->assertSame(100.0, \App\Support\Shifts::expectedCash($shift->fresh()));
-    }
-
     public function test_a_method_the_merchant_switched_off_is_refused(): void
     {
         // الباب المغلق مغلقٌ من الجهتين: لا يُباع به ولا يُصحَّح إليه

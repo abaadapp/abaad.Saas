@@ -52,8 +52,6 @@ class InvoiceContentTest extends TestCase
             'price' => 12.5, 'quantity' => 50, 'active' => true,
         ]);
 
-        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
-        $this->openShiftFor($this->business->id);
     }
 
     /** يبيع فعليًا عبر نقطة البيع ويعيد الطلب الناتج */

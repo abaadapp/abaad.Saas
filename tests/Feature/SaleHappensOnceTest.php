@@ -52,7 +52,6 @@ class SaleHappensOnceTest extends TestCase
 
         $this->actingAs($this->owner);
         session(['current_branch' => $this->branch->id]);
-        $this->openShiftFor($this->business->id, $this->branch->id);
     }
 
     private function checkout(array $extra = [])

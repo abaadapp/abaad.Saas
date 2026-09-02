@@ -398,11 +398,21 @@ class PageController extends Controller
              * يتغيّر بالبيئة، والثيمات تُزاد — ونسخةٌ ثانية في الشاشة تفترق.
              */
             'store' => [
-                'slug' => Business::find(Demo::bid())?->site_slug,
+                // من `$b` نفسه لا من استعلامٍ ثانٍ: صفّان لمتجرٍ واحد يفترقان
+                'slug' => $b?->site_slug,
                 'domain' => Storefront::domain(),
                 'themes' => Storefront::themeOptions(),
                 'suggestion' => Storefront::suggest($b?->name ?? ''),
                 'productCount' => Product::where('business_id', Demo::bid())->where('active', true)->count(),
+                /*
+                 * الطريقُ المختار وأسعارُه — يُحسبان في الخادم لا في الشاشة.
+                 *
+                 * الاستنتاجُ لمن سبق الاختيار قاعدةٌ واحدة (انظر
+                 * `Storefront::path`)، والسعرُ مصدرُه `config/storefront`.
+                 * ونسخةٌ ثانية من أيّهما في الواجهة تفترق عند أوّل تبديل.
+                 */
+                'path' => $b ? Storefront::path($b) : '',
+                'pricing' => Storefront::pricing(),
             ],
             /*
              * بريد الاستعادة — حالُه وحده، بلا رمزٍ ولا بصمة.

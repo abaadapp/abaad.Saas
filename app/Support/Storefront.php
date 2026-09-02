@@ -113,6 +113,76 @@ class Storefront
         return $slug ? url('/s/'.$slug) : null;
     }
 
+    /* --------------------------- طريق العنوان --------------------------- */
+
+    /**
+     * الطرق الثلاث إلى عنوانٍ على الإنترنت — ولا رابعَ لها.
+     *
+     * `sub` نطاقُ أبعاد الفرعيّ (يستضيفه النظام)، و`own` نطاقٌ يملكه التاجر
+     * أصلًا (يستضيفه غيرُنا ونربط إليه)، و`new` من لا نطاقَ له ويريد واحدًا.
+     *
+     * والسؤال يُطرح مرّةً لأنّ البطاقتين كانتا تُعرضان معًا وفيهما كلمةُ
+     * «نطاق» بمعنيين متضادّين: «موقعي عندكم» و«موقعي عند غيركم». فيكتب
+     * التاجر عنوان متجره في حقل الموقع الخارجيّ، ويصير زرُّ «فتح الموقع»
+     * يشير إلى عنوانٍ لا وجود له.
+     */
+    public const PATHS = ['sub', 'own', 'new'];
+
+    /**
+     * الطريقُ الذي اختاره هذا المتجر — أو '' إن لم يُسأل بعد.
+     *
+     * ولمن سبق الاختيار يُستنتج ولا يُسأل: من حجز عنوانًا فطريقُه `sub`، ومن
+     * كتب نطاقه الخارجيّ فطريقه `own`. وسؤالُ من ضبط موقعه قبل وجود هذه
+     * الشاشة «هل عندك نطاق؟» يجعله يظنّ أنّ ما ضبطه ضاع.
+     */
+    public static function path(Business $business): string
+    {
+        $site = MarketingSettings::group((int) $business->id, 'website');
+        $saved = (string) ($site['site_path'] ?? '');
+
+        if (in_array($saved, self::PATHS, true)) {
+            return $saved;
+        }
+
+        if ($business->site_slug !== null && $business->site_slug !== '') {
+            return 'sub';
+        }
+
+        return trim((string) ($site['site_domain'] ?? '')) !== '' ? 'own' : '';
+    }
+
+    /**
+     * أسعارُ العنوان كما تُعرض — من `config/storefront.php` وحده.
+     *
+     * و`free` تُحسب هنا لا في الشاشة: «صفر» و«مشمول في باقتك» حكمٌ واحد،
+     * وحسابُه في طرفين يجعل شاشةً تقول «٠٫٠٠٠ ر.ع» في يومٍ يقول فيه الخادم
+     * «مجّانًا».
+     *
+     * @return array<string, mixed>
+     */
+    public static function pricing(): array
+    {
+        $monthly = self::money(config('storefront.pricing.subdomain.monthly'));
+        $yearly = self::money(config('storefront.pricing.subdomain.yearly'));
+
+        return [
+            'currency' => (string) config('storefront.currency'),
+            'subdomain' => [
+                'monthly' => $monthly,
+                'yearly' => $yearly,
+                'free' => $monthly <= 0.0 && $yearly <= 0.0,
+            ],
+        ];
+    }
+
+    /** رقمُ سعرٍ نظيف — والسالبُ يُقرأ صفرًا لا خصمًا */
+    private static function money(mixed $value): float
+    {
+        $number = is_numeric($value) ? (float) $value : 0.0;
+
+        return $number > 0 ? round($number, 3) : 0.0;
+    }
+
     /** المتجر صاحبُ هذا الاسم — إن كان منشورًا */
     public static function find(string $slug): ?Business
     {

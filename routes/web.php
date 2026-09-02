@@ -579,6 +579,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
     // إنشاء متجر التاجر على الإنترنت — من صفحة الإعدادات نفسها
     Route::post('/marketing/store', [MarketingController::class, 'saveStore'])->name('marketing.store.save');
+    Route::post('/marketing/domain-path', [MarketingController::class, 'saveDomainPath'])->name('marketing.domain.path');
     Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
     Route::post('/marketing/seo', [MarketingController::class, 'saveSeo'])->name('marketing.seo.save');
     Route::post('/marketing/seo/refresh', [MarketingController::class, 'refreshSeo'])->name('marketing.seo.refresh');

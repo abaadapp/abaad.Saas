@@ -78,7 +78,7 @@ class MarketingToolsTest extends TestCase
          * المكذوب الذي رُفعت لأجله المجموعةُ القديمة.
          */
         $this->assertSame([
-            'site_on', 'site_domain',
+            'site_on', 'site_domain', 'site_path',
             'store_on', 'store_theme', 'store_headline', 'store_about', 'store_show_prices',
             'store_whatsapp', 'store_pay_cod', 'store_pay_transfer', 'store_bank',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');

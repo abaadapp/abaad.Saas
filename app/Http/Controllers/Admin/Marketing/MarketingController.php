@@ -83,6 +83,26 @@ class MarketingController extends Controller
     }
 
     /**
+     * اختيارُ الطريق إلى عنوانٍ على الإنترنت — سؤالٌ يُطرح مرّةً.
+     *
+     * ولا يمسّ هذا الحفظُ عنوانًا محجوزًا ولا نطاقًا مكتوبًا: التبديلُ رأيٌ
+     * في أيّ بطاقةٍ تُعرض، لا محوٌ لما ضُبط. ومن جرّب «عندي نطاق» ثمّ عاد
+     * إلى نطاق أبعاد يجب أن يجد عنوانه كما تركه — وإلّا صار السؤالُ فخًّا
+     * يمحو عملَ صاحبه.
+     */
+    public function saveDomainPath(Request $request)
+    {
+        $data = $request->validate([
+            'site_path' => ['required', Rule::in(Storefront::PATHS)],
+        ]);
+
+        MarketingSettings::save($this->bid(), 'website', $data);
+        Activity::log('updated', 'اختار طريق نطاقه: '.$data['site_path']);
+
+        return back()->with('toast', ['msg' => __('حُفظ اختيارك'), 'type' => 'success']);
+    }
+
+    /**
      * إنشاء متجر التاجر على الإنترنت — في نموذجٍ واحد.
      *
      * والعنوان يُحفظ في عمودٍ لا في مفتاح إعداد: التفرّد يُفرَض في القاعدة

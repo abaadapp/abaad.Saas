@@ -28,6 +28,12 @@ import CustomAlerts, {
 } from './partials/CustomAlerts';
 import { SETTINGS_NAV } from './partials/SettingsNav';
 import BackToSettings from './partials/BackToSettings';
+import DomainChooser, {
+    DomainPathStrip,
+    NewDomainCard,
+    type DomainPath,
+    type DomainPricing,
+} from './partials/DomainChooser';
 import BranchesPanel from './panels/BranchesPanel';
 import EmployeesPanel, { type JobTitle } from './panels/EmployeesPanel';
 import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
@@ -64,6 +70,9 @@ interface Props {
         themes: { value: string; label: string; accent: string }[];
         suggestion: string | null;
         productCount: number;
+        /** الطريق المختار إلى العنوان — '' يعني أنّ التاجر لم يُسأل بعد */
+        path: DomainPath;
+        pricing: DomainPricing;
     };
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
@@ -407,6 +416,38 @@ export default function SettingsIndex() {
     };
 
     /*
+     * السؤالُ الأوّل يُطرح مرّةً — ثمّ يُفتح بزرّ «تغيير» لا يبقى معروضًا.
+     *
+     * وحالتُه محلّية لا في الرابط: من فتح الاختيار ثمّ عدل عنه لا يترك أثرًا
+     * في عنوانٍ يُشارَك أو يُعاد تحميله.
+     */
+    const [choosing, setChoosing] = useState(store.path === '');
+    const [pathBusy, setPathBusy] = useState(false);
+
+    const pickPath = (path: Exclude<DomainPath, ''>) => {
+        setPathBusy(true);
+        router.post(
+            route('admin.marketing.domain.path'),
+            { site_path: path },
+            {
+                preserveScroll: true,
+                onSuccess: () => setChoosing(false),
+                onFinish: () => setPathBusy(false),
+            },
+        );
+    };
+
+    /*
+     * وما هو حيٌّ يبقى مقبضُه ظاهرًا مهما كان الطريق المختار.
+     *
+     * متجرٌ منشور تُخفيه الشاشة لأنّ صاحبه اختار «عندي نطاق» يبقى مفتوحًا
+     * لزبائنه بلا بطاقةٍ تُطفئه — وبابٌ لا يُغلق أسوأ من بابٍ لا يُعرض.
+     */
+    const storeLive = (site?.store_on ?? '0') === '1';
+    const showStoreCard = store.path === 'sub' || storeLive;
+    const showOwnCard = store.path === 'own' || (site?.site_domain ?? '') !== '';
+
+    /*
     /*
      * الشعار مسارٌ آخر، فحالتُه هنا لا في `siteForm`.
      *
@@ -499,6 +540,34 @@ export default function SettingsIndex() {
                 <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
             ) : tab === 'website' ? (
                 <div className="space-y-6">
+                {choosing ? (
+                    <DomainChooser
+                        pricing={store.pricing}
+                        domain={store.domain}
+                        current={store.path}
+                        onPick={pickPath}
+                        onCancel={store.path === '' ? undefined : () => setChoosing(false)}
+                        busy={pathBusy}
+                    />
+                ) : (
+                <>
+                <DomainPathStrip
+                    path={store.path as Exclude<DomainPath, ''>}
+                    pricing={store.pricing}
+                    onChange={() => setChoosing(true)}
+                />
+
+                {store.path === 'new' && (
+                    <NewDomainCard
+                        pricing={store.pricing}
+                        domain={store.domain}
+                        onPick={pickPath}
+                        busy={pathBusy}
+                    />
+                )}
+
+                {showStoreCard && (
+                <>
                 {/*
                     إنشاء المتجر — أربع خطواتٍ في بطاقةٍ واحدة.
 
@@ -686,7 +755,11 @@ export default function SettingsIndex() {
                         </div>
                     </Card>
                 </form>
+                </>
+                )}
 
+                {showOwnCard && (
+                <>
                 {/*
                     الموقع الخارجيّ — ومفتاحٌ يقول ما يُشغّله.
 
@@ -777,6 +850,10 @@ export default function SettingsIndex() {
                         </div>
                     </Card>
                 </form>
+                </>
+                )}
+                </>
+                )}
                 </div>
             ) : tab === 'custom-alerts' ? (
                 <CustomAlerts

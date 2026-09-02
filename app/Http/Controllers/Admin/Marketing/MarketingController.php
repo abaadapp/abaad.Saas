@@ -154,12 +154,68 @@ class MarketingController extends Controller
     {
         $bid = $this->bid();
 
+        $settings = MarketingSettings::group($bid, 'google');
+
+        // المفتاح لا يُرسل إلى الشاشة — آخرُ أربعةِ أحرفٍ تكفي ليعرف أيَّه حفظ
+        unset($settings['google_api_key']);
+
         return Inertia::render('Admin/Marketing/Google', [
-            'settings' => MarketingSettings::group($bid, 'google'),
+            'settings' => $settings,
             'link' => GoogleReviews::forBusiness($bid),
+            'keyHint' => GoogleReviews::keyHint($bid),
+            'google' => GoogleReviews::pull($bid),
             /* عددُ ما في النظام من تقييمات — ليُقرأ الفرق بين الاثنين */
             'internal' => Review::where('business_id', $bid)->count(),
         ]);
+    }
+
+    /**
+     * حفظُ مفتاح Places — أو محوُه.
+     *
+     * وحقلٌ فارغٌ لا يمحو: الشاشة لا تعرض المفتاح المحفوظ (لا يُرسل أصلًا)،
+     * فحفظُ الصفحة لتبديل شيءٍ آخر يصل بحقلٍ فارغ — ولو عُدّ محوًا لَفقد
+     * التاجر مفتاحه كلّما حفظ. فالمحو يُطلب بزرّه.
+     */
+    public function saveGoogleKey(Request $request)
+    {
+        $request->validate([
+            'google_api_key' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $key = trim((string) $request->input('google_api_key'));
+
+        if ($key === '') {
+            return back()->withErrors(['google_api_key' => __('الصق المفتاح، أو اضغط «حذف المفتاح» لإزالته.')]);
+        }
+
+        GoogleReviews::storeKey($this->bid(), $key);
+        // ولا يُكتب المفتاح في السجلّ — السجلّ يُقرأ في شاشة النشاط
+        Activity::log('updated', 'حدّث مفتاح Google Places');
+
+        return back()->with('toast', ['msg' => __('حُفظ المفتاح'), 'type' => 'success']);
+    }
+
+    public function forgetGoogleKey()
+    {
+        GoogleReviews::storeKey($this->bid(), null);
+        Activity::log('updated', 'حذف مفتاح Google Places');
+
+        return back()->with('toast', ['msg' => __('حُذف المفتاح'), 'type' => 'warning']);
+    }
+
+    /**
+     * سحبٌ جديدٌ الآن — يتخطّى الذاكرة.
+     *
+     * ولولاه لَبقي التاجر ستَّ ساعاتٍ يرى ردًّا قديمًا بعد أن صحّح مفتاحه أو
+     * ردّ على تقييم، فيظنّ أنّ إصلاحه لم ينفع ويعيده.
+     */
+    public function refreshGoogle()
+    {
+        $result = GoogleReviews::pull($this->bid(), refresh: true);
+
+        return back()->with('toast', $result['state'] === 'ok'
+            ? ['msg' => __('حُدِّثت التقييمات'), 'type' => 'success']
+            : ['msg' => $result['error'] ?? __('لم تُسحب التقييمات'), 'type' => 'error']);
     }
 
     public function saveGoogle(Request $request)
@@ -184,11 +240,22 @@ class MarketingController extends Controller
             ]);
         }
 
-        MarketingSettings::save($bid = $this->bid(), 'google', [
+        $bid = $this->bid();
+
+        MarketingSettings::save($bid, 'google', [
             'google_maps_url' => $input,
             'google_place_id' => GoogleReviews::placeId($input) ?? '',
             'google_review_on_receipt' => $request->boolean('google_review_on_receipt'),
         ]);
+
+        /*
+         * والمسحوبُ يسقط بعد الكتابة — بالمعرّف الجديد.
+         *
+         * ولا يخلط معرّفٌ بآخر: موضعُ الذاكرة يحمل المعرّف في اسمه، فلا يرث
+         * محلٌّ تقييماتِ محلٍّ آخر أبدًا. وإنّما هو التقادم: من ربط الآن يقصد
+         * أن يرى ما عند Google الآن، لا ما بقي في الذاكرة من قبل.
+         */
+        GoogleReviews::forget($bid);
 
         Activity::log('updated', $input === '' ? 'فكّ ربط خرائط Google' : 'ربط خرائط Google');
 

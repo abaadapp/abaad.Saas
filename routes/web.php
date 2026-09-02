@@ -600,6 +600,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/marketing/google', [MarketingController::class, 'google'])->name('marketing.google');
     Route::post('/marketing/google', [MarketingController::class, 'saveGoogle'])->name('marketing.google.save');
+    Route::post('/marketing/google/key', [MarketingController::class, 'saveGoogleKey'])->name('marketing.google.key');
+    Route::delete('/marketing/google/key', [MarketingController::class, 'forgetGoogleKey'])->name('marketing.google.key.forget');
+    Route::post('/marketing/google/refresh', [MarketingController::class, 'refreshGoogle'])->name('marketing.google.refresh');
     Route::get('/marketing/reviews', [ReviewController::class, 'index'])->name('marketing.reviews');
     Route::post('/marketing/reviews', [ReviewController::class, 'store'])->name('marketing.reviews.store');
     Route::post('/marketing/reviews/{id}/status', [ReviewController::class, 'status'])->name('marketing.reviews.status');

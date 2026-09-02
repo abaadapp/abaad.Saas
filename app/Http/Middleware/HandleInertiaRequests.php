@@ -7,6 +7,7 @@ use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
+use App\Support\Storefront;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -78,6 +79,17 @@ class HandleInertiaRequests extends Middleware
                 // رابط موقع التاجر — يستعمله زرّ «الموقع الإلكتروني» في الهيدر،
                 // فصار مشتركًا لا خاصًّا باللوحة. null حين لم يُضبط بعد.
                 'website' => Demo::websiteUrl(),
+                /*
+                 * ومتجرُ التاجر داخل النظام — حين يكون منشورًا.
+                 *
+                 * `website` نطاقٌ خارجيّ يكتبه من له موقعٌ أصلًا، وهذا صفحةُ
+                 * المتجر التي يبنيها النظام. والزرّ يفضّل الأوّل: من كتب
+                 * نطاقه قصد أن يُفتح هو. وبلا نشرٍ لا يُرسل شيء — زرٌّ يفتح
+                 * صفحةً تردّ ٤٠٤ أسوأ من زرٍّ يدلّ على الإعدادات.
+                 */
+                'storeUrl' => $user->business && Storefront::isOpen($user->business)
+                    ? route('store.home', $user->business_id)
+                    : null,
                 'branchId' => Demo::currentBranchId(),
                 'branchName' => Demo::currentBranchName(),
                 'branches' => Demo::branches(),

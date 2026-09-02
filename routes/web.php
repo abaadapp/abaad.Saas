@@ -66,6 +66,7 @@ use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\Pos\ShiftController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\BillingController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
@@ -99,6 +100,23 @@ use Illuminate\Support\Facades\Route;
  */
 Route::pattern('id', '[0-9]+');
 Route::pattern('addressId', '[0-9]+');
+
+/* --------------------------- متجر التاجر العامّ --------------------------- */
+
+/*
+ * الصفحة الوحيدة التي تُفتح بلا حساب — متجر التاجر كما يراه زبونه.
+ *
+ * وموضعُها قبل المصادقة عمدًا: كلُّ ما تحتها خلف `auth`، ولو دخلت المجموعة
+ * لَطُلب من كلّ زبونٍ أن يسجّل دخوله إلى نظام محاسبة ليشتري باقة ورد.
+ *
+ * والعنوان بالمعرّف لا بالاسم: اسمٌ يختاره التاجر يحتاج حجزًا ومنعَ تكرارٍ
+ * وقائمةَ أسماءٍ محجوزة — وذلك بابٌ مستقلّ يُفتح مع النطاقات، لا شرطٌ لأن
+ * يكون للمتجر عنوانٌ يُرسَل اليوم.
+ */
+Route::get('/store/{business}', [StorefrontController::class, 'home'])
+    ->whereNumber('business')->name('store.home');
+Route::get('/store/{business}/p/{product}', [StorefrontController::class, 'product'])
+    ->whereNumber(['business', 'product'])->name('store.product');
 
 /* ----------------------------- المصادقة ----------------------------- */
 Route::get('/', [LoginController::class, 'showLogin'])->name('login');
@@ -576,6 +594,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/marketing/website', fn () => redirect()->route('admin.settings.index', ['section' => 'domain']))->name('marketing.website');
     Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
+    Route::post('/marketing/website/cover', [MarketingController::class, 'saveCover'])->name('marketing.website.cover');
+    Route::post('/marketing/website/products', [MarketingController::class, 'publishProducts'])->name('marketing.website.products');
     Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
     Route::post('/marketing/seo', [MarketingController::class, 'saveSeo'])->name('marketing.seo.save');
     Route::post('/marketing/seo/refresh', [MarketingController::class, 'refreshSeo'])->name('marketing.seo.refresh');

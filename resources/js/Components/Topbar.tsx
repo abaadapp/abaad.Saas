@@ -168,9 +168,14 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
                         {/* موقع التاجر إن ضُبط، وإلا فزرٌّ يدلّ على الإعدادات
                             لإضافته — فلا يقف بلا وظيفة. */}
-                        {context.website ? (
+                        {/*
+                            وجهتان لا واحدة: نطاقٌ خارجيّ كتبه التاجر، أو متجرُه
+                            المنشور داخل النظام. والأوّل أولى — من كتب نطاقه
+                            قصد أن يُفتح هو، والثاني يعمل لمن لا نطاق له.
+                        */}
+                        {context.website || context.storeUrl ? (
                             <Button asChild variant="ghost" size="icon" title={t('الموقع الإلكتروني')}>
-                                <a href={context.website} target="_blank" rel="noopener noreferrer">
+                                <a href={context.website ?? context.storeUrl ?? ''} target="_blank" rel="noopener noreferrer">
                                     <Globe />
                                     <span className="sr-only">{t('الموقع الإلكتروني')}</span>
                                 </a>
@@ -180,13 +185,13 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                              * إلى شاشة الموقع في أدوات التسويق لا إلى بيانات
                              * النشاط.
                              *
-                             * الموقع صار قسمًا قائمًا: نطاقٌ ونشرٌ وجملةٌ
-                             * تعريفية وما يراه الزائر. فمن يضغط الزرّ ليضيف
-                             * موقعه يصل إلى حيث يُضبط كلّه، لا إلى حقلٍ في
-                             * صفحة الإعدادات لا يفعل غير تشغيل هذا الزرّ.
+                             * الموقع صار قسمًا قائمًا: لونٌ وغلافٌ وجملةٌ
+                             * تعريفية وما يُعرض من الأصناف. فمن يضغط الزرّ
+                             * ليضيف موقعه يصل إلى حيث يُبنى كلُّه، لا إلى حقلٍ
+                             * لا يفعل غير تشغيل هذا الزرّ.
                              */
                             <Button asChild variant="ghost" size="icon" title={t('أضف الموقع الإلكتروني')}>
-                                <Link href={route('admin.settings.index', { section: 'domain' })}>
+                                <Link href={route('admin.settings.index', { section: 'website' })}>
                                     <Globe />
                                     <span className="sr-only">{t('أضف الموقع الإلكتروني')}</span>
                                 </Link>

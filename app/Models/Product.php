@@ -16,7 +16,12 @@ class Product extends Model
 
     protected $guarded = [];
 
-    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean'];
+    /*
+     * `published` معه لا بدونه: أختُه `active` مُحوَّلة، وتركُ هذا عددًا يجعل
+     * `$product->published` تردّ 1 حيث تردّ أختُها true — فيمرّ في `if` ويسقط
+     * في `assertTrue`، ويخرج في JSON عددًا إلى واجهةٍ تنتظر منطقيًّا.
+     */
+    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean', 'published' => 'boolean'];
 
     public function business(): BelongsTo
     {

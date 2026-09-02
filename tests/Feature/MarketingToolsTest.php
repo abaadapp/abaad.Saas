@@ -48,29 +48,51 @@ class MarketingToolsTest extends TestCase
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
     /**
-     * النطاق يُحفظ — وما كان معه لا يُحفظ لأنّه لا يُقرأ.
+     * ما تحفظه الشاشة يُحفظ كلُّه — وما لا يُقرأ لا يُحفظ.
      *
-     * كانت الشاشة تحفظ ثمانية مفاتيح تصف واجهة متجرٍ لا وجود لها في النظام:
-     * «نشر الموقع» و«عرض الأسعار» وجملةً تعريفية ونبذة. يملؤها التاجر فتُحفظ
-     * ولا يقرؤها شيء — فيظنّ أنّه نشر متجرًا وينتظر طلبًا لا يأتي.
+     * كانت الشاشة تحفظ ثمانية مفاتيح تصف واجهة متجرٍ لا وجود لها، فيملؤها
+     * التاجر وتُحفظ ولا يقرؤها شيء — يظنّ أنّه نشر متجرًا وينتظر طلبًا لا
+     * يأتي. فرُفعت، وبقي النطاق وحده.
+     *
+     * وقد بُنيت الواجهة، فعادت. والحدُّ باقٍ حيث كان لا حيث ألغي: `site_enabled`
+     * مفتاحٌ ماتَ ولم يُبعث — خلَفه `site_published`، وقبولُ الاثنين يعني
+     * متجرًا يُنشَر بمفتاحٍ ويُطفأ بآخر.
      */
-    public function test_only_the_domain_is_saved_from_the_website_form(): void
+    public function test_the_website_form_saves_what_the_store_reads_and_nothing_else(): void
     {
         $this->post(route('admin.marketing.website.save'), [
             'site_domain' => 'mystore.om',
-            'site_enabled' => true,
             'site_tagline' => 'أجود المنتجات',
             'site_show_prices' => false,
+            'site_theme' => '#0d9488',
+            'site_enabled' => true,
         ])->assertSessionHasNoErrors();
 
         $saved = MarketingSettings::group($this->bid(), 'website');
 
         $this->assertSame('mystore.om', $saved['site_domain']);
-        $this->assertSame(['site_domain'], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
+        $this->assertSame('أجود المنتجات', $saved['site_tagline']);
+        $this->assertSame('0', $saved['site_show_prices']);
+        $this->assertSame('#0d9488', $saved['site_theme']);
 
-        foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {
-            $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => $dead]);
-        }
+        $this->assertDatabaseMissing('settings', [
+            'business_id' => $this->bid(), 'key' => 'site_enabled',
+        ]);
+    }
+
+    /**
+     * ولونٌ يُحقن في CSS يُردّ عند الباب.
+     *
+     * القيمة تُكتب في `<style>` على صفحة المتجر، فنصٌّ فيه `}` يُنهي القاعدة
+     * ويفتح ما بعدها — شكلٌ يحقنه غيرُ صاحب المتجر في صفحته.
+     */
+    public function test_a_colour_that_is_not_a_colour_is_refused(): void
+    {
+        $this->post(route('admin.marketing.website.save'), [
+            'site_theme' => '} body { display:none } .x {',
+        ])->assertSessionHasErrors('site_theme');
+
+        $this->assertSame('#111827', MarketingSettings::group($this->bid(), 'website')['site_theme']);
     }
 
     public function test_a_domain_written_as_a_url_is_refused(): void

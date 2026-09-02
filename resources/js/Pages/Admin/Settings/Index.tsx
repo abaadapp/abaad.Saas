@@ -7,7 +7,6 @@ import {
     ChevronLeft,
     Download,
     ExternalLink,
-    Image as ImageIcon,
     Languages,
     Save,
     Trash2,
@@ -32,6 +31,7 @@ import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
 import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
+import WebsitePanel, { type WebsiteData } from './panels/WebsitePanel';
 import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
@@ -54,8 +54,10 @@ interface Props {
     settings: Settings;
     business: { name: string; phone: string | null; email: string | null; address: string | null; logo: string | null };
     recovery: Recovery;
-    /** نطاق موقع التاجر — مجموعة `website` في MarketingSettings */
+    /** إعدادات الموقع — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
+    /* لا تصل إلا حين يُطلب قسم «إعدادات الموقع» — انظر settingsSection */
+    website?: WebsiteData;
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
@@ -171,7 +173,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, recovery, site, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, business, recovery, site, website, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
@@ -520,83 +522,31 @@ export default function SettingsIndex() {
                 </form>
             ) : tab === 'website' ? (
                 /*
-                    الشعار وحده بقي هنا.
+                    متجرٌ يُصمَّم، لا استمارةٌ تُملأ.
 
-                    كان تحت هذا التبويب متجرٌ كامل يُضبط: جملةٌ تعريفية، ونبذة،
-                    وواتساب وإنستغرام، و«عرض الأسعار» و«قبول الطلبات» — يملؤها
-                    التاجر وتُحفظ كلّها ولا يقرؤها شيء، لأنّه لا واجهة متجرٍ في
-                    النظام أصلًا. فكان يظنّ أنّه نشر متجرًا على الإنترنت وليس
-                    هناك شيء، وينتظر طلبًا لا يأتي.
+                    كان تحت هذا التبويب متجرٌ كامل يُضبط — جملةٌ تعريفية ونبذة
+                    وواتساب و«عرض الأسعار» و«قبول الطلبات» — يملؤها التاجر
+                    وتُحفظ ولا يقرؤها شيء، لأنّه لا واجهة متجرٍ في النظام. فرُفع
+                    كلُّه وبقي الشعار، وقيل: إن بُنيت الواجهة يومًا وجدَ ما كُتب
+                    مكانَه.
 
-                    والحقل الذي لا يُقرأ ليس حقلًا زائدًا، هو وعدٌ مكذوب. فرُفعت
-                    المقابض، وبقي الشعار لأنّه وحده يُقرأ فعلًا: تُظهره الفواتير
-                    والإيصالات، وقوالبها تحمل مقبضًا يشترطه.
-
-                    وما حُفظ منها باقٍ في القاعدة لم يُمحَ — إن بُنيت الواجهة
-                    يومًا وجدَ ما كُتب مكانَه.
+                    وقد بُنيت — `/store/{business}` و`resources/views/store`. فعاد
+                    ما رُفع، ومعه ما يجعله تصميمًا لا إعدادًا: اللون والغلاف
+                    والصفحة الأولى وما يُعرض من الأصناف. والمعاينة إلى جانبه
+                    تفتح المتجر نفسه لا رسمًا يشبهه.
                 */
-                <Card className="overflow-hidden">
-                    <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
-                        <ImageIcon className="size-4 shrink-0 text-[#6b7280]" />
-                        <h3 className="font-bold text-[#111]">{t('الشعار')}</h3>
-                    </div>
-                    <div className="p-5">
-                        <p className="mb-4 text-[13px] text-[#6b7280]">
-                            {t('يظهر في الفواتير والإيصالات — وقوالب الفواتير تُظهره أو تُخفيه.')}
-                        </p>
-
-                        <div className="flex flex-wrap items-center gap-5">
-                            <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa]">
-                                {logoPreview || business.logo ? (
-                                    <img
-                                        src={logoPreview ?? business.logo ?? ''}
-                                        alt=""
-                                        className="size-full object-contain"
-                                    />
-                                ) : (
-                                    <ImageIcon className="size-8 text-[#d1d5db]" />
-                                )}
-                            </span>
-
-                            <div className="min-w-0 flex-1">
-                                <Input
-                                    type="file"
-                                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                                    onChange={(e) => pickLogo(e.target.files?.[0] ?? null)}
-                                    className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
-                                />
-                                <p className="mt-2 text-[12px] text-[#9ca3af]">
-                                    {t('أفضل مقاس: 400×100 بكسل · PNG بخلفيّة شفّافة · حتّى ٢ ميغابايت')}
-                                </p>
-
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        disabled={!logoFile}
-                                        loading={logoBusy && !!logoFile}
-                                        onClick={() => logoFile && sendLogo({ logo: logoFile })}
-                                    >
-                                        <Upload />
-                                        {t('رفع الشعار')}
-                                    </Button>
-                                    {business.logo && (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            loading={logoBusy && !logoFile}
-                                            onClick={() => sendLogo({ remove: true })}
-                                        >
-                                            <Trash2 />
-                                            {t('حذف الشعار')}
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </Card>
+                <WebsitePanel
+                    site={site}
+                    business={business}
+                    website={website ?? { storeUrl: '', storeProducts: [] }}
+                    logo={{
+                        preview: logoPreview,
+                        file: logoFile,
+                        busy: logoBusy,
+                        pick: pickLogo,
+                        send: sendLogo,
+                    }}
+                />
             ) : tab === 'custom-alerts' ? (
                 <CustomAlerts
                     alerts={customAlerts ?? []}

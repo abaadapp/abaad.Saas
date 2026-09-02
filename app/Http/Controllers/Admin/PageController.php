@@ -483,6 +483,31 @@ class PageController extends Controller
                 'branchOptions',
             ),
             'activity' => ActivityController::adminData($request),
+            /*
+             * ما يحتاجه تبويب «إعدادات الموقع» ليقول الحقيقة عن المتجر.
+             *
+             * `storeUrl` عنوانُ المتجر كما يفتحه الزبون — وهو ما تعرضه
+             * المعاينة داخل الشاشة نفسها، فلا تفترق المعاينة عمّا يُنشر.
+             *
+             * والأصنافُ تصل كاملةً بحقولٍ خمسة لا مصفّحة: التبويب يختار منها
+             * ما يُعرض، وصفحاتٌ متتالية تعني تاجرًا يحدّد صفحةً ثمّ يحفظ
+             * فيضيع ما حدّده قبلها. ولا تصل إلّا حين يُطلب قسمها في الرابط:
+             * صفحة الإعدادات تُفتح على أقسامٍ أخرى عشرات المرّات في اليوم.
+             */
+            'website' => [
+                'storeUrl' => route('store.home', Demo::bid()),
+                'storeProducts' => Product::where('business_id', Demo::bid())
+                    ->orderByDesc('published')->orderBy('name')
+                    ->get(['id', 'name', 'image', 'active', 'published'])
+                    ->map(fn ($p) => [
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        // الصورة كما يراها الزبون — لا حشوَ `picsum` الذي لا يراه
+                        'image' => \App\Support\Storefront::image($p),
+                        'active' => (bool) $p->active,
+                        'published' => (bool) $p->published,
+                    ])->all(),
+            ],
             'trash' => TrashController::panelData(),
             /*
              * الشجرة صلاحيتها «المالية» لا «الإعدادات».

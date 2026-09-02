@@ -96,41 +96,77 @@ class SettingsLayoutTest extends TestCase
     }
 
     /**
-     * ومقابضُ المتجر التي لا واجهةَ لها لا تبقى في شاشة.
+     * ولا مقبضَ بلا قارئ — والقاعدة هي هي، وقد تبدّل ما تحتها.
      *
-     * كانت تُملأ وتُحفظ ولا يقرؤها شيء: لا صفحةَ متجرٍ في النظام تعرضها
-     * لزائر. فالتاجر يرفع «نشر الموقع» ويظنّ أنّه نشر متجرًا، وينتظر طلبًا
-     * لا يأتي. والحقلُ الذي لا يُقرأ ليس زائدًا — هو وعدٌ مكذوب.
+     * كانت مقابض المتجر تُملأ وتُحفظ ولا يقرؤها شيء: لا صفحةَ متجرٍ في
+     * النظام تعرضها لزائر. فرُفعت كلُّها، وحرسها اختبارٌ يمنع عودتها.
+     *
+     * وقد بُنيت الصفحة — `/store/{business}`. فعادت المقابض، ولم تعد القاعدة
+     * «لا مقبضَ للمتجر» بل «لا مقبضَ بلا قارئ»: كلُّ مفتاحٍ تعرضه الشاشة
+     * يجب أن يُقرأ في `Storefront` أو في قوالب المتجر. وإضافةُ حقلٍ جميلٍ
+     * لا يقرؤه القالب تسقط هنا، لا عند تاجرٍ ينتظر أثرًا لا يأتي.
      */
-    public function test_the_storefront_controls_that_lead_nowhere_are_gone(): void
+    public function test_no_storefront_control_is_offered_without_a_reader(): void
     {
-        $tsx = $this->screen();
+        $panel = file_get_contents(resource_path('js/Pages/Admin/Settings/panels/WebsitePanel.tsx'));
 
-        $dead = [
-            'site_enabled', 'site_tagline', 'site_about',
-            'site_whatsapp', 'site_instagram', 'site_show_prices', 'site_allow_orders',
-        ];
+        $readers = file_get_contents(app_path('Support/Storefront.php'));
+        foreach (glob(resource_path('views/store/*.blade.php')) as $view) {
+            $readers .= file_get_contents($view);
+        }
 
-        foreach ($dead as $needle) {
-            $this->assertStringNotContainsString($needle, $tsx, "«{$needle}» مقبضٌ لا يقرؤه شيء وما زال معروضًا");
+        preg_match_all('/site_[a-z_]+/', $panel, $m);
+        $offered = array_unique($m[0]);
+
+        $this->assertNotEmpty($offered, 'الشاشة لا تعرض مفتاحًا واحدًا — الفحص يمرّ على فراغ');
+
+        foreach ($offered as $key) {
+            $this->assertStringContainsString(
+                $key, $readers,
+                "«{$key}» مقبضٌ في الشاشة لا يقرؤه المتجر — وعدٌ مكذوب",
+            );
         }
     }
 
-    /** ولا يُحفظ ما رُفع: مفتاحٌ يصل الخادم فيُكتب في القاعدة يعود شاشةً غدًا */
-    public function test_the_dead_storefront_keys_are_not_written_even_if_sent(): void
+    /**
+     * وما يُحفظ يصل الصفحة فعلًا — لا إلى القاعدة وحدها.
+     *
+     * وجودُ المفتاح في القالب لا يكفي: قد يُقرأ من مجموعةٍ أخرى، أو يُقرأ
+     * لمتجرٍ غير هذا. فالفحص من الطرفين: يُحفظ من الشاشة، ويُقرأ من الصفحة
+     * التي يفتحها الزبون.
+     */
+    public function test_what_is_saved_in_the_screen_appears_on_the_page(): void
     {
         $this->actingAs($this->owner)
             ->post(route('admin.marketing.website.save'), [
-                'site_domain' => 'mystore.om',
-                'site_enabled' => true,
+                'site_published' => true,
                 'site_tagline' => 'ورودٌ تصل في وقتها',
+                'site_about' => 'نعمل منذ عشرين سنة',
+                'site_theme' => '#0d9488',
             ])->assertSessionHasNoErrors();
+
+        $this->get(route('store.home', $this->business))
+            ->assertOk()
+            ->assertSee('ورودٌ تصل في وقتها', false)
+            ->assertSee('نعمل منذ عشرين سنة', false)
+            ->assertSee('--store-accent: #0d9488', false);
+    }
+
+    /**
+     * و«نشر الموقع» القديم يبقى ميّتًا — مفتاحُه لا يُكتب.
+     *
+     * `site_enabled` كان يُرفع فلا يفعل شيئًا، وخلَفه `site_published` يحكم
+     * البوّابة. وقبولُ القديم اليوم يعني متجرين يُنشَران بمفتاحين، وتاجرًا
+     * يُطفئ أحدهما ويبقى متجره مفتوحًا بالآخر.
+     */
+    public function test_the_old_dead_publish_key_is_still_refused(): void
+    {
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.website.save'), ['site_enabled' => true])
+            ->assertSessionHasNoErrors();
 
         $this->assertDatabaseMissing('settings', [
             'business_id' => $this->business->id, 'key' => 'site_enabled',
-        ]);
-        $this->assertDatabaseMissing('settings', [
-            'business_id' => $this->business->id, 'key' => 'site_tagline',
         ]);
     }
 

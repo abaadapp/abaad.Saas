@@ -75,6 +75,8 @@ export interface SharedProps {
         businessName: string;
         /** رابط موقع التاجر المُطبَّع — null حين لم يُضبط بعد */
         website: string | null;
+        /** صفحة المتجر التي يبنيها النظام — null حين لم تُنشر */
+        storeUrl?: string | null;
         branchId: number | null;
         branchName: string;
         /** اسم صندوق نقطة البيع المفعَّل على هذا الجهاز */

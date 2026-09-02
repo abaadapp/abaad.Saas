@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\PointTransaction;
+use App\Models\Product;
 use App\Models\Review;
 use App\Support\Activity;
 use App\Support\Demo;
@@ -14,7 +15,9 @@ use App\Support\GoogleReviews;
 use App\Support\Loyalty;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
+use App\Support\Storefront;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -35,16 +38,14 @@ class MarketingController extends Controller
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
     /**
-     * النطاق يُحفظ — وما كان معه رُفع.
+     * إعدادات المتجر تُحفظ — وقد صار لها قارئ.
      *
-     * كانت الشاشة تحفظ ثمانية مفاتيح: جملةً تعريفية، ونبذةً، وواتساب
-     * وإنستغرام، و«نشر الموقع» و«عرض الأسعار» و«قبول الطلبات». تُملأ وتُحفظ
-     * ولا يقرؤها شيء — لا واجهةَ متجرٍ في النظام تعرضها لأحد. فالتاجر يرفع
-     * «نشر الموقع» ويظنّ أنّه نشر متجرًا، وينتظر طلبًا لا يأتي.
+     * كانت هذه المفاتيح تُملأ وتُحفظ ولا يقرؤها شيء، فرُفعت: التاجر يرفع
+     * «نشر الموقع» ويظنّ أنّه نشر متجرًا وينتظر طلبًا لا يأتي. وقيل يومها
+     * إنّ ما حُفظ باقٍ في القاعدة، وإن بُنيت الواجهة وجدَ ما كُتب مكانَه.
      *
-     * وبقي النطاق وحده لأنّه وحده يُقرأ: يصير زرًّا في الشريط يفتح موقع
-     * التاجر خارج النظام — انظر `Demo::websiteUrl`. وما حُفظ من المرفوع باقٍ
-     * في القاعدة لم يُمحَ: إن بُنيت الواجهة يومًا وجدَ ما كُتب مكانَه.
+     * وقد بُنيت — انظر `App\Support\Storefront` و`resources/views/store`.
+     * فكلُّ مفتاحٍ هنا له اليوم موضعٌ يُقرأ فيه على صفحةٍ يفتحها زبون.
      */
     public function saveWebsite(Request $request)
     {
@@ -56,14 +57,126 @@ class MarketingController extends Controller
              * (https://https://…)، ولا يظهر العطب إلا حين يفتحها زبون.
              */
             'site_domain' => ['nullable', 'string', 'max:255', 'regex:/^[a-zA-Z0-9][a-zA-Z0-9\-\.]*\.[a-zA-Z]{2,}$/'],
+
+            'site_published' => ['nullable', 'boolean'],
+            'site_tagline' => ['nullable', 'string', 'max:255'],
+            'site_about' => ['nullable', 'string', 'max:2000'],
+
+            /*
+             * الرقم أرقامٌ ومسافات — لا اسمُ حساب.
+             *
+             * `wa.me` لا يقبل إلا الأرقام، والتنظيف عند العرض. لكنّ نصًّا
+             * لا رقم فيه أصلًا يُنظَّف إلى فراغ فيختفي زرّ الطلب بلا سبب
+             * يراه التاجر — فيُردّ هنا حيث يقرأ الردّ.
+             */
+            'site_whatsapp' => ['nullable', 'string', 'max:30', 'regex:/^[0-9+\s\-()]{7,}$/'],
+            'site_instagram' => ['nullable', 'string', 'max:100', 'regex:/^@?[A-Za-z0-9._]+$/'],
+
+            'site_show_prices' => ['nullable', 'boolean'],
+            'site_allow_orders' => ['nullable', 'boolean'],
+
+            /*
+             * اللون بستّ خاناتٍ لا غير.
+             *
+             * القيمة تُكتب في `<style>` على الصفحة، فنصٌّ فيه `}` يُنهي
+             * القاعدة ويفتح ما بعدها. و`Storefront::theme` تردّ الفاسد إلى
+             * الافتراضيّ عند العرض — والقيدان معًا: هذا يمنع الحفظ، وتلك
+             * تحمي ممّا حُفظ قبله.
+             */
+            'site_theme' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'site_hero_title' => ['nullable', 'string', 'max:120'],
+            'site_hero_note' => ['nullable', 'string', 'max:255'],
+            'site_layout' => ['nullable', 'string', Rule::in(Storefront::LAYOUTS)],
+            'site_show_about' => ['nullable', 'boolean'],
+            'site_show_categories' => ['nullable', 'boolean'],
         ], [
             'site_domain.regex' => __('اكتب النطاق وحده بلا https:// ولا مسار — مثل: mystore.om'),
+            'site_whatsapp.regex' => __('اكتب رقم واتساب بصيغة دولية — مثل: 96890000000'),
+            'site_instagram.regex' => __('اكتب اسم حساب إنستغرام وحده بلا رابط'),
+            'site_theme.regex' => __('اختر لونًا من اللوحة'),
         ]);
 
         MarketingSettings::save($this->bid(), 'website', $data);
-        Activity::log('updated', 'حدّث رابط الموقع');
+        Activity::log('updated', 'حدّث إعدادات الموقع');
 
-        return back()->with('toast', ['msg' => __('حُفظ رابط الموقع'), 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('حُفظت إعدادات الموقع'), 'type' => 'success']);
+    }
+
+    /**
+     * غلاف الصفحة الأولى — يُرفع وحده كما يُرفع الشعار.
+     *
+     * وملفٌّ لا يُرسل مع بقيّة الحقول عمدًا: النموذج يُحفظ عشر مرّاتٍ في
+     * الجلسة الواحدة، ورفعُ صورةٍ بميغابايتين في كلّ حفظةٍ رحلةٌ لا داعي لها.
+     */
+    public function saveCover(Request $request)
+    {
+        $request->validate([
+            'cover' => ['nullable', 'image', 'max:4096'],
+        ], [
+            'cover.image' => __('الغلاف صورة — PNG أو JPG أو WEBP'),
+            'cover.max' => __('أقصى حجمٍ للغلاف ٤ ميغابايت'),
+        ]);
+
+        if ($request->hasFile('cover')) {
+            $path = $request->file('cover')->store('covers', 'public');
+        } elseif ($request->boolean('remove')) {
+            $path = '';
+        } else {
+            return back();
+        }
+
+        MarketingSettings::save($this->bid(), 'website', ['site_cover' => $path]);
+        Activity::log('updated', $path !== '' ? 'حدّث غلاف الموقع' : 'حذف غلاف الموقع');
+
+        return back()->with('toast', [
+            'msg' => $path !== '' ? __('حُفظ الغلاف') : __('حُذف الغلاف'),
+            'type' => 'success',
+        ]);
+    }
+
+    /**
+     * ما يُعرض في المتجر — يُختار صنفًا صنفًا أو دفعةً واحدة.
+     *
+     * والدفعة ضرورةٌ لا رفاهية: تاجرٌ بخمسمئة صنف يفتح متجره أوّل مرّة فيجده
+     * فارغًا، وأمامه خمسمئة ضغطة قبل أن يرى شيئًا — فيتركه فارغًا.
+     */
+    public function publishProducts(Request $request)
+    {
+        $data = $request->validate([
+            'ids' => ['nullable', 'array'],
+            'ids.*' => ['integer'],
+            'published' => ['required', 'boolean'],
+            'all' => ['nullable', 'boolean'],
+        ]);
+
+        $query = Product::where('business_id', $this->bid());
+
+        if ($request->boolean('all')) {
+            // «كلّ الأصناف» تعني النشِطة منها: ما أُطفئ في نقطة البيع لا يُعرض
+            $query->where('active', true);
+        } else {
+            $query->whereIn('id', $data['ids'] ?? []);
+        }
+
+        /*
+         * والعدد عدد ما تغيّر لا عدد ما شمله الاستعلام.
+         *
+         * «٥٠٠ صنفًا صار يظهر» لتاجرٍ ٤٩٠ منها ظاهرةٌ أصلًا رقمٌ لا يصف شيئًا،
+         * ويجعل الرسالة نفسها تظهر عند كلّ ضغطةٍ بعدها بلا أن يتغيّر شيء.
+         */
+        $published = $request->boolean('published');
+        $count = $query->where('published', ! $published)->update(['published' => $published]);
+
+        Activity::log('updated', $published
+            ? 'عرض '.$count.' صنفًا في المتجر'
+            : 'أخفى '.$count.' صنفًا من المتجر');
+
+        return back()->with('toast', [
+            'msg' => $published
+                ? __(':n صنفًا صار يظهر في متجرك', ['n' => $count])
+                : __(':n صنفًا لم يعد يظهر في متجرك', ['n' => $count]),
+            'type' => 'success',
+        ]);
     }
 
     /* -------------------- الظهور في البحث وGoogle Analytics -------------------- */

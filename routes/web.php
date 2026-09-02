@@ -575,6 +575,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/marketing/website', fn () => redirect()->route('admin.settings.index', ['section' => 'domain']))->name('marketing.website');
     Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
+    Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
+    Route::post('/marketing/seo', [MarketingController::class, 'saveSeo'])->name('marketing.seo.save');
+    Route::post('/marketing/seo/refresh', [MarketingController::class, 'refreshSeo'])->name('marketing.seo.refresh');
     Route::get('/marketing/loyalty', [MarketingController::class, 'loyalty'])->name('marketing.loyalty');
     Route::post('/marketing/loyalty', [MarketingController::class, 'saveLoyalty'])->name('marketing.loyalty.save');
     /*

@@ -13,6 +13,7 @@ use App\Support\Demo;
 use App\Support\GoogleReviews;
 use App\Support\Loyalty;
 use App\Support\MarketingSettings;
+use App\Support\Seo;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -63,6 +64,75 @@ class MarketingController extends Controller
         Activity::log('updated', 'حدّث رابط الموقع');
 
         return back()->with('toast', ['msg' => __('حُفظ رابط الموقع'), 'type' => 'success']);
+    }
+
+    /* -------------------- الظهور في البحث وGoogle Analytics -------------------- */
+
+    /**
+     * شاشةٌ تُعطي ما يُلصق، ثمّ تفتح الموقع وتقول ما رأت.
+     *
+     * ولا حقلَ فيها لعنوان الصفحة ولا وصفها: الموقع خارج النظام، فما يُكتب
+     * عندنا لا يصل صفحةً يقرؤها محرّك بحث.
+     */
+    public function seo(): Response
+    {
+        $bid = $this->bid();
+
+        return Inertia::render('Admin/Marketing/Seo', [
+            'link' => Seo::forBusiness($bid),
+            'audit' => Seo::check($bid),
+        ]);
+    }
+
+    public function saveSeo(Request $request)
+    {
+        $request->validate(['ga_measurement_id' => ['nullable', 'string', 'max:60']]);
+
+        $input = trim((string) $request->input('ga_measurement_id'));
+
+        /*
+         * ما لا يُقرأ يُردّ قبل أن يُحفظ.
+         *
+         * ومعرّفٌ خاطئ لا يُخطئ أحدًا في الشاشة: يُحفظ، ويُبنى منه وسمٌ
+         * يلصقه التاجر في موقعه، ثمّ ينتظر أرقامًا لا تأتي أبدًا. و`UA-`
+         * توقّفت عن الجمع، و`GTM-` معرّفُ مدير الوسوم لا القياس.
+         */
+        if ($input !== '' && Seo::measurementId($input) === null) {
+            return back()->withInput()->withErrors([
+                'ga_measurement_id' => __('معرّف القياس يبدأ بـG- — انسخه من «المشرف ← تدفّقات البيانات» في Google Analytics.'),
+            ]);
+        }
+
+        $bid = $this->bid();
+
+        MarketingSettings::save($bid, 'seo', [
+            'ga_measurement_id' => Seo::measurementId($input) ?? '',
+        ]);
+
+        // والفحصُ يسقط مع المعرّف: حالةُ ربطٍ محفوظةٌ لمعرّفٍ بُدّل خبرٌ عن غيره
+        Seo::forget($bid);
+
+        Activity::log('updated', $input === '' ? 'فكّ ربط Google Analytics' : 'ربط Google Analytics');
+
+        return back()->with('toast', [
+            'msg' => $input === '' ? __('أُلغي الربط') : __('حُفظ معرّف القياس'),
+            'type' => 'success',
+        ]);
+    }
+
+    /**
+     * فحصٌ جديدٌ الآن — يتخطّى الذاكرة.
+     *
+     * ولولاه لَبقي التاجر نصفَ ساعةٍ يرى «لم أجد الوسم» بعد أن لصقه، فيظنّ
+     * أنّ اللصق لم ينفع ويعيده.
+     */
+    public function refreshSeo()
+    {
+        $result = Seo::check($this->bid(), refresh: true);
+
+        return back()->with('toast', $result['state'] === 'ok'
+            ? ['msg' => __('اكتمل الفحص'), 'type' => 'success']
+            : ['msg' => $result['error'] ?? __('تعذّر فحص الموقع'), 'type' => 'error']);
     }
 
     /* ----------------------------- برنامج الولاء ----------------------------- */

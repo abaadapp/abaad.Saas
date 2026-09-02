@@ -3832,5 +3832,8 @@
     "رقم متجرك مربوطٌ ويعمل": "Your shop's number is connected and working",
     "الرقم المشترك جاهز": "The shared number is ready",
     "اربط رقم متجرك أدناه — أو بدّل الإرسال إلى رقم أبعاد.": "Connect your shop's number below — or switch sending to Abaad's number.",
-    "الرقم المشترك غير متاح الآن — راجع أبعاد.": "The shared number is unavailable right now — contact Abaad."
+    "الرقم المشترك غير متاح الآن — راجع أبعاد.": "The shared number is unavailable right now — contact Abaad.",
+    "الرقم الذي يُرسل منه": "The number messages are sent from",
+    "متجرك مضبوطٌ على رقمه الخاص وميزتُه غير مفعّلة الآن — فلا تخرج رسالة.": "Your shop is set to its own number and that feature is not active right now — so nothing is sent.",
+    "ميزةُ رقم المتجر سُحبت من حسابك — بدّل الإرسال إلى رقم أبعاد أدناه، أو راجعنا لإعادتها.": "The own-number feature was removed from your account — switch sending to Abaad's number below, or contact us to restore it."
 }

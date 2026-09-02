@@ -255,6 +255,59 @@ class WhatsAppReadinessTest extends TestCase
         $this->assertFalse($this->readiness()['ready']);
     }
 
+    public function test_a_revoked_permission_is_named_not_left_as_four_ticks(): void
+    {
+        /*
+         * متجرٌ ربط رقمه ثمّ سُحبت منه الميزة: الوصلة تبقى صالحة، والوضع
+         * يبقى `business_own` (لا يُدفع إلى الرقم المشترك بصمت). فالخطوات
+         * الأربع تبدو تامّة — والمُرسِل يمتنع.
+         *
+         * وهذا هو العطب نفسه الذي بُنيت هذه الشاشة لإزالته، في صورةٍ أخرى:
+         * رأسٌ يقول «غير جاهز» وتحته أربعُ علاماتٍ خضراء ولا سببَ يُقرأ.
+         */
+        $this->business->update([
+            'whatsapp_own_allowed' => true,
+            'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN,
+        ]);
+
+        WhatsAppConnection::create([
+            'owner_type' => WhatsAppMode::OWNER_BUSINESS,
+            'business_id' => $this->business->id,
+            'phone_number_id' => 'SHOP-PN',
+            'access_token' => 'shop-token-value-0123456789',
+            'status' => WhatsAppConnection::ACTIVE,
+            'connected_at' => now(),
+        ]);
+
+        $this->assertTrue($this->readiness()['ready']);
+
+        // ثمّ يُسحب الإذن — والوصلة كما هي
+        $this->business->update(['whatsapp_own_allowed' => false]);
+
+        $this->assertFalse($this->readiness()['ready']);
+        $this->assertFalse($this->step('own')['done'], 'خطوةٌ تامّة ورأسٌ يقول «غير جاهز» — ولا سببَ يُقرأ');
+        // ويُدَلّ على المخرج: التبديل إلى رقم أبعاد بيده، فلا يبقى واقفًا
+        $this->assertStringContainsString('رقم أبعاد', $this->step('own')['fix']);
+    }
+
+    public function test_a_merchant_stripped_of_the_feature_can_still_go_back_to_the_shared_number(): void
+    {
+        /*
+         * ولا يبقى واقفًا: التبديل إلى رقم أبعاد مفتوحٌ له وإن سُحبت ميزةُ
+         * رقمه. ولو كان محروسًا بالإذن نفسه لَقُفل عليه الطريقان معًا.
+         */
+        $this->business->update([
+            'whatsapp_own_allowed' => false,
+            'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN,
+        ]);
+
+        $this->post(route('admin.marketing.whatsapp.mode'), ['mode' => WhatsAppMode::ABAAD_SHARED])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->business->fresh()->whatsapp_mode);
+        $this->assertTrue($this->readiness()['ready']);
+    }
+
     /* ========================== لا ضجيج ========================== */
 
     public function test_a_completed_step_carries_no_instruction(): void

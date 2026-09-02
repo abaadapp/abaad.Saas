@@ -178,6 +178,34 @@ export default function Whatsapp() {
                     </dl>
                 )}
 
+                {/*
+                    ومن سُحبت منه الميزة وهو على رقمه لا يبقى واقفًا.
+
+                    الوضع يبقى `business_own` ولا يُدفع إلى الرقم المشترك
+                    بصمت — وهو الصواب. لكنّ بطاقة الربط تختفي معها أزرارُ
+                    التبديل، فيقرأ «بدّل الإرسال إلى رقم أبعاد» ولا يجد زرًّا.
+                */}
+                {! automation.own_allowed && automation.mode === 'business_own' && (
+                    <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                        <h4 className="mb-1 font-bold text-[#111]">{t('الرقم الذي يُرسل منه')}</h4>
+                        <p className="mb-4 text-[13px] text-[#6b7280]">
+                            {t('متجرك مضبوطٌ على رقمه الخاص وميزتُه غير مفعّلة الآن — فلا تخرج رسالة.')}
+                        </p>
+                        <Button
+                            type="button"
+                            onClick={() =>
+                                router.post(
+                                    route('admin.marketing.whatsapp.mode'),
+                                    { mode: 'abaad_shared' },
+                                    { preserveScroll: true },
+                                )
+                            }
+                        >
+                            {t('أرسل عبر أبعاد')}
+                        </Button>
+                    </div>
+                )}
+
                 {/* ربط رقم المتجر — لمن مُنح الميزة وحده */}
                 {automation.own_allowed && (
                     <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">

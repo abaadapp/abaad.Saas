@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
+import { useAsciiDigits } from '@/lib/numerals';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -24,6 +25,8 @@ export default function QuickCell({ id, field, value, display, className }: Prop
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(String(value));
     const input = useRef<HTMLInputElement>(null);
+    // الأرقام تُكتب إنجليزيّة هنا كما في بقيّة الحقول — والحارس من مصدره الواحد
+    const attach = useAsciiDigits<HTMLInputElement>(input);
 
     useEffect(() => {
         if (editing) {
@@ -71,7 +74,7 @@ export default function QuickCell({ id, field, value, display, className }: Prop
 
     return (
         <input
-            ref={input}
+            ref={attach}
             type="number"
             dir="ltr"
             step={field === 'price' ? '0.001' : '1'}

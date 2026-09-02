@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import { useAsciiDigits } from '@/lib/numerals';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -87,6 +88,8 @@ export default function ReportsIndex() {
     const { reports, categories } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
+    const searchRef = useAsciiDigits<HTMLInputElement>();
+
     const [query, setQuery] = useState('');
     const [category, setCategory] = useState<string | null>(null);
 
@@ -123,6 +126,7 @@ export default function ReportsIndex() {
             <div className="relative mb-4">
                 <Search className="pointer-events-none absolute start-4 top-1/2 size-[18px] -translate-y-1/2 text-[#9ca3af]" />
                 <input
+                    ref={searchRef}
                     type="search"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}

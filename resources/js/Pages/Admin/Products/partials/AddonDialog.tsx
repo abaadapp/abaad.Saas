@@ -5,6 +5,7 @@ import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { csrfHeaders } from '@/lib/csrf';
+import { useAsciiDigits } from '@/lib/numerals';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { AddonOption } from './Composition';
@@ -70,6 +71,7 @@ export default function AddonDialog({
         (addon?.scope as Scope) ?? defaultScope ?? 'all',
     );
     const [picked, setPicked] = useState<number[]>(addon?.product_ids ?? []);
+    const searchRef = useAsciiDigits<HTMLInputElement>();
     const [search, setSearch] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -291,6 +293,7 @@ export default function AddonDialog({
                             <div className="flex items-center gap-2 border-b border-[#e8e8e8] px-3 py-2">
                                 <Search className="size-4 text-[#9ca3af]" />
                                 <input
+                                    ref={searchRef}
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
                                     placeholder={t('ابحث عن منتج…')}

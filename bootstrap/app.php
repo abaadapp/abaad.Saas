@@ -7,7 +7,7 @@ use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EntersPanel;
 use App\Http\Middleware\HandleInertiaRequests;
-use App\Http\Middleware\NormalizeMoneyInput;
+use App\Http\Middleware\NormalizeNumbers;
 use App\Http\Middleware\RequiresBusiness;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
@@ -37,7 +37,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             SecurityHeaders::class,
             SetLocale::class,
-            NormalizeMoneyInput::class,
+            NormalizeNumbers::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);

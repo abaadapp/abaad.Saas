@@ -152,7 +152,14 @@ class FlowerOrderTest extends TestCase
         ])->assertOk();
 
         $order = $this->lastOrder();
-        $this->assertSame('الخوير، شارع ١٨', $order->delivery_address);
+        /*
+         * ورقمُ الشارع يُحفظ إنجليزيًّا وحروفُه كما كُتبت.
+         *
+         * الأرقام تُوحَّد عند الباب لكلّ حقل (انظر `NormalizeNumbers`)، فيبقى
+         * العنوان مقروءًا لسائق التوصيل ومطابقًا لما يُطبع على الفاتورة —
+         * ويُبحث عنه برقمه أيًّا كانت لوحةُ من يبحث.
+         */
+        $this->assertSame('الخوير، شارع 18', $order->delivery_address);
         $this->assertSame('الباب الأزرق', $order->delivery_notes);
         $this->assertEquals(3, (float) $order->delivery_fee);
     }

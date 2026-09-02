@@ -3835,5 +3835,20 @@
     "الرقم المشترك غير متاح الآن — راجع أبعاد.": "The shared number is unavailable right now — contact Abaad.",
     "الرقم الذي يُرسل منه": "The number messages are sent from",
     "متجرك مضبوطٌ على رقمه الخاص وميزتُه غير مفعّلة الآن — فلا تخرج رسالة.": "Your shop is set to its own number and that feature is not active right now — so nothing is sent.",
-    "ميزةُ رقم المتجر سُحبت من حسابك — بدّل الإرسال إلى رقم أبعاد أدناه، أو راجعنا لإعادتها.": "The own-number feature was removed from your account — switch sending to Abaad's number below, or contact us to restore it."
+    "ميزةُ رقم المتجر سُحبت من حسابك — بدّل الإرسال إلى رقم أبعاد أدناه، أو راجعنا لإعادتها.": "The own-number feature was removed from your account — switch sending to Abaad's number below, or contact us to restore it.",
+    "حسابي": "My account",
+    "التحاقه": "Joined",
+    "بياناتي وكلمة المرور": "My details & password",
+    "الإجمالي الشهري": "Monthly total",
+    "مبيعاتي": "My sales",
+    "إجمالي الطلبات": "Total orders",
+    "مسيرات راتبي": "My payslips",
+    "لا توجد مسيرات معتمدة بعد.": "No approved payroll runs yet.",
+    "لم يُصرف بعد": "Not paid yet",
+    "ورديّاتي": "My shifts",
+    "الفتح": "Opened",
+    "الإقفال": "Closed",
+    "مبيعات الوردية": "Shift sales",
+    "لا ورديّات بعد.": "No shifts yet.",
+    "أكمل باسمي": "Continue as me"
 }

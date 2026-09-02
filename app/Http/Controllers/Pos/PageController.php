@@ -61,11 +61,12 @@ class PageController extends Controller
     }
 
     /**
-     * شاشة البيع لا تُفتح قبل أن يُعرف من يقف على الصندوق.
+     * شاشة البيع تُفتح لصاحبها مباشرةً.
      *
-     * البوابة هنا لا في middleware عام: بقيّة صفحات نقطة البيع (الطلبات،
-     * الفواتير، العملاء) عرضٌ لا بيع، وحصرُها خلف الاختيار يجعل صاحب النشاط
-     * يختار موظفًا لمجرّد أن يطالع الفواتير — وهو عكس المقصود.
+     * كانت تحجزه شاشةُ «من على الصندوق؟» قبل أن يبيع، فيقف كلَّ صباحٍ أمام
+     * سؤالٍ جوابُه معروف: الداخلُ بحسابه هو الواقف على الصندوق. صار هو
+     * الافتراض (انظر `PosCashier::current`)، والشاشة تبقى لمن يتناوب
+     * موظفوه على جهازٍ واحد — تُطلب من الترويسة لا تُفرض عند الباب.
      */
     public function index(): Response|RedirectResponse
     {
@@ -80,10 +81,6 @@ class PageController extends Controller
          */
         if (! PosTerminal::activated() && Branch::where('business_id', Demo::bid())->exists()) {
             return redirect()->route('pos.setup');
-        }
-
-        if (PosCashier::required()) {
-            return redirect()->route('pos.cashier');
         }
 
         /*

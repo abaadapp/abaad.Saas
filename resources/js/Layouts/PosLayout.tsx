@@ -140,14 +140,19 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                      * بـ403 على قسمٍ لم يُمنحه. والوجهة تأتي من الخادم، ومن لا
                      * وجهة له لا يرى الزرّ.
                      */}
-                    {auth?.panelUrl && (
-                        <Button variant="ghost" size="sm" className="gap-1.5" asChild>
-                            <Link href={auth.panelUrl}>
-                                <LayoutDashboard className="size-4" />
-                                <span className="hidden sm:inline">{t('لوحة النشاط')}</span>
-                            </Link>
-                        </Button>
-                    )}
+                    {/*
+                     * ومن لا يدخل اللوحة لا يبقى بلا باب: يجد «حسابي» — بياناته
+                     * وراتبه ومبيعاته هو. كان الزرّ يغيب عن الكاشير كلّيًّا،
+                     * فيسأل صاحب المحلّ عن راتبه شفاهةً آخر الشهر.
+                     */}
+                    <Button variant="ghost" size="sm" className="gap-1.5" asChild>
+                        <Link href={auth?.panelUrl ?? route('pos.me')}>
+                            <LayoutDashboard className="size-4" />
+                            <span className="hidden sm:inline">
+                                {auth?.panelUrl ? t('لوحة النشاط') : t('حسابي')}
+                            </span>
+                        </Link>
+                    </Button>
 
                     {/*
                      * اسم من تُنسب إليه البيعة، لا اسم الحساب المسجَّل. عرضه

@@ -14,7 +14,10 @@ use App\Support\GoogleReviews;
 use App\Support\Loyalty;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
+use App\Support\Storefront;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -77,6 +80,73 @@ class MarketingController extends Controller
         Activity::log('updated', 'حدّث إعدادات الموقع الإلكتروني');
 
         return back()->with('toast', ['msg' => __('حُفظت إعدادات الموقع'), 'type' => 'success']);
+    }
+
+    /**
+     * إنشاء متجر التاجر على الإنترنت — في نموذجٍ واحد.
+     *
+     * والعنوان يُحفظ في عمودٍ لا في مفتاح إعداد: التفرّد يُفرَض في القاعدة
+     * (انظر هجرة `a_shop_gets_an_address`). والتحقّق هنا يسبقه ليقول للتاجر
+     * «هذا الاسم محجوز» بدل أن يُردّ بخطأ قاعدةٍ لا يفهمه.
+     */
+    public function saveStore(Request $request)
+    {
+        $business = Business::findOrFail($this->bid());
+
+        $data = $request->validate([
+            'site_slug' => ['nullable', 'string', 'max:63'],
+            'store_on' => ['sometimes', 'boolean'],
+            'store_theme' => ['sometimes', Rule::in(array_keys(Storefront::THEMES))],
+            'store_headline' => ['nullable', 'string', 'max:80'],
+            'store_about' => ['nullable', 'string', 'max:400'],
+            'store_show_prices' => ['sometimes', 'boolean'],
+            'store_whatsapp' => ['nullable', 'string', 'max:30'],
+            'store_pay_cod' => ['sometimes', 'boolean'],
+            'store_pay_transfer' => ['sometimes', 'boolean'],
+            'store_bank' => ['nullable', 'string', 'max:400'],
+        ]);
+
+        $slug = Storefront::slug($request->input('site_slug'));
+
+        if (filled($request->input('site_slug')) && $slug === null) {
+            throw ValidationException::withMessages([
+                'site_slug' => __('العنوان حروفٌ إنجليزية صغيرة وأرقام وشرطة، من :min إلى :max حرفًا، وليس اسمًا محجوزًا.', [
+                    'min' => Storefront::MIN, 'max' => Storefront::MAX,
+                ]),
+            ]);
+        }
+
+        if ($slug !== null && Business::where('site_slug', $slug)->whereKeyNot($business->id)->exists()) {
+            throw ValidationException::withMessages([
+                'site_slug' => __('هذا العنوان محجوز لمتجرٍ آخر — اختر غيره.'),
+            ]);
+        }
+
+        /*
+         * ولا يُنشر متجرٌ بلا عنوان.
+         *
+         * النشرُ بلا عنوانٍ حالةٌ لا معنى لها: المفتاح مرفوع والصفحة لا تُفتح
+         * من أيّ رابط. والرفضُ هنا بكلمةٍ أوضح من تركه يُحفظ ثمّ يسأل صاحبُه
+         * لماذا لا يعمل موقعه.
+         */
+        if ($request->boolean('store_on') && $slug === null) {
+            throw ValidationException::withMessages([
+                'site_slug' => __('اكتب عنوان متجرك قبل نشره — بلا عنوانٍ لا يُفتح من أيّ رابط.'),
+            ]);
+        }
+
+        $business->forceFill(['site_slug' => $slug])->save();
+
+        foreach (['store_on', 'store_show_prices', 'store_pay_cod', 'store_pay_transfer'] as $flag) {
+            if (array_key_exists($flag, $data)) {
+                $data[$flag] = $request->boolean($flag) ? '1' : '0';
+            }
+        }
+
+        MarketingSettings::save($this->bid(), 'website', $data);
+        Activity::log('updated', 'حدّث متجره الإلكتروني');
+
+        return back()->with('toast', ['msg' => __('حُفظ متجرك الإلكتروني'), 'type' => 'success']);
     }
 
     /* -------------------- الظهور في البحث وGoogle Analytics -------------------- */

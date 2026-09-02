@@ -65,6 +65,7 @@ use App\Http\Controllers\Pos\PeripheralController;
 use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\BillingController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
@@ -575,6 +576,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/marketing/website', fn () => redirect()->route('admin.settings.index', ['section' => 'website']))->name('marketing.website');
     Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
+    // إنشاء متجر التاجر على الإنترنت — من صفحة الإعدادات نفسها
+    Route::post('/marketing/store', [MarketingController::class, 'saveStore'])->name('marketing.store.save');
     Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
     Route::post('/marketing/seo', [MarketingController::class, 'saveSeo'])->name('marketing.seo.save');
     Route::post('/marketing/seo/refresh', [MarketingController::class, 'refreshSeo'])->name('marketing.seo.refresh');
@@ -859,6 +862,29 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
     Route::get('/settings', [App\Http\Controllers\Pos\PageController::class, 'settings'])->name('settings');
     Route::post('/language', [LanguageController::class, 'update'])->name('language.update');
 });
+
+/*
+ * متجرُ التاجر — صفحةٌ عامّة يفتحها زبون.
+ *
+ * خارج حرّاس النظام كلّها: من يفتحها لا حساب له ولا متجرَ في جلسته. والمتجر
+ * يُعرف من عنوانه، وحارسُه أن يكون منشورًا (انظر `Storefront::find`).
+ *
+ * وعنوانان لصفحةٍ واحدة، والأوّل هو الأصل:
+ *
+ *  1. `متجري.abaadapp.om` — النطاق الفرعيّ، وهو ما يُعطى للزبون ويُكتب في
+ *     `canonical`. يلزمه على الخادم سجلّ DNS بالحرف البدل وشهادة SSL مثله.
+ *  2. `/s/متجري` — بابٌ بديل يعمل قبل ضبطهما، وفي التطوير والاختبارات حيث
+ *     لا نطاقات فرعية. ولا يُعطى للزبون: صفحته تُصرّح أنّ الأصل غيرُه، فلا
+ *     يقرأ محرّكُ البحث نسختين لصفحةٍ واحدة.
+ *
+ * ويقع في آخر الملفّ عمدًا: مسارُ النطاق الفرعيّ يلتقط كلّ عنوانٍ تحت أيّ
+ * نطاقٍ فرعيّ، فلو سبق مسارات اللوحة لَابتلع `app.abaadapp.om` نفسها.
+ */
+Route::domain('{slug}.'.config('storefront.domain'))->group(function () {
+    Route::get('/', [StorefrontController::class, 'show'])->name('store.home');
+});
+
+Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
 
 /*
  * إشعارات ميتا — بابٌ عامّ بلا جلسة، وحارسه توقيعٌ لا كلمة سرّ.

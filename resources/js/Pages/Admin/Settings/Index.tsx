@@ -58,6 +58,13 @@ interface Props {
     recovery: Recovery;
     /** نطاق موقع التاجر — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
+    store: {
+        slug: string | null;
+        domain: string;
+        themes: { value: string; label: string; accent: string }[];
+        suggestion: string | null;
+        productCount: number;
+    };
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
@@ -173,7 +180,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, recovery, site, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, business, recovery, site, store, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
@@ -361,6 +368,39 @@ export default function SettingsIndex() {
         site_domain: site?.site_domain ?? '',
     });
 
+    /*
+     * متجرُ أبعاد نموذجٌ ثالث لا حقولٌ في نموذج الرابط الخارجيّ.
+     *
+     * العنوان يُحفظ في عمودٍ على المتجر (تفرّدُه يُفرَض في القاعدة)، وبقيّتُه
+     * في مجموعة `website`. ومسارُه غير مسار الرابط الخارجيّ: جمعُهما كان
+     * يوجب على كلّ حفظِ نطاقٍ خارجيّ أن يمرّ بمصادقة عنوان المتجر.
+     */
+    const storeForm = useForm({
+        site_slug: store?.slug ?? '',
+        store_on: (site?.store_on ?? '0') === '1',
+        store_theme: site?.store_theme ?? 'rose',
+        store_headline: site?.store_headline ?? '',
+        store_about: site?.store_about ?? '',
+        store_show_prices: (site?.store_show_prices ?? '1') === '1',
+        store_whatsapp: site?.store_whatsapp ?? '',
+        store_pay_cod: (site?.store_pay_cod ?? '1') === '1',
+        store_pay_transfer: (site?.store_pay_transfer ?? '0') === '1',
+        store_bank: site?.store_bank ?? '',
+    });
+
+    const saveStore = (e: React.FormEvent) => {
+        e.preventDefault();
+        storeForm.post(route('admin.marketing.store.save'), { preserveScroll: true });
+    };
+
+    /** العنوان كما سيقرؤه الزبون — يُبنى بقاعدة الخادم نفسها */
+    const storeSlug = storeForm.data.site_slug
+        .toLowerCase()
+        .replace(/[\s_]+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-{2,}/g, '-')
+        .replace(/^-|-$/g, '');
+
     const saveSite = (e: React.FormEvent) => {
         e.preventDefault();
         siteForm.post(route('admin.marketing.website.save'), { preserveScroll: true });
@@ -458,8 +498,197 @@ export default function SettingsIndex() {
             {tab === 'chart' ? (
                 <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
             ) : tab === 'website' ? (
-                /*
-                    الموقع في بطاقةٍ واحدة — ومفتاحٌ يقول ما يُشغّله.
+                <div className="space-y-6">
+                {/*
+                    إنشاء المتجر — أربع خطواتٍ في بطاقةٍ واحدة.
+
+                    و«أسهل طريقة ممكنة» تعني ألّا يُطلب من صاحب المحلّ ما لا
+                    يملكه: لا نطاقًا يشتريه، ولا استضافةً يضبطها، ولا صورًا
+                    يرفعها من جديد. عنوانٌ يكتبه، ولونٌ يختاره، وسطرٌ يعرّف به
+                    — ومنتجاتُه التي في النظام أصلًا تصير صفحةً يفتحها زبونه.
+                */}
+                <form onSubmit={saveStore}>
+                    <Card className="p-6">
+                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 className="font-bold text-[#111]">{t('متجرك الإلكتروني')}</h3>
+                                <p className="mt-1 text-[13px] text-[#6b7280]">
+                                    {t('صفحةٌ يستضيفها أبعاد: منتجاتك بصورها وأسعارها، ويطلب منها الزبون عبر واتساب.')}
+                                </p>
+                            </div>
+                            {store.slug && storeForm.data.store_on && (
+                                <Button variant="outline" size="sm" asChild>
+                                    <a
+                                        href={`https://${store.slug}.${store.domain}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <ExternalLink />
+                                        {t('افتح متجري')}
+                                    </a>
+                                </Button>
+                            )}
+                        </div>
+
+                        {/* ١ — العنوان */}
+                        <Field
+                            label="عنوان متجرك"
+                            hint="حروفٌ إنجليزية صغيرة وأرقام وشرطة — يُكتب مرّةً ويصعب تغييره بعد أن يوزّعه زبائنك"
+                            error={storeForm.errors.site_slug}
+                        >
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    dir="ltr"
+                                    value={storeForm.data.site_slug}
+                                    onChange={(e) => storeForm.setData('site_slug', e.target.value)}
+                                    placeholder={store.suggestion ?? 'my-store'}
+                                    className="max-w-[16rem]"
+                                />
+                                <span dir="ltr" className="shrink-0 text-[13px] text-[#9ca3af]">
+                                    .{store.domain}
+                                </span>
+                            </div>
+                        </Field>
+
+                        {storeSlug && (
+                            <p dir="ltr" className="mt-2 text-[13px] font-medium text-[#111]">
+                                https://{storeSlug}.{store.domain}
+                            </p>
+                        )}
+
+                        {/* ٢ — الشكل */}
+                        <div className="mt-6">
+                            <p className="mb-2 text-sm font-medium text-[#111]">{t('اللون')}</p>
+                            {/*
+                                ثيماتٌ معدودة لا منتقي ألوانٍ حرّ: صاحبُ محلٍّ
+                                ليس مصمّمًا، والحرّيةُ الكاملة تُخرج صفحةً بلونٍ
+                                فاقعٍ لا تُقرأ. وكلُّها مضبوطةُ التباين.
+                            */}
+                            <div className="flex flex-wrap gap-2">
+                                {store.themes.map((th) => (
+                                    <button
+                                        key={th.value}
+                                        type="button"
+                                        onClick={() => storeForm.setData('store_theme', th.value)}
+                                        className={cn(
+                                            'flex items-center gap-2 rounded-full border px-4 py-2.5 text-[13px] font-medium transition',
+                                            storeForm.data.store_theme === th.value
+                                                ? 'border-[#111] bg-[#fafafa] text-[#111]'
+                                                : 'border-[var(--ui-border,#e8e8e8)] text-[#6b7280] hover:bg-[#fafafa]',
+                                        )}
+                                    >
+                                        <span
+                                            className="size-4 rounded-full"
+                                            style={{ backgroundColor: th.accent }}
+                                        />
+                                        {th.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mt-6 grid grid-cols-1 gap-4">
+                            <Field label="العنوان الرئيسي" hint="يظهر أعلى الصفحة — واسم متجرك إن تركته فارغًا" error={storeForm.errors.store_headline}>
+                                <Input
+                                    value={storeForm.data.store_headline}
+                                    onChange={(e) => storeForm.setData('store_headline', e.target.value)}
+                                    placeholder={business.name}
+                                />
+                            </Field>
+                            <Field label="نبذة قصيرة" hint="سطران يقرؤهما الزائر قبل المنتجات — وتُقرأ في نتائج البحث" error={storeForm.errors.store_about}>
+                                <Textarea
+                                    rows={2}
+                                    value={storeForm.data.store_about}
+                                    onChange={(e) => storeForm.setData('store_about', e.target.value)}
+                                />
+                            </Field>
+                        </div>
+
+                        {/* ٣ — الطلب والدفع */}
+                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <h4 className="mb-3 font-bold text-[#111]">{t('الطلب والدفع')}</h4>
+
+                            <Field
+                                label="رقم واتساب للطلبات"
+                                hint="يصله الطلب مكتوبًا — ورقم متجرك إن تركته فارغًا"
+                                error={storeForm.errors.store_whatsapp}
+                            >
+                                <Input
+                                    dir="ltr"
+                                    value={storeForm.data.store_whatsapp}
+                                    onChange={(e) => storeForm.setData('store_whatsapp', e.target.value)}
+                                    placeholder={business.phone ?? '96891234567'}
+                                    className="max-w-[16rem]"
+                                />
+                            </Field>
+
+                            <div className="mt-4 space-y-3">
+                                <Toggle
+                                    on={storeForm.data.store_show_prices}
+                                    onChange={(v) => storeForm.setData('store_show_prices', v)}
+                                    label="إظهار الأسعار"
+                                    hint="أطفئه إن كنت تسعّر حسب الطلب — ويبقى زرّ الطلب يعمل"
+                                />
+                                <Toggle
+                                    on={storeForm.data.store_pay_cod}
+                                    onChange={(v) => storeForm.setData('store_pay_cod', v)}
+                                    label="الدفع عند الاستلام"
+                                />
+                                <Toggle
+                                    on={storeForm.data.store_pay_transfer}
+                                    onChange={(v) => storeForm.setData('store_pay_transfer', v)}
+                                    label="تحويل بنكي"
+                                />
+                            </div>
+
+                            {storeForm.data.store_pay_transfer && (
+                                <div className="mt-4">
+                                    <Field
+                                        label="بيانات الحساب البنكي"
+                                        hint="تظهر للزبون في صفحة متجرك — اسم البنك ورقم الحساب والآيبان"
+                                        error={storeForm.errors.store_bank}
+                                    >
+                                        <Textarea
+                                            rows={3}
+                                            value={storeForm.data.store_bank}
+                                            onChange={(e) => storeForm.setData('store_bank', e.target.value)}
+                                        />
+                                    </Field>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ٤ — النشر */}
+                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <Toggle
+                                on={storeForm.data.store_on}
+                                onChange={(v) => storeForm.setData('store_on', v)}
+                                label="نشر المتجر"
+                                hint="حتى يُنشر لا يفتحه أحد — والعنوان يردّ «غير موجود» لا صفحةً فارغة"
+                            />
+
+                            {/*
+                                ولا يُنشر متجرٌ بلا بضاعة: صفحةٌ فارغة تُفقد
+                                الزبون ثقته، ولا يعود إليها بعد أن رآها خالية.
+                            */}
+                            {storeForm.data.store_on && store.productCount === 0 && (
+                                <p className="mt-3 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#b45309]">
+                                    {t('لا منتجات فعّالة في متجرك — ستُفتح الصفحة خالية. أضف منتجًا قبل نشرها.')}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="mt-6 flex justify-end">
+                            <Button type="submit" loading={storeForm.processing}>
+                                <Save />
+                                {t('حفظ ونشر')}
+                            </Button>
+                        </div>
+                    </Card>
+                </form>
+
+                {/*
+                    الموقع الخارجيّ — ومفتاحٌ يقول ما يُشغّله.
 
                     كانتا بطاقتين: «إعدادات الدومين» فيها حقلُ نطاق، و«إعدادات
                     الموقع» فيها رافعُ شعار — ووصفاهما يَعِدان بمتجرٍ يُنشر
@@ -472,7 +701,7 @@ export default function SettingsIndex() {
 
                     والشعار انتقل إلى «بيانات النشاط»: شعارُ المتجر يُطبع على
                     الفاتورة، ولا علاقة له بموقعٍ خارج النظام.
-                */
+                */}
                 <form onSubmit={saveSite}>
                     <Card className="p-6">
                         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -548,6 +777,7 @@ export default function SettingsIndex() {
                         </div>
                     </Card>
                 </form>
+                </div>
             ) : tab === 'custom-alerts' ? (
                 <CustomAlerts
                     alerts={customAlerts ?? []}

@@ -20,6 +20,7 @@ use App\Support\Permissions;
 use App\Support\ProductImages;
 use App\Support\Reports;
 use App\Support\Roles;
+use App\Support\Storefront;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -391,6 +392,18 @@ class PageController extends Controller
              * برحلةٍ إلى الخادم أغلى من إرسالها.
              */
             'site' => MarketingSettings::group(Demo::bid(), 'website'),
+            /*
+             * ما يلزم بانيَ المتجر: عنوانُه المحجوز، والنطاق الذي يُبنى عليه،
+             * والثيمات المتاحة. ولا يُخمَّن شيءٌ منها في الواجهة: النطاق
+             * يتغيّر بالبيئة، والثيمات تُزاد — ونسخةٌ ثانية في الشاشة تفترق.
+             */
+            'store' => [
+                'slug' => Business::find(Demo::bid())?->site_slug,
+                'domain' => Storefront::domain(),
+                'themes' => Storefront::themeOptions(),
+                'suggestion' => Storefront::suggest($b?->name ?? ''),
+                'productCount' => Product::where('business_id', Demo::bid())->where('active', true)->count(),
+            ],
             /*
              * بريد الاستعادة — حالُه وحده، بلا رمزٍ ولا بصمة.
              *

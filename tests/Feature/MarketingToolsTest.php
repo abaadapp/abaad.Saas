@@ -71,7 +71,17 @@ class MarketingToolsTest extends TestCase
         $saved = MarketingSettings::group($this->bid(), 'website');
 
         $this->assertSame('mystore.om', $saved['site_domain']);
-        $this->assertSame(['site_on', 'site_domain'], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
+        /*
+         * والمجموعة صارت تحمل مفاتيح متجر أبعاد معها — وكلٌّ منها تقرؤه
+         * الصفحة العامّة (انظر `Storefront::page`). فالفحص على أنّ ما فيها
+         * **يُقرأ**، لا على عددها: مفتاحٌ يُحفظ ولا يفتحه زائرٌ هو الوعد
+         * المكذوب الذي رُفعت لأجله المجموعةُ القديمة.
+         */
+        $this->assertSame([
+            'site_on', 'site_domain',
+            'store_on', 'store_theme', 'store_headline', 'store_about', 'store_show_prices',
+            'store_whatsapp', 'store_pay_cod', 'store_pay_transfer', 'store_bank',
+        ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {
             $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => $dead]);

@@ -304,6 +304,19 @@ class Demo
          * التفعيل يُقرأ من مصدره الواحد لا من عمود القاعدة مباشرةً، فما
          * تقوله الشاشةُ هو ما يفعله الزرّ (انظر `MarketingSettings`).
          */
+        $business = Business::find(self::bid());
+
+        /*
+         * ومتجرُ أبعاد يسبق الرابط الخارجيّ.
+         *
+         * من نشر متجره عندنا فذاك موقعُه: زرٌّ يفتح صفحةً قديمة بينما متجره
+         * الحيّ في مكانٍ آخر يُرسل زبونَه إلى الخطأ. والخارجيّ يبقى لمن لم
+         * ينشر — أو لمن له موقعٌ آخر ولم يفتح متجرًا هنا.
+         */
+        if ($business && Storefront::published($business)) {
+            return Storefront::url($business->site_slug);
+        }
+
         $site = MarketingSettings::group(self::bid(), 'website');
 
         if (($site['site_on'] ?? '1') !== '1') {

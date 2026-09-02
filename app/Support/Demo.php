@@ -436,7 +436,27 @@ class Demo
             ->where('updated_at', '>=', $mStart)
             ->count();
         $activeAtStart = max(1, Business::real()->where('starts_at', '<', $mStart)->count());
-        $churnLabel = $churned.' · '.round($churned / $activeAtStart * 100).'%';
+        $churnRate = round($churned / $activeAtStart * 100);
+
+        /*
+         * كم كان في التجربة أوّل الشهر — ليُقاس عليه ما فيها الآن.
+         *
+         * والفحص «كما كان يومَها» لا كما هو اليوم: من دفع بعد أوّل الشهر كان
+         * في التجربة حينها، فعدُّه اليوم خارجَها يجعل الرقم القديم أصغر ممّا
+         * كان — فتقول البطاقة إنّ التجربة تنمو وهي تنكمش.
+         */
+        $trialingAt = fn ($moment) => Business::real()
+            ->where('starts_at', '<=', $moment)
+            ->where(fn ($q) => $q->whereNull('ends_at')->orWhere('ends_at', '>=', $moment))
+            ->whereNotIn('status', ['معطل', 'معطّل'])
+            ->whereNotExists(
+                fn ($q) => $q->selectRaw('1')->from('invoices')
+                    ->whereColumn('invoices.business_id', 'businesses.id')
+                    ->where('invoices.status', 'مدفوعة')
+                    ->where('invoices.issued_at', '<=', $moment),
+            )
+            ->count();
+        $trialingLast = $trialingAt($mStart);
 
         // الإيرادات: الشهر مقابل السابق، والسنة مقابل السابقة (فواتير مدفوعة فعليًا)
         $paid = fn () => Invoice::where('status', 'مدفوعة');
@@ -456,10 +476,22 @@ class Demo
              * خرج ومن.
              */
             array_merge(['label' => __('الإيراد الشهري المتكرّر'), 'value' => self::money($mrr), 'icon' => 'repeat', 'color' => 'primary'], self::trend($mrr, $mrrLast)),
+            /*
+             * وشكلُها شكلُ أخواتها: رقمٌ واحد في الوسط ونسبةٌ تحته.
+             *
+             * كانت وحدها تكتب رقمين في خانة القيمة («٢ · ١٥٪»)، ورقمًا ثالثًا
+             * في خانة الاتجاه هو عددٌ لا نسبة — بينما كلُّ بطاقةٍ في الشبكة
+             * تقول نسبةً. فتُقرأ الشبكةُ صفًّا واحدًا إلّا هي.
+             *
+             * والنسبة هي نسبةُ الفاقد لا تغيّرَه: هي ما يُدار به، وهي التي
+             * كانت محشورةً في القيمة. والسهم أحمرُ نازل ما دام أحدٌ خرج، وأخضرُ
+             * حين لا يخرج أحد — ارتفاع الفاقد ليس نموًّا.
+             */
             [
-                'label' => __('الفاقد هذا الشهر'), 'value' => $churnLabel, 'icon' => 'user-minus',
-                // ارتفاع الفاقد ليس نموًّا: الاتجاه معكوس عمدًا
-                'trend' => $churned > 0 ? '−'.$churned : null, 'up' => false, 'color' => $churned > 0 ? 'danger' : 'success',
+                'label' => __('الفاقد هذا الشهر'), 'value' => (string) $churned, 'icon' => 'user-minus',
+                'trend' => ($churned > 0 ? '−' : '').$churnRate.'%',
+                'up' => $churned === 0,
+                'color' => $churned > 0 ? 'danger' : 'success',
             ],
             array_merge(['label' => __('المشتركون'), 'value' => (string) $subscribed, 'icon' => 'badge-check', 'color' => 'success'], self::trend($subsNew, $subsNewLast)),
             /*
@@ -468,10 +500,20 @@ class Demo
              * من دخل بأربعة عشر يومًا مجّانًا ليس إيرادًا ولا مدينًا — وخلطه
              * بمن يدفع يجعلك تقرأ خمسةً وأنت تعرف أن اثنين لم يدفعا ريالًا.
              */
-            [
-                'label' => __('في التجربة'), 'value' => (string) $trialing, 'icon' => 'hourglass',
-                'color' => $trialing > 0 ? 'warning' : 'secondary', 'trend' => null, 'up' => null,
-            ],
+            /*
+             * وهذه كانت البطاقة الوحيدة بلا اتجاه: سطرٌ ناقصٌ تحتها يجعلها
+             * أقصر من جاراتها في الشبكة، ورقمًا لا يُقاس عليه شيء.
+             *
+             * والمقياس: كم كان فيها أوّل الشهر. ونموُّ التجربة خيرٌ — فالسهم
+             * أخضرُ صاعد حين يزيدون.
+             */
+            array_merge(
+                [
+                    'label' => __('في التجربة'), 'value' => (string) $trialing, 'icon' => 'hourglass',
+                    'color' => $trialing > 0 ? 'warning' : 'secondary',
+                ],
+                self::trend($trialing, $trialingLast),
+            ),
             array_merge(['label' => __('المستخدمون'), 'value' => (string) $users, 'icon' => 'users', 'color' => 'info'], self::trend($usersNew, $usersNewLast)),
             array_merge(['label' => __('الإيرادات الشهرية'), 'value' => self::money($monthly), 'icon' => 'wallet', 'color' => 'warning'], self::trend($monthly, $monthlyLast)),
             array_merge(['label' => __('الإيرادات السنوية'), 'value' => self::money($yearly), 'icon' => 'trending-up', 'color' => 'primary'], self::trend($yearly, $yearlyLast)),

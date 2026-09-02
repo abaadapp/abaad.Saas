@@ -107,6 +107,38 @@ class StorefrontTest extends TestCase
             ->assertSessionHasErrors('site_slug');
     }
 
+    /* ------------------- ولا يبتلع النظامَ نفسه ------------------- */
+
+    /**
+     * `app.abaadapp.om` ليست متجرًا.
+     *
+     * مسارُ النطاق الفرعيّ يلتقط كلَّ اسمٍ تحت النطاق، ولاراڤيل تُقدّم المسار
+     * المقيَّد بنطاق على المطلق — **فابتلع هذا المسارُ الصفحةَ الرئيسية للنظام
+     * وردّها «غير موجود»**. وقع ذلك فعلًا على الإنتاج، ولم يظهر في اختبارٍ
+     * لأنّ الاختبارات تطلب المسار ولا تحمل مضيفًا.
+     *
+     * فيُطلب هنا بالمضيف صراحةً — وهو الشيء الوحيد الذي كان سيكشفه.
+     */
+    public function test_the_system_own_hosts_are_never_read_as_shops(): void
+    {
+        foreach (['app', 'www', 'admin', 'api', 'pos'] as $host) {
+            $this->get('https://'.$host.'.'.Storefront::domain().'/')
+                ->assertOk();
+
+            $this->assertSame(
+                'login',
+                request()->route()?->getName(),
+                "«{$host}» قُرئ متجرًا فابتلع صفحة النظام",
+            );
+        }
+    }
+
+    /** والنطاق العاري كذلك: `abaadapp.om` هو النظام لا متجرٌ اسمُه فارغ */
+    public function test_the_bare_domain_still_belongs_to_the_system(): void
+    {
+        $this->get('https://'.Storefront::domain().'/')->assertOk();
+    }
+
     /* --------------------------- الباب --------------------------- */
 
     public function test_a_published_shop_opens_for_anyone_with_no_login(): void

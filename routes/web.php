@@ -79,6 +79,7 @@ use App\Http\Controllers\SuperAdmin\SubscriptionController;
 use App\Http\Controllers\SuperAdmin\UserController;
 use App\Http\Controllers\SuperAdmin\WhatsAppController;
 use App\Http\Controllers\WhatsApp\WebhookController;
+use App\Support\Storefront;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -880,9 +881,20 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
  * ويقع في آخر الملفّ عمدًا: مسارُ النطاق الفرعيّ يلتقط كلّ عنوانٍ تحت أيّ
  * نطاقٍ فرعيّ، فلو سبق مسارات اللوحة لَابتلع `app.abaadapp.om` نفسها.
  */
-Route::domain('{slug}.'.config('storefront.domain'))->group(function () {
-    Route::get('/', [StorefrontController::class, 'show'])->name('store.home');
-});
+Route::domain('{slug}.'.config('storefront.domain'))
+    /*
+     * والمحجوز يُستثنى في النمط لا في المتحكّم.
+     *
+     * `app.abaadapp.om` يطابق `{slug}.abaadapp.om`، ولاراڤيل تُقدّم المسار
+     * المقيَّد بنطاق على المطلق — فابتلع هذا المسارُ الصفحةَ الرئيسية للنظام
+     * وردّها «غير موجود». والاستثناء هنا يجعلها لا تطابق أصلًا، فتعود إلى
+     * صاحبها. انظر `Storefront::pattern`.
+     */
+    ->group(function () {
+        Route::get('/', [StorefrontController::class, 'show'])
+            ->where('slug', Storefront::pattern())
+            ->name('store.home');
+    });
 
 Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
 

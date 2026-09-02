@@ -3950,5 +3950,8 @@
     "حُفظ القالب": "Template saved",
     "توقيع المسلِّم": "Sender signature",
     "توقيع المستلِم": "Recipient signature",
-    "يظهر أسفل الورقة — كل سطر كما كتبته": "Appears at the bottom of the document — each line as you wrote it"
+    "يظهر أسفل الورقة — كل سطر كما كتبته": "Appears at the bottom of the document — each line as you wrote it",
+    "فاتورة البيع وسند التسليم وأمر الشراء وسندا الاستلام والتحويل — لكلٍّ محرّرُه": "Sales invoice, delivery note, purchase order, goods receipt and stock transfer — each with its own editor",
+    "الأوراق": "Documents",
+    "يظهر في الفواتير والإيصالات — وقالب فاتورة البيع يُظهره أو يُخفيه.": "Appears on invoices and receipts — the sales invoice template shows or hides it."
 }

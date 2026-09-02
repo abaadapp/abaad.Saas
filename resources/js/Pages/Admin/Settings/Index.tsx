@@ -166,7 +166,6 @@ const PAYMENT_METHODS = [
 
 /** صفحات مستقلة يصل إليها المستخدم من الإعدادات */
 
-/** صفوف قوالب الفواتير — كلٌّ منها يُظهر شيئًا أو يُخفيه في الأوراق الثلاث */
 const NOTIF_COLORS: Record<string, string> = {
     danger: 'bg-[#fef2f2] text-[#dc2626]',
     warning: 'bg-[#fffbeb] text-[#d97706]',
@@ -1040,7 +1039,7 @@ export default function SettingsIndex() {
                                 <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
                                     <h3 className="mb-1 font-bold text-[#111]">{t('الشعار')}</h3>
                                     <p className="mb-4 text-[13px] text-[#6b7280]">
-                                        {t('يظهر في الفواتير والإيصالات — وقوالب الفواتير تُظهره أو تُخفيه.')}
+                                        {t('يظهر في الفواتير والإيصالات — وقالب فاتورة البيع يُظهره أو يُخفيه.')}
                                     </p>
 
                                     <div className="flex flex-wrap items-center gap-5">

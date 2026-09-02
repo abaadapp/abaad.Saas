@@ -115,16 +115,25 @@ export default function ChartPanel({ accounts, trial, types }: ChartData) {
         notes: '',
     });
 
-    const openAdd = () => {
+    /*
+     * والحقول تُملأ بـ`setData` لا بـ`setDefaults` ثمّ `reset` — للسبب نفسه
+     * الذي في «الحسابات البنكية»: `reset` تقرأ `defaults` كما هي في هذه
+     * الدورة، فتتأخّر النافذة خطوةً وتعرض بيانات الصفّ الذي فُتح قبله.
+     * ثمّ يُحفظ حسابٌ باسم غيره ورمزِ غيره.
+     */
+    const fill = (values: Record<string, string>) => {
         form.clearErrors();
-        form.setDefaults({ parent_id: '', code: '', name: '', type: 'أصل', normal_side: 'debit', notes: '' });
-        form.reset();
+        form.setData(values);
+        form.setDefaults(values);
+    };
+
+    const openAdd = () => {
+        fill({ parent_id: '', code: '', name: '', type: 'أصل', normal_side: 'debit', notes: '' });
         setAdding(true);
     };
 
     const openEdit = (row: AccountRow) => {
-        form.clearErrors();
-        form.setDefaults({
+        fill({
             parent_id: row.parent_id ? String(row.parent_id) : '',
             code: row.code,
             name: row.name,
@@ -132,7 +141,6 @@ export default function ChartPanel({ accounts, trial, types }: ChartData) {
             normal_side: row.normal_side,
             notes: '',
         });
-        form.reset();
         setEditing(row);
     };
 

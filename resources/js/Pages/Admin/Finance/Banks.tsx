@@ -64,22 +64,37 @@ export default function Banks() {
     const [editing, setEditing] = useState<number | null>(null);
     const form = useForm(blank(today));
 
+    /*
+     * الحقول تُملأ بـ`setData` لا بـ`setDefaults` ثمّ `reset`.
+     *
+     * `setDefaults` تجدولُ تغييرَ حالة، و`reset` تقرأ `defaults` **كما هي في
+     * هذه الدورة** — أي القيمة السابقة. فكانت النافذة تتأخّر خطوةً دائمًا:
+     * يفتح التاجر حسابه الرئيسي فيراها فارغة، ثمّ يفتح الحساب الثاني فيرى
+     * بيانات الرئيسي.
+     *
+     * وهو أخطر من عرضٍ خاطئ: يظنّها بياناتِ الثاني فيصحّح حرفًا ويحفظ —
+     * فيُكتب رقمُ حساب الأوّل ورقمُ آيبانه على الثاني، ولا يقول شيءٌ إنّ
+     * حسابين صارا واحدًا.
+     *
+     * و`setDefaults` تبقى بعدها ليُقاس «هل تغيّر شيء» من قيم هذا الصفّ.
+     */
     const open = (row?: BankRow) => {
         form.clearErrors();
-        form.setDefaults(
-            row
-                ? {
-                      label: row.label ?? '',
-                      bank_name: row.bank_name ?? '',
-                      account_name: row.account_name ?? '',
-                      iban: row.iban ?? '',
-                      opening_balance: String(row.opening_balance ?? 0),
-                      opening_date: row.opening_date ?? today,
-                      active: row.active,
-                  }
-                : blank(today),
-        );
-        form.reset();
+
+        const values = row
+            ? {
+                  label: row.label ?? '',
+                  bank_name: row.bank_name ?? '',
+                  account_name: row.account_name ?? '',
+                  iban: row.iban ?? '',
+                  opening_balance: String(row.opening_balance ?? 0),
+                  opening_date: row.opening_date ?? today,
+                  active: row.active,
+              }
+            : blank(today);
+
+        form.setData(values);
+        form.setDefaults(values);
         setEditing(row ? row.id : 0);
     };
 

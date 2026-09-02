@@ -134,6 +134,36 @@ class PlanOpensWhatItSoldTest extends TestCase
         $this->actingAs($this->owner)->get(route('admin.export.reports'))->assertForbidden();
     }
 
+    public function test_every_report_page_export_is_closed_with_the_screen(): void
+    {
+        /*
+         * وخمسةَ عشرَ بابًا فُتحت بلا حارس.
+         *
+         * حين صار لكلّ تقريرٍ صفحتُه كُتبت له ثلاثةُ مسارات تنزيلٍ جديدة، ولم
+         * تُكتب في خريطة الباقات. فبقي «ملخّص المبيعات» وحده مقفلًا، وصُدِّر
+         * كلُّ ما سواه — الطلبات والمنتجات وأداء الموظفين وإنفاق العملاء —
+         * على باقةٍ لا تبيع التحليل ولا تصديرَه.
+         */
+        $this->onPlan([]);
+
+        foreach (['orders', 'products', 'staff', 'customers', 'stocktake'] as $report) {
+            foreach (['xlsx', 'pdf', 'csv'] as $format) {
+                $this->actingAs(User::find($this->owner->id))
+                    ->get(route('admin.reports.export.'.$format, $report))
+                    ->assertForbidden();
+            }
+        }
+    }
+
+    public function test_a_plan_that_sells_analysis_opens_those_exports(): void
+    {
+        $this->onPlan(['reports_advanced']);
+
+        $this->actingAs(User::find($this->owner->id))
+            ->get(route('admin.reports.export.csv', 'orders'))
+            ->assertOk();
+    }
+
     public function test_the_plain_sales_summary_stays_open_to_the_basic_plan(): void
     {
         /*

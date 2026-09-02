@@ -95,7 +95,14 @@ export default function ReportScreen({
                     title={title}
                     subtitle={t(subtitle)}
                     actions={
+                        /*
+                            والقدرة تُقال هنا كما تُقال في «ملخّص المبيعات».
+                            الخادمُ يردّ ٤٠٣ لمن لا تفتحه باقتُه، فقائمةٌ
+                            تُفتح وتُختار منها صيغةٌ ثمّ تصطدم بصفحة منعٍ
+                            تجعل صاحبها يظنّ العطب في النظام.
+                        */
                         <ExportMenu
+                            feature="reports_advanced"
                             xlsx={route('admin.reports.export.xlsx', reportKey)}
                             pdf={route('admin.reports.export.pdf', reportKey)}
                             csv={route('admin.reports.export.csv', reportKey)}

@@ -29,6 +29,11 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
+import StatCard from '@/Components/StatCard';
+import AreaChart from '@/Components/charts/AreaChart';
+import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
+import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -43,10 +48,36 @@ interface Report {
     href: string;
 }
 
+interface Summary {
+    sales: number;
+    profit: number;
+    expenses: number;
+    tax: number;
+}
+
 interface Props {
     reports: Report[];
     categories: Record<string, string>;
+    /** رأسُ الصفحة — أرقامُ الفترة نفسها التي تعرضها «ملخّص المبيعات» */
+    summary: Summary;
+    salesSeries: {
+        labels: string[];
+        full: string[];
+        data: (number | null)[];
+        counts: (number | null)[];
+        range: ReportRange;
+    };
+    range: ReportRange;
 }
+
+/** عنوان المخطّط بحسب دقّة محوره — انظر Demo::salesTrend */
+const CHART_TITLE: Record<ReportRange, string> = {
+    today: 'مبيعات اليوم حسب الساعة',
+    week: 'مبيعات الأسبوع حسب اليوم',
+    month: 'مبيعات الشهر حسب اليوم',
+    year: 'مبيعات السنة حسب الشهر',
+    all: 'المبيعات في آخر ١٢ شهرًا',
+};
 
 /**
  * خريطة صريحة لأسماء الأيقونات القادمة من Support\Reports.
@@ -84,8 +115,28 @@ const ICONS: Record<string, LucideIcon> = {
  * قال «١٤» ثم عرض ثمانيًا.
  */
 export default function ReportsIndex() {
-    const { reports, categories } = usePage<PageProps<Props>>().props;
+    const { reports, categories, summary, salesSeries, range, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    const m = (v: number) => money(v, context!.currency);
+
+    /*
+     * أربعةُ أرقامٍ لا عشرة: هذا رأسٌ لا تقرير.
+     *
+     * وهي التي يفتح صاحبُ المحلّ الصفحة من أجلها — كم بعتُ، وكم ربحت، وكم
+     * صرفت، وكم ضريبةً حصّلت. وما زاد يُقرأ في صفحته.
+     */
+    const stats = [
+        { label: t('إجمالي المبيعات'), value: m(summary.sales), icon: 'wallet', color: 'primary' },
+        {
+            label: t('صافي الربح'),
+            value: m(summary.profit),
+            icon: summary.profit >= 0 ? 'trending-up' : 'trending-down',
+            color: summary.profit >= 0 ? 'success' : 'danger',
+        },
+        { label: t('المصروفات'), value: m(summary.expenses), icon: 'arrow-down-circle', color: 'warning' },
+        { label: t('الضريبة المحصّلة'), value: m(summary.tax), icon: 'receipt', color: 'info' },
+    ];
 
     const [query, setQuery] = useState('');
     const [category, setCategory] = useState<string | null>(null);
@@ -116,8 +167,49 @@ export default function ReportsIndex() {
         <AdminLayout title="التقارير">
             <PageHeader
                 title="التقارير"
-                subtitle={t('تصفَّح وافتح التقارير التي تعتمد عليها.')}
+                subtitle={t('أرقام متجرك في الفترة المختارة، وتحتها كلّ تقريرٍ بتفصيله.')}
             />
+
+            <RangeTabs current={range} />
+
+            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {stats.map((s, i) => (
+                    <StatCard key={s.label} stat={s} index={i} />
+                ))}
+            </div>
+
+            {/*
+                لا مخطّط في فترة «الكل» — بطلب المالك. والأرقام تبقى.
+            */}
+            {range !== 'all' && (
+                <Card className="mb-8">
+                    <CardHeader className="flex-row items-center justify-between gap-3">
+                        <CardTitle>{t(CHART_TITLE[range])}</CardTitle>
+                        {/* والتفصيل خلف بابه: وسائل الدفع والأكثر مبيعًا وعدّاداتُ المتجر */}
+                        <Link
+                            href={route('admin.reports.sales')}
+                            className="flex items-center gap-1 text-[13px] font-medium text-[#6b7280] transition-colors hover:text-[#111]"
+                        >
+                            {t('ملخّص المبيعات كاملًا')}
+                            <ArrowLeft className="size-4 rtl:rotate-180" />
+                        </Link>
+                    </CardHeader>
+                    <CardContent>
+                        <AreaChart
+                            labels={salesSeries.labels}
+                            fullLabels={salesSeries.full}
+                            counts={salesSeries.counts}
+                            data={salesSeries.data}
+                            format={m}
+                        />
+                    </CardContent>
+                </Card>
+            )}
+
+            <h2 className="mb-4 flex items-center gap-2.5 text-[15px] font-bold text-[#111]">
+                <span className="size-2 rounded-[3px] bg-[#111]" aria-hidden />
+                {t('كل التقارير')}
+            </h2>
 
             {/* البحث — أيقونةٌ في بداية الحقل، والحقل بعرض الصفحة كما في الشاشة الأصل */}
             <div className="relative mb-4">

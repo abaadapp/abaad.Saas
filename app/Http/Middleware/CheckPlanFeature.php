@@ -33,6 +33,18 @@ class CheckPlanFeature
         'admin.reports.xlsx' => 'reports_advanced',
         'admin.reports.pdf' => 'reports_advanced',
         'admin.export.reports' => 'reports_advanced',
+        /*
+         * وتصديراتُ الصفحات الخمسَ عشرةَ معها.
+         *
+         * فُتحت حين صار لكلّ تقريرٍ صفحتُه: كُتبت لها ثلاثةُ مسارات جديدة
+         * ولم تُكتب في هذه الخريطة. فبقي «ملخّص المبيعات» وحده مقفلًا على
+         * الباقة الأساسية، وخمسةَ عشرَ تقريرًا يُصدَّر منها كلُّ شيء —
+         * إكسل وPDF وCSV — بلا أن يشتريَ صاحبُها التحليل.
+         *
+         * وهو أسوأ من ثغرةٍ في البيع: قفلٌ يُرى على بابٍ وبابٌ آخر مفتوح
+         * بجواره على الغرفة نفسها.
+         */
+        'admin.reports.export.*' => 'reports_advanced',
         // شاشةُ الولاء وحفظُها — والنقاط نفسها تُفحص عند الصندوق (PosController::loyaltyOn)
         'admin.marketing.loyalty' => 'loyalty',
         'admin.marketing.loyalty.save' => 'loyalty',

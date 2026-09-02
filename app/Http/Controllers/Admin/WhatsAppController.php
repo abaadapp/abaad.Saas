@@ -49,6 +49,13 @@ class WhatsAppController extends Controller
         $own = $ownAllowed ? WhatsAppConnections::forBusiness($business->id) : null;
 
         return [
+            /*
+             * خطواتُ الربط والتفعيل أوّلًا — وهي شرطُ كلّ ما بعدها.
+             *
+             * وتُشتقّ من الدوالّ التي يسألها المُرسِل نفسه، فلا تقول الشاشة
+             * «جاهز» ويمتنع المُرسِل.
+             */
+            'readiness' => WhatsAppFeature::readiness($business),
             'global_enabled' => WhatsAppFeature::globallyEnabled(),
             'enabled' => (bool) $business->whatsapp_enabled,
             'mode' => $business->whatsapp_mode,

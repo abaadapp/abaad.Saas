@@ -72,6 +72,94 @@ class WhatsAppFeature
     }
 
     /**
+     * خطواتُ الربط والتفعيل — بترتيبها، وحالُ كلِّ خطوة.
+     *
+     * وهذا أوّلُ ما يُعرض في شاشة الإشعارات لأنّه شرطُ كلِّ ما بعده: مقابضُ
+     * «متى تُرسل الرسالة» لا تُرسل حرفًا قبل أن تكتمل هذه الخطوات، ومن رآها
+     * أوّلًا ظنّ أنّ إطفاءها وإشعالها هو الإعداد كلُّه.
+     *
+     * والحالُ يُشتقّ من الدوالّ التي يسألها المُرسِل نفسه — `blockReason`
+     * و`WhatsAppConnections::resolve` — لا من فحصٍ ثانٍ يُكتب هنا. ولو كُتب
+     * ثانٍ لَافترقا يومًا: تقول الشاشة «جاهز» ويمتنع المُرسِل، فينتظر التاجر
+     * رسائل لا تخرج ولا شيء يقول له لماذا.
+     *
+     * @return array{ready:bool, steps:list<array{key:string, label:string, done:bool, detail:?string, fix:?string, theirs:bool}>}
+     */
+    public static function readiness(Business $business): array
+    {
+        $mode = self::effectiveMode($business);
+        $own = $mode === WhatsAppMode::BUSINESS_OWN;
+
+        $connected = WhatsAppConnections::resolve($business) !== null;
+
+        $steps = [
+            self::step(
+                'platform',
+                'واتساب مفعَّل في المنصّة',
+                self::globallyEnabled(),
+                fix: 'هذا إعدادُ أبعاد لا إعدادُك — راجعنا لتفعيله.',
+                theirs: true,
+            ),
+            self::step(
+                'account',
+                'واتساب مفعَّل لحسابك',
+                (bool) $business->whatsapp_enabled,
+                fix: 'التفعيل يفتحه أبعاد لحسابك — راجعنا.',
+                theirs: true,
+            ),
+            self::step(
+                'plan',
+                'باقتك تشمل إشعارات واتساب',
+                PlanFeatures::allows($business, 'whatsapp'),
+                fix: PlanFeatures::refusal($business, 'whatsapp'),
+                theirs: true,
+            ),
+            self::step(
+                $own ? 'own' : 'shared',
+                $own ? 'رقم متجرك مربوطٌ ويعمل' : 'الرقم المشترك جاهز',
+                $connected,
+                detail: $own ? null : __('تخرج الرسائل من رقم أبعاد المعتمَد.'),
+                /*
+                 * وربطُ الرقم وحده هو ما بيد التاجر من هذه الخطوات.
+                 *
+                 * والفرق يُقال: خطوةٌ ينتظر فيها أبعاد لا يُطلب منه إصلاحها،
+                 * وخطوةٌ بيده تُقال له بصيغة الأمر. ولو خُلطتا لَبقي ينتظر
+                 * ما عليه أن يفعله، أو حاول ما لا يملكه.
+                 */
+                fix: $own
+                    ? 'اربط رقم متجرك أدناه — أو بدّل الإرسال إلى رقم أبعاد.'
+                    : 'الرقم المشترك غير متاح الآن — راجع أبعاد.',
+                theirs: ! $own,
+            ),
+        ];
+
+        return [
+            'ready' => self::blockReason($business) === null && $connected,
+            'steps' => $steps,
+        ];
+    }
+
+    private static function step(
+        string $key,
+        string $label,
+        bool $done,
+        ?string $detail = null,
+        ?string $fix = null,
+        bool $theirs = false,
+    ): array {
+        return [
+            'key' => $key,
+            'label' => __($label),
+            'done' => $done,
+            'detail' => $done ? $detail : null,
+            // وما تمّ لا يُقال كيف يُصلَح — نصيحةٌ تحت خطوةٍ مكتملة ضجيج
+            'fix' => $done ? null : ($fix === null ? null : __($fix)),
+            // خطوةٌ ينتظر فيها أبعاد، لا خطوةٌ يفعلها بيده
+            'theirs' => $theirs,
+        ];
+    }
+
+    /**
      * هل يُسمح بالإرسال الآن؟ ولمَ لا إن لم يُسمح.
      *
      * @return string|null سبب المنع، أو null إن سلِم

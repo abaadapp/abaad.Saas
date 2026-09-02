@@ -3816,5 +3816,21 @@
     "معرّف القياس يبدأ بـG- — انسخه من «المشرف ← تدفّقات البيانات» في Google Analytics.": "A measurement ID starts with G- — copy it from “Admin → Data streams” in Google Analytics.",
     "حُفظ معرّف القياس": "Measurement ID saved",
     "اكتمل الفحص": "Check complete",
-    "تعذّر فحص الموقع": "Could not check the site"
+    "تعذّر فحص الموقع": "Could not check the site",
+    "١ · الربط والتفعيل": "1 · Connect and activate",
+    "جاهز — تخرج الرسائل عبر": "Ready — messages go out via",
+    "لا تخرج رسالةٌ واحدة قبل أن تكتمل هذه الخطوات.": "Not a single message goes out until these steps are complete.",
+    "المعرّفان والرمز من حساب المطوّرين في ميتا — والرمز يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ.": "Both IDs and the token come from your Meta developer account — the token is stored encrypted and never shown again.",
+    "٢ · متى تُرسَل الرسالة": "2 · When the message is sent",
+    "اختيارُك هنا يُحفظ، ولا تخرج رسالةٌ حتى تكتمل الخطوة الأولى أعلاه.": "Your choices here are saved, but nothing is sent until step 1 above is complete.",
+    "تخرج الرسائل من رقم أبعاد المعتمَد.": "Messages go out from Abaad's approved number.",
+    "واتساب مفعَّل في المنصّة": "WhatsApp is enabled on the platform",
+    "هذا إعدادُ أبعاد لا إعدادُك — راجعنا لتفعيله.": "This is Abaad's setting, not yours — contact us to enable it.",
+    "واتساب مفعَّل لحسابك": "WhatsApp is enabled for your account",
+    "التفعيل يفتحه أبعاد لحسابك — راجعنا.": "Abaad enables this for your account — contact us.",
+    "باقتك تشمل إشعارات واتساب": "Your plan includes WhatsApp notifications",
+    "رقم متجرك مربوطٌ ويعمل": "Your shop's number is connected and working",
+    "الرقم المشترك جاهز": "The shared number is ready",
+    "اربط رقم متجرك أدناه — أو بدّل الإرسال إلى رقم أبعاد.": "Connect your shop's number below — or switch sending to Abaad's number.",
+    "الرقم المشترك غير متاح الآن — راجع أبعاد.": "The shared number is unavailable right now — contact Abaad."
 }

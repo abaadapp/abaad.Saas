@@ -3852,5 +3852,14 @@
     "لا ورديّات بعد.": "No shifts yet.",
     "أكمل باسمي": "Continue as me",
     "مقبوضات اليوم": "Today's receipts",
-    "من منتصف الليل حتى الآن": "From midnight until now"
+    "من منتصف الليل حتى الآن": "From midnight until now",
+    "موقعك أو صفحتك خارج النظام — «أبعاد» لا يستضيفه، بل يربط إليه ويفحص ظهوره في البحث.": "Your site or page lives outside Abaad — we do not host it; we link to it and audit how it appears in search.",
+    "زرّ «الموقع الإلكتروني» في الشريط العلوي — يفتح موقعك في تبويب جديد": "The \"Website\" button in the top bar — opens your site in a new tab",
+    "فحص «الظهور في البحث» — يفتح صفحتك ويقول ما يراه محرّك البحث فيها": "The \"Search visibility\" audit — opens your page and reports what a search engine sees",
+    "مفعَّل بلا نطاق: لا زرَّ يظهر ولا فحصَ يقع حتى تكتب نطاقك.": "Enabled with no domain: no button appears and no audit runs until you enter your domain.",
+    "الموقع الإلكتروني مُطفأ": "The website is switched off",
+    "فعّله من الإعدادات ليُفحص، ويظهر زرّه في الشريط العلوي.": "Switch it on in Settings to have it audited and to show its button in the top bar.",
+    "فعّل الموقع الإلكتروني": "Switch the website on",
+    "تفعيل الموقع الإلكتروني": "Enable the website",
+    "أطفئه لتُخفي زرّ الموقع وتوقف فحصه — ويبقى نطاقك محفوظًا كما هو": "Switch it off to hide the site button and stop the audit — your domain stays saved"
 }

@@ -298,7 +298,19 @@ class Demo
          * فبقي واحد: ما يُكتب في شاشة الموقع هو ما يفتحه الزرّ. والقديم
          * نُقل إليه بهجرة، فلم يضع نطاقٌ ضُبط قبل هذه النسخة.
          */
-        $raw = trim((string) (self::businessSettings()['site_domain'] ?? ''));
+        /*
+         * والمُطفأ لا يُفتح — ولو بقي نطاقُه محفوظًا.
+         *
+         * التفعيل يُقرأ من مصدره الواحد لا من عمود القاعدة مباشرةً، فما
+         * تقوله الشاشةُ هو ما يفعله الزرّ (انظر `MarketingSettings`).
+         */
+        $site = MarketingSettings::group(self::bid(), 'website');
+
+        if (($site['site_on'] ?? '1') !== '1') {
+            return null;
+        }
+
+        $raw = trim((string) ($site['site_domain'] ?? ''));
 
         if ($raw === '') {
             return null;

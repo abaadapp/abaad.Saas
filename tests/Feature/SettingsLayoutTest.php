@@ -52,7 +52,7 @@ class SettingsLayoutTest extends TestCase
     {
         $nav = $this->nav();
 
-        foreach (['business', 'domain', 'website', 'finance', 'chart', 'templates'] as $key) {
+        foreach (['business', 'website', 'finance', 'chart', 'templates'] as $key) {
             $this->assertStringContainsString("key: '{$key}'", $nav, "بطاقة «{$key}» غائبة");
         }
     }
@@ -62,7 +62,8 @@ class SettingsLayoutTest extends TestCase
     {
         $nav = $this->nav();
 
-        foreach (['language', 'taxes', 'currency', 'payments', 'invoices', 'printing', 'loyalty', 'shifts'] as $key) {
+        // و«الدومين» معها: بطاقتان للموقع صارتا واحدة — انظر `SettingsNav`
+        foreach (['language', 'taxes', 'currency', 'payments', 'invoices', 'printing', 'loyalty', 'shifts', 'domain'] as $key) {
             $this->assertStringNotContainsString("key: '{$key}'", $nav, "بطاقة «{$key}» بقيت بعد دمجها");
         }
     }
@@ -84,8 +85,8 @@ class SettingsLayoutTest extends TestCase
             "tab === 'finance'", 'vat_rate', 'tax_mode', 'symbol_pos', 'decimals', 'PAYMENT_METHODS',
             // الترقيم والورق → قوالب الفواتير
             'inv_prefix', 'inv_start',
-            // النطاق → الإعدادات، والشعار معه
-            "tab === 'domain'", "tab === 'website'", 'site_domain',
+            // النطاق → الإعدادات في بطاقةٍ واحدة، والشعار → بيانات النشاط
+            "tab === 'website'", 'site_domain', 'site_on', 'pickLogo',
         ];
 
         foreach ($moved as $needle) {
@@ -169,7 +170,7 @@ class SettingsLayoutTest extends TestCase
     {
         $this->actingAs($this->owner)
             ->get(route('admin.marketing.website'))
-            ->assertRedirect(route('admin.settings.index', ['section' => 'domain']));
+            ->assertRedirect(route('admin.settings.index', ['section' => 'website']));
     }
 
     /** والحفظ ما زال يعمل من موضعه الجديد */

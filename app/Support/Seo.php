@@ -63,10 +63,14 @@ class Seo
     /** إعدادات المتجر: النطاق والمعرّف وما يُبنى منهما */
     public static function forBusiness(int $businessId): array
     {
-        $domain = trim((string) (MarketingSettings::group($businessId, 'website')['site_domain'] ?? ''));
+        $site = MarketingSettings::group($businessId, 'website');
+        // موقعٌ مُطفأ من الإعدادات لا يُفحص: النطاق محفوظٌ ولا يُقصد به شيء
+        $enabled = ($site['site_on'] ?? '1') === '1';
+        $domain = $enabled ? trim((string) ($site['site_domain'] ?? '')) : '';
         $id = self::measurementId(MarketingSettings::group($businessId, 'seo')['ga_measurement_id'] ?? null);
 
         return [
+            'enabled' => $enabled,
             'domain' => $domain,
             'site_url' => $domain === '' ? null : SiteAudit::url($domain),
             'measurement_id' => $id,
@@ -98,6 +102,17 @@ class Seo
     public static function check(int $businessId, bool $refresh = false): array
     {
         $config = self::forBusiness($businessId);
+
+        /*
+         * و«مُطفأ» ليست «بلا نطاق».
+         *
+         * الأولى قرارٌ اتّخذه التاجر ويُلغيه بمفتاح، والثانية نقصٌ يُكمله
+         * بكتابة نطاقه. وجمعُهما في رسالةٍ واحدة يجعل من أطفأ موقعه يبحث
+         * عن نطاقٍ كتبه بالفعل.
+         */
+        if (! $config['enabled']) {
+            return self::state('off');
+        }
 
         if ($config['domain'] === '') {
             return self::state('nodomain');

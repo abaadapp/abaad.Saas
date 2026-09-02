@@ -48,13 +48,18 @@ class MarketingToolsTest extends TestCase
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
     /**
-     * النطاق يُحفظ — وما كان معه لا يُحفظ لأنّه لا يُقرأ.
+     * مفتاحان لا أكثر — وكلٌّ منهما يقرؤه شيء.
      *
-     * كانت الشاشة تحفظ ثمانية مفاتيح تصف واجهة متجرٍ لا وجود لها في النظام:
-     * «نشر الموقع» و«عرض الأسعار» وجملةً تعريفية ونبذة. يملؤها التاجر فتُحفظ
-     * ولا يقرؤها شيء — فيظنّ أنّه نشر متجرًا وينتظر طلبًا لا يأتي.
+     * كانت الشاشة تحفظ ثمانية تصف واجهة متجرٍ لا وجود لها في النظام: «نشر
+     * الموقع» و«عرض الأسعار» وجملةً تعريفية ونبذة. يملؤها التاجر فتُحفظ ولا
+     * يقرؤها شيء — فيظنّ أنّه نشر متجرًا وينتظر طلبًا لا يأتي.
+     *
+     * وبقي النطاق، ثمّ لحق به `site_on`: تفعيلٌ **يُقرأ** في موضعين —
+     * `Demo::websiteUrl` لزرّ الترويسة، و`Seo::forBusiness` للفحص. وليس هو
+     * `site_enabled` الميّت: ذاك معناه «انشر متجري» ولا متجرَ يُنشر، وإعادةُ
+     * اسمه بمعنًى آخر تجعل قيمةً قديمة تُطفئ موقعًا لم يطلب صاحبُه إطفاءه.
      */
-    public function test_only_the_domain_is_saved_from_the_website_form(): void
+    public function test_only_what_is_read_is_saved_from_the_website_form(): void
     {
         $this->post(route('admin.marketing.website.save'), [
             'site_domain' => 'mystore.om',
@@ -66,7 +71,7 @@ class MarketingToolsTest extends TestCase
         $saved = MarketingSettings::group($this->bid(), 'website');
 
         $this->assertSame('mystore.om', $saved['site_domain']);
-        $this->assertSame(['site_domain'], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
+        $this->assertSame(['site_on', 'site_domain'], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {
             $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => $dead]);

@@ -49,6 +49,7 @@ class MarketingController extends Controller
     public function saveWebsite(Request $request)
     {
         $data = $request->validate([
+            'site_on' => ['sometimes', 'boolean'],
             /*
              * النطاق اسمٌ لا رابط.
              *
@@ -60,10 +61,22 @@ class MarketingController extends Controller
             'site_domain.regex' => __('اكتب النطاق وحده بلا https:// ولا مسار — مثل: mystore.om'),
         ]);
 
-        MarketingSettings::save($this->bid(), 'website', $data);
-        Activity::log('updated', 'حدّث رابط الموقع');
+        /*
+         * والمنطقيّ يُخزَّن '1'/'0' نصًّا صراحةً.
+         *
+         * `false` يُكتب في العمود سلسلةً فارغة، و`MarketingSettings::group`
+         * تعدّ الفارغةَ قصدًا لا غيابًا فتردّها كما هي — ثمّ تُقارن بـ'1'
+         * فتكون خطأً بالمصادفة لا بالضبط. والمصادفةُ تنقلب يومًا.
+         */
+        if (array_key_exists('site_on', $data)) {
+            $data['site_on'] = $request->boolean('site_on') ? '1' : '0';
+        }
 
-        return back()->with('toast', ['msg' => __('حُفظ رابط الموقع'), 'type' => 'success']);
+        MarketingSettings::save($this->bid(), 'website', $data);
+        Seo::forget($this->bid());
+        Activity::log('updated', 'حدّث إعدادات الموقع الإلكتروني');
+
+        return back()->with('toast', ['msg' => __('حُفظت إعدادات الموقع'), 'type' => 'success']);
     }
 
     /* -------------------- الظهور في البحث وGoogle Analytics -------------------- */

@@ -7,9 +7,11 @@ import {
     ChevronLeft,
     Download,
     ExternalLink,
+    Globe,
     Image as ImageIcon,
     Languages,
     Save,
+    Search,
     Trash2,
     Upload,
 } from 'lucide-react';
@@ -354,6 +356,8 @@ export default function SettingsIndex() {
      * وحقلٌ واحد بقي: السبعة الأخرى كانت تصف واجهة متجرٍ لا وجود لها.
      */
     const siteForm = useForm({
+        // '1' هو الافتراضيّ في `MarketingSettings`، فمن ضبط نطاقه قبل المفتاح يبقى زرُّه يعمل
+        site_on: (site?.site_on ?? '1') === '1',
         site_domain: site?.site_domain ?? '',
     });
 
@@ -453,37 +457,32 @@ export default function SettingsIndex() {
                     <BackToSettings as="button" onClick={goHub} />
             {tab === 'chart' ? (
                 <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
-            ) : tab === 'domain' ? (
+            ) : tab === 'website' ? (
                 /*
-                    الدومين وحده في بطاقة.
+                    الموقع في بطاقةٍ واحدة — ومفتاحٌ يقول ما يُشغّله.
 
-                    هو أوّل ما يُضبط وآخر ما يُغيَّر: يُكتب مرّةً ثمّ تقرؤه
-                    شاشة السيو ورابط «الموقع» في الترويسة والفاتورة. وكان
-                    مدفونًا في أعلى شاشةٍ طويلة تحت «أدوات التسويق»، فمن يبحث
-                    عن نطاقه لا يخطر له أن يفتح قسم الكوبونات.
-                */
-                /*
-                    رابطٌ إلى موقع التاجر، لا متجرٌ يُنشَر من هنا.
+                    كانتا بطاقتين: «إعدادات الدومين» فيها حقلُ نطاق، و«إعدادات
+                    الموقع» فيها رافعُ شعار — ووصفاهما يَعِدان بمتجرٍ يُنشر
+                    للزوّار ولا وجود له. فيبحث التاجر عن «تفعيل الموقع» بينهما
+                    ولا يجده، وليس بينهما ما يُفعَّل.
 
-                    كان في البطاقة مفتاح «نشر الموقع» وسطرٌ يعدّ «:n منتجًا يظهر
-                    في الموقع» وتحذيرٌ من صفحةٍ فارغة — وثلاثتها تصف واجهةً لا
-                    وجود لها في النظام: لا صفحة، ولا مسار، ولا منتجٌ يُعرض على
-                    زائر. فيرفع التاجر المفتاح ويقرأ العدد وينتظر طلبًا لا يأتي.
+                    والموقع في «أبعاد» شيئان لا ثالث: زرٌّ في الشريط يفتحه،
+                    وفحصٌ يقرأ صفحته في «الظهور في البحث». والبطاقة تقولهما
+                    بالحرف تحت المفتاح، فلا يُترك التاجر يُخمّن ما فعّل.
 
-                    والباقي حقٌّ: كثيرٌ من المتاجر لها موقعٌ أو صفحةٌ خارج النظام،
-                    والنطاق يُكتب هنا ليصير زرًّا في الشريط يفتحه. فبقي ما يعمل
-                    ورُفع ما يَعِد.
+                    والشعار انتقل إلى «بيانات النشاط»: شعارُ المتجر يُطبع على
+                    الفاتورة، ولا علاقة له بموقعٍ خارج النظام.
                 */
                 <form onSubmit={saveSite}>
                     <Card className="p-6">
                         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                             <div>
-                                <h3 className="font-bold text-[#111]">{t('رابط موقعك')}</h3>
+                                <h3 className="font-bold text-[#111]">{t('الموقع الإلكتروني')}</h3>
                                 <p className="mt-1 text-[13px] text-[#6b7280]">
-                                    {t('موقعك أو صفحتك خارج النظام — يصير زرًّا في الشريط يفتحه، ويُكتب في الفاتورة.')}
+                                    {t('موقعك أو صفحتك خارج النظام — «أبعاد» لا يستضيفه، بل يربط إليه ويفحص ظهوره في البحث.')}
                                 </p>
                             </div>
-                            {siteForm.data.site_domain && (
+                            {siteForm.data.site_on && siteForm.data.site_domain && (
                                 <Button variant="outline" size="sm" asChild>
                                     <a
                                         href={`https://${siteForm.data.site_domain}`}
@@ -497,18 +496,49 @@ export default function SettingsIndex() {
                             )}
                         </div>
 
-                        <Field
-                            label="النطاق"
-                            hint="اكتب النطاق وحده بلا https:// — مثل: mystore.om"
-                            error={siteForm.errors.site_domain}
-                        >
-                            <Input
-                                dir="ltr"
-                                value={siteForm.data.site_domain}
-                                onChange={(e) => siteForm.setData('site_domain', e.target.value)}
-                                placeholder="mystore.om"
-                            />
-                        </Field>
+                        <Toggle
+                            on={siteForm.data.site_on}
+                            onChange={(v) => siteForm.setData('site_on', v)}
+                            label="تفعيل الموقع الإلكتروني"
+                            hint="أطفئه لتُخفي زرّ الموقع وتوقف فحصه — ويبقى نطاقك محفوظًا كما هو"
+                        />
+
+                        {/*
+                            وما يُشغّله المفتاح مكتوبٌ تحته لا مخبوءٌ في رأس أحد:
+                            مفتاحٌ لا يُعرف أثرُه يُترك مطفأً أو يُرفع على غير هدى.
+                        */}
+                        <ul className="mt-4 space-y-1.5 text-[13px] text-[#6b7280]">
+                            <li className="flex items-start gap-2">
+                                <Globe className="mt-0.5 size-4 shrink-0 text-[#9ca3af]" />
+                                {t('زرّ «الموقع الإلكتروني» في الشريط العلوي — يفتح موقعك في تبويب جديد')}
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <Search className="mt-0.5 size-4 shrink-0 text-[#9ca3af]" />
+                                {t('فحص «الظهور في البحث» — يفتح صفحتك ويقول ما يراه محرّك البحث فيها')}
+                            </li>
+                        </ul>
+
+                        <div className="mt-5">
+                            <Field
+                                label="النطاق"
+                                hint="اكتب النطاق وحده بلا https:// — مثل: mystore.om"
+                                error={siteForm.errors.site_domain}
+                            >
+                                <Input
+                                    dir="ltr"
+                                    value={siteForm.data.site_domain}
+                                    onChange={(e) => siteForm.setData('site_domain', e.target.value)}
+                                    placeholder="mystore.om"
+                                    disabled={!siteForm.data.site_on}
+                                />
+                            </Field>
+                        </div>
+
+                        {siteForm.data.site_on && !siteForm.data.site_domain.trim() && (
+                            <p className="mt-3 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#b45309]">
+                                {t('مفعَّل بلا نطاق: لا زرَّ يظهر ولا فحصَ يقع حتى تكتب نطاقك.')}
+                            </p>
+                        )}
 
                         <div className="mt-6 flex justify-end">
                             <Button type="submit" loading={siteForm.processing}>
@@ -518,85 +548,6 @@ export default function SettingsIndex() {
                         </div>
                     </Card>
                 </form>
-            ) : tab === 'website' ? (
-                /*
-                    الشعار وحده بقي هنا.
-
-                    كان تحت هذا التبويب متجرٌ كامل يُضبط: جملةٌ تعريفية، ونبذة،
-                    وواتساب وإنستغرام، و«عرض الأسعار» و«قبول الطلبات» — يملؤها
-                    التاجر وتُحفظ كلّها ولا يقرؤها شيء، لأنّه لا واجهة متجرٍ في
-                    النظام أصلًا. فكان يظنّ أنّه نشر متجرًا على الإنترنت وليس
-                    هناك شيء، وينتظر طلبًا لا يأتي.
-
-                    والحقل الذي لا يُقرأ ليس حقلًا زائدًا، هو وعدٌ مكذوب. فرُفعت
-                    المقابض، وبقي الشعار لأنّه وحده يُقرأ فعلًا: تُظهره الفواتير
-                    والإيصالات، وقوالبها تحمل مقبضًا يشترطه.
-
-                    وما حُفظ منها باقٍ في القاعدة لم يُمحَ — إن بُنيت الواجهة
-                    يومًا وجدَ ما كُتب مكانَه.
-                */
-                <Card className="overflow-hidden">
-                    <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
-                        <ImageIcon className="size-4 shrink-0 text-[#6b7280]" />
-                        <h3 className="font-bold text-[#111]">{t('الشعار')}</h3>
-                    </div>
-                    <div className="p-5">
-                        <p className="mb-4 text-[13px] text-[#6b7280]">
-                            {t('يظهر في الفواتير والإيصالات — وقوالب الفواتير تُظهره أو تُخفيه.')}
-                        </p>
-
-                        <div className="flex flex-wrap items-center gap-5">
-                            <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa]">
-                                {logoPreview || business.logo ? (
-                                    <img
-                                        src={logoPreview ?? business.logo ?? ''}
-                                        alt=""
-                                        className="size-full object-contain"
-                                    />
-                                ) : (
-                                    <ImageIcon className="size-8 text-[#d1d5db]" />
-                                )}
-                            </span>
-
-                            <div className="min-w-0 flex-1">
-                                <Input
-                                    type="file"
-                                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                                    onChange={(e) => pickLogo(e.target.files?.[0] ?? null)}
-                                    className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
-                                />
-                                <p className="mt-2 text-[12px] text-[#9ca3af]">
-                                    {t('أفضل مقاس: 400×100 بكسل · PNG بخلفيّة شفّافة · حتّى ٢ ميغابايت')}
-                                </p>
-
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        disabled={!logoFile}
-                                        loading={logoBusy && !!logoFile}
-                                        onClick={() => logoFile && sendLogo({ logo: logoFile })}
-                                    >
-                                        <Upload />
-                                        {t('رفع الشعار')}
-                                    </Button>
-                                    {business.logo && (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            loading={logoBusy && !logoFile}
-                                            onClick={() => sendLogo({ remove: true })}
-                                        >
-                                            <Trash2 />
-                                            {t('حذف الشعار')}
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </Card>
             ) : tab === 'custom-alerts' ? (
                 <CustomAlerts
                     alerts={customAlerts ?? []}
@@ -787,6 +738,73 @@ export default function SettingsIndex() {
                                     <Field label="العنوان" className="sm:col-span-2" error={form.errors.address}>
                                         <Textarea rows={2} value={form.data.address} onChange={(e) => form.setData('address', e.target.value)} />
                                     </Field>
+                                </div>
+
+                                {/*
+                                    الشعار هنا لا في «الموقع الإلكتروني».
+
+                                    كان تحت بطاقةٍ اسمها «إعدادات الموقع» ووصفُها
+                                    «ما يراه زائر موقعك» — ولا يراه زائرُ موقعٍ
+                                    أبدًا: هو شعارُ المتجر يُطبع على الفاتورة
+                                    والإيصال. فعاد إلى بيانات النشاط، مع الاسم
+                                    والهاتف والعنوان التي تُطبع معه.
+                                */}
+                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                                    <h3 className="mb-1 font-bold text-[#111]">{t('الشعار')}</h3>
+                                    <p className="mb-4 text-[13px] text-[#6b7280]">
+                                        {t('يظهر في الفواتير والإيصالات — وقوالب الفواتير تُظهره أو تُخفيه.')}
+                                    </p>
+
+                                    <div className="flex flex-wrap items-center gap-5">
+                                        <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa]">
+                                            {logoPreview || business.logo ? (
+                                                <img
+                                                    src={logoPreview ?? business.logo ?? ''}
+                                                    alt=""
+                                                    className="size-full object-contain"
+                                                />
+                                            ) : (
+                                                <ImageIcon className="size-8 text-[#d1d5db]" />
+                                            )}
+                                        </span>
+
+                                        <div className="min-w-0 flex-1">
+                                            <Input
+                                                type="file"
+                                                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                                onChange={(e) => pickLogo(e.target.files?.[0] ?? null)}
+                                                className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
+                                            />
+                                            <p className="mt-2 text-[12px] text-[#9ca3af]">
+                                                {t('أفضل مقاس: 400×100 بكسل · PNG بخلفيّة شفّافة · حتّى ٢ ميغابايت')}
+                                            </p>
+
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    disabled={!logoFile}
+                                                    loading={logoBusy && !!logoFile}
+                                                    onClick={() => logoFile && sendLogo({ logo: logoFile })}
+                                                >
+                                                    <Upload />
+                                                    {t('رفع الشعار')}
+                                                </Button>
+                                                {business.logo && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        loading={logoBusy && !logoFile}
+                                                        onClick={() => sendLogo({ remove: true })}
+                                                    >
+                                                        <Trash2 />
+                                                        {t('حذف الشعار')}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/*

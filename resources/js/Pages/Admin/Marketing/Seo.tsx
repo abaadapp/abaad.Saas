@@ -39,8 +39,8 @@ interface CheckRow {
 }
 
 interface Audit {
-    /** nodomain | unreachable | ok */
-    state: 'nodomain' | 'unreachable' | 'ok';
+    /** off | nodomain | unreachable | ok */
+    state: 'off' | 'nodomain' | 'unreachable' | 'ok';
     error: string | null;
     checked_at: string | null;
     site: {
@@ -121,7 +121,7 @@ export default function MarketingSeo() {
                 title="الظهور في البحث"
                 subtitle={t('اربط موقعك بـGoogle Analytics، واقرأ ما يراه محرّك البحث في صفحتك')}
                 actions={
-                    audit.state !== 'nodomain' && (
+                    audit.state !== 'nodomain' && audit.state !== 'off' && (
                         <Button type="button" variant="outline" loading={checking} onClick={recheck}>
                             <RefreshCw />
                             {t('افحص الآن')}
@@ -134,16 +134,25 @@ export default function MarketingSeo() {
                 بلا نطاقٍ لا فحص: لا يُعرف أيُّ موقعٍ يُفتح. والباب يُفتح من
                 هنا بدل أن يُقال «أضف نطاقك» ويُترك صاحبُه يبحث عن الحقل.
             */}
-            {audit.state === 'nodomain' ? (
+            {audit.state === 'off' || audit.state === 'nodomain' ? (
+                /*
+                    و«مُطفأ» غير «بلا نطاق»: الأولى قرارٌ يُلغى بمفتاح،
+                    والثانية نقصٌ يُكمَل بكتابة نطاق. وجمعُهما في رسالةٍ
+                    واحدة يجعل من أطفأ موقعه يبحث عن نطاقٍ كتبه بالفعل.
+                */
                 <Card className="p-8 text-center">
                     <Globe className="mx-auto size-7 text-[#9ca3af]" />
-                    <p className="mt-3 font-bold text-[#111]">{t('لم تُضف نطاق موقعك بعد')}</p>
+                    <p className="mt-3 font-bold text-[#111]">
+                        {audit.state === 'off' ? t('الموقع الإلكتروني مُطفأ') : t('لم تُضف نطاق موقعك بعد')}
+                    </p>
                     <p className="mx-auto mt-1 max-w-md text-[13px] text-[#6b7280]">
-                        {t('بلا نطاقٍ لا يُعرف أيّ موقعٍ يُفحص — ولا أين يُلصق وسم القياس.')}
+                        {audit.state === 'off'
+                            ? t('فعّله من الإعدادات ليُفحص، ويظهر زرّه في الشريط العلوي.')
+                            : t('بلا نطاقٍ لا يُعرف أيّ موقعٍ يُفحص — ولا أين يُلصق وسم القياس.')}
                     </p>
                     <Button asChild className="mt-5">
-                        <Link href={route('admin.settings.index', { section: 'domain' })}>
-                            {t('أضف نطاق موقعك')}
+                        <Link href={route('admin.settings.index', { section: 'website' })}>
+                            {audit.state === 'off' ? t('فعّل الموقع الإلكتروني') : t('أضف نطاق موقعك')}
                         </Link>
                     </Button>
                 </Card>
@@ -277,7 +286,7 @@ export default function MarketingSeo() {
                                         </a>
                                     </Button>
                                     <Button asChild size="sm" variant="outline">
-                                        <Link href={route('admin.settings.index', { section: 'domain' })}>
+                                        <Link href={route('admin.settings.index', { section: 'website' })}>
                                             {t('تغيير النطاق')}
                                         </Link>
                                     </Button>

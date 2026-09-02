@@ -186,7 +186,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                              * صفحة الإعدادات لا يفعل غير تشغيل هذا الزرّ.
                              */
                             <Button asChild variant="ghost" size="icon" title={t('أضف الموقع الإلكتروني')}>
-                                <Link href={route('admin.settings.index', { section: 'domain' })}>
+                                <Link href={route('admin.settings.index', { section: 'website' })}>
                                     <Globe />
                                     <span className="sr-only">{t('أضف الموقع الإلكتروني')}</span>
                                 </Link>

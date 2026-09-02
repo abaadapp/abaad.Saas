@@ -165,6 +165,22 @@ class PosStartsCleanTest extends TestCase
         $this->assertNotContains('JAAR-1', $numbers);
     }
 
+    /**
+     * وتفصيلُ الطلب يردّ إلى الصندوق — لا إلى «الطلبات المعلّقة».
+     *
+     * كان يردّ إلى شاشة المعلّقة أيًّا كان الطريق: يفتح الكاشير فاتورةً من
+     * «العملاء» أو من «المدفوعات» فيجد نفسه في قائمةِ سلالٍ لم تُبَع بعد،
+     * ولا شيء يقول له كيف وصل. ولا يفتح هذه الصفحةَ أحدٌ من المعلّقة أصلًا،
+     * فالوجهة كانت خطأً لكلّ من يصلها.
+     */
+    public function test_the_order_details_screen_returns_to_the_register(): void
+    {
+        $screen = file_get_contents(resource_path('js/Pages/Pos/OrderDetails.tsx'));
+
+        $this->assertStringContainsString("route('pos.index')", $screen);
+        $this->assertStringNotContainsString("route('pos.orders')", $screen);
+    }
+
     /** والشاشة تفتحها بضغطة — لا تعرض رقمًا لا يُفتح */
     public function test_the_screen_links_the_number_to_the_invoice(): void
     {

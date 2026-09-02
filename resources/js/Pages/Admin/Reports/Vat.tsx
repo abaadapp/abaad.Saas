@@ -1,4 +1,4 @@
-import { usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import ReportScreen from '@/Components/ReportScreen';
 import { type ReportRange } from '@/Components/RangeTabs';
 import { Card } from '@/Components/ui/card';
@@ -46,6 +46,39 @@ interface Props {
 }
 
 /**
+ * رقمُ التسجيل الضريبيّ — يُقرأ هنا ويُدخَل هناك.
+ *
+ * وإقرارٌ بلا رقمِ تسجيلٍ لا يُقدَّم. فالنقص يُقال في موضعه، ويُفتح منه
+ * البابُ الذي يُصلحه — لا يُقال «غير مُدخَل» ويُترك صاحبُه يبحث عن أيّ
+ * شاشةٍ فيها الحقل بين أربعةَ عشرَ قسمًا في الإعدادات.
+ *
+ * والمعامل `section=finance` يفتح قسم المالية بعينه: `tabFromUrl` يقدّمه
+ * على المرساة، فيصل الرجلُ إلى الحقل لا إلى لوحة الأقسام.
+ */
+function TrnValue({ number, canEdit }: { number: string; canEdit: boolean }) {
+    const t = useTranslate();
+    const to = route('admin.settings.index', { section: 'finance' });
+
+    if (number) {
+        return canEdit ? (
+            <Link href={to} dir="ltr" className="font-medium text-[#111] underline decoration-dotted underline-offset-4">
+                {number}
+            </Link>
+        ) : (
+            <span dir="ltr" className="font-medium text-[#111]">{number}</span>
+        );
+    }
+
+    return canEdit ? (
+        <Link href={to} className="font-medium text-[#b45309] underline decoration-dotted underline-offset-4">
+            {t('غير مُدخَل — أدخِله في الإعدادات')}
+        </Link>
+    ) : (
+        <span className="font-medium text-[#b45309]">{t('غير مُدخَل في الإعدادات')}</span>
+    );
+}
+
+/**
  * ضريبة القيمة المضافة — ما حصّلتَه وما دفعتَه، والفرقُ المستحقّ.
  *
  * وكان الحسابُ موجودًا في `Demo::vatReport` ولا شاشةَ تعرضه ولا مسارَ يصل
@@ -57,10 +90,19 @@ interface Props {
  * منها شيئًا.
  */
 export default function ReportsVat() {
-    const { rows, summary, filters, truncated, range, rangeLabel, context } =
+    const { rows, summary, filters, truncated, range, rangeLabel, context, auth } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
+
+    /*
+     * ومن لا يملك «الإعدادات» لا يُعرض له الرابط.
+     *
+     * الرقم يُدخَل في شاشةٍ محروسة بقسمها، فرابطٌ يقود موظّفًا إلى ٤٠٣ يجعله
+     * يظنّ العطب في النظام — وهو لا يملك إصلاحه أصلًا. فيرى النقص ولا يرى
+     * بابًا لا يفتحه.
+     */
+    const canEdit = (auth?.abilities ?? []).includes('settings');
 
     const stats = [
         { label: t('المبيعات الخاضعة'), value: m(summary.taxable), icon: 'wallet', color: 'info' },
@@ -104,12 +146,7 @@ export default function ReportsVat() {
                     <span className="font-medium text-[#111]">{summary.rate}%</span>
                 </span>
                 <span className="text-[#6b7280]">
-                    {t('رقم التسجيل الضريبي')}:{' '}
-                    {summary.number ? (
-                        <span dir="ltr" className="font-medium text-[#111]">{summary.number}</span>
-                    ) : (
-                        <span className="font-medium text-[#b45309]">{t('غير مُدخَل في الإعدادات')}</span>
-                    )}
+                    {t('رقم التسجيل الضريبي')}: <TrnValue number={summary.number} canEdit={canEdit} />
                 </span>
             </Card>
 

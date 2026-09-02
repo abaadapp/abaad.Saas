@@ -14,6 +14,7 @@ import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -55,6 +56,8 @@ const blank = (today: string) => ({
 export default function Banks() {
     const { accounts, summary, today, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const m = (v: number) => money(v, context!.currency);
 
     // null = مغلق · 0 = إضافة · رقم = تعديل حسابٍ بعينه
@@ -209,8 +212,8 @@ export default function Banks() {
                                     variant="ghost"
                                     size="sm"
                                     className="ms-auto text-[#b91c1c]"
-                                    onClick={() => {
-                                        if (!confirm(t('حذف الحساب البنكي وكشفه المستورد؟'))) return;
+                                    onClick={async () => {
+                                        if (! await ask({ message: 'حذف الحساب البنكي وكشفه المستورد؟', danger: true, action: 'حذف' })) return;
                                         router.delete(route('admin.finance.banks.destroy', a.id), { preserveScroll: true });
                                     }}
                                 >
@@ -314,6 +317,8 @@ export default function Banks() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

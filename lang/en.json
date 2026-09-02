@@ -3758,5 +3758,9 @@
     "هذا كشفٌ يعينك على الإقرار، ولا يقوم مقام مراجعة محاسبك.": "This statement helps you file; it does not replace your accountant's review.",
     "ما حصّلتَه من ضريبة وما دفعتَه، والفرقُ المستحقّ — شهرًا بشهر": "The tax you collected and the tax you paid, and the difference due — month by month",
     "ما حصّلتَه من ضريبة وما دفعتَه، والفرقُ المستحقّ — شهرًا بشهر.": "The tax you collected and the tax you paid, and the difference due — month by month.",
-    "رسوم التوصيل (غير خاضعة)": "Delivery fees (not taxable)"
+    "رسوم التوصيل (غير خاضعة)": "Delivery fees (not taxable)",
+    "غير مُدخَل — أدخِله في الإعدادات": "Not entered — add it in settings",
+    "ترحيل إهلاك الشهر إلى الدفتر؟ يُكتب قيدٌ لا يُحذف.": "Post this month's depreciation to the ledger? It writes an entry that cannot be deleted.",
+    "متابعة": "Continue",
+    "ترحيل": "Post"
 }

@@ -229,6 +229,53 @@ class VatReportTest extends TestCase
                 ->has('rows', 1));
     }
 
+    /* ================= رقم التسجيل: يُقرأ هنا ويُدخَل هناك ================= */
+
+    public function test_the_registration_number_saved_in_settings_reaches_the_report(): void
+    {
+        /*
+         * الطريقُ كاملًا: يُحفظ من شاشة الإعدادات، ويُقرأ في الإقرار.
+         *
+         * ولو افترق المفتاحُ بين الكاتب والقارئ لَحُفظ الرقم وبقيت الشاشة
+         * تقول «غير مُدخَل» — ويظنّ صاحبُه أنّ الحفظ لا يعمل فيعيده.
+         */
+        $this->actingAs(User::find($this->owner->id))
+            ->post(route('admin.settings.update'), [
+                'vat_enabled' => true,
+                'vat_rate' => '5',
+                'vat_number' => 'OM1100123456',
+            ])->assertSessionHasNoErrors();
+
+        $summary = $this->vat()['summary'];
+
+        $this->assertSame('OM1100123456', $summary['number']);
+        $this->assertSame(5.0, $summary['rate']);
+    }
+
+    public function test_a_shop_that_does_not_charge_vat_shows_no_registration_number(): void
+    {
+        /*
+         * ورقةٌ تحمل رقمًا ضريبيًّا لمتجرٍ لا يجبي الضريبة تدّعي تسجيلًا لا
+         * يخصّه — والرقم يبقى محفوظًا، وإنّما لا يُعرض.
+         */
+        $this->actingAs(User::find($this->owner->id))
+            ->post(route('admin.settings.update'), [
+                'vat_enabled' => false,
+                'vat_number' => 'OM1100123456',
+            ])->assertSessionHasNoErrors();
+
+        $this->assertSame('', $this->vat()['summary']['number']);
+        $this->assertSame(0.0, $this->vat()['summary']['rate']);
+    }
+
+    public function test_the_settings_page_opens_on_the_finance_section(): void
+    {
+        // الرابط الذي تحمله الشاشة يجب أن يصل إلى الحقل لا إلى لوحة الأقسام
+        $this->actingAs(User::find($this->owner->id))
+            ->get(route('admin.settings.index', ['section' => 'finance']))
+            ->assertOk();
+    }
+
     public function test_it_has_a_card_in_the_index(): void
     {
         // بابٌ بلا بطاقةٍ تدلّ عليه بابٌ لا يجده أحد

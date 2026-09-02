@@ -22,6 +22,7 @@ import {
     TableRow,
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -87,6 +88,8 @@ export default function FinanceStatement() {
     const { account, accounts, statement, lines, reconciliation, today, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -289,8 +292,8 @@ export default function FinanceStatement() {
                                             type="button"
                                             variant="ghost"
                                             className="text-[#b91c1c]"
-                                            onClick={() => {
-                                                if (!confirm(t('حذف الكشف المستورد؟'))) return;
+                                            onClick={async () => {
+                                                if (! await ask({ message: 'حذف الكشف المستورد؟', danger: true, action: 'حذف' })) return;
                                                 router.delete(route('admin.bank.clear'), { data: bank, preserveScroll: true });
                                             }}
                                         >
@@ -453,6 +456,8 @@ export default function FinanceStatement() {
                     </form>
                 </Card>
             )}
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

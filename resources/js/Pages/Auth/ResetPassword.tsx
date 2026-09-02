@@ -1,11 +1,11 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent } from 'react';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { Eye, EyeOff, Languages, Lock, TriangleAlert } from 'lucide-react';
+import { Languages, Lock, TriangleAlert } from 'lucide-react';
 import Logo from '@/Components/Logo';
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
-import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
@@ -19,7 +19,6 @@ interface Props {
 export default function ResetPassword() {
     const { token, email, year, locale, errors } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const [reveal, setReveal] = useState(false);
 
     const switchLocale = () => {
         const next = locale === 'en' ? 'ar' : 'en';
@@ -68,46 +67,36 @@ export default function ResetPassword() {
                             ومنعُ الإرسال إزعاجٌ لا حماية — انظر lib/enter-key */}
                         <form onSubmit={submit} data-enter-submits className="mt-5 space-y-4">
                             <Field label="كلمة المرور الجديدة" required htmlFor="password" hint="٨ أحرف على الأقل">
-                                <span className="relative block" dir="ltr">
-                                    <Lock className="pointer-events-none absolute start-3 top-3 size-4 text-[#9ca3af]" />
-                                    <Input
-                                        id="password"
-                                        name="password"
-                                        type={reveal ? 'text' : 'password'}
-                                        autoComplete="new-password"
-                                        autoFocus
-                                        required
-                                        placeholder="••••••••"
-                                        className="px-10 text-start"
-                                        value={form.data.password}
-                                        onChange={(e) => form.setData('password', e.target.value)}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setReveal((v) => !v)}
-                                        aria-label={reveal ? t('إخفاء كلمة المرور') : t('إظهار كلمة المرور')}
-                                        className="absolute end-2 top-1.5 flex size-7 items-center justify-center rounded-[8px] text-[#9ca3af] transition-colors hover:bg-[#f2f2f0] hover:text-[#4b4b4b]"
-                                    >
-                                        {reveal ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                                    </button>
-                                </span>
+                                <PasswordInput
+                                    id="password"
+                                    name="password"
+                                    autoComplete="new-password"
+                                    autoFocus
+                                    required
+                                    placeholder="••••••••"
+                                    className="px-10 text-start"
+                                    leading={
+                                        <Lock className="pointer-events-none absolute start-3 top-3 z-10 size-4 text-[#9ca3af]" />
+                                    }
+                                    value={form.data.password}
+                                    onChange={(e) => form.setData('password', e.target.value)}
+                                />
                             </Field>
 
                             <Field label="تأكيد كلمة المرور" required htmlFor="password_confirmation">
-                                <span className="relative block" dir="ltr">
-                                    <Lock className="pointer-events-none absolute start-3 top-3 size-4 text-[#9ca3af]" />
-                                    <Input
-                                        id="password_confirmation"
-                                        name="password_confirmation"
-                                        type={reveal ? 'text' : 'password'}
-                                        autoComplete="new-password"
-                                        required
-                                        placeholder="••••••••"
-                                        className="ps-10 text-start"
-                                        value={form.data.password_confirmation}
-                                        onChange={(e) => form.setData('password_confirmation', e.target.value)}
-                                    />
-                                </span>
+                                <PasswordInput
+                                    id="password_confirmation"
+                                    name="password_confirmation"
+                                    autoComplete="new-password"
+                                    required
+                                    placeholder="••••••••"
+                                    className="ps-10 text-start"
+                                    leading={
+                                        <Lock className="pointer-events-none absolute start-3 top-3 z-10 size-4 text-[#9ca3af]" />
+                                    }
+                                    value={form.data.password_confirmation}
+                                    onChange={(e) => form.setData('password_confirmation', e.target.value)}
+                                />
                             </Field>
 
                             <Button type="submit" size="lg" className="w-full" loading={form.processing}>

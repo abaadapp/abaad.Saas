@@ -203,7 +203,14 @@ class LoginIdentityIsOneShapeTest extends TestCase
         $bare = [];
 
         foreach ($this->tsx(resource_path('js')) as $file) {
-            if (str_contains(file_get_contents($file), 'type="password"')) {
+            if (basename($file) === 'password-input.tsx') {
+                continue;
+            }
+
+            $code = file_get_contents($file);
+
+            // الحقل المرسوم بيده — بعينٍ من عنده أو بلا عينٍ أصلًا
+            if (str_contains($code, 'type="password"') || preg_match("/type=\{[^}]*'password'/", $code)) {
                 $bare[] = basename($file);
             }
         }

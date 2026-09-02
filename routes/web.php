@@ -592,6 +592,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/marketing/whatsapp/mode', [App\Http\Controllers\Admin\WhatsAppController::class, 'mode'])->name('marketing.whatsapp.mode');
     Route::post('/marketing/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'connect'])->name('marketing.whatsapp.connect');
     Route::delete('/marketing/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'disconnect'])->name('marketing.whatsapp.disconnect');
+    /*
+     * ربط خرائط Google — صفحةٌ في النظام لا رابطٌ يخرج منه.
+     *
+     * كان زرًّا يفتح `business.google.com` في تبويبٍ خارجيّ: اسمُه «ربط» ولا
+     * يربط شيئًا — يُخرج التاجر من لوحته ولا يعود بمعرّفٍ ولا يُحفظ شيء.
+     */
+    Route::get('/marketing/google', [MarketingController::class, 'google'])->name('marketing.google');
+    Route::post('/marketing/google', [MarketingController::class, 'saveGoogle'])->name('marketing.google.save');
     Route::get('/marketing/reviews', [ReviewController::class, 'index'])->name('marketing.reviews');
     Route::post('/marketing/reviews', [ReviewController::class, 'store'])->name('marketing.reviews.store');
     Route::post('/marketing/reviews/{id}/status', [ReviewController::class, 'status'])->name('marketing.reviews.status');

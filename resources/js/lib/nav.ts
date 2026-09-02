@@ -16,6 +16,7 @@ import {
     History,
     Layers,
     LayoutDashboard,
+    MapPin,
     Megaphone,
     MessageCircle,
     MessageSquare,
@@ -169,6 +170,7 @@ export const NAV: NavGroup[] = [
                 children: [
                     { label: 'برنامج ولاء', icon: Star, route: 'admin.marketing.loyalty', section: 'marketing', feature: 'loyalty' },
                     { label: 'تقييمات العملاء', icon: MessageSquare, route: 'admin.marketing.reviews', section: 'marketing' },
+                    { label: 'ربط خرائط Google', icon: MapPin, route: 'admin.marketing.google', section: 'marketing' },
                     { label: 'الكوبونات والعروض', icon: TicketPercent, route: 'admin.marketing.coupons', section: 'marketing' },
                     { label: 'إشعارات واتساب', icon: MessageCircle, route: 'admin.marketing.whatsapp', section: 'marketing', feature: 'whatsapp' },
                 ],

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { router, useForm, usePage } from '@inertiajs/react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { Check, MapPin, MessageSquare, Plus, Star, Trash2, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -187,16 +187,16 @@ export default function Reviews() {
                 subtitle={t('لا يُنشر منها إلا ما أُذن بنشره')}
                 actions={
                     <div className="flex flex-wrap items-center gap-2">
+                        {/*
+                            يدخل الصفحة ولا يخرج من النظام: كان يفتح
+                            `business.google.com` في تبويبٍ خارجيّ — اسمُه
+                            «ربط» ولا يربط شيئًا، ولا يعود منه التاجر بمعرّفٍ.
+                        */}
                         <Button asChild variant="outline">
-                            <a
-                                href="https://business.google.com/"
-                                target="_blank"
-                                rel="noreferrer"
-                                title={t('اربط ملف نشاطك التجاري في Google للوصول إلى التقييمات')}
-                            >
+                            <Link href={route('admin.marketing.google')}>
                                 <MapPin />
-                                {t('ربط تقييمات Google Maps')}
-                            </a>
+                                {t('ربط خرائط Google')}
+                            </Link>
                         </Button>
                         <Button onClick={() => setAdding(true)}>
                             <Plus />

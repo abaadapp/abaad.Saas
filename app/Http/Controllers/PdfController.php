@@ -9,6 +9,7 @@ use App\Models\PosPeripheral;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\EInvoice;
+use App\Support\GoogleReviews;
 use App\Support\OrderStatus;
 use App\Support\PosTerminal;
 use App\Support\ReceiptTemplate;
@@ -66,6 +67,13 @@ class PdfController extends Controller
             'customerTax' => $order->customer_id
                 ? optional(Customer::find($order->customer_id))->tax_number
                 : null,
+            /*
+             * رمزُ تقييم Google — أو null فلا يُطبع شيء.
+             *
+             * والشرطان في `onReceipt` معًا: مقبضٌ مُشغَّل ومعرّفٌ مقروء.
+             * فمقبضٌ يعمل بلا معرّف يطبع مربّعًا أسود يمسحه الزبون فلا يجد.
+             */
+            'googleReview' => GoogleReviews::onReceipt($bid),
         ])->render();
 
         // «A4» فاتورة كاملة و«58mm» شريط أضيق — ورقٌ لا يطابق الطابعة يخرج مقصوصًا

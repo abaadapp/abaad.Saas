@@ -7,8 +7,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\PointTransaction;
+use App\Models\Review;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\GoogleReviews;
 use App\Support\Loyalty;
 use App\Support\MarketingSettings;
 use Illuminate\Http\Request;
@@ -140,6 +142,61 @@ class MarketingController extends Controller
     }
 
     /* ------------------------- الكوبونات والعروض ------------------------- */
+
+    /**
+     * صفحة ربط خرائط Google.
+     *
+     * وصارت صفحةً في النظام بعد أن كانت زرًّا يفتح `business.google.com` في
+     * تبويبٍ خارجيّ: زرٌّ اسمُه «ربط» ولا يربط شيئًا — يُخرج التاجر من
+     * لوحته ويتركه هناك، ولا يعود بمعرّفٍ ولا يُحفظ شيء.
+     */
+    public function google(): Response
+    {
+        $bid = $this->bid();
+
+        return Inertia::render('Admin/Marketing/Google', [
+            'settings' => MarketingSettings::group($bid, 'google'),
+            'link' => GoogleReviews::forBusiness($bid),
+            /* عددُ ما في النظام من تقييمات — ليُقرأ الفرق بين الاثنين */
+            'internal' => Review::where('business_id', $bid)->count(),
+        ]);
+    }
+
+    public function saveGoogle(Request $request)
+    {
+        $data = $request->validate([
+            'google_maps_url' => ['nullable', 'string', 'max:500'],
+            'google_review_on_receipt' => ['nullable', 'boolean'],
+        ]);
+
+        $input = trim((string) ($data['google_maps_url'] ?? ''));
+
+        /*
+         * الرابط يُقرأ قبل أن يُحفظ، ولا يُقبل ما لا يُقرأ.
+         *
+         * ومعرّفٌ خاطئ لا يُخطئ أحدًا في الشاشة: الحفظ ينجح، والرمز يُطبع،
+         * ويمسحه الزبون فيفتح ملفَّ محلٍّ آخر — أو لا يفتح شيئًا. عطبٌ لا
+         * يراه صاحبه أبدًا لأنّه لا يمسح إيصاله بنفسه.
+         */
+        if ($input !== '' && ! GoogleReviews::readable($input)) {
+            return back()->withInput()->withErrors([
+                'google_maps_url' => __('لم أستطع قراءة معرّف المكان من هذا الرابط. الصق «Place ID» نفسه، أو رابطًا يحمل place_id.'),
+            ]);
+        }
+
+        MarketingSettings::save($bid = $this->bid(), 'google', [
+            'google_maps_url' => $input,
+            'google_place_id' => GoogleReviews::placeId($input) ?? '',
+            'google_review_on_receipt' => $request->boolean('google_review_on_receipt'),
+        ]);
+
+        Activity::log('updated', $input === '' ? 'فكّ ربط خرائط Google' : 'ربط خرائط Google');
+
+        return back()->with('toast', [
+            'msg' => $input === '' ? __('أُلغي الربط') : __('حُفظ الربط'),
+            'type' => 'success',
+        ]);
+    }
 
     public function coupons(): Response
     {

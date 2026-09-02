@@ -120,6 +120,19 @@
     <div class="dash"></div>
 @endif
 
+{{--
+    رمزُ تقييم Google — فوق التذييل لا تحته: التذييلُ آخرُ ما يُقرأ، ورمزٌ
+    بعده يقع في طرف الورقة المقصوص. وهو يُطبع فقط إن رُبط المحلّ وشُغِّل
+    المقبض معًا (انظر Support\GoogleReviews::onReceipt).
+--}}
+@if (! empty($googleReview))
+    <div class="center" style="margin: 6px 0;">
+        <barcode code="{{ $googleReview }}" type="QR" class="barcode" size="0.9" error="M" />
+        <div class="muted" style="font-size:8px; margin-top:2px;">{{ __('امسح الرمز لتقييمنا على Google') }}</div>
+    </div>
+    <div class="dash"></div>
+@endif
+
 {{-- التذييل نصّ التاجر: أسطره تُحترم كما كتبها، ويُنقّى ممّا لا يطبعه الخطّ --}}
 <div class="center muted">
     @foreach (preg_split('/\r\n|\r|\n/', $line('tpl_footer', __('شكرًا لزيارتكم') . "\n" . __('نتشرف بخدمتكم دائمًا'))) as $l)

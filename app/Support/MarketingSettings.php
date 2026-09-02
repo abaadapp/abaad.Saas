@@ -56,6 +56,22 @@ class MarketingSettings
             'wa_on_out_for_delivery' => '1',
             'wa_on_delivered' => '0',
         ],
+        /*
+         * ربطُ خرائط Google — ثلاثةُ مفاتيح، وكلٌّ منها يقرؤه شيء.
+         *
+         * `google_place_id` مصدرُ الروابط كلّها، و`google_maps_url` ما لصقه
+         * التاجر يُحفظ كما هو ليراه في حقله فيعرف بمَ ربط، و`…_on_receipt`
+         * يقرؤه الإيصال فيطبع رمزًا يمسحه الزبون.
+         *
+         * ولا مفتاحَ رابعًا: لا «مفتاح API» ولا «اسحب التقييمات» — سحبُ
+         * نصوص التقييمات يحتاج موافقة Google على النشاط لا مفتاحًا في حقل،
+         * وحقلٌ يُملأ ولا يُقرأ أسوأ من غيابه.
+         */
+        'google' => [
+            'google_place_id' => '',
+            'google_maps_url' => '',
+            'google_review_on_receipt' => '0',
+        ],
         'loyalty' => [
             'loyalty_enabled' => '1',
             'loyalty_earn_rate' => '5',

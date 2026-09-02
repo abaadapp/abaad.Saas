@@ -8,6 +8,8 @@ use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\Product;
+use App\Models\PurchaseOrderItem;
+use App\Models\Supplier;
 use App\Models\User;
 use App\Support\Numerals;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -203,5 +205,108 @@ class ArabicNumeralsTest extends TestCase
         }
 
         $this->assertSame([], array_unique($guilty), 'حقل كتابةٍ مرسومٌ يدويًّا بلا حارس أرقام');
+    }
+
+    /* ------------------------- الفاصلة العشريّة ------------------------- */
+
+    /**
+     * الفاصلة العربية «،» فاصلٌ عشريّ في حقل مال — لا حرفٌ يُمحى.
+     *
+     * ولوحةُ المفاتيح العربية تُخرجها حيث تُخرج الإنجليزيةُ «,»، فهي ما يضغطه
+     * التاجر وهو يعني الفاصل. وكانت تُمحى مع فواصل الآلاف: «4،5» تصير «45» —
+     * **عشرةُ أضعاف الثمن**، بلا خطأٍ ولا رسالة، ولا يظهر إلّا في فاتورة.
+     */
+    public function test_the_arabic_comma_is_read_as_a_decimal_point_not_erased(): void
+    {
+        $this->assertSame('4.5', NormalizeNumbers::normalize('4،5'));
+        $this->assertSame('4.5', NormalizeNumbers::normalize(Numerals::toAscii('٤،٥')));
+        $this->assertSame('12.750', NormalizeNumbers::normalize('12،750'));
+    }
+
+    /**
+     * وأكثرُ من واحدةٍ فواصلُ آلاف — بالقاعدة نفسها التي تحكم أختها اللاتينية.
+     *
+     * وقاعدتان لفاصلتين تفترقان يومًا: تُقرأ «1،234،567» مليونًا في موضعٍ
+     * وواحدًا وربعًا في آخر.
+     */
+    public function test_more_than_one_arabic_comma_is_read_as_thousands(): void
+    {
+        $this->assertSame('1234567', NormalizeNumbers::normalize('1،234،567'));
+        $this->assertSame(
+            NormalizeNumbers::normalize('1,234,567'),
+            NormalizeNumbers::normalize('1،234،567'),
+            'الفاصلتان تُقرآن بقاعدتين مختلفتين',
+        );
+    }
+
+    public function test_a_cost_typed_with_an_arabic_comma_reaches_the_purchase_order(): void
+    {
+        $supplier = Supplier::create(['business_id' => $this->business->id, 'name' => 'مشتل الوادي']);
+
+        $branch = Branch::where('business_id', $this->business->id)->firstOrFail();
+
+        $this->actingAs($this->owner)
+            ->withSession(['current_branch' => $branch->id])
+            ->post(route('admin.purchases.store'), [
+                'supplier_id' => $supplier->id,
+                'branch_id' => $branch->id,
+                'items' => [['name' => 'ورد جوري', 'cost' => '٤،٥', 'quantity' => '٢']],
+            ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('purchase_order_items', ['name' => 'ورد جوري', 'quantity' => 2]);
+
+        $item = PurchaseOrderItem::where('name', 'ورد جوري')->firstOrFail();
+
+        $this->assertSame('4.500', (string) $item->cost, 'كلفةُ الوحدة وصلت عشرةَ أضعافها');
+    }
+
+    /**
+     * ولا حقلَ عشريٍّ يبقى `type="number"`.
+     *
+     * حقلُ الأرقام يرفض ما لا يكتمل: «4.» قيمةٌ غير صالحة عنده فيُفرغ نفسه،
+     * فلا سبيل إلى وضع نقطةٍ مكان الفاصلة العربية. والحقول العشريّة تُرسم
+     * نصًّا بلوحةٍ عشريّة — يعرفها `Input` من `step` الكسريّ، وما رُسم يدويًّا
+     * يقولها بنفسه.
+     */
+    public function test_no_fractional_field_is_still_a_number_input(): void
+    {
+        $guilty = [];
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(resource_path('js')));
+
+        foreach ($files as $file) {
+            if ($file->isDir() || ! in_array($file->getExtension(), ['tsx', 'ts'], true)) {
+                continue;
+            }
+
+            // بيتُ القاعدة نفسها
+            if (str_ends_with($file->getPathname(), 'ui/input.tsx')) {
+                continue;
+            }
+
+            preg_match_all('/<[Ii]nput\b.*?\/>/s', file_get_contents($file->getPathname()), $matches);
+
+            foreach ($matches[0] as $element) {
+                /*
+                 * والكسرُ يُلتمس في نصّ الخاصيّة كلِّه لا في قيمةٍ حرفيّة.
+                 *
+                 * `step={field === 'price' ? '0.001' : '1'}` كسريٌّ كأخيه
+                 * المكتوب `step="0.001"` — وقاعدةٌ تقرأ الحرفيّ وحده تمرّ عليه.
+                 * وهو ما وقع فعلًا: الحقلُ المعطوب نفسُه أفلت من أوّل صياغة
+                 * لهذا الحارس.
+                 */
+                $fractional = preg_match('/step=\{?[^}\n]*(?:0\.\d+|\bany\b)/', $element);
+                $isNumber = preg_match('/type=(["\'])number\1/', $element);
+
+                /*
+                 * و`<Input>` معفاة: هي التي تُبدّل النوع بنفسها حين يكون
+                 * `step` كسريًّا. والمرصود ما رُسم بـ`<input>` صغيرة.
+                 */
+                if ($fractional && $isNumber && str_starts_with($element, '<input')) {
+                    $guilty[] = basename($file->getPathname());
+                }
+            }
+        }
+
+        $this->assertSame([], array_unique($guilty), 'حقلٌ عشريٌّ ما زال type="number" — يرفض الفاصلة');
     }
 }

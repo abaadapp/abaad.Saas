@@ -42,6 +42,54 @@ const MAP: Record<string, string> = {
 
 const ARABIC = /[٠-٩۰-۹٫٬]/;
 
+/**
+ * الفاصلة العربية «،» — نقطةٌ عشريّة في حقل رقم، وعلامةُ ترقيمٍ في غيره.
+ *
+ * ولوحةُ المفاتيح العربية تُخرجها حيث تُخرج الإنجليزيةُ «,»، فهي ما يضغطه
+ * التاجر وهو يعني الفاصل العشريّ. وكان الحقل يرفضها بلا صوت: يكتب «4،5»
+ * فلا يظهر إلّا «4»، ولا شيء يقول له لماذا.
+ *
+ * ولا تُبدَّل في كلّ حقل: «اشتريت وردًا، ثمّ عدت» جملةٌ لا رقم.
+ */
+const ARABIC_COMMA = '،';
+
+/** حروفٌ يقبلها حقلٌ عشريّ — وما عداها كان حقلُ الأرقام يمنعه قبل أن يُرسم نصًّا */
+const DECIMAL_CHAR = /[0-9.\-]/;
+
+/** هل هذا الحقل عشريّ؟ — انظر `Input`: يُرسم نصًّا بلوحةٍ عشريّة */
+function isDecimalField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
+    return el.getAttribute('inputmode') === 'decimal';
+}
+
+/**
+ * ما يُكتب فعلًا في حقلٍ عشريّ من ضغطةٍ واحدة.
+ *
+ * تُبدَّل الأرقام والفاصلتان العربيّتان إلى نقطة، ويُسقَط ما ليس رقمًا ولا
+ * نقطةً ولا إشارةً — فيبقى الحقل نظيفًا كما كان يوم كان `type="number"`.
+ * ونقطةٌ ثانية تُسقَط: «4.5.6» ليست رقمًا.
+ */
+function decimalInsert(el: HTMLInputElement | HTMLTextAreaElement, data: string): string {
+    const hasDot = el.value.includes('.');
+
+    let out = '';
+
+    for (const raw of toAsciiDigits(data).replace(new RegExp(ARABIC_COMMA, 'g'), '.')) {
+        const ch = raw === ',' ? '.' : raw;
+
+        if (!DECIMAL_CHAR.test(ch)) {
+            continue;
+        }
+
+        if (ch === '.' && (hasDot || out.includes('.'))) {
+            continue;
+        }
+
+        out += ch;
+    }
+
+    return out;
+}
+
 /** الأرقام إنجليزيّة، وما عداها كما هو */
 export function toAsciiDigits(value: string): string {
     return ARABIC.test(value)
@@ -69,7 +117,31 @@ export function guardAsciiDigits(
     const onBeforeInput = (event: Event) => {
         const data = (event as InputEvent).data;
 
-        if (!data || !hasArabicDigits(data)) {
+        if (!data) {
+            return;
+        }
+
+        /*
+         * والحقلُ العشريّ يُنقّى حرفًا حرفًا: هو نصٌّ في الرسم، فلو تُرك على
+         * حاله لَقبِل «أبجد» في خانة سعر — وهو ما كان `type="number"` يمنعه.
+         */
+        if (isDecimalField(el)) {
+            const clean = decimalInsert(el, data);
+
+            if (clean === data) {
+                return;
+            }
+
+            event.preventDefault();
+
+            if (clean !== '') {
+                insert(el, clean);
+            }
+
+            return;
+        }
+
+        if (!hasArabicDigits(data)) {
             return;
         }
 

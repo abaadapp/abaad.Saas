@@ -72,10 +72,16 @@ export default function QuickCell({ id, field, value, display, className }: Prop
         );
     }
 
+    /*
+     * حقلُ السعر نصٌّ بلوحةٍ عشريّة كما في `Input`: حقلُ الأرقام يرفض «4.»
+     * فيُفرغ نفسه، فلا سبيل إلى وضع نقطةٍ مكان الفاصلة العربية. والكميّةُ
+     * تبقى حقلَ أرقام — لا كسورَ فيها.
+     */
     return (
         <input
             ref={attach}
-            type="number"
+            type={field === 'price' ? 'text' : 'number'}
+            inputMode={field === 'price' ? 'decimal' : undefined}
             dir="ltr"
             step={field === 'price' ? '0.001' : '1'}
             min="0"

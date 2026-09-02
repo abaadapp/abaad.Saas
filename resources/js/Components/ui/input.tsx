@@ -5,9 +5,41 @@ import { cn } from '@/lib/utils';
 /** أنواع التاريخ/الوقت — تُعالَج بشكل موحّد (اتجاه وقياس) في مكان واحد */
 const DATETIME_TYPES = ['date', 'datetime-local', 'time', 'month', 'week'];
 
+/**
+ * هل يقبل هذا الحقل كسورًا؟ — يُقرأ من `step` لا من قائمةٍ تُكتب باليد.
+ *
+ * حقولُ المال في النظام كلِّها تحمل `step="0.001"` أو ما يشبهها، والكميّاتُ
+ * تحمل `1` أو لا تحمل شيئًا. وقائمةٌ بأسماء الحقول العشريّة تنسى التاليَ
+ * دائمًا — ويُضاف حقلُ سعرٍ فلا يقبل فاصلته، ولا يُكتشف إلّا في أمر شراء.
+ */
+function fractional(step: React.InputHTMLAttributes<HTMLInputElement>['step']): boolean {
+    if (step === 'any') {
+        return true;
+    }
+
+    const n = Number(step);
+
+    return Number.isFinite(n) && n > 0 && n < 1;
+}
+
 const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
     ({ className, type, dir, ...props }, ref) => {
         const attach = useAsciiDigits<HTMLInputElement>(ref);
+
+        /*
+         * الحقلُ العشريّ يُرسم نصًّا بلوحةِ أرقامٍ عشريّة — لا `type="number"`.
+         *
+         * لأنّ حقل الأرقام يرفض ما لا يكتمل: يكتب التاجر «4.» فيقرؤه المتصفّح
+         * قيمةً غير صالحة ويُفرغه، فلا سبيل إلى كتابة فاصلٍ عشريّ نضعه نحن
+         * مكان الفاصلة العربية «،» — وهي ما تُخرجه لوحتُه حين يعني الفاصل.
+         *
+         * و`inputMode="decimal"` تُبقي لوحةَ الأرقام على الهاتف كما كانت،
+         * والتنقيةُ تقع في `guardAsciiDigits`: أرقامٌ ونقطةٌ وإشارة لا غير —
+         * وهو ما كان حقلُ الأرقام يحرسه.
+         *
+         * والمفقودُ سهما الزيادة والنقصان، ولا يُستعملان في حقل مال.
+         */
+        const decimal = type === 'number' && fractional(props.step);
         /*
          * حقول التاريخ/الوقت تُعرض LTR دائمًا: خاناتها (سنة/شهر/يوم) وأيقونة
          * التقويم تُقرأ يسارًا-يمينًا حتى في واجهة عربية. بلا ذلك تنقلب ترتيب
@@ -19,7 +51,8 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
 
         return (
             <input
-                type={type}
+                type={decimal ? 'text' : type}
+                inputMode={props.inputMode ?? (decimal ? 'decimal' : undefined)}
                 ref={attach}
                 dir={dir ?? (isDateTime ? 'ltr' : undefined)}
                 className={cn(

@@ -69,6 +69,7 @@ export default function ReportsCustomers() {
                     subtitle={t('من يشتري أكثر، وكم طلبًا وكم أنفق')}
                     actions={
                         <ExportMenu
+                            feature="reports_advanced"
                             xlsx={route('admin.reports.export.xlsx', 'customers')}
                             pdf={route('admin.reports.export.pdf', 'customers')}
                             csv={route('admin.reports.export.csv', 'customers')}

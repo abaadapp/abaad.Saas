@@ -3747,5 +3747,16 @@
     "حُدِّثت التقييمات": "Reviews refreshed",
     "لم تُسحب التقييمات": "Reviews were not pulled",
     "أرقام متجرك في الفترة المختارة، وتحتها كلّ تقريرٍ بتفصيله.": "Your shop's numbers for the selected period, with every report in detail below.",
-    "ملخّص المبيعات كاملًا": "Full sales summary"
+    "ملخّص المبيعات كاملًا": "Full sales summary",
+    "رصيد مستردّ": "Refundable credit",
+    "الصافي المستحقّ": "Net payable",
+    "رقم التسجيل الضريبي": "Tax registration number",
+    "غير مُدخَل في الإعدادات": "Not entered in settings",
+    "لا حركة خاضعة في هذه الفترة": "No taxable activity in this period",
+    "رسوم التوصيل في هذه الفترة :n — والنظام لا يفرض عليها ضريبة، فهي خارج الوعاء أعلاه.": "Delivery fees this period: :n — the system charges no tax on them, so they sit outside the base above.",
+    "ضريبة المدخلات تُقرأ من سندات المورّدين المسجَّلة — ومشترياتٌ بلا سندٍ لا تُخصم وإن دُفعت.": "Input tax is read from recorded supplier invoices — purchases with no invoice are not deducted, even if paid.",
+    "هذا كشفٌ يعينك على الإقرار، ولا يقوم مقام مراجعة محاسبك.": "This statement helps you file; it does not replace your accountant's review.",
+    "ما حصّلتَه من ضريبة وما دفعتَه، والفرقُ المستحقّ — شهرًا بشهر": "The tax you collected and the tax you paid, and the difference due — month by month",
+    "ما حصّلتَه من ضريبة وما دفعتَه، والفرقُ المستحقّ — شهرًا بشهر.": "The tax you collected and the tax you paid, and the difference due — month by month.",
+    "رسوم التوصيل (غير خاضعة)": "Delivery fees (not taxable)"
 }

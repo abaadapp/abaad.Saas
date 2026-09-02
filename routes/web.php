@@ -765,6 +765,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * من شاشته، ومن يملك التقارير يقرأ أثره.
      */
     Route::get('/reports/waste', [WasteAnalyticsController::class, 'index'])->name('reports.waste');
+    Route::get('/reports/vat', [ReportPageController::class, 'vat'])->name('reports.vat');
 
     Route::get('/activity', [ActivityController::class, 'adminIndex'])->name('activity.index');
     Route::get('/settings', [PageController::class, 'settingsIndex'])->name('settings.index');

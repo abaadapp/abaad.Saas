@@ -110,6 +110,7 @@ export default function WasteAnalytics() {
                 actions={
                     /* الملفّ يحمل المرشّحات المعروضة — `withFilters` تُلحق سلسلة الاستعلام */
                     <ExportMenu
+                            feature="reports_advanced"
                         xlsx={route('admin.reports.export.xlsx', 'waste')}
                         pdf={route('admin.reports.export.pdf', 'waste')}
                         csv={route('admin.reports.export.csv', 'waste')}

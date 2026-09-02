@@ -13,6 +13,7 @@ use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\StockAdjustment;
 use App\Models\Supplier;
+use App\Models\SupplierInvoice;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -74,6 +75,117 @@ class ReportData
     {
         return Category::where('business_id', $bid)->orderBy('name')
             ->get(['id', 'name'])->map(fn ($c) => ['value' => (string) $c->id, 'label' => $c->name])->all();
+    }
+
+    /* ==================== ضريبة القيمة المضافة ==================== */
+
+    /**
+     * إقرارُ ضريبة القيمة المضافة — ما حصّلتَه وما دفعتَه، والفرقُ المستحقّ.
+     *
+     * والوعاء يُقرأ من حيث حُسبت الضريبة نفسها: `subtotal - discount`، وهو
+     * ما مرّ على `PosController::taxFor` بالضبط. ولو قيس بـ`total - tax`
+     * لَدخلت رسومُ التوصيل في الوعاء وهي لم تُضرَّب أصلًا، فيخرج رقمٌ لا
+     * تُصدّقه الضريبةُ المحصّلة بجواره.
+     *
+     * ورسومُ التوصيل تُعرض في عمودها لهذا السبب: النظام لا يفرض عليها ضريبة،
+     * فمن كانت جهتُه الضريبية ترى غير ذلك يجب أن يراها مفصولةً لا مذابةً في
+     * رقمٍ يظنّه صحيحًا.
+     *
+     * وضريبةُ المدخلات من **سندات المورّدين** لا من تقديرٍ بالنسبة: كانت
+     * تُقدَّر بضرب إجمالي أوامر الشراء في النسبة (انظر `Demo::vatReport`)،
+     * وذاك رقمٌ مخترَع — أمرُ شراءٍ ليس فاتورةً ضريبية، ولا كلُّ مورّدٍ
+     * مسجَّل. والسند يحمل ضريبتَه مكتوبةً كما أصدرها المورّد.
+     */
+    public static function vat(int $bid, array $filters): array
+    {
+        $range = Demo::range($filters['range'] ?? 'month');
+        $start = self::start($range);
+
+        $orders = Order::where('business_id', $bid)->sold();
+        $invoices = SupplierInvoice::where('business_id', $bid);
+
+        if ($start !== null) {
+            $orders->where('ordered_at', '>=', $start);
+            $invoices->where('issued_at', '>=', $start->copy()->startOfDay());
+        }
+
+        $sold = (clone $orders)->get(['ordered_at', 'subtotal', 'discount', 'tax', 'delivery_fee']);
+        $bought = (clone $invoices)->get(['issued_at', 'subtotal', 'tax']);
+
+        /*
+         * الصفوف شهريّة لا يوميّة.
+         *
+         * والإقرار في عُمان يُقدَّم ربعَ سنويّ، فمن اختار «السنة» يجمع ثلاثةَ
+         * أسطرٍ بعينها ويقرأ رُبعَه. واليوميُّ يعطيه ثلاثمئة سطرٍ لا يجمع
+         * منها شيئًا.
+         */
+        $months = [];
+
+        foreach ($sold as $order) {
+            $key = optional($order->ordered_at)->format('Y-m') ?? '—';
+            $months[$key] ??= self::vatRow($key);
+            $months[$key]['taxable'] += (float) $order->subtotal - (float) $order->discount;
+            $months[$key]['output'] += (float) $order->tax;
+            $months[$key]['delivery'] += (float) $order->delivery_fee;
+        }
+
+        foreach ($bought as $invoice) {
+            $key = optional($invoice->issued_at)->format('Y-m') ?? '—';
+            $months[$key] ??= self::vatRow($key);
+            $months[$key]['purchases'] += (float) $invoice->subtotal;
+            $months[$key]['input'] += (float) $invoice->tax;
+        }
+
+        krsort($months);
+
+        $rows = collect($months)->map(function ($row) {
+            foreach (['taxable', 'output', 'delivery', 'purchases', 'input'] as $key) {
+                $row[$key] = round($row[$key], 3);
+            }
+
+            $row['due'] = round($row['output'] - $row['input'], 3);
+
+            return $row;
+        })->values();
+
+        $output = round((float) $rows->sum('output'), 3);
+        $input = round((float) $rows->sum('input'), 3);
+
+        return array_merge(self::capped($rows, $rows->count()), [
+            'summary' => [
+                'taxable' => round((float) $rows->sum('taxable'), 3),
+                'output' => $output,
+                'purchases' => round((float) $rows->sum('purchases'), 3),
+                'input' => $input,
+                'delivery' => round((float) $rows->sum('delivery'), 3),
+                /*
+                 * والصافي قد يكون سالبًا — وهو ليس خطأً.
+                 *
+                 * موسمٌ اشترى فيه التاجر أكثر ممّا باع يجعل مدخلاته أكبر من
+                 * مخرجاته، فيكون له رصيدٌ **مستردّ** لا مبلغٌ يدفعه. وعرضُه
+                 * صفرًا أو بقيمةٍ مطلقة يجعله يدفع ما لا يجب.
+                 */
+                'due' => round($output - $input, 3),
+                'rate' => (float) (Demo::vatSettings()['rate'] ?? 0),
+                'number' => (string) (Demo::vatSettings()['number'] ?? ''),
+            ],
+            'options' => [],
+        ]);
+    }
+
+    /** صفُّ شهرٍ فارغ — والاسم يُقرأ بالعربية لا «2026-08» */
+    private static function vatRow(string $key): array
+    {
+        return [
+            'id' => $key,
+            'month' => $key === '—' ? '—' : Carbon::createFromFormat('Y-m', $key)->translatedFormat('F Y'),
+            'taxable' => 0.0,
+            'output' => 0.0,
+            'delivery' => 0.0,
+            'purchases' => 0.0,
+            'input' => 0.0,
+            'due' => 0.0,
+        ];
     }
 
     /* ============================ وسائل الدفع ============================ */

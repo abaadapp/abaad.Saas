@@ -84,6 +84,7 @@ export default function ReportsStaff() {
                     subtitle={t('مبيعات كل موظف في الفترة المختارة وفرعه وحالته')}
                     actions={
                         <ExportMenu
+                            feature="reports_advanced"
                             xlsx={route('admin.reports.export.xlsx', 'staff')}
                             pdf={route('admin.reports.export.pdf', 'staff')}
                             csv={route('admin.reports.export.csv', 'staff')}

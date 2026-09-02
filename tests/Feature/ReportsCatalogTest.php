@@ -67,49 +67,19 @@ class ReportsCatalogTest extends TestCase
         $this->assertSame(array_keys(Reports::CATEGORIES), array_keys($props['categories']));
     }
 
-    public function test_the_catalog_opens_with_the_numbers_not_with_cards_alone(): void
+    public function test_the_catalog_carries_no_numbers_in_its_head(): void
     {
         /*
-         * صاحبُ المحلّ يفتح «التقارير» ليعرف كم باع.
+         * جُرّبت الأرقام في رأس الفهرس ورُفعت.
          *
-         * وكانت الصفحة تفتح على حقل بحثٍ وخمسَ عشرةَ بطاقةً رماديةً بلا رقمٍ
-         * واحد، فعليه أن يعرف اسمَ التقرير الذي فيه ذلك ويضغطه. فعادت
-         * الأرقام إلى رأسها.
+         * على محلٍّ لم يبِعْ بعدُ هي أربعةُ أصفارٍ وخطٌّ مسطّح يملأ الشاشة
+         * قبل أن يصل صاحبُها إلى تقاريره. والأرقام لها صفحتها.
          */
         $props = $this->actingAs($this->owner)
             ->get(route('admin.reports.index'))->viewData('page')['props'];
 
-        foreach (['sales', 'profit', 'expenses', 'tax'] as $number) {
-            $this->assertArrayHasKey($number, $props['summary'], "رأس الصفحة بلا «{$number}»");
-        }
-
-        $this->assertArrayHasKey('labels', $props['salesSeries']);
-        $this->assertSame('month', $props['range']);
-    }
-
-    public function test_the_headline_reads_the_period_it_is_asked_for(): void
-    {
-        // وإلّا قال الرأسُ أرقام الشهر وقالت الشرائح «اليوم» فوقها
-        $props = $this->actingAs($this->owner)
-            ->get(route('admin.reports.index', ['range' => 'today']))->viewData('page')['props'];
-
-        $this->assertSame('today', $props['range']);
-    }
-
-    public function test_the_headline_says_what_the_sales_summary_says(): void
-    {
-        /*
-         * مصدرٌ واحد لا نسخة: رقمان يقولان الشيء نفسه يفترقان يومًا، ويقف
-         * التاجر أمام شاشتين من نظامٍ واحد تقولان له مبيعتين.
-         */
-        $index = $this->actingAs($this->owner)
-            ->get(route('admin.reports.index', ['range' => 'week']))->viewData('page')['props'];
-
-        $page = $this->actingAs($this->owner)
-            ->get(route('admin.reports.sales', ['range' => 'week']))->viewData('page')['props'];
-
-        $this->assertSame($page['summary']['sales'], $index['summary']['sales']);
-        $this->assertSame($page['summary']['profit'], $index['summary']['profit']);
+        $this->assertArrayNotHasKey('summary', $props);
+        $this->assertArrayNotHasKey('salesSeries', $props);
     }
 
     public function test_every_card_names_a_page_of_its_own(): void

@@ -71,6 +71,15 @@ class Reports
             'route' => 'admin.reports.finance',
         ],
         [
+            'key' => 'vat',
+            'category' => 'financial',
+            'section' => 'reports',
+            'title' => 'ضريبة القيمة المضافة',
+            'desc' => 'ما حصّلتَه من ضريبة وما دفعتَه، والفرقُ المستحقّ — شهرًا بشهر.',
+            'icon' => 'percent',
+            'route' => 'admin.reports.vat',
+        ],
+        [
             'key' => 'expenses',
             'category' => 'financial',
             'section' => 'expenses',

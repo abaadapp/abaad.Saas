@@ -68,6 +68,12 @@ class ReportColumns
             ['code', 'الرمز', 'text'], ['type', 'النوع', 'text'], ['value', 'القيمة', 'number'],
             ['uses', 'مرات الاستخدام', 'number'], ['discount', 'الخصم', 'money'], ['revenue', 'الإيراد', 'money'],
         ],
+        'vat' => [
+            ['month', 'الشهر', 'text'], ['taxable', 'المبيعات الخاضعة', 'money'],
+            ['output', 'ضريبة المخرجات', 'money'], ['purchases', 'المشتريات', 'money'],
+            ['input', 'ضريبة المدخلات', 'money'], ['delivery', 'رسوم التوصيل (غير خاضعة)', 'money'],
+            ['due', 'الصافي المستحقّ', 'money'],
+        ],
         'payments' => [
             ['name', 'الوسيلة', 'text'], ['total', 'الإجمالي', 'money'],
             ['count', 'عدد العمليات', 'number'], ['percent', 'النسبة', 'number'],

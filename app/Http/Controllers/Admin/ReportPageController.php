@@ -143,6 +143,11 @@ class ReportPageController extends Controller
         return $this->report($request, 'payments', 'Payments');
     }
 
+    public function vat(Request $request): Response
+    {
+        return $this->report($request, 'vat', 'Vat');
+    }
+
     public function staff(Request $request): Response
     {
         return $this->report($request, 'staff', 'Staff');

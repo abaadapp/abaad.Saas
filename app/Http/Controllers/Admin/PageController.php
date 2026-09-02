@@ -10,10 +10,12 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\CustomAlert;
 use App\Models\CustomerAddress;
+use App\Models\DomainRequest;
 use App\Models\JobTitle;
 use App\Models\Product;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\DomainOptions;
 use App\Support\Emojis;
 use App\Support\MarketingSettings;
 use App\Support\Permissions;
@@ -371,6 +373,10 @@ class PageController extends Controller
         $section = $request->query('section');
         $section = is_string($section) ? $section : null;
 
+        // تُقرأ مرّةً وتُستعمل مرّتين: بطاقة النطاق تعرضها، وشاشة الدومين
+        // تشتقّ منها الخيار المختار. وقراءتها مرّتين استعلامان لصفٍّ واحد.
+        $site = MarketingSettings::group(Demo::bid(), 'website');
+
         return Inertia::render('Admin/Settings/Index', [
             'settings' => Demo::businessSettings(),
             'business' => [
@@ -390,7 +396,28 @@ class PageController extends Controller
              * وتُرسل دائمًا لا عند طلب قسمها: ثمانية مفاتيح نصّية، وطلبُها
              * برحلةٍ إلى الخادم أغلى من إرسالها.
              */
-            'site' => MarketingSettings::group(Demo::bid(), 'website'),
+            'site' => $site,
+            /*
+             * الطرق الثلاث إلى عنوانٍ على الإنترنت، وتكلفةُ كلٍّ منها.
+             *
+             * التسعير من إعدادات المنصّة لا من الواجهة: رقمٌ مكتوبٌ في ملفّ
+             * tsx يعني سعرًا يقوله المتجر ولا يعرفه المشغّل.
+             */
+            'domain' => [
+                'mode' => DomainOptions::mode($site),
+                // الاسم المحجوز وحده بلا لاحقة — الشاشة تركّبهما للعرض
+                'subdomain' => $site['site_subdomain'],
+                // السعر واللاحقة من الجدول نفسه، فباستعلامٍ واحد لا اثنين
+                ...DomainOptions::view(),
+                /*
+                 * آخر طلبِ تجهيزٍ وحده — لا سجلّ الطلبات.
+                 *
+                 * ما يعني التاجر سؤالٌ واحد: أين طلبي الآن؟ وقائمةُ ما أُغلق
+                 * قبل سنة تُجيب سؤالًا لا يسأله.
+                 */
+                'request' => DomainRequest::where('business_id', Demo::bid())
+                    ->orderByDesc('id')->first()?->only(['id', 'domain', 'note', 'status']),
+            ],
             /*
              * بريد الاستعادة — حالُه وحده، بلا رمزٍ ولا بصمة.
              *

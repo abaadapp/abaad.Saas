@@ -66,7 +66,19 @@ class MarketingToolsTest extends TestCase
         $saved = MarketingSettings::group($this->bid(), 'website');
 
         $this->assertSame('mystore.om', $saved['site_domain']);
-        $this->assertSame(['site_domain'], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
+        /*
+         * والمجموعة ثلاثةُ مفاتيحَ كلُّها تُقرأ — لا ثمانية أكثرها لا يُقرأ.
+         *
+         * `site_domain_mode` تقرؤه شاشة الدومين لتعرف أتعرض الاختيار الأوّل
+         * أم مسارَ من اختار، و`site_subdomain` يحمل الاسم المحجوز تحت نطاق
+         * أبعاد. وهذا الحارس على المعنى لا على العدد: ما لا يقرؤه شيء لا
+         * يُحفظ — انظر App\Support\DomainOptions.
+         */
+        $this->assertSame(
+            ['site_domain', 'site_domain_mode', 'site_subdomain'],
+            array_keys($saved),
+            'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ',
+        );
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {
             $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => $dead]);

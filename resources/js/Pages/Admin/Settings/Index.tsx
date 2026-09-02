@@ -6,7 +6,6 @@ import {
     BellRing,
     ChevronLeft,
     Download,
-    ExternalLink,
     Image as ImageIcon,
     Languages,
     Save,
@@ -32,6 +31,7 @@ import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
 import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
+import DomainPanel, { type DomainData } from './panels/DomainPanel';
 import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
@@ -56,6 +56,8 @@ interface Props {
     recovery: Recovery;
     /** نطاق موقع التاجر — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
+    /** الطرق الثلاث إلى عنوانٍ على الإنترنت وتكلفةُ كلٍّ منها — انظر DomainOptions */
+    domain: DomainData;
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
@@ -171,7 +173,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, recovery, site, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, business, recovery, site, domain, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
@@ -455,69 +457,18 @@ export default function SettingsIndex() {
                 <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
             ) : tab === 'domain' ? (
                 /*
-                    الدومين وحده في بطاقة.
+                    الدومين وحده في بطاقة — وسؤالٌ قبل حقل.
 
-                    هو أوّل ما يُضبط وآخر ما يُغيَّر: يُكتب مرّةً ثمّ تقرؤه
-                    شاشة السيو ورابط «الموقع» في الترويسة والفاتورة. وكان
-                    مدفونًا في أعلى شاشةٍ طويلة تحت «أدوات التسويق»، فمن يبحث
-                    عن نطاقه لا يخطر له أن يفتح قسم الكوبونات.
+                    كان حقلًا واحدًا: «اكتب النطاق». وهو يفترض في التاجر أنّه
+                    يملك نطاقًا، وأنّه يعرف ما النطاق ومن أين يُشترى وبكم. ومن
+                    لا يملك واحدًا — وهم أكثر من يفتح الشاشة أوّل مرّة — يقف
+                    أمام حقلٍ فارغ لا يقول له ماذا يفعل، فيتركه ويبقى متجره
+                    بلا عنوان.
+
+                    ومحتواه في ملفٍّ وحده لأنّه صار ثلاثة مساراتٍ لا حقلًا:
+                    اختيارٌ أوّل، ثمّ نطاقٌ يُربط أو اسمٌ يُحجز أو طلبٌ يُرسل.
                 */
-                /*
-                    رابطٌ إلى موقع التاجر، لا متجرٌ يُنشَر من هنا.
-
-                    كان في البطاقة مفتاح «نشر الموقع» وسطرٌ يعدّ «:n منتجًا يظهر
-                    في الموقع» وتحذيرٌ من صفحةٍ فارغة — وثلاثتها تصف واجهةً لا
-                    وجود لها في النظام: لا صفحة، ولا مسار، ولا منتجٌ يُعرض على
-                    زائر. فيرفع التاجر المفتاح ويقرأ العدد وينتظر طلبًا لا يأتي.
-
-                    والباقي حقٌّ: كثيرٌ من المتاجر لها موقعٌ أو صفحةٌ خارج النظام،
-                    والنطاق يُكتب هنا ليصير زرًّا في الشريط يفتحه. فبقي ما يعمل
-                    ورُفع ما يَعِد.
-                */
-                <form onSubmit={saveSite}>
-                    <Card className="p-6">
-                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                                <h3 className="font-bold text-[#111]">{t('رابط موقعك')}</h3>
-                                <p className="mt-1 text-[13px] text-[#6b7280]">
-                                    {t('موقعك أو صفحتك خارج النظام — يصير زرًّا في الشريط يفتحه، ويُكتب في الفاتورة.')}
-                                </p>
-                            </div>
-                            {siteForm.data.site_domain && (
-                                <Button variant="outline" size="sm" asChild>
-                                    <a
-                                        href={`https://${siteForm.data.site_domain}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                    >
-                                        <ExternalLink />
-                                        {t('فتح الموقع')}
-                                    </a>
-                                </Button>
-                            )}
-                        </div>
-
-                        <Field
-                            label="النطاق"
-                            hint="اكتب النطاق وحده بلا https:// — مثل: mystore.om"
-                            error={siteForm.errors.site_domain}
-                        >
-                            <Input
-                                dir="ltr"
-                                value={siteForm.data.site_domain}
-                                onChange={(e) => siteForm.setData('site_domain', e.target.value)}
-                                placeholder="mystore.om"
-                            />
-                        </Field>
-
-                        <div className="mt-6 flex justify-end">
-                            <Button type="submit" loading={siteForm.processing}>
-                                <Save />
-                                {t('حفظ التغييرات')}
-                            </Button>
-                        </div>
-                    </Card>
-                </form>
+                <DomainPanel domain={domain} siteForm={siteForm} onSaveSite={saveSite} />
             ) : tab === 'website' ? (
                 /*
                     الشعار وحده بقي هنا.

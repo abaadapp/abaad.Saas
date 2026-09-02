@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\CurrencyController;
 use App\Http\Controllers\Admin\CustomAlertController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerImportExportController;
+use App\Http\Controllers\Admin\DomainController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\ExpenseController;
 use App\Http\Controllers\Admin\ExpenseTypeController;
@@ -69,6 +70,7 @@ use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\BillingController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
 use App\Http\Controllers\SuperAdmin\DemoController;
+use App\Http\Controllers\SuperAdmin\DomainRequestController;
 use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
 use App\Http\Controllers\SuperAdmin\PlanController;
@@ -264,6 +266,15 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/users/{id}', [SuperAdminPageController::class, 'usersShow'])->name('users.show');
 
     // الباقات
+    /*
+     * طلبات النطاقات — الطرف الثاني لزرٍّ في لوحة التاجر.
+     *
+     * لا مسجّل نطاقاتٍ موصولٌ بالنظام، فالشراء عملُ إنسان: يقف الطلب هنا
+     * حتى يراه المشغّل. وبدون هذه الشاشة يكون زرّ التاجر مقبضًا لا يُمسك.
+     */
+    Route::get('/domains', [DomainRequestController::class, 'index'])->name('domains.index');
+    Route::post('/domains/{id}/status', [DomainRequestController::class, 'status'])->name('domains.status');
+
     Route::post('/plans', [PlanController::class, 'store'])->name('plans.store');
     Route::put('/plans/{id}', [PlanController::class, 'update'])->name('plans.update');
 
@@ -590,6 +601,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * بريد الاستعادة — يضبطه صاحب الحساب وهو داخل، قبل أن يحتاج إليه.
      * ويُشترط معه كلمةُ المرور الحالية: جلسةٌ مفتوحة وحدها لا تكفي.
      */
+    /*
+     * الدومين — أربعةُ أفعالٍ خارج «حفظ النطاق».
+     *
+     * ذاك يحفظ حقلًا واحدًا، وهذه لكلٍّ منها تحقّقُه: اسمُ نطاقٍ فرعيّ لا
+     * يُقاس بمقياس نطاقٍ كامل، والطلب صفٌّ يُنشأ لا إعدادٌ يُكتب. وأسماؤها
+     * تحت `settings` فتقع على صلاحيّتها — انظر Permissions::sectionFromRoute.
+     */
+    Route::post('/settings/domain/mode', [DomainController::class, 'mode'])->name('settings.domain.mode');
+    Route::post('/settings/domain/subdomain', [DomainController::class, 'subdomain'])->name('settings.domain.subdomain');
+    Route::post('/settings/domain/request', [DomainController::class, 'requestDomain'])->name('settings.domain.request');
+    Route::delete('/settings/domain/request/{id}', [DomainController::class, 'cancelRequest'])->name('settings.domain.request.cancel');
+
     Route::post('/settings/recovery-email', [RecoveryEmailController::class, 'start'])->name('settings.recovery.start');
     Route::post('/settings/recovery-email/confirm', [RecoveryEmailController::class, 'confirm'])->name('settings.recovery.confirm');
     Route::post('/marketing/whatsapp/mode', [App\Http\Controllers\Admin\WhatsAppController::class, 'mode'])->name('marketing.whatsapp.mode');

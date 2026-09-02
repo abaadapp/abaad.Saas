@@ -14,6 +14,7 @@ use App\Models\WhatsAppConnection;
 use App\Support\Billing;
 use App\Support\BusinessTypes;
 use App\Support\Demo;
+use App\Support\DomainOptions;
 use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
@@ -413,6 +414,17 @@ class PageController extends Controller
          * وتصير كلّ صفحةٍ خمسمئة. والقيمتان تبقيان متطابقتين باختبارٍ يقارنهما.
          */
         'whatsapp_shared_default_monthly_limit' => '100',
+        /*
+         * تسعير النطاقات — بلا رقمٍ حتى يضع المشغّل رقمه.
+         *
+         * والفراغ مقصود: البطاقة تقول عندئذٍ «يُحدَّد بالتواصل»، وهي أصدق
+         * ممّا نخترعه له. أمّا '0' فتقول «مجاني» — وهي وعدٌ لا يُقطع نيابةً
+         * عن أحد.
+         */
+        'domain_subdomain_price' => '',
+        'domain_setup_price' => '',
+        // اللاحقة وحدها لها افتراضيّ: هي نطاق المنصّة القائم لا سعرٌ يُقرَّر
+        'domain_subdomain_suffix' => DomainOptions::DEFAULT_SUFFIX,
     ];
 
     /* ------------------------------ مشتركات ------------------------------ */

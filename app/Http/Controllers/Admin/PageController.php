@@ -14,6 +14,7 @@ use App\Models\JobTitle;
 use App\Models\Product;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\DocumentTemplates;
 use App\Support\Emojis;
 use App\Support\MarketingSettings;
 use App\Support\Permissions;
@@ -414,6 +415,13 @@ class PageController extends Controller
                 'path' => $b ? Storefront::path($b) : '',
                 'pricing' => Storefront::pricing(),
             ],
+            /*
+             * بطاقاتُ القوالب — من السجلّ لا مكتوبةً في الشاشة.
+             *
+             * يُضاف نوعٌ فيظهر في الإعدادات بلا لمس ملفّ الواجهة، وقائمةٌ
+             * تُكتب باليد في الطرفين تنسى التاليَ دائمًا.
+             */
+            'templates' => DocumentTemplates::all(),
             /*
              * بريد الاستعادة — حالُه وحده، بلا رمزٍ ولا بصمة.
              *

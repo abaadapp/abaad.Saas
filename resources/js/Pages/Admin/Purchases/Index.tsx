@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, ClipboardList, PackageCheck, Paperclip, Plus, Trash2, Truck, Upload } from 'lucide-react';
+import { AlertTriangle, ClipboardList, PackageCheck, Paperclip, Plus, Printer, Trash2, Truck, Upload } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PURCHASE_TABS } from '@/Components/SectionTabs';
@@ -178,6 +178,12 @@ export default function PurchasesIndex() {
                             {t('استلام')}
                         </Button>
                     )}
+                    {/* الأمر يخرج على ورق: مورّدٌ يقرأ ما طُلب منه لا مكالمةً تُنسى */}
+                    <Button variant="ghost" size="icon-sm" aria-label={t('طباعة أمر الشراء')} asChild>
+                        <a href={route('admin.purchases.pdf', o.id)} target="_blank" rel="noreferrer">
+                            <Printer />
+                        </a>
+                    </Button>
                     <Button
                         variant="ghost"
                         size="icon-sm"

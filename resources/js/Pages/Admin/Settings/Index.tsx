@@ -7,6 +7,7 @@ import {
     ChevronLeft,
     Download,
     ExternalLink,
+    FileText,
     Globe,
     Image as ImageIcon,
     Languages,
@@ -64,6 +65,8 @@ interface Props {
     recovery: Recovery;
     /** نطاق موقع التاجر — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
+    /** بطاقاتُ القوالب — تُبنى من `DocumentTemplates` لا تُكتب في الشاشة */
+    templates?: { key: string; label: string; desc: string; section: string }[];
     store: {
         slug: string | null;
         domain: string;
@@ -164,23 +167,6 @@ const PAYMENT_METHODS = [
 /** صفحات مستقلة يصل إليها المستخدم من الإعدادات */
 
 /** صفوف قوالب الفواتير — كلٌّ منها يُظهر شيئًا أو يُخفيه في الأوراق الثلاث */
-const TEMPLATE_ROWS: { key: string; label: string; hint?: string }[] = [
-    { key: 'tpl_show_logo', label: 'شعار المتجر', hint: 'يظهر فقط إن كان للنشاط شعار محفوظ' },
-    { key: 'tpl_show_branch', label: 'اسم الفرع' },
-    { key: 'tpl_show_employee', label: 'اسم الموظف' },
-    /* الاستثناء يُقال لا يُسكت عنه: الفاتورة الضريبية تُعرّف مشتريها كي
-       يخصم ما دفعه، فإخفاؤه يُبطل الغرض منها — والمقبض يعمل في الورقتين
-       الأخريين. وصمتُ الشاشة عن ذلك كان يجعل التاجر يظنّ المقبض معطوبًا. */
-    { key: 'tpl_show_customer', label: 'اسم العميل', hint: 'يبقى ظاهرًا في الفاتورة الضريبية دائمًا — بدونه لا يخصم المشتري ضريبته' },
-    { key: 'tpl_show_datetime', label: 'التاريخ والوقت' },
-    { key: 'tpl_show_items_count', label: 'عدد الأصناف' },
-    { key: 'tpl_show_vat_no', label: 'الرقم الضريبي' },
-    /* الوصف كان «إخفاؤه قد يخالف متطلبات الفوترة» — تخويفٌ من شيءٍ غير
-       مؤكَّد: الرمز بصيغة ZATCA الخليجية، ولا نعلم أن جهاز الضرائب في عُمان
-       يشترطها اليوم. والوصف يقول ما نعرفه ويترك القرار لصاحبه. */
-    { key: 'tpl_show_qr', label: 'رمز الفوترة الإلكترونية (QR)', hint: 'بصيغة ZATCA الخليجية. لا يظهر بلا رقم ضريبي. راجع جهاز الضرائب قبل الاعتماد عليه' },
-];
-
 const NOTIF_COLORS: Record<string, string> = {
     danger: 'bg-[#fef2f2] text-[#dc2626]',
     warning: 'bg-[#fffbeb] text-[#d97706]',
@@ -189,7 +175,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, recovery, site, store, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, business, recovery, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
@@ -325,8 +311,6 @@ export default function SettingsIndex() {
         inv_prefix: get('inv_prefix', 'INV-'),
         inv_start: get('inv_start', '1'),
 
-        paper: get('paper', '80mm'),
-
         notify_new_order: on('notify_new_order'),
         notify_smart_alerts: on('notify_smart_alerts'),
         notify_daily_summary: on('notify_daily_summary'),
@@ -342,19 +326,16 @@ export default function SettingsIndex() {
          * مرافق كي لا يبقى منعُ بيعٍ سارٍ بلا شاشةٍ تُطفئه.
          */
 
-        /* قوالب الطباعة — الافتراضات هي شكل الإيصال قبل وجود هذا القسم
-           حرفيًّا: تاجرٌ لم يفتحه قطّ يطبع اليوم ما كان يطبعه أمس. */
-        tpl_header: get('tpl_header'),
-        tpl_footer: get('tpl_footer', 'شكرًا لزيارتكم\nنتشرف بخدمتكم دائمًا'),
-        tpl_font: get('tpl_font', 'عادي'),
-        tpl_show_logo: on('tpl_show_logo', '0'),
-        tpl_show_branch: on('tpl_show_branch'),
-        tpl_show_employee: on('tpl_show_employee'),
-        tpl_show_customer: on('tpl_show_customer'),
-        tpl_show_datetime: on('tpl_show_datetime'),
-        tpl_show_items_count: on('tpl_show_items_count'),
-        tpl_show_vat_no: on('tpl_show_vat_no', '0'),
-        tpl_show_qr: on('tpl_show_qr'),
+        /*
+         * ولا حقلَ قالبٍ هنا بعد اليوم.
+         *
+         * كانت `tpl_*` و`paper` تُقرأ عند فتح الصفحة وتُرسل مع كلّ حفظ من
+         * أيّ تبويب. فمن عدّل ورقته في محرّرها ثمّ حفظ «بيانات النشاط» أعاد
+         * القيمَ التي قرأتها الشاشة قبل تعديله — يُنسَخ القديم فوق الجديد بلا
+         * خطأ ولا رسالة، ولا يُكتشف إلّا على ورقٍ أمام زبون.
+         *
+         * ومحرّرُ القوالب يحفظها وحده الآن — انظر `DocumentTemplates`.
+         */
     });
 
     const submit = (e: React.FormEvent) => {
@@ -1311,174 +1292,64 @@ export default function SettingsIndex() {
                         {tab === 'templates' && (
                             <>
                                 {/*
-                                    «قوالب الفواتير» لا «قالب الإيصال»: صار
-                                    يحكم ثلاث أوراق لا واحدة — الإيصال الحراري،
-                                    وفاتورة A4، والفاتورة الضريبية. ومن يقرأ
-                                    «الإيصال» لا يخطر له أن فاتورته الضريبية
-                                    تُضبط من هنا، فيطلبها تغييرًا في الكود.
+                                    بطاقةٌ لكلّ ورقة — والتحرير في صفحتها لا هنا.
+
+                                    كان القالبُ واحدًا يحكم ورقةَ البيع وحدها،
+                                    وسائرُ أوراق النظام لا تُطبع أصلًا: أمرُ
+                                    شراءٍ يُرسل إلى مورّد، وسندُ استلامٍ يُوقَّع
+                                    عند الباب، وسندُ نقلٍ يمشي مع البضاعة بين
+                                    فرعين. فما في النظام لا يُثبت شيئًا عند خلاف.
+
+                                    والمعاينةُ انتقلت معها إلى صفحةٍ تسعُها:
+                                    صندوقٌ بعرض مئتي بكسل بجانب عشرين حقلًا لا
+                                    يُرى فيه شكل ورقة.
                                 */}
-                                <h3 className="mb-1 font-bold text-[#111]">{t('قوالب الفواتير')}</h3>
-                                <p className="mb-4 text-[12px] text-[#9ca3af]">
-                                    {t('يحكم الإيصال المطبوع وفاتورة A4 والفاتورة الضريبية معًا — والمعاينة على اليمين تتبع كل تغيير.')}
+                                <h3 className="mb-1 font-bold text-[#111]">{t('قوالب الأوراق')}</h3>
+                                <p className="mb-5 text-[13px] text-[#6b7280]">
+                                    {t('لكل ورقةٍ في النظام قالبٌ يُحرَّر وحده — اختر ورقةً لتفتح محرّرها ومعاينتها.')}
                                 </p>
 
-                                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_260px]">
-                                    <div className="space-y-4">
-                                        {/*
-                                            الترقيم هنا لا في قسمٍ آخر.
-
-                                            كان «الفواتير» بطاقةً حقلاها بادئة
-                                            الرقم وأوّله، و«الطباعة» بطاقةً حقلها
-                                            مقاس الورق — وكلاهما يُقرأ في المعاينة
-                                            على اليمين: رقم الفاتورة يظهر فيها،
-                                            والمقاس مكتوبٌ تحتها. فمن يضبطهما بعيدًا
-                                            عنها يضبطهما بلا أن يرى أثرهما.
-                                        */}
-                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                            <Field label="بادئة رقم الفاتورة" error={form.errors.inv_prefix}>
-                                                <Input dir="ltr" value={form.data.inv_prefix} onChange={(e) => form.setData('inv_prefix', e.target.value)} />
-                                            </Field>
-                                            <Field
-                                                label="رقم البداية"
-                                                error={form.errors.inv_start}
-                                                hint="يسري على أوّل فاتورةٍ بالبادئة الجديدة، ولا يمسّ ما صدر"
-                                            >
-                                                <Input type="number" min="1" dir="ltr" value={form.data.inv_start} onChange={(e) => form.setData('inv_start', e.target.value)} />
-                                            </Field>
-                                        </div>
-
-                                        <Field
-                                            label="سطر تحت اسم المتجر"
-                                            hint="شعار أو عبارة ترحيب — يُترك فارغًا فلا يظهر"
-                                            error={form.errors.tpl_header}
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    {(templates ?? []).map((x) => (
+                                        <Link
+                                            key={x.key}
+                                            href={route('admin.settings.templates.edit', x.key)}
+                                            className="group flex items-center gap-4 rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white p-5 text-start transition hover:border-[#d4d4d4] hover:bg-[#fafafa]"
                                         >
-                                            <Input
-                                                value={form.data.tpl_header}
-                                                onChange={(e) => form.setData('tpl_header', e.target.value)}
-                                                placeholder={t('مثال: أجمل الورود منذ 1998')}
-                                            />
+                                            <FileText className="size-5 shrink-0 text-[#9ca3af]" />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block text-[15px] font-semibold text-[#111]">{x.label}</span>
+                                                <span className="mt-1 block text-[13px] leading-snug text-[#9ca3af]">{x.desc}</span>
+                                                <span className="mt-1 block text-[11px] text-[#d1d5db]">{x.section}</span>
+                                            </span>
+                                            <ChevronLeft className="size-4 shrink-0 text-[#d1d5db] transition-colors group-hover:text-[#6b7280]" />
+                                        </Link>
+                                    ))}
+                                </div>
+
+                                {/*
+                                    والترقيم يبقى هنا: بادئةُ الرقم وأوّلُه ليسا
+                                    شكلَ ورقةٍ بعينها بل ترقيمُ الفواتير كلّها،
+                                    ووضعُهما في محرّر ورقةٍ واحدة يجعل تعديلَهما
+                                    من ورقةٍ يغيّر ما تطبعه أخرى بلا أن يقول.
+                                */}
+                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                                    <h3 className="mb-4 font-bold text-[#111]">{t('ترقيم الفواتير')}</h3>
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <Field label="بادئة رقم الفاتورة" error={form.errors.inv_prefix}>
+                                            <Input dir="ltr" value={form.data.inv_prefix} onChange={(e) => form.setData('inv_prefix', e.target.value)} />
                                         </Field>
-
                                         <Field
-                                            label="نص التذييل"
-                                            hint="يظهر أسفل الإيصال — كل سطر كما كتبته"
-                                            error={form.errors.tpl_footer}
+                                            label="رقم البداية"
+                                            error={form.errors.inv_start}
+                                            hint="يسري على أوّل فاتورةٍ بالبادئة الجديدة، ولا يمسّ ما صدر"
                                         >
-                                            <Textarea
-                                                rows={3}
-                                                value={form.data.tpl_footer}
-                                                onChange={(e) => form.setData('tpl_footer', e.target.value)}
-                                            />
+                                            <Input type="number" min="1" dir="ltr" value={form.data.inv_start} onChange={(e) => form.setData('inv_start', e.target.value)} />
                                         </Field>
-
-                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                            <Field label="حجم الخط" error={form.errors.tpl_font}>
-                                                <Select
-                                                    value={form.data.tpl_font}
-                                                    onChange={(e) => form.setData('tpl_font', e.target.value)}
-                                                    options={['صغير', 'عادي', 'كبير'].map((x) => ({
-                                                        label: t(x),
-                                                        value: x,
-                                                    }))}
-                                                />
-                                            </Field>
-                                            <Field
-                                                label="مقاس الورق"
-                                                hint="الإيصال الحراري 80 أو 58 ملم، والفاتورة على A4"
-                                                error={form.errors.paper}
-                                            >
-                                                <Select
-                                                    value={form.data.paper}
-                                                    onChange={(e) => form.setData('paper', e.target.value)}
-                                                    options={[
-                                                        { label: '80mm', value: '80mm' },
-                                                        { label: '58mm', value: '58mm' },
-                                                        { label: 'A4', value: 'A4' },
-                                                    ]}
-                                                />
-                                            </Field>
-                                        </div>
-
-                                        <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-4">
-                                            <p className="mb-2 text-[13px] font-semibold text-[#111]">
-                                                {t('ما يظهر على الإيصال')}
-                                            </p>
-                                            {TEMPLATE_ROWS.map((r) => (
-                                                <Toggle
-                                                    key={r.key}
-                                                    on={form.data[r.key as keyof typeof form.data] as boolean}
-                                                    onChange={(v) => form.setData(r.key as 'tpl_show_qr', v)}
-                                                    label={r.label}
-                                                    hint={r.hint}
-                                                />
-                                            ))}
-                                        </div>
                                     </div>
-
-                                    {/* معاينة حيّة — محرّر قالبٍ بلا معاينة تخمين،
-                                        ولا يُكتشف خطؤه إلا على ورقٍ أمام الزبون */}
-                                    {/* تحت الترويسة المثبّتة لا خلفها: top-4 كانت
-                                        تُوقف المعاينة عند 16px فتغطّيها الترويسة */}
-                                    <div className="lg:sticky lg:top-[calc(var(--chrome-top,0px)+5rem)] lg:self-start">
-                                        <p className="mb-2 text-[12px] text-[#9ca3af]">{t('معاينة')}</p>
-                                        <div
-                                            dir="rtl"
-                                            className="rounded-[12px] border border-dashed border-[#d1d5db] bg-white p-4 font-mono leading-relaxed text-[#111]"
-                                            style={{
-                                                fontSize:
-                                                    form.data.tpl_font === 'صغير'
-                                                        ? '9px'
-                                                        : form.data.tpl_font === 'كبير'
-                                                          ? '12px'
-                                                          : '10.5px',
-                                            }}
-                                        >
-                                            <div className="text-center">
-                                                {form.data.tpl_show_logo && (
-                                                    <div className="mx-auto mb-1 h-6 w-14 rounded bg-[#f3f4f6]" />
-                                                )}
-                                                <p className="font-bold">{form.data.shop_name || t('اسم المتجر')}</p>
-                                                {form.data.tpl_header && (
-                                                    <p className="text-[#6b7280]">{form.data.tpl_header}</p>
-                                                )}
-                                                {form.data.tpl_show_branch && (
-                                                    <p className="text-[#6b7280]">{t('الفرع الرئيسي')}</p>
-                                                )}
-                                                {form.data.tpl_show_vat_no && form.data.vat_number && (
-                                                    <p className="text-[#6b7280]">
-                                                        {t('الرقم الضريبي')}: {form.data.vat_number}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
-                                            <p>{t('رقم الفاتورة')}: {form.data.inv_prefix}000001</p>
-                                            {form.data.tpl_show_employee && <p>{t('الموظف')}: {t('أحمد')}</p>}
-                                            {form.data.tpl_show_customer && <p>{t('العميل')}: {t('عميل نقدي')}</p>}
-                                            {form.data.tpl_show_datetime && <p dir="ltr" className="text-end">2026-08-02 10:15</p>}
-                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
-                                            <p>{t('باقة ورد')} × 2 — 21.000</p>
-                                            {form.data.tpl_show_items_count && (
-                                                <p className="text-[#6b7280]">{t('عدد الأصناف')}: 2</p>
-                                            )}
-                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
-                                            <p className="font-bold">{t('الإجمالي')}: 22.050</p>
-                                            {form.data.tpl_show_qr && (
-                                                <div className="mx-auto my-2 size-12 rounded bg-[#f3f4f6]" />
-                                            )}
-                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
-                                            <div className="whitespace-pre-line text-center text-[#6b7280]">
-                                                {form.data.tpl_footer}
-                                            </div>
-                                        </div>
-                                        <p className="mt-2 text-[11px] text-[#9ca3af]">
-                                            {t('معاينة تقريبية — الشكل النهائي على ورق')} {form.data.paper}
-                                        </p>
-                                        {/* كانت هذه الجملة في قسم «الطباعة» المستقلّ، فانتقلت
-                                            معه: من يبحث عن الطباعة التلقائية يبحث هنا الآن */}
-                                        <p className="mt-3 text-[11px] leading-relaxed text-[#9ca3af]">
-                                            {t('الطباعة التلقائية بعد البيع تُضبط لكل طابعة من «الأجهزة» — لأن الصندوق الذي فيه طابعة يطبع، وغيره لا.')}
-                                        </p>
-                                    </div>
+                                    <p className="mt-3 text-[11px] leading-relaxed text-[#9ca3af]">
+                                        {t('الطباعة التلقائية بعد البيع تُضبط لكل طابعة من «الأجهزة» — لأن الصندوق الذي فيه طابعة يطبع، وغيره لا.')}
+                                    </p>
                                 </div>
                             </>
                         )}

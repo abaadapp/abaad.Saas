@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import SmartLink from '@/Components/SmartLink';
-import { PackagePlus } from 'lucide-react';
+import { PackagePlus, Printer } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
@@ -120,7 +120,13 @@ export default function InventoryReceipts() {
             header: 'إجراءات',
             align: 'end',
             cell: (n) => (
-                <div className="flex items-center justify-end">
+                <div className="flex items-center justify-end gap-1.5">
+                    {/* ورقةٌ تُوقَّع عند باب المخزن — والسند الذي لا يخرج لا يُوقَّع */}
+                    <Button variant="ghost" size="icon-sm" aria-label={t('طباعة السند')} asChild>
+                        <a href={route('admin.inventory.receipts.pdf', n.id)} target="_blank" rel="noreferrer">
+                            <Printer />
+                        </a>
+                    </Button>
                     <Button variant="ghost" size="sm" onClick={() => setViewing(n)}>
                         {t('عرض')}
                     </Button>

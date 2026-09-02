@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\CurrencyController;
 use App\Http\Controllers\Admin\CustomAlertController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerImportExportController;
+use App\Http\Controllers\Admin\DocumentPrintController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\ExpenseController;
 use App\Http\Controllers\Admin\ExpenseTypeController;
@@ -46,6 +47,7 @@ use App\Http\Controllers\Admin\ReportFeedController;
 use App\Http\Controllers\Admin\ReportPageController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\SupplierExportController;
+use App\Http\Controllers\Admin\TemplateController;
 use App\Http\Controllers\Admin\TrashController;
 use App\Http\Controllers\Admin\WasteAnalyticsController;
 use App\Http\Controllers\Auth\AccountRecoveryController;
@@ -433,6 +435,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::put('/orders/{number}/details', [OrderDetailController::class, 'update'])->name('orders.details.update');
     Route::post('/orders/{number}/status', [OrderDetailController::class, 'status'])->name('orders.status');
     Route::get('/orders/{number}/pdf', [PdfController::class, 'orderReceipt'])->name('orders.pdf');
+    Route::get('/orders/{number}/delivery-note', [DocumentPrintController::class, 'delivery'])->name('orders.deliveryNote');
 
     // العملات وأسعار الصرف
     Route::get('/currency/{code}/switch', [CurrencyController::class, 'switch'])->name('currency.switch');
@@ -525,7 +528,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/inventory/transfers', [StockTransferController::class, 'index'])->name('inventory.transfers');
     Route::post('/inventory/transfers', [StockTransferController::class, 'store'])->name('inventory.transfers.store');
+    Route::get('/inventory/transfers/{id}/pdf', [DocumentPrintController::class, 'transfer'])->name('inventory.transfers.pdf');
     Route::get('/inventory/receipts', [GoodsReceiptNoteController::class, 'index'])->name('inventory.receipts');
+    Route::get('/inventory/receipts/{id}/pdf', [DocumentPrintController::class, 'grn'])->name('inventory.receipts.pdf');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
     // المورّدون
@@ -558,6 +563,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/purchases/{id}/receipt', [PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');
     Route::post('/purchases/{id}/receive', [PurchaseOrderController::class, 'receive'])->name('purchases.receive');
     Route::delete('/purchases/{id}', [PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
+    Route::get('/purchases/{id}/pdf', [DocumentPrintController::class, 'purchase'])->name('purchases.pdf');
 
     // تحليلات الربحية
 
@@ -783,6 +789,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/settings/logo', [App\Http\Controllers\Admin\SettingController::class, 'logo'])->name('settings.logo');
 
     // المحذوفات — استعادة ما أذهبته ضغطة (انظر TrashController)
+    /*
+     * محرّرُ القوالب — صفحةٌ لكلّ ورقة لا بطاقةٌ في قائمة.
+     *
+     * الورقةُ تُعاين بحجمها، والإعدادات تُقرأ بجانبها. وحشرُهما في تبويبٍ
+     * ضمن صفحةٍ فيها عشرون بطاقةً يجعل المعاينة صندوقًا لا يُرى فيه شيء.
+     */
+    Route::get('/settings/templates/{type}', [TemplateController::class, 'edit'])->name('settings.templates.edit');
+    Route::post('/settings/templates/{type}', [TemplateController::class, 'update'])->name('settings.templates.update');
+    Route::post('/settings/templates/{type}/preview', [TemplateController::class, 'preview'])->name('settings.templates.preview');
+
     Route::get('/settings/trash', [TrashController::class, 'index'])->name('settings.trash');
 
     // تنبيهات يعرّفها صاحب النشاط — قواعد على مقاييس النظام، وتذكيرات بموعد

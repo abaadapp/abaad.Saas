@@ -69,7 +69,6 @@ class SettingController extends Controller
          */
         'inv_prefix' => ['sometimes', 'nullable', 'string', 'max:12', 'not_regex:/[%_\\\\]/'],
         'inv_start' => ['sometimes', 'nullable', 'integer', 'min:1'],
-        'paper' => ['sometimes', 'in:58mm,80mm,A4'],
 
         // التنبيهات
         'notify_new_order' => ['sometimes', 'boolean'],
@@ -89,18 +88,17 @@ class SettingController extends Controller
          * وصفّاهما قد يبقيان في `settings` من قبلُ ولا يقرؤهما شيء.
          */
 
-        // قوالب الفواتير — تحكم الأوراق الثلاث
-        'tpl_header' => ['sometimes', 'nullable', 'string', 'max:120'],
-        'tpl_footer' => ['sometimes', 'nullable', 'string', 'max:500'],
-        'tpl_font' => ['sometimes', 'in:صغير,عادي,كبير'],
-        'tpl_show_logo' => ['sometimes', 'boolean'],
-        'tpl_show_branch' => ['sometimes', 'boolean'],
-        'tpl_show_employee' => ['sometimes', 'boolean'],
-        'tpl_show_customer' => ['sometimes', 'boolean'],
-        'tpl_show_datetime' => ['sometimes', 'boolean'],
-        'tpl_show_items_count' => ['sometimes', 'boolean'],
-        'tpl_show_vat_no' => ['sometimes', 'boolean'],
-        'tpl_show_qr' => ['sometimes', 'boolean'],
+        /*
+         * ولا مفاتيحَ قوالبَ هنا: `tpl_*` و`paper` انتقلت إلى محرّرها.
+         *
+         * وكانت شاشةُ الإعدادات ترسلها مع كلّ حفظٍ من أيّ تبويب، فمن عدّل
+         * ورقته في محرّرها ثمّ حفظ «بيانات النشاط» أعاد القيمَ التي قرأتها
+         * الشاشة قبل تعديله — يُنسَخ القديم فوق الجديد بلا خطأ ولا رسالة،
+         * ولا يُكتشف إلّا على ورقٍ أمام زبون. انظر `DocumentTemplates`.
+         *
+         * والصفوفُ المحفوظة باقيةٌ كما هي: الأسماء لم تتغيّر، وإنّما تغيّر
+         * البابُ الذي يكتبها.
+         */
     ];
 
     public function update(Request $request)

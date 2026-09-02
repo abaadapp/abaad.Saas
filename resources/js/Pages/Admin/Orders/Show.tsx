@@ -193,12 +193,25 @@ export default function OrderShow() {
                 subtitle={order.date}
                 actions={
                     /* زرّ «فاتورة ضريبية» أُزيل من هنا بطلب صاحب النظام */
-                    <Button variant="outline" asChild>
-                        <a href={route('admin.orders.pdf', order.id)} target="_blank" rel="noreferrer">
-                            <FileText />
-                            {t('تصدير PDF')}
-                        </a>
-                    </Button>
+                    <>
+                        <Button variant="outline" asChild>
+                            <a href={route('admin.orders.pdf', order.id)} target="_blank" rel="noreferrer">
+                                <FileText />
+                                {t('تصدير PDF')}
+                            </a>
+                        </Button>
+                        {/*
+                            وسندُ التسليم ورقةٌ أخرى لا نسخةٌ من الفاتورة:
+                            يحملها السائق، ويوقّعها المستلم، وقالبُها يُخفي
+                            الأسعار — فلا يرى من استلم الهديّة ثمنَها.
+                        */}
+                        <Button variant="outline" asChild>
+                            <a href={route('admin.orders.deliveryNote', order.id)} target="_blank" rel="noreferrer">
+                                <Truck />
+                                {t('سند تسليم')}
+                            </a>
+                        </Button>
+                    </>
                 }
             />
 

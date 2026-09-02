@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { ArrowLeftRight, Check, Plus } from 'lucide-react';
+import { ArrowLeftRight, Check, Plus, Printer } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
@@ -145,6 +145,21 @@ export default function Transfers() {
             cell: (x) => <span className="font-semibold tabular-nums text-[#111]">{number(x.quantity)}</span>,
         },
         { key: 'author', header: 'بواسطة', cell: (x) => x.author ?? '—' },
+        {
+            key: 'actions',
+            header: 'إجراء',
+            align: 'end',
+            /* السند يمشي مع البضاعة: ورقةٌ يوقّعها المستلم في الفرع الآخر */
+            cell: (x) => (
+                <div className="flex items-center justify-end">
+                    <Button variant="ghost" size="icon-sm" aria-label={t('طباعة السند')} asChild>
+                        <a href={route('admin.inventory.transfers.pdf', x.id)} target="_blank" rel="noreferrer">
+                            <Printer />
+                        </a>
+                    </Button>
+                </div>
+            ),
+        },
     ];
 
     // فرعٌ واحد لا يُنقل منه إلى أحد — والزرّ يقول لماذا بدل أن يقف بلا وظيفة

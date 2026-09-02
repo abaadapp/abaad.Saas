@@ -180,13 +180,15 @@ class AdminPanelAuditTest extends TestCase
             'vat_enabled' => true, 'vat_rate' => '5', 'vat_number' => 'OM1', 'tax_mode' => 'exclusive',
             'currency' => 'OMR', 'decimals' => '3', 'symbol_pos' => 'after',
             'pay_cash' => true, 'pay_card' => false, 'pay_transfer' => true,
-            'inv_prefix' => 'INV-', 'inv_start' => '1', 'paper' => '80mm',
+            'inv_prefix' => 'INV-', 'inv_start' => '1',
             'notify_new_order' => true, 'notify_smart_alerts' => true, 'notify_daily_summary' => false,
 
-            'tpl_header' => 'سطر', 'tpl_footer' => "شكرًا\nمرحبًا", 'tpl_font' => 'عادي',
-            'tpl_show_logo' => false, 'tpl_show_branch' => true, 'tpl_show_employee' => true,
-            'tpl_show_customer' => true, 'tpl_show_datetime' => true, 'tpl_show_items_count' => true,
-            'tpl_show_vat_no' => false, 'tpl_show_qr' => true,
+            /*
+             * ولا مفاتيحَ قوالبَ هنا: `tpl_*` و`paper` انتقلت إلى محرّرها
+             * (‏`admin.settings.templates.update`‎). وبقاؤها مقبولةً في هذا
+             * الباب كان يجعل كلّ حفظٍ من أيّ تبويب يُعيد ما قرأته الشاشة قبل
+             * تعديل الورقة — نسخُ القديم فوق الجديد بلا رسالة.
+             */
         ];
 
         $this->actingAs($this->owner)->post(route('admin.settings.update'), $sent)
@@ -213,8 +215,15 @@ class AdminPanelAuditTest extends TestCase
     public function test_a_nonsense_value_is_refused_rather_than_saved(): void
     {
         $this->actingAs($this->owner)->post(route('admin.settings.update'), [
-            'decimals' => '9', 'vat_rate' => 'خمسة', 'paper' => 'A3',
-        ])->assertSessionHasErrors(['decimals', 'vat_rate', 'paper']);
+            'decimals' => '9', 'vat_rate' => 'خمسة',
+        ])->assertSessionHasErrors(['decimals', 'vat_rate']);
+
+        $this->assertDatabaseMissing('settings', ['business_id' => $this->business->id, 'key' => 'decimals']);
+
+        // ومقاسُ الورق يُردّ في بابه هو
+        $this->actingAs($this->owner)
+            ->post(route('admin.settings.templates.update', 'sale'), ['paper' => 'A3'])
+            ->assertSessionHasErrors('paper');
 
         $this->assertDatabaseMissing('settings', ['business_id' => $this->business->id, 'key' => 'paper']);
     }

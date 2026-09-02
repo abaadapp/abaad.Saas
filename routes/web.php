@@ -21,7 +21,6 @@ use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\GoalController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
 use App\Http\Controllers\Admin\Inventory\StockAdjustmentController;
-use App\Http\Controllers\Admin\Inventory\StockTransferController;
 use App\Http\Controllers\Admin\InventoryController;
 use App\Http\Controllers\Admin\JobTitleController;
 use App\Http\Controllers\Admin\LanguageController;
@@ -526,9 +525,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      *
      * وتحت `inventory` كأخواتها: من يملك المخزون ينقل بضاعته بين فروعه.
      */
-    Route::get('/inventory/transfers', [StockTransferController::class, 'index'])->name('inventory.transfers');
-    Route::post('/inventory/transfers', [StockTransferController::class, 'store'])->name('inventory.transfers.store');
-    Route::get('/inventory/transfers/{id}/pdf', [DocumentPrintController::class, 'transfer'])->name('inventory.transfers.pdf');
     Route::get('/inventory/receipts', [GoodsReceiptNoteController::class, 'index'])->name('inventory.receipts');
     Route::get('/inventory/receipts/{id}/pdf', [DocumentPrintController::class, 'grn'])->name('inventory.receipts.pdf');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');

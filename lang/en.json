@@ -3953,5 +3953,13 @@
     "يظهر أسفل الورقة — كل سطر كما كتبته": "Appears at the bottom of the document — each line as you wrote it",
     "فاتورة البيع وسند التسليم وأمر الشراء وسندا الاستلام والتحويل — لكلٍّ محرّرُه": "Sales invoice, delivery note, purchase order, goods receipt and stock transfer — each with its own editor",
     "الأوراق": "Documents",
-    "يظهر في الفواتير والإيصالات — وقالب فاتورة البيع يُظهره أو يُخفيه.": "Appears on invoices and receipts — the sales invoice template shows or hides it."
+    "يظهر في الفواتير والإيصالات — وقالب فاتورة البيع يُظهره أو يُخفيه.": "Appears on invoices and receipts — the sales invoice template shows or hides it.",
+    "من أين جاءت": "Where it came from",
+    "بلا مورّد": "No supplier",
+    "بلا أمر شراء": "No purchase order",
+    "أين دخلت ومن استلمها": "Where it went and who received it",
+    "بلا فرع": "No branch",
+    "لم يُسجَّل مستلِم": "No receiver recorded",
+    "لا أصناف على هذا الإشعار.": "No items on this note.",
+    "في «:branch» ما زال :qty قطعة. اصرفها من المخزون ← سجل المخزون وأضِفها في فرعٍ آخر، ثم احذفه.": "“:branch” still holds :qty units. Issue them from Inventory → Stock log and add them to another branch, then delete it."
 }

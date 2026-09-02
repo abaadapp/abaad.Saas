@@ -156,65 +156,142 @@ export default function InventoryReceipts() {
                 />
             </Card>
 
+            {/*
+                نافذةُ العرض — ورقةُ الاستلام كما تُقرأ عند باب المخزن.
+
+                وكانت ستّةَ حقولٍ في شبكةٍ واحدة تحت عنوانٍ واحد: المورّد
+                وأمرُ الشراء والفرعُ والمستلِم والتاريخُ والقيمة — فلا تُقرأ
+                الورقةُ طرفين، ولا يُعرف من أين جاءت البضاعة ومن استلمها إلا
+                بقراءة الستّة كلِّها. وصارت طرفين: مصدرٌ ووجهة.
+
+                والمجموعُ في ذيل الجدول لا في الشبكة فوقه: العينُ تطلب
+                المجموع تحت آخر سطرٍ لا فوق أوّله. وأُضيف إجماليّ الكميّة —
+                وهو أوّلُ ما يُعدّ عند الباب، ولم يكن في الورقة أصلًا.
+            */}
             <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-                <DialogContent className="sm:max-w-2xl">
+                <DialogContent className="sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>
-                            <span className="flex items-center gap-2">
-                                <PackagePlus className="size-4 text-[#047857]" />
-                                {viewing?.number}
+                            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <span className="flex items-center gap-2">
+                                    <PackagePlus className="size-4 text-[#047857]" />
+                                    <span className="font-mono">{viewing?.number}</span>
+                                </span>
+                                {viewing?.received_at && (
+                                    <span dir="ltr" className="text-[13px] font-normal text-[#9ca3af]">
+                                        {viewing.received_at}
+                                    </span>
+                                )}
                             </span>
                         </DialogTitle>
                     </DialogHeader>
 
                     {viewing && (
-                        <div className="space-y-4">
-                            <dl className="grid grid-cols-2 gap-3 text-sm">
-                                {[
-                                    ['المورّد', viewing.supplier ?? '—'],
-                                    ['أمر الشراء', viewing.order ?? '—'],
-                                    ['الفرع', viewing.branch ?? '—'],
-                                    ['المستلِم', viewing.receiver ?? '—'],
-                                    ['تاريخ الاستلام', viewing.received_at ?? '—'],
-                                    ['قيمة ما دخل', m(viewing.value)],
-                                ].map(([label, value]) => (
-                                    <div key={label as string}>
-                                        <dt className="text-[12px] text-[#9ca3af]">{t(label as string)}</dt>
-                                        <dd className="font-medium text-[#111]">{value}</dd>
-                                    </div>
-                                ))}
-                            </dl>
+                        /* الجسم وحده يمرّ تحت اليد: الترويسة والذيل يبقيان
+                           ظاهرين مهما طالت قائمة الأصناف */
+                        <div className="max-h-[70dvh] space-y-5 overflow-y-auto overscroll-contain">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
+                                    <p className="mb-2 text-[12px] font-medium text-[#9ca3af]">{t('من أين جاءت')}</p>
+                                    <p className="font-medium text-[#111]">{viewing.supplier ?? t('بلا مورّد')}</p>
+                                    {/* ورقمُ الأمر رابطٌ هنا كما هو في الجدول: من يقرأ
+                                        السند يريد أن يقابله بأمره لا أن ينسخ رقمه */}
+                                    {viewing.order ? (
+                                        <SmartLink
+                                            routeName="admin.purchases.orders"
+                                            href={route('admin.purchases.orders', { q: viewing.order })}
+                                            className="mt-1 block font-mono text-[12px] text-[#6b7280] hover:text-[#111] hover:underline"
+                                        >
+                                            {viewing.order}
+                                        </SmartLink>
+                                    ) : (
+                                        <p className="mt-1 text-[12px] text-[#9ca3af]">{t('بلا أمر شراء')}</p>
+                                    )}
+                                </div>
 
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="hover:bg-transparent">
-                                        <TableHead>{t('الصنف')}</TableHead>
-                                        <TableHead className="text-end">{t('الكمية')}</TableHead>
-                                        <TableHead className="text-end">{t('التكلفة')}</TableHead>
-                                        <TableHead className="text-end">{t('الإجمالي')}</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {viewing.items.map((i, k) => (
-                                        <TableRow key={k}>
-                                            <TableCell className="font-medium text-[#111]">{i.name}</TableCell>
-                                            <TableCell className="text-end tabular-nums">{number(i.quantity)}</TableCell>
-                                            <TableCell className="text-end tabular-nums text-[#4b4b4b]">
-                                                {m(i.cost)}
+                                <div className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
+                                    <p className="mb-2 text-[12px] font-medium text-[#9ca3af]">{t('أين دخلت ومن استلمها')}</p>
+                                    <p className="font-medium text-[#111]">{viewing.branch ?? t('بلا فرع')}</p>
+                                    <p className="mt-1 text-[12px] text-[#6b7280]">
+                                        {viewing.receiver ?? t('لم يُسجَّل مستلِم')}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {viewing.items.length === 0 ? (
+                                <p className="rounded-[10px] bg-[#fafafa] p-4 text-center text-sm text-[#9ca3af]">
+                                    {t('لا أصناف على هذا الإشعار.')}
+                                </p>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="hover:bg-transparent">
+                                            <TableHead>{t('الصنف')}</TableHead>
+                                            <TableHead className="text-end">{t('الكمية')}</TableHead>
+                                            <TableHead className="text-end">{t('التكلفة')}</TableHead>
+                                            <TableHead className="text-end">{t('الإجمالي')}</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {viewing.items.map((i, k) => (
+                                            <TableRow key={k}>
+                                                <TableCell className="font-medium text-[#111]">{i.name}</TableCell>
+                                                <TableCell className="text-end tabular-nums">{number(i.quantity)}</TableCell>
+                                                <TableCell className="text-end tabular-nums text-[#4b4b4b]">
+                                                    {m(i.cost)}
+                                                </TableCell>
+                                                <TableCell className="text-end tabular-nums font-medium">
+                                                    {m(i.quantity * i.cost)}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {/*
+                                            والمجموع يُحسب من السطور لا يُقرأ من حقلٍ
+                                            ثانٍ: رقمان لشيءٍ واحد يفترقان يومًا، فيقول
+                                            الذيلُ غير ما تقوله السطور فوقه.
+                                        */}
+                                        <TableRow className="border-t-2 border-[#111] font-semibold hover:bg-transparent">
+                                            <TableCell className="text-[#111]">
+                                                {t('الإجمالي')}
+                                                <span className="ms-2 text-[12px] font-normal text-[#9ca3af]">
+                                                    {number(viewing.items.length)} {t('صنف')}
+                                                </span>
                                             </TableCell>
-                                            <TableCell className="text-end tabular-nums font-medium">
-                                                {m(i.quantity * i.cost)}
+                                            <TableCell className="text-end tabular-nums">
+                                                {number(viewing.items.reduce((a, i) => a + i.quantity, 0))}
+                                            </TableCell>
+                                            <TableCell />
+                                            <TableCell className="text-end tabular-nums">
+                                                {m(viewing.items.reduce((a, i) => a + i.quantity * i.cost, 0))}
                                             </TableCell>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                                    </TableBody>
+                                </Table>
+                            )}
 
                             {viewing.notes && (
-                                <p className="rounded-[10px] bg-[#fafafa] p-3 text-sm text-[#4b4b4b]">
-                                    {viewing.notes}
-                                </p>
+                                <div className="rounded-[10px] bg-[#fafafa] p-3">
+                                    <p className="mb-1 text-[12px] text-[#9ca3af]">{t('ملاحظات')}</p>
+                                    <p className="text-sm whitespace-pre-line text-[#4b4b4b]">{viewing.notes}</p>
+                                </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* والطباعة من داخل النافذة أيضًا: من فتح السند ليقرأه هو
+                        من يريد ورقةً يوقّعها، فلا يُغلقها ليبحث عن أيقونةٍ في صفّه */}
+                    {viewing && (
+                        <div className="flex justify-end border-t border-[var(--ui-border,#e8e8e8)] pt-4">
+                            <Button variant="outline" asChild>
+                                <a
+                                    href={route('admin.inventory.receipts.pdf', viewing.id)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    <Printer />
+                                    {t('طباعة السند')}
+                                </a>
+                            </Button>
                         </div>
                     )}
                 </DialogContent>

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\GoodsReceiptNote;
 use App\Models\Order;
 use App\Models\PurchaseOrder;
-use App\Models\StockTransfer;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\DocumentPaper;
@@ -16,7 +15,7 @@ use App\Support\DocumentRenderer;
  * أوراقُ النظام تخرج على ورق.
  *
  * وكانت تُنشأ ولا تُطبع: أمرُ شراءٍ يُرسل إلى مورّد بالهاتف، وسندُ استلامٍ
- * يُوقَّع على ورقةٍ تُكتب باليد، وسندُ نقلٍ يمشي مع البضاعة بلا ورقة. فما
+ * يُوقَّع على ورقةٍ تُكتب باليد، وشحنةٌ تمشي بلا سندٍ يُوقّعه مستلمها. فما
  * في النظام لا يُثبت شيئًا عند خلاف.
  *
  * والقيدُ في كلّ دالّة واحد: `business_id` في الاستعلام لا في الشاشة. ورقمٌ
@@ -69,20 +68,6 @@ class DocumentPrintController extends Controller
         return DocumentRenderer::pdf(
             DocumentRenderer::generic($bid, 'grn', DocumentPaper::forGrn($note)),
             'grn-'.$note->number,
-        );
-    }
-
-    public function transfer(int $id)
-    {
-        $bid = $this->bid();
-        $t = StockTransfer::where('business_id', $bid)->whereKey($id)
-            ->with('product', 'creator')->firstOrFail();
-
-        Activity::log('report', 'طبع سند التحويل: '.$t->number, ['subject_id' => $t->id]);
-
-        return DocumentRenderer::pdf(
-            DocumentRenderer::generic($bid, 'transfer', DocumentPaper::forTransfer($t)),
-            'transfer-'.$t->number,
         );
     }
 }

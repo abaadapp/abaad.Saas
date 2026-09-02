@@ -7,7 +7,6 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\PurchaseOrder;
 use App\Models\Setting;
-use App\Models\StockTransfer;
 use Mpdf\Mpdf;
 
 /**
@@ -77,8 +76,7 @@ class DocumentRenderer
              * منها لخرجت ورقةٌ بلا أسعارٍ في السطور وبمجموعٍ في أسفلها.
              */
             'showPrices' => (bool) ($tpl['show_prices'] ?? true),
-            'showParties' => (bool) (($tpl['show_customer'] ?? false) || ($tpl['show_supplier'] ?? false)
-                || $type === 'transfer'),
+            'showParties' => (bool) (($tpl['show_customer'] ?? false) || ($tpl['show_supplier'] ?? false)),
         ])->render();
     }
 
@@ -161,8 +159,6 @@ class DocumentRenderer
                 ->with('items', 'supplier')->latest('id')->first(),
             'grn' => GoodsReceiptNote::where('business_id', $businessId)
                 ->with('items', 'supplier', 'branch', 'purchaseOrder')->latest('id')->first(),
-            'transfer' => StockTransfer::where('business_id', $businessId)
-                ->with('product', 'creator')->latest('id')->first(),
             default => null,
         };
 
@@ -174,7 +170,6 @@ class DocumentRenderer
             'delivery' => DocumentPaper::forDelivery($record),
             'purchase' => DocumentPaper::forPurchase($record),
             'grn' => DocumentPaper::forGrn($record),
-            'transfer' => DocumentPaper::forTransfer($record),
         };
     }
 

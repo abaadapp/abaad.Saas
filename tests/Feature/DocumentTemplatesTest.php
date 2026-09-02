@@ -12,7 +12,6 @@ use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Setting;
-use App\Models\StockTransfer;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Support\DocumentTemplates;
@@ -44,8 +43,6 @@ class DocumentTemplatesTest extends TestCase
 
     private GoodsReceiptNote $grn;
 
-    private StockTransfer $transfer;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -53,7 +50,6 @@ class DocumentTemplatesTest extends TestCase
 
         $this->business = Business::create(['name' => 'ورد الخوير', 'type' => 'محل ورود', 'status' => 'نشط']);
         $muscat = Branch::create(['business_id' => $this->business->id, 'name' => 'مسقط']);
-        $salalah = Branch::create(['business_id' => $this->business->id, 'name' => 'صلالة']);
 
         $this->owner = User::create([
             'business_id' => $this->business->id, 'name' => 'صاحب النشاط', 'email' => 'o@abaad.om',
@@ -97,14 +93,6 @@ class DocumentTemplatesTest extends TestCase
         GoodsReceiptNoteItem::create([
             'goods_receipt_note_id' => $this->grn->id, 'name' => 'ورد جوري',
             'quantity' => 10, 'cost' => 5,
-        ]);
-
-        $this->transfer = StockTransfer::create([
-            'business_id' => $this->business->id,
-            'from_branch_id' => $muscat->id, 'to_branch_id' => $salalah->id,
-            'from_branch_name' => 'مسقط', 'to_branch_name' => 'صلالة',
-            'product_id' => $product->id, 'number' => 'TR-000001',
-            'quantity' => 5, 'created_by' => $this->owner->id, 'transferred_at' => now(),
         ]);
 
         $this->actingAs($this->owner);
@@ -229,10 +217,10 @@ class DocumentTemplatesTest extends TestCase
          * من جرّب شكلًا ثمّ تركه لا يجب أن يجد ورقته قد تغيّرت — والمعاينة
          * تُطلب مع كلّ حرفٍ يُكتب، فحفظُها يعني ورقةً تتبدّل بلا أن يُحفظ.
          */
-        $this->postJson(route('admin.settings.templates.preview', 'transfer'), ['show_signature' => false])->assertOk();
+        $this->postJson(route('admin.settings.templates.preview', 'purchase'), ['show_signature' => true])->assertOk();
 
         $this->assertDatabaseMissing('settings', [
-            'business_id' => $this->business->id, 'key' => 'tpl_transfer_show_signature',
+            'business_id' => $this->business->id, 'key' => 'tpl_purchase_show_signature',
         ]);
     }
 
@@ -254,7 +242,6 @@ class DocumentTemplatesTest extends TestCase
             route('admin.orders.deliveryNote', $this->order->number),
             route('admin.purchases.pdf', $this->po->id),
             route('admin.inventory.receipts.pdf', $this->grn->id),
-            route('admin.inventory.transfers.pdf', $this->transfer->id),
         ];
 
         foreach ($routes as $url) {
@@ -274,16 +261,8 @@ class DocumentTemplatesTest extends TestCase
             'business_id' => $neighbour->id, 'number' => 'PO-000099',
             'supplier_id' => $supplier->id, 'status' => 'مُرسل', 'total' => 10, 'ordered_at' => now(),
         ]);
-        $theirTransfer = StockTransfer::create([
-            'business_id' => $neighbour->id, 'from_branch_name' => 'أ', 'to_branch_name' => 'ب',
-            'product_id' => Product::create([
-                'business_id' => $neighbour->id, 'name' => 'صنفهم', 'price' => 1, 'quantity' => 1, 'active' => true,
-            ])->id,
-            'number' => 'TR-000099', 'quantity' => 1, 'transferred_at' => now(),
-        ]);
-
         $this->get(route('admin.purchases.pdf', $theirs->id))->assertNotFound();
-        $this->get(route('admin.inventory.transfers.pdf', $theirTransfer->id))->assertNotFound();
+        $this->get(route('admin.inventory.receipts.pdf', 999999))->assertNotFound();
     }
 
     public function test_a_neighbours_template_is_not_read_as_mine(): void

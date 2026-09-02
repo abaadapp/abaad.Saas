@@ -171,24 +171,38 @@ class SettingsHoldTheirGroundTest extends TestCase
          * والنصيحة تُسمّي بابًا موجودًا.
          *
          * كانت تقول «انقلها إلى فرعٍ آخر» ولا نقلَ في النظام، فيبحث التاجر
-         * عن زرٍّ ليس موجودًا ثمّ يظنّ العطب في بصره. ثمّ صارت تدلّه على
-         * حركتين يدويّتين — بابٌ أعرج لا وثيقةَ تربط طرفيه. واليوم للنقل
-         * سندُه، فتُسمّيه الرسالة باسمه.
+         * عن زرٍّ ليس موجودًا ثمّ يظنّ العطب في بصره. ثمّ دلّته على شاشة
+         * النقل بين الفروع — وقد حُذفت بطلب صاحب النظام، فعادت تدلّ على
+         * سجلّ المخزون وهو الباب القائم.
          */
-        $this->assertStringContainsString('النقل بين الفروع', $message, 'النصيحة تُسمّي الشاشة التي تُنفَّذ منها');
+        $this->assertStringContainsString('سجل المخزون', $message, 'النصيحة تُسمّي الشاشة التي تُنفَّذ منها');
         $this->assertStringContainsString($other->name, $message, 'ولا تقول «فرعٌ ما» — تسمّي الفرع وكميّته');
     }
 
     public function test_the_screen_the_advice_names_is_actually_there(): void
     {
         /*
-         * حارسٌ على النصيحة نفسها — كان يقول «لا نقلَ بعد» ويسقط يوم يُبنى.
-         * وقد بُني، فصار يقول العكس: نصيحةٌ تُحيل إلى مسارٍ محذوف أسوأ من
-         * نصيحةٍ لا تُحيل إلى شيء، لأنّ الأولى تبدو صحيحةً حتى تُجرَّب.
+         * حارسٌ على النصيحة نفسها: نصيحةٌ تُحيل إلى مسارٍ محذوف أسوأ من
+         * نصيحةٍ لا تُحيل إلى شيء، لأنّها تبدو صحيحةً حتى تُجرَّب. وقد وقع
+         * ذلك فعلًا يوم حُذفت شاشةُ النقل وبقيت الرسالة تسمّيها.
          */
-        $this->assertTrue(Route::has('admin.inventory.transfers'));
+        $this->assertTrue(Route::has('admin.inventory.adjustments'));
 
-        $this->actingAs($this->owner)->get(route('admin.inventory.transfers'))->assertOk();
+        $this->actingAs($this->owner)->get(route('admin.inventory.adjustments'))->assertOk();
+    }
+
+    /**
+     * والبابُ المحذوف لا يُترك مفتوحًا في العنوان.
+     *
+     * حُذف النقل بين الفروع بطلب صاحب النظام: لا شاشةَ ولا حفظَ ولا طباعة.
+     * وبقاءُ المسار وحده يعني بابًا يفتحه من حفظ رابطه، ويُنشئ حركاتٍ لا
+     * شاشةَ تعرضها.
+     */
+    public function test_the_deleted_transfer_screen_is_gone_from_the_routes(): void
+    {
+        $this->assertFalse(Route::has('admin.inventory.transfers'));
+        $this->assertFalse(Route::has('admin.inventory.transfers.store'));
+        $this->assertFalse(Route::has('admin.inventory.transfers.pdf'));
     }
 
     /* ============ الإعداد يصل إلى موضعه، ولا يكسر ما قبله ============ */

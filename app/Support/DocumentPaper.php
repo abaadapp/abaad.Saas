@@ -7,7 +7,6 @@ use App\Models\GoodsReceiptNote;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
-use App\Models\StockTransfer;
 
 /**
  * الورقة كما تُرسم — بيانُ المستند مفصولًا عن رسمه.
@@ -144,33 +143,6 @@ class DocumentPaper
         ];
     }
 
-    public static function forTransfer(StockTransfer $t): array
-    {
-        return [
-            'title' => __('سند تحويل مخزني'),
-            'number' => $t->number,
-            'date' => optional($t->transferred_at)->format('Y-m-d H:i'),
-            /*
-             * والفرعان في بطاقتين لا في سطرٍ واحد: «من مسقط إلى صلالة» تُقرأ
-             * بالعجلة معكوسةً، فتعود البضاعة من حيث جاءت.
-             */
-            'branch' => $t->from_branch_name,
-            'employee' => optional($t->creator)->name,
-            'parties' => [
-                ['cap' => __('من فرع'), 'lines' => [$t->from_branch_name]],
-                ['cap' => __('إلى فرع'), 'lines' => [$t->to_branch_name]],
-            ],
-            'items' => [[
-                'name' => optional($t->product)->name ?? __('صنف محذوف'),
-                'qty' => self::qty($t->quantity),
-                'unit' => null,
-                'total' => null,
-            ]],
-            'totals' => [],
-            'notes' => (string) ($t->notes ?? ''),
-        ];
-    }
-
     /**
      * ورقةٌ بمثالٍ من بضاعة المتجر نفسه — للمعاينة في المحرّر.
      *
@@ -206,22 +178,12 @@ class DocumentPaper
             'delivery' => 'سند تسليم',
             'purchase' => 'أمر شراء',
             'grn' => 'سند استلام بضاعة',
-            'transfer' => 'سند تحويل مخزني',
         ];
 
         $parties = match ($type) {
             'purchase', 'grn' => [['cap' => __('المورّد'), 'lines' => [__('مورّد الورود'), '91234567']]],
-            'transfer' => [
-                ['cap' => __('من فرع'), 'lines' => [__('الفرع الرئيسي')]],
-                ['cap' => __('إلى فرع'), 'lines' => [__('فرع صلالة')]],
-            ],
             default => [['cap' => __('المستلِم'), 'lines' => [__('زبون تجريبي'), '91234567', __('مسقط — الخوير')]]],
         };
-
-        if ($type === 'transfer') {
-            $items = [array_replace($items[0], ['unit' => null, 'total' => null])];
-            $total = null;
-        }
 
         return [
             'title' => __($titles[$type] ?? 'مستند'),

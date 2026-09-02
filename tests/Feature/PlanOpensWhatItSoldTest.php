@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\CheckPlanFeature;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
@@ -97,16 +98,42 @@ class PlanOpensWhatItSoldTest extends TestCase
     {
         $this->onPlan(['reports_advanced']);
 
-        $this->actingAs($this->owner)->get(route('admin.reports.waste'))->assertOk();
+        $this->actingAs($this->owner)->get(route('admin.reports.xlsx'))->assertOk();
     }
 
     /* ========================= التقارير المتقدّمة ========================= */
 
-    public function test_a_plan_without_advanced_reports_closes_the_waste_screen(): void
+    public function test_the_waste_screen_is_open_to_every_plan(): void
+    {
+        /*
+         * خرجت من القفل بقرار المالك.
+         *
+         * وهي شاشةُ قراءةٍ كبقيّة التقارير: تقول ما تلف وما فُقد — رقمٌ
+         * يخسره صاحبُ المحلّ كلَّ يومٍ لا يراه. وحجبُه عن الباقة الأساسية
+         * يحجب الخسارة عمّن هو أحوجُ إلى رؤيتها.
+         */
+        $this->onPlan(['loyalty']);
+
+        $this->actingAs(User::find($this->owner->id))
+            ->get(route('admin.reports.waste'))->assertOk();
+    }
+
+    public function test_the_waste_card_shows_on_a_plan_that_does_not_sell_analysis(): void
+    {
+        // وبابٌ مفتوحٌ بلا بطاقةٍ تدلّ عليه بابٌ لا يجده أحد
+        $this->onPlan(['loyalty']);
+
+        $keys = collect(Reports::forUser(User::find($this->owner->id)))->pluck('key');
+
+        $this->assertContains('waste', $keys->all());
+    }
+
+    public function test_a_plan_without_advanced_reports_still_closes_the_exports(): void
     {
         $this->onPlan(['loyalty']);
 
-        $this->actingAs($this->owner)->get(route('admin.reports.waste'))->assertForbidden();
+        $this->actingAs(User::find($this->owner->id))
+            ->get(route('admin.reports.export.csv', 'waste'))->assertForbidden();
     }
 
     public function test_the_refusal_names_the_plan_and_the_feature(): void
@@ -184,20 +211,32 @@ class PlanOpensWhatItSoldTest extends TestCase
         $this->actingAs($this->owner)->get(route('admin.export.customers'))->assertOk();
     }
 
-    public function test_a_closed_report_leaves_no_card_in_the_index(): void
+    public function test_no_card_points_at_a_door_the_plan_closes(): void
     {
         /*
          * بطاقةٌ تقود إلى 403 تجعل صاحبها يظنّ العطب في النظام ويعيد المحاولة
          * — والفهرس يقرأ من مصدر الحارس نفسه فلا تفترق بطاقةٌ عن بابها.
+         *
+         * والقاعدة تُقاس على التقارير كلّها لا على واحدٍ بعينه: كانت تُفحص
+         * بـ«الهالك» وحده، فلمّا فُتح للجميع لم يبقَ في الفحص شيء. وهذا
+         * يقيس **العلاقة** نفسها، فيصمد لأيّ قفلٍ يُضاف أو يُرفع غدًا.
          */
-        $this->onPlan([]);
+        foreach ([[], ['reports_advanced'], ['loyalty', 'reports_advanced']] as $capabilities) {
+            $this->onPlan($capabilities);
+            $business = $this->business->fresh();
+            $shown = collect(Reports::forUser(User::find($this->owner->id)))->pluck('key')->all();
 
-        $keys = collect(Reports::forUser($this->owner->fresh()))->pluck('key')->all();
-        $this->assertNotContains('waste', $keys, 'بطاقةُ تقريرٍ مغلق ما زالت تُعرض');
+            foreach (Reports::ALL as $report) {
+                $feature = CheckPlanFeature::featureFor($report['route']);
+                $open = $feature === null || PlanFeatures::allows($business, $feature);
 
-        $this->onPlan(['reports_advanced']);
-        $keys = collect(Reports::forUser($this->owner->fresh()))->pluck('key')->all();
-        $this->assertContains('waste', $keys, 'أُخفيت بطاقةُ تقريرٍ مفتوح');
+                $this->assertSame(
+                    $open,
+                    in_array($report['key'], $shown, true),
+                    "بطاقة «{$report['key']}» تفترق عن بابها على باقةٍ تفتح: ".(implode('، ', $capabilities) ?: 'لا شيء'),
+                );
+            }
+        }
     }
 
     /* ======================== الصلاحيات المخصّصة ======================== */

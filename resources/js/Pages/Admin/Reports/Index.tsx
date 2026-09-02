@@ -58,16 +58,23 @@ interface Summary {
 interface Props {
     reports: Report[];
     categories: Record<string, string>;
-    /** رأسُ الصفحة — أرقامُ الفترة نفسها التي تعرضها «ملخّص المبيعات» */
-    summary: Summary;
-    salesSeries: {
+    /**
+     * رأسُ الصفحة — أرقامُ الفترة نفسها التي تعرضها «ملخّص المبيعات».
+     *
+     * واختياريّ عمدًا: الخادمُ يرسله دائمًا، لكن الشيفرة والحزمة لا تصلان
+     * الخادمَ في اللحظة نفسها — وردٌّ قديم لا يحمله كان يُسقط الصفحة كلَّها
+     * بـ«Cannot read properties of undefined». فتسقط البطاقاتُ الأربع وحدها
+     * ويبقى ما تحتها يعمل.
+     */
+    summary?: Summary;
+    salesSeries?: {
         labels: string[];
         full: string[];
         data: (number | null)[];
         counts: (number | null)[];
         range: ReportRange;
     };
-    range: ReportRange;
+    range?: ReportRange;
 }
 
 /** عنوان المخطّط بحسب دقّة محوره — انظر Demo::salesTrend */
@@ -126,17 +133,19 @@ export default function ReportsIndex() {
      * وهي التي يفتح صاحبُ المحلّ الصفحة من أجلها — كم بعتُ، وكم ربحت، وكم
      * صرفت، وكم ضريبةً حصّلت. وما زاد يُقرأ في صفحته.
      */
-    const stats = [
-        { label: t('إجمالي المبيعات'), value: m(summary.sales), icon: 'wallet', color: 'primary' },
-        {
-            label: t('صافي الربح'),
-            value: m(summary.profit),
-            icon: summary.profit >= 0 ? 'trending-up' : 'trending-down',
-            color: summary.profit >= 0 ? 'success' : 'danger',
-        },
-        { label: t('المصروفات'), value: m(summary.expenses), icon: 'arrow-down-circle', color: 'warning' },
-        { label: t('الضريبة المحصّلة'), value: m(summary.tax), icon: 'receipt', color: 'info' },
-    ];
+    const stats = summary
+        ? [
+            { label: t('إجمالي المبيعات'), value: m(summary.sales), icon: 'wallet', color: 'primary' },
+            {
+                label: t('صافي الربح'),
+                value: m(summary.profit),
+                icon: summary.profit >= 0 ? 'trending-up' : 'trending-down',
+                color: summary.profit >= 0 ? 'success' : 'danger',
+            },
+            { label: t('المصروفات'), value: m(summary.expenses), icon: 'arrow-down-circle', color: 'warning' },
+            { label: t('الضريبة المحصّلة'), value: m(summary.tax), icon: 'receipt', color: 'info' },
+        ]
+        : [];
 
     const [query, setQuery] = useState('');
     const [category, setCategory] = useState<string | null>(null);
@@ -170,18 +179,20 @@ export default function ReportsIndex() {
                 subtitle={t('أرقام متجرك في الفترة المختارة، وتحتها كلّ تقريرٍ بتفصيله.')}
             />
 
-            <RangeTabs current={range} />
+            {range && <RangeTabs current={range} />}
 
-            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {stats.map((s, i) => (
-                    <StatCard key={s.label} stat={s} index={i} />
-                ))}
-            </div>
+            {stats.length > 0 && (
+                <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {stats.map((s, i) => (
+                        <StatCard key={s.label} stat={s} index={i} />
+                    ))}
+                </div>
+            )}
 
             {/*
                 لا مخطّط في فترة «الكل» — بطلب المالك. والأرقام تبقى.
             */}
-            {range !== 'all' && (
+            {salesSeries && range && range !== 'all' && (
                 <Card className="mb-8">
                     <CardHeader className="flex-row items-center justify-between gap-3">
                         <CardTitle>{t(CHART_TITLE[range])}</CardTitle>

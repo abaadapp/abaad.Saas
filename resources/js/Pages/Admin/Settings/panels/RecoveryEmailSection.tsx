@@ -4,6 +4,7 @@ import { AlertTriangle, KeyRound, ShieldCheck } from 'lucide-react';
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 
 export interface Recovery {
@@ -107,8 +108,7 @@ export default function RecoveryEmailSection({ recovery }: { recovery: Recovery 
                             ولا شيء. فالجلسة تُثبت الجهاز، وهذه تُثبت صاحبه.
                         */}
                         <Field label="كلمة المرور الحالية" error={start.errors.current_password}>
-                            <Input
-                                type="password"
+                            <PasswordInput
                                 dir="ltr"
                                 autoComplete="current-password"
                                 value={start.data.current_password}

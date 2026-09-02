@@ -3966,5 +3966,9 @@
     "منصة أبعاد لإدارة المحلات": "Abaad — shop management platform",
     "المشترك": "Subscriber",
     "اشتراك": "Subscription",
-    "هذه الفاتورة صادرة عن منصة أبعاد مقابل اشتراك البرنامج.": "This invoice is issued by the Abaad platform for the software subscription."
+    "هذه الفاتورة صادرة عن منصة أبعاد مقابل اشتراك البرنامج.": "This invoice is issued by the Abaad platform for the software subscription.",
+    "انقله إلى نطاق أبعاد": "Move to the Abaad domain",
+    "سيتغيّر بريد دخوله عند الحفظ — أبلغه بالجديد.": "Their login address will change on save — tell them the new one.",
+    "اسم المستخدم مطلوب — وبه يدخل الموظف إلى النظام.": "A username is required — the employee signs in with it.",
+    "هذا الاسم مستخدَم — اختر غيره.": "That username is taken — pick another."
 }

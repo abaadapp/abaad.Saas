@@ -14,6 +14,8 @@ import {
     DialogTitle,
 } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
+import { UsernameInput, usernameOf } from '@/Components/ui/username-input';
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
@@ -27,6 +29,10 @@ export interface EmployeeFormValues {
     branch: string | null;
     phone: string | null;
     email: string;
+    /** الاسم قبل النطاق — يملأ الحقل، والنطاق مُلحق ثابت */
+    username?: string;
+    /** هل عنوانه على نطاق أبعاد؟ الحسابات القديمة خارجه لا تُنقل بلا قصد */
+    on_domain?: boolean;
     avatar?: string | null;
     status?: string;
     monthly_target?: number | string | null;
@@ -133,7 +139,7 @@ export default function EmployeeForm({
         branch: employee?.branch ?? defaultBranch ?? '',
         branches: employee?.branches ?? [],
         phone: employee?.phone ?? '',
-        email: employee?.email ?? '',
+        login_username: employee ? (employee.on_domain === false ? '' : (employee.username ?? usernameOf(employee.email))) : '',
         password: '',
         status: (employee?.status ?? 'نشط') === 'نشط',
         // صفرٌ يعني «بلا هدف» — يُعرض فارغًا كما يقول التلميح، لا رقمًا مضبوطًا
@@ -158,6 +164,12 @@ export default function EmployeeForm({
     // الاسم وحده: الصلاحيات تُحدَّد لهذا الموظف بعينه في القسم أدناه، فلا معنى
     // لسؤالٍ عن صلاحيات «الوظيفة» يُجاب مرّتين ويتناقض جوابه
     const titleForm = useForm({ name: '' });
+
+    /*
+     * حسابٌ قديم خارج نطاق أبعاد — يُعرض عنوانه ولا يُنقل حتى يُطلب النقل.
+     */
+    const [moving, setMoving] = useState(false);
+    const legacyEmail = editing && employee?.on_domain === false && !moving;
 
     useEffect(() => {
         if (pendingTitle && titles.includes(pendingTitle)) {
@@ -327,17 +339,46 @@ export default function EmployeeForm({
                         `cashier@` يصطدمان — والتلميح يقول ذلك قبل الاصطدام.
                     */}
                     <Field
-                        label="البريد الإلكتروني"
-                        required
+                        label="اسم المستخدم"
+                        required={!legacyEmail}
                         hint="به يدخل الموظف — ولا يتكرّر على المنصة"
-                        error={form.errors.email}
+                        error={form.errors.login_username}
                     >
-                        <Input
-                            type="email"
-                            dir="ltr"
-                            value={form.data.email}
-                            onChange={(e) => form.setData('email', e.target.value)}
-                        />
+                        {/*
+                            الحساب القديم خارج النطاق لا يُنقل بلا قصد: يُعرض
+                            عنوانه كما هو، ولا يتبدّل إلا بضغطةٍ تقول ذلك. ولو
+                            نُقل مع أيّ حفظ لَتبدّل بريدُ دخوله وهو يصحّح رقم
+                            هاتفه — ثمّ يقف غدًا أمام الشاشة بعنوانٍ لا يعرفه.
+                        */}
+                        {legacyEmail ? (
+                            <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-[#f7f7f5] px-3 py-2">
+                                <span className="text-[13px] text-[#4b4b4b]" dir="ltr">
+                                    {employee?.email}
+                                </span>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        setMoving(true);
+                                        form.setData('login_username', usernameOf(employee?.email));
+                                    }}
+                                >
+                                    {t('انقله إلى نطاق أبعاد')}
+                                </Button>
+                            </div>
+                        ) : (
+                            <UsernameInput
+                                value={form.data.login_username}
+                                onChange={(v) => form.setData('login_username', v)}
+                                required
+                            />
+                        )}
+                        {moving && (
+                            <p className="mt-1.5 text-[12px] text-[#b45309]">
+                                {t('سيتغيّر بريد دخوله عند الحفظ — أبلغه بالجديد.')}
+                            </p>
+                        )}
                     </Field>
 
                     <Field
@@ -345,9 +386,7 @@ export default function EmployeeForm({
                         hint={editing ? 'اتركها فارغة للإبقاء على الحالية' : 'أربعة أحرف على الأقل'}
                         error={form.errors.password}
                     >
-                        <Input
-                            type="password"
-                            dir="ltr"
+                        <PasswordInput
                             autoComplete="new-password"
                             value={form.data.password}
                             onChange={(e) => form.setData('password', e.target.value)}

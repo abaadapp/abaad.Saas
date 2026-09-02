@@ -48,6 +48,18 @@ class MerchantAccount
         ];
     }
 
+    /** الاسم من البريد الكامل — لملء الحقل في شاشة التعديل */
+    public static function username(string $email): string
+    {
+        return (string) str($email)->before('@');
+    }
+
+    /** هل هذا العنوان على نطاق أبعاد؟ — الحسابات القديمة خارجه لا تُنقل بلا قصد */
+    public static function onDomain(?string $email): bool
+    {
+        return $email !== null && str_ends_with(mb_strtolower($email), self::DOMAIN);
+    }
+
     /** هل البريد الكامل محجوز؟ (التحقق يجري على الاسم فيُبنى الكامل هنا) */
     public static function taken(string $username, ?int $exceptUserId = null): bool
     {

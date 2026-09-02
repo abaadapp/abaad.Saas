@@ -22,6 +22,7 @@ class EmployeeEditTest extends TestCase
     use RefreshDatabase;
 
     private Business $business;
+
     private User $owner;
 
     protected function setUp(): void
@@ -101,13 +102,58 @@ class EmployeeEditTest extends TestCase
      * كان الحساب يقوم على بابين، فمحوُ أحدهما لا يقفل شيئًا. واليوم حسابٌ
      * بلا بريدٍ حسابٌ لا سبيل إليه — يُحفظ بنجاح ثمّ يقف صاحبه أمام الشاشة.
      */
-    public function test_clearing_the_email_is_refused(): void
+    public function test_a_save_that_does_not_name_a_username_keeps_the_address(): void
     {
         $employee = $this->employee();
 
         $this->actingAs($this->owner)
-            ->put(route('admin.employees.update', $employee->id), $this->payload(['email' => '']))
-            ->assertSessionHasErrors('email');
+            ->put(route('admin.employees.update', $employee->id), $this->payload())
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('emp@test.local', $employee->fresh()->email);
+    }
+
+    /**
+     * والاسم حين يُرسل يُبنى عليه العنوان — على نطاق أبعاد وحده.
+     *
+     * فلا تخرج عناوين على أشكال: `.com` مكان `.om`، ومسافةٌ في الآخر، وحرفٌ
+     * عربيّ سقط من لوحةٍ لم تُبدَّل. ثمّ لا يدخل الموظف ولا يعرف أحدٌ لماذا.
+     */
+    public function test_a_named_username_moves_the_login_onto_the_abaad_domain(): void
+    {
+        $employee = $this->employee();
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.employees.update', $employee->id), $this->payload(['login_username' => 'ahmad']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('ahmad@abaadapp.om', $employee->fresh()->email);
+    }
+
+    /** ولا يُكتب النطاق بيدٍ: ما بعد `@` يُرفض قبل أن يصل القاعدة */
+    public function test_a_username_carrying_a_domain_is_refused(): void
+    {
+        $employee = $this->employee();
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.employees.update', $employee->id), $this->payload(['login_username' => 'ahmad@gmail.com']))
+            ->assertSessionHasErrors('login_username');
+
+        $this->assertSame('emp@test.local', $employee->fresh()->email);
+    }
+
+    /** واسمٌ يحمله غيره يُردّ برسالة، لا بانفجار الفهرس الفريد */
+    public function test_a_username_someone_else_holds_is_refused(): void
+    {
+        $employee = $this->employee();
+        User::create([
+            'business_id' => $this->business->id, 'name' => 'سالم', 'email' => 'salem@abaadapp.om',
+            'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط', 'job_title' => 'كاشير',
+        ]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.employees.update', $employee->id), $this->payload(['login_username' => 'salem']))
+            ->assertSessionHasErrors('login_username');
 
         $this->assertSame('emp@test.local', $employee->fresh()->email);
     }

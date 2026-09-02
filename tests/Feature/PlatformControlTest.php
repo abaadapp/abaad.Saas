@@ -202,7 +202,7 @@ class PlatformControlTest extends TestCase
         [$biz, $owner] = $this->planned(['max_employees' => 1]);
 
         $this->actingAs($owner)->post(route('admin.employees.store'), [
-            'name' => 'موظف', 'email' => 'new@abaad.om', 'job_title' => 'كاشير',
+            'name' => 'موظف', 'login_username' => 'new', 'job_title' => 'كاشير',
         ])->assertSessionHasErrors('name');
 
         $this->assertSame(1, User::where('business_id', $biz->id)->count());

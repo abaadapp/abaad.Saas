@@ -9,6 +9,7 @@ use App\Models\PayrollLine;
 use App\Models\PayrollRun;
 use App\Models\User;
 use App\Support\Ledger;
+use App\Support\MerchantAccount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -56,7 +57,7 @@ class StaffCannotOutrankThemselvesTest extends TestCase
     {
         return array_merge([
             'name' => 'موظف جديد', 'job_title' => 'كاشير',
-            'email' => 'new@abaad.om', 'password' => 'secret123',
+            'login_username' => 'newstaff', 'password' => 'secret123',
         ], $over);
     }
 
@@ -73,7 +74,7 @@ class StaffCannotOutrankThemselvesTest extends TestCase
         $this->post(route('admin.employees.store'), $this->payload(['job_title' => 'مدير فرع']))
             ->assertForbidden();
 
-        $this->assertNull(User::where('email', 'new@abaad.om')->first());
+        $this->assertNull(User::where('email', 'newstaff@abaadapp.om')->first());
     }
 
     public function test_an_accountant_cannot_hand_out_a_section_they_lack(): void
@@ -94,7 +95,7 @@ class StaffCannotOutrankThemselvesTest extends TestCase
             'manual_permissions' => 1, 'permissions' => ['orders', 'customers'],
         ]))->assertSessionHasNoErrors();
 
-        $this->assertNotNull(User::where('email', 'new@abaad.om')->first());
+        $this->assertNotNull(User::where('email', 'newstaff@abaadapp.om')->first());
     }
 
     public function test_the_owner_is_bound_by_nothing(): void
@@ -104,7 +105,7 @@ class StaffCannotOutrankThemselvesTest extends TestCase
         $this->post(route('admin.employees.store'), $this->payload(['job_title' => 'مدير فرع']))
             ->assertSessionHasNoErrors();
 
-        $this->assertSame('manager', User::where('email', 'new@abaad.om')->value('role'));
+        $this->assertSame('manager', User::where('email', 'newstaff@abaadapp.om')->value('role'));
     }
 
     /* ------------------- ولا يرفع أحدٌ نفسه ------------------- */
@@ -185,7 +186,7 @@ class StaffCannotOutrankThemselvesTest extends TestCase
         $this->actingAs($this->staff('accountant', 'محاسب'));
 
         $this->put(route('admin.employees.update', $this->owner->id), [
-            'name' => 'مسروق', 'email' => $this->owner->email, 'job_title' => 'محاسب',
+            'name' => 'مسروق', 'login_username' => MerchantAccount::username($this->owner->email), 'job_title' => 'محاسب',
         ])->assertForbidden();
 
         $this->post(route('admin.employees.resetPassword', $this->owner->id))->assertForbidden();
@@ -227,7 +228,7 @@ class StaffCannotOutrankThemselvesTest extends TestCase
             'branches' => [$theirBranch->id, $mine->id],
         ]))->assertSessionHasNoErrors();
 
-        $employee = User::where('email', 'new@abaad.om')->firstOrFail();
+        $employee = User::where('email', 'newstaff@abaadapp.om')->firstOrFail();
         $this->assertSame([$mine->id], $employee->branches()->pluck('branches.id')->all());
     }
 

@@ -8,6 +8,7 @@ use App\Models\JobTitle;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
@@ -29,15 +30,20 @@ class EmployeeController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             /*
-             * البريد إلزاميّ: هو الباب الوحيد.
+             * اسمُ الدخول وحده يُكتب، والنطاق يُلحق على الخادم.
              *
-             * كان اختياريًّا لأن الكاشير يدخل بأربعة أرقام. ولمّا رُفع الدخول
-             * بالرمز صار الحسابُ بلا بريدٍ حسابًا بلا باب — يُحفظ بنجاح ثمّ
-             * يقف صاحبه أمام الشاشة ولا يجد ما يدخل به.
+             * والبريد إلزاميّ: هو الباب الوحيد. كان اختياريًّا لأن الكاشير
+             * يدخل بأربعة أرقام؛ ولمّا رُفع الدخول بالرمز صار الحسابُ بلا
+             * بريدٍ حسابًا بلا باب — يُحفظ بنجاح ثمّ يقف صاحبه أمام الشاشة
+             * ولا يجد ما يدخل به.
+             *
+             * وكان يُكتب كاملًا بيد المدير، فتخرج عناوين على أشكال: `.com`
+             * مكان `.om`، ومسافةٌ في الآخر، وحرفٌ عربيّ سقط من لوحةٍ لم
+             * تُبدَّل. ثمّ لا يدخل الموظف ولا يعرف أحدٌ لماذا.
              *
              * وتفرّده على مستوى المنصة يبقى: هو معرّف الدخول لا بيان اتصال.
              */
-            'email' => ['required', 'email', 'unique:users,email'],
+            'login_username' => array_merge(['required'], MerchantAccount::usernameRules()),
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
@@ -68,8 +74,17 @@ class EmployeeController extends Controller
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
-            'email.required' => __('البريد الإلكتروني مطلوب — وبه يدخل الموظف إلى النظام.'),
-        ]);
+            'login_username.required' => __('اسم المستخدم مطلوب — وبه يدخل الموظف إلى النظام.'),
+        ] + MerchantAccount::messages());
+
+        // العنوان الكامل يُبنى هنا، والتفرّد يُفحص عليه لا على الاسم
+        $email = MerchantAccount::email($data['login_username']);
+
+        if (MerchantAccount::taken($data['login_username'])) {
+            return back()->withInput()->withErrors([
+                'login_username' => __('هذا الاسم مستخدَم — اختر غيره.'),
+            ]);
+        }
 
         // الوظيفة اسم ظاهر — الصلاحية تُشتق منها، فلا يُحفظ دور غير معروف يمنع الموظف من الدخول
         $title = $this->findJobTitle($data['job_title']);
@@ -88,7 +103,7 @@ class EmployeeController extends Controller
         $employee = User::create([
             'business_id' => $this->bid(),
             'name' => $data['name'],
-            'email' => $data['email'],
+            'email' => $email,
             'phone' => $data['phone'] ?? null,
             'role' => $title->role,
             'job_title' => $title->name,
@@ -296,6 +311,10 @@ class EmployeeController extends Controller
                 'branch' => $employee->branch,
                 'phone' => $employee->phone,
                 'email' => $employee->email,
+                // الاسم وحده يُعرض في الحقل، والنطاق مُلحق ثابت في الشاشة
+                'username' => MerchantAccount::username((string) $employee->email),
+                // خارج النطاق: حسابٌ قديم، ولا يُنقل إلا بطلبٍ صريح
+                'on_domain' => MerchantAccount::onDomain($employee->email),
                 // الفارغة تعني «كل الفروع» — انظر User::worksAt
                 'branches' => $employee->branches()->pluck('branches.id')->all(),
                 'avatar' => $employee->avatar,
@@ -326,8 +345,15 @@ class EmployeeController extends Controller
         $this->refuseTouchingTheOwner($employee);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            // إلزاميّ كما في الإنشاء: هو الباب الوحيد بعد رفع الدخول بالرمز
-            'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($employee->id)],
+            /*
+             * الاسم اختياريّ هنا وحده — والفارغ يعني «أبقِ عنوانه».
+             *
+             * حساباتٌ قديمة أُنشئت قبل توحيد النطاق تحمل عناوين خارجه. ولو
+             * فُرض الاسم على كلّ حفظ لَنُقلت في صمت: يُصحَّح رقم هاتفٍ فيتبدّل
+             * بريدُ الدخول، ويقف صاحبه غدًا أمام الشاشة بعنوانٍ لا يعرفه.
+             * فالنقل يقع بطلبٍ صريح من الشاشة لا كأثرٍ جانبيّ لحفظ.
+             */
+            'login_username' => array_merge(['nullable'], MerchantAccount::usernameRules()),
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
@@ -363,8 +389,19 @@ class EmployeeController extends Controller
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
-            'email.required' => __('البريد الإلكتروني مطلوب — وبه يدخل الموظف إلى النظام.'),
-        ]);
+        ] + MerchantAccount::messages());
+
+        if (filled($data['login_username'] ?? null)) {
+            if (MerchantAccount::taken($data['login_username'], $employee->id)) {
+                return back()->withInput()->withErrors([
+                    'login_username' => __('هذا الاسم مستخدَم — اختر غيره.'),
+                ]);
+            }
+
+            $data['email'] = MerchantAccount::email($data['login_username']);
+        }
+
+        unset($data['login_username']);
 
         $title = $this->findJobTitle($data['job_title']);
         if (! $title) {

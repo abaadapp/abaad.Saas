@@ -1,12 +1,13 @@
 import { type FormEvent, useState } from 'react';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { Eye, EyeOff, Languages, Lock, Mail, TriangleAlert } from 'lucide-react';
+import { Languages, Lock, Mail, TriangleAlert } from 'lucide-react';
 import Logo from '@/Components/Logo';
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
@@ -38,7 +39,6 @@ interface Props {
 export default function Login() {
     const { device, year, canRecover, locale, errors } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const [reveal, setReveal] = useState(false);
     const [forgetting, setForgetting] = useState(false);
 
     /**
@@ -140,28 +140,19 @@ export default function Login() {
 
                         <Field label="كلمة المرور" required htmlFor="password">
                             {/* نفس السبب، وليبقى القفل في جهة أيقونة البريد لا مقابلها */}
-                            <span className="relative block" dir="ltr">
-                                <Lock className="pointer-events-none absolute start-3 top-3 size-4 text-[#9ca3af]" />
-                                <Input
-                                    id="password"
-                                    name="password"
-                                    type={reveal ? 'text' : 'password'}
-                                    autoComplete="current-password"
-                                    required
-                                    placeholder="••••••••"
-                                    className="px-10 text-start"
-                                    value={form.data.password}
-                                    onChange={(e) => form.setData('password', e.target.value)}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setReveal((v) => !v)}
-                                    aria-label={reveal ? t('إخفاء كلمة المرور') : t('إظهار كلمة المرور')}
-                                    className="absolute end-2 top-1.5 flex size-7 items-center justify-center rounded-[8px] text-[#9ca3af] transition-colors hover:bg-[#f2f2f0] hover:text-[#4b4b4b]"
-                                >
-                                    {reveal ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                                </button>
-                            </span>
+                            <PasswordInput
+                                id="password"
+                                name="password"
+                                autoComplete="current-password"
+                                required
+                                placeholder="••••••••"
+                                className="px-10 text-start"
+                                leading={
+                                    <Lock className="pointer-events-none absolute start-3 top-3 z-10 size-4 text-[#9ca3af]" />
+                                }
+                                value={form.data.password}
+                                onChange={(e) => form.setData('password', e.target.value)}
+                            />
                         </Field>
 
                         {/*

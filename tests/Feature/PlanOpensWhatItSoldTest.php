@@ -249,7 +249,7 @@ class PlanOpensWhatItSoldTest extends TestCase
     private function employeePayload(JobTitle $title, array $permissions): array
     {
         return [
-            'name' => 'موظف', 'email' => 'e'.uniqid().'@abaadapp.om',
+            'name' => 'موظف', 'login_username' => 'e'.uniqid(),
             'job_title' => $title->name, 'status' => 'نشط',
             'manual_permissions' => true, 'permissions' => $permissions,
         ];

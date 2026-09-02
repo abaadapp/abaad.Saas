@@ -6,6 +6,7 @@ import PageHeader from '@/Components/PageHeader';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -389,9 +390,8 @@ export default function MarketingGoogle() {
                         )}
 
                         <form onSubmit={saveKey}>
-                            <Input
+                            <PasswordInput
                                 dir="ltr"
-                                type="password"
                                 autoComplete="off"
                                 value={keyForm.data.google_api_key}
                                 onChange={(e) => keyForm.setData('google_api_key', e.target.value)}

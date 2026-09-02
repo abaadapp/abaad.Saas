@@ -6,6 +6,8 @@ import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
+import { UsernameInput } from '@/Components/ui/username-input';
 import { useTranslate } from '@/lib/i18n';
 import AccountCard from './AccountCard';
 
@@ -31,8 +33,8 @@ export interface BusinessValues {
     ends_at: string;
 }
 
-/** نطاق حسابات التجّار — يطابق MerchantAccount::DOMAIN على الخادم */
-export const MERCHANT_DOMAIN = '@abaadapp.om';
+/* النطاق ومكوّنه في مكانٍ واحد — انظر Components/ui/username-input */
+export { MERCHANT_DOMAIN } from '@/Components/ui/username-input';
 
 interface Props {
     options: BusinessOptions;
@@ -303,27 +305,11 @@ export default function BusinessForm({
                         زائد)، ثم لا يدخل صاحبها ولا يعرف السبب.
                     */}
                     <Field label="اسم المستخدم" required error={form.errors.login_username}>
-                        <div className="flex items-stretch" dir="ltr">
-                            <Input
-                                className="rounded-e-none"
-                                value={form.data.login_username}
-                                onChange={(e) =>
-                                    form.setData('login_username', e.target.value.toLowerCase())
-                                }
-                                placeholder="zahra"
-                                autoComplete="off"
-                                required
-                            />
-                            <span className="flex items-center rounded-e-[10px] border border-s-0 border-[var(--ui-border,#e8e8e8)] bg-[#f7f7f5] px-3 text-sm text-[#6b7280]">
-                                {MERCHANT_DOMAIN}
-                            </span>
-                        </div>
-                        {form.data.login_username && (
-                            <p className="mt-1.5 text-[12px] text-[#6b7280]" dir="ltr">
-                                {form.data.login_username}
-                                {MERCHANT_DOMAIN}
-                            </p>
-                        )}
+                        <UsernameInput
+                            value={form.data.login_username}
+                            onChange={(v) => form.setData('login_username', v)}
+                            required
+                        />
                     </Field>
 
                     {/*
@@ -341,8 +327,8 @@ export default function BusinessForm({
                         error={form.errors.login_password}
                     >
                         <div className="flex items-stretch gap-2">
-                            <Input
-                                dir="ltr"
+                            <PasswordInput
+                                className="w-full"
                                 autoComplete="new-password"
                                 value={form.data.login_password}
                                 onChange={(e) => form.setData('login_password', e.target.value)}

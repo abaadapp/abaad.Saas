@@ -9,6 +9,7 @@ import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
@@ -417,9 +418,8 @@ export default function PlatformSettings() {
                                     hint={t('يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ — احتفظ بنسخةٍ منه عندك.')}
                                     error={connectForm.errors.access_token}
                                 >
-                                    <Input
+                                    <PasswordInput
                                         dir="ltr"
-                                        type="password"
                                         value={connectForm.data.access_token}
                                         onChange={(e) => connectForm.setData('access_token', e.target.value)}
                                     />

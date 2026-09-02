@@ -84,7 +84,7 @@ export default function ItemOptionsDialog({ product, addons, money, onClose, onC
         <Dialog open onOpenChange={(open) => !open && onClose()}>
             {/* سقفٌ للارتفاع وجسمٌ يمرّر: قائمةُ إضافاتٍ طويلة كانت تُخرج
                 الزرّ خارج الشاشة على الجوّال */}
-            <DialogContent className="flex max-h-[90dvh] max-w-md flex-col">
+            <DialogContent className="flex max-w-md flex-col">
                 <DialogHeader className="shrink-0 px-5 pt-5">
                     <DialogTitle>{product.label}</DialogTitle>
                     <DialogDescription>{t('اختر المقاس والإضافات')}</DialogDescription>

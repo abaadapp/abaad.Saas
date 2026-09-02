@@ -181,6 +181,44 @@ i[data-lucide] {
     border-color: #ececed !important;
 }
 
+/* ===== الأجهزة اللوحية: الآيباد وما شابهه ===== */
+
+/*
+ * سفاري يُكبّر الصفحة عند التركيز على حقلٍ خطُّه أصغر من ١٦ بكسل — ولا
+ * يُرجعها. الحقول هنا `text-sm` (١٤)، فكلُّ ضغطةٍ على حقل بحثٍ أو سعر كانت
+ * تُكبّر الشاشة وتترك الكاشير يجرّها بإصبعه ليجد زرَّ الدفع. والعلاج أن
+ * يُرفع الخطُّ لا أن يُمنع التكبير: منعُه يقفل الطريق على من يحتاجه فعلًا.
+ *
+ * وعلى الأجهزة ذات المؤشّر الدقيق (فأرة) يبقى ١٤ كما صُمّم.
+ */
+@media (pointer: coarse) {
+    input:not([type='checkbox']):not([type='radio']),
+    select,
+    textarea {
+        font-size: 16px;
+    }
+
+    /*
+     * ولا وميضَ أزرقَ عند اللمس، ولا قائمةَ نسخٍ عند الضغط المطوّل على زرّ.
+     * الكاشير يضغط المنتجات بسرعة، والضغطةُ التي تطول قليلًا كانت تفتح
+     * قائمةَ النظام فوق الشبكة.
+     */
+    .pos-scope {
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .pos-scope button,
+    .pos-scope a,
+    .pos-scope [role='button'] {
+        -webkit-touch-callout: none;
+    }
+}
+
+/* ما تحت الشريط السفليّ للجهاز لا يُبنى عليه — يحتاج viewport-fit=cover */
+.pos-scope {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* أنماط الطباعة الحرارية 80mm */
 @media print {
     body * {

@@ -278,7 +278,7 @@ export default function PaymentDialog({
                 العنوان يخرج من أعلاها وزرّ «تأكيد الدفع» من أسفلها، ولا شيء
                 يُمرَّر لأنّ النافذة نفسها هي ما تجاوز الشاشة لا ما فيها.
             */}
-            <DialogContent className="flex max-h-[90dvh] max-w-lg flex-col">
+            <DialogContent className="flex max-w-lg flex-col">
                 <DialogHeader className="shrink-0">
                     <DialogTitle>{step === 'pay' ? t('إتمام الدفع') : t('تم الدفع بنجاح')}</DialogTitle>
                     {step === 'success' && (
@@ -292,7 +292,7 @@ export default function PaymentDialog({
 
                 {step === 'pay' ? (
                     <div className="flex min-h-0 flex-1 flex-col">
-                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4">
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4">
                         <div className="rounded-2xl bg-gray-100 p-4 text-center">
                             <p className="text-sm text-[#111]">{t('الإجمالي المطلوب')}</p>
                             <p className="mt-1 text-3xl font-extrabold text-[#111]">{money(total)}</p>
@@ -303,10 +303,12 @@ export default function PaymentDialog({
                             <Input
                                 id="paid"
                                 inputMode="decimal"
+                                enterKeyHint="done"
+                                autoComplete="off"
                                 value={paid}
                                 onChange={(e) => setPaid(e.target.value)}
                                 placeholder="0.000"
-                                className="h-12 text-lg font-bold"
+                                className="h-12 text-lg font-bold pointer-coarse:h-14"
                             />
                         </div>
 
@@ -337,7 +339,7 @@ export default function PaymentDialog({
                                             type="button"
                                             onClick={() => { setMethod(m.value); setMethodError(false); }}
                                             className={cn(
-                                                'flex flex-col items-center gap-1 rounded-full border py-2.5 text-xs font-medium transition-colors',
+                                                'flex flex-col items-center gap-1 rounded-full border py-2.5 text-xs font-medium transition-colors pointer-coarse:py-3.5',
                                                 active
                                                     ? 'border-[#111] bg-gray-100 text-[#111]'
                                                     : 'border-gray-200 text-gray-600 hover:bg-gray-50',
@@ -548,13 +550,13 @@ export default function PaymentDialog({
 
                     {/* زرّ الدفع خارج المجرى: لا يُمرَّر بعيدًا مهما طال ما فوقه */}
                     <div className="shrink-0 border-t border-gray-100 px-5 pb-5 pt-4">
-                        <Button variant="success" size="lg" className="w-full rounded-full" disabled={busy} onClick={confirm}>
+                        <Button variant="success" size="lg" className="w-full rounded-full pointer-coarse:h-14 pointer-coarse:text-base" disabled={busy} onClick={confirm}>
                             {busy ? '…' : t('تأكيد الدفع')}
                         </Button>
                     </div>
                     </div>
                 ) : (
-                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-5 text-center">
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-5 text-center">
                         <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-[#ecfdf5] text-[#059669]">
                             <CheckCircle className="size-12" />
                         </div>

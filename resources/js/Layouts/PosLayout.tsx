@@ -14,6 +14,7 @@ import {
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { initials } from '@/lib/format';
+import { useOnScreenKeyboard } from '@/lib/keyboard';
 import { useTranslate } from '@/lib/i18n';
 import { logout } from '@/lib/logout';
 import ImpersonationBar from '@/Components/ImpersonationBar';
@@ -45,6 +46,9 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
     const { auth, context, flash, locale, csrf, posCashier } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
+
+    // ارتفاع لوحة المفاتيح في `--kb` — تقرؤه هذه الشاشة والنوافذ المنبثقة
+    useOnScreenKeyboard();
 
     // الأقسام المسموح بها تصل من الخادم — لا نُخمّنها من الدور في الواجهة
     const abilities = auth?.abilities ?? [];
@@ -78,8 +82,17 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
          * و`overflow-hidden` يمنع الوصول إليها. ثم يتغيّر المقاس عند أوّل
          * تمرير حين ينطوي الشريط، فتقفز الواجهة تحت الإصبع. وdvh يتبع
          * المرئيَّ فعلًا فلا قصَّ ولا قفزة.
+         *
+         * وطرحُ `--kb` معها: لوحةُ المفاتيح لا تُقلّص الصفحةَ على الآيباد،
+         * فتبقى `dvh` كاملةً ويُغطّى نصفُها السفليّ — وفيه زرّ الدفع نفسه.
+         * انظر `useOnScreenKeyboard`.
          */
-        <div className={cn('pos-scope flex flex-col', fill ? 'h-dvh overflow-hidden' : 'min-h-dvh')}>
+        <div
+            className={cn(
+                'pos-scope flex flex-col',
+                fill ? 'h-[calc(100dvh-var(--kb,0px))] overflow-hidden' : 'min-h-dvh',
+            )}
+        >
             <Head title={title} />
 
             <ImpersonationBar />

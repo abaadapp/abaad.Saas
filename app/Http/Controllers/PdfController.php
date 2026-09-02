@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\PosPeripheral;
+use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\EInvoice;
@@ -333,7 +334,27 @@ class PdfController extends Controller
     {
         $invoice = Invoice::where('number', $number)->with('business', 'plan')->firstOrFail();
 
-        $html = view('pdf.invoice', ['invoice' => $invoice])->render();
+        /*
+         * ورقةُ المنصّة لها قالبها — لا قالب فاتورة المبيعات.
+         *
+         * كان القالب يُقرأ بـ`$order` (أصناف، فرع، زبون، طريقة دفع) ويُمرَّر
+         * له `$invoice`، فكانت كل ضغطةٍ على «عرض» أو «تحميل» في شاشة الفواتير
+         * ٥٠٠ صامتة.
+         */
+        $settings = Setting::whereNull('business_id')
+            ->whereIn('key', ['app_name', 'company', 'official_email', 'phone', 'website'])
+            ->pluck('value', 'key');
+
+        $html = view('pdf.platform-invoice', [
+            'invoice' => $invoice,
+            'platform' => [
+                'app_name' => trim((string) $settings->get('app_name')) ?: __('أبعاد'),
+                'company' => trim((string) $settings->get('company')),
+                'email' => trim((string) $settings->get('official_email')),
+                'phone' => trim((string) $settings->get('phone')),
+                'website' => trim((string) $settings->get('website')),
+            ],
+        ])->render();
         $mpdf = new Mpdf([
             'mode' => 'utf-8', 'format' => 'A4',
             'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,

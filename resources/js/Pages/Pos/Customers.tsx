@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { Award, Store } from 'lucide-react';
+import { Award, Receipt, Store } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
 import DataTable, { type Column } from '@/Components/DataTable';
 import { Button } from '@/Components/ui/button';
@@ -36,6 +36,36 @@ export default function PosCustomers() {
             sortable: true,
             value: (c) => c.total_spent,
             cell: (c) => <span className="tabular-nums">{money(c.total_spent, currency)}</span>,
+        },
+        {
+            /*
+             * آخر فاتورة — رقمُها لا تاريخُها.
+             *
+             * الكاشير يُسأل «كم كانت فاتورتي الماضية؟» وهو واقفٌ والزبون
+             * أمامه، فيفتحها بضغطة. وتاريخٌ بلا رقم يتركه يبحث في سجلّ
+             * الفواتير بالاسم ويقلّب الصفحات والزبون ينتظر.
+             */
+            key: 'last_invoice',
+            header: 'آخر فاتورة',
+            value: (c) => c.last_invoice ?? '',
+            cell: (c) =>
+                c.last_invoice ? (
+                    <a
+                        href={route('pos.order-details', c.last_invoice)}
+                        className="inline-flex items-center gap-1.5 font-mono text-[13px] font-medium text-[#111] underline-offset-2 hover:underline"
+                        dir="ltr"
+                    >
+                        <Receipt className="size-3.5 shrink-0 text-[#9ca3af]" />
+                        {c.last_invoice}
+                        {c.last_invoice_total != null && (
+                            <span className="font-sans tabular-nums text-[#6b7280]">
+                                {money(c.last_invoice_total, currency)}
+                            </span>
+                        )}
+                    </a>
+                ) : (
+                    <span className="text-gray-400">—</span>
+                ),
         },
         {
             key: 'points',

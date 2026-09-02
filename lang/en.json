@@ -3974,5 +3974,6 @@
     "اتركها فارغة للإبقاء على الحالية — والقديمة لا تُعرض لأنها لا تُقرأ": "Leave blank to keep the current one — the old one is never shown, because it is never readable.",
     "وُلِّدت كلمة مرور جديدة — انسخها قبل إغلاق النافذة": "A new password was generated — copy it before closing the dialog.",
     "انسخها الآن وأرسلها إلى الموظف — لا تُعرض بعد إغلاق النافذة.": "Copy it now and send it to the employee — it is not shown again after this dialog closes.",
-    "الكلمة الحالية لا تُعرض — لا تُحفظ إلا مُجزَّأة، فلا تُقرأ.": "The current password is not shown — only its hash is stored, so it cannot be read."
+    "الكلمة الحالية لا تُعرض — لا تُحفظ إلا مُجزَّأة، فلا تُقرأ.": "The current password is not shown — only its hash is stored, so it cannot be read.",
+    "آخر فاتورة": "Last invoice"
 }

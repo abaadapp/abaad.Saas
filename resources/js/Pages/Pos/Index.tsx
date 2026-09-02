@@ -779,7 +779,7 @@ export default function PosIndex() {
                 methods={settings.paymentMethods}
                 orderOptions={orderOptions}
                 onCheckout={cart.checkoutSale}
-                onNewOrder={() => { cart.clear(); toast.success(t('طلب جديد جاهز')); }}
+                onNewOrder={() => { cart.reset(); toast.success(t('طلب جديد جاهز')); }}
             />
 
             <ItemOptionsDialog

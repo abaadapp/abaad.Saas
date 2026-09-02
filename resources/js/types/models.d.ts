@@ -53,6 +53,9 @@ export interface Customer {
     orders: number;
     total_spent: number;
     last_order: string;
+    /** رقم آخر فاتورةٍ مباعة — null لعميلٍ لم يشترِ بعد */
+    last_invoice?: string | null;
+    last_invoice_total?: number | null;
     points: number;
     avatar: string | null;
 }

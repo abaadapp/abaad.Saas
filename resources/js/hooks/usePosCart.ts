@@ -433,6 +433,22 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         setRedeemActive(false);
     }, [removeCoupon]);
 
+    /**
+     * بدايةٌ نظيفة بعد بيعةٍ تمّت — السلّة **والزبون**.
+     *
+     * `clear` تُفرغ السلّة ويبقى الزبون: هذا صوابُ زرّ «إفراغ السلّة» — من
+     * يُلغي أصنافًا لا يُلغي الزبون الواقف أمامه. لكنّه خطأٌ بعد البيع: يمشي
+     * الزبون ويقف غيره، ويظلّ الاسم القديم معلّقًا في الشاشة. فتُقيَّد
+     * البيعةُ التالية عليه، **وتُضاف نقاطُ ولائه إلى من لم يشترِ** — والنقاط
+     * مالٌ يُستبدَل. ولا يُكتشف ذلك إلا حين يسأل صاحبها عن رصيدٍ ناقص.
+     */
+    const reset = useCallback(() => {
+        clear();
+        setCustomer(CASH_CUSTOMER);
+        setCustomerId(null);
+        setCustomerSearch('');
+    }, [clear]);
+
     /* ------------------------------ الباركود ------------------------------ */
 
     const scanBarcode = useCallback(
@@ -772,6 +788,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         setBarcode, scanBarcode,
         setCouponCode, applyCoupon, removeCoupon,
         setRedeemActive, selectCustomer, setCustomerSearch, addCustomer,
+        reset,
         checkoutSale, holdOrder, overStock,
     };
 }

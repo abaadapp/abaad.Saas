@@ -127,6 +127,24 @@ export default function PaymentDialog({
     const set = <K extends keyof FlowerDetails>(k: K, v: FlowerDetails[K]) =>
         setFlower((f) => ({ ...f, [k]: v }));
 
+    /*
+     * تُغلق النافذة بعد بيعةٍ تمّت فتبدأ التالية نظيفة — أيًّا كان سبيلُ
+     * الإغلاق.
+     *
+     * كان التنظيف معلّقًا بزرّ «طلب جديد» وحده: من أغلق بالضغط خارج النافذة
+     * أو بمفتاح الهروب يعود إلى الشاشة وفيها سلّةُ البيعة التي دفعها تَوًّا
+     * واسمُ زبونها — فيضيف صنفًا فوقها ويبيع الأصناف مرّتين.
+     */
+    const closeTo = (next: boolean) => {
+        if (!next && step === 'success') {
+            onNewOrder();
+            setFlower(BLANK);
+            setFlowerOpen(false);
+        }
+
+        onOpenChange(next);
+    };
+
     // كل فتح جديد يبدأ من خطوة الدفع بمبلغ صفر
     useEffect(() => {
         if (open) {
@@ -270,7 +288,7 @@ export default function PaymentDialog({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={open} onOpenChange={closeTo}>
             {/*
                 النافذة عمودٌ لا كتلةٌ حرّة الطول.
 
@@ -605,12 +623,8 @@ export default function PaymentDialog({
                             )}
                             <Button
                                 className={cn('rounded-full', !(result?.synced && result.invoice) && 'col-span-2')}
-                                onClick={() => {
-                                    onNewOrder();
-                                    setFlower(BLANK);
-                                    setFlowerOpen(false);
-                                    onOpenChange(false);
-                                }}
+                                /* الإغلاق وحده — و`closeTo` تُنظّف لكلّ سبيل */
+                                onClick={() => closeTo(false)}
                             >
                                 <Plus />
                                 {t('طلب جديد')}

@@ -1029,7 +1029,27 @@ class Demo
          */
         $sold = fn ($q) => $q->sold();
 
+        /*
+         * وآخرُ فاتورةٍ برقمها لا بتاريخها وحده.
+         *
+         * الكاشير يُسأل «كم كانت فاتورتي الماضية؟» و«أعطني نسخةً منها» وهو
+         * واقفٌ والزبون أمامه. وتاريخٌ بلا رقم لا يفتح شيئًا — يبقى أن يبحث
+         * في سجلّ الفواتير بالاسم ويقلّب الصفحات. وهما عمودان في الاستعلام
+         * نفسه، فلا استعلامَ لكلّ صفّ.
+         */
+        $lastSold = fn (string $column) => Order::select($column)
+            ->whereColumn('orders.customer_id', 'customers.id')
+            ->sold()
+            ->orderByDesc('ordered_at')
+            ->orderByDesc('id')
+            ->limit(1);
+
         $query = Customer::where('business_id', self::bid())
+            ->select('customers.*')
+            ->addSelect([
+                'last_invoice' => $lastSold('number'),
+                'last_invoice_total' => $lastSold('total'),
+            ])
             ->withCount(['orders as orders_count' => $sold])
             ->withSum(['orders as orders_sum_total' => $sold], 'total')
             ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at')
@@ -1067,6 +1087,8 @@ class Demo
                 'last_order' => $c->orders_max_ordered_at
                     ? \Illuminate\Support\Carbon::parse($c->orders_max_ordered_at)->format('Y-m-d')
                     : '—',
+                'last_invoice' => $c->last_invoice,
+                'last_invoice_total' => $c->last_invoice === null ? null : (float) $c->last_invoice_total,
                 'points' => $c->points,
                 'avatar' => self::image('cust' . $c->id, 100, 100),
             ])->all();

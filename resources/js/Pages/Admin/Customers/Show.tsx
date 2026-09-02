@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
-    Award, ArrowRight, Mail, MapPin, MoreVertical, Pencil, Phone, Plus, Save, Receipt, Star, Trash2,
+    Award, Mail, MapPin, MoreVertical, Pencil, Phone, Plus, Save, Receipt, Star, Trash2,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import StatCard from '@/Components/StatCard';
 import Tabs from '@/Components/Tabs';
@@ -120,16 +121,16 @@ export default function CustomerShow() {
 
     return (
         <AdminLayout title={customer.label || customer.name}>
+            <BackLink
+                routeName="admin.customers.index"
+                href={route('admin.customers.index')}
+                label="العملاء"
+            />
             <PageHeader
                 title="ملف العميل"
                 subtitle={t('سجل مشتريات العميل ونقاط ولائه')}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <SmartLink routeName="admin.customers.index" href={route('admin.customers.index')}>
-                                <ArrowRight />{t('رجوع')}
-                            </SmartLink>
-                        </Button>
                         <Button variant="outline" asChild>
                             <a href={route('admin.customers.statement', customer.id)} target="_blank" rel="noreferrer">
                                 <Receipt />{t('كشف حساب')}

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import {
-    ArrowRight,
     Check,
     Contact,
     KeyRound,
@@ -13,6 +12,7 @@ import {
     X,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import StatCard from '@/Components/StatCard';
 import Tabs from '@/Components/Tabs';
@@ -69,17 +69,17 @@ export default function EmployeeShow() {
 
     return (
         <AdminLayout title={employee.name}>
+            {/* الرجوع طريقٌ لا فعل — فخرج من صفّ الأزرار إلى فوق الترويسة */}
+            <BackLink
+                routeName="admin.employees.index"
+                href={route('admin.employees.index')}
+                label="الموظفون"
+            />
             <PageHeader
                 title="ملف الموظف"
                 subtitle={t('عرض بيانات الموظف وأدائه وصلاحياته')}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <SmartLink routeName="admin.employees.index" href={route('admin.employees.index')}>
-                                <ArrowRight />
-                                {t('رجوع')}
-                            </SmartLink>
-                        </Button>
                         <Button asChild>
                             <SmartLink routeName="admin.employees.edit" href={route('admin.employees.edit', employee.id)}>
                                 <Pencil />

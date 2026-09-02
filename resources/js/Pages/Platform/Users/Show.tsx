@@ -2,7 +2,6 @@ import { type FormEvent, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
-    ArrowRight,
     Building2,
     Check,
     Contact,
@@ -16,8 +15,8 @@ import {
     X,
 } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
+import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
-import SmartLink from '@/Components/SmartLink';
 import ActivityFeed, { type ActivityItem } from '@/Components/ActivityFeed';
 import Tabs from '@/Components/Tabs';
 import Field, { Select, type SelectOption } from '@/Components/Field';
@@ -101,17 +100,16 @@ export default function UserShow() {
 
     return (
         <PlatformLayout title={user.name}>
+            <BackLink
+                routeName="super-admin.users.index"
+                href={route('super-admin.users.index')}
+                label="المستخدمون"
+            />
             <PageHeader
                 title="ملف المستخدم"
                 subtitle={t('عرض تفاصيل المستخدم وصلاحياته ونشاطه')}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <SmartLink routeName="super-admin.users.index" href={route('super-admin.users.index')}>
-                                <ArrowRight />
-                                {t('رجوع')}
-                            </SmartLink>
-                        </Button>
                         <Button onClick={() => setEditing(true)}>
                             <Pencil />
                             {t('تعديل')}

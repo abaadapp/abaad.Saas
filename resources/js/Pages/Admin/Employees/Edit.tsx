@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import EmployeeForm, { type EmployeeFormValues } from './partials/EmployeeForm';
 import { useTranslate } from '@/lib/i18n';
@@ -21,6 +22,12 @@ export default function EmployeeEdit() {
 
     return (
         <AdminLayout title="تعديل الموظف">
+            {/* إلى ملفّه لا إلى القائمة: التعديل بابٌ داخل الملفّ، والملفّ يردّ إليها */}
+            <BackLink
+                routeName="admin.employees.show"
+                href={route('admin.employees.show', employee.id!)}
+                label="ملف الموظف"
+            />
             <PageHeader
                 title="تعديل الموظف"
                 subtitle={`${t('تعديل بيانات')}: ${employee.name}`}

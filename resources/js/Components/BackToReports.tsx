@@ -1,6 +1,4 @@
-import { Link } from '@inertiajs/react';
-import { ChevronRight } from 'lucide-react';
-import { useTranslate } from '@/lib/i18n';
+import BackLink from '@/Components/BackLink';
 
 /**
  * الرجوع إلى فهرس التقارير.
@@ -12,16 +10,11 @@ import { useTranslate } from '@/lib/i18n';
  * والباب واحد: الفهرس. منه تُفتح التقارير كلّها، وإليه يُرجع بضغطة.
  */
 export default function BackToReports() {
-    const t = useTranslate();
-
     return (
-        <Link
+        <BackLink
+            routeName="admin.reports.index"
             href={route('admin.reports.index')}
-            className="mb-3 inline-flex items-center gap-1 text-[13px] font-medium text-[#6b7280] transition-colors hover:text-[#111]"
-        >
-            {/* السهم يشير إلى جهة الرجوع: يمينًا في العربية، ويُقلب في الإنجليزية */}
-            <ChevronRight className="size-4 ltr:rotate-180" />
-            {t('كل التقارير')}
-        </Link>
+            label="كل التقارير"
+        />
     );
 }

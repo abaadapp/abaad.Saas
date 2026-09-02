@@ -6,6 +6,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { Badge } from '@/Components/ui/badge';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 
 export interface AlertMetric {
@@ -44,6 +45,8 @@ interface Props {
  */
 export default function CustomAlerts({ alerts, metrics, sections }: Props) {
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const [open, setOpen] = useState(false);
 
     const form = useForm({
@@ -229,8 +232,8 @@ export default function CustomAlerts({ alerts, metrics, sections }: Props) {
                                 type="button"
                                 variant="ghost"
                                 size="icon-sm"
-                                onClick={() => {
-                                    if (!confirm(t('حذف هذا التنبيه؟'))) return;
+                                onClick={async () => {
+                                    if (! await ask({ message: 'حذف هذا التنبيه؟', danger: true, action: 'حذف' })) return;
                                     router.delete(route('admin.alerts.destroy', a.id), { preserveScroll: true });
                                 }}
                             >
@@ -240,6 +243,8 @@ export default function CustomAlerts({ alerts, metrics, sections }: Props) {
                     ))}
                 </ul>
             )}
+
+            {confirmDialog}
         </Card>
     );
 }

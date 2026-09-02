@@ -38,6 +38,7 @@ import QuickCell from './partials/QuickCell';
 import { withFilters } from '@/lib/exportLink';
 import { money, number } from '@/lib/format';
 import useLiveStock from '@/hooks/useLiveStock';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -59,6 +60,8 @@ export default function ProductsIndex() {
     const { products: serverProducts, pagination, categories, filters, sorts, branches, currentBranchId, lastImport, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const currency = context!.currency;
     const [importing, setImporting] = useState(false);
     const [undoing, setUndoing] = useState(false);
@@ -390,11 +393,16 @@ export default function ProductsIndex() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => {
+                                    onClick={async () => {
                                         // الحذف إلى السلة، ومع ذلك يُسأل: جماعيٌّ لا يُتراجع عنه بضغطة
-                                        if (confirm(t('حذف :n منتجًا؟ تبقى في سلة المحذوفات.', { n: String(selected.length) }))) {
-                                            runBulk('delete');
-                                        }
+                                        const yes = await ask({
+                                            message: 'حذف :n منتجًا؟ تبقى في سلة المحذوفات.',
+                                            values: { n: String(selected.length) },
+                                            danger: true,
+                                            action: 'حذف',
+                                        });
+
+                                        if (yes) runBulk('delete');
                                     }}
                                     className="text-[#dc2626]"
                                 >
@@ -649,6 +657,8 @@ export default function ProductsIndex() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

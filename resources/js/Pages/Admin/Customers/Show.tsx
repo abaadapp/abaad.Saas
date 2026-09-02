@@ -25,6 +25,7 @@ import {
     Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Customer, Order } from '@/types/models';
@@ -50,6 +51,8 @@ const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 export default function CustomerShow() {
     const { customer, orders, addresses, context, branches = [] } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
     const [redeeming, setRedeeming] = useState(false);
@@ -161,8 +164,8 @@ export default function CustomerShow() {
                                 */}
                                 <DropdownMenuItem
                                     className="text-[#b91c1c]"
-                                    onSelect={() => {
-                                        if (!confirm(t('حذف هذا العميل؟ يمكن استعادته من المحذوفات.'))) return;
+                                    onSelect={async () => {
+                                        if (! await ask({ message: 'حذف هذا العميل؟ يمكن استعادته من المحذوفات.', danger: true, action: 'حذف' })) return;
                                         router.delete(route('admin.customers.destroy', customer.id));
                                     }}
                                 >
@@ -281,8 +284,8 @@ export default function CustomerShow() {
                                                 variant="ghost"
                                                 size="sm"
                                                 className="text-[#b91c1c]"
-                                                onClick={() => {
-                                                    if (!confirm(t('حذف هذا العنوان؟'))) return;
+                                                onClick={async () => {
+                                                    if (! await ask({ message: 'حذف هذا العنوان؟', danger: true, action: 'حذف' })) return;
                                                     router.delete(
                                                         route('admin.customers.addresses.delete', [customer.id, a.id]),
                                                         { preserveScroll: true },
@@ -462,6 +465,8 @@ export default function CustomerShow() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

@@ -12,6 +12,7 @@ import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { number } from '@/lib/format';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -62,6 +63,8 @@ function Stars({ value }: { value: number }) {
 export default function Reviews() {
     const { reviews, pagination, filters, sorts, products, customers, summary } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
 
     const [adding, setAdding] = useState(false);
     const [replying, setReplying] = useState<Review | null>(null);
@@ -150,8 +153,8 @@ export default function Reviews() {
                         variant="ghost"
                         size="sm"
                         className="text-[#b91c1c]"
-                        onClick={() => {
-                            if (!confirm(t('حذف التقييم؟ الرفض يُبقيه محفوظًا.'))) return;
+                        onClick={async () => {
+                            if (! await ask({ message: 'حذف التقييم؟ الرفض يُبقيه محفوظًا.', danger: true, action: 'حذف' })) return;
                             router.delete(route('admin.marketing.reviews.destroy', r.id), { preserveScroll: true });
                         }}
                     >
@@ -377,6 +380,8 @@ export default function Reviews() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

@@ -33,6 +33,7 @@ import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
 import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -176,6 +177,8 @@ export default function SettingsIndex() {
         usePage<PageProps<Props>>().props;
     const { auth } = usePage<PageProps>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const abilities = auth?.abilities ?? [];
     const visible = (item: { key: string }) => item.key !== 'chart' || abilities.includes('finance');
 
@@ -618,8 +621,8 @@ export default function SettingsIndex() {
                                 <Button
                                     type="button"
                                     variant="danger"
-                                    onClick={() => {
-                                        if (!confirm(t('حذف جميع التنبيهات المرسلة؟'))) return;
+                                    onClick={async () => {
+                                        if (! await ask({ message: 'حذف جميع التنبيهات المرسلة؟', danger: true, action: 'حذف' })) return;
                                         router.post(
                                             route('admin.notifications.clear'),
                                             {},
@@ -1185,6 +1188,8 @@ export default function SettingsIndex() {
             )}
                 </div>
             )}
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

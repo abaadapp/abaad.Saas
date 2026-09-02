@@ -11,6 +11,8 @@ export interface ConfirmOptions {
     action?: string;
     /** فعلٌ لا رجعة فيه يُصبغ بالأحمر */
     danger?: boolean;
+    /** بدائلُ الرسالة — «حذف :n منتجًا» تحتاج عددَها لتُقرأ */
+    values?: Record<string, string | number>;
 }
 
 /**
@@ -72,7 +74,7 @@ export function useConfirm(): [(options: ConfirmOptions) => Promise<boolean>, Re
                     <DialogTitle>{t(options?.title ?? 'تأكيد')}</DialogTitle>
                 </DialogHeader>
                 <div className="px-5 pb-5">
-                    <p className="text-sm text-[#4b4b4b]">{options ? t(options.message) : ''}</p>
+                    <p className="text-sm text-[#4b4b4b]">{options ? t(options.message, options.values) : ''}</p>
                     <div className="mt-5 flex justify-end gap-2">
                         <Button variant="outline" onClick={() => settle(false)}>
                             {t('إلغاء')}

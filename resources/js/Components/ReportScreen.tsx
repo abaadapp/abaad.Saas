@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { router } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -7,6 +7,7 @@ import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
 import StatCard from '@/Components/StatCard';
 import { Select } from '@/Components/Field';
+import { Input } from '@/Components/ui/input';
 import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -18,7 +19,14 @@ export interface Option {
 
 export type Filter =
     | { kind: 'select'; key: string; label: string; options: Option[] }
-    | { kind: 'toggle'; key: string; label: string };
+    | { kind: 'toggle'; key: string; label: string }
+    /**
+     * حقلُ بحثٍ نصّيّ — يُرشَّح عند الخادم كبقيّة المرشّحات.
+     *
+     * ولا يُرشَّح في المتصفّح: الجدول مبتورٌ بسقفٍ، فالبحث فيما وصل يفتّش
+     * أوّل خمسمئة صفٍّ ويقول «لا نتائج» عن صفٍّ في الدفتر.
+     */
+    | { kind: 'search'; key: string; label: string; placeholder?: string };
 
 export interface Stat {
     label: string;
@@ -141,6 +149,14 @@ export default function ReportScreen({
                                             aria-label={t(c.label)}
                                         />
                                     </label>
+                                ) : c.kind === 'search' ? (
+                                    <SearchFilter
+                                        key={c.key}
+                                        label={c.label}
+                                        placeholder={c.placeholder}
+                                        value={filters[c.key] ?? ''}
+                                        onChange={(v) => go({ [c.key]: v || null })}
+                                    />
                                 ) : (
                                     <label key={c.key} className="flex h-10 cursor-pointer items-center gap-2 text-[13px] text-[#111]">
                                         <input
@@ -177,5 +193,53 @@ export default function ReportScreen({
                 {children}
             </div>
         </AdminLayout>
+    );
+}
+
+/**
+ * حقلُ البحث — يكتب المستخدم، ويُسأل الخادمُ بعد أن يسكت.
+ *
+ * زيارةٌ مع كل حرفٍ تعني ستّ زياراتٍ لكلمةٍ من ستّة أحرف، تصل نتائجُها بغير
+ * ترتيب إرسالها فيرى الباحث نتيجةَ «فات» فوق نتيجة «فاتورة». والمهلةُ تُلغى
+ * مع كل حرفٍ جديد، فلا يُسأل الخادم إلا عمّا استقرّت عليه اليد.
+ *
+ * والقيمةُ الواصلة تُقدَّم على المكتوبة حين تتبدّل من خارج الحقل — زرُّ
+ * الرجوع، أو رابطٌ يحمل مُرشِّحه — فلا يبقى في الحقل نصٌّ لا يصف ما تحته.
+ */
+function SearchFilter({
+    label,
+    placeholder,
+    value,
+    onChange,
+}: {
+    label: string;
+    placeholder?: string;
+    value: string;
+    onChange: (value: string) => void;
+}) {
+    const t = useTranslate();
+    const [draft, setDraft] = useState(value);
+
+    useEffect(() => setDraft(value), [value]);
+
+    useEffect(() => {
+        if (draft === value) return;
+        const id = setTimeout(() => onChange(draft), 350);
+
+        return () => clearTimeout(id);
+        // onChange تُبنى مع كل رسم، فإدراجها يُعيد ضبط المهلة بلا سبب
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [draft, value]);
+
+    return (
+        <label className="flex min-w-[10rem] flex-1 flex-col gap-1">
+            <span className="text-[12px] text-[#6b7280]">{t(label)}</span>
+            <Input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={placeholder ? t(placeholder) : undefined}
+                aria-label={t(label)}
+            />
+        </label>
     );
 }

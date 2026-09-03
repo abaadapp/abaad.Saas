@@ -324,10 +324,25 @@ class ReportData
         $method = self::pick($filters, 'method');
         $type = self::pick($filters, 'type');
 
+        /*
+         * ورمزُ السند مُرشِّحٌ كغيره.
+         *
+         * الجدول يعرض عمود «السند» ولا سبيل إلى طلب سندٍ بعينه: من معه
+         * «TRX-000412» كان يقلّب صفحات الدفتر بعينه. وهو الوجهة التي يقود
+         * إليها بحثُ الشريط العلوي حين يُكتب رمزُ معاملة — فبلا هذا يقع
+         * الرابط في أوّل الدفتر ويترك صاحبه يفتّش.
+         *
+         * والبيان معه: من يتذكّر «إيجار المحل» ولا يتذكّر رمزه يجدها بها.
+         */
+        $search = self::pick($filters, 'q');
+
         $base = Transaction::where('business_id', $bid)
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start))
             ->when($method, fn ($q) => $q->where('method', $method))
-            ->when($type, fn ($q) => $q->where('type', $type));
+            ->when($type, fn ($q) => $q->where('type', $type))
+            ->when($search, fn ($q) => $q->where(fn ($w) => $w
+                ->where('reference', Search::like(), '%'.$search.'%')
+                ->orWhere('description', Search::like(), '%'.$search.'%')));
 
         $income = (float) (clone $base)->where('type', 'دخل')->sum('amount');
         $outgo = (float) (clone $base)->where('type', '!=', 'دخل')->sum('amount');

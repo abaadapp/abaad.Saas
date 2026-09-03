@@ -4004,5 +4004,15 @@
     "تقييماتك تُقرأ هنا": "Your reviews are read here",
     "لم تُقرأ التقييمات — راجع المعرّف والمفتاح.": "Reviews were not read — check the ID and the key.",
     "لا مفتاح — أكمل الخطوة الأولى.": "No key — complete the first stage.",
-    "حدّد محلّك أوّلًا.": "Pin your shop first."
+    "حدّد محلّك أوّلًا.": "Pin your shop first.",
+    "ابحث عن صفحة أو منتج أو رقم فاتورة…": "Search for a page, a product, or an invoice number…",
+    "الصفحات": "Pages",
+    "أقسام النظام": "Sections",
+    "حسابك": "Your account",
+    "السندات والمعاملات": "Documents and transactions",
+    "إشعار استلام": "Goods receipt note",
+    "تسوية مخزون": "Stock adjustment",
+    "قيد يومية": "Journal entry",
+    "معاملة": "Transaction",
+    "رمز السند أو البيان": "Voucher code or description"
 }

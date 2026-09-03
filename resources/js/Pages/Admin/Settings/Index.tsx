@@ -183,7 +183,9 @@ export default function SettingsIndex() {
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
     const abilities = auth?.abilities ?? [];
-    const visible = (item: { key: string }) => item.key !== 'chart' || abilities.includes('finance');
+    // القسمُ مكتوبٌ مع البند لا هنا: مفتاحٌ يُسمّى في شرطٍ كان ينسى أخاه
+    const visible = (item: { key: string; section?: string }) =>
+        !item.section || abilities.includes(item.section);
 
     const [tab, setTab] = useState<TabKey | null>(tabFromUrl);
 

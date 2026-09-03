@@ -4022,5 +4022,10 @@
     ":n صنفًا لم يعد يظهر في متجرك": ":n items no longer appear in your store",
     "هكذا يراه زبونك — ولا يفتحها أحد سواك": "This is how your customer sees it — and nobody but you can open it",
     "تحديث المعاينة": "Refresh preview",
-    "معاينة المتجر": "Store preview"
+    "معاينة المتجر": "Store preview",
+    "الرقم الضريبي للعميل": "Customer's tax number",
+    "امسح لعرض الفاتورة": "Scan to view the invoice",
+    "موثّقة عبر أبعاد": "Verified by Abaad",
+    "قُرئت من دفتر المتجر": "Read from the shop's ledger",
+    "نسخةٌ حيّة من فاتورتك — احتفظ بالرابط": "A live copy of your invoice — keep the link"
 }

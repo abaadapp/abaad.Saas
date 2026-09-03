@@ -12,10 +12,11 @@ use App\Support\Demo;
 use App\Support\EInvoice;
 use App\Support\GoogleReviews;
 use App\Support\OrderStatus;
+use App\Support\Pdf;
 use App\Support\PosTerminal;
+use App\Support\PublicDocument;
 use App\Support\ReceiptTemplate;
 use App\Support\Reports;
-use Mpdf\Mpdf;
 
 class PdfController extends Controller
 {
@@ -59,11 +60,22 @@ class PdfController extends Controller
          * والقالب واحدٌ يحكم الاثنين، فلا تفترق ورقتان لطلبٍ واحد.
          */
         $onA4 = ($tpl['paper'] ?? '80mm') === 'A4';
+        $width = $this->stripWidth((string) ($tpl['paper'] ?? '80mm'));
 
         $html = view($onA4 ? 'pdf.invoice' : 'pdf.receipt', [
             'order' => $order,
             'qr' => EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
             'tpl' => $tpl,
+            // عرضُ الشريط يصل القالب: القياس يتبع الورق — انظر strip-style
+            'width' => $width,
+            /*
+             * ورمزُ الورقة أونلاين.
+             *
+             * الإيصال الحراريّ يبهت في جيبٍ خلال أشهر، ويُبلَّل، ويضيع. وزبونٌ
+             * يعود بضمانٍ بعد سنةٍ يحمل قصاصةً لا تُقرأ. فيحمل أسفلُه رمزًا
+             * يفتح نسختَه الحيّة — رابطٌ دائم لا يُخمَّن (انظر PublicDocument).
+             */
+            'paperUrl' => PublicDocument::url($order) ?? '',
             // رقم المشتري الضريبي: تحتاجه منشأةٌ مسجَّلة لتخصم ضريبة شرائها
             'customerTax' => $order->customer_id
                 ? optional(Customer::find($order->customer_id))->tax_number
@@ -77,48 +89,33 @@ class PdfController extends Controller
             'googleReview' => GoogleReviews::onReceipt($bid),
         ])->render();
 
-        // «A4» فاتورة كاملة و«58mm» شريط أضيق — ورقٌ لا يطابق الطابعة يخرج مقصوصًا
-        $format = match ($tpl['paper'] ?? '80mm') {
-            'A4' => 'A4',
-            '58mm' => [58, 200],
-            default => [80, 200],
-        };
+        $name = 'receipt-'.$order->number;
 
-        /*
-         * وطابعة هذا الصندوق تغلب قالب المتجر.
-         *
-         * القالب إعدادٌ واحد للمتجر كلّه، والصناديق تختلف: صندوق المدخل بورق
-         * ٨٠ وصندوق التغليف بورق ٥٨. فمن يطبع من صندوقٍ يطبع بمقاس ورقه هو،
-         * لا بمقاسٍ يخصّ صندوقًا آخر — وورقٌ لا يطابق الطابعة يخرج مقصوصًا
-         * من الحافة، ويُكتشف بعد أن يأخذه الزبون.
-         *
-         * وA4 لا تُمسّ: من اختارها اختار فاتورةً كاملة لا شريطًا.
-         */
-        if (! $onA4
-            && ($width = PosTerminal::current()
-                ?->peripherals()->where('active', true)
-                ->where('type', PosPeripheral::PRINTER)
-                ->value('paper_width'))
-        ) {
-            $format = [(int) $width, 200];
+        return $onA4 ? Pdf::a4($html, $name) : Pdf::strip($html, $name, $width);
+    }
+
+    /**
+     * عرضُ ورق هذه الطابعة بالمليمتر.
+     *
+     * وطابعةُ هذا الصندوق تغلب قالب المتجر: القالب إعدادٌ واحد للمتجر كلّه،
+     * والصناديق تختلف — صندوق المدخل بورق ٨٠ وصندوق التغليف بورق ٥٨. فمن
+     * يطبع من صندوقٍ يطبع بمقاس ورقه هو، وورقٌ لا يطابق الطابعة يخرج
+     * مقصوصًا من الحافة، ويُكتشف بعد أن يأخذه الزبون.
+     *
+     * وA4 لا تُمسّ: من اختارها اختار فاتورةً كاملة لا شريطًا.
+     */
+    private function stripWidth(string $paper): int
+    {
+        if ($paper === 'A4') {
+            return 0;
         }
 
-        // هوامش الورقة لا هوامش الشريط: ٤mm على A4 تجعل النصّ يلامس الحافة
-        $margin = $onA4 ? 14 : 4;
+        $terminal = PosTerminal::current()
+            ?->peripherals()->where('active', true)
+            ->where('type', PosPeripheral::PRINTER)
+            ->value('paper_width');
 
-        $mpdf = new Mpdf([
-            'mode' => 'utf-8',
-            'format' => $format,
-            'margin_left' => $margin, 'margin_right' => $margin,
-            'margin_top' => $onA4 ? 14 : 6, 'margin_bottom' => $onA4 ? 14 : 6,
-            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
-        ]);
-        $mpdf->WriteHTML($html);
-
-        return response($mpdf->Output('receipt-'.$order->number.'.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="receipt-'.$order->number.'.pdf"',
-        ]);
+        return (int) ($terminal ?: ($paper === '58mm' ? 58 : 80));
     }
 
     /** تقرير أداء المنصة (سوبر أدمن) */
@@ -305,6 +302,8 @@ class PdfController extends Controller
             'tpl' => ReceiptTemplate::forBusiness($bid),
             'customerTax' => $order->customer_id ? optional(Customer::find($order->customer_id))->tax_number : null,
             'qr' => EInvoice::forOrder($order, $vat, $business),
+            // ورمزُ الورقة أونلاين — كما في فاتورة البيع وإيصالها
+            'paperUrl' => PublicDocument::url($order) ?? '',
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
@@ -313,20 +312,10 @@ class PdfController extends Controller
         return $this->pdf($html, 'tax-invoice-'.$order->number);
     }
 
-    /** مولّد A4 عربي/RTL */
+    /** ورقةُ A4 — بالمحرّك الواحد لا بإعدادٍ يخصّ هذا الملفّ */
     private function pdf(string $html, string $name)
     {
-        $mpdf = new Mpdf([
-            'mode' => 'utf-8', 'format' => 'A4',
-            'margin_left' => 12, 'margin_right' => 12, 'margin_top' => 14, 'margin_bottom' => 14,
-            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
-        ]);
-        $mpdf->WriteHTML($html);
-
-        return response($mpdf->Output($name.'.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="'.$name.'.pdf"',
-        ]);
+        return Pdf::a4($html, $name);
     }
 
     /** فاتورة اشتراك المنصة (سوبر أدمن) */
@@ -355,15 +344,7 @@ class PdfController extends Controller
                 'website' => trim((string) $settings->get('website')),
             ],
         ])->render();
-        $mpdf = new Mpdf([
-            'mode' => 'utf-8', 'format' => 'A4',
-            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
-        ]);
-        $mpdf->WriteHTML($html);
 
-        return response($mpdf->Output('invoice-'.$invoice->number.'.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="invoice-'.$invoice->number.'.pdf"',
-        ]);
+        return Pdf::a4($html, 'invoice-'.$invoice->number);
     }
 }

@@ -150,10 +150,28 @@ class AdminPanelAuditTest extends TestCase
         $this->assertStringNotContainsString('OM1234567', $without);
     }
 
+    /**
+     * ومقاسُ الخطّ يصل الورقة — نسبةً لا رقمًا مثبَّتًا.
+     *
+     * كان الفحص على «font-size: 14px» حرفيًّا، فسقط يوم صارت الورقة تُقاس
+     * بالنقطة لا بالبكسل — والمقبض يعمل كما كان. وحارسٌ يكسره تغييرُ وحدةٍ
+     * يُدفع إلى التعطيل، والسؤالُ الحقيقيّ واحد: هل يكبر ما اختار التاجر
+     * تكبيرَه؟
+     */
     public function test_the_font_size_setting_reaches_the_a4_invoice(): void
     {
-        $this->assertStringContainsString('font-size: 14px', $this->a4(['tpl_font' => 'كبير']));
-        $this->assertStringContainsString('font-size: 11px', $this->a4(['tpl_font' => 'صغير']));
+        $size = function (string $font): float {
+            $this->assertSame(1, preg_match(
+                '/font-size:\s*([\d.]+)pt/',
+                $this->a4(['tpl_font' => $font]),
+                $m,
+            ), 'الورقة لا تقول مقاس خطّها');
+
+            return (float) $m[1];
+        };
+
+        $this->assertGreaterThan($size('صغير'), $size('عادي'));
+        $this->assertGreaterThan($size('عادي'), $size('كبير'));
     }
     /* ------------------ مفاتيح الإعدادات مغلقة ------------------ */
 

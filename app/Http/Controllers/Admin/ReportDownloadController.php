@@ -5,11 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Pdf;
 use App\Support\ReportColumns;
 use App\Support\ReportData;
 use App\Support\Reports;
 use Illuminate\Http\Request;
-use Mpdf\Mpdf;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -116,6 +116,24 @@ class ReportDownloadController extends Controller
     private function periodLabel(string $report, array $filters, array $data): string
     {
         return $data['periodLabel'] ?? Demo::rangeLabel($filters['range'] ?? 'month');
+    }
+
+    /**
+     * هل يحتاج هذا التقرير ورقةً عرضيّة؟
+     *
+     * سبعةُ أعمدةٍ على عرض A4 القائم تعني ٢٦ مم للعمود الواحد — أي أنّ
+     * «باقة ورد أحمر فاخرة» تنكسر أربعة أسطر، ويصير ارتفاعُ الصفّ أربعةَ
+     * أضعافه، وتخرج ورقتان مكان واحدة. والعدد يُقرأ من رأس الجدول نفسه،
+     * فتقريرٌ يُضاف إليه عمودٌ يتبدّل اتجاهُ ورقته من نفسه.
+     */
+    private function wide(string $report): bool
+    {
+        if (ReportColumns::sectioned($report)) {
+            return collect(ReportColumns::sectionsOf($report))
+                ->contains(fn ($section) => count(ReportColumns::sectionColumns($report, $section)) >= 7);
+        }
+
+        return count(ReportColumns::headings($report)) >= 7;
     }
 
     private function filename(string $report, array $filters): string
@@ -351,17 +369,14 @@ class ReportDownloadController extends Controller
 
         Activity::log('report', 'صدّر '.$this->title($report).' (PDF)');
 
-        $mpdf = new Mpdf([
-            'mode' => 'utf-8', 'format' => 'A4',
-            'margin_left' => 10, 'margin_right' => 10, 'margin_top' => 12, 'margin_bottom' => 12,
-            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
-        ]);
-        $mpdf->WriteHTML($html);
-        $name = $this->filename($report, $filters);
-
-        return response($mpdf->Output($name.'.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="'.$name.'.pdf"',
-        ]);
+        /*
+         * والتقريرُ العريض يخرج عرضيًّا.
+         *
+         * جدولٌ بسبعة أعمدةٍ أو أكثر على ورقةٍ قائمة يخرج بأعمدةٍ ملتصقة
+         * تُقرأ بالتخمين، وأسماءُ الأصناف تنكسر ثلاثة أسطر في خانةٍ عرضُها
+         * كلمة. والقرار يُقرأ من عدد الأعمدة نفسه لا من قائمةٍ بأسماء
+         * تقاريرَ تُنسى عند أوّل تقريرٍ يُضاف.
+         */
+        return Pdf::a4($html, $this->filename($report, $filters), $this->wide($report));
     }
 }

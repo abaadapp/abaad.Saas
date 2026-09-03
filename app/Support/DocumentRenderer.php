@@ -6,8 +6,7 @@ use App\Models\GoodsReceiptNote;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\PurchaseOrder;
-use App\Models\Setting;
-use Mpdf\Mpdf;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * الرسمُ — قالبٌ واحد يخدم الطباعة والمعاينة معًا.
@@ -19,11 +18,17 @@ use Mpdf\Mpdf;
  */
 class DocumentRenderer
 {
-    /** حجمُ الخطّ بالبكسل من اسمه — في موضعٍ واحد لا في كلّ قالب */
-    public static function base(string $font): int
+    /**
+     * معاملُ حجم الخطّ من اسمه — في موضعٍ واحد لا في كلّ قالب.
+     *
+     * ومعاملٌ لا مقاسٌ بالبكسل: الورقة تُقاس بالنقطة، ومقاسٌ واحد للجسد
+     * كان يكبر وحده فيصير الجدول والترويسة أصغر ممّا حولهما. والمعامل
+     * يضرب المقاسات كلَّها فتكبر الورقة معًا — انظر pdf/partials/style.
+     */
+    public static function scale(string $font): float
     {
         return match ($font) {
-            'صغير' => 11, 'كبير' => 14, default => 12
+            'صغير' => 0.9, 'كبير' => 1.14, default => 1.0
         };
     }
 
@@ -45,9 +50,8 @@ class DocumentRenderer
             $out[$field === 'paper' ? 'paper' : 'tpl_'.$field] = $value;
         }
 
-        // الرقم الضريبي يُقرأ في الورقة ولا يُضبط من «قوالب»
-        $out['vat_number'] = (string) Setting::where('business_id', $businessId)
-            ->where('key', 'vat_number')->value('value');
+        // الرقم الضريبي يُقرأ في الورقة ولا يُضبط من «قوالب» — ومن موضعٍ واحد
+        $out['vat_number'] = Paper::vatNumber($businessId);
 
         return $out;
     }
@@ -57,8 +61,9 @@ class DocumentRenderer
      *
      * @param  array<string,mixed>  $doc  بيانُ المستند من `DocumentPaper`
      * @param  array<string,mixed>|null  $override  قيمٌ لم تُحفظ بعد — للمعاينة
+     * @param  Model|null  $source  الصفُّ الذي رُسمت منه — لبناء رابطها العامّ
      */
-    public static function generic(int $businessId, string $type, array $doc, ?array $override = null): string
+    public static function generic(int $businessId, string $type, array $doc, ?array $override = null, ?Model $source = null): string
     {
         $tpl = DocumentTemplates::settings($businessId, $type, $override);
         $business = DocumentPaper::business($businessId);
@@ -67,10 +72,16 @@ class DocumentRenderer
             'doc' => $doc,
             'tpl' => $tpl,
             'business' => $business,
-            'base' => self::base((string) $tpl['font']),
+            'scale' => self::scale((string) $tpl['font']),
             'logo' => $business?->logo,
-            'vatNumber' => (string) Setting::where('business_id', $businessId)
-                ->where('key', 'vat_number')->value('value'),
+            'vatNumber' => Paper::vatNumber($businessId),
+            /*
+             * ورمزُ الورقة لسند التسليم وحده — انظر PublicDocument.
+             *
+             * أمرُ الشراء وسندُ الاستلام يحملان تكلفةَ البضاعة ويمضيان إلى
+             * المورّد، فلا يُفتح لهما بابٌ عامّ.
+             */
+            'paperUrl' => $type === 'delivery' ? (PublicDocument::url($source) ?? '') : '',
             /*
              * والسعرُ علمٌ واحد يحكم العمودين والمجموع معًا: لو حُسب في كلٍّ
              * منها لخرجت ورقةٌ بلا أسعارٍ في السطور وبمجموعٍ في أسفلها.
@@ -91,6 +102,7 @@ class DocumentRenderer
     {
         $values = DocumentTemplates::settings($businessId, 'sale', $override);
         $tpl = self::legacy($businessId, $values);
+        $paper = (string) ($values['paper'] ?? '80mm');
 
         $order = Order::where('business_id', $businessId)
             ->where('is_held', false)
@@ -98,9 +110,17 @@ class DocumentRenderer
             ->latest('id')
             ->first() ?? self::sampleOrder($businessId);
 
-        return view(($values['paper'] ?? '80mm') === 'A4' ? 'pdf.invoice' : 'pdf.receipt', [
+        return view($paper === 'A4' ? 'pdf.invoice' : 'pdf.receipt', [
             'order' => $order,
             'tpl' => $tpl,
+            // عرضُ الشريط في المعاينة كما اختاره التاجر — انظر pdf/partials/strip-style
+            'width' => self::stripWidth($paper),
+            /*
+             * ولا رابطَ في المعاينة: الطلبُ المعروض قد يكون مُخترعًا، ورمزٌ
+             * له يقود إلى ٤٠٤ في يد التاجر. والمحفوظُ منه لا يُفتح بابُه
+             * لمجرّد أنّ أحدًا فتح محرّر القوالب.
+             */
+            'paperUrl' => '',
             /*
              * ولا رمزَ فوترةٍ في المعاينة: `EInvoice` تبني رمزًا يحمل رقم
              * المتجر الضريبي والمبلغ، ورسمُه لطلبٍ مُخترع يضع في يد التاجر
@@ -173,19 +193,20 @@ class DocumentRenderer
         };
     }
 
-    /** ملفُّ PDF من HTML — بإعداد A4 العربيّ نفسه في كلّ النظام */
+    /** عرضُ الشريط بالمليمتر من اسم المقاس في القالب */
+    public static function stripWidth(string $paper): int
+    {
+        return $paper === '58mm' ? 58 : 80;
+    }
+
+    /**
+     * ملفُّ PDF من HTML — بالمحرّك الواحد.
+     *
+     * وكان يبني mpdf بيده بهوامش تخصّه: ١٢ مم هنا و١٤ هناك و١٥ في ثالث،
+     * وستّةُ مواضع في النظام تفعل مثله. انظر App\Support\Pdf.
+     */
     public static function pdf(string $html, string $name)
     {
-        $mpdf = new Mpdf([
-            'mode' => 'utf-8', 'format' => 'A4',
-            'margin_left' => 12, 'margin_right' => 12, 'margin_top' => 14, 'margin_bottom' => 14,
-            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
-        ]);
-        $mpdf->WriteHTML($html);
-
-        return response($mpdf->Output($name.'.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="'.$name.'.pdf"',
-        ]);
+        return Pdf::a4($html, $name);
     }
 }

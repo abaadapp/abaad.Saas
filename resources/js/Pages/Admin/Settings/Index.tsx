@@ -11,6 +11,7 @@ import {
     Globe,
     Image as ImageIcon,
     Languages,
+    RefreshCw,
     Save,
     Search,
     Trash2,
@@ -381,7 +382,7 @@ export default function SettingsIndex() {
 
     const saveStore = (e: React.FormEvent) => {
         e.preventDefault();
-        storeForm.post(route('admin.marketing.store.save'), { preserveScroll: true });
+        storeForm.post(route('admin.marketing.store.save'), { preserveScroll: true, onSuccess: reloadPreview });
     };
 
     /** العنوان كما سيقرؤه الزبون — يُبنى بقاعدة الخادم نفسها */
@@ -431,13 +432,23 @@ export default function SettingsIndex() {
         تبديلُ صنفٍ لا ينتظر «حفظ ونشر»: من يُخفي ورقَ التغليف يريد أن يختفي
         الآن، ولا يُعقل أن يُعاد التحقّق من العنوان والنطاق لأجل ضغطةٍ عليه.
     */
+    /*
+        المعاينة إطارٌ يفتح المتجر نفسه — لا رسمًا يشبهه.
+
+        ورسمٌ يشبهه هو ما يفترق عنه: حقلٌ يُضاف في القالب ولا يُضاف في الرسم
+        فيرى التاجر غير ما يرى زبونه. والمفتاح يُبدَّل بعد كلّ حفظةٍ ليُعاد
+        تحميل الإطار — وإلّا بقي يعرض ما قبلها.
+    */
+    const [previewKey, setPreviewKey] = useState(0);
+    const reloadPreview = () => setPreviewKey((n) => n + 1);
+
     const [pickQuery, setPickQuery] = useState('');
 
     const setShown = (published: boolean, id: number | null) => {
         router.post(
             route('admin.marketing.store.products'),
             id === null ? { all: true, published } : { ids: [id], published },
-            { preserveScroll: true, preserveState: true },
+            { preserveScroll: true, preserveState: true, onSuccess: reloadPreview },
         );
     };
 
@@ -817,6 +828,32 @@ export default function SettingsIndex() {
                                         </li>
                                     ))}
                             </ul>
+                        </div>
+
+                        {/* ٦ — المعاينة: المتجر نفسه في إطار، لا رسمًا يشبهه */}
+                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <div className="mb-3 flex items-center gap-2">
+                                <p className="text-sm font-medium text-[#111]">{t('معاينة')}</p>
+                                <p className="text-[12px] text-[#9ca3af]">
+                                    {t('هكذا يراه زبونك — ولا يفتحها أحد سواك')}
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={reloadPreview}
+                                    aria-label={t('تحديث المعاينة')}
+                                    className="ms-auto rounded-lg p-2 text-[#9ca3af] hover:text-[#111]"
+                                >
+                                    <RefreshCw className="size-4" />
+                                </button>
+                            </div>
+                            <div className="overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-2">
+                                <iframe
+                                    key={previewKey}
+                                    src={route('admin.store.preview')}
+                                    title={t('معاينة المتجر')}
+                                    className="h-[560px] w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white"
+                                />
+                            </div>
                         </div>
 
                         <div className="mt-6 flex justify-end">

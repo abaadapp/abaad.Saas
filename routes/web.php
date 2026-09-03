@@ -585,6 +585,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // إنشاء متجر التاجر على الإنترنت — من صفحة الإعدادات نفسها
     Route::post('/marketing/store', [MarketingController::class, 'saveStore'])->name('marketing.store.save');
     Route::post('/marketing/store/products', [MarketingController::class, 'publishProducts'])->name('marketing.store.products');
+    /*
+     * معاينةُ المتجر — خلف الحارس، وبلا معرّفٍ في الرابط.
+     *
+     * تفتح القالب العامّ نفسه بحمولته نفسها لصاحب المتجر وحده، منشورًا كان
+     * أو لم يُنشر. ولو قبِل معرّفًا لَعاين كلُّ تاجرٍ متجر جاره غير المنشور.
+     */
+    Route::get('/store/preview', [\App\Http\Controllers\Store\StorefrontController::class, 'preview'])
+        ->name('store.preview');
     Route::post('/marketing/domain-path', [MarketingController::class, 'saveDomainPath'])->name('marketing.domain.path');
     Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
     Route::post('/marketing/seo', [MarketingController::class, 'saveSeo'])->name('marketing.seo.save');

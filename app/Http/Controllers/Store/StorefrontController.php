@@ -39,4 +39,30 @@ class StorefrontController extends Controller
              */
             ->header('Cache-Control', 'public, max-age=120');
     }
+
+    /**
+     * المتجر كما يراه صاحبُه قبل أن يراه أحد.
+     *
+     * وكان يضبطه أعمى: يكتب عنوانه ويختار لونه ويُخفي أصنافًا، ولا يرى شيئًا
+     * حتى ينشره — فيُنشر ليرى، ثمّ يُطفئ ليُصلح، وبين الاثنين رابطٌ حيٌّ فُتح
+     * لمن وصله. أو لا يُنشر أبدًا لأنّه لا يعرف ما سيخرج.
+     *
+     * وهو القالبُ نفسه بالحمولة نفسها — لا رسمًا يشبهه: رسمٌ يشبهه يفترق عنه
+     * عند أوّل حقلٍ يُضاف في أحدهما، فيرى التاجر غير ما يرى زبونُه.
+     *
+     * والمسار خلف الحارس ولا يقبل معرّفًا: المتجر يُقرأ من جلسة صاحبه وحدها،
+     * فلا يُعايَن متجرُ غيره بتبديل رقمٍ في الرابط.
+     */
+    public function preview(): Response
+    {
+        $business = \App\Models\Business::findOrFail(
+            auth()->user()->business_id ?? \App\Support\Demo::bid()
+        );
+
+        return response()
+            ->view('store.show', Storefront::page($business) + ['preview' => true])
+            // ومعاينةٌ لا تُخزَّن ولا تُفهرَس: هي حالُ لحظتها، ولصاحبها وحده
+            ->header('Cache-Control', 'no-store')
+            ->header('X-Robots-Tag', 'noindex, nofollow');
+    }
 }

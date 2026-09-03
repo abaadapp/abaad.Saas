@@ -4019,5 +4019,8 @@
     "يظهر لزوّار متجرك بصورته وسعره": "Visitors to your store see it with its image and price",
     "لن يظهر ما دام غير مفعّل": "It will not appear while it is inactive",
     ":n صنفًا صار يظهر في متجرك": ":n items now appear in your store",
-    ":n صنفًا لم يعد يظهر في متجرك": ":n items no longer appear in your store"
+    ":n صنفًا لم يعد يظهر في متجرك": ":n items no longer appear in your store",
+    "هكذا يراه زبونك — ولا يفتحها أحد سواك": "This is how your customer sees it — and nobody but you can open it",
+    "تحديث المعاينة": "Refresh preview",
+    "معاينة المتجر": "Store preview"
 }

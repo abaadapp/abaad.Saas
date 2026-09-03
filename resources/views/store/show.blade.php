@@ -104,6 +104,16 @@
     </style>
 </head>
 <body>
+{{--
+    شريطٌ يقول لصاحب المتجر إنّ ما يراه لا يراه غيره — قبل أن يرسل الرابط
+    لأحد. ولا يُرسم للزائر: `preview` لا تصل إلّا من مسار المعاينة.
+--}}
+@if ($preview ?? false)
+    <div style="background:#111827;color:#fff;padding:8px 16px;text-align:center;font-size:13px">
+        معاينة — هكذا يظهر متجرك، ولا يفتح هذه الصفحة أحد سواك.
+    </div>
+@endif
+
 
 <header class="hero">
     <div class="wrap hero-in">

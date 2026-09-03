@@ -26,6 +26,9 @@ use Illuminate\Support\Facades\Crypt;
  */
 class GoogleReviews
 {
+    /** مفتاح أبعاد في إعدادات المنصّة (business_id = null) — معمًّى كمفتاح التاجر */
+    public const PLATFORM_KEY = 'google_places_key';
+
     /**
      * معرّفُ المكان — أو null إن لم يُقرأ.
      *
@@ -120,7 +123,16 @@ class GoogleReviews
     /** موضعُ المسحوب في الذاكرة — لكلّ متجرٍ ومعرّفٍ موضعُه */
     private static function cacheKey(int $businessId, string $placeId): string
     {
-        return 'google-reviews:'.$businessId.':'.sha1($placeId);
+        /*
+         * وبصمةُ المفتاح جزءٌ منه — لا مسحَ ذاكرةٍ عند تبديله.
+         *
+         * المفتاح قد يكون مفتاح المنصّة، يقرؤه مئةُ متجر. فتبديلُه بمسح
+         * الذاكرة كلِّها يعني `Cache::flush()` — وهي تُسقط ما ليس لنا في
+         * مخزنٍ مشترك. وبالبصمة يسقط المحفوظ بالمفتاح القديم وحده، من
+         * تلقائه، في كلّ متجرٍ دفعةً واحدة.
+         */
+        return 'google-reviews:'.$businessId.':'.sha1($placeId)
+            .':'.substr(sha1((string) self::apiKey($businessId)), 0, 8);
     }
 
     /**
@@ -134,7 +146,116 @@ class GoogleReviews
      */
     public static function apiKey(int $businessId): ?string
     {
-        $stored = trim((string) (MarketingSettings::group($businessId, 'google')['google_api_key'] ?? ''));
+        /*
+         * مفتاح التاجر أوّلًا، ثمّ مفتاح المنصّة.
+         *
+         * وكان مفتاح التاجر وحده: يُطلب من صاحب محلّ وردٍ في مسقط أن يفتح
+         * حسابًا في Google Cloud وينشئ مشروعًا ويُفعّل واجهةً ويربط بطاقةً —
+         * ليقرأ تقييمات محلّه. فلا يفعل، فتبقى الشاشة فارغة، ولا شيء يقول
+         * إنّ العطب في أنّ الطريق لم يكن معبَّدًا أصلًا.
+         *
+         * فصار لأبعاد مفتاحُها: التاجر يحدّد محلَّه وتُقرأ تقييماته. ومن
+         * أراد أن تُحتسب النداءات على حسابه هو يلصق مفتاحه فيتقدّم على
+         * مفتاح المنصّة — لأنّ فاتورته فاتورتُه.
+         */
+        return self::decrypt(MarketingSettings::group($businessId, 'google')['google_api_key'] ?? '')
+            ?? self::platformKey();
+    }
+
+    /**
+     * مراحلُ الربط — بترتيبها، وحالُ كلٍّ منها ومن يملك إصلاحها.
+     *
+     * والشكل شكلُ واتساب نفسه (انظر `Integration::step`) لأنّ الشاشتين
+     * ترسمانه برسّامٍ واحد: أداةٌ تكتب حقلًا باسمٍ آخر تعني شاشةً تعرف كلّ
+     * أداةٍ على حدة، وتعني خطوةً تُضاف في إحداهما ولا تظهر في الأخرى.
+     *
+     * و`$pulled` يُمرَّر ولا يُسحب هنا: `pull` نداءٌ على الشبكة، والشاشة
+     * تسحبه أصلًا. وسحبُه مرّتين في الفتحة الواحدة نداءٌ يُحتسب على الفاتورة
+     * ولا يُقرأ منه شيء.
+     *
+     * @param  array{state:string, error:?string}  $pulled  ما ردّته `pull`
+     * @return array{connected:bool, ready:bool, steps:list<array<string,mixed>>}
+     */
+    public static function readiness(int $businessId, array $pulled): array
+    {
+        $started = MarketingSettings::group($businessId, 'connect')['google_setup_started'];
+        $placeId = self::forBusiness($businessId)['place_id'];
+        $own = self::keyHint($businessId) !== null;
+
+        /* بدأ: ضغط الزرّ، أو حدّد محلَّه قبل أن يوجد الزرّ */
+        return Integration::payload(
+            $started === '1' || $placeId !== null,
+            [
+            /*
+             * المفتاح أوّلًا لأنّه شرطُ القراءة — وهو على أبعاد لا عليه.
+             *
+             * وكان على التاجر أن يفتح حسابًا في Google Cloud ويُنشئ مشروعًا
+             * ويربط بطاقة ليقرأ تقييمات محلّه. فلا يفعل، فتبقى الشاشة فارغة.
+             */
+            Integration::step(
+                'platform',
+                'خرائط Google مهيّأة في أبعاد',
+                self::apiKey($businessId) !== null,
+                detail: $own ? __('تُقرأ بمفتاحك أنت — والنداءات على حسابك.') : null,
+                fix: 'مفتاح الخرائط إعدادُ أبعاد لا إعدادُك — راجعنا لتهيئته، أو الصق مفتاحك الخاصّ.',
+                theirs: true,
+            ),
+            /* وهذه وحدها بيده: أيُّ محلٍّ من ملايين المحلّات هو محلُّك */
+            Integration::step(
+                'place',
+                'محلّك محدَّد على الخرائط',
+                $placeId !== null,
+                fix: 'الصق معرّف المكان أدناه — ورابطُ الخرائط العاديّ لا يحمله.',
+            ),
+            Integration::step(
+                'reviews',
+                'تقييماتك تُقرأ هنا',
+                ($pulled['state'] ?? '') === 'ok',
+                fix: match ($pulled['state'] ?? '') {
+                    // خطأُ Google يُقال بنصّه: «لم تُقرأ» لا يقول ما يُصلَح
+                    'error' => $pulled['error'] ?? 'لم تُقرأ التقييمات — راجع المعرّف والمفتاح.',
+                    'nokey' => 'لا مفتاح — أكمل الخطوة الأولى.',
+                    'unlinked' => 'حدّد محلّك أوّلًا.',
+                    default => null,
+                },
+                theirs: ($pulled['state'] ?? '') === 'nokey',
+            ),
+        ]);
+    }
+
+    /** مفتاح أبعاد — يُقرأ لكلّ تاجرٍ لم يلصق مفتاحه */
+    public static function platformKey(): ?string
+    {
+        return self::decrypt(
+            \App\Models\Setting::whereNull('business_id')->where('key', self::PLATFORM_KEY)->value('value')
+        );
+    }
+
+    /** يحفظ مفتاح المنصّة معمًّى — و`null` محوٌ صريح */
+    public static function storePlatformKey(?string $plain): void
+    {
+        $plain = trim((string) $plain);
+
+        \App\Models\Setting::updateOrCreate(
+            ['business_id' => null, 'key' => self::PLATFORM_KEY],
+            ['value' => $plain === '' ? '' : Crypt::encryptString($plain)],
+        );
+
+        // ولا مسحَ ذاكرة: بصمةُ المفتاح في مفتاحها — انظر cacheKey
+    }
+
+    /** آخرُ أربعةِ أحرفٍ من مفتاح المنصّة — أو null إن لم يُحفظ */
+    public static function platformKeyHint(): ?string
+    {
+        $key = self::platformKey();
+
+        return $key === null ? null : '••••'.substr($key, -4);
+    }
+
+    /** فكُّ التعمية — والفشلُ غيابٌ لا استثناء (انظر apiKey) */
+    private static function decrypt(?string $stored): ?string
+    {
+        $stored = trim((string) $stored);
 
         if ($stored === '') {
             return null;
@@ -169,7 +290,14 @@ class GoogleReviews
      */
     public static function keyHint(int $businessId): ?string
     {
-        $key = self::apiKey($businessId);
+        /*
+         * ومفتاحُ التاجر وحده — لا الذي يقع عليه `apiKey`.
+         *
+         * تلك تردّ مفتاح المنصّة لمن لا مفتاح له، ولو قُرئ هنا لَقال للتاجر
+         * «مفتاحك محفوظ ••••ab12» وهو لم يحفظ شيئًا — فيبحث عن مفتاحٍ لا
+         * يملكه ليحذفه أو يبدّله.
+         */
+        $key = self::decrypt(MarketingSettings::group($businessId, 'google')['google_api_key'] ?? '');
 
         return $key === null ? null : '••••'.substr($key, -4);
     }

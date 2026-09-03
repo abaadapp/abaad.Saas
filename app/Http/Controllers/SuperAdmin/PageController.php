@@ -358,6 +358,8 @@ class PageController extends Controller
              * `publicView` هو الباب: تمرير النموذج نفسه كان يُخرج الرمز إلى
              * المتصفّح مهما كان `$hidden` عليه.
              */
+            /* تلميحُ مفتاح الخرائط لا المفتاح — أربعةُ أحرفٍ ليُعرف أيُّه محفوظ */
+            'googleKeyHint' => \App\Support\GoogleReviews::platformKeyHint(),
             'whatsapp' => WhatsAppConnections::publicView(
                 WhatsAppConnection::query()->platform()->orderByDesc('id')->first(),
                 withIds: true,

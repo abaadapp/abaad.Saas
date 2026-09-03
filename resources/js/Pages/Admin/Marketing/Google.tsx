@@ -9,6 +9,7 @@ import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { ConnectGate, ConnectSteps, type Readiness } from './partials/Connect';
 import type { PageProps } from '@/types';
 
 interface Link {
@@ -49,6 +50,8 @@ interface Props {
     keyHint: string | null;
     google: Pulled;
     internal: number;
+    /** مراحل الربط — شكلُها شكلُ واتساب، انظر App\Support\Integration */
+    readiness: Readiness;
 }
 
 /** رابطٌ يُنسخ بضغطة — العنوان طويلٌ ولا يُكتب بيد */
@@ -120,7 +123,7 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
  * تقييماتِه ومعدّلَه من Google بمفتاح Places فتُقرأ هنا بلا مغادرة اللوحة.
  */
 export default function MarketingGoogle() {
-    const { settings, link, keyHint, google, internal } = usePage<PageProps<Props>>().props;
+    const { settings, link, keyHint, google, internal, readiness } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const form = useForm({
@@ -160,11 +163,44 @@ export default function MarketingGoogle() {
     const linked = !! link.place_id;
     const place = google.place;
 
+    /*
+        بابٌ قبل الشاشة — لمن لم يربط بعد.
+
+        وكانت تُفتح على حقلِ «معرّف المكان» وبطاقةِ مفتاحِ Places وقائمةِ
+        تقييماتٍ فارغة وشرحِ رمزِ الإيصال — كلُّها لمن لم يربط شيئًا. فالخطوة
+        الأولى تضيع بين ما لا يعمل قبلها.
+    */
+    if (! readiness.connected) {
+        return (
+            <AdminLayout title="ربط خرائط Google">
+                <PageHeader
+                    title="ربط خرائط Google"
+                    subtitle={t('اربط محلّك بملفّه على الخرائط: رابطٌ لطلب التقييم، وتقييماتُ Google تُقرأ هنا')}
+                />
+                <ConnectGate
+                    icon={MapPin}
+                    name={t('خرائط Google')}
+                    line={t('اربط محلّك بملفّه على الخرائط: يمسح الزبون رمزًا على الإيصال فيكتب تقييمه، وتُقرأ تقييماتك هنا.')}
+                    tool="google"
+                    tint="#ea4335"
+                    note={readiness.steps[0]?.done ? null : readiness.steps[0]?.fix}
+                />
+            </AdminLayout>
+        );
+    }
+
     return (
         <AdminLayout title="ربط خرائط Google">
             <PageHeader
                 title="ربط خرائط Google"
                 subtitle={t('اربط محلّك بملفّه على الخرائط: رابطٌ لطلب التقييم، وتقييماتُ Google تُقرأ هنا')}
+            />
+
+            <ConnectSteps
+                readiness={readiness}
+                title={t('مراحل الربط')}
+                done={t('تمّ الربط — تُقرأ تقييماتك أدناه، ورابطُ التقييم جاهز.')}
+                waiting={t('لا تُقرأ تقييمةٌ واحدة قبل أن تكتمل هذه المراحل.')}
             />
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -267,7 +303,7 @@ export default function MarketingGoogle() {
 
                         {google.state === 'nokey' && (
                             <p className="rounded-[12px] bg-[#fffbeb] p-4 text-[13px] text-[#92400e]">
-                                {t('أضف مفتاح Places في البطاقة المجاورة لتُقرأ التقييمات هنا.')}
+                                {t('مفتاح الخرائط غير مهيّأ في أبعاد بعد — راجعنا، أو الصق مفتاحك الخاص في البطاقة المجاورة.')}
                             </p>
                         )}
 
@@ -372,9 +408,10 @@ export default function MarketingGoogle() {
                         <div className="mb-3 flex items-start gap-2.5">
                             <KeyRound className="mt-0.5 size-[18px] shrink-0 text-[#111]" />
                             <div>
-                                <h3 className="text-[14px] font-bold text-[#111]">{t('مفتاح Places API')}</h3>
+                                <h3 className="text-[14px] font-bold text-[#111]">{t('مفتاحك الخاص')}</h3>
+                                {/* اختياريٌّ الآن: لأبعاد مفتاحُها — انظر GoogleReviews::apiKey */}
                                 <p className="mt-0.5 text-[12px] text-[#6b7280]">
-                                    {t('يُقرأ به ملفّ محلّك على Google. من مشروعك في Google Cloud.')}
+                                    {t('اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد. والصقْ مفتاحك من Google Cloud إن أردت أن تُحتسب النداءات على حسابك.')}
                                 </p>
                             </div>
                         </div>

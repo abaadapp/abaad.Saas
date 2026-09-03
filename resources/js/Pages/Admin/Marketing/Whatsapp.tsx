@@ -1,5 +1,5 @@
 import { router, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, Check, CheckCircle2, Clock, Save, X } from 'lucide-react';
+import { AlertTriangle, MessageCircle, Save } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Toggle from '@/Components/Toggle';
@@ -9,21 +9,12 @@ import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
+import { ConnectGate, ConnectSteps, type Readiness } from './partials/Connect';
 import type { PageProps } from '@/types';
-
-interface Step {
-    key: string;
-    label: string;
-    done: boolean;
-    detail: string | null;
-    fix: string | null;
-    /** خطوةٌ ينتظر فيها أبعاد — لا يُطلب من التاجر إصلاحُها */
-    theirs: boolean;
-}
 
 /** ما يُعرض من حال الأتمتة — بلا رمزٍ ولا سرّ (انظر Admin\WhatsAppController::view) */
 interface Automation {
-    readiness: { ready: boolean; steps: Step[] };
+    readiness: Readiness;
     global_enabled: boolean;
     enabled: boolean;
     mode: string;
@@ -83,6 +74,32 @@ export default function Whatsapp() {
         Object.fromEntries(automation.events.map((e) => [e.setting, settings[e.setting] === '1'])),
     );
 
+    /*
+        بابٌ قبل الشاشة — لمن لم يبدأ.
+
+        وكانت تُفتح على كلّ شيءٍ دفعةً واحدة: مراحلُ ربطٍ لم تبدأ، وحقولُ
+        معرّفاتٍ من حساب ميتا، ومقابضُ أحداثٍ لا تُرسل حرفًا قبل الربط. فيقرأ
+        التاجر عشرين سطرًا ليعرف أنّ لا شيء منها يعمل بعد.
+    */
+    if (! automation.readiness.connected) {
+        return (
+            <AdminLayout title="إشعارات واتساب">
+                <PageHeader
+                    title="إشعارات واتساب"
+                    subtitle={t('رسائل تُرسَل للعميل عند تغيّر حال طلبه')}
+                />
+                <ConnectGate
+                    icon={MessageCircle}
+                    name={t('إشعارات واتساب')}
+                    line={t('يصل العميل خبرُ طلبه على واتساب لحظةَ تغيّره — بلا أن يتّصل أحد.')}
+                    tool="whatsapp"
+                    tint="#25d366"
+                    note={automation.global_enabled ? null : t('واتساب غير مفعَّل في المنصّة بعد — يفتحه أبعاد.')}
+                />
+            </AdminLayout>
+        );
+    }
+
     return (
         <AdminLayout title="إشعارات واتساب">
             <PageHeader
@@ -90,69 +107,16 @@ export default function Whatsapp() {
                 subtitle={t('رسائل تُرسَل للعميل عند تغيّر حال طلبه')}
             />
 
-            {/*
-                الخطوة الأولى: الربط والتفعيل — وهي شرطُ كلّ ما بعدها.
+            <ConnectSteps
+                readiness={automation.readiness}
+                title={t('مراحل الربط')}
+                done={`${t('جاهز — تخرج الرسائل عبر')} ${t(automation.sending_via)}`}
+                waiting={t('لا تخرج رسالةٌ واحدة قبل أن تكتمل هذه المراحل.')}
+            />
 
-                وكانت الشاشة تفتح على بطاقةِ حالٍ سطرُها الأخضر يقول «مفعّل»
-                بشرطين اثنين، ثمّ تحته مقابضُ الأحداث. فيقرأ التاجر «مفعّل»
-                ويُشعل ما يريد ويمضي — والمُرسِل يمتنع لسببٍ ثالثٍ لا تعرضه
-                الشاشة (باقةٌ لا تشمله، أو وصلةٌ لا تعمل)، فينتظر رسائل لا
-                تخرج ولا شيء يقول له لماذا.
-
-                فصارت الخطوات مكشوفةً بترتيبها وحالِ كلٍّ منها — من المُدقِّق
-                نفسه الذي يسأله المُرسِل.
-            */}
+            {/* وبطاقةٌ فارغة لا تُرسم: من لا حصّة له ولا رقمَ خاصًّا لا شيء له هنا */}
+            {(automation.usage || automation.own_allowed || automation.mode === 'business_own') && (
             <Card className="mb-6 max-w-3xl p-6">
-                <div className="mb-5 flex items-start gap-3">
-                    <span
-                        className={
-                            'mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[10px] ' +
-                            (automation.readiness.ready
-                                ? 'bg-[#f0fdf4] text-[#166534]'
-                                : 'bg-[#fef2f2] text-[#b91c1c]')
-                        }
-                    >
-                        {automation.readiness.ready ? (
-                            <CheckCircle2 className="size-[18px]" />
-                        ) : (
-                            <AlertTriangle className="size-[18px]" />
-                        )}
-                    </span>
-                    <div>
-                        <h3 className="font-bold text-[#111]">{t('١ · الربط والتفعيل')}</h3>
-                        <p className="mt-0.5 text-[13px] text-[#6b7280]">
-                            {automation.readiness.ready
-                                ? `${t('جاهز — تخرج الرسائل عبر')} ${t(automation.sending_via)}`
-                                : t('لا تخرج رسالةٌ واحدة قبل أن تكتمل هذه الخطوات.')}
-                        </p>
-                    </div>
-                </div>
-
-                <ol className="mb-2 divide-y divide-[var(--ui-border,#e8e8e8)]">
-                    {automation.readiness.steps.map((s) => (
-                        <li key={s.key} className="flex items-start gap-3 py-3 first:pt-0">
-                            <span className="mt-0.5 shrink-0">
-                                {s.done ? (
-                                    <Check className="size-4 text-[#047857]" />
-                                ) : s.theirs ? (
-                                    /* ما ينتظر فيه أبعاد ليس عطبًا في يده — والرمز يفرّق */
-                                    <Clock className="size-4 text-[#b45309]" />
-                                ) : (
-                                    <X className="size-4 text-[#b91c1c]" />
-                                )}
-                            </span>
-                            <div className="min-w-0">
-                                <p className="text-[13px] font-medium text-[#111]">{s.label}</p>
-                                {s.detail && <p className="mt-0.5 text-[12px] text-[#6b7280]">{s.detail}</p>}
-                                {s.fix && (
-                                    <p className={'mt-0.5 text-[12px] ' + (s.theirs ? 'text-[#b45309]' : 'text-[#b91c1c]')}>
-                                        {s.fix}
-                                    </p>
-                                )}
-                            </div>
-                        </li>
-                    ))}
-                </ol>
 
                 {/* الاستهلاك للمشترك وحده: من ربط رقمه يُرسل على حسابه فلا حدَّ عليه منّا */}
                 {automation.usage && (
@@ -322,6 +286,7 @@ export default function Whatsapp() {
                     </div>
                 )}
             </Card>
+            )}
 
             <form
                 onSubmit={(e) => {

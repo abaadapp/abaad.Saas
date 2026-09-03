@@ -65,6 +65,7 @@ use App\Http\Controllers\Pos\OrderEditController;
 use App\Http\Controllers\Pos\PeripheralController;
 use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicDocumentController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
@@ -930,6 +931,19 @@ Route::domain('{slug}.'.config('storefront.domain'))
     });
 
 Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
+
+/*
+ * الورقةُ أونلاين — ما يفتحه من مسح الرمز أسفل إيصاله.
+ *
+ * والعنوانُ قصيرٌ عمدًا: كلُّ حرفٍ فيه يزيد كثافةَ الرمز المطبوع، ورمزٌ
+ * كثيف على ورقٍ حراريّ باهت لا تقرؤه كاميرا هاتف. و`/i/` والرمزُ وحدهما
+ * ستّةٌ وعشرون حرفًا بعد اسم النطاق.
+ *
+ * وبلا حارس: الواقف أمامه زبونٌ لا حساب له — انظر PublicDocumentController.
+ */
+Route::get('/i/{token}', [PublicDocumentController::class, 'show'])
+    ->where('token', '[A-Za-z0-9]{22}')
+    ->name('paper.show');
 
 /*
  * إشعارات ميتا — بابٌ عامّ بلا جلسة، وحارسه توقيعٌ لا كلمة سرّ.

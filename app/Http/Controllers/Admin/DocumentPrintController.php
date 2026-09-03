@@ -37,8 +37,14 @@ class DocumentPrintController extends Controller
 
         Activity::log('report', 'طبع سند تسليم للطلب: '.$order->number, ['subject_id' => $order->id]);
 
+        /*
+         * والطلبُ يُمرَّر لا بيانُه وحده: منه يُبنى رمزُ الورقة أونلاين.
+         *
+         * سندُ التسليم يمشي مع الشحنة إلى يد المستلِم، فيحمل أسفلَه طريقَه
+         * إلى نسخةٍ لا تبهت ولا تُبلَّل.
+         */
         return DocumentRenderer::pdf(
-            DocumentRenderer::generic($bid, 'delivery', DocumentPaper::forDelivery($order)),
+            DocumentRenderer::generic($bid, 'delivery', DocumentPaper::forDelivery($order), null, $order),
             'delivery-'.$order->number,
         );
     }

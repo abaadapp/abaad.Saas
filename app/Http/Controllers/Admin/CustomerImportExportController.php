@@ -8,7 +8,7 @@ use App\Models\Customer;
 use App\Support\Activity;
 use App\Support\Demo;
 use Illuminate\Http\Request;
-use Mpdf\Mpdf;
+use App\Support\Pdf;
 use App\Support\Sheet;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -106,18 +106,7 @@ class CustomerImportExportController extends Controller
 
         Activity::log('report', 'صدّر قائمة العملاء (PDF)');
 
-        $mpdf = new Mpdf([
-            'mode' => 'utf-8', 'format' => 'A4',
-            'margin_left' => 12, 'margin_right' => 12, 'margin_top' => 14, 'margin_bottom' => 14,
-            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
-        ]);
-        $mpdf->WriteHTML($html);
-        $name = 'customers-' . now()->format('Y-m-d');
-
-        return response($mpdf->Output($name . '.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $name . '.pdf"',
-        ]);
+        return Pdf::a4($html, 'customers-' . now()->format('Y-m-d'));
     }
 
     /* ==================== استيراد: رفع الملف ثم المعاينة ==================== */

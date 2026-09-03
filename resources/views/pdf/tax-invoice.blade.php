@@ -1,125 +1,137 @@
+{{--
+    الفاتورة الضريبية تتبع قالب المتجر — لا شكلًا ثابتًا لا يملكه أحد.
+
+    كانت ورقةً بنفسجيّة مرسومة في الكود: لا شعار، ولا ترويسة، ولا تذييل،
+    ولا يُخفى منها حقلٌ ولا يُظهر. فيضبط التاجر قالب فاتورته في الإعدادات
+    ثم يفتح الورقة الأخرى لطلبه نفسه فيجدها بهيئةٍ لا تشبه متجره.
+
+    فصار المصدر واحدًا: «قوالب الأوراق» يحكم الورقتين، و`pdf.layout` يرسم
+    ترويستَهما. وما يخصّ الضريبة وحدها — الرقمان الضريبيان وتفصيل الوعاء —
+    يبقى هنا ولا يُخفى بمفتاح: هو سببُ وجود الورقة، وإخفاؤه يجعلها تدّعي
+    ما ليست به.
+--}}
+@extends('pdf.layout')
+
 @php
-    /**
-     * الفاتورة الضريبية تتبع قالب المتجر — لا شكلًا ثابتًا لا يملكه أحد.
-     *
-     * كانت ورقةً بنفسجيّة مرسومة في الكود: لا شعار، ولا ترويسة، ولا تذييل،
-     * ولا يُخفى منها حقلٌ ولا يُظهر. فيضبط التاجر قالب فاتورته في الإعدادات
-     * — شعاره وترويسته وما يُعرض — ثم يفتح الورقة الأخرى لطلبه نفسه فيجدها
-     * بهيئةٍ لا تشبه متجره، وكأنّها من نظامٍ آخر.
-     *
-     * فصار المصدر واحدًا: «الإعدادات ‹ قوالب الفواتير» يحكم الورقتين معًا.
-     * وما يخصّ الضريبة وحدها — الرقمان الضريبيان وتفصيل الوعاء — يبقى هنا
-     * ولا يُخفى بمفتاح: هو سبب وجود الورقة، وإخفاؤه يجعلها تدّعي ما ليست به.
-     */
     $tpl = $tpl ?? [];
     $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
     $line = fn (string $k, string $default = '') => trim((string) ($tpl[$k] ?? $default));
 
-    // حجم الخطّ من القالب: «كبير» لمن يطبع لعينٍ لا تقرأ الصغير
-    $base = match ($line('tpl_font', 'عادي')) {
-        'كبير' => 12,
-        'صغير' => 10,
-        default => 11,
-    };
-    $logo = $show('tpl_show_logo', false) ? ($business['logo'] ?? null) : null;
-@endphp
-<style>
-    * { font-family: 'dejavusans', sans-serif; }
-    body { color: #1f2937; font-size: {{ $base }}px; }
-    .head { border-bottom: 3px solid #7c3aed; padding-bottom: 10px; margin-bottom: 14px; }
-    .brand { font-size: 20px; font-weight: bold; color: #7c3aed; }
-    .muted { color: #6b7280; font-size: {{ $base - 1 }}px; }
-    .title { font-size: 16px; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-    th { background: #f5f3ff; color: #4c1d95; text-align: right; padding: 7px; font-size: {{ $base - 1 }}px; border-bottom: 1px solid #ede9fe; }
-    td { padding: 7px; border-bottom: 1px solid #f3f4f6; font-size: {{ $base - 1 }}px; }
-    .info td { border: none; padding: 3px 0; }
-    .totals td { padding: 6px 8px; font-size: {{ $base }}px; }
-    .foot { margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 8px; color: #9ca3af; font-size: 9px; text-align: center; }
-</style>
+    $scale = \App\Support\DocumentRenderer::scale($line('tpl_font', 'عادي'));
+    $money = fn ($v) => \App\Support\Demo::moneyBase($v);
 
-<div class="head">
-    <table style="border:none;"><tr>
-        <td style="border:none; width:60%;">
-            @if ($logo)
-                <img src="{{ $logo }}" style="max-height:52px; margin-bottom:4px;" alt="">
-            @endif
-            <div class="brand">{{ $business['name'] ?? 'Abad POS' }}</div>
-            <div class="muted">{{ $business['type'] ?? '' }} — {{ $business['city'] ?? '' }}</div>
-            @if ($line('tpl_header') !== '')
-                <div class="muted">{{ $line('tpl_header') }}</div>
-            @endif
-            {{--
-                الرقم الضريبي للبائع لا يُخفى بمفتاح «tpl_show_vat_no»: ورقةٌ
-                عنوانها «فاتورة ضريبية» بلا رقم بائعها ليست فاتورةً ضريبية،
-                وإخفاؤه يجعلها تدّعي ما ليست به.
-            --}}
-            @if (!empty($vat['number']))<div class="muted">{{ __('الرقم الضريبي (TRN):') }} {{ $vat['number'] }}</div>@endif
-        </td>
-        <td style="border:none; text-align:left;">
-            <div class="title">{{ __('فاتورة ضريبية') }}</div>
-            <div class="muted">{{ __('رقم:') }} {{ $order->number }}</div>
-            @if ($show('tpl_show_datetime'))
-                <div class="muted">{{ __('التاريخ:') }} {{ optional($order->ordered_at)->format('Y-m-d H:i') ?? $generatedAt }}</div>
-            @endif
+    /*
+     * الشعارُ بمقبضه، والرقمُ الضريبيّ بلا مقبض.
+     *
+     * ورقةٌ عنوانها «فاتورة ضريبية» بلا رقم بائعها ليست فاتورةً ضريبية،
+     * فلا يُخفى بمفتاح «إظهار الرقم الضريبي» كما يُخفى في الفاتورة العادية.
+     */
+    $business = $show('tpl_show_logo', false) ? $business : array_merge($business ?? [], ['logo' => null]);
+    $vatNumber = (string) ($vat['number'] ?? '');
+    $headerNote = $line('tpl_header');
+@endphp
+
+@section('title', __('فاتورة ضريبية'))
+
+@section('meta')
+    <div>{{ __('رقم:') }} <strong dir="ltr">{{ $order->number }}</strong></div>
+    @if ($show('tpl_show_datetime'))
+    <div><span class="k">{{ __('التاريخ:') }}</span> <span dir="ltr">{{ optional($order->ordered_at)->format('Y-m-d H:i') ?? $generatedAt }}</span></div>
+    @endif
+    @if ($line('tpl_header') !== '')
+    <div>{{ $line('tpl_header') }}</div>
+    @endif
+@endsection
+
+@section('body')
+    <table class="grid" style="margin-bottom:12pt">
+        <tr>
+            <td style="width:50%; border-bottom:none; vertical-align:top">
+                <div class="faint small">{{ __('العميل') }}</div>
+                <div>{{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}</div>
+                @if (! empty($customerTax))
+                    <div class="muted small" style="margin-top:3pt">{{ __('الرقم الضريبي (TRN):') }} <span dir="ltr">{{ $customerTax }}</span></div>
+                @endif
+            </td>
+            <td style="border-bottom:none; vertical-align:top">
+                <div class="faint small">{{ __('وسيلة الدفع') }}</div>
+                <div>{{ __($order->payment_method) }}</div>
+                @if ($show('tpl_show_branch') && $order->branch)
+                    <div class="muted small" style="margin-top:3pt">{{ __('الفرع:') }} {{ $order->branch }}</div>
+                @endif
+                @if ($show('tpl_show_employee'))
+                    <div class="muted small">{{ __('الموظف:') }} {{ $order->employee_name ?: '—' }}</div>
+                @endif
+            </td>
+        </tr>
+    </table>
+
+    <table class="grid">
+        <thead>
+            <tr>
+                <th style="width:6%" class="num">#</th>
+                <th>{{ __('الصنف') }}</th>
+                <th style="width:12%" class="num">{{ __('الكمية') }}</th>
+                <th style="width:19%" class="amt">{{ __('السعر') }}</th>
+                <th style="width:19%" class="amt">{{ __('الإجمالي') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach ($order->items as $i => $it)
+                <tr>
+                    <td class="num faint">{{ $i + 1 }}</td>
+                    <td>{{ $it->name }}</td>
+                    <td class="num">{{ $it->quantity }}</td>
+                    <td class="amt">{{ $money($it->price) }}</td>
+                    <td class="amt">{{ $money($it->total) }}</td>
+                </tr>
+            @endforeach
+        </tbody>
+    </table>
+
+    @if ($show('tpl_show_items_count'))
+        <div class="muted small" style="margin-bottom:6pt">
+            {{ __('عدد الأصناف:') }} <span dir="ltr">{{ $order->items->count() }}</span>
+        </div>
+    @endif
+
+    <table style="width:100%"><tr>
+        <td style="width:56%; border:none"></td>
+        <td style="width:44%; border:none">
+            <table class="grid" style="margin:0">
+                <tr><td>{{ __('المجموع الفرعي (قبل الضريبة)') }}</td><td class="amt">{{ $money($order->subtotal) }}</td></tr>
+                @if ((float) $order->discount > 0)
+                    <tr><td>{{ __('الخصم') }}</td><td class="amt">− {{ $money($order->discount) }}</td></tr>
+                @endif
+                @if ((float) $order->delivery_fee > 0)
+                    <tr><td>{{ __('رسوم التوصيل') }}</td><td class="amt">{{ $money($order->delivery_fee) }}</td></tr>
+                @endif
+                <tr>
+                    <td>{{ __('ضريبة القيمة المضافة') }}
+                        <span class="faint small">({{ rtrim(rtrim(number_format((float) ($vat['rate'] ?? 0), 2, '.', ''), '0'), '.') }}%)</span>
+                    </td>
+                    <td class="amt">{{ $money($order->tax) }}</td>
+                </tr>
+                <tfoot>
+                    <tr><td>{{ __('الإجمالي المستحقّ') }}</td><td class="amt">{{ $money($order->total) }}</td></tr>
+                </tfoot>
+            </table>
         </td>
     </tr></table>
-</div>
 
-<table class="info">
-    <tr>
-        <td style="width:50%;"><strong>{{ __('العميل:') }}</strong> {{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}@if (!empty($customerTax))<br><span class="muted">{{ __('الرقم الضريبي (TRN):') }} {{ $customerTax }}</span>@endif</td>
-        <td style="width:50%;"><strong>{{ __('وسيلة الدفع:') }}</strong> {{ __($order->payment_method) }}</td>
-    </tr>
-    @if ($show('tpl_show_branch') || $show('tpl_show_employee'))
-        <tr>
-            <td>@if ($show('tpl_show_branch'))<strong>{{ __('الفرع:') }}</strong> {{ $order->branch }}@endif</td>
-            <td>@if ($show('tpl_show_employee'))<strong>{{ __('الموظف:') }}</strong> {{ $order->employee_name ?: '—' }}@endif</td>
-        </tr>
-    @endif
-    @if ($show('tpl_show_items_count'))
-        <tr>
-            <td colspan="2"><strong>{{ __('عدد الأصناف:') }}</strong> {{ $order->items->count() }}</td>
-        </tr>
-    @endif
-</table>
+    @include('pdf.partials.qr', [
+        'eInvoice' => $show('tpl_show_qr') ? ($qr ?? '') : '',
+        'paperUrl' => $paperUrl ?? '',
+        'googleReview' => '',
+        'size' => 1.0,
+    ])
+@endsection
 
-<table>
-    <tr><th>{{ __('الصنف') }}</th><th>{{ __('الكمية') }}</th><th>{{ __('السعر') }}</th><th>{{ __('الإجمالي') }}</th></tr>
-    @foreach ($order->items as $it)
-        <tr>
-            <td>{{ $it->name }}</td>
-            <td>{{ $it->quantity }}</td>
-            <td>{{ \App\Support\Demo::moneyBase($it->price) }}</td>
-            <td style="text-align:left;">{{ \App\Support\Demo::moneyBase($it->total) }}</td>
-        </tr>
-    @endforeach
-</table>
-
-@php
-    $subtotal = (float) $order->subtotal;
-    $discount = (float) $order->discount;
-    $vatAmount = (float) $order->tax;
-    $delivery = (float) $order->delivery_fee;
-@endphp
-<table class="totals" style="margin-top:12px; width:55%; float:left;">
-    <tr><td style="color:#6b7280;">{{ __('المجموع الفرعي (قبل الضريبة)') }}</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($subtotal) }}</td></tr>
-    @if ($discount > 0)<tr><td style="color:#6b7280;">{{ __('الخصم') }}</td><td style="text-align:left; color:#dc2626;">- {{ \App\Support\Demo::moneyBase($discount) }}</td></tr>@endif
-    @if ($delivery > 0)<tr><td style="color:#6b7280;">{{ __('رسوم التوصيل') }}</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($delivery) }}</td></tr>@endif
-    <tr><td style="color:#6b7280;">{{ __('ضريبة القيمة المضافة') }} ({{ rtrim(rtrim(number_format($vat['rate'],2,'.',''),'0'),'.') }}%)</td><td style="text-align:left;">{{ \App\Support\Demo::moneyBase($vatAmount) }}</td></tr>
-    <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">{{ __('الإجمالي المستحقّ') }}</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($order->total) }}</td></tr>
-</table>
-@if ($show('tpl_show_qr') && !empty($qr))
-    <div style="float:right; width:42%; text-align:center; margin-top:12px;">
-        <barcode code="{{ $qr }}" type="QR" class="barcode" size="1.0" error="M" />
-        <div class="muted" style="margin-top:4px;">{{ __('رمز الفوترة الإلكترونية — امسحه للتحقق من الفاتورة') }}</div>
+@section('foot')
+    <div class="c">
+        @foreach (preg_split('/\r\n|\r|\n/', $line('tpl_footer')) as $l)
+            @if (trim($l) !== '')<div>{{ $l }}</div>@endif
+        @endforeach
+        <div>{{ __('فاتورة ضريبية صادرة آليًا عبر نظام Abad POS') }} — <span dir="ltr">{{ $generatedAt }}</span> — {{ __('القيم بالريال العماني') }}</div>
     </div>
-@endif
-<div style="clear:both;"></div>
-
-<div class="foot">
-    @foreach (preg_split('/\r\n|\r|\n/', $line('tpl_footer')) as $l)
-        @if (trim($l) !== '')<div>{{ $l }}</div>@endif
-    @endforeach
-    <div>{{ __('فاتورة ضريبية صادرة آليًا عبر نظام Abad POS') }} — {{ $generatedAt }} — {{ __('القيم بالريال العماني') }}</div>
-</div>
+@endsection

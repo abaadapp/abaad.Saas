@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, Check, CheckCircle2, FolderOpen, Paperclip, Plus, Tags } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, FolderOpen, Link2, Paperclip, Plus, Tags } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
@@ -37,12 +37,17 @@ interface ExpenseType {
     description: string | null;
     count: number;
     total: number;
+    /** حساب النوع في الشجرة — لا يراه إلا من يملك المحاسبة المتقدّمة */
+    account_id: number | null;
+    account_label: string | null;
 }
 
 interface Props {
     expenses: ExpenseRow[];
     pagination: ServerPagination;
     types: ExpenseType[];
+    /** أوراق المصروفات — فارغةٌ لمن لا يملك المحاسبة المتقدّمة */
+    expenseAccounts: { value: number; label: string }[];
     filters: Record<string, string | null>;
     /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
     sorts: string[];
@@ -64,10 +69,18 @@ interface Props {
 }
 
 export default function ExpensesIndex() {
-    const { expenses, pagination, types, filters, sorts, totalAmount, totalCount, unpaidAmount, unpaidCount,
-        dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today, context } =
-        usePage<PageProps<Props>>().props;
+    const { expenses, pagination, types, expenseAccounts, filters, sorts, totalAmount, totalCount, unpaidAmount,
+        unpaidCount, dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today,
+        context, auth } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+
+    /*
+     * ربطُ النوع بحسابه لمن يملك «المحاسبة المتقدّمة» وحده.
+     *
+     * الموظّف يختار «إيجار» ولا يرى 5300 ولا يُسأل عن مدينٍ ودائن — وهذا
+     * كلّ الفرق بين شاشةٍ يستعملها من لا يعرف المحاسبة وشاشةٍ يهجرها.
+     */
+    const advanced = auth?.abilities.includes('accounting') ?? false;
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -96,6 +109,9 @@ export default function ExpensesIndex() {
     });
 
     const typeForm = useForm({ name: '', description: '' });
+    // null = مغلق · رقم = النوع الذي يُربط حسابه
+    const [linking, setLinking] = useState<ExpenseType | null>(null);
+    const linkForm = useForm({ account_id: '' });
 
     const submitExpense = (e: React.FormEvent) => {
         e.preventDefault();
@@ -197,9 +213,38 @@ export default function ExpensesIndex() {
         },
     ];
 
+    const openLink = (type: ExpenseType) => {
+        linkForm.clearErrors();
+        linkForm.setData('account_id', type.account_id ? String(type.account_id) : '');
+        setLinking(type);
+    };
+
+    const submitLink = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!linking) return;
+        linkForm.put(route('admin.expenseTypes.update', linking.id), {
+            preserveScroll: true,
+            onSuccess: () => setLinking(null),
+        });
+    };
+
     const typeColumns: Column<ExpenseType>[] = [
         { key: 'name', header: 'الاسم', sortable: true, value: (x) => x.name },
         { key: 'description', header: 'الوصف', cell: (x) => x.description || '—' },
+        ...(advanced
+            ? [
+                  {
+                      key: 'account',
+                      header: 'الحساب المحاسبي',
+                      cell: (x: ExpenseType) =>
+                          x.account_label ? (
+                              <span className="font-mono text-[12px] text-[#4b4b4b]">{x.account_label}</span>
+                          ) : (
+                              <span className="text-[12px] text-[#9ca3af]">{t('مصروفات أخرى (افتراضي)')}</span>
+                          ),
+                  } as Column<ExpenseType>,
+              ]
+            : []),
         {
             key: 'count',
             header: 'الاستخدام',
@@ -220,6 +265,17 @@ export default function ExpensesIndex() {
                         url: route('admin.expenseTypes.destroy', x.id),
                         message: `حذف نوع «${x.name}»؟ لن تتأثر المصروفات المسجّلة سابقًا.`,
                     }}
+                    extra={
+                        advanced
+                            ? [
+                                  {
+                                      label: 'ربط بحساب',
+                                      icon: <Link2 className="size-4" />,
+                                      onSelect: () => openLink(x),
+                                  },
+                              ]
+                            : []
+                    }
                 />
             ),
         },
@@ -538,6 +594,46 @@ export default function ExpensesIndex() {
                                 {t('إلغاء')}
                             </Button>
                             <Button type="submit" loading={typeForm.processing}>
+                                <Check />
+                                {t('حفظ')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/*
+                ربط النوع بحسابه — «المحاسبة المتقدّمة» وحدها.
+
+                وهي الشاشة الوحيدة في القسم التي تُري رمزَ حساب: يضبطها من
+                يعرف المحاسبة مرّةً، ويعمل من لا يعرفها كلّ يوم بلا أن يراها.
+            */}
+            <Dialog open={linking !== null} onOpenChange={(o) => !o && setLinking(null)}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t('حساب نوع المصروف')}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitLink} className="space-y-4 px-5 pb-5">
+                        <p className="text-[13px] text-[#6b7280]">
+                            {t('كلّ مصروفٍ من نوع «:name» يُرحَّل إلى هذا الحساب.', { name: linking?.name ?? '' })}
+                        </p>
+                        <Field
+                            label="الحساب"
+                            hint="بلا اختيار يقع المصروف في «مصروفات أخرى»"
+                            error={linkForm.errors.account_id}
+                        >
+                            <Select
+                                options={expenseAccounts.map((a) => ({ label: a.label, value: String(a.value) }))}
+                                placeholder={t('مصروفات أخرى (افتراضي)')}
+                                value={linkForm.data.account_id}
+                                onChange={(e) => linkForm.setData('account_id', e.target.value)}
+                            />
+                        </Field>
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="ghost" onClick={() => setLinking(null)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button type="submit" loading={linkForm.processing}>
                                 <Check />
                                 {t('حفظ')}
                             </Button>

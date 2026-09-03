@@ -288,13 +288,14 @@ class ReportExportController extends Controller
             $sheet->setCellValue("B{$r}", $t['date']);
             $sheet->setCellValue("C{$r}", $t['description']);
             $sheet->setCellValue("D{$r}", $t['method']);
-            $sheet->setCellValue("E{$r}", $t['type']);
+            // النوع كما حدث لا كاتّجاهٍ وحده — انظر Books::MOVEMENTS
+            $sheet->setCellValue("E{$r}", $t['kind_label']);
             $sheet->setCellValue("F{$r}", round((float) $t['amount'], 3));
             $sheet->setCellValue("G{$r}", $t['employee']);
             $money[] = "F{$r}";
 
-            // تمييز المصروفات بالأحمر الفاتح لتُقرأ بنظرة
-            if ($t['type'] !== 'دخل') {
+            // تمييز ما خرج بالأحمر الفاتح لتُقرأ بنظرة — والتحويل لا يخرج
+            if ($t['type'] === 'مصروف') {
                 $sheet->getStyle("A{$r}:G{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDF0F0');
             }
             $this->row++;

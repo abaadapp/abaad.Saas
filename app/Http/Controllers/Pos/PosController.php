@@ -649,6 +649,9 @@ class PosController extends Controller
                 'description' => 'مبيعات نقطة البيع — ' . ($order->customer_name ?? 'عميل نقدي'),
                 'method' => $order->payment_method ?? 'نقدي',
                 'type' => 'دخل',
+                // «دخل» وحدها لا تكفي: تقرأها التقارير مبيعاتٍ ويقرأها
+                // إيداعُ المالك دخلًا كذلك — انظر Transaction::SALE
+                'kind' => \App\Models\Transaction::SALE,
                 'amount' => $order->total,
                 'tax_amount' => $order->tax ?? 0,
                 'employee_name' => PosCashier::name(),
@@ -670,6 +673,20 @@ class PosController extends Controller
         });
 
         $order = $result['order'];
+
+        /*
+         * البيعة تُرحَّل إلى دفتر الأستاذ — بعد أن تتمّ لا داخلها.
+         *
+         * خارج معاملة البيع عمدًا: البيع سبع كتابات مترابطة تُنفَّذ كلّها أو
+         * لا تُنفَّذ أيّها، والدفتر ليس منها. حسابٌ أغلقه التاجر في شجرته يجب
+         * ألّا يمنع بيعةً من أن تتمّ والزبون واقفٌ عند الصندوق — لكنّه لا يمرّ
+         * صامتًا: يُكتب في السجلّ برقم الفاتورة ويُستدرَك بأمر
+         * `sales:post-ledger` (انظر Books::trySale).
+         *
+         * ولا تُرحَّل مرّتين: الطلب المكرَّر يعود من فحص `client_uuid` أعلاه
+         * قبل أن يصل إلى هنا، ولو وصل لَردّه سؤالُ الدفتر عن قيدٍ حيّ.
+         */
+        \App\Support\Books::trySale($order, PosCashier::id());
 
         \App\Support\Activity::log('checkout', 'أتمّ بيعًا ' . $order->number . ' بقيمة ' . number_format($order->total, 3) . ' ر.ع', ['subject_id' => $order->id]);
 

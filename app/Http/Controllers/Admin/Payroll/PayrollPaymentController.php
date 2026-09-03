@@ -103,7 +103,7 @@ class PayrollPaymentController extends Controller
 
                 $entryLines[] = ['account' => $data['from'], 'credit' => $total];
 
-                Ledger::post(
+                $entry = Ledger::post(
                     $bid,
                     __('صرف رواتب :m', ['m' => $run->period->format('Y-m')]),
                     $entryLines,
@@ -112,6 +112,16 @@ class PayrollPaymentController extends Controller
                     null,
                     auth()->id(),
                     $run,
+                );
+
+                // مالٌ خرج فعلًا: يُقرأ في «الحركة المالية» وفي مطابقة البنك
+                \App\Support\Books::mirror(
+                    $entry,
+                    'payroll_payment',
+                    $total,
+                    $data['from'],
+                    __('صرف رواتب :m', ['m' => $run->period->format('Y-m')]),
+                    auth()->user()?->name,
                 );
 
                 foreach ($lines as $line) {

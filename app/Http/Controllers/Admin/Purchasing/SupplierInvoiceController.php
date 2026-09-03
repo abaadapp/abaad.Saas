@@ -231,7 +231,7 @@ class SupplierInvoiceController extends Controller
 
         try {
             DB::transaction(function () use ($bid, $invoice, $amount, $data) {
-                Ledger::post(
+                $entry = Ledger::post(
                     $bid,
                     __('سداد سند مورّد: ').$invoice->supplier_ref,
                     [
@@ -243,6 +243,16 @@ class SupplierInvoiceController extends Controller
                     null,
                     auth()->id(),
                     $invoice,
+                );
+
+                // مالٌ خرج فعلًا: يُقرأ في «الحركة المالية» وفي مطابقة البنك
+                \App\Support\Books::mirror(
+                    $entry,
+                    'supplier_payment',
+                    $amount,
+                    $data['from'],
+                    __('سداد سند مورّد: ').$invoice->supplier_ref,
+                    auth()->user()?->name,
                 );
 
                 $invoice->update(['paid' => round((float) $invoice->paid + $amount, 3)]);

@@ -247,12 +247,17 @@ class SilentDataLossTest extends TestCase
          * كانت المالية تقبل «مصروف» وتكتبه صفًّا في المعاملات — وبطاقاتها
          * تجمع الدخل وحده، والربح يُقرأ من جدول المصروفات. فالمبلغ يظهر في
          * الجدول ولا ينقص ربحًا ولا يدخل تقريرًا.
+         *
+         * ولا في دفتر الأستاذ أيضًا: صفٌّ في `transactions` بلا قيدٍ يقابله.
          */
         $this->actingAs($this->owner)->post(route('admin.finance.store'), [
-            'type' => 'مصروف', 'amount' => 45, 'method' => 'نقدي', 'description' => 'كهرباء',
-        ]);
+            'kind' => 'expense', 'amount' => 45, 'side' => 'cash', 'description' => 'كهرباء',
+        ])->assertSessionHasNoErrors();
 
         $this->assertSame(45.0, (float) Expense::where('business_id', $this->business->id)->sum('amount'));
+
+        $transaction = Transaction::where('business_id', $this->business->id)->firstOrFail();
+        $this->assertNotNull($transaction->journal_entry_id, 'حركةٌ ماليّة بلا قيدٍ في دفتر الأستاذ');
     }
 
     public function test_an_expense_screen_entry_shows_in_the_ledger_too(): void
@@ -274,7 +279,7 @@ class SilentDataLossTest extends TestCase
          */
         for ($i = 0; $i < 30; $i++) {
             $this->actingAs($this->owner)->post(route('admin.finance.store'), [
-                'type' => 'دخل', 'amount' => 5, 'method' => 'نقدي',
+                'kind' => 'other_income', 'amount' => 5, 'side' => 'cash',
             ]);
         }
 
@@ -293,7 +298,7 @@ class SilentDataLossTest extends TestCase
         ]);
 
         $this->actingAs($this->owner)->post(route('admin.finance.store'), [
-            'type' => 'دخل', 'amount' => 5, 'method' => 'نقدي',
+            'kind' => 'other_income', 'amount' => 5, 'side' => 'cash',
         ]);
 
         $this->assertSame('TRX-000001', Transaction::where('business_id', $this->business->id)->value('reference'));

@@ -3,7 +3,7 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import { Check, Package, Plus, TrendingDown, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
+import SectionTabs, { ACCOUNTING_TABS } from '@/Components/SectionTabs';
 import StatCard from '@/Components/StatCard';
 import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
@@ -117,7 +117,7 @@ export default function Assets() {
                 }
             />
 
-            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.assets" />
+            <SectionTabs tabs={ACCOUNTING_TABS} current="admin.finance.assets" />
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard stat={{ label: t('أصول نشطة'), value: number(summary.count), icon: 'package', color: 'info' }} index={0} />

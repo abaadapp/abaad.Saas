@@ -24,6 +24,7 @@ class JournalEntry extends Model
         'entry_date' => 'date',
         'posted' => 'boolean',
         'posted_at' => 'datetime',
+        'reversed_at' => 'datetime',
     ];
 
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
@@ -35,6 +36,31 @@ class JournalEntry extends Model
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
 
     public function sourceable() { return $this->morphTo(); }
+
+    /** القيد الذي يعكسه هذا — إن كان قيدًا عكسيًّا */
+    public function reverses(): BelongsTo { return $this->belongsTo(self::class, 'reverses_id'); }
+
+    /** القيد العكسيّ الذي ألغى هذا — إن عُكس */
+    public function reversal() { return $this->hasOne(self::class, 'reverses_id'); }
+
+    /**
+     * القيد الحيّ: ما لم يُعكس، وما ليس عكسًا لغيره.
+     *
+     * تاريخ المستند في الدفتر ثلاثة قيود أو أكثر: الأوّل، وعكسُه، والمصحَّح.
+     * وسؤال «ما القيد الساري لهذه الفاتورة الآن؟» له جوابٌ واحد — وهذا
+     * النطاق هو الذي يقوله، فلا يُكتب شرطُه بيدٍ في كلّ موضعٍ يسأل.
+     */
+    public function scopeLive($query)
+    {
+        return $query->whereNull('reversed_at')->whereNull('reverses_id');
+    }
+
+    /** قيود مستندٍ بعينه */
+    public function scopeForSource($query, $sourceable)
+    {
+        return $query->where('sourceable_type', $sourceable::class)
+            ->where('sourceable_id', $sourceable->id);
+    }
 
     public function totalDebit(): float
     {

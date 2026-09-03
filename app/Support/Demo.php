@@ -89,8 +89,24 @@ class Demo
             return self::$baseCur;
         }
         self::$curBid = self::bid();
-        $s = self::businessSettings();
-        $c = \App\Models\Currency::where('business_id', self::bid())->where('is_base', true)->first();
+
+        return self::$baseCur = self::currencyFor(self::bid());
+    }
+
+    /**
+     * عملة نشاطٍ بعينه — بلا مستخدمٍ مسجَّل.
+     *
+     * `baseCurrency` تقرأ صاحبَها من الجلسة، وهو الصواب داخل اللوحة. لكنّ
+     * الموقع المنشور يُقرأ بلا حساب: زائرُ متجرٍ في نطاقه ليس مستخدمًا في
+     * أبعاد ولا يمكن أن يكون. فيُمرَّر المتجر صراحةً، والقاعدة واحدة —
+     * ولولا ذلك لصارت قاعدتان تفترقان يوم يُضاف إعدادٌ إلى إحداهما.
+     *
+     * @return array<string, mixed>
+     */
+    public static function currencyFor(int $businessId): array
+    {
+        $s = \App\Models\Setting::where('business_id', $businessId)->pluck('value', 'key')->all();
+        $c = \App\Models\Currency::where('business_id', $businessId)->where('is_base', true)->first();
 
         if ($c) {
             $cur = ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => true];
@@ -102,7 +118,7 @@ class Demo
             $cur = ['code' => $code, 'symbol' => self::SYMBOLS[$code] ?? $code, 'rate' => 1.0, 'is_base' => true];
         }
 
-        return self::$baseCur = self::withFormat($cur, $s);
+        return self::withFormat($cur, $s);
     }
 
     /** عملة العرض المختارة (من الجلسة) أو الأساسية */
@@ -1330,8 +1346,14 @@ class Demo
         $bid = self::bid();
         $start = self::rangeStart($range);
 
-        // صافي الإيرادات (بلا ضريبة) من معاملات الدخل في الفترة
-        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
+        /*
+         * صافي الإيرادات (بلا ضريبة) من **المبيعات** في الفترة — لا من كل دخل.
+         *
+         * كانت تُقرأ بـ`type = 'دخل'`، وهي خانةٌ يقع فيها ما ليس بيعًا:
+         * تعويضٌ من شركة تأمين، وإيداعُ المالك في الدرج. فيُقرأ ذلك ربحًا
+         * ومبيعاتٍ ونسبةَ نموّ — ولا شيء بيع.
+         */
+        $income = Transaction::where('business_id', $bid)->sales()
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $netRevenue = (float) (clone $income)->sum('amount') - (float) (clone $income)->sum('tax_amount');
 
@@ -1464,13 +1486,23 @@ class Demo
             ->groupBy('type')->get()
             ->keyBy('type');
 
-        return \App\Models\ExpenseType::where('business_id', $bid)->orderBy('name')->get()->map(fn ($t) => [
-            'id' => $t->id,
-            'name' => $t->name,
-            'description' => $t->description,
-            'count' => (int) ($usage[$t->name]->cnt ?? 0),
-            'total' => (float) ($usage[$t->name]->total ?? 0),
-        ])->all();
+        return \App\Models\ExpenseType::where('business_id', $bid)->with('account')
+            ->orderBy('name')->get()->map(fn ($t) => [
+                'id' => $t->id,
+                'name' => $t->name,
+                'description' => $t->description,
+                'count' => (int) ($usage[$t->name]->cnt ?? 0),
+                'total' => (float) ($usage[$t->name]->total ?? 0),
+                /*
+                 * حسابُ النوع — يُعرض لمن يملك «المحاسبة المتقدّمة» وحده.
+                 *
+                 * والحقلان يُرسلان دائمًا لأنّ الشاشة تُخفيهما بصلاحيتها، وهما
+                 * رمزٌ واسمٌ لحسابٍ في شجرة المتجر نفسه: لا بيانات فيهما تُسرَّب
+                 * إلى غير أهلها كما تُسرَّب الأرصدة.
+                 */
+                'account_id' => $t->account_id,
+                'account_label' => $t->account ? $t->account->code.' — '.$t->account->name : null,
+            ])->all();
     }
 
     /* ============================ المالية ============================ */
@@ -1518,7 +1550,7 @@ class Demo
         // الفترة تُردّ إلى المفهوم كما في أخواتها: فترةٌ مجهولة كانت تسقط إلى
         // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
         $start = self::rangeStart(self::range($range));
-        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
+        $income = Transaction::where('business_id', $bid)->sales()
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $total = (float) (clone $income)->sum('amount');       // إجمالي المقبوض (شامل الضريبة)
         $tax = (float) (clone $income)->sum('tax_amount');     // ضريبة القيمة المضافة المحصّلة (التزام)
@@ -1529,7 +1561,7 @@ class Demo
         $prev = self::rangePrev($range);
         $pTotal = $pTax = $pNet = $pCash = 0.0;
         if ($prev) {
-            $pIncome = Transaction::where('business_id', $bid)->where('type', 'دخل')
+            $pIncome = Transaction::where('business_id', $bid)->sales()
                 ->whereBetween('occurred_at', $prev);
             $pTotal = (float) (clone $pIncome)->sum('amount');
             $pTax = (float) (clone $pIncome)->sum('tax_amount');
@@ -1551,7 +1583,7 @@ class Demo
         // الفترة تُردّ إلى المفهوم كما في أخواتها: فترةٌ مجهولة كانت تسقط إلى
         // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
         $start = self::rangeStart(self::range($range));
-        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
+        $income = Transaction::where('business_id', $bid)->sales()
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $grand = max(0.001, (float) (clone $income)->sum('amount'));
         $defs = [
@@ -1593,6 +1625,10 @@ class Demo
             'description' => $t->description,
             'method' => $t->method,
             'type' => $t->type,
+            // ما الذي حدث — لا اتّجاه المال وحده: «تحويل» و«سحب المالك»
+            // و«دخل آخر» كلّها كانت تُقرأ «دخل» أو «مصروف» بلا تمييز
+            'kind' => $t->kind,
+            'kind_label' => \App\Support\Books::label($t->kind),
             'amount' => (float) $t->amount,
             'employee' => $t->employee_name,
         ])->all();

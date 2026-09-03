@@ -71,17 +71,24 @@
             <td>{{ $t['date'] }}</td>
             <td>{{ $t['description'] }}</td>
             <td>{{ __($t['method']) }}</td>
-            <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">{{ __($t['type']) }}</td>
-            <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">
-                {{ $t['type'] === 'دخل' ? '+' : '−' }}{{ number_format(abs($t['amount']), 3) }} {{ __('ر.ع') }}
+            {{-- النوع كما حدث لا كاتّجاهٍ وحده: «تحويل» و«سحب المالك» و«دخل آخر» --}}
+            <td class="{{ $t['type'] === 'دخل' ? 'income' : ($t['type'] === 'مصروف' ? 'expense' : '') }}">{{ $t['kind_label'] ?? __($t['type']) }}</td>
+            <td class="{{ $t['type'] === 'دخل' ? 'income' : ($t['type'] === 'مصروف' ? 'expense' : '') }}">
+                {{ $t['type'] === 'دخل' ? '+' : ($t['type'] === 'مصروف' ? '−' : '') }}{{ number_format(abs($t['amount']), 3) }} {{ __('ر.ع') }}
             </td>
         </tr>
     @endforeach
 </table>
 
 @php
+    /*
+     * التحويل بين الصندوق والبنك ليس دخلًا ولا مصروفًا.
+     *
+     * كان المجموع الثاني يجمع «كلّ ما ليس دخلًا»، فيقع فيه التحويل: مالٌ
+     * انتقل من جيبٍ إلى جيب يُقرأ خروجًا، ويُنقص «الصافي» بمبلغٍ لم يخرج.
+     */
     $totalIn = collect($transactions)->where('type', 'دخل')->sum(fn ($t) => abs($t['amount']));
-    $totalOut = collect($transactions)->where('type', '!=', 'دخل')->sum(fn ($t) => abs($t['amount']));
+    $totalOut = collect($transactions)->where('type', 'مصروف')->sum(fn ($t) => abs($t['amount']));
 @endphp
 <table style="margin-top:10px;">
     <tr>

@@ -46,6 +46,7 @@ const TABS = [
     { key: 'platform', label: 'بيانات المنصة' },
     { key: 'subscriptions', label: 'الاشتراكات' },
     { key: 'taxes', label: 'الضريبة الافتراضية' },
+    { key: 'domains', label: 'النطاقات' },
     { key: 'mail', label: 'البريد' },
     { key: 'whatsapp', label: 'واتساب' },
 ];
@@ -87,6 +88,10 @@ export default function PlatformSettings() {
 
         vat_rate: get('vat_rate'),
         tax_mode: get('tax_mode'),
+
+        domain_subdomain_price: get('domain_subdomain_price'),
+        domain_setup_price: get('domain_setup_price'),
+        domain_subdomain_suffix: get('domain_subdomain_suffix'),
 
         from_address: get('from_address'),
         from_name: get('from_name'),
@@ -250,6 +255,43 @@ export default function PlatformSettings() {
                                 { label: 'شاملة السعر', value: 'inclusive' },
                                 { label: 'مضافة على السعر', value: 'exclusive' },
                             ])}
+                        </div>
+                        {saveBar}
+                    </Card>
+                )}
+
+                {tab === 'domains' && (
+                    <Card className="p-6">
+                        <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('تسعير النطاقات')}</h3>
+                        <p className="mb-6 text-[13px] leading-relaxed text-[#6b7280]">
+                            {t('هذه الأرقام يراها التاجر في «الإعدادات ‹ إعدادات الدومين» قبل أن يختار طريقته. واتركِ الحقل فارغًا ليُعرض «يُحدَّد بالتواصل»، أو اكتب صفرًا ليُعرض «مجاني».')}
+                        </p>
+                        <div className="space-y-5">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                {text('domain_subdomain_price', 'سعر النطاق الفرعي (ر.ع)', {
+                                    type: 'number',
+                                    ltr: true,
+                                    hint: 'ما يدفعه التاجر لأبعاد مقابل نطاقٍ فرعيّ تحت نطاق المنصّة',
+                                })}
+                                {text('domain_setup_price', 'رسوم تجهيز نطاق جديد (ر.ع)', {
+                                    type: 'number',
+                                    ltr: true,
+                                    hint: 'رسوم مرّةٍ واحدة تُدفع لأبعاد — ثمن النطاق نفسه يتبع سعر المزوّد',
+                                })}
+                            </div>
+                            {text('domain_subdomain_suffix', 'لاحقة النطاقات الفرعية', {
+                                ltr: true,
+                                hint: 'ما يُلحق باسم التاجر — مثل: abaadapp.om فيصير my-store.abaadapp.om',
+                            })}
+
+                            {/*
+                                ما لا تقوله الشاشة يجب أن يُقال هنا: المشغّل
+                                يضبط سعرًا لخدمةٍ لم تُوصل بعد، ولو ظنّها تعمل
+                                لوعد بها تاجرًا ينتظرها.
+                            */}
+                            <p className="rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[12px] leading-relaxed text-[#b45309]">
+                                {t('استضافة النطاقات الفرعية غير موصولة بعد: يُحجز الاسم للتاجر ويُعرض عنده بشارة «قيد التجهيز»، ولا يُفتح العنوان. وشراء النطاقات الجديدة يدويٌّ كذلك — الطلبات تصلك في «طلبات النطاقات».')}
+                            </p>
                         </div>
                         {saveBar}
                     </Card>

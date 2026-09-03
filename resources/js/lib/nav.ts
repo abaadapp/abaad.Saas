@@ -1,18 +1,23 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+    ACCOUNTING_TABS,
     CUSTOMER_TABS,
     EMPLOYEE_TABS,
     FINANCE_TABS,
     INVENTORY_TABS,
     PURCHASE_TABS,
+    WEBSITE_TABS,
     type SectionTab,
 } from '@/Components/SectionTabs';
 import {
+    AppWindow,
     BarChart3,
     Boxes,
     Building2,
     ClipboardList,
+    FileSpreadsheet,
     FlaskConical,
+    Globe,
     History,
     Layers,
     LayoutDashboard,
@@ -120,9 +125,24 @@ export const NAV: NavGroup[] = [
             {
                 label: 'المالية',
                 icon: Wallet,
-                route: 'admin.finance.index',
+                route: 'admin.finance.summary',
                 section: 'finance',
                 covers: [...covers(FINANCE_TABS), 'admin.finance.statement'],
+            },
+            /*
+             * المحاسبة المتقدّمة عنصرٌ مستقلّ لا تبويبٌ في المالية.
+             *
+             * وضعُها بين تبويبات المالية كان يجعلها على بُعد نقرةٍ من كلّ من
+             * فتح القسم ليسجّل مصروفًا. وهي ليست شاشةً أعمق بل أدواتٌ أخرى:
+             * من لا يعرف المحاسبة لا يجد فيها ما يريد، ومن يعرفها يعرف
+             * أين يبحث. فيراها من مُنحها وحده — والصلاحية تُخفي العنصر.
+             */
+            {
+                label: 'المحاسبة المتقدمة',
+                icon: FileSpreadsheet,
+                route: 'admin.finance.chart',
+                section: 'accounting',
+                covers: covers(ACCOUNTING_TABS),
             },
             {
                 label: 'الرواتب والموظفين',
@@ -171,6 +191,24 @@ export const NAV: NavGroup[] = [
         items: [{ label: 'التقارير', icon: BarChart3, route: 'admin.reports.index', section: 'reports' }],
     },
     {
+        /*
+         * الموقع الإلكتروني بندٌ في القائمة لا تبويبٌ داخل الإعدادات.
+         *
+         * كان يُوصَل إليه بثلاث نقرات: الإعدادات ‹ المتجر ‹ إعدادات الموقع.
+         * وهو من أكثر ما يُفتح عند من له موقع — يبدّل صورةً، يضيف عرضًا،
+         * ينشر تغييرًا — فمكانُه حيث يُفتح لا حيث يُنسى.
+         */
+        items: [
+            {
+                label: 'الموقع الإلكتروني',
+                icon: AppWindow,
+                route: 'admin.website.index',
+                section: 'website',
+                covers: covers(WEBSITE_TABS),
+            },
+        ],
+    },
+    {
         footer: true,
         items: [{ label: 'الإعدادات', icon: Settings, route: 'admin.settings.index', section: 'settings' }],
     },
@@ -191,6 +229,13 @@ export const PLATFORM_NAV: NavGroup[] = [
             { label: 'الاشتراكات', icon: RefreshCw, route: 'super-admin.subscriptions.index' },
             { label: 'الباقات', icon: Layers, route: 'super-admin.subscriptions.plans' },
             { label: 'المستخدمون', icon: Users, route: 'super-admin.users.index' },
+            /*
+             * طلبات النطاقات — شاشةٌ في القائمة لا صفحةٌ تُعرف بالرابط.
+             *
+             * التاجر يضغط «اطلب من أبعاد تجهيز نطاق» وينتظر إنسانًا. وطلبٌ
+             * لا يظهر في قائمة المشغّل طلبٌ لا يراه إلا من كان يبحث عنه.
+             */
+            { label: 'طلبات النطاقات', icon: Globe, route: 'super-admin.domains.index' },
         ],
     },
     {

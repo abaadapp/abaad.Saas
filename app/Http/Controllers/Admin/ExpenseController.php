@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Expense;
 use App\Models\ExpenseType;
+use App\Support\Books;
 use App\Support\Demo;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class ExpenseController extends Controller
 {
@@ -85,6 +88,16 @@ class ExpenseController extends Controller
             ])->all(),
             'pagination' => \App\Support\Pagination::meta($expenses),
             'types' => Demo::expenseTypes(),
+            /*
+             * حسابات المصروفات — لمن يملك «المحاسبة المتقدّمة» وحده.
+             *
+             * الشاشة تُخفي عمود الحساب بصلاحيتها، لكنّ الإخفاء لا يمنع من يقرأ
+             * حمولة الصفحة. والقائمة أوراقُ شجرة المتجر بأسمائها ورموزها —
+             * وهي ما يُمنع منه من لم يُمنح القسم، فلا تُرسل إليه أصلًا.
+             */
+            'expenseAccounts' => $request->user()?->allows('accounting')
+                ? $this->expenseAccounts($bid)
+                : [],
             'filters' => $request->only('q', 'type', 'status', 'tab') + ['month' => $month]
                 + \App\Support\Sort::params($request, self::SORTS),
             'sorts' => \App\Support\Sort::keys(self::SORTS),
@@ -118,7 +131,8 @@ class ExpenseController extends Controller
         $data = $request->validate([
             'type' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:255'],
-            'amount' => ['required', 'numeric', 'min:0'],
+            // حركةٌ بصفر لا تعني شيئًا — انظر Books::recordMovement
+            'amount' => ['required', 'numeric', 'min:0.001'],
             'method' => ['nullable', 'string', 'max:50'],
             'spent_at' => ['nullable', 'date'],
             // كان عمودًا يُعرض في الجدول ويُرشَّح به ولا سبيل لإدخاله: النموذج
@@ -149,43 +163,42 @@ class ExpenseController extends Controller
         $data['attachment'] = $attachment;
         $data['attachment_name'] = $attachmentName;
 
-        $expense = Expense::create($data);
-
         /*
-         * المصروف يظهر في دفتر المالية أيضًا — إن كان قد دُفع.
+         * المصروف يظهر في دفتر المالية وفي دفتر الأستاذ معًا — إن كان قد دُفع.
          *
          * كان لكلّ منهما جدولُه: مصروفٌ من هذه الشاشة لا يُرى في المالية،
          * ومصروفٌ من المالية لا ينقص الربح. فصار المصدر واحدًا والدفتر
          * يعرضهما معًا — والربح يُقرأ من جدول المصروفات كما كان، فلا يُعدّ
          * المبلغ مرّتين.
          *
+         * وكانت `postToLedger` تُسمّى ترحيلًا ولا ترحّل: تكتب صفًّا في
+         * `transactions` ولا تكتب قيدًا في `journal_entries` — فمصروفُ ثلاثمئة
+         * يظهر في المالية ولا أثر له في ميزان المراجعة، والمحاسب يقرأ دفترًا
+         * ينقصه كلُّ ما أنفقه المتجر. فصار الترحيل من باب `Books` وحده.
+         *
          * والقيد يوم خروج المال لا يوم تسجيل الورقة: فاتورةٌ سُجّلت اليوم
          * وتُدفع بعد أسبوع ليست نقدًا خرج من الدرج.
+         *
+         * والكتابتان في معاملةٍ واحدة: مصروفٌ يُحفظ ثمّ يسقط ترحيلُه يترك
+         * الدفترين مفترقين من جديد — وهو العطب نفسه بابًا آخر.
          */
-        if ($expense->isPaid()) {
-            $this->postToLedger($expense);
+        try {
+            $expense = DB::transaction(function () use ($data) {
+                $expense = Expense::create($data);
+
+                if ($expense->isPaid()) {
+                    Books::recordExpense($expense, auth()->id());
+                }
+
+                return $expense;
+            });
+        } catch (RuntimeException $e) {
+            return back()->withInput()->withErrors(['amount' => $e->getMessage()]);
         }
+
         \App\Support\Activity::log('created', 'سجّل مصروف ' . $data['type'] . ' بقيمة ' . $data['amount']);
 
         return redirect()->route('admin.expenses.index')->with('toast', ['msg' => __('تم تسجيل المصروف بنجاح'), 'type' => 'success']);
-    }
-
-    /** يكتب قيد الدفتر المقابل ويربطه بالمصروف */
-    private function postToLedger(Expense $expense): void
-    {
-        $transaction = \App\Models\Transaction::create([
-            'business_id' => $expense->business_id,
-            'reference' => \App\Models\Transaction::nextReference($expense->business_id),
-            // الوصف اختياريّ فقد يغيب عن الطلب أصلًا — لا يكفي أن يكون nullable
-            'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
-            'method' => $expense->method,
-            'type' => 'مصروف',
-            'amount' => $expense->amount,
-            'employee_name' => $expense->employee_name,
-            'occurred_at' => $expense->spent_at,
-        ]);
-
-        $expense->update(['transaction_id' => $transaction->id]);
     }
 
     /**
@@ -203,8 +216,14 @@ class ExpenseController extends Controller
             return back()->with('toast', ['msg' => __('الفاتورة مسدَّدة أصلًا'), 'type' => 'info']);
         }
 
-        $expense->update(['status' => Expense::PAID, 'spent_at' => now()]);
-        $this->postToLedger($expense->fresh());
+        try {
+            DB::transaction(function () use ($expense) {
+                $expense->update(['status' => Expense::PAID, 'spent_at' => now()]);
+                Books::recordExpense($expense->fresh(), auth()->id());
+            });
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['status' => $e->getMessage()]);
+        }
 
         \App\Support\Activity::log('updated', 'سدّد المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
 
@@ -220,9 +239,10 @@ class ExpenseController extends Controller
          *
          * كان الحذف يُخفي المصروف ويترك سطره في دفتر المالية: تقرأ
          * المصروفات فترى صفرًا، وتقرأ المالية فترى ٣٠٠. والقيد اليتيم يدخل
-         * المطابقة البنكية كأنّ مبلغًا خرج.
+         * المطابقة البنكية كأنّ مبلغًا خرج. والدفتران يتبعانه معًا الآن:
+         * الحركة وقيدُها في الأستاذ (انظر Books::unrecord).
          */
-        $expense->transaction()->delete();
+        Books::unrecord($expense->transaction);
         \App\Support\Activity::log('deleted', 'حذف المصروف: ' . $expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
 
         /*
@@ -257,6 +277,22 @@ class ExpenseController extends Controller
         // عليها بحثًا عن مفاتيح نماذج في مصفوفة نصوص
         return collect($found)->push(now()->format('Y-m'))
             ->unique()->sortDesc()->values()->all();
+    }
+
+    /**
+     * أوراق المصروفات المفتوحة — ما يقبل قيدًا فعلًا.
+     *
+     * الآباء والمغلقة لا تُعرض: اختيارٌ يُردّ دائمًا لا يُعرض، وردُّه هنا
+     * يقع يوم يُسجَّل المصروف لا يوم يُربط النوع.
+     */
+    private function expenseAccounts(int $bid): array
+    {
+        $parents = \App\Models\Account::where('business_id', $bid)->whereNotNull('parent_id')
+            ->distinct()->pluck('parent_id')->all();
+
+        return \App\Models\Account::where('business_id', $bid)->where('type', 'مصروف')
+            ->where('active', true)->whereNotIn('id', $parents)->orderBy('code')
+            ->get()->map(fn ($a) => ['value' => $a->id, 'label' => $a->code.' — '.$a->name])->all();
     }
 
     /** توليد الرقم المرجعي التالي للنشاط */

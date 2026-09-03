@@ -18,6 +18,8 @@ class NormalizeMoneyInput
         'delivery_fee', 'opening_balance', 'monthly', 'yearly', 'monthly_price',
         'yearly_price', 'free_threshold', 'fee', 'paid', 'unit_price', 'salary',
         'monthly_target', 'balance', 'min_order',
+        // تسعير النطاقات في إعدادات المنصّة — يكتبه المشغّل بأرقامٍ عربية أحيانًا
+        'domain_subdomain_price', 'domain_setup_price',
     ];
 
     public function handle(Request $request, Closure $next)

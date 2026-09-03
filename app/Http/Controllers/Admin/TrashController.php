@@ -215,9 +215,20 @@ class TrashController extends Controller
         $row = self::findTrashed($type, $id);
         $row->restore();
 
-        // المصروف يعود ومعه قيده في الدفتر — بمرجعه نفسه لا بمرجعٍ جديد
+        /*
+         * المصروف يعود ومعه دفتراه — بمرجعه نفسه لا بمرجعٍ جديد.
+         *
+         * الحركة تُستعاد، وقيدُها في الأستاذ يُعاد ترحيلُه: `Books::unrecord`
+         * محت القيد يوم الحذف، فاستعادةُ الصفّ وحده تُعيد مصروفًا يظهر في
+         * المالية ولا أثر له في ميزان المراجعة — وهو الافتراق الذي جاء
+         * `Books` ليُغلقه.
+         */
         if ($type === 'expense') {
             $row->transaction()->withTrashed()->restore();
+
+            if ($row->isPaid() && $row->fresh()->transaction) {
+                \App\Support\Books::recordExpense($row->fresh(), auth()->id());
+            }
         }
 
         $label = self::label($type, $row);

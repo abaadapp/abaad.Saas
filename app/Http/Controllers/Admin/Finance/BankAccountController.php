@@ -68,9 +68,17 @@ class BankAccountController extends Controller
                 'lines' => (int) ($lineCounts[$a->id]->total ?? 0),
                 'matched' => (int) ($lineCounts[$a->id]->matched ?? 0),
             ])->all(),
+            /*
+             * المجموع يجمع الموقوفة أيضًا — المال فيها مالٌ موجود.
+             *
+             * حسابٌ أُوقف لأنّ التاجر لم يعد يستعمله قد يبقى فيه رصيد، فطرحُه
+             * من المجموع يُخفي مالًا حقيقيًّا: يقرأ التاجر «مجموع الأرصدة»
+             * ناقصًا ولا شيء في الشاشة يقول أين ذهب الباقي. والعدد يبقى على
+             * المفعّلة: هو عددُ ما يُستعمل لا عددُ ما يملك.
+             */
             'summary' => [
                 'count' => $accounts->where('active', true)->count(),
-                'balance' => round($accounts->where('active', true)->sum(fn ($a) => $a->balance()), 3),
+                'balance' => round($accounts->sum(fn ($a) => $a->balance()), 3),
             ],
             'today' => now()->format('Y-m-d'),
         ]);
@@ -101,6 +109,21 @@ class BankAccountController extends Controller
         $bid = $this->bid();
         $account = BankAccount::where('business_id', $bid)->findOrFail($id);
         $data = $this->rules($request);
+
+        /*
+         * والرئيسيّ لا يُوقَف — يُعيَّن غيرُه رئيسيًّا ثمّ يُوقَف.
+         *
+         * الرئيسيّ وجهةُ ما لا يُنسب إلى حسابٍ بعينه (`Bank::account`)، وورقتُه
+         * في الشجرة هي «البنك» (1200) التي يقصدها ترحيلُ كلّ بيعةٍ بالبطاقة.
+         * فإيقافُه لا يوقف شيئًا من ذلك: يبقى المال ينزل فيه، ويختفي هو من
+         * الشاشة — فتقول «رصيد البنك صفر» ودفترُ الأستاذ يقول غيرَه.
+         */
+        if (array_key_exists('active', $data) && ! $data['active']
+            && $account->is_primary && BankAccount::where('business_id', $bid)->count() > 1) {
+            return back()->withInput()->withErrors([
+                'active' => __('هذا الحساب الرئيسيّ ووجهةُ ما لا يُنسب — عيّن غيرَه رئيسيًّا قبل إيقافه'),
+            ]);
+        }
 
         $account->update($data);
 
@@ -188,14 +211,24 @@ class BankAccountController extends Controller
 
     private function rules(Request $request): array
     {
+        /*
+         * حسابٌ بلا اسمٍ ولا بنك لا يُنشأ.
+         *
+         * كانت الحقول كلّها اختيارية، فضغطةٌ على «حفظ» في نموذجٍ فارغ تُنشئ
+         * حسابًا اسمُه «حساب بنكي» وتفتح له ورقةً في شجرة الحسابات — ثمّ لا
+         * يُحذف بعد أوّل قيدٍ يقع عليه. ويكفي أحدهما: من يعرف اسم بنكه ولا
+         * يسمّيه بشيء، ومن يسمّيه «التحصيل» ولا يذكر بنكه.
+         */
         $data = $request->validate([
-            'label' => ['nullable', 'string', 'max:255'],
+            'label' => ['nullable', 'required_without:bank_name', 'string', 'max:255'],
             'bank_name' => ['nullable', 'string', 'max:255'],
             'account_name' => ['nullable', 'string', 'max:255'],
             'iban' => ['nullable', 'string', 'max:64'],
             'opening_balance' => ['nullable', 'numeric'],
             'opening_date' => ['nullable', 'date'],
             'active' => ['nullable', 'boolean'],
+        ], [
+            'label.required_without' => __('سمِّ الحساب أو اذكر بنكه — أحدهما يكفي'),
         ]);
 
         // حقلٌ فارغ يعني صفرًا لا فراغًا: العمود لا يقبل NULL
@@ -234,11 +267,13 @@ class BankAccountController extends Controller
         }
 
         $n = BankAccount::where('business_id', $bid)->count();
+        // رمزٌ أعاد التاجر تسميته حرفًا يصير صفرًا في التحويل — فيُرجَع إلى أصله
+        $base = (int) $main->code ?: 1200;
 
         return Account::create([
             'business_id' => $bid,
             'parent_id' => $main->parent_id,
-            'code' => $this->freeCode($bid, (string) ((int) $main->code + $n * 10)),
+            'code' => $this->freeCode($bid, (string) ($base + $n * 10)),
             'name' => __('البنك: ').$bankAccount->displayName(),
             'type' => 'أصل',
             'normal_side' => 'debit',

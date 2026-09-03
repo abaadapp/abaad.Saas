@@ -641,24 +641,6 @@ class DemoStore
             }
 
             /*
-<<<<<<< HEAD
-             * لكلّ بيعةٍ صفُّها في الحركة المالية — كما تكتبه نقطة البيع.
-             *
-             * الديمو كان يكتب الطلبات ويرحّل مبيعاتها إلى الدفتر شهرًا شهرًا،
-             * ولا يكتب شيئًا في `transactions`. فتُفتح «الحركة المالية» في كلّ
-             * عرضٍ فارغةً، وتقول بطاقاتُ المالية «صفر» فوق تقريرِ مبيعاتٍ
-             * بالآلاف — ودفترا المتجر يتناقضان في الشاشة التي تُعرض للتاجر.
-             */
-            Transaction::create([
-                'business_id' => $bid,
-                'branch_id' => $branch->id,
-                'order_id' => $order->id,
-                'reference' => $order->number,
-                'description' => 'مبيعات نقطة البيع — ' . $customer->name,
-                'method' => $order->payment_method,
-                'type' => 'دخل',
-                'kind' => Transaction::SALE,
-=======
              * وقيدُ الدخل مع الفاتورة — لا بعدها ولا بدلها.
              *
              * المالية كلُّها تقرأ `transactions`: إجمالي المبيعات، وصافي
@@ -680,7 +662,6 @@ class DemoStore
                 'description' => 'مبيعات نقطة البيع — ' . $order->customer_name,
                 'method' => $order->payment_method,
                 'type' => 'دخل',
->>>>>>> origin/main
                 'amount' => $total,
                 'tax_amount' => $tax,
                 'employee_name' => $seller->name,
@@ -734,7 +715,7 @@ class DemoStore
 
                 $paid = ! ($m === 0 && $i % 3 === 0);
 
-                $expense = Expense::create([
+                Expense::create([
                     'business_id' => $bid,
                     'reference' => 'EXP-' . $at->format('Ym') . '-' . str_pad((string) ($i + 1), 3, '0', STR_PAD_LEFT),
                     'type' => $type, 'description' => $type . ' — ' . $at->translatedFormat('F Y'),
@@ -745,22 +726,10 @@ class DemoStore
                 ]);
 
                 if ($paid) {
-                    $entry = Ledger::post($bid, 'مصروف ' . $type, [
+                    Ledger::post($bid, 'مصروف ' . $type, [
                         ['account' => 'other_expenses', 'debit' => $amount],
                         ['account' => $i % 2 ? 'bank' : 'cash', 'credit' => $amount],
                     ], $at, 'مصروفات');
-
-                    // والمصروف المدفوع حركةٌ في الدفتر التشغيلي أيضًا
-                    $expense->update([
-                        'transaction_id' => Books::mirror(
-                            $entry,
-                            'expense',
-                            $amount,
-                            $i % 2 ? Books::BANK : Books::CASH,
-                            'مصروف ' . $type,
-                            'ريم الكندي',
-                        )?->id,
-                    ]);
                 }
             }
         }

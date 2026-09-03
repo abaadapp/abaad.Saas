@@ -78,7 +78,6 @@ class OrderCorrection
             $order->refresh();
 
             self::syncTransaction($order);
-            self::repost($order, 'تصحيح كمية: '.$itemName);
             self::syncLoyalty($order);
 
             $edit = OrderEdit::create([
@@ -483,14 +482,6 @@ class OrderCorrection
             $order->update(['payment_method' => $method]);
             Transaction::where('order_id', $order->id)->update(['method' => $method]);
 
-            /*
-             * والوسيلة تغيّر الحساب المدين: نقدًا يدخل الصندوق، وبطاقةً يدخل
-             * البنك. فقيدٌ رُحّل على الصندوق وبيعتُه كانت بالبطاقة يترك الدرجَ
-             * زائدًا في الدفتر والبنكَ ناقصًا — وهو العطب نفسه الذي يُصحَّح
-             * هنا في الدرج، مكرَّرًا في الأستاذ.
-             */
-            self::repost($order, 'تصحيح وسيلة الدفع إلى '.$method);
-
             $edit = OrderEdit::create([
                 'business_id' => (int) $order->business_id,
                 'order_id' => $order->id,
@@ -650,23 +641,6 @@ class OrderCorrection
             'amount' => (float) $order->total,
             'tax_amount' => (float) $order->tax,
         ]);
-    }
-
-    /**
-     * وقيدُ الدفتر يتبعها كذلك — بعكسٍ ثمّ ترحيلٍ جديد لا بتعديلٍ في مكانه.
-     *
-     * صفُّ `transactions` يُكتب فوقه لأنه سجلٌّ تشغيليّ: يقول «كم في الدرج
-     * الآن». وقيدُ الأستاذ لا يُكتب فوقه: هو سجلُّ ما وقع، ومن قرأ ميزان
-     * المراجعة أمس يجب أن يجد اليوم ما يفسّر اختلافه — قيدًا عكسيًّا بتاريخه
-     * وسببه، لا رقمًا تبدّل بلا أثر.
-     *
-     * ولا يُحبس التصحيح إن تعثّر الدفتر: الفاتورة صُحّحت والمخزون عاد، ورفضُ
-     * ذلك كلّه لأنّ حسابًا في الشجرة أُغلق يترك الرفّ يقول رقمًا والنظام يقول
-     * غيره. فيُكتب التعثّر في السجلّ ويُستدرَك.
-     */
-    private static function repost(Order $order, string $reason): void
-    {
-        Books::tryRepostSale($order->fresh(), PosCashier::id() ?? auth()->id(), $reason);
     }
 
     /**

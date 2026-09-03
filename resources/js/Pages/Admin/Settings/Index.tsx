@@ -2,18 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
-    AppWindow,
     BellOff,
     BellRing,
     ChevronLeft,
     Download,
-<<<<<<< HEAD
-    Eye,
-=======
     ExternalLink,
     FileText,
     Globe,
->>>>>>> origin/main
     Image as ImageIcon,
     Languages,
     RefreshCw,
@@ -47,12 +42,8 @@ import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
 import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
-import DomainPanel, { type DomainData } from './panels/DomainPanel';
 import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
-<<<<<<< HEAD
-=======
 import { useConfirm } from '@/Components/ConfirmDialog';
->>>>>>> origin/main
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -75,19 +66,6 @@ interface Props {
     recovery: Recovery;
     /** نطاق موقع التاجر — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
-<<<<<<< HEAD
-    /**
-     * هل أُنشئ موقع النشاط في محرّك المواقع؟
-     *
-     * فإن أُنشئ صارت هذه الحقول قيمًا أوّليةً قُرئت مرّةً، وتحريرُها بعدها لا
-     * يغيّر شيئًا في الموقع — فتُخفى ويُدلّ على مكانها.
-     */
-    hasWebsite: boolean;
-    /** الطرق الثلاث إلى عنوانٍ على الإنترنت وتكلفةُ كلٍّ منها — انظر DomainOptions */
-    domain: DomainData;
-    /** عدد المنتجات المعروضة على الموقع */
-    published: number;
-=======
     /** بطاقاتُ القوالب — تُبنى من `DocumentTemplates` لا تُكتب في الشاشة */
     templates?: { key: string; label: string; desc: string; section: string }[];
     store: {
@@ -102,7 +80,6 @@ interface Props {
         path: DomainPath;
         pricing: DomainPricing;
     };
->>>>>>> origin/main
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
@@ -200,11 +177,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-<<<<<<< HEAD
-    const { settings, business, recovery, site, hasWebsite, domain, published, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
-=======
     const { settings, business, recovery, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
->>>>>>> origin/main
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
@@ -213,7 +186,7 @@ export default function SettingsIndex() {
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
     const abilities = auth?.abilities ?? [];
-    const visible = (item: { key: string }) => item.key !== 'chart' || abilities.includes('accounting');
+    const visible = (item: { key: string }) => item.key !== 'chart' || abilities.includes('finance');
 
     const [tab, setTab] = useState<TabKey | null>(tabFromUrl);
 
@@ -232,7 +205,7 @@ export default function SettingsIndex() {
      * الحسابات موجودة وهو لا يملك رؤيتها.
      */
     useEffect(() => {
-        if (tab === 'chart' && !abilities.includes('accounting')) {
+        if (tab === 'chart' && !abilities.includes('finance')) {
             goHub();
         }
     }, [tab, abilities]);
@@ -574,294 +547,6 @@ export default function SettingsIndex() {
                     <BackToSettings as="button" onClick={goHub} />
             {tab === 'chart' ? (
                 <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
-<<<<<<< HEAD
-            ) : tab === 'domain' ? (
-                /*
-                    الدومين وحده في بطاقة — وسؤالٌ قبل حقل.
-
-                    هو أوّل ما يُضبط وآخر ما يُغيَّر: يُكتب مرّةً ثمّ تقرؤه
-                    شاشة السيو ورابط «الموقع» في الترويسة والفاتورة. وكان
-                    مدفونًا في أعلى شاشةٍ طويلة تحت «أدوات التسويق»، فمن يبحث
-                    عن نطاقه لا يخطر له أن يفتح قسم الكوبونات.
-
-                    ومحتواه في ملفٍّ وحده لأنّه صار ثلاثة مساراتٍ لا حقلًا:
-                    اختيارٌ أوّل، ثمّ نطاقٌ يُربط أو اسمٌ يُحجز أو طلبٌ يُرسل.
-                */
-                <DomainPanel
-                    domain={domain}
-                    siteForm={siteForm}
-                    published={published}
-                    onSaveSite={saveSite}
-                />
-            ) : tab === 'website' ? (
-                <div className="space-y-6">
-                    {/*
-                        التبويبات الثلاثة لمن لم يُنشئ موقعه بعد.
-
-                        صار للموقع محرّكُه وقسمُه (`admin.website.*`)، وهذه
-                        الحقول تُقرأ فيه قيمًا أوّلية عند الإنشاء. فبقاؤها
-                        قابلةً للتحرير بعده يعني مصدرين لشيءٍ واحد: يعدّل
-                        التاجر جملته هنا فلا تتغيّر في موقعه، ولا شيء يقول
-                        لماذا. والشعار يبقى ظاهرًا في الحالين — مصدره واحد.
-                    */}
-                    {!hasWebsite && (
-                    <Tabs
-                        current={siteTab}
-                        onChange={setSiteTab}
-                        tabs={[
-                            { key: 'basic', label: 'الأساسية', icon: Store },
-                            { key: 'contact', label: 'التواصل', icon: Share2 },
-                            { key: 'display', label: 'ما يراه الزائر', icon: Eye },
-                        ]}
-                    />
-                    )}
-
-                    {/*
-                        النموذج يُرسل الحقول الثمانية من أي تبويب، والنطاق حقلٌ
-                        في بطاقةٍ أخرى — فخطؤه يقع حيث لا يراه من ضغط «حفظ»
-                        هنا: لا شيء يتحرّك، ولا رسالة، فيُعاد الضغط.
-                    */}
-                    {siteForm.errors.site_domain && (
-                        <p className="flex flex-wrap items-center gap-2 rounded-[12px] bg-[#fef2f2] px-4 py-3 text-[13px] text-[#b91c1c]">
-                            <AlertTriangle className="size-4 shrink-0" />
-                            <span>{siteForm.errors.site_domain}</span>
-                            <Button
-                                type="button"
-                                variant="link"
-                                size="sm"
-                                onClick={() => pick('domain')}
-                            >
-                                {t('إصلاحه في إعدادات الدومين')}
-                            </Button>
-                        </p>
-                    )}
-
-                    {(hasWebsite || siteTab === 'basic') && (
-                        <>
-                            {/*
-                                الشعار بطاقةٌ وحده ومسارٌ وحده.
-
-                                كان العمود موجودًا والرفع في لوحة المنصّة فقط،
-                                وفي قوالب الفواتير مقبضٌ اسمه «شعار المتجر»
-                                يشترط شعارًا لا سبيل لصاحبه إلى رفعه.
-                            */}
-                            <Card className="overflow-hidden">
-                                <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
-                                    <ImageIcon className="size-4 shrink-0 text-[#6b7280]" />
-                                    <h3 className="font-bold text-[#111]">{t('الشعار')}</h3>
-                                </div>
-                                <div className="p-5">
-                                    <p className="mb-4 text-[13px] text-[#6b7280]">
-                                        {t('يظهر في رأس موقعك وفي الفواتير — وقوالب الفواتير تُظهره أو تُخفيه.')}
-                                    </p>
-
-                                    <div className="flex flex-wrap items-center gap-5">
-                                        <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa]">
-                                            {logoPreview || business.logo ? (
-                                                <img
-                                                    src={logoPreview ?? business.logo ?? ''}
-                                                    alt=""
-                                                    className="size-full object-contain"
-                                                />
-                                            ) : (
-                                                <ImageIcon className="size-8 text-[#d1d5db]" />
-                                            )}
-                                        </span>
-
-                                        <div className="min-w-0 flex-1">
-                                            <Input
-                                                type="file"
-                                                accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                                                onChange={(e) => pickLogo(e.target.files?.[0] ?? null)}
-                                                className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
-                                            />
-                                            <p className="mt-2 text-[12px] text-[#9ca3af]">
-                                                {t('أفضل مقاس: 400×100 بكسل · PNG بخلفيّة شفّافة · حتّى ٢ ميغابايت')}
-                                            </p>
-
-                                            <div className="mt-3 flex flex-wrap gap-2">
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    disabled={!logoFile}
-                                                    loading={logoBusy && !!logoFile}
-                                                    onClick={() => logoFile && sendLogo({ logo: logoFile })}
-                                                >
-                                                    <Upload />
-                                                    {t('رفع الشعار')}
-                                                </Button>
-                                                {business.logo && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        loading={logoBusy && !logoFile}
-                                                        onClick={() => sendLogo({ remove: true })}
-                                                    >
-                                                        <Trash2 />
-                                                        {t('حذف الشعار')}
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </Card>
-
-                            {hasWebsite && (
-                                <Card className="p-5">
-                                    <h3 className="font-bold text-[#111]">{t('موقعك يُدار من قسمه')}</h3>
-                                    <p className="mt-1 text-[13px] leading-7 text-[#6b7280]">
-                                        {t('جملتك التعريفية ونبذتك وتواصلك صارت أقسامًا في موقعك تُعدَّل وأنت ترى النتيجة — لا حقولًا هنا.')}
-                                    </p>
-                                    <Button className="mt-4" asChild>
-                                        <Link href={route('admin.website.index')}>
-                                            <AppWindow />
-                                            {t('افتح الموقع الإلكتروني')}
-                                        </Link>
-                                    </Button>
-                                </Card>
-                            )}
-
-                            {!hasWebsite && (
-                            <form onSubmit={saveSite}>
-                                <Card className="overflow-hidden">
-                                    <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
-                                        <Type className="size-4 shrink-0 text-[#6b7280]" />
-                                        <h3 className="font-bold text-[#111]">{t('تعريف المتجر')}</h3>
-                                    </div>
-                                    <div className="space-y-4 p-5">
-                                        <Field
-                                            label="الجملة التعريفية"
-                                            hint="سطرٌ واحد تحت اسم متجرك — أوّل ما يُقرأ"
-                                            error={siteForm.errors.site_tagline}
-                                        >
-                                            <Input
-                                                value={siteForm.data.site_tagline}
-                                                onChange={(e) => siteForm.setData('site_tagline', e.target.value)}
-                                                placeholder={t('أجود المنتجات بأفضل الأسعار')}
-                                            />
-                                        </Field>
-
-                                        <Field
-                                            label="نبذة عن المتجر"
-                                            hint="تظهر في صفحة «من نحن» وتقرؤها محرّكات البحث"
-                                            error={siteForm.errors.site_about}
-                                        >
-                                            <Textarea
-                                                rows={4}
-                                                value={siteForm.data.site_about}
-                                                onChange={(e) => siteForm.setData('site_about', e.target.value)}
-                                            />
-                                        </Field>
-
-                                        {/* الاسم مصدرُه «بيانات النشاط» — يُعرض ولا يُكرَّر إدخالًا */}
-                                        <p className="text-[12px] text-[#9ca3af]">
-                                            {t('اسم المتجر يُقرأ من «بيانات النشاط»')}: {business.name || '—'}
-                                        </p>
-                                    </div>
-                                    <div className="flex justify-end border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-5 py-3">
-                                        <Button type="submit" loading={siteForm.processing}>
-                                            <Save />
-                                            {t('حفظ التغييرات')}
-                                        </Button>
-                                    </div>
-                                </Card>
-                            </form>
-                            )}
-                        </>
-                    )}
-
-                    {!hasWebsite && siteTab === 'contact' && (
-                        <form onSubmit={saveSite}>
-                            <Card className="overflow-hidden">
-                                <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
-                                    <Share2 className="size-4 shrink-0 text-[#6b7280]" />
-                                    <h3 className="font-bold text-[#111]">{t('التواصل')}</h3>
-                                </div>
-                                <div className="p-5">
-                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                        <Field label="واتساب" hint="بصيغة دولية بلا + — مثل: 96890000000" error={siteForm.errors.site_whatsapp}>
-                                            <Input
-                                                dir="ltr"
-                                                value={siteForm.data.site_whatsapp}
-                                                onChange={(e) => siteForm.setData('site_whatsapp', e.target.value)}
-                                                placeholder="96890000000"
-                                            />
-                                        </Field>
-                                        <Field label="إنستغرام" hint="اسم الحساب وحده بلا @" error={siteForm.errors.site_instagram}>
-                                            <Input
-                                                dir="ltr"
-                                                value={siteForm.data.site_instagram}
-                                                onChange={(e) => siteForm.setData('site_instagram', e.target.value)}
-                                                placeholder="mystore"
-                                            />
-                                        </Field>
-                                    </div>
-
-                                    {/* بيانات المتجر مصدرها «بيانات النشاط» — تُعرض ولا تُكرَّر إدخالًا */}
-                                    <div className="mt-5 rounded-[12px] bg-[#fafafa] px-4 py-3 text-[12px] leading-relaxed text-[#6b7280]">
-                                        <p className="font-medium text-[#374151]">{t('يُعرض على موقعك أيضًا، ومصدره «بيانات النشاط»')}</p>
-                                        <p className="mt-1">
-                                            {business.name || '—'}
-                                            {business.phone ? ` · ${business.phone}` : ''}
-                                            {business.address ? ` · ${business.address}` : ''}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex justify-end border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-5 py-3">
-                                    <Button type="submit" loading={siteForm.processing}>
-                                        <Save />
-                                        {t('حفظ التغييرات')}
-                                    </Button>
-                                </div>
-                            </Card>
-                        </form>
-                    )}
-
-                    {!hasWebsite && siteTab === 'display' && (
-                        <form onSubmit={saveSite}>
-                            <Card className="overflow-hidden">
-                                <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
-                                    <Eye className="size-4 shrink-0 text-[#6b7280]" />
-                                    <h3 className="font-bold text-[#111]">{t('ما يراه الزائر')}</h3>
-                                </div>
-                                <div className="p-5">
-                                    <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
-                                        <Toggle
-                                            label="عرض الأسعار"
-                                            hint="بإطفائه يُعرض المنتج بلا سعر ويُطلب السعر بالتواصل."
-                                            on={siteForm.data.site_show_prices}
-                                            onChange={(v) => siteForm.setData('site_show_prices', v)}
-                                        />
-                                        <Toggle
-                                            label="قبول الطلبات"
-                                            hint="الطلبات الواردة من الموقع تدخل قائمة المبيعات كغيرها."
-                                            on={siteForm.data.site_allow_orders}
-                                            onChange={(v) => siteForm.setData('site_allow_orders', v)}
-                                        />
-                                    </div>
-
-                                    {/* الطلبات بلا أسعار تصل بلا مبالغ — والتناقض يُقال قبل الحفظ */}
-                                    {!siteForm.data.site_show_prices && siteForm.data.site_allow_orders && (
-                                        <p className="mt-4 flex items-start gap-2 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#b45309]">
-                                            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                                            <span>
-                                                {t('الأسعار مخفيّة والطلبات مفتوحة — يطلب الزبون بلا أن يعرف الثمن.')}
-                                            </span>
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="flex justify-end border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-5 py-3">
-                                    <Button type="submit" loading={siteForm.processing}>
-                                        <Save />
-                                        {t('حفظ التغييرات')}
-                                    </Button>
-                                </div>
-                            </Card>
-                        </form>
-                    )}
-=======
             ) : tab === 'website' ? (
                 <div className="space-y-6">
                 {choosing ? (
@@ -1278,7 +963,6 @@ export default function SettingsIndex() {
                 )}
                 </>
                 )}
->>>>>>> origin/main
                 </div>
             ) : tab === 'custom-alerts' ? (
                 <CustomAlerts

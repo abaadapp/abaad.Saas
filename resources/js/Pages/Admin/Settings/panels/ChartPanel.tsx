@@ -33,10 +33,6 @@ export interface AccountRow {
     system: boolean;
     is_parent: boolean;
     has_lines: boolean;
-    /** يصلح أبًا لغيره — انظر ChartController::blockedAsParent */
-    can_parent: boolean;
-    /** حسابٌ نظاميّ صار له فروع: الترحيل التلقائي إليه متوقّف */
-    breaks_posting: boolean;
     balance: number;
 }
 
@@ -108,17 +104,7 @@ export default function ChartPanel({ accounts, trial, types }: ChartData) {
         return out;
     }, [accounts]);
 
-    /*
-     * الآباء الذين يقبلون ابنًا — لا كلّ الحسابات.
-     *
-     * الحساب ذو الفروع لا يُرحَّل إليه، فوضعُ حسابٍ تحت «الصندوق» يُغلق
-     * الصندوق أمام كلّ ترحيل: يتوقّف تسجيل المصروف النقديّ، ويسقط ترحيل كلّ
-     * بيعةٍ نقدية في السجلّ بلا أن يرى أحد. والخادم يردّه على أي حال
-     * (`blockedAsParent`)، لكنّ الخيار الذي يُردّ دائمًا لا يُعرض.
-     */
-    const parents = accounts
-        .filter((a) => a.can_parent)
-        .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }));
+    const parents = accounts.map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }));
 
     const form = useForm({
         parent_id: '',
@@ -173,14 +159,8 @@ export default function ChartPanel({ accounts, trial, types }: ChartData) {
     };
 
     const open = adding || editing !== null;
-    /*
-     * النوع والطبيعة يُقفلان بعد أوّل قيد: قلبُهما يقلب إشارة التاريخ كلّه.
-     *
-     * ويُقفلان على النظاميّ ولو كان بكرًا: «4100» يقصده الترحيل بمفتاحه
-     * `sales` لا بنوعه، فجعلُه «مصروفًا» لا يمنع البيع من الترحيل إليه —
-     * وإنما يقلبه في كلّ تقريرٍ يقرأ الشجرة بأنواعها.
-     */
-    const locked = !!editing && (editing.has_lines || editing.system);
+    // النوع والطبيعة يُقفلان بعد أوّل قيد: قلبُهما يقلب إشارة التاريخ كلّه
+    const locked = !!editing?.has_lines;
 
     return (
         <>
@@ -228,10 +208,6 @@ export default function ChartPanel({ accounts, trial, types }: ChartData) {
                                             <Lock className="size-3 text-[#9ca3af]" aria-label={t('حساب نظامي')} />
                                         )}
                                         {!row.active && <Badge variant="neutral">{t('مغلق')}</Badge>}
-                                        {/* شجرةٌ عُطبت قبل الحارس: يُقال أثرُها لا أنها «مرتّبة» */}
-                                        {row.breaks_posting && (
-                                            <Badge variant="danger">{t('يوقف الترحيل التلقائي')}</Badge>
-                                        )}
                                     </span>
                                 </TableCell>
                                 <TableCell>
@@ -388,11 +364,7 @@ export default function ChartPanel({ accounts, trial, types }: ChartData) {
 
                         {locked && (
                             <p className="text-[12px] text-[#9ca3af]">
-                                {t(
-                                    editing?.system
-                                        ? 'حسابٌ يرحّل إليه النظام تلقائيًّا، فلا يُبدَّل نوعه ولا طبيعته: يُقرأ في التقارير بنوعه، ويُقلب معه كلّ ما جُمع فيه.'
-                                        : 'على الحساب قيودٌ مرحَّلة، فلا يُبدَّل نوعه ولا طبيعته: تبديلهما يقلب إشارة رصيده التاريخيّ كلّه.',
-                                )}
+                                {t('على الحساب قيودٌ مرحَّلة، فلا يُبدَّل نوعه ولا طبيعته: تبديلهما يقلب إشارة رصيده التاريخيّ كلّه.')}
                             </p>
                         )}
 

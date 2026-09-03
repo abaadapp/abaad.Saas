@@ -29,8 +29,6 @@ import type { PageProps } from '@/types';
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
     const { auth, context, notifications, csrf, locale } = usePage<PageProps>().props;
-    // صفحة «الموقع لم يُفعَّل» تتبع صلاحية «التسويق» كبقية مسارات admin.marketing.*
-    const canMarketing = auth?.abilities.includes('marketing') ?? false;
 
     /**
      * تغذية الجرس الحيّة — بديل استطلاع admin.notifications.feed الذي كان في
@@ -168,14 +166,8 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                             </Link>
                         </Button>
 
-                        {/*
-                         * موقعٌ منشورٌ يُفتح، وغيرُ المنشور يُقال عنه ذلك.
-                         *
-                         * `context.website` تعني «منشورٌ وله نطاقٌ صالح» — لا
-                         * «له نطاق» وحدها: مفتاح «نشر الموقع» يَعِد التاجر بأن
-                         * الموقع مغلقٌ على الزوّار حتى يفعّله، فلا يجوز لهذا
-                         * الزرّ أن يفتحه قبله.
-                         */}
+                        {/* موقع التاجر إن ضُبط، وإلا فزرٌّ يدلّ على الإعدادات
+                            لإضافته — فلا يقف بلا وظيفة. */}
                         {context.website ? (
                             <Button asChild variant="ghost" size="icon" title={t('الموقع الإلكتروني')}>
                                 <a href={context.website} target="_blank" rel="noopener noreferrer">
@@ -184,26 +176,6 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                 </a>
                             </Button>
                         ) : (
-<<<<<<< HEAD
-                            canMarketing && (
-                                /*
-                                 * إلى صفحةٍ تقول إنّ الموقع لم يُفعَّل بعد، لا
-                                 * إلى نموذج الإعدادات مباشرةً: من ضغط الزرّ
-                                 * ليرى متجره يجد نفسه في حقولٍ لا يعرف لماذا
-                                 * فُتحت له.
-                                 *
-                                 * ولا يُعرض لمن لا يملك «التسويق»: زرٌّ يقود
-                                 * إلى ٤٠٣ أسوأ من زرٍّ غائب — والموقع المغلق
-                                 * ليس فيه ما يفتحه كاشيرٌ أو سائق أصلًا.
-                                 */
-                                <Button asChild variant="ghost" size="icon" title={t('الموقع الإلكتروني')}>
-                                    <Link href={route('admin.marketing.website.status')}>
-                                        <Globe />
-                                        <span className="sr-only">{t('الموقع الإلكتروني')}</span>
-                                    </Link>
-                                </Button>
-                            )
-=======
                             /*
                              * إلى شاشة الموقع في أدوات التسويق لا إلى بيانات
                              * النشاط.
@@ -219,7 +191,6 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                     <span className="sr-only">{t('أضف الموقع الإلكتروني')}</span>
                                 </Link>
                             </Button>
->>>>>>> origin/main
                         )}
                     </>
                 )}

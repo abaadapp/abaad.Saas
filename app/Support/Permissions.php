@@ -13,9 +13,8 @@ class Permissions
     public const MAP = [
         'admin' => ['*'],
         'manager' => ['*'],
-        // المحاسب يقرأ التقارير: هي عملُه لا زينةٌ فوقه — والمحاسبة المتقدّمة
-        // عملُه قبل ذلك: شجرةُ الحسابات والقيود اليومية وميزان المراجعة
-        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'accounting', 'expenses', 'employees', 'pos', 'reports'],
+        // المحاسب يقرأ التقارير: هي عملُه لا زينةٌ فوقه
+        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses', 'employees', 'pos', 'reports'],
         // من يجهّز البضاعة يرى لوحة التجهيز — وهي عملُه لا زينةٌ فوقه
         'inventory' => ['dashboard', 'products', 'inventory', 'suppliers', 'purchases', 'pos', 'preparation'],
         'sales' => ['dashboard', 'orders', 'customers', 'products', 'pos', 'preparation'],
@@ -28,28 +27,6 @@ class Permissions
     public const SECTIONS = [
         'dashboard', 'customers', 'products', 'orders', 'marketing',
         'inventory', 'finance', 'expenses', 'settings',
-        /*
-         * المحاسبة المتقدّمة قسمٌ مستقلّ عن «المالية».
-         *
-         * «المالية» ما يفعله الموظّف كلّ يوم: يسجّل مصروفًا، ويقرأ ما دخل وما
-         * خرج، ويرى ما على المتجر. و«المحاسبة المتقدّمة» شجرةُ الحسابات
-         * والقيود اليدوية والأصول الثابتة — وهي أدواتٌ تُفسد الدفتر إن
-         * استُعملت بلا علم: قيدٌ يدويّ مختلّ الطرفين، أو حسابٌ نظاميّ يُعاد
-         * تسميته، لا يُكتشف أثرهما إلا في ميزان المراجعة بعد شهور.
-         *
-         * وكانت الخمس تحت مفتاحٍ واحد: من مُنح «المالية» ليسجّل مصروفًا مُنح
-         * معها حقَّ إعادة بناء شجرة حسابات المتجر.
-         */
-        'accounting',
-        /*
-         * الموقع الإلكتروني قسمٌ مستقلّ عن «الإعدادات».
-         *
-         * كان ثلاثة تبويبات داخل شاشة الإعدادات، فمن مُنح الإعدادات ليضبط
-         * ضريبةً أو يضيف فرعًا مُنح معها نشرَ موقع المتجر على الإنترنت وتبديلَ
-         * ما يقرؤه كلّ زائر. وهما عملان لا يفعلهما الشخص نفسه في أكثر
-         * المتاجر.
-         */
-        'website',
         'suppliers', 'purchases', 'employees', 'pos', 'reports',
         /*
          * التجهيز قسمٌ مستقلّ لا جزءٌ من «المبيعات».
@@ -146,10 +123,7 @@ class Permissions
         'dashboard' => 'admin.dashboard', 'customers' => 'admin.customers.index',
         'products' => 'admin.products.index', 'orders' => 'admin.orders.index',
         'marketing' => 'admin.marketing.loyalty', 'inventory' => 'admin.inventory.index',
-        // «المالية» تبدأ بملخّصها: «كم عندي وكم ربحت؟» قبل «أين حساباتي؟»
-        'finance' => 'admin.finance.summary', 'expenses' => 'admin.expenses.index',
-        'accounting' => 'admin.finance.chart',
-        'website' => 'admin.website.index',
+        'finance' => 'admin.finance.index', 'expenses' => 'admin.expenses.index',
         'settings' => 'admin.settings.index', 'suppliers' => 'admin.suppliers.index',
         'purchases' => 'admin.purchases.index', 'employees' => 'admin.employees.index',
         'pos' => 'pos.index',
@@ -210,9 +184,7 @@ class Permissions
         $labels = [
             'dashboard' => 'لوحة التحكم', 'customers' => 'العملاء', 'products' => 'المنتجات',
             'orders' => 'المبيعات', 'marketing' => 'أدوات التسويق', 'inventory' => 'المخزون',
-            'finance' => 'المالية', 'accounting' => 'المحاسبة المتقدمة',
-            'expenses' => 'مصاريف شهرية', 'settings' => 'الإعدادات',
-            'website' => 'الموقع الإلكتروني',
+            'finance' => 'المالية', 'expenses' => 'مصاريف شهرية', 'settings' => 'الإعدادات',
             'suppliers' => 'الموردين', 'purchases' => 'المشتريات',
             'employees' => 'الرواتب والموظفين', 'pos' => 'نقطة البيع',
             // كانت ساقطةً فتُعرض «reports» بحروفٍ لاتينية في قائمة صلاحيات عربية
@@ -326,21 +298,6 @@ class Permissions
         'suppliers' => 'suppliers',
     ];
 
-    /**
-     * مسارات «المحاسبة المتقدّمة» — بادئاتُها، فما تحتها يتبعها.
-     *
-     * البادئة لا القائمة المُحصاة: `admin.finance.chart.store` و`.update`
-     * و`.destroy` تُضاف الواحدة تلو الأخرى، وقائمةٌ تُعدّ يدويًّا تنسى
-     * التالية — فيبقى مسارُ حذفٍ من الشجرة مفتوحًا لمن مُنح «المالية».
-     */
-    public const ADVANCED_ACCOUNTING = [
-        'admin.finance.chart',
-        'admin.finance.journal',
-        'admin.finance.assets',
-        // ربط نوع المصروف بحسابه — قرارٌ محاسبيّ لا تسجيلُ مصروف
-        'admin.expenseTypes.update',
-    ];
-
     /** هل هذا المسار من هيكل اللوحة لا من أقسامها؟ */
     public static function isShell(?string $route): bool
     {
@@ -352,20 +309,6 @@ class Permissions
     {
         if (! $route) {
             return 'dashboard';
-        }
-
-        /*
-         * أدوات المحاسبة المتقدّمة تسقط على قسمها لا على «المالية».
-         *
-         * الاشتقاق من الاسم يقرأ `admin.finance.journal` قسمًا اسمه
-         * `finance` — وهو الصواب في الاسم والخطأ في المعنى: من مُنح المالية
-         * ليسجّل مصروفًا لا يُمنح معها كتابةَ قيدٍ يدويّ ولا حذفَ حسابٍ من
-         * الشجرة. فتُنسب هذه بالبادئة صراحةً.
-         */
-        foreach (self::ADVANCED_ACCOUNTING as $prefix) {
-            if ($route === $prefix || str_starts_with($route, $prefix.'.')) {
-                return 'accounting';
-            }
         }
         // شاشة المدفوعات داخل نقطة البيع شاشة مالية لا شاشة بيع: تعرض
         // تحصيلات اليوم وطرق الدفع. الكاشير يبيع ولا يطّلع على حصيلة

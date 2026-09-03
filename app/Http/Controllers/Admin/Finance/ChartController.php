@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Admin\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\Account;
-use App\Models\BankAccount;
-use App\Models\ExpenseType;
 use App\Support\Demo;
 use App\Support\Ledger;
 use Illuminate\Http\Request;
@@ -23,11 +21,6 @@ use Inertia\Response;
  * ٢) حسابٌ نظاميّ لا يُحذف ولا يُغلق. الترحيل التلقائي يقصده بمفتاحه، فإغلاقه
  *    يوقف البيع نفسه — والكاشير يرى «لا يُرحَّل إلى الصندوق» ولا يفهمها.
  * ٣) أبٌ لا يصير ابنًا لابنه. الشجرة تصير حلقةً فيدور كل جمعٍ عليها إلى الأبد.
- * ٤) حسابٌ يُرحَّل إليه لا يصير أبًا. وهذا أخفاها أثرًا وأشدُّها ضررًا: إضافةُ
- *    «صندوق الفرع» تحت «الصندوق» تبدو ترتيبًا في الشكل، وهي في الحقيقة تُغلق
- *    الصندوق أمام كلّ ترحيل — `isPostable` تردّ الحساب ذا الأبناء — فيتوقّف
- *    تسجيل المصروف برسالةٍ غامضة، ويسقط ترحيل كلّ بيعةٍ نقدية في السجلّ بلا
- *    أن يرى أحد، ويختفي «الصندوق» من قائمة حسابات القيد اليدويّ.
  */
 class ChartController extends Controller
 {
@@ -56,8 +49,6 @@ class ChartController extends Controller
         $balances = collect(Ledger::trialBalance($bid)['accounts'])->keyBy('id');
         $hasLines = Account::where('business_id', $bid)->has('lines')->pluck('id')->all();
         $parents = $accounts->whereNotNull('parent_id')->pluck('parent_id')->unique()->all();
-        // ما تعلّق به شيءٌ خارج الشجرة: ورقةُ حسابٍ بنكيّ، أو حسابُ نوع مصروف
-        $attached = self::attachedAccountIds($bid);
 
         return [
             'accounts' => $accounts->map(fn ($a) => [
@@ -72,18 +63,6 @@ class ChartController extends Controller
                 'system' => (bool) $a->system_key,
                 'is_parent' => in_array($a->id, $parents, true),
                 'has_lines' => in_array($a->id, $hasLines, true),
-                /*
-                 * هل يصلح هذا الحساب أبًا لغيره؟
-                 *
-                 * يُرسل ليختفي من قائمة «الحساب الأب» في الشاشة: الخيار الذي
-                 * يُردّ دائمًا لا يُعرض. والحارس يبقى في الخادم على أي حال —
-                 * الطلب قد يصل من غير هذه الشاشة.
-                 */
-                'can_parent' => ! $a->system_key
-                    && ! in_array($a->id, $hasLines, true)
-                    && ! in_array($a->id, $attached, true),
-                // حسابٌ نظاميّ صار أبًا: ترحيلٌ تلقائيّ متوقّف، يُقال في الشاشة
-                'breaks_posting' => (bool) $a->system_key && in_array($a->id, $parents, true),
                 'balance' => (float) ($balances[$a->id]['balance'] ?? 0),
             ])->values()->all(),
             'trial' => Ledger::trialBalance($bid),
@@ -103,10 +82,6 @@ class ChartController extends Controller
             'normal_side' => ['nullable', Rule::in(['debit', 'credit'])],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
-
-        if (! empty($data['parent_id']) && $why = $this->blockedAsParent($bid, (int) $data['parent_id'])) {
-            return back()->withInput()->withErrors(['parent_id' => $why]);
-        }
 
         Account::create([
             'business_id' => $bid,
@@ -138,14 +113,7 @@ class ChartController extends Controller
 
         // أبٌ يصير ابنًا لابنه يجعل الشجرة حلقةً لا نهاية لجمعها
         if (! empty($data['parent_id']) && $this->wouldLoop($account, (int) $data['parent_id'])) {
-            return back()->withInput()->withErrors(['parent_id' => __('لا يصير الحساب تابعًا لأحد فروعه')]);
-        }
-
-        // ونقلُ حسابٍ تحت «الصندوق» كإضافةِ حسابٍ تحته: كلاهما يجعله أبًا
-        if (! empty($data['parent_id'])
-            && (int) $data['parent_id'] !== (int) $account->parent_id
-            && $why = $this->blockedAsParent($bid, (int) $data['parent_id'])) {
-            return back()->withInput()->withErrors(['parent_id' => $why]);
+            return back()->withErrors(['parent_id' => __('لا يصير الحساب تابعًا لأحد فروعه')]);
         }
 
         /*
@@ -154,14 +122,7 @@ class ChartController extends Controller
          * قلبُ الطبيعة على حسابٍ عليه حركة يقلب إشارة رصيده التاريخيّ كلّه:
          * تُقرأ أرباح العام الماضي خسائر بلا أن يمسّ أحدٌ قيدًا واحدًا.
          */
-        /*
-         * والنظاميّ لا يُبدَّل نوعه ولو كان بكرًا لم يُقيَّد عليه شيء.
-         *
-         * `4100` اسمه «إيراد المبيعات» ويقصده الترحيل بمفتاحه `sales` لا
-         * بنوعه؛ فجعلُه «مصروفًا» لا يمنع البيع من الترحيل إليه، وإنما يقلبه
-         * في كلّ تقريرٍ يقرأ الشجرة بأنواعها: تُطرح المبيعات من نفسها.
-         */
-        if (! $account->lines()->exists() && ! $account->system_key) {
+        if (! $account->lines()->exists()) {
             $extra = $request->validate([
                 'type' => ['required', Rule::in(array_keys(Account::TYPES))],
                 'normal_side' => ['required', Rule::in(['debit', 'credit'])],
@@ -210,78 +171,10 @@ class ChartController extends Controller
             return back()->with('toast', ['msg' => __('احذف الحسابات الفرعية أولًا'), 'type' => 'warning']);
         }
 
-        /*
-         * وحسابٌ يتعلّق به شيءٌ خارج الشجرة لا يُحذف بلا قول.
-         *
-         * الرابط `nullOnDelete` فلا يشتكي شيء: يُحذف الحساب فيصير الحسابُ
-         * البنكيّ بلا ورقة — ويُبنى له غيرُها عند أوّل فتحٍ للشاشة برمزٍ آخر،
-         * فيتفرّق رصيدُه على ورقتين — أو يعود نوعُ المصروف إلى «أخرى» بلا أن
-         * يعرف من ربطه لماذا انقطع.
-         */
-        if ($why = $this->attachmentReason($account)) {
-            return back()->with('toast', ['msg' => $why, 'type' => 'warning']);
-        }
-
         \App\Support\Activity::log('deleted', 'حذف الحساب: '.$account->code.' '.$account->name, ['subject_id' => $account->id]);
         $account->delete();
 
         return back()->with('toast', ['msg' => __('حُذف الحساب'), 'type' => 'warning']);
-    }
-
-    /**
-     * لماذا لا يصلح هذا الحساب أبًا لغيره؟ — أو `null` إن صلح.
-     *
-     * الحساب ذو الأبناء لا يُرحَّل إليه (`Account::isPostable`): جمعُ الشجرة
-     * يقرأ سطورَه مرّةً فيه ومرّةً في أبنائه. وهذه قاعدةٌ صحيحة، لكنّها تجعل
-     * إضافةَ حسابٍ فرعيٍّ سلاحًا: من يضع «صندوق الفرع» تحت «الصندوق» يظنّ
-     * أنّه رتّب شجرته، وقد أوقف تسجيل كلّ مصروفٍ نقديّ وترحيلَ كلّ بيعة.
-     *
-     * فالممنوع ثلاثة: النظاميُّ الذي يقصده الترحيل بمفتاحه، وما عليه قيودٌ
-     * تصير مقروءةً مرّتين، وما تعلّقت به ورقةُ بنكٍ أو نوعُ مصروف.
-     */
-    private function blockedAsParent(int $bid, int $parentId): ?string
-    {
-        $parent = Account::where('business_id', $bid)->find($parentId);
-
-        if (! $parent) {
-            return __('حسابٌ غير موجود في الشجرة');
-        }
-
-        if ($parent->system_key) {
-            return __('«:name» يرحّل إليه النظام تلقائيًّا، والحساب ذو الفروع لا يُرحَّل إليه — اجعل الحساب الجديد أخًا له تحت الحساب الرئيسي.', ['name' => $parent->name]);
-        }
-
-        if ($parent->lines()->exists()) {
-            return __('على «:name» قيودٌ مرحَّلة، وجعلُه أبًا يجعلها تُقرأ مرّتين — اختر حسابًا آخر.', ['name' => $parent->name]);
-        }
-
-        if ($why = $this->attachmentReason($parent)) {
-            return $why;
-        }
-
-        return null;
-    }
-
-    /** ما يتعلّق بالحساب خارج الشجرة — بعبارةٍ تُعرض */
-    private function attachmentReason(Account $account): ?string
-    {
-        if (BankAccount::where('account_id', $account->id)->exists()) {
-            return __('«:name» ورقةُ حسابٍ بنكيّ في الشجرة — عدّله من شاشة الحسابات البنكية.', ['name' => $account->name]);
-        }
-
-        if (ExpenseType::where('account_id', $account->id)->exists()) {
-            return __('«:name» مربوطٌ بنوع مصروف — فُكّ الربط أولًا.', ['name' => $account->name]);
-        }
-
-        return null;
-    }
-
-    /** أرقام الحسابات التي تعلّق بها شيءٌ خارج الشجرة */
-    private static function attachedAccountIds(int $bid): array
-    {
-        return BankAccount::where('business_id', $bid)->whereNotNull('account_id')->pluck('account_id')
-            ->merge(ExpenseType::where('business_id', $bid)->whereNotNull('account_id')->pluck('account_id'))
-            ->unique()->map(fn ($id) => (int) $id)->all();
     }
 
     /** هل يجعل هذا الأبُ الشجرةَ حلقة؟ */

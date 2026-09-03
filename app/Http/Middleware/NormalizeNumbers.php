@@ -53,8 +53,6 @@ class NormalizeNumbers
         'delivery_fee', 'opening_balance', 'monthly', 'yearly', 'monthly_price',
         'yearly_price', 'free_threshold', 'fee', 'paid', 'unit_price', 'balance',
         'min_order', 'value', 'salvage_value',
-        // تسعير النطاقات في إعدادات المنصّة — يكتبه المشغّل بأرقامٍ عربية أحيانًا
-        'domain_subdomain_price', 'domain_setup_price',
 
         // الرواتب — وكانت كلُّها خارج القائمة
         'salary', 'basic_salary', 'basic', 'allowances', 'deductions', 'overtime',

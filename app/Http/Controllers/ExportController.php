@@ -111,9 +111,8 @@ class ExportController extends Controller
         // الفترة تتبع الشاشة كما في أخواتها — انظر ReportExportController::financeXlsx
         $range = Demo::range(request()->query('range'));
 
-        // النوع كما حدث: «تحويل» و«سحب المالك» و«دخل آخر» لا تُختزل في اتّجاه
         $rows = array_map(fn ($t) => [
-            $t['id'], $t['date'], $t['description'], $t['method'], $t['kind_label'],
+            $t['id'], $t['date'], $t['description'], $t['method'], $t['type'],
             number_format($t['amount'], 3, '.', ''), $t['employee'],
         ], Demo::transactions($range, null));   // بلا سقف: الملفّ هو الدفتر كاملًا
 

@@ -3,9 +3,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { Check, Plus, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import SectionTabs, { ACCOUNTING_TABS } from '@/Components/SectionTabs';
-import Tabs from '@/Components/Tabs';
-import MovementForm, { type Movement } from '@/Components/MovementForm';
+import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
@@ -40,10 +38,6 @@ interface Entry {
     description: string;
     source: string;
     author: string | null;
-    /** عُكس هذا القيد فلم يعد ساريًا */
-    reversed: boolean;
-    /** مرجع القيد الذي يعكسه هذا — إن كان عكسًا */
-    reverses: string | null;
     total: number;
     lines: EntryLine[];
 }
@@ -56,11 +50,6 @@ interface Props {
     sorts: string[];
     accounts: { value: number; label: string; type: string }[];
     sources: string[];
-    /** أنواع الحركة المبسّطة — «ماذا حدث؟» بلا مدينٍ ولا دائن */
-    movements: Movement[];
-    expenseTypes: string[];
-    /** هل يملك صاحبُ الشاشة تسجيل حركةٍ مالية؟ — التبويب المبسّط يتبعها */
-    canRecordMovement: boolean;
     today: string;
 }
 
@@ -75,31 +64,13 @@ interface DraftLine {
 const emptyLine = (): DraftLine => ({ account_id: '', debit: '', credit: '', memo: '' });
 
 export default function Journal() {
-    const { entries, pagination, filters, sorts, accounts, sources, movements, expenseTypes,
-        canRecordMovement, today, context } = usePage<PageProps<Props>>().props;
+    const { entries, pagination, filters, sorts, accounts, sources, today, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
     const [viewing, setViewing] = useState<Entry | null>(null);
     const [adding, setAdding] = useState(false);
-
-    /*
-     * بابان إلى الدفتر، لا بابٌ واحد يصلح لاثنين.
-     *
-     * كان القيد الجديد يُكتب بطريقةٍ واحدة: سطورٌ ومدينٌ ودائن وميزانٌ يجب أن
-     * يُقفل. وهي الطريقة الصحيحة لمن يعرفها — وحاجزٌ أمام من لا يعرفها ويريد
-     * أن يقول «دفعتُ إيجارًا مئتين من الصندوق»: يفتح النافذة فيرى شبكةً من
-     * الحقول لا يدري بأيّها يبدأ، فيغلقها ولا يسجّل شيئًا.
-     *
-     * فصار «مبسّط» أوّلًا: يسأل ماذا حدث، ويكتب هو القيد ويكتب معه صفَّ الحركة
-     * في `transactions` — الحدث نفسه في الدفترين لا في أحدهما. وهو المسار
-     * الذي تسلكه شاشةُ الحركة المالية حرفًا بحرف: مكوّنٌ واحد ومسارٌ واحد،
-     * فلا يفترق البابان بمرور الوقت.
-     *
-     * و«محاسب» كما كان، لِما لا تصفه قائمة: تسويةٌ، وإقفالٌ، وتوزيع مصروفٍ على
-     * فرعين. وهو الافتراض لمن لا يملك «المالية» — فالمبسّط يمرّ بها.
-     */
-    const [mode, setMode] = useState<'simple' | 'expert'>(canRecordMovement ? 'simple' : 'expert');
 
     const form = useForm({
         entry_date: today,
@@ -169,26 +140,6 @@ export default function Journal() {
         },
         { key: 'description', header: 'البيان', cell: (e) => e.description },
         {
-            /*
-             * حالة القيد: ساريةٌ أو معكوسةٌ أو عكسٌ لغيره.
-             *
-             * فاتورةٌ صُحّحت مرّةً تترك ثلاثة قيود متشابهة في القائمة، ومن
-             * يقرؤها بلا هذا العمود لا يعرف أيُّها الساري — فيجمعها كلَّها.
-             */
-            key: 'state',
-            header: 'الحالة',
-            cell: (e) =>
-                e.reversed ? (
-                    <Badge variant="warning">{t('معكوس')}</Badge>
-                ) : e.reverses ? (
-                    <Badge variant="neutral">
-                        {t('عكس')} <span className="font-mono">{e.reverses}</span>
-                    </Badge>
-                ) : (
-                    <Badge variant="success">{t('ساري')}</Badge>
-                ),
-        },
-        {
             key: 'source',
             header: 'المصدر',
             cell: (e) => <Badge variant={e.source === 'يدوي' ? 'neutral' : 'info'}>{t(e.source)}</Badge>,
@@ -234,7 +185,7 @@ export default function Journal() {
                 }
             />
 
-            <SectionTabs tabs={ACCOUNTING_TABS} current="admin.finance.journal" />
+            <SectionTabs tabs={FINANCE_TABS} current="admin.finance.journal" />
 
             <Card className="overflow-hidden">
                 <DataTable
@@ -298,165 +249,138 @@ export default function Journal() {
                 </DialogContent>
             </Dialog>
 
-            {/* ===== قيد جديد: مبسّطًا أو بسطوره ===== */}
+            {/* ===== قيد جديد ===== */}
             <Dialog open={adding} onOpenChange={setAdding}>
-                <DialogContent className={cn(mode === 'expert' ? 'sm:max-w-3xl' : 'sm:max-w-lg')}>
+                <DialogContent className="sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>{t('قيد جديد')}</DialogTitle>
                     </DialogHeader>
 
-                    {canRecordMovement && (
-                        <Tabs
-                            className="px-5"
-                            tabs={[
-                                { key: 'simple', label: 'مبسّط' },
-                                { key: 'expert', label: 'محاسب' },
-                            ]}
-                            current={mode}
-                            onChange={(k) => setMode(k as 'simple' | 'expert')}
-                        />
-                    )}
+                    <form onSubmit={submit} className="space-y-4 px-5 pb-5">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                            <Field label="التاريخ" required error={form.errors.entry_date}>
+                                <Input
+                                    type="date"
+                                    dir="ltr"
+                                    value={form.data.entry_date}
+                                    onChange={(e) => form.setData('entry_date', e.target.value)}
+                                />
+                            </Field>
+                            <Field label="البيان" required error={form.errors.description} className="sm:col-span-2">
+                                <Input
+                                    value={form.data.description}
+                                    onChange={(e) => form.setData('description', e.target.value)}
+                                    placeholder={t('تسوية رصيد الصندوق')}
+                                />
+                            </Field>
+                        </div>
 
-                    {mode === 'simple' && canRecordMovement ? (
-                        <>
-                            <p className="px-5 pt-4 text-[13px] text-[#6b7280]">
-                                {t('قُل ما حدث، والنظام يكتب قيده — ويُسجّله في الحركة المالية أيضًا.')}
-                            </p>
-                            <MovementForm
-                                movements={movements}
-                                expenseTypes={expenseTypes}
-                                today={today}
-                                onCancel={() => setAdding(false)}
-                                onSuccess={() => setAdding(false)}
-                            />
-                        </>
-                    ) : (
-                        <form onSubmit={submit} className="space-y-4 px-5 pb-5">
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                <Field label="التاريخ" required error={form.errors.entry_date}>
-                                    <Input
-                                        type="date"
-                                        dir="ltr"
-                                        value={form.data.entry_date}
-                                        onChange={(e) => form.setData('entry_date', e.target.value)}
-                                    />
-                                </Field>
-                                <Field label="البيان" required error={form.errors.description} className="sm:col-span-2">
-                                    <Input
-                                        value={form.data.description}
-                                        onChange={(e) => form.setData('description', e.target.value)}
-                                        placeholder={t('تسوية رصيد الصندوق')}
-                                    />
-                                </Field>
-                            </div>
-
-                            <div className="space-y-2">
-                                {form.data.lines.map((line, i) => (
-                                    <div key={i} className="grid grid-cols-12 items-start gap-2">
-                                        <div className="col-span-12 sm:col-span-5">
-                                            <Select
-                                                placeholder="اختر الحساب"
-                                                value={line.account_id}
-                                                onChange={(e) => setLine(i, { account_id: e.target.value })}
-                                                options={accounts}
-                                                aria-label={t('الحساب')}
-                                            />
-                                        </div>
-                                        <div className="col-span-6 sm:col-span-2">
-                                            <Input
-                                                type="number"
-                                                step="0.001"
-                                                min="0"
-                                                dir="ltr"
-                                                placeholder={t('مدين')}
-                                                aria-label={t('مدين')}
-                                                value={line.debit}
-                                                // طرفٌ واحد لا طرفان: كتابة المدين تمسح الدائن
-                                                onChange={(e) => setLine(i, { debit: e.target.value, credit: '' })}
-                                            />
-                                        </div>
-                                        <div className="col-span-6 sm:col-span-2">
-                                            <Input
-                                                type="number"
-                                                step="0.001"
-                                                min="0"
-                                                dir="ltr"
-                                                placeholder={t('دائن')}
-                                                aria-label={t('دائن')}
-                                                value={line.credit}
-                                                onChange={(e) => setLine(i, { credit: e.target.value, debit: '' })}
-                                            />
-                                        </div>
-                                        <div className="col-span-10 sm:col-span-2">
-                                            <Input
-                                                placeholder={t('ملاحظة')}
-                                                aria-label={t('ملاحظة')}
-                                                value={line.memo}
-                                                onChange={(e) => setLine(i, { memo: e.target.value })}
-                                            />
-                                        </div>
-                                        <div className="col-span-2 sm:col-span-1">
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon"
-                                                className="text-[#b91c1c]"
-                                                disabled={form.data.lines.length <= 2}
-                                                aria-label={t('حذف السطر')}
-                                                onClick={() =>
-                                                    form.setData(
-                                                        'lines',
-                                                        form.data.lines.filter((_, j) => j !== i),
-                                                    )
-                                                }
-                                            >
-                                                <Trash2 />
-                                            </Button>
-                                        </div>
+                        <div className="space-y-2">
+                            {form.data.lines.map((line, i) => (
+                                <div key={i} className="grid grid-cols-12 items-start gap-2">
+                                    <div className="col-span-12 sm:col-span-5">
+                                        <Select
+                                            placeholder="اختر الحساب"
+                                            value={line.account_id}
+                                            onChange={(e) => setLine(i, { account_id: e.target.value })}
+                                            options={accounts}
+                                            aria-label={t('الحساب')}
+                                        />
                                     </div>
-                                ))}
+                                    <div className="col-span-6 sm:col-span-2">
+                                        <Input
+                                            type="number"
+                                            step="0.001"
+                                            min="0"
+                                            dir="ltr"
+                                            placeholder={t('مدين')}
+                                            aria-label={t('مدين')}
+                                            value={line.debit}
+                                            // طرفٌ واحد لا طرفان: كتابة المدين تمسح الدائن
+                                            onChange={(e) => setLine(i, { debit: e.target.value, credit: '' })}
+                                        />
+                                    </div>
+                                    <div className="col-span-6 sm:col-span-2">
+                                        <Input
+                                            type="number"
+                                            step="0.001"
+                                            min="0"
+                                            dir="ltr"
+                                            placeholder={t('دائن')}
+                                            aria-label={t('دائن')}
+                                            value={line.credit}
+                                            onChange={(e) => setLine(i, { credit: e.target.value, debit: '' })}
+                                        />
+                                    </div>
+                                    <div className="col-span-10 sm:col-span-2">
+                                        <Input
+                                            placeholder={t('ملاحظة')}
+                                            aria-label={t('ملاحظة')}
+                                            value={line.memo}
+                                            onChange={(e) => setLine(i, { memo: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="col-span-2 sm:col-span-1">
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-[#b91c1c]"
+                                            disabled={form.data.lines.length <= 2}
+                                            aria-label={t('حذف السطر')}
+                                            onClick={() =>
+                                                form.setData(
+                                                    'lines',
+                                                    form.data.lines.filter((_, j) => j !== i),
+                                                )
+                                            }
+                                        >
+                                            <Trash2 />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
 
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => form.setData('lines', [...form.data.lines, emptyLine()])}
-                                >
-                                    <Plus />
-                                    {t('سطر')}
-                                </Button>
-                            </div>
-
-                            {/* الميزان لحظةً بلحظة — الفرق يُرى قبل الإرسال لا بعد الرفض */}
-                            <div
-                                className={cn(
-                                    'flex flex-wrap items-center justify-between gap-3 rounded-[12px] px-4 py-3 text-sm',
-                                    Math.abs(totals.diff) < 0.0005 ? 'bg-[#ecfdf5] text-[#047857]' : 'bg-[#fffbeb] text-[#d97706]',
-                                )}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => form.setData('lines', [...form.data.lines, emptyLine()])}
                             >
-                                <span className="tabular-nums">
-                                    {t('مدين')} {m(totals.debit)} · {t('دائن')} {m(totals.credit)}
-                                </span>
-                                <span className="font-semibold tabular-nums">
-                                    {Math.abs(totals.diff) < 0.0005
-                                        ? t('متوازن')
-                                        : `${t('الفرق')} ${m(Math.abs(totals.diff))}`}
-                                </span>
-                            </div>
+                                <Plus />
+                                {t('سطر')}
+                            </Button>
+                        </div>
 
-                            {form.errors.lines && <p className="text-[12px] text-[#b91c1c]">{form.errors.lines}</p>}
+                        {/* الميزان لحظةً بلحظة — الفرق يُرى قبل الإرسال لا بعد الرفض */}
+                        <div
+                            className={cn(
+                                'flex flex-wrap items-center justify-between gap-3 rounded-[12px] px-4 py-3 text-sm',
+                                Math.abs(totals.diff) < 0.0005 ? 'bg-[#ecfdf5] text-[#047857]' : 'bg-[#fffbeb] text-[#d97706]',
+                            )}
+                        >
+                            <span className="tabular-nums">
+                                {t('مدين')} {m(totals.debit)} · {t('دائن')} {m(totals.credit)}
+                            </span>
+                            <span className="font-semibold tabular-nums">
+                                {Math.abs(totals.diff) < 0.0005
+                                    ? t('متوازن')
+                                    : `${t('الفرق')} ${m(Math.abs(totals.diff))}`}
+                            </span>
+                        </div>
 
-                            <div className="flex justify-end gap-2">
-                                <Button type="button" variant="ghost" onClick={() => setAdding(false)}>
-                                    {t('إلغاء')}
-                                </Button>
-                                <Button type="submit" loading={form.processing} disabled={!ready}>
-                                    <Check />
-                                    {t('ترحيل القيد')}
-                                </Button>
-                            </div>
-                        </form>
-                    )}
+                        {form.errors.lines && <p className="text-[12px] text-[#b91c1c]">{form.errors.lines}</p>}
+
+                        <div className="flex justify-end gap-2">
+                            <Button type="button" variant="ghost" onClick={() => setAdding(false)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button type="submit" loading={form.processing} disabled={!ready}>
+                                <Check />
+                                {t('ترحيل القيد')}
+                            </Button>
+                        </div>
+                    </form>
                 </DialogContent>
             </Dialog>
         </AdminLayout>

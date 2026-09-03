@@ -34,7 +34,6 @@ class BackfillSalesTransactions extends Command
                         'description' => 'مبيعات نقطة البيع — ' . ($order->customer_name ?? 'عميل نقدي'),
                         'method' => $order->payment_method ?? 'نقدي',
                         'type' => 'دخل',
-                        'kind' => Transaction::SALE,
                         'amount' => $order->total,
                         'tax_amount' => $order->tax ?? 0,
                         'employee_name' => $order->employee_name ?? '—',

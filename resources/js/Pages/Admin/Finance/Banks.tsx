@@ -4,6 +4,7 @@ import { Check, Landmark, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
+import ExportMenu from '@/Components/ExportMenu';
 import SmartLink from '@/Components/SmartLink';
 import StatCard from '@/Components/StatCard';
 import Field from '@/Components/Field';
@@ -105,21 +106,31 @@ export default function Banks() {
         else form.post(route('admin.finance.banks.store'), done);
     };
 
-    /*
-     * تصدير الحركة المالية كان زرًّا في هذه الشاشة لأنّه لم يكن له باب: ثلاثة
-     * مسارات تصديرٍ لا يقصدها زرٌّ في الواجهة كلّها، فوُصلت بأقرب شاشة. وصارت
-     * للحركة شاشتُها فرجع الزرّ إليها — وهذه أرصدةٌ لا مقبوضاتٌ ومدفوعات.
-     */
     return (
         <AdminLayout title="الحسابات البنكية">
             <PageHeader
                 title="الحسابات البنكية"
                 subtitle={t('حسابات النشاط ورصيد كلٍّ منها، وكشفه ومطابقته مع الدفتر')}
                 actions={
-                    <Button onClick={() => open()}>
-                        <Plus />
-                        {t('حساب بنكي')}
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/*
+                         * تقرير الحركة المالية كان مبنيًّا ولا بابَ إليه: ثلاثة
+                         * مسارات تصديرٍ لا يقصدها زرٌّ في الواجهة كلّها، وبطاقةُ
+                         * «الحركة المالية» في فهرس التقارير تقود إلى هذه الشاشة
+                         * — وفيها الأرصدة لا المقبوضات والمدفوعات. فيُوصَل هنا،
+                         * وهي وجهةُ البطاقة أصلًا.
+                         */}
+                        <ExportMenu
+                            label="الحركة المالية"
+                            xlsx={route('admin.finance.xlsx')}
+                            pdf={route('admin.finance.pdf')}
+                            csv={route('admin.export.transactions')}
+                        />
+                        <Button onClick={() => open()}>
+                            <Plus />
+                            {t('حساب بنكي')}
+                        </Button>
+                    </div>
                 }
             />
 
@@ -238,7 +249,7 @@ export default function Banks() {
                     <form onSubmit={submit} className="space-y-4 px-5 pb-5">
                         <Field
                             label="الاسم المختصر"
-                            hint="ما يميّزه في القوائم — «التحصيل» أوضح من رقم الحساب. سمِّه أو اذكر بنكه."
+                            hint="ما يميّزه في القوائم — «التحصيل» أوضح من رقم الحساب"
                             error={form.errors.label}
                         >
                             <Input
@@ -313,18 +324,7 @@ export default function Banks() {
                             <Button type="button" variant="ghost" onClick={() => setEditing(null)}>
                                 {t('إلغاء')}
                             </Button>
-                            {/*
-                                نموذجٌ فارغ لا يُحفظ.
-
-                                كانت الحقول كلّها اختيارية، فضغطةٌ على «حفظ» بلا
-                                إدخالٍ تُنشئ حسابًا اسمُه «حساب بنكي» وتفتح له
-                                ورقةً في الشجرة — ثمّ لا يُحذف بعد أوّل قيدٍ عليه.
-                            */}
-                            <Button
-                                type="submit"
-                                loading={form.processing}
-                                disabled={!form.data.label.trim() && !form.data.bank_name.trim()}
-                            >
+                            <Button type="submit" loading={form.processing}>
                                 <Check />
                                 {t('حفظ')}
                             </Button>

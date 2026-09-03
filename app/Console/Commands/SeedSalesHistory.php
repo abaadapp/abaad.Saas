@@ -145,7 +145,6 @@ class SeedSalesHistory extends Command
                             'description' => 'مبيعات نقطة البيع',
                             'method' => $method,
                             'type' => 'دخل',
-                            'kind' => Transaction::SALE,
                             'amount' => $total,
                             'tax_amount' => $tax,
                             'employee_name' => $order->employee_name,

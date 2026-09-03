@@ -109,20 +109,6 @@ class OrderDetailController extends Controller
                 ->withErrors(['status' => $error]);
         }
 
-        /*
-         * الإلغاء يعكس قيد البيعة ولا يمحوه.
-         *
-         * الفاتورة الملغاة ليست بيعًا: كانت تبقى في الدفتر إيرادًا وضريبةً
-         * مستحقّة وتكلفةَ بضاعةٍ بيعت — فيُقرّ التاجر ضريبةً على بيعةٍ لم تقع،
-         * ويقرأ ربحًا من مالٍ لم يقبضه. والعكس يُلغي أثرها ويُبقي أثرَ أثرها:
-         * القيد الأصلي في مكانه وعكسُه إلى جانبه، فيُقرأ ما جرى ومتى ولماذا.
-         *
-         * ولا يُمنع الإلغاء إن تعثّر الدفتر — انظر Books::tryUnpostSale.
-         */
-        if ($data['status'] === OrderStatus::CANCELLED && $from !== OrderStatus::CANCELLED) {
-            \App\Support\Books::tryUnpostSale($order->fresh(), auth()->id(), __('إلغاء الفاتورة'));
-        }
-
         Activity::log('status', 'نقل الطلب '.$order->number.' من «'.$from.'» إلى «'.$data['status'].'»', [
             'subject_id' => $order->id,
             'subject_type' => 'order',

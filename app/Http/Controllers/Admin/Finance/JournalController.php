@@ -5,11 +5,7 @@ namespace App\Http\Controllers\Admin\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\JournalEntry;
-<<<<<<< HEAD
-use App\Support\Books;
-=======
 use App\Support\Activity;
->>>>>>> origin/main
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Pagination;
@@ -55,7 +51,7 @@ class JournalController extends Controller
         $bid = $this->bid();
         Ledger::ensureSystemAccounts($bid);
 
-        $q = JournalEntry::where('business_id', $bid)->with(['lines.account', 'creator', 'reverses']);
+        $q = JournalEntry::where('business_id', $bid)->with(['lines.account', 'creator']);
 
         if ($s = Search::term($request)) {
             $like = Search::like();
@@ -84,15 +80,6 @@ class JournalController extends Controller
                 'description' => $e->description,
                 'source' => $e->source,
                 'author' => $e->creator?->name,
-                /*
-                 * أثر التصحيح يُقرأ في الشاشة لا في القاعدة وحدها.
-                 *
-                 * القيد المعكوس يبقى في الدفتر ولا يعود ساريًا، والقيد العكسيّ
-                 * يشير إلى أصله. وبلا هذين العمودين يقرأ المحاسب ثلاثة قيود
-                 * متشابهة عن فاتورةٍ واحدة ولا يعرف أيُّها الساري.
-                 */
-                'reversed' => $e->reversed_at !== null,
-                'reverses' => $e->reverses?->number,
                 'total' => $e->totalDebit(),
                 'lines' => $e->lines->map(fn ($l) => [
                     'account' => $l->account?->code.' — '.$l->account?->name,
@@ -107,20 +94,6 @@ class JournalController extends Controller
             'sorts' => Sort::keys(self::SORTS),
             // الأوراق وحدها تقبل القيد — الآباء والمغلقة لا تُعرض أصلًا
             'accounts' => $this->postableAccounts($bid),
-            /*
-             * ومن يفتح هذه الشاشة قد لا يريد قيدًا: يريد أن يقول «دفعتُ إيجارًا».
-             *
-             * فللنافذة بابان. «مبسّط» يسأل «ماذا حدث؟» ويكتب القيد عن سائله —
-             * وهو المسار الذي تسلكه شاشةُ الحركة المالية نفسها (`Books`)، لا
-             * مسارٌ ثانٍ يوازيها فيفترق عنها. و«محاسب» يبقى كما هو: سطورٌ
-             * ومدينٌ ودائن لمن يعرف ما يفعل.
-             *
-             * والباب الأوّل يُعرض لمن يملك «المالية»: هو يكتب حركةً في
-             * الدفترين، ومسارُه محروسٌ بها لا بـ«المحاسبة المتقدّمة».
-             */
-            'movements' => Books::movementOptions(),
-            'expenseTypes' => collect(Demo::expenseTypes())->pluck('name')->all(),
-            'canRecordMovement' => (bool) $request->user()?->allows('finance'),
             'sources' => JournalEntry::where('business_id', $bid)->distinct()->pluck('source')->filter()->values()->all(),
             'today' => now()->format('Y-m-d'),
         ]);

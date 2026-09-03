@@ -125,56 +125,17 @@ export const PRODUCT_TABS: SectionTab[] = [
 ];
 
 /*
- * قسم المالية — ما يُفتح كلّ يوم.
+ * قسم المالية — دفترٌ واحد يُقرأ من خمسة أبواب.
  *
- * الترتيب يتبع ما يُسأل عنه أوّلًا: «كم عندي وكم ربحت؟» ثمّ «ماذا جرى؟» ثمّ
- * «ماذا أنفقت؟» ثمّ «ماذا عليّ؟» ثمّ «أين حساباتي؟».
- *
- * وشجرةُ الحسابات والقيود اليومية والأصول الثابتة خرجت من هنا إلى
- * `ACCOUNTING_TABS`: كانت خمسُها شريطًا واحدًا، فيفتح الموظّف «المالية»
- * ليسجّل مصروفًا فيقع على شجرة حسابات المتجر وزرِّ «قيد يدويّ» — أدواتٌ لا
- * يُفسدها إلا من لا يعرف ماذا تفعل.
- *
- * وكشف الحساب البنكي ليس تبويبًا: هو صفحةُ حسابٍ بعينه تُفتح من قائمة
+ * كشف الحساب البنكي ليس تبويبًا: هو صفحةُ حسابٍ بعينه تُفتح من قائمة
  * الحسابات، فبقاؤه تبويبًا كان يعني بابًا يقود إلى «أوّل حساب» أيًّا كان.
  */
 export const FINANCE_TABS: SectionTab[] = [
-    { label: 'الملخّص المالي', routeName: 'admin.finance.summary', section: 'finance' },
-    { label: 'الحركة المالية', routeName: 'admin.finance.transactions', section: 'finance' },
-    { label: 'المصروفات', routeName: 'admin.expenses.index', section: 'expenses' },
-    { label: 'المبالغ المستحقة', routeName: 'admin.finance.dues', section: 'finance' },
     { label: 'الحسابات البنكية', routeName: 'admin.finance.index', section: 'finance' },
-];
-
-/*
- * المحاسبة المتقدّمة — ما لا يُفتح إلا بعلم.
- *
- * شجرةُ الحسابات وميزانُ المراجعة في شاشةٍ واحدة (الميزان أسفل الشجرة)، ثمّ
- * القيود اليومية، ثمّ الأصول الثابتة وإهلاكها. وكلّها تحت `accounting` — لا
- * `finance`: قيدٌ يدويّ مختلّ لا يُكتشف أثره إلا في ميزان المراجعة بعد شهور.
- */
-export const ACCOUNTING_TABS: SectionTab[] = [
-    { label: 'شجرة الحسابات وميزان المراجعة', routeName: 'admin.finance.chart', section: 'accounting' },
-    { label: 'القيود اليومية', routeName: 'admin.finance.journal', section: 'accounting' },
-    { label: 'أصول ثابتة', routeName: 'admin.finance.assets', section: 'accounting' },
-];
-
-/*
- * قسم الموقع الإلكتروني — مرتَّبٌ على ما يريد التاجر إنجازه.
- *
- * لا «الأساسية» و«أخرى»: تلك تسمياتٌ تصف مكانَ الحقل في الشاشة لا ما يريده
- * من يفتحها. ومن يفتح موقعه يريد أن يرى حاله، أو يعدّل صفحة، أو يبدّل لونًا،
- * أو يضبط متجره، أو يظهر في غوغل — فهذه هي التبويبات.
- *
- * والترتيب ترتيبُ الاستعمال: اللوحةُ أوّلًا لأنها ما يُفتح كلّ مرّة، والسيو
- * والدومين آخرًا لأنّهما يُضبطان مرّةً ثم لا يُفتحان.
- */
-export const WEBSITE_TABS: SectionTab[] = [
-    { label: 'الموقع', routeName: 'admin.website.index', section: 'website' },
-    { label: 'الصفحات', routeName: 'admin.website.pages', section: 'website' },
-    { label: 'التصميم', routeName: 'admin.website.design', section: 'website' },
-    { label: 'المتجر', routeName: 'admin.website.shop', section: 'website' },
-    { label: 'الظهور في البحث', routeName: 'admin.website.seo', section: 'website' },
+    { label: 'القيود اليومية', routeName: 'admin.finance.journal', section: 'finance' },
+    { label: 'شجرة الحسابات', routeName: 'admin.finance.chart', section: 'finance' },
+    { label: 'مصاريف شهرية', routeName: 'admin.expenses.index', section: 'expenses' },
+    { label: 'أصول ثابتة', routeName: 'admin.finance.assets', section: 'finance' },
 ];
 
 

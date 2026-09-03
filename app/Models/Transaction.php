@@ -15,57 +15,6 @@ class Transaction extends Model
     protected $casts = ['amount' => 'decimal:3', 'occurred_at' => 'datetime'];
 
     /**
-     * بيعةٌ من نقطة البيع — النوع الوحيد الذي لا يُسجَّل يدويًّا.
-     *
-     * وهو المفتاح الذي تُقرأ به المبيعات في التقارير. كانت تُقرأ بـ
-     * `type = 'دخل'`، وهي خانةٌ تجمع البيعةَ وتعويضَ التأمين وإيداعَ المالك —
-     * فيقرأ التاجر «مبيعات الشهر» وفيها مالٌ لم يبع مقابله شيئًا.
-     */
-    public const SALE = 'sale';
-
-    /** قيدُها في دفتر الأستاذ — إن رُحّلت */
-    public function journalEntry(): BelongsTo { return $this->belongsTo(JournalEntry::class); }
-
-    /** الطلب الذي ولّد هذه الحركة — إن كانت بيعة */
-    public function order(): BelongsTo { return $this->belongsTo(Order::class); }
-
-    /**
-     * المبيعات وحدها — لا كلُّ ما دخل، ولا ما أُلغي منها.
-     *
-     * والإلغاء يُقرأ من حالة الفاتورة لا من عمودٍ يُكتب هنا عند الإلغاء:
-     * عمودٌ ثانٍ يعني موضعين يجب أن يتّفقا، وأوّلُ مسارِ إلغاءٍ يُنسى فيه
-     * يجعل الشاشة تقول إيرادًا والفواتير تقول ملغاة. والاشتقاق لا يُنسى.
-     *
-     * وكان `reportSummary` يستثني الملغى (عبر `Order::sold`) و`financeStats`
-     * لا يستثنيه: بطاقتان في شاشتين عن الفترة نفسها بجوابين — ١٠٠٠ هنا و١٠٠
-     * هناك. فصار التعريف واحدًا: الملغاة ليست بيعًا في أيّ شاشة.
-     *
-     * والصفّ يبقى في الجدول ويُقرأ في «الحركة المالية» موسومًا: التاريخ
-     * المالي لا يُمحى بإلغاء — يُلغى أثرُه لا أثرُه في السجلّ.
-     */
-    public function scopeSales($query)
-    {
-        return $query->where('kind', self::SALE)->notCancelled();
-    }
-
-    /**
-     * ما لم تُلغَ فاتورته — والحركة التي لا فاتورة لها تمرّ.
-     *
-     * تعريفٌ واحد يقرأ منه كلُّ مجموعٍ في القسم، فلا تقول شاشةٌ إنّ الدخل ألف
-     * وتقول التي بجوارها مئة.
-     */
-    public function scopeNotCancelled($query)
-    {
-        return $query->whereDoesntHave('order', fn ($q) => $q->where('status', Order::CANCELLED));
-    }
-
-    /** هل أُلغيت فاتورتها؟ — تُوسم في الشاشة ولا تُحذف */
-    public function isCancelled(): bool
-    {
-        return $this->order_id !== null && $this->order?->status === Order::CANCELLED;
-    }
-
-    /**
      * مرجعٌ متسلسل لكل نشاط.
      *
      * كان `'TRX-' . random_int(60000, 99999)`: أربعون ألف قيمة بلا قيد فريد،

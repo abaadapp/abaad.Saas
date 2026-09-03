@@ -110,31 +110,9 @@ class Demo
         if (self::$baseCur !== null && self::$baseBid === self::bid()) {
             return self::$baseCur;
         }
-<<<<<<< HEAD
-        self::$curBid = self::bid();
-
-        return self::$baseCur = self::currencyFor(self::bid());
-    }
-
-    /**
-     * عملة نشاطٍ بعينه — بلا مستخدمٍ مسجَّل.
-     *
-     * `baseCurrency` تقرأ صاحبَها من الجلسة، وهو الصواب داخل اللوحة. لكنّ
-     * الموقع المنشور يُقرأ بلا حساب: زائرُ متجرٍ في نطاقه ليس مستخدمًا في
-     * أبعاد ولا يمكن أن يكون. فيُمرَّر المتجر صراحةً، والقاعدة واحدة —
-     * ولولا ذلك لصارت قاعدتان تفترقان يوم يُضاف إعدادٌ إلى إحداهما.
-     *
-     * @return array<string, mixed>
-     */
-    public static function currencyFor(int $businessId): array
-    {
-        $s = \App\Models\Setting::where('business_id', $businessId)->pluck('value', 'key')->all();
-        $c = \App\Models\Currency::where('business_id', $businessId)->where('is_base', true)->first();
-=======
         self::$baseBid = self::bid();
         $s = self::businessSettings();
         $c = \App\Models\Currency::where('business_id', self::bid())->where('is_base', true)->first();
->>>>>>> origin/main
 
         if ($c) {
             $cur = ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => true];
@@ -146,7 +124,7 @@ class Demo
             $cur = ['code' => $code, 'symbol' => self::SYMBOLS[$code] ?? $code, 'rate' => 1.0, 'is_base' => true];
         }
 
-        return self::withFormat($cur, $s);
+        return self::$baseCur = self::withFormat($cur, $s);
     }
 
     /** عملة العرض المختارة (من الجلسة) أو الأساسية */
@@ -329,18 +307,6 @@ class Demo
          * نُقل إليه بهجرة، فلم يضع نطاقٌ ضُبط قبل هذه النسخة.
          */
         /*
-<<<<<<< HEAD
-         * النطاق وحده — ولا مفتاح نشرٍ معه.
-         *
-         * كان هنا شرطُ `site_enabled`، ثمّ حُذف المفتاح من النظام كلّه لأنّه
-         * كان يُحفَظ ولا يقرؤه شيء. وشرطٌ على مفتاحٍ لا سبيل إلى رفعه يعني
-         * زرًّا لا يعمل عند أحدٍ أبدًا — وهو أسوأ من الزرّ الذي كان.
-         *
-         * فما دام لا واجهةَ متجرٍ في النظام، فالنطاق المضبوط هو كلّ ما يمكن
-         * أن يعنيه «للمتجر عنوان».
-         */
-        $raw = trim((string) (self::businessSettings()['site_domain'] ?? ''));
-=======
          * والمُطفأ لا يُفتح — ولو بقي نطاقُه محفوظًا.
          *
          * التفعيل يُقرأ من مصدره الواحد لا من عمود القاعدة مباشرةً، فما
@@ -366,7 +332,6 @@ class Demo
         }
 
         $raw = trim((string) ($site['site_domain'] ?? ''));
->>>>>>> origin/main
 
         if ($raw === '') {
             return null;
@@ -1714,14 +1679,8 @@ class Demo
         $bid = self::bid();
         $start = self::rangeStart($range);
 
-        /*
-         * صافي الإيرادات (بلا ضريبة) من **المبيعات** في الفترة — لا من كل دخل.
-         *
-         * كانت تُقرأ بـ`type = 'دخل'`، وهي خانةٌ يقع فيها ما ليس بيعًا:
-         * تعويضٌ من شركة تأمين، وإيداعُ المالك في الدرج. فيُقرأ ذلك ربحًا
-         * ومبيعاتٍ ونسبةَ نموّ — ولا شيء بيع.
-         */
-        $income = Transaction::where('business_id', $bid)->sales()
+        // صافي الإيرادات (بلا ضريبة) من معاملات الدخل في الفترة
+        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $netRevenue = (float) (clone $income)->sum('amount') - (float) (clone $income)->sum('tax_amount');
 
@@ -1867,25 +1826,6 @@ class Demo
             ->groupBy('type')->get()
             ->keyBy('type');
 
-<<<<<<< HEAD
-        return \App\Models\ExpenseType::where('business_id', $bid)->with('account')
-            ->orderBy('name')->get()->map(fn ($t) => [
-                'id' => $t->id,
-                'name' => $t->name,
-                'description' => $t->description,
-                'count' => (int) ($usage[$t->name]->cnt ?? 0),
-                'total' => (float) ($usage[$t->name]->total ?? 0),
-                /*
-                 * حسابُ النوع — يُعرض لمن يملك «المحاسبة المتقدّمة» وحده.
-                 *
-                 * والحقلان يُرسلان دائمًا لأنّ الشاشة تُخفيهما بصلاحيتها، وهما
-                 * رمزٌ واسمٌ لحسابٍ في شجرة المتجر نفسه: لا بيانات فيهما تُسرَّب
-                 * إلى غير أهلها كما تُسرَّب الأرصدة.
-                 */
-                'account_id' => $t->account_id,
-                'account_label' => $t->account ? $t->account->code.' — '.$t->account->name : null,
-            ])->all();
-=======
         return \App\Models\ExpenseType::where('business_id', $bid)->orderBy('name')->get()->map(fn ($t) => [
             'id' => $t->id,
             'name' => $t->name,
@@ -1895,7 +1835,6 @@ class Demo
             'count' => (int) ($usage[$t->name]->cnt ?? 0),
             'total' => (float) ($usage[$t->name]->total ?? 0),
         ])->all();
->>>>>>> origin/main
     }
 
     /* ============================ المالية ============================ */
@@ -1957,7 +1896,7 @@ class Demo
         // الفترة تُردّ إلى المفهوم كما في أخواتها: فترةٌ مجهولة كانت تسقط إلى
         // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
         $start = self::rangeStart(self::range($range));
-        $income = Transaction::where('business_id', $bid)->sales()
+        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $total = (float) (clone $income)->sum('amount');       // إجمالي المقبوض (شامل الضريبة)
         $tax = (float) (clone $income)->sum('tax_amount');     // ضريبة القيمة المضافة المحصّلة (التزام)
@@ -1968,7 +1907,7 @@ class Demo
         $prev = self::rangePrev($range);
         $pTotal = $pTax = $pNet = $pCash = 0.0;
         if ($prev) {
-            $pIncome = Transaction::where('business_id', $bid)->sales()
+            $pIncome = Transaction::where('business_id', $bid)->where('type', 'دخل')
                 ->whereBetween('occurred_at', $prev);
             $pTotal = (float) (clone $pIncome)->sum('amount');
             $pTax = (float) (clone $pIncome)->sum('tax_amount');
@@ -1990,7 +1929,7 @@ class Demo
         // الفترة تُردّ إلى المفهوم كما في أخواتها: فترةٌ مجهولة كانت تسقط إلى
         // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
         $start = self::rangeStart(self::range($range));
-        $income = Transaction::where('business_id', $bid)->sales()
+        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $grand = max(0.001, (float) (clone $income)->sum('amount'));
         $defs = [
@@ -2037,10 +1976,6 @@ class Demo
             'description' => $t->description,
             'method' => $t->method,
             'type' => $t->type,
-            // ما الذي حدث — لا اتّجاه المال وحده: «تحويل» و«سحب المالك»
-            // و«دخل آخر» كلّها كانت تُقرأ «دخل» أو «مصروف» بلا تمييز
-            'kind' => $t->kind,
-            'kind_label' => \App\Support\Books::label($t->kind),
             'amount' => (float) $t->amount,
             'employee' => $t->employee_name,
         ])->all();
@@ -3121,38 +3056,6 @@ class Demo
                     'time' => $since->format('Y-m-d'),
                     'icon' => 'user-x', 'color' => 'warning',
                     'url' => route('admin.customers.show', $c->id),
-                ]);
-            }
-        }
-
-        /*
-         * ردُّ المشغّل على طلب النطاق — يصل صاحبه بدل أن ينتظره.
-         *
-         * كان الطلب يُغلق في لوحة المشغّل — قبولًا أو رفضًا — ولا يُبلَّغ
-         * التاجر بشيء: تتغيّر بطاقةٌ في شاشةٍ لا يفتحها إلا من كان يبحث عنها.
-         * فمن طلب نطاقًا ينتظر أسابيع ولا يعرف أنّ جوابه جاهزٌ منذ يومين،
-         * ومن رُفض طلبه لا يعرف أنّ عليه أن يطلب غيره.
-         *
-         * والمعلّق لا يُنبَّه عليه: انتظارٌ لم ينتهِ ليس خبرًا، وتكراره كلّ
-         * يومٍ في الجرس يجعل الجرس يُتجاهَل.
-         */
-        if (\Illuminate\Support\Facades\Schema::hasTable('domain_requests')) {
-            $handled = \App\Models\DomainRequest::where('business_id', $bid)
-                ->whereIn('status', [\App\Models\DomainRequest::DONE, \App\Models\DomainRequest::REJECTED])
-                ->whereNotNull('handled_at')
-                ->where('handled_at', '>=', now()->subDays(30))
-                ->orderByDesc('handled_at')->limit($limit)->get();
-
-            foreach ($handled as $req) {
-                $done = $req->status === \App\Models\DomainRequest::DONE;
-                $add('domain-req-'.$req->id, [
-                    'text' => $done
-                        ? __('جُهّز نطاقك :domain — صار عنوان متجرك.', ['domain' => $req->domain])
-                        : __('تعذّر تجهيز :domain — اقرأ السبب واطلب عنوانًا آخر.', ['domain' => $req->domain]),
-                    'time' => optional($req->handled_at)->format('Y-m-d'),
-                    'icon' => $done ? 'circle-check' : 'circle-alert',
-                    'color' => $done ? 'success' : 'danger',
-                    'url' => route('admin.settings.index', ['section' => 'domain']),
                 ]);
             }
         }

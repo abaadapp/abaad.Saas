@@ -256,9 +256,6 @@ class SupplierInvoiceController extends Controller
 
         try {
             DB::transaction(function () use ($bid, $invoice, $amount, $data) {
-<<<<<<< HEAD
-                $entry = Ledger::post(
-=======
                 /*
                  * والمستحقّ يُقرأ ثانيةً تحت قفل.
                  *
@@ -278,7 +275,6 @@ class SupplierInvoiceController extends Controller
                 }
 
                 Ledger::post(
->>>>>>> origin/main
                     $bid,
                     __('سداد سند مورّد: ').$invoice->supplier_ref,
                     [
@@ -292,24 +288,9 @@ class SupplierInvoiceController extends Controller
                     $invoice,
                 );
 
-<<<<<<< HEAD
-                // مالٌ خرج فعلًا: يُقرأ في «الحركة المالية» وفي مطابقة البنك
-                \App\Support\Books::mirror(
-                    $entry,
-                    'supplier_payment',
-                    $amount,
-                    $data['from'],
-                    __('سداد سند مورّد: ').$invoice->supplier_ref,
-                    auth()->user()?->name,
-                );
-
-                $invoice->update(['paid' => round((float) $invoice->paid + $amount, 3)]);
-                $invoice->syncStatus();
-=======
                 $locked->update(['paid' => round((float) $locked->paid + $amount, 3)]);
                 $locked->syncStatus();
                 $invoice->setAttribute('paid', $locked->paid);
->>>>>>> origin/main
             });
         } catch (RuntimeException $e) {
             return back()->withErrors(['amount' => $e->getMessage()]);

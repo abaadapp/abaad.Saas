@@ -146,16 +146,10 @@ class ReportsFollowTheirPeriodTest extends TestCase
 
     /* ------------------------- ووعدُ البطاقة يُوفَّى ------------------------- */
 
-    /**
-     * الحركة المالية لها بابٌ في الواجهة — لا مسارٌ يُكتب بالعنوان وحده.
-     *
-     * وبابُها شاشتُها هي: كان الزرّ في «الحسابات البنكية» لأنّ الحركة لم تكن
-     * لها شاشة، فوُصل التصدير بأقرب صفحة — وفيها الأرصدة لا المقبوضات
-     * والمدفوعات. فلمّا صارت للحركة شاشتُها رجع الزرّ إليها.
-     */
+    /** الحركة المالية لها بابٌ في الواجهة — لا مسارٌ يُكتب بالعنوان وحده */
     public function test_the_finance_report_is_reachable_from_its_screen(): void
     {
-        $screen = file_get_contents(resource_path('js/Pages/Admin/Finance/Transactions.tsx'));
+        $screen = file_get_contents(resource_path('js/Pages/Admin/Finance/Banks.tsx'));
 
         foreach (['admin.finance.xlsx', 'admin.finance.pdf', 'admin.export.transactions'] as $route) {
             $this->assertStringContainsString($route, $screen,

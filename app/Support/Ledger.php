@@ -43,14 +43,6 @@ class Ledger
         ['3', 'حقوق الملكية', 'حقوق ملكية', 'credit', null, [
             ['3100', 'رأس المال', 'حقوق ملكية', 'credit', 'capital'],
             ['3200', 'الأرباح المحتجزة', 'حقوق ملكية', 'credit', 'retained_earnings'],
-            /*
-             * ما يأخذه المالك لنفسه — حقوقُ ملكيةٍ طبيعتها مدينة.
-             *
-             * وليس مصروفًا: المصروف يُنقص الربح، وسحبُ المالك يُنقص حقّه في
-             * المتجر ولا يمسّ ربح الشهر. وخلطُهما يجعل متجرًا رابحًا يقرأ
-             * نفسه خاسرًا كلّما أخذ صاحبه مصروفه من الدرج.
-             */
-            ['3300', 'مسحوبات المالك', 'حقوق ملكية', 'debit', 'drawings'],
         ]],
         ['4', 'الإيرادات', 'إيراد', 'credit', null, [
             ['4100', 'إيراد المبيعات', 'إيراد', 'credit', 'sales'],
@@ -248,8 +240,6 @@ class Ledger
                 'created_by' => $userId,
             ]);
 
-            $sides = [];
-
             foreach ($lines as $line) {
                 $account = $line['account'] instanceof Account
                     ? $line['account']
@@ -271,27 +261,6 @@ class Ledger
                     throw new RuntimeException(__('كل سطر إمّا مدينٌ وإمّا دائن — لا كلاهما ولا واحدَ منهما'));
                 }
 
-                /*
-                 * والحساب لا يقع في طرفي القيد الواحد.
-                 *
-                 * «مدين الصندوق ٥٠ / دائن الصندوق ٥٠» متوازنٌ تمامًا ولا يعني
-                 * شيئًا: لا يتحرّك به رصيد، ويتضخّم به مجموعا ميزان المراجعة
-                 * بمالٍ لم يوجد. وهو أوّل ما يقع فيه من يملأ نموذج القيد
-                 * اليدويّ فيختار الحساب نفسه في السطرين سهوًا — ولا شيء كان
-                 * يردّه، فيبقى في الدفتر قيدٌ لا يُقرأ ولا يُشرح.
-                 *
-                 * والسطران في الطرف الواحد مقبولان: «دائن الصندوق ٣٠ إيجارًا
-                 * ودائن الصندوق ٢٠ كهرباءً» بيانٌ أوضح من ضمّهما.
-                 */
-                $side = $debit > 0 ? 'd' : 'c';
-                $seen = $sides[$account->id] ?? null;
-
-                if ($seen !== null && $seen !== $side) {
-                    throw new RuntimeException(__('«:name» في طرفي القيد معًا — مدينًا ودائنًا: قيدٌ يُلغي نفسه ولا يحرّك رصيدًا.', ['name' => $account->name]));
-                }
-
-                $sides[$account->id] = $side;
-
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $account->id,
@@ -305,64 +274,6 @@ class Ledger
             $entry->post();
 
             return $entry->fresh('lines');
-        });
-    }
-
-    /**
-     * عكسُ قيدٍ مُرحَّل — والتصحيح لا يكون بغيره.
-     *
-     * القيد المُرحَّل لا تُغيَّر سطورُه في مكانها: من قرأ الميزان أمس قرأ
-     * رقمًا، ومن يقرؤه اليوم يقرأ غيره، ولا شيء يقول إنّ شيئًا تغيّر. فالتصحيح
-     * قيدان — عكسيٌّ يُلغي الأوّل، وجديدٌ بالقيم المصحَّحة — والثلاثة تبقى
-     * معلَّقةً بمستندها فيُقرأ تاريخُه كاملًا.
-     *
-     * ولا يُعكس القيد مرّتين: يُقرأ بقفلٍ ويُختم بـ`reversed_at`، فطلبان
-     * متزامنان على الإلغاء نفسه لا يكتبان عكسين.
-     *
-     * وسطورُه تُبنى بحسابها لا بمفتاحها النظاميّ: القيد قد يكون على ورقة بنكٍ
-     * أنشأها التاجر بيده ولا مفتاح لها، فالبحث بالمفتاح لا يجدها.
-     *
-     * @return JournalEntry|null القيد العكسيّ — أو null إن كان معكوسًا أصلًا
-     */
-    public static function reverse(
-        JournalEntry $entry,
-        ?Carbon $date = null,
-        ?int $userId = null,
-        ?string $reason = null,
-    ): ?JournalEntry {
-        return DB::transaction(function () use ($entry, $date, $userId, $reason) {
-            $original = JournalEntry::whereKey($entry->id)->lockForUpdate()->first();
-
-            if (! $original || $original->reversed_at) {
-                return null;
-            }
-
-            $lines = $original->lines()->with('account')->get()->map(fn ($line) => [
-                'account' => $line->account,
-                'debit' => (float) $line->credit,
-                'credit' => (float) $line->debit,
-                'memo' => $line->memo,
-            ])->all();
-
-            if (count($lines) < 2) {
-                return null;
-            }
-
-            $reversal = self::post(
-                $original->business_id,
-                mb_substr(__('عكس: ').$original->description.($reason ? ' — '.$reason : ''), 0, 255),
-                $lines,
-                $date ?? now(),
-                mb_substr(__('عكس ').$original->source, 0, 30),
-                $original->branch_id,
-                $userId,
-                $original->sourceable,
-            );
-
-            $reversal->update(['reverses_id' => $original->id]);
-            $original->update(['reversed_at' => now()]);
-
-            return $reversal;
         });
     }
 

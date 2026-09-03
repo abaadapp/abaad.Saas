@@ -126,6 +126,21 @@ Route::post('/forget-device', [LoginController::class, 'forgetDevice'])->name('d
 Route::get('/health', HealthController::class)->name('health');
 
 /*
+ * الموقع المنشور لعارضٍ خارجيّ — بلا مصادقة.
+ *
+ * أبعاد تبني الموقع ولا تعرضه (انظر PublishedSiteController): العرض في
+ * مستودعٍ مستقلّ يقرأ هذا المستند. ومن يقرؤه لا حساب له ولا يمكن أن يكون له
+ * — هو خادمٌ يخدم زوّار متجر التاجر.
+ *
+ * وما يردّه علنيٌّ بطبعه: هو نفسُه ما سيُعرض لكلّ زائر. والحدُّ على الطلبات
+ * يمنع أن يصير البابُ المفتوح استنزافًا.
+ */
+Route::get('/site/{host}', \App\Http\Controllers\PublishedSiteController::class)
+    ->where('host', '[A-Za-z0-9.\-]{3,255}')
+    ->middleware('throttle:120,1')
+    ->name('site.published');
+
+/*
  * استعادة كلمة المرور — الباب الذي لا يمرّ بالدعم.
  *
  * الرمز في المسار لا في الاستعلام: الرابط يُنسخ من الرسالة كاملًا، وحصرُه
@@ -598,6 +613,49 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
     Route::post('/marketing/seo', [MarketingController::class, 'saveSeo'])->name('marketing.seo.save');
     Route::post('/marketing/seo/refresh', [MarketingController::class, 'refreshSeo'])->name('marketing.seo.refresh');
+    /*
+     * الموقع الإلكتروني — يُبنى هنا ويُعرض في مستودعٍ آخر.
+     *
+     * أقسامٌ تُركّب وتُرتَّب ثمّ تُنشر لقطةً واحدة (`website_versions`)،
+     * ويقرؤها العارض من `/site/{host}`. والمسوّدة تبقى مسوّدةً حتى يُضغط
+     * «انشر»: تبديلُ لونٍ لا يصل زائرًا قبل أن يرضى عنه صاحبُه.
+     */
+    Route::prefix('website')->name('website.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'store'])->name('create');
+        Route::post('/publish', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'publish'])->name('publish');
+        Route::post('/versions/{id}/restore', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'restore'])->name('restore');
+        Route::post('/maintenance', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'maintenance'])->name('maintenance');
+
+        Route::get('/pages', [\App\Http\Controllers\Admin\Website\PageController::class, 'index'])->name('pages');
+        Route::post('/pages', [\App\Http\Controllers\Admin\Website\PageController::class, 'store'])->name('pages.store');
+        Route::post('/pages/reorder', [\App\Http\Controllers\Admin\Website\PageController::class, 'reorder'])->name('pages.reorder');
+        Route::put('/pages/{id}', [\App\Http\Controllers\Admin\Website\PageController::class, 'update'])->name('pages.update');
+        Route::delete('/pages/{id}', [\App\Http\Controllers\Admin\Website\PageController::class, 'destroy'])->name('pages.destroy');
+
+        // المحرّر يفتح على صفحةٍ بعينها — وبلا رقمٍ يفتح على الرئيسية
+        Route::get('/editor/{id?}', [\App\Http\Controllers\Admin\Website\EditorController::class, 'show'])->name('editor');
+        Route::post('/editor/{id}/sections', [\App\Http\Controllers\Admin\Website\EditorController::class, 'addSection'])->name('sections.add');
+        Route::post('/editor/{id}/reorder', [\App\Http\Controllers\Admin\Website\EditorController::class, 'reorderSections'])->name('sections.reorder');
+        Route::put('/sections/{id}', [\App\Http\Controllers\Admin\Website\EditorController::class, 'updateSection'])->name('sections.update');
+        Route::post('/sections/{id}/toggle', [\App\Http\Controllers\Admin\Website\EditorController::class, 'toggleSection'])->name('sections.toggle');
+        Route::post('/sections/{id}/duplicate', [\App\Http\Controllers\Admin\Website\EditorController::class, 'duplicateSection'])->name('sections.duplicate');
+        Route::delete('/sections/{id}', [\App\Http\Controllers\Admin\Website\EditorController::class, 'destroySection'])->name('sections.destroy');
+
+        // رفعُ صورةٍ يردّ رابطًا — وحقل الصورة يحمل رابطًا أيًّا كان مصدره
+        Route::post('/media', [\App\Http\Controllers\Admin\Website\MediaController::class, 'upload'])->name('media');
+
+        Route::get('/design', [\App\Http\Controllers\Admin\Website\DesignController::class, 'index'])->name('design');
+        Route::put('/design', [\App\Http\Controllers\Admin\Website\DesignController::class, 'update'])->name('design.update');
+        Route::put('/design/palette', [\App\Http\Controllers\Admin\Website\DesignController::class, 'palette'])->name('design.palette');
+
+        Route::get('/shop', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'store'])->name('shop');
+        Route::put('/shop', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'saveStore'])->name('shop.save');
+        Route::get('/seo', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'seo'])->name('seo');
+        Route::put('/seo', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'saveSeo'])->name('seo.save');
+        Route::put('/settings', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'saveSite'])->name('settings.save');
+    });
+
     Route::get('/marketing/loyalty', [MarketingController::class, 'loyalty'])->name('marketing.loyalty');
     Route::post('/marketing/loyalty', [MarketingController::class, 'saveLoyalty'])->name('marketing.loyalty.save');
     /*

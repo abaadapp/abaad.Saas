@@ -5,9 +5,11 @@ import {
     FINANCE_TABS,
     INVENTORY_TABS,
     PURCHASE_TABS,
+    WEBSITE_TABS,
     type SectionTab,
 } from '@/Components/SectionTabs';
 import {
+    AppWindow,
     BarChart3,
     Boxes,
     Building2,
@@ -176,6 +178,17 @@ export const NAV: NavGroup[] = [
                     { label: 'الكوبونات والعروض', icon: TicketPercent, route: 'admin.marketing.coupons', section: 'marketing' },
                     { label: 'إشعارات واتساب', icon: MessageCircle, route: 'admin.marketing.whatsapp', section: 'marketing', feature: 'whatsapp' },
                 ],
+            },
+        ],
+    },
+    {
+        items: [
+            {
+                label: 'الموقع الإلكتروني',
+                icon: AppWindow,
+                route: 'admin.website.index',
+                section: 'website',
+                covers: covers(WEBSITE_TABS),
             },
         ],
     },

@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\ActivityLog;
 use App\Models\Business;
 use App\Models\Category;
+use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\InventoryMovement;
@@ -13,6 +14,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Plan;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Models\Subscription;
@@ -94,6 +96,36 @@ class Demo
             'decimals' => $set === null || $set === '' ? $fallback : max(0, min(4, (int) $set)),
             'before' => ($settings['symbol_pos'] ?? 'after') === 'before',
         ];
+    }
+
+    /**
+     * عملةُ متجرٍ بعينه — لا عملةُ من يقرأ.
+     *
+     * `baseCurrency` تقرأ من الجلسة، فهي عمياء عن أيّ متجرٍ سوى متجر الداخل.
+     * وما يُبنى لمتجرٍ آخر — موقعُه المنشور، أو صفحتُه العامّة التي يفتحها
+     * زبونٌ لا حساب له — يحتاج عملتَه هو. ونداءٌ واحدٌ يخدم الاثنين: خريطتان
+     * للعملة تفترقان يوم يبدّل التاجر منازلَه العشرية في إحداهما.
+     */
+    public static function currencyFor(int $businessId): array
+    {
+        $settings = Setting::where('business_id', $businessId)->pluck('value', 'key')->all();
+        $row = Currency::where('business_id', $businessId)->where('is_base', true)->first();
+
+        if ($row) {
+            $cur = ['code' => $row->code, 'symbol' => $row->symbol ?: $row->code, 'rate' => (float) $row->rate, 'is_base' => true];
+        } else {
+            /*
+             * رمزٌ من ثلاثة أحرف لاتينية أو لا شيء.
+             *
+             * في القاعدة صفوفٌ قديمة قيمتها «ريال عماني» — تُقرأ رمزًا فتظهر
+             * بجانب كلّ مبلغ كما هي.
+             */
+            $code = strtoupper(trim((string) ($settings['currency'] ?? '')));
+            $code = preg_match('/^[A-Z]{3}$/', $code) ? $code : 'OMR';
+            $cur = ['code' => $code, 'symbol' => self::SYMBOLS[$code] ?? $code, 'rate' => 1.0, 'is_base' => true];
+        }
+
+        return self::withFormat($cur, $settings);
     }
 
     /**

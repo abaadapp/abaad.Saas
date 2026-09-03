@@ -301,20 +301,8 @@ class Storefront
      */
     public static function currency(Business $business): array
     {
-        $bid = (int) $business->id;
-        $row = \App\Models\Currency::where('business_id', $bid)->where('is_base', true)->first();
-
-        $code = $row?->code ?: strtoupper(trim((string) (
-            \App\Models\Setting::where('business_id', $bid)->where('key', 'currency')->value('value') ?? ''
-        )));
-        $code = preg_match('/^[A-Z]{3}$/', $code) ? $code : 'OMR';
-
-        return [
-            'code' => $code,
-            'symbol' => $row?->symbol ?: (Demo::SYMBOLS[$code] ?? $code),
-            // ثلاثُ خاناتٍ للريال العماني وأخواته، واثنتان لما سواها
-            'decimals' => in_array($code, ['OMR', 'KWD', 'BHD'], true) ? 3 : 2,
-        ];
+        // مصدرٌ واحد للعملة في النظام — انظر `Demo::currencyFor`
+        return Demo::currencyFor((int) $business->id);
     }
 
     /**

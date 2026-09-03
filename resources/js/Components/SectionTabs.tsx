@@ -140,6 +140,21 @@ export const FINANCE_TABS: SectionTab[] = [
 
 
 /*
+ * قسم الموقع الإلكتروني.
+ *
+ * خمس شاشاتٍ لعملٍ واحد: الموقع نفسه، وصفحاته، وتصميمه، وما يُعرض من المتجر
+ * فيه، وظهوره في البحث. وجمعُها في شاشةٍ واحدة يجعل من يبدّل لونًا يمرّ على
+ * حقول السيو في طريقه.
+ */
+export const WEBSITE_TABS: SectionTab[] = [
+    { label: 'الموقع', routeName: 'admin.website.index', section: 'website' },
+    { label: 'الصفحات', routeName: 'admin.website.pages', section: 'website' },
+    { label: 'التصميم', routeName: 'admin.website.design', section: 'website' },
+    { label: 'المتجر', routeName: 'admin.website.shop', section: 'website' },
+    { label: 'الظهور في البحث', routeName: 'admin.website.seo', section: 'website' },
+];
+
+/*
  * قسم الرواتب والموظفين.
  *
  * المسيرة والصرف شاشتان لا واحدة: الأولى تُحضّر وتعتمد، والثانية تُخرج المال.

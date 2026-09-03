@@ -193,7 +193,14 @@ class ArabicNumeralsTest extends TestCase
             preg_match_all('/<input\b.*?\/>/s', $source, $matches);
 
             foreach ($matches[0] as $element) {
-                $isTyped = preg_match('/type=(["\'])(checkbox|radio|file)\1/', $element);
+                /*
+                 * وحقلُ اللون كحقل الملفّ: لا يُكتب فيه.
+                 *
+                 * `type="color"` يرسمه المتصفّح مربّعًا يُنقر فيُفتح منتقي
+                 * ألوان — لا موضعَ فيه لرقمٍ عربيّ ولا لاتينيّ. وإلزامُه
+                 * بحارس الأرقام يعني لفَّه بمكوّن نصٍّ لا يناسبه.
+                 */
+                $isTyped = preg_match('/type=(["\'])(checkbox|radio|file|color)\1/', $element);
 
                 if ($isTyped || str_contains($element, 'useAsciiDigits') || str_contains($element, 'ref={attach}')
                     || str_contains($element, 'ref={searchRef}')) {

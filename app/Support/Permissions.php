@@ -27,6 +27,14 @@ class Permissions
     public const SECTIONS = [
         'dashboard', 'customers', 'products', 'orders', 'marketing',
         'inventory', 'finance', 'expenses', 'settings',
+        /*
+         * الموقع الإلكتروني قسمٌ مستقلّ عن «الإعدادات».
+         *
+         * من مُنح الإعدادات ليضبط ضريبةً أو يضيف فرعًا كان يُمنح معها نشرَ
+         * موقع المتجر على الإنترنت وتبديلَ ما يقرؤه كلّ زائر. وهما عملان لا
+         * يفعلهما الشخص نفسه في أكثر المتاجر.
+         */
+        'website',
         'suppliers', 'purchases', 'employees', 'pos', 'reports',
         /*
          * التجهيز قسمٌ مستقلّ لا جزءٌ من «المبيعات».
@@ -124,6 +132,7 @@ class Permissions
         'products' => 'admin.products.index', 'orders' => 'admin.orders.index',
         'marketing' => 'admin.marketing.loyalty', 'inventory' => 'admin.inventory.index',
         'finance' => 'admin.finance.index', 'expenses' => 'admin.expenses.index',
+        'website' => 'admin.website.index',
         'settings' => 'admin.settings.index', 'suppliers' => 'admin.suppliers.index',
         'purchases' => 'admin.purchases.index', 'employees' => 'admin.employees.index',
         'pos' => 'pos.index',
@@ -185,6 +194,7 @@ class Permissions
             'dashboard' => 'لوحة التحكم', 'customers' => 'العملاء', 'products' => 'المنتجات',
             'orders' => 'المبيعات', 'marketing' => 'أدوات التسويق', 'inventory' => 'المخزون',
             'finance' => 'المالية', 'expenses' => 'مصاريف شهرية', 'settings' => 'الإعدادات',
+            'website' => 'الموقع الإلكتروني',
             'suppliers' => 'الموردين', 'purchases' => 'المشتريات',
             'employees' => 'الرواتب والموظفين', 'pos' => 'نقطة البيع',
             // كانت ساقطةً فتُعرض «reports» بحروفٍ لاتينية في قائمة صلاحيات عربية

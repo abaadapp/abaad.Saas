@@ -78,9 +78,15 @@ class MarketingToolsTest extends TestCase
          * المكذوب الذي رُفعت لأجله المجموعةُ القديمة.
          */
         $this->assertSame([
-            'site_on', 'site_domain', 'site_path',
+            'site_on', 'site_domain',
+            // طريقُ العنوان واسمُ النطاق الفرعي — تقرؤهما `DomainOptions`
+            'site_domain_mode', 'site_subdomain',
+            'site_path',
             'store_on', 'store_theme', 'store_headline', 'store_about', 'store_show_prices',
-            'store_whatsapp', 'store_pay_cod', 'store_pay_transfer', 'store_bank',
+            'store_whatsapp',
+            // إنستغرام وقبولُ الطلبات — يقرؤهما بانِي الموقع (MerchantData, SettingsController)
+            'store_instagram', 'store_allow_orders',
+            'store_pay_cod', 'store_pay_transfer', 'store_bank',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {

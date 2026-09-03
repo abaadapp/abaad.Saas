@@ -81,6 +81,7 @@
         .body h3 { margin: 0; font-size: 15px; font-weight: 600; }
         .body .desc { margin: 0; font-size: 12px; color: #777; line-height: 1.5; }
         .price { font-size: 16px; font-weight: 700; color: var(--accent); }
+        .price .from { font-size: 12px; font-weight: 500; opacity: .7; }
         .out { font-size: 12px; color: #b91c1c; font-weight: 600; }
 
         .order {
@@ -151,8 +152,15 @@
                         @if ($p['description'])
                             <p class="desc">{{ Str::limit($p['description'], 80) }}</p>
                         @endif
+                        {{--
+                            السعر بعملة المتجر لا بالريال العماني مثبَّتًا، و«من»
+                            حين تختلف أسعار المقاسات — انظر Storefront::currency
+                            و‏Storefront::price.
+                        --}}
                         @if ($showPrices && $p['price'] !== null)
-                            <div class="price" dir="ltr">{{ number_format($p['price'], 3) }} ر.ع</div>
+                            <div class="price">
+                                @if ($p['from'])<span class="from">من</span> @endif<span dir="ltr">{{ \App\Support\Storefront::amount($p['price'], $currency) }}</span>
+                            </div>
                         @endif
                         @unless ($p['available'])
                             <div class="out">غير متوفّر حاليًا</div>

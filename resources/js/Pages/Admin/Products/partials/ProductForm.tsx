@@ -63,6 +63,7 @@ const FIELD_SECTION: Record<string, TabKey> = {
     sku: 'basic',
     barcode: 'basic',
     active: 'basic',
+    published: 'basic',
     price: 'pricing',
     cost: 'pricing',
     tax: 'pricing',
@@ -102,6 +103,7 @@ export default function ProductForm({ categories, product, description, currency
         quantity: product ? String(product.qty) : '',
         alert_qty: product ? String(product.alert) : '',
         active: product ? product.active : true,
+        published: product?.published ?? true,
         image: null as File | null,
         // مسوّدة التركيب — تُملأ عند الإنشاء وتُكتب في الخادم بعد إنشاء
         // المنتج مباشرة. وفي التعديل تبقى فارغةً: هناك لكلّ فعلٍ مسارُه
@@ -509,33 +511,35 @@ export default function ProductForm({ categories, product, description, currency
 
                         <Card className="p-6">
                             <h3 className="mb-4 font-bold text-[#111]">{t('حالة المنتج')}</h3>
-                            <div className="flex items-center justify-between gap-3">
-                                <div>
-                                    <p className="text-sm font-medium text-[#111]">
-                                        {t('تفعيل المنتج')}
-                                    </p>
-                                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">
-                                        {t('إظهار المنتج في نقطة البيع والمتجر')}
-                                    </p>
+                            {/*
+                                مفتاحان لا واحد: «يُباع» غير «يُعرض على الإنترنت».
+
+                                وكان المفتاح الأوّل يقول «في نقطة البيع والمتجر»
+                                فيحكم الاثنين معًا — فمن أراد إخفاء ورق التغليف
+                                عن زبائن موقعه اضطرّ إلى إيقاف بيعه عند الطاولة.
+                            */}
+                            <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                <div className="flex items-center justify-between gap-3 pb-4">
+                                    <div>
+                                        <p className="text-sm font-medium text-[#111]">{t('تفعيل المنتج')}</p>
+                                        <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                                            {t('إظهاره في نقطة البيع والفواتير')}
+                                        </p>
+                                    </div>
+                                    <Switch on={form.data.active} onChange={() => form.setData('active', !form.data.active)} />
                                 </div>
-                                <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={form.data.active}
-                                    onClick={() => form.setData('active', !form.data.active)}
-                                    className={cn(
-                                        'relative h-6 w-12 shrink-0 rounded-full transition-colors',
-                                        form.data.active ? 'bg-[#111]' : 'bg-[#d1d5db]',
-                                    )}
-                                >
-                                    {/* المقبض يتحرك بالخاصية المنطقية فينعكس تلقائيًا في RTL */}
-                                    <span
-                                        className={cn(
-                                            'absolute top-0.5 size-5 rounded-full bg-white shadow transition-[inset-inline-start]',
-                                            form.data.active ? 'start-[26px]' : 'start-0.5',
-                                        )}
-                                    />
-                                </button>
+
+                                <div className="flex items-center justify-between gap-3 pt-4">
+                                    <div>
+                                        <p className="text-sm font-medium text-[#111]">{t('عرضه في متجرك على الإنترنت')}</p>
+                                        <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                                            {form.data.active
+                                                ? t('يظهر لزوّار متجرك بصورته وسعره')
+                                                : t('لن يظهر ما دام غير مفعّل')}
+                                        </p>
+                                    </div>
+                                    <Switch on={form.data.published} onChange={() => form.setData('published', !form.data.published)} />
+                                </div>
                             </div>
                         </Card>
                     </div>
@@ -763,5 +767,29 @@ export default function ProductForm({ categories, product, description, currency
                 </Card>
             </div>
         </form>
+    );
+}
+
+/** مفتاح تبديل صغير — كان مكرّرًا حرفًا بحرف حين صار المفتاحان اثنين */
+function Switch({ on, onChange }: { on: boolean; onChange: () => void }) {
+    return (
+        <button
+            type="button"
+            role="switch"
+            aria-checked={on}
+            onClick={onChange}
+            className={cn(
+                'relative h-6 w-12 shrink-0 rounded-full transition-colors',
+                on ? 'bg-[#111]' : 'bg-[#d1d5db]',
+            )}
+        >
+            {/* المقبض يتحرك بالخاصية المنطقية فينعكس تلقائيًا في RTL */}
+            <span
+                className={cn(
+                    'absolute top-0.5 size-5 rounded-full bg-white shadow transition-[inset-inline-start]',
+                    on ? 'start-[26px]' : 'start-0.5',
+                )}
+            />
+        </button>
     );
 }

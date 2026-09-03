@@ -245,6 +245,7 @@ class Storefront
         $theme = self::theme($site['store_theme'] ?? null);
         $showPrices = ($site['store_show_prices'] ?? '1') === '1';
         $whatsapp = self::orderNumber($business, $site);
+        $currency = self::currency($business);
 
         return [
             'business' => $business,
@@ -262,9 +263,92 @@ class Storefront
             'transfer' => ($site['store_pay_transfer'] ?? '0') === '1',
             'bank' => trim((string) ($site['store_bank'] ?? '')),
             'categories' => self::categories($bid),
-            'products' => self::products($bid, $showPrices, $whatsapp),
+            'currency' => $currency,
+            'products' => self::products($bid, $showPrices, $whatsapp, $currency),
             'logo' => $business->logo ? Storage::url($business->logo) : null,
         ];
+    }
+
+    /**
+     * عملةُ المتجر — مقروءةً من المتجر لا من الجلسة.
+     *
+     * كان السعرُ يُكتب في الصفحة `number_format($p, 3).' ر.ع'` — ثلاثُ خاناتٍ
+     * ورمزٌ عمانيّ مثبَّتان في القالب وفي رابط الطلب. فمتجرٌ في الإمارات أو
+     * السعودية يعرض أسعاره بالريال العماني على صفحةٍ يفتحها زبونُه، ويصل
+     * التاجرَ طلبٌ بمبلغٍ بعملةٍ أخرى.
+     *
+     * و`Demo::baseCurrency` لا تصلح هنا: تلك تقرأ متجر المستخدم الحاليّ،
+     * وزائرُ المتجر لا مستخدمَ له — فتُقرأ أسعارُ كلّ المتاجر بعملة آخر
+     * تاجرٍ دخل، أو بالافتراضية وهي عملة أحدهم لا عملة الجميع.
+     *
+     * @return array{code: string, symbol: string, decimals: int}
+     */
+    public static function currency(Business $business): array
+    {
+        $bid = (int) $business->id;
+        $row = \App\Models\Currency::where('business_id', $bid)->where('is_base', true)->first();
+
+        $code = $row?->code ?: strtoupper(trim((string) (
+            \App\Models\Setting::where('business_id', $bid)->where('key', 'currency')->value('value') ?? ''
+        )));
+        $code = preg_match('/^[A-Z]{3}$/', $code) ? $code : 'OMR';
+
+        return [
+            'code' => $code,
+            'symbol' => $row?->symbol ?: (Demo::SYMBOLS[$code] ?? $code),
+            // ثلاثُ خاناتٍ للريال العماني وأخواته، واثنتان لما سواها
+            'decimals' => in_array($code, ['OMR', 'KWD', 'BHD'], true) ? 3 : 2,
+        ];
+    }
+
+    /**
+     * المبلغ مكتوبًا بعملة هذا المتجر — تقرؤه الصفحة ورابطُ الطلب معًا.
+     *
+     * واسمُها `amount` لا `money`: تلك قائمةٌ هنا لتنظيف رقمِ سعرٍ من إعدادات
+     * المنصّة، وشيءٌ آخر تمامًا.
+     */
+    public static function amount(float $value, array $currency): string
+    {
+        return number_format($value, $currency['decimals']).' '.$currency['symbol'];
+    }
+
+    /**
+     * ما يُعرض في المتجر — استعلامٌ واحدٌ تقرؤه القائمةُ والأقسام معًا.
+     *
+     * وشرطان لا واحد: `active` تعني «يُباع في نقطة البيع»، و`published` تعني
+     * «يراه الزبون». وكانت الأولى وحدها تحكم الصفحة، فيظهر للزبائن ورقُ
+     * التغليف ومكوّناتُ الباقات وأسعارُ الجملة، ولا يملك التاجر منعَ صنفٍ
+     * إلّا بإيقاف بيعه عند الطاولة أيضًا.
+     *
+     * وموضعُ الشرطين واحدٌ عمدًا: قائمةٌ تُصفّى وأقسامٌ لا تُصفّى معها تعني
+     * تبويبَ قسمٍ يفتح على صفحةٍ فارغة.
+     */
+    private static function shown(int $bid): \Illuminate\Database\Eloquent\Builder
+    {
+        return Product::where('business_id', $bid)
+            ->where('active', true)
+            ->where('published', true);
+    }
+
+    /**
+     * السعر الذي يدفعه الزبون — لا الرقم الخام في العمود.
+     *
+     * وعمودُ `price` ليس السعر في حالتين: ذو المقاسات لا يُباع بنفسه («السعر
+     * يأتي من المقاس المختار» — نصُّ `ProductVariant`)، وذو الخصم يُباع بعد
+     * خصمه (`Product::sellingPrice`). فعرضُ العمود خامًا يُري الزبون رقمًا
+     * يطلب عليه ثمّ يُقال له غيرُه — وهو أسوأ من ألّا يُعرض سعر.
+     *
+     * @return array{0: float, 1: bool} السعر، وهل هو «من» أدنى مقاس
+     */
+    private static function price(Product $product): array
+    {
+        $prices = $product->variants->pluck('price')->map(fn ($v) => (float) $v)->all();
+
+        if ($prices === []) {
+            return [$product->sellingPrice(), false];
+        }
+
+        return [min($prices), min($prices) !== max($prices)];
     }
 
     /**
@@ -284,7 +368,7 @@ class Storefront
     /** أقسامٌ فيها منتجٌ معروض — وقسمٌ فارغ لا يُعرض تبويبًا يفتح على فراغ */
     private static function categories(int $bid): array
     {
-        $used = Product::where('business_id', $bid)->where('active', true)
+        $used = self::shown($bid)
             ->whereNotNull('category_id')->distinct()->pluck('category_id');
 
         return Category::where('business_id', $bid)->whereIn('id', $used)
@@ -298,13 +382,16 @@ class Storefront
      * ولا كميّةَ تخرج: عرضُ «باقٍ ٢» يدفع الزبون إلى الاستعجال، وعرضُ «باقٍ
      * ٤٠٠» يقول لمنافسك كم عندك. والمعروضُ حالةٌ لا رقم: متوفّرٌ أو نفد.
      */
-    private static function products(int $bid, bool $showPrices, ?string $whatsapp): array
+    private static function products(int $bid, bool $showPrices, ?string $whatsapp, array $currency): array
     {
-        return Product::where('business_id', $bid)->where('active', true)
+        return self::shown($bid)
             ->orderByDesc('quantity')->orderBy('name')
+            // المقاسات معه: سعرُ ذي المقاسات لا يُقرأ من عموده — انظر price()
+            ->with(['variants' => fn ($q) => $q->where('active', true)])
             ->get()
-            ->map(function ($p) use ($showPrices, $whatsapp) {
-                $price = $showPrices ? (float) $p->price : null;
+            ->map(function ($p) use ($showPrices, $whatsapp, $currency) {
+                [$price, $from] = self::price($p);
+                $price = $showPrices ? $price : null;
 
                 return [
                     'id' => $p->id,
@@ -315,8 +402,10 @@ class Storefront
                     // الإنترنت لمنتجٍ بلا صورة — ولا تُعرض صورةُ غريبٍ بضاعةً للتاجر
                     'image' => ProductImages::hasRealMain($p) ? $p->image : null,
                     'price' => $price,
+                    // «من ١٨٫٠٠٠» حين تختلف أسعار المقاسات — انظر price()
+                    'from' => $from,
                     'available' => (int) $p->quantity > 0,
-                    'order_url' => self::orderLink($whatsapp, $p->name, $price),
+                    'order_url' => self::orderLink($whatsapp, $p->name, $price, $currency),
                 ];
             })->values()->all();
     }
@@ -330,13 +419,13 @@ class Storefront
      * وبلا رقمٍ يعود null فلا يُرسم الزرّ: زرٌّ يفتح محادثةً بلا مستقبِل
      * أسوأ من غيابه.
      */
-    public static function orderLink(?string $whatsapp, string $product, ?float $price): ?string
+    public static function orderLink(?string $whatsapp, string $product, ?float $price, array $currency): ?string
     {
         if ($whatsapp === null) {
             return null;
         }
 
-        $line = $product.($price !== null ? ' — '.number_format($price, 3).' ر.ع' : '');
+        $line = $product.($price !== null ? ' — '.self::amount($price, $currency) : '');
 
         return 'https://wa.me/'.$whatsapp.'?text='.rawurlencode(__('السلام عليكم، أريد طلب:').' '.$line);
     }

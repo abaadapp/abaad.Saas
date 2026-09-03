@@ -204,6 +204,13 @@ class ProductController extends Controller
         $data['sku'] = ! empty($data['sku']) ? $data['sku'] : $this->generateSku();
         $data['barcode'] = ! empty($data['barcode']) ? $data['barcode'] : $this->generateBarcode();
         $data['active'] = $request->boolean('active', true);
+        /*
+         * «يُعرض على الإنترنت» غير «نشِط».
+         *
+         * والافتراضيّ معروض كافتراض العمود: متاجرُ مفتوحةٌ اليوم تعرض كلّ ما
+         * فيها، وصنفٌ جديد يختفي عنها بلا سبب يراه صاحبه أسوأ من ظهوره.
+         */
+        $data['published'] = $request->boolean('published', true);
         // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
         $data = Lexicon::fill($data);
         $data['image'] = $request->hasFile('image')
@@ -273,6 +280,10 @@ class ProductController extends Controller
         ], ['category_id.exists' => __('قسم غير معروف')]);
         $data['name_en'] = $data['name_en'] ?? null;
         $data['active'] = $request->boolean('active', true);
+        // ولا يُطفأ العرض بحفظةٍ لم تُرسله: نموذجٌ جزئيّ لا يعني «أخفِه»
+        if ($request->has('published')) {
+            $data['published'] = $request->boolean('published');
+        }
         // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
         $data = Lexicon::fill($data);
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL)

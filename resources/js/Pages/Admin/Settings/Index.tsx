@@ -72,7 +72,9 @@ interface Props {
         domain: string;
         themes: { value: string; label: string; accent: string }[];
         suggestion: string | null;
+        /** كم صنفًا يظهر فعلًا — الفعّال المنشور، لا كلّ الفعّال */
         productCount: number;
+        products: { id: number; name: string; image: string | null; active: boolean; published: boolean }[];
         /** الطريق المختار إلى العنوان — '' يعني أنّ التاجر لم يُسأل بعد */
         path: DomainPath;
         pricing: DomainPricing;
@@ -423,6 +425,22 @@ export default function SettingsIndex() {
      * متجرٌ منشور تُخفيه الشاشة لأنّ صاحبه اختار «عندي نطاق» يبقى مفتوحًا
      * لزبائنه بلا بطاقةٍ تُطفئه — وبابٌ لا يُغلق أسوأ من بابٍ لا يُعرض.
      */
+    /*
+        اختيارُ ما يُعرض مسارٌ آخر — لا حقلٌ في نموذج المتجر.
+
+        تبديلُ صنفٍ لا ينتظر «حفظ ونشر»: من يُخفي ورقَ التغليف يريد أن يختفي
+        الآن، ولا يُعقل أن يُعاد التحقّق من العنوان والنطاق لأجل ضغطةٍ عليه.
+    */
+    const [pickQuery, setPickQuery] = useState('');
+
+    const setShown = (published: boolean, id: number | null) => {
+        router.post(
+            route('admin.marketing.store.products'),
+            id === null ? { all: true, published } : { ids: [id], published },
+            { preserveScroll: true, preserveState: true },
+        );
+    };
+
     const storeLive = (site?.store_on ?? '0') === '1';
     const showStoreCard = store.path === 'sub' || storeLive;
     const showOwnCard = store.path === 'own' || (site?.site_domain ?? '') !== '';
@@ -722,9 +740,83 @@ export default function SettingsIndex() {
                             */}
                             {storeForm.data.store_on && store.productCount === 0 && (
                                 <p className="mt-3 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#b45309]">
-                                    {t('لا منتجات فعّالة في متجرك — ستُفتح الصفحة خالية. أضف منتجًا قبل نشرها.')}
+                                    {t('لا صنف معروضًا في متجرك — ستُفتح الصفحة خالية. اعرض صنفًا قبل نشرها.')}
                                 </p>
                             )}
+                        </div>
+
+                        {/*
+                            ٥ — ما يُعرض.
+
+                            وكانت الصفحة تعرض كلّ صنفٍ فعّال بلا استثناء: أوراقُ
+                            التغليف ومكوّناتُ الباقات وأسعارُ الجملة تصل زبائن
+                            التاجر، ولا يملك منعَ صنفٍ إلّا بإيقاف بيعه عند
+                            الطاولة أيضًا — أي أن يُوقف بيعه ليُخفيه.
+                        */}
+                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <div className="mb-3 flex flex-wrap items-center gap-3">
+                                <div>
+                                    <p className="text-sm font-medium text-[#111]">{t('ما يظهر في متجرك')}</p>
+                                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                                        {t(':n صنفًا معروضًا من :all', {
+                                            n: store.productCount,
+                                            all: store.products.filter((p) => p.active).length,
+                                        })}
+                                    </p>
+                                </div>
+                                <div className="ms-auto flex flex-wrap gap-2">
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setShown(true, null)}>
+                                        {t('اعرض الكل')}
+                                    </Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setShown(false, null)}>
+                                        {t('أخفِ الكل')}
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {store.products.length > 8 && (
+                                <Input
+                                    value={pickQuery}
+                                    onChange={(e) => setPickQuery(e.target.value)}
+                                    placeholder={t('ابحث في الأصناف')}
+                                    className="mb-3"
+                                />
+                            )}
+
+                            <ul className="max-h-[320px] divide-y divide-[var(--ui-border,#e8e8e8)] overflow-y-auto rounded-[12px] border border-[var(--ui-border,#e8e8e8)]">
+                                {store.products
+                                    .filter((p) => p.name.toLowerCase().includes(pickQuery.trim().toLowerCase()))
+                                    .map((p) => (
+                                        <li key={p.id} className="flex items-center gap-3 px-3 py-2.5">
+                                            {p.image ? (
+                                                <img src={p.image} alt="" className="size-9 shrink-0 rounded-lg object-cover" />
+                                            ) : (
+                                                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#f3f4f6] text-[12px] font-bold text-[#9ca3af]">
+                                                    {p.name.slice(0, 1)}
+                                                </span>
+                                            )}
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate text-[13px] font-medium text-[#111]">{p.name}</span>
+                                                {/* غيرُ الفعّال لا يظهر ولو رُفع مفتاحه — يُقال هنا لا في المتجر */}
+                                                {!p.active && (
+                                                    <span className="text-[11px] text-[#b45309]">{t('غير مفعّل — لا يظهر')}</span>
+                                                )}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShown(!p.published, p.id)}
+                                                className={cn(
+                                                    'shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition',
+                                                    p.published
+                                                        ? 'bg-[#ecfdf5] text-[#059669] hover:bg-[#d1fae5]'
+                                                        : 'bg-[#f3f4f6] text-[#6b7280] hover:bg-[#e5e7eb]',
+                                                )}
+                                            >
+                                                {p.published ? t('معروض') : t('مخفيّ')}
+                                            </button>
+                                        </li>
+                                    ))}
+                            </ul>
                         </div>
 
                         <div className="mt-6 flex justify-end">

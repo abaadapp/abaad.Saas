@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\PointTransaction;
+use App\Models\Product;
 use App\Models\Review;
 use App\Support\Activity;
 use App\Support\Demo;
@@ -135,6 +136,49 @@ class MarketingController extends Controller
      * (انظر هجرة `a_shop_gets_an_address`). والتحقّق هنا يسبقه ليقول للتاجر
      * «هذا الاسم محجوز» بدل أن يُردّ بخطأ قاعدةٍ لا يفهمه.
      */
+    /**
+     * ما يُعرض في المتجر — يُختار صنفًا صنفًا أو دفعةً واحدة.
+     *
+     * والدفعة ضرورةٌ لا رفاهية: تاجرٌ بخمسمئة صنفٍ يريد إخفاء موادّه الخام
+     * كلَّها لا يفعلها بخمسمئة ضغطة، فيترك متجره كما هو ويظهر فيه ما لا يريد.
+     */
+    public function publishProducts(Request $request)
+    {
+        $data = $request->validate([
+            'ids' => ['nullable', 'array'],
+            'ids.*' => ['integer'],
+            'published' => ['required', 'boolean'],
+            'all' => ['nullable', 'boolean'],
+        ]);
+
+        $query = Product::where('business_id', $this->bid());
+
+        if ($request->boolean('all')) {
+            // «الكلّ» تعني الفعّالة: ما أُطفئ في نقطة البيع لا يُعرض أصلًا
+            $query->where('active', true);
+        } else {
+            $query->whereIn('id', $data['ids'] ?? []);
+        }
+
+        /*
+         * والعدد عدد ما تغيّر لا عدد ما شمله الاستعلام: «٥٠٠ صنفًا صار يظهر»
+         * لتاجرٍ ٤٩٠ منها ظاهرةٌ أصلًا رقمٌ لا يصف شيئًا.
+         */
+        $published = $request->boolean('published');
+        $count = $query->where('published', ! $published)->update(['published' => $published]);
+
+        Activity::log('updated', $published
+            ? 'عرض '.$count.' صنفًا في متجره'
+            : 'أخفى '.$count.' صنفًا من متجره');
+
+        return back()->with('toast', [
+            'msg' => $published
+                ? __(':n صنفًا صار يظهر في متجرك', ['n' => $count])
+                : __(':n صنفًا لم يعد يظهر في متجرك', ['n' => $count]),
+            'type' => 'success',
+        ]);
+    }
+
     public function saveStore(Request $request)
     {
         $business = Business::findOrFail($this->bid());

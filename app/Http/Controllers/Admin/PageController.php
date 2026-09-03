@@ -404,7 +404,26 @@ class PageController extends Controller
                 'domain' => Storefront::domain(),
                 'themes' => Storefront::themeOptions(),
                 'suggestion' => Storefront::suggest($b?->name ?? ''),
-                'productCount' => Product::where('business_id', Demo::bid())->where('active', true)->count(),
+                /*
+                 * العدّ يقول ما يُعرض فعلًا — لا كلَّ ما هو فعّال.
+                 *
+                 * كان يعدّ الفعّال وحده، وقد صار للعرض مفتاحُه. فتاجرٌ أخفى
+                 * أصنافه كلَّها يقرأ «عندك ٤٠ صنفًا» ثمّ يفتح متجره فيجده
+                 * خاليًا — والرقم الذي يطمئن أسوأ من رقمٍ لا يُعرض.
+                 */
+                'productCount' => Product::where('business_id', Demo::bid())
+                    ->where('active', true)->where('published', true)->count(),
+                'products' => Product::where('business_id', Demo::bid())
+                    ->orderByDesc('published')->orderBy('name')
+                    ->get(['id', 'name', 'image', 'active', 'published'])
+                    ->map(fn ($p) => [
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        // الخام لا المقروء: الصورة البديلة من الإنترنت لا تُعرض بضاعةً
+                        'image' => \App\Support\ProductImages::hasRealMain($p) ? $p->image : null,
+                        'active' => (bool) $p->active,
+                        'published' => (bool) $p->published,
+                    ])->all(),
                 /*
                  * الطريقُ المختار وأسعارُه — يُحسبان في الخادم لا في الشاشة.
                  *

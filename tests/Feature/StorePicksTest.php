@@ -111,6 +111,21 @@ class StorePicksTest extends TestCase
         $this->page()->assertOk()->assertDontSee('بوكيه ورد');
     }
 
+    /**
+     * ومتجرُ من انتهى اشتراكه يُغلق كما تُغلق لوحتُه.
+     *
+     * الحالةُ تبقى «نشط» عند انتهاء الاشتراك — الإقفال يُحسب من `ends_at`
+     * ومهلةِ السماح لا من العمود. فصاحبُ المحلّ يُردّ إلى صفحة التجديد
+     * ولوحتُه مقفلة، ومتجرُه يبقى مفتوحًا يستقبل الطلبات على واتساب: زبونٌ
+     * يطلب وينتظر، وتاجرٌ لا يرى الطلب لأنّه لا يستطيع الدخول.
+     */
+    public function test_an_expired_subscription_closes_the_store_too(): void
+    {
+        $this->business->update(['ends_at' => now()->subYear()]);
+
+        $this->page()->assertNotFound();
+    }
+
     /* --------------------------- اختيارُ التاجر --------------------------- */
 
     public function test_the_merchant_hides_and_shows_in_bulk(): void

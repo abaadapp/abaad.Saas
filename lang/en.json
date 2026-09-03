@@ -4027,5 +4027,15 @@
     "امسح لعرض الفاتورة": "Scan to view the invoice",
     "موثّقة عبر أبعاد": "Verified by Abaad",
     "قُرئت من دفتر المتجر": "Read from the shop's ledger",
-    "نسخةٌ حيّة من فاتورتك — احتفظ بالرابط": "A live copy of your invoice — keep the link"
+    "نسخةٌ حيّة من فاتورتك — احتفظ بالرابط": "A live copy of your invoice — keep the link",
+    "ابحث عن صفحة أو منتج أو رقم فاتورة…": "Search for a page, a product, or an invoice number…",
+    "الصفحات": "Pages",
+    "أقسام النظام": "Sections",
+    "حسابك": "Your account",
+    "السندات والمعاملات": "Documents and transactions",
+    "إشعار استلام": "Goods receipt note",
+    "تسوية مخزون": "Stock adjustment",
+    "قيد يومية": "Journal entry",
+    "معاملة": "Transaction",
+    "رمز السند أو البيان": "Voucher code or description"
 }

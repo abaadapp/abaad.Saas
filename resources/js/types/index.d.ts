@@ -94,6 +94,16 @@ export interface SharedProps {
     } | null;
     /** الموظف الواقف على الصندوق — غير الحساب المسجَّل دخوله */
     posCashier: { id: number; name: string } | null;
+    /**
+     * فهرس التقارير المتاحة لهذا المستخدم — عنوانًا ووجهة.
+     *
+     * والاسم `reportPages` لا `reports`: شاشةُ فهرس التقارير تُرسل
+     * خاصيّةً بهذا الاسم، ومشترَكٌ يحمله كان يحجبها عنها.
+     *
+     * يقرؤه دليلُ صفحات الشريط العلوي. مصفّى عند الخادم بصلاحيته وبباقته،
+     * فما وصل يُعرض بلا فحصٍ ثانٍ — انظر `Reports::forUser`.
+     */
+    reportPages: { title: string; href: string }[] | null;
     notifications: {
         items: Notification[];
         count: number;

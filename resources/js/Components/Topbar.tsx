@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, router, usePage } from '@inertiajs/react';
 import {
     Bell,
@@ -25,10 +25,11 @@ import {
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { logout } from '@/lib/logout';
+import { adminPages, platformPages, visibleTo } from '@/lib/pages';
 import type { PageProps } from '@/types';
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
-    const { auth, context, notifications, csrf, locale } = usePage<PageProps>().props;
+    const { auth, context, notifications, reportPages, csrf, locale } = usePage<PageProps>().props;
 
     /**
      * تغذية الجرس الحيّة — بديل استطلاع admin.notifications.feed الذي كان في
@@ -108,6 +109,17 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
         : auth?.user.businessId ? route('admin.search')
         : null;
 
+    /*
+     * دليلُ الصفحات يُبنى مرّةً لا مع كل رسم.
+     *
+     * بناؤه يستدعي `route()` لكل صفحةٍ في النظام — خمسًا وأربعين مرّة —
+     * والشريط العلوي يُعاد رسمه مع كل استطلاعٍ للجرس، أي مرّتين في الدقيقة.
+     */
+    const pages = useMemo(
+        () => visibleTo(isPlatform ? platformPages() : adminPages(reportPages ?? []), auth),
+        [isPlatform, reportPages, auth],
+    );
+
     /**
      * قائمة الحساب تفتح بمرور الماوس (كطلب المالك) لا بالنقر وحده. مهلةُ
      * إغلاقٍ صغيرة تُبقيها مفتوحة أثناء عبور الفجوة بين الزرّ ومحتواها فلا
@@ -146,7 +158,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                 <span className="sr-only">{t('القائمة')}</span>
             </Button>
 
-            {searchUrl && <UnifiedSearch url={searchUrl} />}
+            {searchUrl && <UnifiedSearch url={searchUrl} pages={pages} />}
 
             {/*
              * أربعة أزرار لا أكثر: الكاشير، والموقع، والإشعارات، والحساب.

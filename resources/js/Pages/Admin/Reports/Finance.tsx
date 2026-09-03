@@ -49,6 +49,14 @@ export default function ReportsFinance() {
     const m = (v: number) => money(v, context!.currency);
 
     const controls: Filter[] = [
+        /*
+         * ورمزُ السند أوّل المُرشِّحات.
+         *
+         * الجدول يعرض عمود «السند» ولا سبيل إلى طلب واحدٍ بعينه: من معه
+         * ورقةٌ في يده كان يقلّب الدفتر بعينه. وهي الوجهة التي يقود إليها
+         * بحثُ الشريط العلوي حين يُكتب رمزُ معاملة.
+         */
+        { kind: 'search', key: 'q', label: 'رمز السند أو البيان', placeholder: 'TRX-000412' },
         { kind: 'select', key: 'method', label: 'الوسيلة', options: options.methods ?? [] },
         { kind: 'select', key: 'type', label: 'النوع', options: options.types ?? [] },
     ];

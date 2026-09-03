@@ -7,6 +7,7 @@ use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
+use App\Support\Reports;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -126,6 +127,23 @@ class HandleInertiaRequests extends Middleware
             // الحساب المسجَّل دخوله (انظر App\Support\PosCashier)
             'posCashier' => fn () => $user?->business_id
                 ? (PosCashier::current()?->only(['id', 'name']))
+                : null,
+
+            /*
+             * فهرس التقارير — عنوانًا ووجهةً لا أكثر.
+             *
+             * يقرؤه دليلُ صفحات الشريط العلوي (lib/pages.ts). ومصدرُه
+             * `Reports::ALL` نفسه الذي يقرؤه فهرس التقارير، مصفّى بصلاحية
+             * المستخدم وبقدرات باقته — فما لا يُفتح لا يُعرض في الدليل.
+             *
+             * ونسخُ الفهرس إلى الواجهة كان سيصنع فهرسين يفترقان عند أوّل
+             * تقريرٍ يُضاف: بطاقةٌ في الشاشة لا مدخل لها في البحث، أو مدخلٌ
+             * في البحث يقود إلى تقريرٍ حُذف.
+             */
+            'reportPages' => fn () => $user?->business_id
+                ? collect(Reports::forUser($user))
+                    ->map(fn ($r) => ['title' => $r['title'], 'href' => $r['href']])
+                    ->all()
                 : null,
 
             'notifications' => fn () => $user?->business_id ? [

@@ -51,7 +51,9 @@ export const SETTINGS_NAV = [
         group: 'المالية',
         items: [
             { key: 'finance', label: 'الضرائب والعملة والدفع', desc: 'ضريبة القيمة المضافة ورمز العملة ووسائل الدفع', icon: Percent },
-            { key: 'chart', label: 'شجرة الحسابات', desc: 'حسابات الدفتر وأرصدتها وميزان المراجعة', icon: ListTree },
+            /* والقسم مكتوبٌ هنا لا في الشاشة: البطاقة تُخفى بقراءته، ودليلُ
+               صفحات الشريط العلوي يقرؤه هو أيضًا — انظر lib/pages.ts */
+            { key: 'chart', label: 'شجرة الحسابات', desc: 'حسابات الدفتر وأرصدتها وميزان المراجعة', icon: ListTree, section: 'finance' },
         ],
     },
     {

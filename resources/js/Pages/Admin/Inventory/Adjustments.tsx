@@ -82,6 +82,17 @@ export default function Adjustments() {
         adjusted_at: today,
     });
 
+    /*
+     * سببُ الهالك لا يقبل «زيادة».
+     *
+     * «تلف ‎+٦» يزيد المخزون بحجّة أنّ بضاعةً تلفت — والخادم يردّها إلى
+     * السالب على أيّ حال (انظر Waste::normalizeDelta). فيُغلق الاختيار هنا
+     * كي لا يرى المستخدم مقبضًا لا يفعل ما يقول.
+     */
+    const WASTE_REASONS = ['تلف', 'فقد', 'هالك', 'تالف'];
+    const isWaste = WASTE_REASONS.includes(form.data.reason);
+    const effectiveDirection: '-' | '+' = isWaste ? '-' : direction;
+
     const product = useMemo(
         () => products.find((p) => String(p.value) === form.data.product_id),
         [products, form.data.product_id],
@@ -91,11 +102,11 @@ export default function Adjustments() {
     const qty = Math.abs(parseInt(form.data.quantity_delta, 10) || 0);
     const fractional = /[.,]/.test(form.data.quantity_delta);
     const impact = qty * (product?.cost ?? 0);
-    const tooMuch = direction === '-' && product ? qty > product.quantity : false;
+    const tooMuch = effectiveDirection === '-' && product ? qty > product.quantity : false;
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        form.transform((d) => ({ ...d, quantity_delta: direction === '-' ? -qty : qty }));
+        form.transform((d) => ({ ...d, quantity_delta: effectiveDirection === '-' ? -qty : qty }));
         form.post(route('admin.inventory.adjustments.store'), {
             preserveScroll: true,
             onSuccess: () => {
@@ -161,9 +172,9 @@ export default function Adjustments() {
     ];
 
     return (
-        <AdminLayout title="تعديلات المخزون">
+        <AdminLayout title="سجل المخزون">
             <PageHeader
-                title="تعديلات المخزون"
+                title="سجل المخزون"
                 subtitle={t('تلفٌ وفقدٌ وتصحيحُ عدّ — كلٌّ منها يُنقص المخزون ويُقيّد أثره في الدفتر')}
                 actions={
                     <Button onClick={() => setAdding(true)} disabled={products.length === 0}>
@@ -237,12 +248,17 @@ export default function Adjustments() {
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <Field label="الاتجاه" required>
                                 <Select
-                                    value={direction}
+                                    value={effectiveDirection}
+                                    disabled={isWaste}
                                     onChange={(e) => setDirection(e.target.value === '+' ? '+' : '-')}
-                                    options={[
-                                        { value: '-', label: 'نقص' },
-                                        { value: '+', label: 'زيادة' },
-                                    ]}
+                                    options={
+                                        isWaste
+                                            ? [{ value: '-', label: 'نقص' }]
+                                            : [
+                                                  { value: '-', label: 'نقص' },
+                                                  { value: '+', label: 'زيادة' },
+                                              ]
+                                    }
                                 />
                             </Field>
                             <Field label="الكمية" required error={form.errors.quantity_delta}>
@@ -295,7 +311,7 @@ export default function Adjustments() {
                         {impact > 0 && (
                             <div className="flex items-center justify-between rounded-[12px] bg-[#fafafa] px-4 py-3 text-sm">
                                 <span className="text-[#6b7280]">
-                                    {t(direction === '-' ? 'يُقيَّد خسارة' : 'يُقيَّد زيادة في المخزون')}
+                                    {t(effectiveDirection === '-' ? 'يُقيَّد خسارة' : 'يُقيَّد زيادة في المخزون')}
                                 </span>
                                 <span className="font-semibold tabular-nums text-[#111]">{m(impact)}</span>
                             </div>

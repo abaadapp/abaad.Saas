@@ -29,6 +29,11 @@ class User extends Authenticatable
             'recovery_email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'password' => 'hashed',
+            /*
+             * `pin` عمودٌ متقاعد: رُفع الدخول بالرمز، فلا يُقرأ ولا يُكتب في
+             * شيء. يبقى العمود بما فيه — لا حاجة إلى محو بيانات — ويبقى
+             * مبصومًا ومخفيًّا كما كان حتى يُحذف بمهاجرةٍ صريحة.
+             */
             'pin' => 'hashed',
             'sales_total' => 'decimal:3',
             'permissions' => 'array',
@@ -43,12 +48,6 @@ class User extends Authenticatable
     public function hasVerifiedRecoveryEmail(): bool
     {
         return \App\Support\RecoveryEmail::verifiedFor($this) !== null;
-    }
-
-    /** هل لدى المستخدم رمز دخول سريع (٤ أرقام) */
-    public function hasPin(): bool
-    {
-        return ! empty($this->getRawOriginal('pin'));
     }
 
     public function business(): BelongsTo

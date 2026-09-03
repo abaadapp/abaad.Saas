@@ -3,7 +3,6 @@
 namespace Tests;
 
 use App\Models\Branch;
-use App\Models\Shift;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
@@ -55,14 +54,4 @@ abstract class TestCase extends BaseTestCase
         return $device;
     }
 
-    protected function openShiftFor(int $businessId, ?int $branchId = null): Shift
-    {
-        return Shift::create([
-            'business_id' => $businessId,
-            'branch_id' => $branchId ?? Branch::where('business_id', $businessId)->orderBy('id')->value('id'),
-            'opened_at' => now(),
-            'opening_balance' => 0,
-            'status' => Shift::OPEN,
-        ]);
-    }
 }

@@ -67,6 +67,8 @@ class OrderCorrection
             self::moveStock($order, $item, $oldQty - $newQty);
 
             if ($newQty === 0) {
+                $item->loadMissing('addons.addon');
+                self::releaseAddons($order, $item);
                 $item->delete();
             } else {
                 $item->update(['quantity' => $newQty, 'total' => round((float) $item->price * $newQty, 3)]);
@@ -123,6 +125,29 @@ class OrderCorrection
 
         $branchId = $order->branch_id;
 
+        /*
+         * لذي الوصفة تعود مكوّناته لا هو.
+         *
+         * بيعُ الباقة أنقص الورد والتغليف ولم يمسّ الباقة — فتصحيحُ كميّتها
+         * يجب أن يسلك الطريق نفسه. وردُّ «الباقة» إلى الرفّ كان سيخلق رصيدًا
+         * لمنتجٍ لا رصيد له أصلًا، ويترك الورد منقوصًا إلى الأبد.
+         *
+         * والوصفة تُقرأ اليوم لا يوم البيع: لو غُيّرت بينهما لعاد غيرُ ما
+         * أُخذ. وهذا حدٌّ معروف — انظر التقرير — وعلاجُه لقطةُ وصفةٍ على
+         * البند، وهي كلفةٌ لا تُبرّرها ندرةُ الحالة اليوم.
+         */
+        $variant = $item->variant_id
+            ? \App\Models\ProductVariant::withTrashed()->find($item->variant_id)
+            : null;
+
+        $recipe = \App\Support\Recipe::forLine($product, $variant);
+
+        if ($recipe->isNotEmpty()) {
+            self::moveComponents($order, $product, $variant, $delta, $branchId);
+
+            return;
+        }
+
         // الزيادة تمرّ بحارس المخزون نفسه الذي يحرس البيع — وإلّا صار
         // التصحيح بابًا خلفيًّا يتجاوز الحدّ الذي يُغلق عند نقطة البيع
         if ($delta < 0) {
@@ -177,6 +202,106 @@ class OrderCorrection
     }
 
     /**
+     * يردّ مكوّنات الوصفة أو يأخذها — بحارس المخزون نفسه الذي يحرس البيع.
+     *
+     * والفحص على المجموع بعد الرفع لا على كلّ مكوّنٍ بكسره: هي القاعدة
+     * نفسها التي يطبّقها Recipe::units عند البيع، وتطبيقُ قاعدتين على
+     * الطريقين يجعل التصحيح يردّ غير ما أخذ.
+     */
+    private static function moveComponents(Order $order, Product $product, ?\App\Models\ProductVariant $variant, int $delta, ?int $branchId): void
+    {
+        $per = \App\Support\Recipe::consumptionFor($product, $variant, abs($delta));
+
+        $units = [];
+        foreach ($per as $pid => $q) {
+            $units[$pid] = \App\Support\Recipe::units($q) * ($delta > 0 ? 1 : -1);
+        }
+
+        if (! $units) {
+            return;
+        }
+
+        if ($delta < 0) {
+            self::assertAvailable($order, array_map('abs', $units), $branchId);
+        }
+
+        \App\Support\StockLedger::move(
+            (int) $order->business_id, $branchId, $units,
+            \App\Support\StockLedger::CORRECTION,
+            PosCashier::name() ?? auth()->user()?->name,
+            $order->number,
+        );
+    }
+
+    /**
+     * لا يُخصم أكثر من المتاح في تصحيحٍ أيضًا.
+     *
+     * وإلّا صار «زد الكمية» بابًا خلفيًّا يتجاوز الحدّ الذي يُغلق عند
+     * الصندوق — فيُباع ما ليس على الرفّ بشرط أن يُباع على دفعتين.
+     *
+     * @param  array<int, int>  $needed
+     */
+    private static function assertAvailable(Order $order, array $needed, ?int $branchId): void
+    {
+        $allowsNegative = (string) (\App\Models\Setting::where('business_id', $order->business_id)
+            ->where('key', 'allow_negative_stock')->value('value') ?? '0') === '1';
+
+        if ($allowsNegative || ! $needed) {
+            return;
+        }
+
+        $products = Product::where('business_id', $order->business_id)
+            ->whereIn('id', array_keys($needed))->get()->keyBy('id');
+
+        $resolve = Stock::availabilityResolver(
+            (int) $order->business_id, $branchId, array_keys($needed), lock: true,
+        );
+
+        foreach ($needed as $pid => $want) {
+            $p = $products->get($pid);
+            if (! $p) {
+                continue;
+            }
+            if ($resolve($pid, (int) $p->quantity) < $want) {
+                throw new RuntimeException(__(':name — المتوفر :have والمطلوب :want', [
+                    'name' => $p->name, 'have' => $resolve($pid, (int) $p->quantity), 'want' => $want,
+                ]));
+            }
+        }
+    }
+
+    /**
+     * يردّ بضاعة الإضافات حين يُحذف البند كلُّه.
+     *
+     * الإضافة كميّةٌ مطلقة على البند لا مضروبةٌ في كميّته: «شوكولاتة ×١»
+     * تبقى واحدة سواء بيعت باقةٌ أو اثنتان. فتغيير الكمية لا يمسّها، وحذفُ
+     * البند يردّها كاملة — وإلّا بقي الدبّ منقوصًا من الرفّ وهو في الثلاجة.
+     */
+    private static function releaseAddons(Order $order, OrderItem $item): void
+    {
+        /*
+         * ويُقرأ ما أُخذ من لقطة البند لا من الإضافة اليوم.
+         *
+         * «زيادة ثلاث وردات» صارت خمسًا بعد شهر: قراءةُ الإضافة الحيّة تردّ
+         * خمسًا عن بيعةٍ أخذت ثلاثًا، فيربح الرفّ وردتين لا وجود لهما — ولا
+         * يظهر ذلك إلا في جردٍ يقول إنّ عندنا أكثر ممّا عندنا.
+         *
+         * والصفوف التي كُتبت قبل اللقطة تُقرأ بقاعدة يومها: واحدةٌ لكلّ
+         * إضافة. انظر AddonStock::snapshot.
+         */
+        $back = \App\Support\AddonStock::units(
+            \App\Support\AddonStock::consumedBy($item->addons),
+        );
+
+        \App\Support\StockLedger::move(
+            (int) $order->business_id, $order->branch_id, $back,
+            \App\Support\StockLedger::CORRECTION,
+            PosCashier::name() ?? auth()->user()?->name,
+            $order->number,
+        );
+    }
+
+    /**
      * يُعيد حساب الفاتورة من بنودها الباقية — بالمعادلة نفسها التي بيعت بها.
      *
      * الخصم يبقى كما اتُّفق عليه إلّا أن يتجاوز المجموع الجديد فيُقصّ إليه:
@@ -188,7 +313,9 @@ class OrderCorrection
         $bid = (int) $order->business_id;
         $items = $order->items;
 
-        $gross = round($items->sum(fn ($i) => (float) $i->price * (int) $i->quantity), 3);
+        // ثمن البند كاملًا: مقاسه وإضافاته. وبإهمال الإضافات كان تصحيحُ
+        // كميّةٍ واحدة يُسقط ثمن الشوكولاتة من الفاتورة كلّها بلا أثر
+        $gross = round($items->sum(fn ($i) => (float) $i->price * (int) $i->quantity + (float) $i->addons_total), 3);
         $discount = round(min((float) $order->discount, $gross), 3);
         $couponDiscount = round(min((float) $order->coupon_discount, $discount), 3);
 
@@ -198,7 +325,7 @@ class OrderCorrection
             $products = Product::whereIn('id', $items->pluck('product_id')->filter())->get()->keyBy('id');
 
             foreach ($items as $i) {
-                $net = (float) $i->price * (int) $i->quantity;
+                $net = (float) $i->price * (int) $i->quantity + (float) $i->addons_total;
                 $taxable = $net - ($discount * ($net / $gross));
                 $rate = Vat::rateFor($products->get($i->product_id), $bid);
                 $tax += $inclusive ? ($taxable * $rate) / (100 + $rate) : ($taxable * $rate) / 100;
@@ -216,6 +343,112 @@ class OrderCorrection
             'tax' => $tax,
             'total' => round($subtotal - $discount + $tax + (float) $order->delivery_fee, 3),
         ]);
+    }
+
+    /**
+     * يُغيّر كميّة إضافةٍ على بند — والصفر يحذفها.
+     *
+     * الإضافة تُخطئ كما يُخطئ البند: يضغط الكاشير «شوكولاتة» مرّتين والزبون
+     * أخذ واحدة. وكان الطريق الوحيد لتصحيحها حذفَ البند كلّه ثم إعادة
+     * بيعه — فتُكسر الفاتورة لتُصلَح إضافة.
+     *
+     * وما يعود إلى الرفّ هو ما أُخذ منه: إضافةٌ تأكل ثلاث ورداتٍ تُنقص
+     * كميّتُها من اثنتين إلى واحدة فتردّ ثلاثًا لا واحدة. واللقطة هي
+     * المرجع لا إعدادُ الإضافة اليوم.
+     *
+     * @throws RuntimeException برسالةٍ تُعرض للكاشير كما هي
+     */
+    public static function setAddonQuantity(Order $order, \App\Models\OrderItemAddon $row, int $newQty, string $reason): OrderEdit
+    {
+        $item = $row->orderItem;
+
+        if (! $item || (int) $item->order_id !== (int) $order->id) {
+            throw new RuntimeException(__('هذه الإضافة ليست من هذه الفاتورة.'));
+        }
+
+        if ($newQty < 0) {
+            throw new RuntimeException(__('الكمية لا تكون سالبة.'));
+        }
+
+        $oldQty = (int) $row->quantity;
+
+        if ($newQty === $oldQty) {
+            throw new RuntimeException(__('لم تتغيّر الكمية.'));
+        }
+
+        return DB::transaction(function () use ($order, $item, $row, $oldQty, $newQty, $reason) {
+            $bid = (int) $order->business_id;
+            $totalBefore = (float) $order->total;
+            $name = $row->name;
+
+            [$pid, $each] = \App\Support\AddonStock::snapshot($row);
+
+            /*
+             * الفرق وحده يتحرّك — لا الكمية كلّها.
+             *
+             * ردُّ ما بيع ثم خصمُ الجديد يكتب حركتين حيث تكفي واحدة، ويفتح
+             * نافذةً يقول فيها الرفّ رقمًا لا يخصّ شيئًا. والزيادة تمرّ
+             * بحارس المخزون نفسه الذي يحرس البيع.
+             */
+            if ($pid && $each > 0) {
+                $delta = ($oldQty - $newQty) * $each;
+                $units = \App\Support\AddonStock::units([$pid => abs($delta)]);
+                $units = array_map(fn ($u) => $delta > 0 ? $u : -$u, $units);
+
+                if ($delta < 0) {
+                    self::assertAvailable($order, array_map('abs', $units), $order->branch_id);
+                }
+
+                \App\Support\StockLedger::move(
+                    $bid, $order->branch_id, $units,
+                    \App\Support\StockLedger::CORRECTION,
+                    PosCashier::name() ?? auth()->user()?->name,
+                    $order->number,
+                );
+            }
+
+            if ($newQty === 0) {
+                $row->delete();
+            } else {
+                $row->update([
+                    'quantity' => $newQty,
+                    'total' => round((float) $row->unit_price * $newQty, 3),
+                ]);
+            }
+
+            // مجموع إضافات البند يُعاد بناؤه من صفوفه لا يُعدَّل بالفرق:
+            // الجمع من المصدر لا يخطئ، والتعديل بالفرق يخطئ مرّةً فيبقى
+            $item->load('addons');
+            $item->update(['addons_total' => round($item->addons->sum(fn ($a) => (float) $a->total), 3)]);
+
+            self::recompute($order->fresh('items'));
+            $order->refresh();
+
+            self::syncTransaction($order);
+            self::syncLoyalty($order);
+
+            $edit = OrderEdit::create([
+                'business_id' => $bid,
+                'order_id' => $order->id,
+                'order_item_id' => $item->id,
+                'kind' => OrderEdit::ADDON,
+                'subject' => $name,
+                'qty_before' => $oldQty,
+                'qty_after' => $newQty,
+                'order_total_before' => $totalBefore,
+                'order_total_after' => (float) $order->total,
+                'reason' => $reason,
+                'user_id' => PosCashier::id() ?? auth()->id(),
+                'employee_name' => PosCashier::name() ?? auth()->user()?->name,
+            ]);
+
+            Activity::log('updated', $newQty === 0
+                ? 'حذف إضافة «'.$name.'» من الفاتورة '.$order->number.' — '.$reason
+                : 'عدّل كمية إضافة «'.$name.'» في الفاتورة '.$order->number.' من '.$oldQty.' إلى '.$newQty.' — '.$reason,
+                ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+            return $edit;
+        });
     }
 
     /**
@@ -282,6 +515,135 @@ class OrderCorrection
     }
 
     /** المعاملة المالية تتبع الفاتورة — رقمٌ في المالية لا يقابله بيعٌ يضلّل التقرير */
+    /**
+     * إلغاء الطلب — ولا يكفي أن تُكتب كلمة «ملغي» في عمود.
+     *
+     * البيعُ كان قد أخذ من الرفّ، وأعطى نقاطًا، وأحرق استعمالَ كوبون،
+     * وقيَّد دخلًا. وكان الإلغاء يقلب الحالة وحدها فيبقى ذلك كلُّه:
+     *
+     *   - خمسُ ورداتٍ خرجت من الدفتر ولم تخرج من المحلّ، فيقول الجرد
+     *     إنّها نقصت ولا أحد يعرف أين ذهبت.
+     *   - نقاطٌ يكسبها العميل على طلبٍ لم يقع، ويستبدلها بضاعةً تقع.
+     *   - كوبونٌ «مرّة واحدة» يُحرَق على طلبٍ أُلغي، فلا يستطيع صاحبه
+     *     استعماله ولا التاجر إعادته — لا باب لتعديل الكوبونات أصلًا.
+     *   - وقيدُ دخلٍ يبقى في المالية على بيعةٍ لم تكن.
+     *
+     * والتقارير كانت تستثني الملغى (`Order::scopeSold`) — فبدا الأمر
+     * سليمًا في الشاشة، والخلل تحتها في المخزون والنقاط والدفتر.
+     *
+     * ويُنفَّذ مرّةً واحدة: نقلٌ ثانٍ إلى «ملغي» لا يردّ المخزون مرّتين.
+     */
+    public static function cancel(Order $order, ?string $reason = null): void
+    {
+        if ($order->status === \App\Support\OrderStatus::CANCELLED) {
+            return;
+        }
+
+        DB::transaction(function () use ($order, $reason) {
+            /*
+             * والحال تُقرأ ثانيةً تحت قفل — والقراءة الأولى لا تكفي.
+             *
+             * الفحص أعلاه يقع على نسخةٍ في الذاكرة قُرئت قبل المعاملة. فضغطتان
+             * على «إلغاء» — أو موظّفان يفتحان الطلب نفسه — تقرآن «مكتمل»
+             * كلتاهما فتدخلان معًا: يعود المخزون مرّتين، ويُردّ الكوبون مرّتين،
+             * وتُسحب النقاط مرّتين. والزيادة في الرفّ لا يكشفها شيء إلا الجرد،
+             * ولا يعرف أحدٌ حينها من أين جاءت خمسُ ورداتٍ لم تُشترَ.
+             *
+             * والقفل يُصفّ الطلبين: الثاني ينتظر ثمّ يقرأ «ملغي» فينصرف.
+             */
+            $fresh = Order::whereKey($order->id)->lockForUpdate()->first();
+            if (! $fresh || $fresh->status === \App\Support\OrderStatus::CANCELLED) {
+                return;
+            }
+
+            $totalBefore = (float) $order->total;
+
+            $order->loadMissing('items.addons.addon');
+
+            // ما بيع يعود إلى الرفّ — بالطريق نفسه الذي خرج به
+            foreach ($order->items as $item) {
+                self::moveStock($order, $item, (int) $item->quantity);
+                self::releaseAddons($order, $item);
+            }
+
+            self::releaseCoupon($order);
+            self::reverseLoyalty($order);
+
+            // لا قيدَ دخلٍ على بيعةٍ لم تقع — في الدفترين معًا
+            Transaction::where('order_id', $order->id)->delete();
+            \App\Support\Books::forgetSale($fresh);
+
+            $order->update(['status' => \App\Support\OrderStatus::CANCELLED]);
+
+            OrderEdit::create([
+                'business_id' => $order->business_id,
+                'order_id' => $order->id,
+                'order_item_id' => null,
+                'kind' => OrderEdit::CANCEL,
+                'subject' => $order->number,
+                'order_total_before' => $totalBefore,
+                'order_total_after' => $totalBefore,
+                'reason' => $reason ?: __('إلغاء الطلب'),
+                'user_id' => PosCashier::id() ?? auth()->id(),
+                'employee_name' => PosCashier::name() ?? auth()->user()?->name,
+            ]);
+        });
+    }
+
+    /**
+     * يردّ استعمال الكوبون — ولا ينزل تحت الصفر.
+     *
+     * عدّادٌ سالب يجعل «مرّة واحدة» مرّتين، وهو عطبٌ في الجهة الأخرى.
+     */
+    private static function releaseCoupon(Order $order): void
+    {
+        if (blank($order->coupon_code)) {
+            return;
+        }
+
+        \App\Models\Coupon::where('business_id', $order->business_id)
+            ->where('code', $order->coupon_code)
+            ->where('used_count', '>', 0)
+            ->decrement('used_count');
+    }
+
+    /**
+     * النقاط: ما اكتُسب يُسحب، وما استُبدل يُردّ.
+     *
+     * والسحب لا يُنزل رصيد العميل تحت الصفر: قد يكون أنفق نقاطه بين
+     * البيعة والإلغاء، فسحبُ ما اكتسبه كاملًا يُنقصه ما لم يأخذه — وهي
+     * القاعدة نفسها التي يطبّقها تصحيح الفاتورة.
+     */
+    private static function reverseLoyalty(Order $order): void
+    {
+        $customer = $order->customer_id ? \App\Models\Customer::find($order->customer_id) : null;
+        if (! $customer) {
+            return;
+        }
+
+        $earned = (int) $order->points_earned;
+        $redeemed = (int) $order->redeemed_points;
+
+        if ($earned > 0) {
+            $take = min($earned, (int) $customer->points);
+            if ($take > 0) {
+                $customer->decrement('points', $take);
+                PointTransaction::record($customer, 'redeem', $take, (int) $customer->fresh()->points,
+                    $order->id, 'إلغاء فاتورة '.$order->number);
+            }
+            $order->points_earned = 0;
+        }
+
+        if ($redeemed > 0) {
+            $customer->increment('points', $redeemed);
+            PointTransaction::record($customer, 'earn', $redeemed, (int) $customer->fresh()->points,
+                $order->id, 'ردّ نقاط فاتورة ملغاة '.$order->number);
+            $order->redeemed_points = 0;
+        }
+
+        $order->save();
+    }
+
     private static function syncTransaction(Order $order): void
     {
         Transaction::where('order_id', $order->id)->update([

@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\PosCashier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -56,8 +57,6 @@ class PosCashierTest extends TestCase
             'price' => 10, 'cost' => 4, 'quantity' => 50, 'alert_qty' => 2, 'active' => true,
         ]);
 
-        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
-        $this->openShiftFor($this->business->id);
         // البيع صار يتطلّب جهازًا مفعَّلًا — شرط السيناريو لا موضوعه
         $this->activatePosDevice($this->business->id);
     }
@@ -72,11 +71,28 @@ class PosCashierTest extends TestCase
 
     /* --------------------------- البوابة --------------------------- */
 
-    public function test_the_owner_is_sent_to_choose_an_employee_before_selling(): void
+    /**
+     * لا سؤال قبل البيع.
+     *
+     * كانت الشاشة تحجز كلّ من فتح الصندوق حتى يختار موظفًا — وأكثر المحلّات
+     * يبيع فيها صاحبُها بحسابه، فيقف كلّ صباحٍ أمام سؤالٍ جوابُه هو. صار
+     * الداخل بحسابه هو الواقف على الصندوق، وتُنسب إليه بيعتُه.
+     */
+    public function test_the_owner_opens_the_register_and_sells_under_his_own_name(): void
     {
-        $this->actingAs($this->owner)
-            ->get(route('pos.index'))
-            ->assertRedirect(route('pos.cashier'));
+        $this->actingAs($this->owner)->get(route('pos.index'))->assertOk();
+
+        $this->sell()->assertOk();
+
+        $order = Order::where('business_id', $this->business->id)->where('is_held', false)->latest('id')->first();
+        $this->assertSame('صاحب النشاط', $order->employee_name);
+        $this->assertSame($this->owner->id, $order->user_id);
+    }
+
+    /** والشاشة تبقى بابًا يُطرق: تُفتح لمن أرادها، ولا تُفرض على من لم يُردها */
+    public function test_the_picker_is_still_reachable_when_asked_for(): void
+    {
+        $this->actingAs($this->owner)->get(route('pos.cashier'))->assertOk();
     }
 
     public function test_after_choosing_the_screen_opens(): void
@@ -132,7 +148,12 @@ class PosCashierTest extends TestCase
 
         $this->post(route('pos.cashier.leave'))->assertRedirect(route('pos.cashier'));
 
-        $this->get(route('pos.index'))->assertRedirect(route('pos.cashier'));
+        // وبعد التبديل يعود الصندوق إلى صاحب الحساب، لا إلى شاشةٍ تحجزه
+        $this->get(route('pos.index'))->assertOk();
+        $this->sell()->assertOk();
+
+        $order = Order::where('business_id', $this->business->id)->where('is_held', false)->latest('id')->first();
+        $this->assertSame('صاحب النشاط', $order->employee_name);
     }
 
     /* --------------------------- العزل --------------------------- */
@@ -147,7 +168,12 @@ class PosCashierTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('pos.cashier.select'), ['employee_id' => $theirs->id]);
 
-        $this->get(route('pos.index'))->assertRedirect(route('pos.cashier'));
+        $this->get(route('pos.index'))->assertOk();
+        $this->sell()->assertOk();
+
+        // لا يُكتب اسمُ موظّف الجار على بيعةٍ عندنا — تبقى باسم صاحب الحساب
+        $order = Order::where('business_id', $this->business->id)->where('is_held', false)->latest('id')->first();
+        $this->assertSame('صاحب النشاط', $order->employee_name);
     }
 
     /**
@@ -168,7 +194,13 @@ class PosCashierTest extends TestCase
 
         $this->cashier->update(['status' => 'موقوف']);
 
-        $this->get(route('pos.index'))->assertRedirect(route('pos.cashier'));
+        $this->get(route('pos.index'))->assertOk();
+        $this->sell()->assertOk();
+
+        // والاختيار الميّت يسقط: تعود البيعة إلى صاحب الحساب لا إلى الموقوف
+        $order = Order::where('business_id', $this->business->id)->where('is_held', false)->latest('id')->first();
+        $this->assertSame('صاحب النشاط', $order->employee_name);
+        $this->assertSame($this->owner->id, $order->user_id);
     }
 
     /** الكاشير الداخل بحسابه هو نفسه على الصندوق، فلا يُسأل ولا تُنسب بيعته لغيره */
@@ -206,7 +238,7 @@ class PosCashierTest extends TestCase
     {
         // بمستخدمٍ صراحةً: Demo::bid() لم تعد تخمّن متجرًا لمن لا متجر له
         $this->actingAs($this->owner);
-        $names = collect(\App\Support\PosCashier::selectable())->pluck('name')->all();
+        $names = collect(PosCashier::selectable())->pluck('name')->all();
 
         $this->assertContains('أحمد', $names);
         $this->assertNotContains('صاحب النشاط', $names, 'الغرض من الشاشة ألّا تُنسب المبيعات إليه');

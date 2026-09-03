@@ -37,7 +37,7 @@ import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Supplier } from '@/types/models';
 
-const BLANK = { name: '', phone: '', contact_person: '', email: '', notes: '' };
+const BLANK = { name: '', name_en: '', phone: '', contact_person: '', email: '', notes: '' };
 
 export default function SuppliersIndex() {
     const { suppliers } = usePage<PageProps<{ suppliers: Supplier[] }>>().props;
@@ -60,6 +60,7 @@ export default function SuppliersIndex() {
         if (editing) {
             form.setData({
                 name: editing.name,
+                name_en: editing.name_en ?? '',
                 phone: editing.phone ?? '',
                 contact_person: editing.contact ?? '',
                 email: editing.email ?? '',
@@ -101,7 +102,27 @@ export default function SuppliersIndex() {
     ];
 
     const columns: Column<Supplier>[] = [
-        { key: 'name', header: 'المورّد', sortable: true, value: (s) => s.name },
+        {
+            key: 'name',
+            header: 'المورّد',
+            sortable: true,
+            value: (s) => s.label ?? s.name,
+            // الاسم الآخر تحته رماديًّا: من يبحث بالعربية في شاشةٍ إنجليزية
+            // كان يقرأ اسمًا لا يعرفه ولا يعرف أنّه هو
+            cell: (s) => (
+                <span>
+                    <span className="text-[#111]">{s.label ?? s.name}</span>
+                    {s.name_en && (s.label ?? s.name) !== s.name_en && (
+                        <span className="block text-[12px] text-[#9ca3af]" dir="ltr">
+                            {s.name_en}
+                        </span>
+                    )}
+                    {s.name_en && (s.label ?? s.name) === s.name_en && s.name !== s.name_en && (
+                        <span className="block text-[12px] text-[#9ca3af]">{s.name}</span>
+                    )}
+                </span>
+            ),
+        },
         {
             key: 'phone',
             header: 'الهاتف',
@@ -149,9 +170,24 @@ export default function SuppliersIndex() {
 
     const fields = (
         <div className="space-y-4">
-            <Field label="اسم المورّد" required error={form.errors.name}>
-                <Input value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} required />
-            </Field>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="اسم المورّد" required error={form.errors.name}>
+                    <Input value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} required />
+                </Field>
+                {/* يُكتب بيدٍ حين لا يُشتقّ: الاسم اللاتينيّ يُنقل إلى العربية
+                    تلقائيًّا، أمّا العربيّ فلا صورة لاتينية له تُخمَّن */}
+                <Field
+                    label="الاسم بالإنجليزية (اختياري)"
+                    hint="يظهر عند تشغيل الواجهة بالإنجليزية"
+                    error={form.errors.name_en}
+                >
+                    <Input
+                        dir="ltr"
+                        value={form.data.name_en}
+                        onChange={(e) => form.setData('name_en', e.target.value)}
+                    />
+                </Field>
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="الهاتف" error={form.errors.phone}>
                     <Input dir="ltr" value={form.data.phone} onChange={(e) => form.setData('phone', e.target.value)} />
@@ -253,7 +289,7 @@ export default function SuppliersIndex() {
                     searchPlaceholder="ابحث باسم المورّد أو الهاتف…"
                     // القادم من البحث الموحّد يصل بالقائمة مُرشَّحةً بما بحث عنه
                     initialQuery={new URLSearchParams(window.location.search).get('q') ?? ''}
-                    searchable={(s) => `${s.name} ${s.phone} ${s.email} ${s.contact}`}
+                    searchable={(s) => `${s.name} ${s.name_en ?? ''} ${s.phone} ${s.email} ${s.contact}`}
                     empty="أضِف أول مورّد لبدء إنشاء أوامر الشراء."
                 />
             </Card>

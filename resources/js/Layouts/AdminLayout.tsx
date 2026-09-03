@@ -6,6 +6,7 @@ import ImpersonationBar from '@/Components/ImpersonationBar';
 import Sidebar from '@/Components/Sidebar';
 import SubscriptionBanner from '@/Components/SubscriptionBanner';
 import Topbar from '@/Components/Topbar';
+import { useOnScreenKeyboard } from '@/lib/keyboard';
 import type { NavGroup } from '@/lib/nav';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -23,6 +24,15 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
     const { flash } = usePage<PageProps>().props;
     const t = useTranslate();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    /*
+     * ارتفاع لوحة المفاتيح في `--kb` — هنا كما في نقطة البيع.
+     *
+     * أكثرُ ما يُكتب في اللوحة يُكتب في نافذةٍ منبثقة: منتجٌ جديد، وقيدٌ،
+     * وموظّف. والنافذة موسّطةٌ رأسيًّا، فبلا هذا يبقى زرُّ الحفظ تحت اللوحة
+     * على الآيباد — انظر `DialogContent` و`useOnScreenKeyboard`.
+     */
+    useOnScreenKeyboard();
 
     // رسائل الجلسة القادمة من الخادم تُعرض كـtoast
     useEffect(() => {
@@ -91,7 +101,14 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
                 </motion.main>
             </div>
 
-            <Toaster position="bottom-center" richColors dir="rtl" />
+            {/* والرسالة لا تُدفن تحت اللوحة: «تم الحفظ» يقع في القاع نفسه */}
+            <Toaster
+                position="bottom-center"
+                richColors
+                dir="rtl"
+                offset={{ bottom: 'calc(24px + var(--kb, 0px))' }}
+                mobileOffset={{ bottom: 'calc(16px + var(--kb, 0px))' }}
+            />
         </div>
     );
 }

@@ -57,6 +57,9 @@ class OrderDetailController extends Controller
 
         if ($errors = FlowerOrder::afterValidation($data, $order->only([
             'fulfillment_type', 'recipient_name', 'recipient_phone', 'delivery_address',
+            // الموعد واسم العميل يدخلان في حكم «طلبٌ يُجهَّز» — وقيمتُهما
+            // المحفوظة هي المعتبَرة حين لا تفتحهما الشاشة
+            'scheduled_for', 'customer_name',
         ]))) {
             return back()->withInput()->withErrors($errors);
         }
@@ -97,15 +100,14 @@ class OrderDetailController extends Controller
             'status' => ['required', 'string', Rule::in(OrderStatus::ALL)],
         ]);
 
-        if (! OrderStatus::canMove($order->status, $data['status'])) {
-            return back()->withErrors(['status' => __(
-                'لا يمكن نقل الطلب من «:from» إلى «:to».',
-                ['from' => $order->status, 'to' => $data['status']]
-            )]);
-        }
-
         $from = $order->status;
-        $order->update(['status' => $data['status']]);
+
+        // بابٌ واحد للنقل تدخل منه هذه الشاشة ولوحة التجهيز — انظر OrderTransition
+        if ($error = \App\Support\OrderTransition::apply($order, $data['status'])) {
+            return back()
+                ->with('toast', ['msg' => $error, 'type' => 'danger'])
+                ->withErrors(['status' => $error]);
+        }
 
         /*
          * الإلغاء يعكس قيد البيعة ولا يمحوه.

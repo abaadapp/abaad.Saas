@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
-    Award, ArrowRight, Mail, MapPin, MoreVertical, Pencil, Phone, Plus, Save, Receipt, Star, Trash2,
+    Award, Mail, MapPin, MoreVertical, Pencil, Phone, Plus, Save, Receipt, Star, Trash2,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import StatCard from '@/Components/StatCard';
 import Tabs from '@/Components/Tabs';
@@ -25,6 +26,7 @@ import {
     Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Customer, Order } from '@/types/models';
@@ -50,6 +52,8 @@ const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 export default function CustomerShow() {
     const { customer, orders, addresses, context, branches = [] } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
     const [redeeming, setRedeeming] = useState(false);
@@ -64,6 +68,7 @@ export default function CustomerShow() {
      */
     const edit = useForm({
         name: customer.name ?? '',
+        name_en: customer.name_en ?? '',
         phone: customer.phone ?? '',
         email: customer.email ?? '',
         branch_id: customer.branch_id ? String(customer.branch_id) : '',
@@ -116,16 +121,16 @@ export default function CustomerShow() {
 
     return (
         <AdminLayout title={customer.label || customer.name}>
+            <BackLink
+                routeName="admin.customers.index"
+                href={route('admin.customers.index')}
+                label="العملاء"
+            />
             <PageHeader
                 title="ملف العميل"
                 subtitle={t('سجل مشتريات العميل ونقاط ولائه')}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <SmartLink routeName="admin.customers.index" href={route('admin.customers.index')}>
-                                <ArrowRight />{t('رجوع')}
-                            </SmartLink>
-                        </Button>
                         <Button variant="outline" asChild>
                             <a href={route('admin.customers.statement', customer.id)} target="_blank" rel="noreferrer">
                                 <Receipt />{t('كشف حساب')}
@@ -160,8 +165,8 @@ export default function CustomerShow() {
                                 */}
                                 <DropdownMenuItem
                                     className="text-[#b91c1c]"
-                                    onSelect={() => {
-                                        if (!confirm(t('حذف هذا العميل؟ يمكن استعادته من المحذوفات.'))) return;
+                                    onSelect={async () => {
+                                        if (! await ask({ message: 'حذف هذا العميل؟ يمكن استعادته من المحذوفات.', danger: true, action: 'حذف' })) return;
                                         router.delete(route('admin.customers.destroy', customer.id));
                                     }}
                                 >
@@ -280,8 +285,8 @@ export default function CustomerShow() {
                                                 variant="ghost"
                                                 size="sm"
                                                 className="text-[#b91c1c]"
-                                                onClick={() => {
-                                                    if (!confirm(t('حذف هذا العنوان؟'))) return;
+                                                onClick={async () => {
+                                                    if (! await ask({ message: 'حذف هذا العنوان؟', danger: true, action: 'حذف' })) return;
                                                     router.delete(
                                                         route('admin.customers.addresses.delete', [customer.id, a.id]),
                                                         { preserveScroll: true },
@@ -419,6 +424,19 @@ export default function CustomerShow() {
                         <Field label="اسم العميل" required error={edit.errors.name}>
                             <Input value={edit.data.name} onChange={(e) => edit.setData('name', e.target.value)} required />
                         </Field>
+                        {/* يُكتب بيدٍ حين لا يُشتقّ: الاسم اللاتينيّ يُنقل إلى
+                            العربية تلقائيًّا، أمّا العربيّ فلا صورة له تُخمَّن */}
+                        <Field
+                            label="الاسم بالإنجليزية (اختياري)"
+                            hint="يظهر عند تشغيل الواجهة بالإنجليزية"
+                            error={edit.errors.name_en}
+                        >
+                            <Input
+                                dir="ltr"
+                                value={edit.data.name_en}
+                                onChange={(e) => edit.setData('name_en', e.target.value)}
+                            />
+                        </Field>
                         <Field
                             label="رقم الهاتف"
                             hint="نقاط الولاء تتبع الرقم — تغييره ينقلها معه"
@@ -448,6 +466,8 @@ export default function CustomerShow() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

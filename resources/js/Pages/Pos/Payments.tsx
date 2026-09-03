@@ -5,7 +5,6 @@ import PosLayout from '@/Layouts/PosLayout';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
 import BarChart from '@/Components/charts/BarChart';
 import { Badge } from '@/Components/ui/badge';
-import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -18,15 +17,8 @@ const METHOD_ICON: Record<string, typeof Banknote> = {
     'تحويل بنكي': Landmark,
 };
 
-interface OpenShift {
-    opened_at: string | null;
-    opening_balance: number;
-    expected: number;
-}
-
 export default function PosPayments() {
-    const { receipts, shift, context } =
-        usePage<PageProps<{ receipts: Receipt[]; shift: OpenShift | null }>>().props;
+    const { receipts, context } = usePage<PageProps<{ receipts: Receipt[] }>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -96,49 +88,22 @@ export default function PosPayments() {
     return (
         <PosLayout title={t('المدفوعات')}>
             <div className="mx-auto max-w-6xl p-4">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <h1 className="text-[20px] font-bold text-[#111]">{t('مقبوضات الوردية')}</h1>
+                {/*
+                    والمدى يُقال في الشاشة لا يُترك للتخمين: «اليوم» من منتصف
+                    الليل إلى الآن. رقمٌ بلا حدٍّ زمني في شاشة مقبوضاتٍ يُقرأ
+                    على أنّه اليوم وهو ليس كذلك.
+                */}
+                <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+                    <div>
+                        <h1 className="text-[20px] font-bold text-[#111]">{t('مقبوضات اليوم')}</h1>
+                        <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                            {t('من منتصف الليل حتى الآن')} · {new Date().toLocaleDateString('en-CA')}
+                        </p>
+                    </div>
                     <span className="text-sm text-gray-500">
                         {number(receipts.length)} {t('عملية')} · {m(grandTotal)}
                     </span>
                 </div>
-
-                {/*
-                    المدى يُقال صراحةً: رقمٌ بلا حدٍّ زمني في شاشة تقفيل صندوق
-                    يُقرأ على أنه «اليوم» وهو ليس كذلك.
-                */}
-                {!shift ? (
-                    <Card className="mb-4">
-                        <CardContent className="py-10 text-center">
-                            <p className="font-medium text-[#111]">{t('لا توجد وردية مفتوحة')}</p>
-                            <p className="mt-1 text-[13px] text-[#9ca3af]">
-                                {t('افتح وردية الصندوق ليُحسب ما يجب أن يكون فيه.')}
-                            </p>
-                            <Button className="mt-4" variant="outline" asChild>
-                                <Link href={route('pos.shift')}>{t('وردية الصندوق')}</Link>
-                            </Button>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <Card className="mb-4">
-                        <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
-                            <div className="min-w-0">
-                                <p className="text-[12px] text-[#9ca3af]">
-                                    {t('الوردية مفتوحة منذ')} {shift.opened_at}
-                                </p>
-                                <p className="mt-0.5 text-[13px] text-[#4b4b4b]">
-                                    {t('الرصيد الابتدائي')}: {m(shift.opening_balance)}
-                                </p>
-                            </div>
-                            <div className="text-end">
-                                <p className="text-[12px] text-[#9ca3af]">{t('المتوقّع في الدرج نقدًا')}</p>
-                                <p className="text-[22px] font-bold tabular-nums text-[#111]">
-                                    {m(shift.expected)}
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
 
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                     <Card>

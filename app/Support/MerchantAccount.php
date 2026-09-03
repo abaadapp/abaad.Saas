@@ -48,12 +48,46 @@ class MerchantAccount
         ];
     }
 
+    /** الاسم من البريد الكامل — لملء الحقل في شاشة التعديل */
+    public static function username(string $email): string
+    {
+        return (string) str($email)->before('@');
+    }
+
+    /** هل هذا العنوان على نطاق أبعاد؟ — الحسابات القديمة خارجه لا تُنقل بلا قصد */
+    public static function onDomain(?string $email): bool
+    {
+        return $email !== null && str_ends_with(mb_strtolower($email), self::DOMAIN);
+    }
+
     /** هل البريد الكامل محجوز؟ (التحقق يجري على الاسم فيُبنى الكامل هنا) */
     public static function taken(string $username, ?int $exceptUserId = null): bool
     {
         return User::where('email', self::email($username))
             ->when($exceptUserId, fn ($q) => $q->where('id', '!=', $exceptUserId))
             ->exists();
+    }
+
+    /**
+     * كلمة مرورٍ مؤقّتة تُملى في الهاتف.
+     *
+     * وكانت `'Ab'.random_int(1000, 9999)` — تسعةُ آلاف احتمالٍ لا غير، وشكلٌ
+     * معروفٌ يبدأ بـ«Ab». من عرف القاعدة جرّبها كلَّها في دقائق، وهي كلمةُ
+     * دخولٍ إلى صندوقٍ ومخزونٍ وأرقام هواتف زبائن.
+     *
+     * وبلا الحروف الملتبسة (l/1/O/0): تُقرأ من ورقةٍ أو تُسمع في الهاتف،
+     * وحرفٌ ملتبسٌ واحد يعني محاولةَ دخولٍ تفشل بلا سبب ظاهر.
+     */
+    public static function temporaryPassword(int $length = 10): string
+    {
+        $chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $out = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $out .= $chars[random_int(0, strlen($chars) - 1)];
+        }
+
+        return $out;
     }
 
     /** مالك الشركة — أوّل حسابٍ بدور admin فيها */

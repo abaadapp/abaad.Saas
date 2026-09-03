@@ -5,14 +5,20 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Branch;
+use App\Models\BranchStock;
 use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\Product;
 use App\Support\Activity;
+use App\Support\Books;
 use App\Support\Demo;
+use App\Support\PlanLimits;
+use App\Support\ProductImages;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
+use Inertia\Response;
 
 /**
  * المحذوفات — الزرّ الذي يردّ ما أذهبته ضغطة.
@@ -58,9 +64,9 @@ class TrashController extends Controller
         return auth()->user()->business_id ?? Demo::bid();
     }
 
-    public function index(): \Inertia\Response
+    public function index(): Response
     {
-        return \Inertia\Inertia::render('Admin/Settings/Trash', self::panelData());
+        return Inertia::render('Admin/Settings/Trash', self::panelData());
     }
 
     /**
@@ -201,6 +207,31 @@ class TrashController extends Controller
             ->findOrFail($id);
     }
 
+    /**
+     * هل صار رمز المنتج المخفيّ أو باركودُه لمنتجٍ حيّ؟
+     *
+     * @return array{code: string, name: string}|null
+     */
+    private static function codeClash(Product $row): ?array
+    {
+        foreach (['sku', 'barcode'] as $column) {
+            if (blank($row->{$column})) {
+                continue;
+            }
+
+            $holder = Product::where('business_id', $row->business_id)
+                ->where($column, $row->{$column})
+                ->whereKeyNot($row->id)
+                ->first();
+
+            if ($holder) {
+                return ['code' => (string) $row->{$column}, 'name' => (string) $holder->name];
+            }
+        }
+
+        return null;
+    }
+
     private static function label(string $type, $row): string
     {
         return $type === 'expense'
@@ -208,11 +239,86 @@ class TrashController extends Controller
             : $row->name;
     }
 
+    /**
+     * المحو النهائي قرارُ صاحب المتجر وحده.
+     *
+     * كلّ زرٍّ هنا يتبع قسم صفِّه: `admin.customers.purge` قسمُه «العملاء»،
+     * و`admin.products.purge` قسمُه «المنتجات». والاستعادة تُراد كذلك — زرّ
+     * «تراجع» في إشعار الحذف يردّ ما حذفه صاحبُه من مكانه، ولو تبع الإعدادات
+     * لظهر الزرّ ثمّ رُدَّ ٤٠٣.
+     *
+     * أمّا المحو فلا زرّ تراجع بعده ولا شاشة له إلا المحذوفات — وهي في
+     * الإعدادات. فكان البائع يملك «العملاء»، ولا يرى تلك الشاشة، ويستطيع مع
+     * ذلك محوَ عميلٍ محوًا لا رجعة فيه بمسارٍ لم يُعرض له قطّ.
+     */
+    private static function gate(): void
+    {
+        abort_unless(auth()->user()?->allows('settings'), 403, __('ليس لديك صلاحية للمحو النهائي — وهو في الإعدادات.'));
+    }
+
     /** يردّ صفًّا مخفيًّا */
+    /** ما يعدّه سقفُ الباقة — يُفحص عند الاستعادة كما يُفحص عند الإنشاء */
+    private const CAPPED = [
+        'branch' => 'branches',
+        'product' => 'products',
+    ];
+
+    private const CAP_LABELS = [
+        'branches' => 'الفروع',
+        'products' => 'المنتجات',
+    ];
+
     public function restore(Request $request, int $id)
     {
         $type = self::typeOf($request);
         $row = self::findTrashed($type, $id);
+
+        /*
+         * والرمزُ المخفيّ يُفرَج عنه عند الحذف — فقد يكون شُغل.
+         *
+         * قيدُ التفرّد في نموذج المنتج يتجاوز المحذوف عمدًا: صنفٌ حُذف لا
+         * يحجز رمزه ولا باركوده. فيُحذف «أ» ويُضاف «ب» بالباركود نفسه —
+         * وكلاهما صحيح. ثمّ تُضغط «تراجع» فيعود «أ» حيًّا: صنفان حيّان
+         * بباركودٍ واحد، والماسح يختار أحدهما فيُخصم من صنفٍ ويبقى الآخر
+         * على الرفّ. ويظهر الفرق في الجرد بلا سبب يُعرف.
+         *
+         * والردّ هنا أسلم من التغيير الصامت: تسميةُ رمزٍ جديد لمنتجٍ يعود
+         * تكتب في بضاعة التاجر ما لم يطلبه.
+         */
+        if ($type === 'product' && ($clash = self::codeClash($row))) {
+            return back()->with('toast', [
+                'msg' => __('تعذّرت الاستعادة: :code صار لمنتج «:name» — غيّره أولًا.', $clash),
+                'type' => 'danger',
+            ]);
+        }
+
+        /*
+         * والسقف يُفحص قبل الإحياء.
+         *
+         * `PlanLimits` تُفرَض عند الإنشاء وحده، والاستعادة إنشاءٌ في أثرها:
+         * يُحذف الفرع، ويُفتح غيرُه في مكانه، ثمّ تُضغط «تراجع» — فيصير
+         * فرعان لباقةٍ بيعت بفرعٍ واحد. والحدُّ الذي يُلتفّ عليه بضغطتين ليس
+         * حدًّا، وإنما وعدٌ يكسره أوّل من ينتبه إليه.
+         *
+         * والردّ في القناتين معًا: زرّ «تراجع» يعيش في شريط التنبيه، وهو لا
+         * يعرض أخطاء النموذج — فرفضٌ في `withErrors` وحدها لا يراه أحد.
+         */
+        if ($capped = self::CAPPED[$type] ?? null) {
+            $business = auth()->user()?->business;
+
+            if (PlanLimits::reached($business, $capped)) {
+                $refusal = __('بلغت حدّ باقة «:plan»: :cap من :label. رقِّ الباقة قبل الاستعادة.', [
+                    'plan' => $business->plan->name,
+                    'cap' => PlanLimits::cap($business, $capped),
+                    'label' => __(self::CAP_LABELS[$capped]),
+                ]);
+
+                return back()
+                    ->with('toast', ['msg' => $refusal, 'type' => 'danger'])
+                    ->withErrors(['restore' => $refusal]);
+            }
+        }
+
         $row->restore();
 
         /*
@@ -226,8 +332,14 @@ class TrashController extends Controller
         if ($type === 'expense') {
             $row->transaction()->withTrashed()->restore();
 
+<<<<<<< HEAD
             if ($row->isPaid() && $row->fresh()->transaction) {
                 \App\Support\Books::recordExpense($row->fresh(), auth()->id());
+=======
+            // وقيدُه المزدوج يُعاد بناؤه: حُذف مع المصروف فلا يُستعاد بالإحياء
+            if ($row->isPaid()) {
+                Books::recordExpense($row);
+>>>>>>> origin/main
             }
         }
 
@@ -256,6 +368,7 @@ class TrashController extends Controller
      */
     public function purge(Request $request, int $id)
     {
+        self::gate();
         $type = self::typeOf($request);
 
         // لا مسار محوٍ للفرع أصلًا، والحارس هنا كي لا يُفتح واحدٌ سهوًا
@@ -292,15 +405,22 @@ class TrashController extends Controller
          * وتمرير الرابط إلى `delete` لا يجد شيئًا ولا يشتكي — فيُمحى الصفّ
          * ويبقى الملفّ. عطبٌ صامت لا يظهر إلا بعدّ ما على القرص.
          */
-        $file = match ($type) {
-            'product' => $row->getRawOriginal('image'),
-            'expense' => $row->getRawOriginal('attachment'),
-            default => null,
+        $files = match ($type) {
+            /*
+             * ومنذ صار للمنتج معرضٌ لا صورةً واحدة، لم يعد العمود وحده كافيًا:
+             * صفوفُ `product_images` يأخذها قيدُ المفتاح عند المحو، وملفّاتُها
+             * لا يأخذها شيء — فتبقى على القرص بلا صفٍّ يشير إليها.
+             */
+            'product' => ProductImages::files($row),
+            'expense' => array_values(array_filter([$row->getRawOriginal('attachment')])),
+            default => [],
         };
 
-        // رابطٌ خارجيّ لا ملفّ على قرصنا — لا يُمَسّ
-        if ($file && ! str_starts_with($file, 'http')) {
-            Storage::disk('public')->delete($file);
+        foreach ($files as $file) {
+            // رابطٌ خارجيّ لا ملفّ على قرصنا — لا يُمَسّ
+            if ($file && ! str_starts_with($file, 'http')) {
+                Storage::disk('public')->delete($file);
+            }
         }
 
         /*
@@ -309,12 +429,13 @@ class TrashController extends Controller
          * لمنتجٍ لا وجود له، ويحسبها تقرير «قيمة المخزون» في مجموعه.
          */
         if ($type === 'product') {
-            \App\Models\BranchStock::where('product_id', $row->id)->delete();
+            BranchStock::where('product_id', $row->id)->delete();
         }
 
         // ومحوُ المصروف يمحو قيده: لا يبقى في الدفتر سطرٌ لا أصل له
         if ($type === 'expense') {
             $row->transaction()->withTrashed()->forceDelete();
+            Books::forgetExpense($row);
         }
 
         $row->forceDelete();

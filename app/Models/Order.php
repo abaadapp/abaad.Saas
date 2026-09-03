@@ -33,6 +33,14 @@ class Order extends Model
     public function items(): HasMany { return $this->hasMany(OrderItem::class); }
 
     /**
+     * قيود الفاتورة في المالية — دخلُها، وما يُلغى معها.
+     *
+     * والمالية كلُّها تقرأ `transactions` لا `orders`: فاتورةٌ بلا قيدٍ
+     * تظهر تكلفةً بلا إيراد. انظر `finance:repair-order-income`.
+     */
+    public function transactions(): HasMany { return $this->hasMany(Transaction::class); }
+
+    /**
      * ما بيع فعلًا: لا سلّةً معلّقة ولا طلبًا ملغى.
      *
      * كان الشرط يُكتب بيدٍ في كل استعلام على حدة، فكُتب في ثلاثة مواضع

@@ -94,7 +94,27 @@ class PayrollPaymentController extends Controller
         $method = $data['from'] === 'bank' ? 'تحويل بنكي' : 'نقدي';
 
         try {
-            DB::transaction(function () use ($bid, $run, $lines, $total, $data, $method) {
+            DB::transaction(function () use ($bid, $run, $lines, $data, $method) {
+                /*
+                 * والسطور تُقرأ ثانيةً تحت قفل — لا من مجموعةٍ قُرئت قبلها.
+                 *
+                 * الصرف يختار غير المدفوع ثمّ يكتب. فضغطتان متتاليتان — وهو
+                 * ما يقع حين يبطؤ الردّ — تصرفان الرواتب مرّتين: قيدُ صرفٍ
+                 * مضاعف يُخرج من الصندوق ضعف ما استحقّ، والسطور تُوسَم
+                 * مدفوعةً مرّةً فلا يبقى في الشاشة ما يدلّ على الزيادة.
+                 */
+                $ready = PayrollLine::where('payroll_run_id', $run->id)
+                    ->whereIn('id', $lines->pluck('id'))
+                    ->where('paid', false)
+                    ->lockForUpdate()->get();
+
+                if ($ready->isEmpty()) {
+                    return;
+                }
+
+                $total = round($ready->sum(fn ($l) => (float) $l->net), 3);
+                $lines = $ready;
+
                 $entryLines = $lines->map(fn ($l) => [
                     'account' => 'salaries_payable',
                     'debit' => (float) $l->net,

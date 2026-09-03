@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use App\Http\Middleware\CheckPlanFeature;
 use App\Models\User;
+use Illuminate\Support\Collection;
 
 /**
  * فهرس التقارير — مصدرٌ واحد يقرؤه فهرس التقارير في اللوحة.
@@ -65,7 +67,20 @@ class Reports
              */
             'desc' => 'كلّ ما دخل وما خرج: مبيعات، ومصروفات، وتحويلات بين الصندوق والبنك.',
             'icon' => 'wallet',
+<<<<<<< HEAD
             'route' => 'admin.finance.transactions',
+=======
+            'route' => 'admin.reports.finance',
+        ],
+        [
+            'key' => 'vat',
+            'category' => 'financial',
+            'section' => 'reports',
+            'title' => 'ضريبة القيمة المضافة',
+            'desc' => 'ما حصّلتَه من ضريبة وما دفعتَه، والفرقُ المستحقّ — شهرًا بشهر.',
+            'icon' => 'percent',
+            'route' => 'admin.reports.vat',
+>>>>>>> origin/main
         ],
         [
             'key' => 'expenses',
@@ -74,7 +89,7 @@ class Reports
             'title' => 'المصروفات',
             'desc' => 'المصروفات حسب النوع والتاريخ ومن سجّلها.',
             'icon' => 'arrow-down-circle',
-            'route' => 'admin.expenses.index',
+            'route' => 'admin.reports.expenses',
         ],
         [
             'key' => 'payments',
@@ -83,7 +98,7 @@ class Reports
             'title' => 'وسائل الدفع',
             'desc' => 'توزيع التحصيل على النقد والبطاقة وبقية الوسائل.',
             'icon' => 'credit-card',
-            'data' => 'payments',
+            'route' => 'admin.reports.payments',
         ],
         [
             'key' => 'bank',
@@ -92,7 +107,7 @@ class Reports
             'title' => 'كشف الحساب البنكي',
             'desc' => 'مطابقة حركات البنك بحركات النظام، وما لم يُطابَق منها.',
             'icon' => 'landmark',
-            'route' => 'admin.finance.statement',
+            'route' => 'admin.reports.bank',
         ],
 
         /* ----------------------------- تشغيلية ----------------------------- */
@@ -103,7 +118,7 @@ class Reports
             'title' => 'الطلبات',
             'desc' => 'كل طلبٍ بحالته وفرعه وقيمته ووسيلة دفعه.',
             'icon' => 'shopping-cart',
-            'route' => 'admin.orders.index',
+            'route' => 'admin.reports.orders',
         ],
         [
             'key' => 'products',
@@ -112,7 +127,7 @@ class Reports
             'title' => 'المنتجات',
             'desc' => 'المنتجات وأسعارها وأقسامها وكمياتها المتاحة.',
             'icon' => 'package',
-            'route' => 'admin.products.index',
+            'route' => 'admin.reports.products',
         ],
         [
             'key' => 'inventory',
@@ -121,7 +136,16 @@ class Reports
             'title' => 'المخزون والكميات',
             'desc' => 'رصيد كل صنف وحدّه الأدنى وما بلغ حدّ إعادة الطلب.',
             'icon' => 'boxes',
-            'route' => 'admin.inventory.index',
+            'route' => 'admin.reports.inventory',
+        ],
+        [
+            'key' => 'stocktake',
+            'category' => 'operational',
+            'section' => 'inventory',
+            'title' => 'عمليات جرد المخزون',
+            'desc' => 'ما عُدّ وأين فارق الدفترُ الواقع: النقص والزيادة وقيمتهما لكل فرع.',
+            'icon' => 'clipboard-list',
+            'route' => 'admin.reports.stocktake',
         ],
         [
             'key' => 'purchases',
@@ -130,7 +154,7 @@ class Reports
             'title' => 'أوامر الشراء',
             'desc' => 'أوامر الشراء وقيمتها وحالة استلامها لكل مورّد.',
             'icon' => 'truck',
-            'route' => 'admin.purchases.index',
+            'route' => 'admin.reports.purchases',
         ],
         [
             'key' => 'suppliers',
@@ -139,7 +163,7 @@ class Reports
             'title' => 'المورّدون',
             'desc' => 'بيانات المورّدين وعدد أوامر الشراء لكل واحد.',
             'icon' => 'store',
-            'route' => 'admin.suppliers.index',
+            'route' => 'admin.reports.suppliers',
         ],
         [
             'key' => 'staff',
@@ -148,7 +172,7 @@ class Reports
             'title' => 'أداء الموظفين',
             'desc' => 'مبيعات كل موظف هذا الشهر وفرعه وحالته.',
             'icon' => 'users',
-            'data' => 'employees',
+            'route' => 'admin.reports.staff',
         ],
         [
             'key' => 'activity',
@@ -157,7 +181,7 @@ class Reports
             'title' => 'سجل النشاط',
             'desc' => 'من فعل ماذا ومتى على النظام.',
             'icon' => 'history',
-            'route' => 'admin.activity.index',
+            'route' => 'admin.reports.activity',
         ],
 
         /* ----------------------------- تحليلات ----------------------------- */
@@ -168,7 +192,16 @@ class Reports
             'title' => 'العملاء الأكثر إنفاقًا',
             'desc' => 'من يشتري أكثر، وكم طلبًا وكم أنفق.',
             'icon' => 'star',
-            'data' => 'customers',
+            'route' => 'admin.reports.customers',
+        ],
+        [
+            'key' => 'waste',
+            'category' => 'analytical',
+            'section' => 'reports',
+            'title' => 'تحليلات الهالك',
+            'desc' => 'ما تلف وما فُقد: قيمته واتجاهه، وأيّ صنفٍ وفرعٍ يبتلعه.',
+            'icon' => 'trash-2',
+            'route' => 'admin.reports.waste',
         ],
         [
             'key' => 'marketing',
@@ -179,7 +212,7 @@ class Reports
             'icon' => 'ticket-percent',
             // إلى الشاشة نفسها لا إلى تحويلٍ إليها: بطاقةٌ تقود إلى ٣٠٢
             // تصل إلى وجهتها اليوم، وتصل إلى غيرها يوم يتبدّل التحويل
-            'route' => 'admin.marketing.coupons',
+            'route' => 'admin.reports.marketing',
         ],
     ];
 
@@ -191,36 +224,69 @@ class Reports
      */
     public static function forUser(?User $user): array
     {
-        return collect(self::ALL)
-            ->filter(fn ($r) => $user?->allows($r['section']) ?? false)
+        return self::visibleTo($user)
+            /*
+             * وما لا تفتحه الباقة لا تُعرض بطاقتُه.
+             *
+             * الفهرس بابٌ يقود إلى شاشات، وبطاقةٌ تقود إلى 403 تجعل صاحبها
+             * يظنّ العطب في النظام. والقدرة تُقرأ من مصدر الحارس نفسه — انظر
+             * `CheckPlanFeature::featureFor` — فلا تفترق بطاقةٌ عن بابها.
+             */
             ->map(fn ($r) => [
                 'key' => $r['key'],
                 'category' => $r['category'],
                 'title' => __($r['title']),
                 'desc' => __($r['desc']),
                 'icon' => $r['icon'],
-                'href' => isset($r['route']) ? route($r['route']) : null,
-                'data' => $r['data'] ?? null,
+                'href' => route($r['route']),
             ])
             ->values()
             ->all();
     }
 
     /**
-     * القسم الذي ينتمي إليه تقريرُ نافذةٍ بمفتاح بياناته — أو null فلا يُفتح.
+     * البنود التي يفتحها هذا المستخدم فعلًا — مصفاةً بصلاحيته وبباقته.
+     *
+     * موضعٌ واحد للتصفية يقرؤه الفهرس وشريطُ التنقّل معًا: لو صفّى كلٌّ
+     * بنفسه لَعرض أحدهما تقريرًا يُخفيه الآخر، وصار للشيء الواحد بابان
+     * يختلفان — وأحدهما يقود إلى ٤٠٣.
+     *
+     * @return Collection<int, array>
+     */
+    private static function visibleTo(?User $user): Collection
+    {
+        return collect(self::ALL)
+            ->filter(fn ($r) => $user?->allows($r['section']) ?? false)
+            /*
+             * وما لا تفتحه الباقة لا تُعرض بطاقتُه.
+             *
+             * الفهرس بابٌ يقود إلى شاشات، وبطاقةٌ تقود إلى 403 تجعل صاحبها
+             * يظنّ العطب في النظام. والقدرة تُقرأ من مصدر الحارس نفسه — انظر
+             * `CheckPlanFeature::featureFor` — فلا تفترق بطاقةٌ عن بابها.
+             */
+            ->filter(function ($r) use ($user) {
+                $key = CheckPlanFeature::featureFor($r['route']);
+
+                return $key === null || PlanFeatures::allows($user?->business, $key);
+            });
+    }
+
+    /**
+     * القسم الذي يُقاس به تقريرٌ بمساره — أو null فلا يُفتح.
      *
      * حارس المسار يشتقّ القسم من اسم المسار، فكلّ ما تحت `admin.reports.*`
-     * يُقاس بصلاحية «التقارير» وحدها. وتقارير النافذة ليست تقاريرَ عن
-     * التقارير: فيها رواتب الموظفين وإنفاق العملاء ومقبوضات الصندوق. فمن
-     * مُنح «التقارير» وحدها كان يقرأها كلّها بكتابة عنوانها، والفهرس نفسه
-     * لا يعرض له منها بطاقةً واحدة — منعٌ في الشاشة لا وجود له عند الباب.
+     * يُقاس بصلاحية «التقارير» وحدها. وليست هذه تقاريرَ عن التقارير: فيها
+     * مبيعاتُ كل موظف، وإنفاقُ كل عميل، ومقبوضاتُ الصندوق. فمن مُنح
+     * «التقارير» وحدها يقرؤها كلّها بكتابة عنوانها، والفهرس نفسه لا يعرض
+     * له منها بطاقةً واحدة — منعٌ في الشاشة لا وجود له عند الباب.
      *
-     * والمفتاح المجهول يُردّ بـnull: يُغلق لا يُفتح.
+     * فيُسأل هذا الفهرس عن قسم التقرير نفسه قبل أن تُبنى الصفحة.
+     * والمسار المجهول يُردّ بـnull: يُغلق لا يُفتح.
      */
-    public static function sectionForData(string $key): ?string
+    public static function sectionForRoute(string $route): ?string
     {
         foreach (self::ALL as $report) {
-            if (($report['data'] ?? null) === $key) {
+            if ($report['route'] === $route) {
                 return $report['section'];
             }
         }
@@ -263,6 +329,9 @@ class Reports
     {
         $rows = [
             ['إجمالي المبيعات', 'sales', true],
+            // التكلفة تُقال صراحةً: بطاقةُ ربحٍ بلا سطر تكلفةٍ فوقها لا
+            // يستطيع قارئها أن يتحقّق من الطرح ولا أن يعرف أنه وقع أصلًا
+            ['تكلفة البضاعة المباعة', 'cogs', true],
             ['صافي الربح', 'profit', true],
             ['المصروفات', 'expenses', true],
             ['الضريبة المحصّلة', 'tax', true],

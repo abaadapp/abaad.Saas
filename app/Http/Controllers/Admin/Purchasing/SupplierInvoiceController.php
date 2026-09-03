@@ -7,9 +7,12 @@ use App\Models\JournalEntry;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
+use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Pagination;
+use App\Support\Search;
+use App\Support\Sort;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -44,7 +47,10 @@ class SupplierInvoiceController extends Controller
         'status' => 'status',
     ];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     public function index(Request $request): Response
     {
@@ -53,10 +59,11 @@ class SupplierInvoiceController extends Controller
 
         $q = SupplierInvoice::where('business_id', $bid)->with(['supplier', 'purchaseOrder']);
 
-        if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('supplier_ref', 'like', "%{$s}%")
-                ->orWhere('notes', 'like', "%{$s}%")
-                ->orWhereHas('supplier', fn ($sp) => $sp->where('name', 'like', "%{$s}%")));
+        if ($s = Search::term($request)) {
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('supplier_ref', $like, "%{$s}%")
+                ->orWhere('notes', $like, "%{$s}%")
+                ->orWhereHas('supplier', fn ($sp) => $sp->where('name', $like, "%{$s}%")));
         }
         if ($status = $request->query('status')) {
             $q->where('status', $status);
@@ -65,7 +72,7 @@ class SupplierInvoiceController extends Controller
             $q->where('supplier_id', $supplier);
         }
 
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('issued_at')->orderByDesc('id'));
+        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('issued_at')->orderByDesc('id'));
 
         $invoices = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
@@ -91,10 +98,12 @@ class SupplierInvoiceController extends Controller
             ])->all(),
             'pagination' => Pagination::meta($invoices),
             'filters' => $request->only('q', 'status', 'supplier')
-                + \App\Support\Sort::params($request, self::SORTS),
-            'sorts' => \App\Support\Sort::keys(self::SORTS),
+                + Sort::params($request, self::SORTS),
+            'sorts' => Sort::keys(self::SORTS),
             'suppliers' => Supplier::where('business_id', $bid)->orderBy('name')
-                ->get(['id', 'name'])->map(fn ($s) => ['value' => $s->id, 'label' => $s->name])->all(),
+                // بلغة الواجهة — القائمة تُقرأ، و`name` يبقى ما يُبحث به
+                ->get(['id', 'name', 'name_en'])
+                ->map(fn ($s) => ['value' => $s->id, 'label' => Demo::ln($s->name, $s->name_en)])->all(),
             // أوامرُ لم تُفوتَر بعد — ربط السند بأمره يمنع عدّ الشراء مرّتين
             'orders' => PurchaseOrder::where('business_id', $bid)
                 ->whereDoesntHave('invoices')->orderByDesc('id')->limit(100)
@@ -121,13 +130,29 @@ class SupplierInvoiceController extends Controller
 
         $data = $request->validate([
             'supplier_id' => ['required', Rule::exists('suppliers', 'id')->where('business_id', $bid)],
-            'purchase_order_id' => ['nullable', Rule::exists('purchase_orders', 'id')->where('business_id', $bid)],
+            /*
+             * وأمرُ الشراء يكون لهذا المورّد، ولا يكون مفوتَرًا من قبل.
+             *
+             * القائمة في الشاشة تعرض غير المفوتَر وحده — والتحقّق كان يقبل أيّ
+             * رقم. فسندان على أمرٍ واحد يعدّان الشراء مرّتين: دَينٌ مضاعف على
+             * المتجر في حساب الموردين، وتكلفةٌ مضاعفة في المخزون بالدفتر.
+             * وأمرُ مورّدٍ آخر يُعلَّق على سند هذا فيختلط الحسابان.
+             */
+            'purchase_order_id' => [
+                'nullable',
+                Rule::exists('purchase_orders', 'id')->where('business_id', $bid)
+                    ->where(fn ($q) => $q->where('supplier_id', $request->input('supplier_id'))),
+                Rule::unique('supplier_invoices', 'purchase_order_id')->where('business_id', $bid),
+            ],
             'supplier_ref' => ['required', 'string', 'max:60'],
             'issued_at' => ['required', 'date'],
             'due_at' => ['nullable', 'date', 'after_or_equal:issued_at'],
             'subtotal' => ['required', 'numeric', 'min:0'],
             'tax' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'purchase_order_id.exists' => __('أمر الشراء ليس لهذا المورّد'),
+            'purchase_order_id.unique' => __('هذا الأمر مفوتَرٌ بسندٍ سابق'),
         ]);
 
         /*
@@ -197,7 +222,7 @@ class SupplierInvoiceController extends Controller
             return back()->withInput()->withErrors(['subtotal' => $e->getMessage()]);
         }
 
-        \App\Support\Activity::log('created', 'سجّل سند مورّد '.$data['supplier_ref'].' بقيمة '.$total);
+        Activity::log('created', 'سجّل سند مورّد '.$data['supplier_ref'].' بقيمة '.$total);
 
         return back()->with('toast', ['msg' => __('سُجّل السند'), 'type' => 'success']);
     }
@@ -231,7 +256,29 @@ class SupplierInvoiceController extends Controller
 
         try {
             DB::transaction(function () use ($bid, $invoice, $amount, $data) {
+<<<<<<< HEAD
                 $entry = Ledger::post(
+=======
+                /*
+                 * والمستحقّ يُقرأ ثانيةً تحت قفل.
+                 *
+                 * الفحص أعلاه يقع على نسخةٍ قُرئت قبل المعاملة. فضغطتان على
+                 * «سداد» بالمبلغ نفسه — وهي أشيع ما يقع حين يبطؤ الردّ —
+                 * تمرّان كلتاهما: يخرج المال مرّتين من الصندوق، ويصير المدفوع
+                 * أكبر من الإجمالي، فيُقرأ المستحقّ سالبًا في مجموع الذمم
+                 * كأنّ المورّد يدين لنا.
+                 */
+                $locked = SupplierInvoice::where('business_id', $bid)
+                    ->lockForUpdate()->findOrFail($invoice->id);
+
+                if ($amount - $locked->outstanding() > 0.0005) {
+                    throw new RuntimeException(__('المستحقّ على هذا السند :v فقط', [
+                        'v' => number_format($locked->outstanding(), 3),
+                    ]));
+                }
+
+                Ledger::post(
+>>>>>>> origin/main
                     $bid,
                     __('سداد سند مورّد: ').$invoice->supplier_ref,
                     [
@@ -245,6 +292,7 @@ class SupplierInvoiceController extends Controller
                     $invoice,
                 );
 
+<<<<<<< HEAD
                 // مالٌ خرج فعلًا: يُقرأ في «الحركة المالية» وفي مطابقة البنك
                 \App\Support\Books::mirror(
                     $entry,
@@ -257,12 +305,17 @@ class SupplierInvoiceController extends Controller
 
                 $invoice->update(['paid' => round((float) $invoice->paid + $amount, 3)]);
                 $invoice->syncStatus();
+=======
+                $locked->update(['paid' => round((float) $locked->paid + $amount, 3)]);
+                $locked->syncStatus();
+                $invoice->setAttribute('paid', $locked->paid);
+>>>>>>> origin/main
             });
         } catch (RuntimeException $e) {
             return back()->withErrors(['amount' => $e->getMessage()]);
         }
 
-        \App\Support\Activity::log('updated', 'سدّد '.$amount.' على السند '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
+        Activity::log('updated', 'سدّد '.$amount.' على السند '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
 
         return back()->with('toast', ['msg' => __('سُجّل السداد'), 'type' => 'success']);
     }
@@ -292,7 +345,7 @@ class SupplierInvoiceController extends Controller
             $invoice->delete();
         });
 
-        \App\Support\Activity::log('deleted', 'حذف السند: '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
+        Activity::log('deleted', 'حذف السند: '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
 
         return back()->with('toast', ['msg' => __('حُذف السند'), 'type' => 'warning']);
     }

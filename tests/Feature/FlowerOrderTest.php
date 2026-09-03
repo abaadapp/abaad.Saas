@@ -60,6 +60,9 @@ class FlowerOrderTest extends TestCase
         return $this->postJson(route('pos.checkout'), array_merge([
             'items' => [['id' => $this->product->id, 'name' => 'باقة ورد', 'qty' => $qty]],
             'payment_method' => 'نقدي',
+            // اسمُ مشترٍ في الأساس: الطلب الذي له موعدٌ يذهب إلى لوحة
+            // التجهيز، وبطاقةٌ باسم «عميل نقدي» لا تُسلَّم لأحد
+            'customer' => 'خالد المشتري',
         ], $extra));
     }
 
@@ -149,7 +152,14 @@ class FlowerOrderTest extends TestCase
         ])->assertOk();
 
         $order = $this->lastOrder();
-        $this->assertSame('الخوير، شارع ١٨', $order->delivery_address);
+        /*
+         * ورقمُ الشارع يُحفظ إنجليزيًّا وحروفُه كما كُتبت.
+         *
+         * الأرقام تُوحَّد عند الباب لكلّ حقل (انظر `NormalizeNumbers`)، فيبقى
+         * العنوان مقروءًا لسائق التوصيل ومطابقًا لما يُطبع على الفاتورة —
+         * ويُبحث عنه برقمه أيًّا كانت لوحةُ من يبحث.
+         */
+        $this->assertSame('الخوير، شارع 18', $order->delivery_address);
         $this->assertSame('الباب الأزرق', $order->delivery_notes);
         $this->assertEquals(3, (float) $order->delivery_fee);
     }
@@ -241,6 +251,7 @@ class FlowerOrderTest extends TestCase
     public function test_a_future_order_starts_as_pending_not_completed(): void
     {
         $this->sell([
+            'fulfillment_type' => FlowerOrder::PICKUP,
             'scheduled_for' => now()->addDays(5)->format('Y-m-d H:i:s'),
         ])->assertOk();
 
@@ -251,7 +262,10 @@ class FlowerOrderTest extends TestCase
     public function test_the_order_time_and_the_delivery_time_are_two_columns(): void
     {
         $when = now()->addDays(5)->startOfHour();
-        $this->sell(['scheduled_for' => $when->format('Y-m-d H:i:s')])->assertOk();
+        $this->sell([
+            'fulfillment_type' => FlowerOrder::PICKUP,
+            'scheduled_for' => $when->format('Y-m-d H:i:s'),
+        ])->assertOk();
 
         $order = $this->lastOrder();
         $this->assertTrue($order->ordered_at->isToday());
@@ -477,5 +491,191 @@ class FlowerOrderTest extends TestCase
         $this->sell($payload)->assertOk()->assertJson(['duplicate' => true]);
 
         $this->assertSame(1, Order::where('business_id', $this->business->id)->count());
+    }
+
+    /* =============== بطاقةُ التجهيز لا تُقرأ ناقصة =============== */
+
+    /**
+     * طلبٌ له موعدٌ طلبٌ يقف عليه عاملٌ عند الطاولة — فيسأل: لمن؟
+     *
+     * وكان يُقبل بلا اسم، فتظهر على اللوحة عشرُ بطاقاتٍ تقول «عميل نقدي»
+     * في يومٍ واحد، لا تُميَّز إحداها عن الأخرى إلا برقمٍ لا يحفظه أحد.
+     */
+    public function test_a_scheduled_order_is_refused_without_a_customer(): void
+    {
+        $this->postJson(route('pos.checkout'), [
+            'items' => [['id' => $this->product->id, 'name' => 'باقة ورد', 'qty' => 1]],
+            'payment_method' => 'نقدي',
+            'fulfillment_type' => FlowerOrder::PICKUP,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertStatus(422)->assertJsonValidationErrors('customer');
+
+        $this->assertSame(0, Order::count());
+    }
+
+    /** و«عميل نقدي» ليس اسمًا — هو ما يكتبه النظام حين لا يُكتب شيء */
+    public function test_the_walk_in_placeholder_is_not_accepted_as_a_name(): void
+    {
+        $this->sell([
+            'customer' => FlowerOrder::WALK_IN,
+            'fulfillment_type' => FlowerOrder::PICKUP,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertStatus(422)->assertJsonValidationErrors('customer');
+    }
+
+    /** واللوحة تعرض «توصيل» أو «استلام»، فلا يُقبل طلبٌ لا يقول أيّهما */
+    public function test_a_scheduled_order_is_refused_without_a_fulfillment_type(): void
+    {
+        $this->sell([
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertStatus(422)->assertJsonValidationErrors('fulfillment_type');
+    }
+
+    /**
+     * وبيعةُ المنضدة تبقى ثلاث نقرات.
+     *
+     * أخطرُ ما في قاعدةٍ كهذه أن تتسرّب إلى كلّ بيعة: من يبيع عبوة ماءٍ لا
+     * يُستجوَب عن اسم مشتريها.
+     */
+    public function test_a_counter_sale_still_needs_no_customer_at_all(): void
+    {
+        $this->postJson(route('pos.checkout'), [
+            'items' => [['id' => $this->product->id, 'name' => 'باقة ورد', 'qty' => 1]],
+            'payment_method' => 'نقدي',
+        ])->assertOk();
+
+        $this->assertSame(FlowerOrder::WALK_IN, $this->lastOrder()->customer_name);
+    }
+
+    /**
+     * وطلبٌ قديم سابقٌ للقاعدة يبقى قابلًا للتصحيح.
+     *
+     * شاشة تعديل التفاصيل لا تعرض اسم العميل أصلًا، ففرضُ القاعدة فيها
+     * قفلٌ بلا مفتاح: صاحبُ المحلّ يريد تصحيح عنوانٍ فيُمنع بسبب حقلٍ لا
+     * يراه ولا يستطيع تغييره من هناك.
+     */
+    public function test_an_older_order_without_a_customer_can_still_be_edited(): void
+    {
+        $this->sell()->assertOk();
+        $order = $this->lastOrder();
+        $order->update([
+            'scheduled_for' => now()->addDay(),
+            'customer_name' => FlowerOrder::WALK_IN,
+            'fulfillment_type' => null,
+        ]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.orders.details.update', $order->number), [
+                'internal_notes' => 'يُغلَّف بورقٍ أسود',
+            ])->assertSessionHasNoErrors();
+
+        $this->assertSame('يُغلَّف بورقٍ أسود', $order->fresh()->internal_notes);
+    }
+
+    /* --------------------- صفحة الطلب: قسمان لا كومة --------------------- */
+
+    /**
+     * الصفحة تحمل القسمين معًا: مالَ الطلب وورقةَ تنفيذه.
+     *
+     * صارت الصفحة تبويبين — «بيانات الطلب» و«ورقة التفاصيل» — وكلاهما يُرسم
+     * من الحمولة نفسها بلا نداءٍ ثانٍ. فلو سقط حقلٌ من الحمولة لَظهر التبويب
+     * فارغًا بلا خطأ يُنبّه.
+     */
+    public function test_the_order_page_carries_both_the_money_and_the_sheet(): void
+    {
+        $this->sell([
+            'fulfillment_type' => FlowerOrder::DELIVERY,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+            'recipient_name' => 'ليلى',
+            'recipient_phone' => '+968 90000000',
+            'delivery_address' => 'الخوير، شارع 33',
+            'card_message' => 'كل عام وأنت بخير',
+        ])->assertOk();
+
+        $order = $this->lastOrder();
+
+        $this->actingAs($this->owner)->get(route('admin.orders.show', $order->number))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Admin/Orders/Show')
+                // قسم البيانات
+                ->where('order.total', (float) $order->total)
+                ->where('order.status', $order->status)
+                ->has('order.items', 1)
+                // قسم الورقة
+                ->where('order.recipient_name', 'ليلى')
+                ->where('order.delivery_address', 'الخوير، شارع 33')
+                ->where('order.card_message', 'كل عام وأنت بخير')
+                // وما تُبنى منه قوائم التعديل في المكان نفسه
+                ->has('order.fulfillments')
+                ->has('order.occasions'));
+    }
+
+    /**
+     * وتعديل الورقة لا يمسّ ريالًا ولا يُقدّم الطلب في مساره.
+     *
+     * التعديل صار في الصفحة نفسها، فقُربُه من المبالغ يجعل الخلط ممكنًا:
+     * حقلٌ زائد في الطلب، أو إعادةُ حسبةٍ «تصحيحًا»، فتقول الفاتورة غير ما
+     * يقوله الدفتر. والمقياس هنا: الأرقام كما هي، والحالة كما هي، بعد تعديلٍ
+     * يمسّ كل حقول الورقة.
+     */
+    public function test_editing_the_sheet_touches_neither_money_nor_status(): void
+    {
+        $this->sell([
+            'fulfillment_type' => FlowerOrder::DELIVERY,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+            'recipient_name' => 'ليلى',
+            'recipient_phone' => '+968 90000000',
+            'delivery_address' => 'الخوير',
+        ])->assertOk();
+
+        $order = $this->lastOrder();
+        $before = $order->only([
+            'subtotal', 'discount', 'tax', 'delivery_fee', 'total',
+            'status', 'payment_method', 'payment_status',
+        ]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.orders.details.update', $order->number), [
+                'fulfillment_type' => FlowerOrder::DELIVERY,
+                'scheduled_for' => now()->addDays(2)->format('Y-m-d\TH:i'),
+                'recipient_name' => 'ليلى الهنائي',
+                'recipient_phone' => '+968 91111111',
+                'delivery_address' => 'السيب، شارع 5',
+                'delivery_notes' => 'اتّصل قبل الوصول',
+                'card_message' => 'تهانينا',
+                'sender_name' => 'خالد',
+                'hide_sender' => true,
+                'internal_notes' => 'يُغلَّف بورقٍ أسود',
+            ])->assertSessionHasNoErrors();
+
+        $order->refresh();
+
+        $this->assertSame('ليلى الهنائي', $order->recipient_name);
+        $this->assertSame('السيب، شارع 5', $order->delivery_address);
+        $this->assertSame('يُغلَّف بورقٍ أسود', $order->internal_notes);
+
+        foreach ($before as $field => $value) {
+            $this->assertSame(
+                (string) $value,
+                (string) $order->$field,
+                "تعديل الورقة غيّر «{$field}» — وهو ليس من شأنها"
+            );
+        }
+    }
+
+    /** واسم العميل يصل إلى بطاقة التجهيز — هناك يُقرأ لا في الفاتورة */
+    public function test_the_preparation_card_carries_the_customer_name(): void
+    {
+        $this->sell([
+            'customer' => 'خالد المشتري',
+            'fulfillment_type' => FlowerOrder::PICKUP,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertOk();
+
+        $this->actingAs($this->owner)->get(route('admin.preparation.index'))->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('orders.0.customer', 'خالد المشتري')
+                ->where('orders.0.fulfillment', FlowerOrder::PICKUP));
     }
 }

@@ -13,6 +13,7 @@ import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -51,6 +52,8 @@ export default function SupplierInvoices() {
     const { invoices, pagination, filters, sorts, suppliers, orders, summary, today, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const m = (v: number) => money(v, context!.currency);
 
     const [adding, setAdding] = useState(false);
@@ -171,8 +174,8 @@ export default function SupplierInvoices() {
                             variant="ghost"
                             size="sm"
                             className="text-[#b91c1c]"
-                            onClick={() => {
-                                if (!confirm(t('حذف السند وقيده من الدفتر؟'))) return;
+                            onClick={async () => {
+                                if (! await ask({ message: 'حذف السند وقيده من الدفتر؟', danger: true, action: 'حذف' })) return;
                                 router.delete(route('admin.purchases.invoices.destroy', i.id), {
                                     preserveScroll: true,
                                 });
@@ -461,6 +464,8 @@ export default function SupplierInvoices() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

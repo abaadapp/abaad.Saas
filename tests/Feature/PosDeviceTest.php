@@ -10,12 +10,11 @@ use App\Models\PosDevice;
 use App\Models\User;
 use App\Support\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * الجهاز يعرف المتجر والفرع، والموظف يعرف رمزه وحده.
+ * الجهاز يعرف المتجر والفرع، والموظف يدخل ببريده وكلمة مروره.
  *
  * كان الجهاز يُعرَف بكوكي تحمل رقم المتجر لا غير: بلا فرع، بلا سجلّ، بلا
  * إبطال. فجهاز الخوير وجهاز السيب متطابقان في نظر النظام، والفرع يأتي من
@@ -24,6 +23,9 @@ use Tests\TestCase;
  *
  * ولم يكن شيء يمنع كاشير الخوير من الدخول على جهاز السيب: `users.branch` نصٌّ
  * حرّ لا يُفحص عند الدخول أصلًا.
+ *
+ * وكان إسناد الفرع يُفحص عند لوحة الأرقام. ثمّ رُفع الدخول بالرمز، فانتقل
+ * الفحص إلى حارس الطلب (BindPosBranch) — وهذه الاختبارات تقيسه هناك.
  */
 class PosDeviceTest extends TestCase
 {
@@ -44,8 +46,6 @@ class PosDeviceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        RateLimiter::clear('pin-login:127.0.0.1');
-        RateLimiter::clear('pin-login-hour:127.0.0.1');
 
         $this->a = Business::create(['name' => 'متجر أ', 'type' => 'عام', 'status' => 'نشط']);
         $this->b = Business::create(['name' => 'متجر ب', 'type' => 'عام', 'status' => 'نشط']);
@@ -66,12 +66,12 @@ class PosDeviceTest extends TestCase
 
     /* ------------------------------ أدوات ------------------------------ */
 
-    private function cashier(Business $biz, string $pin, string $email, array $branches = []): User
+    private function cashier(Business $biz, string $email, array $branches = []): User
     {
         $u = User::create([
             'business_id' => $biz->id, 'name' => 'كاشير '.$email, 'email' => $email,
             'password' => 'password', 'role' => 'cashier', 'job_title' => 'كاشير',
-            'status' => 'نشط', 'pin' => $pin,
+            'status' => 'نشط',
         ]);
 
         if ($branches) {
@@ -102,133 +102,82 @@ class PosDeviceTest extends TestCase
         return $this->withCookie(PosTerminal::COOKIE, $device->id.'|'.$raw);
     }
 
-    private function tryPin(PosDevice $device, string $raw, string $pin)
+    /** يدخل الكاشير ببريده ثمّ يفتح نقطة البيع على هذا الجهاز */
+    private function enterPos(PosDevice $device, string $raw, User $user)
     {
-        return $this->onDevice($device, $raw)->post(route('pin.attempt'), ['pin' => $pin]);
+        return $this->onDevice($device, $raw)->actingAs($user)->get(route('pos.index'));
     }
 
-    /**
-     * رسالة رفض الرمز.
-     *
-     * الحقيبة تُخزَّن في الجلسة مصفوفةً مسلسلة لا ViewErrorBag، فقراءتها
-     * بـ->first() تُرجع فراغًا صامتًا — ويمرّ الاختبار على لا شيء.
-     */
-    private function pinError($response): string
+    /* ------------------------- لا باب إلا واحد ------------------------- */
+
+    /** شاشة الرمز ومسارها رُفعا من النظام */
+    public function test_the_pin_door_no_longer_exists(): void
     {
-        $errors = $response->getSession()->get('errors');
-
-        if (is_array($errors)) {
-            return (string) ($errors['default']['messages']['pin'][0] ?? '');
-        }
-
-        return $errors ? (string) $errors->first('pin') : '';
-    }
-
-    /* --------------------------- تفرّد الرمز --------------------------- */
-
-    /** متجران مختلفان لهما الرمز نفسه — وهو المقصود */
-    public function test_two_tenants_may_share_the_same_pin(): void
-    {
-        $this->cashier($this->a, '1234', 'a1@abaad.om');
-        $this->cashier($this->b, '1234', 'b1@abaad.om');
-
-        [$devA, $rawA] = $this->device($this->khuwair);
-        [$devB, $rawB] = $this->device($this->branchB);
-
-        $this->tryPin($devA, $rawA, '1234')->assertSessionHasNoErrors();
-        $this->assertSame($this->a->id, auth()->user()->business_id);
-
-        $this->post(route('logout'));
-
-        $this->tryPin($devB, $rawB, '1234')->assertSessionHasNoErrors();
-        $this->assertSame($this->b->id, auth()->user()->business_id);
-    }
-
-    /** وداخل المتجر الواحد لا يتكرّر */
-    public function test_the_same_tenant_refuses_a_duplicate_pin(): void
-    {
-        $this->cashier($this->a, '1234', 'a1@abaad.om');
-
-        $this->actingAs($this->ownerA)->post(route('admin.employees.store'), [
-            'name' => 'ثانٍ', 'job_title' => 'كاشير', 'pin' => '1234',
-        ])->assertSessionHasErrors('pin');
-
-        $this->assertSame(1, User::where('business_id', $this->a->id)->whereNotNull('pin')->count());
+        $this->get('/pin-login')->assertNotFound();
+        $this->post('/pin-login', ['pin' => '1234'])->assertNotFound();
     }
 
     /* -------------------------- عزل المستأجرين -------------------------- */
 
-    /** موظف من متجر أ لا يدخل على جهاز متجر ب */
-    public function test_an_employee_cannot_sign_in_on_another_tenants_device(): void
+    /** موظف من متجر أ لا يبيع على جهاز متجر ب — يُخرَج من الجلسة */
+    public function test_an_employee_cannot_use_another_tenants_device(): void
     {
-        $this->cashier($this->a, '4321', 'a1@abaad.om');
+        $cashier = $this->cashier($this->a, 'a1@abaad.om');
         [$devB, $rawB] = $this->device($this->branchB);
 
-        $this->tryPin($devB, $rawB, '4321')->assertSessionHasErrors('pin');
+        $this->enterPos($devB, $rawB, $cashier)->assertRedirect(route('login'));
         $this->assertGuest();
     }
 
     /* ---------------------------- إذن الفرع ---------------------------- */
 
-    /** ممنوعٌ من فرعٍ لا يدخل على جهازه */
+    /** ممنوعٌ من فرعٍ لا يبيع على جهازه ولو دخل ببريدٍ صحيح */
     public function test_an_employee_not_assigned_to_the_branch_is_refused(): void
     {
-        $this->cashier($this->a, '1111', 'k@abaad.om', [$this->khuwair->id]);
+        $cashier = $this->cashier($this->a, 'k@abaad.om', [$this->khuwair->id]);
         [$dev, $raw] = $this->device($this->seeb);
 
-        $this->tryPin($dev, $raw, '1111')->assertSessionHasErrors('pin');
+        $this->enterPos($dev, $raw, $cashier)->assertRedirect(route('login'));
         $this->assertGuest();
     }
 
-    /** ومن له فرعان يدخل بالرمز نفسه على جهازي الفرعين */
+    /** ومن له فرعان يعمل على جهازي الفرعين */
     public function test_an_employee_of_two_branches_works_on_both_devices(): void
     {
-        $this->cashier($this->a, '2222', 'k2@abaad.om', [$this->khuwair->id, $this->seeb->id]);
+        $cashier = $this->cashier($this->a, 'k2@abaad.om', [$this->khuwair->id, $this->seeb->id]);
         [$d1, $r1] = $this->device($this->khuwair);
         [$d2, $r2] = $this->device($this->seeb, 'كاشير 02');
 
-        $this->tryPin($d1, $r1, '2222')->assertSessionHasNoErrors();
+        $this->enterPos($d1, $r1, $cashier);
         $this->assertAuthenticated();
-        $this->post(route('logout'));
+        $this->assertSame($this->khuwair->id, session('current_branch'));
 
-        $this->tryPin($d2, $r2, '2222')->assertSessionHasNoErrors();
+        $this->enterPos($d2, $r2, $cashier);
         $this->assertAuthenticated();
+        $this->assertSame($this->seeb->id, session('current_branch'));
     }
 
     /** وبلا تحديد يعمل في كل فروع متجره — وإلا أُقفل كل كاشير قائم يوم النشر */
     public function test_an_employee_without_branches_works_everywhere_in_their_tenant(): void
     {
-        $this->cashier($this->a, '3333', 'k3@abaad.om');
+        $cashier = $this->cashier($this->a, 'k3@abaad.om');
         [$dev, $raw] = $this->device($this->seeb);
 
-        $this->tryPin($dev, $raw, '3333')->assertSessionHasNoErrors();
+        $this->enterPos($dev, $raw, $cashier);
         $this->assertAuthenticated();
-    }
-
-    /** والرسالة واحدة للرمز الخاطئ وللممنوع من الفرع: التمييز يدلّ المخمّن */
-    public function test_the_refusal_message_does_not_reveal_the_reason(): void
-    {
-        $this->cashier($this->a, '1111', 'k@abaad.om', [$this->khuwair->id]);
-        [$dev, $raw] = $this->device($this->seeb);
-
-        $wrong = $this->pinError($this->tryPin($dev, $raw, '9999'));
-        $notAllowed = $this->pinError($this->tryPin($dev, $raw, '1111'));
-
-        $this->assertNotEmpty($wrong);
-        $this->assertSame($wrong, $notAllowed, 'الرسالتان مختلفتان — فيُعرف أن الرمز أصاب');
+        $this->assertSame($this->seeb->id, session('current_branch'));
     }
 
     /* --------------------------- إبطال الجهاز --------------------------- */
 
-    /** جهاز مُلغى لا يقبل رمزًا */
-    public function test_a_revoked_device_refuses_pin_login(): void
+    /** جهاز مُلغى لا يبيع: يعود إلى شاشة الإعداد لا إلى الصندوق */
+    public function test_a_revoked_device_cannot_sell(): void
     {
-        $this->cashier($this->a, '5555', 'k5@abaad.om');
+        $cashier = $this->cashier($this->a, 'k5@abaad.om');
         [$dev, $raw] = $this->device($this->khuwair);
         PosTerminal::revoke($dev);
 
-        $this->tryPin($dev, $raw, '5555')->assertSessionHasErrors('pin');
-        $this->assertGuest();
+        $this->enterPos($dev, $raw, $cashier)->assertRedirect(route('pos.setup'));
     }
 
     /* ------------------------- صلاحية التفعيل ------------------------- */
@@ -236,7 +185,7 @@ class PosDeviceTest extends TestCase
     /** الكاشير لا يفعّل جهازًا ولا ينقله بين الفروع */
     public function test_a_cashier_cannot_activate_or_move_a_device(): void
     {
-        $cashier = $this->cashier($this->a, '6666', 'k6@abaad.om');
+        $cashier = $this->cashier($this->a, 'k6@abaad.om');
         [$dev] = $this->device($this->khuwair);
 
         $this->actingAs($cashier)->get(route('pos.setup'))->assertForbidden();
@@ -293,9 +242,9 @@ class PosDeviceTest extends TestCase
         $this->assertSame(PosDevice::REVOKED, $dev->status);
         $this->assertNotSame($oldHash, $dev->token_hash);
 
-        // والرمز القديم لا يفتح شيئًا بعدها
-        $this->cashier($this->a, '7777', 'k7@abaad.om');
-        $this->tryPin($dev, $raw, '7777')->assertSessionHasErrors('pin');
+        // والكوكي القديمة لا تفتح صندوقًا بعدها
+        $cashier = $this->cashier($this->a, 'k7@abaad.om');
+        $this->enterPos($dev, $raw, $cashier)->assertRedirect(route('pos.setup'));
     }
 
     /* -------------------------- سياق الجلسة -------------------------- */
@@ -303,10 +252,10 @@ class PosDeviceTest extends TestCase
     /** الجلسة تحمل الموظف والفرع والجهاز والمتجر الصحيح */
     public function test_the_session_carries_the_right_context(): void
     {
-        $cashier = $this->cashier($this->a, '8888', 'k8@abaad.om', [$this->seeb->id]);
+        $cashier = $this->cashier($this->a, 'k8@abaad.om', [$this->seeb->id]);
         [$dev, $raw] = $this->device($this->seeb);
 
-        $this->tryPin($dev, $raw, '8888')->assertSessionHasNoErrors();
+        $this->enterPos($dev, $raw, $cashier);
 
         $this->assertSame($cashier->id, auth()->id());
         $this->assertSame($this->a->id, auth()->user()->business_id);
@@ -317,7 +266,6 @@ class PosDeviceTest extends TestCase
     /** و«كل الفروع» لا تصل إلى نقطة البيع: الجهاز يفرض فرعه في كل طلب */
     public function test_all_branches_never_reaches_the_pos(): void
     {
-        $this->cashier($this->a, '9090', 'k9@abaad.om');
         [$dev, $raw] = $this->device($this->seeb);
 
         // المالك يفتح نقطة البيع وجلسته على «كل الفروع» (null)
@@ -337,50 +285,21 @@ class PosDeviceTest extends TestCase
             ->assertRedirect(route('pos.setup'));
     }
 
-    /* ------------------------- حدّ المحاولات ------------------------- */
-
-    /** خمس محاولات خاطئة تكفي — والحدّ على الجهاز لا على المحل كلّه */
-    public function test_repeated_bad_pins_are_rate_limited(): void
-    {
-        $this->cashier($this->a, '1212', 'k10@abaad.om');
-        [$dev, $raw] = $this->device($this->khuwair);
-        RateLimiter::clear('pin-login:dev'.$dev->id);
-        RateLimiter::clear('pin-login-hour:dev'.$dev->id);
-
-        for ($i = 0; $i < 5; $i++) {
-            $this->tryPin($dev, $raw, '0000')->assertSessionHasErrors('pin');
-        }
-
-        // السادسة تُرفض بالحدّ لا بالرمز — والرمز الصحيح نفسه يُرفض معها
-        $blocked = $this->tryPin($dev, $raw, '1212');
-        $blocked->assertSessionHasErrors('pin');
-        $this->assertGuest();
-        // الرسالة رسالة حدٍّ لا رسالة رمز — والمقارنة بالترجمة لا بالنصّ
-        $this->assertNotSame(__('رمز غير صحيح أو غير مسموح في هذا الفرع.'), $this->pinError($blocked));
-
-        // وجهازٌ آخر في المحل نفسه لا يتأثّر
-        [$other, $otherRaw] = $this->device($this->khuwair, 'كاشير 02');
-        RateLimiter::clear('pin-login:dev'.$other->id);
-        RateLimiter::clear('pin-login-hour:dev'.$other->id);
-        $this->tryPin($other, $otherRaw, '1212')->assertSessionHasNoErrors();
-        $this->assertAuthenticated();
-    }
-
     /* --------------------------- سجلّ البيع --------------------------- */
 
     /** الفاتورة تحمل المتجر والفرع والجهاز والموظف */
     public function test_a_sale_records_its_device_context(): void
     {
-        $cashier = $this->cashier($this->a, '3131', 'k11@abaad.om', [$this->seeb->id]);
+        $cashier = $this->cashier($this->a, 'k11@abaad.om', [$this->seeb->id]);
         [$dev, $raw] = $this->device($this->seeb);
 
         $product = \App\Models\Product::create([
             'business_id' => $this->a->id, 'name' => 'صنف', 'price' => 1.5, 'quantity' => 10,
         ]);
 
-        $this->tryPin($dev, $raw, '3131');
+        $this->enterPos($dev, $raw, $cashier);
 
-        $this->onDevice($dev, $raw)->post(route('pos.checkout'), [
+        $this->onDevice($dev, $raw)->actingAs($cashier)->post(route('pos.checkout'), [
             'items' => [['id' => $product->id, 'name' => 'صنف', 'qty' => 1, 'price' => 1.5]],
             'payment_method' => 'نقدي',
         ]);
@@ -396,17 +315,18 @@ class PosDeviceTest extends TestCase
     /** والقفل يُنهي جلسة الموظف ويُبقي الجهاز */
     public function test_locking_ends_the_employee_session_and_keeps_the_device(): void
     {
-        $this->cashier($this->a, '4141', 'k12@abaad.om');
+        $cashier = $this->cashier($this->a, 'k12@abaad.om');
         [$dev, $raw] = $this->device($this->khuwair);
 
-        $this->tryPin($dev, $raw, '4141')->assertSessionHasNoErrors();
+        $this->enterPos($dev, $raw, $cashier);
         $this->assertAuthenticated();
 
-        $this->onDevice($dev, $raw)->post(route('pos.lock'))->assertRedirect(route('pin.form'));
+        $this->onDevice($dev, $raw)->post(route('pos.lock'))->assertRedirect(route('login'));
         $this->assertGuest();
 
-        // والجهاز ما زال يعرف نفسه: الرمز التالي يدخل بلا بريدٍ ولا كلمة مرور
-        $this->tryPin($dev, $raw, '4141')->assertSessionHasNoErrors();
+        // والجهاز ما زال يعرف نفسه: الكاشير التالي يدخل ببريده ويجد فرعه
+        $this->enterPos($dev, $raw, $cashier);
         $this->assertAuthenticated();
+        $this->assertSame($this->khuwair->id, session('current_branch'));
     }
 }

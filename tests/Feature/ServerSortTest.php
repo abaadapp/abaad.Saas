@@ -127,7 +127,7 @@ class ServerSortTest extends TestCase
         $routes = [
             'admin.products.index', 'admin.customers.index', 'admin.orders.index',
             'admin.expenses.index', 'admin.purchases.invoices', 'admin.finance.journal',
-            'admin.inventory.adjustments', 'admin.inventory.deliveries', 'admin.marketing.reviews',
+            'admin.inventory.adjustments', 'admin.marketing.reviews',
         ];
 
         foreach ($routes as $name) {

@@ -1,0 +1,37 @@
+name: Sync Abaad Tasks to Notion
+
+on:
+  issues:
+    types: [opened, edited, closed, reopened]
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: abaad-notion-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_DATA_SOURCE_ID: 13c08848-1445-4c8e-b209-d6c3202a2e41
+      NOTION_VERSION: "2025-09-03"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync canonical GitHub task data to Notion
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$NOTION_TOKEN" ]; then
+            echo "::warning::NOTION_TOKEN is not configured. Add it as a repository Actions secret to activate synchronization."
+            exit 0
+          fi
+          python3 scripts/sync_github_notion.py

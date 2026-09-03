@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
+<<<<<<< HEAD
 import { AlertTriangle, Check, CheckCircle2, FolderOpen, Link2, Paperclip, Plus, Tags } from 'lucide-react';
+=======
+import { AlertTriangle, Check, CheckCircle2, FolderOpen, Paperclip, Pencil, Plus, Tags } from 'lucide-react';
+>>>>>>> origin/main
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
@@ -35,6 +39,8 @@ interface ExpenseType {
     id: number;
     name: string;
     description: string | null;
+    /** الحساب الذي يُرحَّل إليه — فارغًا يعني «يُقرأ من الاسم» */
+    account_key: string | null;
     count: number;
     total: number;
     /** حساب النوع في الشجرة — لا يراه إلا من يملك المحاسبة المتقدّمة */
@@ -46,8 +52,13 @@ interface Props {
     expenses: ExpenseRow[];
     pagination: ServerPagination;
     types: ExpenseType[];
+<<<<<<< HEAD
     /** أوراق المصروفات — فارغةٌ لمن لا يملك المحاسبة المتقدّمة */
     expenseAccounts: { value: number; label: string }[];
+=======
+    /** الحسابات التي يجوز الربط بها — مصدرها الخادم، وهو نفسه ما يقبله التحقّق */
+    accountOptions: { key: string; label: string }[];
+>>>>>>> origin/main
     filters: Record<string, string | null>;
     /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
     sorts: string[];
@@ -69,9 +80,15 @@ interface Props {
 }
 
 export default function ExpensesIndex() {
+<<<<<<< HEAD
     const { expenses, pagination, types, expenseAccounts, filters, sorts, totalAmount, totalCount, unpaidAmount,
         unpaidCount, dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today,
         context, auth } = usePage<PageProps<Props>>().props;
+=======
+    const { expenses, pagination, types, accountOptions, filters, sorts, totalAmount, totalCount, unpaidAmount, unpaidCount,
+        dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today, context } =
+        usePage<PageProps<Props>>().props;
+>>>>>>> origin/main
     const t = useTranslate();
 
     /*
@@ -108,10 +125,16 @@ export default function ExpensesIndex() {
         attachment: null,
     });
 
+<<<<<<< HEAD
     const typeForm = useForm({ name: '', description: '' });
     // null = مغلق · رقم = النوع الذي يُربط حسابه
     const [linking, setLinking] = useState<ExpenseType | null>(null);
     const linkForm = useForm({ account_id: '' });
+=======
+    const typeForm = useForm({ name: '', description: '', account_key: '' });
+    /** النوع الجاري تعديله — وnull يعني «نوعٌ جديد»، والنموذج واحد للحالتين */
+    const [editingType, setEditingType] = useState<ExpenseType | null>(null);
+>>>>>>> origin/main
 
     const submitExpense = (e: React.FormEvent) => {
         e.preventDefault();
@@ -126,12 +149,28 @@ export default function ExpensesIndex() {
 
     const submitType = (e: React.FormEvent) => {
         e.preventDefault();
-        typeForm.post(route('admin.expenseTypes.store'), {
-            onSuccess: () => {
-                typeForm.reset();
-                setAddingType(false);
-            },
+        const done = () => {
+            typeForm.reset();
+            setAddingType(false);
+            setEditingType(null);
+        };
+
+        if (editingType) {
+            typeForm.put(route('admin.expenseTypes.update', editingType.id), { onSuccess: done });
+        } else {
+            typeForm.post(route('admin.expenseTypes.store'), { onSuccess: done });
+        }
+    };
+
+    const openType = (x: ExpenseType | null) => {
+        setEditingType(x);
+        typeForm.setData({
+            name: x?.name ?? '',
+            description: x?.description ?? '',
+            account_key: x?.account_key ?? '',
         });
+        typeForm.clearErrors();
+        setAddingType(true);
     };
 
     const typeOptions = types.map((x) => ({ label: x.name, value: x.name }));
@@ -246,6 +285,25 @@ export default function ExpensesIndex() {
               ]
             : []),
         {
+            key: 'account',
+            header: 'يُرحَّل إلى',
+            /*
+             * الحساب يُعرض في القائمة لا في نافذةٍ تُفتح.
+             *
+             * التاجر يفتح هذه الشاشة ليعرف أين تذهب مصروفاتُه؛ وعمودٌ يقول
+             * «مصروفات أخرى» في سبعة أسطر يجيبه من نظرةٍ واحدة.
+             */
+            cell: (x) => {
+                const chosen = accountOptions.find((a) => a.key === x.account_key);
+
+                return chosen ? (
+                    <span className="text-[#4b4b4b]">{t(chosen.label)}</span>
+                ) : (
+                    <span className="text-[#9ca3af]">{t('مصروفات أخرى')}</span>
+                );
+            },
+        },
+        {
             key: 'count',
             header: 'الاستخدام',
             cell: (x) => (
@@ -261,6 +319,7 @@ export default function ExpensesIndex() {
             align: 'end',
             cell: (x) => (
                 <RowActions
+                    extra={[{ label: 'تعديل', icon: <Pencil className="size-4" />, onSelect: () => openType(x) }]}
                     destroy={{
                         url: route('admin.expenseTypes.destroy', x.id),
                         message: `حذف نوع «${x.name}»؟ لن تتأثر المصروفات المسجّلة سابقًا.`,
@@ -428,7 +487,7 @@ export default function ExpensesIndex() {
                     <Tags className="mx-auto size-8 text-[#d1d5db]" />
                     <p className="mt-3 font-medium text-[#111]">{t('لا توجد أنواع')}</p>
                     <p className="mt-1 text-[13px] text-[#9ca3af]">{t('أضف أول نوع مصروف')}</p>
-                    <Button className="mt-5" onClick={() => setAddingType(true)}>
+                    <Button className="mt-5" onClick={() => openType(null)}>
                         <Plus />
                         {t('إضافة نوع')}
                     </Button>
@@ -443,7 +502,7 @@ export default function ExpensesIndex() {
                         searchable={(x) => `${x.name} ${x.description ?? ''}`}
                         empty="لا توجد أنواع"
                         toolbar={
-                            <Button onClick={() => setAddingType(true)}>
+                            <Button onClick={() => openType(null)}>
                                 <Plus />
                                 {t('إضافة نوع')}
                             </Button>
@@ -568,10 +627,16 @@ export default function ExpensesIndex() {
             </Dialog>
 
             {/* نوع مصروف جديد */}
-            <Dialog open={addingType} onOpenChange={setAddingType}>
+            <Dialog
+                open={addingType}
+                onOpenChange={(open) => {
+                    setAddingType(open);
+                    if (! open) setEditingType(null);
+                }}
+            >
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>{t('إضافة نوع مصروف')}</DialogTitle>
+                        <DialogTitle>{t(editingType ? 'تعديل نوع مصروف' : 'إضافة نوع مصروف')}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={submitType} className="space-y-4 px-5 pb-5">
                         <Field label="الاسم" required error={typeForm.errors.name}>
@@ -589,8 +654,35 @@ export default function ExpensesIndex() {
                                 placeholder={t('وصف مختصر للنوع')}
                             />
                         </Field>
+                        {/*
+                          * إلى أيّ حسابٍ يُرحَّل هذا النوع في دفتر الأستاذ.
+                          *
+                          * والقائمة مغلقة على حسابات المصروف وحدها: ربطُ مصروفٍ
+                          * بحساب إيرادٍ يقلب القيد فيتوازن الدفتر ويكذب.
+                          */}
+                        <Field
+                            label="يُرحَّل إلى"
+                            hint={t('اتركه فارغًا ليُقرأ من الاسم — وما لا يُعرف يقع في «مصروفات أخرى»')}
+                            error={typeForm.errors.account_key}
+                        >
+                            <Select
+                                value={typeForm.data.account_key}
+                                onChange={(e) => typeForm.setData('account_key', e.target.value)}
+                                options={[
+                                    { label: t('حسب الاسم'), value: '' },
+                                    ...accountOptions.map((a) => ({ label: t(a.label), value: a.key })),
+                                ]}
+                            />
+                        </Field>
                         <div className="flex justify-end gap-2 pt-1">
-                            <Button type="button" variant="ghost" onClick={() => setAddingType(false)}>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => {
+                                    setAddingType(false);
+                                    setEditingType(null);
+                                }}
+                            >
                                 {t('إلغاء')}
                             </Button>
                             <Button type="submit" loading={typeForm.processing}>

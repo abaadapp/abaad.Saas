@@ -258,6 +258,7 @@ class Permissions
         if (in_array($section, self::ALWAYS_OPEN, true)) {
             return true;
         }
+
         return in_array($section, $abilities, true);
     }
 
@@ -302,6 +303,8 @@ class Permissions
         'activity' => 'settings',
         // أجهزة نقطة البيع إعدادٌ إداريّ: من يملك الإعدادات يفعّل ويُلغي
         'devices' => 'settings',
+        // معاينةُ المتجر تتبع الشاشة التي يُضبط فيها — «الإعدادات»
+        'store' => 'settings',
     ];
 
     /**
@@ -316,6 +319,11 @@ class Permissions
         'products' => 'products', 'orders' => 'orders', 'customers' => 'customers',
         'transactions' => 'finance', 'expenses' => 'expenses', 'inventory' => 'inventory',
         'reports' => 'reports',
+        // و«الموردون» كانت ساقطةً مثلها: زرّ CSV في شاشة المورّدين يُرسم لمن
+        // يملك القسم، ويُطالَب عند الضغط بصلاحية الإعدادات — وأمين المخزن
+        // يملك المورّدين ولا يملك الإعدادات، فلا يُنزِّل ملفّ شاشته أبدًا.
+        // وحارسٌ في ReportsTellTheirScopeTest يمنع سقوط الثامن.
+        'suppliers' => 'suppliers',
     ];
 
     /**
@@ -365,14 +373,6 @@ class Permissions
         if ($route === 'pos.payments') {
             return 'finance';
         }
-        // الورديات وفروقها قراءةٌ مالية لا قسمٌ قائم بذاته: من يراجع حصيلة
-        // الصندوق هو من يملك «المالية»، فلا يُخترع مفتاح صلاحية ثالث لها
-        // وتقرير الإقفال (Z) معها: هو الأرقام نفسها على ورق
-        // كل ما تحت الورديات — والحصر بأسماءٍ معدودة كان ينسى المسار التالي
-        if (str_starts_with($route, 'admin.shifts.')) {
-            return 'finance';
-        }
-
         if (str_starts_with($route, 'pos.')) {
             return 'pos';
         }

@@ -184,6 +184,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                 </a>
                             </Button>
                         ) : (
+<<<<<<< HEAD
                             canMarketing && (
                                 /*
                                  * إلى صفحةٍ تقول إنّ الموقع لم يُفعَّل بعد، لا
@@ -202,6 +203,23 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                     </Link>
                                 </Button>
                             )
+=======
+                            /*
+                             * إلى شاشة الموقع في أدوات التسويق لا إلى بيانات
+                             * النشاط.
+                             *
+                             * الموقع صار قسمًا قائمًا: نطاقٌ ونشرٌ وجملةٌ
+                             * تعريفية وما يراه الزائر. فمن يضغط الزرّ ليضيف
+                             * موقعه يصل إلى حيث يُضبط كلّه، لا إلى حقلٍ في
+                             * صفحة الإعدادات لا يفعل غير تشغيل هذا الزرّ.
+                             */
+                            <Button asChild variant="ghost" size="icon" title={t('أضف الموقع الإلكتروني')}>
+                                <Link href={route('admin.settings.index', { section: 'website' })}>
+                                    <Globe />
+                                    <span className="sr-only">{t('أضف الموقع الإلكتروني')}</span>
+                                </Link>
+                            </Button>
+>>>>>>> origin/main
                         )}
                     </>
                 )}

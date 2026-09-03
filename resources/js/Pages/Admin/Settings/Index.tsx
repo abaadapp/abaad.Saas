@@ -7,21 +7,25 @@ import {
     BellRing,
     ChevronLeft,
     Download,
+<<<<<<< HEAD
     Eye,
+=======
+    ExternalLink,
+    FileText,
+    Globe,
+>>>>>>> origin/main
     Image as ImageIcon,
     Languages,
+    RefreshCw,
     Save,
-    Share2,
-    Store,
+    Search,
     Trash2,
-    Type,
     Upload,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
-import Tabs from '@/Components/Tabs';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
@@ -31,6 +35,12 @@ import CustomAlerts, {
 } from './partials/CustomAlerts';
 import { SETTINGS_NAV } from './partials/SettingsNav';
 import BackToSettings from './partials/BackToSettings';
+import DomainChooser, {
+    DomainPathStrip,
+    NewDomainCard,
+    type DomainPath,
+    type DomainPricing,
+} from './partials/DomainChooser';
 import BranchesPanel from './panels/BranchesPanel';
 import EmployeesPanel, { type JobTitle } from './panels/EmployeesPanel';
 import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
@@ -39,6 +49,10 @@ import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
 import DomainPanel, { type DomainData } from './panels/DomainPanel';
 import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
+<<<<<<< HEAD
+=======
+import { useConfirm } from '@/Components/ConfirmDialog';
+>>>>>>> origin/main
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -59,8 +73,9 @@ interface Props {
     settings: Settings;
     business: { name: string; phone: string | null; email: string | null; address: string | null; logo: string | null };
     recovery: Recovery;
-    /** إعدادات الموقع والنطاق — مجموعة `website` في MarketingSettings */
+    /** نطاق موقع التاجر — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
+<<<<<<< HEAD
     /**
      * هل أُنشئ موقع النشاط في محرّك المواقع؟
      *
@@ -72,6 +87,22 @@ interface Props {
     domain: DomainData;
     /** عدد المنتجات المعروضة على الموقع */
     published: number;
+=======
+    /** بطاقاتُ القوالب — تُبنى من `DocumentTemplates` لا تُكتب في الشاشة */
+    templates?: { key: string; label: string; desc: string; section: string }[];
+    store: {
+        slug: string | null;
+        domain: string;
+        themes: { value: string; label: string; accent: string }[];
+        suggestion: string | null;
+        /** كم صنفًا يظهر فعلًا — الفعّال المنشور، لا كلّ الفعّال */
+        productCount: number;
+        products: { id: number; name: string; image: string | null; active: boolean; published: boolean }[];
+        /** الطريق المختار إلى العنوان — '' يعني أنّ التاجر لم يُسأل بعد */
+        path: DomainPath;
+        pricing: DomainPricing;
+    };
+>>>>>>> origin/main
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
@@ -161,24 +192,6 @@ const PAYMENT_METHODS = [
 
 /** صفحات مستقلة يصل إليها المستخدم من الإعدادات */
 
-/** صفوف قوالب الفواتير — كلٌّ منها يُظهر شيئًا أو يُخفيه في الأوراق الثلاث */
-const TEMPLATE_ROWS: { key: string; label: string; hint?: string }[] = [
-    { key: 'tpl_show_logo', label: 'شعار المتجر', hint: 'يظهر فقط إن كان للنشاط شعار محفوظ' },
-    { key: 'tpl_show_branch', label: 'اسم الفرع' },
-    { key: 'tpl_show_employee', label: 'اسم الموظف' },
-    /* الاستثناء يُقال لا يُسكت عنه: الفاتورة الضريبية تُعرّف مشتريها كي
-       يخصم ما دفعه، فإخفاؤه يُبطل الغرض منها — والمقبض يعمل في الورقتين
-       الأخريين. وصمتُ الشاشة عن ذلك كان يجعل التاجر يظنّ المقبض معطوبًا. */
-    { key: 'tpl_show_customer', label: 'اسم العميل', hint: 'يبقى ظاهرًا في الفاتورة الضريبية دائمًا — بدونه لا يخصم المشتري ضريبته' },
-    { key: 'tpl_show_datetime', label: 'التاريخ والوقت' },
-    { key: 'tpl_show_items_count', label: 'عدد الأصناف' },
-    { key: 'tpl_show_vat_no', label: 'الرقم الضريبي' },
-    /* الوصف كان «إخفاؤه قد يخالف متطلبات الفوترة» — تخويفٌ من شيءٍ غير
-       مؤكَّد: الرمز بصيغة ZATCA الخليجية، ولا نعلم أن جهاز الضرائب في عُمان
-       يشترطها اليوم. والوصف يقول ما نعرفه ويترك القرار لصاحبه. */
-    { key: 'tpl_show_qr', label: 'رمز الفوترة الإلكترونية (QR)', hint: 'بصيغة ZATCA الخليجية. لا يظهر بلا رقم ضريبي. راجع جهاز الضرائب قبل الاعتماد عليه' },
-];
-
 const NOTIF_COLORS: Record<string, string> = {
     danger: 'bg-[#fef2f2] text-[#dc2626]',
     warning: 'bg-[#fffbeb] text-[#d97706]',
@@ -187,12 +200,18 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
+<<<<<<< HEAD
     const { settings, business, recovery, site, hasWebsite, domain, published, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+=======
+    const { settings, business, recovery, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+>>>>>>> origin/main
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
     const { auth } = usePage<PageProps>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const abilities = auth?.abilities ?? [];
     const visible = (item: { key: string }) => item.key !== 'chart' || abilities.includes('accounting');
 
@@ -321,8 +340,6 @@ export default function SettingsIndex() {
         inv_prefix: get('inv_prefix', 'INV-'),
         inv_start: get('inv_start', '1'),
 
-        paper: get('paper', '80mm'),
-
         notify_new_order: on('notify_new_order'),
         notify_smart_alerts: on('notify_smart_alerts'),
         notify_daily_summary: on('notify_daily_summary'),
@@ -338,19 +355,16 @@ export default function SettingsIndex() {
          * مرافق كي لا يبقى منعُ بيعٍ سارٍ بلا شاشةٍ تُطفئه.
          */
 
-        /* قوالب الطباعة — الافتراضات هي شكل الإيصال قبل وجود هذا القسم
-           حرفيًّا: تاجرٌ لم يفتحه قطّ يطبع اليوم ما كان يطبعه أمس. */
-        tpl_header: get('tpl_header'),
-        tpl_footer: get('tpl_footer', 'شكرًا لزيارتكم\nنتشرف بخدمتكم دائمًا'),
-        tpl_font: get('tpl_font', 'عادي'),
-        tpl_show_logo: on('tpl_show_logo', '0'),
-        tpl_show_branch: on('tpl_show_branch'),
-        tpl_show_employee: on('tpl_show_employee'),
-        tpl_show_customer: on('tpl_show_customer'),
-        tpl_show_datetime: on('tpl_show_datetime'),
-        tpl_show_items_count: on('tpl_show_items_count'),
-        tpl_show_vat_no: on('tpl_show_vat_no', '0'),
-        tpl_show_qr: on('tpl_show_qr'),
+        /*
+         * ولا حقلَ قالبٍ هنا بعد اليوم.
+         *
+         * كانت `tpl_*` و`paper` تُقرأ عند فتح الصفحة وتُرسل مع كلّ حفظ من
+         * أيّ تبويب. فمن عدّل ورقته في محرّرها ثمّ حفظ «بيانات النشاط» أعاد
+         * القيمَ التي قرأتها الشاشة قبل تعديله — يُنسَخ القديم فوق الجديد بلا
+         * خطأ ولا رسالة، ولا يُكتشف إلّا على ورقٍ أمام زبون.
+         *
+         * ومحرّرُ القوالب يحفظها وحده الآن — انظر `DocumentTemplates`.
+         */
     });
 
     const submit = (e: React.FormEvent) => {
@@ -365,19 +379,46 @@ export default function SettingsIndex() {
      * إعدادات المتجر، ومساره غير مسار الحفظ هنا. وجمعُهما في نموذجٍ واحد كان
      * يوجب على كل حفظِ اسمٍ أن يمرّ بمصادقة النطاق.
      *
-     * والبطاقتان — الدومين والموقع — تتشاركانه: كلتاهما تحفظ الحقول الثمانية
-     * كاملةً، فلا يُمحى ما في إحداهما بحفظ الأخرى.
+     * وحقلٌ واحد بقي: السبعة الأخرى كانت تصف واجهة متجرٍ لا وجود لها.
      */
     const siteForm = useForm({
-        site_enabled: (site?.site_enabled ?? '0') === '1',
+        // '1' هو الافتراضيّ في `MarketingSettings`، فمن ضبط نطاقه قبل المفتاح يبقى زرُّه يعمل
+        site_on: (site?.site_on ?? '1') === '1',
         site_domain: site?.site_domain ?? '',
-        site_tagline: site?.site_tagline ?? '',
-        site_about: site?.site_about ?? '',
-        site_whatsapp: site?.site_whatsapp ?? '',
-        site_instagram: site?.site_instagram ?? '',
-        site_show_prices: (site?.site_show_prices ?? '1') === '1',
-        site_allow_orders: (site?.site_allow_orders ?? '1') === '1',
     });
+
+    /*
+     * متجرُ أبعاد نموذجٌ ثالث لا حقولٌ في نموذج الرابط الخارجيّ.
+     *
+     * العنوان يُحفظ في عمودٍ على المتجر (تفرّدُه يُفرَض في القاعدة)، وبقيّتُه
+     * في مجموعة `website`. ومسارُه غير مسار الرابط الخارجيّ: جمعُهما كان
+     * يوجب على كلّ حفظِ نطاقٍ خارجيّ أن يمرّ بمصادقة عنوان المتجر.
+     */
+    const storeForm = useForm({
+        site_slug: store?.slug ?? '',
+        store_on: (site?.store_on ?? '0') === '1',
+        store_theme: site?.store_theme ?? 'rose',
+        store_headline: site?.store_headline ?? '',
+        store_about: site?.store_about ?? '',
+        store_show_prices: (site?.store_show_prices ?? '1') === '1',
+        store_whatsapp: site?.store_whatsapp ?? '',
+        store_pay_cod: (site?.store_pay_cod ?? '1') === '1',
+        store_pay_transfer: (site?.store_pay_transfer ?? '0') === '1',
+        store_bank: site?.store_bank ?? '',
+    });
+
+    const saveStore = (e: React.FormEvent) => {
+        e.preventDefault();
+        storeForm.post(route('admin.marketing.store.save'), { preserveScroll: true, onSuccess: reloadPreview });
+    };
+
+    /** العنوان كما سيقرؤه الزبون — يُبنى بقاعدة الخادم نفسها */
+    const storeSlug = storeForm.data.site_slug
+        .toLowerCase()
+        .replace(/[\s_]+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-{2,}/g, '-')
+        .replace(/^-|-$/g, '');
 
     const saveSite = (e: React.FormEvent) => {
         e.preventDefault();
@@ -385,14 +426,64 @@ export default function SettingsIndex() {
     };
 
     /*
-     * تبويبات داخل «إعدادات الموقع».
+     * السؤالُ الأوّل يُطرح مرّةً — ثمّ يُفتح بزرّ «تغيير» لا يبقى معروضًا.
      *
-     * الشاشة كانت عمودًا واحدًا من ثلاث بطاقات يُمرَّر إليها، وما يُبحث عنه
-     * يُبحث عنه بالتمرير. والتبويب يقول ما في الصفحة قبل فتحها — والثلاثة
-     * هي ما لدينا فعلًا: لا تبويب لما لا حقل فيه.
+     * وحالتُه محلّية لا في الرابط: من فتح الاختيار ثمّ عدل عنه لا يترك أثرًا
+     * في عنوانٍ يُشارَك أو يُعاد تحميله.
      */
-    const [siteTab, setSiteTab] = useState('basic');
+    const [choosing, setChoosing] = useState(store.path === '');
+    const [pathBusy, setPathBusy] = useState(false);
 
+    const pickPath = (path: Exclude<DomainPath, ''>) => {
+        setPathBusy(true);
+        router.post(
+            route('admin.marketing.domain.path'),
+            { site_path: path },
+            {
+                preserveScroll: true,
+                onSuccess: () => setChoosing(false),
+                onFinish: () => setPathBusy(false),
+            },
+        );
+    };
+
+    /*
+     * وما هو حيٌّ يبقى مقبضُه ظاهرًا مهما كان الطريق المختار.
+     *
+     * متجرٌ منشور تُخفيه الشاشة لأنّ صاحبه اختار «عندي نطاق» يبقى مفتوحًا
+     * لزبائنه بلا بطاقةٍ تُطفئه — وبابٌ لا يُغلق أسوأ من بابٍ لا يُعرض.
+     */
+    /*
+        اختيارُ ما يُعرض مسارٌ آخر — لا حقلٌ في نموذج المتجر.
+
+        تبديلُ صنفٍ لا ينتظر «حفظ ونشر»: من يُخفي ورقَ التغليف يريد أن يختفي
+        الآن، ولا يُعقل أن يُعاد التحقّق من العنوان والنطاق لأجل ضغطةٍ عليه.
+    */
+    /*
+        المعاينة إطارٌ يفتح المتجر نفسه — لا رسمًا يشبهه.
+
+        ورسمٌ يشبهه هو ما يفترق عنه: حقلٌ يُضاف في القالب ولا يُضاف في الرسم
+        فيرى التاجر غير ما يرى زبونه. والمفتاح يُبدَّل بعد كلّ حفظةٍ ليُعاد
+        تحميل الإطار — وإلّا بقي يعرض ما قبلها.
+    */
+    const [previewKey, setPreviewKey] = useState(0);
+    const reloadPreview = () => setPreviewKey((n) => n + 1);
+
+    const [pickQuery, setPickQuery] = useState('');
+
+    const setShown = (published: boolean, id: number | null) => {
+        router.post(
+            route('admin.marketing.store.products'),
+            id === null ? { all: true, published } : { ids: [id], published },
+            { preserveScroll: true, preserveState: true, onSuccess: reloadPreview },
+        );
+    };
+
+    const storeLive = (site?.store_on ?? '0') === '1';
+    const showStoreCard = store.path === 'sub' || storeLive;
+    const showOwnCard = store.path === 'own' || (site?.site_domain ?? '') !== '';
+
+    /*
     /*
      * الشعار مسارٌ آخر، فحالتُه هنا لا في `siteForm`.
      *
@@ -483,6 +574,7 @@ export default function SettingsIndex() {
                     <BackToSettings as="button" onClick={goHub} />
             {tab === 'chart' ? (
                 <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
+<<<<<<< HEAD
             ) : tab === 'domain' ? (
                 /*
                     الدومين وحده في بطاقة — وسؤالٌ قبل حقل.
@@ -769,6 +861,424 @@ export default function SettingsIndex() {
                             </Card>
                         </form>
                     )}
+=======
+            ) : tab === 'website' ? (
+                <div className="space-y-6">
+                {choosing ? (
+                    <DomainChooser
+                        pricing={store.pricing}
+                        domain={store.domain}
+                        current={store.path}
+                        onPick={pickPath}
+                        onCancel={store.path === '' ? undefined : () => setChoosing(false)}
+                        busy={pathBusy}
+                    />
+                ) : (
+                <>
+                <DomainPathStrip
+                    path={store.path as Exclude<DomainPath, ''>}
+                    pricing={store.pricing}
+                    onChange={() => setChoosing(true)}
+                />
+
+                {store.path === 'new' && (
+                    <NewDomainCard
+                        pricing={store.pricing}
+                        domain={store.domain}
+                        onPick={pickPath}
+                        busy={pathBusy}
+                    />
+                )}
+
+                {showStoreCard && (
+                <>
+                {/*
+                    إنشاء المتجر — أربع خطواتٍ في بطاقةٍ واحدة.
+
+                    و«أسهل طريقة ممكنة» تعني ألّا يُطلب من صاحب المحلّ ما لا
+                    يملكه: لا نطاقًا يشتريه، ولا استضافةً يضبطها، ولا صورًا
+                    يرفعها من جديد. عنوانٌ يكتبه، ولونٌ يختاره، وسطرٌ يعرّف به
+                    — ومنتجاتُه التي في النظام أصلًا تصير صفحةً يفتحها زبونه.
+                */}
+                <form onSubmit={saveStore}>
+                    <Card className="p-6">
+                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 className="font-bold text-[#111]">{t('متجرك الإلكتروني')}</h3>
+                                <p className="mt-1 text-[13px] text-[#6b7280]">
+                                    {t('صفحةٌ يستضيفها أبعاد: منتجاتك بصورها وأسعارها، ويطلب منها الزبون عبر واتساب.')}
+                                </p>
+                            </div>
+                            {store.slug && storeForm.data.store_on && (
+                                <Button variant="outline" size="sm" asChild>
+                                    <a
+                                        href={`https://${store.slug}.${store.domain}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <ExternalLink />
+                                        {t('افتح متجري')}
+                                    </a>
+                                </Button>
+                            )}
+                        </div>
+
+                        {/* ١ — العنوان */}
+                        <Field
+                            label="عنوان متجرك"
+                            hint="حروفٌ إنجليزية صغيرة وأرقام وشرطة — يُكتب مرّةً ويصعب تغييره بعد أن يوزّعه زبائنك"
+                            error={storeForm.errors.site_slug}
+                        >
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    dir="ltr"
+                                    value={storeForm.data.site_slug}
+                                    onChange={(e) => storeForm.setData('site_slug', e.target.value)}
+                                    placeholder={store.suggestion ?? 'my-store'}
+                                    className="max-w-[16rem]"
+                                />
+                                <span dir="ltr" className="shrink-0 text-[13px] text-[#9ca3af]">
+                                    .{store.domain}
+                                </span>
+                            </div>
+                        </Field>
+
+                        {storeSlug && (
+                            <p dir="ltr" className="mt-2 text-[13px] font-medium text-[#111]">
+                                https://{storeSlug}.{store.domain}
+                            </p>
+                        )}
+
+                        {/* ٢ — الشكل */}
+                        <div className="mt-6">
+                            <p className="mb-2 text-sm font-medium text-[#111]">{t('اللون')}</p>
+                            {/*
+                                ثيماتٌ معدودة لا منتقي ألوانٍ حرّ: صاحبُ محلٍّ
+                                ليس مصمّمًا، والحرّيةُ الكاملة تُخرج صفحةً بلونٍ
+                                فاقعٍ لا تُقرأ. وكلُّها مضبوطةُ التباين.
+                            */}
+                            <div className="flex flex-wrap gap-2">
+                                {store.themes.map((th) => (
+                                    <button
+                                        key={th.value}
+                                        type="button"
+                                        onClick={() => storeForm.setData('store_theme', th.value)}
+                                        className={cn(
+                                            'flex items-center gap-2 rounded-full border px-4 py-2.5 text-[13px] font-medium transition',
+                                            storeForm.data.store_theme === th.value
+                                                ? 'border-[#111] bg-[#fafafa] text-[#111]'
+                                                : 'border-[var(--ui-border,#e8e8e8)] text-[#6b7280] hover:bg-[#fafafa]',
+                                        )}
+                                    >
+                                        <span
+                                            className="size-4 rounded-full"
+                                            style={{ backgroundColor: th.accent }}
+                                        />
+                                        {th.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mt-6 grid grid-cols-1 gap-4">
+                            <Field label="العنوان الرئيسي" hint="يظهر أعلى الصفحة — واسم متجرك إن تركته فارغًا" error={storeForm.errors.store_headline}>
+                                <Input
+                                    value={storeForm.data.store_headline}
+                                    onChange={(e) => storeForm.setData('store_headline', e.target.value)}
+                                    placeholder={business.name}
+                                />
+                            </Field>
+                            <Field label="نبذة قصيرة" hint="سطران يقرؤهما الزائر قبل المنتجات — وتُقرأ في نتائج البحث" error={storeForm.errors.store_about}>
+                                <Textarea
+                                    rows={2}
+                                    value={storeForm.data.store_about}
+                                    onChange={(e) => storeForm.setData('store_about', e.target.value)}
+                                />
+                            </Field>
+                        </div>
+
+                        {/* ٣ — الطلب والدفع */}
+                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <h4 className="mb-3 font-bold text-[#111]">{t('الطلب والدفع')}</h4>
+
+                            <Field
+                                label="رقم واتساب للطلبات"
+                                hint="يصله الطلب مكتوبًا — ورقم متجرك إن تركته فارغًا"
+                                error={storeForm.errors.store_whatsapp}
+                            >
+                                <Input
+                                    dir="ltr"
+                                    value={storeForm.data.store_whatsapp}
+                                    onChange={(e) => storeForm.setData('store_whatsapp', e.target.value)}
+                                    placeholder={business.phone ?? '96891234567'}
+                                    className="max-w-[16rem]"
+                                />
+                            </Field>
+
+                            <div className="mt-4 space-y-3">
+                                <Toggle
+                                    on={storeForm.data.store_show_prices}
+                                    onChange={(v) => storeForm.setData('store_show_prices', v)}
+                                    label="إظهار الأسعار"
+                                    hint="أطفئه إن كنت تسعّر حسب الطلب — ويبقى زرّ الطلب يعمل"
+                                />
+                                <Toggle
+                                    on={storeForm.data.store_pay_cod}
+                                    onChange={(v) => storeForm.setData('store_pay_cod', v)}
+                                    label="الدفع عند الاستلام"
+                                />
+                                <Toggle
+                                    on={storeForm.data.store_pay_transfer}
+                                    onChange={(v) => storeForm.setData('store_pay_transfer', v)}
+                                    label="تحويل بنكي"
+                                />
+                            </div>
+
+                            {storeForm.data.store_pay_transfer && (
+                                <div className="mt-4">
+                                    <Field
+                                        label="بيانات الحساب البنكي"
+                                        hint="تظهر للزبون في صفحة متجرك — اسم البنك ورقم الحساب والآيبان"
+                                        error={storeForm.errors.store_bank}
+                                    >
+                                        <Textarea
+                                            rows={3}
+                                            value={storeForm.data.store_bank}
+                                            onChange={(e) => storeForm.setData('store_bank', e.target.value)}
+                                        />
+                                    </Field>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ٤ — النشر */}
+                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <Toggle
+                                on={storeForm.data.store_on}
+                                onChange={(v) => storeForm.setData('store_on', v)}
+                                label="نشر المتجر"
+                                hint="حتى يُنشر لا يفتحه أحد — والعنوان يردّ «غير موجود» لا صفحةً فارغة"
+                            />
+
+                            {/*
+                                ولا يُنشر متجرٌ بلا بضاعة: صفحةٌ فارغة تُفقد
+                                الزبون ثقته، ولا يعود إليها بعد أن رآها خالية.
+                            */}
+                            {storeForm.data.store_on && store.productCount === 0 && (
+                                <p className="mt-3 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#b45309]">
+                                    {t('لا صنف معروضًا في متجرك — ستُفتح الصفحة خالية. اعرض صنفًا قبل نشرها.')}
+                                </p>
+                            )}
+                        </div>
+
+                        {/*
+                            ٥ — ما يُعرض.
+
+                            وكانت الصفحة تعرض كلّ صنفٍ فعّال بلا استثناء: أوراقُ
+                            التغليف ومكوّناتُ الباقات وأسعارُ الجملة تصل زبائن
+                            التاجر، ولا يملك منعَ صنفٍ إلّا بإيقاف بيعه عند
+                            الطاولة أيضًا — أي أن يُوقف بيعه ليُخفيه.
+                        */}
+                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <div className="mb-3 flex flex-wrap items-center gap-3">
+                                <div>
+                                    <p className="text-sm font-medium text-[#111]">{t('ما يظهر في متجرك')}</p>
+                                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                                        {t(':n صنفًا معروضًا من :all', {
+                                            n: store.productCount,
+                                            all: store.products.filter((p) => p.active).length,
+                                        })}
+                                    </p>
+                                </div>
+                                <div className="ms-auto flex flex-wrap gap-2">
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setShown(true, null)}>
+                                        {t('اعرض الكل')}
+                                    </Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setShown(false, null)}>
+                                        {t('أخفِ الكل')}
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {store.products.length > 8 && (
+                                <Input
+                                    value={pickQuery}
+                                    onChange={(e) => setPickQuery(e.target.value)}
+                                    placeholder={t('ابحث في الأصناف')}
+                                    className="mb-3"
+                                />
+                            )}
+
+                            <ul className="max-h-[320px] divide-y divide-[var(--ui-border,#e8e8e8)] overflow-y-auto rounded-[12px] border border-[var(--ui-border,#e8e8e8)]">
+                                {store.products
+                                    .filter((p) => p.name.toLowerCase().includes(pickQuery.trim().toLowerCase()))
+                                    .map((p) => (
+                                        <li key={p.id} className="flex items-center gap-3 px-3 py-2.5">
+                                            {p.image ? (
+                                                <img src={p.image} alt="" className="size-9 shrink-0 rounded-lg object-cover" />
+                                            ) : (
+                                                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#f3f4f6] text-[12px] font-bold text-[#9ca3af]">
+                                                    {p.name.slice(0, 1)}
+                                                </span>
+                                            )}
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate text-[13px] font-medium text-[#111]">{p.name}</span>
+                                                {/* غيرُ الفعّال لا يظهر ولو رُفع مفتاحه — يُقال هنا لا في المتجر */}
+                                                {!p.active && (
+                                                    <span className="text-[11px] text-[#b45309]">{t('غير مفعّل — لا يظهر')}</span>
+                                                )}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShown(!p.published, p.id)}
+                                                className={cn(
+                                                    'shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition',
+                                                    p.published
+                                                        ? 'bg-[#ecfdf5] text-[#059669] hover:bg-[#d1fae5]'
+                                                        : 'bg-[#f3f4f6] text-[#6b7280] hover:bg-[#e5e7eb]',
+                                                )}
+                                            >
+                                                {p.published ? t('معروض') : t('مخفيّ')}
+                                            </button>
+                                        </li>
+                                    ))}
+                            </ul>
+                        </div>
+
+                        {/* ٦ — المعاينة: المتجر نفسه في إطار، لا رسمًا يشبهه */}
+                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <div className="mb-3 flex items-center gap-2">
+                                <p className="text-sm font-medium text-[#111]">{t('معاينة')}</p>
+                                <p className="text-[12px] text-[#9ca3af]">
+                                    {t('هكذا يراه زبونك — ولا يفتحها أحد سواك')}
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={reloadPreview}
+                                    aria-label={t('تحديث المعاينة')}
+                                    className="ms-auto rounded-lg p-2 text-[#9ca3af] hover:text-[#111]"
+                                >
+                                    <RefreshCw className="size-4" />
+                                </button>
+                            </div>
+                            <div className="overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-2">
+                                <iframe
+                                    key={previewKey}
+                                    src={route('admin.store.preview')}
+                                    title={t('معاينة المتجر')}
+                                    className="h-[560px] w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex justify-end">
+                            <Button type="submit" loading={storeForm.processing}>
+                                <Save />
+                                {t('حفظ ونشر')}
+                            </Button>
+                        </div>
+                    </Card>
+                </form>
+                </>
+                )}
+
+                {showOwnCard && (
+                <>
+                {/*
+                    الموقع الخارجيّ — ومفتاحٌ يقول ما يُشغّله.
+
+                    كانتا بطاقتين: «إعدادات الدومين» فيها حقلُ نطاق، و«إعدادات
+                    الموقع» فيها رافعُ شعار — ووصفاهما يَعِدان بمتجرٍ يُنشر
+                    للزوّار ولا وجود له. فيبحث التاجر عن «تفعيل الموقع» بينهما
+                    ولا يجده، وليس بينهما ما يُفعَّل.
+
+                    والموقع في «أبعاد» شيئان لا ثالث: زرٌّ في الشريط يفتحه،
+                    وفحصٌ يقرأ صفحته في «الظهور في البحث». والبطاقة تقولهما
+                    بالحرف تحت المفتاح، فلا يُترك التاجر يُخمّن ما فعّل.
+
+                    والشعار انتقل إلى «بيانات النشاط»: شعارُ المتجر يُطبع على
+                    الفاتورة، ولا علاقة له بموقعٍ خارج النظام.
+                */}
+                <form onSubmit={saveSite}>
+                    <Card className="p-6">
+                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 className="font-bold text-[#111]">{t('الموقع الإلكتروني')}</h3>
+                                <p className="mt-1 text-[13px] text-[#6b7280]">
+                                    {t('موقعك أو صفحتك خارج النظام — «أبعاد» لا يستضيفه، بل يربط إليه ويفحص ظهوره في البحث.')}
+                                </p>
+                            </div>
+                            {siteForm.data.site_on && siteForm.data.site_domain && (
+                                <Button variant="outline" size="sm" asChild>
+                                    <a
+                                        href={`https://${siteForm.data.site_domain}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <ExternalLink />
+                                        {t('فتح الموقع')}
+                                    </a>
+                                </Button>
+                            )}
+                        </div>
+
+                        <Toggle
+                            on={siteForm.data.site_on}
+                            onChange={(v) => siteForm.setData('site_on', v)}
+                            label="تفعيل الموقع الإلكتروني"
+                            hint="أطفئه لتُخفي زرّ الموقع وتوقف فحصه — ويبقى نطاقك محفوظًا كما هو"
+                        />
+
+                        {/*
+                            وما يُشغّله المفتاح مكتوبٌ تحته لا مخبوءٌ في رأس أحد:
+                            مفتاحٌ لا يُعرف أثرُه يُترك مطفأً أو يُرفع على غير هدى.
+                        */}
+                        <ul className="mt-4 space-y-1.5 text-[13px] text-[#6b7280]">
+                            <li className="flex items-start gap-2">
+                                <Globe className="mt-0.5 size-4 shrink-0 text-[#9ca3af]" />
+                                {t('زرّ «الموقع الإلكتروني» في الشريط العلوي — يفتح موقعك في تبويب جديد')}
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <Search className="mt-0.5 size-4 shrink-0 text-[#9ca3af]" />
+                                {t('فحص «الظهور في البحث» — يفتح صفحتك ويقول ما يراه محرّك البحث فيها')}
+                            </li>
+                        </ul>
+
+                        <div className="mt-5">
+                            <Field
+                                label="النطاق"
+                                hint="اكتب النطاق وحده بلا https:// — مثل: mystore.om"
+                                error={siteForm.errors.site_domain}
+                            >
+                                <Input
+                                    dir="ltr"
+                                    value={siteForm.data.site_domain}
+                                    onChange={(e) => siteForm.setData('site_domain', e.target.value)}
+                                    placeholder="mystore.om"
+                                    disabled={!siteForm.data.site_on}
+                                />
+                            </Field>
+                        </div>
+
+                        {siteForm.data.site_on && !siteForm.data.site_domain.trim() && (
+                            <p className="mt-3 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#b45309]">
+                                {t('مفعَّل بلا نطاق: لا زرَّ يظهر ولا فحصَ يقع حتى تكتب نطاقك.')}
+                            </p>
+                        )}
+
+                        <div className="mt-6 flex justify-end">
+                            <Button type="submit" loading={siteForm.processing}>
+                                <Save />
+                                {t('حفظ التغييرات')}
+                            </Button>
+                        </div>
+                    </Card>
+                </form>
+                </>
+                )}
+                </>
+                )}
+>>>>>>> origin/main
                 </div>
             ) : tab === 'custom-alerts' ? (
                 <CustomAlerts
@@ -794,8 +1304,8 @@ export default function SettingsIndex() {
                                 <Button
                                     type="button"
                                     variant="danger"
-                                    onClick={() => {
-                                        if (!confirm(t('حذف جميع التنبيهات المرسلة؟'))) return;
+                                    onClick={async () => {
+                                        if (! await ask({ message: 'حذف جميع التنبيهات المرسلة؟', danger: true, action: 'حذف' })) return;
                                         router.post(
                                             route('admin.notifications.clear'),
                                             {},
@@ -960,6 +1470,73 @@ export default function SettingsIndex() {
                                     <Field label="العنوان" className="sm:col-span-2" error={form.errors.address}>
                                         <Textarea rows={2} value={form.data.address} onChange={(e) => form.setData('address', e.target.value)} />
                                     </Field>
+                                </div>
+
+                                {/*
+                                    الشعار هنا لا في «الموقع الإلكتروني».
+
+                                    كان تحت بطاقةٍ اسمها «إعدادات الموقع» ووصفُها
+                                    «ما يراه زائر موقعك» — ولا يراه زائرُ موقعٍ
+                                    أبدًا: هو شعارُ المتجر يُطبع على الفاتورة
+                                    والإيصال. فعاد إلى بيانات النشاط، مع الاسم
+                                    والهاتف والعنوان التي تُطبع معه.
+                                */}
+                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                                    <h3 className="mb-1 font-bold text-[#111]">{t('الشعار')}</h3>
+                                    <p className="mb-4 text-[13px] text-[#6b7280]">
+                                        {t('يظهر في الفواتير والإيصالات — وقالب فاتورة البيع يُظهره أو يُخفيه.')}
+                                    </p>
+
+                                    <div className="flex flex-wrap items-center gap-5">
+                                        <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa]">
+                                            {logoPreview || business.logo ? (
+                                                <img
+                                                    src={logoPreview ?? business.logo ?? ''}
+                                                    alt=""
+                                                    className="size-full object-contain"
+                                                />
+                                            ) : (
+                                                <ImageIcon className="size-8 text-[#d1d5db]" />
+                                            )}
+                                        </span>
+
+                                        <div className="min-w-0 flex-1">
+                                            <Input
+                                                type="file"
+                                                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                                onChange={(e) => pickLogo(e.target.files?.[0] ?? null)}
+                                                className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
+                                            />
+                                            <p className="mt-2 text-[12px] text-[#9ca3af]">
+                                                {t('أفضل مقاس: 400×100 بكسل · PNG بخلفيّة شفّافة · حتّى ٢ ميغابايت')}
+                                            </p>
+
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    disabled={!logoFile}
+                                                    loading={logoBusy && !!logoFile}
+                                                    onClick={() => logoFile && sendLogo({ logo: logoFile })}
+                                                >
+                                                    <Upload />
+                                                    {t('رفع الشعار')}
+                                                </Button>
+                                                {business.logo && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        loading={logoBusy && !logoFile}
+                                                        onClick={() => sendLogo({ remove: true })}
+                                                    >
+                                                        <Trash2 />
+                                                        {t('حذف الشعار')}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/*
@@ -1159,174 +1736,64 @@ export default function SettingsIndex() {
                         {tab === 'templates' && (
                             <>
                                 {/*
-                                    «قوالب الفواتير» لا «قالب الإيصال»: صار
-                                    يحكم ثلاث أوراق لا واحدة — الإيصال الحراري،
-                                    وفاتورة A4، والفاتورة الضريبية. ومن يقرأ
-                                    «الإيصال» لا يخطر له أن فاتورته الضريبية
-                                    تُضبط من هنا، فيطلبها تغييرًا في الكود.
+                                    بطاقةٌ لكلّ ورقة — والتحرير في صفحتها لا هنا.
+
+                                    كان القالبُ واحدًا يحكم ورقةَ البيع وحدها،
+                                    وسائرُ أوراق النظام لا تُطبع أصلًا: أمرُ
+                                    شراءٍ يُرسل إلى مورّد، وسندُ استلامٍ يُوقَّع
+                                    عند الباب، وسندُ نقلٍ يمشي مع البضاعة بين
+                                    فرعين. فما في النظام لا يُثبت شيئًا عند خلاف.
+
+                                    والمعاينةُ انتقلت معها إلى صفحةٍ تسعُها:
+                                    صندوقٌ بعرض مئتي بكسل بجانب عشرين حقلًا لا
+                                    يُرى فيه شكل ورقة.
                                 */}
-                                <h3 className="mb-1 font-bold text-[#111]">{t('قوالب الفواتير')}</h3>
-                                <p className="mb-4 text-[12px] text-[#9ca3af]">
-                                    {t('يحكم الإيصال المطبوع وفاتورة A4 والفاتورة الضريبية معًا — والمعاينة على اليمين تتبع كل تغيير.')}
+                                <h3 className="mb-1 font-bold text-[#111]">{t('قوالب الأوراق')}</h3>
+                                <p className="mb-5 text-[13px] text-[#6b7280]">
+                                    {t('لكل ورقةٍ في النظام قالبٌ يُحرَّر وحده — اختر ورقةً لتفتح محرّرها ومعاينتها.')}
                                 </p>
 
-                                <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_260px]">
-                                    <div className="space-y-4">
-                                        {/*
-                                            الترقيم هنا لا في قسمٍ آخر.
-
-                                            كان «الفواتير» بطاقةً حقلاها بادئة
-                                            الرقم وأوّله، و«الطباعة» بطاقةً حقلها
-                                            مقاس الورق — وكلاهما يُقرأ في المعاينة
-                                            على اليمين: رقم الفاتورة يظهر فيها،
-                                            والمقاس مكتوبٌ تحتها. فمن يضبطهما بعيدًا
-                                            عنها يضبطهما بلا أن يرى أثرهما.
-                                        */}
-                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                            <Field label="بادئة رقم الفاتورة" error={form.errors.inv_prefix}>
-                                                <Input dir="ltr" value={form.data.inv_prefix} onChange={(e) => form.setData('inv_prefix', e.target.value)} />
-                                            </Field>
-                                            <Field
-                                                label="رقم البداية"
-                                                error={form.errors.inv_start}
-                                                hint="يسري على أوّل فاتورةٍ بالبادئة الجديدة، ولا يمسّ ما صدر"
-                                            >
-                                                <Input type="number" min="1" dir="ltr" value={form.data.inv_start} onChange={(e) => form.setData('inv_start', e.target.value)} />
-                                            </Field>
-                                        </div>
-
-                                        <Field
-                                            label="سطر تحت اسم المتجر"
-                                            hint="شعار أو عبارة ترحيب — يُترك فارغًا فلا يظهر"
-                                            error={form.errors.tpl_header}
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    {(templates ?? []).map((x) => (
+                                        <Link
+                                            key={x.key}
+                                            href={route('admin.settings.templates.edit', x.key)}
+                                            className="group flex items-center gap-4 rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white p-5 text-start transition hover:border-[#d4d4d4] hover:bg-[#fafafa]"
                                         >
-                                            <Input
-                                                value={form.data.tpl_header}
-                                                onChange={(e) => form.setData('tpl_header', e.target.value)}
-                                                placeholder={t('مثال: أجمل الورود منذ 1998')}
-                                            />
+                                            <FileText className="size-5 shrink-0 text-[#9ca3af]" />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block text-[15px] font-semibold text-[#111]">{x.label}</span>
+                                                <span className="mt-1 block text-[13px] leading-snug text-[#9ca3af]">{x.desc}</span>
+                                                <span className="mt-1 block text-[11px] text-[#d1d5db]">{x.section}</span>
+                                            </span>
+                                            <ChevronLeft className="size-4 shrink-0 text-[#d1d5db] transition-colors group-hover:text-[#6b7280]" />
+                                        </Link>
+                                    ))}
+                                </div>
+
+                                {/*
+                                    والترقيم يبقى هنا: بادئةُ الرقم وأوّلُه ليسا
+                                    شكلَ ورقةٍ بعينها بل ترقيمُ الفواتير كلّها،
+                                    ووضعُهما في محرّر ورقةٍ واحدة يجعل تعديلَهما
+                                    من ورقةٍ يغيّر ما تطبعه أخرى بلا أن يقول.
+                                */}
+                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                                    <h3 className="mb-4 font-bold text-[#111]">{t('ترقيم الفواتير')}</h3>
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <Field label="بادئة رقم الفاتورة" error={form.errors.inv_prefix}>
+                                            <Input dir="ltr" value={form.data.inv_prefix} onChange={(e) => form.setData('inv_prefix', e.target.value)} />
                                         </Field>
-
                                         <Field
-                                            label="نص التذييل"
-                                            hint="يظهر أسفل الإيصال — كل سطر كما كتبته"
-                                            error={form.errors.tpl_footer}
+                                            label="رقم البداية"
+                                            error={form.errors.inv_start}
+                                            hint="يسري على أوّل فاتورةٍ بالبادئة الجديدة، ولا يمسّ ما صدر"
                                         >
-                                            <Textarea
-                                                rows={3}
-                                                value={form.data.tpl_footer}
-                                                onChange={(e) => form.setData('tpl_footer', e.target.value)}
-                                            />
+                                            <Input type="number" min="1" dir="ltr" value={form.data.inv_start} onChange={(e) => form.setData('inv_start', e.target.value)} />
                                         </Field>
-
-                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                            <Field label="حجم الخط" error={form.errors.tpl_font}>
-                                                <Select
-                                                    value={form.data.tpl_font}
-                                                    onChange={(e) => form.setData('tpl_font', e.target.value)}
-                                                    options={['صغير', 'عادي', 'كبير'].map((x) => ({
-                                                        label: t(x),
-                                                        value: x,
-                                                    }))}
-                                                />
-                                            </Field>
-                                            <Field
-                                                label="مقاس الورق"
-                                                hint="الإيصال الحراري 80 أو 58 ملم، والفاتورة على A4"
-                                                error={form.errors.paper}
-                                            >
-                                                <Select
-                                                    value={form.data.paper}
-                                                    onChange={(e) => form.setData('paper', e.target.value)}
-                                                    options={[
-                                                        { label: '80mm', value: '80mm' },
-                                                        { label: '58mm', value: '58mm' },
-                                                        { label: 'A4', value: 'A4' },
-                                                    ]}
-                                                />
-                                            </Field>
-                                        </div>
-
-                                        <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-4">
-                                            <p className="mb-2 text-[13px] font-semibold text-[#111]">
-                                                {t('ما يظهر على الإيصال')}
-                                            </p>
-                                            {TEMPLATE_ROWS.map((r) => (
-                                                <Toggle
-                                                    key={r.key}
-                                                    on={form.data[r.key as keyof typeof form.data] as boolean}
-                                                    onChange={(v) => form.setData(r.key as 'tpl_show_qr', v)}
-                                                    label={r.label}
-                                                    hint={r.hint}
-                                                />
-                                            ))}
-                                        </div>
                                     </div>
-
-                                    {/* معاينة حيّة — محرّر قالبٍ بلا معاينة تخمين،
-                                        ولا يُكتشف خطؤه إلا على ورقٍ أمام الزبون */}
-                                    {/* تحت الترويسة المثبّتة لا خلفها: top-4 كانت
-                                        تُوقف المعاينة عند 16px فتغطّيها الترويسة */}
-                                    <div className="lg:sticky lg:top-[calc(var(--chrome-top,0px)+5rem)] lg:self-start">
-                                        <p className="mb-2 text-[12px] text-[#9ca3af]">{t('معاينة')}</p>
-                                        <div
-                                            dir="rtl"
-                                            className="rounded-[12px] border border-dashed border-[#d1d5db] bg-white p-4 font-mono leading-relaxed text-[#111]"
-                                            style={{
-                                                fontSize:
-                                                    form.data.tpl_font === 'صغير'
-                                                        ? '9px'
-                                                        : form.data.tpl_font === 'كبير'
-                                                          ? '12px'
-                                                          : '10.5px',
-                                            }}
-                                        >
-                                            <div className="text-center">
-                                                {form.data.tpl_show_logo && (
-                                                    <div className="mx-auto mb-1 h-6 w-14 rounded bg-[#f3f4f6]" />
-                                                )}
-                                                <p className="font-bold">{form.data.shop_name || t('اسم المتجر')}</p>
-                                                {form.data.tpl_header && (
-                                                    <p className="text-[#6b7280]">{form.data.tpl_header}</p>
-                                                )}
-                                                {form.data.tpl_show_branch && (
-                                                    <p className="text-[#6b7280]">{t('الفرع الرئيسي')}</p>
-                                                )}
-                                                {form.data.tpl_show_vat_no && form.data.vat_number && (
-                                                    <p className="text-[#6b7280]">
-                                                        {t('الرقم الضريبي')}: {form.data.vat_number}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
-                                            <p>{t('رقم الفاتورة')}: {form.data.inv_prefix}000001</p>
-                                            {form.data.tpl_show_employee && <p>{t('الموظف')}: {t('أحمد')}</p>}
-                                            {form.data.tpl_show_customer && <p>{t('العميل')}: {t('عميل نقدي')}</p>}
-                                            {form.data.tpl_show_datetime && <p dir="ltr" className="text-end">2026-08-02 10:15</p>}
-                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
-                                            <p>{t('باقة ورد')} × 2 — 21.000</p>
-                                            {form.data.tpl_show_items_count && (
-                                                <p className="text-[#6b7280]">{t('عدد الأصناف')}: 2</p>
-                                            )}
-                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
-                                            <p className="font-bold">{t('الإجمالي')}: 22.050</p>
-                                            {form.data.tpl_show_qr && (
-                                                <div className="mx-auto my-2 size-12 rounded bg-[#f3f4f6]" />
-                                            )}
-                                            <div className="my-2 border-t border-dashed border-[#d1d5db]" />
-                                            <div className="whitespace-pre-line text-center text-[#6b7280]">
-                                                {form.data.tpl_footer}
-                                            </div>
-                                        </div>
-                                        <p className="mt-2 text-[11px] text-[#9ca3af]">
-                                            {t('معاينة تقريبية — الشكل النهائي على ورق')} {form.data.paper}
-                                        </p>
-                                        {/* كانت هذه الجملة في قسم «الطباعة» المستقلّ، فانتقلت
-                                            معه: من يبحث عن الطباعة التلقائية يبحث هنا الآن */}
-                                        <p className="mt-3 text-[11px] leading-relaxed text-[#9ca3af]">
-                                            {t('الطباعة التلقائية بعد البيع تُضبط لكل طابعة من «الأجهزة» — لأن الصندوق الذي فيه طابعة يطبع، وغيره لا.')}
-                                        </p>
-                                    </div>
+                                    <p className="mt-3 text-[11px] leading-relaxed text-[#9ca3af]">
+                                        {t('الطباعة التلقائية بعد البيع تُضبط لكل طابعة من «الأجهزة» — لأن الصندوق الذي فيه طابعة يطبع، وغيره لا.')}
+                                    </p>
                                 </div>
                             </>
                         )}
@@ -1361,6 +1828,8 @@ export default function SettingsIndex() {
             )}
                 </div>
             )}
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

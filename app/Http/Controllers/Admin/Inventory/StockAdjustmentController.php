@@ -8,10 +8,15 @@ use App\Models\BranchStock;
 use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Models\StockAdjustment;
+use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Pagination;
+use App\Support\Search;
+use App\Support\Sort;
+use App\Support\Waste;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -38,7 +43,10 @@ class StockAdjustmentController extends Controller
         'date' => 'adjusted_at',
     ];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     public function index(Request $request): Response
     {
@@ -47,16 +55,17 @@ class StockAdjustmentController extends Controller
 
         $q = StockAdjustment::where('business_id', $bid)->with(['product', 'creator', 'branch']);
 
-        if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('number', 'like', "%{$s}%")
-                ->orWhere('notes', 'like', "%{$s}%")
-                ->orWhereHas('product', fn ($p) => $p->where('name', 'like', "%{$s}%")));
+        if ($s = Search::term($request)) {
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('number', $like, "%{$s}%")
+                ->orWhere('notes', $like, "%{$s}%")
+                ->orWhereHas('product', fn ($p) => $p->where('name', $like, "%{$s}%")));
         }
         if ($reason = $request->query('reason')) {
             $q->where('reason', $reason);
         }
 
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('adjusted_at')->orderByDesc('id'));
+        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('adjusted_at')->orderByDesc('id'));
 
         $adjustments = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
@@ -79,8 +88,8 @@ class StockAdjustmentController extends Controller
             ])->all(),
             'pagination' => Pagination::meta($adjustments),
             'filters' => $request->only('q', 'reason')
-                + \App\Support\Sort::params($request, self::SORTS),
-            'sorts' => \App\Support\Sort::keys(self::SORTS),
+                + Sort::params($request, self::SORTS),
+            'sorts' => Sort::keys(self::SORTS),
             'reasons' => StockAdjustment::REASONS,
             // التعديل يقع على فرعٍ بعينه، فالنموذج يلزمه اختياره — والفرع
             // الحاليّ في الجلسة قيمةٌ ابتدائية لا أكثر
@@ -147,9 +156,19 @@ class StockAdjustmentController extends Controller
         }
 
         $product = Product::where('business_id', $bid)->findOrFail($data['product_id']);
-        // رقمٌ واحد صحيح يتحرّك به كلُّ شيء: الكمية، ورصيد الفرع، وسجلّ
-        // التعديل، وحركة المخزون، والقيد المالي
-        $delta = (int) $data['quantity_delta'];
+        /*
+         * رقمٌ واحد صحيح يتحرّك به كلُّ شيء: الكمية، ورصيد الفرع، وسجلّ
+         * التعديل، وحركة المخزون، والقيد المالي.
+         *
+         * وسببُ الهالك ينقص المخزون دائمًا: كان النموذج يقبل «تلف ‎+٦» فيزيد
+         * المخزون بحجّة أنّ بضاعةً تلفت — وهو ما لا معنى له في أيّ قراءة،
+         * ويسمّم كلّ تقريرٍ يجمع الخسائر. والتصحيح في الخادم لا في الشاشة:
+         * يكتب المستخدم «٦» كما ينطقها، ويجعلها الخادم ‎−٦، فلا يُطلب من أحدٍ
+         * أن يتذكّر إشارةً.
+         *
+         * والصفوف القديمة لا تُمسّ — تُقرأ وتُبلَّغ في شاشة التحليلات.
+         */
+        $delta = (int) Waste::normalizeDelta($data['reason'], (int) $data['quantity_delta']);
 
         /*
          * الكمية لا تنزل تحت الصفر.
@@ -231,7 +250,7 @@ class StockAdjustmentController extends Controller
                                 ['account' => 'inventory', 'debit' => $value, 'memo' => $product->name],
                                 ['account' => 'other_expenses', 'credit' => $value],
                             ],
-                        \Illuminate\Support\Carbon::parse($data['adjusted_at']),
+                        Carbon::parse($data['adjusted_at']),
                         'تعديل مخزون',
                         $branch->id,
                         auth()->id(),
@@ -243,7 +262,7 @@ class StockAdjustmentController extends Controller
             return back()->withInput()->withErrors(['quantity_delta' => $e->getMessage()]);
         }
 
-        \App\Support\Activity::log(
+        Activity::log(
             'created',
             'عدّل مخزون '.$product->name.' بمقدار '.$delta.' — '.$data['reason'],
             ['subject_id' => $product->id]

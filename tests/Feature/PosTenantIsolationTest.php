@@ -36,8 +36,6 @@ class PosTenantIsolationTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
         ]);
 
-        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
-        $this->openShiftFor($this->mine->id);
     }
 
     private function theirOrder(string $number, bool $held = false): int

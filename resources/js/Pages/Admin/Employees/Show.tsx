@@ -1,18 +1,19 @@
 import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import {
-    ArrowRight,
     Check,
     Contact,
+    Copy,
     KeyRound,
     Lock,
     LockOpen,
     Mail,
     Pencil,
-    ScanBarcode,
+    TriangleAlert,
     X,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import StatCard from '@/Components/StatCard';
 import Tabs from '@/Components/Tabs';
@@ -37,7 +38,7 @@ interface Props {
 }
 
 export default function EmployeeShow() {
-    const { employee, orderCount, salesSeries, permissions, activities, context } =
+    const { employee, orderCount, salesSeries, permissions, activities, context, flash } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -45,6 +46,13 @@ export default function EmployeeShow() {
 
     const [tab, setTab] = useState<'sales' | 'activity' | 'permissions'>('sales');
     const [resetting, setResetting] = useState(false);
+    const [copied, setCopied] = useState(false);
+    /*
+     * تُخفى بعد إغلاق النافذة ولو بقيت في الوميض: الوميض يعيش حتى الطلب
+     * التالي، ولا يُترك رقمُ سرٍّ معروضًا على شاشةٍ في محلٍّ بعد أن قُرئ.
+     */
+    const [seen, setSeen] = useState(false);
+    const issued = seen ? null : (flash?.password ?? null);
 
     const active = employee.status === 'نشط';
 
@@ -69,17 +77,17 @@ export default function EmployeeShow() {
 
     return (
         <AdminLayout title={employee.name}>
+            {/* الرجوع طريقٌ لا فعل — فخرج من صفّ الأزرار إلى فوق الترويسة */}
+            <BackLink
+                routeName="admin.employees.index"
+                href={route('admin.employees.index')}
+                label="الموظفون"
+            />
             <PageHeader
                 title="ملف الموظف"
                 subtitle={t('عرض بيانات الموظف وأدائه وصلاحياته')}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <SmartLink routeName="admin.employees.index" href={route('admin.employees.index')}>
-                                <ArrowRight />
-                                {t('رجوع')}
-                            </SmartLink>
-                        </Button>
                         <Button asChild>
                             <SmartLink routeName="admin.employees.edit" href={route('admin.employees.edit', employee.id)}>
                                 <Pencil />
@@ -109,13 +117,18 @@ export default function EmployeeShow() {
                         <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                             <Badge variant="primary">{t(employee.role)}</Badge>
                             <Badge status={employee.status}>{t(employee.status)}</Badge>
-                            {employee.has_pin && (
+                            {/*
+                                حسابٌ بلا بريد لا باب له بعد رفع الدخول
+                                بالرمز — والوسم يقوله هنا لا عند أوّل محاولةٍ
+                                فاشلة يقف فيها الموظف أمام الشاشة.
+                            */}
+                            {!employee.email && (
                                 <span
-                                    title={t('يدخل نقطة البيع برمز سريع')}
-                                    className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf5] px-2.5 py-1 text-[12px] font-medium text-[#047857]"
+                                    title={t('أضِف بريدًا من «تعديل» ليستطيع الدخول')}
+                                    className="inline-flex items-center gap-1 rounded-full bg-[#fef2f2] px-2.5 py-1 text-[12px] font-medium text-[#b91c1c]"
                                 >
-                                    <ScanBarcode className="size-3.5" />
-                                    {t('رمز دخول سريع مفعّل')}
+                                    <TriangleAlert className="size-3.5" />
+                                    {t('بلا بريد — لا يستطيع الدخول')}
                                 </span>
                             )}
                         </div>
@@ -253,29 +266,83 @@ export default function EmployeeShow() {
                 </div>
             </div>
 
-            <Dialog open={resetting} onOpenChange={setResetting}>
+            {/*
+                النافذة تبقى مفتوحةً على الكلمة بعد توليدها.
+                كانت تُغلق ويُرسل نصُّها في توستٍ يختفي بعد ثوانٍ — والكلمة
+                لا تُسترجَع لأنّ المحفوظ تجزئتُها. فيعيد المدير التوليد مرّةً
+                بعد مرّة، وفي كلّ مرّة يُخرج الموظفَ من حسابه.
+            */}
+            <Dialog
+                open={resetting}
+                onOpenChange={(open) => {
+                    setResetting(open);
+                    if (!open) setSeen(true);
+                }}
+            >
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
                         <DialogTitle>{t('إعادة تعيين كلمة المرور')}</DialogTitle>
                     </DialogHeader>
                     <div className="px-5 pb-5">
-                        <p className="text-sm text-[#4b4b4b]">{t('توليد كلمة مرور مؤقتة جديدة؟')}</p>
-                        <div className="mt-5 flex justify-end gap-2">
-                            <Button variant="outline" onClick={() => setResetting(false)}>
-                                {t('إلغاء')}
-                            </Button>
-                            <Button
-                                onClick={() =>
-                                    router.post(
-                                        route('admin.employees.resetPassword', employee.id),
-                                        {},
-                                        { onFinish: () => setResetting(false) },
-                                    )
-                                }
-                            >
-                                {t('توليد')}
-                            </Button>
-                        </div>
+                        {issued ? (
+                            <>
+                                <p className="text-sm text-[#4b4b4b]">
+                                    {t('انسخها الآن وأرسلها إلى الموظف — لا تُعرض بعد إغلاق النافذة.')}
+                                </p>
+                                <div className="mt-3 flex items-center justify-between gap-2 rounded-[10px] border border-[#bbf7d0] bg-[#f0fdf4] px-3 py-2">
+                                    <code className="text-[15px] font-semibold tracking-wide text-[#047857]" dir="ltr">
+                                        {issued}
+                                    </code>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            navigator.clipboard?.writeText(issued);
+                                            setCopied(true);
+                                        }}
+                                    >
+                                        {copied ? <Check /> : <Copy />}
+                                        {t(copied ? 'نُسخت' : 'نسخ')}
+                                    </Button>
+                                </div>
+                                <div className="mt-5 flex justify-end">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            setSeen(true);
+                                            setResetting(false);
+                                        }}
+                                    >
+                                        {t('إغلاق')}
+                                    </Button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <p className="text-sm text-[#4b4b4b]">{t('توليد كلمة مرور مؤقتة جديدة؟')}</p>
+                                {/* الكلمة القائمة لا تُعرض: تُحفظ مُجزَّأةً بلا طريقٍ يعود منها إلى نصّها */}
+                                <p className="mt-2 text-[12px] text-[#9ca3af]">
+                                    {t('الكلمة الحالية لا تُعرض — لا تُحفظ إلا مُجزَّأة، فلا تُقرأ.')}
+                                </p>
+                                <div className="mt-5 flex justify-end gap-2">
+                                    <Button variant="outline" onClick={() => setResetting(false)}>
+                                        {t('إلغاء')}
+                                    </Button>
+                                    <Button
+                                        onClick={() => {
+                                            setSeen(false);
+                                            setCopied(false);
+                                            router.post(route('admin.employees.resetPassword', employee.id), {}, {
+                                                preserveScroll: true,
+                                            });
+                                        }}
+                                    >
+                                        {t('توليد')}
+                                    </Button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </DialogContent>
             </Dialog>

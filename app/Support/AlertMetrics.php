@@ -67,13 +67,13 @@ class AlertMetrics
             'daily_sales' => 'shopping-bag', 'monthly_expenses' => 'arrow-down-circle',
             'pending_orders' => 'clock', 'low_stock_products' => 'alert-triangle',
             'dormant_customers' => 'user-x', 'open_purchase_orders' => 'clipboard-list',
-            'today_profit' => 'piggy-bank', 'open_shift_hours' => 'clock',
+            'today_profit' => 'piggy-bank',
         ];
         $colors = [
             'daily_sales' => 'primary', 'monthly_expenses' => 'danger',
             'pending_orders' => 'warning', 'low_stock_products' => 'warning',
             'dormant_customers' => 'secondary', 'open_purchase_orders' => 'info',
-            'today_profit' => 'success', 'open_shift_hours' => 'warning',
+            'today_profit' => 'success',
         ];
 
         return collect(\App\Models\CustomAlert::METRICS)
@@ -126,15 +126,6 @@ class AlertMetrics
 
             // الإيراد ناقص التكلفة ناقص مصروفات اليوم
             'today_profit' => self::todayProfit($businessId),
-
-            // كم ساعة والوردية مفتوحة؟ صفرٌ إن لم تكن مفتوحة أصلًا
-            'open_shift_hours' => (function () use ($businessId) {
-                $opened = \App\Models\Shift::where('business_id', $businessId)
-                    ->where('status', \App\Models\Shift::OPEN)
-                    ->min('opened_at');
-
-                return $opened ? round(\Illuminate\Support\Carbon::parse($opened)->diffInMinutes(now()) / 60, 1) : 0.0;
-            })(),
 
             default => 0.0,
         };

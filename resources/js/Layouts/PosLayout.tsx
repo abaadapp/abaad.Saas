@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, CreditCard, Languages, LayoutDashboard, Lock, LogOut, Receipt, ReceiptText, Settings, Store, User, UserRound, Users, Wallet } from 'lucide-react';
+import { Check, ChevronDown, CreditCard, Languages, LayoutDashboard, Lock, LogOut, Receipt, ReceiptText, Settings, Store, User, UserRound, Users } from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { Toaster, toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
@@ -14,6 +14,7 @@ import {
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { initials } from '@/lib/format';
+import { useOnScreenKeyboard } from '@/lib/keyboard';
 import { useTranslate } from '@/lib/i18n';
 import { logout } from '@/lib/logout';
 import ImpersonationBar from '@/Components/ImpersonationBar';
@@ -32,7 +33,6 @@ const POS_NAV = [
     // حصيلة الصندوق وطرق الدفع — لصاحب النشاط لا للكاشير
     { label: 'المدفوعات', icon: CreditCard, route: 'pos.payments', ability: 'finance' },
     { label: 'العملاء', icon: Users, route: 'pos.customers' },
-    { label: 'الوردية', icon: Wallet, route: 'pos.shift' },
 ] as const;
 
 interface PosLayoutProps {
@@ -46,6 +46,9 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
     const { auth, context, flash, locale, csrf, posCashier } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
+
+    // ارتفاع لوحة المفاتيح في `--kb` — تقرؤه هذه الشاشة والنوافذ المنبثقة
+    useOnScreenKeyboard();
 
     // الأقسام المسموح بها تصل من الخادم — لا نُخمّنها من الدور في الواجهة
     const abilities = auth?.abilities ?? [];
@@ -79,8 +82,17 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
          * و`overflow-hidden` يمنع الوصول إليها. ثم يتغيّر المقاس عند أوّل
          * تمرير حين ينطوي الشريط، فتقفز الواجهة تحت الإصبع. وdvh يتبع
          * المرئيَّ فعلًا فلا قصَّ ولا قفزة.
+         *
+         * وطرحُ `--kb` معها: لوحةُ المفاتيح لا تُقلّص الصفحةَ على الآيباد،
+         * فتبقى `dvh` كاملةً ويُغطّى نصفُها السفليّ — وفيه زرّ الدفع نفسه.
+         * انظر `useOnScreenKeyboard`.
          */
-        <div className={cn('pos-scope flex flex-col', fill ? 'h-dvh overflow-hidden' : 'min-h-dvh')}>
+        <div
+            className={cn(
+                'pos-scope flex flex-col',
+                fill ? 'h-[calc(100dvh-var(--kb,0px))] overflow-hidden' : 'min-h-dvh',
+            )}
+        >
             <Head title={title} />
 
             <ImpersonationBar />
@@ -140,14 +152,19 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                      * بـ403 على قسمٍ لم يُمنحه. والوجهة تأتي من الخادم، ومن لا
                      * وجهة له لا يرى الزرّ.
                      */}
-                    {auth?.panelUrl && (
-                        <Button variant="ghost" size="sm" className="gap-1.5" asChild>
-                            <Link href={auth.panelUrl}>
-                                <LayoutDashboard className="size-4" />
-                                <span className="hidden sm:inline">{t('لوحة النشاط')}</span>
-                            </Link>
-                        </Button>
-                    )}
+                    {/*
+                     * ومن لا يدخل اللوحة لا يبقى بلا باب: يجد «حسابي» — بياناته
+                     * وراتبه ومبيعاته هو. كان الزرّ يغيب عن الكاشير كلّيًّا،
+                     * فيسأل صاحب المحلّ عن راتبه شفاهةً آخر الشهر.
+                     */}
+                    <Button variant="ghost" size="sm" className="gap-1.5" asChild>
+                        <Link href={auth?.panelUrl ?? route('pos.me')}>
+                            <LayoutDashboard className="size-4" />
+                            <span className="hidden sm:inline">
+                                {auth?.panelUrl ? t('لوحة النشاط') : t('حسابي')}
+                            </span>
+                        </Link>
+                    </Button>
 
                     {/*
                      * اسم من تُنسب إليه البيعة، لا اسم الحساب المسجَّل. عرضه
@@ -265,7 +282,13 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
 
             <main className={cn(fill ? 'min-h-0 flex-1' : 'flex-1')}>{children}</main>
 
-            <Toaster position="bottom-center" richColors />
+            {/* والرسالة لا تُدفن تحت اللوحة: «أُضيف إلى السلّة» يقع في القاع نفسه */}
+            <Toaster
+                position="bottom-center"
+                richColors
+                offset={{ bottom: 'calc(24px + var(--kb, 0px))' }}
+                mobileOffset={{ bottom: 'calc(16px + var(--kb, 0px))' }}
+            />
         </div>
     );
 }

@@ -90,7 +90,9 @@ class StockInvariantGuardsTest extends TestCase
                 'branch_id' => $this->other->id,
                 'product_id' => $p->id,
                 'quantity_delta' => 5,
-                'reason' => StockAdjustment::REASONS[0],
+                // سببٌ لا يُعدّ هالكًا: الهالك ينقص المخزون دائمًا (انظر
+                // Waste::normalizeDelta)، وهذا الاختبار يفحص التوازن لا الإشارة
+                'reason' => 'جرد',
                 'adjusted_at' => now()->toDateString(),
             ])->assertSessionHasNoErrors();
 
@@ -236,7 +238,9 @@ class StockInvariantGuardsTest extends TestCase
                 'branch_id' => $this->main->id,
                 'product_id' => $p->id,
                 'quantity_delta' => 3,
-                'reason' => StockAdjustment::REASONS[0],
+                // سببٌ لا يُعدّ هالكًا: الهالك ينقص المخزون دائمًا (انظر
+                // Waste::normalizeDelta)، وهذا الاختبار يفحص التوازن لا الإشارة
+                'reason' => 'جرد',
                 'adjusted_at' => now()->toDateString(),
             ])->assertSessionHasNoErrors();
 

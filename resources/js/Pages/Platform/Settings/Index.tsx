@@ -9,6 +9,7 @@ import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
@@ -49,14 +50,16 @@ const TABS = [
     { key: 'domains', label: 'النطاقات' },
     { key: 'mail', label: 'البريد' },
     { key: 'whatsapp', label: 'واتساب' },
+    { key: 'google', label: 'خرائط Google' },
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp } =
+    const { settings, locale, mail, plans, whatsapp, googleKeyHint } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
             plans: SelectOption[];
+            googleKeyHint?: string | null;
             whatsapp?: SharedConnection | null;
         }>>().props;
     const t = useTranslate();
@@ -113,6 +116,9 @@ export default function PlatformSettings() {
         display_phone_number: '',
         access_token: '',
     });
+
+    /* مفتاح الخرائط — سرٌّ كالرمز: يُرسل مرّةً ولا يعود إلى الشاشة */
+    const googleForm = useForm({ google_places_key: '' });
 
     type Key = keyof typeof form.data;
 
@@ -459,9 +465,8 @@ export default function PlatformSettings() {
                                     hint={t('يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ — احتفظ بنسخةٍ منه عندك.')}
                                     error={connectForm.errors.access_token}
                                 >
-                                    <Input
+                                    <PasswordInput
                                         dir="ltr"
-                                        type="password"
                                         value={connectForm.data.access_token}
                                         onChange={(e) => connectForm.setData('access_token', e.target.value)}
                                     />
@@ -496,6 +501,75 @@ export default function PlatformSettings() {
                                     {t('ربط الرقم')}
                                 </Button>
                             </div>
+                        </div>
+                    </Card>
+                )}
+
+                {tab === 'google' && (
+                    <Card className="p-6">
+                        <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('خرائط Google')}</h3>
+                        <p className="mb-6 text-[13px] text-[#6b7280]">
+                            {t('مفتاحٌ واحدٌ لكلّ المتاجر: به تُقرأ تقييمات محلّاتهم ومعدّلاتها. وبدونه على كلّ تاجرٍ أن يفتح حسابًا في Google Cloud بنفسه — فلا يفعل.')}
+                        </p>
+
+                        {/* حال المفتاح أوّل ما يُقرأ: بلا مفتاحٍ لا تُقرأ تقييمةٌ واحدة في المنصّة كلّها */}
+                        <div
+                            className={
+                                'mb-5 flex items-start gap-2 rounded-[10px] p-3 text-[13px] ' +
+                                (googleKeyHint ? 'bg-[#f0fdf4] text-[#166534]' : 'bg-[#fef2f2] text-[#b91c1c]')
+                            }
+                        >
+                            {googleKeyHint ? (
+                                <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                            ) : (
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                            )}
+                            <span dir={googleKeyHint ? 'ltr' : undefined}>
+                                {googleKeyHint
+                                    ? `${t('المفتاح محفوظ')} — ${googleKeyHint}`
+                                    : t('لا مفتاح — «ربط خرائط Google» عند التجّار يقف عند خطوته الأولى.')}
+                            </span>
+                        </div>
+
+                        <Field
+                            label={t('مفتاح Places API (New)')}
+                            hint={t('من مشروع أبعاد في Google Cloud — يُخزَّن معمًّى ولا يُعرض بعد الحفظ.')}
+                            error={googleForm.errors.google_places_key}
+                        >
+                            <PasswordInput
+                                dir="ltr"
+                                value={googleForm.data.google_places_key}
+                                onChange={(e) => googleForm.setData('google_places_key', e.target.value)}
+                            />
+                        </Field>
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            {googleKeyHint && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() =>
+                                        router.delete(route('super-admin.settings.googleKey.forget'), {
+                                            preserveScroll: true,
+                                        })
+                                    }
+                                >
+                                    {t('حذف المفتاح')}
+                                </Button>
+                            )}
+                            <Button
+                                type="button"
+                                loading={googleForm.processing}
+                                onClick={() =>
+                                    googleForm.post(route('super-admin.settings.googleKey'), {
+                                        preserveScroll: true,
+                                        onSuccess: () => googleForm.reset('google_places_key'),
+                                    })
+                                }
+                            >
+                                <Save />
+                                {t('حفظ المفتاح')}
+                            </Button>
                         </div>
                     </Card>
                 )}

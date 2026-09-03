@@ -14,9 +14,9 @@ use App\Support\Activity;
 use App\Support\Demo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Mpdf\Mpdf;
+use App\Support\Pdf;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
-use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Support\Sheet;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -138,18 +138,7 @@ class ProductImportExportController extends Controller
 
         Activity::log('report', 'صدّر قائمة المنتجات (PDF)');
 
-        $mpdf = new Mpdf([
-            'mode' => 'utf-8', 'format' => 'A4',
-            'margin_left' => 12, 'margin_right' => 12, 'margin_top' => 14, 'margin_bottom' => 14,
-            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
-        ]);
-        $mpdf->WriteHTML($html);
-        $name = 'products-' . now()->format('Y-m-d');
-
-        return response($mpdf->Output($name . '.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $name . '.pdf"',
-        ]);
+        return Pdf::a4($html, 'products-' . now()->format('Y-m-d'));
     }
 
     /* ==================== استيراد: رفع الملف ثم المعاينة ==================== */
@@ -186,9 +175,8 @@ class ProductImportExportController extends Controller
         $branchId ??= Demo::activeBranchId();
 
         try {
-            $reader = IOFactory::createReaderForFile($file->getRealPath());
-            $reader->setReadDataOnly(true);
-            $spreadsheet = $reader->load($file->getRealPath());
+            // والترميز يُقرأ لا يُفترض — انظر `Sheet`: إكسل العربيّ يحفظ CSV بـWindows-1256
+            $spreadsheet = Sheet::spreadsheet($file->getRealPath());
             $sheets = $spreadsheet->getSheetNames();
             $data = $spreadsheet->getActiveSheet()->toArray(null, true, false, false);
         } catch (\Throwable $e) {

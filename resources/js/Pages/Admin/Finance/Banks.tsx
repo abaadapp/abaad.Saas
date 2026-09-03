@@ -13,6 +13,7 @@ import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -54,28 +55,45 @@ const blank = (today: string) => ({
 export default function Banks() {
     const { accounts, summary, today, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const m = (v: number) => money(v, context!.currency);
 
     // null = مغلق · 0 = إضافة · رقم = تعديل حسابٍ بعينه
     const [editing, setEditing] = useState<number | null>(null);
     const form = useForm(blank(today));
 
+    /*
+     * الحقول تُملأ بـ`setData` لا بـ`setDefaults` ثمّ `reset`.
+     *
+     * `setDefaults` تجدولُ تغييرَ حالة، و`reset` تقرأ `defaults` **كما هي في
+     * هذه الدورة** — أي القيمة السابقة. فكانت النافذة تتأخّر خطوةً دائمًا:
+     * يفتح التاجر حسابه الرئيسي فيراها فارغة، ثمّ يفتح الحساب الثاني فيرى
+     * بيانات الرئيسي.
+     *
+     * وهو أخطر من عرضٍ خاطئ: يظنّها بياناتِ الثاني فيصحّح حرفًا ويحفظ —
+     * فيُكتب رقمُ حساب الأوّل ورقمُ آيبانه على الثاني، ولا يقول شيءٌ إنّ
+     * حسابين صارا واحدًا.
+     *
+     * و`setDefaults` تبقى بعدها ليُقاس «هل تغيّر شيء» من قيم هذا الصفّ.
+     */
     const open = (row?: BankRow) => {
         form.clearErrors();
-        form.setDefaults(
-            row
-                ? {
-                      label: row.label ?? '',
-                      bank_name: row.bank_name ?? '',
-                      account_name: row.account_name ?? '',
-                      iban: row.iban ?? '',
-                      opening_balance: String(row.opening_balance ?? 0),
-                      opening_date: row.opening_date ?? today,
-                      active: row.active,
-                  }
-                : blank(today),
-        );
-        form.reset();
+
+        const values = row
+            ? {
+                  label: row.label ?? '',
+                  bank_name: row.bank_name ?? '',
+                  account_name: row.account_name ?? '',
+                  iban: row.iban ?? '',
+                  opening_balance: String(row.opening_balance ?? 0),
+                  opening_date: row.opening_date ?? today,
+                  active: row.active,
+              }
+            : blank(today);
+
+        form.setData(values);
+        form.setDefaults(values);
         setEditing(row ? row.id : 0);
     };
 
@@ -198,8 +216,8 @@ export default function Banks() {
                                     variant="ghost"
                                     size="sm"
                                     className="ms-auto text-[#b91c1c]"
-                                    onClick={() => {
-                                        if (!confirm(t('حذف الحساب البنكي وكشفه المستورد؟'))) return;
+                                    onClick={async () => {
+                                        if (! await ask({ message: 'حذف الحساب البنكي وكشفه المستورد؟', danger: true, action: 'حذف' })) return;
                                         router.delete(route('admin.finance.banks.destroy', a.id), { preserveScroll: true });
                                     }}
                                 >
@@ -314,6 +332,8 @@ export default function Banks() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

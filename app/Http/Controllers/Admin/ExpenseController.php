@@ -4,12 +4,26 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Expense;
+<<<<<<< HEAD
 use App\Models\ExpenseType;
+=======
+use App\Models\Transaction;
+use App\Support\Activity;
+>>>>>>> origin/main
 use App\Support\Books;
 use App\Support\Demo;
+use App\Support\ListFilters;
+use App\Support\Pagination;
+use App\Support\Search;
+use App\Support\Sort;
 use Illuminate\Http\Request;
+<<<<<<< HEAD
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+=======
+use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
+>>>>>>> origin/main
 
 class ExpenseController extends Controller
 {
@@ -27,7 +41,10 @@ class ExpenseController extends Controller
         'status' => 'status',
     ];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     public function index(Request $request)
     {
@@ -41,15 +58,12 @@ class ExpenseController extends Controller
          * دفعةً واحدة لا تجيبه — يُجمع منها بالعين فيُخطئ الجمع. و«كل الشهور»
          * تبقى خيارًا لمن يبحث عن فاتورةٍ قديمة بعينها.
          */
-        $month = (string) $request->query('month', now()->format('Y-m'));
-        $span = null;
+        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
+        $span = ListFilters::expenseSpan($request);
+        $month = $span ? $span[0]->format('Y-m') : '';
 
-        if (preg_match('/^\d{4}-\d{2}$/', $month)) {
-            $first = \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $month.'-01');
-            $span = [$first->copy()->startOfMonth(), $first->copy()->endOfMonth()];
+        if ($span) {
             $q->whereBetween('spent_at', $span);
-        } else {
-            $month = '';
         }
 
         // مجموع الشهر يُحسب على الشهر كلّه لا على صفحته: الترقيم يقصّ الصفوف
@@ -57,10 +71,11 @@ class ExpenseController extends Controller
         $base = Expense::where('business_id', $bid)
             ->when($span, fn ($w) => $w->whereBetween('spent_at', $span));
 
-        if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('reference', 'like', "%{$s}%")
-                ->orWhere('description', 'like', "%{$s}%")
-                ->orWhere('type', 'like', "%{$s}%"));
+        if ($s = Search::term($request)) {
+            $like = Search::like();
+            $q->where(fn ($w) => $w->where('reference', $like, "%{$s}%")
+                ->orWhere('description', $like, "%{$s}%")
+                ->orWhere('type', $like, "%{$s}%"));
         }
         if ($type = $request->query('type')) {
             $q->where('type', $type);
@@ -69,11 +84,11 @@ class ExpenseController extends Controller
             $q->where('status', $status);
         }
 
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('spent_at')->orderByDesc('id'));
+        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('spent_at')->orderByDesc('id'));
 
         $expenses = $q->paginate((int) $request->query('per_page', 10))->withQueryString();
 
-        return \Inertia\Inertia::render('Admin/Expenses/Index', [
+        return Inertia::render('Admin/Expenses/Index', [
             'expenses' => collect($expenses->items())->map(fn ($e) => [
                 'id' => $e->id,
                 'reference' => $e->reference,
@@ -82,12 +97,13 @@ class ExpenseController extends Controller
                 'amount' => (float) $e->amount,
                 'status' => $e->status,
                 // رابط المرفق يُبنى هنا؛ المسار وحده لا يفتحه المتصفح
-                'attachment' => $e->attachment ? \Illuminate\Support\Facades\Storage::url($e->attachment) : null,
+                'attachment' => $e->attachment ? Storage::url($e->attachment) : null,
                 'attachment_name' => $e->attachment_name,
                 'description' => $e->description,
             ])->all(),
-            'pagination' => \App\Support\Pagination::meta($expenses),
+            'pagination' => Pagination::meta($expenses),
             'types' => Demo::expenseTypes(),
+<<<<<<< HEAD
             /*
              * حسابات المصروفات — لمن يملك «المحاسبة المتقدّمة» وحده.
              *
@@ -98,9 +114,13 @@ class ExpenseController extends Controller
             'expenseAccounts' => $request->user()?->allows('accounting')
                 ? $this->expenseAccounts($bid)
                 : [],
+=======
+            // خيارات الحساب — مصدرها واحد مع ما يقبله التحقّق
+            'accountOptions' => Books::expenseAccountOptions(),
+>>>>>>> origin/main
             'filters' => $request->only('q', 'type', 'status', 'tab') + ['month' => $month]
-                + \App\Support\Sort::params($request, self::SORTS),
-            'sorts' => \App\Support\Sort::keys(self::SORTS),
+                + Sort::params($request, self::SORTS),
+            'sorts' => Sort::keys(self::SORTS),
             // الشهر المعروض ومجموعه — ما بعد الترقيم لا يُجمع في المتصفح
             'month' => $month,
             'monthTotal' => $month ? (float) (clone $base)->paid()->sum('amount') : null,
@@ -195,12 +215,52 @@ class ExpenseController extends Controller
         } catch (RuntimeException $e) {
             return back()->withInput()->withErrors(['amount' => $e->getMessage()]);
         }
+<<<<<<< HEAD
 
         \App\Support\Activity::log('created', 'سجّل مصروف ' . $data['type'] . ' بقيمة ' . $data['amount']);
+=======
+        Activity::log('created', 'سجّل مصروف '.$data['type'].' بقيمة '.$data['amount']);
+>>>>>>> origin/main
 
         return redirect()->route('admin.expenses.index')->with('toast', ['msg' => __('تم تسجيل المصروف بنجاح'), 'type' => 'success']);
     }
 
+<<<<<<< HEAD
+=======
+    /** يكتب قيد الدفتر المقابل ويربطه بالمصروف */
+    private function postToLedger(Expense $expense): void
+    {
+        $transaction = Transaction::create([
+            'business_id' => $expense->business_id,
+            'reference' => Transaction::nextReference($expense->business_id),
+            // الوصف اختياريّ فقد يغيب عن الطلب أصلًا — لا يكفي أن يكون nullable
+            'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
+            'method' => $expense->method,
+            'type' => 'مصروف',
+            'amount' => $expense->amount,
+            'employee_name' => $expense->employee_name,
+            'occurred_at' => $expense->spent_at,
+        ]);
+
+        $expense->update(['transaction_id' => $transaction->id]);
+
+        /*
+         * وقيدٌ مزدوج معه.
+         *
+         * الصفّ أعلاه دفترُ صندوق: مبلغٌ ونوع. والدفتر المحاسبيّ يريد طرفين
+         * — مصروفٌ مدين ونقدٌ دائن — وبدونهما يظهر في الشجرة إيرادٌ بلا ما
+         * يقابله من مصروفات المحلّ، فيُقرأ ربحٌ لم يتحقّق.
+         */
+        try {
+            Books::recordExpense($expense->fresh());
+        } catch (\Throwable $e) {
+            Activity::log('updated', 'تعذّر ترحيل قيد المصروف '.$expense->id.': '.$e->getMessage(), [
+                'subject_id' => $expense->id, 'subject_type' => 'expense',
+            ]);
+        }
+    }
+
+>>>>>>> origin/main
     /**
      * تسديد فاتورة مستحقّة.
      *
@@ -225,7 +285,7 @@ class ExpenseController extends Controller
             return back()->withErrors(['status' => $e->getMessage()]);
         }
 
-        \App\Support\Activity::log('updated', 'سدّد المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
+        Activity::log('updated', 'سدّد المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
 
         return back()->with('toast', ['msg' => __('سُجّل السداد'), 'type' => 'success']);
     }
@@ -242,8 +302,15 @@ class ExpenseController extends Controller
          * المطابقة البنكية كأنّ مبلغًا خرج. والدفتران يتبعانه معًا الآن:
          * الحركة وقيدُها في الأستاذ (انظر Books::unrecord).
          */
+<<<<<<< HEAD
         Books::unrecord($expense->transaction);
         \App\Support\Activity::log('deleted', 'حذف المصروف: ' . $expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
+=======
+        $expense->transaction()->delete();
+        // والقيد المزدوج معه — والقاعدة واحدة: قيدٌ بلا مستند يُبقي مبلغًا في الميزان
+        Books::forgetExpense($expense);
+        Activity::log('deleted', 'حذف المصروف: '.$expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
+>>>>>>> origin/main
 
         /*
          * المرفق يبقى مع المصروف المحذوف.
@@ -301,6 +368,6 @@ class ExpenseController extends Controller
         $last = Expense::where('business_id', $bid)->whereNotNull('reference')->orderByDesc('id')->value('reference');
         $n = ($last && preg_match('/(\d+)$/', $last, $m)) ? ((int) $m[1] + 1) : 1001;
 
-        return 'EXP-' . $n;
+        return 'EXP-'.$n;
     }
 }

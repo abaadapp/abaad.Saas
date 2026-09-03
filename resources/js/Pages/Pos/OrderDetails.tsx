@@ -19,8 +19,10 @@ interface OrderItem {
     name: string;
     price: number;
     qty: number;
+    /** ثمن البند كاملًا — سعره في كميّته وإضافاته */
     total: number;
     note?: string | null;
+    addons?: { name: string; qty: number; total: number }[];
 }
 
 interface OrderDetail {
@@ -88,10 +90,23 @@ export default function PosOrderDetails() {
                         </div>
                     </div>
                     <div className="flex gap-2">
+                        {/*
+                            إلى نقطة البيع — لا إلى «الطلبات المعلّقة».
+                            
+                            كانت تُردّ إلى شاشة المعلّقة أيًّا كان الطريق الذي
+                            جاء منه الكاشير: يفتح فاتورةً من «العملاء» أو من
+                            «المدفوعات» فيجد نفسه في قائمةِ سلالٍ لم تُبَع بعد،
+                            ولا شيء يقول له كيف وصل. ولا يصل هذه الصفحةَ أحدٌ
+                            من المعلّقة أصلًا — فالوجهةُ كانت خطأً لكلّ من يفتحها.
+
+                            والاسم يقول الوجهة لا «رجوع»: زرٌّ مكتوبٌ عليه
+                            «رجوع» يَعِد بالمكان الذي جاء منه، وهذا يذهب إلى
+                            الصندوق دائمًا — وهو بيت الكاشير.
+                        */}
                         <Button variant="outline" asChild>
-                            <a href={route('pos.orders')}>
+                            <a href={route('pos.index')}>
                                 <ArrowRight className="ltr:rotate-180" />
-                                {t('رجوع')}
+                                {t('نقطة البيع')}
                             </a>
                         </Button>
                         <Button asChild>
@@ -124,6 +139,12 @@ export default function PosOrderDetails() {
                                         <TableRow key={it.id}>
                                             <TableCell>
                                                 <span className="font-medium">{it.name}</span>
+                                                {(it.addons ?? []).map((a, i) => (
+                                                    <span key={i} className="block text-[11px] text-[#7c3aed]">
+                                                        + {a.name}
+                                                        {a.qty > 1 && ` ×${a.qty}`}
+                                                    </span>
+                                                ))}
                                                 {it.note && (
                                                     <span className="block text-[11px] text-gray-400">{it.note}</span>
                                                 )}

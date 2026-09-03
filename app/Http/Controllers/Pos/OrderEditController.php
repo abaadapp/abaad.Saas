@@ -57,6 +57,44 @@ class OrderEditController extends Controller
     }
 
     /**
+     * تصحيح كميّة إضافةٍ على بند — والصفر يحذفها.
+     *
+     * وردُّ المخزون بلقطة البند لا بإعداد الإضافة اليوم: انظر
+     * `OrderCorrection::setAddonQuantity`.
+     */
+    public function addon(Request $request, string $number, int $itemId, int $addonId)
+    {
+        $data = $request->validate([
+            'quantity' => ['required', 'integer', 'min:0', 'max:9999'],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ], [
+            'reason.required' => __('اكتب سبب التعديل — بدونه لا يُعرف لماذا تغيّرت الفاتورة.'),
+            'reason.min' => __('السبب قصير جدًّا — اكتب ما يفهمه من يقرأ الفاتورة لاحقًا.'),
+        ]);
+
+        $order = Order::where('business_id', $this->bid())
+            ->where('is_held', false)
+            ->where('number', $number)
+            ->firstOrFail();
+
+        // البند من هذه الفاتورة، والإضافة من ذلك البند — سلسلةٌ تُفحص حلقةً
+        // حلقة، وإلّا صحّح متجرٌ إضافةً في فاتورة متجرٍ آخر بمعرّفٍ مُخمَّن
+        $item = OrderItem::where('order_id', $order->id)->findOrFail($itemId);
+        $row = \App\Models\OrderItemAddon::where('order_item_id', $item->id)->findOrFail($addonId);
+
+        try {
+            OrderCorrection::setAddonQuantity($order, $row, (int) $data['quantity'], trim($data['reason']));
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['quantity' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', [
+            'msg' => (int) $data['quantity'] === 0 ? __('حُذفت الإضافة وصُحّحت الفاتورة') : __('صُحّحت الفاتورة'),
+            'type' => 'success',
+        ]);
+    }
+
+    /**
      * تصحيح وسيلة الدفع.
      *
      * أثرها في الدرج لا في الرفّ: «نقدي» سُجّل على دفعةٍ بالبطاقة يجعل

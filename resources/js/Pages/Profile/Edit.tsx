@@ -9,6 +9,7 @@ import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
 import { initials } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -181,22 +182,19 @@ export default function ProfileEdit() {
                             </p>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                 <Field label="كلمة المرور الحالية" error={form.errors.current_password}>
-                                    <Input
-                                        type="password"
+                                    <PasswordInput
                                         value={form.data.current_password}
                                         onChange={(e) => form.setData('current_password', e.target.value)}
                                     />
                                 </Field>
                                 <Field label="كلمة المرور الجديدة" error={form.errors.password}>
-                                    <Input
-                                        type="password"
+                                    <PasswordInput
                                         value={form.data.password}
                                         onChange={(e) => form.setData('password', e.target.value)}
                                     />
                                 </Field>
                                 <Field label="تأكيد كلمة المرور">
-                                    <Input
-                                        type="password"
+                                    <PasswordInput
                                         value={form.data.password_confirmation}
                                         onChange={(e) => form.setData('password_confirmation', e.target.value)}
                                     />

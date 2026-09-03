@@ -3,26 +3,37 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
+use App\Models\BranchStock;
 use App\Models\GoodsReceiptNote;
 use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
+use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\ReceiveRefused;
+use App\Support\Search;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class PurchaseOrderController extends Controller
 {
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     /** أوامر الشراء — ما طُلب، وما استُلم منه */
-    public function index(Request $request): \Inertia\Response
+    public function index(Request $request): Response
     {
         $s = Demo::purchaseOrderStats();
 
-        return \Inertia\Inertia::render('Admin/Purchases/Index', [
+        return Inertia::render('Admin/Purchases/Index', [
             'stats' => [
                 ['label' => __('إجمالي الأوامر'), 'value' => (string) $s['total'], 'icon' => 'clipboard-list', 'color' => 'primary'],
                 ['label' => __('قيد التنفيذ'), 'value' => (string) $s['pending'], 'icon' => 'clock', 'color' => 'warning'],
@@ -32,7 +43,7 @@ class PurchaseOrderController extends Controller
             // رابط الإيصال يُبنى هنا: المسار وحده لا يكفي المتصفح لفتحه
             'orders' => array_map(function ($o) {
                 $o['receipt'] = $o['receipt']
-                    ? \Illuminate\Support\Facades\Storage::disk('public')->url($o['receipt'])
+                    ? Storage::disk('public')->url($o['receipt'])
                     : null;
 
                 return $o;
@@ -45,7 +56,7 @@ class PurchaseOrderController extends Controller
              * رابطٌ يُنزلك في أوّلها ويتركك تبحث ليس رابطًا. فيصل معه رقم
              * الأمر ويُملأ به حقل البحث، فتفتح الصفحة على أمرٍ واحد.
              */
-            'q' => trim((string) $request->query('q')) ?: null,
+            'q' => Search::term($request) ?: null,
         ]);
     }
 
@@ -70,7 +81,7 @@ class PurchaseOrderController extends Controller
         $bid = $this->bid();
 
         // الفرع يجب أن يخصّ نفس النشاط
-        $branch = \App\Models\Branch::where('business_id', $bid)->find($data['branch_id']);
+        $branch = Branch::where('business_id', $bid)->find($data['branch_id']);
         if (! $branch) {
             return back()->withInput()->withErrors(['branch_id' => __('الفرع المحدد غير صالح.')]);
         }
@@ -89,7 +100,7 @@ class PurchaseOrderController extends Controller
         $po = PurchaseOrder::create([
             'business_id' => $bid,
             'branch_id' => $branch->id,
-            'number' => 'PO-' . random_int(10000, 99999),
+            'number' => 'PO-'.random_int(10000, 99999),
             'supplier_id' => $supplier?->id,
             'supplier_name' => $supplier?->name,
             'status' => 'مُرسل',
@@ -107,7 +118,7 @@ class PurchaseOrderController extends Controller
                 'quantity' => $i['quantity'],
             ]);
         }
-        \App\Support\Activity::log('created', 'أنشأ أمر شراء ' . $po->number . ' لفرع ' . $branch->name . ' بقيمة ' . number_format($total, 3) . ' ر.ع', ['subject_id' => $po->id]);
+        Activity::log('created', 'أنشأ أمر شراء '.$po->number.' لفرع '.$branch->name.' بقيمة '.number_format($total, 3).' ر.ع', ['subject_id' => $po->id]);
 
         return redirect()->route('admin.purchases.orders')->with('toast', ['msg' => __('تم إنشاء أمر الشراء :number', ['number' => $po->number]), 'type' => 'success']);
     }
@@ -133,10 +144,6 @@ class PurchaseOrderController extends Controller
         $bid = $this->bid();
         $po = PurchaseOrder::where('business_id', $bid)->with('items')->findOrFail($id);
 
-        if ($po->status === 'مستلم') {
-            return back()->with('toast', ['msg' => __('أمر الشراء مستلم مسبقًا'), 'type' => 'info']);
-        }
-
         $data = $request->validate([
             'items' => ['nullable', 'array'],
             'items.*.id' => ['required', Rule::exists('purchase_order_items', 'id')->where('purchase_order_id', $po->id)],
@@ -149,134 +156,163 @@ class PurchaseOrderController extends Controller
             'receiver' => __('المستلِم'),
         ]);
 
-        /*
-         * ما لم يُرسل يُستلم كاملًا — فزرّ «استلام الكل» يبقى طلبًا فارغًا
-         * كما كان، ولا يُكسر ما يعمل اليوم.
-         */
-        $asked = collect($data['items'] ?? [])->keyBy('id');
-        $lines = [];
-        $over = [];
+        try {
+            $note = DB::transaction(function () use ($bid, $po, $data) {
+                /*
+                 * المتبقّي يُقرأ تحت قفل — لا قبل المعاملة.
+                 *
+                 * كان يُقرأ من نسخةٍ حُمّلت مع الصفحة، ثمّ يُزاد المخزون على
+                 * أساسها. فضغطتان على «استلام الكل» — أو موظّفان يفتحان أمر
+                 * الشراء نفسه — تقرآن «المتبقّي مئة» كلتاهما فتُدخلان مئتين:
+                 * بضاعةٌ لم تصل تُضاف إلى الرفّ، و`received_quantity` يتجاوز
+                 * المطلوب، وإشعارا استلامٍ لدفعةٍ واحدة. ومتوسّطُ التكلفة
+                 * يُرجَّح بكمّيةٍ وهميّة فيُفسد تكلفة كلّ بيعةٍ قادمة.
+                 *
+                 * ولا يكشفه إلّا الجرد، بعد أن يكون قد دخل في تسعير شهر.
+                 */
+                $po = PurchaseOrder::where('business_id', $bid)->lockForUpdate()->findOrFail($po->id);
+                $items = $po->items()->lockForUpdate()->get();
 
-        foreach ($po->items as $item) {
-            $qty = $asked->has($item->id) ? (int) $asked[$item->id]['quantity'] : $item->remaining;
-
-            /*
-             * الزائد يُردّ ولا يُقصّ صامتًا.
-             *
-             * حصرُه في `remaining` بلا قول يُدخل الكمية الصحيحة ويترك من
-             * كتب الرقم يظنّ أنّ ما كتبه سُجّل — وهو أسوأ من الرفض: لا يعرف
-             * أنّه أخطأ، ولا أنّ الورقة تخالف ما في يده.
-             */
-            if ($qty > $item->remaining) {
-                $over[] = $item->name.' ('.__('المتبقّي').' '.$item->remaining.')';
-            }
-            if ($qty > 0) {
-                $lines[$item->id] = $qty;
-            }
-        }
-
-        if ($over) {
-            return back()->withErrors([
-                'receive' => __('الكمية المستلمة أكبر من المتبقّي: :items', ['items' => implode('، ', $over)]),
-            ]);
-        }
-
-        if (! $lines) {
-            return back()->withErrors(['receive' => __('لا كميةَ لاستلامها — اكتب ما وصلك من كل صنف.')]);
-        }
-
-        $note = DB::transaction(function () use ($bid, $po, $lines, $data) {
-            $noteItems = [];
-
-            foreach ($po->items as $item) {
-                $qty = $lines[$item->id] ?? 0;
-                if ($qty <= 0) {
-                    continue;
+                if ($po->status === 'مستلم') {
+                    throw new ReceiveRefused(__('أمر الشراء مستلم مسبقًا'), 'info');
                 }
 
-                if ($item->product_id) {
-                    $product = Product::where('business_id', $bid)->find($item->product_id);
-                    if ($product) {
-                        \App\Models\BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
-                        $onHand = (int) $product->quantity;
-                        $product->increment('quantity', $qty);
-                        \App\Models\BranchStock::adjust($bid, $po->branch_id, $product->id, $qty);
+                /*
+                 * ما لم يُرسل يُستلم كاملًا — فزرّ «استلام الكل» يبقى طلبًا فارغًا
+                 * كما كان، ولا يُكسر ما يعمل اليوم.
+                 */
+                $asked = collect($data['items'] ?? [])->keyBy('id');
+                $lines = [];
+                $over = [];
 
-                        /*
-                         * متوسّطٌ مرجّح لا آخر سعر.
-                         *
-                         * كانت التكلفة تُكتب فوق القديمة: مئةُ قطعةٍ اشتُريت بأربعة
-                         * ثم عشرٌ بستّة تجعل المئة والعشر كلَّها بستّة — فتقفز قيمة
-                         * المخزون بمئتين لم تُدفع، وينقص الربح المحسوب على كل
-                         * بيعةٍ قادمة. والمتوسّط يوزّع الفرق على ما اشتُري فعلًا.
-                         *
-                         * والمرجَّح بما وصل لا بما طُلب: دفعةٌ من ثمانين لا
-                         * تُثقَّل بوزن مئة.
-                         *
-                         * ورصيدٌ صفرٌ أو سالب يعني بدايةً جديدة، فتُؤخذ تكلفة
-                         * الشراء كما هي — لا معنى لمتوسّطٍ على لا شيء.
-                         */
-                        $newCost = $onHand > 0
-                            ? (($onHand * (float) $product->cost) + ($qty * (float) $item->cost)) / ($onHand + $qty)
-                            : (float) $item->cost;
-                        $product->update(['cost' => round($newCost, 3)]);
+                foreach ($items as $item) {
+                    $qty = $asked->has($item->id) ? (int) $asked[$item->id]['quantity'] : $item->remaining;
 
-                        InventoryMovement::create([
-                            'business_id' => $bid,
-                            'branch_id' => $po->branch_id,
-                            'product_id' => $product->id,
-                            'product_name' => $product->name,
-                            'sku' => $product->sku,
-                            'type' => 'إضافة كمية',
-                            'quantity' => '+'.$qty,
-                            'employee_name' => auth()->user()->name,
-                        ]);
+                    /*
+                     * الزائد يُردّ ولا يُقصّ صامتًا.
+                     *
+                     * حصرُه في `remaining` بلا قول يُدخل الكمية الصحيحة ويترك من
+                     * كتب الرقم يظنّ أنّ ما كتبه سُجّل — وهو أسوأ من الرفض: لا يعرف
+                     * أنّه أخطأ، ولا أنّ الورقة تخالف ما في يده.
+                     */
+                    if ($qty > $item->remaining) {
+                        $over[] = $item->name.' ('.__('المتبقّي').' '.$item->remaining.')';
+                    }
+                    if ($qty > 0) {
+                        $lines[$item->id] = $qty;
                     }
                 }
 
-                $noteItems[] = [
-                    'product_id' => $item->product_id,
-                    'name' => $item->name,
-                    'quantity' => $qty,
-                    'cost' => (float) $item->cost,
-                ];
+                if ($over) {
+                    throw new ReceiveRefused(
+                        __('الكمية المستلمة أكبر من المتبقّي: :items', ['items' => implode('، ', $over)]),
+                    );
+                }
 
-                $item->increment('received_quantity', $qty);
-            }
+                if (! $lines) {
+                    throw new ReceiveRefused(__('لا كميةَ لاستلامها — اكتب ما وصلك من كل صنف.'));
+                }
 
-            $note = GoodsReceiptNote::create([
-                'business_id' => $bid,
-                'branch_id' => $po->branch_id,
-                'supplier_id' => $po->supplier_id,
-                'purchase_order_id' => $po->id,
-                'number' => GoodsReceiptNote::nextNumber($bid),
-                'received_at' => $data['received_at'] ?? now()->toDateString(),
-                'receiver' => $data['receiver'] ?? auth()->user()->name,
-                'notes' => $data['notes'] ?? null,
-            ]);
+                $po->setRelation('items', $items);
 
-            foreach ($noteItems as $line) {
-                $note->items()->create($line);
-            }
+                $noteItems = [];
 
-            /*
-             * الحالة تُقرأ من البنود بعد تحديثها لا تُفترض.
-             *
-             * `$po->items` محمَّلةٌ قبل الزيادة، فـ`remaining` عليها قديم —
-             * ولو قيست به لبقي أمرٌ اكتمل استلامُه «مستلمًا جزئيًّا» إلى الأبد.
-             */
-            $outstanding = $po->items()->whereColumn('received_quantity', '<', 'quantity')->exists();
+                foreach ($po->items as $item) {
+                    $qty = $lines[$item->id] ?? 0;
+                    if ($qty <= 0) {
+                        continue;
+                    }
 
-            $po->update([
-                'status' => $outstanding ? 'مستلم جزئيًا' : 'مستلم',
-                // تاريخُ الاكتمال لا تاريخُ أوّل دفعة: لكلّ دفعةٍ تاريخُها في إشعارها
-                'received_at' => $outstanding ? null : now(),
-            ]);
+                    if ($item->product_id) {
+                        $product = Product::where('business_id', $bid)->find($item->product_id);
+                        if ($product) {
+                            BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
+                            $onHand = (int) $product->quantity;
+                            $product->increment('quantity', $qty);
+                            BranchStock::adjust($bid, $po->branch_id, $product->id, $qty);
 
-            return $note;
-        });
+                            /*
+                             * متوسّطٌ مرجّح لا آخر سعر.
+                             *
+                             * كانت التكلفة تُكتب فوق القديمة: مئةُ قطعةٍ اشتُريت بأربعة
+                             * ثم عشرٌ بستّة تجعل المئة والعشر كلَّها بستّة — فتقفز قيمة
+                             * المخزون بمئتين لم تُدفع، وينقص الربح المحسوب على كل
+                             * بيعةٍ قادمة. والمتوسّط يوزّع الفرق على ما اشتُري فعلًا.
+                             *
+                             * والمرجَّح بما وصل لا بما طُلب: دفعةٌ من ثمانين لا
+                             * تُثقَّل بوزن مئة.
+                             *
+                             * ورصيدٌ صفرٌ أو سالب يعني بدايةً جديدة، فتُؤخذ تكلفة
+                             * الشراء كما هي — لا معنى لمتوسّطٍ على لا شيء.
+                             */
+                            $newCost = $onHand > 0
+                                ? (($onHand * (float) $product->cost) + ($qty * (float) $item->cost)) / ($onHand + $qty)
+                                : (float) $item->cost;
+                            $product->update(['cost' => round($newCost, 3)]);
 
-        \App\Support\Activity::log('updated', 'استلم من أمر الشراء '.$po->number.' بإشعار '.$note->number, ['subject_id' => $po->id]);
+                            InventoryMovement::create([
+                                'business_id' => $bid,
+                                'branch_id' => $po->branch_id,
+                                'product_id' => $product->id,
+                                'product_name' => $product->name,
+                                'sku' => $product->sku,
+                                'type' => 'إضافة كمية',
+                                'quantity' => '+'.$qty,
+                                'employee_name' => auth()->user()->name,
+                            ]);
+                        }
+                    }
+
+                    $noteItems[] = [
+                        'product_id' => $item->product_id,
+                        'name' => $item->name,
+                        'quantity' => $qty,
+                        'cost' => (float) $item->cost,
+                    ];
+
+                    $item->increment('received_quantity', $qty);
+                }
+
+                $note = GoodsReceiptNote::create([
+                    'business_id' => $bid,
+                    'branch_id' => $po->branch_id,
+                    'supplier_id' => $po->supplier_id,
+                    'purchase_order_id' => $po->id,
+                    'number' => GoodsReceiptNote::nextNumber($bid),
+                    'received_at' => $data['received_at'] ?? now()->toDateString(),
+                    'receiver' => $data['receiver'] ?? auth()->user()->name,
+                    'notes' => $data['notes'] ?? null,
+                ]);
+
+                foreach ($noteItems as $line) {
+                    $note->items()->create($line);
+                }
+
+                /*
+                 * الحالة تُقرأ من البنود بعد تحديثها لا تُفترض.
+                 *
+                 * `$po->items` محمَّلةٌ قبل الزيادة، فـ`remaining` عليها قديم —
+                 * ولو قيست به لبقي أمرٌ اكتمل استلامُه «مستلمًا جزئيًّا» إلى الأبد.
+                 */
+                $outstanding = $po->items()->whereColumn('received_quantity', '<', 'quantity')->exists();
+
+                $po->update([
+                    'status' => $outstanding ? 'مستلم جزئيًا' : 'مستلم',
+                    // تاريخُ الاكتمال لا تاريخُ أوّل دفعة: لكلّ دفعةٍ تاريخُها في إشعارها
+                    'received_at' => $outstanding ? null : now(),
+                ]);
+
+                return $note;
+            });
+        } catch (ReceiveRefused $e) {
+            return $e->tone === 'info'
+                ? back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'info'])
+                : back()->withErrors(['receive' => $e->getMessage()]);
+        }
+
+        $po->refresh();
+
+        Activity::log('updated', 'استلم من أمر الشراء '.$po->number.' بإشعار '.$note->number, ['subject_id' => $po->id]);
 
         return back()->with('toast', [
             'msg' => $po->status === 'مستلم'
@@ -299,27 +335,52 @@ class PurchaseOrderController extends Controller
 
         // استبدال الإيصال القديم بدل تركه يتراكم على القرص
         if ($po->receipt) {
-            \Illuminate\Support\Facades\Storage::disk('public')->delete($po->receipt);
+            Storage::disk('public')->delete($po->receipt);
         }
         $file = $request->file('receipt');
         $po->update([
-            'receipt' => $file->store('purchase-receipts/' . $this->bid(), 'public'),
+            'receipt' => $file->store('purchase-receipts/'.$this->bid(), 'public'),
             'receipt_name' => $file->getClientOriginalName(),
         ]);
-        \App\Support\Activity::log('updated', 'أرفق إيصال دفع لأمر الشراء ' . $po->number, ['subject_id' => $po->id]);
+        Activity::log('updated', 'أرفق إيصال دفع لأمر الشراء '.$po->number, ['subject_id' => $po->id]);
 
         return back()->with('toast', ['msg' => __('تم رفع إيصال الدفع'), 'type' => 'success']);
     }
 
+    /**
+     * حذفُ أمر شراء — ما لم تكن له ذرّيّة.
+     *
+     * الحذف كان مطلقًا. وأمرٌ استُلمت بضاعتُه أو حُرّر عليه سند له وثائق تشير
+     * إليه: إشعارُ الاستلام يُفرَّغ مرجعُه فيبقى ورقةً تقول «دخل عشرون» ولا
+     * تقول من أين، والسند يبقى دَينًا بلا أمرٍ يبرّره. والبضاعة تبقى على
+     * الرفّ — وهي وصلت فعلًا، فلا يجوز ردُّها — لكنّ سببَ وجودها يُمحى.
+     *
+     * فيبقى الحذف لما لم يقع منه شيء: أمرٌ كُتب خطأً ولم يصل ولم يُفوتَر.
+     */
     public function destroy($id)
     {
         $po = PurchaseOrder::where('business_id', $this->bid())->findOrFail($id);
+
+        if (GoodsReceiptNote::where('purchase_order_id', $po->id)->exists()) {
+            return back()->with('toast', [
+                'msg' => __('استُلمت بضاعةٌ على هذا الأمر — لا يُحذف بعد أن دخلت الرفّ'),
+                'type' => 'warning',
+            ]);
+        }
+
+        if ($po->invoices()->exists()) {
+            return back()->with('toast', [
+                'msg' => __('حُرّر سندُ مورّدٍ على هذا الأمر — لا يُحذف'),
+                'type' => 'warning',
+            ]);
+        }
+
         $num = $po->number;
         if ($po->receipt) {
-            \Illuminate\Support\Facades\Storage::disk('public')->delete($po->receipt);
+            Storage::disk('public')->delete($po->receipt);
         }
         $po->delete();
-        \App\Support\Activity::log('deleted', 'حذف أمر الشراء: ' . $num);
+        Activity::log('deleted', 'حذف أمر الشراء: '.$num);
 
         return back()->with('toast', ['msg' => __('تم حذف أمر الشراء'), 'type' => 'warning']);
     }

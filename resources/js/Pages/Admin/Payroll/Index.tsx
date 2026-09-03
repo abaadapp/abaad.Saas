@@ -22,6 +22,7 @@ import {
     TableRow,
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -77,6 +78,8 @@ const STATUS_TONE: Record<string, string> = {
 export default function PayrollIndex() {
     const { runs, current, openPeriods, employeeCount, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const m = (v: number) => money(v, context!.currency);
 
     const [opening, setOpening] = useState(false);
@@ -214,8 +217,8 @@ export default function PayrollIndex() {
                                                     variant="ghost"
                                                     size="sm"
                                                     className="text-[#b91c1c]"
-                                                    onClick={() => {
-                                                        if (!confirm(t('حذف المسيرة؟'))) return;
+                                                    onClick={async () => {
+                                                        if (! await ask({ message: 'حذف المسيرة؟', danger: true, action: 'حذف' })) return;
                                                         router.delete(route('admin.payroll.destroy', current.id));
                                                     }}
                                                 >
@@ -224,8 +227,8 @@ export default function PayrollIndex() {
                                                 </Button>
                                                 <Button
                                                     size="sm"
-                                                    onClick={() => {
-                                                        if (!confirm(t('اعتماد المسيرة؟ بعده لا تُعدَّل سطورها.'))) return;
+                                                    onClick={async () => {
+                                                        if (! await ask({ message: 'اعتماد المسيرة؟ بعده لا تُعدَّل سطورها.', action: 'اعتماد' })) return;
                                                         router.post(
                                                             route('admin.payroll.approve', current.id),
                                                             {},
@@ -300,8 +303,8 @@ export default function PayrollIndex() {
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     className="text-[#b91c1c]"
-                                                                    onClick={() => {
-                                                                        if (!confirm(t('حذف سطر الموظّف من المسيرة؟'))) return;
+                                                                    onClick={async () => {
+                                                                        if (! await ask({ message: 'حذف سطر الموظّف من المسيرة؟', danger: true, action: 'حذف' })) return;
                                                                         router.delete(
                                                                             route('admin.payroll.lines.destroy', l.id),
                                                                             { preserveScroll: true },
@@ -472,6 +475,8 @@ export default function PayrollIndex() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

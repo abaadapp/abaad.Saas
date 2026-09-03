@@ -21,6 +21,7 @@ import {
     TableRow,
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -56,6 +57,8 @@ interface Props {
 export default function Assets() {
     const { assets, summary, month, today, categories, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const m = (v: number) => money(v, context!.currency);
 
     const [adding, setAdding] = useState(false);
@@ -101,8 +104,8 @@ export default function Assets() {
                         <Button
                             variant="outline"
                             disabled={summary.due <= 0}
-                            onClick={() => {
-                                if (!confirm(t('ترحيل إهلاك الشهر إلى الدفتر؟'))) return;
+                            onClick={async () => {
+                                if (! await ask({ message: 'ترحيل إهلاك الشهر إلى الدفتر؟ يُكتب قيدٌ لا يُحذف.', action: 'ترحيل' })) return;
                                 router.post(route('admin.finance.assets.depreciate'), { month }, { preserveScroll: true });
                             }}
                         >
@@ -219,8 +222,8 @@ export default function Assets() {
                                                     variant="ghost"
                                                     size="sm"
                                                     className="text-[#b91c1c]"
-                                                    onClick={() => {
-                                                        if (!confirm(t('حذف الأصل؟'))) return;
+                                                    onClick={async () => {
+                                                        if (! await ask({ message: 'حذف الأصل؟', danger: true, action: 'حذف' })) return;
                                                         router.delete(route('admin.finance.assets.destroy', a.id), {
                                                             preserveScroll: true,
                                                         });
@@ -446,6 +449,8 @@ export default function Assets() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

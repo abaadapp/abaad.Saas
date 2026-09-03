@@ -4,10 +4,12 @@ import PageHeader from '@/Components/PageHeader';
 import ProductForm from './partials/ProductForm';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
+import type { CompositionData } from './partials/Composition';
 import type { Category } from '@/types/models';
 
 export default function ProductCreate() {
-    const { categories, context } = usePage<PageProps<{ categories: Category[] }>>().props;
+    const { categories, composition, context } =
+        usePage<PageProps<{ categories: Category[]; composition: CompositionData }>>().props;
     const t = useTranslate();
 
     return (
@@ -17,7 +19,12 @@ export default function ProductCreate() {
                 subtitle={t('أضف منتجًا جديدًا إلى متجرك')}
             />
 
-            <ProductForm categories={categories} currencyLabel={context!.currency.symbol ?? t('ر.ع')} />
+            <ProductForm
+                categories={categories}
+                currencyLabel={context!.currency.symbol ?? t('ر.ع')}
+                composition={composition}
+                currency={context!.currency}
+            />
         </AdminLayout>
     );
 }

@@ -213,8 +213,6 @@ export const PURCHASE_TABS: SectionTab[] = [
 export const INVENTORY_TABS: SectionTab[] = [
     { label: 'المنتجات', routeName: 'admin.inventory.index', section: 'inventory' },
     { label: 'عمليات جرد المخزون', routeName: 'admin.inventory.stocktake', section: 'inventory' },
-    { label: 'تعديلات المخزون', routeName: 'admin.inventory.adjustments', section: 'inventory' },
-    // الداخل قبل الخارج: البضاعة تُستلم ثمّ تُسلَّم
+    { label: 'سجل المخزون', routeName: 'admin.inventory.adjustments', section: 'inventory' },
     { label: 'إشعار استلام بضاعة', routeName: 'admin.inventory.receipts', section: 'inventory' },
-    { label: 'إشعار تسليم شحنة', routeName: 'admin.inventory.deliveries', section: 'inventory' },
 ];

@@ -11,6 +11,16 @@ export interface CartItem {
     id: number | null;
     /** معرّف الإضافة حين لا يكون البند منتجًا — الخادم يُسعّر به بدل الوثوق بالسعر المُرسَل */
     addon_id?: number | null;
+    /** المقاس المختار — الخادم يقرأ سعره من القاعدة، والاسم للعرض وحده */
+    variant_id?: number | null;
+    variant_name?: string | null;
+    /**
+     * إضافاتٌ اختارها الزبون على هذا البند.
+     *
+     * جزءٌ من مفتاح البند: «بوكيه + شوكولاتة» و«بوكيه» بندان مختلفان في
+     * السلّة، وضمُّهما كان سيُضيف شوكولاتةً لمن لم يطلبها.
+     */
+    addons?: CartAddon[];
     name: string;
     price: number;
     qty: number;
@@ -29,6 +39,13 @@ export interface CartItem {
     tax?: number | null;
 }
 
+export interface CartAddon {
+    addon_id: number;
+    name: string;
+    price: number;
+    qty: number;
+}
+
 export interface PosCustomer {
     id: number;
     name: string;
@@ -36,6 +53,14 @@ export interface PosCustomer {
     label: string;
     phone: string;
     points: number;
+}
+
+export interface PosVariant {
+    id: number;
+    name: string;
+    label: string;
+    price: number;
+    sku: string | null;
 }
 
 export interface PosProduct {
@@ -46,8 +71,15 @@ export interface PosProduct {
     sku: string;
     barcode: string;
     stock: number;
+    variants?: PosVariant[];
+    /** معرّفات الإضافات المسموحة — و`null` يعني «كلّها» (سلوك ما قبل الربط) */
+    addon_ids?: number[] | null;
+    /** ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا يُحذَّر من نفاده */
+    has_recipe?: boolean;
     /** النسبة الفعليّة للصنف — يُرسلها الخادم مشتقّةً لا خامًا */
     tax?: number | null;
+    /** الموقوف لا يُعرض ولا يُمسح ولا يُباع — والخادم يردّه كذلك */
+    active?: boolean;
 }
 
 export interface AppliedCoupon {
@@ -202,7 +234,11 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     /* ----------------------------- الحسابات ----------------------------- */
 
     const count = useMemo(() => items.reduce((s, i) => s + i.qty, 0), [items]);
-    const subtotal = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
+    /** ثمن البند كاملًا: سعره في كميّته، وإضافاتُه — وهي كمياتٌ مطلقة لا مضروبة */
+    const lineTotal = (i: CartItem) =>
+        i.price * i.qty + (i.addons ?? []).reduce((s, a) => s + a.price * a.qty, 0);
+
+    const subtotal = useMemo(() => items.reduce((s, i) => s + lineTotal(i), 0), [items]);
 
     const couponDiscount = useMemo(() => {
         if (!coupon) return 0;
@@ -257,7 +293,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         if (vat?.enabled === false || subtotal <= 0) return 0;
 
         return items.reduce((sum, i) => {
-            const net = i.price * i.qty;
+            const net = lineTotal(i);
             const taxableLine = net - discountAmount * (net / subtotal);
             const rate = Math.max(0, Number(i.tax ?? vatRate) || 0);
 
@@ -397,16 +433,34 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         setRedeemActive(false);
     }, [removeCoupon]);
 
+    /**
+     * بدايةٌ نظيفة بعد بيعةٍ تمّت — السلّة **والزبون**.
+     *
+     * `clear` تُفرغ السلّة ويبقى الزبون: هذا صوابُ زرّ «إفراغ السلّة» — من
+     * يُلغي أصنافًا لا يُلغي الزبون الواقف أمامه. لكنّه خطأٌ بعد البيع: يمشي
+     * الزبون ويقف غيره، ويظلّ الاسم القديم معلّقًا في الشاشة. فتُقيَّد
+     * البيعةُ التالية عليه، **وتُضاف نقاطُ ولائه إلى من لم يشترِ** — والنقاط
+     * مالٌ يُستبدَل. ولا يُكتشف ذلك إلا حين يسأل صاحبها عن رصيدٍ ناقص.
+     */
+    const reset = useCallback(() => {
+        clear();
+        setCustomer(CASH_CUSTOMER);
+        setCustomerId(null);
+        setCustomerSearch('');
+    }, [clear]);
+
     /* ------------------------------ الباركود ------------------------------ */
 
     const scanBarcode = useCallback(
         (code: string) => {
             const c = (code || '').trim();
             if (!c) return;
+            // والماسح لا يستثني نفسه من الإيقاف: صنفٌ موقوف لا يدخل السلة
             const p = products.find(
                 (x) =>
-                    (x.barcode && String(x.barcode) === c) ||
-                    (x.sku && String(x.sku).toLowerCase() === c.toLowerCase()),
+                    x.active !== false &&
+                    ((x.barcode && String(x.barcode) === c) ||
+                        (x.sku && String(x.sku).toLowerCase() === c.toLowerCase())),
             );
             if (!p) {
                 onToast(`لا يوجد منتج بهذا الباركود: ${c}`, 'warning');
@@ -635,6 +689,9 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 items: items.map((i) => ({
                     id: i.id ?? null,
                     addon_id: i.addon_id ?? null,
+                    // المقاس بمعرّفه لا بسعره: الخادم يقرأ السعر من القاعدة
+                    variant_id: i.variant_id ?? null,
+                    addons: (i.addons ?? []).map((a) => ({ addon_id: a.addon_id, qty: a.qty })),
                     name: i.name,
                     price: i.price,
                     qty: i.qty,
@@ -695,6 +752,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                     items: items.map((i) => ({
                         id: i.id ?? null,
                         addon_id: i.addon_id ?? null,
+                        variant_id: i.variant_id ?? null,
+                        addons: (i.addons ?? []).map((a) => ({ addon_id: a.addon_id, qty: a.qty })),
                         name: i.name,
                         qty: i.qty,
                         note: i.note ?? '',
@@ -729,6 +788,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         setBarcode, scanBarcode,
         setCouponCode, applyCoupon, removeCoupon,
         setRedeemActive, selectCustomer, setCustomerSearch, addCustomer,
+        reset,
         checkoutSale, holdOrder, overStock,
     };
 }

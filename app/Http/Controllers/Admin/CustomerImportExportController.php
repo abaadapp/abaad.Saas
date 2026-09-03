@@ -8,8 +8,8 @@ use App\Models\Customer;
 use App\Support\Activity;
 use App\Support\Demo;
 use Illuminate\Http\Request;
-use Mpdf\Mpdf;
-use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Support\Pdf;
+use App\Support\Sheet;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -28,10 +28,27 @@ class CustomerImportExportController extends Controller
         return [__('الاسم'), __('الهاتف'), __('البريد'), __('العنوان'), __('الفرع'), __('النقاط')];
     }
 
+    /**
+     * صفوف الملفّ — وهي ما تعرضه الشاشة لا ما في الجدول كلِّه.
+     *
+     * ثلاثة أزرار في قائمةٍ واحدة تحت عنوان «تصدير»، وكان اثنان منها يتجاهلان
+     * البحث والثالث يتبعه: فمن بحث عن اسمٍ ثمّ صدّر Excel خرج بقاعدة العملاء
+     * كاملة، ولا شيء في الملفّ يقول إنّ ما فيه غير ما كان أمامه. والاستيراد
+     * لا يحذف أحدًا، فملفٌّ مُرشَّح لا يُنقص من القاعدة شيئًا إن أُعيد.
+     *
+     * @see \App\Support\ListFilters::customers
+     */
+    private function customerQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        $q = Customer::where('business_id', $this->bid())->with('branch')->orderBy('id');
+        \App\Support\ListFilters::customers($q, request());
+
+        return $q;
+    }
+
     private function customerRows(): array
     {
-        return Customer::where('business_id', $this->bid())
-            ->with('branch')->orderBy('id')->get()
+        return $this->customerQuery()->get()
             ->map(fn ($c) => [
                 $c->name,
                 $c->phone ?? '',
@@ -79,7 +96,7 @@ class CustomerImportExportController extends Controller
     public function exportPdf()
     {
         $bid = $this->bid();
-        $customers = Customer::where('business_id', $bid)->with('branch')->orderBy('id')->get();
+        $customers = $this->customerQuery()->get();
 
         $html = view('pdf.customers-list', [
             'business' => Demo::business($bid),
@@ -89,18 +106,7 @@ class CustomerImportExportController extends Controller
 
         Activity::log('report', 'صدّر قائمة العملاء (PDF)');
 
-        $mpdf = new Mpdf([
-            'mode' => 'utf-8', 'format' => 'A4',
-            'margin_left' => 12, 'margin_right' => 12, 'margin_top' => 14, 'margin_bottom' => 14,
-            'directionality' => 'rtl', 'autoScriptToLang' => true, 'autoLangToFont' => true,
-        ]);
-        $mpdf->WriteHTML($html);
-        $name = 'customers-' . now()->format('Y-m-d');
-
-        return response($mpdf->Output($name . '.pdf', 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $name . '.pdf"',
-        ]);
+        return Pdf::a4($html, 'customers-' . now()->format('Y-m-d'));
     }
 
     /* ==================== استيراد: رفع الملف ثم المعاينة ==================== */
@@ -138,10 +144,8 @@ class CustomerImportExportController extends Controller
         }
 
         try {
-            $reader = IOFactory::createReaderForFile($file->getRealPath());
-            $reader->setReadDataOnly(true);
-            $spreadsheet = $reader->load($file->getRealPath());
-            $data = $spreadsheet->getActiveSheet()->toArray(null, true, false, false);
+            // والترميز يُقرأ لا يُفترض — انظر `Sheet`
+            $data = Sheet::rows($file->getRealPath());
         } catch (\Throwable $e) {
             return back()->with('toast', ['msg' => __('تعذّر قراءة الملف. تأكد أنه ملف صالح.'), 'type' => 'danger']);
         }
@@ -169,6 +173,22 @@ class CustomerImportExportController extends Controller
             $nn = $this->norm((string) $c->name);
             if ($nn !== '') {
                 $byName[$nn] ??= $c->id;
+            }
+        }
+
+        /*
+         * والمحذوف ناعمًا لا يظهر هنا — فيمرّ صفُّه كأنه عميلٌ جديد.
+         *
+         * فيُنشأ عميلٌ حيٌّ بهاتف عميلٍ محذوف، وليس في مسار الاستيراد قيدُ
+         * تفرّدٍ يمنعه — القيد في نموذج الإضافة وحده. ثمّ تُستعاد النسخة
+         * القديمة يومًا فيصير في المتجر سجلّان بالهاتف نفسه: شخصٌ واحد
+         * برصيدَي نقاط، يشتري على أحدهما ويستبدل من الآخر.
+         */
+        $trashed = [];
+        foreach (Customer::onlyTrashed()->where('business_id', $bid)->get(['id', 'name', 'phone']) as $c) {
+            $np = $this->normPhone((string) $c->phone);
+            if ($np !== '') {
+                $trashed[$np] ??= $c->name;
             }
         }
 
@@ -202,9 +222,16 @@ class CustomerImportExportController extends Controller
             } elseif ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $status = 'invalid';
                 $note = __('بريد غير صالح — يُتجاهل');
+            } elseif (mb_strlen($name) > 255) {
+                // العمود يسع ٢٥٥ حرفًا — وما زاد كان يُمرَّر إلى القاعدة فتردّه بخطأ
+                $status = 'invalid';
+                $note = __('الاسم أطول من ٢٥٥ حرفًا — يُتجاهل');
             } elseif ($np !== '' && isset($seen[$np])) {
                 $status = 'dup_file';
                 $note = __('مكرر داخل الملف — يُتجاهل');
+            } elseif ($np !== '' && isset($trashed[$np])) {
+                $status = 'invalid';
+                $note = __('رقمه مسجَّل لعميل محذوف — استعِده من المحذوفات أولًا');
             } else {
                 // مطابقة عميل موجود => تحديث
                 if ($np !== '' && isset($byPhone[$np])) {
@@ -296,39 +323,48 @@ class CustomerImportExportController extends Controller
         $added = 0;
         $updated = 0;
 
-        foreach ($payload['rows'] as $r) {
-            $fields = [
-                'name' => $r['name'],
-                'phone' => $r['phone'] ?: null,
-                'email' => $r['email'] ?: null,
-                'address' => $r['address'] ?: null,
-                'points' => (int) $r['points'],
-            ];
+        /*
+         * الملفّ يدخل كلُّه أو لا يدخل منه شيء.
+         *
+         * كان يُكتب صفًّا صفًّا بلا معاملة: صفٌّ يردّه الجدول في منتصف ملفٍّ
+         * من مئتَي سطر يترك مئةً مكتوبةً ومئةً لا، ولا شاشة تقول أين توقّف.
+         * وإعادة الرفع بعدها تُضاعف عمل النصف الأول.
+         */
+        \DB::transaction(function () use ($payload, $bid, &$added, &$updated) {
+            foreach ($payload['rows'] as $r) {
+                $fields = [
+                    'name' => $r['name'],
+                    'phone' => $r['phone'] ?: null,
+                    'email' => $r['email'] ?: null,
+                    'address' => $r['address'] ?: null,
+                    'points' => (int) $r['points'],
+                ];
 
-            if ($r['status'] === 'new') {
-                Customer::create(array_merge($fields, [
-                    'business_id' => $bid,
-                    'branch_id' => $r['branchId'] ?: null,
-                ]));
-                $added++;
-            } elseif ($r['status'] === 'update' && $r['targetId']) {
-                $customer = Customer::where('business_id', $bid)->find($r['targetId']);
-                if ($customer) {
-                    // الحفاظ على الفرع: لا نمسح الفرع الحالي إن لم يُحدَّد فرع في الاستيراد
-                    if ($r['branchId']) {
-                        $fields['branch_id'] = $r['branchId'];
-                    }
-                    // وما لم يذكره الملفّ لا يُكتب — انظر بناء `stated` أعلاه
-                    foreach (['name', 'phone', 'email', 'address', 'points'] as $field) {
-                        if (! ($r['stated'][$field] ?? true)) {
-                            unset($fields[$field]);
+                if ($r['status'] === 'new') {
+                    Customer::create(array_merge($fields, [
+                        'business_id' => $bid,
+                        'branch_id' => $r['branchId'] ?: null,
+                    ]));
+                    $added++;
+                } elseif ($r['status'] === 'update' && $r['targetId']) {
+                    $customer = Customer::where('business_id', $bid)->find($r['targetId']);
+                    if ($customer) {
+                        // الحفاظ على الفرع: لا نمسح الفرع الحالي إن لم يُحدَّد فرع في الاستيراد
+                        if ($r['branchId']) {
+                            $fields['branch_id'] = $r['branchId'];
                         }
+                        // وما لم يذكره الملفّ لا يُكتب — انظر بناء `stated` أعلاه
+                        foreach (['name', 'phone', 'email', 'address', 'points'] as $field) {
+                            if (! ($r['stated'][$field] ?? true)) {
+                                unset($fields[$field]);
+                            }
+                        }
+                        $customer->update($fields);
+                        $updated++;
                     }
-                    $customer->update($fields);
-                    $updated++;
                 }
             }
-        }
+        });
 
         session()->forget(self::SESSION_KEY);
         Activity::log('updated', "استيراد العملاء من ملف: {$payload['file']} — أُضيف {$added}، حُدِّث {$updated}");

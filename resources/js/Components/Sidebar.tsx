@@ -26,6 +26,37 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
     // بلا قسم صلاحية يظهر العنصر دائمًا — انظر NavItem.section
     const can = (section?: string) => !section || (auth?.abilities.includes(section) ?? false);
 
+    /*
+     * والباقة سؤالٌ ثانٍ فوق الصلاحية.
+     *
+     * المالك يملك كلّ الأقسام، وباقتُه قد لا تفتح كلّ الأدوات. والغائب يُعدّ
+     * مفتوحًا: صفحةٌ قديمة في المتصفّح لا تحمل الخريطة يجب ألّا تُخفي على
+     * صاحبها ما اشتراه — والخادم هو الحارس على كل حال.
+     */
+    const licensed = (feature?: string) =>
+        !feature || (auth?.planFeatures?.[feature] ?? true);
+
+    const shown = (item: NavItem) => can(item.section) && licensed(item.feature);
+
+    /*
+     * والأب يقود إلى أوّل ما بقي من بنيه.
+     *
+     * «أدوات التسويق» تفتح «برنامج ولاء» — فإن لم تشمله الباقة قاد الأبُ إلى
+     * 403 وأبناؤه المفتوحون تحته. فيتبع الأب أوّل ابنٍ باقٍ، ويسقط هو إن لم
+     * يبقَ منهم أحد.
+     */
+    const visible = (items: NavItem[]): NavItem[] =>
+        items
+            .filter(shown)
+            .map((i) => {
+                if (! i.children) return i;
+
+                const kids = i.children.filter(shown);
+
+                return kids.length === 0 ? null : { ...i, children: kids, route: kids[0].route };
+            })
+            .filter((i): i is NavItem => i !== null);
+
     // المطابقة بالعائلة تُبقي العنصر مضيئًا في الصفحات الفرعية
     // (admin.products.create مثلًا)
     const matches = (name: string) =>
@@ -38,7 +69,7 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
      * تُقدَّم على آبائها: «تقييمات العملاء» ابنُ «أدوات التسويق»، فلولا
      * الترتيب لأضاء الأب وحده ولم يُعرف أيّ أداةٍ مفتوحة.
      */
-    const flat = nav.flatMap((g) => g.items).filter((i) => can(i.section));
+    const flat = visible(nav.flatMap((g) => g.items));
     const leaves = flat.flatMap((i) => i.children ?? [i]);
 
     const activeRoute =
@@ -120,8 +151,8 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
 
                 <nav className="flex flex-1 flex-col overflow-y-auto px-3 pb-4">
                     {nav.map((group, gi) => {
-                        const visible = group.items.filter((item) => can(item.section));
-                        if (visible.length === 0) return null;
+                        const items = visible(group.items);
+                        if (items.length === 0) return null;
 
                         /*
                          * الفاصل بين المجموعات خطٌّ لا عنوان.
@@ -131,7 +162,7 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
                          * «المالية». والخطّ يفصل بلا أن يشغل سطرًا ولا أن
                          * يدّعي معنى. ولوحة المنصة تُبقي عناوينها كما هي.
                          */
-                        const first = nav.slice(0, gi).every((g) => g.items.filter((i) => can(i.section)).length === 0);
+                        const first = nav.slice(0, gi).every((g) => visible(g.items).length === 0);
 
                         return (
                             <div
@@ -149,7 +180,7 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
                                     </p>
                                 )}
 
-                                {visible.map((item) => {
+                                {items.map((item) => {
                                     if (! item.children) {
                                         return link(item);
                                     }

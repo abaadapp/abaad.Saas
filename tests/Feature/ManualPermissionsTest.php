@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\User;
+use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -41,8 +42,6 @@ class ManualPermissionsTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط', 'job_title' => 'كاشير',
         ]);
 
-        // نقطة البيع صارت تتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
-        $this->openShiftFor($this->business->id);
     }
 
     private function save(array $extra)
@@ -106,11 +105,11 @@ class ManualPermissionsTest extends TestCase
             ->assertSessionHasErrors('permissions');
 
         $this->actingAs($this->owner)->post(route('admin.employees.store'), [
-            'name' => 'سالم', 'email' => 's@abaad.om', 'job_title' => 'كاشير',
+            'name' => 'سالم', 'login_username' => 'salem', 'job_title' => 'كاشير',
             'manual_permissions' => 1, 'permissions' => [],
         ])->assertSessionHasErrors('permissions');
 
-        $this->assertDatabaseMissing('users', ['email' => 's@abaad.om']);
+        $this->assertDatabaseMissing('users', ['email' => 'salem@abaadapp.om']);
     }
 
     /**
@@ -133,7 +132,6 @@ class ManualPermissionsTest extends TestCase
         }
         $this->assertTrue($cashier->allows('inventory'));
     }
-
 
     /**
      * والمنع يصل إلى نقطة البيع نفسها لا إلى الشريط الجانبي وحده.
@@ -179,7 +177,7 @@ class ManualPermissionsTest extends TestCase
         $this->save(['manual_permissions' => 1, 'permissions' => ['inventory']]);
         $cashier = $this->cashier->fresh();
 
-        $home = \App\Support\Permissions::homeFor($cashier);
+        $home = Permissions::homeFor($cashier);
         $this->assertSame(route('admin.inventory.index'), $home);
         $this->actingAs($cashier)->get($home)->assertOk();
     }
@@ -187,15 +185,15 @@ class ManualPermissionsTest extends TestCase
     public function test_login_prefers_the_dashboard_then_the_pos(): void
     {
         $this->save(['manual_permissions' => 1, 'permissions' => ['dashboard', 'inventory']]);
-        $this->assertSame(route('admin.dashboard'), \App\Support\Permissions::homeFor($this->cashier->fresh()));
+        $this->assertSame(route('admin.dashboard'), Permissions::homeFor($this->cashier->fresh()));
 
         $this->save(['manual_permissions' => 1, 'permissions' => ['pos', 'inventory']]);
-        $this->assertSame(route('pos.index'), \App\Support\Permissions::homeFor($this->cashier->fresh()));
+        $this->assertSame(route('pos.index'), Permissions::homeFor($this->cashier->fresh()));
     }
 
     public function test_the_owner_still_lands_on_the_dashboard(): void
     {
-        $this->assertSame(route('admin.dashboard'), \App\Support\Permissions::homeFor($this->owner));
+        $this->assertSame(route('admin.dashboard'), Permissions::homeFor($this->owner));
     }
 
     /**
@@ -207,15 +205,12 @@ class ManualPermissionsTest extends TestCase
     public function test_a_role_based_cashier_still_lands_on_the_pos(): void
     {
         $this->assertTrue($this->cashier->allows('dashboard'), 'دوره يمنحه الصلاحية');
-        $this->assertFalse(\App\Support\Permissions::entersPanel($this->cashier), 'ولا يدخل اللوحة');
+        $this->assertFalse(Permissions::entersPanel($this->cashier), 'ولا يدخل اللوحة');
 
-        $home = \App\Support\Permissions::homeFor($this->cashier);
+        $home = Permissions::homeFor($this->cashier);
         $this->assertSame(route('pos.index'), $home);
         $this->actingAs($this->cashier)->get($home)->assertOk();
     }
-
-
-
 
     /** ونقطة البيع وحدها لا تفتح باب اللوحة — وإلا دخلها كل كاشير */
     public function test_pos_alone_does_not_open_the_panel(): void
@@ -234,11 +229,11 @@ class ManualPermissionsTest extends TestCase
     public function test_a_new_employee_can_be_created_with_manual_permissions(): void
     {
         $this->actingAs($this->owner)->post(route('admin.employees.store'), [
-            'name' => 'سالم', 'email' => 's@abaad.om', 'job_title' => 'كاشير',
+            'name' => 'سالم', 'login_username' => 'salem', 'job_title' => 'كاشير',
             'manual_permissions' => 1, 'permissions' => ['inventory', 'suppliers'],
         ])->assertRedirect();
 
-        $new = User::where('email', 's@abaad.om')->firstOrFail();
+        $new = User::where('email', 'salem@abaadapp.om')->firstOrFail();
 
         $this->assertSame(['inventory', 'suppliers'], $new->permissions);
         $this->assertTrue($new->allows('inventory'));
@@ -249,21 +244,21 @@ class ManualPermissionsTest extends TestCase
     public function test_a_new_employee_without_the_flag_follows_the_job_title(): void
     {
         $this->actingAs($this->owner)->post(route('admin.employees.store'), [
-            'name' => 'مريم', 'email' => 'm@abaad.om', 'job_title' => 'كاشير',
+            'name' => 'مريم', 'login_username' => 'maryam', 'job_title' => 'كاشير',
         ])->assertRedirect();
 
-        $this->assertNull(User::where('email', 'm@abaad.om')->firstOrFail()->permissions);
+        $this->assertNull(User::where('email', 'maryam@abaadapp.om')->firstOrFail()->permissions);
     }
 
     /** والقسم الممنوح عند الإضافة يُفتح فعلًا، لا يُحفظ وحسب */
     public function test_the_new_employee_can_open_what_was_granted(): void
     {
         $this->actingAs($this->owner)->post(route('admin.employees.store'), [
-            'name' => 'سالم', 'email' => 's@abaad.om', 'job_title' => 'كاشير',
+            'name' => 'سالم', 'login_username' => 'salem', 'job_title' => 'كاشير',
             'manual_permissions' => 1, 'permissions' => ['inventory'],
         ]);
 
-        $this->actingAs(User::where('email', 's@abaad.om')->firstOrFail())
+        $this->actingAs(User::where('email', 'salem@abaadapp.om')->firstOrFail())
             ->get(route('admin.inventory.index'))->assertOk();
     }
 

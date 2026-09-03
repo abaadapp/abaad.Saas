@@ -46,11 +46,26 @@ class InventoryController extends Controller
     {
         $data = $request->validate([
             'branch_id' => ['required', 'integer'],
+            /*
+             * وضعان لا واحد — وهذا أصل عطبٍ كبير.
+             *
+             * الشاشة كانت تسأل «الكمية المعدودة» وتعتمدها **رصيدًا جديدًا**.
+             * ومن كتب فيها الكمية المعدومة — ثلاث ورداتٍ تلفت — صار رصيده
+             * ثلاثًا بدل سبعٍ وتسعين. لا رسالةَ خطأ ولا شيء يوقفه: رقمٌ
+             * مشروع في حقلٍ مشروع، وتسعون وردةً تختفي.
+             *
+             *   count  — المعدود يصير الرصيد (السلوك القديم، وهو الافتراضيّ
+             *            كي لا ينقلب معنى شاشةٍ قائمة تحت يد من يستعملها)
+             *   loss   — المُدخَل يُطرح من الرصيد ولا يحلّ محلّه
+             */
+            'mode' => ['nullable', 'in:count,loss'],
             'counts' => ['required', 'array'],
             'counts.*' => ['nullable', 'integer', 'min:0'],
         ], [
             'branch_id.required' => __('يجب تحديد الفرع قبل تطبيق الجرد.'),
         ]);
+
+        $loss = ($data['mode'] ?? 'count') === 'loss';
 
         $branch = \App\Models\Branch::where('business_id', $this->bid())->find($data['branch_id']);
         if (! $branch) {
@@ -59,6 +74,21 @@ class InventoryController extends Controller
 
         $adjusted = 0;
         $shortage = 0.0;
+
+        /*
+         * كلّ فرقٍ يصير صفَّ تعديلِ مخزون — لا مصروفًا واحدًا مجمَّعًا.
+         *
+         * كان الجرد يكتب رصيد الفرع والإجماليّ وحركةً ومصروفًا واحدًا لكلّ
+         * الأصناف. فالورد الذي عُدم لا يظهر في تقرير الهالك ولا في شاشة
+         * التعديلات، ولا يُعرف أيُّ صنفٍ عُدم ولا بكم كلّف: سطرٌ واحد بمبلغٍ
+         * واحد. وهذا أخطر ما في محلّ ورد — الهالك هو مصروفه الأوّل، وكان
+         * النظام يبتلعه ثم يقول «لا هالك».
+         *
+         * والرقم يُحسب مرّةً ثم يُزاد في الذاكرة: `nextNumber` تقرأ الجدول،
+         * ومناداتها لكلّ صنفٍ تعني خمسمئة قراءةٍ في جردِ خمسمئة صنف.
+         */
+        $rows = [];
+        $serial = (int) substr(\App\Models\StockAdjustment::nextNumber($this->bid()), 3);
 
         /*
          * دفتر الفروع يُقرأ مرّةً واحدة قبل الحلقة.
@@ -81,7 +111,7 @@ class InventoryController extends Controller
          * يقول أين وقف. والجرد هو اللحظة التي يقرّر فيها التاجر أيثق
          * بأرقام المخزون أم لا.
          */
-        DB::transaction(function () use ($data, $branch, $books, &$adjusted, &$shortage) {
+        DB::transaction(function () use ($data, $branch, $books, $loss, &$adjusted, &$shortage, &$rows, &$serial) {
             foreach ($data['counts'] as $productId => $counted) {
                 if ($counted === null || $counted === '') {
                     continue;
@@ -101,7 +131,15 @@ class InventoryController extends Controller
                  * واحدًا واحدًا كان ينتهي برصيد آخر فرعٍ في خانة الشركة كلّها.
                  */
                 $book = (int) ($books[$product->id][$branch->id] ?? 0);
-                $delta = $counted - $book;
+
+                /*
+                 * في وضع «المعدوم» الرقم طرحٌ لا رصيد.
+                 *
+                 * ولا يُقصّ عند الصفر: الجرد يُظهر الخلل ولا يخبّئه — وهي
+                 * القاعدة نفسها التي رفعت القصَّ عن الإجماليّ. من طرح أكثر
+                 * ممّا في دفتره يرى رقمًا سالبًا فيعرف أنّ دفتره كان كاذبًا.
+                 */
+                $delta = $loss ? -$counted : $counted - $book;
                 if ($delta === 0) {
                     continue;
                 }
@@ -128,10 +166,54 @@ class InventoryController extends Controller
                     'quantity' => ($delta >= 0 ? '+' : '') . $delta,
                     'employee_name' => auth()->user()->name,
                 ]);
+                /*
+                 * التكلفة تُنسخ لحظتها كما في التعديل اليدويّ: تكلفة الورد
+                 * متوسّطٌ يتحرّك مع كلّ شحنة، وقراءتها بعد شهرٍ تُعطي رقمًا
+                 * لم يقع.
+                 */
+                $cost = round((float) $product->cost, 3);
+
+                $rows[] = [
+                    'business_id' => $this->bid(),
+                    'branch_id' => $branch->id,
+                    'product_id' => $product->id,
+                    'number' => 'SA-'.str_pad((string) $serial++, 6, '0', STR_PAD_LEFT),
+                    'quantity_delta' => $delta,
+                    'cost_at_time' => $cost,
+                    // النقص هالكٌ يُقرأ في تقريره، والزيادة تصحيحُ دفترٍ لا ربح
+                    /*
+                     * «تلف» في وضع المعدوم لا «فاقد جرد»: هذا إقرارٌ من
+                     * التاجر بأنّ بضاعةً عُدمت، لا نقصٌ كشفه عدٌّ. والاثنان
+                     * هالكٌ يُقرأ في التقرير — لكنّ مصدرهما مختلف، وطمسُه
+                     * يُفقد التقرير القدرة على التمييز بينهما.
+                     */
+                    'reason' => $loss
+                        ? 'تلف'
+                        : ($delta < 0
+                            ? \App\Models\StockAdjustment::STOCKTAKE_LOSS
+                            : \App\Models\StockAdjustment::STOCKTAKE_GAIN),
+                    'notes' => $loss
+                        ? __('كمية معدومة — :branch: طُرح :counted من :book', [
+                            'branch' => $branch->name, 'counted' => $counted, 'book' => $book,
+                        ])
+                        : __('جرد فعلي — :branch: الدفتري :book والمعدود :counted', [
+                            'branch' => $branch->name, 'book' => $book, 'counted' => $counted,
+                        ]),
+                    'created_by' => auth()->id(),
+                    'adjusted_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+
                 $adjusted++;
                 if ($delta < 0) {
-                    $shortage += abs($delta) * (float) $product->cost;
+                    $shortage += abs($delta) * $cost;
                 }
+            }
+
+            // كتابةٌ واحدة لا واحدةٌ لكلّ صنف — والجرد قد يمسّ مئات الأصناف
+            if ($rows) {
+                \App\Models\StockAdjustment::insert($rows);
             }
 
             /*
@@ -163,10 +245,16 @@ class InventoryController extends Controller
             }
         });
 
-        \App\Support\Activity::log('updated', 'جرد فعلي: سوّى ' . $adjusted . ' صنفًا — فرع: ' . $branch->name);
+        \App\Support\Activity::log('updated', ($loss ? 'كمية معدومة: خصم ' : 'جرد فعلي: سوّى ')
+            . $adjusted . ' صنفًا — فرع: ' . $branch->name);
 
         return redirect()->route('admin.inventory.stocktake')
-            ->with('toast', ['msg' => __('تمت تسوية :n صنفًا بعد الجرد', ['n' => $adjusted]), 'type' => 'success']);
+            ->with('toast', [
+                'msg' => $loss
+                    ? __('خُصمت الكمية المعدومة من :n صنفًا', ['n' => $adjusted])
+                    : __('تمت تسوية :n صنفًا بعد الجرد', ['n' => $adjusted]),
+                'type' => 'success',
+            ]);
     }
 
 
@@ -198,6 +286,16 @@ class InventoryController extends Controller
          * وخمسة، يُعدَّل مسقط إلى عشرة فيصير الإجمالي عشرة ورصيد مسقط خمسة.
          * والآن يُقاس الفرق من رصيد الفرع، ويتحرّك الإجمالي بالفرق نفسه.
          */
+        /*
+         * القراءة والكتابة في معاملةٍ واحدة، والصفّ مقفول بينهما.
+         *
+         * كان الرصيد يُقرأ ثمّ يُحسب الفرق ثمّ يُكتب المجموع. وحركتان تقعان
+         * معًا — أو حركةٌ وبيعةٌ — تقرآن الرقم نفسه فتكتب الثانية فوق الأولى:
+         * تسويةٌ سُجّلت وقُيّدت حركتُها ولا أثر لها في الرصيد. والدفتر يقول
+         * إنّ الجرد صحيح، والرفّ يقول غير ذلك.
+         */
+        return DB::transaction(function () use ($request, $data, $product, $branch) {
+        $product = Product::where('business_id', $this->bid())->lockForUpdate()->findOrFail($product->id);
         $old = (int) $product->quantity;
         \App\Models\BranchStock::ensureAllocated($this->bid(), $product->id, $old);
         $book = \App\Models\BranchStock::bookOf($this->bid(), $product->id, $branch->id);
@@ -230,8 +328,8 @@ class InventoryController extends Controller
         \App\Models\BranchStock::adjust($this->bid(), $branch->id, $product->id, $delta);
         // بلا قصٍّ عند الصفر: رصيد الفرع يأخذ الفرق كاملًا، فقصُّ الإجماليّ
         // وحده يكسر التوازن في صمت (والحارس أعلاه يمنع النزول تحت الصفر أصلًا)
-        $product->quantity = $old + $delta;
-        $product->save();
+        // وبزيادةٍ ذرّيّة لا بإسنادِ مجموعٍ حُسب قبل القفل
+        $product->increment('quantity', $delta);
 
         InventoryMovement::create([
             'business_id' => $this->bid(),
@@ -246,5 +344,6 @@ class InventoryController extends Controller
         \App\Support\Activity::log('updated', 'حركة مخزون (' . $data['type'] . ') على: ' . $product->name . ' — فرع: ' . $branch->name, ['subject_id' => $product->id]);
 
         return redirect()->route('admin.inventory.index')->with('toast', ['msg' => __('تم تسجيل حركة المخزون'), 'type' => 'success']);
+        });
     }
 }

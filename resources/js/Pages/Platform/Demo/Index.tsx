@@ -38,7 +38,7 @@ interface Props {
     stores: Store[];
     sizes: string[];
     sizeDetail: Record<string, SizeDetail>;
-    credentials: { password: string; pin: string };
+    credentials: { password: string };
     realCount: number;
 }
 
@@ -196,7 +196,6 @@ export default function DemoIndex() {
                                     ['المالك', store.login.owner],
                                     ['الكاشير', store.login.cashier],
                                     ['كلمة المرور', credentials.password],
-                                    ['رمز نقطة البيع', credentials.pin],
                                 ]
                                     .filter(([, value]) => !! value)
                                     .map(([label, value]) => (

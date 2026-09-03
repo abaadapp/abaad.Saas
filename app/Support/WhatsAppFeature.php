@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Models\Setting;
 
 /**
  * من يملك أن يفعل ماذا — الإذن في موضعٍ واحد.
@@ -28,7 +29,7 @@ class WhatsAppFeature
 
     private static function platformFlag(string $key, bool $default): bool
     {
-        $raw = \App\Models\Setting::whereNull('business_id')->where('key', $key)->value('value');
+        $raw = Setting::whereNull('business_id')->where('key', $key)->value('value');
 
         return $raw === null || $raw === '' ? $default : $raw !== '0';
     }
@@ -71,6 +72,101 @@ class WhatsAppFeature
     }
 
     /**
+     * خطواتُ الربط والتفعيل — بترتيبها، وحالُ كلِّ خطوة.
+     *
+     * وهذا أوّلُ ما يُعرض في شاشة الإشعارات لأنّه شرطُ كلِّ ما بعده: مقابضُ
+     * «متى تُرسل الرسالة» لا تُرسل حرفًا قبل أن تكتمل هذه الخطوات، ومن رآها
+     * أوّلًا ظنّ أنّ إطفاءها وإشعالها هو الإعداد كلُّه.
+     *
+     * والحالُ يُشتقّ من الدوالّ التي يسألها المُرسِل نفسه — `blockReason`
+     * و`WhatsAppConnections::resolve` — لا من فحصٍ ثانٍ يُكتب هنا. ولو كُتب
+     * ثانٍ لَافترقا يومًا: تقول الشاشة «جاهز» ويمتنع المُرسِل، فينتظر التاجر
+     * رسائل لا تخرج ولا شيء يقول له لماذا.
+     *
+     * @return array{ready:bool, steps:list<array{key:string, label:string, done:bool, detail:?string, fix:?string, theirs:bool}>}
+     */
+    public static function readiness(Business $business): array
+    {
+        $mode = self::effectiveMode($business);
+        $own = $mode === WhatsAppMode::BUSINESS_OWN;
+        $ownAllowed = self::canUseOwnNumber($business);
+
+        /*
+         * والإذنُ يدخل في حال الخطوة، لا الوصلةُ وحدها.
+         *
+         * متجرٌ ربط رقمه ثمّ سُحبت منه الميزة تبقى وصلتُه صالحة ويبقى وضعُه
+         * `business_own` — لا يُدفع إلى الرقم المشترك بصمت. فلو قيست الخطوة
+         * بالوصلة وحدها لَبدت تامّة، ولَقرأ التاجر أربع علاماتٍ خضراء تحت
+         * رأسٍ يقول «غير جاهز» ولا سببَ يُقرأ — وهو العطب نفسه الذي بُنيت
+         * هذه الشاشة لإزالته، في صورةٍ أخرى.
+         */
+        $connected = WhatsAppConnections::resolve($business) !== null
+            && ($ownAllowed || ! $own);
+
+        $steps = [
+            Integration::step(
+                'platform',
+                'واتساب مفعَّل في المنصّة',
+                self::globallyEnabled(),
+                fix: 'هذا إعدادُ أبعاد لا إعدادُك — راجعنا لتفعيله.',
+                theirs: true,
+            ),
+            Integration::step(
+                'account',
+                'واتساب مفعَّل لحسابك',
+                (bool) $business->whatsapp_enabled,
+                fix: 'التفعيل يفتحه أبعاد لحسابك — راجعنا.',
+                theirs: true,
+            ),
+            Integration::step(
+                'plan',
+                'باقتك تشمل إشعارات واتساب',
+                PlanFeatures::allows($business, 'whatsapp'),
+                fix: PlanFeatures::refusal($business, 'whatsapp'),
+                theirs: true,
+            ),
+            Integration::step(
+                $own ? 'own' : 'shared',
+                $own ? 'رقم متجرك مربوطٌ ويعمل' : 'الرقم المشترك جاهز',
+                $connected,
+                detail: $own ? null : __('تخرج الرسائل من رقم أبعاد المعتمَد.'),
+                /*
+                 * وربطُ الرقم وحده هو ما بيد التاجر من هذه الخطوات.
+                 *
+                 * والفرق يُقال: خطوةٌ ينتظر فيها أبعاد لا يُطلب منه إصلاحها،
+                 * وخطوةٌ بيده تُقال له بصيغة الأمر. ولو خُلطتا لَبقي ينتظر
+                 * ما عليه أن يفعله، أو حاول ما لا يملكه.
+                 */
+                fix: match (true) {
+                    // سُحبت الميزة وهو عليها: يُقال ما جرى، ويُدَلّ على المخرج
+                    $own && ! $ownAllowed => 'ميزةُ رقم المتجر سُحبت من حسابك — بدّل الإرسال إلى رقم أبعاد أدناه، أو راجعنا لإعادتها.',
+                    $own => 'اربط رقم متجرك أدناه — أو بدّل الإرسال إلى رقم أبعاد.',
+                    default => 'الرقم المشترك غير متاح الآن — راجع أبعاد.',
+                },
+                theirs: ! $own,
+            ),
+        ];
+
+        return [
+            /*
+             * و«بدأ» غير «تمّ».
+             *
+             * البوّابة تُقاس بالأوّل: تاجرٌ جديد لم يُفتح له واتساب بعدُ ولا
+             * ربط رقمًا لم يبدأ شيئًا — فيُعرض له بابٌ وزرّ، لا قائمةُ
+             * مراحلَ لم يطلبها ولا مقابضُ أحداثٍ لا تُرسل حرفًا.
+             *
+             * والتفعيلُ لحسابه علامةُ البدء لا الوصلةُ المشتركة: تلك مربوطةٌ
+             * للمنصّة كلِّها، فلو قيست بها لَما رأى الباب أحد.
+             */
+            'connected' => MarketingSettings::group($business->id, 'connect')['wa_setup_started'] === '1'
+                || self::blockReason($business) === null && $connected
+                || WhatsAppConnections::forBusiness($business->id) !== null,
+            'ready' => self::blockReason($business) === null && $connected,
+            'steps' => $steps,
+        ];
+    }
+
+    /**
      * هل يُسمح بالإرسال الآن؟ ولمَ لا إن لم يُسمح.
      *
      * @return string|null سبب المنع، أو null إن سلِم
@@ -83,6 +179,20 @@ class WhatsAppFeature
 
         if (! $business->whatsapp_enabled) {
             return WhatsAppStatus::SKIP_AUTOMATION_OFF;
+        }
+
+        /*
+         * والباقة تُسأل قبل الإرسال لا بعده.
+         *
+         * القدرة تُغلق الشاشة، والشاشةُ ليست البابَ الوحيد: الإشعار يُرسل من
+         * الطلب حين تتغيّر حالته، لا من زرٍّ يضغطه أحد. فقفلٌ في الشاشة وحدها
+         * يعني رسائل تُرسَل — وتُحاسَب على المنصّة — لباقةٍ لا تشملها.
+         *
+         * والسبب يُكتب في السجلّ باسمه: «امتنع لأنّ الباقة لا تشمله» يُقرأ
+         * ويُرقّى، و«الأتمتة مطفأة» يُبحث عن مفتاحٍ لا وجود له.
+         */
+        if (! PlanFeatures::allows($business, 'whatsapp')) {
+            return WhatsAppStatus::SKIP_PLAN;
         }
 
         $mode = self::effectiveMode($business);

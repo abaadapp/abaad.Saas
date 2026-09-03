@@ -58,7 +58,6 @@ class LoyaltyIdentityTest extends TestCase
 
         $this->actingAs($this->owner);
         session(['current_branch' => $this->branch->id]);
-        $this->openShiftFor($this->business->id, $this->branch->id);
     }
 
     private function customer(string $name, string $phone, int $points = 0): Customer

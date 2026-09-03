@@ -63,7 +63,7 @@ class ExportController extends Controller
             $p['id'], $p['name'], $p['cat'], $p['sku'], $p['barcode'],
             number_format($p['price'], 3, '.', ''), number_format($p['cost'], 3, '.', ''),
             $p['qty'], $p['alert'], $p['stock_status'], $p['active'] ? __('مفعّل') : __('معطّل'),
-        ], Demo::products());
+        ], Demo::products(null, request()));
 
         return $this->stream('products', [__('المعرّف'), __('الاسم'), __('القسم'), 'SKU', __('الباركود'), __('السعر'), __('التكلفة'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')], $rows);
     }
@@ -75,7 +75,7 @@ class ExportController extends Controller
             number_format($o['total'], 3, '.', ''),
             $o['payment'] === 'بطاقة' ? __('فيزا') : __($o['payment']),
             __($o['status']), $o['date'],
-        ], Demo::orders());
+        ], Demo::orders(request()));
 
         return $this->stream('orders', [__('رقم الطلب'), __('العميل'), __('الموظف'), __('الفرع'), __('عدد الأصناف'), __('الإجمالي'), __('الدفع'), __('الحالة'), __('التاريخ')], $rows);
     }
@@ -85,7 +85,7 @@ class ExportController extends Controller
         $rows = array_map(fn ($c) => [
             $c['id'], $c['name'], $c['phone'], $c['email'], $c['orders'],
             number_format($c['total_spent'], 3, '.', ''), $c['points'], $c['last_order'],
-        ], Demo::customers());
+        ], Demo::customers(request()));
 
         return $this->stream('customers', [__('المعرّف'), __('الاسم'), __('الهاتف'), __('البريد'), __('عدد الطلبات'), __('إجمالي الإنفاق'), __('النقاط'), __('آخر طلب')], $rows);
     }
@@ -115,7 +115,7 @@ class ExportController extends Controller
         $rows = array_map(fn ($t) => [
             $t['id'], $t['date'], $t['description'], $t['method'], $t['kind_label'],
             number_format($t['amount'], 3, '.', ''), $t['employee'],
-        ], Demo::transactions($range));
+        ], Demo::transactions($range, null));   // بلا سقف: الملفّ هو الدفتر كاملًا
 
         return $this->stream('transactions', [__('المرجع'), __('التاريخ'), __('الوصف'), __('الطريقة'), __('النوع'), __('المبلغ'), __('الموظف')], $rows);
     }
@@ -125,7 +125,7 @@ class ExportController extends Controller
         $rows = array_map(fn ($e) => [
             $e['date'], $e['type'], $e['description'],
             number_format($e['amount'], 3, '.', ''), $e['method'], $e['employee'],
-        ], Demo::expenses());
+        ], Demo::expenses(request()));
 
         return $this->stream('expenses', [__('التاريخ'), __('النوع'), __('الوصف'), __('المبلغ'), __('الطريقة'), __('الموظف')], $rows);
     }

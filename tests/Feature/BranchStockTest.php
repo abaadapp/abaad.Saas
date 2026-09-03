@@ -59,9 +59,6 @@ class BranchStockTest extends TestCase
             'price' => 10, 'cost' => 4, 'quantity' => 10, 'alert_qty' => 2, 'active' => true,
         ]);
 
-        // البيع صار يتطلّب صندوقًا مفتوحًا — ولكل فرع درجه، فلكلٍّ ورديته
-        $this->openShiftFor($this->business->id, $this->muscat->id);
-        $this->openShiftFor($this->business->id, $this->salalah->id);
     }
 
     /** يوزّع 10 على مسقط و0 على صلالة */

@@ -5,27 +5,13 @@ namespace App\Support;
 class Customers
 {
     /**
-     * توطين اسم العميل: إن أُدخل بالإنجليزية، نُنشئ نسخة عربية صحيحة (name)
-     * ونحتفظ بالأصل الإنجليزي (name_en). وإن لم يُفهم الاسم يبقى إنجليزيًا كما هو.
-     * الإدخال العربي يبقى كما هو بلا تغيير.
+     * توطين اسم العميل — والقاعدة مشتركةٌ مع المورّدين.
+     *
+     * @see LocalName::apply
      */
     public static function localizeName(array $data): array
     {
-        $input = trim((string) ($data['name'] ?? ''));
-        if ($input === '') {
-            return $data;
-        }
-
-        if (NameTransliterator::isLatin($input)) {
-            $arabic = NameTransliterator::toArabic($input);
-            $data['name'] = $arabic ?? $input;   // العربية إن فُهمت، وإلا يبقى الإنجليزي
-            $data['name_en'] = $input;            // نحتفظ دائمًا بالأصل الإنجليزي
-        } else {
-            $data['name'] = $input;
-            $data['name_en'] = null;              // إدخال عربي (أو غيره): يبقى كما هو
-        }
-
-        return $data;
+        return LocalName::apply($data);
     }
 
     /**
@@ -40,9 +26,33 @@ class Customers
      */
     public static function phoneRule(int $businessId, ?int $exceptId = null): array
     {
-        $rule = \Illuminate\Validation\Rule::unique('customers', 'phone')
-            ->where(fn ($q) => $q->where('business_id', $businessId));
+        return ['nullable', 'string', 'max:50', function ($attribute, $value, $fail) use ($businessId, $exceptId) {
+            if (blank($value)) {
+                return;
+            }
 
-        return ['nullable', 'string', 'max:50', $exceptId ? $rule->ignore($exceptId) : $rule];
+            $clash = \App\Models\Customer::withTrashed()
+                ->where('business_id', $businessId)
+                ->where('phone', $value)
+                ->when($exceptId, fn ($q) => $q->whereKeyNot($exceptId))
+                ->first();
+
+            if (! $clash) {
+                return;
+            }
+
+            /*
+             * والمحذوف يُقال إنه محذوف.
+             *
+             * القيد كان يقرأ الجدول كلَّه — والمحذوف ناعمًا صفٌّ باقٍ فيه —
+             * فيردّ «مسجَّل لعميل آخر» عن عميلٍ لا تعرضه أيّ شاشة. والكاشير
+             * واقفٌ والعميل أمامه يبحث عن اسمٍ ليس في القائمة ولا في البحث،
+             * فلا مخرج له إلا أن يترك الرقم. والمخرج موجود — استعادةٌ من
+             * المحذوفات تردّ العميل بنقاطه — لكنّ الرسالة لم تكن تدلّ عليه.
+             */
+            $fail($clash->trashed()
+                ? __('هذا الرقم مسجَّل لعميل محذوف: «:name» — استعِده من الإعدادات ← المحذوفات.', ['name' => $clash->name])
+                : __('هذا الرقم مسجَّل لعميل آخر — نقاط الولاء تتبع الرقم.'));
+        }];
     }
 }

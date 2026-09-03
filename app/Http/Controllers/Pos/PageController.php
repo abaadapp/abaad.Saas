@@ -3,7 +3,17 @@
 namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
+use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\FlowerOrder;
+use App\Support\PlanFeatures;
+use App\Support\PosCashier;
+use App\Support\PosTerminal;
+use App\Support\ReceiptVisibility;
+use App\Support\Vat;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -18,13 +28,22 @@ class PageController extends Controller
         $s = Demo::businessSettings();
 
         return [
-            'loyaltyEnabled' => ($s['loyalty_enabled'] ?? '1') !== '0',
+            /*
+             * والباقة شرطٌ مع المفتاح لا بديلٌ عنه.
+             *
+             * الشاشة تُخفي سطر النقاط حين يُطفئه التاجر، وكانت تعرضه لمن لا
+             * تشمله باقتُه: يعِد الكاشيرُ زبونَه بنقاطٍ يردّها الخادم — انظر
+             * `PosController::loyaltyOn`. والوعدُ المكسور عند الصندوق أسوأ من
+             * ميزةٍ لا تُعرض أصلًا.
+             */
+            'loyaltyEnabled' => ($s['loyalty_enabled'] ?? '1') !== '0'
+                && PlanFeatures::allows(auth()->user()?->business, 'loyalty'),
             'redeemMaxPct' => (float) ($s['loyalty_redeem_max_pct'] ?? 50),
             'earnRate' => (float) ($s['loyalty_earn_rate'] ?? 5),
             'redeemMin' => (float) ($s['loyalty_redeem_min'] ?? 100),
             // الوسائل المأذونة — والخادم يرفض ما عداها، فالإخفاء هنا عرضٌ لقرارٍ
             // مُنفَّذ لا حاجزٌ وحيد (انظر PosController::enabledPaymentMethods)
-            'paymentMethods' => \App\Http\Controllers\Pos\PosController::enabledPaymentMethods($s),
+            'paymentMethods' => PosController::enabledPaymentMethods($s),
             /*
              * الضريبة كما ضبطها التاجر — لا خمسةٌ مكتوبةٌ في شيفرة الشاشة.
              *
@@ -33,21 +52,22 @@ class PageController extends Controller
              * منه غيره. ومن أطفأ الضريبة كان سطرُها يبقى في شاشته.
              */
             'vat' => [
-                'enabled' => \App\Support\Vat::enabled(Demo::bid()),
-                'rate' => \App\Support\Vat::rate(Demo::bid()),
-                'inclusive' => \App\Support\Vat::inclusive(Demo::bid()),
+                'enabled' => Vat::enabled(Demo::bid()),
+                'rate' => Vat::rate(Demo::bid()),
+                'inclusive' => Vat::inclusive(Demo::bid()),
             ],
         ];
     }
 
     /**
-     * شاشة البيع لا تُفتح قبل أن يُعرف من يقف على الصندوق.
+     * شاشة البيع تُفتح لصاحبها مباشرةً.
      *
-     * البوابة هنا لا في middleware عام: بقيّة صفحات نقطة البيع (الطلبات،
-     * الفواتير، العملاء) عرضٌ لا بيع، وحصرُها خلف الاختيار يجعل صاحب النشاط
-     * يختار موظفًا لمجرّد أن يطالع الفواتير — وهو عكس المقصود.
+     * كانت تحجزه شاشةُ «من على الصندوق؟» قبل أن يبيع، فيقف كلَّ صباحٍ أمام
+     * سؤالٍ جوابُه معروف: الداخلُ بحسابه هو الواقف على الصندوق. صار هو
+     * الافتراض (انظر `PosCashier::current`)، والشاشة تبقى لمن يتناوب
+     * موظفوه على جهازٍ واحد — تُطلب من الترويسة لا تُفرض عند الباب.
      */
-    public function index(): Response|\Illuminate\Http\RedirectResponse
+    public function index(): Response|RedirectResponse
     {
         /*
          * لا بيع على جهازٍ غير مفعَّل.
@@ -58,23 +78,8 @@ class PageController extends Controller
          *
          * ولا يُطبَّق على متجرٍ بلا فروع: لا فرع يُختار، ولا سبب للحجز.
          */
-        if (! \App\Support\PosTerminal::activated() && \App\Models\Branch::where('business_id', Demo::bid())->exists()) {
+        if (! PosTerminal::activated() && Branch::where('business_id', Demo::bid())->exists()) {
             return redirect()->route('pos.setup');
-        }
-
-        if (\App\Support\PosCashier::required()) {
-            return redirect()->route('pos.cashier');
-        }
-
-        /*
-         * لا شاشة بيع بلا وردية مفتوحة.
-         *
-         * الترتيب مقصود: يُختار الواقف على الصندوق أولًا، لأن الوردية تُسجَّل
-         * باسمه. والتوجيه هنا لا تعطيلُ زرٍّ في الواجهة: الكاشير يجد نفسه
-         * أمام شاشة الفتح فيفتح ويعود، بدل أن يجمع سلّة ثم يُرفض دفعُها.
-         */
-        if (! \App\Support\Shifts::isOpen() && \App\Support\Shifts::blocksSelling()) {
-            return redirect()->route('pos.shift');
         }
 
         return Inertia::render('Pos/Index', [
@@ -89,9 +94,9 @@ class PageController extends Controller
             'settings' => $this->loyaltySettings(),
             // خيارات طلب الورد من مصدرها الواحد — لا تُكتب في الشاشة ثانيةً
             'orderOptions' => [
-                'occasions' => \App\Support\FlowerOrder::occasionOptions(),
-                'fulfillments' => \App\Support\FlowerOrder::fulfillmentOptions(),
-                'cardMax' => \App\Support\FlowerOrder::CARD_MAX,
+                'occasions' => FlowerOrder::occasionOptions(),
+                'fulfillments' => FlowerOrder::fulfillmentOptions(),
+                'cardMax' => FlowerOrder::CARD_MAX,
             ],
         ]);
     }
@@ -114,25 +119,21 @@ class PageController extends Controller
     }
 
     /**
-     * مقبوضات الوردية المفتوحة — لا آخر ثلاثين فاتورة.
+     * مقبوضات اليوم — لا آخر ثلاثين فاتورة.
      *
-     * كانت تعرض آخر ٣٠ فاتورة للفرع بلا حدٍّ زمني، وهي شاشة تقفيل صندوق:
-     * فمحلٌّ يبيع ٥٠ مرّة يوميًّا كان يرى جزء يومه، ومحلٌّ يبيع ٥ مرّات يرى
-     * ستّة أيام مخلوطة. وفي الحالتين لا يطابق الرقم ما في الدرج — رقمٌ يبدو
-     * دقيقًا وهو ليس كذلك، وذلك أسوأ من غياب الشاشة.
+     * كانت تعرض آخر ٣٠ فاتورة للفرع بلا حدٍّ زمني: فمحلٌّ يبيع ٥٠ مرّة يوميًّا
+     * يرى جزء يومه، ومحلٌّ يبيع ٥ مرّات يرى ستّة أيام مخلوطة. وفي الحالتين لا
+     * يطابق الرقم ما قُبض اليوم — رقمٌ يبدو دقيقًا وهو ليس كذلك.
+     *
+     * ثمّ صارت مدى الوردية المفتوحة، فلمّا رُفعت الوردية صار المدى **يومًا
+     * من منتصف الليل**: حدٌّ يعرفه كلُّ من يقف على الصندوق بلا أن يُفتح له
+     * شيءٌ أو يُقفل. والمدى يُقال في الشاشة صراحةً لا يُترك للتخمين.
      */
     public function payments(): Response
     {
-        $shift = \App\Support\Shifts::current();
-
         return Inertia::render('Pos/Payments', [
-            // سقفٌ يسع يومًا مزدحمًا: بترُ الوردية عند ٣٠ يُنقص المجموع بلا أن يقول
-            'receipts' => $shift ? Demo::receipts(limit: 500, shiftId: $shift->id) : [],
-            'shift' => $shift ? [
-                'opened_at' => $shift->opened_at?->format('Y-m-d H:i'),
-                'opening_balance' => (float) $shift->opening_balance,
-                'expected' => \App\Support\Shifts::expectedCash($shift),
-            ] : null,
+            // سقفٌ يسع يومًا مزدحمًا: بترٌ عند ٣٠ يُنقص المجموع بلا أن يقول
+            'receipts' => Demo::receipts(limit: 500, today: true),
         ]);
     }
 
@@ -140,8 +141,8 @@ class PageController extends Controller
     {
         return Inertia::render('Pos/Receipts', [
             // المبالغ تُنزع للكاشير من الحمولة نفسها، لا من الجدول فقط
-            'receipts' => \App\Support\ReceiptVisibility::filter(Demo::receipts()),
-            'showsAmounts' => \App\Support\ReceiptVisibility::showsAmounts(),
+            'receipts' => ReceiptVisibility::filter(Demo::receipts()),
+            'showsAmounts' => ReceiptVisibility::showsAmounts(),
             'branchName' => Demo::currentBranchName(),
         ]);
     }
@@ -164,21 +165,21 @@ class PageController extends Controller
     /**
      * قفل الشاشة: تنتهي جلسة الموظف، ويبقى الجهاز مفعَّلًا.
      *
-     * الفرق بينه وبين تسجيل الخروج هو كل الفكرة: الخروج كان يترك الشاشة عند
-     * البريد وكلمة المرور، فتبديلُ كاشيرٍ في منتصف اليوم يستدعي مديرًا يعرف
-     * كلمة المرور. الآن: قفل، ثم أربعة أرقام، ويكمل الثاني.
+     * كان يعيد الشاشة إلى أربعة أرقامٍ يدخل بها الكاشير التالي. ولمّا رُفع
+     * الدخول بالرمز صار يعيدها إلى شاشة الدخول: يدخل الثاني ببريده وكلمة
+     * مروره.
      *
      * والكوكي لا تُمسّ — الجهاز يبقى هو الجهاز، وهو الذي يعرف الفرع.
      */
-    public function lock(\Illuminate\Http\Request $request): \Illuminate\Http\RedirectResponse
+    public function lock(Request $request): RedirectResponse
     {
-        \App\Support\Activity::log('logout', 'قفل شاشة نقطة البيع');
-        \App\Support\PosCashier::forget();
+        Activity::log('logout', 'قفل شاشة نقطة البيع');
+        PosCashier::forget();
 
         auth()->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('pin.form');
+        return redirect()->route('login');
     }
 }

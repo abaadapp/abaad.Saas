@@ -121,8 +121,29 @@ export default function PaymentDialog({
     const [occasionBusy, setOccasionBusy] = useState(false);
     const [occasionError, setOccasionError] = useState<string | null>(null);
     const isDelivery = flower.fulfillment_type === 'delivery';
+    /** طلبٌ يُجهَّز: قيل عنه موعدٌ أو نوع تنفيذ — فيصير الباقي إلزامًا */
+    const scheduling = !!(flower.scheduled_for.trim() || flower.fulfillment_type.trim());
+    const namedCustomer = !!customer && customer.trim() !== '' && customer.trim() !== 'عميل نقدي';
     const set = <K extends keyof FlowerDetails>(k: K, v: FlowerDetails[K]) =>
         setFlower((f) => ({ ...f, [k]: v }));
+
+    /*
+     * تُغلق النافذة بعد بيعةٍ تمّت فتبدأ التالية نظيفة — أيًّا كان سبيلُ
+     * الإغلاق.
+     *
+     * كان التنظيف معلّقًا بزرّ «طلب جديد» وحده: من أغلق بالضغط خارج النافذة
+     * أو بمفتاح الهروب يعود إلى الشاشة وفيها سلّةُ البيعة التي دفعها تَوًّا
+     * واسمُ زبونها — فيضيف صنفًا فوقها ويبيع الأصناف مرّتين.
+     */
+    const closeTo = (next: boolean) => {
+        if (!next && step === 'success') {
+            onNewOrder();
+            setFlower(BLANK);
+            setFlowerOpen(false);
+        }
+
+        onOpenChange(next);
+    };
 
     // كل فتح جديد يبدأ من خطوة الدفع بمبلغ صفر
     useEffect(() => {
@@ -203,6 +224,34 @@ export default function PaymentDialog({
          * لكنّ البيع يمرّ بطابور عدم الاتصال، فرفضُ الخادم قد يصل بعد دقائق
          * والزبون قد مضى. فيُقال للكاشير الآن، وهو أمام الشاشة.
          */
+        /*
+         * طلبٌ له موعدٌ طلبٌ يذهب إلى لوحة التجهيز — وبطاقته لا تُقرأ ناقصة.
+         *
+         * من يقف عند الطاولة يسأل: لمن؟ ومتى؟ وإلى أين؟ فبطاقةٌ تقول «عميل
+         * نقدي» لعشرة طلباتٍ في يومٍ واحد لا تُسلَّم لأحد. والشرط معلَّقٌ
+         * بالموعد وحده: بيعةُ المنضدة لا موعد لها ولا تدخل اللوحة أصلًا.
+         */
+        if (scheduling) {
+            if (!flower.fulfillment_type.trim()) {
+                setFlowerOpen(true);
+                setFlowerError(t('حدّد نوع التنفيذ: توصيل أو استلام من المحل.'));
+
+                return;
+            }
+            if (!flower.scheduled_for.trim()) {
+                setFlowerOpen(true);
+                setFlowerError(t('موعد التسليم مطلوب للطلبات التي تُجهَّز.'));
+
+                return;
+            }
+            if (!namedCustomer) {
+                setFlowerOpen(true);
+                setFlowerError(t('اختر العميل أوّلًا — الطلب الذي يُجهَّز لا يُسجَّل باسم «عميل نقدي».'));
+
+                return;
+            }
+        }
+
         if (isDelivery && !(flower.recipient_name.trim() && flower.recipient_phone.trim() && flower.delivery_address.trim())) {
             setFlowerOpen(true);
             setFlowerError(t('طلب التوصيل يحتاج اسم المستلِم ورقمه وعنوانه.'));
@@ -239,7 +288,7 @@ export default function PaymentDialog({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={open} onOpenChange={closeTo}>
             {/*
                 النافذة عمودٌ لا كتلةٌ حرّة الطول.
 
@@ -247,7 +296,7 @@ export default function PaymentDialog({
                 العنوان يخرج من أعلاها وزرّ «تأكيد الدفع» من أسفلها، ولا شيء
                 يُمرَّر لأنّ النافذة نفسها هي ما تجاوز الشاشة لا ما فيها.
             */}
-            <DialogContent className="flex max-h-[90dvh] max-w-lg flex-col">
+            <DialogContent className="flex max-w-lg flex-col">
                 <DialogHeader className="shrink-0">
                     <DialogTitle>{step === 'pay' ? t('إتمام الدفع') : t('تم الدفع بنجاح')}</DialogTitle>
                     {step === 'success' && (
@@ -261,7 +310,7 @@ export default function PaymentDialog({
 
                 {step === 'pay' ? (
                     <div className="flex min-h-0 flex-1 flex-col">
-                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4">
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4">
                         <div className="rounded-2xl bg-gray-100 p-4 text-center">
                             <p className="text-sm text-[#111]">{t('الإجمالي المطلوب')}</p>
                             <p className="mt-1 text-3xl font-extrabold text-[#111]">{money(total)}</p>
@@ -272,10 +321,12 @@ export default function PaymentDialog({
                             <Input
                                 id="paid"
                                 inputMode="decimal"
+                                enterKeyHint="done"
+                                autoComplete="off"
                                 value={paid}
                                 onChange={(e) => setPaid(e.target.value)}
                                 placeholder="0.000"
-                                className="h-12 text-lg font-bold"
+                                className="h-12 text-lg font-bold pointer-coarse:h-14"
                             />
                         </div>
 
@@ -306,7 +357,7 @@ export default function PaymentDialog({
                                             type="button"
                                             onClick={() => { setMethod(m.value); setMethodError(false); }}
                                             className={cn(
-                                                'flex flex-col items-center gap-1 rounded-full border py-2.5 text-xs font-medium transition-colors',
+                                                'flex flex-col items-center gap-1 rounded-full border py-2.5 text-xs font-medium transition-colors pointer-coarse:py-3.5',
                                                 active
                                                     ? 'border-[#111] bg-gray-100 text-[#111]'
                                                     : 'border-gray-200 text-gray-600 hover:bg-gray-50',
@@ -347,8 +398,16 @@ export default function PaymentDialog({
                                             <p className="text-[12px] text-[#b91c1c]">{flowerError}</p>
                                         )}
 
+                                        {/* يُقال قبل الحفظ لا بعده: تغيير العميل
+                                            بابُه فوق السلّة، لا داخل هذا الحوار */}
+                                        {scheduling && !namedCustomer && (
+                                            <p className="text-[12px] text-[#9a3412]">
+                                                {t('اختر العميل من أعلى السلّة — اسمه يظهر على بطاقة التجهيز.')}
+                                            </p>
+                                        )}
+
                                         <div className="grid grid-cols-2 gap-3">
-                                            <Field label="نوع التنفيذ">
+                                            <Field label="نوع التنفيذ" required={scheduling}>
                                                 <Select
                                                     placeholder="—"
                                                     options={orderOptions.fulfillments}
@@ -356,7 +415,7 @@ export default function PaymentDialog({
                                                     onChange={(e) => set('fulfillment_type', e.target.value)}
                                                 />
                                             </Field>
-                                            <Field label="موعد التسليم">
+                                            <Field label="موعد التسليم" required={scheduling}>
                                                 <Input
                                                     type="datetime-local"
                                                     value={flower.scheduled_for}
@@ -509,13 +568,13 @@ export default function PaymentDialog({
 
                     {/* زرّ الدفع خارج المجرى: لا يُمرَّر بعيدًا مهما طال ما فوقه */}
                     <div className="shrink-0 border-t border-gray-100 px-5 pb-5 pt-4">
-                        <Button variant="success" size="lg" className="w-full rounded-full" disabled={busy} onClick={confirm}>
+                        <Button variant="success" size="lg" className="w-full rounded-full pointer-coarse:h-14 pointer-coarse:text-base" disabled={busy} onClick={confirm}>
                             {busy ? '…' : t('تأكيد الدفع')}
                         </Button>
                     </div>
                     </div>
                 ) : (
-                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-5 text-center">
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-5 text-center">
                         <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-[#ecfdf5] text-[#059669]">
                             <CheckCircle className="size-12" />
                         </div>
@@ -564,12 +623,8 @@ export default function PaymentDialog({
                             )}
                             <Button
                                 className={cn('rounded-full', !(result?.synced && result.invoice) && 'col-span-2')}
-                                onClick={() => {
-                                    onNewOrder();
-                                    setFlower(BLANK);
-                                    setFlowerOpen(false);
-                                    onOpenChange(false);
-                                }}
+                                /* الإغلاق وحده — و`closeTo` تُنظّف لكلّ سبيل */
+                                onClick={() => closeTo(false)}
                             >
                                 <Plus />
                                 {t('طلب جديد')}

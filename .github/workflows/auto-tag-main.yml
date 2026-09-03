@@ -1,0 +1,53 @@
+name: Auto Tag Main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag-new-commits:
+    name: Tag every new main commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Tag commits introduced by this push
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          actor=$(printf '%s' "$ACTOR" | tr -cs 'A-Za-z0-9._-' '-')
+
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            commits="$AFTER"
+          else
+            commits=$(git rev-list --reverse "$BEFORE..$AFTER")
+          fi
+
+          for sha in $commits; do
+            short=$(git rev-parse --short=8 "$sha")
+            stamp=$(git show -s --format=%cI "$sha" | sed -E 's/[-:]//g; s/T/-/; s/\+.*$//; s/Z$//')
+            tag="change-${stamp}-${actor}-${short}"
+
+            if git rev-parse "$tag" >/dev/null 2>&1; then
+              echo "Tag already exists: $tag"
+              continue
+            fi
+
+            git tag -a "$tag" "$sha" -m "Auto tag for main commit $sha by $ACTOR"
+            git push origin "$tag"
+            echo "Created $tag"
+          done

@@ -33,7 +33,17 @@ const DialogContent = React.forwardRef<
         <DialogPrimitive.Content
             ref={ref}
             className={cn(
-                'fixed start-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rtl:translate-x-1/2',
+                /*
+                 * والمركز يُحسب على ما يُرى لا على الشاشة.
+                 *
+                 * لوحةُ المفاتيح على الآيباد لا تُقلّص الصفحة، فنافذةٌ موسّطة
+                 * رأسيًّا تبقى في منتصف الشاشة كلّها — ونصفُها السفليّ تحت
+                 * اللوحة، وفيه زرُّ التأكيد. فتُرفع بنصف ارتفاع اللوحة،
+                 * ويُقصّ سقفُها بمقدارها فيصير ما بداخلها قابلًا للتمرير
+                 * بدل أن يُقصّ. انظر `useOnScreenKeyboard`.
+                 */
+                'fixed start-1/2 top-[calc(50%-var(--kb,0px)/2)] z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rtl:translate-x-1/2',
+                'max-h-[calc(100dvh-var(--kb,0px)-1.5rem)] overflow-y-auto overscroll-contain',
                 'rounded-[var(--ui-radius,16px)] border border-[var(--ui-border,#e8e8e8)] bg-white',
                 'shadow-[0_20px_60px_rgba(0,0,0,0.15)] focus:outline-none',
                 'data-[state=open]:animate-in data-[state=closed]:animate-out',

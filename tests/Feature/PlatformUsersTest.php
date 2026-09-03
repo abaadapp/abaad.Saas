@@ -181,20 +181,20 @@ class PlatformUsersTest extends TestCase
 
     /* ------------------------- الحساب المعطوب ------------------------- */
 
-    public function test_a_cashier_with_a_pin_is_not_flagged_for_having_no_email(): void
+    public function test_a_user_without_an_email_is_flagged_as_having_no_door(): void
     {
         /*
-         * الكاشير لا يدخل ببريدٍ أصلًا — يدخل برمزه. ووسمُه «لا يستطيع
-         * الدخول» تحذيرٌ كاذب، ومن يجد التحذير كاذبًا مرّةً لا يصدّقه حين
-         * يصدق. وشاشة الموظفين نفسها تشترط أحد البابين لا البريد وحده.
+         * كان الكاشير يدخل برمزه بلا بريد، فوسمُه «لا يستطيع الدخول» كان
+         * تحذيرًا كاذبًا. ورُفع الرمز، فصار الوسم صادقًا: من لا بريد له لا
+         * يدخل — وحسابات قديمة كهذه تبقى في القاعدة، فيجب أن تُرى.
          */
-        $user = $this->staff(['email' => null, 'pin' => bcrypt('4193')]);
+        $user = $this->staff(['email' => null]);
 
         $this->actingAs($this->super)->get(route('super-admin.users.index'))
             ->assertInertia(function (Assert $page) use ($user) {
                 $row = collect($page->toArray()['props']['users'])->firstWhere('id', $user->id);
 
-                $this->assertNull($row['blocked'], 'كاشيرٌ له رمزٌ يُعرض ممنوعًا من الدخول');
+                $this->assertNotNull($row['blocked'], 'حسابٌ بلا بريدٍ لا يُوسَم بأنه بلا باب');
             });
     }
 

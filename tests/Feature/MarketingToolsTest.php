@@ -9,6 +9,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\MarketingSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -46,21 +47,45 @@ class MarketingToolsTest extends TestCase
 
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
-    public function test_website_settings_are_saved_and_read_back(): void
+    /**
+     * مفتاحان لا أكثر — وكلٌّ منهما يقرؤه شيء.
+     *
+     * كانت الشاشة تحفظ ثمانية تصف واجهة متجرٍ لا وجود لها في النظام: «نشر
+     * الموقع» و«عرض الأسعار» وجملةً تعريفية ونبذة. يملؤها التاجر فتُحفظ ولا
+     * يقرؤها شيء — فيظنّ أنّه نشر متجرًا وينتظر طلبًا لا يأتي.
+     *
+     * وبقي النطاق، ثمّ لحق به `site_on`: تفعيلٌ **يُقرأ** في موضعين —
+     * `Demo::websiteUrl` لزرّ الترويسة، و`Seo::forBusiness` للفحص. وليس هو
+     * `site_enabled` الميّت: ذاك معناه «انشر متجري» ولا متجرَ يُنشر، وإعادةُ
+     * اسمه بمعنًى آخر تجعل قيمةً قديمة تُطفئ موقعًا لم يطلب صاحبُه إطفاءه.
+     */
+    public function test_only_what_is_read_is_saved_from_the_website_form(): void
     {
         $this->post(route('admin.marketing.website.save'), [
-            'site_enabled' => true,
             'site_domain' => 'mystore.om',
+            'site_enabled' => true,
             'site_tagline' => 'أجود المنتجات',
             'site_show_prices' => false,
         ])->assertSessionHasNoErrors();
 
         $saved = MarketingSettings::group($this->bid(), 'website');
 
-        $this->assertSame('1', $saved['site_enabled']);
         $this->assertSame('mystore.om', $saved['site_domain']);
-        // القيمة المحفوظة فارغةً أو مطفأةً قصدٌ لا غياب: لا تُستبدل بالافتراضيّ
-        $this->assertSame('0', $saved['site_show_prices'], 'عاد الإعداد المطفأ إلى افتراضيّه');
+        /*
+         * والمجموعة صارت تحمل مفاتيح متجر أبعاد معها — وكلٌّ منها تقرؤه
+         * الصفحة العامّة (انظر `Storefront::page`). فالفحص على أنّ ما فيها
+         * **يُقرأ**، لا على عددها: مفتاحٌ يُحفظ ولا يفتحه زائرٌ هو الوعد
+         * المكذوب الذي رُفعت لأجله المجموعةُ القديمة.
+         */
+        $this->assertSame([
+            'site_on', 'site_domain', 'site_path',
+            'store_on', 'store_theme', 'store_headline', 'store_about', 'store_show_prices',
+            'store_whatsapp', 'store_pay_cod', 'store_pay_transfer', 'store_bank',
+        ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
+
+        foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {
+            $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => $dead]);
+        }
     }
 
     public function test_a_domain_written_as_a_url_is_refused(): void
@@ -104,48 +129,60 @@ class MarketingToolsTest extends TestCase
         ])->assertSessionHasErrors('loyalty_redeem_max_pct');
     }
 
-    /* ------------------------ تحسين محركات البحث ------------------------ */
-
-    public function test_a_description_longer_than_the_snippet_is_refused(): void
+    /**
+     * وشاشةُ السيو عادت — بشرطِ ألّا تعِد بما لا تفعل.
+     *
+     * كانت تضبط عنوانًا ووصفًا وكلماتٍ مفتاحية ومفتاح «اسمح بالفهرسة»
+     * لصفحاتٍ لا يقرؤها محرّكٌ من عندنا: الموقع خارج النظام، فما يُكتب هنا
+     * لا يصل صفحةً. والحدودُ فيها كانت مضبوطةً بدقّة — ٦٠ محرفًا و١٦٠ — على
+     * شيءٍ لا يقرؤه أحد.
+     *
+     * وما عاد ليس ذاك: معرّفُ قياسٍ **يُقرأ** فيُبنى منه الوسم ويُبحث عنه في
+     * الصفحة، وفحصٌ **يفتح الموقع ويقول ما فيه**. فالحدودُ نفسها — ٦٠ و١٦٠ —
+     * صارت تُقاس على ما في صفحته هو لا على ما كُتب في حقلٍ عندنا.
+     *
+     * وهذا الاختبار يحرس الفرق: لا يعود إلى المجموعة حقلٌ يُملأ ولا يُقرأ.
+     */
+    public function test_the_seo_screen_stores_only_what_something_reads(): void
     {
-        // ما زاد تقصّه محركات البحث في منتصف الجملة، فيظهر الوصف مبتورًا
-        $this->post(route('admin.marketing.seo.save'), [
-            'seo_description' => str_repeat('ا', 200),
-        ])->assertSessionHasErrors('seo_description');
-    }
+        $this->assertTrue(Route::has('admin.marketing.seo'));
 
-    public function test_an_analytics_id_of_the_wrong_shape_is_refused(): void
-    {
-        $this->post(route('admin.marketing.seo.save'), ['seo_ga_id' => 'my-analytics'])
-            ->assertSessionHasErrors('seo_ga_id');
-
-        $this->post(route('admin.marketing.seo.save'), ['seo_ga_id' => 'G-ABC123'])
-            ->assertSessionHasNoErrors();
+        $this->assertSame(
+            ['ga_measurement_id'],
+            array_keys(MarketingSettings::GROUPS['seo']),
+            'عاد إلى شاشة السيو حقلٌ يُملأ ولا يقرؤه شيء',
+        );
     }
 
     /* -------------------------- إشعارات واتساب -------------------------- */
 
-    public function test_a_whatsapp_number_with_symbols_is_refused(): void
+    public function test_the_whatsapp_screen_saves_only_what_the_sender_reads(): void
     {
         /*
-         * واتساب يردّ على الرقم المعطوب بصفحةٍ بيضاء لا برسالة — فيظنّ التاجر
-         * أنّ الإشعارات تعمل وهي لا تُرسل.
+         * كان الحقل يقبل رقمًا ويفحص صيغته ويحفظه — ولا يقرؤه أحد: الرسائل
+         * تخرج من رقم الوصلة المعتمدة عند ميتا لا من رقمٍ يُكتب هنا. وحقلٌ
+         * يُفحص بدقّةٍ ولا أثر له أخدعُ من حقلٍ لا يُفحص.
          */
-        $this->post(route('admin.marketing.whatsapp.save'), ['wa_number' => '+968 9000 0000'])
-            ->assertSessionHasErrors('wa_number');
+        $this->post(route('admin.marketing.whatsapp.save'), [
+            'wa_number' => '96890000000',
+            'wa_template_order' => 'نصّ',
+            'wa_enabled' => true,
+        ])->assertSessionHasNoErrors();
 
-        $this->post(route('admin.marketing.whatsapp.save'), ['wa_number' => '96890000000'])
-            ->assertSessionHasNoErrors();
+        $saved = MarketingSettings::group($this->bid(), 'whatsapp');
+
+        $this->assertSame(['wa_on_order', 'wa_on_ready', 'wa_on_out_for_delivery', 'wa_on_delivered'], array_keys($saved));
+        $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => 'wa_number']);
     }
 
     public function test_saving_one_group_does_not_touch_another(): void
     {
         // مجموعةٌ تكتب فوق أخرى تمحو إعدادًا لم يفتح التاجر شاشته أصلًا
         $this->post(route('admin.marketing.website.save'), ['site_domain' => 'mystore.om']);
-        $this->post(route('admin.marketing.whatsapp.save'), ['wa_number' => '96890000000']);
+        $this->post(route('admin.marketing.whatsapp.save'), ['wa_on_delivered' => true]);
 
         $this->assertSame('mystore.om', MarketingSettings::group($this->bid(), 'website')['site_domain']);
-        $this->assertSame('96890000000', MarketingSettings::group($this->bid(), 'whatsapp')['wa_number']);
+        $this->assertSame('1', MarketingSettings::group($this->bid(), 'whatsapp')['wa_on_delivered']);
     }
 
     public function test_a_key_that_is_not_in_the_group_is_ignored(): void

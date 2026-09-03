@@ -24,12 +24,20 @@ const buttonVariants = cva(
                 subtle: 'bg-[#f2f2f0] text-[#111] hover:bg-[#e9e9e6]',
                 link: 'text-[#111] underline-offset-4 hover:underline',
             },
+            /*
+             * والصغيرُ يكبر تحت الإصبع.
+             *
+             * ٣٢ بكسل مقاسٌ للفأرة لا لليد: زرُّ حذفٍ أو تعديلٍ بهذا الحجم
+             * يُخطئه الإصبع أو يضغط جارَه — وفي صفٍّ من الجداول يعني ذلك
+             * حذفَ الصفّ الخطأ. و`pointer-coarse` تخصّ اللمس وحده، فلا
+             * يتغيّر شيءٌ على شاشةٍ بفأرة.
+             */
             size: {
-                sm: 'h-8 px-3 text-[13px] [&_svg]:size-4',
-                md: 'h-10 px-4 text-sm [&_svg]:size-[18px]',
+                sm: 'h-8 px-3 text-[13px] pointer-coarse:h-11 pointer-coarse:px-4 [&_svg]:size-4',
+                md: 'h-10 px-4 text-sm pointer-coarse:h-11 [&_svg]:size-[18px]',
                 lg: 'h-12 px-6 text-[15px] [&_svg]:size-5',
-                icon: 'h-10 w-10 [&_svg]:size-[18px]',
-                'icon-sm': 'h-8 w-8 [&_svg]:size-4',
+                icon: 'h-10 w-10 pointer-coarse:size-11 [&_svg]:size-[18px]',
+                'icon-sm': 'h-8 w-8 pointer-coarse:size-11 [&_svg]:size-4',
             },
         },
         defaultVariants: {

@@ -21,6 +21,7 @@ import {
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
+import { withFilters } from '@/lib/exportLink';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -46,12 +47,17 @@ export default function CustomersIndex() {
     const [importing, setImporting] = useState(false);
 
     /**
-     * حقل اسم واحد بلا مقابل إنجليزي: Customers::localizeName يكتشف لغة
-     * المُدخَل — اللاتيني يُنقل إلى العربية في name ويُحفظ الأصل في name_en،
-     * والعربي يبقى كما هو. أي name_en يُرسل يدويًا يُكتب فوقه.
+     * حقلا اسم: المُدخَل، ومقابلُه اللاتينيّ.
+     *
+     * `LocalName::apply` يكتشف لغة المُدخَل — اللاتينيّ يُنقل إلى العربية
+     * في `name` ويُحفظ الأصل في `name_en`. أمّا العربيّ فلا صورة لاتينية
+     * له تُخمَّن، فبقي بلا اسمٍ ثانٍ: من يقرأ الشاشة بالإنجليزية يجد
+     * قائمةً كلّها حروفٌ لا يفكّها. فالحقل الثاني يُملأ بيدٍ عند الحاجة،
+     * ويعلو على النقل الآليّ إن كُتب.
      */
     const add = useForm({
         name: '',
+        name_en: '',
         phone: '',
         email: '',
         branch_id: currentBranchId ? String(currentBranchId) : '',
@@ -178,19 +184,19 @@ export default function CustomersIndex() {
                             <DropdownMenuContent align="end" className="w-60">
                                 <DropdownMenuLabel>{t('تصدير')}</DropdownMenuLabel>
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.customers.export.xlsx')}>
+                                    <a href={withFilters(route('admin.customers.export.xlsx'))}>
                                         <FileSpreadsheet className="text-[#059669]" />
                                         {t('تصدير Excel (xlsx)')}
                                     </a>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.customers.export.pdf')} target="_blank" rel="noreferrer">
+                                    <a href={withFilters(route('admin.customers.export.pdf'))} target="_blank" rel="noreferrer">
                                         <FileText className="text-[#dc2626]" />
                                         {t('تصدير PDF')}
                                     </a>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.export.customers')}>
+                                    <a href={withFilters(route('admin.export.customers'))}>
                                         <FileDown className="text-[#6b7280]" />
                                         {t('تصدير CSV')}
                                     </a>
@@ -245,6 +251,18 @@ export default function CustomersIndex() {
                                 onChange={(e) => add.setData('name', e.target.value)}
                                 placeholder={t('مثال: محمد سالم')}
                                 required
+                            />
+                        </Field>
+                        <Field
+                            label="الاسم بالإنجليزية (اختياري)"
+                            hint="يظهر عند تشغيل الواجهة بالإنجليزية — يُملأ تلقائيًا لمن كُتب اسمه باللاتينية"
+                            error={add.errors.name_en}
+                        >
+                            <Input
+                                dir="ltr"
+                                value={add.data.name_en}
+                                onChange={(e) => add.setData('name_en', e.target.value)}
+                                placeholder="e.g. Mohammed Salem"
                             />
                         </Field>
                         <Field label="رقم الهاتف" required error={add.errors.phone}>

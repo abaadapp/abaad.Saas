@@ -207,11 +207,23 @@ export default function PosReceipts() {
 
                             <div className="space-y-1.5 border-y border-dashed border-gray-200 py-2.5 text-[13px]">
                                 {(open.lines ?? []).map((l, i) => (
-                                    <div key={i} className="flex justify-between gap-2">
-                                        <span className="min-w-0 truncate">
-                                            {l.qty} × {l.name}
-                                        </span>
-                                        <span className="shrink-0 tabular-nums">{m(l.total)}</span>
+                                    <div key={i}>
+                                        <div className="flex justify-between gap-2">
+                                            <span className="min-w-0 truncate">
+                                                {l.qty} × {l.name}
+                                            </span>
+                                            <span className="shrink-0 tabular-nums">{m(l.total)}</span>
+                                        </div>
+                                        {/* الإضافات مزاحةً تحت بندها — الإجمالي أعلاه يشملها */}
+                                        {(l.addons ?? []).map((a, j) => (
+                                            <div key={j} className="flex justify-between gap-2 ps-4 text-[12px] text-gray-500">
+                                                <span className="min-w-0 truncate">
+                                                    + {a.name}
+                                                    {a.qty > 1 && ` ×${a.qty}`}
+                                                </span>
+                                                <span className="shrink-0 tabular-nums">{m(a.total)}</span>
+                                            </div>
+                                        ))}
                                     </div>
                                 ))}
                             </div>

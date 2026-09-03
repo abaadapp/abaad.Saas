@@ -14,9 +14,12 @@ import {
     DialogTitle,
 } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
+import { UsernameInput, usernameOf } from '@/Components/ui/username-input';
 import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
+import { usePlanFeature } from '@/lib/plan';
 import type { Branch } from '@/types/models';
 
 export interface EmployeeFormValues {
@@ -26,9 +29,10 @@ export interface EmployeeFormValues {
     branch: string | null;
     phone: string | null;
     email: string;
-    pin: string | null;
-    /** هل للموظف رمز دخول محفوظ؟ الرمز نفسه لا يصل أبدًا (مخزَّن مشفّرًا) */
-    has_pin?: boolean;
+    /** الاسم قبل النطاق — يملأ الحقل، والنطاق مُلحق ثابت */
+    username?: string;
+    /** هل عنوانه على نطاق أبعاد؟ الحسابات القديمة خارجه لا تُنقل بلا قصد */
+    on_domain?: boolean;
     avatar?: string | null;
     status?: string;
     monthly_target?: number | string | null;
@@ -105,6 +109,14 @@ export default function EmployeeForm({
     canEditPermissions = true,
 }: Props) {
     const t = useTranslate();
+    /*
+     * الصلاحيات المخصّصة قدرةٌ تُشترى.
+     *
+     * وبلا هذا كانت الشاشة ترسم المربّعات كاملةً على الباقة الأساسية: يؤشّرها
+     * المالك ويحفظ فيُردّ — بابٌ معروضٌ لا يُفتح. والخادم يبقى الحارس، وهذا
+     * ليقول قبل المحاولة لا بعدها.
+     */
+    const canCustomize = usePlanFeature('custom_permissions');
     const editing = !!employee;
 
     /*
@@ -127,9 +139,8 @@ export default function EmployeeForm({
         branch: employee?.branch ?? defaultBranch ?? '',
         branches: employee?.branches ?? [],
         phone: employee?.phone ?? '',
-        email: employee?.email ?? '',
+        login_username: employee ? (employee.on_domain === false ? '' : (employee.username ?? usernameOf(employee.email))) : '',
         password: '',
-        pin: employee?.pin ?? '',
         status: (employee?.status ?? 'نشط') === 'نشط',
         // صفرٌ يعني «بلا هدف» — يُعرض فارغًا كما يقول التلميح، لا رقمًا مضبوطًا
         monthly_target: Number(employee?.monthly_target ?? 0) ? String(employee!.monthly_target) : '',
@@ -153,6 +164,12 @@ export default function EmployeeForm({
     // الاسم وحده: الصلاحيات تُحدَّد لهذا الموظف بعينه في القسم أدناه، فلا معنى
     // لسؤالٍ عن صلاحيات «الوظيفة» يُجاب مرّتين ويتناقض جوابه
     const titleForm = useForm({ name: '' });
+
+    /*
+     * حسابٌ قديم خارج نطاق أبعاد — يُعرض عنوانه ولا يُنقل حتى يُطلب النقل.
+     */
+    const [moving, setMoving] = useState(false);
+    const legacyEmail = editing && employee?.on_domain === false && !moving;
 
     useEffect(() => {
         if (pendingTitle && titles.includes(pendingTitle)) {
@@ -313,60 +330,78 @@ export default function EmployeeForm({
             <Section
                 icon={KeyRound}
                 title="الدخول والأمان"
-                hint="البريد لدخول اللوحة، والرمز لدخول نقطة البيع. واحدٌ منهما يكفي."
+                hint="بالبريد وكلمة المرور يدخل الموظف — اللوحة ونقطة البيع معًا."
             >
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {/*
-                        اختياري: الكاشير يدخل برمزه لا ببريده. وإلزامُه كان
-                        يدفع التاجر إلى اختراع بريدٍ وهميّ لا يقرأه أحد —
-                        والبريد فريدٌ على المنصة كلّها، فأوّل متجرين يريدان
-                        `cashier@` يصطدمان.
+                        إلزاميّ: هو الباب الوحيد بعد رفع الدخول بالرمز.
+                        وهو فريدٌ على المنصة كلّها، فأوّل متجرين يريدان
+                        `cashier@` يصطدمان — والتلميح يقول ذلك قبل الاصطدام.
                     */}
                     <Field
-                        label="البريد الإلكتروني"
-                        hint="اختياري لمن يدخل بالرمز وحده"
-                        error={form.errors.email}
+                        label="اسم المستخدم"
+                        required={!legacyEmail}
+                        hint="به يدخل الموظف — ولا يتكرّر على المنصة"
+                        error={form.errors.login_username}
                     >
-                        <Input
-                            type="email"
-                            dir="ltr"
-                            value={form.data.email}
-                            onChange={(e) => form.setData('email', e.target.value)}
-                        />
+                        {/*
+                            الحساب القديم خارج النطاق لا يُنقل بلا قصد: يُعرض
+                            عنوانه كما هو، ولا يتبدّل إلا بضغطةٍ تقول ذلك. ولو
+                            نُقل مع أيّ حفظ لَتبدّل بريدُ دخوله وهو يصحّح رقم
+                            هاتفه — ثمّ يقف غدًا أمام الشاشة بعنوانٍ لا يعرفه.
+                        */}
+                        {legacyEmail ? (
+                            <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-[#f7f7f5] px-3 py-2">
+                                <span className="text-[13px] text-[#4b4b4b]" dir="ltr">
+                                    {employee?.email}
+                                </span>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        setMoving(true);
+                                        form.setData('login_username', usernameOf(employee?.email));
+                                    }}
+                                >
+                                    {t('انقله إلى نطاق أبعاد')}
+                                </Button>
+                            </div>
+                        ) : (
+                            <UsernameInput
+                                value={form.data.login_username}
+                                onChange={(v) => form.setData('login_username', v)}
+                                required
+                            />
+                        )}
+                        {moving && (
+                            <p className="mt-1.5 text-[12px] text-[#b45309]">
+                                {t('سيتغيّر بريد دخوله عند الحفظ — أبلغه بالجديد.')}
+                            </p>
+                        )}
                     </Field>
 
+                    {/*
+                        الكلمة القائمة لا تُعرض هنا ولا في أيّ شاشة: تُحفظ
+                        مُجزَّأةً بلا طريقٍ يعود منها إلى نصّها. ومن يفتح ملفّ
+                        موظّفٍ يقرأ كلمته يفتح كلمةَ صاحبها في كل موقعٍ آخر
+                        يستعملها فيه — والناس يعيدون كلماتهم.
+                        فالمعروض هنا ما يُكتب الآن: يُكتب، ويُرى بالعين،
+                        ثمّ يُملى على صاحبه.
+                    */}
                     <Field
                         label={editing ? 'كلمة مرور جديدة' : 'كلمة المرور'}
-                        hint={editing ? 'اتركها فارغة للإبقاء على الحالية' : 'أربعة أحرف على الأقل'}
+                        hint={
+                            editing
+                                ? 'اتركها فارغة للإبقاء على الحالية — والقديمة لا تُعرض لأنها لا تُقرأ'
+                                : 'أربعة أحرف على الأقل'
+                        }
                         error={form.errors.password}
                     >
-                        <Input
-                            type="password"
-                            dir="ltr"
+                        <PasswordInput
                             autoComplete="new-password"
                             value={form.data.password}
                             onChange={(e) => form.setData('password', e.target.value)}
-                        />
-                    </Field>
-
-                    <Field
-                        label="رمز الدخول السريع (4 أرقام)"
-                        /* الشرط يُقال قبل أن يُصطدم به: من يكتب 1234 ويُرفض بلا
-                           سابق إنذار يظنّ العطب في الحقل لا في اختياره */
-                        hint={
-                            employee?.has_pin
-                                ? 'اتركه فارغًا للإبقاء على الرمز الحالي — ولا يُقبل متسلسل ولا مكرّر ولا سنة ميلاد'
-                                : 'يلزم إن تُرك البريد فارغًا — ولا يُقبل متسلسل (1234) ولا مكرّر (1111) ولا سنة ميلاد'
-                        }
-                        error={form.errors.pin}
-                    >
-                        <Input
-                            inputMode="numeric"
-                            maxLength={4}
-                            dir="ltr"
-                            value={form.data.pin}
-                            onChange={(e) => form.setData('pin', e.target.value.replace(/\D/g, ''))}
-                            placeholder="••••"
                         />
                     </Field>
 
@@ -460,13 +495,27 @@ export default function EmployeeForm({
                         </p>
                     ) : (
                         <div className="space-y-4">
+                            {/* ما لا تفتحه الباقة يُقال قبل المحاولة لا بعد الحفظ */}
+                            {! canCustomize && (
+                                <p className="rounded-[10px] border border-[#fed7aa] bg-[#fff7ed] px-3 py-2 text-[12px] text-[#9a3412]">
+                                    {t('الصلاحيات المخصّصة ليست في باقتك الحالية — تُتبع صلاحيات الوظيفة. وما مُنح سابقًا يبقى كما هو.')}
+                                </p>
+                            )}
+
                             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                                 {Object.entries(sections).map(([key, label]) => (
-                                    <label key={key} className="flex cursor-pointer items-center gap-2.5">
+                                    <label
+                                        key={key}
+                                        className={cn(
+                                            'flex items-center gap-2.5',
+                                            canCustomize ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
+                                        )}
+                                    >
                                         <input
                                             type="checkbox"
                                             checked={form.data.permissions.includes(key)}
                                             onChange={() => togglePermission(key)}
+                                            disabled={! canCustomize}
                                             className="size-4 rounded border-[#d1d5db] accent-[#111]"
                                         />
                                         <span className="text-sm text-[#374151]">{label}</span>

@@ -1,5 +1,13 @@
 /** أشكال البيانات القادمة من App\Support\Demo — مأخوذة من مخرجاتها الفعلية */
 
+export interface ProductVariantOption {
+    id: number;
+    name: string;
+    label: string;
+    price: number;
+    sku: string | null;
+}
+
 export interface Product {
     id: number;
     name: string;
@@ -14,9 +22,17 @@ export interface Product {
     image: string | null;
     stock_status: string;
     active: boolean;
+    /** يُعرض في المتجر على الإنترنت — غير `active` التي تعني «يُباع» */
+    published?: boolean;
     alert: number;
     tax: number;
     discount: number;
+    /** مقاساتُه الفعّالة — الفارغة تعني منتجًا بسيطًا يُباع بسعره */
+    variants?: ProductVariantOption[];
+    /** معرّفات الإضافات المسموحة — و`null` يعني «كلّها» (سلوك ما قبل الربط) */
+    addon_ids?: number[] | null;
+    /** ذو الوصفة رصيدُه مكوّناتُه لا عمودُه */
+    has_recipe?: boolean;
 }
 
 export interface Category {
@@ -39,6 +55,9 @@ export interface Customer {
     orders: number;
     total_spent: number;
     last_order: string;
+    /** رقم آخر فاتورةٍ مباعة — null لعميلٍ لم يشترِ بعد */
+    last_invoice?: string | null;
+    last_invoice_total?: number | null;
     points: number;
     avatar: string | null;
 }
@@ -54,13 +73,15 @@ export interface Employee {
     sales: number;
     status: string;
     joined: string;
-    has_pin: boolean;
     achieved: number;
 }
 
 export interface Supplier {
     id: number;
     name: string;
+    /** الاسم اللاتينيّ إن وُجد — و`label` هو ما يُعرض بلغة الواجهة */
+    name_en?: string | null;
+    label?: string;
     phone: string;
     email: string;
     contact: string;
@@ -116,6 +137,8 @@ export interface Addon {
     price: number;
     icon: string;
     active: boolean;
+    /** البضاعة التي تنقص حين تُباع — فارغةٌ لإضافةٍ خدميّة لا رصيد لها */
+    inventory_product_id?: number | null;
 }
 
 export interface Transaction {
@@ -148,7 +171,14 @@ export interface Receipt {
     discount?: number;
     tax?: number;
     delivery_fee?: number;
-    lines?: { name: string; qty: number; price: number; total: number }[];
+    lines?: {
+        name: string;
+        qty: number;
+        price: number;
+        total: number;
+        /** الإضافات المختارة على هذا البند بلقطتها وقت البيع */
+        addons?: { name: string; qty: number; total: number }[];
+    }[];
 }
 
 export interface PurchaseOrder {

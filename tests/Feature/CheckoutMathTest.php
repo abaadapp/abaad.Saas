@@ -58,8 +58,6 @@ class CheckoutMathTest extends TestCase
 
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_rate', 'value' => '5']);
 
-        // البيع صار يتطلّب صندوقًا مفتوحًا — شرطٌ للسيناريو لا موضوعُه
-        $this->openShiftFor($this->business->id);
     }
 
     private function sell(array $payload): Order
@@ -70,6 +68,13 @@ class CheckoutMathTest extends TestCase
             ->assertJsonPath('ok', true);
 
         return Order::latest('id')->firstOrFail();
+    }
+
+    /** بيعةٌ تُردّ عند الباب — وتُقال علّتها */
+    private function refusedSale(array $payload): \Illuminate\Testing\TestResponse
+    {
+        return $this->actingAs($this->cashier)
+            ->postJson('/pos/checkout', $payload + ['client_uuid' => uniqid('m', true), 'payment_method' => 'نقدي']);
     }
 
     private function line(int $qty = 1): array
@@ -148,11 +153,17 @@ class CheckoutMathTest extends TestCase
             'min_order' => 50, 'active' => true,
         ]);
 
-        $order = $this->sell(['items' => [$this->line(2)], 'coupon_code' => 'BIG50']);
+        /*
+         * ولا يمضي البيعُ بلا خصمٍ صمتًا.
+         *
+         * كان يمضي: تُطبع فاتورةٌ بواحدٍ وعشرين وقد قيل للزبون تسعةَ عشر،
+         * ولا شيء على شاشة الكاشير يقول لماذا. فيُردّ الطلب ويُقال السبب،
+         * ويُعيد الكاشير المحاولة بلا كوبون.
+         */
+        $res = $this->refusedSale(['items' => [$this->line(2)], 'coupon_code' => 'BIG50']);
 
-        $this->assertEqualsWithDelta(0.0, $order->discount, 0.0005);
-        $this->assertNull($order->coupon_code);
-        $this->assertEqualsWithDelta(21.0, $order->total, 0.0005);
+        $res->assertStatus(422)->assertJsonValidationErrors('coupon_code');
+        $this->assertSame(0, Order::count(), 'فاتورةٌ كُتبت بسعرٍ غير الذي قيل للزبون');
     }
 
     public function test_an_expired_coupon_is_refused_at_checkout_not_only_at_apply(): void
@@ -164,10 +175,10 @@ class CheckoutMathTest extends TestCase
         ]);
 
         // التحقّق عند زرّ «تطبيق» وحده لا يكفي: العميل قد يرسل الكود مباشرة
-        $order = $this->sell(['items' => [$this->line(2)], 'coupon_code' => 'OLD']);
+        $res = $this->refusedSale(['items' => [$this->line(2)], 'coupon_code' => 'OLD']);
 
-        $this->assertEqualsWithDelta(0.0, $order->discount, 0.0005);
-        $this->assertEqualsWithDelta(21.0, $order->total, 0.0005);
+        $res->assertStatus(422)->assertJsonValidationErrors('coupon_code');
+        $this->assertSame(0, Order::count());
     }
 
     public function test_a_used_up_coupon_stops_working(): void
@@ -182,9 +193,10 @@ class CheckoutMathTest extends TestCase
         $this->assertEqualsWithDelta(2.0, $first->discount, 0.0005);
         $this->assertSame(1, $coupon->refresh()->used_count, 'عدّاد الاستخدام يجب أن يزيد');
 
-        $second = $this->sell(['items' => [$this->line(1)], 'coupon_code' => 'ONCE']);
-        $this->assertEqualsWithDelta(0.0, $second->discount, 0.0005);
+        $second = $this->refusedSale(['items' => [$this->line(1)], 'coupon_code' => 'ONCE']);
+        $second->assertStatus(422)->assertJsonValidationErrors('coupon_code');
         $this->assertSame(1, $coupon->refresh()->used_count, 'الاستخدام المرفوض لا يزيد العدّاد');
+        $this->assertSame(1, Order::count(), 'ولا تُكتب فاتورةٌ ثانية');
     }
 
     public function test_a_zero_vat_business_is_charged_no_tax(): void

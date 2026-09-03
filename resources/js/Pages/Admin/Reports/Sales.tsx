@@ -1,9 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import SmartLink from '@/Components/SmartLink';
-import { Button } from '@/Components/ui/button';
-import { ChevronRight } from 'lucide-react';
+import BackToReports from '@/Components/BackToReports';
 import ExportMenu from '@/Components/ExportMenu';
 import StatCard from '@/Components/StatCard';
 import AreaChart from '@/Components/charts/AreaChart';
@@ -27,6 +25,7 @@ import type { PageProps } from '@/types';
 
 interface Summary {
     sales: number;
+    cogs: number;
     profit: number;
     expenses: number;
     tax: number;
@@ -84,6 +83,8 @@ export default function ReportsSales() {
 
     const stats = [
         { label: t('إجمالي المبيعات'), value: m(summary.sales), icon: 'wallet', color: 'primary' },
+        // التكلفة بجانب الربح لا في ورقةٍ أخرى: من يقرأ ربحًا يحتاج أن يرى ممّ طُرح
+        { label: t('تكلفة البضاعة المباعة'), value: m(summary.cogs), icon: 'package', color: 'info' },
         {
             label: t('صافي الربح'),
             value: m(summary.profit),
@@ -111,6 +112,7 @@ export default function ReportsSales() {
                 actions={
                     /* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */
                     <ExportMenu
+                        feature="reports_advanced"
                         xlsx={route('admin.reports.xlsx', { range: server.range })}
                         pdf={route('admin.reports.pdf', { range: server.range })}
                         csv={route('admin.export.reports', { range: server.range })}
@@ -119,14 +121,8 @@ export default function ReportsSales() {
             />
 
             {/* شريط أقسامٍ لتقريرٍ واحد لا معنى له — والعودة إلى الفهرس تُقال زرًّا */}
-            <div className="mb-4">
-                <Button variant="ghost" size="sm" asChild>
-                    <SmartLink routeName="admin.reports.index" href={route('admin.reports.index')}>
-                        <ChevronRight />
-                        {t('كل التقارير')}
-                    </SmartLink>
-                </Button>
-            </div>
+            {/* رجوعٌ واحد بشكلٍ واحد في التقارير كلّها */}
+            <BackToReports />
 
             {updatedAt && (
                 <p className="mb-3 text-[12px] text-[#9ca3af]">

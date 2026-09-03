@@ -69,7 +69,6 @@ class SettingController extends Controller
          */
         'inv_prefix' => ['sometimes', 'nullable', 'string', 'max:12', 'not_regex:/[%_\\\\]/'],
         'inv_start' => ['sometimes', 'nullable', 'integer', 'min:1'],
-        'paper' => ['sometimes', 'in:58mm,80mm,A4'],
 
         // التنبيهات
         'notify_new_order' => ['sometimes', 'boolean'],
@@ -84,24 +83,22 @@ class SettingController extends Controller
          * مالكٌ واحد — `MarketingController::saveLoyalty` — لأنّ المفتاح الذي
          * يكتبه اثنان يقول أحدهما غير ما يقول الآخر.
          *
-         * والوردية أُزيلت شاشتها بطلب صاحب النظام، فأُخرج مفتاحاها من القائمة
-         * المغلقة: بابُ حفظٍ يقبل ما لا مقبض له يُملأ من خارج الشاشة وحدها.
-         * و`Shifts` يبقى قارئًا لهما — `DEFAULT_MAX_HOURS` سقفُه، و
-         * `require_open_shift` أُطفئ في ترحيلٍ مرافق فلا يحبس صندوقًا.
+         * والوردية رُفعت من نقطة البيع كلّها بطلب صاحب النظام، فلم يبقَ
+         * لمفتاحيها — `shift_max_hours` و`require_open_shift` — قارئٌ واحد.
+         * وصفّاهما قد يبقيان في `settings` من قبلُ ولا يقرؤهما شيء.
          */
 
-        // قوالب الفواتير — تحكم الأوراق الثلاث
-        'tpl_header' => ['sometimes', 'nullable', 'string', 'max:120'],
-        'tpl_footer' => ['sometimes', 'nullable', 'string', 'max:500'],
-        'tpl_font' => ['sometimes', 'in:صغير,عادي,كبير'],
-        'tpl_show_logo' => ['sometimes', 'boolean'],
-        'tpl_show_branch' => ['sometimes', 'boolean'],
-        'tpl_show_employee' => ['sometimes', 'boolean'],
-        'tpl_show_customer' => ['sometimes', 'boolean'],
-        'tpl_show_datetime' => ['sometimes', 'boolean'],
-        'tpl_show_items_count' => ['sometimes', 'boolean'],
-        'tpl_show_vat_no' => ['sometimes', 'boolean'],
-        'tpl_show_qr' => ['sometimes', 'boolean'],
+        /*
+         * ولا مفاتيحَ قوالبَ هنا: `tpl_*` و`paper` انتقلت إلى محرّرها.
+         *
+         * وكانت شاشةُ الإعدادات ترسلها مع كلّ حفظٍ من أيّ تبويب، فمن عدّل
+         * ورقته في محرّرها ثمّ حفظ «بيانات النشاط» أعاد القيمَ التي قرأتها
+         * الشاشة قبل تعديله — يُنسَخ القديم فوق الجديد بلا خطأ ولا رسالة،
+         * ولا يُكتشف إلّا على ورقٍ أمام زبون. انظر `DocumentTemplates`.
+         *
+         * والصفوفُ المحفوظة باقيةٌ كما هي: الأسماء لم تتغيّر، وإنّما تغيّر
+         * البابُ الذي يكتبها.
+         */
     ];
 
     public function update(Request $request)
@@ -109,12 +106,10 @@ class SettingController extends Controller
         $data = $request->validate(self::KEYS, [
             'inv_prefix.not_regex' => __('لا تصلح الرموز % و _ و \\ في بادئة رقم الفاتورة'),
             'currency.size' => __('رمز العملة ثلاثة أحرف مثل OMR'),
-            'shift_max_hours.max' => __('سقف الوردية اثنتان وسبعون ساعة على الأكثر'),
             'vat_rate.max' => __('نسبة الضريبة مئة بالمئة على الأكثر'),
         ], [
             'shop_name' => __('اسم المتجر'),
             'vat_rate' => __('نسبة الضريبة'),
-            'shift_max_hours' => __('سقف ساعات الوردية'),
             'loyalty_earn_rate' => __('نقاط الولاء لكل ريال'),
         ]);
 

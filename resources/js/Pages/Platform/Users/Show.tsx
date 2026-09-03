@@ -2,7 +2,6 @@ import { type FormEvent, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
-    ArrowRight,
     Building2,
     Check,
     Contact,
@@ -16,8 +15,8 @@ import {
     X,
 } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
+import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
-import SmartLink from '@/Components/SmartLink';
 import ActivityFeed, { type ActivityItem } from '@/Components/ActivityFeed';
 import Tabs from '@/Components/Tabs';
 import Field, { Select, type SelectOption } from '@/Components/Field';
@@ -40,7 +39,6 @@ interface PlatformUser {
     id: number;
     business_id: number | null;
     /** للكاشير بابٌ آخر: الرمز — فلا يُقاس دخولُه بالبريد وحده */
-    has_pin: boolean;
     name: string;
     email: string;
     phone: string | null;
@@ -79,13 +77,12 @@ export default function UserShow() {
     /*
      * ما يمنع هذا الحساب من العمل — لا ما تقوله شارتُه.
      *
-     * والبابان يُقاسان معًا: كاشيرٌ بلا بريدٍ يدخل صندوقه برمزه كل صباح،
-     * فوسمُه «لا يستطيع الدخول» تحذيرٌ كاذب — ومن يجده كاذبًا مرّةً لا
-     * يصدّقه حين يصدق.
+     * والبريد وحده يُقاس: كان للكاشير بابٌ ثانٍ (أربعة أرقام) فلا يُوسَم بلا
+     * بابٍ وهو يدخل صندوقه كل صباح. ورُفع ذلك الباب، فمن لا بريد له لا يدخل.
      */
     const blocked =
-        !user.email && !user.has_pin
-            ? t('هذا الحساب بلا بريد ولا رمز دخول — لا باب يدخل منه. أضِف أحدهما.')
+        !user.email
+            ? t('هذا الحساب بلا بريد — لا باب يدخل منه. أضِف بريدًا من زرّ «تعديل».')
             : user.role_key !== 'super_admin' && !user.business_id
               ? t('هذا الحساب غير مربوط بنشاط تجاري — يدخل إلى نظام فارغ. اربطه من زرّ «تعديل».')
               : null;
@@ -103,17 +100,16 @@ export default function UserShow() {
 
     return (
         <PlatformLayout title={user.name}>
+            <BackLink
+                routeName="super-admin.users.index"
+                href={route('super-admin.users.index')}
+                label="المستخدمون"
+            />
             <PageHeader
                 title="ملف المستخدم"
                 subtitle={t('عرض تفاصيل المستخدم وصلاحياته ونشاطه')}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <SmartLink routeName="super-admin.users.index" href={route('super-admin.users.index')}>
-                                <ArrowRight />
-                                {t('رجوع')}
-                            </SmartLink>
-                        </Button>
                         <Button onClick={() => setEditing(true)}>
                             <Pencil />
                             {t('تعديل')}

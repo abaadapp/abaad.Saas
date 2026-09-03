@@ -57,6 +57,13 @@ export interface SharedProps {
     auth: {
         user: User;
         abilities: string[];
+        /**
+         * ما تفتحه باقة المتجر — سؤالٌ آخر غير `abilities`.
+         *
+         * ذاك عن صلاحية الموظّف، وهذا عن المشترَك. والاثنان يقعان على البند
+         * الواحد: مالكٌ يملك كلّ الأقسام في متجرٍ على الباقة الأساسية.
+         */
+        planFeatures: Record<string, boolean>;
         /** إلى أين يدخل اللوحة — أوّل قسمٍ يملكه، أو null فلا يُعرض الزرّ */
         panelUrl?: string | null;
         /** هل يدخل هذا المستخدم لوحة النشاط؟ الكاشير لا يدخلها */
@@ -94,6 +101,8 @@ export interface SharedProps {
     flash: {
         toast: Toast | null;
         status: string | null;
+        /** كلمة مرورٍ وُلِّدت الآن — تمرّ مرّةً واحدة ولا تُحفظ */
+        password?: string | null;
     };
     /** رمز CSRF الخام — يتجدّد مع كل استجابة، بخلاف وسم <meta> */
     csrf: string;

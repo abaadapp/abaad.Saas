@@ -196,7 +196,7 @@ export default function PurchaseCreate() {
                             <Select
                                 value={form.data.supplier_id}
                                 onChange={(e) => form.setData('supplier_id', e.target.value)}
-                                options={suppliers.map((s) => ({ label: s.name, value: s.id }))}
+                                options={suppliers.map((s) => ({ label: s.label ?? s.name, value: s.id }))}
                                 placeholder="— بدون مورّد —"
                             />
                         </Field>

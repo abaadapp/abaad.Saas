@@ -6,8 +6,10 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\User;
+use App\Support\Permissions;
 use App\Support\Reports;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -65,13 +67,30 @@ class ReportsCatalogTest extends TestCase
         $this->assertSame(array_keys(Reports::CATEGORIES), array_keys($props['categories']));
     }
 
-    public function test_every_card_names_one_destination_not_none_and_not_both(): void
+    public function test_the_catalog_carries_no_numbers_in_its_head(): void
     {
-        foreach (Reports::ALL as $report) {
-            // القوسان ضروريّان: xor أضعف من = فيلتقط الإسنادُ الطرفَ الأوّل وحده
-            $has = (isset($report['route']) xor isset($report['data']));
+        /*
+         * جُرّبت الأرقام في رأس الفهرس ورُفعت.
+         *
+         * على محلٍّ لم يبِعْ بعدُ هي أربعةُ أصفارٍ وخطٌّ مسطّح يملأ الشاشة
+         * قبل أن يصل صاحبُها إلى تقاريره. والأرقام لها صفحتها.
+         */
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.reports.index'))->viewData('page')['props'];
 
-            $this->assertTrue($has, "التقرير «{$report['key']}» يجب أن يحمل route أو data — لا كليهما ولا واحدًا منهما");
+        $this->assertArrayNotHasKey('summary', $props);
+        $this->assertArrayNotHasKey('salesSeries', $props);
+    }
+
+    public function test_every_card_names_a_page_of_its_own(): void
+    {
+        /*
+         * صار لكلّ تقريرٍ صفحته، فلم يبقَ في الفهرس بندٌ بمفتاح بيانات
+         * يُعرض في نافذةٍ مشتركة. والقاعدة الآن أضيق: `route` وحده.
+         */
+        foreach (Reports::ALL as $report) {
+            $this->assertArrayHasKey('route', $report, "التقرير «{$report['key']}» بلا صفحة");
+            $this->assertArrayNotHasKey('data', $report, "التقرير «{$report['key']}» ما زال يُعرض في نافذة");
             $this->assertContains($report['category'], array_keys(Reports::CATEGORIES), "تصنيف «{$report['key']}» مجهول");
         }
     }
@@ -87,23 +106,6 @@ class ReportsCatalogTest extends TestCase
             $this->actingAs($this->owner)
                 ->get(route($report['route']))
                 ->assertOk();
-        }
-    }
-
-    public function test_every_card_without_a_page_really_returns_a_table(): void
-    {
-        foreach (Reports::ALL as $report) {
-            if (! isset($report['data'])) {
-                continue;
-            }
-
-            $payload = $this->actingAs($this->owner)
-                ->getJson(route('admin.reports.data', $report['data']))
-                ->assertOk()
-                ->json();
-
-            $this->assertArrayHasKey('columns', $payload, "التقرير «{$report['key']}» بلا أعمدة");
-            $this->assertArrayHasKey('rows', $payload, "التقرير «{$report['key']}» بلا صفوف");
         }
     }
 
@@ -137,30 +139,33 @@ class ReportsCatalogTest extends TestCase
      */
     public function test_a_hidden_report_is_also_closed_at_its_door(): void
     {
+        /*
+         * وصفحاتُها الجديدة تحت `admin.reports.*`، فحارس المسار يقيسها
+         * بصلاحية «التقارير» وحدها. ولو اكتُفي به لَقرأ من مُنح التقارير
+         * مبيعاتِ كل موظفٍ وإنفاقَ كل عميل بكتابة العنوان.
+         */
         $user = $this->staff(['reports']);
 
-        foreach (Reports::ALL as $report) {
-            if (! isset($report['data'])) {
-                continue;
-            }
-
-            $this->actingAs($user)
-                ->getJson(route('admin.reports.data', $report['data']))
-                ->assertForbidden();
+        foreach (['admin.reports.payments', 'admin.reports.staff', 'admin.reports.customers'] as $route) {
+            $this->actingAs($user)->get(route($route))
+                ->assertForbidden("«{$route}» انفتح لمن لا يملك قسمه");
         }
+
+        // وصاحبُ القسم يفتحه: الحارس يمنع الغريب لا الجميع
+        $this->actingAs($this->staff(['reports', 'employees']))
+            ->get(route('admin.reports.staff'))->assertOk();
     }
 
-    public function test_a_data_key_no_card_points_to_is_not_a_door(): void
+    public function test_the_shared_window_is_gone_not_merely_unused(): void
     {
-        // خمسةُ تقاريرَ كانت تُفتح بكتابة عنوانها ولا بطاقة تقصدها، وفيها
-        // «الضريبة» التي تخترع التزامًا ضريبيًّا بضرب المبيعات في نسبةٍ ثابتة
-        foreach (['sales', 'profit', 'expenses', 'tax', 'products', 'categories'] as $key) {
-            $this->assertNull(Reports::sectionForData($key), "«{$key}» ليس مفتاح بياناتٍ في الفهرس");
-
-            $this->actingAs($this->owner)
-                ->getJson(route('admin.reports.data', $key))
-                ->assertNotFound();
-        }
+        /*
+         * بابٌ متروكٌ يبقى بابًا: مسارُ النافذة كان يردّ الجداول الثلاثة
+         * بصلاحيةٍ أخرى وبلا فترة. وتركُه مفتوحًا بعد أن صار لكلٍّ صفحته
+         * يعني بابين للشيء الواحد، يُدقّق أحدهما ويُنسى الآخر.
+         */
+        $this->assertFalse(Route::has('admin.reports.data'), 'مسار النافذة المشتركة ما زال قائمًا');
+        $this->assertFileDoesNotExist(app_path('Http/Controllers/Admin/ReportDataController.php'));
+        $this->assertFileDoesNotExist(resource_path('js/Pages/Admin/Reports/partials/ReportViewer.tsx'));
     }
 
     /**
@@ -180,7 +185,7 @@ class ReportsCatalogTest extends TestCase
 
         $body = $csv->streamedContent();
 
-        foreach (\App\Support\Reports::summaryRows($screen['summary']) as $row) {
+        foreach (Reports::summaryRows($screen['summary']) as $row) {
             $value = $row['money'] ? number_format((float) $row['value'], 3, '.', '') : (string) $row['value'];
             $this->assertStringContainsString($row['label'], $body);
             $this->assertStringContainsString($value, $body, "قيمة «{$row['label']}» ليست في الملفّ");
@@ -214,11 +219,11 @@ class ReportsCatalogTest extends TestCase
      */
     public function test_every_section_has_a_door_and_a_name(): void
     {
-        $labels = \App\Support\Permissions::sectionLabels();
+        $labels = Permissions::sectionLabels();
 
-        foreach (\App\Support\Permissions::SECTIONS as $section) {
-            $this->assertArrayHasKey($section, \App\Support\Permissions::ROUTES, "القسم «{$section}» بلا مسار");
-            $this->assertTrue(\Illuminate\Support\Facades\Route::has(\App\Support\Permissions::ROUTES[$section]), "مسار «{$section}» لا وجود له");
+        foreach (Permissions::SECTIONS as $section) {
+            $this->assertArrayHasKey($section, Permissions::ROUTES, "القسم «{$section}» بلا مسار");
+            $this->assertTrue(Route::has(Permissions::ROUTES[$section]), "مسار «{$section}» لا وجود له");
             $this->assertNotSame($section, $labels[$section] ?? $section, "القسم «{$section}» يُعرض بمفتاحه لا باسمه");
         }
     }
@@ -228,7 +233,7 @@ class ReportsCatalogTest extends TestCase
         $user = $this->staff(['reports']);
 
         $this->actingAs($user)->get(route('admin.reports.index'))->assertOk();
-        $this->assertSame(route('admin.reports.index'), \App\Support\Permissions::panelEntry($user));
+        $this->assertSame(route('admin.reports.index'), Permissions::panelEntry($user));
     }
 
     public function test_the_sales_summary_kept_its_page_after_the_move(): void

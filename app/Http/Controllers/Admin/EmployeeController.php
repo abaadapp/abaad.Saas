@@ -6,14 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\JobTitle;
 use App\Models\User;
-use App\Rules\StrongPin;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\MerchantAccount;
 use App\Support\Permissions;
+use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class EmployeeController extends Controller
@@ -28,15 +30,20 @@ class EmployeeController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             /*
-             * البريد اختياري، والرمز يقوم مقامه.
+             * اسمُ الدخول وحده يُكتب، والنطاق يُلحق على الخادم.
              *
-             * كان إلزاميًّا وفريدًا على مستوى المنصة، فأوّل متجرين يريدان
-             * `cashier@` أو `info@` يصطدمان ولا يفهم الثاني السبب — ويخترع
-             * لموظفه بريدًا وهميًّا لا يقرأه أحد. والبريد معرّفُ دخولٍ لا
-             * بيانَ اتصال، فعالميّةُ تفرّده صحيحة ولا تُمسّ؛ الخطأ كان في
-             * إلزامه من لا يدخل به أصلًا: الكاشير يدخل برمزه.
+             * والبريد إلزاميّ: هو الباب الوحيد. كان اختياريًّا لأن الكاشير
+             * يدخل بأربعة أرقام؛ ولمّا رُفع الدخول بالرمز صار الحسابُ بلا
+             * بريدٍ حسابًا بلا باب — يُحفظ بنجاح ثمّ يقف صاحبه أمام الشاشة
+             * ولا يجد ما يدخل به.
+             *
+             * وكان يُكتب كاملًا بيد المدير، فتخرج عناوين على أشكال: `.com`
+             * مكان `.om`، ومسافةٌ في الآخر، وحرفٌ عربيّ سقط من لوحةٍ لم
+             * تُبدَّل. ثمّ لا يدخل الموظف ولا يعرف أحدٌ لماذا.
+             *
+             * وتفرّده على مستوى المنصة يبقى: هو معرّف الدخول لا بيان اتصال.
              */
-            'email' => ['nullable', 'email', 'unique:users,email'],
+            'login_username' => array_merge(['required'], MerchantAccount::usernameRules()),
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
@@ -50,11 +57,6 @@ class EmployeeController extends Controller
             'branches' => ['nullable', 'array'],
             'branches.*' => ['integer'],
             'password' => ['nullable', 'string', 'min:4'],
-            /*
-             * بلا بريدٍ لا بدّ من رمز: حسابٌ بلا واحدٍ منهما لا سبيل إليه.
-             * يُحفظ بنجاح ثمّ يقف صاحبه أمام شاشة الدخول ولا يجد بابًا.
-             */
-            'pin' => ['required_without:email', 'nullable', 'digits:4', new StrongPin],
             /*
              * الراتب وبدلاته — مصدرُ مسيرة الشهر.
              *
@@ -72,8 +74,17 @@ class EmployeeController extends Controller
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
-            'pin.required_without' => __('بلا بريد إلكتروني يلزم رمز دخول — وإلا تعذّر على الموظف الدخول.'),
-        ]);
+            'login_username.required' => __('اسم المستخدم مطلوب — وبه يدخل الموظف إلى النظام.'),
+        ] + MerchantAccount::messages());
+
+        // العنوان الكامل يُبنى هنا، والتفرّد يُفحص عليه لا على الاسم
+        $email = MerchantAccount::email($data['login_username']);
+
+        if (MerchantAccount::taken($data['login_username'])) {
+            return back()->withInput()->withErrors([
+                'login_username' => __('هذا الاسم مستخدَم — اختر غيره.'),
+            ]);
+        }
 
         // الوظيفة اسم ظاهر — الصلاحية تُشتق منها، فلا يُحفظ دور غير معروف يمنع الموظف من الدخول
         $title = $this->findJobTitle($data['job_title']);
@@ -81,18 +92,18 @@ class EmployeeController extends Controller
             return back()->withInput()->withErrors(['job_title' => __('الوظيفة المحددة غير موجودة.')]);
         }
 
-        // رمز الدخول السريع: يجب أن يكون فريدًا على مستوى النظام
-        if (! empty($data['pin']) && $this->pinTaken($data['pin'])) {
-            return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
-        }
+        $manual = $request->boolean('manual_permissions')
+            ? array_values(array_unique($data['permissions'] ?? []))
+            : null;
+        $this->refuseManualPermissionsBeyondPlan($title, $manual);
+        $this->refuseGrantingMoreThanIHave($title, $manual);
 
         PlanLimits::enforce(auth()->user()->business, 'employees');
 
         $employee = User::create([
             'business_id' => $this->bid(),
             'name' => $data['name'],
-            // nullable: المفتاح يغيب عن $data حين لا يُرسل، ولا يأتي null
-            'email' => $data['email'] ?? null,
+            'email' => $email,
             'phone' => $data['phone'] ?? null,
             'role' => $title->role,
             'job_title' => $title->name,
@@ -100,7 +111,6 @@ class EmployeeController extends Controller
             'status' => 'نشط',
             'avatar' => Demo::image('emp'.uniqid()),
             'password' => Hash::make($data['password'] ?? 'password'),
-            'pin' => ! empty($data['pin']) ? $data['pin'] : null,
             // العمودان لا يقبلان NULL، والحقل الفارغ يعني صفرًا لا فراغًا
             'basic_salary' => $data['basic_salary'] ?? 0,
             'allowances' => $data['allowances'] ?? 0,
@@ -120,28 +130,139 @@ class EmployeeController extends Controller
     }
 
     /**
-     * هل رمز الدخول (٤ أرقام) مستخدم داخل هذا المتجر؟
+     * لا يُعطي أحدٌ ما لا يملك.
      *
-     * كان فريدًا على مستوى المنصة كلّها، وفي ذلك عطبان:
+     * قسم «الموظفون» يُمنح للمحاسب — وهو بابُ رواتبَ وأرقام هواتف في الأصل.
+     * وكان يفتح على أوسع من ذلك بكثير:
      *
-     * ١) تسريبٌ صغير: متجرٌ يُخبَر أن رمزًا «مستخدم بالفعل» وهو لا يرى من
-     *    يستعمله ولا يعرف بوجوده.
+     *   يُنشئ المحاسب موظّفًا بوظيفةٍ دورُها «مدير فرع» — ومدير الفرع يملك
+     *   كلّ الأقسام — ويضع له كلمة مرورٍ يعرفها، ثمّ يدخل بها. أو يفتح صفّه
+     *   هو ويبدّل وظيفته إلى تلك، فيصير عنده الإعدادات والمالية والنسخ
+     *   الاحتياطية. ولا شيء في المسار يمنعه: الدور يُشتقّ من الوظيفة، وحارسُ
+     *   الصلاحيات لا يعمل إلّا حين تُرسَل قائمةٌ يدوية.
      *
-     * ٢) وهو الأخطر: الرموز عشرة آلاف لا غير. مئة متجرٍ بعشرين موظفًا تشغل
-     *    خُمس الفضاء، فتخمينٌ عشوائي واحد يصيب بنسبة واحدٍ من خمسة — ويُدخل
-     *    متجرًا ما، أيًّا كان. والخطر ينمو مع كل متجرٍ يُضاف، أي أن نجاح
-     *    المنصة نفسه هو ما يفتح الباب.
+     * فالقاعدة: ما يُمنح لا يتجاوز ما يملكه المانح. وصاحب النشاط خارجها —
+     * هو مالكُ كلّ شيء أصلًا، ومن يقيّده يقفل المحلّ على صاحبه.
      *
-     * وبالحصر داخل المتجر يعود لكل متجرٍ فضاؤه كاملًا، ولا يتغيّر بعدد
-     * الجيران. ويقابله أن شاشة الرمز صارت تعرف متجرها (انظر PosDevice).
+     * @param  array<int, string>|null  $manual  قائمةٌ يدوية إن أُرسلت
      */
-    private function pinTaken(string $pin, ?int $exceptId = null): bool
+    /**
+     * الصلاحيات المخصّصة قدرةُ باقةٍ — والمقياس الانحرافُ عن الدور لا إرسالُ قائمة.
+     *
+     * النموذج يرسل `manual_permissions` دائمًا ومعه القائمة، حتّى حين يتركها
+     * المدير كما جاءت من الدور. فقياسُ القدرة بمجرّد وصول القائمة كان يقفل
+     * إضافةَ الموظّفين كلَّها على الباقة الأساسية — وهو ما لم يعده أحد.
+     *
+     * فالمقياس أن تختلف عمّا يمنحه الدور: من عيّن «كاشيرًا» فأخذ ما للكاشير
+     * لم يخصّص شيئًا، ومن نزع عنه قسمًا أو زاده قسمًا فقد خصّص. وهو المعنى
+     * المكتوب في صفحة التسعير حرفًا بحرف.
+     *
+     * و`null` — أي «اتبع الدور» — لا تُفحص أصلًا: الرجوع عن التخصيص يجب أن
+     * يبقى مفتوحًا لمن نزلت باقتُه، وإلّا حُبس على ما خصّصه قبلها.
+     */
+    private function refuseManualPermissionsBeyondPlan(JobTitle $title, ?array $manual, ?User $employee = null): void
     {
-        return User::where('business_id', $this->bid())
-            ->whereNotNull('pin')
-            ->when($exceptId, fn ($q) => $q->where('id', '!=', $exceptId))
-            ->get()
-            ->contains(fn ($u) => Hash::check($pin, $u->getRawOriginal('pin')));
+        if ($manual === null) {
+            return;
+        }
+
+        $byRole = array_values(array_filter(
+            Permissions::sections(),
+            fn ($s) => Permissions::allows($title->role, $s),
+        ));
+
+        $wanted = array_values(array_unique($manual));
+        sort($byRole);
+        sort($wanted);
+
+        if ($byRole === $wanted) {
+            return;
+        }
+
+        /*
+         * وما هو قائمٌ يبقى — الحدُّ يمنع إحداث تخصيصٍ لا الإبقاء عليه.
+         *
+         * موظّفٌ مُنح صلاحياتٍ مخصّصة يوم كانت الباقة تسمح، أو قبل أن يوجد
+         * هذا الحدّ أصلًا. والنموذج يرسل صلاحياته كما هي في كلّ حفظ، فكان
+         * الانحرافُ يُقاس ويُردّ الطلب — **حتى لو لم يُغيَّر إلا رقم الهاتف**.
+         * فلا يستطيع المالك تعديل موظّفه إطلاقًا: لا اسمَه ولا تعطيلَه.
+         *
+         * ولو أردنا نزعَها لكان النزعُ صريحًا في مكانه، لا أثرًا جانبيًّا
+         * لتغيير حقلٍ آخر.
+         */
+        if ($employee !== null) {
+            $current = array_values(array_unique($employee->permissions ?? []));
+            sort($current);
+
+            if ($current === $wanted) {
+                return;
+            }
+        }
+
+        if (PlanFeatures::allows(auth()->user()?->business, 'custom_permissions')) {
+            return;
+        }
+
+        /*
+         * والرفضُ يُقال في النموذج لا يُصفع به.
+         *
+         * `abort(403)` على حفظِ نموذجٍ يُخرج صفحة خطأٍ كاملة: يفقد المالك ما
+         * كتبه، ولا يعرف أيُّ حقلٍ سبّبها ولا أنّ السبب باقتُه أصلًا.
+         */
+        throw ValidationException::withMessages([
+            'permissions' => PlanFeatures::refusal(auth()->user()?->business, 'custom_permissions'),
+        ]);
+    }
+
+    private function refuseGrantingMoreThanIHave(JobTitle $title, ?array $manual): void
+    {
+        $actor = auth()->user();
+
+        if (! $actor || $actor->role === 'admin') {
+            return;
+        }
+
+        $granted = $manual !== null
+            ? $manual
+            : array_values(array_filter(Permissions::sections(), fn ($s) => Permissions::allows($title->role, $s)));
+
+        $beyond = array_values(array_filter($granted, fn ($s) => ! $actor->allows($s)));
+
+        if ($beyond) {
+            abort(403, __('لا تملك صلاحية منح: :sections', [
+                'sections' => implode('، ', array_map(
+                    fn ($s) => Permissions::sectionLabels()[$s] ?? $s,
+                    $beyond,
+                )),
+            ]));
+        }
+    }
+
+    /**
+     * ولا يرفع أحدٌ نفسه — لا رتبةً ولا راتبًا.
+     *
+     * تعديلُ صلاحيات النفس ممنوعٌ أصلًا، لكنّ الدور يأتي من الوظيفة لا من
+     * حقل الصلاحيات: فبدَلُ الوظيفة وحده كان يرفع صاحبه. والراتب مثله —
+     * مسيرةُ الشهر تقرأ العمود، فمن رفع راتبه رفع ما يُصرف له.
+     */
+    private function refuseRaisingMyself(User $employee, JobTitle $title, Request $request): ?string
+    {
+        if ($employee->id !== auth()->id() || auth()->user()?->role === 'admin') {
+            return null;
+        }
+
+        if ($title->role !== $employee->role) {
+            return __('لا يمكنك تغيير وظيفتك بنفسك.');
+        }
+
+        foreach (['basic_salary' => $employee->basic_salary, 'allowances' => $employee->allowances,
+            'commission_rate' => $employee->commission_rate] as $field => $current) {
+            if ($request->has($field) && (float) $request->input($field) > (float) $current) {
+                return __('لا يمكنك رفع راتبك أو بدلاتك بنفسك.');
+            }
+        }
+
+        return null;
     }
 
     /** وظيفة تابعة للمستأجر الحالي (تحمل الصلاحية المكافئة) */
@@ -190,16 +311,10 @@ class EmployeeController extends Controller
                 'branch' => $employee->branch,
                 'phone' => $employee->phone,
                 'email' => $employee->email,
-                /**
-                 * الرمز لا يُرسل أبدًا — وهو مخزَّن مشفّرًا أصلًا فلا يُقرأ.
-                 *
-                 * كان يُرسل `$employee->pin` فيصل الهاش إلى المتصفح ويُملأ به
-                 * الحقل، فيسقط التحقق («يجب أن يتكون من 4 أرقام») عند كل حفظ:
-                 * تعديل أي موظف له رمز دخول كان مستحيلًا. نرسل علمًا فقط:
-                 * هل له رمز؟ ليقول النموذج «اتركه فارغًا للإبقاء عليه».
-                 */
-                'pin' => '',
-                'has_pin' => filled($employee->pin),
+                // الاسم وحده يُعرض في الحقل، والنطاق مُلحق ثابت في الشاشة
+                'username' => MerchantAccount::username((string) $employee->email),
+                // خارج النطاق: حسابٌ قديم، ولا يُنقل إلا بطلبٍ صريح
+                'on_domain' => MerchantAccount::onDomain($employee->email),
                 // الفارغة تعني «كل الفروع» — انظر User::worksAt
                 'branches' => $employee->branches()->pluck('branches.id')->all(),
                 'avatar' => $employee->avatar,
@@ -230,7 +345,15 @@ class EmployeeController extends Controller
         $this->refuseTouchingTheOwner($employee);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', Rule::unique('users', 'email')->ignore($employee->id)],
+            /*
+             * الاسم اختياريّ هنا وحده — والفارغ يعني «أبقِ عنوانه».
+             *
+             * حساباتٌ قديمة أُنشئت قبل توحيد النطاق تحمل عناوين خارجه. ولو
+             * فُرض الاسم على كلّ حفظ لَنُقلت في صمت: يُصحَّح رقم هاتفٍ فيتبدّل
+             * بريدُ الدخول، ويقف صاحبه غدًا أمام الشاشة بعنوانٍ لا يعرفه.
+             * فالنقل يقع بطلبٍ صريح من الشاشة لا كأثرٍ جانبيّ لحفظ.
+             */
+            'login_username' => array_merge(['nullable'], MerchantAccount::usernameRules()),
             'phone' => ['nullable', 'string', 'max:50'],
             'job_title' => ['required', 'string', 'max:100'],
             'branch' => ['nullable', 'string', 'max:100'],
@@ -243,7 +366,6 @@ class EmployeeController extends Controller
              */
             'branches' => ['nullable', 'array'],
             'branches.*' => ['integer'],
-            'pin' => ['nullable', 'digits:4', new StrongPin],
             // كان النموذج يعرض حقل كلمة مرور والتحقق لا يقبله: كل محاولة
             // تغيير كانت تُبتلع بصمت ويظنّ المدير أنه غيّرها.
             'password' => ['nullable', 'string', 'min:4'],
@@ -267,43 +389,42 @@ class EmployeeController extends Controller
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
-        ]);
+        ] + MerchantAccount::messages());
+
+        if (filled($data['login_username'] ?? null)) {
+            if (MerchantAccount::taken($data['login_username'], $employee->id)) {
+                return back()->withInput()->withErrors([
+                    'login_username' => __('هذا الاسم مستخدَم — اختر غيره.'),
+                ]);
+            }
+
+            $data['email'] = MerchantAccount::email($data['login_username']);
+        }
+
+        unset($data['login_username']);
 
         $title = $this->findJobTitle($data['job_title']);
         if (! $title) {
             return back()->withInput()->withErrors(['job_title' => __('الوظيفة المحددة غير موجودة.')]);
         }
+        $manual = $request->has('manual_permissions') && $request->boolean('manual_permissions')
+            ? array_values(array_unique($data['permissions'] ?? []))
+            : null;
+        $this->refuseManualPermissionsBeyondPlan($title, $manual, $employee);
+        $this->refuseGrantingMoreThanIHave($title, $manual);
+
+        if ($refusal = $this->refuseRaisingMyself($employee, $title, $request)) {
+            return back()->withInput()->withErrors(['job_title' => $refusal]);
+        }
+
         $data['job_title'] = $title->name;
         $data['role'] = $title->role;
-
-        /*
-         * لا يبقى الحساب بلا بابٍ واحد.
-         *
-         * البريد صار اختياريًّا، والرمز يُترك فارغًا ليبقى كما هو — فمحوُ
-         * البريد عن موظفٍ لا رمز له كان يُنتج حسابًا سليمًا في القاعدة لا
-         * سبيل إلى الدخول به، ولا يظهر عطله إلا حين يقف صاحبه أمام الشاشة.
-         */
-        if (blank($data['email'] ?? null) && blank($data['pin'] ?? null) && ! filled($employee->pin)) {
-            return back()->withInput()->withErrors([
-                'pin' => __('بلا بريد إلكتروني يلزم رمز دخول — وإلا تعذّر على الموظف الدخول.'),
-            ]);
-        }
-
-        // رمز الدخول السريع: يُحدَّث فقط إذا أُدخل، ويجب أن يكون فريدًا
-        $pin = $data['pin'] ?? null;
-        unset($data['pin']);
-        if (! empty($pin)) {
-            if ($this->pinTaken($pin, $employee->id)) {
-                return back()->withInput()->withErrors(['pin' => __('رمز الدخول مستخدم بالفعل، اختر رمزًا آخر.')]);
-            }
-            $data['pin'] = $pin; // يُجزَّأ تلقائيًا عبر cast
-        }
 
         // كلمة المرور تُغيَّر فقط إن أُدخلت — والفراغ يعني «أبقِها»
         $password = $data['password'] ?? null;
         unset($data['password']);
         if (! empty($password)) {
-            $data['password'] = $password; // يُجزَّأ تلقائيًا عبر cast، كما الرمز
+            $data['password'] = $password; // يُجزَّأ تلقائيًا عبر cast
         }
 
         // الحالة: لا يُعطّل المستخدم حسابه بنفسه فيُقفل خارج النظام
@@ -401,11 +522,17 @@ class EmployeeController extends Controller
         if ($employee->id === auth()->id()) {
             return back()->with('toast', ['msg' => __('استخدم صفحة «الملف الشخصي» لتغيير كلمة مرورك'), 'type' => 'warning']);
         }
-        $temp = 'Ab'.random_int(1000, 9999);
+        $temp = MerchantAccount::temporaryPassword();
         $employee->password = Hash::make($temp);
         $employee->save();
         Activity::log('updated', 'أعاد تعيين كلمة مرور الموظف: '.$employee->name, ['subject_id' => $employee->id]);
 
-        return back()->with('toast', ['msg' => __('كلمة المرور الجديدة: :password', ['password' => $temp]), 'type' => 'info']);
+        /*
+         * تُعرض في الشاشة لتُنسخ، ولا تُكتب في سجلّ النشاط ولا في القاعدة:
+         * المحفوظ تجزئتُها وحدها، وهذه آخر مرّة تُقرأ فيها.
+         */
+        return back()
+            ->with('issued_password', $temp)
+            ->with('toast', ['msg' => __('وُلِّدت كلمة مرور جديدة — انسخها قبل إغلاق النافذة'), 'type' => 'info']);
     }
 }

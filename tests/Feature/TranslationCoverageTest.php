@@ -16,11 +16,36 @@ use Tests\TestCase;
  */
 class TranslationCoverageTest extends TestCase
 {
-    /** ما يُترجَم في الواجهة: t('…') — وفي الخادم: __('…') */
+    /**
+     * ما يُترجَم في الواجهة: t('…') — وفي الخادم وقوالبه: __('…').
+     *
+     * والاقتباس المزدوج معه: `__("…")` تعمل تمامًا كأختها، وقصرُ الفحص على
+     * المفرد كان يترك ما كُتب بها خارج الحساب.
+     */
     private const SOURCES = [
-        ['resources/js', ['tsx', 'ts'], "/t\('((?:[^'\\\\]|\\\\.)+)'/"],
-        ['app', ['php'], "/__\('((?:[^'\\\\]|\\\\.)+)'/"],
+        ['resources/js', ['tsx', 'ts'], "/t\\(\\s*'((?:[^'\\\\]|\\\\.)+)'/"],
+        ['resources/js', ['tsx', 'ts'], '/t\\(\\s*"((?:[^"\\\\]|\\\\.)+)"/'],
+        ['app', ['php'], "/__\\(\\s*'((?:[^'\\\\]|\\\\.)+)'/"],
+        ['app', ['php'], '/__\\(\\s*"((?:[^"\\\\]|\\\\.)+)"/'],
+        // القوالب: رسائل البريد وملفّات الـPDF تُقرأ كما تُقرأ الشاشة
+        ['resources/views', ['php'], "/__\\(\\s*'((?:[^'\\\\]|\\\\.)+)'/"],
+        ['resources/views', ['php'], '/__\\(\\s*"((?:[^"\\\\]|\\\\.)+)"/'],
+
+        /*
+         * وأكبرُ ثغرةٍ كانت هنا: النصّ يُمرَّر خاصيّةً لا يُغلَّف بـ`t`.
+         *
+         * `Field` تترجم `label` و`hint` و`placeholder` بنفسها، و`PageHeader`
+         * تترجم `title`، و`DataTable` تترجم `header` و`empty`. فالكاتب يكتب
+         * `label="اسم المورّد"` وهو محقّ — لكنّ النصّ لا يظهر في المصدر
+         * داخل `t('…')`، فكان يمرّ من هذا الاختبار ثمّ يظهر عربيًّا في شاشةٍ
+         * إنجليزية. ثمانيةٌ وأربعون نصًّا كانت كذلك.
+         */
+        ['resources/js', ['tsx', 'ts'], self::PROP_PATTERN.'=\\{?[\'"]((?:[^\'"\\\\\\n]|\\\\.)+)[\'"]/u'],
+        ['resources/js', ['tsx', 'ts'], self::PROP_PATTERN.'\\s*:\\s*[\'"]((?:[^\'"\\\\\\n]|\\\\.)+)[\'"]/u'],
     ];
+
+    /** الخصائص التي تترجمها المكوّنات بنفسها — انظر Field وPageHeader وDataTable */
+    private const PROP_PATTERN = '/\\b(?:label|hint|placeholder|title|subtitle|empty|message|header|description)';
 
     /** @return array<string, string> */
     private function dictionary(): array

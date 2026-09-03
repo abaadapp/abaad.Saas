@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import EmployeeForm from './partials/EmployeeForm';
 import { useTranslate } from '@/lib/i18n';
@@ -21,6 +22,11 @@ export default function EmployeeCreate() {
 
     return (
         <AdminLayout title="إضافة موظف">
+            <BackLink
+                routeName="admin.employees.index"
+                href={route('admin.employees.index')}
+                label="الموظفون"
+            />
             <PageHeader
                 title="إضافة موظف"
                 subtitle={t('أضف موظفًا جديدًا وحدّد دوره وفرعه')}

@@ -15,6 +15,12 @@ class NameTransliterator
         return (bool) preg_match('/[a-zA-Z]/', $s) && ! preg_match('/[\x{0600}-\x{06FF}]/u', $s);
     }
 
+    /** هل المُدخَل عربيّ؟ — فيه حرفٌ عربيّ واحد على الأقلّ */
+    public static function isArabic(string $s): bool
+    {
+        return (bool) preg_match('/[\x{0600}-\x{06FF}]/u', $s);
+    }
+
     /**
      * يعيد النسخة العربية إن فُهمت كل كلمات الاسم، وإلا null.
      *

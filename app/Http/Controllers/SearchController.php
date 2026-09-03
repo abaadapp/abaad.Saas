@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\Search;
 use Illuminate\Http\Request;
 
 /**
@@ -18,13 +19,14 @@ class SearchController extends Controller
 {
     public function admin(Request $request)
     {
-        $q = trim((string) $request->query('q'));
+        $q = Search::term($request);
         if (mb_strlen($q) < 2) {
             return response()->json(['groups' => []]);
         }
         $user = auth()->user();
         $bid = $user->business_id ?? Demo::bid();
         $like = "%{$q}%";
+        $op = Search::like();
 
         /*
          * البحث لا يتجاوز صلاحيات صاحبه.
@@ -35,21 +37,21 @@ class SearchController extends Controller
          * البيانات وصلته قبل الباب المغلق.
          */
         $products = $user->allows('products') ? Product::where('business_id', $bid)
-            ->where(fn ($w) => $w->where('name', 'like', $like)->orWhere('sku', 'like', $like))
+            ->where(fn ($w) => $w->where('name', $op, $like)->orWhere('sku', $op, $like))
             ->limit(5)->get()->map(fn ($p) => [
                 'label' => $p->name, 'meta' => $p->sku ?: '—',
                 'url' => route('admin.products.show', $p->id),
             ]) : collect();
 
         $orders = $user->allows('orders') ? Order::where('business_id', $bid)->sold()
-            ->where(fn ($w) => $w->where('number', 'like', $like)->orWhere('customer_name', 'like', $like))
+            ->where(fn ($w) => $w->where('number', $op, $like)->orWhere('customer_name', $op, $like))
             ->orderByDesc('id')->limit(5)->get()->map(fn ($o) => [
                 'label' => $o->number, 'meta' => $o->customer_name ?? __('عميل نقدي'),
                 'url' => route('admin.orders.show', $o->number),
             ]) : collect();
 
         $customers = $user->allows('customers') ? Customer::where('business_id', $bid)
-            ->where(fn ($w) => $w->where('name', 'like', $like)->orWhere('phone', 'like', $like))
+            ->where(fn ($w) => $w->where('name', $op, $like)->orWhere('phone', $op, $like))
             ->limit(5)->get()->map(fn ($c) => [
                 'label' => $c->name, 'meta' => $c->phone ?: '—',
                 'url' => route('admin.customers.show', $c->id),
@@ -62,9 +64,9 @@ class SearchController extends Controller
          * باسمه، لا رابطٌ يقود إلى صفحةٍ لا وجود لها.
          */
         $suppliers = $user->allows('suppliers') ? Supplier::where('business_id', $bid)
-            ->where(fn ($w) => $w->where('name', 'like', $like)
-                ->orWhere('phone', 'like', $like)
-                ->orWhere('contact_person', 'like', $like))
+            ->where(fn ($w) => $w->where('name', $op, $like)
+                ->orWhere('phone', $op, $like)
+                ->orWhere('contact_person', $op, $like))
             ->limit(5)->get()->map(fn ($s) => [
                 'label' => $s->name, 'meta' => $s->phone ?: ($s->contact_person ?: '—'),
                 'url' => route('admin.suppliers.index', ['q' => $s->name]),
@@ -80,19 +82,28 @@ class SearchController extends Controller
 
     public function super(Request $request)
     {
-        $q = trim((string) $request->query('q'));
+        $q = Search::term($request);
         if (mb_strlen($q) < 2) {
             return response()->json(['groups' => []]);
         }
         $like = "%{$q}%";
+        /*
+         * والمعامل يُسأل هنا كما يُسأل في بحث اللوحة.
+         *
+         * كانت هذه الدالّة وحدها تكتب `like` نصًّا: تجري الاختبارات على SQLite
+         * فتمرّ، ويجري الإنتاج على PostgreSQL فتفرّق بين الحرف الكبير والصغير.
+         * فمن كتب بريد تاجرٍ بحرفٍ كبيرٍ واحد لم يجده — وهذه الشاشة أوّل ما
+         * يُفتح حين يتّصل التاجر.
+         */
+        $op = Search::like();
 
-        $businesses = Business::where(fn ($w) => $w->where('name', 'like', $like)->orWhere('owner_name', 'like', $like))
+        $businesses = Business::where(fn ($w) => $w->where('name', $op, $like)->orWhere('owner_name', $op, $like))
             ->limit(6)->get()->map(fn ($b) => [
                 'label' => $b->name, 'meta' => $b->owner_name ?: '—',
                 'url' => route('super-admin.businesses.show', $b->id),
             ]);
 
-        $users = User::where(fn ($w) => $w->where('name', 'like', $like)->orWhere('email', 'like', $like))
+        $users = User::where(fn ($w) => $w->where('name', $op, $like)->orWhere('email', $op, $like))
             ->limit(6)->get()->map(fn ($u) => [
                 'label' => $u->name, 'meta' => $u->email ?: '—',
                 'url' => route('super-admin.users.show', $u->id),

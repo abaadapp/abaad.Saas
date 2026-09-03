@@ -27,7 +27,7 @@ interface Row {
 
 interface Props {
     rows: Row[];
-    summary: { count: number; total: number; orders: number; invoices: number; outstanding: number };
+    summary: { count: number; total: number; outstanding: number };
     month: string;
     months: string[];
     suppliers: { value: number; label: string }[];
@@ -133,14 +133,20 @@ export default function PurchaseRegister() {
                     stat={{ label: t('مشتريات الشهر'), value: m(summary.total), icon: 'shopping-bag', color: 'primary' }}
                     index={0}
                 />
+                {/*
+                    وبلا سطر «اتجاه» تحتها كأختيها.
+
+                    كان تحتها «:o أمرًا · :i سندًا» بسهمٍ صاعدٍ أخضر — وهو تفصيلُ
+                    العدد لا اتجاهُه. فالبطاقة تقول «ارتفع» ولا شيء قُورن بشيء،
+                    وتبدو مختلفةً عن جارتيها بلا سبب. والتفصيلُ نفسه يُقرأ من
+                    مرشّح النوع في الجدول تحتها.
+                */}
                 <StatCard
                     stat={{
                         label: t('عدد المستندات'),
                         value: number(summary.count),
                         icon: 'clipboard-list',
                         color: 'info',
-                        trend: t(':o أمرًا · :i سندًا', { o: summary.orders, i: summary.invoices }),
-                        up: true,
                     }}
                     index={1}
                 />

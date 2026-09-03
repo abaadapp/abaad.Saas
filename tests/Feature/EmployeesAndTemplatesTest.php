@@ -85,8 +85,8 @@ class EmployeesAndTemplatesTest extends TestCase
         $this->assertSame('نشط', $props['status']);
         $this->assertSame('500', (string) (int) $props['monthly_target']);
         $this->assertArrayHasKey('avatar', $props);
-        // الرمز لا يصل أبدًا — يصل علمٌ بوجوده فقط
-        $this->assertSame('', $props['pin']);
+        // الرمز رُفع من النظام كلّه، فلا يصل حقلُه أصلًا
+        $this->assertArrayNotHasKey('pin', $props);
     }
 
     public function test_a_new_password_typed_on_the_edit_form_actually_changes_it(): void
@@ -295,17 +295,23 @@ class EmployeesAndTemplatesTest extends TestCase
 
     public function test_the_templates_settings_are_saved(): void
     {
-        $this->actingAs($this->owner)->post(route('admin.settings.update'), [
-            'tpl_header' => 'أجمل الورود',
-            'tpl_footer' => "شكرًا\nنراكم قريبًا",
-            'tpl_font' => 'كبير',
-            'tpl_show_employee' => '0',
+        /*
+         * والحفظ من محرّر الورقة لا من نموذج الإعدادات العامّ — والمفاتيح
+         * المخزَّنة هي هي: `tpl_header` لا `tpl_sale_header`، فمن ضبط ورقته
+         * قبل وجود المحرّر يجدها كما تركها.
+         */
+        $this->actingAs($this->owner)->post(route('admin.settings.templates.update', 'sale'), [
+            'header' => 'أجمل الورود',
+            'footer' => "شكرًا\nنراكم قريبًا",
+            'font' => 'كبير',
+            'show_employee' => '0',
         ])->assertRedirect();
 
         $saved = Setting::where('business_id', $this->business->id)->pluck('value', 'key');
         $this->assertSame('أجمل الورود', $saved['tpl_header']);
         $this->assertSame("شكرًا\nنراكم قريبًا", $saved['tpl_footer']);
         $this->assertSame('كبير', $saved['tpl_font']);
+        $this->assertSame('0', $saved['tpl_show_employee']);
     }
 
     public function test_a_receipt_with_no_template_settings_prints_as_before(): void

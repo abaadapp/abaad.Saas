@@ -26,6 +26,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
+import { useAsciiDigits } from '@/lib/numerals';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -170,6 +171,7 @@ export default function DataTable<T>({
 }: DataTableProps<T>) {
     const t = useTranslate();
     const searchParam = server?.searchParam ?? 'q';
+    const searchRef = useAsciiDigits<HTMLInputElement>();
     const [query, setQuery] = useState(
         server ? String(server.params[searchParam] ?? '') : (initialQuery ?? ''),
     );
@@ -376,6 +378,7 @@ export default function DataTable<T>({
                         <div className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-[18rem]">
                             <Search className="size-4 shrink-0 text-[#9ca3af]" />
                             <input
+                                ref={searchRef}
                                 value={query}
                                 onChange={(e) => {
                                     setQuery(e.target.value);

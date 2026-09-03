@@ -15,11 +15,14 @@ class SupplierController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            // مكتوبًا بيدٍ يعلو على النقل الآليّ — انظر LocalName::apply
+            'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email', 'max:255'],
             'contact_person' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
+        $data = \App\Support\LocalName::apply($data);
         Supplier::create(array_merge($data, ['business_id' => $this->bid()]));
         \App\Support\Activity::log('created', 'أضاف مورّدًا: ' . $data['name']);
 
@@ -31,12 +34,14 @@ class SupplierController extends Controller
         $supplier = Supplier::where('business_id', $this->bid())->findOrFail($id);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            // مكتوبًا بيدٍ يعلو على النقل الآليّ — انظر LocalName::apply
+            'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email', 'max:255'],
             'contact_person' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
-        $supplier->update($data);
+        $supplier->update(\App\Support\LocalName::apply($data));
         \App\Support\Activity::log('updated', 'عدّل المورّد: ' . $supplier->name, ['subject_id' => $supplier->id]);
 
         return back()->with('toast', ['msg' => __('تم تحديث بيانات المورّد'), 'type' => 'success']);

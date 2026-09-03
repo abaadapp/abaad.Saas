@@ -26,6 +26,9 @@ class FlowerOrder
 
     public const FULFILLMENT = [self::PICKUP, self::DELIVERY];
 
+    /** ما يُكتب في `customer_name` حين لا يُختار عميل — ليس اسمًا يُعتدّ به */
+    public const WALK_IN = 'عميل نقدي';
+
     /**
      * المناسبات — مفاتيح لاتينية لا نصوص عربية.
      *
@@ -153,11 +156,42 @@ class FlowerOrder
             ? $data[$field]
             : ($current[$field] ?? null);
 
-        if ($effective('fulfillment_type') !== self::DELIVERY) {
-            return [];
+        $errors = [];
+
+        /*
+         * طلبٌ له موعدٌ طلبٌ يذهب إلى لوحة التجهيز — وبطاقته لا تُقرأ ناقصة.
+         *
+         * من يقف عند الطاولة يسأل: لمن؟ ومتى؟ وإلى أين؟ فبطاقةٌ تقول «عميل
+         * نقدي» لعشرة طلباتٍ في يومٍ واحد لا تُسلَّم لأحد. والشرط معلَّقٌ
+         * بالموعد وحده لأنّه هو ما يُدخل الطلب اللوحةَ أصلًا
+         * (`Order::awaitingPreparation`): بيعةُ المنضدة لا موعد لها، وإلزامُ
+         * الكاشير باسمٍ لكلّ عبوة ماءٍ يبيعها يحوّل ثلاث نقراتٍ إلى استجواب.
+         *
+         * وعند الإنشاء وحده (`$current === null`).
+         *
+         * لأنّ شاشة تعديل التفاصيل لا تعرض اسم العميل أصلًا: فرضُ القاعدة
+         * فيها يمنع صاحب المحلّ من تصحيح عنوان طلبٍ قديم بسبب حقلٍ لا يراه
+         * ولا يستطيع تغييره من هناك — قفلٌ بلا مفتاح على بياناتٍ سابقة
+         * لهذه القاعدة.
+         */
+        if ($current === null && filled($effective('scheduled_for'))) {
+            if (blank($effective('fulfillment_type'))) {
+                $errors['fulfillment_type'] = __('حدّد نوع التنفيذ: توصيل أو استلام من المحل.');
+            }
+
+            // الخطأ يُعلَّق على `customer` لا `customer_name`: هذا الفرع
+            // للإنشاء وحده، ومصدرُه صندوقُ البيع — وحقلُه هناك اسمه `customer`
+            $customer = $data['customer'] ?? $data['customer_name'] ?? null;
+
+            if (blank($customer) || trim((string) $customer) === self::WALK_IN) {
+                $errors['customer'] = __('اسم العميل مطلوب للطلبات التي تُجهَّز.');
+            }
         }
 
-        $errors = [];
+        if ($effective('fulfillment_type') !== self::DELIVERY) {
+            return $errors;
+        }
+
         $required = [
             'recipient_name' => __('اسم المستلِم مطلوب لطلبات التوصيل.'),
             'recipient_phone' => __('رقم المستلِم مطلوب لطلبات التوصيل.'),

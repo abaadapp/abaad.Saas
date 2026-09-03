@@ -11,7 +11,6 @@ use App\Models\Coupon;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerAddress;
-use App\Models\DeliveryNote;
 use App\Models\Expense;
 use App\Models\ExpenseType;
 use App\Models\FixedAsset;
@@ -51,8 +50,6 @@ use Illuminate\Support\Facades\Schema;
 class DemoStore
 {
     public const PASSWORD = 'abaad@12345';
-
-    public const PIN = '4321';
 
     /** بريد العرض — يُقال في الاجتماع ويُكتب على السبّورة، فليكن قصيرًا */
     public const DEMO_EMAIL = 'demo@gmail.com';
@@ -348,7 +345,7 @@ class DemoStore
         $users[] = User::create([
             'business_id' => $bid, 'name' => 'نورة البلوشي', 'email' => self::cashierEmail($bid),
             'role' => 'cashier', 'phone' => '+968 90000001', 'password' => Hash::make(self::PASSWORD),
-            'pin' => self::PIN, 'status' => 'نشط', 'branch' => $main, 'job_title' => 'كاشير',
+            'status' => 'نشط', 'branch' => $main, 'job_title' => 'كاشير',
             'basic_salary' => 420, 'allowances' => 60, 'last_login_at' => now()->subHours(3),
         ]);
 
@@ -632,6 +629,9 @@ class DemoStore
             foreach ($items as [$p, $qty]) {
                 $order->items()->create([
                     'product_id' => $p->id, 'name' => $p->name, 'price' => $p->price,
+                    // لقطةُ التكلفة كما يكتبها الصندوق: بدونها يقرأ التقرير
+                    // بطاقةَ المنتج اليوم، فيتحرّك ربحُ الشهر الماضي مع كلّ شراء
+                    'cost' => $p->cost,
                     'quantity' => $qty, 'total' => round($p->price * $qty, 3),
                 ]);
             }
@@ -641,6 +641,7 @@ class DemoStore
             }
 
             /*
+<<<<<<< HEAD
              * لكلّ بيعةٍ صفُّها في الحركة المالية — كما تكتبه نقطة البيع.
              *
              * الديمو كان يكتب الطلبات ويرحّل مبيعاتها إلى الدفتر شهرًا شهرًا،
@@ -657,6 +658,29 @@ class DemoStore
                 'method' => $order->payment_method,
                 'type' => 'دخل',
                 'kind' => Transaction::SALE,
+=======
+             * وقيدُ الدخل مع الفاتورة — لا بعدها ولا بدلها.
+             *
+             * المالية كلُّها تقرأ `transactions`: إجمالي المبيعات، وصافي
+             * الإيراد، والضريبة المحصّلة، ووسائل الدفع. والربحية تقرأ منها
+             * الإيراد وتقرأ التكلفة من بنود الطلبات.
+             *
+             * فبذورٌ تكتب ألف فاتورةٍ بلا قيدٍ واحد تجعل الشاشة تقول: بيعٌ
+             * بأربعمئة ريال، وتكلفةُ مبيعاتٍ بمليون — وخسارةٌ صافية بمليون
+             * على متجرٍ باع مليونين وسبعمئة ألف. رقمٌ لا يصدّقه من يراه، وهو
+             * أوّل ما يراه من يجرّب النظام.
+             *
+             * ويُكتب هنا بما يكتبه الصندوق حرفًا بحرف — انظر
+             * PosController::checkout.
+             */
+            Transaction::create([
+                'business_id' => $bid,
+                'order_id' => $order->id,
+                'reference' => $order->number,
+                'description' => 'مبيعات نقطة البيع — ' . $order->customer_name,
+                'method' => $order->payment_method,
+                'type' => 'دخل',
+>>>>>>> origin/main
                 'amount' => $total,
                 'tax_amount' => $tax,
                 'employee_name' => $seller->name,
@@ -875,20 +899,6 @@ class DemoStore
                 : [['account' => 'inventory', 'debit' => $value], ['account' => 'other_income', 'credit' => $value]],
                 $at, 'مخزون');
         }
-
-        // إشعارات تسليم — بعضها مربوطٌ بطلبٍ وبعضها مستقلّ
-        $orders = Order::where('business_id', $bid)->where('status', 'خرج للتوصيل')->limit(12)->get();
-        foreach ($orders as $i => $order) {
-            DeliveryNote::create([
-                'business_id' => $bid, 'branch_id' => $branches[$i % count($branches)]->id,
-                'customer_id' => $order->customer_id, 'order_id' => $order->id,
-                'number' => 'DN-' . str_pad((string) ($i + 1), 5, '0', STR_PAD_LEFT),
-                'delivered_at' => $order->ordered_at,
-                'recipient' => $order->customer_name, 'driver' => 'ماجد المعمري',
-                'address' => self::CITIES[$i % count(self::CITIES)],
-                'status' => $i % 4 === 0 ? 'مسودة' : 'مُسلَّم',
-            ]);
-        }
     }
 
     /* ------------------------------ التسويق ------------------------------ */
@@ -902,6 +912,9 @@ class DemoStore
             ['EID2026', 'نسبة', 15, 10, 500],
             ['FREESHIP', 'مبلغ', 2, 15, 300],
             ['VIP20', 'نسبة', 20, 30, 50],
+            ['DEMO15', 'نسبة', 15, 10, 150],
+            ['SAVE5', 'مبلغ', 5, 25, 100],
+            ['BIGORDER25', 'نسبة', 25, 100, 60],
         ] as $i => [$code, $type, $value, $min, $max]) {
             Coupon::create([
                 'business_id' => $bid, 'code' => $code, 'type' => $type, 'value' => $value,
@@ -937,11 +950,7 @@ class DemoStore
             ]);
         }
 
-        MarketingSettings::save($bid, 'website', [
-            'site_domain' => 'demo-flowers.abaadapp.om',
-            'site_title' => 'متجر أبعاد للورود',
-            'site_tagline' => 'ورودٌ تصل في وقتها',
-        ]);
+        MarketingSettings::save($bid, 'website', ['site_domain' => 'demo-flowers.abaadapp.om']);
     }
 
     /* -------------------------- المنصّة وسجل النشاط -------------------------- */

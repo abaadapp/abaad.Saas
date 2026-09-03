@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, Clock, Gift, MapPin, Phone, Store, Truck, User } from 'lucide-react';
+import { AlertTriangle, Clock, Gift, MapPin, Phone, StickyNote, Store, Truck, User } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Tabs, { type TabItem } from '@/Components/Tabs';
@@ -15,11 +15,15 @@ interface PrepItem {
     qty: number;
     note: string | null;
     image: string | null;
+    /** الإضافات المختارة — يراها من يجهّز الطلب */
+    addons?: { name: string; qty: number }[];
 }
 
 interface PrepOrder {
     number: string;
     status: string;
+    /** صاحب الطلب — لا مستلِمه */
+    customer: string | null;
     fulfillment: string | null;
     scheduled_for: string | null;
     overdue: boolean;
@@ -43,6 +47,8 @@ interface Props {
     filters: { when: string | null; type: string | null };
     counts: { all: number; overdue: number; today: number; tomorrow: number };
     typeCounts: { all: number; delivery: number; pickup: number };
+    /** يصل حين تُقصّ اللوحة عند سقفها — وnull حين تُعرض كاملة */
+    truncated: { shown: number; total: number } | null;
 }
 
 /**
@@ -71,6 +77,7 @@ export default function PreparationIndex() {
     const filters = page.filters ?? { when: null, type: null };
     const counts = page.counts ?? NO_COUNTS;
     const typeCounts = page.typeCounts ?? NO_TYPE_COUNTS;
+    const truncated = page.truncated ?? null;
 
     const tabs: TabItem[] = [
         { key: 'all', label: 'الكل', count: counts.all },
@@ -153,6 +160,25 @@ export default function PreparationIndex() {
                 />
             </div>
 
+            {/*
+              * ما لم يُعرض يُقال عددُه.
+              *
+              * اللوحة تُرسم حتى سقفها ثم تنتهي؛ وكانت تنتهي صامتة — فيقرأ من
+              * يجهّز آخرَ بطاقةٍ ويظنّ أنّه فرغ. والفرق بين «فرغتُ» و«بقي
+              * خمسون» هو الفرق بين باقةٍ تصل وباقةٍ لا تصل.
+              */}
+            {truncated && (
+                <Card className="mb-4 flex items-center gap-2 border-[#fde68a] bg-[#fffbeb] p-4 text-sm text-[#92400e]">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    <span>
+                        {t('تُعرض :shown من :total طلبًا. ضيّق بالتبويبات أو بنوع التنفيذ لرؤية الباقي.', {
+                            shown: truncated.shown,
+                            total: truncated.total,
+                        })}
+                    </span>
+                </Card>
+            )}
+
             {orders.length === 0 ? (
                 <Card className="p-6 text-center text-sm text-[#6b7280]">
                     {/* «لا شيء» مع مرشّحٍ قائم يُقرأ «لا شيء أبدًا» — فيُقال أيّهما أفرغها */}
@@ -167,8 +193,12 @@ export default function PreparationIndex() {
                     {orders.map((o) => (
                         <Card key={o.number} className="flex flex-col gap-3 p-5">
                             <div className="flex items-start justify-between gap-2">
-                                <div>
-                                    <p className="font-bold text-[#111]">{o.number}</p>
+                                <div className="min-w-0">
+                                    {/* صاحب الطلب أوّلًا: هو أوّل ما يُسأل عنه عند
+                                        الطاولة وعند التسليم. والرقم تحته — يُقرأ
+                                        حين يُبحث عنه لا حين يُجهَّز */}
+                                    <p className="truncate font-bold text-[#111]">{o.customer ?? t('بلا اسم')}</p>
+                                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">{o.number}</p>
                                     <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[#6b7280]">
                                         <Clock className="size-3.5" />
                                         <span dir="ltr">{o.scheduled_for ?? '—'}</span>
@@ -226,7 +256,16 @@ export default function PreparationIndex() {
                                         ) : (
                                             <span className="size-9 shrink-0 rounded-[8px] bg-gray-100" />
                                         )}
-                                        <span className="flex-1 text-[#111]">{i.name}</span>
+                                        <span className="flex-1 text-[#111]">
+                                            {i.name}
+                                            {/* من يجهّز يحتاج أن يرى الدبّ والشوكولاتة، لا الاسم وحده */}
+                                            {(i.addons ?? []).map((a, k) => (
+                                                <span key={k} className="block text-[12px] text-[#7c3aed]">
+                                                    + {a.name}
+                                                    {a.qty > 1 && ` ×${a.qty}`}
+                                                </span>
+                                            ))}
+                                        </span>
                                         <span className="font-bold tabular-nums text-[#111]">×{i.qty}</span>
                                     </li>
                                 ))}
@@ -250,6 +289,10 @@ export default function PreparationIndex() {
 
                             {(o.delivery_notes || o.internal_notes) && (
                                 <div className="rounded-[10px] bg-gray-50 p-3 text-[12px] text-[#6b7280]">
+                                    <p className="mb-1 flex items-center gap-1.5 font-medium text-[#4b4b4b]">
+                                        <StickyNote className="size-3.5" />
+                                        {t('ملاحظات')}
+                                    </p>
                                     {o.delivery_notes && <p>{o.delivery_notes}</p>}
                                     {o.internal_notes && <p className="mt-1">{o.internal_notes}</p>}
                                 </div>

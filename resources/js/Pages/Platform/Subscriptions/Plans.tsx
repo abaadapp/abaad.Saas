@@ -26,15 +26,22 @@ interface Plan {
     max_branches: number | null;
     max_employees: number | null;
     max_products: number | null;
+    /**
+     * ما تفتحه الباقة فعلًا — و`null` تعني «كلّ شيء» لا «لا شيء».
+     *
+     * الفرق بينهما هو الفرق بين باقةٍ لم تُضبط بعد وباقةٍ أُغلقت عمدًا.
+     */
+    capabilities: string[] | null;
 }
 
 interface Props {
     plans: Plan[];
+    capabilityOptions: { key: string; label: string; hint: string }[];
     currency: Currency;
 }
 
 export default function Plans() {
-    const { plans, currency } = usePage<PageProps<Props>>().props;
+    const { plans, capabilityOptions, currency } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     /** null = مغلق، 'new' = إضافة، أو الباقة المراد تعديلها */
     const [editing, setEditing] = useState<Plan | 'new' | null>(null);
@@ -132,6 +139,7 @@ export default function Plans() {
             {editing && (
                 <PlanDialog
                     plan={editing === 'new' ? null : editing}
+                    options={capabilityOptions}
                     onClose={() => setEditing(null)}
                 />
             )}
@@ -146,7 +154,15 @@ export default function Plans() {
  * و24.900 …) مهما كانت الباقة المضغوطة، وبلا action، وزرّ الحفظ يعرض toast
  * نجاح فقط. صارت تُحمَّل من الباقة نفسها وتُرسل إلى plans.update.
  */
-function PlanDialog({ plan, onClose }: { plan: Plan | null; onClose: () => void }) {
+function PlanDialog({
+    plan,
+    options,
+    onClose,
+}: {
+    plan: Plan | null;
+    options: { key: string; label: string; hint: string }[];
+    onClose: () => void;
+}) {
     const t = useTranslate();
     const form = useForm({
         name: plan?.name ?? '',
@@ -158,7 +174,21 @@ function PlanDialog({ plan, onClose }: { plan: Plan | null; onClose: () => void 
         max_branches: plan?.max_branches != null ? String(plan.max_branches) : '',
         max_employees: plan?.max_employees != null ? String(plan.max_employees) : '',
         max_products: plan?.max_products != null ? String(plan.max_products) : '',
+        /*
+         * والباقةُ التي لم تُضبط قدراتُها تُقرأ مفتوحةً كلَّها.
+         *
+         * فتُملأ المربّعات كما تعمل الباقة اليوم لا فارغة: من فتح النافذة
+         * ليُغيّر سعرًا وحفظ، يحفظ ما يراه — ولو رآها فارغةً لأقفل على تجّاره
+         * كلَّ شيءٍ بضغطةٍ لم يقصدها.
+         */
+        capabilities: plan?.capabilities ?? options.map((o) => o.key),
     });
+
+    const toggleCapability = (key: string, on: boolean) =>
+        form.setData(
+            'capabilities',
+            on ? [...form.data.capabilities, key] : form.data.capabilities.filter((k) => k !== key),
+        );
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
@@ -256,6 +286,46 @@ function PlanDialog({ plan, onClose }: { plan: Plan | null; onClose: () => void 
                             ]}
                         />
                     </Field>
+
+                    {/*
+                        القدرات فوق المزايا لا تحتها.
+
+                        `features` سطورٌ حرّة تُقرأ في صفحة التسعير ولا يقرؤها
+                        حارس: «تقارير متقدمة» كلمةٌ تُكتب ولا تعمل. وهذه هي ما
+                        يُفتح ويُغلق فعلًا — فتُوضع قبلها كي لا يُظنّ أنّ كتابة
+                        السطر تكفي.
+                    */}
+                    <fieldset>
+                        <legend className="mb-2 text-sm font-medium text-[#374151]">
+                            {t('ما تفتحه الباقة — يُفرض في النظام')}
+                        </legend>
+                        <div className="divide-y divide-[var(--ui-border,#e8e8e8)] rounded-[12px] border border-[var(--ui-border,#e8e8e8)]">
+                            {options.map((o) => (
+                                <label
+                                    key={o.key}
+                                    className="flex cursor-pointer items-start justify-between gap-3 px-4 py-3"
+                                >
+                                    <span className="min-w-0">
+                                        <span className="block text-sm font-medium text-[#374151]">
+                                            {t(o.label)}
+                                        </span>
+                                        <span className="mt-0.5 block text-[12px] text-[#9ca3af]">
+                                            {t(o.hint)}
+                                        </span>
+                                    </span>
+                                    <input
+                                        type="checkbox"
+                                        checked={form.data.capabilities.includes(o.key)}
+                                        onChange={(e) => toggleCapability(o.key, e.target.checked)}
+                                        className="mt-0.5 size-5 shrink-0 rounded accent-[#111]"
+                                    />
+                                </label>
+                            ))}
+                        </div>
+                        <p className="mt-1.5 text-[12px] text-[#9ca3af]">
+                            {t('المرفوعة تُردّ بـ403 عند التاجر مع رسالةٍ تدلّه على الترقية.')}
+                        </p>
+                    </fieldset>
 
                     <Field label="المزايا (ميزة في كل سطر)" error={form.errors.features}>
                         <Textarea

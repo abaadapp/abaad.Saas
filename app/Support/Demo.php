@@ -33,8 +33,21 @@ class Demo
     private static $baseCur = null;
     private static $displayCur = null;
 
-    /** صاحب العملة المحفوظة في الذاكرة — تُعاد القراءة إن تغيّر */
-    private static ?int $curBid = null;
+    /**
+     * صاحبُ كلّ ذاكرةٍ على حدة — تُعاد قراءتُها إن تغيّر.
+     *
+     * كان مفتاحًا واحدًا للذاكرتين، وكلٌّ منهما تُملأ وحدها: فمتجرٌ نُسّق له
+     * مبلغٌ (فامتلأت ذاكرة العرض باسمه) ثمّ قُرئ لمتجرٍ آخر أساسُه (فتبدّل
+     * المفتاح إلى اسم الثاني) — تصير ذاكرةُ العرض الأولى «صالحةً» لصاحبٍ لم
+     * تُملأ له، فيُخدَم بعملة جاره.
+     *
+     * ولا يقع هذا تحت php-fpm — العمليّة تموت مع الطلب — بل تحت عاملِ طابورٍ
+     * يعالج متجرين بالتتابع، أو تحت Octane. وهناك لا شاشة تكشفه: ملخّصٌ
+     * يوميّ يُرسَل بالبريد بأرقامٍ صحيحة وعملةٍ ليست عملة صاحبه.
+     */
+    private static ?int $baseBid = null;
+
+    private static ?int $displayBid = null;
 
     /**
      * تفريغ ذاكرة العملة المؤقّتة.
@@ -48,11 +61,20 @@ class Demo
     {
         self::$baseCur = null;
         self::$displayCur = null;
-        self::$curBid = null;
+        self::$baseBid = null;
+        self::$displayBid = null;
     }
 
     /** رموز العملات الشائعة في المنطقة — لمن ضبط عملته من الإعدادات بلا جدول عملات */
-    private const SYMBOLS = [
+    /*
+     * رموز العملات — عامّةٌ لأنّ لها قارئًا ثانيًا خارج هذا الصنف.
+     *
+     * `Storefront` تقرأ عملة المتجر من المتجر نفسه لا من الجلسة: صفحةُ
+     * المتجر تُفتح بلا حساب، فلا `bid()` ولا جلسةَ يُقرأ منها شيء. ونسخُ
+     * الخريطة هناك يعني رمزين لعملةٍ واحدة يفترقان يوم يُصحَّح أحدهما —
+     * فيرى الزبون في المتجر غير ما يرى التاجر في لوحته.
+     */
+    public const SYMBOLS = [
         'OMR' => 'ر.ع', 'AED' => 'د.إ', 'SAR' => 'ر.س', 'KWD' => 'د.ك', 'BHD' => 'د.ب',
         'QAR' => 'ر.ق', 'JOD' => 'د.أ', 'EGP' => 'ج.م', 'USD' => '$', 'EUR' => '€', 'GBP' => '£',
     ];
@@ -85,9 +107,10 @@ class Demo
     {
         // الذاكرة مربوطةٌ بصاحبها: بلا ذلك يُخدَم متجرٌ بعملة متجرٍ سبقه في
         // العمليّة نفسها — تحت Octane أو عامل طابور يعالج متجرين بالتتابع
-        if (self::$baseCur !== null && self::$curBid === self::bid()) {
+        if (self::$baseCur !== null && self::$baseBid === self::bid()) {
             return self::$baseCur;
         }
+<<<<<<< HEAD
         self::$curBid = self::bid();
 
         return self::$baseCur = self::currencyFor(self::bid());
@@ -107,6 +130,11 @@ class Demo
     {
         $s = \App\Models\Setting::where('business_id', $businessId)->pluck('value', 'key')->all();
         $c = \App\Models\Currency::where('business_id', $businessId)->where('is_base', true)->first();
+=======
+        self::$baseBid = self::bid();
+        $s = self::businessSettings();
+        $c = \App\Models\Currency::where('business_id', self::bid())->where('is_base', true)->first();
+>>>>>>> origin/main
 
         if ($c) {
             $cur = ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => true];
@@ -124,10 +152,10 @@ class Demo
     /** عملة العرض المختارة (من الجلسة) أو الأساسية */
     public static function displayCurrency(): array
     {
-        if (self::$displayCur !== null && self::$curBid === self::bid()) {
+        if (self::$displayCur !== null && self::$displayBid === self::bid()) {
             return self::$displayCur;
         }
-        self::$curBid = self::bid();
+        self::$displayBid = self::bid();
         $code = session('display_currency');
         if ($code) {
             $c = \App\Models\Currency::where('business_id', self::bid())->where('code', $code)->where('active', true)->first();
@@ -221,6 +249,22 @@ class Demo
             ?? \App\Models\Branch::where('business_id', self::bid())->orderBy('id')->value('id');
     }
 
+    /**
+     * ما تقيسه ورقةٌ بعينها — لا ما يختاره الشريط فوق الشاشة.
+     *
+     * كانت ترويسة كلّ ملفٍّ تكتب اسم الفرع المختار مهما كان ما تحتها، وأكثر
+     * الأوراق لا تعرف الفروع أصلًا: المبيعات والمصروفات والحركة المالية
+     * والمنتجات تُجمع على المتجر كلّه. فيُرسَل الملفّ إلى المحاسب بترويسةٍ
+     * تنسبه إلى فرعٍ واحد وجدولٍ يحمل ثلاثة — ولا تُكتشف إلا حين تُقارَن
+     * أوراق الفروع فيوجد كلٌّ منها يحمل أرقام الشركة نفسها.
+     *
+     * $perBranch: هل رشّح هذا التقرير بالفرع فعلًا؟
+     */
+    public static function scopeName(bool $perBranch): string
+    {
+        return $perBranch ? self::currentBranchName() : __('كل الفروع');
+    }
+
     public static function currentBranchName(): string
     {
         $id = self::currentBranchId();
@@ -285,6 +329,7 @@ class Demo
          * نُقل إليه بهجرة، فلم يضع نطاقٌ ضُبط قبل هذه النسخة.
          */
         /*
+<<<<<<< HEAD
          * النطاق وحده — ولا مفتاح نشرٍ معه.
          *
          * كان هنا شرطُ `site_enabled`، ثمّ حُذف المفتاح من النظام كلّه لأنّه
@@ -295,6 +340,33 @@ class Demo
          * أن يعنيه «للمتجر عنوان».
          */
         $raw = trim((string) (self::businessSettings()['site_domain'] ?? ''));
+=======
+         * والمُطفأ لا يُفتح — ولو بقي نطاقُه محفوظًا.
+         *
+         * التفعيل يُقرأ من مصدره الواحد لا من عمود القاعدة مباشرةً، فما
+         * تقوله الشاشةُ هو ما يفعله الزرّ (انظر `MarketingSettings`).
+         */
+        $business = Business::find(self::bid());
+
+        /*
+         * ومتجرُ أبعاد يسبق الرابط الخارجيّ.
+         *
+         * من نشر متجره عندنا فذاك موقعُه: زرٌّ يفتح صفحةً قديمة بينما متجره
+         * الحيّ في مكانٍ آخر يُرسل زبونَه إلى الخطأ. والخارجيّ يبقى لمن لم
+         * ينشر — أو لمن له موقعٌ آخر ولم يفتح متجرًا هنا.
+         */
+        if ($business && Storefront::published($business)) {
+            return Storefront::url($business->site_slug);
+        }
+
+        $site = MarketingSettings::group(self::bid(), 'website');
+
+        if (($site['site_on'] ?? '1') !== '1') {
+            return null;
+        }
+
+        $raw = trim((string) ($site['site_domain'] ?? ''));
+>>>>>>> origin/main
 
         if ($raw === '') {
             return null;
@@ -407,7 +479,27 @@ class Demo
             ->where('updated_at', '>=', $mStart)
             ->count();
         $activeAtStart = max(1, Business::real()->where('starts_at', '<', $mStart)->count());
-        $churnLabel = $churned.' · '.round($churned / $activeAtStart * 100).'%';
+        $churnRate = round($churned / $activeAtStart * 100);
+
+        /*
+         * كم كان في التجربة أوّل الشهر — ليُقاس عليه ما فيها الآن.
+         *
+         * والفحص «كما كان يومَها» لا كما هو اليوم: من دفع بعد أوّل الشهر كان
+         * في التجربة حينها، فعدُّه اليوم خارجَها يجعل الرقم القديم أصغر ممّا
+         * كان — فتقول البطاقة إنّ التجربة تنمو وهي تنكمش.
+         */
+        $trialingAt = fn ($moment) => Business::real()
+            ->where('starts_at', '<=', $moment)
+            ->where(fn ($q) => $q->whereNull('ends_at')->orWhere('ends_at', '>=', $moment))
+            ->whereNotIn('status', ['معطل', 'معطّل'])
+            ->whereNotExists(
+                fn ($q) => $q->selectRaw('1')->from('invoices')
+                    ->whereColumn('invoices.business_id', 'businesses.id')
+                    ->where('invoices.status', 'مدفوعة')
+                    ->where('invoices.issued_at', '<=', $moment),
+            )
+            ->count();
+        $trialingLast = $trialingAt($mStart);
 
         // الإيرادات: الشهر مقابل السابق، والسنة مقابل السابقة (فواتير مدفوعة فعليًا)
         $paid = fn () => Invoice::where('status', 'مدفوعة');
@@ -427,10 +519,22 @@ class Demo
              * خرج ومن.
              */
             array_merge(['label' => __('الإيراد الشهري المتكرّر'), 'value' => self::money($mrr), 'icon' => 'repeat', 'color' => 'primary'], self::trend($mrr, $mrrLast)),
+            /*
+             * وشكلُها شكلُ أخواتها: رقمٌ واحد في الوسط ونسبةٌ تحته.
+             *
+             * كانت وحدها تكتب رقمين في خانة القيمة («٢ · ١٥٪»)، ورقمًا ثالثًا
+             * في خانة الاتجاه هو عددٌ لا نسبة — بينما كلُّ بطاقةٍ في الشبكة
+             * تقول نسبةً. فتُقرأ الشبكةُ صفًّا واحدًا إلّا هي.
+             *
+             * والنسبة هي نسبةُ الفاقد لا تغيّرَه: هي ما يُدار به، وهي التي
+             * كانت محشورةً في القيمة. والسهم أحمرُ نازل ما دام أحدٌ خرج، وأخضرُ
+             * حين لا يخرج أحد — ارتفاع الفاقد ليس نموًّا.
+             */
             [
-                'label' => __('الفاقد هذا الشهر'), 'value' => $churnLabel, 'icon' => 'user-minus',
-                // ارتفاع الفاقد ليس نموًّا: الاتجاه معكوس عمدًا
-                'trend' => $churned > 0 ? '−'.$churned : null, 'up' => false, 'color' => $churned > 0 ? 'danger' : 'success',
+                'label' => __('الفاقد هذا الشهر'), 'value' => (string) $churned, 'icon' => 'user-minus',
+                'trend' => ($churned > 0 ? '−' : '').$churnRate.'%',
+                'up' => $churned === 0,
+                'color' => $churned > 0 ? 'danger' : 'success',
             ],
             array_merge(['label' => __('المشتركون'), 'value' => (string) $subscribed, 'icon' => 'badge-check', 'color' => 'success'], self::trend($subsNew, $subsNewLast)),
             /*
@@ -439,10 +543,20 @@ class Demo
              * من دخل بأربعة عشر يومًا مجّانًا ليس إيرادًا ولا مدينًا — وخلطه
              * بمن يدفع يجعلك تقرأ خمسةً وأنت تعرف أن اثنين لم يدفعا ريالًا.
              */
-            [
-                'label' => __('في التجربة'), 'value' => (string) $trialing, 'icon' => 'hourglass',
-                'color' => $trialing > 0 ? 'warning' : 'secondary', 'trend' => null, 'up' => null,
-            ],
+            /*
+             * وهذه كانت البطاقة الوحيدة بلا اتجاه: سطرٌ ناقصٌ تحتها يجعلها
+             * أقصر من جاراتها في الشبكة، ورقمًا لا يُقاس عليه شيء.
+             *
+             * والمقياس: كم كان فيها أوّل الشهر. ونموُّ التجربة خيرٌ — فالسهم
+             * أخضرُ صاعد حين يزيدون.
+             */
+            array_merge(
+                [
+                    'label' => __('في التجربة'), 'value' => (string) $trialing, 'icon' => 'hourglass',
+                    'color' => $trialing > 0 ? 'warning' : 'secondary',
+                ],
+                self::trend($trialing, $trialingLast),
+            ),
             array_merge(['label' => __('المستخدمون'), 'value' => (string) $users, 'icon' => 'users', 'color' => 'info'], self::trend($usersNew, $usersNewLast)),
             array_merge(['label' => __('الإيرادات الشهرية'), 'value' => self::money($monthly), 'icon' => 'wallet', 'color' => 'warning'], self::trend($monthly, $monthlyLast)),
             array_merge(['label' => __('الإيرادات السنوية'), 'value' => self::money($yearly), 'icon' => 'trending-up', 'color' => 'primary'], self::trend($yearly, $yearlyLast)),
@@ -750,6 +864,8 @@ class Demo
     {
         return \App\Models\Addon::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($a) => [
             'id' => $a->id,
+            // للشاشة كي تعرف أنّ هذه الإضافة تنقص من الرفّ — لا لتحسبها
+            'inventory_product_id' => $a->inventory_product_id,
             'name' => $a->name,
             'name_en' => $a->name_en,
             'label' => self::ln($a->name, $a->name_en),
@@ -766,11 +882,34 @@ class Demo
      * ولوحة المنتجات. أما نقطة البيع فتبيع من فرعٍ بعينه، فلا يجوز أن تعرض
      * لكاشير صلالة بضاعةً في مسقط.
      */
-    public static function products(?int $branchId = null): array
+    /**
+     * @param  \Illuminate\Http\Request|null  $filter  مُرشِّحات الشاشة — الملفّ يتبعها
+     */
+    public static function products(?int $branchId = null, ?\Illuminate\Http\Request $filter = null): array
     {
         $available = Stock::availabilityResolver(self::bid(), $branchId);
 
-        return Product::where('business_id', self::bid())->with('category')->orderBy('id')->get()->map(function ($p) use ($branchId, $available) {
+        /*
+         * المقاسات والإضافات المسموحة تُحمَّل مرّةً للشاشة كلّها.
+         *
+         * استعلامان لا استعلامان في كلّ منتج: شاشةُ بيعٍ فيها مئتا صنف كانت
+         * ستُطلق أربعمئة استعلامٍ قبل أن تُرسم.
+         */
+        $variants = \App\Models\ProductVariant::where('business_id', self::bid())
+            ->where('active', true)->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
+        $addonMap = \App\Support\ProductAddons::map(self::bid());
+        $allAddons = \App\Models\Addon::where('business_id', self::bid())->orderBy('id')->get();
+        $recipeOwners = \App\Models\RecipeItem::where('business_id', self::bid())->distinct()->pluck('product_id')
+            ->flip()->all();
+
+        $query = Product::where('business_id', self::bid())->with('category')->orderBy('id');
+
+        // الملفّ يتبع الشاشة: مَن رشّح «نفد المخزون» وصدّر لا يريد الجرد كلّه
+        if ($filter) {
+            ListFilters::products($query, $filter);
+        }
+
+        return $query->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners) {
             $qty = $branchId ? $available($p->id, (int) $p->quantity) : (int) $p->quantity;
 
             return [
@@ -787,6 +926,8 @@ class Demo
                 'image' => $p->image,
                 'stock_status' => Product::statusFor($qty, (int) $p->alert_qty),
                 'active' => (bool) $p->active,
+                // ما يُعرض في المتجر على الإنترنت — انظر App\Support\Storefront
+                'published' => (bool) $p->published,
                 'alert' => $p->alert_qty,
                 /*
                  * النسبة الفعليّة من المصدر الذي يحتسب بها الخادم — لا العمود الخام.
@@ -797,16 +938,67 @@ class Demo
                  * أن تُشتقّ بقاعدتين.
                  */
                 'tax' => \App\Support\Vat::rateFor($p, self::bid()),
+                /*
+                 * المقاسات — الفعّالة منها وحدها.
+                 *
+                 * منتجٌ له مقاسات لا يدخل السلّة بضغطةٍ واحدة: الخادم يرفضه
+                 * بلا مقاس، فالشاشة تسأل قبل أن تُضيف. والقائمة الفارغة تعني
+                 * منتجًا بسيطًا يُباع كما كان.
+                 */
+                'variants' => ($variants[$p->id] ?? collect())->map(fn ($v) => [
+                    'id' => $v->id,
+                    'name' => $v->name,
+                    'label' => self::ln($v->name, $v->name_en),
+                    'price' => (float) $v->price,
+                    'sku' => $v->sku,
+                ])->values()->all(),
+                /*
+                 * معرّفات الإضافات المسموحة — قائمةٌ صريحة لا «فراغٌ يعني الكلّ».
+                 *
+                 * كانت تُرسل خريطة الربط الخام، وغيابُ الربط يُقرأ في الشاشة
+                 * «كلّ إضافات المتجر». وإضافةُ منتجٍ خاصّة لا صفَّ ربطٍ لها،
+                 * فكانت تُعرض مع كلّ منتج — عكسُ معناها تمامًا. الخادم كان
+                 * يردّها عند الدفع (ProductAddons::allows)، لكنّ الكاشير
+                 * يعرضها على الزبون ثمّ يُرفض.
+                 *
+                 * والقاعدة واحدة للشاشة والخادم: ProductAddons::for.
+                 */
+                'addon_ids' => \App\Support\ProductAddons::for($p, $allAddons, $addonMap)
+                    ->pluck('id')->map(fn ($i) => (int) $i)->all(),
+                // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — تقرؤه الشاشة كي لا
+                // تحذّر من نفادِ باقةٍ لا يُخصم رصيدها أصلًا
+                'has_recipe' => isset($recipeOwners[$p->id]),
                 'discount' => (float) $p->discount,
             ];
         })->all();
     }
 
-    public static function orders(): array
+    /**
+     * فواتير المتجر — بلا مُرشِّح للوحة، وبمُرشِّحات الشاشة للملفّ.
+     *
+     * وبلا `$filter` تبقى على `sold()` كما كانت: لوحةُ التحكّم تعرض آخر ما
+     * بيع لا آخر ما أُلغي. ومع مُرشِّحٍ تصير مرآةَ شاشة «المبيعات» بالضبط —
+     * والملغى فيها، لأنّ الشاشة تعرضه وتعدّه.
+     *
+     * وكان التصدير يقرأ الفرع الأوّل وحده: مَن رشّح الملغاة وصدّر لا يجد
+     * ملغاةً واحدة في ملفّه.
+     *
+     * @param  \Illuminate\Http\Request|null  $filter  مُرشِّحات الشاشة
+     */
+    public static function orders(?\Illuminate\Http\Request $filter = null): array
     {
-        return Order::where('business_id', self::bid())->sold()
+        $query = Order::where('business_id', self::bid())
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
-            ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
+            ->withCount('items')->orderByDesc('ordered_at');
+
+        if ($filter) {
+            $query->where('is_held', false);
+            ListFilters::orders($query, $filter);
+        } else {
+            $query->sold();
+        }
+
+        return $query->get()->map(fn ($o) => [
                 'id' => $o->number,
                 'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
                 'employee' => $o->employee_name ?? '—',
@@ -822,7 +1014,7 @@ class Demo
     /** تفاصيل طلب كامل بأصنافه الحقيقية (حسب رقم الطلب) */
     public static function orderDetails($number): array
     {
-        $o = Order::where('business_id', self::bid())->where('number', $number)->with('items')->first();
+        $o = Order::where('business_id', self::bid())->where('number', $number)->with('items.addons')->first();
         if (! $o) {
             return [];
         }
@@ -830,10 +1022,15 @@ class Demo
         $items = $o->items->map(fn ($it) => [
             'id' => $it->id,
             'product_id' => $it->product_id,
-            'name' => $it->name,
+            'name' => $it->displayName(),
             'price' => (float) $it->price,
             'qty' => (int) $it->quantity,
-            'total' => (float) $it->total,
+            'total' => $it->lineTotal(),
+            'addons' => $it->addons->map(fn ($a) => [
+                'name' => $a->name,
+                'qty' => (int) $a->quantity,
+                'total' => (float) $a->total,
+            ])->all(),
         ])->all();
 
         return [
@@ -905,7 +1102,10 @@ class Demo
         ])->all();
     }
 
-    public static function customers(): array
+    /**
+     * @param  \Illuminate\Http\Request|null  $filter  بحث الشاشة — الملفّ يتبعه
+     */
+    public static function customers(?\Illuminate\Http\Request $filter = null): array
     {
         /*
          * المُباع وحده، وباستعلامٍ واحد.
@@ -916,11 +1116,38 @@ class Demo
          */
         $sold = fn ($q) => $q->sold();
 
-        return Customer::where('business_id', self::bid())
+        /*
+         * وآخرُ فاتورةٍ برقمها لا بتاريخها وحده.
+         *
+         * الكاشير يُسأل «كم كانت فاتورتي الماضية؟» و«أعطني نسخةً منها» وهو
+         * واقفٌ والزبون أمامه. وتاريخٌ بلا رقم لا يفتح شيئًا — يبقى أن يبحث
+         * في سجلّ الفواتير بالاسم ويقلّب الصفحات. وهما عمودان في الاستعلام
+         * نفسه، فلا استعلامَ لكلّ صفّ.
+         */
+        $lastSold = fn (string $column) => Order::select($column)
+            ->whereColumn('orders.customer_id', 'customers.id')
+            ->sold()
+            ->orderByDesc('ordered_at')
+            ->orderByDesc('id')
+            ->limit(1);
+
+        $query = Customer::where('business_id', self::bid())
+            ->select('customers.*')
+            ->addSelect([
+                'last_invoice' => $lastSold('number'),
+                'last_invoice_total' => $lastSold('total'),
+            ])
             ->withCount(['orders as orders_count' => $sold])
             ->withSum(['orders as orders_sum_total' => $sold], 'total')
             ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at')
-            ->orderBy('id')->get()->map(fn ($c) => [
+            ->orderBy('id');
+
+        // الملفّ يتبع بحث الشاشة
+        if ($filter) {
+            ListFilters::customers($query, $filter);
+        }
+
+        return $query->get()->map(fn ($c) => [
                 'id' => $c->id,
                 'name' => $c->name,
                 'name_en' => $c->name_en,
@@ -928,11 +1155,27 @@ class Demo
                 'phone' => $c->phone,
                 'email' => $c->email,
                 'tax_number' => $c->tax_number,
+                /*
+                 * ما تقرأه صفحة العميل — لا ما يكفي جدولَ القائمة.
+                 *
+                 * الصفحة تعرض العنوان، وتفتح صندوق الملاحظات على محتواه،
+                 * وتحمّل فرعَه في نموذج التعديل. وهذه الثلاثة لم تكن تُرسَل
+                 * أصلًا: فالعنوان يظهر فارغًا وإن كان مكتوبًا، والملاحظة
+                 * تُكتب وتُحفظ ثمّ يعود الصندوق خاليًا فتُكتب فوقها، والأدهى
+                 * أن الفرع يصل إلى النموذج فارغًا دائمًا — فكلّ حفظٍ لبيانات
+                 * العميل كان يفصله عن فرعه بصمت. لا رسالة خطأ في شيءٍ من ذلك،
+                 * إنما حقولٌ غائبة تُقرأ فراغًا.
+                 */
+                'address' => $c->address,
+                'notes' => $c->notes,
+                'branch_id' => $c->branch_id,
                 'orders' => $c->orders_count,
                 'total_spent' => (float) ($c->orders_sum_total ?? 0),
                 'last_order' => $c->orders_max_ordered_at
                     ? \Illuminate\Support\Carbon::parse($c->orders_max_ordered_at)->format('Y-m-d')
                     : '—',
+                'last_invoice' => $c->last_invoice,
+                'last_invoice_total' => $c->last_invoice === null ? null : (float) $c->last_invoice_total,
                 'points' => $c->points,
                 'avatar' => self::image('cust' . $c->id, 100, 100),
             ])->all();
@@ -989,11 +1232,47 @@ class Demo
                     'sales' => (float) $u->sales_total,
                     'status' => $u->status,
                     'joined' => optional($u->created_at)->format('Y-m-d') ?? '—',
-                    'has_pin' => $u->hasPin(),
                     // يُستخدم لترتيب لوحة الأداء
                     'achieved' => (float) ($monthly[$u->id] ?? 0),
                 ];
             })->all();
+    }
+
+    /**
+     * أداء الموظفين في فترةٍ يختارها التاجر — لتقرير الموظفين وحده.
+     *
+     * ولم تُوسَّع `employees()` بفترة: تقرؤها شاشة الموظفين ولوحة الأداء
+     * وبطاقاتُها، وكلُّها تقصد الشهر الجاري. وتغييرُ معناها لأجل تقريرٍ
+     * واحد يبدّل أرقامًا في شاشاتٍ لم يطلب أحدٌ تبديلها.
+     *
+     * والصفوف تُرتَّب بالمبيعات لا بالمعرّف: تقريرُ أداءٍ أوّلُ سطرٍ فيه
+     * أقدمُ موظفٍ لا أعلاهم بيعًا لا يُقرأ بنظرة.
+     */
+    public static function staffPerformance(string $range = 'month'): array
+    {
+        $bid = self::bid();
+        $start = self::rangeStart(self::range($range));
+
+        $sold = Order::where('business_id', $bid)->sold()
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+            ->whereNotNull('user_id')
+            ->selectRaw('user_id, SUM(total) as s, COUNT(*) as c')
+            ->groupBy('user_id')->get()->keyBy('user_id');
+
+        return User::where('business_id', $bid)->where('role', '!=', 'super_admin')
+            ->orderBy('id')->get()->map(function ($u) use ($sold) {
+                $row = $sold->get($u->id);
+
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'role' => $u->job_title ?: $u->roleLabel(),
+                    'branch' => $u->branch ?? __('الفرع الرئيسي'),
+                    'status' => $u->status,
+                    'sales' => round((float) ($row->s ?? 0), 3),
+                    'orders' => (int) ($row->c ?? 0),
+                ];
+            })->sortByDesc('sales')->values()->all();
     }
 
     /** ترتيب الموظفين حسب مبيعات الشهر (لوحة الأداء) */
@@ -1016,6 +1295,9 @@ class Demo
         return Supplier::where('business_id', self::bid())->withCount('purchaseOrders')->orderBy('name')->get()->map(fn ($s) => [
             'id' => $s->id,
             'name' => $s->name,
+            'name_en' => $s->name_en,
+            // ما يُعرض — ويبقى `name` هو ما يُبحث به ويُطبع في أمر الشراء
+            'label' => self::ln($s->name, $s->name_en),
             'phone' => $s->phone,
             'email' => $s->email,
             'contact' => $s->contact_person,
@@ -1261,6 +1543,38 @@ class Demo
 
     /* ============================ الربحية ============================ */
 
+    /**
+     * إيرادُ الإضافات وتكلفتُها — منسوبةً إلى المنتج الذي بيعت معه.
+     *
+     * الإضافة بيعٌ وشراءٌ لا رسمٌ صافٍ: «زيادة ثلاث وردات» بريالين ونصف
+     * تكلّف تسعمئة بيسة. وكانت غائبةً عن الربحية من الطرفين معًا — لا
+     * إيرادُها ولا تكلفتُها — بينما تدخل مجموعَ الفاتورة في المالية. فكان
+     * صافي الربح يظهر أعلى ممّا هو بمقدار تكلفة كلّ دبٍّ وشوكولاتةٍ بيعت.
+     *
+     * والقراءة من لقطة البند لا من الإضافة اليوم: تكلفتُها منسوخةٌ لحظة
+     * البيع مضروبةً فيما تأكله — انظر AddonStock.
+     *
+     * @return array<int, array{revenue: float, cost: float}>  [معرّف المنتج => ...]
+     */
+    private static function addonProfitByProduct(int $bid, ?string $start): array
+    {
+        $orders = Order::where('business_id', $bid)->sold()
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+            ->select('id');
+
+        return \App\Models\OrderItemAddon::query()
+            ->join('order_items', 'order_items.id', '=', 'order_item_addons.order_item_id')
+            ->whereIn('order_items.order_id', $orders)
+            ->groupBy('order_items.product_id')
+            ->selectRaw('order_items.product_id as pid, SUM(order_item_addons.total) as revenue, '
+                .'SUM(COALESCE(order_item_addons.cost, 0) * order_item_addons.quantity) as cost')
+            ->get()
+            ->mapWithKeys(fn ($r) => [(int) $r->pid => [
+                'revenue' => (float) $r->revenue,
+                'cost' => (float) $r->cost,
+            ]])->all();
+    }
+
     /** ربح كل منتج = (سعر البيع - التكلفة) × الكمية المباعة، من عناصر الطلبات الفعلية */
     public static function productProfitability(string $range = 'month'): array
     {
@@ -1269,13 +1583,26 @@ class Demo
         $start = self::rangeStart(self::range($range));
 
         // التكلفة من لقطة البيع — انظر التعليق في categoryProfitability
+        $addons = self::addonProfitByProduct($bid, $start);
+        // الصنف الواحد قد يظهر بصفّين لو أُعيدت تسميته بين بيعتين — وإضافاته
+        // تُنسب إلى أوّلهما مرّةً واحدة لا إلى كليهما
+        $spent = [];
+
         $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('product_id, name, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
-            ->groupBy('product_id', 'name')->get()->map(function ($r) use ($costs) {
+            ->groupBy('product_id', 'name')->get()->map(function ($r) use ($costs, $addons, &$spent) {
                 $cost = (float) ($costs[$r->product_id] ?? 0);
                 $cogs = (float) $r->cost_snapshot + $cost * ((int) $r->qty - (int) $r->costed_qty);
                 $revenue = (float) $r->revenue;
+
+                $pid = (int) $r->product_id;
+                if (isset($addons[$pid]) && ! isset($spent[$pid])) {
+                    $spent[$pid] = true;
+                    $revenue += $addons[$pid]['revenue'];
+                    $cogs += $addons[$pid]['cost'];
+                }
+
                 $profit = $revenue - $cogs;
 
                 return [
@@ -1309,6 +1636,7 @@ class Demo
          * للبيعات التي سبقت اللقطة (صفرًا) فلا تنقلب أرقام ما مضى.
          */
         $agg = [];
+        $addons = self::addonProfitByProduct($bid, $start);
         $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
             ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
@@ -1320,6 +1648,12 @@ class Demo
             $agg[$cat] ??= ['revenue' => 0, 'cost' => 0];
             $agg[$cat]['revenue'] += (float) $it->revenue;
             $agg[$cat]['cost'] += (float) $it->cost_snapshot + $info['cost'] * $uncosted;
+
+            $extra = $addons[(int) $it->product_id] ?? null;
+            if ($extra) {
+                $agg[$cat]['revenue'] += $extra['revenue'];
+                $agg[$cat]['cost'] += $extra['cost'];
+            }
         }
 
         $rows = [];
@@ -1335,6 +1669,40 @@ class Demo
         usort($rows, fn ($a, $b) => $b['profit'] <=> $a['profit']);
 
         return $rows;
+    }
+
+    /**
+     * تكلفة البضاعة المباعة في فترة — بابٌ واحد يقرؤه كلّ من يقول «ربح».
+     *
+     * واللقطة أوّلًا وبطاقةُ المنتج بعدها: `receive` تكتب آخر سعر شراء فوق
+     * تكلفة المنتج، فحسابُ الربح من البطاقة وحدها يجعل رفعَ المورّد سعرَه
+     * اليوم يُنقص ربحَ الشهر الماضي — تقريرٌ يتغيّر بأثرٍ رجعيّ كلّما اشتريت،
+     * ولا يُرى لأنّ الأرقام تبقى معقولة. و`cost_snapshot` مجموعُ ما التُقط،
+     * ويعود إلى البطاقة لما بيع قبل وجود اللقطة.
+     *
+     * وتكلفة الإضافات معها: الإيراد يحمل مجموع الفاتورة بإضافاتها، فإغفالُ
+     * تكلفتها يجعل كلّ دبٍّ بيع يظهر ربحًا صافيًا وهو مشترًى.
+     */
+    public static function cogsFor(int $bid, ?\Illuminate\Support\Carbon $start): float
+    {
+        $costs = Product::where('business_id', $bid)->pluck('cost', 'id');
+        $cogs = 0.0;
+
+        OrderItem::whereHas('order', function ($q) use ($bid, $start) {
+            $q->where('business_id', $bid)->sold()
+                ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start));
+        })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
+            ->groupBy('product_id')->get()
+            ->each(function ($r) use (&$cogs, $costs) {
+                $cogs += (float) $r->cost_snapshot
+                    + (float) ($costs[$r->product_id] ?? 0) * ((int) $r->qty - (int) $r->costed_qty);
+            });
+
+        foreach (self::addonProfitByProduct($bid, $start) as $extra) {
+            $cogs += $extra['cost'];
+        }
+
+        return $cogs;
     }
 
     /**
@@ -1357,19 +1725,8 @@ class Demo
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $netRevenue = (float) (clone $income)->sum('amount') - (float) (clone $income)->sum('tax_amount');
 
-        // تكلفة البضاعة المباعة (COGS) = تكلفة المنتج × الكمية المباعة في الفترة
-        $costs = Product::where('business_id', $bid)->pluck('cost', 'id');
-        $cogs = 0.0;
-        OrderItem::whereHas('order', function ($q) use ($bid, $start) {
-            $q->where('business_id', $bid)->sold()
-                ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start));
-        })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
-            ->groupBy('product_id')->get()
-            ->each(function ($r) use (&$cogs, $costs) {
-                // اللقطة أولًا، وبطاقةُ المنتج لما بيع قبل وجودها
-                $cogs += (float) $r->cost_snapshot
-                    + (float) ($costs[$r->product_id] ?? 0) * ((int) $r->qty - (int) $r->costed_qty);
-            });
+        // تكلفة البضاعة المباعة — من الباب الواحد لا بحسابٍ ثانٍ هنا
+        $cogs = self::cogsFor($bid, $start);
 
         // المصروفات التشغيلية في الفترة
         $expenses = (float) Expense::where('business_id', $bid)->paid()
@@ -1435,7 +1792,17 @@ class Demo
                 ? Product::statusFor((int) ($books[$p->id][$here] ?? 0), (int) $p->alert_qty)
                 : $p->stock_status,
             'cost' => (float) $p->cost,
-            'value' => round((float) $p->cost * (int) $p->quantity, 3),
+            /*
+             * القيمة تقيس ما تقيسه الكمية — الفرع لا الشركة.
+             *
+             * كانت الكمية من الفرع المختار والقيمة من إجمالي الشركة: سطرٌ
+             * واحد نصفُه هنا ونصفُه هناك. والشاشة كانت تُعيد حسابها بنفسها
+             * (cost × qty) فتقرأ الصواب، والملفّ يأخذ ما أُرسل — فيختلف
+             * الرقم بين ما رآه التاجر وما أرسله إلى محاسبه.
+             */
+            'value' => round((float) $p->cost * ($here ? (int) ($books[$p->id][$here] ?? 0) : (int) $p->quantity), 3),
+            // وقيمة الشركة تبقى معروضةً باسمها لا تحت اسم الفرع
+            'totalValue' => round((float) $p->cost * (int) $p->quantity, 3),
             'updated' => optional($p->updated_at)->format('Y-m-d') ?? '—',
             'branches' => ($stocks[$p->id] ?? collect())
                 ->map(fn ($s) => ['name' => $branchNames[$s->branch_id] ?? '—', 'qty' => (int) $s->quantity])
@@ -1463,9 +1830,23 @@ class Demo
         ])->all();
     }
 
-    public static function expenses(): array
+    /**
+     * مصروفات المتجر — وشهرُ الشاشة معها حين يُصدَّر.
+     *
+     * الشاشة تفتح على الشهر الجاري، والملفّ كان يخرج بالتاريخ كلّه: يُرشِّح
+     * التاجر سبتمبر ويصدّر، فيفتح ملفًّا فيه ثلاث سنوات.
+     *
+     * @param  \Illuminate\Http\Request|null  $filter  مُرشِّحات الشاشة
+     */
+    public static function expenses(?\Illuminate\Http\Request $filter = null): array
     {
-        return Expense::where('business_id', self::bid())->orderByDesc('spent_at')->get()->map(fn ($e) => [
+        $query = Expense::where('business_id', self::bid())->orderByDesc('spent_at');
+
+        if ($filter) {
+            ListFilters::expenses($query, $filter);
+        }
+
+        return $query->get()->map(fn ($e) => [
             'type' => $e->type,
             'description' => $e->description,
             'amount' => (float) $e->amount,
@@ -1486,6 +1867,7 @@ class Demo
             ->groupBy('type')->get()
             ->keyBy('type');
 
+<<<<<<< HEAD
         return \App\Models\ExpenseType::where('business_id', $bid)->with('account')
             ->orderBy('name')->get()->map(fn ($t) => [
                 'id' => $t->id,
@@ -1503,16 +1885,41 @@ class Demo
                 'account_id' => $t->account_id,
                 'account_label' => $t->account ? $t->account->code.' — '.$t->account->name : null,
             ])->all();
+=======
+        return \App\Models\ExpenseType::where('business_id', $bid)->orderBy('name')->get()->map(fn ($t) => [
+            'id' => $t->id,
+            'name' => $t->name,
+            'description' => $t->description,
+            // الحساب الذي يُرحَّل إليه — فارغًا يعني «يُقرأ من الاسم»
+            'account_key' => $t->account_key,
+            'count' => (int) ($usage[$t->name]->cnt ?? 0),
+            'total' => (float) ($usage[$t->name]->total ?? 0),
+        ])->all();
+>>>>>>> origin/main
     }
 
     /* ============================ المالية ============================ */
+
+    /**
+     * أوّل أيّام الأسبوع وآخرها — بتقويم عُمان لا بتقويم Carbon.
+     *
+     * الافتراضيّ في Carbon الاثنين، وأسبوع العمل هنا يبدأ الأحد. فمبيعاتُ
+     * الأحد كانت تقع في «الأسبوع الماضي» طوال الأسبوع، ومن يفتح تقرير
+     * الأسبوع صباح الاثنين يجد يومَ أمسِه غائبًا عنه ولا شيء يقول لماذا.
+     *
+     * وموضعٌ واحد لهما: خمسة مواضع كانت تكتب startOfWeek() بيدها، وواحدٌ
+     * يُنسى يكفي ليفترق التقرير عن مقارنته.
+     */
+    public const WEEK_START = \Carbon\CarbonInterface::SUNDAY;
+
+    public const WEEK_END = \Carbon\CarbonInterface::SATURDAY;
 
     /** بداية الفترة المختارة (اليوم/الأسبوع/الشهر/السنة) — null تعني كل الفترات */
     public static function rangeStart(string $range): ?\Illuminate\Support\Carbon
     {
         return match ($range) {
             'today' => now()->startOfDay(),
-            'week' => now()->startOfWeek(),
+            'week' => now()->startOfWeek(self::WEEK_START),
             'year' => now()->startOfYear(),
             'month' => now()->startOfMonth(),
             default => null,
@@ -1524,7 +1931,7 @@ class Demo
     {
         return match ($range) {
             'today' => [now()->subDay()->startOfDay(), now()->startOfDay()],
-            'week' => [now()->subWeek()->startOfWeek(), now()->startOfWeek()],
+            'week' => [now()->subWeek()->startOfWeek(self::WEEK_START), now()->startOfWeek(self::WEEK_START)],
             'year' => [now()->subYear()->startOfYear(), now()->startOfYear()],
             'month' => [now()->subMonthNoOverflow()->startOfMonth(), now()->startOfMonth()],
             default => null,
@@ -1611,12 +2018,17 @@ class Demo
      * والتصفية في الجدول تعملان على ما وصل، وبترُها إلى صفحاتٍ يجعل البحث
      * يفتّش صفحةً واحدة ويقول «لا نتائج». وللدفتر كاملًا: التصدير.
      */
-    public static function transactions(string $range = 'all', int $limit = 500): array
+    public static function transactions(string $range = 'all', ?int $limit = 500): array
     {
         $start = self::rangeStart($range);
         return Transaction::where('business_id', self::bid())
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start))
-            ->orderByDesc('occurred_at')->limit($limit)->get()->map(fn ($t) => [
+            // والسقف للشاشة وحدها: null يعني الدفتر كاملًا، وهو ما يَعِد به
+            // هذا التعليق نفسه منذ كُتب. كان التصدير يقرأ الدالة بسقفها،
+            // فيخرج ملفُّ «كل الحركات» بأحدث خمسمئةٍ ولا سطرَ فيه يقول ذلك —
+            // ومحاسبٌ يجمع عمودًا مبتورًا لا يعرف أنه مبتور.
+            ->when($limit !== null, fn ($q) => $q->limit($limit))
+            ->orderByDesc('occurred_at')->get()->map(fn ($t) => [
             // المرجع للعرض، والمفتاح للهوية: مرجعان متطابقان (تصحيح يشير
             // لفاتورة أصلية مثلًا) كانا يجعلان React يُسقط صفًّا من دفتر مالي
             'key' => $t->id,
@@ -1693,7 +2105,7 @@ class Demo
     {
         [$name, $start] = match (self::range($range)) {
             'today' => [__('اليوم'), now()->startOfDay()],
-            'week' => [__('هذا الأسبوع'), now()->startOfWeek()],
+            'week' => [__('هذا الأسبوع'), now()->startOfWeek(self::WEEK_START)],
             'year' => [__('هذه السنة'), now()->startOfYear()],
             'all' => [__('كل الفترات'), null],
             default => [__('هذا الشهر'), now()->startOfMonth()],
@@ -1739,7 +2151,7 @@ class Demo
 
         [$unit, $start, $end] = match ($range) {
             'today' => ['hour', now()->startOfDay(), now()->endOfDay()],
-            'week' => ['day', now()->startOfWeek(), now()->endOfWeek()],
+            'week' => ['day', now()->startOfWeek(self::WEEK_START), now()->endOfWeek(self::WEEK_END)],
             'year' => ['month', now()->startOfYear(), now()->endOfYear()],
             // الكلّ: آخر اثني عشر شهرًا — عمر المتجر كلّه على محورٍ واحد يصير خطًّا لا يُقرأ
             'all' => ['month', now()->copy()->subMonths(11)->startOfMonth(), now()->endOfMonth()],
@@ -2147,9 +2559,25 @@ class Demo
         $expenses = (float) Expense::where('business_id', $bid)->paid()
             ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount');
 
+        /*
+         * «صافي الربح» ربحٌ لا فرقُ طرحٍ بين رقمين.
+         *
+         * كان `المبيعات − المصروفات`: بلا تكلفةِ بضاعةٍ أصلًا، وبالضريبة
+         * داخلَ الإيراد. فمحلٌّ باع بألفٍ اشتراه بستّمئة وأنفق مئتين يقرأ
+         * «صافي ربح ٨٠٠» وربحُه مئتان — أربعةُ أضعاف، على بطاقة الصدارة في
+         * شاشة التقارير وفي الملفّات الثلاثة التي تخرج منها إلى المحاسب.
+         *
+         * والتعريف واحدٌ في النظام كلّه (انظر profitStats):
+         *   (المبيعات − الضريبة) − تكلفة البضاعة المباعة − المصروفات
+         *
+         * والضريبة تُطرح لأنها التزامٌ يُورَّد لا إيرادٌ يُملك.
+         */
+        $cogs = self::cogsFor($bid, $start);
+
         return [
             'sales' => $sales,
-            'profit' => $sales - $expenses,
+            'profit' => round($sales - $tax - $cogs - $expenses, 3),
+            'cogs' => round($cogs, 3),
             'expenses' => $expenses,
             'tax' => $tax,
             'products' => Product::where('business_id', $bid)->count(),
@@ -2276,7 +2704,7 @@ class Demo
         };
         [$curStart, $curEnd] = match ($range) {
             'today' => [$now->copy()->startOfDay(), $now->copy()->endOfDay()],
-            'week' => [$now->copy()->startOfWeek(), $now->copy()->endOfWeek()],
+            'week' => [$now->copy()->startOfWeek(self::WEEK_START), $now->copy()->endOfWeek(self::WEEK_END)],
             'year' => [$now->copy()->startOfYear(), $now->copy()->endOfYear()],
             // «الكلّ» لا سابقَ له يُقارَن به: يُقرأ شهرًا كي تبقى المقارنة ذات معنى
             default => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()],
@@ -2539,7 +2967,7 @@ class Demo
      * فواتير المتجر. بلا بحث: أحدث $limit فاتورة. مع $search: يبحث في كل الفواتير
      * (بلا حدّ الأحدث) برقم الفاتورة أو اسم العميل أو رقم هاتفه.
      */
-    public static function receipts(?string $search = null, int $limit = 30, ?int $shiftId = null): array
+    public static function receipts(?string $search = null, int $limit = 30, bool $today = false): array
     {
         $bid = self::bid();
         // خريطة الاسم → الهاتف لعملاء النشاط (لعرض الهاتف والبحث به)
@@ -2548,18 +2976,19 @@ class Demo
 
         $query = Order::where('business_id', $bid)->sold()
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
-            // وردية بعينها: شاشة تقفيل الصندوق تسأل عن درجٍ واحد لا عن آخر ٣٠ بيعة
-            ->when($shiftId, fn ($q) => $q->where('shift_id', $shiftId))
-            ->with('items');
+            // يومٌ بعينه: شاشة المقبوضات تسأل «ماذا قُبض اليوم؟» لا «ما آخر ٣٠ بيعة؟»
+            ->when($today, fn ($q) => $q->whereDate('ordered_at', today()))
+            ->with('items.addons');
 
         $term = $search !== null ? trim($search) : '';
         if ($term !== '') {
+            $op = Search::like();
             // أسماء العملاء الذين يطابق هاتفهم كلمة البحث (للبحث برقم الهاتف)
             $namesByPhone = \App\Models\Customer::where('business_id', $bid)
-                ->where('phone', 'like', "%{$term}%")->pluck('name')->all();
-            $query->where(function ($w) use ($term, $namesByPhone) {
-                $w->where('number', 'like', "%{$term}%")
-                    ->orWhere('customer_name', 'like', "%{$term}%");
+                ->where('phone', $op, "%{$term}%")->pluck('name')->all();
+            $query->where(function ($w) use ($term, $namesByPhone, $op) {
+                $w->where('number', $op, "%{$term}%")
+                    ->orWhere('customer_name', $op, "%{$term}%");
                 if ($namesByPhone) {
                     $w->orWhereIn('customer_name', $namesByPhone);
                 }
@@ -2579,11 +3008,18 @@ class Demo
                 'time' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
                 'employee' => $o->employee_name ?? '—',
                 'lines' => $o->items->map(fn ($it) => [
-                    'name' => $it->name,
+                    // الاسم بمقاسه من لقطة البند لا من علاقةٍ حيّة: مقاسٌ
+                    // أُعيد تسميته لا يُغيّر فاتورةً طُبعت — انظر OrderItem::displayName
+                    'name' => $it->displayName(),
                     'qty' => $it->quantity,
                     'price' => (float) $it->price,
-                    'total' => (float) $it->total,
+                    'total' => $it->lineTotal(),
                     'note' => $it->note,
+                    'addons' => $it->addons->map(fn ($a) => [
+                        'name' => $a->name,
+                        'qty' => (int) $a->quantity,
+                        'total' => (float) $a->total,
+                    ])->all(),
                 ])->all(),
             ])->all();
     }

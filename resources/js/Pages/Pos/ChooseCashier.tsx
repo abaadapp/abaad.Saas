@@ -1,6 +1,6 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
-import { UserPlus, Users } from 'lucide-react';
+import { UserPlus, UserRound, Users } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
 import { Card } from '@/Components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
@@ -17,11 +17,15 @@ interface Employee {
 }
 
 /**
- * من يقف على الصندوق الآن؟ تظهر قبل شاشة البيع، وتُنسب البيعات بعدها
- * إلى من يُختار هنا لا إلى الحساب المسجَّل دخوله.
+ * من يقف على الصندوق الآن؟
+ *
+ * ولم تعد تُفرض قبل البيع: الداخل بحسابه هو الواقف على الصندوق افتراضًا،
+ * وهذه الشاشة تُطلب من الترويسة حين يتناوب الموظفون على جهازٍ واحد. ولأنّها
+ * صارت اختيارًا، فيها بابُ خروج — «أكمل باسمي» — وإلّا لصارت حاجزًا لمن
+ * فتحها بالخطأ.
  */
 export default function ChooseCashier() {
-    const { employees, currentId } = usePage<PageProps<{ employees: Employee[]; currentId: number | null }>>().props;
+    const { employees, currentId, auth } = usePage<PageProps<{ employees: Employee[]; currentId: number | null }>>().props;
     const t = useTranslate();
 
     const pick = (id: number) => router.post(route('pos.cashier.select'), { employee_id: id });
@@ -37,6 +41,17 @@ export default function ChooseCashier() {
                     <p className="mt-1 text-sm text-gray-500">
                         {t('تُسجَّل المبيعات باسم الموظف الذي تختاره.')}
                     </p>
+                    {/*
+                        ولا أحد يُحبَس هنا: من فتح الشاشة بالخطأ — أو كان هو
+                        نفسه من يبيع — يمضي باسمه بضغطة واحدة.
+                    */}
+                    <Button variant="outline" size="sm" className="mt-4 gap-1.5" asChild>
+                        <Link href={route('pos.index')}>
+                            <UserRound className="size-4 text-gray-400" />
+                            {t('أكمل باسمي')}
+                            {auth?.user?.name ? <span className="text-gray-400"> · {auth.user.name}</span> : null}
+                        </Link>
+                    </Button>
                 </div>
 
                 {employees.length === 0 ? (

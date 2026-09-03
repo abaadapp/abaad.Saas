@@ -225,7 +225,6 @@ class SilentDataLossTest extends TestCase
             'business_id' => $this->business->id, 'code' => 'خصم', 'type' => 'مبلغ',
             'value' => 20, 'min_order' => 0, 'active' => true,
         ]);
-        $this->openShiftFor($this->business->id);
 
         $this->actingAs($this->owner)->postJson(route('pos.checkout'), [
             'items' => [['id' => $product->id, 'name' => $product->name, 'qty' => 1]],

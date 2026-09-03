@@ -8,6 +8,7 @@ use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\OrderStatus;
+use App\Support\OrderTransition;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -28,6 +29,9 @@ use Inertia\Inertia;
  */
 class PreparationController extends Controller
 {
+    /** أقصى ما يُرسم على اللوحة دفعةً واحدة — وما زاد يُقال عددُه لا يُبتلع */
+    private const BOARD_LIMIT = 200;
+
     private function bid(): int
     {
         return auth()->user()->business_id ?? Demo::bid();
@@ -63,21 +67,42 @@ class PreparationController extends Controller
         $q = $this->base()
             ->when($type, fn ($w) => $w->where('fulfillment_type', $type))
             ->with([
-                'items:id,order_id,name,quantity,note,product_id',
+                // `variant_name` في الانتقاء وإلّا عاد الاسم بلا مقاسه:
+                // عمودٌ لم يُنتقَ يُقرأ فارغًا لا مفقودًا، فيصمت العطب
+                'items:id,order_id,name,variant_name,quantity,note,product_id',
                 // الصورة وحدها من المنتج — لا سعرَه ولا تكلفتَه
                 'items.product:id,image',
+                'items.addons',
             ]);
 
         $this->applyWindow($q, $filter);
 
-        // المتأخّر أوّلًا لأنّه أقدم موعدًا — والترتيب التصاعديّ يُقدّمه وحده
-        $orders = $q->orderBy('scheduled_for')->limit(200)->get();
+        /*
+         * السقف يبقى، والصمتُ عنه لا يبقى.
+         *
+         * مئتا بطاقةٍ على شاشةٍ واحدة حدٌّ معقول — لكنّ اللوحة كانت تقطع عندها
+         * بلا كلمة: العدّاد فوقها يقول «٢٥٠» والقائمة تحته تنتهي عند المئتين،
+         * فيظنّ من يجهّز أنّه أنهى ما عليه وخمسون طلبًا لم تُعرض له أصلًا.
+         *
+         * والترتيب بالموعد يُخفي الأبعد لا الأقرب — وهو أرحم ممّا لو كان
+         * عشوائيًّا، لكنّ الطلب المؤجَّل يصير متأخّرًا بعد يومين، فيظهر حينها
+         * وقد فات موعدُه. وباقةٌ لا تصل صاحبها في يومها ليست سطرًا ناقصًا في
+         * شاشة.
+         *
+         * فيُقال العدد صراحةً ويُدلّ على المرشّح الذي يُظهر الباقي — والعدّ
+         * على الاستعلام نفسه بنافذته ومرشّحه، لا على «الكلّ» فوقه.
+         */
+        $total = (clone $q)->count();
+        $orders = $q->orderBy('scheduled_for')->limit(self::BOARD_LIMIT)->get();
 
         return Inertia::render('Admin/Preparation/Index', [
             'orders' => $orders->map(fn ($o) => $this->card($o))->values()->all(),
             'filters' => ['when' => $filter, 'type' => $type],
             'counts' => $this->counts($type),
             'typeCounts' => $this->typeCounts($filter),
+            'truncated' => $total > self::BOARD_LIMIT
+                ? ['shown' => $orders->count(), 'total' => $total]
+                : null,
         ]);
     }
 
@@ -186,6 +211,9 @@ class PreparationController extends Controller
         return [
             'number' => $o->number,
             'status' => $o->status,
+            // اسم العميل — صاحبُ الطلب لا مستلِمُه. وكانا يُخلطان: بطاقةٌ
+            // تعرض المستلِم وحدها لا تقول لمن تُسلَّم عند الاستلام من المحل
+            'customer' => $o->customer_name,
             'fulfillment' => $o->fulfillment_type,
             'scheduled_for' => optional($o->scheduled_for)->format('Y-m-d H:i'),
             'overdue' => $o->scheduled_for && $o->scheduled_for->isPast(),
@@ -201,11 +229,17 @@ class PreparationController extends Controller
             'delivery_notes' => $o->delivery_notes,
             'internal_notes' => $o->internal_notes,
             'branch' => $o->branch,
+            // المقاس والإضافات على بطاقة التجهيز: من يجهّز «بوكيه» لا يعرف
+            // أيّ مقاسٍ يجهّز، ولا أنّ معه دبًّا — فيخرج الطلب ناقصًا
             'items' => $o->items->map(fn ($i) => [
-                'name' => $i->name,
+                'name' => $i->displayName(),
                 'qty' => (int) $i->quantity,
                 'note' => $i->note,
                 'image' => $i->product?->image,
+                'addons' => $i->addons->map(fn ($a) => [
+                    'name' => $a->name,
+                    'qty' => (int) $a->quantity,
+                ])->all(),
             ])->values()->all(),
             // ما يجوز الانتقال إليه من هنا — تُبنى منه أزرار البطاقة
             'next' => OrderStatus::nextFrom($o->status),
@@ -231,15 +265,20 @@ class PreparationController extends Controller
             ->where('number', $number)
             ->firstOrFail();
 
-        if (! OrderStatus::canMove($order->status, $data['status'])) {
-            return back()->withErrors(['status' => __(
-                'لا يمكن نقل الطلب من «:from» إلى «:to».',
-                ['from' => $order->status, 'to' => $data['status']]
-            )]);
-        }
-
         $from = $order->status;
-        $order->update(['status' => $data['status']]);
+
+        if ($error = OrderTransition::apply($order, $data['status'])) {
+            /*
+             * والرفض يُرى — واللوحة لا تعرض إلّا `flash.toast`.
+             *
+             * `withErrors` وحدها كانت تجعل الضغطة لا تفعل شيئًا ولا تقول
+             * شيئًا: طلبٌ ألغاه صاحب المحلّ قبل لحظة يبقى على شاشة العامل،
+             * فيضغط «جاهز» فلا يتحرّك ولا يُخبَر لماذا.
+             */
+            return back()
+                ->with('toast', ['msg' => $error, 'type' => 'danger'])
+                ->withErrors(['status' => $error]);
+        }
 
         Activity::log('status', 'التجهيز: نقل الطلب '.$order->number.' من «'.$from.'» إلى «'.$data['status'].'»', [
             'subject_id' => $order->id,

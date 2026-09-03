@@ -42,10 +42,8 @@ class CustomerController extends Controller
             ->withSum(['orders as orders_sum_total' => $sold], 'total')
             ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at');
 
-        if ($s = trim((string) $request->query('q'))) {
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('name_en', 'like', "%{$s}%")
-                ->orWhere('phone', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
-        }
+        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
+        \App\Support\ListFilters::customers($q, $request);
 
         /*
          * الافتراضي: الأحدث تسجيلًا، حتى يظهر العميل المُضاف حديثًا في الأعلى.
@@ -88,16 +86,15 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            // لا name_en هنا: Customers::localizeName هو من يملأه من الاسم
-            // نفسه، فأي قيمة واردة تُكتب فوقها.
             'name' => ['required', 'string', 'max:255'],
+            // مكتوبًا بيدٍ يعلو على النقل الآليّ: النقل تخمينٌ يصيب ويخطئ،
+            // ومن كتب اسمه بنفسه أعلمُ بكتابته — انظر LocalName::apply
+            'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => \App\Support\Customers::phoneRule($this->bid()),
-            'email' => ['nullable', 'email'],
+            'email' => ['nullable', 'email', 'max:255'],
             'tax_number' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
             'branch_id' => ['nullable', 'integer'],
-        ], [
-            'phone.unique' => __('هذا الرقم مسجَّل لعميل آخر — نقاط الولاء تتبع الرقم.'),
         ]);
         $data['business_id'] = $this->bid();
 
@@ -128,14 +125,13 @@ class CustomerController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'name_en' => ['nullable', 'string', 'max:255'],
             // يتجاوز نفسه: وإلّا لرفض حفظَ عميلٍ لم يُغيَّر رقمه
             'phone' => \App\Support\Customers::phoneRule($this->bid(), $customer->id),
-            'email' => ['nullable', 'email'],
+            'email' => ['nullable', 'email', 'max:255'],
             'tax_number' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
             'branch_id' => ['nullable', 'integer'],
-        ], [
-            'phone.unique' => __('هذا الرقم مسجَّل لعميل آخر — نقاط الولاء تتبع الرقم.'),
         ]);
 
         $branchId = $data['branch_id'] ?? null;
@@ -192,7 +188,22 @@ class CustomerController extends Controller
         if ($points <= 0) {
             return back()->with('toast', ['msg' => __('لا توجد نقاط كافية للصرف'), 'type' => 'warning']);
         }
-        $customer->decrement('points', $points);
+        /*
+         * الخصم شرطيّ — والشرط في الجملة نفسها لا قبلها.
+         *
+         * كان يُقرأ الرصيد ثمّ يُخصم في خطوتين: ضغطتان متتاليتان على الزرّ
+         * تقرآن مئةً كلتاهما فتخصمان مئتين، والعمود لا يقبل سالبًا فتنكسر
+         * الثانية بخطأ قاعدةٍ صريح — أو تدور تحته إلى رقمٍ هائل. والصرف
+         * يخصم من فاتورةٍ حقيقية، فالنقطة المصروفة مرّتين مالٌ خرج مرّتين.
+         */
+        $done = Customer::whereKey($customer->id)->where('points', '>=', $points)
+            ->update(['points' => \DB::raw('points - '.$points)]);
+
+        if (! $done) {
+            return back()->with('toast', ['msg' => __('لا توجد نقاط كافية للصرف'), 'type' => 'warning']);
+        }
+
+        $customer->refresh();
         \App\Models\PointTransaction::record($customer, 'redeem', $points, (int) $customer->points, null, 'صرف يدوي من ملف العميل');
         \App\Support\Activity::log('updated', "صرف {$points} نقطة للعميل: {$customer->name}", ['subject_id' => $customer->id]);
 

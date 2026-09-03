@@ -81,8 +81,13 @@ class PurchaseRegisterController extends Controller
             'summary' => [
                 'count' => $rows->count(),
                 'total' => round($rows->sum('total'), 3),
-                'orders' => $orders->count(),
-                'invoices' => $invoices->count(),
+                /*
+                 * ولا تفصيلَ «كم أمرًا وكم سندًا» هنا بعد اليوم.
+                 *
+                 * كان يُرسل ليُرسم سطرًا أخضر بسهمٍ صاعد تحت عدد المستندات —
+                 * وهو تفصيلُ العدد لا اتجاهُه، تقول به البطاقة «ارتفع» ولا شيء
+                 * قُورن بشيء. ويُقرأ التفصيل نفسُه من مرشّح النوع في الجدول.
+                 */
                 // ما على المتجر لموردّيه كلّهم — لا يخصّ الشهر المعروض
                 'outstanding' => round(
                     (float) SupplierInvoice::where('business_id', $bid)->sum('total')
@@ -93,7 +98,9 @@ class PurchaseRegisterController extends Controller
             'month' => $month,
             'months' => $this->months($bid),
             'suppliers' => Supplier::where('business_id', $bid)->orderBy('name')
-                ->get(['id', 'name'])->map(fn ($s) => ['value' => $s->id, 'label' => $s->name])->all(),
+                // بلغة الواجهة — القائمة تُقرأ، و`name` يبقى ما يُبحث به
+                ->get(['id', 'name', 'name_en'])
+                ->map(fn ($s) => ['value' => $s->id, 'label' => \App\Support\Demo::ln($s->name, $s->name_en)])->all(),
             'filters' => ['supplier' => $supplierId],
         ]);
     }

@@ -76,6 +76,17 @@ class LoyaltyAndCouponGuardsTest extends TestCase
         return Order::latest('id')->firstOrFail();
     }
 
+    /** بيعةٌ تُردّ عند الباب — وتُقال علّتها */
+    private function refused(array $extra): \Illuminate\Testing\TestResponse
+    {
+        return $this->actingAs($this->owner)->withSession(['current_branch' => $this->branch->id])
+            ->postJson(route('pos.checkout'), array_merge([
+                'items' => [['id' => $this->p->id, 'name' => $this->p->name, 'qty' => 1]],
+                'payment_method' => 'نقدي',
+                'client_uuid' => uniqid('t', true),
+            ], $extra));
+    }
+
     /** طلبٌ يطلب استبدال كلّ نقاطه: يُحصر بسقف النسبة لا يمرّ */
     public function test_redeeming_beyond_the_cap_is_capped_by_the_server(): void
     {
@@ -127,9 +138,11 @@ class LoyaltyAndCouponGuardsTest extends TestCase
             'value' => 10, 'max_uses' => 1, 'used_count' => 1, 'active' => true,
         ]);
 
-        $order = $this->sell(['coupon_code' => $coupon->code]);
+        // ويُردّ صراحةً: المرفوض صمتًا يُطبع فاتورةً بغير السعر الذي قيل
+        $this->refused(['coupon_code' => $coupon->code])
+            ->assertStatus(422)->assertJsonValidationErrors('coupon_code');
 
-        $this->assertSame(0.0, round((float) $order->coupon_discount, 3), 'كوبونٌ استُهلك ومُنح خصمًا');
+        $this->assertSame(0, Order::count(), 'كوبونٌ استُهلك ومُنح فاتورة');
         $this->assertSame(1, (int) $coupon->fresh()->used_count, 'ازداد عدّاد كوبونٍ مرفوض');
     }
 
@@ -141,9 +154,10 @@ class LoyaltyAndCouponGuardsTest extends TestCase
             'value' => 25, 'active' => true, 'expires_at' => now()->subDay(),
         ]);
 
-        $order = $this->sell(['coupon_code' => $coupon->code]);
+        $this->refused(['coupon_code' => $coupon->code])
+            ->assertStatus(422)->assertJsonValidationErrors('coupon_code');
 
-        $this->assertSame(0.0, round((float) $order->coupon_discount, 3), 'كوبونٌ منتهٍ مُنح خصمًا');
+        $this->assertSame(0, Order::count(), 'كوبونٌ منتهٍ مُنح فاتورة');
     }
 
     /** وكوبون متجرٍ آخر لا يُصرف هنا */
@@ -155,8 +169,36 @@ class LoyaltyAndCouponGuardsTest extends TestCase
             'value' => 50, 'active' => true,
         ]);
 
-        $order = $this->sell(['coupon_code' => $coupon->code]);
+        $this->refused(['coupon_code' => $coupon->code])
+            ->assertStatus(422)->assertJsonValidationErrors('coupon_code');
 
-        $this->assertSame(0.0, round((float) $order->coupon_discount, 3), 'صُرف كوبون متجرٍ آخر');
+        $this->assertSame(0, Order::count(), 'صُرف كوبون متجرٍ آخر');
+        $this->assertSame(0, (int) $coupon->fresh()->used_count);
+    }
+
+    /**
+     * ونسبةٌ فوق المئة لا تُكتب أصلًا.
+     *
+     * `discountFor` تقصّها عند المجموع فلا تصير الفاتورة سالبة — لكنّ من
+     * كتب «١٥٠٪» يظنّه يعمل ويقرؤه في القائمة كذلك. حدٌّ يُقصّ بصمت وعدٌ
+     * مكسور.
+     */
+    public function test_a_percentage_coupon_above_a_hundred_is_refused(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.coupons.store'), [
+            'code' => 'HALF150', 'type' => 'نسبة', 'value' => 150,
+        ])->assertSessionHasErrors('value');
+
+        $this->assertSame(0, \App\Models\Coupon::where('code', 'HALF150')->count());
+    }
+
+    /** والمبلغ لا يُحدّ بمئة — «خصم ٢٠٠ ريال» عرضٌ مشروع */
+    public function test_a_fixed_amount_coupon_may_exceed_a_hundred(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.coupons.store'), [
+            'code' => 'FLAT200', 'type' => 'مبلغ', 'value' => 200,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(1, \App\Models\Coupon::where('code', 'FLAT200')->count());
     }
 }

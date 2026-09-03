@@ -5,9 +5,10 @@ import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
-import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
-import { MERCHANT_DOMAIN, randomPassword } from './BusinessForm';
+import { PasswordInput } from '@/Components/ui/password-input';
+import { MERCHANT_DOMAIN, UsernameInput } from '@/Components/ui/username-input';
+import { randomPassword } from '@/lib/password';
 
 interface Props {
     businessId: number;
@@ -146,21 +147,12 @@ export default function AccountCard({ businessId, ownerEmail, bare = false }: Pr
 
                     <form onSubmit={saveName} className="space-y-4 px-5 pb-5">
                         <Field label="اسم المستخدم" required error={nameForm.errors.login_username}>
-                            <div className="flex items-stretch" dir="ltr">
-                                <Input
-                                    className="rounded-e-none"
-                                    value={nameForm.data.login_username}
-                                    onChange={(e) =>
-                                        nameForm.setData('login_username', e.target.value.toLowerCase())
-                                    }
-                                    placeholder="zahra"
-                                    autoComplete="off"
-                                    required
-                                />
-                                <span className="flex items-center rounded-e-[10px] border border-s-0 border-[var(--ui-border,#e8e8e8)] bg-[#f7f7f5] px-3 text-sm text-[#6b7280]">
-                                    {MERCHANT_DOMAIN}
-                                </span>
-                            </div>
+                            <UsernameInput
+                                value={nameForm.data.login_username}
+                                onChange={(v) => nameForm.setData('login_username', v)}
+                                preview={false}
+                                required
+                            />
                         </Field>
 
                         <p className="rounded-[10px] bg-[#f7f7f5] px-3 py-2 text-[13px] text-[#6b7280]" dir="ltr">
@@ -210,8 +202,8 @@ export default function AccountCard({ businessId, ownerEmail, bare = false }: Pr
                             error={passwordForm.errors.login_password}
                         >
                             <div className="flex items-stretch gap-2">
-                                <Input
-                                    dir="ltr"
+                                <PasswordInput
+                                    className="w-full"
                                     autoComplete="new-password"
                                     value={passwordForm.data.login_password}
                                     onChange={(e) => passwordForm.setData('login_password', e.target.value)}

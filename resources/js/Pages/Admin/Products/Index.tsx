@@ -35,8 +35,10 @@ import {
 } from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
 import QuickCell from './partials/QuickCell';
+import { withFilters } from '@/lib/exportLink';
 import { money, number } from '@/lib/format';
 import useLiveStock from '@/hooks/useLiveStock';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -58,6 +60,8 @@ export default function ProductsIndex() {
     const { products: serverProducts, pagination, categories, filters, sorts, branches, currentBranchId, lastImport, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const currency = context!.currency;
     const [importing, setImporting] = useState(false);
     const [undoing, setUndoing] = useState(false);
@@ -263,7 +267,12 @@ export default function ProductsIndex() {
                                 <DropdownMenuLabel>{t('تصدير')}</DropdownMenuLabel>
                                 {/* الأول بيانات تدور: أعمدته هي أعمدة الاستيراد نفسها.
                                     والثاني تقريرٌ للطباعة فيه عنوان ومعرّف وحالة محسوبة —
-                                    لا يعود من حيث خرج، فلا يُسمَّى باسمه. */}
+                                    لا يعود من حيث خرج، فلا يُسمَّى باسمه.
+
+                                    والزوج الدوّار لا يتبع المُرشِّحات عمدًا: من صدّر
+                                    نصف الجرد ثمّ استورده ظنّ أنّه ردّ الجرد كلّه.
+                                    وما تحت «تقارير للطباعة» يتبعها — تقريرٌ يُقرأ
+                                    ويُطبع، فيجب أن يقول ما تقوله الشاشة. */}
                                 <DropdownMenuItem asChild>
                                     <a href={route('admin.products.export.xlsx')}>
                                         <FileSpreadsheet className="text-[#059669]" />
@@ -277,7 +286,7 @@ export default function ProductsIndex() {
                                     </a>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.export.products')}>
+                                    <a href={withFilters(route('admin.export.products'))}>
                                         <FileDown className="text-[#6b7280]" />
                                         {t('تصدير CSV')}
                                     </a>
@@ -285,13 +294,13 @@ export default function ProductsIndex() {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuLabel>{t('تقارير للطباعة')}</DropdownMenuLabel>
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.products.xlsx')}>
+                                    <a href={withFilters(route('admin.products.xlsx'))}>
                                         <FileSpreadsheet className="text-[#9ca3af]" />
                                         {t('تقرير المنتجات (Excel)')}
                                     </a>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.products.exportPdf')} target="_blank" rel="noreferrer">
+                                    <a href={withFilters(route('admin.products.exportPdf'))} target="_blank" rel="noreferrer">
                                         <FileText className="text-[#9ca3af]" />
                                         {t('تقرير المنتجات (PDF)')}
                                     </a>
@@ -384,11 +393,16 @@ export default function ProductsIndex() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => {
+                                    onClick={async () => {
                                         // الحذف إلى السلة، ومع ذلك يُسأل: جماعيٌّ لا يُتراجع عنه بضغطة
-                                        if (confirm(t('حذف :n منتجًا؟ تبقى في سلة المحذوفات.', { n: String(selected.length) }))) {
-                                            runBulk('delete');
-                                        }
+                                        const yes = await ask({
+                                            message: 'حذف :n منتجًا؟ تبقى في سلة المحذوفات.',
+                                            values: { n: String(selected.length) },
+                                            danger: true,
+                                            action: 'حذف',
+                                        });
+
+                                        if (yes) runBulk('delete');
                                     }}
                                     className="text-[#dc2626]"
                                 >
@@ -643,6 +657,8 @@ export default function ProductsIndex() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

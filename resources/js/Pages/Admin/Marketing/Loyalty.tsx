@@ -96,12 +96,13 @@ export default function Loyalty() {
                         <div className="space-y-4">
                             <Field
                                 label="نقاط لكل وحدة شراء"
-                                hint="١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال"
+                                hint="١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال — فما فوق ١٠٠ يعيد للزبون فاتورته كاملة"
                                 error={form.errors.loyalty_earn_rate}
                             >
                                 <Input
                                     type="number"
                                     min="0"
+                                    max="99.9"
                                     step="0.1"
                                     dir="ltr"
                                     value={form.data.loyalty_earn_rate}

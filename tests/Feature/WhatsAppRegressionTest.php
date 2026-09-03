@@ -76,7 +76,6 @@ class WhatsAppRegressionTest extends TestCase
         }
 
         $this->actingAs($this->cashier);
-        $this->openShiftFor($this->business->id, $branch->id);
         session(['current_branch' => $branch->id]);
     }
 

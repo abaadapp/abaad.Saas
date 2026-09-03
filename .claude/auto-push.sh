@@ -12,6 +12,19 @@ msg() { printf '{"systemMessage":%s,"suppressOutput":true}\n' "$(printf '%s' "$1
 branch=$(git rev-parse --abbrev-ref HEAD)
 [ "$branch" = "HEAD" ] && { msg "دفع تلقائي: متوقف — HEAD منفصل"; exit 0; }
 
+# ---------------------------------------------------------------------------
+# دمجٌ لم يُحلّ لا يُلتزم آليًّا.
+#
+# التزمت هذه الدفعةُ مرّةً واحدًا وعشرين ملفًّا فيها `<<<<<<<` ودفعتها إلى
+# `main` — وفيها `routes/web.php`، فلم يكن التطبيق يقلع أصلًا. حلُّ التعارض
+# قرارٌ يخصّ من يكتبه، لا شيءٌ يُكنس بـ`git add -A` وهو لا يقرأ ما يُضيف.
+# ---------------------------------------------------------------------------
+if [ -e "$(git rev-parse --git-dir)/MERGE_HEAD" ] \
+  || git status --porcelain | grep -qE '^(UU|AA|DU|UD|AU|UA|DD) '; then
+  msg "دفع تلقائي: متوقف — دمجٌ لم يُحلّ. أكمل حلّه والتزم بنفسك"
+  exit 0
+fi
+
 # بوابة الجودة: لا يُدفع كود يكسر الاختبارات.
 # نتخطاها فقط إذا لم يتغيّر أي ملف يؤثر على السلوك الخلفي.
 if git status --porcelain | grep -qE '\.(php|json)$|^.. (app|routes|config|database|tests|lang)/'; then
@@ -29,6 +42,31 @@ subject="تحديث تلقائي: $first"
 [ "$files" -gt 1 ] && subject="$subject (+$((files - 1)) ملف)"
 
 git add -A || { msg "دفع تلقائي: فشل git add"; exit 0; }
+
+# ---------------------------------------------------------------------------
+# وفحصان على ما سيُلتزم فعلًا — بعد `add` لا قبله.
+#
+# الأوّل: علاماتُ تعارضٍ في المحتوى. ولا يكفي فحصُ حالة الدمج أعلاه: من
+# «حلّ» التعارض بـ`add` ثمّ ترك العلامات في النصّ لا يُبقي MERGE_HEAD خلفه.
+#
+# والثاني: كلُّ ملفّ PHP يُحلَّل. وبوّابةُ الاختبارات وحدها لا تمسك هذا:
+# المسارات تُقرأ من `bootstrap/cache` حين تكون مخزَّنة، فلا يُفتح
+# `routes/web.php` المعطوب في تلك النشرة أصلًا.
+# ---------------------------------------------------------------------------
+marked=$(git grep -lI --cached -E '^(<<<<<<< |>>>>>>> )' -- \
+  '*.php' '*.tsx' '*.ts' '*.jsx' '*.js' '*.css' '*.json' 2>/dev/null | head -3)
+if [ -n "$marked" ]; then
+  msg "دفع تلقائي: متوقف — علاماتُ تعارضٍ في: $(printf '%s' "$marked" | tr '\n' ' ')"
+  exit 0
+fi
+
+for f in $(git diff --cached --name-only --diff-filter=ACM -- '*.php'); do
+  [ -f "$f" ] || continue
+  if ! err=$(php -l "$f" 2>&1); then
+    msg "دفع تلقائي: متوقف — $f لا يُحلَّل: $(printf '%s' "$err" | head -1)"
+    exit 0
+  fi
+done
 
 if ! out=$(git commit -m "$subject" -m "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>" 2>&1); then
   msg "دفع تلقائي: فشل الكوميت — $(printf '%s' "$out" | tail -1)"

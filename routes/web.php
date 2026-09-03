@@ -280,6 +280,9 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/settings', [SuperAdminPageController::class, 'settings'])->name('settings.index');
     Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
     Route::post('/settings/test-email', [SettingController::class, 'testEmail'])->name('settings.testEmail');
+    /* مفتاح خرائط Google — مسارُه مستقلٌّ لأنّه سرٌّ لا يمرّ مع بقيّة الإعدادات */
+    Route::post('/settings/google-key', [SettingController::class, 'googleKey'])->name('settings.googleKey');
+    Route::delete('/settings/google-key', [SettingController::class, 'forgetGoogleKey'])->name('settings.googleKey.forget');
 
     /*
      * واتساب — الرقم المشترك وأذونات المتاجر.
@@ -619,6 +622,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/marketing/reviews/{id}/reply', [ReviewController::class, 'reply'])->name('marketing.reviews.reply');
     Route::delete('/marketing/reviews/{id}', [ReviewController::class, 'destroy'])->name('marketing.reviews.destroy');
     Route::get('/marketing/coupons', [MarketingController::class, 'coupons'])->name('marketing.coupons');
+    /*
+     * «ربط مع أبعاد» — بابُ كلّ أداةٍ تُربط.
+     *
+     * وهو POST لا رابط: يكتب علامةَ البدء في القاعدة، ورابطٌ يكتب يُنفَّذ
+     * بجلبٍ مسبقٍ من المتصفّح أو بزيارةٍ من زاحف.
+     */
+    Route::post('/marketing/connect/{tool}', [MarketingController::class, 'connect'])
+        ->whereIn('tool', ['whatsapp', 'google'])->name('marketing.connect');
     Route::get('/marketing/whatsapp', [MarketingController::class, 'whatsapp'])->name('marketing.whatsapp');
     Route::post('/marketing/whatsapp', [MarketingController::class, 'saveWhatsapp'])->name('marketing.whatsapp.save');
 

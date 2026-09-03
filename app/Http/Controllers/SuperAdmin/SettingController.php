@@ -119,4 +119,43 @@ class SettingController extends Controller
             return back()->with('toast', ['msg' => __('تعذّر إرسال البريد التجريبي'), 'type' => 'error']);
         }
     }
+
+    /**
+     * مفتاح خرائط Google للمنصّة — يُحفظ وحده، معمًّى، ولا يعود إلى الشاشة.
+     *
+     * ولا يمرّ في `KEYS` مع بقيّة الإعدادات: تلك تُكتب خامًا وتُقرأ في
+     * `platformSettings` فتصل المتصفّح. وهذا مفتاحٌ تُحتسب عليه فاتورةُ
+     * نداءات كلّ متاجر المنصّة — ظهورُه في حمولةِ صفحةٍ يعني أنّ من فتح
+     * أدوات المتصفّح أخذه.
+     *
+     * وهو ما يجعل «ربط مع أبعاد» صادقًا في خرائط Google: بلا مفتاحٍ هنا،
+     * كلُّ تاجرٍ عليه أن يفتح حسابًا في Google Cloud بنفسه.
+     */
+    public function googleKey(Request $request)
+    {
+        $request->validate(['google_places_key' => ['nullable', 'string', 'max:255']]);
+
+        $key = trim((string) $request->input('google_places_key'));
+
+        // وحقلٌ فارغٌ لا يمحو: المحو يُطلب بزرّه — انظر Marketing\MarketingController::saveGoogleKey
+        if ($key === '') {
+            return back()->withErrors([
+                'google_places_key' => __('الصق المفتاح، أو اضغط «حذف المفتاح» لإزالته.'),
+            ]);
+        }
+
+        \App\Support\GoogleReviews::storePlatformKey($key);
+        // ولا يُكتب المفتاح في السجلّ
+        \App\Support\Activity::log('updated', 'حدّث مفتاح خرائط Google للمنصّة');
+
+        return back()->with('toast', ['msg' => __('حُفظ المفتاح'), 'type' => 'success']);
+    }
+
+    public function forgetGoogleKey()
+    {
+        \App\Support\GoogleReviews::storePlatformKey(null);
+        \App\Support\Activity::log('updated', 'حذف مفتاح خرائط Google للمنصّة');
+
+        return back()->with('toast', ['msg' => __('حُذف المفتاح'), 'type' => 'warning']);
+    }
 }

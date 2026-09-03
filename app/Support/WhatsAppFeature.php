@@ -104,28 +104,28 @@ class WhatsAppFeature
             && ($ownAllowed || ! $own);
 
         $steps = [
-            self::step(
+            Integration::step(
                 'platform',
                 'واتساب مفعَّل في المنصّة',
                 self::globallyEnabled(),
                 fix: 'هذا إعدادُ أبعاد لا إعدادُك — راجعنا لتفعيله.',
                 theirs: true,
             ),
-            self::step(
+            Integration::step(
                 'account',
                 'واتساب مفعَّل لحسابك',
                 (bool) $business->whatsapp_enabled,
                 fix: 'التفعيل يفتحه أبعاد لحسابك — راجعنا.',
                 theirs: true,
             ),
-            self::step(
+            Integration::step(
                 'plan',
                 'باقتك تشمل إشعارات واتساب',
                 PlanFeatures::allows($business, 'whatsapp'),
                 fix: PlanFeatures::refusal($business, 'whatsapp'),
                 theirs: true,
             ),
-            self::step(
+            Integration::step(
                 $own ? 'own' : 'shared',
                 $own ? 'رقم متجرك مربوطٌ ويعمل' : 'الرقم المشترك جاهز',
                 $connected,
@@ -148,28 +148,21 @@ class WhatsAppFeature
         ];
 
         return [
+            /*
+             * و«بدأ» غير «تمّ».
+             *
+             * البوّابة تُقاس بالأوّل: تاجرٌ جديد لم يُفتح له واتساب بعدُ ولا
+             * ربط رقمًا لم يبدأ شيئًا — فيُعرض له بابٌ وزرّ، لا قائمةُ
+             * مراحلَ لم يطلبها ولا مقابضُ أحداثٍ لا تُرسل حرفًا.
+             *
+             * والتفعيلُ لحسابه علامةُ البدء لا الوصلةُ المشتركة: تلك مربوطةٌ
+             * للمنصّة كلِّها، فلو قيست بها لَما رأى الباب أحد.
+             */
+            'connected' => MarketingSettings::group($business->id, 'connect')['wa_setup_started'] === '1'
+                || self::blockReason($business) === null && $connected
+                || WhatsAppConnections::forBusiness($business->id) !== null,
             'ready' => self::blockReason($business) === null && $connected,
             'steps' => $steps,
-        ];
-    }
-
-    private static function step(
-        string $key,
-        string $label,
-        bool $done,
-        ?string $detail = null,
-        ?string $fix = null,
-        bool $theirs = false,
-    ): array {
-        return [
-            'key' => $key,
-            'label' => __($label),
-            'done' => $done,
-            'detail' => $done ? $detail : null,
-            // وما تمّ لا يُقال كيف يُصلَح — نصيحةٌ تحت خطوةٍ مكتملة ضجيج
-            'fix' => $done ? null : ($fix === null ? null : __($fix)),
-            // خطوةٌ ينتظر فيها أبعاد، لا خطوةٌ يفعلها بيده
-            'theirs' => $theirs,
         ];
     }
 

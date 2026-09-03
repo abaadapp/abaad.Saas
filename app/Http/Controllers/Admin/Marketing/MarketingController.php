@@ -35,6 +35,32 @@ class MarketingController extends Controller
         return auth()->user()->business_id ?? Demo::bid();
     }
 
+    /**
+     * «ربط مع أبعاد» — يُسجَّل البدء ثمّ تُفتح المراحل.
+     *
+     * والتسجيل فعلٌ لا استنتاج: كلُّ ما كان يمكن أن يُستنتج منه البدءُ يكذب.
+     * `whatsapp_enabled` افتراضُه `true` في القاعدة فكلُّ متجرٍ «بدأ» من
+     * لحظة إنشائه، ومفتاحُ الخرائط في المنصّة يُتمّ الخطوة الأولى للجميع.
+     *
+     * وهو POST لا رابط: يكتب في القاعدة. ورابطٌ يكتب يُنفَّذ بزيارةٍ من
+     * محرّك بحثٍ أو بجلبٍ مسبقٍ من المتصفّح.
+     */
+    public function connect(Request $request)
+    {
+        $tool = $request->route('tool');
+
+        [$key, $back] = match ($tool) {
+            'whatsapp' => ['wa_setup_started', 'admin.marketing.whatsapp'],
+            'google' => ['google_setup_started', 'admin.marketing.google'],
+            default => abort(404),
+        };
+
+        MarketingSettings::save($this->bid(), 'connect', [$key => '1']);
+        Activity::log('updated', 'بدأ ربط '.$tool);
+
+        return redirect()->route($back);
+    }
+
     /* --------------------------- الموقع الإلكتروني --------------------------- */
 
     /**
@@ -332,11 +358,15 @@ class MarketingController extends Controller
         // المفتاح لا يُرسل إلى الشاشة — آخرُ أربعةِ أحرفٍ تكفي ليعرف أيَّه حفظ
         unset($settings['google_api_key']);
 
+        $pulled = GoogleReviews::pull($bid);
+
         return Inertia::render('Admin/Marketing/Google', [
             'settings' => $settings,
             'link' => GoogleReviews::forBusiness($bid),
             'keyHint' => GoogleReviews::keyHint($bid),
-            'google' => GoogleReviews::pull($bid),
+            'google' => $pulled,
+            // مراحلُ الربط — شكلُها شكلُ واتساب، انظر App\Support\Integration
+            'readiness' => GoogleReviews::readiness($bid, $pulled),
             /* عددُ ما في النظام من تقييمات — ليُقرأ الفرق بين الاثنين */
             'internal' => Review::where('business_id', $bid)->count(),
         ]);

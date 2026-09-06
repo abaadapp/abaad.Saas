@@ -4300,5 +4300,6 @@
     "لا يُعرف تاريخ هذه الفاتورة — لا تُصحَّح. وإن لزم إلغاؤها فذلك بابٌ آخر.": "This invoice has no known date — it cannot be corrected. Cancelling it is a separate door.",
     "انتهى يومُ هذه الفاتورة فأُقفلت — التصحيح في يوم البيع وحده. وما بعده إلغاءٌ كامل لا تعديلٌ في الأصل.": "This invoice's day has ended and it is closed — corrections are allowed on the day of sale only. After that, a full cancellation, not an edit to the original.",
     "تصحيحُ فاتورةٍ صدرت يحتاج صلاحية — اطلبها من صاحب المتجر، أو اطلب منه التصحيح.": "Correcting an issued invoice requires permission — ask the shop owner for it, or ask them to make the correction.",
-    "تصحيح فاتورة مكتملة": "Correct a completed invoice"
+    "تصحيح فاتورة مكتملة": "Correct a completed invoice",
+    "هذه نسخةٌ بصيغةٍ قديمة لا تحمل كلّ جداول المتجر — استعادتُها تمحو ما لا تُعيد. خُذ نسخةً جديدة واستعِد منها.": "This backup is in an older format that does not carry every table of the shop — restoring it erases what it cannot bring back. Take a fresh backup and restore from that."
 }

@@ -289,7 +289,12 @@ class TrashRestoreTest extends TestCase
         $old = $this->product();
 
         $payload = [
-            'meta' => ['app' => 'AbadPOS', 'version' => 2, 'business_id' => $this->business->id],
+            // والصيغةُ الحاليّة: ما دونها يُردّ قبل الحذف — انظر BackupController
+            'meta' => [
+                'app' => 'AbadPOS',
+                'version' => \App\Support\BackupService::VERSION,
+                'business_id' => $this->business->id,
+            ],
             'products' => [['name' => 'ورد جديد', 'sku' => 'NEW-1', 'price' => 9, 'quantity' => 3]],
         ];
 

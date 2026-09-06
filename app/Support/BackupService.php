@@ -2,69 +2,74 @@
 
 namespace App\Support;
 
-use App\Models\ActivityLog;
-use App\Models\Branch;
 use App\Models\Business;
-use App\Models\Category;
-use App\Models\Coupon;
-use App\Models\Currency;
-use App\Models\Customer;
-use App\Models\Expense;
-use App\Models\ExpenseType;
-use App\Models\InventoryMovement;
-use App\Models\Order;
-use App\Models\Product;
-use App\Models\PurchaseOrder;
-use App\Models\Setting;
-use App\Models\Shift;
-use App\Models\Supplier;
-use App\Models\Transaction;
-use App\Models\User;
+use Illuminate\Support\Facades\Schema;
 
 /**
- * بناء حمولة النسخة الاحتياطية لمتجر واحد (يُستخدم في التنزيل اليدوي والجدولة التلقائية).
+ * حمولةُ النسخة الاحتياطية لمتجرٍ واحد — للتنزيل اليدويّ وللجدولة معًا.
  *
- * ما لا يُنسخ عمدًا:
- * - plans: جدول على مستوى المنصة لا يخصّ متجرًا بعينه.
- * - subscriptions / invoices: سجلات فوترة تخصّ المنصة — لا يجوز للمتجر استعادتها.
- * - كلمات المرور ورموز التذكّر: لا تُكتب في ملف يُنزَّل على جهاز المستخدم.
+ * كانت الجداولُ مكتوبةً هنا بأسمائها سبعةَ عشرَ سطرًا، وفي القاعدة أكثرُ من
+ * ستّين. فما لم يُذكر لم يُنسخ، ولا شيء يقول ذلك: يفتح التاجر الملفَّ فيراه
+ * ممتلئًا، ويكتشف يوم الاستعادة أنّ مخزون فروعه وصناديقَه ودفترَ أستاذه لم
+ * تكن فيه — وهو آخرُ يومٍ يصلح للاكتشاف.
+ *
+ * فصارت تُقرأ من `TenantTables` — قائمةٌ واحدة يقرؤها هذا الملفُّ والاستعادةُ
+ * معًا، ويحرسها اختبارٌ يسقط يوم يُضاف جدولٌ لا يُصنَّف.
+ *
+ * وما لا يُنسخ منصوصٌ عليه بسببه في `TenantTables::NOT_MINE`، والأعمدةُ
+ * السرّيّة تُنزع في `SECRETS`: ملفٌّ يُنزَّل على جهازٍ ليس مكانَ رمزِ وصول.
  */
 class BackupService
 {
-    public const VERSION = 2;
+    /**
+     * النسخةُ الثالثة: الجداولُ كلُّها لا سبعةَ عشرَ.
+     *
+     * والرقمُ يُقرأ عند الاستعادة: ملفٌّ من الثانية ينقصه أربعون جدولًا،
+     * واستعادتُه تحذف ما لا تُعيد — فيُقال ذلك قبل الحذف لا بعده.
+     */
+    public const VERSION = 3;
 
     public static function payload(int $bid): array
     {
-        return [
+        $data = [
             'meta' => [
-                'app' => 'AbadPOS', 'version' => self::VERSION, 'business_id' => $bid,
+                'app' => 'AbadPOS',
+                'version' => self::VERSION,
+                'business_id' => $bid,
                 'exported_at' => now()->toIso8601String(),
+                // ما احتواه هذا الملفّ فعلًا — تقرؤه الاستعادةُ ولا تخمّنه
+                'tables' => [],
             ],
-            'business' => Business::find($bid)?->only(['name', 'type', 'owner_name', 'phone', 'email', 'country', 'city', 'address', 'logo']),
-
-            // الأصول المرجعية (تُدرَج أولًا عند الاستعادة)
-            'branches' => Branch::where('business_id', $bid)->get()->toArray(),
-            'currencies' => Currency::where('business_id', $bid)->get()->toArray(),
-            'suppliers' => Supplier::where('business_id', $bid)->get()->toArray(),
-            'expense_types' => ExpenseType::where('business_id', $bid)->get()->toArray(),
-
-            // الموظفون بدون بيانات الاعتماد
-            'users' => User::where('business_id', $bid)->get()
-                ->map(fn ($u) => collect($u->toArray())->except(['password', 'remember_token'])->all())->all(),
-
-            'categories' => Category::where('business_id', $bid)->get()->toArray(),
-            'products' => Product::where('business_id', $bid)->get()->toArray(),
-            'customers' => Customer::where('business_id', $bid)->get()->toArray(),
-            'orders' => Order::where('business_id', $bid)->with('items')->get()->toArray(),
-            'purchase_orders' => PurchaseOrder::where('business_id', $bid)->with('items')->get()->toArray(),
-            'coupons' => Coupon::where('business_id', $bid)->get()->toArray(),
-            'expenses' => Expense::where('business_id', $bid)->get()->toArray(),
-            'transactions' => Transaction::where('business_id', $bid)->get()->toArray(),
-            'inventory_movements' => InventoryMovement::where('business_id', $bid)->get()->toArray(),
-            'shifts' => Shift::where('business_id', $bid)->get()->toArray(),
-            'activity_logs' => ActivityLog::where('business_id', $bid)->get()->toArray(),
-            'settings' => Setting::where('business_id', $bid)->get()->toArray(),
+            'business' => Business::find($bid)?->only(Business::BACKUP_FIELDS),
         ];
+
+        foreach (TenantTables::all() as $table) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+
+            $data[$table] = self::rows($table, $bid);
+            $data['meta']['tables'][] = $table;
+        }
+
+        return $data;
+    }
+
+    /** سطورُ جدولٍ لهذا المتجر، منزوعةَ ما لا يخرج في ملفّ */
+    private static function rows(string $table, int $bid): array
+    {
+        $strip = TenantTables::SECRETS[$table] ?? [];
+
+        return TenantTables::scope($table, $bid)->orderBy('id')->get()
+            ->map(function ($row) use ($strip) {
+                $row = (array) $row;
+
+                foreach ($strip as $column) {
+                    unset($row[$column]);
+                }
+
+                return $row;
+            })->all();
     }
 
     public static function json(int $bid): string
@@ -74,6 +79,6 @@ class BackupService
 
     public static function filename(int $bid): string
     {
-        return 'abadpos-backup-' . $bid . '-' . now()->format('Y-m-d-His') . '.json';
+        return 'abadpos-backup-'.$bid.'-'.now()->format('Y-m-d-His').'.json';
     }
 }

@@ -2,35 +2,23 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ActivityLog;
-use App\Models\Branch;
 use App\Models\Business;
-use App\Models\Category;
-use App\Models\Coupon;
-use App\Models\Currency;
-use App\Models\Customer;
-use App\Models\Expense;
-use App\Models\ExpenseType;
-use App\Models\InventoryMovement;
-use App\Models\Order;
-use App\Models\OrderItem;
-use App\Models\Product;
-use App\Models\PurchaseOrder;
-use App\Models\PurchaseOrderItem;
-use App\Models\Setting;
-use App\Models\Shift;
-use App\Models\Supplier;
-use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\BackupService;
 use App\Support\Demo;
+use App\Support\TenantTables;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
- * نسخ احتياطي/استعادة بيانات المتجر (محصور بالمستأجر الحالي) كملف JSON.
+ * نسخُ بيانات المتجر واستعادتُها — محصورةً بالمتجر الحاليّ.
+ *
+ * والاستعادةُ تحلّ محلّ ما في المتجر: تحذف ثمّ تُدرج. فما تحذفه ولا تُدرجه
+ * يضيع بلا أن يقول شيءٌ ذلك — ولذلك تُقرأ الجداولُ والترتيبُ من
+ * `TenantTables` وحدها، هي نفسُها التي بُنيت بها النسخة.
  */
 class BackupController extends Controller
 {
@@ -44,132 +32,175 @@ class BackupController extends Controller
 
         return response(BackupService::json($bid), 200, [
             'Content-Type' => 'application/json; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="' . BackupService::filename($bid) . '"',
+            'Content-Disposition' => 'attachment; filename="'.BackupService::filename($bid).'"',
         ]);
     }
 
     public function restore(Request $request)
     {
-        $request->validate(['backup' => ['required', 'file', 'max:20480']]);
+        $request->validate(['backup' => ['required', 'file', 'max:51200']]);
 
         $data = json_decode(file_get_contents($request->file('backup')->getRealPath()), true);
+
         if (! is_array($data) || (($data['meta']['app'] ?? null) !== 'AbadPOS')) {
             return back()->with('toast', ['msg' => __('ملف النسخة الاحتياطية غير صالح'), 'type' => 'error']);
+        }
+
+        /*
+         * وملفٌّ من صيغةٍ قديمة يُردّ قبل الحذف لا بعده.
+         *
+         * النسخُ حتّى الثانية تحمل سبعةَ عشرَ جدولًا من ستّين. واستعادتُها
+         * تحذف مخزونَ الفروع والصناديقَ ودفترَ الأستاذ ثمّ لا تُعيد منها
+         * شيئًا — وتقول «تمّت بنجاح». والردُّ هنا يمنع ذلك، ولا يُفقده شيئًا:
+         * ملفُّه على جهازه كما هو، ونسخةُ الليلة تُؤخذ بالصيغة الجديدة.
+         */
+        if ((int) ($data['meta']['version'] ?? 0) < BackupService::VERSION) {
+            return back()->with('toast', [
+                'msg' => __('هذه نسخةٌ بصيغةٍ قديمة لا تحمل كلّ جداول المتجر — استعادتُها تمحو ما لا تُعيد. خُذ نسخةً جديدة واستعِد منها.'),
+                'type' => 'error',
+            ]);
         }
 
         $bid = $this->bid();
         $currentUserId = auth()->id();
 
         DB::transaction(function () use ($data, $bid, $currentUserId) {
-            /*
-             * ===== الحذف: الأبناء أولًا ثم الآباء =====
-             *
-             * ما يُحذف حذفًا ناعمًا يُمحى هنا محوًا نهائيًّا (forceDelete).
-             *
-             * الاستعادة تُحلّ محتوى الملف محلّ ما في المتجر، فالقديم يجب أن
-             * يزول لا أن يُخفى: `delete()` وحدها كانت ستترك المنتجات
-             * والمصروفات السابقة صفوفًا مخفية، فتظهر في «المحذوفات» بعد
-             * الاستعادة ويستطيع التاجر «استعادتها» — فتنشأ نسخةٌ ثانية من كل
-             * منتجٍ إلى جانب ما استُعيد.
-             */
-            OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid))->delete();
-            Order::where('business_id', $bid)->delete();
-            PurchaseOrderItem::whereHas('purchaseOrder', fn ($q) => $q->where('business_id', $bid))->delete();
-            PurchaseOrder::where('business_id', $bid)->delete();
-            InventoryMovement::where('business_id', $bid)->delete();
-            Expense::where('business_id', $bid)->forceDelete();
-            Transaction::where('business_id', $bid)->delete();
-            Coupon::where('business_id', $bid)->delete();
-            Shift::where('business_id', $bid)->delete();
-            ActivityLog::where('business_id', $bid)->delete();
-            Product::where('business_id', $bid)->forceDelete();
-            Category::where('business_id', $bid)->delete();
-            Customer::where('business_id', $bid)->forceDelete();
-            ExpenseType::where('business_id', $bid)->delete();
-            Supplier::where('business_id', $bid)->delete();
-            Currency::where('business_id', $bid)->delete();
-            Branch::where('business_id', $bid)->forceDelete();
-            Setting::where('business_id', $bid)->delete();
-            // الموظفون لا يُحذفون — تُحدَّث بياناتهم فقط (انظر أدناه)
-
-            // ملف تعريف المتجر (حقول آمنة فقط)
-            if (! empty($data['business']) && is_array($data['business'])) {
-                Business::where('id', $bid)->update(
-                    collect($data['business'])->only(['name', 'type', 'owner_name', 'phone', 'email', 'country', 'city', 'address', 'logo'])->all()
-                );
-            }
-
-            // ===== الإدراج: الآباء أولًا =====
-            $insert = function (array $rows, string $model) use ($bid) {
-                foreach ($rows as $row) {
-                    unset($row['items']);
-                    $row['business_id'] = $bid;
-                    $model::create($row);
-                }
-            };
-
-            $insert($data['branches'] ?? [], Branch::class);
-            $insert($data['currencies'] ?? [], Currency::class);
-            $insert($data['suppliers'] ?? [], Supplier::class);
-            $insert($data['expense_types'] ?? [], ExpenseType::class);
-            $insert($data['categories'] ?? [], Category::class);
-            $insert($data['products'] ?? [], Product::class);
-            $insert($data['customers'] ?? [], Customer::class);
-
-            foreach ($data['orders'] ?? [] as $order) {
-                $items = $order['items'] ?? [];
-                unset($order['items']);
-                $order['business_id'] = $bid;
-                Order::create($order);
-                foreach ($items as $item) {
-                    OrderItem::create($item);
-                }
-            }
-
-            foreach ($data['purchase_orders'] ?? [] as $po) {
-                $items = $po['items'] ?? [];
-                unset($po['items']);
-                $po['business_id'] = $bid;
-                PurchaseOrder::create($po);
-                foreach ($items as $item) {
-                    PurchaseOrderItem::create($item);
-                }
-            }
-
-            $insert($data['coupons'] ?? [], Coupon::class);
-            $insert($data['expenses'] ?? [], Expense::class);
-            $insert($data['transactions'] ?? [], Transaction::class);
-            $insert($data['inventory_movements'] ?? [], InventoryMovement::class);
-            $insert($data['shifts'] ?? [], Shift::class);
-            $insert($data['activity_logs'] ?? [], ActivityLog::class);
-            $insert($data['settings'] ?? [], Setting::class);
-
-            // ===== الموظفون: تحديث/إضافة بلا حذف =====
-            // لا نحذف المستخدمين حتى لا يفقد صاحب النشاط حسابه أثناء الاستعادة،
-            // ولا نستورد كلمات المرور (غير موجودة في الملف أصلًا): الحساب القائم يبقى بكلمته،
-            // والحساب الجديد يُنشأ بكلمة عشوائية تتطلب إعادة تعيين.
-            foreach ($data['users'] ?? [] as $row) {
-                unset($row['password'], $row['remember_token'], $row['id']);
-                if (empty($row['email'])) {
-                    continue;
-                }
-                $existing = User::where('email', $row['email'])->first();
-                if ($existing) {
-                    // لا نغيّر بيانات الحساب الذي ينفّذ الاستعادة حاليًا
-                    if ($existing->id === $currentUserId) {
-                        continue;
-                    }
-                    $existing->update(collect($row)->except(['business_id'])->all());
-                } else {
-                    $row['business_id'] = $bid;
-                    $row['password'] = bcrypt(Str::random(40));
-                    User::create($row);
-                }
-            }
+            $this->wipe($bid);
+            $this->restoreBusiness($data, $bid);
+            $this->insertAll($data, $bid, $currentUserId);
+            $this->restoreUsers($data, $bid, $currentUserId);
         });
 
         Activity::log('restore', 'استعاد بيانات المتجر من نسخة احتياطية');
 
         return back()->with('toast', ['msg' => __('تمت استعادة البيانات بنجاح'), 'type' => 'success']);
+    }
+
+    /**
+     * يمحو بيانات المتجر — الأبناءَ قبل الآباء.
+     *
+     * وبعكس ترتيب الإدراج بالضبط: سطرٌ يُحذف قبل أبنائه يُردّ بمفتاحٍ خارجيّ
+     * — و`supplier_invoices` مرتبطٌ بمورّده بـ`restrict`، فحذفُ المورّدين
+     * قبله كان **يُسقط الاستعادة كلَّها** بعد أن حذفت المنتجات.
+     *
+     * والمحوُ نهائيّ لا ناعم: الاستعادةُ تحلّ محلّ ما كان، وصفٌّ مخفيٌّ يظهر
+     * في «المحذوفات» بعدها فيستعيده التاجر — فيصير لكلّ منتجٍ نسختان.
+     *
+     * والموظّفون لا يُمحون: صاحبُ النشاط يفقد حسابه في منتصف الاستعادة.
+     */
+    private function wipe(int $bid): void
+    {
+        foreach (array_reverse(TenantTables::all()) as $table) {
+            if ($table === 'users' || ! Schema::hasTable($table)) {
+                continue;
+            }
+
+            TenantTables::scope($table, $bid)->delete();
+        }
+    }
+
+    /** حقولُ ملفّ المتجر الآمنة — لا الباقةُ ولا الاشتراك */
+    private function restoreBusiness(array $data, int $bid): void
+    {
+        if (empty($data['business']) || ! is_array($data['business'])) {
+            return;
+        }
+
+        Business::where('id', $bid)->update(
+            collect($data['business'])->only(Business::BACKUP_FIELDS)->all()
+        );
+    }
+
+    /**
+     * يُدرج الجداول بترتيبها — والمؤجَّلُ يُكتب في جولةٍ ثانية.
+     *
+     * `websites.published_version_id` يشير إلى نسخةٍ لم تُدرج بعد، ونسخُها
+     * تشير إليه: حلقةٌ لا يحلّها ترتيب. فيُدرَج بلا مؤشّرٍ ثمّ يُعاد إليه.
+     */
+    private function insertAll(array $data, int $bid, ?int $currentUserId): void
+    {
+        $deferred = [];
+
+        foreach (TenantTables::all() as $table) {
+            if ($table === 'users' || ! Schema::hasTable($table)) {
+                continue;
+            }
+
+            $rows = $data[$table] ?? [];
+
+            if (! is_array($rows) || $rows === []) {
+                continue;
+            }
+
+            $columns = array_flip(array_column(Schema::getColumns($table), 'name'));
+            $hold = TenantTables::DEFERRED[$table] ?? [];
+            $clean = [];
+
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                // عمودٌ في الملفّ لا وجود له في القاعدة اليوم يُسقط الإدراج
+                $row = array_intersect_key($row, $columns);
+
+                if (isset($columns['business_id'])) {
+                    $row['business_id'] = $bid;
+                }
+
+                foreach ($hold as $column) {
+                    if (($row[$column] ?? null) !== null) {
+                        $deferred[$table][$row['id']][$column] = $row[$column];
+                        $row[$column] = null;
+                    }
+                }
+
+                $clean[] = $row;
+            }
+
+            foreach (array_chunk($clean, 500) as $chunk) {
+                DB::table($table)->insert($chunk);
+            }
+        }
+
+        foreach ($deferred as $table => $rows) {
+            foreach ($rows as $id => $values) {
+                DB::table($table)->where('id', $id)->update($values);
+            }
+        }
+    }
+
+    /**
+     * الموظّفون: تحديثٌ وإضافةٌ بلا حذف.
+     *
+     * ولا تُستورد كلمات المرور — ليست في الملفّ أصلًا. فالحسابُ القائم يبقى
+     * بكلمته، والجديدُ يُنشأ بكلمةٍ عشوائية تُلزم صاحبَها بإعادة تعيينها.
+     * وحسابُ من ينفّذ الاستعادة لا يُمسّ: لا يُطرد أحدٌ في منتصف عمله.
+     */
+    private function restoreUsers(array $data, int $bid, ?int $currentUserId): void
+    {
+        foreach ($data['users'] ?? [] as $row) {
+            if (! is_array($row) || empty($row['email'])) {
+                continue;
+            }
+
+            unset($row['password'], $row['remember_token'], $row['id']);
+
+            $existing = User::where('email', $row['email'])->first();
+
+            if (! $existing) {
+                $row['business_id'] = $bid;
+                $row['password'] = bcrypt(Str::random(40));
+                User::create($row);
+
+                continue;
+            }
+
+            if ($existing->id === $currentUserId) {
+                continue;
+            }
+
+            $existing->update(collect($row)->except(['business_id'])->all());
+        }
     }
 }

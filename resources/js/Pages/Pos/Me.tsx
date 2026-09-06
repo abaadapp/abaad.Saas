@@ -37,7 +37,7 @@ interface Props {
     };
     salary: { basic: number; allowances: number; monthly: number };
     payslips: Payslip[];
-    sales: { todayTotal: number; todayCount: number; monthTotal: number; monthCount: number; allCount: number };
+    sales: { todayTotal: number; todayCount: number; monthTotal: number; monthCount: number; allCount: number } | null;
 }
 
 /**
@@ -119,7 +119,12 @@ export default function Me() {
                     />
                 </div>
 
-                {/* ------------------------------ مبيعاتي ------------------------------ */}
+                {/*
+                    مبيعاتي — تُعرض بإذن صاحب المتجر.
+                    و`null` تعني «لا يُعرض» لا «صفرُ مبيعات»: بطاقةٌ بأصفار
+                    أمام من مُنع من رؤية أدائه تقول له إنّه لم يبع شيئًا.
+                */}
+                {sales && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -141,6 +146,7 @@ export default function Me() {
                         <Stat label={t('إجمالي الطلبات')} value={String(sales.allCount)} />
                     </CardContent>
                 </Card>
+                )}
 
                 {/* ---------------------------- مسيرات الراتب ---------------------------- */}
                 <Card>

@@ -315,6 +315,8 @@ export default function SettingsIndex() {
         inv_prefix: get('inv_prefix', 'INV-'),
         inv_start: get('inv_start', '1'),
 
+        staff_sees_performance: on('staff_sees_performance'),
+
         notify_new_order: on('notify_new_order'),
         notify_smart_alerts: on('notify_smart_alerts'),
         notify_daily_summary: on('notify_daily_summary'),
@@ -1380,6 +1382,18 @@ export default function SettingsIndex() {
                                 <p className="mb-5 text-[13px] text-[#6b7280]">
                                     {t('الصلاحية تُحدَّد لكل موظف على حدة من ملفه — ولا قسم يُفتح ما لم يُمنح.')}
                                 </p>
+
+                                {/*
+                                    ما يراه الموظّف عن نفسه — لا ما يفتحه من أقسام.
+                                    وموضعُه هنا لأنّ صاحبه واحد: من يضبط صلاحيات
+                                    موظّفيه هو من يقرّر ما يقرؤونه عن أنفسهم.
+                                */}
+                                <Toggle
+                                    on={form.data.staff_sees_performance}
+                                    onChange={(v) => form.setData('staff_sees_performance', v)}
+                                    label="أظهِر للموظّف أداءه في «حسابي»"
+                                    hint="مبيعاتُه اليوم والشهر وإجمالي طلباته. وراتبه يراه دائمًا."
+                                />
 
                                 {/*
                                     كان هنا جدول مربّعات لكل دور يحفظ مفاتيح perm_*

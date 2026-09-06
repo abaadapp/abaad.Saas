@@ -8,6 +8,7 @@ use App\Models\Currency;
 use App\Models\Order;
 use App\Models\PayrollLine;
 use App\Models\PayrollRun;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\OrderStatus;
 use App\Support\Permissions;
@@ -183,8 +184,18 @@ class EmployeeSelfServiceTest extends TestCase
         $this->assertNotContains(1100.0, array_map(fn ($s) => (float) $s['net'], $slips));
     }
 
+    /** يُشعل صاحبُ المتجر عرضَ الأداء */
+    private function showPerformance(): void
+    {
+        Setting::updateOrCreate(
+            ['business_id' => $this->business->id, 'key' => 'staff_sees_performance'],
+            ['value' => '1'],
+        );
+    }
+
     public function test_the_sales_counted_are_his_alone(): void
     {
+        $this->showPerformance();
         $this->order($this->cashier, 20);
         $this->order($this->colleague, 500);
 
@@ -192,6 +203,107 @@ class EmployeeSelfServiceTest extends TestCase
 
         $this->assertSame(1, $sales['allCount']);
         $this->assertEqualsWithDelta(20.0, $sales['monthTotal'], 0.001);
+    }
+
+    /* ------------------- الأداء بإذن صاحب المتجر ------------------- */
+
+    /**
+     * والأداء مطفأٌ حتى يُشعله صاحب المتجر.
+     *
+     * الراتب حقُّ صاحبه يقرؤه بلا إذن — رقمٌ في عقده. والأداء أرقامُ بيعٍ
+     * تُقاس عليها، ومحلٌّ يعرضها لكاشيره يفتح بابًا لا يريده كلُّ صاحب محلّ.
+     */
+    public function test_performance_is_off_until_the_owner_turns_it_on(): void
+    {
+        $this->order($this->cashier, 20);
+
+        $this->assertNull($this->page($this->cashier)['sales'], 'الأداء يُعرض بلا إذن');
+    }
+
+    /** وإشعالُه يُظهره */
+    public function test_turning_it_on_shows_the_performance(): void
+    {
+        $this->order($this->cashier, 20);
+        $this->showPerformance();
+
+        $this->assertNotNull($this->page($this->cashier)['sales']);
+    }
+
+    /**
+     * و«لا يُعرض» ليست «صفرَ مبيعات».
+     *
+     * بطاقةٌ بأصفارٍ أمام من مُنع من رؤية أدائه تقول له إنّه لم يبع شيئًا —
+     * فيقرأ منعًا إداريًّا ضعفًا في عمله. فالفرقُ يصل الشاشة: `null` لا صفر.
+     */
+    public function test_hidden_is_not_the_same_as_zero(): void
+    {
+        $this->order($this->cashier, 20);
+
+        $this->assertNull($this->page($this->cashier)['sales']);
+
+        $this->showPerformance();
+        $this->assertEqualsWithDelta(20.0, $this->page($this->cashier)['sales']['monthTotal'], 0.001);
+    }
+
+    /** والراتب لا يُطفأ معه: هو حقُّ صاحبه في الحالين */
+    public function test_the_salary_shows_either_way(): void
+    {
+        $this->assertEqualsWithDelta(350.0, $this->page($this->cashier)['salary']['monthly'], 0.001);
+
+        $this->showPerformance();
+        $this->assertEqualsWithDelta(350.0, $this->page($this->cashier)['salary']['monthly'], 0.001);
+    }
+
+    /**
+     * والمفتاح يُشعله صاحبُ المتجر من شاشته — لا من القاعدة بيدٍ.
+     *
+     * مفتاحٌ يُقرأ ولا تكتبه شاشةٌ هو مقبضٌ لا يُدير شيئًا: يبقى مطفأً
+     * إلى الأبد، ويظنّ صاحبُه أنّ الميزة معطوبة.
+     */
+    public function test_the_owner_turns_it_on_from_his_screen(): void
+    {
+        $this->order($this->cashier, 20);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.settings.update'), ['staff_sees_performance' => true])
+            ->assertSessionHasNoErrors();
+
+        $this->assertNotNull($this->page($this->cashier)['sales'], 'الشاشة لا تكتب المفتاح');
+    }
+
+    /** ويُطفئه من حيث أشعله */
+    public function test_the_owner_turns_it_off_again(): void
+    {
+        $this->showPerformance();
+        $this->order($this->cashier, 20);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.settings.update'), ['staff_sees_performance' => false])
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull($this->page($this->cashier)['sales'], 'الإطفاء لا يصل');
+    }
+
+    /** ولا يُشعله موظّفٌ لنفسه */
+    public function test_an_employee_cannot_turn_it_on_for_himself(): void
+    {
+        $this->order($this->cashier, 20);
+
+        $this->actingAs($this->cashier)
+            ->post(route('admin.settings.update'), ['staff_sees_performance' => true]);
+
+        $this->assertNull($this->page($this->cashier)['sales'], 'الموظّف أشعل أداءه بنفسه');
+    }
+
+    /** وإذنُ الجار لا يُشعل هذا المتجر */
+    public function test_a_neighbours_switch_does_not_open_this_shop(): void
+    {
+        $other = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
+        Setting::create(['business_id' => $other->id, 'key' => 'staff_sees_performance', 'value' => '1']);
+
+        $this->order($this->cashier, 20);
+
+        $this->assertNull($this->page($this->cashier)['sales'], 'مفتاحُ الجار أشعل هذا المتجر');
     }
 
     /**

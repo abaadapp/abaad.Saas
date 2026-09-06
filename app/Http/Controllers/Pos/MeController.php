@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Pos;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\PayrollLine;
+use App\Models\Setting;
 use App\Support\Demo;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
@@ -56,8 +57,29 @@ class MeController extends Controller
                 'monthly' => (float) $user->basic_salary + (float) $user->allowances,
             ],
             'payslips' => $this->payslips((int) $user->id, $bid),
-            'sales' => $this->sales((int) $user->id, $bid),
+
+            /*
+             * والأداء بإذن صاحب المتجر — لا افتراضًا.
+             *
+             * الراتب حقُّ صاحبه يقرؤه بلا إذن: رقمٌ في عقده. والأداء أرقامُ
+             * بيعٍ تُقاس عليها، ومحلٌّ يعرضها لكاشيره يفتح بابًا لا يريده
+             * كلُّ صاحب محلّ.
+             *
+             * و`null` لا `[]`: الفرقُ بين «لا يُعرض» و«صفرُ مبيعات» يجب أن
+             * يصل الشاشة. وصفرٌ يُعرض لمن لم يبع اليوم صادقٌ، وصفرٌ يُعرض
+             * لمن مُنع من رؤية أدائه كذبٌ يقرؤه ضعفًا في عمله.
+             */
+            'sales' => $this->showsPerformance($bid)
+                ? $this->sales((int) $user->id, $bid)
+                : null,
         ]);
+    }
+
+    /** أأذن صاحب المتجر بعرض الأداء؟ — والغياب إطفاء */
+    private function showsPerformance(int $bid): bool
+    {
+        return Setting::where('business_id', $bid)
+            ->where('key', 'staff_sees_performance')->value('value') === '1';
     }
 
     /** مسيرات راتبه — والمسودّة لا تُعرض: رقمٌ لم يُعتمد بعدُ يُقرأ وعدًا */

@@ -380,6 +380,29 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
                         <DropdownMenuSeparator />
 
+                        {/*
+                         * «حسابي» — راتبُه ومسيراته.
+                         *
+                         * كانت تُفتح من نقطة البيع وحدها، فمن يدخل اللوحة —
+                         * بائعٌ أو أمينُ مخزنٍ أو محاسب — لا يجد بابًا إلى
+                         * راتبه إلّا أن يعرف عنوانها. ومن لا يدخل اللوحة
+                         * يجدها في شريط نقطة البيع كما كان.
+                         *
+                         * ولا تُعرض لصاحب النشاط: ملفُّه ليس ملفَّ موظّف —
+                         * لا مسيرةَ له ولا راتبَ مسجَّلًا، فتُفتح على فراغ.
+                         *
+                         * وتُشترط صلاحية «نقطة البيع» لأنّ المسار تحتها: من
+                         * لا يملكها يُردّ بـ٤٠٣ — وبابٌ معروضٌ لا يُفتح أسوأ
+                         * من بابٍ لا يُعرض.
+                         */}
+                        {auth?.user.role !== 'admin' && auth?.abilities.includes('pos') && (
+                            <DropdownMenuItem asChild>
+                                <Link href={route('pos.me')} className="text-[14px] font-medium">
+                                    {t('حسابي وراتبي')}
+                                </Link>
+                            </DropdownMenuItem>
+                        )}
+
                         {/* إدارة الحساب */}
                         <DropdownMenuItem asChild>
                             <Link href={route('profile.edit')} className="text-[14px] font-medium">

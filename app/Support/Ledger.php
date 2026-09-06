@@ -278,6 +278,64 @@ class Ledger
     }
 
     /**
+     * عكسُ قيدٍ مُرحَّل — والإلغاء لا يكون بغيره.
+     *
+     * القيد المُرحَّل لا يُحذف ولا تُغيَّر سطورُه في مكانها: من قرأ الميزان
+     * أمس قرأ رقمًا، ومن يقرؤه اليوم يقرأ غيره، ولا شيء يقول إنّ شيئًا كان.
+     * فالإلغاء قيدٌ ثانٍ يعكس الأوّل، والاثنان يبقيان معلَّقين بمستندهما
+     * فيُقرأ تاريخُه كاملًا: بيعةٌ وقعت، ثمّ أُلغيت، ومتى.
+     *
+     * ولا يُعكس القيد مرّتين: يُقرأ بقفلٍ ويُختم بـ`reversed_at`، فطلبان
+     * متزامنان على الإلغاء نفسه لا يكتبان عكسين فيقلبان الرصيد.
+     *
+     * وسطورُه تُبنى بحسابها لا بمفتاحها النظاميّ: القيد قد يكون على حسابٍ
+     * أنشأه التاجر بيده ولا مفتاح له، فالبحث بالمفتاح لا يجده.
+     *
+     * @return JournalEntry|null القيد العكسيّ — أو null إن كان معكوسًا أصلًا
+     */
+    public static function reverse(
+        JournalEntry $entry,
+        ?Carbon $date = null,
+        ?int $userId = null,
+        ?string $reason = null,
+    ): ?JournalEntry {
+        return DB::transaction(function () use ($entry, $date, $userId, $reason) {
+            $original = JournalEntry::whereKey($entry->id)->lockForUpdate()->first();
+
+            if (! $original || $original->reversed_at) {
+                return null;
+            }
+
+            $lines = $original->lines()->with('account')->get()->map(fn ($line) => [
+                'account' => $line->account,
+                'debit' => (float) $line->credit,
+                'credit' => (float) $line->debit,
+                'memo' => $line->memo,
+            ])->all();
+
+            if (count($lines) < 2) {
+                return null;
+            }
+
+            $reversal = self::post(
+                $original->business_id,
+                mb_substr(__('عكس: ').$original->description.($reason ? ' — '.$reason : ''), 0, 255),
+                $lines,
+                $date ?? now(),
+                mb_substr(__('عكس ').$original->source, 0, 30),
+                $original->branch_id,
+                $userId,
+                $original->sourceable,
+            );
+
+            $reversal->update(['reverses_id' => $original->id]);
+            $original->update(['reversed_at' => now()]);
+
+            return $reversal;
+        });
+    }
+
+    /**
      * ميزان المراجعة — كل حسابٍ ورصيده، ومجموع الطرفين.
      *
      * والمجموعان يجب أن يتطابقا دائمًا. إن لم يتطابقا فالخلل ليس في الشاشة

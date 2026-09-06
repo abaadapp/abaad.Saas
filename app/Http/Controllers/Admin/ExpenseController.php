@@ -249,8 +249,8 @@ class ExpenseController extends Controller
          * المطابقة البنكية كأنّ مبلغًا خرج.
          */
         $expense->transaction()->delete();
-        // والقيد المزدوج معه — والقاعدة واحدة: قيدٌ بلا مستند يُبقي مبلغًا في الميزان
-        Books::forgetExpense($expense);
+        // وقيدُ الدفتر يُعكس لا يُمحى: أثرُه صفرٌ في الرصيد، وتاريخُه مقروء
+        Books::unpostExpense($expense, auth()->id(), __('حذف المصروف'));
         Activity::log('deleted', 'حذف المصروف: '.$expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
 
         /*

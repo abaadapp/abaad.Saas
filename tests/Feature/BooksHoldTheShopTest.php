@@ -122,6 +122,21 @@ class BooksHoldTheShopTest extends TestCase
         $this->assertSame($tb['total_debit'], $tb['total_credit']);
     }
 
+    /**
+     * محوُ قيود فاتورةٍ من الجدول مباشرةً — لا عبر `Books`.
+     *
+     * أمرُ الاستدراك يعالج فاتورةً **لا قيد لها أصلًا**: بيعت قبل أن يصير
+     * البيع يُرحَّل. و`unpostSale` تعكس ولا تمحو، فالمعكوسة لها قيود —
+     * ولا يُعيد الأمرُ ترحيلها عمدًا. فالمُعطى هنا يُبنى بالمحو المباشر
+     * ليصف الحال التي كُتب لها الأمر.
+     */
+    private function wipeEntries(Order $order): void
+    {
+        JournalEntry::where('sourceable_type', Order::class)
+            ->where('sourceable_id', $order->id)->get()
+            ->each(fn (JournalEntry $e) => $e->delete());
+    }
+
     public function test_an_unpaid_sale_is_a_receivable_not_cash(): void
     {
         $this->sell()->assertOk();
@@ -129,7 +144,7 @@ class BooksHoldTheShopTest extends TestCase
 
         // فاتورةٌ صارت آجلة: ليست نقدًا في الدرج بل ذمّةً على العميل
         $order->update(['payment_status' => 'غير مدفوع']);
-        Books::forgetSale($order);
+        Books::unpostSale($order);
         Books::recordSale($order->fresh());
 
         $this->assertSame(round((float) $order->total, 3), round($this->balance('receivable'), 3));
@@ -162,7 +177,7 @@ class BooksHoldTheShopTest extends TestCase
     {
         $this->sell()->assertOk();
         $order = Order::where('is_held', false)->firstOrFail();
-        Books::forgetSale($order);
+        $this->wipeEntries($order);
         $this->assertSame(0.0, $this->balance('sales'));
 
         $this->artisan('finance:post-missing-sales')->assertSuccessful();
@@ -182,7 +197,7 @@ class BooksHoldTheShopTest extends TestCase
     {
         $this->sell()->assertOk();
         $order = Order::where('is_held', false)->firstOrFail();
-        Books::forgetSale($order);
+        $this->wipeEntries($order);
 
         Ledger::post($this->business->id, 'مبيعات شهر', [
             ['account' => 'cash', 'debit' => 30],
@@ -194,20 +209,41 @@ class BooksHoldTheShopTest extends TestCase
         $this->assertSame(30.0, round($this->balance('sales'), 3), 'كُتب الإيراد مرّتين');
     }
 
-    /* ------------------- الإلغاء يمحو قيده ------------------- */
+    /* ------------------- الإلغاء يعكس قيده ولا يمحوه ------------------- */
 
-    public function test_cancelling_a_sale_takes_its_ledger_entries_with_it(): void
+    public function test_cancelling_a_sale_reverses_its_entries_and_keeps_them(): void
     {
         $this->sell()->assertOk();
         $order = Order::where('is_held', false)->firstOrFail();
 
         OrderCorrection::cancel($order);
 
-        $this->assertSame(0, JournalEntry::where('sourceable_type', Order::class)
-            ->where('sourceable_id', $order->id)->count());
+        // الأثرُ صفرٌ في الرصيد — كما لو مُحيت
         $this->assertSame(0.0, round($this->balance('sales'), 3));
         $this->assertSame(0.0, round($this->balance('cogs'), 3));
         $this->assertTrue(Ledger::trialBalance($this->business->id)['balanced']);
+
+        // والتاريخُ باقٍ: قيدان أصليّان وعكسٌ لكلٍّ منهما
+        $entries = JournalEntry::where('sourceable_type', Order::class)
+            ->where('sourceable_id', $order->id)->get();
+
+        $this->assertCount(4, $entries, 'الإلغاء محا قيدًا بدل أن يعكسه');
+        $this->assertSame(2, $entries->whereNotNull('reversed_at')->count());
+        $this->assertSame(2, $entries->whereNotNull('reverses_id')->count());
+    }
+
+    /** ولا يُعكس مرّتين: إلغاءٌ ثانٍ لا يقلب الرصيد */
+    public function test_cancelling_twice_does_not_double_the_reversal(): void
+    {
+        $this->sell()->assertOk();
+        $order = Order::where('is_held', false)->firstOrFail();
+
+        OrderCorrection::cancel($order);
+        Books::unpostSale($order->fresh());
+
+        $this->assertSame(0.0, round($this->balance('sales'), 3));
+        $this->assertSame(4, JournalEntry::where('sourceable_type', Order::class)
+            ->where('sourceable_id', $order->id)->count());
     }
 
     /* ------------------- المصروف كذلك ------------------- */
@@ -257,7 +293,7 @@ class BooksHoldTheShopTest extends TestCase
         $this->assertSame(0.0, round($this->balance('cash'), 3));
     }
 
-    public function test_deleting_an_expense_takes_its_entry_with_it(): void
+    public function test_deleting_an_expense_reverses_its_entry(): void
     {
         $expense = $this->spend();
 
@@ -265,6 +301,13 @@ class BooksHoldTheShopTest extends TestCase
 
         $this->assertSame(0.0, round($this->balance('rent'), 3));
         $this->assertTrue(Ledger::trialBalance($this->business->id)['balanced']);
+
+        // والقاعدة واحدة في الدفتر: المصروف يُعكس كما تُعكس البيعة
+        $entries = JournalEntry::where('sourceable_type', Expense::class)
+            ->where('sourceable_id', $expense->id)->get();
+
+        $this->assertCount(2, $entries, 'حُذف قيد المصروف بدل أن يُعكس');
+        $this->assertNotNull($entries->firstWhere('reverses_id', '!=', null));
     }
 
     public function test_restoring_it_brings_the_entry_back_once(): void
@@ -275,6 +318,7 @@ class BooksHoldTheShopTest extends TestCase
 
         $this->assertSame(300.0, round($this->balance('rent'), 3));
         $this->assertSame(1, JournalEntry::where('sourceable_type', Expense::class)
+            ->whereNull('reversed_at')->whereNull('reverses_id')
             ->where('sourceable_id', $expense->id)->count());
     }
 

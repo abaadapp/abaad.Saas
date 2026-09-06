@@ -4225,5 +4225,9 @@
     "حذف :name؟": "Delete :name?",
     "التحرير": "Editing",
     "المعاينة": "Preview",
-    "حذف صفحة :name وكل أقسامها؟": "Delete the page :name and all its sections?"
+    "حذف صفحة :name وكل أقسامها؟": "Delete the page :name and all its sections?",
+    "عكس: ": "Reversal: ",
+    "عكس ": "Reversal ",
+    "محو المصروف نهائيًّا": "Expense permanently deleted",
+    "حذف المصروف": "Expense deleted"
 }

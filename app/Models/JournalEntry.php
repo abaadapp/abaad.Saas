@@ -24,6 +24,7 @@ class JournalEntry extends Model
         'entry_date' => 'date',
         'posted' => 'boolean',
         'posted_at' => 'datetime',
+        'reversed_at' => 'datetime',
     ];
 
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }

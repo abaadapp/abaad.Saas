@@ -420,10 +420,16 @@ class TrashController extends Controller
             BranchStock::where('product_id', $row->id)->delete();
         }
 
-        // ومحوُ المصروف يمحو قيده: لا يبقى في الدفتر سطرٌ لا أصل له
+        /*
+         * ومحوُ المصروف نهائيًّا لا يمحو قيده — يعكسه إن لم يكن معكوسًا.
+         *
+         * وأكثرُ ما يمرّ من هنا معكوسٌ أصلًا: الحذف إلى المهملات عكسه قبلُ،
+         * فلا يجد هذا النداء قيدًا حيًّا وينصرف. وما بقي حيًّا (صفٌّ قديم
+         * حُذف قبل هذه النسخة) يُعكس هنا بدل أن يختفي من الميزان صامتًا.
+         */
         if ($type === 'expense') {
             $row->transaction()->withTrashed()->forceDelete();
-            Books::forgetExpense($row);
+            Books::unpostExpense($row, auth()->id(), __('محو المصروف نهائيًّا'));
         }
 
         $row->forceDelete();

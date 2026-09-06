@@ -560,9 +560,20 @@ class OrderCorrection
             self::releaseCoupon($order);
             self::reverseLoyalty($order);
 
-            // لا قيدَ دخلٍ على بيعةٍ لم تقع — في الدفترين معًا
+            /*
+             * لا قيدَ دخلٍ على بيعةٍ لم تقع.
+             *
+             * ودفترُ الصندوق يُمحى منه الصفّ: هو سجلُّ ما في الدرج الآن،
+             * والتقاريرُ تقرأ منه، فبقاءُ صفٍّ لبيعةٍ أُلغيت يجعل الرصيد
+             * يقول ما ليس فيه. أمّا دفترُ الأستاذ فيُعكس ولا يُمحى — انظر
+             * `Books::unpostSale`.
+             */
             Transaction::where('order_id', $order->id)->delete();
-            \App\Support\Books::forgetSale($fresh);
+            \App\Support\Books::unpostSale(
+                $fresh,
+                PosCashier::id() ?? auth()->id(),
+                $reason ?: __('إلغاء الطلب'),
+            );
 
             $order->update(['status' => \App\Support\OrderStatus::CANCELLED]);
 

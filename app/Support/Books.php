@@ -121,10 +121,25 @@ class Books
         });
     }
 
-    /** الإلغاء يمحو قيدَي بيعته — كما يمحو قيدَ دخلها */
-    public static function forgetSale(Order $order): void
+    /**
+     * إلغاءُ بيعةٍ رُحّلت: عكسٌ لا محو.
+     *
+     * كان الإلغاء يحذف قيدَي البيعة من الدفتر، فتصير بيعةٌ وقعت كأنّها لم
+     * تقع: يقرأ المحاسب الميزان فلا يجد أثرًا لها ولا لإلغائها، ولا يعرف
+     * أنّ رقمًا قرأه أمسِ تغيّر. ومن ألغى ومتى وكم كان المبلغ — كلُّه يذهب
+     * مع الصفّ المحذوف.
+     *
+     * فصار الأصلُ يبقى ويُكتب مقابله عكسُه. والأثر صفرٌ في الرصيد كما كان،
+     * والتاريخ مقروء.
+     *
+     * ولا يُعكس ما عُكس: `liveEntryFor` تتخطّى المعكوس، فنداءان لا يكتبان
+     * عكسين.
+     */
+    public static function unpostSale(Order $order, ?int $userId = null, ?string $reason = null): void
     {
-        self::entriesFor($order)->each(fn (JournalEntry $e) => $e->delete());
+        self::liveEntriesFor($order)->each(
+            fn (JournalEntry $e) => Ledger::reverse($e, null, $userId, $reason)
+        );
     }
 
     /**
@@ -191,9 +206,12 @@ class Books
         );
     }
 
-    public static function forgetExpense(Expense $expense): void
+    /** وحذفُ المصروف كإلغاء البيعة: عكسٌ لا محو — القاعدة واحدة في الدفتر */
+    public static function unpostExpense(Expense $expense, ?int $userId = null, ?string $reason = null): void
     {
-        self::entriesFor($expense)->each(fn (JournalEntry $e) => $e->delete());
+        self::liveEntriesFor($expense)->each(
+            fn (JournalEntry $e) => Ledger::reverse($e, null, $userId, $reason)
+        );
     }
 
     /**
@@ -284,15 +302,31 @@ class Books
 
     /* ------------------------------ أدوات ------------------------------ */
 
-    private static function entriesFor($model)
+    /**
+     * قيودُ المستند الحيّة — ما لم يُعكس منها، ولا العكسُ نفسه.
+     *
+     * والعكسُ يُستثنى صراحةً: هو معلَّقٌ بالمستند نفسه (يحمل `sourceable`
+     * الأصل ليُقرأ تاريخُه من مكانٍ واحد)، فلو عُدّ حيًّا لعكسه نداءٌ ثانٍ
+     * فعاد الرصيد إلى ما قبل الإلغاء.
+     */
+    private static function liveEntriesFor($model)
     {
         return JournalEntry::where('sourceable_type', $model::class)
-            ->where('sourceable_id', $model->id)->get();
+            ->where('sourceable_id', $model->id)
+            ->whereNull('reversed_at')
+            ->whereNull('reverses_id')
+            ->get();
     }
 
+    /**
+     * هل للمستند قيدٌ حيّ؟
+     *
+     * ولا يُسأل عن أيّ قيد: بيعةٌ أُلغيت لها قيدان — أصلٌ معكوس وعكسُه —
+     * فلو كان وجودُهما مانعًا لما استطاع أمرُ الاستدراك ولا التصحيح أن
+     * يُرحّل من جديد، وبقيت البيعة المصحَّحة خارج الدفتر إلى الأبد.
+     */
     private static function hasEntry($model): bool
     {
-        return JournalEntry::where('sourceable_type', $model::class)
-            ->where('sourceable_id', $model->id)->exists();
+        return self::liveEntriesFor($model)->isNotEmpty();
     }
 }

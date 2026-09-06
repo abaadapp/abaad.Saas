@@ -141,12 +141,15 @@ class SettingsController extends Controller
         ]]);
         $site->touchDraft();
 
-        // والقديمة تتبع الجديدة: شاشة السيو القديمة تقرأ هذين المفتاحين
-        MarketingSettings::save($this->bid(), 'seo', [
-            'seo_title' => (string) ($data['title'] ?? ''),
-            'seo_description' => (string) ($data['description'] ?? ''),
-            'seo_index' => $data['index'] ? '1' : '0',
-        ]);
+        /*
+         * ولا تُكتب نسخةٌ ثانية في `settings`.
+         *
+         * كانت هنا كتابةٌ إلى مجموعة `seo` تقول إنّها «تُطعم الشاشة القديمة».
+         * والمجموعة مرفوعةٌ من `MarketingSettings::GROUPS` — فـ`save` كانت
+         * تُسقط المفاتيح الثلاثة بلا خبر، وشاشةُ السيو القديمة التي تقرؤها
+         * لا وجود لها في النظام. سيو الموقع يسكن `websites.seo` وحده،
+         * ومنه تُقرأ الشاشة أعلاه وتُبنى وسومُ الصفحة المنشورة.
+         */
 
         return back()->with('toast', ['msg' => __('حُفظت إعدادات الظهور في البحث'), 'type' => 'success']);
     }

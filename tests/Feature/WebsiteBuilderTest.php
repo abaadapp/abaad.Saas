@@ -446,19 +446,23 @@ class WebsiteBuilderTest extends TestCase
         $this->assertCount(4, $props['pages']);
     }
 
-    public function test_saving_seo_also_feeds_the_old_screen(): void
+    public function test_seo_lives_in_one_place(): void
     {
-        // شاشة السيو القديمة تقرأ `seo_title` و`seo_description` — فلا تفترقان
+        // سيو الموقع يسكن `websites.seo` وحده — ولا نسخةَ ثانية في `settings`
         $this->build();
 
         $this->put(route('admin.website.seo.save'), [
             'title' => 'ورود مسقط · باقات', 'description' => 'باقات وهدايا', 'index' => true,
         ])->assertSessionHasNoErrors();
 
-        $seo = \App\Support\MarketingSettings::group($this->bid(), 'seo');
+        $seo = $this->props(route('admin.website.seo'))['seo'];
 
-        $this->assertSame('ورود مسقط · باقات', $seo['seo_title']);
-        $this->assertSame('باقات وهدايا', $seo['seo_description']);
+        $this->assertSame('ورود مسقط · باقات', $seo['title']);
+        $this->assertSame('باقات وهدايا', $seo['description']);
+
+        $this->assertDatabaseMissing('settings', [
+            'business_id' => $this->bid(), 'key' => 'seo_title',
+        ]);
     }
 
     /* ============================ النشر والصيانة ============================ */

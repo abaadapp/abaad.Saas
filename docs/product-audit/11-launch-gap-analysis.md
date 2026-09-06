@@ -2,6 +2,12 @@
 
 Four lists. Every item cross-references its detail elsewhere in this audit.
 
+> **Read the STATUS notes before acting on any row.** Three items in this audit did not survive a
+> re-read of the code: **A7/F-04** and **A8/F-11** here, and **OD-08** in `12-owner-decisions.md`.
+> Struck-through rows below are closed. No row is an instruction to implement until it has been
+> checked against the live tree — this audit is a snapshot of `385b1cd`, and parts of it were already
+> stale on the day it was written.
+
 ---
 
 # A. MUST FIX BEFORE LAUNCH
@@ -15,8 +21,8 @@ Four lists. Every item cross-references its detail elsewhere in this audit.
 | **A4** | **Purchase receiving: wrap in a transaction, lock rows, allow partial receipt** | A short delivery cannot be recorded, so stock over-states and the POS sells air. Cost averaging races concurrent sales. | F-07, R-04, R-05 |
 | **A5** | **Purchase order number collision** | `random_int(10000,99999)` with a non-unique index — ~50% duplicate probability by the 350th PO. The same bug was correctly fixed for invoices and transactions. One-line fix. | R-06 |
 | **A6** | **Stocktake: atomicity + O(n²)** | Times out and half-applies on any catalogue above ~500 SKUs, double-booking shrinkage for the applied half. The count is the moment a merchant decides whether to trust stock figures forever. | F-06, R-07 |
-| **A7** | **Wire sales & COGS to the ledger — or hide the accounting section** | Today the trial balance shows zero revenue, zero COGS, and an inventory asset that grows forever. The demo store shows correct books that a real account can never produce. | F-04, R-02 |
-| **A8** | **VAT return report** | Abaad collects VAT on every invoice and offers no way to declare it. `Demo::vatReport()` already exists, orphaned. Legal exposure for the merchant. | F-11, A-4 |
+| ~~**A7**~~ | ~~**Wire sales & COGS to the ledger — or hide the accounting section**~~ **← DONE before this audit was written. Do not implement: a second posting path would double revenue on every live shop.** | Sales, COGS and VAT post at checkout (`Books::recordSale()`); `sales:post-missing` back-fills older invoices without double-posting. Verified 2026-09-07. | F-04 STATUS |
+| ~~**A8**~~ | ~~**VAT return report**~~ **← the screen already exists (`/admin/reports/vat`, 29 tests). Period locking shipped in v6.123. Do not rebuild.** | The orphaned `Demo::vatReport()` computed input VAT wrongly and was **deleted**, not restored — the live screen was always elsewhere. Only the exempt / zero-rated split remains, and it needs a per-line tax snapshot that does not exist. Verified 2026-09-07. | F-11 STATUS |
 | **A9** | **Remove (or implement) the WhatsApp and SEO screens** | Settings that save and are read by nothing. A merchant who enables "notify when ready", stops phoning customers, and loses them will never trust another toggle. | F-10, A-8 |
 | **A10** | **Manual discount at POS + discount permission** | "Take a rial off" is universal. Without it shops create fake coupons or edit invoices after the fact — both corrupt data. Must ship with the permission. | A-9, A-10, F-14 |
 | **A11** | **Stock adjustment: require an explicit branch and guard the branch balance** | In "All branches" mode (the session default) an adjustment moves the company total and no branch, permanently breaking the stock invariant; the negative guard checks the wrong scope. | R-11, R-12 |

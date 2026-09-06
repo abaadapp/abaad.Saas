@@ -21,16 +21,14 @@ movement when refunded in cash.
 becomes untrustworthy and phantom sales are permanent. `Order::CANCELLED` already exists and is
 already filterable — the merchant can see the state and never reach it.
 
-### A-3 · Sales & COGS posting to the general ledger — or hide the ledger
-**Reason.** Today the accounting module shows books with zero revenue. Either it produces real books
-or it must not be visible. Shipping a believable-but-empty trial balance is worse than shipping no
-accounting at all, and the demo store *does* show correct books, which makes it a sales-integrity
-problem too.
+### ~~A-3 · Sales & COGS posting to the general ledger — or hide the ledger~~ **DONE**
+**[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]** Shipped before this audit was written. **Do not implement:
+a second posting path books revenue twice on every live shop.**
 
-### A-4 · VAT return report
-**Reason.** Abaad collects VAT on every invoice, prints a compliant QR, and gives the merchant no way
-to declare it. VAT compliance is one of the strongest reasons an Omani SME buys software.
-`Demo::vatReport()` already exists, unused.
+### ~~A-4 · VAT return report~~ **ALREADY EXISTS**
+**[CORRECTED 2026-09-07 — see the STATUS note at F-11 in `04-module-audit.md`.]** `/admin/reports/vat`, with export and 29 tests. The unused
+`Demo::vatReport()` computed input VAT wrongly and was deleted, not wired to anything. Only the
+exempt / zero-rated split remains open.
 
 ### A-5 · Partial goods receipt
 **Reason.** Short deliveries are normal. Forcing "all or nothing" means either inventory over-states

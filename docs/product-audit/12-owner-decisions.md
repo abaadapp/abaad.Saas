@@ -13,8 +13,8 @@ Nothing below should be implemented until you decide.
 Abaad has two disconnected financial systems. `transactions` is a cash book fed by POS sales and
 expenses; it drives the dashboard, the Finance screens, and every report. `journal_entries` is a real
 double-entry ledger with a seeded chart of accounts, and it is fed **only** by supplier invoices,
-supplier payments, payroll, fixed assets, and stock adjustments. **Sales, COGS, cash receipts and
-operating expenses never post to it.** Revenue account 4100 is permanently zero; the Inventory asset
+supplier payments, payroll, fixed assets, and stock adjustments. ~~**Sales, COGS, cash receipts and
+operating expenses never post to it.**~~ **[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]** They post. Revenue account 4100 is permanently zero; the Inventory asset
 is debited by every purchase and never relieved. The demo-data generator *does* post sales and COGS
 journals, so a prospect's demo shows complete books that their own account will never produce.
 
@@ -267,6 +267,29 @@ exists.
 ---
 
 ## OD-08 · Same-day correction vs. return — where is the line?
+
+> **STATUS · decided and shipped 2026-09-06 (v6.120 + v6.123). Recommendation A was adopted in
+> substance and rejected in its boundary — re-verified 2026-09-07.**
+>
+> **The diagnosis was right.** `OrderCorrection` was unbounded and ungated. It is now time-boxed and
+> permission-gated: `assertSameDay()` on all three edit doors, `assertNotFiled()` on cancel, and
+> `order.edit` — the first *action*-level permission in the system.
+>
+> **The recommended boundary was not implementable.** Option A rests on "data that already exists
+> (`orders.shift_id` and shift status)". **There is no shifts feature in this system**: no route, no
+> screen, and no line in `app/` that writes `orders.shift_id`. The column was created by a migration
+> (`2026_08_06_100100_add_shift_id_to_orders.php`) whose feature was never built. On production,
+> **1211 of 1213 invoices carry no shift.** A guard reading a column nothing writes is not a guard —
+> it either always passes or always blocks.
+>
+> **Boundary adopted instead: the sale's own day**, in `Asia/Muscat` (the shop's day, not the
+> server's). It is the nearest boundary enforceable with data that is actually written
+> (`orders.created_at`); it converges with the shift boundary if shifts are ever built, since a shift
+> rarely crosses two days; and it is the same boundary the receipts screen already chose when the
+> shift was removed from it.
+>
+> **Still open:** the return document / credit note (F-01). Full cancel covers the need but does not
+> replace it for a *partial* return.
 
 > **OWNER DECISION REQUIRED**
 

@@ -20,6 +20,10 @@ dashboards is a perfectly good design — but today it is *invisible*, and the a
 missing 100% of revenue. Either wire sales into the ledger (F-04) and make `transactions` a
 projection of it, or keep them separate and label them so a merchant understands which is which.
 
+**[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]** Sales are wired: the ledger receives revenue, COGS and VAT.
+What remains of this item is the *labelling* half — the two systems are still unexplained to the
+merchant — not the wiring half.
+
 ### 1.3 Three representations of "which branch" — **collapse**
 - `orders.branch` (name string) alongside `orders.branch_id`
 - `users.branch` (name string) alongside the `branch_user` pivot
@@ -48,7 +52,7 @@ the sole writer. Correct pattern; apply the same reasoning wherever a key has tw
 | **Marketing → SEO** | Remove from Abaad. These keys belong to the `abaadapp/Website` project, which shares the database and can read them there. |
 | **Marketing → Website** | Keep only `site_domain` (genuinely consumed by `Demo::websiteUrl()`). The other seven keys are read by nothing in this app. |
 | **Marketing → Reviews** | Nothing collects reviews from customers; the merchant types them in by hand. Either connect it to a review request (post-purchase WhatsApp/SMS link) or remove it. Manual review entry has no business purpose. |
-| **الحسابات (Chart / Journal / Trial balance)** | Hide behind a plan flag until sales post (F-04). A trial balance without revenue is actively misleading. |
+| **الحسابات (Chart / Journal / Trial balance)** | ~~Hide behind a plan flag until sales post (F-04).~~ **[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]** Sales post; the trial balance carries revenue. Do not hide it. |
 | **Finance → Fixed assets** | Genuinely well built, but it is a mid-market feature in a product aimed at small shops, and it depends on a ledger that is not receiving the rest of the business. Consider gating to a higher plan tier — that also gives the pricing page something to differentiate on. |
 | **Payroll** | Same reasoning as fixed assets: correct, complete, and above the needs of a three-person shop. Good plan-tier differentiator. |
 | **Delivery notes** | Well-reasoned (the "linked note does not move stock" logic is subtle and right), but it is a wholesale/distribution document. Keep, gate to a higher tier, or fold into the fulfilment flow if F-17 is built. |

@@ -86,7 +86,7 @@ line until one line remains — and then it can't be removed, so a phantom 1-uni
 **Recommended flow.** A `Void` action, permission-gated, reason mandatory, allowed only while the
 originating shift is open (after that it is a return). Sets `status = 'ملغي'`, reverses stock,
 soft-deletes/reverses the `transactions` row, reverses loyalty, records an `order_edits` row of
-kind `إلغاء`, and posts the reversing journal entry once sales posting exists (F-04). The invoice
+kind `إلغاء`, and posts the reversing journal entry (sales posting already exists — see F-04). The invoice
 number is retained and the document is reprintable stamped "VOID".
 
 **Reason.** Number-series integrity plus operational reality. Every POS on the market has this.
@@ -135,7 +135,24 @@ shops only. *(See owner decision OD-03.)*
 
 ---
 
-## F-04 · Sales never reach the general ledger
+## F-04 · ~~Sales never reach the general ledger~~ — **STALE, CLOSED**
+
+> **STATUS · re-verified against the code on 2026-09-07 — this finding is stale. Do not implement it.**
+>
+> Sales **do** reach the general ledger, and did so before this document was written:
+> `Books::recordSale()` is called at checkout (`app/Http/Controllers/Pos/PosController.php:1133`),
+> and `php artisan sales:post-missing` (`app/Console/Commands/PostMissingSales.php`) back-fills
+> invoices sold before it existed. `recordSale()` checks for an existing entry before writing, so
+> neither path double-posts.
+>
+> Dates: the back-fill command landed **2026-09-01**, `recordSale()` in its current shape
+> **2026-09-03**, and this document **2026-09-06** — five days after the fix. A stale tree was read.
+>
+> **Why implementing it anyway would be harmful:** the recommended flow below is *already the
+> implemented flow*. Adding a second posting path for the same invoice books revenue twice on every
+> live shop. Here the cure is the disease.
+>
+> The one part still open is `inventory_variance` symmetry (R-07), which is its own item.
 
 **Current flow.** `Ledger::post()` is invoked from 8 places. None is a sale, a cash receipt, or an
 operating expense. The double-entry books receive purchases (Dr Inventory / Cr Payable), supplier
@@ -395,7 +412,27 @@ value in Oman).
 
 ---
 
-## F-11 · No VAT return, while VAT is collected on every invoice
+## F-11 · ~~No VAT return, while VAT is collected on every invoice~~ — **HALF WRONG**
+
+> **STATUS · re-verified against the code on 2026-09-07 — half of this finding is wrong. Read both halves.**
+>
+> **Wrong: "its screen was deleted" / "no way to produce a return."** The VAT report screen exists and
+> is reachable: `Route::get('/admin/reports/vat', [ReportPageController::class, 'vat'])`
+> (`routes/web.php:866`), carded on the reports index, with CSV export and **29 tests**
+> (`tests/Feature/VatReportTest.php` 18, `VatSwitchesTest.php` 11). Building it again would rebuild
+> what is already built and tested.
+>
+> **Right: `Demo::vatReport()` was orphaned** — and worse than dead, it computed input VAT wrongly, so
+> anyone who wired a screen onto it (as the recommendation below says to do) would have shipped a
+> wrong return. It was **deleted in v6.123**, not restored. The live screen was always elsewhere.
+>
+> **Also right: period locking.** Implemented in v6.123 — `Vat::filedThrough()` / `Vat::isFiled()` and
+> `OrderCorrection::assertNotFiled()`, with the boundary declared by the merchant in tax settings
+> (`vat_filed_through`) rather than guessed, since fiscal years differ.
+>
+> **Still open:** the exempt / zero-rated split. It needs a per-line tax snapshot on `order_items`
+> (`tax_rate`, `tax_amount`) which does not exist, so it can only ever be correct going forward.
+> Deferred deliberately: all 127 products in production are at a single 5% rate today.
 
 **Current flow.** VAT is computed per line with per-product rates, inclusive/exclusive handled
 correctly, the ZATCA-style QR is generated, and the tax invoice PDF is proper. `Demo::vatReport()`

@@ -86,8 +86,10 @@ only `couponDiscount` and `redeemDiscount`; `checkout()` accepts no discount fie
 - ✅ Platform-level defaults with tenant override.
 - ✅ ZATCA-style TLV QR with correct byte-length handling for Arabic; suppressed entirely when no VAT
   number is set, and the invoice does not claim to be a tax invoice in that case.
-- ❌ **No VAT return / filing report** (F-11).
-- ❌ **No period locking.** An invoice in a declared quarter can be edited today (F-01).
+- ✅ **VAT return / filing report** — `/admin/reports/vat`, with export and 29 tests. **[CORRECTED 2026-09-07 — see the STATUS note at F-11 in `04-module-audit.md`.]**
+- ✅ **Period locking** — v6.123: an invoice in a filed period is refused (`Vat::isFiled()`), the
+  boundary declared by the merchant in tax settings. And v6.120: an issued invoice closes with its
+  own day, gated by `order.edit`.
 - ❌ Input VAT is deliberately folded into inventory cost (correct for non-registered merchants,
   wrong for registered ones — the code comment acknowledges the trade-off but the system has no way
   to know which the merchant is, even though `vat_number` tells it).
@@ -117,7 +119,7 @@ idempotent offline replay, sequential numbering with a unique index and retry, c
 seven coordinated writes in one transaction. ✅
 
 Gaps: no split payment (F-16), no partial payment, no manual discount (§8), integer quantities
-(F-15), no ledger posting (F-04), no order-level notes surfaced to the kitchen/prep, no
+(F-15), ~~no ledger posting (F-04)~~ **[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]**, no order-level notes surfaced to the kitchen/prep, no
 "sold by weight" flow.
 
 ## 14. POS — **Sound**

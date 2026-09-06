@@ -186,10 +186,9 @@ lines, ledger-posted).
 **Status: Backend Only / structurally incomplete.** The engine is genuinely good
 (`LedgerTest` covers unbalanced entries, contra accounts, parent-account posting, closed accounts,
 dated trial balance). But:
-- **Sales never post.** Revenue is permanently zero.
-- **COGS never posts.** Inventory is debited by purchases and never relieved — it grows forever.
-- **Operating expenses never post.**
-- **Cash and bank receipts from sales never post.**
+- ~~**Sales never post.**~~ / ~~**COGS never posts.**~~ / ~~**Operating expenses never post.**~~ /
+  ~~**Cash and bank receipts from sales never post.**~~ — **[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]**
+  All four post: sales and COGS at checkout, money movements and expenses via `Books::recordMovement()`.
 - There is **no P&L, no balance sheet, no income statement screen** — only a trial balance.
 - Deleting a supplier invoice **deletes its posted journal entries** rather than reversing them.
 

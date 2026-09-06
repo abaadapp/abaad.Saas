@@ -41,7 +41,11 @@ The success toast says "تمت استعادة البيانات بنجاح" in ev
 
 ---
 
-## R-02 · Sales never post to the ledger; the trial balance is meaningless — **P0**
+## R-02 · Sales never post to the ledger; the trial balance is meaningless — ~~**P0**~~ **CLOSED**
+
+> **[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]** Sales, COGS, VAT, cash receipts and operating
+> expenses all post. This whole risk is closed; the text below is kept as the record of what was
+> found. **Do not implement its rule — a second posting path double-books revenue.**
 
 **Scenario.** Merchant trades for a quarter and opens الحسابات → ميزان المراجعة.
 
@@ -59,6 +63,9 @@ data one.
 (or a nightly aggregate) — see F-04 for the entries — or (b) hide the الحسابات section behind a
 feature flag until it is wired, so the product never shows books it cannot fill. Do not ship it
 half-wired.
+
+**[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]** Option (a) is what the code already does: sales, COGS
+and VAT post at checkout via `Books::recordSale()`. Neither this rule nor option (b) is outstanding.
 
 ---
 
@@ -166,8 +173,8 @@ Shortage creates an `Expense`; **overage creates nothing** (a comment explains t
 income would inflate profit — correct reasoning, incomplete conclusion).
 
 **Risk.** Inventory value increases by 2 × cost with no offsetting entry anywhere. Repeated over
-many counts, inventory valuation drifts upward and the merchant's balance sheet (once F-04 lands)
-will not balance against reality.
+many counts, inventory valuation drifts upward and the merchant's balance sheet **(F-04 has
+landed — the balance sheet is live)** will not balance against reality. This risk is current.
 
 **Recommended rule.** Book both directions to a single `inventory_variance` account:
 shortage `Dr Variance / Cr Inventory`, overage `Dr Inventory / Cr Variance`. Net variance is then a

@@ -16,7 +16,8 @@ Held down by three absolute holes and three dead screens:
 - **No invoice void**, though the state exists and is filterable.
 - **No branch transfer**, though multi-branch is a priced feature.
 - WhatsApp, SEO and (largely) Website save settings nothing reads.
-- No VAT return, no P&L, no shift review screen, no stock valuation report.
+- ~~No VAT return~~ (**[CORRECTED 2026-09-07 — see the STATUS note at F-11 in `04-module-audit.md`.]** it exists), no P&L, no shift review
+  screen, no stock valuation report.
 - No units of measure / fractional quantities → an entire retail category is excluded.
 
 **58** reflects a product that does most things and cannot do three things that a shop does daily.
@@ -36,8 +37,9 @@ Where logic was written, it is unusually careful:
 - Shift variance frozen at close so later edits cannot restate history.
 
 Held down by:
-- **Sales, COGS, cash receipts and expenses never post to the ledger** — the largest logical gap in
-  the system (F-04).
+- ~~**Sales, COGS, cash receipts and expenses never post to the ledger**~~ — **[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]**
+  Sales and COGS post at checkout; cash movements and expenses post via `Books::recordMovement()`
+  since v6.119. This is no longer a gap.
 - Shrinkage has **three** different treatments depending on which screen was used.
 - Stocktake overage increases assets with no counterpart.
 - Purchase receiving cannot represent a partial delivery and has no financial effect.

@@ -35,7 +35,7 @@ seats. Visual design is deliberately out of scope — it is strong, consistent, 
 |---|---|
 | **No P&L.** The dashboard shows revenue, expenses and a computed profit from `transactions` + `expenses`; the accounting section shows a trial balance with no revenue in it. Two answers, neither complete. | High |
 | **No shift review screen.** Cannot see yesterday's variances or a per-cashier variance trend — the entire point of running shifts. | High |
-| **No VAT return.** Collects VAT, cannot declare it. | High |
+| ~~**No VAT return.**~~ **[CORRECTED 2026-09-07 — see the STATUS note at F-11 in `04-module-audit.md`.]** It exists. | — |
 | **No returns view.** Cannot answer "what came back this month and why". | High |
 | **No onboarding checklist.** Lands on an empty dashboard with 14 sections. | High |
 | **No supplier balance.** "What do I owe Al-Nahda?" needs a different screen and manual reading. | Medium |
@@ -103,9 +103,9 @@ that separate a real POS from a web form, and they are all present.
 
 | Issue | Impact |
 |---|---|
-| **Sales, COGS, expenses and cash receipts never post to the ledger.** The trial balance is technically balanced and materially empty. | Critical |
+| ~~**Sales, COGS, expenses and cash receipts never post to the ledger.**~~ **[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]** They all post. | — |
 | **No P&L, no balance sheet** — only a trial balance. | Critical |
-| **No VAT return.** | Critical |
+| ~~**No VAT return.**~~ **[CORRECTED 2026-09-07 — see the STATUS note at F-11 in `04-module-audit.md`.]** It exists. | — |
 | Deleting a supplier invoice **erases** posted journal entries rather than reversing them. | High |
 | Two disconnected financial worlds (`transactions` vs `journal_entries`) with no reconciliation between them and no explanation in the UI of which is which. | High |
 | Sidebar calls one section "المالية" and another sits inside Settings/Finance as "الحسابات" — the distinction is invisible to a user. | High |
@@ -187,7 +187,7 @@ no per-product drill-down screen); no "who changed this setting" surfaced next t
 
 ### Actions that should be automated
 
-- Sales → ledger posting (F-04).
+- ~~Sales → ledger posting (F-04).~~ **[CORRECTED 2026-09-07 — see the STATUS note at F-04 in `04-module-audit.md`.]** Already automatic.
 - Reorder suggestion → draft PO.
 - Low-stock email → link that opens a pre-filled PO.
 - Supplier invoice → pre-filled from the goods received.
@@ -199,7 +199,8 @@ no per-product drill-down screen); no "who changed this setting" surfaced next t
 ## Priority summary for this document
 
 **P0 (UX-level, launch-blocking):** no return path for a cashier · no void · no manual discount ·
-stocktake unusable at scale · dead marketing toggles · no VAT return · no shift review.
+stocktake unusable at scale · dead marketing toggles · ~~no VAT return~~ (**[CORRECTED 2026-09-07 — see the STATUS note at F-11 in `04-module-audit.md`.]**) ·
+no shift review.
 
 **P1:** onboarding checklist · branch transfer · partial receiving · supplier balances · merge the
 two adjustment screens · terminology cleanup · restore safety.

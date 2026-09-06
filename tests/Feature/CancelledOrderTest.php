@@ -9,6 +9,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\ReportData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -92,7 +93,17 @@ class CancelledOrderTest extends TestCase
         $this->order('مكتمل', 105, 5);
         $this->order('ملغي', 945, 45);
 
-        $this->assertSame(5.0, round((float) Demo::vatReport('year')['output_vat'], 3));
+        /*
+         * ويُسأل المصدرُ الحيّ لا دالّةً على جنبٍ تجيب السؤالَ نفسه.
+         *
+         * كانت `Demo::vatReport` تُسأل هنا وحدها ولا يقرؤها شيءٌ آخر، وتقدّر
+         * ضريبةَ المدخلات بضرب أوامر الشراء في النسبة بينما الشاشةُ تقرأ
+         * `tax` من سندات الموردين. جوابان لسؤالٍ واحد، وأحدُهما تخمين —
+         * فحُذفت، وبقي الحارسُ على ما يُعرض فعلًا.
+         */
+        $vat = ReportData::vat($this->business->id, ['range' => 'year']);
+
+        $this->assertSame(5.0, round((float) $vat['summary']['output'], 3));
     }
 
     public function test_the_dashboard_cards_leave_it_out_too(): void

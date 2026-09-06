@@ -294,6 +294,7 @@ export default function SettingsIndex() {
         vat_enabled: on('vat_enabled'),
         vat_rate: get('vat_rate', '5'),
         vat_number: get('vat_number'),
+        vat_filed_through: get('vat_filed_through'),
         tax_mode: get('tax_mode', 'exclusive'),
 
         currency: get('currency', 'OMR'),
@@ -1322,6 +1323,18 @@ export default function SettingsIndex() {
                                     </Field>
                                     <Field label="الرقم الضريبي (TRN)" error={form.errors.vat_number}>
                                         <Input dir="ltr" value={form.data.vat_number} onChange={(e) => form.setData('vat_number', e.target.value)} placeholder="OM1100XXXXXX" />
+                                    </Field>
+                                    <Field
+                                        label="آخر إقرار قُدِّم"
+                                        hint="آخرُ يومٍ دخل في إقرارٍ سلّمتَه. وفواتيرُ ما قبله لا تُلغى — الورقةُ سُلِّمت، وتصحيحُها بإشعارِ دائنٍ في فترةٍ مفتوحة. اتركه فارغًا إن لم تقدّم بعد."
+                                        error={form.errors.vat_filed_through}
+                                    >
+                                        <Input
+                                            type="date"
+                                            dir="ltr"
+                                            value={form.data.vat_filed_through}
+                                            onChange={(e) => form.setData('vat_filed_through', e.target.value)}
+                                        />
                                     </Field>
                                     <Field label="طريقة الاحتساب" error={form.errors.tax_mode}>
                                         <Select

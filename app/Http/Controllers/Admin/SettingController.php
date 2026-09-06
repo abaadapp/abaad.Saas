@@ -51,6 +51,16 @@ class SettingController extends Controller
         'vat_enabled' => ['sometimes', 'boolean'],
         'vat_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
         'vat_number' => ['sometimes', 'nullable', 'string', 'max:30'],
+        /*
+         * آخرُ يومٍ قُدِّم إقرارُه — وما قبله لا تُلغى فواتيرُه.
+         *
+         * ويُقبل تاريخًا لا فترة: «الربع الأوّل» يعني شهورًا مختلفة عند من
+         * تبدأ سنتُه المالية في يوليو. والفراغُ يعني «لم أقدّم بعد».
+         *
+         * ولا يُقبل تاريخُ الغد وما بعده: قفلُ فترةٍ لم تنتهِ يمنع إلغاءَ
+         * فاتورةِ اليوم — وهي أولى ما يُلغى.
+         */
+        'vat_filed_through' => ['sometimes', 'nullable', 'date', 'before_or_equal:today'],
         'tax_mode' => ['sometimes', 'nullable', 'in:inclusive,exclusive'],
 
         // العملة وعرضها
@@ -124,9 +134,11 @@ class SettingController extends Controller
             'inv_prefix.not_regex' => __('لا تصلح الرموز % و _ و \\ في بادئة رقم الفاتورة'),
             'currency.size' => __('رمز العملة ثلاثة أحرف مثل OMR'),
             'vat_rate.max' => __('نسبة الضريبة مئة بالمئة على الأكثر'),
+            'vat_filed_through.before_or_equal' => __('لا يُقفل إقرارُ فترةٍ لم تنتهِ بعد — اختر تاريخًا مضى.'),
         ], [
             'shop_name' => __('اسم المتجر'),
             'vat_rate' => __('نسبة الضريبة'),
+            'vat_filed_through' => __('آخر إقرار قُدِّم'),
             'loyalty_earn_rate' => __('نقاط الولاء لكل ريال'),
         ]);
 

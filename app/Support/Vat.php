@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Product;
 use App\Models\Setting;
+use Illuminate\Support\Carbon;
 
 /**
  * ضريبة القيمة المضافة: هل هي مفعّلة أصلًا، وبأي نسبة.
@@ -23,6 +24,33 @@ class Vat
         $value = Setting::where('business_id', $businessId)->where('key', 'vat_enabled')->value('value');
 
         return $value === null || $value === '1';
+    }
+
+    /**
+     * آخرُ يومٍ دخل في إقرارٍ قُدِّم — وما قبله مُقفل.
+     *
+     * الإقرارُ ورقةٌ تُسلَّم إلى جهةٍ حكوميّة. وما بعد تسليمها لا يُعاد كتابتُه
+     * في الدفتر بلا مستندٍ يقول إنّ شيئًا تغيّر — وإلّا فتح التاجر تقريرَه
+     * بعد شهرين فوجد رقمًا غير الذي قدّمه، ولا شيء يقول لماذا.
+     *
+     * ويُحفظ يومًا لا فترة: «الربع الأوّل» يعني شهورًا مختلفة عند من تبدأ
+     * سنتُه المالية في يوليو، و«٣١ مارس» لا تحتمل قراءتين.
+     *
+     * وفارغةً يعني أنّ التاجر لم يقدّم شيئًا بعد — فلا يُقفل عليه شيء.
+     */
+    public static function filedThrough(int $businessId): ?Carbon
+    {
+        $value = Setting::where('business_id', $businessId)->where('key', 'vat_filed_through')->value('value');
+
+        return $value ? Carbon::parse($value)->endOfDay() : null;
+    }
+
+    /** هل يقع هذا التاريخ في فترةٍ قُدِّم إقرارُها؟ */
+    public static function isFiled(int $businessId, mixed $date): bool
+    {
+        $filed = self::filedThrough($businessId);
+
+        return $filed !== null && $date !== null && Carbon::parse($date)->lte($filed);
     }
 
     /**

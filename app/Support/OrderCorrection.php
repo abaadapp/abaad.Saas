@@ -115,6 +115,36 @@ class OrderCorrection
      * المخزون الذي يُغلق عند البيع.
      */
     /**
+     * فاتورةٌ دخلت إقرارًا قُدِّم لا تُلغى — والإقرارُ ورقةٌ سُلِّمت.
+     *
+     * الإلغاءُ يُخرج البيعةَ من `Order::scopeSold`، ومنها يُبنى الإقرار. فإلغاءُ
+     * فاتورةٍ من ربعٍ قُدِّم **يُعيد كتابة رقمٍ سُلِّم إلى جهةٍ حكوميّة**: يفتح
+     * التاجر تقريرَه بعد شهرين فيجد غيرَ ما قدّم، ولا شيء يقول لماذا.
+     *
+     * والحدُّ يقوله التاجر بنفسه في إعدادات الضريبة («آخرُ يومٍ قُدِّم إقرارُه»)
+     * ولا يُخمَّن: الرُّبعُ يبدأ عند من تبدأ سنتُه المالية في يوليو غيرَ حيث
+     * يبدأ عند سواه. ومن لم يقدّم شيئًا لا يُقفل عليه شيء.
+     *
+     * وما بعد القفل يُصحَّح بمستنده — إشعارُ دائنٍ في فترةٍ مفتوحة — لا
+     * بمحو الأصل.
+     *
+     * @throws RuntimeException برسالةٍ تُعرض كما هي
+     */
+    private static function assertNotFiled(Order $order): void
+    {
+        $soldOn = $order->ordered_at ?? $order->created_at;
+
+        if (! \App\Support\Vat::isFiled((int) $order->business_id, $soldOn)) {
+            return;
+        }
+
+        throw new RuntimeException(__(
+            'هذه الفاتورة داخلةٌ في إقرارٍ ضريبيّ قُدِّم في :date — لا تُلغى. وتصحيحُها يكون بإشعارِ دائنٍ في فترةٍ مفتوحة.',
+            ['date' => optional(\App\Support\Vat::filedThrough((int) $order->business_id))->format('Y-m-d')],
+        ));
+    }
+
+    /**
      * فاتورةٌ ضريبيّة تُقفل بانتهاء يومها.
      *
      * كانت تُعدَّل **بلا حدٍّ زمنيّ**: يفتحها الكاشير بعد ثلاثة أسابيع فيُنقص
@@ -569,6 +599,8 @@ class OrderCorrection
      */
     public static function cancel(Order $order, ?string $reason = null): void
     {
+        self::assertNotFiled($order);
+
         if ($order->status === \App\Support\OrderStatus::CANCELLED) {
             return;
         }

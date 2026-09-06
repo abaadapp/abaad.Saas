@@ -4301,5 +4301,9 @@
     "انتهى يومُ هذه الفاتورة فأُقفلت — التصحيح في يوم البيع وحده. وما بعده إلغاءٌ كامل لا تعديلٌ في الأصل.": "This invoice's day has ended and it is closed — corrections are allowed on the day of sale only. After that, a full cancellation, not an edit to the original.",
     "تصحيحُ فاتورةٍ صدرت يحتاج صلاحية — اطلبها من صاحب المتجر، أو اطلب منه التصحيح.": "Correcting an issued invoice requires permission — ask the shop owner for it, or ask them to make the correction.",
     "تصحيح فاتورة مكتملة": "Correct a completed invoice",
-    "هذه نسخةٌ بصيغةٍ قديمة لا تحمل كلّ جداول المتجر — استعادتُها تمحو ما لا تُعيد. خُذ نسخةً جديدة واستعِد منها.": "This backup is in an older format that does not carry every table of the shop — restoring it erases what it cannot bring back. Take a fresh backup and restore from that."
+    "هذه نسخةٌ بصيغةٍ قديمة لا تحمل كلّ جداول المتجر — استعادتُها تمحو ما لا تُعيد. خُذ نسخةً جديدة واستعِد منها.": "This backup is in an older format that does not carry every table of the shop — restoring it erases what it cannot bring back. Take a fresh backup and restore from that.",
+    "هذه الفاتورة داخلةٌ في إقرارٍ ضريبيّ قُدِّم في :date — لا تُلغى. وتصحيحُها يكون بإشعارِ دائنٍ في فترةٍ مفتوحة.": "This invoice falls inside a VAT return filed on :date — it cannot be cancelled. Correct it with a credit note in an open period.",
+    "لا يُقفل إقرارُ فترةٍ لم تنتهِ بعد — اختر تاريخًا مضى.": "A period that has not ended cannot be filed — choose a date in the past.",
+    "آخر إقرار قُدِّم": "Last filed return",
+    "آخرُ يومٍ دخل في إقرارٍ سلّمتَه. وفواتيرُ ما قبله لا تُلغى — الورقةُ سُلِّمت، وتصحيحُها بإشعارِ دائنٍ في فترةٍ مفتوحة. اتركه فارغًا إن لم تقدّم بعد.": "The last day covered by a return you have filed. Invoices before it cannot be cancelled — the paper is filed, and corrections go through a credit note in an open period. Leave empty if you have not filed yet."
 }

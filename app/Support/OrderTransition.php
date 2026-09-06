@@ -57,7 +57,17 @@ final class OrderTransition
              * سليمًا في الشاشة والخلل تحتها.
              */
             if ($to === OrderStatus::CANCELLED) {
-                OrderCorrection::cancel($fresh);
+                /*
+                 * والرفضُ يُقال للمنادي لا يُرمى في وجهه.
+                 *
+                 * هذه الدالّة تردّ رسالةً تُعرض في الشاشة، فاستثناءٌ يخرج
+                 * منها يصير خمسمئةً على موظّفٍ ضغط زرًّا مشروعًا.
+                 */
+                try {
+                    OrderCorrection::cancel($fresh);
+                } catch (\RuntimeException $e) {
+                    return $e->getMessage();
+                }
             } else {
                 $fresh->update(['status' => $to]);
             }

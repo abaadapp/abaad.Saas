@@ -1486,58 +1486,6 @@ class Demo
         ];
     }
 
-    /** تقرير ضريبة القيمة المضافة لفترة (month|quarter|year) */
-    public static function vatReport(string $period = 'quarter'): array
-    {
-        $bid = self::bid();
-        $rate = self::vatSettings()['rate'];
-        $now = now();
-        [$start, $end, $label] = match ($period) {
-            'month' => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth(), __('هذا الشهر')],
-            'year' => [$now->copy()->startOfYear(), $now->copy()->endOfYear(), __('هذه السنة')],
-            default => [$now->copy()->startOfQuarter(), $now->copy()->endOfQuarter(), __('هذا الربع')],
-        };
-
-        $orders = Order::where('business_id', $bid)->sold()
-            ->whereBetween('ordered_at', [$start, $end]);
-        $outputVat = (float) (clone $orders)->sum('tax');
-        $taxableSales = (float) (clone $orders)->sum('subtotal');
-        $grossSales = (float) (clone $orders)->sum('total');
-
-        // ضريبة المدخلات من المشتريات المستلمة (تُعامل قيمة الأمر كصافٍ قبل الضريبة)
-        $purchases = PurchaseOrder::where('business_id', $bid)->where('status', 'مستلم')
-            ->whereBetween('received_at', [$start, $end]);
-        $inputBase = (float) (clone $purchases)->sum('total');
-        $inputVat = round($inputBase * $rate / 100, 3);
-
-        // تفصيل شهري ضمن الفترة
-        $months = [];
-        $cursor = $start->copy();
-        while ($cursor <= $end) {
-            $mStart = $cursor->copy()->startOfMonth();
-            $mEnd = $cursor->copy()->endOfMonth();
-            $mOut = (float) Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$mStart, $mEnd])->sum('tax');
-            $mSales = (float) Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$mStart, $mEnd])->sum('subtotal');
-            $months[] = ['label' => $cursor->translatedFormat('F Y'), 'taxable' => round($mSales, 3), 'vat' => round($mOut, 3)];
-            $cursor->addMonthNoOverflow();
-        }
-
-        return [
-            'label' => $label,
-            'period' => $period,
-            'rate' => $rate,
-            'taxable_sales' => round($taxableSales, 3),
-            'gross_sales' => round($grossSales, 3),
-            'output_vat' => round($outputVat, 3),
-            'input_base' => round($inputBase, 3),
-            'input_vat' => $inputVat,
-            'net_vat' => round($outputVat - $inputVat, 3),
-            'months' => $months,
-            'from' => $start->format('Y-m-d'),
-            'to' => $end->format('Y-m-d'),
-        ];
-    }
-
     /* ============================ الربحية ============================ */
 
     /**

@@ -60,11 +60,29 @@ class SearchController extends Controller
          * كان يكتب رقمها فيُقال له «لا نتائج»، ويظنّ أنّ بيعَه ضاع من
          * النظام. والمعلَّق وحده يخرج: سلّةٌ لم تُبَع بعد ولا رقم لها يُبحث.
          */
-        $orders = $user->allows('orders') ? Order::where('business_id', $bid)->where('is_held', false)
+        /*
+         * والفاتورة يجدها الكاشير أيضًا — إلى بابه هو.
+         *
+         * صلاحية `orders` تفتح شاشة الطلبات في لوحة النشاط، والكاشير لا
+         * يملكها: له `pos` وحدها. فكان البحث يحجب الفواتير عنه كلَّها —
+         * وهو أكثرُ من يكتب رقم فاتورةٍ في يومه: عند الإرجاع، وعند إعادة
+         * الطباعة، وحين يسأل زبونٌ عن بيعةٍ سابقة. فيُقال له «لا نتائج»
+         * عن فاتورةٍ يفتحها بنفسه من «الإيصالات» في نقطة البيع.
+         *
+         * ولا يُمنح بذلك ما لا يملك: الوجهة تتبع صلاحيته — شاشةُ الطلبات
+         * لمن يملكها، وتفصيلُ الفاتورة في نقطة البيع لمن لا يملك غيرها.
+         * فلا يُعرض بابٌ لا يُفتح، ولا يُحجب بابٌ يملكه صاحبُه.
+         */
+        $seesOrders = $user->allows('orders');
+        $atRegister = $seesOrders || $user->allows('pos');
+
+        $orders = $atRegister ? Order::where('business_id', $bid)->where('is_held', false)
             ->where(fn ($w) => $w->where('number', $op, $like)->orWhere('customer_name', $op, $like))
             ->orderByDesc('id')->limit(5)->get()->map(fn ($o) => [
                 'label' => $o->number, 'meta' => $o->customer_name ?? __('عميل نقدي'),
-                'url' => route('admin.orders.show', $o->number),
+                'url' => $seesOrders
+                    ? route('admin.orders.show', $o->number)
+                    : route('pos.order-details', $o->number),
             ]) : collect();
 
         $customers = $user->allows('customers') ? Customer::where('business_id', $bid)

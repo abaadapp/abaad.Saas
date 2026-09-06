@@ -9,6 +9,7 @@ import {
     Receipt,
     Search,
     ShoppingCart,
+    X,
     Truck,
     Users,
 } from 'lucide-react';
@@ -83,6 +84,19 @@ export default function UnifiedSearch({ url, pages }: { url: string; pages: Page
     const [groups, setGroups] = useState<SearchGroup[]>([]);
     const [loading, setLoading] = useState(false);
     const [open, setOpen] = useState(false);
+
+    /*
+     * وعلى الهاتف يُفتح الصندوق بأيقونة.
+     *
+     * كان الصندوق `hidden sm:block` — يغيب كلَّه تحت ٦٤٠ بكسل ولا يخلفه شيء:
+     * لا أيقونةَ ولا مدخل. والهاتفُ هو ما يقف عليه الكاشير وما يحمله صاحبُ
+     * المحلّ وهو خارجه، فكان أكثرُ من يحتاج «ابحث عن رقم فاتورة» محرومًا منه.
+     *
+     * ولا يُعرض الصندوق مفتوحًا في تلك العرض: الترويسة تحمل زرَّ القائمة
+     * وأربعةَ أزرارٍ إلى جانبه، فحقلٌ بينها يخرج عن الصفّ. فأيقونةٌ تُضغط،
+     * ويتمدّد الصندوق فوق الترويسة كلِّها، ويُغلق بزرٍّ يعيدها كما كانت.
+     */
+    const [onPhone, setOnPhone] = useState(false);
     const [active, setActive] = useState(0);
     const boxRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -218,13 +232,23 @@ export default function UnifiedSearch({ url, pages }: { url: string; pages: Page
     const go = (row: Row) => {
         setOpen(false);
         setQ('');
+        setOnPhone(false);
         inputRef.current?.blur();
         router.visit(row.url);
+    };
+
+    /** إغلاق شريط الجوّال — ويردّ الترويسة إلى أزرارها */
+    const shut = () => {
+        setOnPhone(false);
+        setOpen(false);
+        setQ('');
+        inputRef.current?.blur();
     };
 
     const onKey = (e: React.KeyboardEvent) => {
         if (e.key === 'Escape') {
             setOpen(false);
+            setOnPhone(false);
             inputRef.current?.blur();
             return;
         }
@@ -254,7 +278,33 @@ export default function UnifiedSearch({ url, pages }: { url: string; pages: Page
     const showList = rows.length > 0 || typing;
 
     return (
-        <div ref={boxRef} className="relative hidden w-full max-w-sm sm:block">
+        <>
+            {/* الهاتف: أيقونةٌ تفتح الصندوق — وتغيب فوق ٦٤٠ بكسل حيث الصندوق ظاهرٌ أصلًا */}
+            {! onPhone && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        setOnPhone(true);
+                        // الحقل يُركَّز بعد رسمه لا قبله
+                        setTimeout(() => inputRef.current?.focus(), 0);
+                    }}
+                    className="inline-flex size-10 shrink-0 items-center justify-center rounded-[10px] text-[#6b7280] transition-colors hover:bg-[#f5f5f4] sm:hidden"
+                >
+                    <Search className="size-5" />
+                    <span className="sr-only">{t('ابحث')}</span>
+                </button>
+            )}
+
+            <div
+                className={cn(
+                    'w-full max-w-sm',
+                    onPhone
+                        // يتمدّد فوق الترويسة كلِّها: الأزرار تحته لا تزاحمه
+                        ? 'absolute inset-0 z-40 flex items-center gap-2 bg-white px-4 sm:static sm:z-auto sm:block sm:px-0'
+                        : 'hidden sm:block',
+                )}
+            >
+        <div ref={boxRef} className="relative w-full">
             <Search className="pointer-events-none absolute top-1/2 size-4 -translate-y-1/2 text-[#9ca3af] start-3" />
             <Input
                 ref={inputRef}
@@ -320,5 +370,19 @@ export default function UnifiedSearch({ url, pages }: { url: string; pages: Page
                 </div>
             )}
         </div>
+
+                {/* ولا يبقى الصندوق ممتدًّا بلا مخرج */}
+                {onPhone && (
+                    <button
+                        type="button"
+                        onClick={shut}
+                        className="inline-flex size-10 shrink-0 items-center justify-center rounded-[10px] text-[#6b7280] transition-colors hover:bg-[#f5f5f4] sm:hidden"
+                    >
+                        <X className="size-5" />
+                        <span className="sr-only">{t('إغلاق البحث')}</span>
+                    </button>
+                )}
+            </div>
+        </>
     );
 }

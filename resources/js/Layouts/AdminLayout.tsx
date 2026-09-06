@@ -37,7 +37,7 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
     // رسائل الجلسة القادمة من الخادم تُعرض كـtoast
     useEffect(() => {
         if (!flash?.toast) return;
-        const { msg, type, undo } = flash.toast;
+        const { msg, type, undo, confirm } = flash.toast;
         const fn =
             type === 'success' ? toast.success
             : type === 'danger' ? toast.error
@@ -51,13 +51,28 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
          * بالدعم. والزرّ يردّ الخطأ في مكانه، ومهلته أطول من المعتاد لأن من
          * يكتشف الخطأ يحتاج ثانيةً ليقرأ ما حدث قبل أن يتصرّف.
          */
-        fn(msg, undo ? {
-            duration: 12000,
-            action: {
+        /*
+         * وزرُّ «على أيّ حال» بعد تحذيرٍ يحتاج إقرارًا.
+         *
+         * تحذيرٌ يقول «أكّد» ولا زرَّ معه يجعل التاجر يعيد الضغط على الفعل
+         * نفسه فيقرأ التحذير نفسه — بابٌ يُعرض ولا يُفتح. والإقرارُ يُرسَل
+         * مع الطلب لا يُحفَظ في الجلسة: فعلٌ ثانٍ يُسأل عنه من جديد.
+         */
+        const action =
+            confirm ? {
+                label: confirm.label ?? t('امضِ على أيّ حال'),
+                onClick: () => router.delete(confirm.url, {
+                    data: { ack_stock: true },
+                    preserveScroll: true,
+                }),
+            }
+            : undo ? {
                 label: t('تراجع'),
                 onClick: () => router.post(undo.url, {}, { preserveScroll: true }),
-            },
-        } : undefined);
+            }
+            : null;
+
+        fn(msg, action ? { duration: 12000, action } : undefined);
     }, [flash?.toast, t]);
 
     return (

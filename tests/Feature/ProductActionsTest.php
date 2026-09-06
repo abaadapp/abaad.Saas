@@ -163,7 +163,7 @@ class ProductActionsTest extends TestCase
     {
         $p = $this->product();
 
-        $this->post(route('admin.products.bulk'), ['action' => 'delete', 'ids' => [$p->id]]);
+        $this->post(route('admin.products.bulk'), ['action' => 'delete', 'ids' => [$p->id], 'ack_stock' => true]);
 
         $this->assertNull(Product::find($p->id));
         $this->assertTrue(Product::withTrashed()->find($p->id)->trashed());

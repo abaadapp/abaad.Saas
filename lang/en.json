@@ -4305,5 +4305,12 @@
     "هذه الفاتورة داخلةٌ في إقرارٍ ضريبيّ قُدِّم في :date — لا تُلغى. وتصحيحُها يكون بإشعارِ دائنٍ في فترةٍ مفتوحة.": "This invoice falls inside a VAT return filed on :date — it cannot be cancelled. Correct it with a credit note in an open period.",
     "لا يُقفل إقرارُ فترةٍ لم تنتهِ بعد — اختر تاريخًا مضى.": "A period that has not ended cannot be filed — choose a date in the past.",
     "آخر إقرار قُدِّم": "Last filed return",
-    "آخرُ يومٍ دخل في إقرارٍ سلّمتَه. وفواتيرُ ما قبله لا تُلغى — الورقةُ سُلِّمت، وتصحيحُها بإشعارِ دائنٍ في فترةٍ مفتوحة. اتركه فارغًا إن لم تقدّم بعد.": "The last day covered by a return you have filed. Invoices before it cannot be cancelled — the paper is filed, and corrections go through a credit note in an open period. Leave empty if you have not filed yet."
+    "آخرُ يومٍ دخل في إقرارٍ سلّمتَه. وفواتيرُ ما قبله لا تُلغى — الورقةُ سُلِّمت، وتصحيحُها بإشعارِ دائنٍ في فترةٍ مفتوحة. اتركه فارغًا إن لم تقدّم بعد.": "The last day covered by a return you have filed. Invoices before it cannot be cancelled — the paper is filed, and corrections go through a credit note in an open period. Leave empty if you have not filed yet.",
+    "«:name» في مخزونك منه :qty — وحذفُه يُنقص قيمةَ المخزون بمقداره. عطّله ليختفي من نقطة البيع ويبقى رصيدُه وتاريخه، أو أكّد الحذف.": "You have :qty of “:name” in stock — deleting it lowers your inventory value by that much. Deactivate it to hide it from the register while keeping its stock and history, or confirm the deletion.",
+    "حُذف :n، وبقي :names — فيها بضاعة. عطّلها، أو أعِد الحذف مؤكَّدًا.": "Deleted :n; :names remain — they hold stock. Deactivate them, or repeat the deletion with confirmation.",
+    "احذفه على أيّ حال": "Delete it anyway",
+    "امضِ على أيّ حال": "Go ahead anyway",
+    "فُعّل «:name» — عاد يظهر في نقطة البيع.": "“:name” is active again — it shows at the register.",
+    "عُطّل «:name» — اختفى من نقطة البيع، ورصيدُه وتاريخه كما هما.": "“:name” is deactivated — hidden from the register, with its stock and history untouched.",
+    "تعطيل المنتج": "Deactivate product"
 }

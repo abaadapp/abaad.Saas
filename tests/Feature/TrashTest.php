@@ -177,7 +177,7 @@ class TrashTest extends TestCase
         ]);
         $p = $this->product();
 
-        $this->actingAs($staff)->delete(route('admin.products.destroy', $p->id));
+        $this->actingAs($staff)->delete(route('admin.products.destroy', $p->id), ['ack_stock' => true]);
 
         $this->actingAs($this->owner);
         $data = TrashController::panelData();

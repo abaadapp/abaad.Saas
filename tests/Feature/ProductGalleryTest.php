@@ -474,7 +474,7 @@ class ProductGalleryTest extends TestCase
         $paths = ProductImages::files($this->product->fresh());
         $this->assertCount(3, $paths);
 
-        $this->delete(route('admin.products.destroy', $this->product->id));
+        $this->delete(route('admin.products.destroy', $this->product->id), ['ack_stock' => true]);
         $this->delete(route('admin.products.purge', $this->product->id))
             ->assertSessionHasNoErrors();
 

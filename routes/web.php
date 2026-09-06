@@ -384,6 +384,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/products/bulk', [ProductController::class, 'bulk'])->name('products.bulk');
     Route::get('/products/{id}', [PageController::class, 'productsShow'])->name('products.show');
     Route::post('/products/{id}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
+    // تعطيلُ صنفٍ وتفعيلُه — البديلُ الذي يقصده أكثرُ من يضغط «حذف»
+    Route::post('/products/{id}/toggle', [ProductController::class, 'toggle'])->name('products.toggle');
     Route::patch('/products/{id}/quick', [ProductController::class, 'quickUpdate'])->name('products.quick');
     Route::get('/products/{id}/edit', [PageController::class, 'productsEdit'])->name('products.edit');
     Route::put('/products/{id}', [ProductController::class, 'update'])->name('products.update');

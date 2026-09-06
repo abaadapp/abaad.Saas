@@ -263,7 +263,7 @@ class ProductSectionAuditTest extends TestCase
     {
         $p = $this->product();
 
-        $this->post(route('admin.products.bulk'), ['action' => 'delete', 'ids' => [$p->id]]);
+        $this->post(route('admin.products.bulk'), ['action' => 'delete', 'ids' => [$p->id], 'ack_stock' => true]);
 
         $this->assertDatabaseHas('activity_logs', [
             'action' => 'deleted', 'subject_type' => 'product', 'subject_id' => $p->id,

@@ -445,6 +445,7 @@ class ProductController extends Controller
 
         $query = Product::where('business_id', $this->bid())->whereIn('id', $data['ids']);
         $count = 0;
+        $skipped = [];
 
         switch ($data['action']) {
             case 'activate':
@@ -471,6 +472,19 @@ class ProductController extends Controller
             case 'delete':
                 foreach ($query->get() as $p) {
                     /*
+                     * والحارسُ هنا كما هو هناك.
+                     *
+                     * بابان لفعلٍ واحد، وحارسٌ على أحدهما لا يحرس شيئًا: من
+                     * رُدّ عن الحذف المفرد يحدّد الصنف نفسه ويضغط «حذف» في
+                     * الإجراء الجماعي فيمرّ.
+                     */
+                    if ($this->stockWarning($p, $request->boolean('ack_stock'))) {
+                        $skipped[] = $p->name;
+
+                        continue;
+                    }
+
+                    /*
                      * ويُقيَّد لكلّ صنفٍ باسمه ونوعه — كما يفعل الحذف المفرد.
                      *
                      * شاشة المحذوفات تقرأ «من حذف» من سجلّ النشاط بالنوع
@@ -489,12 +503,94 @@ class ProductController extends Controller
 
         Activity::log('updated', "إجراء جماعي ({$data['action']}) على {$count} منتجًا");
 
+        /*
+         * وما لم يُحذف يُقال باسمه لا يُبتلع في العدد.
+         *
+         * «طُبّق على ٣ منتجات» بعد تحديد خمسةٍ تجعل التاجر يظنّ الاثنين حُذفا
+         * — ويكتشف بقاءهما بعد أسبوع فيظنّ العطب في النظام.
+         */
+        if ($skipped) {
+            return back()->with('toast', [
+                'msg' => __('حُذف :n، وبقي :names — فيها بضاعة. عطّلها، أو أعِد الحذف مؤكَّدًا.', [
+                    'n' => $count,
+                    'names' => implode('، ', array_slice($skipped, 0, 3)).(count($skipped) > 3 ? '…' : ''),
+                ]),
+                'type' => 'warning',
+            ]);
+        }
+
         return back()->with('toast', ['msg' => __('طُبّق على :n منتجًا', ['n' => $count]), 'type' => 'success']);
     }
 
-    public function destroy($id)
+    /**
+     * صنفٌ في يده بضاعةٌ يُحذف بعد أن يُقال العدد — لا صامتًا.
+     *
+     * كان الحذف يمرّ بلا سؤالٍ عن الرصيد: يضغط التاجر «حذف» على صنفٍ في
+     * مستودعه مئتا قطعة، فتختفي البطاقة من كلّ شاشة وتنقص قيمةُ المخزون
+     * مئتين × التكلفة في لحظة — بلا سببٍ يُقرأ في أيّ تقرير. وتبقى صفوفُ
+     * `branch_stocks` تحمل المئتين إلى حين المحو النهائيّ: لا قيدَ مفتاحٍ
+     * يأخذها معه، ولا شاشةَ تعرضها.
+     *
+     * **ولا يُمنع.** ستٌّ وعشرون ومئةٌ من أصل مئةٍ وسبعةٍ وعشرين صنفًا على
+     * الإنتاج فيها بضاعة — فمنعٌ مطلق يعني ألّا يُحذف شيءٌ أبدًا، وصنفٌ كُتب
+     * بالخطأ يبقى إلى الأبد. والعطبُ في الصمت لا في الفعل.
+     *
+     * فيُردّ الطلبُ الأوّل قائلًا العدد، ولا يُقبل إلا طلبٌ يحمل إقرارًا صريحًا
+     * (`ack_stock`). والحارسُ في الخادم لا في نافذة التأكيد وحدها: النافذةُ
+     * تُتخطّى بطلبٍ مباشر، فيعود الصمت.
+     *
+     * وأكثرُ من يضغط «حذف» يريد «عطّله»: موسمٌ انتهى، أو مورّدٌ توقّف — لا محوَ
+     * رصيدٍ ولا تاريخ. فالردُّ يقول البديل، والبديلُ ضغطةٌ من الصفّ نفسه.
+     *
+     * @return string|null نصُّ الردّ — أو null إن جاز المضيّ
+     */
+    private function stockWarning(Product $product, bool $acknowledged): ?string
+    {
+        $onHand = (int) $product->quantity;
+
+        if ($onHand === 0 || $acknowledged) {
+            return null;
+        }
+
+        return __('«:name» في مخزونك منه :qty — وحذفُه يُنقص قيمةَ المخزون بمقداره. عطّله ليختفي من نقطة البيع ويبقى رصيدُه وتاريخه، أو أكّد الحذف.', [
+            'name' => $product->name,
+            'qty' => $onHand,
+        ]);
+    }
+
+    public function toggle($id)
     {
         $product = Product::where('business_id', $this->bid())->findOrFail($id);
+        $product->update(['active' => ! $product->active]);
+
+        Activity::log('updated', ($product->active ? 'فعّل المنتج: ' : 'عطّل المنتج: ').$product->name, [
+            'subject_id' => $product->id, 'subject_type' => 'product',
+        ]);
+
+        return back()->with('toast', [
+            'msg' => $product->active
+                ? __('فُعّل «:name» — عاد يظهر في نقطة البيع.', ['name' => $product->name])
+                : __('عُطّل «:name» — اختفى من نقطة البيع، ورصيدُه وتاريخه كما هما.', ['name' => $product->name]),
+            'type' => 'success',
+        ]);
+    }
+
+    public function destroy(Request $request, $id)
+    {
+        $product = Product::where('business_id', $this->bid())->findOrFail($id);
+
+        if ($warning = $this->stockWarning($product, $request->boolean('ack_stock'))) {
+            return back()->with('toast', [
+                'msg' => $warning,
+                'type' => 'warning',
+                // وزرُّ التأكيد يحمل الإقرار معه، فلا يُسأل التاجر مرّتين
+                'confirm' => [
+                    'url' => route('admin.products.destroy', $product->id),
+                    'label' => __('احذفه على أيّ حال'),
+                ],
+            ]);
+        }
+
         Activity::log('deleted', 'حذف المنتج: '.$product->name, ['subject_id' => $product->id, 'subject_type' => 'product']);
         $product->delete();
 

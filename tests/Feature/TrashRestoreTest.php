@@ -70,7 +70,7 @@ class TrashRestoreTest extends TestCase
         $product = $this->product();
 
         $this->actingAs($this->owner)
-            ->delete(route('admin.products.destroy', $product->id))
+            ->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true])
             ->assertRedirect();
 
         $this->assertNull(Product::find($product->id));
@@ -80,7 +80,7 @@ class TrashRestoreTest extends TestCase
     public function test_a_deleted_product_can_be_brought_back(): void
     {
         $product = $this->product();
-        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id));
+        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true]);
 
         $this->actingAs($this->owner)
             ->post(route('admin.products.restore', $product->id))
@@ -110,7 +110,7 @@ class TrashRestoreTest extends TestCase
     {
         $product = $this->product();
         $expense = $this->expense();
-        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id));
+        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true]);
         $this->actingAs($this->owner)->delete(route('admin.expenses.destroy', $expense->id));
 
         $this->actingAs($this->owner)
@@ -135,7 +135,7 @@ class TrashRestoreTest extends TestCase
     public function test_the_neighbour_cannot_restore_my_rows(): void
     {
         $mine = $this->product();
-        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $mine->id));
+        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $mine->id), ['ack_stock' => true]);
 
         $intruder = User::create([
             'business_id' => $this->neighbour->id, 'name' => 'جار', 'email' => 'jar@abaad.om',
@@ -167,14 +167,14 @@ class TrashRestoreTest extends TestCase
          * حذف بالخطأ لا يعرف بوجودها — فيردّ الخطأ من الإشعار نفسه.
          */
         $this->actingAs($this->owner)
-            ->delete(route('admin.products.destroy', $product->id))
+            ->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true])
             ->assertSessionHas('toast', fn ($toast) => ($toast['undo']['url'] ?? null) === route('admin.products.restore', $product->id));
     }
 
     public function test_the_undo_button_follows_the_section_that_deleted(): void
     {
         $product = $this->product();
-        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id));
+        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true]);
 
         /*
          * موظفٌ يملك «المنتجات» ولا يملك «الإعدادات» يردّ ما حذف.
@@ -315,7 +315,7 @@ class TrashRestoreTest extends TestCase
     public function test_a_deleted_product_still_names_itself_in_past_sales(): void
     {
         $product = $this->product();
-        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id));
+        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true]);
 
         // تقارير المبيعات تصل الأصناف بالمنتج بـleftJoin؛ المحو النهائي كان
         // يُفرغ اسمه من كل بيعةٍ ماضية

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import {
     Copy,
     Eye,
+    EyeOff,
     FileDown,
     FileSpreadsheet,
     FileText,
@@ -115,6 +116,17 @@ export default function ProductsIndex() {
             edit={{ routeName: 'admin.products.edit', href: route('admin.products.edit', p.id) }}
             destroy={{ url: route('admin.products.destroy', p.id), message: 'حذف المنتج؟' }}
             extra={[
+                {
+                    /*
+                     * التعطيلُ في متناول اليد كالحذف.
+                     *
+                     * وكان يحتاج فتحَ نموذج التعديل، والحذفُ ضغطةً واحدة —
+                     * فالأسهلُ هو الأخطر. وأكثرُ من يضغط «حذف» يريد هذا.
+                     */
+                    label: p.active ? 'تعطيل المنتج' : 'تفعيل المنتج',
+                    icon: p.active ? <EyeOff className="size-4" /> : <Eye className="size-4" />,
+                    onSelect: () => router.post(route('admin.products.toggle', p.id)),
+                },
                 {
                     label: 'نسخ المنتج',
                     icon: <Copy className="size-4" />,

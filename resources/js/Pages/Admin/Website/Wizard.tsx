@@ -54,7 +54,7 @@ interface Props {
     };
     available: Record<string, boolean>;
     counts: { products: number; categories: number; reviews: number };
-    domain: { mode: string; domain: string; subdomain: string | null };
+    domain: { domain: string; subdomain: string | null };
 }
 
 const GOAL_ICONS: Record<string, typeof ShoppingBag> = {

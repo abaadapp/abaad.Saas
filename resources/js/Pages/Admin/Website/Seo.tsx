@@ -23,7 +23,7 @@ interface Props extends SiteShell {
         status: string;
         seo: { title: string; description: string; image: string };
     }[];
-    domain: { mode: string; domain: string; subdomain: string | null };
+    domain: { domain: string; subdomain: string | null };
 }
 
 /**

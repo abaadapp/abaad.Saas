@@ -105,14 +105,19 @@ trait Concerns
         return Demo::websiteUrl();
     }
 
-    /** حال النطاق كما تقرؤها لوحة الموقع — بلا تكرار شاشة الدومين */
+    /**
+     * حال النطاق كما تقرؤها لوحة الموقع — بلا تكرار شاشة النطاق.
+     *
+     * ولا `mode` معها: كانت تُرسَل ولا تقرؤها شاشة. `DomainOptions::mode`
+     * تقرأ `site_domain_mode`، ومن يكتبه هجرةٌ واحدة لا شاشةٌ حيّة —
+     * فالقيمةُ تُحسب وتُرسل وتُهمل في الطرف الآخر.
+     */
     protected function domainState(): array
     {
         $site = MarketingSettings::group($this->bid(), 'website');
         $subdomain = trim((string) $site['site_subdomain']);
 
         return [
-            'mode' => DomainOptions::mode($site),
             'domain' => trim((string) $site['site_domain']),
             'subdomain' => $subdomain !== '' ? DomainOptions::host($subdomain) : null,
         ];

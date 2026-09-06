@@ -34,7 +34,7 @@ import { STATE_TONE, STATE_LABEL, type SiteShell } from './shell';
 interface Props extends SiteShell {
     pages: { id: number; title: string; slug: string; status: string; is_home: boolean; sections: number }[];
     summary: { pages: number; sections: number; hidden: number; versions: number };
-    domain: { mode: string; domain: string; subdomain: string | null };
+    domain: { domain: string; subdomain: string | null };
     template_label: string;
     versions: {
         id: number;

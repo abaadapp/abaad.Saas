@@ -7,6 +7,7 @@ use App\Models\ExpenseType;
 use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Transaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -298,6 +299,308 @@ class Books
     public static function payingAccount(?string $method): string
     {
         return in_array(trim((string) $method), ['تحويل', 'بطاقة', 'شيك', 'بنك'], true) ? 'bank' : 'cash';
+    }
+
+    /* ============================ الحركة المالية ============================ */
+
+    /** الصندوق والبنك — الوجهتان الوحيدتان اللتان يُسأل عنهما التاجر */
+    public const CASH = 'cash';
+
+    public const BANK = 'bank';
+
+    /**
+     * وصفة كل حركة يدوية.
+     *
+     * `debit` و`credit` إمّا مفتاحٌ نظاميّ في الشجرة، وإمّا `'@side'` أي
+     * «الجهة التي اختارها التاجر» — الصندوق أو البنك — وإمّا `'@expense'` أي
+     * «حساب نوع المصروف» (انظر `expenseAccount`).
+     *
+     * `direction` اتّجاه المال كما يُكتب في `transactions.type`: «دخل» لِما
+     * يدخل، و«مصروف» لِما يخرج، و«تحويل» لِما لا يدخل ولا يخرج بل ينتقل.
+     *
+     * `asks` سؤال الشاشة عن الجهة — و`null` يعني أنّ النوع نفسه يحدّدها.
+     *
+     * والتاجر لا يُسأل عن مدينٍ ودائن. يُسأل: **ماذا حدث؟** — والوصفة تترجم
+     * جوابه إلى قيدٍ صحيح، فلا يعرف عن الحسابات شيئًا ويصحّ دفترُه.
+     */
+    public const MOVEMENTS = [
+        'expense' => [
+            'label' => 'مصروف',
+            'hint' => 'مالٌ خرج مقابل شيءٍ للمتجر — إيجار، كهرباء، صيانة',
+            'direction' => 'مصروف',
+            'asks' => 'من أين خرج المال؟',
+            'debit' => '@expense',
+            'credit' => '@side',
+        ],
+        'other_income' => [
+            'label' => 'دخل آخر (غير المبيعات)',
+            'hint' => 'مالٌ دخل من غير البيع — تعويض، إيجار محلٍّ تملكه، فرق عملة',
+            'direction' => 'دخل',
+            'asks' => 'أين دخل المال؟',
+            'debit' => '@side',
+            'credit' => 'other_income',
+        ],
+        'owner_deposit' => [
+            'label' => 'إيداع نقدي من المالك',
+            'hint' => 'مالٌ وضعه المالك في المتجر — ليس بيعًا ولا دخلًا',
+            'direction' => 'دخل',
+            'asks' => 'أين وُضع المال؟',
+            'debit' => '@side',
+            'credit' => 'capital',
+        ],
+        'owner_withdrawal' => [
+            'label' => 'سحب مال للمالك',
+            'hint' => 'مالٌ أخذه المالك لنفسه — لا يُنقص ربح المتجر',
+            'direction' => 'مصروف',
+            'asks' => 'من أين أُخذ المال؟',
+            'debit' => 'drawings',
+            'credit' => '@side',
+        ],
+        'cash_to_bank' => [
+            'label' => 'تحويل من الصندوق إلى البنك',
+            'hint' => 'المال ينتقل ولا يدخل ولا يخرج — لا يمسّ الربح',
+            'direction' => 'تحويل',
+            'asks' => null,
+            'debit' => 'bank',
+            'credit' => 'cash',
+        ],
+        'bank_to_cash' => [
+            'label' => 'تحويل من البنك إلى الصندوق',
+            'hint' => 'المال ينتقل ولا يدخل ولا يخرج — لا يمسّ الربح',
+            'direction' => 'تحويل',
+            'asks' => null,
+            'debit' => 'cash',
+            'credit' => 'bank',
+        ],
+    ];
+
+    /**
+     * حركاتٌ يكتبها النظام عن مستنداتها — لا تُسجَّل من شاشة المالية.
+     *
+     * البيع تكتبه نقطة البيع. وتسجيلُه يدويًّا يعني الحدث مرّتين في الدفتر.
+     */
+    public const AUTOMATIC = [
+        Transaction::SALE => 'مبيعات',
+    ];
+
+    /**
+     * الوسيلة تتبع الجهة.
+     *
+     * كشف المطابقة البنكيّ يُبنى من الوسيلة لا من الحساب، فحركةٌ بنكية
+     * بوسيلة «نقدي» تغيب عنه — ويظهر سطر البنك بلا ما يقابله فيُقرأ فرقًا.
+     */
+    public static function methodFor(string $side): string
+    {
+        return $side === self::BANK ? 'تحويل بنكي' : 'نقدي';
+    }
+
+    /** الوسيلة → الجهة: ما ليس نقدًا مرّ بالبنك */
+    public static function sideForMethod(?string $method): string
+    {
+        return ($method ?? 'نقدي') === 'نقدي' ? self::CASH : self::BANK;
+    }
+
+    /** أنواع الحركة التي تُسجَّل يدويًّا — والبيع ليس منها */
+    public static function manualKinds(): array
+    {
+        return array_keys(self::MOVEMENTS);
+    }
+
+    /**
+     * ما تعرضه الشاشة: النوع وسؤاله وشرحه — بلا حسابٍ ولا طرف.
+     *
+     * الوصفة المحاسبية تبقى هنا ولا تُرسل: الواجهة التي تعرف الحسابات تُغري
+     * بأن تختار منها، وأوّلُ اختيارٍ يكسر القاعدة التي بُني عليها هذا الباب.
+     *
+     * @return list<array{value: string, label: string, hint: string, asks: string|null, direction: string}>
+     */
+    public static function movementOptions(): array
+    {
+        $out = [];
+
+        foreach (self::MOVEMENTS as $key => $m) {
+            $out[] = [
+                'value' => $key,
+                'label' => __($m['label']),
+                'hint' => __($m['hint']),
+                'asks' => $m['asks'] ? __($m['asks']) : null,
+                'direction' => $m['direction'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /** اسم النوع كما يُقرأ — والقديم الذي لا نوع له يبقى «حركة» */
+    public static function label(?string $kind): string
+    {
+        if (isset(self::MOVEMENTS[$kind])) {
+            return __(self::MOVEMENTS[$kind]['label']);
+        }
+
+        return isset(self::AUTOMATIC[$kind]) ? __(self::AUTOMATIC[$kind]) : __('حركة');
+    }
+
+    /**
+     * حركةٌ يدوية من شاشة المالية: صفٌّ في الحركة وقيدٌ في الدفتر معًا.
+     *
+     * وكان الباب القديم يكتب الصفّ ولا يكتب القيد — أي حركةً ماليةً لا
+     * يقابلها شيءٌ في دفتر الأستاذ، وهو بالضبط ما تمنعه المحاسبة المزدوجة.
+     *
+     * `$data`: kind, amount, side (cash|bank)، واختياريًّا description،
+     * occurred_at، branch_id، client_uuid، expense_type.
+     *
+     * @throws \RuntimeException إن اختلّ الترحيل — والمعاملة كلّها تسقط معه
+     */
+    public static function recordMovement(int $businessId, array $data, ?int $userId = null, ?string $employee = null): Transaction
+    {
+        $kind = $data['kind'] ?? '';
+        $recipe = self::MOVEMENTS[$kind] ?? throw new \RuntimeException(__('نوع حركةٍ غير معروف'));
+
+        $amount = round((float) ($data['amount'] ?? 0), 3);
+
+        // حركةٌ بصفر لا تعني شيئًا: صفٌّ في الدفتر لا يغيّر رصيدًا ولا يُصحَّح
+        if ($amount < 0.001) {
+            throw new \RuntimeException(__('المبلغ يجب أن يكون أكبر من صفر'));
+        }
+
+        $side = $recipe['asks'] === null ? null : ($data['side'] ?? self::CASH);
+        $occurredAt = ! empty($data['occurred_at']) ? Carbon::parse($data['occurred_at']) : now();
+
+        // الوسيلة تتبع الجهة، والتحويل يُنسب إلى البنك: هو طرفُه المُطابَق
+        $method = self::methodFor($side ?? self::BANK);
+
+        $description = trim((string) ($data['description'] ?? '')) ?: self::label($kind);
+
+        /*
+         * والشجرة تُستدرك قبل الترحيل.
+         *
+         * متجرٌ بُنيت شجرتُه قبل أن يدخلها «مسحوبات المالك» لا حساب له، فأوّلُ
+         * سحبٍ يُسجّله صاحبُه يُردّ بـ«حسابٌ غير موجود في الشجرة: drawings» —
+         * رسالةٌ لا يفهمها من سجّل، وليست خطأه.
+         */
+        Ledger::ensureSystemAccounts($businessId);
+
+        return DB::transaction(function () use (
+            $businessId, $kind, $recipe, $amount, $side, $occurredAt, $method,
+            $description, $data, $userId, $employee
+        ) {
+            /*
+             * التكرار يُمنع بالمعرّف الذي يولّده المتصفّح.
+             *
+             * ضغطتان على «حفظ»، أو إعادةُ إرسالٍ بعد انقطاع، تكتبان الحركة
+             * مرّتين — والمال لا يخرج مرّتين. والفحص داخل المعاملة لا قبلها:
+             * طلبان متزامنان يمرّان من فحصٍ خارجها كلاهما.
+             */
+            if (! empty($data['client_uuid'])) {
+                $existing = Transaction::where('business_id', $businessId)
+                    ->where('client_uuid', $data['client_uuid'])->lockForUpdate()->first();
+
+                if ($existing) {
+                    return $existing;
+                }
+            }
+
+            $transaction = Transaction::create([
+                'business_id' => $businessId,
+                'branch_id' => $data['branch_id'] ?? null,
+                'reference' => Transaction::nextReference($businessId),
+                'client_uuid' => $data['client_uuid'] ?? null,
+                'description' => $description,
+                'method' => $method,
+                'type' => $recipe['direction'],
+                'kind' => $kind,
+                'amount' => $amount,
+                'employee_name' => $employee,
+                'occurred_at' => $occurredAt,
+            ]);
+
+            /*
+             * المصروف اليدويّ يظهر في شاشة المصروفات أيضًا.
+             *
+             * وإلا صار للمصروف بابان: ما يُسجَّل هنا لا يُرى هناك، والتاجر
+             * يقرأ «مصروفات الشهر» ناقصةً بلا أن يقول شيءٌ لماذا.
+             */
+            if ($kind === 'expense') {
+                self::expenseFor($transaction, $data, $employee);
+            }
+
+            self::postMovement($transaction, $recipe, $side, $userId, $data['expense_type'] ?? null);
+
+            return $transaction->fresh();
+        });
+    }
+
+    /**
+     * ترحيل حركةٍ إلى دفتر الأستاذ وربطُها بقيدها.
+     *
+     * ولا تُرحَّل مرّتين: الحركة التي تحمل قيدًا مرحَّلًا تُترك كما هي.
+     */
+    private static function postMovement(
+        Transaction $transaction,
+        array $recipe,
+        ?string $side,
+        ?int $userId,
+        ?string $expenseType = null,
+    ): void {
+        if ($transaction->journal_entry_id && JournalEntry::whereKey($transaction->journal_entry_id)->exists()) {
+            return;
+        }
+
+        /*
+         * و«@expense» يُحلّ بـ`expenseAccount` نفسها التي تقرأ منها شاشةُ
+         * المصروفات: المصروفُ الواحد لا يقع في حسابين لأنّه دخل من بابين.
+         */
+        $resolve = fn (string $key) => match ($key) {
+            '@side' => $side ?? self::CASH,
+            '@expense' => self::expenseAccount($expenseType, $transaction->business_id),
+            default => $key,
+        };
+
+        $entry = Ledger::post(
+            $transaction->business_id,
+            $transaction->description,
+            [
+                ['account' => $resolve($recipe['debit']), 'debit' => (float) $transaction->amount],
+                ['account' => $resolve($recipe['credit']), 'credit' => (float) $transaction->amount],
+            ],
+            Carbon::parse($transaction->occurred_at),
+            mb_substr(self::label($transaction->kind), 0, 30),
+            $transaction->branch_id,
+            $userId,
+            $transaction,
+        );
+
+        $transaction->update(['journal_entry_id' => $entry->id]);
+    }
+
+    /** صفّ المصروف المقابل لحركةٍ من شاشة المالية */
+    private static function expenseFor(Transaction $transaction, array $data, ?string $employee): void
+    {
+        Expense::create([
+            'business_id' => $transaction->business_id,
+            'reference' => self::nextExpenseReference($transaction->business_id),
+            'type' => trim((string) ($data['expense_type'] ?? '')) ?: __('مصروف عام'),
+            'description' => $transaction->description,
+            'amount' => $transaction->amount,
+            'method' => $transaction->method,
+            'employee_name' => $employee,
+            'spent_at' => Carbon::parse($transaction->occurred_at)->toDateString(),
+            'transaction_id' => $transaction->id,
+        ]);
+    }
+
+    /**
+     * مرجعُ المصروف التالي — بالصيغة نفسها التي تكتبها شاشة المصروفات.
+     *
+     * وصفٌّ بلا مرجعٍ يظهر هناك بخانةٍ فارغة، فيُقرأ ناقصًا ولا يُبحث عنه.
+     */
+    private static function nextExpenseReference(int $businessId): string
+    {
+        $last = Expense::where('business_id', $businessId)->whereNotNull('reference')
+            ->orderByDesc('id')->value('reference');
+
+        return 'EXP-'.(($last && preg_match('/(\d+)$/', $last, $m)) ? ((int) $m[1] + 1) : 1001);
     }
 
     /* ------------------------------ أدوات ------------------------------ */

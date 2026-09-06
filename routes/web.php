@@ -723,6 +723,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // كشف الحساب البنكي والمطابقة — بلا معرّف: الحساب الرئيسيّ
     Route::get('/finance/statement/{id?}', [BankAccountController::class, 'statement'])->name('finance.statement');
 
+    // الحركة المالية — ما دخل وما خرج، وبابُ تسجيل ما لا مستند له
+    Route::get('/finance/transactions', [FinanceController::class, 'index'])->name('finance.transactions');
+
+    // الملخّص المالي والمبالغ المستحقة — قراءتان لا تكتبان شيئًا
+    Route::get('/finance/summary', [\App\Http\Controllers\Admin\Finance\OverviewController::class, 'summary'])->name('finance.summary');
+    Route::get('/finance/dues', [\App\Http\Controllers\Admin\Finance\OverviewController::class, 'dues'])->name('finance.dues');
+
     // شجرة الحسابات
     Route::get('/finance/chart', [ChartController::class, 'index'])->name('finance.chart');
     Route::post('/finance/chart', [ChartController::class, 'store'])->name('finance.chart.store');

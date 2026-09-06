@@ -125,16 +125,24 @@ export const PRODUCT_TABS: SectionTab[] = [
 ];
 
 /*
- * قسم المالية — دفترٌ واحد يُقرأ من خمسة أبواب.
+ * قسم المالية — دفترٌ واحد يُقرأ من أبوابه.
  *
- * كشف الحساب البنكي ليس تبويبًا: هو صفحةُ حسابٍ بعينه تُفتح من قائمة
+ * والترتيب يتبع ما يُسأل عنه أوّلًا: «كم عندي وكم ربحت؟» ثمّ «ماذا جرى؟»
+ * ثمّ «ماذا عليّ؟» — وبعدها أدواتُ المحاسب. وكانت الشاشة الأولى «الحسابات
+ * البنكية»، فيفتح التاجرُ الماليةَ ليعرف أين ماله فيقع على قائمة حساباتٍ
+ * لا على جوابه.
+ *
+ * وكشف الحساب البنكي ليس تبويبًا: هو صفحةُ حسابٍ بعينه تُفتح من قائمة
  * الحسابات، فبقاؤه تبويبًا كان يعني بابًا يقود إلى «أوّل حساب» أيًّا كان.
  */
 export const FINANCE_TABS: SectionTab[] = [
+    { label: 'الملخّص المالي', routeName: 'admin.finance.summary', section: 'finance' },
+    { label: 'الحركة المالية', routeName: 'admin.finance.transactions', section: 'finance' },
+    { label: 'المبالغ المستحقة', routeName: 'admin.finance.dues', section: 'finance' },
+    { label: 'مصاريف شهرية', routeName: 'admin.expenses.index', section: 'expenses' },
     { label: 'الحسابات البنكية', routeName: 'admin.finance.index', section: 'finance' },
     { label: 'القيود اليومية', routeName: 'admin.finance.journal', section: 'finance' },
     { label: 'شجرة الحسابات', routeName: 'admin.finance.chart', section: 'finance' },
-    { label: 'مصاريف شهرية', routeName: 'admin.expenses.index', section: 'expenses' },
     { label: 'أصول ثابتة', routeName: 'admin.finance.assets', section: 'finance' },
 ];
 

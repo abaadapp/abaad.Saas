@@ -122,6 +122,49 @@ class LedgerTest extends TestCase
         ]);
     }
 
+    public function test_an_account_is_not_on_both_sides_of_one_entry(): void
+    {
+        /*
+         * «مدين الصندوق ٥٠ / دائن الصندوق ٥٠» متوازنٌ تمامًا ولا يعني شيئًا:
+         * لا يتحرّك به رصيد، ويتضخّم به مجموعا ميزان المراجعة بمالٍ لم يوجد.
+         * وهو أوّل ما يقع فيه من يملأ نموذج القيد اليدويّ فيختار الحساب نفسه
+         * في السطرين سهوًا.
+         */
+        $this->expectException(RuntimeException::class);
+
+        Ledger::post($this->business->id, 'قيدٌ يُلغي نفسه', [
+            ['account' => 'cash', 'debit' => 50],
+            ['account' => 'cash', 'credit' => 50],
+        ]);
+    }
+
+    public function test_two_lines_on_the_same_side_of_one_account_are_fine(): void
+    {
+        // «دائن الصندوق ٣٠ إيجارًا ودائن الصندوق ٢٠ كهرباءً» بيانٌ أوضح من ضمّهما
+        $entry = Ledger::post($this->business->id, 'مصروفان من الدرج', [
+            ['account' => 'rent', 'debit' => 30],
+            ['account' => 'utilities', 'debit' => 20],
+            ['account' => 'cash', 'credit' => 30],
+            ['account' => 'cash', 'credit' => 20],
+        ]);
+
+        $this->assertSame(4, $entry->lines()->count());
+    }
+
+    public function test_the_owner_has_a_drawings_account(): void
+    {
+        /*
+         * سحبُ المالك ليس مصروفًا: المصروف يُنقص الربح، والسحب يُنقص حقّه في
+         * المتجر. وبلا حسابٍ له يسقط في «مصروفات أخرى» فيُقرأ متجرٌ رابح خاسرًا.
+         */
+        Ledger::ensureSystemAccounts($this->business->id);
+
+        $account = Ledger::account($this->business->id, 'drawings');
+
+        $this->assertNotNull($account, 'لا حساب لمسحوبات المالك');
+        $this->assertSame('debit', $account->normal_side);
+    }
+
     public function test_a_single_line_is_not_an_entry(): void
     {
         $this->expectException(RuntimeException::class);

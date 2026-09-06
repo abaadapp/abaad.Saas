@@ -70,7 +70,8 @@ class EmployeeController extends Controller
              * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
              */
             'permissions' => ['required_with:manual_permissions', 'array', 'min:1'],
-            'permissions.*' => ['string', Rule::in(Permissions::sections())],
+            // والأفعالُ تُمنح من القائمة نفسها — انظر Permissions::ACTIONS
+            'permissions.*' => ['string', Rule::in([...Permissions::sections(), ...Permissions::actions()])],
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
@@ -224,14 +225,26 @@ class EmployeeController extends Controller
 
         $granted = $manual !== null
             ? $manual
-            : array_values(array_filter(Permissions::sections(), fn ($s) => Permissions::allows($title->role, $s)));
+            : [
+                ...array_filter(Permissions::sections(), fn ($s) => Permissions::allows($title->role, $s)),
+                ...array_filter(Permissions::actions(), fn ($a) => Permissions::allowsAction($title->role, $a)),
+            ];
 
-        $beyond = array_values(array_filter($granted, fn ($s) => ! $actor->allows($s)));
+        /*
+         * والفعلُ يُسأل عنه بـ`may` لا بـ`allows`.
+         *
+         * `allows` تقرأ الأقسام، واسمُ الفعل ليس منها فتردّ «لا» دائمًا —
+         * فيُمنع من يملك التصحيح من منحه لموظّفه.
+         */
+        $beyond = array_values(array_filter(
+            $granted,
+            fn ($s) => Permissions::isAction($s) ? ! $actor->may($s) : ! $actor->allows($s),
+        ));
 
         if ($beyond) {
             abort(403, __('لا تملك صلاحية منح: :sections', [
                 'sections' => implode('، ', array_map(
-                    fn ($s) => Permissions::sectionLabels()[$s] ?? $s,
+                    fn ($s) => Permissions::sectionLabels()[$s] ?? Permissions::actionLabels()[$s] ?? $s,
                     $beyond,
                 )),
             ]));
@@ -331,6 +344,7 @@ class EmployeeController extends Controller
                     ->values()->all(),
             ],
             'sections' => Permissions::sectionLabels(),
+            'actions' => Permissions::actionLabels(),
             'branches' => Demo::branches(),
             'branchOptions' => Branch::where('business_id', Demo::bid())
                 ->orderBy('id')->get(['id', 'name'])
@@ -385,7 +399,8 @@ class EmployeeController extends Controller
              * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
              */
             'permissions' => ['required_with:manual_permissions', 'array', 'min:1'],
-            'permissions.*' => ['string', Rule::in(Permissions::sections())],
+            // والأفعالُ تُمنح من القائمة نفسها — انظر Permissions::ACTIONS
+            'permissions.*' => ['string', Rule::in([...Permissions::sections(), ...Permissions::actions()])],
         ], [
             'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),

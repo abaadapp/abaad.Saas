@@ -23,6 +23,59 @@ class Permissions
         'delivery' => ['dashboard', 'orders', 'pos', 'preparation'],
     ];
 
+    /**
+     * أفعالٌ تُمنح بأسمائها — لا أقسامٌ تُفتح.
+     *
+     * القسمُ يقول «أيّ شاشةٍ تفتح»، والفعلُ يقول «كم من الضرر تستطيع». وهما
+     * سؤالان مختلفان: من فتحتَ له نقطةَ البيع ليبيع لم تفتح له بالضرورة أن
+     * يعيد كتابة فاتورةٍ صدرت.
+     *
+     * ويعيشان في العمود نفسه (`users.permissions`) ولا يختلطان: اسمُ الفعل
+     * فيه نقطة واسمُ القسم لا نقطة فيه، فلا يُقرأ فعلٌ قسمًا ولا العكس —
+     * انظر `entersPanel` و`isAction`.
+     *
+     * وواحدٌ اليوم. وقرارُ صلاحيات الأفعال كاملةً (خصمٌ، وإلغاءٌ، وحذفٌ
+     * نهائيّ) ما زال معلَّقًا، وهذه لا تستبقه: تُغلق ثغرةً قائمة وتترك
+     * القائمة تنمو حين يُقرَّر شكلُها.
+     */
+    public const ACTIONS = [
+        'order.edit' => 'تصحيح فاتورة مكتملة',
+    ];
+
+    /**
+     * من يفعلها بدوره وحده — ومن سواه يُمنحها بالاسم.
+     *
+     * وليست `'*'`: صاحبُ النشاط ومديرُ الفرع يملكان كلَّ قسم، ولا يعني ذلك
+     * أنّ كلّ فعلٍ يقع تحت `*` صامتًا يوم يُضاف. فما لا يُذكر هنا لا يُمنح.
+     */
+    public const ACTION_ROLES = [
+        'order.edit' => ['admin', 'manager'],
+    ];
+
+    /** هل هذا المفتاح فعلٌ لا قسم؟ — النقطة تفصلهما */
+    public static function isAction(string $key): bool
+    {
+        return str_contains($key, '.');
+    }
+
+    /** @return list<string> */
+    public static function actions(): array
+    {
+        return array_keys(self::ACTIONS);
+    }
+
+    /** أسماء الأفعال كما تُعرض للتاجر */
+    public static function actionLabels(): array
+    {
+        return collect(self::ACTIONS)->map(fn ($label) => __($label))->all();
+    }
+
+    /** هل يفعلها هذا الدور بلا منحٍ باسمه؟ */
+    public static function allowsAction(?string $role, string $action): bool
+    {
+        return in_array($role, self::ACTION_ROLES[$action] ?? [], true);
+    }
+
     /** كل الأقسام التي تظهر في لوحة النشاط — مصدر واحد تقرأ منه الواجهة */
     public const SECTIONS = [
         'dashboard', 'customers', 'products', 'orders', 'marketing',
@@ -92,7 +145,15 @@ class Permissions
             return true;
         }
 
+        /*
+         * والفعلُ لا يفتح بابًا.
+         *
+         * `permissions` تحمل الأقسام والأفعال معًا، ومن مُنح «تصحيح فاتورة»
+         * وحدَه لم يُمنح شاشةً واحدة — فلو عُدَّ منحُه دخولًا لوقف عند أوّل
+         * قسمٍ بـ٤٠٣، أو رأى لوحةً فارغة لا شيء فيها له.
+         */
         return collect($user->permissions ?? [])
+            ->filter(fn ($s) => in_array($s, self::SECTIONS, true))
             ->reject(fn ($s) => in_array($s, self::OUTSIDE_PANEL, true))
             ->isNotEmpty();
     }

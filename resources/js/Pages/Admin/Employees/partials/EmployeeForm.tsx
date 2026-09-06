@@ -56,6 +56,8 @@ interface Props {
     defaultBranch?: string | null;
     /** مفتاح القسم → اسمه المعروض */
     sections?: Record<string, string>;
+    /** أفعالٌ تُمنح بأسمائها — لا أقسامٌ تُفتح. انظر Permissions::ACTIONS */
+    actions?: Record<string, string>;
     /** لا يُعدّل المدير صلاحيات حسابه */
     canEditPermissions?: boolean;
 }
@@ -106,6 +108,7 @@ export default function EmployeeForm({
     employee,
     defaultBranch,
     sections,
+    actions,
     canEditPermissions = true,
 }: Props) {
     const t = useTranslate();
@@ -522,6 +525,41 @@ export default function EmployeeForm({
                                     </label>
                                 ))}
                             </div>
+
+                            {actions && Object.keys(actions).length > 0 && (
+                                <div className="space-y-2.5 border-t border-[#e5e7eb] pt-4">
+                                    {/*
+                                        والفعلُ يُعرض تحت عنوانه لا مع الأقسام: «المبيعات»
+                                        تفتح شاشة، و«تصحيح فاتورة مكتملة» تعيد كتابة مستندٍ
+                                        ضريبيّ — وصفٌّ واحد يجمعهما يجعل الثانية تُعلَّم سهوًا.
+                                    */}
+                                    <p className="text-[13px] font-semibold text-[#374151]">
+                                        {t('أفعالٌ حسّاسة')}
+                                    </p>
+                                    <p className="text-[12px] text-[#6b7280]">
+                                        {t('تُمنح بالاسم — ولا يفتح أيٌّ منها شاشةً بنفسه.')}
+                                    </p>
+
+                                    {Object.entries(actions).map(([key, label]) => (
+                                        <label
+                                            key={key}
+                                            className={cn(
+                                                'flex items-center gap-2.5',
+                                                canCustomize ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
+                                            )}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={form.data.permissions.includes(key)}
+                                                onChange={() => togglePermission(key)}
+                                                disabled={! canCustomize}
+                                                className="size-4 rounded border-[#d1d5db] accent-[#111]"
+                                            />
+                                            <span className="text-sm text-[#374151]">{label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
 
                             {form.errors.permissions && (
                                 <p className="text-[12px] text-[#b91c1c]">{form.errors.permissions}</p>

@@ -231,6 +231,7 @@ class PageController extends Controller
             'jobTitles' => self::jobTitles(),
             'currentBranchName' => Demo::currentBranchName(),
             'sections' => Permissions::sectionLabels(),
+            'actions' => Permissions::actionLabels(),
         ]);
     }
 

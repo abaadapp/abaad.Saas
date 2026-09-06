@@ -152,6 +152,28 @@ class User extends Authenticatable
         return \App\Support\Permissions::allows($this->role, $section);
     }
 
+    /**
+     * هل يفعل هذا الفعل؟ — سؤالٌ عن الضرر لا عن الشاشة.
+     *
+     * و`allows` لا تصلح له: من مُنح «نقطة البيع» ليبيع لم يُمنح بها أن يعيد
+     * كتابة فاتورةٍ صدرت. والمفتاحان في العمود نفسه ولا يختلطان — انظر
+     * `Permissions::isAction`.
+     */
+    public function may(string $action): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $manual = $this->permissions;
+
+        if (is_array($manual)) {
+            return in_array($action, $manual, true);
+        }
+
+        return \App\Support\Permissions::allowsAction($this->role, $action);
+    }
+
     /** هل صلاحياته مخصَّصة يدويًّا أم موروثة من الدور؟ */
     public function hasManualPermissions(): bool
     {

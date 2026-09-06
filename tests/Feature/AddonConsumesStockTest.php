@@ -361,7 +361,12 @@ class AddonConsumesStockTest extends TestCase
     {
         $order = Order::latest('id')->firstOrFail();
 
-        return $this->actingAs($this->cashier)->put(
+        /*
+         * والمصحِّح هنا المالك لا الكاشير: تصحيحُ فاتورةٍ صدرت صار يحتاج
+         * صلاحية `order.edit` (انظر AnIssuedInvoiceClosesTest). وما يُحرَس
+         * في هذا الملفّ المخزونُ لا البوّابة.
+         */
+        return $this->actingAs($this->owner)->put(
             route('pos.orders.items.addons.update', [$order->number, $itemId, $addonId]),
             ['quantity' => $qty, 'reason' => 'الزبون غيّر رأيه'],
         );

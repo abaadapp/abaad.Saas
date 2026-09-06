@@ -13,10 +13,11 @@ interface Props {
     branchOptions: { value: number; label: string }[];
     jobTitles: string[];
     sections: Record<string, string>;
+    actions: Record<string, string>;
 }
 
 export default function EmployeeEdit() {
-    const { employee, branches, branchOptions, jobTitles, sections, auth } =
+    const { employee, branches, branchOptions, jobTitles, sections, actions, auth } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -38,6 +39,7 @@ export default function EmployeeEdit() {
                 branchOptions={branchOptions}
                 jobTitles={jobTitles}
                 sections={sections}
+                actions={actions}
                 canEditPermissions={auth?.user.id !== employee.id}
             />
         </AdminLayout>

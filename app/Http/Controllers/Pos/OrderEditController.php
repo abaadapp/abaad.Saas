@@ -20,6 +20,35 @@ class OrderEditController extends Controller
 {
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
+    /**
+     * من يُصحّح فاتورةً صدرت — ومن سواه يُردّ.
+     *
+     * كان البابُ مفتوحًا لكلّ من يفتح نقطة البيع: الكاشير في يومه الأوّل
+     * يعيد كتابة فاتورةٍ ضريبيّة بلا أن يمرّ بأحد. وصلاحيةُ «نقطة البيع»
+     * تقول «يبيع» لا «يُعيد كتابة ما بيع».
+     *
+     * والسؤال عن **الحساب الداخل** لا عن الاسم المختار في الترويسة: مبدِّلُ
+     * الكاشير في نقطة البيع لافتةٌ لا بوّابة — يضبطه أيُّ واقفٍ على الجهاز
+     * بلا كلمة سرّ، فلو قُرئ منه الإذن لاختار الكاشيرُ اسمَ المدير ومضى.
+     */
+    private function mayEdit(): bool
+    {
+        return (bool) auth()->user()?->may('order.edit');
+    }
+
+    /**
+     * الردّ الواحد لمن لا يملكها — نصٌّ يقول ماذا يفعل لا «ممنوع».
+     *
+     * ومفتاحُه `permission` لا `reason`: خلطُه بخطأ حقلٍ يجعل رسالة المنع
+     * تظهر تحت خانة السبب كأنّ ما كُتب فيها هو العطب.
+     */
+    private function refuse()
+    {
+        return back()->withErrors([
+            'permission' => __('تصحيحُ فاتورةٍ صدرت يحتاج صلاحية — اطلبها من صاحب المتجر، أو اطلب منه التصحيح.'),
+        ]);
+    }
+
     public function update(Request $request, string $number, int $itemId)
     {
         $data = $request->validate([
@@ -43,6 +72,10 @@ class OrderEditController extends Controller
             ->firstOrFail();
 
         $item = OrderItem::where('order_id', $order->id)->findOrFail($itemId);
+
+        if (! $this->mayEdit()) {
+            return $this->refuse();
+        }
 
         try {
             OrderCorrection::setQuantity($order, $item, (int) $data['quantity'], trim($data['reason']));
@@ -82,6 +115,10 @@ class OrderEditController extends Controller
         $item = OrderItem::where('order_id', $order->id)->findOrFail($itemId);
         $row = \App\Models\OrderItemAddon::where('order_item_id', $item->id)->findOrFail($addonId);
 
+        if (! $this->mayEdit()) {
+            return $this->refuse();
+        }
+
         try {
             OrderCorrection::setAddonQuantity($order, $row, (int) $data['quantity'], trim($data['reason']));
         } catch (RuntimeException $e) {
@@ -114,6 +151,10 @@ class OrderEditController extends Controller
             ->where('is_held', false)
             ->where('number', $number)
             ->firstOrFail();
+
+        if (! $this->mayEdit()) {
+            return $this->refuse();
+        }
 
         try {
             OrderCorrection::setPaymentMethod($order, $data['payment_method'], trim($data['reason']));

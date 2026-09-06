@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
+use App\Models\Order;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
@@ -14,6 +15,7 @@ use App\Support\ReceiptVisibility;
 use App\Support\Vat;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -115,7 +117,31 @@ class PageController extends Controller
 
         return Inertia::render('Pos/OrderDetails', [
             'order' => $order,
+            /*
+             * هل يُصحَّح هذا المستند الآن؟ — تقولها الشاشة قبل الضغط.
+             *
+             * وشرطان لا واحد: صلاحيةٌ باسمها، ويومُ البيع لم ينتهِ. والحارس
+             * الحقيقيّ في الخادم (`OrderCorrection::assertSameDay` و`may`)،
+             * وهذا ليُخفى القلمُ لا ليُمنع به شيء: قلمٌ يُعرض ثمّ يُردّ عند
+             * الضغط يجعل الكاشير يظنّ العطب في النظام فيعيد المحاولة.
+             */
+            'canEdit' => $this->correctable($number),
         ]);
+    }
+
+    /** الفاتورة تُصحَّح: بصلاحيةٍ باسمها، وفي يومها */
+    private function correctable(string $number): bool
+    {
+        if (! auth()->user()?->may('order.edit')) {
+            return false;
+        }
+
+        $sold = Order::where('business_id', Demo::bid())
+            ->where('number', $number)->value('ordered_at')
+            ?? Order::where('business_id', Demo::bid())
+                ->where('number', $number)->value('created_at');
+
+        return $sold !== null && Carbon::parse($sold)->isSameDay(now());
     }
 
     /**

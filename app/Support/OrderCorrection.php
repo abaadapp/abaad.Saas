@@ -9,6 +9,7 @@ use App\Models\OrderItem;
 use App\Models\PointTransaction;
 use App\Models\Product;
 use App\Models\Transaction;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -36,6 +37,8 @@ class OrderCorrection
         if ($item->order_id !== $order->id) {
             throw new RuntimeException(__('هذا البند ليس من هذه الفاتورة.'));
         }
+
+        self::assertSameDay($order);
 
         if ($newQty < 0) {
             throw new RuntimeException(__('الكمية لا تكون سالبة.'));
@@ -111,6 +114,42 @@ class OrderCorrection
      * فيُفحص المتاح قبل أن يُخصم — وإلّا صار التصحيحُ بابًا يتجاوز حدَّ
      * المخزون الذي يُغلق عند البيع.
      */
+    /**
+     * فاتورةٌ ضريبيّة تُقفل بانتهاء يومها.
+     *
+     * كانت تُعدَّل **بلا حدٍّ زمنيّ**: يفتحها الكاشير بعد ثلاثة أسابيع فيُنقص
+     * كميّةً، فتتغيّر الفاتورةُ التي في يد الزبون والإقرارُ الضريبيّ الذي
+     * قُدّم عن شهرٍ أُغلق — بلا مستندٍ ثالثٍ يقول إنّ شيئًا تغيّر.
+     *
+     * والفرقُ بين حالتين كان ضائعًا: «الكاشير كتب ٣ بدل ٢ قبل ثلاثين ثانية»
+     * و«الزبون أعاد البضاعة بعد ثلاثة أسابيع». الأولى تصحيحُ خطأٍ في الإدخال،
+     * والثانية إرجاعٌ له مستندُه ومالُه وضريبتُه — وهما لا يُعالجان بالباب نفسه.
+     *
+     * فالحدُّ يومُ البيع: ما دام لم ينتهِ، فما يُكتب تصحيحُ لحظته. وبعده
+     * الفاتورة مغلقة، ويبقى **الإلغاء الكامل** بابًا مفتوحًا — وهو لا يعيد
+     * كتابة المستند بل يعكس قيدَه ويترك الاثنين مقروءين (انظر `cancel`).
+     *
+     * ملاحظة: القاعدة المقصودة أصلًا «ما دامت الورديّة مفتوحة». وميزةُ
+     * الورديّات لا وجود لها في هذا النظام — لا مسار ولا شاشة، و`orders.shift_id`
+     * عمودٌ لا يكتبه شيء. واليومُ أقربُ حدٍّ يُنفَّذ ببيانٍ قائم، ويلتقي بها
+     * حين تُبنى: ورديّةٌ نادرًا ما تعبر يومين.
+     *
+     * @throws RuntimeException برسالةٍ تُعرض للكاشير كما هي
+     */
+    private static function assertSameDay(Order $order): void
+    {
+        $soldOn = $order->ordered_at ?? $order->created_at;
+
+        // فاتورةٌ بلا تاريخٍ أصلًا لا يُقاس عليها — ولا تُفتح لذلك
+        if (! $soldOn) {
+            throw new RuntimeException(__('لا يُعرف تاريخ هذه الفاتورة — لا تُصحَّح. وإن لزم إلغاؤها فذلك بابٌ آخر.'));
+        }
+
+        if (! Carbon::parse($soldOn)->isSameDay(now())) {
+            throw new RuntimeException(__('انتهى يومُ هذه الفاتورة فأُقفلت — التصحيح في يوم البيع وحده. وما بعده إلغاءٌ كامل لا تعديلٌ في الأصل.'));
+        }
+    }
+
     private static function moveStock(Order $order, OrderItem $item, int $delta): void
     {
         if ($delta === 0 || ! $item->product_id) {
@@ -365,6 +404,8 @@ class OrderCorrection
             throw new RuntimeException(__('هذه الإضافة ليست من هذه الفاتورة.'));
         }
 
+        self::assertSameDay($order);
+
         if ($newQty < 0) {
             throw new RuntimeException(__('الكمية لا تكون سالبة.'));
         }
@@ -463,6 +504,8 @@ class OrderCorrection
      */
     public static function setPaymentMethod(Order $order, string $method, string $reason): OrderEdit
     {
+        self::assertSameDay($order);
+
         $allowed = \App\Http\Controllers\Pos\PosController::enabledPaymentMethods(
             \App\Models\Setting::where('business_id', $order->business_id)->pluck('value', 'key')->all(),
         );

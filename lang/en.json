@@ -4294,5 +4294,11 @@
     "تحويل من الصندوق إلى البنك": "Transfer from till to bank",
     "تحويل من البنك إلى الصندوق": "Transfer from bank to till",
     "المال ينتقل ولا يدخل ولا يخرج — لا يمسّ الربح": "The money moves without coming in or going out — it does not affect profit",
-    "مسحوبات المالك": "Owner drawings"
+    "مسحوبات المالك": "Owner drawings",
+    "أفعالٌ حسّاسة": "Sensitive actions",
+    "تُمنح بالاسم — ولا يفتح أيٌّ منها شاشةً بنفسه.": "Granted by name — none of them opens a screen on its own.",
+    "لا يُعرف تاريخ هذه الفاتورة — لا تُصحَّح. وإن لزم إلغاؤها فذلك بابٌ آخر.": "This invoice has no known date — it cannot be corrected. Cancelling it is a separate door.",
+    "انتهى يومُ هذه الفاتورة فأُقفلت — التصحيح في يوم البيع وحده. وما بعده إلغاءٌ كامل لا تعديلٌ في الأصل.": "This invoice's day has ended and it is closed — corrections are allowed on the day of sale only. After that, a full cancellation, not an edit to the original.",
+    "تصحيحُ فاتورةٍ صدرت يحتاج صلاحية — اطلبها من صاحب المتجر، أو اطلب منه التصحيح.": "Correcting an issued invoice requires permission — ask the shop owner for it, or ask them to make the correction.",
+    "تصحيح فاتورة مكتملة": "Correct a completed invoice"
 }

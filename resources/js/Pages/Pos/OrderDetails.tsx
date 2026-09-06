@@ -62,7 +62,9 @@ interface OrderEdit {
 }
 
 export default function PosOrderDetails() {
-    const { order, context } = usePage<PageProps<{ order: OrderDetail }>>().props;
+    const { order, context, canEdit } = usePage<
+        PageProps<{ order: OrderDetail; canEdit: boolean }>
+    >().props;
     const t = useTranslate();
     const [editing, setEditing] = useState<OrderItem | null>(null);
     const [fixingPayment, setFixingPayment] = useState(false);
@@ -131,7 +133,7 @@ export default function PosOrderDetails() {
                                         <TableHead className="text-center">{t('الكمية')}</TableHead>
                                         <TableHead className="text-end">{t('السعر')}</TableHead>
                                         <TableHead className="text-end">{t('الإجمالي')}</TableHead>
-                                        <TableHead className="text-end">{t('تصحيح')}</TableHead>
+                                        {canEdit && <TableHead className="text-end">{t('تصحيح')}</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -152,16 +154,18 @@ export default function PosOrderDetails() {
                                             <TableCell className="text-center tabular-nums">{it.qty}</TableCell>
                                             <TableCell className="text-end tabular-nums">{m(it.price)}</TableCell>
                                             <TableCell className="text-end tabular-nums font-medium">{m(it.total)}</TableCell>
-                                            <TableCell className="text-end">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    aria-label={t('تصحيح البند')}
-                                                    onClick={() => setEditing(it)}
-                                                >
-                                                    <Pencil />
-                                                </Button>
-                                            </TableCell>
+                                            {canEdit && (
+                                                <TableCell className="text-end">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        aria-label={t('تصحيح البند')}
+                                                        onClick={() => setEditing(it)}
+                                                    >
+                                                        <Pencil />
+                                                    </Button>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -192,14 +196,16 @@ export default function PosOrderDetails() {
                                         <span className="truncate font-medium text-[#111]">
                                             {t(order.payment) || '—'}
                                         </span>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            aria-label={t('تصحيح وسيلة الدفع')}
-                                            onClick={() => setFixingPayment(true)}
-                                        >
-                                            <Pencil />
-                                        </Button>
+                                        {canEdit && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                aria-label={t('تصحيح وسيلة الدفع')}
+                                                onClick={() => setFixingPayment(true)}
+                                            >
+                                                <Pencil />
+                                            </Button>
+                                        )}
                                     </span>
                                 </div>
                             </CardContent>

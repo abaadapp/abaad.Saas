@@ -13,10 +13,11 @@ interface Props {
     jobTitles: string[];
     currentBranchName: string | null;
     sections: Record<string, string>;
+    actions: Record<string, string>;
 }
 
 export default function EmployeeCreate() {
-    const { branches, branchOptions, jobTitles, currentBranchName, sections } =
+    const { branches, branchOptions, jobTitles, currentBranchName, sections, actions } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -37,6 +38,7 @@ export default function EmployeeCreate() {
                 jobTitles={jobTitles}
                 defaultBranch={currentBranchName}
                 sections={sections}
+                actions={actions}
             />
         </AdminLayout>
     );

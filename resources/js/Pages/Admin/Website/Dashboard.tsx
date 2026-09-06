@@ -160,7 +160,7 @@ export default function Dashboard() {
                                 <span className="inline-flex flex-wrap items-center gap-2">
                                     {t('لا نطاق لموقعك بعد — الزوّار لا يصلون إليه')}
                                     <Button variant="link" size="sm" asChild>
-                                        <Link href={route('admin.settings.index', { section: 'domain' })}>
+                                        <Link href={route('admin.settings.index', { section: 'website' })}>
                                             <Globe />
                                             {t('اضبط النطاق')}
                                         </Link>

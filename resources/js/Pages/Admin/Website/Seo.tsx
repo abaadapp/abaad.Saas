@@ -165,7 +165,7 @@ export default function Seo() {
                         <Button variant="outline" size="sm" className="mt-3" asChild>
                             <SmartLink
                                 routeName="admin.settings.index"
-                                href={route('admin.settings.index', { section: 'domain' })}
+                                href={route('admin.settings.index', { section: 'website' })}
                             >
                                 {t(domain.domain ? 'إعدادات النطاق' : 'اضبط النطاق')}
                             </SmartLink>

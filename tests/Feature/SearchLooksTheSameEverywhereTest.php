@@ -48,6 +48,24 @@ class SearchLooksTheSameEverywhereTest extends TestCase
         );
     }
 
+    /**
+     * ولا يُسكب دليلُ الصفحات قبل أن يُكتب حرف.
+     *
+     * كانت نقرةُ الصندوق تفتح قائمةً بكلّ صفحةٍ في النظام — عشرين سطرًا
+     * يتكرّر في كلٍّ منها «أقسام النظام» — فيقرؤها من فتحه ليبحث عن رقم
+     * فاتورة. وقائمةٌ لا تُقرأ تُغلق قبل أن يُكتب فيها شيء.
+     */
+    public function test_nothing_is_listed_before_a_letter_is_typed(): void
+    {
+        $this->assertStringNotContainsString(
+            'if (!term) return pages;',
+            $this->code(),
+            'الصندوق يعرض دليل الصفحات كلَّه قبل الكتابة',
+        );
+
+        $this->assertStringContainsString('if (!term) return [];', $this->code());
+    }
+
     /** والقائمة تُقرأ على الهاتف: بعرض الشاشة لا بعرض الحقل الضيّق */
     public function test_the_results_are_readable_on_a_phone(): void
     {

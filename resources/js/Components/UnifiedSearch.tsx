@@ -161,7 +161,18 @@ export default function UnifiedSearch({ url, pages }: { url: string; pages: Page
      */
     const hits = useMemo(() => {
         const term = fold(q);
-        if (!term) return pages;
+
+        /*
+         * ولا يُسكب الدليل قبل أن يُكتب حرف.
+         *
+         * كانت نقرةُ الصندوق تفتح قائمةً بكلّ صفحةٍ في النظام — عشرين سطرًا
+         * يتكرّر في كلٍّ منها «أقسام النظام» — فيقرؤها من فتح الصندوق ليبحث
+         * عن رقم فاتورة. وقائمةٌ لا تُقرأ تُغلق قبل أن يُكتب فيها شيء.
+         *
+         * فلا شيء حتى يُكتب. والمكتوبُ يُطابَق على الصفحات هنا، ويُرسل إلى
+         * الخادم من حرفين — منتجاتٍ وطلباتٍ وعملاءَ وموردين وسنداتٍ برموزها.
+         */
+        if (!term) return [];
 
         return pages
             .filter((p) => fold(p.label).includes(term) || fold(p.group).includes(term))

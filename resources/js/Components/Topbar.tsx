@@ -168,7 +168,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
              * والفرع ليسا وجهتين بل تفضيلان يُضبطان ثم يُنسيان، فموضعهما قائمة
              * الحساب حيث بقيّة ما يخصّ من يقف أمام الشاشة.
              */}
-            <div className="ms-auto flex items-center gap-1.5">
+            <div className="ms-auto flex shrink-0 items-center gap-1.5">
                 {context && (
                     <>
                         <Button asChild variant="ghost" size="icon" title={t('نقطة البيع')}>

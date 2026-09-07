@@ -198,6 +198,73 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         $this->assertSame(75.0, $invoice->fresh()->outstanding());
     }
 
+    /**
+     * وحصّةُ الضريبة تُقيَّد حيث تُقيَّد — لا تُبتلع في مردودات المبيعات.
+     *
+     * إشعارٌ بلا ضريبةٍ يُقيّد المبلغَ كلَّه مردودًا، فتبقى ضريبةُ ما رُدّ
+     * مستحقّةً على التاجر في الإقرار — يدفعها عن بضاعةٍ رجعت إليه.
+     */
+    public function test_the_tax_share_of_a_credit_note_lands_in_the_tax_account(): void
+    {
+        $invoice = $this->invoice();
+
+        $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'amount' => 21, 'tax_amount' => 1, 'reason' => 'رُدّت باقة',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(20.0, Ledger::balance($this->business->id, 'sales_returns'));
+        // والذمّةُ تنقص بالمبلغ كلِّه — والضريبةُ تُخصم من المستحقّ للجهة
+        $this->assertSame(84.0, $invoice->fresh()->outstanding());
+        $this->assertSame(84.0, Ledger::balance($this->business->id, 'receivable'));
+    }
+
+    /** ولا يتجاوز الإشعارُ قيمةَ الورقة — ولا يتجاوزها إشعاران معًا */
+    public function test_a_credit_note_cannot_exceed_what_the_paper_is_worth(): void
+    {
+        $invoice = $this->invoice();
+
+        $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'amount' => 200, 'tax_amount' => 0, 'reason' => 'مبالغة',
+        ])->assertSessionHasErrors('amount');
+
+        $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'amount' => 100, 'tax_amount' => 0, 'reason' => 'مرتجع',
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'amount' => 10, 'tax_amount' => 0, 'reason' => 'مرتجع ثانٍ',
+        ])->assertSessionHasErrors('amount');
+
+        $this->assertSame(5.0, $invoice->fresh()->outstanding());
+    }
+
+    /**
+     * ولا إشعارَ على مسودّة — ورقةٌ لم تُسلَّم لا يُنقَص منها.
+     *
+     * والزرُّ لا يُرسم لها أصلًا، والحسابُ يردّها على أيّ حال: مسودّةٌ قيمتُها
+     * المتاحةُ صفرٌ، وما فوق الصفر يتجاوزها.
+     */
+    public function test_a_draft_takes_no_credit_note(): void
+    {
+        $invoice = $this->invoice(issued: false);
+
+        $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'amount' => 10, 'tax_amount' => 0, 'reason' => 'مرتجع',
+        ])->assertSessionHasErrors('amount');
+
+        $this->assertSame(0, $invoice->creditNotes()->count());
+    }
+
+    /** والسببُ مكتوبٌ لا مفترَض: إشعارٌ بلا سبب لا يُقرأ بعد شهر */
+    public function test_a_credit_note_needs_a_written_reason(): void
+    {
+        $invoice = $this->invoice();
+
+        $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'amount' => 10, 'tax_amount' => 0,
+        ])->assertSessionHasErrors('reason');
+    }
+
     /** «إلغاء الفاتورة» — بسببٍ مكتوب، ولا تُمحى */
     public function test_the_cancel_button_cancels_with_a_reason(): void
     {

@@ -4481,5 +4481,10 @@
     "جهة حكومية": "Government entity",
     "فرد": "Individual",
     "أُضيف العميل": "Customer added",
-    "التحصيل يُسجَّل على فاتورةٍ صادرة — أصدر الفاتورة، أو احفظها مسودّةً آجلة.": "A payment can only be recorded against an issued invoice — issue it, or save the draft on credit."
+    "التحصيل يُسجَّل على فاتورةٍ صادرة — أصدر الفاتورة، أو احفظها مسودّةً آجلة.": "A payment can only be recorded against an issued invoice — issue it, or save the draft on credit.",
+    "إشعار دائن": "Credit note",
+    "منه ضريبة": "Of which tax",
+    "الحدّ الأعلى": "Maximum",
+    "مثال: رُدّت باقتان": "e.g. two bouquets returned",
+    "حفظ الإشعار": "Save credit note"
 }

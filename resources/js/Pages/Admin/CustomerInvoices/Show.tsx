@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { FileText, MessageCircle } from 'lucide-react';
+import { FileText, MessageCircle, Undo2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import { Button } from '@/Components/ui/button';
@@ -46,6 +46,7 @@ export default function CustomerInvoiceShow() {
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
     const [paying, setPaying] = useState(false);
+    const [crediting, setCrediting] = useState(false);
 
     const issue = useForm({});
     const cancel = useForm({ reason: '' });
@@ -78,6 +79,19 @@ export default function CustomerInvoiceShow() {
                                         {t('تذكير بالسداد')}
                                     </Button>
                                 )}
+                                {/*
+                                    وإشعارُ الدائن مقبضٌ لا بابٌ في الخادم وحده.
+                                    كان يعمل ولا زرَّ يفتحه: بضاعةٌ تُردّ أو خصمٌ
+                                    يُتّفق عليه بعد الإصدار كان يُعالَج بإلغاء
+                                    الورقة كلِّها — وورقةٌ سُلّمت لا تُلغى لأنّ
+                                    عشرةً منها رُدّت.
+                                */}
+                                {invoice.outstanding + invoice.paid > 0 && (
+                                    <Button variant="outline" onClick={() => setCrediting((v) => !v)}>
+                                        <Undo2 />
+                                        {t('إشعار دائن')}
+                                    </Button>
+                                )}
                             </>
                         )}
                         <Button variant="outline" asChild>
@@ -97,6 +111,7 @@ export default function CustomerInvoiceShow() {
             )}
 
             {paying && <PayForm invoice={invoice} onDone={() => setPaying(false)} />}
+            {crediting && <CreditNoteForm invoice={invoice} onDone={() => setCrediting(false)} />}
 
             <div className="grid gap-4 lg:grid-cols-3">
                 <Card className="p-4 lg:col-span-2">
@@ -234,4 +249,91 @@ function PayForm({ invoice, onDone }: { invoice: Invoice; onDone: () => void }) 
             </Button>
         </Card>
     );
+}
+
+/**
+ * إشعارُ دائن — ما يُنقَص من ورقةٍ صدرت، بلا إعادة كتابتها.
+ *
+ * وورقةٌ سُلّمت لا تُعدَّل: الجهةُ تحمل نسختَها، ورقمُها في دفتر مشترياتها.
+ * فالنقصُ يُكتب مستندًا ثانيًا يُقرأ بجوارها.
+ *
+ * والحصّةُ الضريبيّة تُقترح بنسبة الورقة نفسها لا تُترك صفرًا: إشعارٌ بلا
+ * ضريبةٍ يُقيّد المبلغَ كلَّه مردودَ مبيعات، فتبقى ضريبةُ ما رُدّ مستحقّةً
+ * على التاجر في الإقرار — يدفع عن بضاعةٍ رجعت إليه. وتبقى قابلةً للكتابة:
+ * ما رُدّ قد يكون بندًا معفًى.
+ */
+function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => void }) {
+    const t = useTranslate();
+    const { context } = usePage<PageProps>().props;
+    const m = (v: number) => money(v, context!.currency);
+
+    /* ولا يتجاوز الإشعارُ ما بقي من قيمة الورقة بعد إشعاراتٍ سبقته */
+    const cap = round3(invoice.outstanding + invoice.paid);
+    const share = invoice.total > 0 ? invoice.tax_total / invoice.total : 0;
+
+    const form = useForm({
+        amount: String(cap),
+        tax_amount: String(round3(cap * share)),
+        reason: '',
+    });
+
+    /* والضريبةُ تتبع المبلغ ما لم تُكتب بيد — فمن غيّرها يملكها */
+    const [touched, setTouched] = useState(false);
+    const setAmount = (value: string) => {
+        const next = Number(value);
+        form.setData((d) => ({
+            ...d,
+            amount: value,
+            tax_amount: touched || !Number.isFinite(next) ? d.tax_amount : String(round3(next * share)),
+        }));
+    };
+
+    return (
+        <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
+            <label className="text-[13px]">
+                {t('المبلغ')}
+                <Input value={form.data.amount} onChange={(e) => setAmount(e.target.value)} />
+                <span className="mt-1 block text-[12px] text-[#9ca3af]">
+                    {t('الحدّ الأعلى')}: {m(cap)}
+                </span>
+                {form.errors.amount && <p className="text-[12px] text-[#b91c1c]">{form.errors.amount}</p>}
+            </label>
+            <label className="text-[13px]">
+                {t('منه ضريبة')}
+                <Input
+                    value={form.data.tax_amount}
+                    onChange={(e) => {
+                        setTouched(true);
+                        form.setData('tax_amount', e.target.value);
+                    }}
+                />
+                {form.errors.tax_amount && <p className="text-[12px] text-[#b91c1c]">{form.errors.tax_amount}</p>}
+            </label>
+            <label className="flex-1 text-[13px]">
+                {t('السبب')}
+                <Input
+                    value={form.data.reason}
+                    onChange={(e) => form.setData('reason', e.target.value)}
+                    placeholder={t('مثال: رُدّت باقتان')}
+                />
+                {form.errors.reason && <p className="text-[12px] text-[#b91c1c]">{form.errors.reason}</p>}
+            </label>
+            <Button
+                disabled={form.processing}
+                onClick={() =>
+                    form.post(`/admin/customer-invoices/${invoice.id}/credit-note`, {
+                        preserveScroll: true,
+                        onSuccess: onDone,
+                    })
+                }
+            >
+                {t('حفظ الإشعار')}
+            </Button>
+        </Card>
+    );
+}
+
+/** ثلاثُ خاناتٍ — كما يُخزَّن المال في هذا النظام */
+function round3(v: number): number {
+    return Math.round(v * 1000) / 1000;
 }

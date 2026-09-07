@@ -1,17 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { Check, Plus, Trash2 } from 'lucide-react';
+import { Package, Paperclip, Plus, Send, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
-import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
+import { Label } from '@/Components/ui/label';
 import { currencyLabel, money } from '@/lib/format';
+import { fold } from '@/lib/pages';
+import { baseQuantity, lineTotal, purchaseTotals } from '@/lib/purchase-totals';
 import { useTranslate } from '@/lib/i18n';
-import type { PageProps } from '@/types';
+import { cn } from '@/lib/utils';
+import type { Currency, PageProps } from '@/types';
 import type { Branch, Product, Supplier } from '@/types/models';
 
 interface ReorderRow {
@@ -24,8 +27,10 @@ interface ReorderRow {
 interface Line {
     product_id: string;
     name: string;
-    cost: string;
+    purchase_unit: string;
+    units_per_purchase_unit: string;
     qty: string;
+    cost: string;
 }
 
 interface Props {
@@ -35,78 +40,146 @@ interface Props {
     branches: Branch[];
     currentBranchId: number | null;
     fromReorder: boolean;
+    today: string;
+    /** نسبةُ ضريبة المتجر — صفرٌ إن أُطفئت. والخادمُ يعيد قراءتها على كل حفظ */
+    taxRate: number;
+    /** مفتاحُ هذه الصفحة: ضغطتان عليه أمرٌ واحد لا أمران */
+    formToken: string;
 }
 
-const blankLine = (): Line => ({ product_id: '', name: '', cost: '', qty: '1' });
+/**
+ * وحداتُ الشراء المقترَحة — اقتراحٌ لا حصر.
+ *
+ * الحقلُ نصٌّ حرّ: من يشتري بوحدةٍ ليست هنا يكتبها. والقائمةُ تُسرّع الشائع
+ * ولا تمنع النادر — ولا جدولَ وحداتٍ في النظام تُقرأ منه، فاختراعُ جدولٍ
+ * لأجل قائمةٍ في شاشةٍ واحدة أكبرُ من حاجته.
+ */
+const UNITS = ['حبة', 'ربطة', 'باقة', 'صندوق', 'كرتون', 'رول', 'عبوة', 'كيلو', 'متر', 'وحدة'] as const;
 
+const blank = (): Line => ({
+    product_id: '',
+    name: '',
+    purchase_unit: '',
+    units_per_purchase_unit: '1',
+    qty: '1',
+    cost: '',
+});
+
+/**
+ * أمرُ شراءٍ جديد.
+ *
+ * ═══ وهو نيّةُ شراءٍ لا حدثٌ ماليّ ═══
+ *
+ * لا يزيد رصيدًا ولا يُنشئ ذمّةً ولا يكتب قيدًا. البضاعةُ تدخل الرفَّ باعتماد
+ * الاستلام، والذمّةُ تنشأ باعتماد سند المورّد. وهذه الشاشةُ لا تعرض شيئًا
+ * يوهم بغير ذلك — ولذلك رُفع «إيصال الدفع» منها: الدفعُ آخرُ الدورة لا أوّلُها.
+ *
+ * ═══ والحسابُ هنا معاينة ═══
+ *
+ * الخادمُ يعيد حساب كلّ رقم من البنود ومن إعدادات المتجر، ويُهمل ما تُرسله
+ * الشاشة من إجماليّات. والصيغةُ واحدةٌ في الموضعين — `PurchaseOrderTotals`
+ * و`lib/purchase-totals` — واختبارٌ يقابلهما رقمًا برقم.
+ */
 export default function PurchaseCreate() {
-    const { suppliers, products, reorderSuggestions, branches, currentBranchId, fromReorder, context } =
+    const { suppliers, products, reorderSuggestions, branches, currentBranchId, fromReorder, today, taxRate, formToken, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
+    const m = (v: number) => money(v, currency);
 
-    // القدوم من "إعادة الطلب" يملأ الأصناف المقترحة مسبقًا
     const [lines, setLines] = useState<Line[]>(() =>
         fromReorder && reorderSuggestions.length
             ? reorderSuggestions.map((r) => {
                   const p = products.find((x) => x.sku === r.sku);
 
                   return {
+                      ...blank(),
                       product_id: p ? String(p.id) : '',
                       name: r.name,
                       cost: String(r.cost),
                       qty: String(r.suggested),
                   };
               })
-            : [blankLine()],
+            : [],
     );
 
-    const form = useForm<{ branch_id: string; supplier_id: string; notes: string; receipt: File | null }>({
-        branch_id: currentBranchId ? String(currentBranchId) : '',
+    const form = useForm({
         supplier_id: '',
+        branch_id: currentBranchId ? String(currentBranchId) : '',
+        ordered_at: today,
+        expected_delivery_at: '',
+        supplier_reference: '',
+        supplier_discount: '',
+        shipping_cost: '',
         notes: '',
-        receipt: null,
+        attachment: null as File | null,
+        form_token: formToken,
+        draft: false,
     });
 
-    const total = useMemo(
-        () => lines.reduce((s, l) => s + (Number(l.cost) || 0) * (Number(l.qty) || 0), 0),
-        [lines],
+    const totals = useMemo(
+        () =>
+            purchaseTotals({
+                items: lines.map((l) => ({ cost: l.cost, quantity: l.qty })),
+                discount: form.data.supplier_discount,
+                shipping: form.data.shipping_cost,
+                taxRate,
+            }),
+        [lines, form.data.supplier_discount, form.data.shipping_cost, taxRate],
     );
 
     const setLine = (i: number, patch: Partial<Line>) =>
         setLines((prev) => prev.map((l, x) => (x === i ? { ...l, ...patch } : l)));
 
-    /** اختيار منتج يملأ اسمه وتكلفته تلقائيًا؛ "صنف يدوي" يترك الاسم للكتابة */
-    const pickProduct = (i: number, id: string) => {
-        const p = products.find((x) => String(x.id) === id);
-        setLine(i, { product_id: id, name: p ? p.name : '', cost: p ? String(p.cost) : lines[i].cost });
-    };
+    const addLine = () => setLines((prev) => [...prev, blank()]);
+    const dropLine = (i: number) => setLines((prev) => prev.filter((_, x) => x !== i));
 
-    const submit = (e: React.FormEvent) => {
-        e.preventDefault();
-        // transform يُعيد void في هذا الإصدار، فيُستدعى قبل post لا مسلسلًا معه
-        form.transform((data) => ({
-            ...data,
-            items: lines
-                .filter((l) => (Number(l.qty) || 0) > 0 && (l.product_id || l.name.trim()))
-                .map((l) => ({
-                    product_id: l.product_id || null,
-                    name: l.name,
-                    cost: Number(l.cost) || 0,
-                    quantity: Number(l.qty) || 0,
-                })),
-        }));
+    /** ملءُ الأصناف المقترَحة — من بيانات إعادة الطلب القائمة لا من اختراع */
+    const suggest = () =>
+        setLines((prev) => {
+            const have = new Set(prev.map((l) => l.product_id).filter(Boolean));
+            const added = reorderSuggestions
+                .map((r) => ({ r, p: products.find((x) => x.sku === r.sku) }))
+                .filter(({ p }) => p && !have.has(String(p.id)))
+                .map(({ r, p }) => ({
+                    ...blank(),
+                    product_id: String(p!.id),
+                    name: r.name,
+                    cost: String(r.cost),
+                    qty: String(Math.max(1, Math.round(r.suggested))),
+                }));
+
+            return [...prev.filter((l) => l.product_id || l.name.trim()), ...added];
+        });
+
+    const submit = (draft: boolean) => {
+        const items = lines
+            .filter((l) => (Number(l.qty) || 0) > 0 && (l.product_id || l.name.trim()))
+            .map((l) => ({
+                product_id: l.product_id || null,
+                name: l.name,
+                purchase_unit: l.purchase_unit || null,
+                units_per_purchase_unit: Number(l.units_per_purchase_unit) || 1,
+                cost: Number(l.cost) || 0,
+                quantity: Number(l.qty) || 0,
+            }));
+
+        /*
+         * ولا تُرسل إجماليّات: الخادمُ يحسبها من البنود ومن إعدادات المتجر.
+         * وما يُرسل منها يُهمل هناك على أيّ حال — فإرسالُه يوهم بأنّه يُقرأ.
+         */
+        form.transform((data) => ({ ...data, draft, items }));
         form.post(route('admin.purchases.store'), { forceFormData: true });
     };
 
+    const err = (key: string) => (form.errors as Record<string, string | undefined>)[key];
+    // ‏وأخطاءُ البنود تصل بمفاتيح `items.0.quantity` — تُجمع لتُعرض فوق الجدول
+    const itemErrors = Object.entries(form.errors as Record<string, string>)
+        .filter(([k]) => k.startsWith('items'))
+        .map(([, v]) => v);
+
     return (
         <AdminLayout title="أمر شراء جديد">
-            {/*
-                وصفحةٌ داخليّة بلا شريط تبويبات تحتاج بابَ رجوع.
-                «أوامر الشراء» وجهتُه: هي أمُّ هذه الصفحة، ومنها يُفتح أكثرُ
-                مداخلها. ووجهةٌ مكتوبةٌ باسمها تصدق ولو فُتحت الصفحة من رابطٍ
-                محفوظ — انظر `BackLink`.
-            */}
             <BackLink
                 routeName="admin.purchases.orders"
                 href={route('admin.purchases.orders')}
@@ -115,146 +188,638 @@ export default function PurchaseCreate() {
 
             <PageHeader
                 title="أمر شراء جديد"
-                subtitle={t('حدّد المورّد والأصناف المطلوبة')}
+                subtitle={t('إنشاء أمر شراء من مورد لتجهيز الأصناف وإدارة المخزون')}
             />
 
-            <form onSubmit={submit} className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <Card className="p-6 lg:col-span-2">
-                    <h3 className="mb-4 font-bold text-[#111]">{t('الأصناف')}</h3>
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+                {/* ═══════════ الجانب الأكبر: التفاصيل والأصناف ═══════════ */}
+                <div className="space-y-5 xl:col-span-8">
+                    <Card className="p-5">
+                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('تفاصيل أمر الشراء')}</h2>
 
-                    <div className="space-y-3">
-                        {lines.map((l, i) => (
-                            <div key={i} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-12">
-                                <Field label={i === 0 ? 'المنتج' : undefined} className="sm:col-span-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                            <Field label="المورد" required error={err('supplier_id')}>
+                                {suppliers.length === 0 ? (
+                                    /* ولا يُخترع مورّد: من لا مورّدَ له يُقاد إلى بابه */
+                                    <p className="rounded-[10px] bg-[#fffbeb] p-3 text-[12px] text-[#b45309]">
+                                        {t('لا موردين بعد — يُضافون من صفحة الموردين.')}
+                                    </p>
+                                ) : (
                                     <Select
-                                        value={l.product_id}
-                                        onChange={(e) => pickProduct(i, e.target.value)}
-                                        options={products.map((p) => ({ label: p.name, value: p.id }))}
-                                        placeholder="— صنف يدوي —"
+                                        value={form.data.supplier_id}
+                                        onChange={(e) => form.setData('supplier_id', e.target.value)}
+                                        placeholder={t('اختر المورد')}
+                                        options={suppliers.map((s) => ({
+                                            value: String(s.id),
+                                            label: s.label ?? s.name,
+                                        }))}
                                     />
-                                </Field>
-                                <Field label={i === 0 ? 'اسم الصنف' : undefined} className="sm:col-span-3">
-                                    <Input
-                                        value={l.name}
-                                        onChange={(e) => setLine(i, { name: e.target.value })}
-                                        placeholder={t('اسم الصنف')}
-                                    />
-                                </Field>
-                                <Field
-                                    label={i === 0 ? `${t('تكلفة الوحدة')} (${currencyLabel(currency)})` : undefined}
-                                    className="sm:col-span-2"
-                                >
-                                    <Input
-                                        type="number"
-                                        step="0.001"
-                                        min="0"
-                                        dir="ltr"
-                                        value={l.cost}
-                                        onChange={(e) => setLine(i, { cost: e.target.value })}
-                                        placeholder="0.000"
-                                    />
-                                </Field>
-                                <Field label={i === 0 ? 'الكمية' : undefined} className="sm:col-span-2">
-                                    <Input
-                                        type="number"
-                                        min="1"
-                                        dir="ltr"
-                                        value={l.qty}
-                                        onChange={(e) => setLine(i, { qty: e.target.value })}
-                                    />
-                                </Field>
-                                <div className="sm:col-span-1">
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        aria-label={t('حذف الصنف')}
-                                        className="text-[#b91c1c]"
-                                        disabled={lines.length === 1}
-                                        onClick={() => setLines((prev) => prev.filter((_, x) => x !== i))}
-                                    >
-                                        <Trash2 />
-                                    </Button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                                )}
+                            </Field>
 
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="mt-4"
-                        onClick={() => setLines((prev) => [...prev, blankLine()])}
-                    >
-                        <Plus />
-                        {t('إضافة صنف')}
-                    </Button>
-                </Card>
+                            <Field label="الفرع" required error={err('branch_id')}>
+                                <Select
+                                    value={form.data.branch_id}
+                                    onChange={(e) => form.setData('branch_id', e.target.value)}
+                                    placeholder={t('اختر الفرع')}
+                                    options={branches.map((b) => ({ value: String(b.id), label: b.name }))}
+                                />
+                            </Field>
 
-                <div className="space-y-6">
-                    <Card className="space-y-4 p-6">
-                        <h3 className="font-bold text-[#111]">{t('تفاصيل الأمر')}</h3>
+                            <Field label="تاريخ الطلب" required error={err('ordered_at')}>
+                                <Input
+                                    type="date"
+                                    value={form.data.ordered_at}
+                                    onChange={(e) => form.setData('ordered_at', e.target.value)}
+                                />
+                            </Field>
+                        </div>
 
-                        <Field label="الفرع" required error={form.errors.branch_id}>
-                            <Select
-                                value={form.data.branch_id}
-                                onChange={(e) => form.setData('branch_id', e.target.value)}
-                                options={branches.map((b) => ({ label: b.name, value: b.id }))}
-                                placeholder="اختر الفرع…"
-                                required
-                            />
-                        </Field>
+                        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                            <Field
+                                label="تاريخ الوصول المتوقع"
+                                hint="وعدُ المورّد — لا تاريخُ وصولٍ وقع"
+                                error={err('expected_delivery_at')}
+                            >
+                                <Input
+                                    type="date"
+                                    value={form.data.expected_delivery_at}
+                                    min={form.data.ordered_at}
+                                    onChange={(e) => form.setData('expected_delivery_at', e.target.value)}
+                                />
+                            </Field>
 
-                        <Field label="المورّد" error={form.errors.supplier_id}>
-                            <Select
-                                value={form.data.supplier_id}
-                                onChange={(e) => form.setData('supplier_id', e.target.value)}
-                                options={suppliers.map((s) => ({ label: s.label ?? s.name, value: s.id }))}
-                                placeholder="— بدون مورّد —"
-                            />
-                        </Field>
+                            <Field label="رقم مرجع المورد" error={err('supplier_reference')}>
+                                <Input
+                                    value={form.data.supplier_reference}
+                                    onChange={(e) => form.setData('supplier_reference', e.target.value)}
+                                    placeholder={t('مثل رقم العرض أو الفاتورة')}
+                                />
+                            </Field>
 
-                        <Field label="ملاحظات" error={form.errors.notes}>
-                            <Textarea
-                                rows={3}
-                                value={form.data.notes}
-                                onChange={(e) => form.setData('notes', e.target.value)}
-                            />
-                        </Field>
-
-                        <Field
-                            label="إيصال الدفع"
-                            hint="JPG · PNG · PDF · WEBP · HEIC — حتى 10 ميجابايت"
-                            error={form.errors.receipt}
-                        >
-                            <Input
-                                type="file"
-                                accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
-                                onChange={(e) => form.setData('receipt', e.target.files?.[0] ?? null)}
-                                className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
-                            />
-                        </Field>
+                            {/*
+                                وعملةُ الشراء تُعرض ولا تُختار.
+                                المتجرُ بعملةٍ أساسٍ واحدة والدفترُ يقيّد بها،
+                                فاختيارُ عملةٍ ثانية هنا يعني قيدًا لا يعرف
+                                النظامُ كيف يحوّله — ورقمٌ يُعرض ولا يُحاسَب.
+                            */}
+                            <Field label="عملة الشراء" hint="عملةُ المتجر — تُضبط من الإعدادات">
+                                <Input value={`${currencyLabel(currency)} — ${currency.name ?? ''}`} readOnly disabled />
+                            </Field>
+                        </div>
                     </Card>
 
-                    <Card className="p-6">
-                        <div className="flex items-center justify-between">
-                            <span className="font-bold text-[#111]">{t('الإجمالي')}</span>
-                            <span className="text-[20px] font-bold tabular-nums text-[#6d28d9]">
-                                {money(total, currency)}
-                            </span>
+                    {/* ═══════════ الأصناف ═══════════ */}
+                    <Card className="p-5">
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                            <h2 className="text-[15px] font-bold text-[#111]">{t('الأصناف')}</h2>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                                    <Plus />
+                                    {t('إضافة صنف')}
+                                </Button>
+                                {/*
+                                    والاقتراحُ من بيانات إعادة الطلب القائمة —
+                                    ما نزل تحت حدّ التنبيه وكم يُقترح. ومن لا
+                                    اقتراحَ له يراه مُعطَّلًا: زرٌّ لا يُدير شيئًا
+                                    أسوأ من غياب الزرّ.
+                                */}
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={reorderSuggestions.length === 0}
+                                    title={
+                                        reorderSuggestions.length === 0
+                                            ? t('لا أصناف تحت حدّ التنبيه الآن')
+                                            : undefined
+                                    }
+                                    onClick={suggest}
+                                >
+                                    <Sparkles />
+                                    {t('اقتراح الكميات')}
+                                </Button>
+                            </div>
                         </div>
-                        <Button type="submit" className="mt-5 w-full" loading={form.processing}>
-                            <Check />
-                            {t('إنشاء أمر الشراء')}
+
+                        {itemErrors.length > 0 && (
+                            <ul className="mb-3 space-y-1 rounded-[10px] bg-[#fef2f2] p-3 text-[12px] text-[#b91c1c]">
+                                {itemErrors.map((e) => (
+                                    <li key={e}>• {e}</li>
+                                ))}
+                            </ul>
+                        )}
+
+                        {lines.length === 0 ? (
+                            <div className="rounded-[12px] border border-dashed border-[var(--ui-border,#e8e8e8)] py-14 text-center">
+                                <Package className="mx-auto size-10 text-[#d4d4d8]" />
+                                <p className="mt-3 text-[14px] font-medium text-[#4b4b4b]">
+                                    {t('لا توجد أصناف مضافة بعد')}
+                                </p>
+                                <p className="mt-1 text-[12px] text-[#9ca3af]">
+                                    {t('ابدأ بإضافة الأصناف إلى أمر الشراء')}
+                                </p>
+                            </div>
+                        ) : (
+                            <ItemRows
+                                lines={lines}
+                                products={products}
+                                currency={currency}
+                                onChange={setLine}
+                                onRemove={dropLine}
+                            />
+                        )}
+                    </Card>
+
+                    {/* ═══════════ الأزرار ═══════════ */}
+                    <Card className="flex flex-wrap items-center justify-end gap-2 p-4">
+                        <Button type="button" variant="outline" onClick={() => window.history.back()}>
+                            {t('إلغاء')}
                         </Button>
-                        <Button variant="outline" className="mt-3 w-full" asChild>
-                            <SmartLink routeName="admin.purchases.index" href={route('admin.purchases.index')}>
-                                {t('إلغاء')}
-                            </SmartLink>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={form.processing}
+                            onClick={() => submit(true)}
+                        >
+                            {t('حفظ كمسودة')}
+                        </Button>
+                        {/*
+                            و«إصدار» لا «إرسال للمورّد».
+                            لا مرسِلَ في النظام يبعث الأمر إلى المورّد — لا بريدًا
+                            ولا واتساب. وزرٌّ يقول «أُرسل» عمّا لم يُرسَل يجعل
+                            التاجر ينتظر ردًّا على رسالةٍ لم تخرج.
+                        */}
+                        <Button type="button" disabled={form.processing} onClick={() => submit(false)}>
+                            <Send />
+                            {t('إصدار أمر الشراء')}
                         </Button>
                     </Card>
                 </div>
-            </form>
+
+                {/* ═══════════ الجانب الأصغر: الملخّص والملاحظات والمرفق ═══════════ */}
+                <div className="space-y-5 xl:col-span-4">
+                    <Card className="p-5">
+                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('ملخص أمر الشراء')}</h2>
+
+                        <dl className="space-y-3 text-[13px]">
+                            <Row label={t('قيمة الأصناف')} value={m(totals.items_subtotal)} />
+
+                            <div className="flex items-center justify-between gap-3">
+                                <Label htmlFor="po-discount">{t('خصم المورد')}</Label>
+                                <Input
+                                    id="po-discount"
+                                    type="number"
+                                    step="0.001"
+                                    min="0"
+                                    inputMode="decimal"
+                                    className="max-w-[140px] text-end"
+                                    placeholder="0.000"
+                                    value={form.data.supplier_discount}
+                                    onChange={(e) => form.setData('supplier_discount', e.target.value)}
+                                />
+                            </div>
+                            {err('supplier_discount') && (
+                                <p className="text-[12px] text-[#b91c1c]">{err('supplier_discount')}</p>
+                            )}
+
+                            <div className="flex items-center justify-between gap-3">
+                                <Label htmlFor="po-shipping">{t('تكلفة الشحن')}</Label>
+                                <Input
+                                    id="po-shipping"
+                                    type="number"
+                                    step="0.001"
+                                    min="0"
+                                    inputMode="decimal"
+                                    className="max-w-[140px] text-end"
+                                    placeholder="0.000"
+                                    value={form.data.shipping_cost}
+                                    onChange={(e) => form.setData('shipping_cost', e.target.value)}
+                                />
+                            </div>
+
+                            {/*
+                                والضريبةُ تُقرأ من إعدادات المتجر ولا تُكتب هنا.
+                                نسبةٌ تُختار في شاشة أمر شراء تجعل الوعاء الضريبيّ
+                                يتبع من يكتب الورقة لا من يقرّر السياسة.
+                            */}
+                            <Row
+                                label={`${t('الضريبة')} (${taxRate}%)`}
+                                value={m(totals.tax)}
+                                muted={taxRate === 0}
+                            />
+
+                            <div className="mt-2 flex items-center justify-between rounded-[10px] bg-[#f5f3ff] px-3 py-2.5">
+                                <dt className="text-[14px] font-bold text-[#111]">{t('الإجمالي')}</dt>
+                                <dd className="text-[16px] font-bold tabular-nums text-[#5b21b6]">
+                                    {m(totals.total)}
+                                </dd>
+                            </div>
+                        </dl>
+                    </Card>
+
+                    <Card className="p-5">
+                        <h2 className="mb-3 text-[15px] font-bold text-[#111]">{t('ملاحظات على الأمر')}</h2>
+                        <Textarea
+                            rows={3}
+                            value={form.data.notes}
+                            onChange={(e) => form.setData('notes', e.target.value)}
+                            placeholder={t('أضف أي ملاحظات داخلية حول أمر الشراء...')}
+                        />
+                    </Card>
+
+                    <Card className="p-5">
+                        <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('مرفقات أمر الشراء')}</h2>
+                        {/*
+                            و«إيصال الدفع» رُفع من هذه الشاشة.
+                            أمرُ الشراء نيّةُ شراء، والدفعُ آخرُ الدورة: أمرٌ ←
+                            استلامٌ ← اعتمادٌ ← سندُ مورّد ← اعتمادٌ ← سدادٌ ←
+                            إثباتُه. وطلبُ إثبات الدفع في أوّلها يجعل التاجر
+                            يدفع قبل أن يصل شيء.
+                        */}
+                        <p className="mb-3 text-[12px] text-[#9ca3af]">
+                            {t('مثل عرض سعر المورد أو مستند الطلب')}
+                        </p>
+                        <AttachmentBox
+                            file={form.data.attachment}
+                            error={err('attachment')}
+                            onPick={(f) => form.setData('attachment', f)}
+                        />
+                    </Card>
+                </div>
+            </div>
         </AdminLayout>
+    );
+}
+
+/* ───────────────────────── قطعٌ صغيرة ───────────────────────── */
+
+function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+    return (
+        <div className="flex items-center justify-between gap-3">
+            <dt className={cn('text-[#6b7280]', muted && 'text-[#9ca3af]')}>{label}</dt>
+            <dd className={cn('tabular-nums font-medium text-[#111]', muted && 'text-[#9ca3af]')}>{value}</dd>
+        </div>
+    );
+}
+
+/**
+ * بنودُ الأمر — جدولٌ على الحاسوب وبطاقاتٌ على الجوّال.
+ *
+ * وستّةُ حقولٍ في صفٍّ واحد على شاشة هاتفٍ تصير أعمدةً بعرض إصبعين لا
+ * تُقرأ ولا تُكتب. فتُقلب البطاقةُ رأسيًّا وتبقى الحقول بحجمها.
+ */
+export function ItemRows({
+    lines,
+    products,
+    currency,
+    onChange,
+    onRemove,
+}: {
+    lines: Line[];
+    products: Product[];
+    currency: Currency;
+    onChange: (i: number, patch: Partial<Line>) => void;
+    onRemove: (i: number) => void;
+}) {
+    const t = useTranslate();
+    const m = (v: number) => money(v, currency);
+
+    /** اختيارُ منتجٍ يملأ اسمَه وتكلفتَه — والصنفُ غيرُ المسجّل يُكتب اسمُه */
+    const pick = (i: number, id: string) => {
+        const p = products.find((x) => String(x.id) === id);
+
+        onChange(i, {
+            product_id: id,
+            name: p ? p.name : '',
+            cost: p ? String(p.cost) : lines[i].cost,
+        });
+    };
+
+    return (
+        <div className="space-y-3">
+            {/* رؤوسُ الأعمدة — على الحاسوب وحده */}
+            <div className="hidden gap-2 px-1 text-[12px] text-[#71717a] lg:grid lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto]">
+                <span>{t('الصنف')}</span>
+                <span>{t('وحدة الشراء')}</span>
+                <span>{t('محتوى الوحدة')}</span>
+                <span>{t('الكمية')}</span>
+                <span>{t('تكلفة الوحدة')}</span>
+                <span>{t('الإجمالي')}</span>
+                <span className="w-8" />
+            </div>
+
+            {lines.map((line, i) => {
+                const base = baseQuantity(line.qty, line.units_per_purchase_unit);
+                const asBase = Number(line.units_per_purchase_unit) > 1;
+
+                return (
+                    <div
+                        key={i}
+                        className="grid grid-cols-1 gap-2 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto] lg:items-center lg:border-0 lg:p-1"
+                    >
+                        <div className="min-w-0">
+                            <MobileLabel>{t('الصنف')}</MobileLabel>
+                            <ProductPicker
+                                value={line.product_id}
+                                name={line.name}
+                                products={products}
+                                onPick={(id) => pick(i, id)}
+                                onName={(name) => onChange(i, { name })}
+                            />
+                        </div>
+
+                        <div>
+                            <MobileLabel>{t('وحدة الشراء')}</MobileLabel>
+                            <Input
+                                list="po-units"
+                                value={line.purchase_unit}
+                                onChange={(e) => onChange(i, { purchase_unit: e.target.value })}
+                                placeholder={t('حبة')}
+                                aria-label={t('وحدة الشراء')}
+                            />
+                        </div>
+
+                        <div>
+                            <MobileLabel>{t('محتوى الوحدة')}</MobileLabel>
+                            <Input
+                                type="number"
+                                min="0.001"
+                                step="0.001"
+                                inputMode="decimal"
+                                value={line.units_per_purchase_unit}
+                                onChange={(e) => onChange(i, { units_per_purchase_unit: e.target.value })}
+                                aria-label={t('محتوى الوحدة')}
+                            />
+                        </div>
+
+                        <div>
+                            <MobileLabel>{t('الكمية')}</MobileLabel>
+                            <Input
+                                type="number"
+                                min="1"
+                                step="1"
+                                inputMode="numeric"
+                                value={line.qty}
+                                onChange={(e) => onChange(i, { qty: e.target.value })}
+                                aria-label={t('الكمية')}
+                            />
+                        </div>
+
+                        <div>
+                            <MobileLabel>{t('تكلفة الوحدة')}</MobileLabel>
+                            <Input
+                                type="number"
+                                min="0"
+                                step="0.001"
+                                inputMode="decimal"
+                                value={line.cost}
+                                onChange={(e) => onChange(i, { cost: e.target.value })}
+                                placeholder="0.000"
+                                aria-label={t('تكلفة الوحدة')}
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-between lg:block">
+                            <MobileLabel>{t('الإجمالي')}</MobileLabel>
+                            <span className="tabular-nums font-medium text-[#111]">
+                                {m(lineTotal(line.cost, line.qty))}
+                            </span>
+                        </div>
+
+                        <div className="flex items-center justify-end">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t('حذف الصنف')}
+                                onClick={() => onRemove(i)}
+                            >
+                                <Trash2 className="text-[#b91c1c]" />
+                            </Button>
+                        </div>
+
+                        {/*
+                            وما يدخل الرفَّ يُقال قبل الحفظ لا بعده.
+                            خمسُ ربطاتٍ في العشرين مئةُ حبّة — ومن لا يراها
+                            مكتوبةً يكتشفها في الجرد.
+                        */}
+                        {asBase && (
+                            <p className="text-[11px] text-[#6b7280] sm:col-span-2 lg:col-span-7">
+                                {t('يدخل المخزون: :n :unit', {
+                                    n: base,
+                                    unit: t('وحدة تخزين'),
+                                })}
+                            </p>
+                        )}
+                    </div>
+                );
+            })}
+
+            <datalist id="po-units">
+                {UNITS.map((u) => (
+                    <option key={u} value={u} />
+                ))}
+            </datalist>
+        </div>
+    );
+}
+
+function MobileLabel({ children }: { children: React.ReactNode }) {
+    return <span className="mb-1 block text-[11px] text-[#9ca3af] lg:hidden">{children}</span>;
+}
+
+/**
+ * الصنف: من الكتالوج أو غيرُ مسجَّل.
+ *
+ * والثاني يبقى: شحنُ مورّدٍ يُفوتَر ولا يُخزَّن، وخدمةٌ تُشترى — كلاهما بندٌ
+ * في الأمر بلا صنفٍ في المخزون. ومنعُه يدفع التاجر إلى اختراع أصنافٍ وهميّة.
+ */
+function ProductPicker({
+    value,
+    name,
+    products,
+    onPick,
+    onName,
+}: {
+    value: string;
+    name: string;
+    products: Product[];
+    onPick: (id: string) => void;
+    onName: (name: string) => void;
+}) {
+    const t = useTranslate();
+    const [manual, setManual] = useState(false);
+    const [q, setQ] = useState('');
+    const [open, setOpen] = useState(false);
+    const box = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const away = (e: MouseEvent) => {
+            if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener('mousedown', away);
+
+        return () => document.removeEventListener('mousedown', away);
+    }, []);
+
+    const picked = products.find((p) => String(p.id) === value);
+
+    // ‏والمطابقة تُهمل الهمزةَ وشكلَ الرقم وتقرأ الرمز — انظر `fold`
+    const hits = useMemo(() => {
+        const needle = fold(q);
+
+        if (needle === '') return products.slice(0, 20);
+
+        return products
+            .filter((p) => fold(p.name).includes(needle) || fold(p.sku ?? '').includes(needle))
+            .slice(0, 20);
+    }, [products, q]);
+
+    if (manual || (!picked && name)) {
+        return (
+            <div className="flex items-center gap-1">
+                <Input
+                    value={name}
+                    onChange={(e) => onName(e.target.value)}
+                    placeholder={t('اسم الصنف غير المسجل')}
+                    aria-label={t('اسم الصنف غير المسجل')}
+                />
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('العودة إلى الكتالوج')}
+                    onClick={() => {
+                        setManual(false);
+                        onName('');
+                    }}
+                >
+                    <X />
+                </Button>
+            </div>
+        );
+    }
+
+    return (
+        <div ref={box} className="relative">
+            <Input
+                value={picked ? picked.name : q}
+                onChange={(e) => {
+                    setQ(e.target.value);
+                    setOpen(true);
+                    if (picked) onPick('');
+                }}
+                onFocus={() => setOpen(true)}
+                placeholder={t('ابحث عن منتج...')}
+                aria-label={t('الصنف')}
+            />
+
+            {open && (
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white p-1 shadow-lg">
+                    {hits.map((p) => (
+                        <button
+                            key={p.id}
+                            type="button"
+                            className="flex w-full items-center justify-between gap-2 rounded-[8px] px-2 py-1.5 text-start text-[13px] hover:bg-[#f7f7f5]"
+                            onClick={() => {
+                                onPick(String(p.id));
+                                setQ('');
+                                setOpen(false);
+                            }}
+                        >
+                            <span className="min-w-0 truncate">{p.name}</span>
+                            {p.sku && (
+                                <span dir="ltr" className="shrink-0 font-mono text-[11px] text-[#9ca3af]">
+                                    {p.sku}
+                                </span>
+                            )}
+                        </button>
+                    ))}
+
+                    <button
+                        type="button"
+                        className="mt-1 flex w-full items-center gap-1.5 rounded-[8px] border-t border-[var(--ui-border,#e8e8e8)] px-2 py-2 text-start text-[13px] text-[#5b21b6]"
+                        onClick={() => {
+                            setManual(true);
+                            setOpen(false);
+                            onPick('');
+                        }}
+                    >
+                        <Plus className="size-4" />
+                        {t('صنف غير مسجل')}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** مرفقُ الأمر — ملفٌّ واحد يكفي: عرضُ سعرٍ أو مستندُ طلب */
+function AttachmentBox({
+    file,
+    error,
+    onPick,
+}: {
+    file: File | null;
+    error?: string;
+    onPick: (f: File | null) => void;
+}) {
+    const t = useTranslate();
+    const input = useRef<HTMLInputElement>(null);
+
+    return (
+        <div className="rounded-[12px] border border-dashed border-[var(--ui-border,#e8e8e8)] p-4 text-center">
+            {file ? (
+                <div className="flex items-center justify-between gap-2 text-start">
+                    <span className="flex min-w-0 items-center gap-2 text-[13px] text-[#4b4b4b]">
+                        <Paperclip className="size-4 shrink-0 text-[#9ca3af]" />
+                        <span className="truncate">{file.name}</span>
+                    </span>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t('إزالة المرفق')}
+                        onClick={() => {
+                            onPick(null);
+                            if (input.current) input.current.value = '';
+                        }}
+                    >
+                        <X />
+                    </Button>
+                </div>
+            ) : (
+                <>
+                    <Upload className="mx-auto size-6 text-[#a78bfa]" />
+                    <p className="mt-2 text-[13px] font-medium text-[#4b4b4b]">{t('رفع ملف')}</p>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => input.current?.click()}
+                    >
+                        {t('اختيار ملف')}
+                    </Button>
+                </>
+            )}
+
+            <input
+                ref={input}
+                type="file"
+                hidden
+                aria-label={t('مرفق أمر الشراء')}
+                accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
+                onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+            />
+
+            {error && <p className="mt-2 text-[12px] text-[#b91c1c]">{error}</p>}
+
+            <p className="mt-3 text-[11px] text-[#9ca3af]">
+                {t('الأنواع: JPG، PNG، PDF، WEBP، HEIC — والحد الأقصى 10 ميجابايت')}
+            </p>
+        </div>
     );
 }

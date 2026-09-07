@@ -101,7 +101,16 @@ final class GoodsReceipts
                     'purchase_order_item_id' => $item->id,
                     'product_id' => $item->product_id,
                     'name' => $item->name,
+                    // الكمّيةُ بوحدة الشراء كما في الأمر — والتحويلُ عند الاعتماد وحدَه
                     'quantity' => $qty,
+                    /*
+                     * ومحتوى الوحدة يُنسخ كما تُنسخ التكلفة.
+                     *
+                     * `shelve` تحتاجه لحظةَ الاعتماد، وقراءتُه حينها من بند
+                     * الأمر تربط الورقةَ ببندٍ قد يُحذف — والورقةُ تبقى ولو
+                     * حُذف أمرُها.
+                     */
+                    'units_per_purchase_unit' => (float) ($item->units_per_purchase_unit ?: 1),
                     'cost' => (float) $item->cost,
                 ];
             }
@@ -218,8 +227,31 @@ final class GoodsReceipts
                     ]));
                 }
 
+                /*
+                 * وهنا وحدَه تُترجَم وحدةُ الشراء إلى وحدة التخزين.
+                 *
+                 * ثلاثُ ربطاتٍ في العشرين ستّون حبّة على الرفّ — لا ثلاث.
+                 * وكلُّ ما عداه يبقى بوحدة الشراء: `received_quantity`،
+                 * والمتبقّي، وقيمةُ ما وصل في المطابقة الثلاثيّة. فلو حُوّل
+                 * في موضعين لاختلّ أحدُهما.
+                 *
+                 * والتكلفةُ تُقسَّم معه: تكلفةُ الربطة ستّة، فتكلفةُ الحبّة
+                 * ثلاثُ مئة. ولولا القسمة لدخل الرفَّ ستّون حبّةً بتكلفة
+                 * ستّةٍ للحبّة — فيرتفع متوسّطُ التكلفة عشرين ضعفًا ويُفسد
+                 * تسعيرَ كلّ بيعةٍ بعده.
+                 */
                 if ($line->product_id) {
-                    self::shelve($locked->business_id, $locked->branch_id, (int) $line->product_id, $qty, (float) $line->cost, $by);
+                    $per = (float) ($line->units_per_purchase_unit ?: 1);
+                    $per = $per > 0 ? $per : 1.0;
+
+                    self::shelve(
+                        $locked->business_id,
+                        $locked->branch_id,
+                        (int) $line->product_id,
+                        (int) round($qty * $per),
+                        round((float) $line->cost / $per, 3),
+                        $by,
+                    );
                 }
 
                 $item?->increment('received_quantity', $qty);

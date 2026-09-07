@@ -621,6 +621,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // وإيصالُ الدفع يُقرأ من هنا — وهو غيرُ ورقة الشحنة عمودًا وبابًا
     Route::get('/purchases/{id}/receipt-file', [FinancialAttachmentController::class, 'purchaseReceipt'])
         ->name('purchases.receiptFile');
+    // ومرفقُ الأمر نفسِه: عرضُ سعرٍ أو مستندُ طلب، لا إيصالُ دفع
+    Route::get('/purchases/{id}/attachment', [FinancialAttachmentController::class, 'purchaseOrder'])
+        ->name('purchases.attachment');
     Route::post('/purchases/{id}/receive', [PurchaseOrderController::class, 'receive'])->name('purchases.receive');
     /*
      * اعتمادُ الاستلام ورفضُه — على الإشعار لا على الأمر.

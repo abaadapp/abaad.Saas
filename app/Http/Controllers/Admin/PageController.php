@@ -19,11 +19,13 @@ use App\Support\Emojis;
 use App\Support\MarketingSettings;
 use App\Support\Permissions;
 use App\Support\ProductImages;
+use App\Support\PurchaseOrderTotals;
 use App\Support\Reports;
 use App\Support\Roles;
 use App\Support\ShopIdentity;
 use App\Support\Storefront;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -315,8 +317,17 @@ class PageController extends Controller
      * فلم تعد صفحةَ عرضٍ تُقدَّم من هنا.
      */
 
+    /**
+     * شاشةُ أمر شراء جديد.
+     *
+     * وما يصلها من المتجر وحده: المورّدون والفروع والأصناف. ونسبةُ الضريبة
+     * من إعدادات المتجر لا رقمًا مكتوبًا في الشاشة — من أطفأها لا يرى
+     * ضريبةً تُضاف إلى أوامره.
+     */
     public function purchasesCreate(Request $request): Response
     {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+
         return Inertia::render('Admin/Purchases/Create', [
             'suppliers' => Demo::suppliers(),
             'products' => Demo::products(),
@@ -325,6 +336,18 @@ class PageController extends Controller
             'currentBranchId' => Demo::currentBranchId(),
             // القدوم من شاشة إعادة الطلب يملأ الأصناف المقترحة مسبقًا
             'fromReorder' => $request->query('from') === 'reorder',
+            'today' => now()->toDateString(),
+            /*
+             * ونسبةُ الضريبة تُرسل ليحسب المتصفّح ما يحسبه الخادم — والخادمُ
+             * يعيد قراءتها من الإعدادات على كلّ حفظ، فما يُرسل لا يُصدَّق.
+             */
+            'taxRate' => PurchaseOrderTotals::taxRateFor($bid),
+            /*
+             * ومفتاحُ النموذج يُولَّد عند الخادم لا عند المتصفّح: صفحةٌ تُفتح
+             * مرّةً لها مفتاحٌ واحد، فضغطتان عليه أمرٌ واحد. ولو وُلّد في
+             * المتصفّح لأمكن تبديلُه بضغطة تحديث.
+             */
+            'formToken' => (string) Str::uuid(),
         ]);
     }
 

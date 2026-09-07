@@ -55,7 +55,6 @@ export default function PurchasesIndex() {
     const m = (v: number) => money(v, currency);
 
     const [confirm, setConfirm] = useState<{ order: PurchaseOrder; kind: 'receive' | 'delete' } | null>(null);
-    const uploads = useRef<Record<number, HTMLInputElement | null>>({});
 
     /*
      * الكمية المستلمة لكل بند — تبدأ بما بقي منه.
@@ -123,53 +122,7 @@ export default function PurchasesIndex() {
         {
             key: 'receipt',
             header: 'إيصال الدفع',
-            cell: (o) =>
-                o.receipt ? (
-                    <a
-                        href={o.receipt}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={o.receipt_name ?? ''}
-                        className="inline-flex items-center gap-1.5 text-sm text-[#4b4b4b] hover:underline"
-                    >
-                        <Paperclip className="size-4 text-[#9ca3af]" />
-                        {t('عرض')}
-                    </a>
-                ) : o.has_receipt ? (
-                    /*
-                        إيصالٌ موجودٌ لا يُقرأ — لا زرَّ رفعٍ فوقه.
-                        كان الفراغُ يُقرأ «لا إيصال» فيُرسم «رفع»، ورفعُ بديلٍ
-                        يحذف الأوّل من القرص: من لا يُؤتمن على قراءته لا
-                        يُترك ليمحوه.
-                    */
-                    <span className="inline-flex items-center gap-1.5 text-sm text-[#9ca3af]">
-                        <Paperclip className="size-4" />
-                        {t('مرفوع')}
-                    </span>
-                ) : (
-                    <>
-                        <button
-                            type="button"
-                            onClick={() => uploads.current[o.id]?.click()}
-                            className="inline-flex items-center gap-1.5 text-sm text-[#6b7280] hover:text-[#111]"
-                        >
-                            <Upload className="size-4" />
-                            {t('رفع')}
-                        </button>
-                        <input
-                            ref={(el) => {
-                                uploads.current[o.id] = el;
-                            }}
-                            type="file"
-                            hidden
-                            accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
-                            onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                if (f) uploadReceipt(o, f);
-                            }}
-                        />
-                    </>
-                ),
+            cell: (o) => <ReceiptCell order={o} onUpload={(f) => uploadReceipt(o, f)} />,
         },
         { key: 'ordered', header: 'تاريخ الطلب', cell: (o) => <span dir="ltr" className="text-[#6b7280]">{o.ordered}</span> },
         {
@@ -421,5 +374,71 @@ export default function PurchasesIndex() {
                 </DialogContent>
             </Dialog>
         </AdminLayout>
+    );
+}
+
+
+/**
+ * خانةُ إيصال الدفع — ثلاثُ حالاتٍ لا حالتان.
+ *
+ * إيصالٌ يُقرأ، وإيصالٌ موجودٌ لا يُقرأ، ولا إيصال. والثانيةُ كانت تُقرأ
+ * كالثالثة: المتحكّم يُفرّغ الرابط لمن لا يملك فتحَ المرفقات، فتُرسم فوق
+ * الورقة الموجودة زرُّ «رفع» — ورفعُ بديلٍ يحذف الأوّل من القرص. فيصير من
+ * لا يُؤتمن على قراءتها قادرًا على محوها، ولا يعلم أنّه محا شيئًا.
+ *
+ * وأُفرد مكوّنًا ليُختبر في متصفّح: الصفحةُ كلُّها لا تُركَّب في jsdom بلا
+ * أن يُصطنع نصفُ النظام حولها — انظر tests/js.
+ */
+export function ReceiptCell({ order, onUpload }: { order: PurchaseOrder; onUpload: (file: File) => void }) {
+    const t = useTranslate();
+    const input = useRef<HTMLInputElement | null>(null);
+
+    if (order.receipt) {
+        return (
+            <a
+                href={order.receipt}
+                target="_blank"
+                rel="noreferrer"
+                title={order.receipt_name ?? ''}
+                className="inline-flex items-center gap-1.5 text-sm text-[#4b4b4b] hover:underline"
+            >
+                <Paperclip className="size-4 text-[#9ca3af]" />
+                {t('عرض')}
+            </a>
+        );
+    }
+
+    // ‏موجودٌ ولا يُقرأ: يُقال إنّه هناك، ولا يُعرض بابٌ يمحوه
+    if (order.has_receipt) {
+        return (
+            <span className="inline-flex items-center gap-1.5 text-sm text-[#9ca3af]">
+                <Paperclip className="size-4" />
+                {t('مرفوع')}
+            </span>
+        );
+    }
+
+    return (
+        <>
+            <button
+                type="button"
+                onClick={() => input.current?.click()}
+                className="inline-flex items-center gap-1.5 text-sm text-[#6b7280] hover:text-[#111]"
+            >
+                <Upload className="size-4" />
+                {t('رفع')}
+            </button>
+            <input
+                ref={input}
+                type="file"
+                hidden
+                aria-label={t('إيصال الدفع')}
+                accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
+                onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onUpload(f);
+                }}
+            />
+        </>
     );
 }

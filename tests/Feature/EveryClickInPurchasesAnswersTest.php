@@ -104,6 +104,13 @@ class EveryClickInPurchasesAnswersTest extends TestCase
      */
     public function test_the_new_order_page_has_a_way_back(): void
     {
+        /*
+         * وهذا آخرُ حارسٍ يقرأ مصدرًا في هذا القسم — عمدًا.
+         *
+         * وجودُ بابِ رجوعٍ على صفحةٍ بعينها تركيبُ صفحةٍ لا سلوكُ مكوّن،
+         * ولا يُثبَت في jsdom إلّا بتركيب `AdminLayout` كلِّه — وهو نصفُ
+         * النظام. فيُحرَس هكذا، ويُقال إنّه ضعيف.
+         */
         $screen = file_get_contents(base_path('resources/js/Pages/Admin/Purchases/Create.tsx'));
 
         $this->assertStringContainsString("import BackLink from '@/Components/BackLink';", $screen);
@@ -177,13 +184,7 @@ class EveryClickInPurchasesAnswersTest extends TestCase
                 ->where('orders.0.has_receipt', true)
                 ->etc());
 
-        /*
-         * وأنّ الشاشة تفرّق بينهما لا يُثبته إلّا متصفّح — ولا مُشغِّل
-         * اختباراتٍ للواجهة هنا. فيُحرَس على المصدر: حارسٌ ضعيفٌ يمنع عودة
-         * الفرع، ولا يثبت ما تراه العين.
-         */
-        $screen = file_get_contents(base_path('resources/js/Pages/Admin/Purchases/Index.tsx'));
-        $this->assertStringContainsString(') : o.has_receipt ? (', $screen);
+        // ‏وأنّ الشاشة تفرّق بينهما يُثبته المتصفّح — tests/js/purchase-receipt-cell.test.tsx
     }
 
     /* ==================== الاستلامُ واعتمادُه ==================== */

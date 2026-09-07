@@ -17,10 +17,17 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "noEmit": true,
-        "types": ["vite/client"],
+        "types": ["vite/client", "vitest/globals"],
         "paths": {
             "@/*": ["./resources/js/*"]
         }
     },
-    "include": ["resources/js/**/*.ts", "resources/js/**/*.tsx", "resources/js/**/*.d.ts"]
+    "include": [
+        "resources/js/**/*.ts",
+        "resources/js/**/*.tsx",
+        "resources/js/**/*.d.ts",
+        "tests/js/**/*.ts",
+        "tests/js/**/*.tsx",
+        "vitest.config.ts"
+    ]
 }

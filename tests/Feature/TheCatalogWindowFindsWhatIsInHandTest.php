@@ -130,71 +130,19 @@ class TheCatalogWindowFindsWhatIsInHandTest extends TestCase
 
     /* ==================== حرّاسٌ على الشاشة ==================== */
 
-    /**
-     * والبحثُ يقرأ الرمزَ والباركود لا الاسمَ وحده.
+    /*
+     * وسلوكُ النافذة نفسِها صار يُختبر في متصفّح.
      *
-     * لا مُشغِّل اختباراتٍ للواجهة في هذا المستودع، فما لا يُشغَّل إلّا في
-     * المتصفّح يُحرَس على مصدره: حارسٌ ضعيف، وهو خيرٌ من لا حارس. ونقطةُ
-     * الأثر تحرس نفسها.
-     */
-    public function test_the_search_reads_the_codes_too(): void
-    {
-        $source = $this->screen();
-
-        $this->assertStringContainsString('fold(p.sku ?? \'\').includes(needle)', $source);
-        $this->assertStringContainsString('fold(p.barcode ?? \'\').includes(needle)', $source);
-    }
-
-    /**
-     * والمطابقةُ تُهمل الهمزةَ والشدّةَ وشكلَ الرقم.
+     * كانت هنا خمسةُ حرّاسٍ تقرأ ملفَّ الشاشة وتفتّش عن `ArrowDown` وعن
+     * `onOpenChange` وعن نصّ القصّ — تمنع الحذف ولا تثبت السلوك. وقد نجت
+     * تحتها مطفرةٌ لم أقدر على قتلها.
      *
-     * `fold` هي «النصُّ كما يُقارَن به» في هذا النظام، ومقارنةٌ حرفًا بحرف
-     * تردّ «لا نتائج» على اسمٍ مكتوبٍ في القائمة أمام عين صاحبه.
-     */
-    public function test_the_match_is_blind_to_hamza_and_to_the_shape_of_a_digit(): void
-    {
-        $this->assertStringContainsString("import { fold } from '@/lib/pages';", $this->screen());
-
-        $fold = file_get_contents(base_path('resources/js/lib/pages.ts'));
-        // الأرقام العربية والفارسية تُردّ إلى شكلٍ واحد قبل المقارنة
-        $this->assertStringContainsString('\\u0660-\\u0669', $fold);
-        $this->assertStringContainsString('\\u06F0-\\u06F9', $fold);
-        $this->assertStringContainsString("'٧': '7'", $fold);
-    }
-
-    /** ولوحةُ المفاتيح تكفي: سهمان وEnter — وقارئُ الباركود يضغط Enter */
-    public function test_the_keyboard_alone_can_pick_a_line(): void
-    {
-        $source = $this->screen();
-
-        $this->assertStringContainsString("e.key === 'ArrowDown'", $source);
-        $this->assertStringContainsString("e.key === 'ArrowUp'", $source);
-        $this->assertStringContainsString("e.key === 'Enter'", $source);
-    }
-
-    /**
-     * والنافذةُ لا تُغلق عند أوّل اختيار.
+     * فحلّ محلَّها `tests/js/catalog-window.test.tsx`: سبعةٌ وعشرون اختبارًا
+     * تكتب في الحقل وتضغط السهم وEnter وتقرأ ما يظهر. وحارسان يقولان الشيء
+     * نفسه يفترقان يومًا — فرُفع الأضعفُ منهما.
      *
-     * `take` تُضيف وتُفرّغ البحثَ وتعيد المؤشّر — ولا تنادي `onOpenChange`.
-     * ويومَ يُعاد الإغلاقُ إليها يسقط هذا.
+     * وبقي هنا ما لا يبلغه المتصفّح: ما يُرسله الخادم إلى الشاشة.
      */
-    public function test_the_window_stays_open_for_the_next_line(): void
-    {
-        $source = $this->screen();
-        $start = strpos($source, 'const take = (p: ProductRow) => {');
-        $this->assertNotFalse($start);
-        $body = substr($source, $start, strpos($source, '};', $start) - $start);
-
-        $this->assertStringContainsString('onPick(p)', $body);
-        $this->assertStringContainsString('setQ(\'\')', $body);
-        $this->assertStringNotContainsString('onOpenChange(false)', $body);
-    }
-
-    /** وقائمةٌ قُصّت تقول إنّها قُصّت — ومن رأى آخرَ صفٍّ لا يظنّه آخرَ المخزن */
-    public function test_the_list_confesses_when_it_is_cut(): void
-    {
-        $this->assertStringContainsString('عُرض :n من :m — ضيّق البحث', $this->screen());
-    }
 
     private function screen(): string
     {

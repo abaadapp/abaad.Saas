@@ -859,7 +859,7 @@ function CustomerCard({ customer, onClear }: { customer: CustomerRow; onClear: (
  * لأنّ فاتورة العميل التزامٌ ماليٌّ لا حركةَ مخزون: لا تُنقص رصيدًا ولا
  * تُحجزه. ورقمٌ يُعرض هنا يُقرأ وعدًا بالتوفّر لا يفي به المستند.
  */
-function ProductDialog({
+export function ProductDialog({
     open,
     onOpenChange,
     products,

@@ -636,6 +636,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/purchases/receipts/{id}/reject', [PurchaseOrderController::class, 'rejectReceipt'])->name('purchases.receipts.reject');
     Route::delete('/purchases/{id}', [PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
     Route::get('/purchases/{id}/pdf', [DocumentPrintController::class, 'purchase'])->name('purchases.pdf');
+    /*
+     * صفحةُ الأمر الواحد.
+     *
+     * والقيدُ الرقميّ إعلانُ نيّةٍ لا حارس: جرّبتُ نزعَه فبقي `/purchases/abc`
+     * بابًا مغلقًا — `findOrFail` يصبّ المفتاح إلى عدد قبل أن يبلغ القاعدة،
+     * على SQLite وPostgreSQL معًا. وجرّبتُ نقلَ السطر فوق `/purchases/orders`
+     * فبقيت القائمةُ تُفتح: المُطابِقُ يقدّم الثابتَ على المتغيّر. فلا يُقال
+     * عن هذا السطر إنّه يحرس شيئًا — يقول ما يقبله الباب لا غير.
+     */
+    Route::get('/purchases/{id}', [PurchaseOrderController::class, 'show'])
+        ->whereNumber('id')->name('purchases.show');
 
     // تحليلات الربحية
 

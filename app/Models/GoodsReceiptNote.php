@@ -17,7 +17,19 @@ class GoodsReceiptNote extends Model
 {
     protected $guarded = [];
 
-    protected $casts = ['received_at' => 'date'];
+    /*
+     * وأختامُ التوقيع تواريخُ لا نصوص.
+     *
+     * كانت `received_at` وحدها مصبوبة، فـ`optional($n->approved_at)->format(...)`
+     * كان يُستدعى على نصٍّ — و`optional` لا ترمي على غير الكائن، بل تردّ
+     * `null` بلا كلمة. فشاشةُ إشعارات الاستلام كانت تعرض «معتمد» بلا تاريخِ
+     * اعتماد منذ كُتبت، ولا خطأ يقول لماذا.
+     */
+    protected $casts = [
+        'received_at' => 'date',
+        'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
+    ];
 
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
 

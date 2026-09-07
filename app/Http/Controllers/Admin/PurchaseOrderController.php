@@ -8,6 +8,8 @@ use App\Models\GoodsReceiptNote;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
+use App\Models\SupplierInvoice;
+use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\GoodsReceipts;
@@ -16,7 +18,9 @@ use App\Support\PurchaseOrders;
 use App\Support\PurchaseOrderTotals;
 use App\Support\ReceiveRefused;
 use App\Support\Search;
+use App\Support\SupplierInvoices;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -66,6 +70,257 @@ class PurchaseOrderController extends Controller
              */
             'q' => Search::term($request) ?: null,
         ]);
+    }
+
+    /**
+     * صفحةُ الأمر الواحد — ما طُلب، وما وصل منه، وما حُرّر عليه.
+     *
+     * ═══ ولماذا صفحةٌ لا سطرٌ في جدول ═══
+     *
+     * القائمة تقول «مستلم جزئيًا» ولا تقول أيُّ صنفٍ بقي ولا كم، ولا مَن
+     * وقّع على ما دخل الرفّ، ولا أيَّ سندٍ حُرّر على الأمر. وثلاثةُ
+     * مستنداتٍ تشير إلى أمرٍ واحد — أوراقُ الاستلام، وسنداتُ المورّد،
+     * وبنودُ الأمر نفسِه — كانت تُقرأ في ثلاث شاشاتٍ لا يجمعها رابط، فمن
+     * أراد أن يعرف حالَ أمرٍ واحدٍ بحث عن رقمه ثلاث مرّات.
+     *
+     * ═══ والخطُّ الزمنيُّ يُبنى من الصفوف لا يُخزَّن ═══
+     *
+     * لا عمودَ جديد ولا جدولَ أحداث: كلُّ حدثٍ هنا ختمُ وقتٍ مكتوبٌ أصلًا
+     * (`created_at`، `approved_at`، `rejected_at`). وسجلٌّ ثانٍ للأحداث
+     * يفترق يومًا عمّا تقوله المستندات — والمستندُ هو الحقّ لا صداه.
+     *
+     * ═══ وهي قراءةٌ محضة ═══
+     *
+     * لا تكتب صفًّا ولا تحرّك رفًّا ولا تمسّ قيدًا. والاستلامُ والحذفُ من
+     * هنا يمرّان على البابين القائمين أنفسِهما بحرّاسهما — لا نسخةَ ثانية.
+     */
+    public function show(int|string $id): Response
+    {
+        $bid = $this->bid();
+        $user = auth()->user();
+        $mayAttachment = (bool) $user?->may(Permissions::ATTACHMENT_VIEW);
+
+        $po = PurchaseOrder::where('business_id', $bid)
+            ->with(['items' => fn ($q) => $q->orderBy('id')])
+            ->findOrFail($id);
+
+        $branch = $po->branch_id ? Branch::where('business_id', $bid)->find($po->branch_id) : null;
+
+        $notes = GoodsReceiptNote::where('business_id', $bid)
+            ->where('purchase_order_id', $po->id)
+            ->with(['items' => fn ($q) => $q->orderBy('id')])
+            ->orderBy('id')->get();
+
+        $invoices = SupplierInvoice::where('business_id', $bid)
+            ->where('purchase_order_id', $po->id)
+            ->orderBy('id')->get();
+
+        /*
+         * وأسماءُ من وقّعوا تُقرأ دفعةً واحدة.
+         *
+         * قراءةُ اسمٍ عند كلّ حدثٍ تفتح استعلامًا لكلّ سطرٍ في الخطّ الزمنيّ
+         * — وأمرٌ عليه عشرُ أوراقٍ يصير ثلاثين استعلامًا لثلاثة أسماء.
+         */
+        $actors = User::whereIn('id', $notes->pluck('submitted_by')
+            ->merge($notes->pluck('approved_by'))->merge($notes->pluck('rejected_by'))
+            ->merge($invoices->pluck('approved_by'))->merge($invoices->pluck('rejected_by'))
+            ->filter()->unique()->values()->all())->pluck('name', 'id');
+
+        // ما سُجّل ولم يُعتمد بعد — بندًا بندًا، فالمتبقّي وحده لا يقول أين ذهب
+        $pending = GoodsReceipts::pendingQuantities($po->id);
+
+        return Inertia::render('Admin/Purchases/Show', [
+            'order' => [
+                'id' => $po->id,
+                'number' => $po->number,
+                'status' => $po->status,
+                'supplier' => $po->supplier_name ?? optional($po->supplier)->name ?? '—',
+                'supplier_reference' => $po->supplier_reference,
+                'branch' => $branch?->name,
+                'notes' => $po->notes,
+                'ordered_at' => optional($po->ordered_at)->format('Y-m-d'),
+                'expected_delivery_at' => optional($po->expected_delivery_at)->format('Y-m-d'),
+                'received_at' => optional($po->received_at)->format('Y-m-d'),
+                'items_subtotal' => (float) $po->items_subtotal,
+                'supplier_discount' => (float) $po->supplier_discount,
+                'shipping_cost' => (float) $po->shipping_cost,
+                'tax' => (float) $po->tax,
+                'tax_rate' => (float) $po->tax_rate,
+                'total' => (float) $po->total,
+                /*
+                 * ووجودُ المرفق سؤالٌ غيرُ «هل تقرؤه؟».
+                 *
+                 * من لا يملك فتحَ المرفقات لا يُبنى له رابط — وتقول له الشاشة
+                 * إنّ ثمّة مرفقًا لا يُفتح، لا إنّه لا مرفق. انظر ما جرى في
+                 * إيصال أمر الشراء حين قرأت الشاشةُ الفراغَ «لا إيصال».
+                 */
+                'has_attachment' => $po->attachment !== null,
+                'attachment' => $po->attachment && $mayAttachment
+                    ? route('admin.purchases.attachment', $po->id) : null,
+                'attachment_name' => $po->attachment_name,
+                'has_receipt' => $po->receipt !== null,
+                'receipt' => $po->receipt && $mayAttachment
+                    ? route('admin.purchases.receiptFile', $po->id) : null,
+                'receipt_name' => $po->receipt_name,
+                'items' => $po->items->map(fn ($i) => [
+                    'id' => $i->id,
+                    'name' => $i->name,
+                    // الكميّاتُ كلُّها بوحدة الشراء — والتحويل عند الرفّ وحده
+                    'purchase_unit' => $i->purchase_unit,
+                    'units_per_purchase_unit' => (float) $i->units_per_purchase_unit,
+                    'quantity' => (int) $i->quantity,
+                    'received' => (int) $i->received_quantity,
+                    'pending' => (float) ($pending[$i->id] ?? 0),
+                    'remaining' => $i->remaining,
+                    'base_quantity' => $i->base_quantity,
+                    'cost' => (float) $i->cost,
+                    'line_total' => (float) $i->line_total,
+                ])->all(),
+            ],
+            'receipts' => $notes->map(fn ($n) => [
+                'id' => $n->id,
+                'number' => $n->number,
+                'status' => $n->status,
+                'received_at' => optional($n->received_at)->format('Y-m-d'),
+                'receiver' => $n->receiver,
+                'quantity' => (float) $n->items->sum('quantity'),
+                'lines' => $n->items->count(),
+                'rejection_reason' => $n->rejection_reason,
+                'pdf' => route('admin.inventory.receipts.pdf', $n->id),
+            ])->all(),
+            'invoices' => $invoices->map(fn ($v) => [
+                'id' => $v->id,
+                'reference' => $v->supplier_ref,
+                'approval_status' => $v->approval_status,
+                'status' => $v->status,
+                'issued_at' => optional($v->issued_at)->format('Y-m-d'),
+                'due_at' => optional($v->due_at)->format('Y-m-d'),
+                'total' => (float) $v->total,
+                'paid' => (float) $v->paid,
+                'outstanding' => $v->outstanding(),
+                'match_status' => $v->match_status,
+            ])->all(),
+            'timeline' => $this->timeline($po, $notes, $invoices, $actors),
+            /*
+             * والمقابضُ تُرسم على ما يقبله الخادم لا على ما نتمنّاه.
+             *
+             * زرُّ حذفٍ على أمرٍ استُلمت بضاعتُه يفتح حوارَ تأكيدٍ ثمّ يردّه
+             * الخادم — والقاعدةُ نفسُها هنا وهناك تُقرأ من الصفوف ذاتها.
+             */
+            'can' => [
+                'receive' => (bool) $user?->may(Permissions::RECEIPT_CREATE)
+                    && ! in_array($po->status, [PurchaseOrders::RECEIVED, 'ملغي'], true),
+                'delete' => $notes->isEmpty() && $invoices->isEmpty(),
+            ],
+        ]);
+    }
+
+    /**
+     * الخطُّ الزمنيّ — أختامُ الوقت المكتوبة أصلًا، مرتَّبةً.
+     *
+     * وحدثٌ بلا ختمِ وقتٍ يُطرح ولا يُخمَّن له تاريخ: «قُدّم» ليست
+     * «أُنشئ»، وورقةٌ قديمةٌ نُقلت بهجرةٍ قد لا تحمل ختمَها.
+     *
+     * @param  Collection<int, GoodsReceiptNote>  $notes
+     * @param  Collection<int, SupplierInvoice>  $invoices
+     * @param  Collection<int, string>  $actors
+     * @return list<array<string, mixed>>
+     */
+    private function timeline(PurchaseOrder $po, $notes, $invoices, $actors): array
+    {
+        $events = [];
+
+        $events[] = [
+            'at' => $po->created_at,
+            'kind' => $po->status === PurchaseOrders::DRAFT ? 'draft' : 'created',
+            'title' => $po->status === PurchaseOrders::DRAFT
+                ? __('حُفظ أمر الشراء مسودّة')
+                : __('أُنشئ أمر الشراء'),
+            'detail' => $po->supplier_name,
+            'actor' => null,
+        ];
+
+        foreach ($notes as $note) {
+            $events[] = [
+                'at' => $note->created_at,
+                'kind' => 'receipt',
+                'title' => __('سُجّل استلام :n — بانتظار الاعتماد', ['n' => $note->number]),
+                'detail' => $note->receiver,
+                'actor' => $actors[$note->submitted_by] ?? null,
+            ];
+
+            if ($note->approved_at) {
+                $events[] = [
+                    'at' => $note->approved_at,
+                    'kind' => 'approved',
+                    'title' => __('اعتُمد الاستلام :n — دخلت البضاعة الرفّ', ['n' => $note->number]),
+                    'detail' => null,
+                    'actor' => $actors[$note->approved_by] ?? null,
+                ];
+            }
+
+            if ($note->rejected_at) {
+                $events[] = [
+                    'at' => $note->rejected_at,
+                    'kind' => 'rejected',
+                    'title' => __('رُفض الاستلام :n', ['n' => $note->number]),
+                    'detail' => $note->rejection_reason,
+                    'actor' => $actors[$note->rejected_by] ?? null,
+                ];
+            }
+        }
+
+        foreach ($invoices as $invoice) {
+            $events[] = [
+                'at' => $invoice->created_at,
+                'kind' => 'invoice',
+                'title' => __('حُرّر سند المورّد :r', ['r' => $invoice->supplier_ref]),
+                'detail' => null,
+                'actor' => null,
+            ];
+
+            if ($invoice->approved_at) {
+                $events[] = [
+                    'at' => $invoice->approved_at,
+                    'kind' => 'approved',
+                    'title' => __('اعتُمد سند المورّد :r — قُيّدت الذمّة', ['r' => $invoice->supplier_ref]),
+                    'detail' => null,
+                    'actor' => $actors[$invoice->approved_by] ?? null,
+                ];
+            }
+
+            /*
+             * والإلغاءُ يُكتب في عمود الرفض نفسِه — فالحالةُ هي الفارقة.
+             *
+             * ولولا قراءتُها لَقال الخطُّ «رُفض» عن سندٍ اعتُمد ثمّ عُكس قيدُه،
+             * وهما واقعتان مختلفتان في الدفتر.
+             */
+            if ($invoice->rejected_at) {
+                $cancelled = $invoice->approval_status === SupplierInvoices::CANCELLED;
+
+                $events[] = [
+                    'at' => $invoice->rejected_at,
+                    'kind' => $cancelled ? 'cancelled' : 'rejected',
+                    'title' => $cancelled
+                        ? __('أُلغي سند المورّد :r — عُكس قيدُه', ['r' => $invoice->supplier_ref])
+                        : __('رُفض سند المورّد :r', ['r' => $invoice->supplier_ref]),
+                    'detail' => $invoice->rejection_reason,
+                    'actor' => $actors[$invoice->rejected_by] ?? null,
+                ];
+            }
+        }
+
+        return collect($events)
+            ->filter(fn ($e) => $e['at'] !== null)
+            ->sortBy(fn ($e) => $e['at']->getTimestamp())
+            ->map(fn ($e) => [
+                'at' => $e['at']->format('Y-m-d H:i'),
+                'kind' => $e['kind'],
+                'title' => $e['title'],
+                'detail' => $e['detail'] ?: null,
+                'actor' => $e['actor'],
+            ])
+            ->values()->all();
     }
 
     /**
@@ -480,6 +735,14 @@ class PurchaseOrderController extends Controller
         $po->delete();
         Activity::log('deleted', 'حذف أمر الشراء: '.$num);
 
-        return back()->with('toast', ['msg' => __('تم حذف أمر الشراء'), 'type' => 'warning']);
+        /*
+         * وإلى القائمة لا إلى حيث كان.
+         *
+         * `back()` كان يردّ الحاذفَ إلى الصفحة التي ضغط فيها — وصفحةُ الأمر
+         * نفسِه واحدةٌ منها منذ اليوم، فيهبط في `404` على أمرٍ محاه هو. ومن
+         * حذف من القائمة يعود إليها كما كان.
+         */
+        return redirect()->route('admin.purchases.orders')
+            ->with('toast', ['msg' => __('تم حذف أمر الشراء'), 'type' => 'warning']);
     }
 }

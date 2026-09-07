@@ -103,7 +103,24 @@ export default function PurchasesIndex() {
     };
 
     const columns: Column<PurchaseOrder>[] = [
-        { key: 'number', header: 'الرقم', cell: (o) => <span className="font-mono text-[#4b4b4b]">{o.number}</span> },
+        {
+            key: 'number',
+            header: 'الرقم',
+            /*
+                والرقمُ بابٌ إلى الأمر.
+                كان نصًّا لا يُضغط، فمن أراد أن يعرف ما بقي من أمرٍ «مستلم
+                جزئيًا» لم يجد إلى تفصيله سبيلًا من هنا.
+            */
+            cell: (o) => (
+                <SmartLink
+                    routeName="admin.purchases.show"
+                    href={route('admin.purchases.show', o.id)}
+                    className="font-mono text-[#6d28d9] hover:underline"
+                >
+                    {o.number}
+                </SmartLink>
+            ),
+        },
         { key: 'branch', header: 'الفرع', cell: (o) => o.branch || '—' },
         { key: 'supplier', header: 'المورّد', cell: (o) => o.supplier || '—' },
         {

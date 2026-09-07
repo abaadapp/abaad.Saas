@@ -40,3 +40,12 @@ This file records durable product and engineering decisions so future work does 
 - Why: This was the entire cause of CI's PostgreSQL job failing — 19 of its 20 failures — and it was a live production defect, not a test artifact. It was invisible locally because the development engine is SQLite.
 - Consequences: A local PostgreSQL 16 (`brew install postgresql@16`) is now the way to reproduce engine-specific failures; iterating through CI at ~11 minutes a round is not. The twentieth failure was separate: `SilentDataLossTest` asserted the order of a `pluck` with no `orderBy`, which PostgreSQL does not guarantee — assume no order unless one is requested.
 - Revisit when: A fifth call site genuinely needs different collision handling, or the development engine changes.
+
+### DEC-004 — A document's history is derived from its documents, not stored beside them
+- Date: 2026-09-08
+- Status: Approved
+- Context: The purchase-order detail page (the last unbuilt item of the purchase-order brief, §31) shows a workflow timeline: created, each goods-receipt note submitted/approved/rejected, each supplier invoice raised/approved/rejected/cancelled, with the person who signed each. The obvious implementation is an `events` table written at every transition.
+- Decision: No new column and no events table. Every entry is built at read time from timestamps that already exist — `created_at`, `approved_at`, `rejected_at` — plus `approval_status` to tell a cancellation from a rejection (both are written to the same `rejected_at`/`rejection_reason` pair). An event with no timestamp is dropped rather than given a guessed date.
+- Why: A second record of what happened drifts from the documents themselves, and the document is the truth. It also costs nothing to backfill: notes migrated from before the approval workflow already carry their stamps.
+- Consequences: The page cannot show transitions that were never stamped — "sent to the supplier" has no column, so it is not claimed. Building it exposed that `approved_at`/`rejected_at` were not cast on `GoodsReceiptNote` or `SupplierInvoice`: `optional($n->approved_at)->format(...)` was being called on a string, and `optional()` returns null on a non-object without throwing, so the goods-receipt screen had shown "approved" with no approval date since it was written, silently. The casts are added and pinned by a test.
+- Revisit when: A transition that must be shown has no timestamp of its own — then give that transition a column, not the page an events table.

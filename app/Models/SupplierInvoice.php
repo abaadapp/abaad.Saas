@@ -20,6 +20,10 @@ class SupplierInvoice extends Model
         'issued_at' => 'date', 'due_at' => 'date',
         'subtotal' => 'decimal:3', 'tax' => 'decimal:3',
         'total' => 'decimal:3', 'paid' => 'decimal:3',
+        // وأختامُ التوقيع تواريخُ لا نصوص — انظر GoodsReceiptNote
+        'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
+        'override_at' => 'datetime',
     ];
 
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }

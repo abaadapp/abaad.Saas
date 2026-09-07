@@ -44,6 +44,12 @@ final class CustomerInvoices
 
     public const SOURCE_CREDIT = 'إشعار دائن';
 
+    /** إشعارٌ كتبه التاجر — يُقيَّد */
+    public const NOTE_MANUAL = 'يدوي';
+
+    /** إشعارٌ وُلد من إلغاء طلبٍ مفوتَر — لا يُقيَّد، فقيدُه سبقه */
+    public const NOTE_ORDER_CANCELLED = 'إلغاء طلب';
+
     /** رقمٌ متسلسلٌ داخل المتجر — لا عشوائيّ، ولا يُعاد استعمالُ رقمٍ أُلغي */
     public static function nextNumber(int $businessId): string
     {
@@ -176,7 +182,6 @@ final class CustomerInvoices
             $invoice = CustomerInvoice::create([
                 'business_id' => $businessId,
                 'customer_id' => $customer->id,
-                'order_id' => $data['order_id'] ?? null,
                 'branch_id' => $data['branch_id'] ?? null,
                 'number' => self::nextNumber($businessId),
                 'status' => CustomerInvoice::DRAFT,
@@ -265,7 +270,7 @@ final class CustomerInvoices
      */
     private static function post(CustomerInvoice $invoice, ?int $userId): void
     {
-        if ($invoice->order_id !== null) {
+        if ($invoice->coversOrders()) {
             return;
         }
 
@@ -312,7 +317,7 @@ final class CustomerInvoices
         }
 
         return DB::transaction(function () use ($invoice, $reason, $userId) {
-            if ($invoice->status === CustomerInvoice::ISSUED && $invoice->order_id === null) {
+            if ($invoice->status === CustomerInvoice::ISSUED && ! $invoice->coversOrders()) {
                 $entry = JournalEntry::where('business_id', $invoice->business_id)
                     ->where('sourceable_type', CustomerInvoice::class)
                     ->where('sourceable_id', $invoice->id)
@@ -345,8 +350,15 @@ final class CustomerInvoices
      * فاتورةٌ بمئة سُدِّد منها ثلاثون ورُدّ بعشرين: الباقي خمسون. ولو خُفّض
      * الإجماليُّ إلى ثمانين لقالت الورقةُ في يد الزبون غيرَ ما يقوله النظام.
      */
-    public static function creditNote(CustomerInvoice $invoice, float $amount, float $taxAmount, string $reason, ?int $userId = null): CustomerCreditNote
-    {
+    public static function creditNote(
+        CustomerInvoice $invoice,
+        float $amount,
+        float $taxAmount,
+        string $reason,
+        ?int $userId = null,
+        string $source = self::NOTE_MANUAL,
+        ?int $orderId = null,
+    ): CustomerCreditNote {
         $amount = round($amount, 3);
 
         if ($amount <= 0) {
@@ -356,7 +368,7 @@ final class CustomerInvoices
             throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
         }
 
-        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId) {
+        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId) {
             $note = CustomerCreditNote::create([
                 'business_id' => $invoice->business_id,
                 'customer_invoice_id' => $invoice->id,
@@ -365,8 +377,26 @@ final class CustomerInvoices
                 'tax_amount' => round($taxAmount, 3),
                 'issued_at' => now()->toDateString(),
                 'reason' => $reason,
+                'source' => $source,
+                'order_id' => $orderId,
                 'created_by' => $userId,
             ]);
+
+            /*
+             * والقيدُ يتبع المصدر.
+             *
+             * إشعارٌ يكتبه التاجر بيده حدثٌ ماليٌّ جديد فيُقيَّد. وإشعارٌ يولد
+             * من إلغاء طلبٍ لا يُقيَّد: `Books::unpostSale` عكست قيدَ ذلك الطلب
+             * لحظةَ إلغائه — إيرادَه وضريبتَه وذمّتَه — فقيدٌ ثانٍ هنا يُنقص
+             * الذمّة مرّتين ويجعل الدفتر يقول غيرَ ما تقوله الفواتير.
+             */
+            if ($source !== self::NOTE_MANUAL) {
+                Activity::log('created', 'أُصدر إشعار دائن '.$note->number.' بإلغاء طلب — '.$reason, [
+                    'subject_id' => $note->id, 'subject_type' => 'customer_credit_note',
+                ]);
+
+                return $note;
+            }
 
             $net = round($amount - $taxAmount, 3);
             $lines = [];
@@ -398,6 +428,131 @@ final class CustomerInvoices
     }
 
     /**
+     * فوترةُ الشهر — ورقةٌ واحدة تغطّي عدّة طلبات.
+     *
+     * شركةٌ تشتري ثلاث مرّاتٍ في الشهر لا تريد ثلاثَ فواتير: تريد ورقةً
+     * واحدة بمجموعها آخرَ الشهر.
+     *
+     * ولا تُفوتَر إلّا البيعاتُ الآجلة: بيعةٌ نقديّةٌ قُبض ثمنُها ولا ذمّةَ
+     * لها، ووضعُها في فاتورةٍ يُنشئ التزامًا لا وجود له في الدفتر — فتفترق
+     * الذمّةُ التشغيليّة عن رصيد `receivable`.
+     *
+     * ولا طلبَ في ورقتين: الطلبُ يُقفل بقفل الكتابة ويُفحص، فلا تُطالَب
+     * شركةٌ بمبلغٍ مرّتين.
+     *
+     * ولا قيدَ لهذه الورقة: كلُّ طلبٍ فيها رُحّل لحظةَ وقوعه.
+     *
+     * @param  array<int, int>  $orderIds
+     */
+    public static function consolidate(Customer $customer, array $orderIds, array $data = [], ?int $userId = null): CustomerInvoice
+    {
+        $businessId = (int) $customer->business_id;
+
+        return DB::transaction(function () use ($businessId, $customer, $orderIds, $data, $userId) {
+            $orders = Order::where('business_id', $businessId)
+                ->where('customer_id', $customer->id)
+                ->whereIn('id', $orderIds)
+                ->lockForUpdate()->with('items')->get();
+
+            if ($orders->isEmpty()) {
+                throw new RuntimeException(__('لا طلبات لفوترتها.'));
+            }
+
+            foreach ($orders as $order) {
+                if ((string) $order->payment_status !== 'غير مدفوع') {
+                    throw new RuntimeException(__('الطلب :n مدفوعٌ — ولا يُفوتَر إلّا البيعُ الآجل.', ['n' => $order->number]));
+                }
+
+                $taken = CustomerInvoice::whereHas('orders', fn ($q) => $q->whereKey($order->id))
+                    ->where('status', '!=', CustomerInvoice::CANCELLED)->exists();
+
+                if ($taken) {
+                    throw new RuntimeException(__('الطلب :n مفوتَرٌ سلفًا.', ['n' => $order->number]));
+                }
+            }
+
+            $lines = [];
+            foreach ($orders as $order) {
+                foreach ($order->items as $item) {
+                    $lines[] = [
+                        'product_id' => $item->product_id,
+                        'order_item_id' => $item->id,
+                        // ورقمُ الطلب في البيان: الشركةُ تُطابق ورقتَها بطلباتها
+                        'description' => ($item->name ?: __('بند')).' — '.$order->number,
+                        'quantity' => (float) $item->quantity,
+                        'unit_price' => (float) $item->price,
+                        'discount' => 0.0,
+                    ];
+                }
+            }
+
+            $invoice = self::create($businessId, $customer, $data, $lines, $userId);
+            $invoice->orders()->attach($orders->pluck('id')->all());
+
+            /*
+             * والمجاميعُ تتبع الطلبات لا حسابَ البنود.
+             *
+             * الطلبُ يحمل خصمًا على مستواه وأجرةَ توصيلٍ وضريبةً حُسبت بقواعده.
+             * وإعادةُ الحساب هنا تُنتج ورقةً بمبلغٍ غير الذي رُحّل في الدفتر.
+             */
+            $invoice->update([
+                'subtotal' => round($orders->sum(fn ($o) => (float) $o->subtotal + (float) $o->delivery_fee), 3),
+                'discount_total' => round($orders->sum(fn ($o) => (float) $o->discount), 3),
+                'tax_total' => round($orders->sum(fn ($o) => (float) $o->tax), 3),
+                'total' => round($orders->sum(fn ($o) => (float) $o->total), 3),
+            ]);
+
+            return self::issue($invoice->fresh('items'), $userId);
+        });
+    }
+
+    /**
+     * إلغاءُ طلبٍ مفوتَر — الورقةُ تعرف بذلك.
+     *
+     * وكان الإلغاء يُنقص الدفتر ولا يُنقص الفاتورة: يُلغى طلبٌ في فاتورةِ
+     * شهرٍ فيبقى مبلغُه مطلوبًا من الشركة، ويُرسَل لها تذكيرٌ بدَينٍ لم يعد
+     * عليها. والفارقُ يظهر في شريط المطابقة ولا يُعرف سببُه.
+     *
+     * ولا تُعاد كتابة الورقة: يُصدَر إشعارُ دائنٍ بمبلغ الطلب — والورقةُ في
+     * يد الشركة تبقى كما استلمتها.
+     *
+     * ولا قيدَ له: `Books::unpostSale` عكست قيدَ الطلب لحظةَ إلغائه.
+     */
+    public static function onOrderCancelled(Order $order, ?int $userId = null, ?string $reason = null): ?CustomerCreditNote
+    {
+        $invoice = CustomerInvoice::whereHas('orders', fn ($q) => $q->whereKey($order->id))
+            ->where('status', CustomerInvoice::ISSUED)->first();
+
+        if (! $invoice) {
+            return null;
+        }
+
+        // ولا يُعكس ما عُكس: إلغاءان لا يكتبان إشعارين
+        $already = CustomerCreditNote::where('customer_invoice_id', $invoice->id)
+            ->where('order_id', $order->id)->exists();
+
+        if ($already) {
+            return null;
+        }
+
+        $amount = round(min((float) $order->total, $invoice->outstanding() + $invoice->paidTotal()), 3);
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        return self::creditNote(
+            $invoice,
+            $amount,
+            round((float) $order->tax, 3),
+            $reason ?: __('إلغاء الطلب ').$order->number,
+            $userId,
+            self::NOTE_ORDER_CANCELLED,
+            (int) $order->id,
+        );
+    }
+
+    /**
      * فاتورةٌ من طلبٍ قائم — لقطةُ بنوده، بلا مخزونٍ وبلا إيرادٍ ثانٍ.
      *
      * ولا تُنشأ مرّتين للطلب نفسه: ورقتان لدَينٍ واحد تُحصَّل إحداهما ويبقى
@@ -405,7 +560,7 @@ final class CustomerInvoices
      */
     public static function fromOrder(Order $order, array $data = [], ?int $userId = null): CustomerInvoice
     {
-        $existing = CustomerInvoice::where('order_id', $order->id)
+        $existing = CustomerInvoice::whereHas('orders', fn ($q) => $q->whereKey($order->id))
             ->where('status', '!=', CustomerInvoice::CANCELLED)->first();
 
         if ($existing) {
@@ -436,10 +591,11 @@ final class CustomerInvoices
          * فتفترق الذمّةُ التشغيليّة عن رصيد `receivable`.
          */
         $invoice = self::create((int) $order->business_id, $customer, $data + [
-            'order_id' => $order->id,
             'branch_id' => $order->branch_id,
             'issued_at' => $order->ordered_at ?? $order->created_at,
         ], $lines, $userId);
+
+        $invoice->orders()->attach($order->id);
 
         $invoice->update([
             'subtotal' => round((float) $order->subtotal + (float) $order->delivery_fee, 3),

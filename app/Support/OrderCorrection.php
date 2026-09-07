@@ -2,12 +2,19 @@
 
 namespace App\Support;
 
+use App\Http\Controllers\Pos\PosController;
+use App\Models\BranchStock;
+use App\Models\Coupon;
+use App\Models\Customer;
 use App\Models\InventoryMovement;
 use App\Models\Order;
 use App\Models\OrderEdit;
 use App\Models\OrderItem;
+use App\Models\OrderItemAddon;
 use App\Models\PointTransaction;
 use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Models\Setting;
 use App\Models\Transaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -134,13 +141,13 @@ class OrderCorrection
     {
         $soldOn = $order->ordered_at ?? $order->created_at;
 
-        if (! \App\Support\Vat::isFiled((int) $order->business_id, $soldOn)) {
+        if (! Vat::isFiled((int) $order->business_id, $soldOn)) {
             return;
         }
 
         throw new RuntimeException(__(
             'هذه الفاتورة داخلةٌ في إقرارٍ ضريبيّ قُدِّم في :date — لا تُلغى. وتصحيحُها يكون بإشعارِ دائنٍ في فترةٍ مفتوحة.',
-            ['date' => optional(\App\Support\Vat::filedThrough((int) $order->business_id))->format('Y-m-d')],
+            ['date' => optional(Vat::filedThrough((int) $order->business_id))->format('Y-m-d')],
         ));
     }
 
@@ -205,10 +212,10 @@ class OrderCorrection
          * البند، وهي كلفةٌ لا تُبرّرها ندرةُ الحالة اليوم.
          */
         $variant = $item->variant_id
-            ? \App\Models\ProductVariant::withTrashed()->find($item->variant_id)
+            ? ProductVariant::withTrashed()->find($item->variant_id)
             : null;
 
-        $recipe = \App\Support\Recipe::forLine($product, $variant);
+        $recipe = Recipe::forLine($product, $variant);
 
         if ($recipe->isNotEmpty()) {
             self::moveComponents($order, $product, $variant, $delta, $branchId);
@@ -219,7 +226,7 @@ class OrderCorrection
         // الزيادة تمرّ بحارس المخزون نفسه الذي يحرس البيع — وإلّا صار
         // التصحيح بابًا خلفيًّا يتجاوز الحدّ الذي يُغلق عند نقطة البيع
         if ($delta < 0) {
-            $allowsNegative = (string) (\App\Models\Setting::where('business_id', $order->business_id)
+            $allowsNegative = (string) (Setting::where('business_id', $order->business_id)
                 ->where('key', 'allow_negative_stock')->value('value') ?? '0') === '1';
 
             if (! $allowsNegative) {
@@ -248,13 +255,13 @@ class OrderCorrection
          * وهو الترتيب نفسه في البيع والاستلام وإشعار التسليم.
          */
         if ($branchId) {
-            \App\Models\BranchStock::ensureAllocated($order->business_id, $product->id, (int) $product->quantity);
+            BranchStock::ensureAllocated($order->business_id, $product->id, (int) $product->quantity);
         }
 
         $product->increment('quantity', $delta);
 
         if ($branchId) {
-            \App\Models\BranchStock::adjust($order->business_id, $branchId, $product->id, $delta);
+            BranchStock::adjust($order->business_id, $branchId, $product->id, $delta);
         }
 
         InventoryMovement::create([
@@ -276,13 +283,13 @@ class OrderCorrection
      * نفسها التي يطبّقها Recipe::units عند البيع، وتطبيقُ قاعدتين على
      * الطريقين يجعل التصحيح يردّ غير ما أخذ.
      */
-    private static function moveComponents(Order $order, Product $product, ?\App\Models\ProductVariant $variant, int $delta, ?int $branchId): void
+    private static function moveComponents(Order $order, Product $product, ?ProductVariant $variant, int $delta, ?int $branchId): void
     {
-        $per = \App\Support\Recipe::consumptionFor($product, $variant, abs($delta));
+        $per = Recipe::consumptionFor($product, $variant, abs($delta));
 
         $units = [];
         foreach ($per as $pid => $q) {
-            $units[$pid] = \App\Support\Recipe::units($q) * ($delta > 0 ? 1 : -1);
+            $units[$pid] = Recipe::units($q) * ($delta > 0 ? 1 : -1);
         }
 
         if (! $units) {
@@ -293,9 +300,9 @@ class OrderCorrection
             self::assertAvailable($order, array_map('abs', $units), $branchId);
         }
 
-        \App\Support\StockLedger::move(
+        StockLedger::move(
             (int) $order->business_id, $branchId, $units,
-            \App\Support\StockLedger::CORRECTION,
+            StockLedger::CORRECTION,
             PosCashier::name() ?? auth()->user()?->name,
             $order->number,
         );
@@ -311,7 +318,7 @@ class OrderCorrection
      */
     private static function assertAvailable(Order $order, array $needed, ?int $branchId): void
     {
-        $allowsNegative = (string) (\App\Models\Setting::where('business_id', $order->business_id)
+        $allowsNegative = (string) (Setting::where('business_id', $order->business_id)
             ->where('key', 'allow_negative_stock')->value('value') ?? '0') === '1';
 
         if ($allowsNegative || ! $needed) {
@@ -357,13 +364,13 @@ class OrderCorrection
          * والصفوف التي كُتبت قبل اللقطة تُقرأ بقاعدة يومها: واحدةٌ لكلّ
          * إضافة. انظر AddonStock::snapshot.
          */
-        $back = \App\Support\AddonStock::units(
-            \App\Support\AddonStock::consumedBy($item->addons),
+        $back = AddonStock::units(
+            AddonStock::consumedBy($item->addons),
         );
 
-        \App\Support\StockLedger::move(
+        StockLedger::move(
             (int) $order->business_id, $order->branch_id, $back,
-            \App\Support\StockLedger::CORRECTION,
+            StockLedger::CORRECTION,
             PosCashier::name() ?? auth()->user()?->name,
             $order->number,
         );
@@ -426,7 +433,7 @@ class OrderCorrection
      *
      * @throws RuntimeException برسالةٍ تُعرض للكاشير كما هي
      */
-    public static function setAddonQuantity(Order $order, \App\Models\OrderItemAddon $row, int $newQty, string $reason): OrderEdit
+    public static function setAddonQuantity(Order $order, OrderItemAddon $row, int $newQty, string $reason): OrderEdit
     {
         $item = $row->orderItem;
 
@@ -451,7 +458,7 @@ class OrderCorrection
             $totalBefore = (float) $order->total;
             $name = $row->name;
 
-            [$pid, $each] = \App\Support\AddonStock::snapshot($row);
+            [$pid, $each] = AddonStock::snapshot($row);
 
             /*
              * الفرق وحده يتحرّك — لا الكمية كلّها.
@@ -462,16 +469,16 @@ class OrderCorrection
              */
             if ($pid && $each > 0) {
                 $delta = ($oldQty - $newQty) * $each;
-                $units = \App\Support\AddonStock::units([$pid => abs($delta)]);
+                $units = AddonStock::units([$pid => abs($delta)]);
                 $units = array_map(fn ($u) => $delta > 0 ? $u : -$u, $units);
 
                 if ($delta < 0) {
                     self::assertAvailable($order, array_map('abs', $units), $order->branch_id);
                 }
 
-                \App\Support\StockLedger::move(
+                StockLedger::move(
                     $bid, $order->branch_id, $units,
-                    \App\Support\StockLedger::CORRECTION,
+                    StockLedger::CORRECTION,
                     PosCashier::name() ?? auth()->user()?->name,
                     $order->number,
                 );
@@ -536,8 +543,8 @@ class OrderCorrection
     {
         self::assertSameDay($order);
 
-        $allowed = \App\Http\Controllers\Pos\PosController::enabledPaymentMethods(
-            \App\Models\Setting::where('business_id', $order->business_id)->pluck('value', 'key')->all(),
+        $allowed = PosController::enabledPaymentMethods(
+            Setting::where('business_id', $order->business_id)->pluck('value', 'key')->all(),
         );
 
         // ولا تُصحَّح إلى وسيلةٍ أطفأها التاجر — الباب المغلق مغلقٌ من الجهتين
@@ -601,7 +608,7 @@ class OrderCorrection
     {
         self::assertNotFiled($order);
 
-        if ($order->status === \App\Support\OrderStatus::CANCELLED) {
+        if ($order->status === OrderStatus::CANCELLED) {
             return;
         }
 
@@ -618,7 +625,7 @@ class OrderCorrection
              * والقفل يُصفّ الطلبين: الثاني ينتظر ثمّ يقرأ «ملغي» فينصرف.
              */
             $fresh = Order::whereKey($order->id)->lockForUpdate()->first();
-            if (! $fresh || $fresh->status === \App\Support\OrderStatus::CANCELLED) {
+            if (! $fresh || $fresh->status === OrderStatus::CANCELLED) {
                 return;
             }
 
@@ -644,13 +651,30 @@ class OrderCorrection
              * `Books::unpostSale`.
              */
             Transaction::where('order_id', $order->id)->delete();
-            \App\Support\Books::unpostSale(
+            Books::unpostSale(
                 $fresh,
                 PosCashier::id() ?? auth()->id(),
                 $reason ?: __('إلغاء الطلب'),
             );
 
-            $order->update(['status' => \App\Support\OrderStatus::CANCELLED]);
+            $order->update(['status' => OrderStatus::CANCELLED]);
+
+            /*
+             * والورقةُ التي تحمل هذا الطلب تعرف بإلغائه.
+             *
+             * وبلا هذا يُنقص الإلغاءُ الدفترَ ولا يُنقص الفاتورة: يُلغى طلبٌ
+             * في فاتورة شهرٍ فيبقى مبلغُه مطلوبًا من الشركة، ويصلها تذكيرٌ
+             * بدَينٍ لم يعد عليها — والفارقُ يظهر في شريط المطابقة ولا يُعرف
+             * سببُه.
+             *
+             * وإشعارُ دائنٍ لا إعادةَ كتابة: الورقةُ في يدها تبقى كما استلمتها.
+             * ولا قيدَ له — `unpostSale` عكست قيد الطلب قبل سطرين.
+             */
+            CustomerInvoices::onOrderCancelled(
+                $fresh,
+                PosCashier::id() ?? auth()->id(),
+                $reason ?: null,
+            );
 
             OrderEdit::create([
                 'business_id' => $order->business_id,
@@ -678,7 +702,7 @@ class OrderCorrection
             return;
         }
 
-        \App\Models\Coupon::where('business_id', $order->business_id)
+        Coupon::where('business_id', $order->business_id)
             ->where('code', $order->coupon_code)
             ->where('used_count', '>', 0)
             ->decrement('used_count');
@@ -693,7 +717,7 @@ class OrderCorrection
      */
     private static function reverseLoyalty(Order $order): void
     {
-        $customer = $order->customer_id ? \App\Models\Customer::find($order->customer_id) : null;
+        $customer = $order->customer_id ? Customer::find($order->customer_id) : null;
         if (! $customer) {
             return;
         }
@@ -738,15 +762,15 @@ class OrderCorrection
      */
     private static function syncLoyalty(Order $order): void
     {
-        $customer = $order->customer_id ? \App\Models\Customer::find($order->customer_id) : null;
+        $customer = $order->customer_id ? Customer::find($order->customer_id) : null;
         if (! $customer) {
             return;
         }
 
-        $rate = (float) (\App\Models\Setting::where('business_id', $order->business_id)
+        $rate = (float) (Setting::where('business_id', $order->business_id)
             ->where('key', 'loyalty_earn_rate')->value('value') ?? 5);
 
-        $enabled = (string) (\App\Models\Setting::where('business_id', $order->business_id)
+        $enabled = (string) (Setting::where('business_id', $order->business_id)
             ->where('key', 'loyalty_enabled')->value('value') ?? '1') !== '0';
 
         $should = ($enabled && $rate > 0) ? (int) floor((float) $order->total * $rate) : 0;

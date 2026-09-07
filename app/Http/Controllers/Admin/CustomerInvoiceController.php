@@ -107,7 +107,7 @@ class CustomerInvoiceController extends Controller
                 'department' => $invoice->department,
                 'cost_center' => $invoice->cost_center,
                 'attention_to' => $invoice->attention_to,
-                'order_id' => $invoice->order_id,
+                'orders' => $invoice->orders->pluck('number')->all(),
                 'cancellation_reason' => $invoice->cancellation_reason,
                 'items' => $invoice->items->map(fn ($it) => [
                     'description' => $it->description,

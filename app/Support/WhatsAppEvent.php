@@ -23,11 +23,19 @@ class WhatsAppEvent
 
     public const ORDER_DELIVERED = 'order_delivered';
 
+    /** فاتورةٌ يقترب استحقاقُها */
+    public const INVOICE_DUE_SOON = 'invoice_due_soon';
+
+    /** فاتورةٌ تجاوزت استحقاقَها */
+    public const INVOICE_OVERDUE = 'invoice_overdue';
+
     public const ALL = [
         self::ORDER_CONFIRMED,
         self::ORDER_READY,
         self::ORDER_OUT_FOR_DELIVERY,
         self::ORDER_DELIVERED,
+        self::INVOICE_DUE_SOON,
+        self::INVOICE_OVERDUE,
     ];
 
     /** الحالة التي تُطلق كلّ حدث — من `OrderStatus` لا من نصٍّ مكتوبٍ هنا */
@@ -59,6 +67,9 @@ class WhatsAppEvent
         self::ORDER_READY => 'wa_on_ready',
         self::ORDER_OUT_FOR_DELIVERY => 'wa_on_out_for_delivery',
         self::ORDER_DELIVERED => 'wa_on_delivered',
+        // ومفتاحان جديدان: من لم يفعّلهما لا تُرسَل تذكيراتُه
+        self::INVOICE_DUE_SOON => 'wa_on_invoice_due_soon',
+        self::INVOICE_OVERDUE => 'wa_on_invoice_overdue',
     ];
 
     public const LABELS = [
@@ -66,6 +77,8 @@ class WhatsAppEvent
         self::ORDER_READY => 'جاهزية الطلب',
         self::ORDER_OUT_FOR_DELIVERY => 'خروج الطلب للتوصيل',
         self::ORDER_DELIVERED => 'تسليم الطلب',
+        self::INVOICE_DUE_SOON => 'اقتراب استحقاق فاتورة',
+        self::INVOICE_OVERDUE => 'تأخّر سداد فاتورة',
     ];
 
     /** اسم قالب أبعاد الافتراضي لكلّ حدث — يُهيَّأ عند ربط الرقم المشترك */
@@ -74,6 +87,8 @@ class WhatsAppEvent
         self::ORDER_READY => 'abaad_order_ready',
         self::ORDER_OUT_FOR_DELIVERY => 'abaad_order_out_for_delivery',
         self::ORDER_DELIVERED => 'abaad_order_delivered',
+        self::INVOICE_DUE_SOON => 'abaad_invoice_due_soon',
+        self::INVOICE_OVERDUE => 'abaad_invoice_overdue',
     ];
 
     public static function label(string $event): string

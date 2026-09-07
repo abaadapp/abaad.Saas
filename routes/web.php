@@ -773,6 +773,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/finance/receivables/{customer}/statement', [ReceivablesController::class, 'statement'])->name('finance.customerStatement');
     Route::get('/finance/receivables/{customer}/statement/pdf', [PdfController::class, 'customerAccountStatement'])->name('finance.customerStatement.pdf');
     Route::put('/customers/{customer}/credit', [ReceivablesController::class, 'credit'])->name('customers.credit');
+    // فوترةُ الشهر: ورقةٌ واحدة على طلباتٍ آجلةٍ لم تُفوتَر بعد
+    Route::post('/customers/{customer}/bill', [ReceivablesController::class, 'bill'])->name('customers.bill');
 
     // الحركة المالية — ما دخل وما خرج، وبابُ تسجيل ما لا مستند له
     Route::get('/finance/transactions', [FinanceController::class, 'index'])->name('finance.transactions');

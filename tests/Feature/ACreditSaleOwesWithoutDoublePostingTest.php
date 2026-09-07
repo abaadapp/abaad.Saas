@@ -109,7 +109,8 @@ class ACreditSaleOwesWithoutDoublePostingTest extends TestCase
 
         $invoice = CustomerInvoice::first();
         $this->assertSame(CustomerInvoice::ISSUED, $invoice->status);
-        $this->assertSame((int) Order::first()->id, (int) $invoice->order_id);
+        // والطلبُ يُقرأ من الجدول لا من عمود: ورقةٌ قد تغطّي شهرًا كاملًا
+        $this->assertSame([(int) Order::first()->id], $invoice->orders->pluck('id')->all());
         $this->assertSame(100.0, (float) $invoice->total);
         // وتاريخُ الاستحقاق من شروط سداد العميل
         $this->assertSame(30, (int) $invoice->issued_at->diffInDays($invoice->due_at));

@@ -28,6 +28,14 @@ Schedule::command('trash:purge')->dailyAt('02:30')->withoutOverlapping();
  */
 Schedule::command('subscriptions:notify')->dailyAt('07:30')->withoutOverlapping();
 
+/*
+ * تذكيرُ سداد فواتير العملاء (09:00) — بعد فتح المحلّات لا قبلها.
+ *
+ * ورسالةٌ واحدة لكلّ فاتورةٍ وحدث: فاتورةٌ تأخّرت شهرًا لا تُرسل ثلاثين
+ * تذكيرًا. ومن أراد الإلحاح يضغط الزرّ بيده.
+ */
+Schedule::command('invoices:remind')->dailyAt('09:00')->withoutOverlapping();
+
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 

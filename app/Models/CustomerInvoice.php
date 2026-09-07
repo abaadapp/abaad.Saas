@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 
@@ -39,9 +40,21 @@ class CustomerInvoice extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function order(): BelongsTo
+    /**
+     * الطلباتُ التي تغطّيها — صفرٌ أو واحدٌ أو شهرٌ كامل.
+     *
+     * وهي مفتاحُ منع الترحيل المزدوج: فاتورةٌ تغطّي طلبًا لا تُقيَّد، لأنّ
+     * بيعةَ ذلك الطلب قُيّدت لحظةَ وقوعها في `Books::recordSale`.
+     */
+    public function orders(): BelongsToMany
     {
-        return $this->belongsTo(Order::class);
+        return $this->belongsToMany(Order::class, 'customer_invoice_orders');
+    }
+
+    /** هل تغطّي طلبًا؟ — فإن غطّت فلا قيدَ لها */
+    public function coversOrders(): bool
+    {
+        return $this->orders()->exists();
     }
 
     public function items(): HasMany

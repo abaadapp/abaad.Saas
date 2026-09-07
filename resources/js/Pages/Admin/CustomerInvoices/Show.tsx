@@ -33,7 +33,7 @@ interface Invoice {
     discount_total: number;
     tax_total: number;
     notes: string | null;
-    order_id: number | null;
+    orders: string[];
     cancellation_reason: string | null;
     items: { description: string; quantity: number; unit_price: number; discount: number; tax_rate: number; line_total: number }[];
     payments: { number: string; amount: number; method: string; at: string | null }[];

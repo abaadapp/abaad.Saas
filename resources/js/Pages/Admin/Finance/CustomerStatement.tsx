@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import { FileText } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -16,9 +17,12 @@ interface Props {
         name: string;
         type: string;
         allow_credit_sales: boolean;
+        monthly_billing: boolean;
         credit_limit: number | null;
         payment_terms_days: number | null;
     };
+    /** بيعاتٌ آجلةٌ لم تُطبع لها ورقةٌ بعد — ذمّةٌ قائمةٌ من لحظة البيع */
+    uninvoiced: { id: number; number: string; at: string | null; total: number }[];
     statement: {
         opening: number;
         rows: { at: string | null; kind: string; ref: string; debit: number; credit: number; balance: number }[];
@@ -29,13 +33,14 @@ interface Props {
 }
 
 /** حسابُ العميل — رصيدُه وحركتُه وشروطُ ائتمانه في شاشةٍ واحدة */
-export default function CustomerStatement({ customer, statement, summary, range }: Props) {
+export default function CustomerStatement({ customer, statement, summary, range, uninvoiced }: Props) {
     const { context } = usePage<PageProps>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
     const credit = useForm({
         allow_credit_sales: customer.allow_credit_sales,
+        monthly_billing: customer.monthly_billing,
         credit_limit: customer.credit_limit === null ? '' : String(customer.credit_limit),
         payment_terms_days: customer.payment_terms_days === null ? '' : String(customer.payment_terms_days),
     });
@@ -83,6 +88,14 @@ export default function CustomerStatement({ customer, statement, summary, range 
                     />
                     {t('السماح بالبيع الآجل')}
                 </label>
+                <label className="flex items-center gap-2 text-[13px]">
+                    <input
+                        type="checkbox"
+                        checked={credit.data.monthly_billing}
+                        onChange={(e) => credit.setData('monthly_billing', e.target.checked)}
+                    />
+                    {t('فوترة شهرية')}
+                </label>
                 <label className="text-[13px]">
                     {t('حد الائتمان')}
                     <Input value={credit.data.credit_limit} onChange={(e) => credit.setData('credit_limit', e.target.value)} />
@@ -98,6 +111,8 @@ export default function CustomerStatement({ customer, statement, summary, range 
                     {t('حفظ')}
                 </Button>
             </Card>
+
+            {uninvoiced.length > 0 && <BillMonth customer={customer} rows={uninvoiced} m={m} />}
 
             <Card className="mb-4 flex flex-wrap items-end gap-2 p-3">
                 <label className="text-[13px]">
@@ -154,5 +169,72 @@ export default function CustomerStatement({ customer, statement, summary, range 
                 </table>
             </Card>
         </AdminLayout>
+    );
+}
+
+/**
+ * فوترةُ الشهر — ورقةٌ واحدة على بيعاتٍ آجلةٍ متفرّقة.
+ *
+ * والطلباتُ مُعلَّمةٌ كلُّها ابتداءً: من فتح الشاشة آخرَ الشهر يريد فوترتها
+ * جميعًا، ومن أراد استثناءَ واحدٍ يزيل علامتَه.
+ */
+function BillMonth({
+    customer,
+    rows,
+    m,
+}: {
+    customer: Props['customer'];
+    rows: Props['uninvoiced'];
+    m: (v: number) => string;
+}) {
+    const t = useTranslate();
+    const [picked, setPicked] = useState<number[]>(rows.map((r) => r.id));
+    const form = useForm<{ order_ids: number[]; due_at: string }>({ order_ids: [], due_at: '' });
+
+    const total = rows.filter((r) => picked.includes(r.id)).reduce((s, r) => s + r.total, 0);
+
+    return (
+        <Card className="mb-4 p-4">
+            <h3 className="mb-1 text-[13px] font-bold">{t('بيعات آجلة لم تُفوتَر بعد')}</h3>
+            <p className="mb-3 text-[12px] text-[#71717a]">
+                {t('اجمعها في فاتورة واحدة — وهي مستحقّة عليه منذ لحظة البيع.')}
+            </p>
+
+            {rows.map((r) => (
+                <label key={r.id} className="flex items-center gap-2 border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px]">
+                    <input
+                        type="checkbox"
+                        checked={picked.includes(r.id)}
+                        onChange={(e) =>
+                            setPicked((p) => (e.target.checked ? [...p, r.id] : p.filter((x) => x !== r.id)))
+                        }
+                    />
+                    <span className="font-medium">{r.number}</span>
+                    <span className="text-[#9ca3af]" dir="ltr">{r.at}</span>
+                    <span className="ms-auto">{m(r.total)}</span>
+                </label>
+            ))}
+
+            <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
+                <label className="text-[13px]">
+                    {t('تاريخ الاستحقاق')}
+                    <Input type="date" value={form.data.due_at} onChange={(e) => form.setData('due_at', e.target.value)} />
+                </label>
+                <span className="text-[13px] font-bold">{m(total)}</span>
+                {form.errors.order_ids && (
+                    <p className="w-full text-[12px] text-[#b91c1c]">{form.errors.order_ids}</p>
+                )}
+                <Button
+                    className="ms-auto"
+                    disabled={form.processing || picked.length === 0}
+                    onClick={() => {
+                        form.transform((d) => ({ ...d, order_ids: picked }));
+                        form.post(`/admin/customers/${customer.id}/bill`);
+                    }}
+                >
+                    {t('أصدر فاتورة بها')}
+                </Button>
+            </div>
+        </Card>
     );
 }

@@ -61,7 +61,7 @@ class TenantTables
          * والتخصيصُ بعد الدفعة والفاتورة معًا: صفٌّ يشير إلى ما لم يُكتب
          * بعدُ يُردّه المفتاحُ الأجنبيّ، فتسقط الاستعادةُ في منتصفها.
          */
-        'customer_invoices', 'customer_invoice_items',
+        'customer_invoices', 'customer_invoice_items', 'customer_invoice_orders',
         'customer_payments', 'customer_payment_allocations',
         'customer_credit_notes',
         'delivery_notes', 'delivery_note_items',
@@ -103,6 +103,7 @@ class TenantTables
         'order_item_addons' => ['order_items', 'order_item_id'],
         'order_items' => ['orders', 'order_id'],
         'customer_invoice_items' => ['customer_invoices', 'customer_invoice_id'],
+        'customer_invoice_orders' => ['customer_invoices', 'customer_invoice_id'],
         'customer_payment_allocations' => ['customer_payments', 'customer_payment_id'],
         'payroll_lines' => ['payroll_runs', 'payroll_run_id'],
         'purchase_order_items' => ['purchase_orders', 'purchase_order_id'],

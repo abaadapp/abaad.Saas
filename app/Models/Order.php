@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Support\OrderStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Order extends Model
 {
     protected $guarded = [];
+
     protected $casts = [
         'subtotal' => 'decimal:3', 'discount' => 'decimal:3', 'tax' => 'decimal:3',
         'delivery_fee' => 'decimal:3', 'total' => 'decimal:3', 'is_held' => 'boolean',
@@ -25,12 +28,38 @@ class Order extends Model
      * وفي مواضع كثيرة سواه، وحذفُه ليس تنظيمًا بل كسرٌ لِما يعمل. والمصدر
      * واحد — القيمة تُقرأ من هناك لا تُكتب هنا مرّةً ثانية.
      */
-    public const CANCELLED = \App\Support\OrderStatus::CANCELLED;
+    public const CANCELLED = OrderStatus::CANCELLED;
 
-    public function business(): BelongsTo { return $this->belongsTo(Business::class); }
-    public function branch(): BelongsTo { return $this->belongsTo(Branch::class); }
-    public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
-    public function items(): HasMany { return $this->hasMany(OrderItem::class); }
+    public function business(): BelongsTo
+    {
+        return $this->belongsTo(Business::class);
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    /**
+     * الفواتيرُ التي تغطّي هذا الطلب — واحدةٌ أو لا شيء.
+     *
+     * وبها يُسأل: «هل فُوتر هذا الطلب؟» — فتُستبعد بيعةٌ آجلةٌ طُبعت ورقتُها
+     * من مجموع «ما لم يُفوتَر»، ولا يُعدّ الدَّين مرّتين.
+     */
+    public function customerInvoices(): BelongsToMany
+    {
+        return $this->belongsToMany(CustomerInvoice::class, 'customer_invoice_orders');
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
 
     /**
      * قيود الفاتورة في المالية — دخلُها، وما يُلغى معها.
@@ -38,7 +67,10 @@ class Order extends Model
      * والمالية كلُّها تقرأ `transactions` لا `orders`: فاتورةٌ بلا قيدٍ
      * تظهر تكلفةً بلا إيراد. انظر `finance:repair-order-income`.
      */
-    public function transactions(): HasMany { return $this->hasMany(Transaction::class); }
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class);
+    }
 
     /**
      * ما بيع فعلًا: لا سلّةً معلّقة ولا طلبًا ملغى.
@@ -68,7 +100,7 @@ class Order extends Model
     {
         return $query->where('is_held', false)
             ->whereNotNull('scheduled_for')
-            ->whereNotIn('status', \App\Support\OrderStatus::CLOSED);
+            ->whereNotIn('status', OrderStatus::CLOSED);
     }
 
     /**

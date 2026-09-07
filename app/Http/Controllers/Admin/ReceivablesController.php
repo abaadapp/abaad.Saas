@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Support\Activity;
+use App\Support\CustomerInvoices;
 use App\Support\Demo;
 use App\Support\Receivables;
 use Illuminate\Http\Request;
@@ -62,10 +63,24 @@ class ReceivablesController extends Controller
                 'name' => $customer->name,
                 'type' => $customer->customer_type,
                 'allow_credit_sales' => (bool) $customer->allow_credit_sales,
+                'monthly_billing' => (bool) $customer->monthly_billing,
                 'credit_limit' => $customer->credit_limit !== null ? (float) $customer->credit_limit : null,
                 'payment_terms_days' => $customer->payment_terms_days,
             ],
             'statement' => Receivables::statement($bid, (int) $customer->id, $from, $to),
+            /*
+             * بيعاتُه الآجلة التي لم تُطبع لها ورقةٌ بعد.
+             *
+             * وهي ذمّةٌ قائمةٌ من لحظة البيع — تُعرض هنا كي لا يظنّ التاجر أنّ
+             * ما لم يُفوتَر لم يُبَع.
+             */
+            'uninvoiced' => Receivables::uninvoicedOrders($bid, (int) $customer->id)
+                ->map(fn ($o) => [
+                    'id' => $o->id,
+                    'number' => $o->number,
+                    'at' => optional($o->ordered_at ?? $o->created_at)->format('Y-m-d'),
+                    'total' => (float) $o->total,
+                ])->all(),
             'summary' => [
                 'outstanding' => Receivables::customerOutstanding($bid, (int) $customer->id),
                 'credit' => Receivables::customerCredit($bid, (int) $customer->id),
@@ -75,11 +90,46 @@ class ReceivablesController extends Controller
         ]);
     }
 
+    /**
+     * فوترةُ الشهر — ورقةٌ واحدة على طلباتٍ مختارة.
+     *
+     * والمعرّفاتُ تُفحص في الخدمة لا هنا: طلبٌ من متجرٍ آخر، أو مدفوعٌ، أو
+     * مفوتَرٌ سلفًا — ثلاثتُها تُردّ هناك حيث القفل.
+     */
+    public function bill(Request $request, int|string $customer)
+    {
+        $data = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1'],
+            'order_ids.*' => ['integer'],
+            'due_at' => ['nullable', 'date'],
+            'po_number' => ['nullable', 'string', 'max:60'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ], [], ['order_ids' => __('الطلبات')]);
+
+        $record = Customer::where('business_id', $this->bid())->whereKey($customer)->firstOrFail();
+
+        try {
+            $invoice = CustomerInvoices::consolidate(
+                $record, $data['order_ids'], $data, auth()->id()
+            );
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['order_ids' => $e->getMessage()]);
+        }
+
+        return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+            'msg' => __('صدرت الفاتورة :n على :c طلبات', [
+                'n' => $invoice->number, 'c' => count($data['order_ids']),
+            ]),
+            'type' => 'success',
+        ]);
+    }
+
     /** إعداداتُ ائتمان العميل — بابٌ واحدٌ يكتبها، ويُسجَّل تغييرُها */
     public function credit(Request $request, int|string $customer)
     {
         $data = $request->validate([
             'allow_credit_sales' => ['required', 'boolean'],
+            'monthly_billing' => ['sometimes', 'boolean'],
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
             'payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
         ], [], [

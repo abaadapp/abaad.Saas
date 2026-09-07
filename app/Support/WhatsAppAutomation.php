@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Jobs\SendWhatsAppMessage;
 use App\Models\Business;
+use App\Models\CustomerInvoice;
 use App\Models\Order;
 use App\Models\WhatsAppMessage;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -114,6 +115,93 @@ class WhatsAppAutomation
         ]);
 
         // صفٌّ موجودٌ سلفًا: الحدث نفسه وصل مرّتين — لا يُدفع إلى الطابور ثانيةً
+        if ($message === null) {
+            return null;
+        }
+
+        SendWhatsAppMessage::dispatch($message->id)->onQueue((string) config('whatsapp.queue', 'whatsapp'));
+
+        return $message;
+    }
+
+    /**
+     * تذكيرُ سدادِ فاتورةٍ — بالمسار نفسه لا بمسارٍ ثانٍ.
+     *
+     * ولم يُبنَ موصلٌ آخر للمزوّد: الحصّةُ والاتصالُ والقوالبُ وطابورُ الإرسال
+     * وسجلُّ الرسائل كلُّها هي هي. والمختلفُ أنّ المرسَل إليه عميلُ فاتورةٍ لا
+     * زبونُ طلب، فالطلبُ فارغٌ في الصفّ — وعمودُه يقبل الفراغ أصلًا.
+     *
+     * ومفتاحُ منع التكرار المتجرُ والفاتورةُ والحدث: فاتورةٌ تأخّرت شهرًا لا
+     * تُرسِل ثلاثين تذكيرًا. والتاجرُ الذي يريد إلحاحًا يضغط الزرّ بيده.
+     */
+    public static function handleInvoice(CustomerInvoice $invoice, string $event): ?WhatsAppMessage
+    {
+        try {
+            return self::decideInvoice($invoice, $event);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    private static function decideInvoice(CustomerInvoice $invoice, string $event): ?WhatsAppMessage
+    {
+        if (! in_array($event, [WhatsAppEvent::INVOICE_DUE_SOON, WhatsAppEvent::INVOICE_OVERDUE], true)) {
+            return null;
+        }
+
+        $business = Business::find($invoice->business_id);
+
+        if (! $business || WhatsAppFeature::blockReason($business) !== null) {
+            return null;
+        }
+
+        if (! self::eventEnabled($business->id, $event)) {
+            return null;
+        }
+
+        $mode = WhatsAppFeature::effectiveMode($business);
+        $customer = $invoice->customer;
+        $phone = WhatsAppPhone::normalize($customer?->contact_phone ?: $customer?->phone);
+        $connection = WhatsAppConnections::resolve($business);
+        $template = WhatsAppTemplates::resolve($business, $event, $mode);
+
+        $base = [
+            'business_id' => $business->id,
+            'order_id' => null,
+            'customer_id' => $invoice->customer_id,
+            'whatsapp_connection_id' => $connection?->id,
+            'source_mode' => $mode,
+            'event_type' => $event,
+            'direction' => 'outbound',
+            'recipient_phone' => $phone,
+            'template_name' => $template?->template_name,
+            'language_code' => $template?->language_code,
+            'dedupe_key' => 'inv:'.$business->id.':'.$invoice->id.':'.$event,
+        ];
+
+        $skip = match (true) {
+            $phone === null => WhatsAppStatus::SKIP_NO_RECIPIENT,
+            $connection === null => WhatsAppStatus::SKIP_NO_CONNECTION,
+            $template === null => WhatsAppStatus::SKIP_NO_TEMPLATE,
+            default => null,
+        };
+
+        if ($skip !== null) {
+            return self::record($base + [
+                'status' => WhatsAppStatus::SKIPPED,
+                'error_code' => $skip,
+                'quota_consumed' => false,
+            ]);
+        }
+
+        $message = self::record($base + [
+            'status' => WhatsAppStatus::QUEUED,
+            'quota_consumed' => false,
+            'queued_at' => now(),
+        ]);
+
         if ($message === null) {
             return null;
         }

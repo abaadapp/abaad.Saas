@@ -1192,7 +1192,29 @@ class PosController extends Controller
              * ولا تُرحَّل هذه الفاتورة: بيعتُها رُحّلت قبل سطرين. انظر
              * `CustomerInvoices::post`.
              */
-            if ($isCredit) {
+            /*
+             * وعميلُ الفوترة الشهريّة لا تُطبع لبيعته ورقةٌ لحظتَها.
+             *
+             * شركةٌ تشتري ثلاث مرّاتٍ في الشهر لا تريد ثلاثَ فواتير. وتتراكم
+             * بيعاتُها بلا ورقة حتّى تُجمع آخرَ الشهر — ورصيدُها ظاهرٌ من
+             * لحظته في «الذمم» غيرَ مفوتَر، لا يختفي حتّى تُطبع ورقتُه.
+             *
+             * ودفعةٌ الآن على بيعةٍ لن تُفوتَر تُسجَّل رصيدًا للعميل: دفعةٌ بلا
+             * فاتورةٍ تُخصَّص لها تبقى غيرَ مخصَّصة، وتُخصَّم من ورقة الشهر
+             * حين تُطبع.
+             */
+            if ($isCredit && $customer?->monthly_billing) {
+                if ($paidNow > 0) {
+                    CustomerPayments::record(
+                        (int) $order->business_id,
+                        $customer,
+                        $paidNow,
+                        ['method' => $order->payment_method, 'occurred_at' => now()],
+                        [],
+                        PosCashier::id(),
+                    );
+                }
+            } elseif ($isCredit) {
                 $invoice = CustomerInvoices::issue(
                     CustomerInvoices::fromOrder($order, [
                         'due_at' => $data['due_at'] ?? null,

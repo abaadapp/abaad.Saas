@@ -4436,5 +4436,16 @@
     "الآيبان:": "IBAN:",
     "المدة:": "Period:",
     "الرصيد المستحق": "Outstanding balance",
-    "القسم:": "Department:"
+    "القسم:": "Department:",
+    "فوترة شهرية": "Monthly billing",
+    "بيعات آجلة لم تُفوتَر بعد": "Credit sales not yet invoiced",
+    "اجمعها في فاتورة واحدة — وهي مستحقّة عليه منذ لحظة البيع.": "Combine them into one invoice — they have been owed since the moment of sale.",
+    "أصدر فاتورة بها": "Issue an invoice for these",
+    "لا طلبات لفوترتها.": "There are no orders to invoice.",
+    "الطلب :n مدفوعٌ — ولا يُفوتَر إلّا البيعُ الآجل.": "Order :n is paid — only credit sales can be invoiced.",
+    "الطلب :n مفوتَرٌ سلفًا.": "Order :n has already been invoiced.",
+    "إلغاء الطلب ": "Order cancelled ",
+    "صدرت الفاتورة :n على :c طلبات": "Invoice :n issued covering :c orders",
+    "اقتراب استحقاق فاتورة": "Invoice due soon",
+    "تأخّر سداد فاتورة": "Invoice overdue"
 }

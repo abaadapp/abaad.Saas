@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
+use App\Models\Order;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -48,11 +49,38 @@ final class Receivables
         return $q->get()->filter(fn (CustomerInvoice $i) => $i->outstanding() > 0)->values();
     }
 
-    /** ما على عميلٍ واحد */
+    /**
+     * بيعاتٌ آجلةٌ لم تُفوتَر بعد.
+     *
+     * عميلُ الفوترة الشهريّة لا تُطبع لبيعته ورقةٌ لحظتَها: تتراكم حتّى
+     * تُجمع آخرَ الشهر. **ورصيدُها ذمّةٌ قائمةٌ من لحظة البيع** — قُيّدت في
+     * `receivable` لحظتَها، فلو لم تُعدّ هنا لقالت الشاشة أقلَّ ممّا يقوله
+     * الدفتر، ولانكسرت المطابقة.
+     */
+    public static function uninvoicedOrders(int $businessId, ?int $customerId = null): Collection
+    {
+        return Order::where('business_id', $businessId)
+            ->where('payment_status', 'غير مدفوع')
+            ->whereNotNull('customer_id')
+            ->where('status', '!=', Order::CANCELLED)
+            ->when($customerId !== null, fn ($q) => $q->where('customer_id', $customerId))
+            ->whereDoesntHave('customerInvoices', fn ($q) => $q->where('status', '!=', CustomerInvoice::CANCELLED))
+            ->orderBy('ordered_at')->orderBy('id')->get();
+    }
+
+    /** مجموعُ ما لم يُفوتَر — بمبالغ الطلبات كما رُحّلت */
+    public static function uninvoicedTotal(int $businessId, ?int $customerId = null): float
+    {
+        return round(self::uninvoicedOrders($businessId, $customerId)
+            ->sum(fn (Order $o) => (float) $o->total), 3);
+    }
+
+    /** ما على عميلٍ واحد — مفوترًا كان أو لم يُفوتَر بعد */
     public static function customerOutstanding(int $businessId, int $customerId): float
     {
         return round(self::openInvoices($businessId, $customerId)
-            ->sum(fn (CustomerInvoice $i) => $i->outstanding()), 3);
+            ->sum(fn (CustomerInvoice $i) => $i->outstanding())
+            + self::uninvoicedTotal($businessId, $customerId), 3);
     }
 
     /**
@@ -89,8 +117,11 @@ final class Receivables
         $open = self::openInvoices($businessId);
         $soon = now()->addDays(7)->endOfDay();
 
+        $uninvoiced = self::uninvoicedTotal($businessId);
+
         return [
-            'total' => round($open->sum(fn ($i) => $i->outstanding()), 3),
+            'total' => round($open->sum(fn ($i) => $i->outstanding()) + $uninvoiced, 3),
+            'uninvoiced' => $uninvoiced,
             'overdue' => round($open->filter(fn ($i) => $i->daysOverdue() > 0)
                 ->sum(fn ($i) => $i->outstanding()), 3),
             'due_soon' => round($open->filter(fn ($i) => $i->due_at !== null

@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\Finance\BankAccountController;
 use App\Http\Controllers\Admin\Finance\ChartController;
 use App\Http\Controllers\Admin\Finance\FixedAssetController;
 use App\Http\Controllers\Admin\Finance\JournalController;
+use App\Http\Controllers\Admin\Finance\OverviewController;
 use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\GoalController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
@@ -40,18 +41,23 @@ use App\Http\Controllers\Admin\ProductImportExportController;
 use App\Http\Controllers\Admin\PurchaseOrderController;
 use App\Http\Controllers\Admin\Purchasing\PurchaseRegisterController;
 use App\Http\Controllers\Admin\Purchasing\SupplierInvoiceController;
+use App\Http\Controllers\Admin\ReceivablesController;
 use App\Http\Controllers\Admin\RecoveryEmailController;
 use App\Http\Controllers\Admin\ReportDownloadController;
 use App\Http\Controllers\Admin\ReportExportController;
 use App\Http\Controllers\Admin\ReportFeedController;
 use App\Http\Controllers\Admin\ReportPageController;
-use App\Http\Controllers\Admin\ReceivablesController;
 use App\Http\Controllers\Admin\SetupController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\SupplierExportController;
 use App\Http\Controllers\Admin\TemplateController;
 use App\Http\Controllers\Admin\TrashController;
 use App\Http\Controllers\Admin\WasteAnalyticsController;
+use App\Http\Controllers\Admin\Website\BuilderController;
+use App\Http\Controllers\Admin\Website\DesignController;
+use App\Http\Controllers\Admin\Website\EditorController;
+use App\Http\Controllers\Admin\Website\MediaController;
+use App\Http\Controllers\Admin\Website\SettingsController;
 use App\Http\Controllers\Auth\AccountRecoveryController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
@@ -69,6 +75,7 @@ use App\Http\Controllers\Pos\PeripheralController;
 use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicDocumentController;
+use App\Http\Controllers\PublishedSiteController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
@@ -138,7 +145,7 @@ Route::get('/health', HealthController::class)->name('health');
  * وما يردّه علنيٌّ بطبعه: هو نفسُه ما سيُعرض لكلّ زائر. والحدُّ على الطلبات
  * يمنع أن يصير البابُ المفتوح استنزافًا.
  */
-Route::get('/site/{host}', \App\Http\Controllers\PublishedSiteController::class)
+Route::get('/site/{host}', PublishedSiteController::class)
     ->where('host', '[A-Za-z0-9.\-]{3,255}')
     ->middleware('throttle:120,1')
     ->name('site.published');
@@ -622,7 +629,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * تفتح القالب العامّ نفسه بحمولته نفسها لصاحب المتجر وحده، منشورًا كان
      * أو لم يُنشر. ولو قبِل معرّفًا لَعاين كلُّ تاجرٍ متجر جاره غير المنشور.
      */
-    Route::get('/store/preview', [\App\Http\Controllers\Store\StorefrontController::class, 'preview'])
+    Route::get('/store/preview', [StorefrontController::class, 'preview'])
         ->name('store.preview');
     Route::post('/marketing/domain-path', [MarketingController::class, 'saveDomainPath'])->name('marketing.domain.path');
     Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
@@ -636,39 +643,39 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * «انشر»: تبديلُ لونٍ لا يصل زائرًا قبل أن يرضى عنه صاحبُه.
      */
     Route::prefix('website')->name('website.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'index'])->name('index');
-        Route::post('/', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'store'])->name('create');
-        Route::post('/publish', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'publish'])->name('publish');
-        Route::post('/versions/{id}/restore', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'restore'])->name('restore');
-        Route::post('/maintenance', [\App\Http\Controllers\Admin\Website\BuilderController::class, 'maintenance'])->name('maintenance');
+        Route::get('/', [BuilderController::class, 'index'])->name('index');
+        Route::post('/', [BuilderController::class, 'store'])->name('create');
+        Route::post('/publish', [BuilderController::class, 'publish'])->name('publish');
+        Route::post('/versions/{id}/restore', [BuilderController::class, 'restore'])->name('restore');
+        Route::post('/maintenance', [BuilderController::class, 'maintenance'])->name('maintenance');
 
-        Route::get('/pages', [\App\Http\Controllers\Admin\Website\PageController::class, 'index'])->name('pages');
-        Route::post('/pages', [\App\Http\Controllers\Admin\Website\PageController::class, 'store'])->name('pages.store');
-        Route::post('/pages/reorder', [\App\Http\Controllers\Admin\Website\PageController::class, 'reorder'])->name('pages.reorder');
-        Route::put('/pages/{id}', [\App\Http\Controllers\Admin\Website\PageController::class, 'update'])->name('pages.update');
-        Route::delete('/pages/{id}', [\App\Http\Controllers\Admin\Website\PageController::class, 'destroy'])->name('pages.destroy');
+        Route::get('/pages', [App\Http\Controllers\Admin\Website\PageController::class, 'index'])->name('pages');
+        Route::post('/pages', [App\Http\Controllers\Admin\Website\PageController::class, 'store'])->name('pages.store');
+        Route::post('/pages/reorder', [App\Http\Controllers\Admin\Website\PageController::class, 'reorder'])->name('pages.reorder');
+        Route::put('/pages/{id}', [App\Http\Controllers\Admin\Website\PageController::class, 'update'])->name('pages.update');
+        Route::delete('/pages/{id}', [App\Http\Controllers\Admin\Website\PageController::class, 'destroy'])->name('pages.destroy');
 
         // المحرّر يفتح على صفحةٍ بعينها — وبلا رقمٍ يفتح على الرئيسية
-        Route::get('/editor/{id?}', [\App\Http\Controllers\Admin\Website\EditorController::class, 'show'])->name('editor');
-        Route::post('/editor/{id}/sections', [\App\Http\Controllers\Admin\Website\EditorController::class, 'addSection'])->name('sections.add');
-        Route::post('/editor/{id}/reorder', [\App\Http\Controllers\Admin\Website\EditorController::class, 'reorderSections'])->name('sections.reorder');
-        Route::put('/sections/{id}', [\App\Http\Controllers\Admin\Website\EditorController::class, 'updateSection'])->name('sections.update');
-        Route::post('/sections/{id}/toggle', [\App\Http\Controllers\Admin\Website\EditorController::class, 'toggleSection'])->name('sections.toggle');
-        Route::post('/sections/{id}/duplicate', [\App\Http\Controllers\Admin\Website\EditorController::class, 'duplicateSection'])->name('sections.duplicate');
-        Route::delete('/sections/{id}', [\App\Http\Controllers\Admin\Website\EditorController::class, 'destroySection'])->name('sections.destroy');
+        Route::get('/editor/{id?}', [EditorController::class, 'show'])->name('editor');
+        Route::post('/editor/{id}/sections', [EditorController::class, 'addSection'])->name('sections.add');
+        Route::post('/editor/{id}/reorder', [EditorController::class, 'reorderSections'])->name('sections.reorder');
+        Route::put('/sections/{id}', [EditorController::class, 'updateSection'])->name('sections.update');
+        Route::post('/sections/{id}/toggle', [EditorController::class, 'toggleSection'])->name('sections.toggle');
+        Route::post('/sections/{id}/duplicate', [EditorController::class, 'duplicateSection'])->name('sections.duplicate');
+        Route::delete('/sections/{id}', [EditorController::class, 'destroySection'])->name('sections.destroy');
 
         // رفعُ صورةٍ يردّ رابطًا — وحقل الصورة يحمل رابطًا أيًّا كان مصدره
-        Route::post('/media', [\App\Http\Controllers\Admin\Website\MediaController::class, 'upload'])->name('media');
+        Route::post('/media', [MediaController::class, 'upload'])->name('media');
 
-        Route::get('/design', [\App\Http\Controllers\Admin\Website\DesignController::class, 'index'])->name('design');
-        Route::put('/design', [\App\Http\Controllers\Admin\Website\DesignController::class, 'update'])->name('design.update');
-        Route::put('/design/palette', [\App\Http\Controllers\Admin\Website\DesignController::class, 'palette'])->name('design.palette');
+        Route::get('/design', [DesignController::class, 'index'])->name('design');
+        Route::put('/design', [DesignController::class, 'update'])->name('design.update');
+        Route::put('/design/palette', [DesignController::class, 'palette'])->name('design.palette');
 
-        Route::get('/shop', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'store'])->name('shop');
-        Route::put('/shop', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'saveStore'])->name('shop.save');
-        Route::get('/seo', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'seo'])->name('seo');
-        Route::put('/seo', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'saveSeo'])->name('seo.save');
-        Route::put('/settings', [\App\Http\Controllers\Admin\Website\SettingsController::class, 'saveSite'])->name('settings.save');
+        Route::get('/shop', [SettingsController::class, 'store'])->name('shop');
+        Route::put('/shop', [SettingsController::class, 'saveStore'])->name('shop.save');
+        Route::get('/seo', [SettingsController::class, 'seo'])->name('seo');
+        Route::put('/seo', [SettingsController::class, 'saveSeo'])->name('seo.save');
+        Route::put('/settings', [SettingsController::class, 'saveSite'])->name('settings.save');
     });
 
     Route::get('/marketing/loyalty', [MarketingController::class, 'loyalty'])->name('marketing.loyalty');
@@ -757,16 +764,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/customer-payments/{id}/cancel', [CustomerInvoiceController::class, 'cancelPayment'])->name('customerPayments.cancel');
 
     Route::get('/finance/receivables', [ReceivablesController::class, 'index'])->name('finance.receivables');
-    Route::get('/finance/receivables/{customer}/statement', [ReceivablesController::class, 'statement'])->name('finance.statement');
-        Route::get('/finance/receivables/{customer}/statement/pdf', [PdfController::class, 'customerAccountStatement'])->name('finance.statement.pdf');
+    /*
+     * و`finance.statement` مأخوذٌ لكشف الحساب البنكيّ — فاسمٌ آخر.
+     *
+     * اسمان لمسارين يجعل `route()` تُخرج عنوانَ أحدهما للآخر، ولا يُكتشف
+     * ذلك إلّا حين يضغط أحدٌ زرًّا فيجد نفسه في شاشةٍ لم يقصدها.
+     */
+    Route::get('/finance/receivables/{customer}/statement', [ReceivablesController::class, 'statement'])->name('finance.customerStatement');
+    Route::get('/finance/receivables/{customer}/statement/pdf', [PdfController::class, 'customerAccountStatement'])->name('finance.customerStatement.pdf');
     Route::put('/customers/{customer}/credit', [ReceivablesController::class, 'credit'])->name('customers.credit');
 
     // الحركة المالية — ما دخل وما خرج، وبابُ تسجيل ما لا مستند له
     Route::get('/finance/transactions', [FinanceController::class, 'index'])->name('finance.transactions');
 
     // الملخّص المالي والمبالغ المستحقة — قراءتان لا تكتبان شيئًا
-    Route::get('/finance/summary', [\App\Http\Controllers\Admin\Finance\OverviewController::class, 'summary'])->name('finance.summary');
-    Route::get('/finance/dues', [\App\Http\Controllers\Admin\Finance\OverviewController::class, 'dues'])->name('finance.dues');
+    Route::get('/finance/summary', [OverviewController::class, 'summary'])->name('finance.summary');
+    Route::get('/finance/dues', [OverviewController::class, 'dues'])->name('finance.dues');
 
     // شجرة الحسابات
     Route::get('/finance/chart', [ChartController::class, 'index'])->name('finance.chart');

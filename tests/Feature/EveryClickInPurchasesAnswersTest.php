@@ -281,11 +281,9 @@ class EveryClickInPurchasesAnswersTest extends TestCase
     }
 
     /**
-     * والمعتمَدُ يُلغى بعكس قيده — والمسارُ يعمل.
+     * والمعتمَدُ يُلغى بعكس قيده لا يُمحى.
      *
-     * ولا زرَّ له في الشاشة بعد. وهذا مذكورٌ للتاجر لا مُصلَحٌ هنا: بابٌ
-     * يُبنى ولا يُعرض بابٌ لا يُفتح، لكنّ إضافةَ زرٍّ تغييرٌ في القسم لم
-     * يُطلَب. وهذا الاختبارُ يمنع موتَ المسار في صمت حتى يُقرَّر.
+     * ومقبضُه في الشاشة مُختبَرٌ في متصفّح — tests/js/supplier-invoice-row-actions.
      */
     public function test_an_approved_invoice_is_cancelled_by_reversal(): void
     {
@@ -300,6 +298,49 @@ class EveryClickInPurchasesAnswersTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame(SupplierInvoices::CANCELLED, $invoice->fresh()->approval_status);
+    }
+
+    /**
+     * وسندٌ خرج مقابله مال لا يُلغى — والزرُّ لا يُعرض عليه أصلًا.
+     *
+     * عكسُ الذمّة وحدها يترك قيدَ السداد يتيمًا: نقدٌ خرج من الصندوق مقابل
+     * دَينٍ لا وجود له في الدفتر. وطريقُه أن يُسترَدّ المال أو يُقيَّد إشعارٌ
+     * دائن.
+     *
+     * والحارسان اثنان عمدًا: الشاشةُ لا تعرض الباب، والخادمُ يردّه لمن بلغه
+     * بطلبٍ مباشر. وحارسُ الشاشة يُريح، وحارسُ الخادم يحرس.
+     */
+    public function test_a_partly_paid_invoice_is_not_cancelled(): void
+    {
+        $invoice = $this->invoice('S-4001');
+        $this->actingAs($this->owner)
+            ->post(route('admin.purchases.invoices.approve', $invoice->id), ['override_reason' => 'اعتمادُ اختبار'])
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->owner)->post(route('admin.purchases.invoices.pay', $invoice->id), [
+            'amount' => 40, 'paid_at' => now()->toDateString(), 'from' => 'cash',
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.purchases.invoices.cancel', $invoice->id), ['reason' => 'أُلغيت الشحنة'])
+            ->assertSessionHasErrors('approve');
+
+        $this->assertSame(SupplierInvoices::APPROVED, $invoice->fresh()->approval_status);
+    }
+
+    /** والإلغاءُ بسببٍ مكتوب — وورقةٌ تُلغى بلا سببٍ تُسأل عنها بعد شهر */
+    public function test_cancelling_needs_a_written_reason(): void
+    {
+        $invoice = $this->invoice('S-4002');
+        $this->actingAs($this->owner)
+            ->post(route('admin.purchases.invoices.approve', $invoice->id), ['override_reason' => 'اعتمادُ اختبار'])
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.purchases.invoices.cancel', $invoice->id), ['reason' => ''])
+            ->assertSessionHasErrors('reason');
+
+        $this->assertSame(SupplierInvoices::APPROVED, $invoice->fresh()->approval_status);
     }
 
     /* ==================== لا خمسمئةَ في القسم ==================== */

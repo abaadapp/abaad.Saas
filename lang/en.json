@@ -4579,5 +4579,9 @@
     "الكتالوج أكبر ممّا يُحمَّل هنا — ابحث بالاسم أو الرمز للوصول إلى الباقي.": "The catalogue is larger than what loads here — search by name or code to reach the rest.",
     "تمّ": "Done",
     "أُضيف :n بندًا": "Added :n line(s)",
-    "مرفوع": "Attached"
+    "مرفوع": "Attached",
+    "إلغاء السند": "Cancel invoice",
+    "يُعكس قيدُ السند في الدفتر ولا يُمحى — والذمّة تسقط عن المتجر.": "The invoice's journal entry is reversed, not erased — the liability drops off the shop.",
+    "مثال: أُلغيت الشحنة قبل وصولها": "e.g. the shipment was cancelled before it arrived",
+    "إلغاء السند وعكس قيده": "Cancel and reverse its entry"
 }

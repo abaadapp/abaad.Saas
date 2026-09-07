@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Check, FileText, Plus, ShieldAlert, Trash2, Wallet, X } from 'lucide-react';
+import { Check, FileText, Plus, ShieldAlert, Trash2, Undo2, Wallet, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PURCHASE_TABS } from '@/Components/SectionTabs';
@@ -10,7 +10,13 @@ import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import { useConfirm } from '@/Components/ConfirmDialog';
@@ -83,6 +89,14 @@ export default function SupplierInvoices() {
     const [adding, setAdding] = useState(false);
     const [paying, setPaying] = useState<Invoice | null>(null);
     const [deciding, setDeciding] = useState<Invoice | null>(null);
+    /*
+     * وإلغاءُ المعتمَد نافذةٌ على حدة لا زرٌّ في نافذة المراجعة.
+     *
+     * المراجعةُ قرارٌ على ورقةٍ تنتظر، والإلغاءُ نقضٌ لقرارٍ وقع وترك قيدًا
+     * في الدفتر. وجمعُهما في شاشةٍ واحدة يجعل «ألغِ» مجاورًا لـ«اعتمد».
+     */
+    const [cancelling, setCancelling] = useState<Invoice | null>(null);
+    const cancelForm = useForm({ reason: '' });
     // ورسالةُ الردّ تصل في `approve` — فيُحجَز لها موضعٌ في النموذج
     const decide = useForm({ override_reason: '', reason: '', approve: '' });
 
@@ -208,52 +222,29 @@ export default function SupplierInvoices() {
             header: 'إجراءات',
             align: 'end',
             cell: (i) => (
-                <div className="flex items-center justify-end gap-1">
-                    {/* والقرارُ قبل السداد: لا يُسدَّد ما لم يُعتمد */}
-                    {(canApprove || canReject) && i.approval_status === PENDING && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                                decide.clearErrors();
-                                decide.setData({ override_reason: '', reason: '' });
-                                setDeciding(i);
-                            }}
-                        >
-                            <Check />
-                            {t('مراجعة')}
-                        </Button>
-                    )}
-                    {canPay && i.outstanding > 0 && i.approval_status === APPROVED && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                                payForm.clearErrors();
-                                payForm.setData({ amount: String(i.outstanding), paid_at: today, from: 'cash' });
-                                setPaying(i);
-                            }}
-                        >
-                            <Wallet />
-                            {t('سداد')}
-                        </Button>
-                    )}
-                    {canCreate && i.paid === 0 && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-[#b91c1c]"
-                            onClick={async () => {
-                                if (! await ask({ message: 'حذف السند وقيده من الدفتر؟', danger: true, action: 'حذف' })) return;
-                                router.delete(route('admin.purchases.invoices.destroy', i.id), {
-                                    preserveScroll: true,
-                                });
-                            }}
-                        >
-                            <Trash2 />
-                        </Button>
-                    )}
-                </div>
+                <InvoiceRowActions
+                    invoice={i}
+                    may={{ approve: canApprove, reject: canReject, create: canCreate, pay: canPay }}
+                    onReview={() => {
+                        decide.clearErrors();
+                        decide.setData({ override_reason: '', reason: '' });
+                        setDeciding(i);
+                    }}
+                    onPay={() => {
+                        payForm.clearErrors();
+                        payForm.setData({ amount: String(i.outstanding), paid_at: today, from: 'cash' });
+                        setPaying(i);
+                    }}
+                    onCancel={() => {
+                        cancelForm.clearErrors();
+                        cancelForm.setData('reason', '');
+                        setCancelling(i);
+                    }}
+                    onDelete={async () => {
+                        if (! await ask({ message: 'حذف السند وقيده من الدفتر؟', danger: true, action: 'حذف' })) return;
+                        router.delete(route('admin.purchases.invoices.destroy', i.id), { preserveScroll: true });
+                    }}
+                />
             ),
         },
     ];
@@ -702,7 +693,133 @@ export default function SupplierInvoices() {
                 </DialogContent>
             </Dialog>
 
+            {/* ===== إلغاءُ سندٍ معتمَد ===== */}
+            <Dialog open={cancelling !== null} onOpenChange={(open) => !open && setCancelling(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {t('إلغاء السند')} <span className="font-mono">{cancelling?.reference}</span>
+                        </DialogTitle>
+                        <DialogDescription>
+                            {t('يُعكس قيدُ السند في الدفتر ولا يُمحى — والذمّة تسقط عن المتجر.')}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {cancelling && (
+                        <div className="space-y-4 px-5 pb-5">
+                            <Field label="سبب الإلغاء" error={cancelForm.errors.reason}>
+                                <Input
+                                    value={cancelForm.data.reason}
+                                    onChange={(e) => cancelForm.setData('reason', e.target.value)}
+                                    placeholder={t('مثال: أُلغيت الشحنة قبل وصولها')}
+                                />
+                            </Field>
+
+                            <div className="flex justify-end gap-2">
+                                <Button variant="outline" onClick={() => setCancelling(null)}>
+                                    {t('تراجع')}
+                                </Button>
+                                <Button
+                                    variant="danger"
+                                    disabled={cancelForm.processing}
+                                    onClick={() =>
+                                        cancelForm.post(route('admin.purchases.invoices.cancel', cancelling.id), {
+                                            preserveScroll: true,
+                                            onSuccess: () => setCancelling(null),
+                                        })
+                                    }
+                                >
+                                    <Undo2 />
+                                    {t('إلغاء السند وعكس قيده')}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
             {confirmDialog}
         </AdminLayout>
+    );
+}
+
+
+/**
+ * أزرارُ صفّ السند — أربعةٌ لكلٍّ شرطُه.
+ *
+ * ═══ ولماذا أُفردت ═══
+ *
+ * لأنّ الخطأ هنا لا يُرى في اختبارات الخادم: زرٌّ يُرسم لمن يردّه الخادمُ
+ * عند ضغطه يمرّ من كلّ اختبارٍ يسأل الخادم. وكان «حذف» يُرسم على سندٍ
+ * معتمَد — والخادمُ يردّه بـ«سندٌ معتمَد لا يُحذف»، فيظنّ التاجرُ العطبَ
+ * في النظام ويعيد المحاولة.
+ *
+ * وشرطُ كلّ زرٍّ هنا مرآةٌ لشرط الخادم:
+ *
+ *   مراجعة → ينتظر الاعتماد، ولمن يعتمد أو يرفض
+ *   سداد   → معتمَدٌ وعليه باقٍ، ولمن يسدّد
+ *   إلغاء  → معتمَدٌ ولم يُدفع منه شيء، ولمن يعتمد (`SupplierInvoices::cancel`)
+ *   حذف    → غيرُ معتمَدٍ ولم يُدفع منه شيء، ولمن يكتب
+ *
+ * والإلغاءُ والحذفُ لا يجتمعان أبدًا: أحدهما لما قبل التوقيع والآخر لما بعده.
+ */
+export function InvoiceRowActions({
+    invoice,
+    may,
+    onReview,
+    onPay,
+    onCancel,
+    onDelete,
+}: {
+    invoice: Invoice;
+    may: { approve: boolean; reject: boolean; create: boolean; pay: boolean };
+    onReview: () => void;
+    onPay: () => void;
+    onCancel: () => void;
+    onDelete: () => void;
+}) {
+    const t = useTranslate();
+    const approved = invoice.approval_status === APPROVED;
+    const untouched = invoice.paid === 0;
+
+    return (
+        <div className="flex items-center justify-end gap-1">
+            {/* والقرارُ قبل السداد: لا يُسدَّد ما لم يُعتمد */}
+            {(may.approve || may.reject) && invoice.approval_status === PENDING && (
+                <Button variant="ghost" size="sm" onClick={onReview}>
+                    <Check />
+                    {t('مراجعة')}
+                </Button>
+            )}
+
+            {may.pay && approved && invoice.outstanding > 0 && (
+                <Button variant="ghost" size="sm" onClick={onPay}>
+                    <Wallet />
+                    {t('سداد')}
+                </Button>
+            )}
+
+            {/*
+                والمعتمَدُ يُلغى بعكس قيده لا يُحذف — والمسارُ كان قائمًا بلا
+                مقبض. ولا يُعرض على سندٍ سُدّد منه شيء: عكسُ الذمّة وحدها
+                يترك قيدَ السداد يتيمًا، ونقدًا خرج مقابل دَينٍ لا وجود له.
+            */}
+            {may.approve && approved && untouched && (
+                <Button variant="ghost" size="sm" className="text-[#b45309]" onClick={onCancel}>
+                    <Undo2 />
+                    {t('إلغاء')}
+                </Button>
+            )}
+
+            {/*
+                والحذفُ لغير المعتمَد وحده. كان يُرسم على المعتمَد أيضًا
+                والخادمُ يردّه — بابٌ يُعرض ولا يُفتح أسوأ من بابٍ لا يُعرض.
+            */}
+            {may.create && !approved && untouched && (
+                <Button variant="ghost" size="sm" className="text-[#b91c1c]" aria-label={t('حذف')} onClick={onDelete}>
+                    <Trash2 />
+                </Button>
+            )}
+        </div>
     );
 }

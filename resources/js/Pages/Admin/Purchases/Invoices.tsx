@@ -38,6 +38,8 @@ interface Invoice {
     override_reason: string | null;
     rejection_reason: string | null;
     /** قيمةُ ما وصل فعلًا على أمره — من الاستلامات المعتمَدة وحدها */
+    /** اسمُ فاتورة المورّد المرفقة — لا مسارُها */
+    attachment: string | null;
     received_value: number | null;
     order_total: number | null;
     overdue: boolean;
@@ -639,6 +641,20 @@ export default function SupplierInvoices() {
                             </Field>
 
                             <div className="flex flex-wrap justify-end gap-2">
+                                {/* وورقةُ المورّد تُفتح هنا: من يعتمد يقابل
+                                    الرقمَ بما في يده لا بما نُقل عنه */}
+                                {deciding.attachment && (
+                                    <Button variant="outline" className="me-auto" asChild>
+                                        <a
+                                            href={route('admin.purchases.invoices.attachment', deciding.id)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            <FileText />
+                                            {deciding.attachment}
+                                        </a>
+                                    </Button>
+                                )}
                                 <Button
                                     variant="outline"
                                     disabled={decide.processing}

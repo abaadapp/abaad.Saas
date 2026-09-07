@@ -4568,5 +4568,6 @@
     "مثال: وافقتُ على رفع السعر هاتفيًّا": "e.g. I approved the price increase by phone",
     "هذا السند لا يطابق أمره، وتجاوزُ ذلك ليس من صلاحياتك.": "This invoice does not match its order, and overriding that is not within your permissions.",
     "يُكتب إن رفضتَ السند": "Required if you reject the invoice",
-    "اعتماد السند": "Approve invoice"
+    "اعتماد السند": "Approve invoice",
+    "فاتورة المورّد": "Supplier invoice"
 }

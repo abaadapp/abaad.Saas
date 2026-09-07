@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import SmartLink from '@/Components/SmartLink';
-import { Check, PackagePlus, Printer, X } from 'lucide-react';
+import { Check, FileText, PackagePlus, Printer, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
@@ -46,6 +46,8 @@ interface Note {
     approved_at: string | null;
     rejected_at: string | null;
     rejection_reason: string | null;
+    /** اسمُ ورقة المورّد المرفقة — لا مسارُها: المسارُ خلف بابٍ يسأل */
+    attachment: string | null;
     items: NoteItem[];
 }
 
@@ -382,6 +384,20 @@ export default function InventoryReceipts() {
                                 <p className="me-auto text-[12px] text-[#b91c1c]">
                                     {t('سبب الرفض')}: {viewing.rejection_reason}
                                 </p>
+                            )}
+                            {/* وورقةُ المورّد تُفتح من هنا: من يعتمد يريد أن
+                                يقابل ما في الشاشة بما في يده */}
+                            {viewing.attachment && (
+                                <Button variant="outline" asChild>
+                                    <a
+                                        href={route('admin.inventory.receipts.attachment', viewing.id)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                    >
+                                        <FileText />
+                                        {viewing.attachment}
+                                    </a>
+                                </Button>
                             )}
                             <Button variant="outline" asChild>
                                 <a

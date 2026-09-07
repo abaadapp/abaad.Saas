@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\Finance\FixedAssetController;
 use App\Http\Controllers\Admin\Finance\JournalController;
 use App\Http\Controllers\Admin\Finance\OverviewController;
 use App\Http\Controllers\Admin\FinanceController;
+use App\Http\Controllers\Admin\FinancialAttachmentController;
 use App\Http\Controllers\Admin\GoalController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
 use App\Http\Controllers\Admin\Inventory\StockAdjustmentController;
@@ -570,6 +571,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/inventory/receipts', [GoodsReceiptNoteController::class, 'index'])->name('inventory.receipts');
     Route::get('/inventory/receipts/{id}/pdf', [DocumentPrintController::class, 'grn'])->name('inventory.receipts.pdf');
+    /*
+     * مرفقاتُ المستندات المالية — على القرص الخاصّ، وتُقرأ ببابٍ يسأل.
+     *
+     * والقديمةُ على `public`: رابطُها يُفتح بلا تسجيل دخول. وورقةُ مورّدٍ
+     * فيها أسعارُ شرائك — أثمنُ ما في متجرك عند منافسك.
+     */
+    Route::get('/inventory/receipts/{id}/attachment', [FinancialAttachmentController::class, 'receipt'])->name('inventory.receipts.attachment');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
     // المورّدون
@@ -599,6 +607,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      *
      * والسدادُ بعدهما: مالٌ يخرج مقابل دَينٍ نشأ، لا مقابل ورقةٍ وصلت.
      */
+    Route::get('/purchases/invoices/{id}/attachment', [FinancialAttachmentController::class, 'supplierInvoice'])->name('purchases.invoices.attachment');
     Route::post('/purchases/invoices/{id}/approve', [SupplierInvoiceController::class, 'approve'])->name('purchases.invoices.approve');
     Route::post('/purchases/invoices/{id}/reject', [SupplierInvoiceController::class, 'reject'])->name('purchases.invoices.reject');
     // والمعتمَدُ يُلغى بعكس قيده لا يُحذف — مستندٌ ماليٌّ صدر يبقى مقروءًا

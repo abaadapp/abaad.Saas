@@ -104,6 +104,7 @@ class SupplierInvoiceController extends Controller
                 'match_notes' => array_values(array_filter(explode("\n", (string) $i->match_notes))),
                 'override_reason' => $i->override_reason,
                 'rejection_reason' => $i->rejection_reason,
+                'attachment' => $i->attachment ? ($i->attachment_name ?: __('فاتورة المورّد')) : null,
                 // قيمةُ ما وصل فعلًا على أمره — الرقمُ الذي يُقابَل به السند
                 'received_value' => $i->purchase_order_id
                     ? SupplierInvoices::receivedValue((int) $i->purchase_order_id)

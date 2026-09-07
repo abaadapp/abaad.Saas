@@ -78,6 +78,8 @@ class GoodsReceiptNoteController extends Controller
                 'approved_at' => optional($n->approved_at)->format('Y-m-d'),
                 'rejected_at' => optional($n->rejected_at)->format('Y-m-d'),
                 'rejection_reason' => $n->rejection_reason,
+                // اسمُ المرفق كما سمّاه صاحبُه — والمخزَّنُ عشوائيّ
+                'attachment' => $n->attachment ? ($n->attachment_name ?: __('ورقة المورّد')) : null,
                 // قيمة ما دخل بهذه الورقة — تُقابَل بفاتورة المورّد
                 'value' => round($n->items->sum(fn ($i) => (float) $i->quantity * (float) $i->cost), 3),
                 /*

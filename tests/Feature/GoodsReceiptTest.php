@@ -92,6 +92,7 @@ class GoodsReceiptTest extends TestCase
         $this->actingAs($this->owner)
             ->post(route('admin.purchases.receive', $po->id), ['items' => [['id' => $line->id, 'quantity' => 80]]])
             ->assertSessionHasNoErrors();
+            $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(80, (int) $product->fresh()->quantity, 'دخل المخزون غيرُ ما وصل');
         $this->assertSame(80, (int) $line->fresh()->received_quantity);
@@ -108,8 +109,10 @@ class GoodsReceiptTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id),
             ['items' => [['id' => $line->id, 'quantity' => 80]]]);
+        $this->approvePendingReceipts($this->business->id);
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id),
             ['items' => [['id' => $line->id, 'quantity' => 20]]])->assertSessionHasNoErrors();
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(100, (int) $product->fresh()->quantity);
         $this->assertSame('مستلم', $po->fresh()->status);
@@ -134,6 +137,7 @@ class GoodsReceiptTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id),
             ['items' => [['id' => $line->id, 'quantity' => 20]]])->assertSessionHasNoErrors();
+        $this->approvePendingReceipts($this->business->id);
 
         // (100×4 + 20×9) ÷ 120 = 4.833 — لا (100×4 + 100×9) ÷ 200 = 6.5
         $this->assertSame(4.833, round((float) $product->fresh()->cost, 3));
@@ -148,6 +152,7 @@ class GoodsReceiptTest extends TestCase
         $this->actingAs($this->owner)
             ->post(route('admin.purchases.receive', $po->id), ['items' => [['id' => $line->id, 'quantity' => 25]]])
             ->assertSessionHasErrors('receive');
+            $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(0, (int) $product->fresh()->quantity, 'رُفض الطلب ودخلت البضاعة');
         $this->assertSame('مُرسل', $po->fresh()->status);
@@ -161,6 +166,7 @@ class GoodsReceiptTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id))
             ->assertSessionHasNoErrors();
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(7, (int) $product->fresh()->quantity);
         $this->assertSame('مستلم', $po->fresh()->status);
@@ -174,6 +180,7 @@ class GoodsReceiptTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id),
             ['items' => [['id' => $line->id, 'quantity' => 4]]]);
+        $this->approvePendingReceipts($this->business->id);
 
         $note = GoodsReceiptNote::where('purchase_order_id', $po->id)->with('items')->firstOrFail();
 
@@ -191,6 +198,7 @@ class GoodsReceiptTest extends TestCase
         $product = $this->product('صنف', 0, 0);
         $po = $this->order([['product' => $product, 'qty' => 3, 'cost' => 2]]);
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         $props = $this->actingAs($this->owner)
             ->get(route('admin.inventory.receipts'))->viewData('page')['props'];
@@ -213,6 +221,7 @@ class GoodsReceiptTest extends TestCase
         $product = $this->product('صنف', 0, 0);
         $po = $this->order([['product' => $product, 'qty' => 3, 'cost' => 1]]);
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         // الورقة تحمل رقم أمرها — وعليه يقوم الرابط
         $notes = $this->actingAs($this->owner)
@@ -243,6 +252,7 @@ class GoodsReceiptTest extends TestCase
         $po = $this->order([['product' => $product, 'qty' => 10, 'cost' => 1]]);
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(15, (int) $product->fresh()->quantity);
         $this->assertSame(1, \App\Models\InventoryMovement::where('product_id', $product->id)->count());

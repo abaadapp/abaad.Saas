@@ -30,6 +30,29 @@ abstract class TestCase extends BaseTestCase
      * مباشرةً لأن التهيئة تسبق تسجيل الدخول، فلا مستخدم بعدُ لتُشتقّ منه.
      */
     /**
+     * اعتمادُ كلّ استلامٍ معلَّق — وبه تدخل البضاعةُ الرفّ.
+     *
+     * صار الاستلامُ خطوتين: تُكتب الورقة، ثمّ تُعتمد. وأكثرُ الاختبارات
+     * تفحص أثرَ الشحنة على المخزون لا مسارَ الاعتماد نفسه، فالخطوةُ الثانية
+     * فيها شرطُ السيناريو لا موضوعُه.
+     *
+     * وتمرّ بالخدمة لا بالمسار: المسارُ يُفحص في اختباره وحده.
+     *
+     * @return int عددُ ما اعتُمد
+     */
+    protected function approvePendingReceipts(int $businessId, ?\App\Models\User $by = null): int
+    {
+        $notes = \App\Models\GoodsReceiptNote::where('business_id', $businessId)
+            ->where('status', \App\Support\GoodsReceipts::PENDING)->orderBy('id')->get();
+
+        foreach ($notes as $note) {
+            \App\Support\GoodsReceipts::approve($note, $by ?? auth()->user());
+        }
+
+        return $notes->count();
+    }
+
+    /**
      * جهاز نقطة بيع مفعَّل على هذا المتصفّح.
      *
      * صار البيع يتطلّبه: الجهاز هو من يعرف الفرع، وبلا تفعيل يعود الفرع إلى

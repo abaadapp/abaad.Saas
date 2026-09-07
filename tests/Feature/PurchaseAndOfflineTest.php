@@ -80,6 +80,7 @@ class PurchaseAndOfflineTest extends TestCase
         $po = $this->purchaseOrder(qty: 20);
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(25, (int) $this->product->fresh()->quantity, '5 + 20');
     }
@@ -90,7 +91,9 @@ class PurchaseAndOfflineTest extends TestCase
         $po = $this->purchaseOrder(qty: 20);
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(25, (int) $this->product->fresh()->quantity, 'تضاعف المخزون');
     }
@@ -108,6 +111,7 @@ class PurchaseAndOfflineTest extends TestCase
         $po = $this->purchaseOrder(qty: 20, cost: 6);
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(5.6, (float) $this->product->fresh()->cost);
     }
@@ -117,6 +121,7 @@ class PurchaseAndOfflineTest extends TestCase
         $po = $this->purchaseOrder(qty: 20);
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertDatabaseHas('inventory_movements', [
             'business_id' => $this->business->id,
@@ -137,6 +142,7 @@ class PurchaseAndOfflineTest extends TestCase
         $this->actingAs($this->owner)
             ->post(route('admin.purchases.receive', $po->id))
             ->assertNotFound();
+            $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame('مطلوب', $po->fresh()->status);
     }

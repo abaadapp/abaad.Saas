@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Admin\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\GoodsReceiptNote;
+use App\Models\PurchaseOrderItem;
 use App\Support\Demo;
+use App\Support\GoodsReceipts;
 use App\Support\Pagination;
+use App\Support\Permissions;
 use App\Support\Search;
 use App\Support\Sort;
 use Illuminate\Http\Request;
@@ -20,8 +23,8 @@ use Inertia\Response;
  * (`PurchaseOrderController::receive`) شاهدةً على واقعةٍ جرت. ونموذجٌ يُنشئ
  * إشعارًا بلا استلامٍ يجعل الورقة تقول ما لم يقله المخزون.
  *
- * ولا تمسّ المخزون: الاستلام أدخل الكمية، وهذه ورقتُه. ولو أدخلتها ثانيةً
- * لدخلت الشحنة مرّتين — وهي القاعدة نفسها في إشعار التسليم المربوط بطلب.
+ * ولا تمسّ المخزون من هنا: `GoodsReceipts::approve` هي التي تُدخل الكمية.
+ * وهذه الشاشةُ تعرض الطابور وتقود إلى الاعتماد لا تنفّذه.
  */
 class GoodsReceiptNoteController extends Controller
 {
@@ -43,6 +46,11 @@ class GoodsReceiptNoteController extends Controller
 
         $q = GoodsReceiptNote::where('business_id', $bid)
             ->with(['supplier', 'branch', 'purchaseOrder', 'items']);
+
+        // ترشيحٌ بالحال — و«بانتظار الاعتماد» أوّلُ ما يُفتح عليه
+        if ($status = $request->query('status')) {
+            $q->where('status', $status);
+        }
 
         if ($s = Search::term($request)) {
             $like = Search::like();
@@ -66,17 +74,39 @@ class GoodsReceiptNoteController extends Controller
                 'received_at' => optional($n->received_at)->format('Y-m-d'),
                 'receiver' => $n->receiver,
                 'notes' => $n->notes,
+                'status' => $n->status,
+                'approved_at' => optional($n->approved_at)->format('Y-m-d'),
+                'rejected_at' => optional($n->rejected_at)->format('Y-m-d'),
+                'rejection_reason' => $n->rejection_reason,
                 // قيمة ما دخل بهذه الورقة — تُقابَل بفاتورة المورّد
                 'value' => round($n->items->sum(fn ($i) => (float) $i->quantity * (float) $i->cost), 3),
-                'items' => $n->items->map(fn ($i) => [
-                    'name' => $i->name,
-                    'quantity' => (float) $i->quantity,
-                    'cost' => (float) $i->cost,
-                ])->all(),
+                /*
+                 * وكلُّ سطرٍ يقول أين موضعُه من أمره: كم طُلب، وكم استُلم
+                 * قبله، وكم في هذه الورقة، وكم يبقى. ومن يعتمد بلا هذه
+                 * الأربعة يعتمد رقمًا لا يعرف نسبته إلى شيء.
+                 */
+                'items' => $n->items->map(function ($i) {
+                    $line = $i->purchase_order_item_id
+                        ? PurchaseOrderItem::find($i->purchase_order_item_id)
+                        : null;
+
+                    return [
+                        'name' => $i->name,
+                        'quantity' => (float) $i->quantity,
+                        'cost' => (float) $i->cost,
+                        'ordered' => $line ? (float) $line->quantity : null,
+                        'received_before' => $line ? (float) $line->received_quantity : null,
+                        'remaining' => $line ? (float) $line->remaining : null,
+                    ];
+                })->all(),
             ])->all(),
             'pagination' => Pagination::meta($notes),
-            'filters' => $request->only('q') + Sort::params($request, self::SORTS),
+            'filters' => $request->only('q', 'status') + Sort::params($request, self::SORTS),
             'sorts' => Sort::keys(self::SORTS),
+            'pendingCount' => GoodsReceiptNote::where('business_id', $bid)
+                ->where('status', GoodsReceipts::PENDING)->count(),
+            // من يرى الزرّ هو من يملك الفعل — وبابٌ يُعرض ولا يُفتح أسوأ من غيابه
+            'canApprove' => (bool) auth()->user()?->may(Permissions::RECEIPT_APPROVE),
         ]);
     }
 }

@@ -106,6 +106,7 @@ class StockStaysBalancedTest extends TestCase
         $po->items()->create(['product_id' => $this->p->id, 'name' => 'صنف', 'cost' => 4, 'quantity' => 10]);
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertBalanced('استلام أمر شراء');
     }

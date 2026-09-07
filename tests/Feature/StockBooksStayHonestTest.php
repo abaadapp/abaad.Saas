@@ -303,6 +303,7 @@ class StockBooksStayHonestTest extends TestCase
         ]);
 
         $this->post(route('admin.purchases.receive', $po->id))->assertSessionHasNoErrors();
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(30, (int) $this->product->fresh()->quantity);
         // البضاعة تدخل فرع الأمر لا الفرع المفتوح على الشاشة

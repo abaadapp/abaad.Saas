@@ -234,6 +234,7 @@ class InventoryIntegrityTest extends TestCase
         ]);
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         // (15×4 + 5×8) / 20 = 5
         $this->assertSame(5.0, (float) $this->product->fresh()->cost);

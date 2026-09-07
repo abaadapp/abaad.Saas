@@ -601,6 +601,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/purchases', [PurchaseOrderController::class, 'store'])->name('purchases.store');
     Route::post('/purchases/{id}/receipt', [PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');
     Route::post('/purchases/{id}/receive', [PurchaseOrderController::class, 'receive'])->name('purchases.receive');
+    /*
+     * اعتمادُ الاستلام ورفضُه — على الإشعار لا على الأمر.
+     *
+     * الأمرُ الواحد له أوراقُ استلامٍ عدّة، وكلٌّ تُعتمد وحدَها: دفعةٌ وصلت
+     * سليمةً تدخل الرفّ، وأخرى وصلت ناقصةً تُرفض — ولا يُعلَّق الأمرُ كلُّه
+     * على أسوئهما.
+     */
+    Route::post('/purchases/receipts/{id}/approve', [PurchaseOrderController::class, 'approveReceipt'])->name('purchases.receipts.approve');
+    Route::post('/purchases/receipts/{id}/reject', [PurchaseOrderController::class, 'rejectReceipt'])->name('purchases.receipts.reject');
     Route::delete('/purchases/{id}', [PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
     Route::get('/purchases/{id}/pdf', [DocumentPrintController::class, 'purchase'])->name('purchases.pdf');
 

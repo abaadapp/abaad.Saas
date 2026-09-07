@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { usePage } from '@inertiajs/react';
+import { router, useForm, usePage } from '@inertiajs/react';
 import SmartLink from '@/Components/SmartLink';
-import { PackagePlus, Printer } from 'lucide-react';
+import { Check, PackagePlus, Printer, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
 import DataTable, { type Column, type ServerPagination } from '@/Components/DataTable';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { Input } from '@/Components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import {
     Table,
@@ -25,6 +26,10 @@ interface NoteItem {
     name: string;
     quantity: number;
     cost: number;
+    /* موضعُ السطر من أمره — كم طُلب، وكم استُلم قبله، وكم بقي */
+    ordered: number | null;
+    received_before: number | null;
+    remaining: number | null;
 }
 
 interface Note {
@@ -37,14 +42,29 @@ interface Note {
     receiver: string | null;
     notes: string | null;
     value: number;
+    status: string;
+    approved_at: string | null;
+    rejected_at: string | null;
+    rejection_reason: string | null;
     items: NoteItem[];
 }
+
+/** كما يكتبها الخادم في `GoodsReceipts` — نصٌّ واحد لا نصّان */
+const PENDING = 'بانتظار الاعتماد';
+
+/** لونُ الحال — والمعلَّقُ وحده أصفر: هو الذي يطلب فعلًا */
+const tone = (status: string) =>
+    status === PENDING ? 'bg-[#fffbeb] text-[#b45309]'
+    : status === 'مرفوض' ? 'bg-[#fef2f2] text-[#b91c1c]'
+    : 'bg-[#ecfdf5] text-[#047857]';
 
 interface Props {
     notes: Note[];
     pagination: ServerPagination;
     filters: Record<string, string | null | undefined>;
     sorts: string[];
+    pendingCount: number;
+    canApprove: boolean;
 }
 
 /**
@@ -55,12 +75,21 @@ interface Props {
  * إشعارًا بلا استلامٍ يجعل الورقة تقول ما لم يقله المخزون.
  */
 export default function InventoryReceipts() {
-    const { notes, pagination, filters, sorts, context } = usePage<PageProps<Props>>().props;
+    const { notes, pagination, filters, sorts, pendingCount, canApprove, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
     const [viewing, setViewing] = useState<Note | null>(null);
+    const [rejecting, setRejecting] = useState<Note | null>(null);
+    const reject = useForm({ reason: '' });
+
+    const approve = (n: Note) =>
+        router.post(route('admin.purchases.receipts.approve', n.id), {}, {
+            preserveScroll: true,
+            onSuccess: () => setViewing(null),
+        });
 
     const columns: Column<Note>[] = [
         {
@@ -101,6 +130,13 @@ export default function InventoryReceipts() {
                 </>
             ),
         },
+        {
+            key: 'status',
+            header: 'الحال',
+            cell: (n) => (
+                <span className={'rounded-full px-2 py-1 text-[11px] ' + tone(n.status)}>{t(n.status)}</span>
+            ),
+        },
         { key: 'branch', header: 'الفرع', cell: (n) => n.branch ?? '—' },
         { key: 'receiver', header: 'المستلِم', cell: (n) => n.receiver ?? '—' },
         {
@@ -128,8 +164,22 @@ export default function InventoryReceipts() {
                         </a>
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setViewing(n)}>
-                        {t('عرض')}
+                        {t('مراجعة')}
                     </Button>
+                    {/*
+                        وزرّا القرار لمن يملكه وحده، وعلى المعلَّق وحده:
+                        زرٌّ يُرسم لمن يُردّ عند ضغطه أسوأ من غيابه.
+                    */}
+                    {canApprove && n.status === PENDING && (
+                        <>
+                            <Button variant="ghost" size="icon-sm" aria-label={t('اعتماد الاستلام')} onClick={() => approve(n)}>
+                                <Check className="text-[#047857]" />
+                            </Button>
+                            <Button variant="ghost" size="icon-sm" aria-label={t('رفض')} onClick={() => setRejecting(n)}>
+                                <X className="text-[#b91c1c]" />
+                            </Button>
+                        </>
+                    )}
                 </div>
             ),
         },
@@ -143,6 +193,38 @@ export default function InventoryReceipts() {
             />
 
             <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.receipts" />
+
+            {/*
+                طابورُ الاعتماد فوق الجدول لا داخله.
+
+                البضاعةُ لا تدخل الرفَّ حتى يُعتمد استلامُها، فورقةٌ تنتظر
+                تعني رفًّا يقول أقلَّ ممّا فيه. ومن لا يعرف أنّها تنتظر لا
+                يعتمدها — فتبقى معلّقةً أسبوعًا ولا شيء يقول لماذا نقص
+                المخزون.
+            */}
+            {pendingCount > 0 && (
+                <Card className="mb-4 flex flex-wrap items-center gap-3 border-[#fed7aa] bg-[#fffbeb] p-4">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#fef3c7] text-[#b45309]">
+                        <PackagePlus className="size-5" />
+                    </span>
+                    <div className="min-w-0">
+                        <p className="text-[14px] font-semibold text-[#92400e]">
+                            {t(':n استلام بانتظار الاعتماد', { n: pendingCount })}
+                        </p>
+                        <p className="text-[12px] text-[#b45309]">
+                            {t('البضاعة لا تدخل المخزون حتى يُعتمد استلامها.')}
+                        </p>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="ms-auto"
+                        onClick={() => router.get(route('admin.inventory.receipts'), { status: PENDING }, { preserveState: true })}
+                    >
+                        {t('عرض الطابور')}
+                    </Button>
+                </Card>
+            )}
 
             <Card className="overflow-hidden">
                 <DataTable
@@ -227,7 +309,11 @@ export default function InventoryReceipts() {
                                     <TableHeader>
                                         <TableRow className="hover:bg-transparent">
                                             <TableHead>{t('الصنف')}</TableHead>
-                                            <TableHead className="text-end">{t('الكمية')}</TableHead>
+                                            {/* موضعُ السطر من أمره — ومن يعتمد رقمًا لا
+                                                يعرف نسبته إلى شيء يعتمد على غير علم */}
+                                            <TableHead className="text-end">{t('المطلوب')}</TableHead>
+                                            <TableHead className="text-end">{t('استُلم قبله')}</TableHead>
+                                            <TableHead className="text-end">{t('في هذه الورقة')}</TableHead>
                                             <TableHead className="text-end">{t('التكلفة')}</TableHead>
                                             <TableHead className="text-end">{t('الإجمالي')}</TableHead>
                                         </TableRow>
@@ -236,7 +322,15 @@ export default function InventoryReceipts() {
                                         {viewing.items.map((i, k) => (
                                             <TableRow key={k}>
                                                 <TableCell className="font-medium text-[#111]">{i.name}</TableCell>
-                                                <TableCell className="text-end tabular-nums">{number(i.quantity)}</TableCell>
+                                                <TableCell className="text-end tabular-nums text-[#9ca3af]">
+                                                    {i.ordered === null ? '—' : number(i.ordered)}
+                                                </TableCell>
+                                                <TableCell className="text-end tabular-nums text-[#9ca3af]">
+                                                    {i.received_before === null ? '—' : number(i.received_before)}
+                                                </TableCell>
+                                                <TableCell className="text-end tabular-nums font-semibold">
+                                                    {number(i.quantity)}
+                                                </TableCell>
                                                 <TableCell className="text-end tabular-nums text-[#4b4b4b]">
                                                     {m(i.cost)}
                                                 </TableCell>
@@ -257,6 +351,8 @@ export default function InventoryReceipts() {
                                                     {number(viewing.items.length)} {t('صنف')}
                                                 </span>
                                             </TableCell>
+                                            <TableCell />
+                                            <TableCell />
                                             <TableCell className="text-end tabular-nums">
                                                 {number(viewing.items.reduce((a, i) => a + i.quantity, 0))}
                                             </TableCell>
@@ -281,7 +377,12 @@ export default function InventoryReceipts() {
                     {/* والطباعة من داخل النافذة أيضًا: من فتح السند ليقرأه هو
                         من يريد ورقةً يوقّعها، فلا يُغلقها ليبحث عن أيقونةٍ في صفّه */}
                     {viewing && (
-                        <div className="flex justify-end border-t border-[var(--ui-border,#e8e8e8)] pt-4">
+                        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-4">
+                            {viewing.status === 'مرفوض' && viewing.rejection_reason && (
+                                <p className="me-auto text-[12px] text-[#b91c1c]">
+                                    {t('سبب الرفض')}: {viewing.rejection_reason}
+                                </p>
+                            )}
                             <Button variant="outline" asChild>
                                 <a
                                     href={route('admin.inventory.receipts.pdf', viewing.id)}
@@ -292,8 +393,71 @@ export default function InventoryReceipts() {
                                     {t('طباعة السند')}
                                 </a>
                             </Button>
+                            {/* والقرارُ من حيث تُقرأ الورقة: من فتحها ليراجعها هو من يقرّر */}
+                            {canApprove && viewing.status === PENDING && (
+                                <>
+                                    <Button variant="outline" onClick={() => setRejecting(viewing)}>
+                                        <X />
+                                        {t('رفض')}
+                                    </Button>
+                                    <Button onClick={() => approve(viewing)}>
+                                        <Check />
+                                        {t('اعتماد الاستلام')}
+                                    </Button>
+                                </>
+                            )}
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/*
+                والرفضُ بسببٍ مكتوب: ورقةٌ رُفضت بلا سبب تُسأل عنها بعد شهر
+                فلا يُعرف لماذا رُدّت الشحنة ولا من ردّها.
+            */}
+            <Dialog open={rejecting !== null} onOpenChange={(open) => !open && setRejecting(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {t('رفض الاستلام')} <span className="font-mono">{rejecting?.number}</span>
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    <p className="mb-3 text-[13px] text-[#6b7280]">
+                        {t('لن تدخل البضاعة المخزون، ولا تُمحى الورقة — تبقى مرفوضةً بسببها.')}
+                    </p>
+
+                    <Input
+                        value={reject.data.reason}
+                        onChange={(e) => reject.setData('reason', e.target.value)}
+                        placeholder={t('سبب الرفض — مثال: الشحنة تالفة')}
+                    />
+                    {reject.errors.reason && (
+                        <p className="mt-1 text-[12px] text-[#b91c1c]">{reject.errors.reason}</p>
+                    )}
+
+                    <div className="mt-4 flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setRejecting(null)}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button
+                            variant="danger"
+                            disabled={reject.processing}
+                            onClick={() =>
+                                rejecting &&
+                                reject.post(route('admin.purchases.receipts.reject', rejecting.id), {
+                                    preserveScroll: true,
+                                    onSuccess: () => {
+                                        reject.reset();
+                                        setRejecting(null);
+                                        setViewing(null);
+                                    },
+                                })
+                            }
+                        >
+                            {t('رفض الاستلام')}
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </AdminLayout>

@@ -75,9 +75,18 @@ class PurchasingIntegrityTest extends TestCase
         return $po->refresh();
     }
 
+    /**
+     * الاستلامُ خطوتان: تُكتب الورقة ثمّ تُعتمد.
+     *
+     * والاعتمادُ هنا شرطُ السيناريو لا موضوعُه — هذه الحالاتُ تفحص أن
+     * البضاعة تدخل مرّةً واحدة مهما تكرّرت الضغطة.
+     */
     private function receive(PurchaseOrder $po, array $payload = [])
     {
-        return $this->post(route('admin.purchases.receive', $po->id), $payload);
+        $response = $this->post(route('admin.purchases.receive', $po->id), $payload);
+        $this->approvePendingReceipts($this->business->id);
+
+        return $response;
     }
 
     /* ------------------- الاستلام يقع مرّة ------------------- */
@@ -282,11 +291,14 @@ class PurchasingIntegrityTest extends TestCase
      */
     public function test_the_writes_that_move_money_and_stock_read_under_a_lock(): void
     {
-        $receive = file_get_contents(base_path('app/Http/Controllers/Admin/PurchaseOrderController.php'));
+        // وانتقل الاستلامُ إلى `GoodsReceipts` — فالحارسُ يتبعه إلى بيته الجديد
+        $receive = file_get_contents(base_path('app/Support/GoodsReceipts.php'));
         $invoice = file_get_contents(base_path('app/Http/Controllers/Admin/Purchasing/SupplierInvoiceController.php'));
 
         $this->assertStringContainsString('->lockForUpdate()->findOrFail($po->id)', $receive);
-        $this->assertStringContainsString("items()->lockForUpdate()", $receive);
+        $this->assertStringContainsString('items()->lockForUpdate()', $receive);
+        // والورقةُ نفسُها تُقفل عند الاعتماد: مديران يضغطان معًا لا يُدخلان الشحنة مرّتين
+        $this->assertStringContainsString('->lockForUpdate()->findOrFail($note->id)', $receive);
         $this->assertStringContainsString('lockForUpdate()->findOrFail($invoice->id)', $invoice);
     }
 

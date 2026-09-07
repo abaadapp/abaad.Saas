@@ -227,6 +227,7 @@ class BranchStockTest extends TestCase
         ]);
 
         $this->actingAs($this->owner)->post(route('admin.purchases.receive', $po->id));
+        $this->approvePendingReceipts($this->business->id);
 
         $this->assertSame(16, (int) $this->product->fresh()->quantity);
         $this->assertSame(

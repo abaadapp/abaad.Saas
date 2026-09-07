@@ -3005,6 +3005,34 @@ class Demo
             }
         }
 
+        /*
+         * استلامٌ ينتظر الاعتماد — ولا يُشترى بضاعةً على الرفّ حتى يُعتمد.
+         *
+         * والتنبيهُ مشتقٌّ لا مخزَّن كأخواته: يظهر ما دامت الورقةُ معلَّقة،
+         * ويختفي وحدَه ساعةَ تُعتمد أو تُرفض. وجدولُ إشعاراتٍ يُكتب فيه صفٌّ
+         * عند الطلب يحتاج من يمحوه عند الاعتماد — ويُنسى، فيبقى الجرسُ
+         * يقول «ينتظر» عن شيءٍ فُرغ منه أمس.
+         *
+         * ولمن يملك الاعتماد وحده: من لا يقدر على الفعل لا يُنبَّه به.
+         */
+        if ($u && $u->may(Permissions::RECEIPT_APPROVE)) {
+            $waiting = \App\Models\GoodsReceiptNote::where('business_id', $bid)
+                ->where('status', GoodsReceipts::PENDING)
+                ->with('supplier')->orderBy('id')->limit($limit)->get();
+
+            foreach ($waiting as $note) {
+                $add('grn-'.$note->id, [
+                    'text' => __('استلام شحنة بانتظار الاعتماد: :n — :s', [
+                        'n' => $note->number,
+                        's' => $note->supplier?->name ?? __('بلا مورّد'),
+                    ]),
+                    'time' => optional($note->received_at)->format('Y-m-d'),
+                    'icon' => 'package-plus', 'color' => 'warning',
+                    'url' => route('admin.inventory.receipts', ['status' => GoodsReceipts::PENDING]),
+                ]);
+            }
+        }
+
         $low = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')
             ->orderBy('quantity')->limit($limit)->get();
         foreach ($low as $p) {

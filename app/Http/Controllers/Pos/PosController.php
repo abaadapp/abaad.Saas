@@ -19,6 +19,9 @@ use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\AddonStock;
 use App\Support\Books;
+use App\Support\CreditSales;
+use App\Support\CustomerInvoices;
+use App\Support\CustomerPayments;
 use App\Support\Customers;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
@@ -777,6 +780,16 @@ class PosController extends Controller
             'customer_phone' => ['nullable', 'string', 'max:50'],
             // مطلوبة: انظر `paymentMethod` أدناه لأثر تخمينها في إقفال الوردية
             'payment_method' => ['required', 'string'],
+            /*
+             * البيعُ الآجل — والمدفوعُ الآن قد يكون بعضَه.
+             *
+             * ولا يُقرأ الباقي من الطلب: يُحسب في الخادم من الإجمالي ناقصَ
+             * المدفوع. رقمٌ يرسله المتصفّح يجعل ذمّةً بمئة تُسجَّل بعشرة.
+             */
+            'credit' => ['nullable', 'boolean'],
+            'paid_now' => ['nullable', 'numeric', 'min:0'],
+            'due_at' => ['nullable', 'date'],
+            'credit_override_reason' => ['nullable', 'string', 'max:200'],
             'delivery_fee' => ['nullable', 'numeric', 'min:0'],
             'resume_id' => ['nullable', 'integer'],
             'coupon_code' => ['nullable', 'string', 'max:40'],
@@ -949,6 +962,25 @@ class PosController extends Controller
 
             $total = round($subtotal - $discount + $tax + $delivery, 3);
 
+            /*
+             * البيعُ الآجل — وشروطُه تُفحص قبل أن يُكتب صفٌّ واحد.
+             *
+             * والمدفوعُ الآن لا يتجاوز الإجمالي: زيادةٌ عليه ليست بيعًا آجلًا
+             * بل دفعةً مقدَّمة، ولها بابٌ آخر.
+             */
+            $isCredit = (bool) ($data['credit'] ?? false);
+            $paidNow = $isCredit ? round(min((float) ($data['paid_now'] ?? 0), $total), 3) : $total;
+            $creditAmount = $isCredit ? round($total - $paidNow, 3) : 0.0;
+
+            if ($isCredit) {
+                CreditSales::assertAllowed(
+                    $customer,
+                    $creditAmount,
+                    auth()->user(),
+                    $data['credit_override_reason'] ?? null,
+                );
+            }
+
             if ($couponApplied) {
                 $coupon->increment('used_count');
             }
@@ -974,7 +1006,20 @@ class PosController extends Controller
                  */
                 'pos_device_id' => PosTerminal::current()?->id,
                 'payment_method' => $this->paymentMethod($data['payment_method'] ?? null),
-                'payment_status' => 'مدفوع',
+                /*
+                 * وحالُ السداد تتبع ما وقع فعلًا.
+                 *
+                 * وهي مفتاحُ القيد: `Books::recordSale` تُدين `receivable`
+                 * حين تكون الفاتورة غير مدفوعة، و`cash`/`bank` حين تكون
+                 * مدفوعة. فالبيعُ الآجل لا يحتاج مسارَ ترحيلٍ ثانيًا — يحتاج
+                 * أن يُقال للطلب إنّه لم يُدفع. ومسارُ ترحيلٍ ثانٍ للبيعة
+                 * نفسها يعني إيرادًا مضاعفًا على كلّ متجر.
+                 *
+                 * والمدفوعُ الآن — إن دفع بعضَه — يُسجَّل تحصيلًا بعد الترحيل:
+                 * مدين الصندوق / دائن الذمم. فيصير الأثر: ذمّةٌ بالباقي ونقدٌ
+                 * بما قُبض، بلا عدٍّ مزدوج.
+                 */
+                'payment_status' => $isCredit ? 'غير مدفوع' : 'مدفوع',
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'coupon_code' => $couponApplied ? $coupon->code : null,
@@ -1135,6 +1180,36 @@ class PosController extends Controller
                 Activity::log('updated', 'تعذّر ترحيل قيد البيع '.$order->number.': '.$e->getMessage(), [
                     'subject_id' => $order->id, 'subject_type' => 'order',
                 ]);
+            }
+
+            /*
+             * والبيعةُ الآجلة تحمل ورقتَها.
+             *
+             * الطلبُ تنفيذٌ ومخزون، والفاتورةُ التزامٌ على العميل: لها تاريخُ
+             * استحقاقٍ وتُسدَّد على دفعات وتدخل كشفَ الحساب وتقريرَ الأعمار.
+             * وحالُ السداد في الطلب لا تحمل شيئًا من ذلك.
+             *
+             * ولا تُرحَّل هذه الفاتورة: بيعتُها رُحّلت قبل سطرين. انظر
+             * `CustomerInvoices::post`.
+             */
+            if ($isCredit) {
+                $invoice = CustomerInvoices::issue(
+                    CustomerInvoices::fromOrder($order, [
+                        'due_at' => $data['due_at'] ?? null,
+                    ], PosCashier::id()),
+                    PosCashier::id(),
+                );
+
+                if ($paidNow > 0) {
+                    CustomerPayments::record(
+                        (int) $order->business_id,
+                        $customer,
+                        $paidNow,
+                        ['method' => $order->payment_method, 'occurred_at' => now()],
+                        [$invoice->id => $paidNow],
+                        PosCashier::id(),
+                    );
+                }
             }
 
             return ['order' => $order, 'loyalty' => $loyalty];

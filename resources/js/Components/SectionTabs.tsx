@@ -138,6 +138,9 @@ export const PRODUCT_TABS: SectionTab[] = [
 export const FINANCE_TABS: SectionTab[] = [
     { label: 'الملخّص المالي', routeName: 'admin.finance.summary', section: 'finance' },
     { label: 'الحركة المالية', routeName: 'admin.finance.transactions', section: 'finance' },
+    /* «ما لك» و«ما عليك» تبويبان متجاوران ولا يُجمعان في واحد: رقمان
+       في شاشةٍ واحدة بلا فصل يجعل التاجر لا يعرف أدائنٌ هو أم مدين */
+    { label: 'الذمم المدينة', routeName: 'admin.finance.receivables', section: 'finance' },
     { label: 'المبالغ المستحقة', routeName: 'admin.finance.dues', section: 'finance' },
     { label: 'مصاريف شهرية', routeName: 'admin.expenses.index', section: 'expenses' },
     { label: 'الحسابات البنكية', routeName: 'admin.finance.index', section: 'finance' },

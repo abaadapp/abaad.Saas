@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\CurrencyController;
 use App\Http\Controllers\Admin\CustomAlertController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerImportExportController;
+use App\Http\Controllers\Admin\CustomerInvoiceController;
 use App\Http\Controllers\Admin\DocumentPrintController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\ExpenseController;
@@ -44,6 +45,7 @@ use App\Http\Controllers\Admin\ReportDownloadController;
 use App\Http\Controllers\Admin\ReportExportController;
 use App\Http\Controllers\Admin\ReportFeedController;
 use App\Http\Controllers\Admin\ReportPageController;
+use App\Http\Controllers\Admin\ReceivablesController;
 use App\Http\Controllers\Admin\SetupController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\SupplierExportController;
@@ -735,6 +737,29 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::delete('/finance/banks/{id}', [BankAccountController::class, 'destroy'])->name('finance.banks.destroy');
     // كشف الحساب البنكي والمطابقة — بلا معرّف: الحساب الرئيسيّ
     Route::get('/finance/statement/{id?}', [BankAccountController::class, 'statement'])->name('finance.statement');
+
+    /*
+     * فواتيرُ العملاء والذمم.
+     *
+     * والفواتيرُ في «المبيعات» لأنّها مستندُ بيع، والذممُ في «المالية» لأنّها
+     * رصيد. وبابٌ واحدٌ لكلٍّ منهما: تكرارُ الميزة في موضعين يجعل التاجر
+     * يعدّل في أحدهما ويقرأ من الآخر.
+     */
+    Route::get('/customer-invoices', [CustomerInvoiceController::class, 'index'])->name('customerInvoices.index');
+    Route::get('/customer-invoices/{id}', [CustomerInvoiceController::class, 'show'])->name('customerInvoices.show');
+    Route::post('/customer-invoices', [CustomerInvoiceController::class, 'store'])->name('customerInvoices.store');
+    Route::post('/customer-invoices/{id}/issue', [CustomerInvoiceController::class, 'issue'])->name('customerInvoices.issue');
+    Route::post('/customer-invoices/{id}/cancel', [CustomerInvoiceController::class, 'cancel'])->name('customerInvoices.cancel');
+    Route::post('/customer-invoices/{id}/credit-note', [CustomerInvoiceController::class, 'creditNote'])->name('customerInvoices.creditNote');
+    Route::get('/customer-invoices/{id}/pdf', [PdfController::class, 'customerInvoice'])->name('customerInvoices.pdf');
+    Route::post('/customer-invoices/{id}/remind', [CustomerInvoiceController::class, 'remind'])->name('customerInvoices.remind');
+    Route::post('/customer-payments', [CustomerInvoiceController::class, 'pay'])->name('customerPayments.store');
+    Route::post('/customer-payments/{id}/cancel', [CustomerInvoiceController::class, 'cancelPayment'])->name('customerPayments.cancel');
+
+    Route::get('/finance/receivables', [ReceivablesController::class, 'index'])->name('finance.receivables');
+    Route::get('/finance/receivables/{customer}/statement', [ReceivablesController::class, 'statement'])->name('finance.statement');
+        Route::get('/finance/receivables/{customer}/statement/pdf', [PdfController::class, 'customerAccountStatement'])->name('finance.statement.pdf');
+    Route::put('/customers/{customer}/credit', [ReceivablesController::class, 'credit'])->name('customers.credit');
 
     // الحركة المالية — ما دخل وما خرج، وبابُ تسجيل ما لا مستند له
     Route::get('/finance/transactions', [FinanceController::class, 'index'])->name('finance.transactions');

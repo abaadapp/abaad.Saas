@@ -38,7 +38,7 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
     // رسائل الجلسة القادمة من الخادم تُعرض كـtoast
     useEffect(() => {
         if (!flash?.toast) return;
-        const { msg, type, undo, confirm } = flash.toast;
+        const { msg, type, undo, confirm, link } = flash.toast;
         const fn =
             type === 'success' ? toast.success
             : type === 'danger' ? toast.error
@@ -59,8 +59,16 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
          * نفسه فيقرأ التحذير نفسه — بابٌ يُعرض ولا يُفتح. والإقرارُ يُرسَل
          * مع الطلب لا يُحفَظ في الجلسة: فعلٌ ثانٍ يُسأل عنه من جديد.
          */
+        /*
+         * ورابطٌ خارجيّ حين يكون الفعلُ التالي خارج النظام — تذكيرُ السداد
+         * يُفتح على واتساب التاجر ليرسله بنفسه.
+         */
         const action =
-            confirm ? {
+            link ? {
+                label: link.label,
+                onClick: () => window.open(link.url, '_blank', 'noopener'),
+            }
+            : confirm ? {
                 label: confirm.label ?? t('امضِ على أيّ حال'),
                 onClick: () => router.delete(confirm.url, {
                     data: { ack_stock: true },

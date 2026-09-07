@@ -372,6 +372,35 @@ class Ledger
      * والمجموعان يجب أن يتطابقا دائمًا. إن لم يتطابقا فالخلل ليس في الشاشة
      * بل في الدفتر، ويعني أن قيدًا كُتب من غير هذا الباب.
      */
+    /**
+     * رصيدُ حسابٍ نظاميّ — بإشارته الطبيعيّة.
+     *
+     * ويُقرأ من سطور القيود لا من عمودٍ مجمَّع: عمودُ رصيدٍ يُحدَّث مع كلّ
+     * قيدٍ يفترق عن مصدره أوّلَ قيدٍ يُكتب من بابٍ نسي تحديثَه. وهو ما تُطابق
+     * به `Receivables::reconcile` ذممَ العملاء بدفتر الأستاذ.
+     */
+    public static function balance(int $businessId, string $systemKey, ?Carbon $through = null): float
+    {
+        $account = self::account($businessId, $systemKey);
+
+        if (! $account) {
+            return 0.0;
+        }
+
+        $q = JournalLine::where('journal_lines.account_id', $account->id);
+
+        if ($through) {
+            $q->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+                ->where('journal_entries.entry_date', '<=', $through->toDateString());
+        }
+
+        $debit = (float) (clone $q)->sum('journal_lines.debit');
+        $credit = (float) (clone $q)->sum('journal_lines.credit');
+        $diff = $debit - $credit;
+
+        return round($account->normal_side === 'credit' ? -$diff : $diff, 3);
+    }
+
     public static function trialBalance(int $businessId, ?Carbon $through = null): array
     {
         $rows = Account::where('accounts.business_id', $businessId)

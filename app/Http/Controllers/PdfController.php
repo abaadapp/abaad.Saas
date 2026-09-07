@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BankAccount;
 use App\Models\Business as BusinessModel;
 use App\Models\Customer;
+use App\Models\CustomerInvoice;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\PosPeripheral;
@@ -13,12 +15,15 @@ use App\Support\Demo;
 use App\Support\EInvoice;
 use App\Support\GoogleReviews;
 use App\Support\OrderStatus;
+use App\Support\Paper;
 use App\Support\Pdf;
 use App\Support\PosTerminal;
 use App\Support\PublicDocument;
 use App\Support\ReceiptTemplate;
+use App\Support\Receivables;
 use App\Support\Reports;
 use App\Support\ShopIdentity;
+use Illuminate\Http\Request;
 
 class PdfController extends Controller
 {
@@ -327,6 +332,56 @@ class PdfController extends Controller
         Activity::log('report', 'أصدر فاتورة ضريبية للطلب: '.$order->number, ['subject_id' => $order->id]);
 
         return $this->pdf($html, 'tax-invoice-'.$order->number);
+    }
+
+    /**
+     * فاتورةُ عميل (PDF) — بالبنية القائمة لا بمحرّكٍ ثانٍ.
+     *
+     * ولا معرّفاتٍ محاسبيّةً على الورق: الزبونُ يقرأ رقمَ الفاتورة لا رقمَ
+     * القيد ولا معرّفَ الصفّ.
+     */
+    public function customerInvoice($id)
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $invoice = CustomerInvoice::where('business_id', $bid)->whereKey($id)
+            ->with('items')->firstOrFail();
+
+        $html = view('pdf.customer-invoice', [
+            'invoice' => $invoice,
+            'business' => Demo::business($bid),
+            'vatNumber' => Paper::vatNumber($bid),
+            'paid' => $invoice->paidTotal(),
+            'outstanding' => $invoice->outstanding(),
+            'bank' => BankAccount::where('business_id', $bid)->orderBy('id')->first(),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        Activity::log('report', 'صدّر فاتورة عميل: '.$invoice->number, ['subject_id' => $invoice->id]);
+
+        return $this->pdf($html, 'customer-invoice-'.$invoice->number);
+    }
+
+    /** كشفُ حساب عميل (PDF) — رصيدٌ افتتاحيٌّ ثمّ حركةٌ برصيدٍ جارٍ */
+    public function customerAccountStatement(Request $request, $customer)
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $customer = Customer::where('business_id', $bid)->whereKey($customer)->firstOrFail();
+
+        $from = $request->date('from') ?? now()->startOfYear();
+        $to = $request->date('to') ?? now()->endOfDay();
+
+        $html = view('pdf.customer-account-statement', [
+            'customer' => $customer,
+            'business' => Demo::business($bid),
+            'statement' => Receivables::statement($bid, (int) $customer->id, $from, $to),
+            'from' => $from->format('Y-m-d'),
+            'to' => $to->format('Y-m-d'),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        Activity::log('report', 'صدّر كشف حساب العميل: '.$customer->name, ['subject_id' => $customer->id]);
+
+        return $this->pdf($html, 'customer-account-'.$customer->id);
     }
 
     /** ورقةُ A4 — بالمحرّك الواحد لا بإعدادٍ يخصّ هذا الملفّ */

@@ -87,6 +87,11 @@ export default function PaymentDialog({
      * الدرج: إقفال الوردية يطلب مالًا لم يدخل الصندوق.
      */
     const [method, setMethod] = useState('');
+    // البيع الآجل — مطويٌّ حتى يُطلب: بيعةُ المارّ تبقى ثلاث نقرات
+    const [credit, setCredit] = useState(false);
+    const [paidNow, setPaidNow] = useState('');
+    const [dueAt, setDueAt] = useState('');
+    const [overrideReason, setOverrideReason] = useState('');
     const [methodError, setMethodError] = useState(false);
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState<CheckoutResult | null>(null);
@@ -265,6 +270,20 @@ export default function PaymentDialog({
             const details = Object.fromEntries(
                 Object.entries(flower).filter(([, v]) => (typeof v === 'boolean' ? v : String(v).trim() !== '')),
             );
+            /*
+             * البيعُ الآجل — والحقولُ الثلاثة وحدها، بلا مصطلحٍ محاسبيّ.
+             *
+             * والكاشيرُ لا يُسأل عن «ذمّة» ولا «مدين»: يُسأل كم دُفع الآن ومتى
+             * يُسدَّد الباقي. وشروطُه كلُّها في الخادم — الإذنُ للعميل وحدُّ
+             * ائتمانه — فيصله سببُ الرفض مكتوبًا لا «تعذّر إتمام البيع».
+             */
+            if (credit) {
+                details.credit = true;
+                if (paidNow.trim() !== '') details.paid_now = paidNow;
+                if (dueAt.trim() !== '') details.due_at = dueAt;
+                if (overrideReason.trim() !== '') details.credit_override_reason = overrideReason;
+            }
+
             const res = await onCheckout(method, details);
             setResult(res);
             setStep('success');
@@ -373,6 +392,71 @@ export default function PaymentDialog({
                                 <p className="mt-1.5 text-[12px] text-[#b91c1c]">
                                     {t('اختر وسيلة الدفع.')}
                                 </p>
+                            )}
+                        </div>
+
+                        {/*
+                            البيعُ الآجل — مطويٌّ حتى يُطلب.
+
+                            بيعةُ المارّ يجب أن تبقى ثلاث نقرات، وحقلٌ ثالثٌ على
+                            كلّ بيعةٍ يجعل الكاشير يملؤه بأيّ شيء.
+
+                            ولا مصطلحَ محاسبيًّا هنا: لا «ذمّة» ولا «مدين» —
+                            كم دُفع الآن، ومتى يُسدَّد الباقي.
+                        */}
+                        <div className="rounded-xl border border-[var(--ui-border,#e8e8e8)] p-3">
+                            <label className="flex items-center gap-2 text-[13px] font-medium">
+                                <input
+                                    type="checkbox"
+                                    checked={credit}
+                                    onChange={(e) => setCredit(e.target.checked)}
+                                />
+                                {t('بيع آجل')}
+                            </label>
+
+                            {credit && !namedCustomer && (
+                                <p className="mt-1.5 text-[12px] text-[#b91c1c]">
+                                    {t('اختر العميل لاستخدام البيع الآجل.')}
+                                </p>
+                            )}
+
+                            {credit && namedCustomer && (
+                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                    <label className="text-[12px] text-gray-500">
+                                        {t('المدفوع الآن')}
+                                        <Input
+                                            className="mt-1"
+                                            value={paidNow}
+                                            onChange={(e) => setPaidNow(e.target.value)}
+                                            placeholder="0"
+                                            inputMode="decimal"
+                                        />
+                                    </label>
+                                    <label className="text-[12px] text-gray-500">
+                                        {t('الباقي')}
+                                        <div className="mt-1 rounded-lg bg-gray-50 p-2 text-[13px] font-bold">
+                                            {fmt(Math.max(0, displayTotal - (Number(paidNow) || 0)))}
+                                        </div>
+                                    </label>
+                                    <label className="text-[12px] text-gray-500">
+                                        {t('تاريخ الاستحقاق')}
+                                        <Input
+                                            type="date"
+                                            className="mt-1"
+                                            value={dueAt}
+                                            onChange={(e) => setDueAt(e.target.value)}
+                                        />
+                                    </label>
+                                    {/* وسببُ التجاوز يُكتب حين يُطلب — والخادم يقبله أو يردّه */}
+                                    <label className="text-[12px] text-gray-500 sm:col-span-3">
+                                        {t('سبب تجاوز حد الائتمان (إن لزم)')}
+                                        <Input
+                                            className="mt-1"
+                                            value={overrideReason}
+                                            onChange={(e) => setOverrideReason(e.target.value)}
+                                        />
+                                    </label>
+                                </div>
                             )}
                         </div>
 

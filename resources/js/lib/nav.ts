@@ -11,6 +11,7 @@ import {
 import {
     AppWindow,
     BarChart3,
+    FileText,
     Boxes,
     Building2,
     ClipboardList,
@@ -114,6 +115,15 @@ export const NAV: NavGroup[] = [
             { label: 'المنتجات', icon: Package, route: 'admin.products.index', section: 'products' },
             // «الطلبات» سابقًا: المتجر يبيع ولا يستقبل طلبات وحسب
             { label: 'المبيعات', icon: ShoppingCart, route: 'admin.orders.index', section: 'orders' },
+            // فواتيرُ العملاء بابٌ واحدٌ لا يتكرّر في «المالية»: ميزةٌ في
+            // موضعين تجعل التاجر يعدّل في أحدهما ويقرأ من الآخر
+            {
+                label: 'فواتير العملاء',
+                icon: FileText,
+                route: 'admin.customerInvoices.index',
+                section: 'orders',
+                covers: ['admin.customerInvoices.show'],
+            },
             // لوحة التجهيز — قسمٌ مستقلّ، فمن مُنحه وحده يراه ولا يرى المبيعات
             { label: 'لوحة التجهيز', icon: ClipboardList, route: 'admin.preparation.index', section: 'preparation' },
             {

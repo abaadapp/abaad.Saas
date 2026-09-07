@@ -10,6 +10,7 @@ use App\Models\SupplierInvoice;
 use App\Models\Transaction;
 use App\Support\Demo;
 use App\Support\Ledger;
+use App\Support\Receivables;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -27,7 +28,10 @@ use Inertia\Response;
  */
 class OverviewController extends Controller
 {
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int
+    {
+        return auth()->user()->business_id ?? Demo::bid();
+    }
 
     /**
      * الملخّص المالي — أين المال الآن، وماذا جرى في المدة.
@@ -89,14 +93,25 @@ class OverviewController extends Controller
                 'transfers' => round((float) ($byType['تحويل'] ?? 0), 3),
             ],
             'dues' => $this->dueTotals($bid),
+            /*
+             * و«ما لك» بجوار «ما عليك».
+             *
+             * الملخّصُ كان يجيب عن نصف السؤال: كم عليّ. ومن يقرّر أيدفع اليوم
+             * أم ينتظر يحتاج النصف الآخر — كم لي وكم منه تأخّر.
+             *
+             * ويُقرأ من `Receivables` نفسها التي تقرأ منها شاشةُ الذمم وصفحةُ
+             * العميل: ثلاث شاشاتٍ برقمٍ واحد.
+             */
+            'receivables' => Receivables::totals($bid),
         ]);
     }
 
     /**
      * المبالغ المستحقة — ما على المتجر، مجموعًا في مكانٍ واحد.
      *
-     * ولا يُعرض ما للمتجر على العملاء: البيع الآجل حُذف من النظام (انظر
-     * هجرة `drop_credit_sales`)، وعمودٌ يقول صفرًا دائمًا يوهم أنّه يُحسب.
+     * وما للمتجر على عملائه بابُه «الذمم المدينة»: خلطُ ما لك بما عليك في
+     * جدولٍ واحد يجعل التاجر يقرأ رقمًا لا يعرف أدائنٌ هو أم مدين. والملخّصُ
+     * وحده يجمع الطرفين — مفصولين بعنوانيهما.
      */
     public function dues(): Response
     {

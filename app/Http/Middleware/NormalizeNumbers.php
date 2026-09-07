@@ -53,6 +53,8 @@ class NormalizeNumbers
         'delivery_fee', 'opening_balance', 'monthly', 'yearly', 'monthly_price',
         'yearly_price', 'free_threshold', 'fee', 'paid', 'unit_price', 'balance',
         'min_order', 'value', 'salvage_value',
+        // البيعُ الآجل: المدفوعُ الآن وحدُّ الائتمان يُكتبان بأرقامٍ عربيّة كغيرها
+        'paid_now', 'credit_limit', 'tax_amount',
 
         // الرواتب — وكانت كلُّها خارج القائمة
         'salary', 'basic_salary', 'basic', 'allowances', 'deductions', 'overtime',

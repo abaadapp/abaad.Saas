@@ -57,6 +57,8 @@ export interface Toast {
      * النافذة: نافذةٌ تُتخطّى بطلبٍ مباشر تترك العطبَ كما كان.
      */
     confirm?: { url: string; label?: string };
+    /** رابطٌ خارجيّ حين يكون الفعلُ التالي خارج النظام — كتذكير السداد على واتساب */
+    link?: { url: string; label: string };
 }
 
 /** البيانات التي يشاركها HandleInertiaRequests مع كل صفحة */

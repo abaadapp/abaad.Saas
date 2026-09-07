@@ -40,6 +40,8 @@ class Permissions
      */
     public const ACTIONS = [
         'order.edit' => 'تصحيح فاتورة مكتملة',
+        // تجاوزُ حدّ ائتمان العميل في البيع الآجل — بسببٍ يُكتب ويُسجَّل
+        'credit.override' => 'تجاوز حدّ ائتمان العميل',
     ];
 
     /**
@@ -50,6 +52,8 @@ class Permissions
      */
     public const ACTION_ROLES = [
         'order.edit' => ['admin', 'manager'],
+        // والكاشير لا يتجاوز حدًّا وضعه صاحبُ المتجر: يطلبه ممّن وضعه
+        'credit.override' => ['admin', 'manager'],
     ];
 
     /** هل هذا المفتاح فعلٌ لا قسم؟ — النقطة تفصلهما */
@@ -343,6 +347,10 @@ class Permissions
         'goals' => 'dashboard',
         'alerts' => 'settings',
         'backup' => 'settings',
+        // فواتيرُ العملاء مستندُ بيع: من يرى الطلبات يراها
+        'customerInvoices' => 'orders',
+        // والتحصيلُ مالٌ يدخل الصندوق: بابُه المالية
+        'customerPayments' => 'finance',
         // تهيئةُ المتجر أوّلَ مرّة تكتب بيانات النشاط — فتتبع بابَها
         'setup' => 'settings',
         'activity' => 'settings',

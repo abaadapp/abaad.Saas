@@ -30,6 +30,8 @@ interface Props {
         transfers: number;
     };
     dues: { expenses: number; invoices: number; payroll: number; total: number; overdue: number };
+    /** «ما لك» — ذمم العملاء، من `Receivables` نفسها التي تقرأ منها شاشة الذمم */
+    receivables: { total: number; overdue: number; due_soon: number; credit: number; invoices: number; customers: number };
 }
 
 /**
@@ -40,7 +42,7 @@ interface Props {
  * هل يستطيع الدفع اليوم كان عليه أن يفتح خمس شاشات ويجمع بالعين.
  */
 export default function Summary() {
-    const { range, cash, bank, accounts, period, dues, context } = usePage<PageProps<Props>>().props;
+    const { range, cash, bank, accounts, period, dues, receivables, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -118,6 +120,33 @@ export default function Summary() {
                         </div>
                         <Button variant="outline" size="sm" className="self-start" asChild>
                             <SmartLink routeName="admin.finance.dues" href={route('admin.finance.dues')}>
+                                {t('التفاصيل')}
+                            </SmartLink>
+                        </Button>
+                    </div>
+                </Card>
+
+                {/*
+                    و«لك الآن» بجوارها.
+
+                    الملخّصُ كان يجيب عن نصف السؤال: كم عليّ. ومن يقرّر أيدفع
+                    اليوم أم ينتظر يحتاج النصف الآخر — كم لي وكم منه تأخّر.
+                */}
+                <Card className="p-5">
+                    <div className="flex h-full flex-col justify-between gap-3">
+                        <div>
+                            <p className="text-[12px] text-[#9ca3af]">{t('لك الآن')}</p>
+                            <p className="mt-1 text-[22px] font-bold tabular-nums tracking-tight text-[#111]">
+                                {m(receivables.total)}
+                            </p>
+                            {receivables.overdue > 0 && (
+                                <p className="mt-1 text-[12px] text-[#b91c1c]">
+                                    {m(receivables.overdue)} {t('متأخّر عن موعده')}
+                                </p>
+                            )}
+                        </div>
+                        <Button variant="outline" size="sm" className="self-start" asChild>
+                            <SmartLink routeName="admin.finance.receivables" href={route('admin.finance.receivables')}>
                                 {t('التفاصيل')}
                             </SmartLink>
                         </Button>

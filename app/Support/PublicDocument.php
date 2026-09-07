@@ -4,7 +4,6 @@ namespace App\Support;
 
 use App\Models\DocumentLink;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Str;
 
 /**
@@ -58,17 +57,22 @@ class PublicDocument
          * «هل لها رمز؟» فيجيب كلاهما «لا»، فيُكتب صفّان — والقيد الفريد
          * يردّ الثاني باستثناء يُسقط الطباعة. فيُلتقط الاصطدام ويُقرأ ما
          * كتبه السابق: الرمزُ رمزُه، والورقتان تقودان إلى المكان نفسه.
+         *
+         * وفي نقطة حفظ: الالتقاطُ وحدَه لا يُنقذ على PostgreSQL — المعاملةُ
+         * تكون قد أُجهضت، فتسقط القراءةُ التالية معها. انظر `Contention`.
          */
-        try {
-            return DocumentLink::firstOrCreate(
-                ['linkable_type' => $document->getMorphClass(), 'linkable_id' => $document->getKey()],
-                ['business_id' => $businessId, 'token' => Str::random(self::LENGTH)],
-            )->token;
-        } catch (UniqueConstraintViolationException) {
-            return DocumentLink::where('linkable_type', $document->getMorphClass())
-                ->where('linkable_id', $document->getKey())
-                ->value('token');
+        $link = Contention::attempt(fn () => DocumentLink::firstOrCreate(
+            ['linkable_type' => $document->getMorphClass(), 'linkable_id' => $document->getKey()],
+            ['business_id' => $businessId, 'token' => Str::random(self::LENGTH)],
+        ));
+
+        if ($link !== null) {
+            return $link->token;
         }
+
+        return DocumentLink::where('linkable_type', $document->getMorphClass())
+            ->where('linkable_id', $document->getKey())
+            ->value('token');
     }
 
     /** الورقةُ التي يشير إليها رمزٌ — أو null فلا شيء يُعرض */

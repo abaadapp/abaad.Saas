@@ -7,7 +7,6 @@ use App\Models\Business;
 use App\Models\CustomerInvoice;
 use App\Models\Order;
 use App\Models\WhatsAppMessage;
-use Illuminate\Database\UniqueConstraintViolationException;
 
 /**
  * القرار كلّه هنا — لا في متحكّم ولا في شاشة.
@@ -228,14 +227,15 @@ class WhatsAppAutomation
      *
      * `exists()` ثمّ `create()` يترك نافذةً يمرّ منها نداءان متزامنان —
      * ضغطتان على الزرّ، أو إعادةُ محاولةٍ من الطابور بينما الأولى تكتب.
+     *
+     * والاصطدامُ يُلتقط في نقطة حفظ: على PostgreSQL يُجهض أوّلُ أمرٍ يفشل
+     * المعاملةَ كلَّها، فرسالةٌ مكرّرة كانت تُسقط تغييرَ حالة الطلب نفسِه —
+     * لا الرسالةَ وحدها. انظر `Contention`.
      */
     private static function record(array $attributes): ?WhatsAppMessage
     {
-        try {
-            return WhatsAppMessage::create($attributes);
-        } catch (UniqueConstraintViolationException) {
-            return null;
-        }
+        // ‏وفي نقطة حفظ: اصطدامٌ يُبتلع على PostgreSQL يُجهض المعاملة كلَّها
+        return Contention::attempt(fn () => WhatsAppMessage::create($attributes));
     }
 
     /** هل فعّل التاجر هذا الحدث؟ — من مفاتيح `wa_on_*` القائمة */

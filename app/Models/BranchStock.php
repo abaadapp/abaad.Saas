@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Support\Contention;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class BranchStock extends Model
 {
@@ -60,14 +62,14 @@ class BranchStock extends Model
      * يعني رقمًا دفتريًّا يخالف ما سيحسبه الخادم — والفرق يظهر تسويةً لم
      * يطلبها أحد.
      *
-     * @return array<int, array<int, int>>  [معرّف المنتج][معرّف الفرع] => الكمية
+     * @return array<int, array<int, int>> [معرّف المنتج][معرّف الفرع] => الكمية
      */
     public static function books(int $businessId): array
     {
         $main = Branch::where('business_id', $businessId)->orderBy('id')->value('id');
         $rows = static::where('business_id', $businessId)->get()->groupBy('product_id');
 
-        return \App\Models\Product::where('business_id', $businessId)
+        return Product::where('business_id', $businessId)
             ->get(['id', 'quantity'])
             ->mapWithKeys(function ($p) use ($rows, $main) {
                 $group = $rows[$p->id] ?? collect();
@@ -106,7 +108,7 @@ class BranchStock extends Model
 
         $apply = fn () => static::where('branch_id', $branchId)->where('product_id', $productId)
             ->update([
-                'quantity' => \Illuminate\Support\Facades\DB::raw('quantity + '.$delta),
+                'quantity' => DB::raw('quantity + '.$delta),
                 'updated_at' => now(),
             ]);
 
@@ -114,14 +116,19 @@ class BranchStock extends Model
             return;
         }
 
-        try {
-            static::create([
-                'business_id' => $businessId,
-                'branch_id' => $branchId,
-                'product_id' => $productId,
-                'quantity' => $delta,
-            ]);
-        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+        /*
+         * والإنشاءُ في نقطة حفظ: اصطدامان متزامنان على المفتاح نفسه يقعان،
+         * وابتلاعُ الاصطدام على PostgreSQL يُجهض المعاملةَ المحيطة — وهي
+         * هنا معاملةُ بيعٍ أو استلام. انظر `Contention`.
+         */
+        $created = Contention::attempt(fn () => static::create([
+            'business_id' => $businessId,
+            'branch_id' => $branchId,
+            'product_id' => $productId,
+            'quantity' => $delta,
+        ]));
+
+        if ($created === null) {
             $apply();
         }
     }

@@ -276,10 +276,21 @@ class SilentDataLossTest extends TestCase
             ])->assertSessionHasNoErrors();
         }
 
-        $refs = Transaction::where('business_id', $this->business->id)->pluck('reference');
+        /*
+         * والترتيبُ يُطلب صراحةً.
+         *
+         * `pluck` بلا `orderBy` لا ترتيبَ لها في PostgreSQL — يردّ المحرّكُ
+         * الصفوفَ كما وجدها لا كما كُتبت. وكان الاختبارُ يقرأ أوّلَ ما يُردّ
+         * ويظنّه أوّلَ ما كُتب، فيمرّ على SQLite (وهو يردّ بترتيب المفتاح)
+         * ويسقط على محرّك الإنتاج. وافتراضُ ترتيبٍ لم يُطلب عطبٌ في كلّ
+         * استعلامٍ يقع فيه، لا في هذا وحده.
+         */
+        $refs = Transaction::where('business_id', $this->business->id)
+            ->orderBy('id')->pluck('reference');
 
         $this->assertCount(30, $refs->unique(), 'مرجعان متطابقان في دفتر ماليّ');
         $this->assertSame('TRX-000001', $refs->first());
+        $this->assertSame('TRX-000030', $refs->last());
     }
 
     public function test_each_store_numbers_its_own_transactions(): void

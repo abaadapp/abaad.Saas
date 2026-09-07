@@ -19,6 +19,7 @@ use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\AddonStock;
 use App\Support\Books;
+use App\Support\Contention;
 use App\Support\CreditSales;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
@@ -37,7 +38,6 @@ use App\Support\Stock;
 use App\Support\StockLedger;
 use App\Support\Vat;
 use Illuminate\Database\QueryException;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -644,20 +644,18 @@ class PosController extends Controller
         return $requested;
     }
 
-    /** ينشئ الطلب برقم فريد، ويعيد المحاولة إن سبقه كاشير آخر إلى الرقم نفسه */
+    /**
+     * ينشئ الطلب برقم فريد، ويعيد المحاولة إن سبقه كاشير آخر إلى الرقم نفسه.
+     *
+     * وكلُّ محاولةٍ في نقطة حفظها: على PostgreSQL تُجهض المحاولةُ الأولى
+     * الفاشلة المعاملةَ كلَّها، فتسقط الأربعُ الباقيات لسببٍ وقع مرّةً —
+     * ويُردّ الكاشيرُ عن بيعةٍ رقمُها كان متاحًا. انظر `Contention`.
+     */
     private function createNumbered(array $attrs, string $prefix, int $start = 1): Order
     {
-        for ($attempt = 0; $attempt < 5; $attempt++) {
-            try {
-                return Order::create($attrs + ['number' => $this->nextNumber($prefix, $start)]);
-            } catch (UniqueConstraintViolationException $e) {
-                if ($attempt === 4) {
-                    throw $e;
-                }
-            }
-        }
-
-        throw new \RuntimeException('تعذّر توليد رقم فاتورة فريد.');
+        return Contention::retry(
+            fn () => Order::create($attrs + ['number' => $this->nextNumber($prefix, $start)]),
+        );
     }
 
     /** فرع الطلب: الفرع المختار حاليًا، وإلا أول فرع للنشاط — حتى يظهر الطلب تحت فلتر الفروع */

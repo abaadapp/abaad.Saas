@@ -4569,5 +4569,14 @@
     "هذا السند لا يطابق أمره، وتجاوزُ ذلك ليس من صلاحياتك.": "This invoice does not match its order, and overriding that is not within your permissions.",
     "يُكتب إن رفضتَ السند": "Required if you reject the invoice",
     "اعتماد السند": "Approve invoice",
-    "فاتورة المورّد": "Supplier invoice"
+    "فاتورة المورّد": "Supplier invoice",
+    "ابحث بالاسم أو رمز الصنف أو الباركود — والنافذة تبقى مفتوحة لتضيف أكثر من بند.": "Search by name, SKU or barcode — the window stays open so you can add more lines.",
+    "اسم الصنف أو رمزه أو الباركود": "Item name, SKU or barcode",
+    "في الفاتورة": "On the invoice",
+    "لا أصناف في الكتالوج بعد — تُضاف من صفحة المنتجات.": "No items in the catalogue yet — add them from the products page.",
+    "لا صنف بهذا الاسم أو الرمز": "No item with that name or code",
+    "عُرض :n من :m — ضيّق البحث": "Showing :n of :m — narrow the search",
+    "الكتالوج أكبر ممّا يُحمَّل هنا — ابحث بالاسم أو الرمز للوصول إلى الباقي.": "The catalogue is larger than what loads here — search by name or code to reach the rest.",
+    "تمّ": "Done",
+    "أُضيف :n بندًا": "Added :n line(s)"
 }

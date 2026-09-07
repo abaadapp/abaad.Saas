@@ -31,6 +31,9 @@ use RuntimeException;
  */
 class CustomerInvoiceController extends Controller
 {
+    /** ما يُرسل من الكتالوج إلى شاشة الإنشاء — والزائدُ يُعلَن لا يُكتم */
+    private const CATALOG_LIMIT = 500;
+
     private function bid(): int
     {
         return (int) (auth()->user()->business_id ?? Demo::bid());
@@ -160,8 +163,24 @@ class CustomerInvoiceController extends Controller
              * أكثرُ فواتير الجهات خدماتٌ لا أصنافَ رفٍّ — «تنسيق قاعة» ليس
              * منتجًا في المخزون، وإلزامُ التاجر باختيار صنفٍ يجعله يخترع صنفًا.
              */
+            /*
+             * ورمزُ الصنف وباركودُه مع اسمه.
+             *
+             * البحثُ بالاسم وحده يفترض أنّ من يكتب الفاتورة يحفظ الأسماء —
+             * وهو يقرأ الرمزَ من أمر شراء العميل، أو يمسح الباركود بقارئٍ
+             * يكتب أرقامًا ثمّ Enter. فبحثٌ لا يقرأ الاثنين يردّ «لا صنف»
+             * على صنفٍ في يده.
+             */
             'products' => Product::where('business_id', $bid)->orderBy('name')
-                ->limit(500)->get(['id', 'name', 'price'])->all(),
+                ->limit(self::CATALOG_LIMIT)->get(['id', 'name', 'sku', 'barcode', 'price'])->all(),
+            /*
+             * وهل قُصّ الكتالوج؟ — تقولها الشاشة ولا تكتمها.
+             *
+             * القائمةُ تُرشَّح في المتصفّح، فما لم يُرسَل لا يُبحث فيه. وقصٌّ
+             * صامتٌ يعني صنفًا موجودًا في المخزون يقول عنه البحثُ «لا صنف
+             * بهذا الاسم» — وهو أسوأ من قائمةٍ تعتذر.
+             */
+            'catalog_truncated' => Product::where('business_id', $bid)->count() > self::CATALOG_LIMIT,
             /*
              * ورقمُ الفاتورة معاينةٌ لا حجز: التسلسل يُقطع لحظةَ الحفظ تحت
              * قفل. وعرضُه هنا يُطمئن من يكتب الرقم على أمر شراء، ولا يُرسَل

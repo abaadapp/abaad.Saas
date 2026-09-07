@@ -10,12 +10,15 @@ import { Card } from '@/Components/ui/card';
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from '@/Components/ui/dialog';
 import { Input, Textarea } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { money } from '@/lib/format';
+import { fold } from '@/lib/pages';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -43,12 +46,17 @@ interface CustomerRow {
 interface ProductRow {
     id: number;
     name: string;
+    /** رمزُ الصنف وباركودُه — يُبحث بهما كما يُبحث بالاسم */
+    sku: string | null;
+    barcode: string | null;
     price: number;
 }
 
 interface Props {
     customers: CustomerRow[];
     products: ProductRow[];
+    /** هل في الكتالوج ما لم يُرسَل؟ — انظر CATALOG_LIMIT في المتحكّم */
+    catalog_truncated: boolean;
     next_number: string;
     tax_rate: number;
     today: string;
@@ -81,6 +89,14 @@ const TERMS = [0, 7, 15, 30, 45, 60, 90] as const;
 
 /** «تاريخ مخصص» ليس مدّة — قيمةٌ تقول إنّ الاستحقاق بيد كاتب الورقة */
 const CUSTOM = 'custom';
+
+/**
+ * كم صفًّا يُرسَم في نافذة الكتالوج.
+ *
+ * والباقي لا يُبتر صامتًا: النافذةُ تقول كم طابق وكم عُرض. وقائمةٌ تُقصّ
+ * بلا أن تقول تجعل من رأى آخرَ صفٍّ يظنّه آخرَ ما في المخزن.
+ */
+const SHOWN = 40;
 
 /**
  * حقولُ الجهة — مصدرٌ واحدٌ للمفتاح والتسمية والمثال.
@@ -127,6 +143,7 @@ function termOptions(t: (s: string) => string) {
 export default function CustomerInvoiceCreate({
     customers,
     products,
+    catalog_truncated,
     next_number,
     tax_rate,
     today,
@@ -649,6 +666,8 @@ export default function CustomerInvoiceCreate({
                 open={picking}
                 onOpenChange={setPicking}
                 products={products}
+                truncated={catalog_truncated}
+                picked={lines.map((l) => Number(l.product_id)).filter((n) => n > 0)}
                 onPick={(p) =>
                     setLines((prev) => {
                         const line: Line = {
@@ -826,53 +845,229 @@ function CustomerCard({ customer, onClear }: { customer: CustomerRow; onClear: (
     );
 }
 
-/** منتجٌ من الكتالوج — يُبحث ويُنقر فيصير بندًا */
+/**
+ * منتجٌ من الكتالوج — يُبحث فيُصير بندًا.
+ *
+ * ═══ لماذا لا تُغلق عند أوّل اختيار ═══
+ *
+ * كانت تُغلق، فمن يكتب فاتورةً بخمسة بنودٍ يفتحها خمس مرّات ويكتب بحثَه من
+ * أوّله في كلّ مرّة. والفاتورةُ بندٌ واحدٌ نادرًا. فتبقى مفتوحةً ويُفرَّغ
+ * البحثُ ويعود المؤشّر إليه، ويقول العدّادُ كم أُضيف — و«تمّ» تُغلقها.
+ *
+ * ═══ ولماذا لا يُعرض الرصيد ═══
+ *
+ * لأنّ فاتورة العميل التزامٌ ماليٌّ لا حركةَ مخزون: لا تُنقص رصيدًا ولا
+ * تُحجزه. ورقمٌ يُعرض هنا يُقرأ وعدًا بالتوفّر لا يفي به المستند.
+ */
 function ProductDialog({
     open,
     onOpenChange,
     products,
+    truncated,
+    picked,
     onPick,
 }: {
     open: boolean;
     onOpenChange: (v: boolean) => void;
     products: ProductRow[];
+    /** هل بقي في الكتالوج ما لم يُرسَل؟ — يُقال ولا يُكتم */
+    truncated: boolean;
+    /** ما أُضيف إلى الفاتورة فعلًا — يُعلَّم فلا يُضاف مرّتين سهوًا */
+    picked: number[];
     onPick: (p: ProductRow) => void;
 }) {
+    const { context } = usePage<PageProps>().props;
     const t = useTranslate();
     const [q, setQ] = useState('');
+    const [active, setActive] = useState(0);
+    const [added, setAdded] = useState(0);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
 
-    const needle = q.trim().toLowerCase();
-    const shown = (needle === '' ? products : products.filter((p) => p.name.toLowerCase().includes(needle))).slice(
-        0,
-        100,
-    );
+    /*
+     * والنافذةُ تُفتح على حالٍ جديدة لا على بقايا المرّة الماضية.
+     *
+     * بحثٌ قديمٌ محفوظٌ يعني قائمةً مرشَّحةً بكلمةٍ لا يذكرها من فتحها الآن،
+     * فيقرؤها كتالوجًا فيه ثلاثة أصناف.
+     */
+    useEffect(() => {
+        if (open) {
+            setQ('');
+            setActive(0);
+            setAdded(0);
+            // ‏وبعد رسم النافذة: التركيزُ قبلها يذهب إلى عنصرٍ لم يوجد بعد
+            const id = setTimeout(() => inputRef.current?.focus(), 30);
+
+            return () => clearTimeout(id);
+        }
+    }, [open]);
+
+    /*
+     * والمطابقةُ تُحسب مرّةً: كم طابق، وأيّها يُعرض.
+     *
+     * وكُتبت أوّلًا مرّتين — واحدةً للقائمة وواحدةً للعدّاد — فأطفرتُ الأولى
+     * فنجت المطفرة: الثانيةُ كانت تحرسها. وشرطان يقولان الشيء نفسه يفترقان
+     * يومًا، فيقول العدّادُ «من ٤٠» وتعرض القائمةُ غيرها.
+     */
+    const matched = useMemo(() => {
+        const needle = fold(q);
+
+        if (needle === '') {
+            return products;
+        }
+
+        return products.filter(
+            (p) =>
+                fold(p.name).includes(needle) ||
+                fold(p.sku ?? '').includes(needle) ||
+                fold(p.barcode ?? '').includes(needle),
+        );
+    }, [products, q]);
+
+    const shown = useMemo(() => matched.slice(0, SHOWN), [matched]);
+    const total = matched.length;
+
+    // ‏والمؤشّر يعود إلى أوّل الصفوف كلّما تبدّلت: صفٌّ مضيءٌ خارج القائمة لا يُختار
+    useEffect(() => setActive(0), [q]);
+
+    const take = (p: ProductRow) => {
+        onPick(p);
+        setAdded((n) => n + 1);
+        setQ('');
+        inputRef.current?.focus();
+    };
+
+    /*
+     * والسهمان وEnter: قارئُ الباركود يكتب ثمّ يضغط Enter، ومن يكتب بيده
+     * لا يريد أن يترك اللوحة إلى الفأرة بين كلّ بندين.
+     */
+    const onKey = (e: React.KeyboardEvent) => {
+        if (shown.length === 0) {
+            return;
+        }
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActive((i) => (i + 1) % shown.length);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive((i) => (i - 1 + shown.length) % shown.length);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            take(shown[active] ?? shown[0]);
+        }
+    };
+
+    // ‏والصفُّ المضيء يُجَرّ إلى داخل الإطار: مؤشّرٌ يمشي خارج ما يُرى ليس مؤشّرًا
+    useEffect(() => {
+        listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+    }, [active, shown]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent className="max-w-xl">
                 <DialogHeader>
                     <DialogTitle>{t('منتج من الكتالوج')}</DialogTitle>
+                    <DialogDescription>
+                        {t('ابحث بالاسم أو رمز الصنف أو الباركود — والنافذة تبقى مفتوحة لتضيف أكثر من بند.')}
+                    </DialogDescription>
                 </DialogHeader>
 
-                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ابحث باسم الصنف')} />
+                <div className="px-5">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute top-1/2 size-4 -translate-y-1/2 text-[#9ca3af] start-3" />
+                        <Input
+                            ref={inputRef}
+                            value={q}
+                            onChange={(e) => setQ(e.target.value)}
+                            onKeyDown={onKey}
+                            placeholder={t('اسم الصنف أو رمزه أو الباركود')}
+                            className="ps-9"
+                        />
+                    </div>
 
-                <div className="mt-2 max-h-72 overflow-y-auto">
-                    {shown.map((p) => (
-                        <button
-                            key={p.id}
-                            type="button"
-                            className="flex w-full items-center justify-between gap-3 rounded-[8px] px-3 py-2 text-[13px] hover:bg-[#f7f7f5]"
-                            onClick={() => {
-                                onPick(p);
-                                onOpenChange(false);
-                            }}
-                        >
-                            <span className="min-w-0 truncate">{p.name}</span>
-                            <span className="tabular-nums text-[#6b7280]">{Number(p.price).toFixed(3)}</span>
-                        </button>
-                    ))}
-                    {shown.length === 0 && <p className="p-3 text-[12px] text-[#9ca3af]">{t('لا صنف بهذا الاسم')}</p>}
+                    <div ref={listRef} className="mt-2 max-h-80 overflow-y-auto">
+                        {shown.map((p, i) => {
+                            const already = picked.includes(p.id);
+
+                            return (
+                                <button
+                                    key={p.id}
+                                    type="button"
+                                    data-active={i === active}
+                                    onMouseEnter={() => setActive(i)}
+                                    onClick={() => take(p)}
+                                    className={cn(
+                                        'flex w-full items-center gap-3 rounded-[8px] px-3 py-2 text-start text-[13px]',
+                                        i === active ? 'bg-[#f1f1ef]' : 'hover:bg-[#f7f7f5]',
+                                    )}
+                                >
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-[#111]">{p.name}</span>
+                                        {/*
+                                            والرمزُ تحت الاسم لاتينيًّا: أرقامٌ
+                                            وحروفٌ إن تُركت لاتجاه الصفحة قُرئت
+                                            معكوسةً — ورمزٌ معكوسٌ لا يُطابق ورقة.
+                                        */}
+                                        {(p.sku || p.barcode) && (
+                                            <span
+                                                dir="ltr"
+                                                className="block truncate font-mono text-[11px] text-[#9ca3af]"
+                                            >
+                                                {[p.sku, p.barcode].filter(Boolean).join(' · ')}
+                                            </span>
+                                        )}
+                                    </span>
+
+                                    {already && (
+                                        <span className="shrink-0 rounded-full bg-[#eff6ff] px-2 py-0.5 text-[11px] text-[#1d4ed8]">
+                                            {t('في الفاتورة')}
+                                        </span>
+                                    )}
+
+                                    <span className="shrink-0 tabular-nums text-[#6b7280]">
+                                        {money(Number(p.price), context!.currency)}
+                                    </span>
+                                </button>
+                            );
+                        })}
+
+                        {shown.length === 0 && (
+                            <p className="p-4 text-center text-[12px] text-[#9ca3af]">
+                                {products.length === 0
+                                    ? t('لا أصناف في الكتالوج بعد — تُضاف من صفحة المنتجات.')
+                                    : t('لا صنف بهذا الاسم أو الرمز')}
+                            </p>
+                        )}
+
+                        {/*
+                            وقائمةٌ قُصّت تقول إنّها قُصّت.
+                            من رأى عشرين صفًّا وظنّها كلَّ ما طابق يكفّ عن البحث.
+                        */}
+                        {total > shown.length && (
+                            <p className="p-3 text-center text-[11px] text-[#9ca3af]">
+                                {t('عُرض :n من :m — ضيّق البحث', { n: shown.length, m: total })}
+                            </p>
+                        )}
+                    </div>
+
+                    {truncated && q.trim() === '' && (
+                        <p className="mt-1 text-[11px] text-[#b45309]">
+                            {t('الكتالوج أكبر ممّا يُحمَّل هنا — ابحث بالاسم أو الرمز للوصول إلى الباقي.')}
+                        </p>
+                    )}
                 </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                        {t('تمّ')}
+                    </Button>
+                    {added > 0 && (
+                        <span className="me-auto text-[12px] text-[#047857]">
+                            {t('أُضيف :n بندًا', { n: added })}
+                        </span>
+                    )}
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

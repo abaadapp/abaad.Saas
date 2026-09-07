@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Expense;
 use App\Models\GoodsReceiptNote;
+use App\Models\PurchaseOrder;
 use App\Models\SupplierInvoice;
 use App\Support\Demo;
 use App\Support\Permissions;
@@ -15,12 +17,18 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  * ═══ لماذا ليست على القرص العامّ ═══
  *
- * مرفقاتُ المصروفات وأوامر الشراء القديمة على `public`: رابطُها يُخمَّن
- * ويُفتح بلا تسجيل دخول، ومن عرف رابطًا واحدًا عرف نمطَه. وورقةُ مورّدٍ
- * فيها أسعارُ شرائك — أثمنُ ما في متجرك عند منافسك.
+ * القرصُ العامّ يُخدَم من `public/storage` مباشرةً: لا Laravel يُستدعى ولا
+ * جلسةَ يُسأل عنها — الخادمُ يقرأ الملفّ ويردّه لمن طلبه. فرابطُ إيصالِ
+ * دفعٍ أو فاتورةِ مصروفٍ كان يُفتح بلا تسجيل دخول، ومن عرف رابطًا واحدًا
+ * عرف نمطَه. وورقةُ مورّدٍ فيها أسعارُ شرائك — أثمنُ ما في متجرك عند
+ * منافسك.
  *
- * فالجديدُ على القرص الخاصّ، ولا يُقرأ إلّا من هنا: البابُ يسأل عن المتجر
- * أوّلًا، فمرفقُ الجار لا يُفتح برقمٍ يُكتب في العنوان.
+ * فالكلُّ على القرص الخاصّ الآن، ولا يُقرأ إلّا من هنا: البابُ يسأل عن
+ * المتجر أوّلًا، فمرفقُ الجار لا يُفتح برقمٍ يُكتب في العنوان.
+ *
+ * وأربعةُ مستنداتٍ على بابٍ واحد: سندُ المورّد، وورقةُ الشحنة، وفاتورةُ
+ * المصروف، وإيصالُ دفع أمر الشراء. وبابٌ لكلٍّ كان يعني أربعةَ حرّاسٍ
+ * يفترق أحدُهم يومًا.
  *
  * والاسمُ المخزَّن عشوائيّ والمعروضُ هو ما سمّاه صاحبه: اسمٌ يُبنى من
  * الأصل يُخمَّن، واسمٌ عشوائيٌّ بلا حفظِ الأصل يُنزَّل إلى المحاسب بلا معنى.
@@ -48,6 +56,35 @@ class FinancialAttachmentController extends Controller
         $note = GoodsReceiptNote::where('business_id', $this->bid())->findOrFail($id);
 
         return $this->stream($note->attachment, $note->attachment_name, $note->number);
+    }
+
+    /**
+     * فاتورةُ المصروف أو إيصالُه — ما يُثبت أنّ المال خرج لهذا.
+     *
+     * وكانت على القرص العامّ منذ أوّل يوم: مبالغُ إيجارك ورواتبك وفواتيرك
+     * تُقرأ برابطٍ يُخمَّن.
+     */
+    public function expense(int|string $id): StreamedResponse
+    {
+        $this->mustBeAllowed();
+
+        $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
+
+        return $this->stream($expense->attachment, $expense->attachment_name, 'expense-'.$expense->id);
+    }
+
+    /**
+     * إيصالُ دفع أمر الشراء — وهو غيرُ ورقة الشحنة.
+     *
+     * هذا يقول «دُفع»، وتلك تقول «وصل». ولكلٍّ عمودُه وبابُه.
+     */
+    public function purchaseReceipt(int|string $id): StreamedResponse
+    {
+        $this->mustBeAllowed();
+
+        $po = PurchaseOrder::where('business_id', $this->bid())->findOrFail($id);
+
+        return $this->stream($po->receipt, $po->receipt_name, $po->number);
     }
 
     /** فاتورةُ المورّد كما وصلت */

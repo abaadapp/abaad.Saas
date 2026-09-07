@@ -30,6 +30,7 @@ class PurchaseOrderController extends Controller
     public function index(Request $request): Response
     {
         $s = Demo::purchaseOrderStats();
+        $mayRead = (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW);
 
         return Inertia::render('Admin/Purchases/Index', [
             'stats' => [
@@ -38,10 +39,14 @@ class PurchaseOrderController extends Controller
                 ['label' => __('مستلمة'), 'value' => (string) $s['received'], 'icon' => 'package-check', 'color' => 'success'],
                 ['label' => __('قيمة قيد الاستلام'), 'value' => Demo::money($s['value']), 'icon' => 'wallet', 'color' => 'info'],
             ],
-            // رابط الإيصال يُبنى هنا: المسار وحده لا يكفي المتصفح لفتحه
-            'orders' => array_map(function ($o) {
-                $o['receipt'] = $o['receipt']
-                    ? Storage::disk('public')->url($o['receipt'])
+            /*
+             * ورابطُ الإيصال بابٌ يسأل — لا مسارٌ على القرص العامّ.
+             *
+             * ومن لا يملك فتحَ المرفقات لا يُبنى له رابط.
+             */
+            'orders' => array_map(function ($o) use ($mayRead) {
+                $o['receipt'] = $o['receipt'] && $mayRead
+                    ? route('admin.purchases.receiptFile', $o['id'])
                     : null;
 
                 return $o;
@@ -89,7 +94,8 @@ class PurchaseOrderController extends Controller
         if ($request->hasFile('receipt')) {
             $file = $request->file('receipt');
             $receiptName = $file->getClientOriginalName();
-            $receipt = $file->store("purchase-receipts/{$bid}", 'public');
+            // القرصُ الخاصّ: إيصالُ الدفع يقول بكم اشترى المتجر وممّن
+            $receipt = $file->store("purchase-receipts/{$bid}", 'local');
         }
 
         $supplier = ! empty($data['supplier_id']) ? Supplier::where('business_id', $bid)->find($data['supplier_id']) : null;
@@ -275,11 +281,11 @@ class PurchaseOrderController extends Controller
 
         // استبدال الإيصال القديم بدل تركه يتراكم على القرص
         if ($po->receipt) {
-            Storage::disk('public')->delete($po->receipt);
+            Storage::disk('local')->delete($po->receipt);
         }
         $file = $request->file('receipt');
         $po->update([
-            'receipt' => $file->store('purchase-receipts/'.$this->bid(), 'public'),
+            'receipt' => $file->store('purchase-receipts/'.$this->bid(), 'local'),
             'receipt_name' => $file->getClientOriginalName(),
         ]);
         Activity::log('updated', 'أرفق إيصال دفع لأمر الشراء '.$po->number, ['subject_id' => $po->id]);
@@ -317,7 +323,7 @@ class PurchaseOrderController extends Controller
 
         $num = $po->number;
         if ($po->receipt) {
-            Storage::disk('public')->delete($po->receipt);
+            Storage::disk('local')->delete($po->receipt);
         }
         $po->delete();
         Activity::log('deleted', 'حذف أمر الشراء: '.$num);

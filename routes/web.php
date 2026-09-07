@@ -618,6 +618,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/purchases/create', [PageController::class, 'purchasesCreate'])->name('purchases.create');
     Route::post('/purchases', [PurchaseOrderController::class, 'store'])->name('purchases.store');
     Route::post('/purchases/{id}/receipt', [PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');
+    // وإيصالُ الدفع يُقرأ من هنا — وهو غيرُ ورقة الشحنة عمودًا وبابًا
+    Route::get('/purchases/{id}/receipt-file', [FinancialAttachmentController::class, 'purchaseReceipt'])
+        ->name('purchases.receiptFile');
     Route::post('/purchases/{id}/receive', [PurchaseOrderController::class, 'receive'])->name('purchases.receive');
     /*
      * اعتمادُ الاستلام ورفضُه — على الإشعار لا على الأمر.
@@ -851,6 +854,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/expenses/export-pdf', [PdfController::class, 'expensesReport'])->name('expenses.exportPdf');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
     Route::post('/expenses/{id}/paid', [ExpenseController::class, 'markPaid'])->name('expenses.paid');
+    // وفاتورةُ المصروف تُقرأ ببابٍ يسأل — لا من `public/storage` بلا سؤال
+    Route::get('/expenses/{id}/attachment', [FinancialAttachmentController::class, 'expense'])
+        ->name('expenses.attachment');
     Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
     Route::post('/expenses/{id}/restore', [TrashController::class, 'restore'])
         ->defaults('type', 'expense')->name('expenses.restore');

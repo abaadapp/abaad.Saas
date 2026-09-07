@@ -10,6 +10,7 @@ use App\Support\Books;
 use App\Support\Demo;
 use App\Support\ListFilters;
 use App\Support\Pagination;
+use App\Support\Permissions;
 use App\Support\Search;
 use App\Support\Sort;
 use Illuminate\Http\Request;
@@ -82,6 +83,8 @@ class ExpenseController extends Controller
 
         $expenses = $q->paginate((int) $request->query('per_page', 10))->withQueryString();
 
+        $mayRead = (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW);
+
         return Inertia::render('Admin/Expenses/Index', [
             'expenses' => collect($expenses->items())->map(fn ($e) => [
                 'id' => $e->id,
@@ -90,8 +93,15 @@ class ExpenseController extends Controller
                 'type' => $e->type,
                 'amount' => (float) $e->amount,
                 'status' => $e->status,
-                // رابط المرفق يُبنى هنا؛ المسار وحده لا يفتحه المتصفح
-                'attachment' => $e->attachment ? Storage::url($e->attachment) : null,
+                /*
+                 * ورابطُ المرفق بابٌ يسأل — لا مسارٌ على القرص العامّ.
+                 *
+                 * ومن لا يملك الفعل لا يُبنى له رابط: الرابطُ يُرسم أيقونةً
+                 * في الجدول، وأيقونةٌ تُردّ عند ضغطها أسوأ من غيابها.
+                 */
+                'attachment' => $e->attachment && $mayRead
+                    ? route('admin.expenses.attachment', $e->id)
+                    : null,
                 'attachment_name' => $e->attachment_name,
                 'description' => $e->description,
             ])->all(),
@@ -151,7 +161,8 @@ class ExpenseController extends Controller
         if ($request->hasFile('attachment')) {
             $file = $request->file('attachment');
             $attachmentName = $file->getClientOriginalName();
-            $attachment = $file->store("expenses/{$bid}", 'public');
+            // القرصُ الخاصّ: فاتورةُ مصروفٍ تقول كم يدفع المتجر ولمن
+            $attachment = $file->store("expenses/{$bid}", 'local');
         }
 
         $data['business_id'] = $bid;
@@ -189,7 +200,7 @@ class ExpenseController extends Controller
         } catch (Throwable $e) {
             // ومرفقٌ رُفع قبل المعاملة لا يبقى على القرص بلا صفٍّ يشير إليه
             if ($attachment) {
-                Storage::disk('public')->delete($attachment);
+                Storage::disk('local')->delete($attachment);
             }
 
             throw ValidationException::withMessages(['amount' => $this->postingFailed($e)]);

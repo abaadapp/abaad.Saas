@@ -404,10 +404,18 @@ class TrashController extends Controller
             default => [],
         };
 
+        /*
+         * وصورُ المنتج على القرص العامّ ومرفقُ المصروف على الخاصّ.
+         *
+         * فلا يكفي قرصٌ واحد: حذفُ المصروف من العامّ كان يترك فاتورته على
+         * القرص الخاصّ بلا صفٍّ يشير إليها — ملفٌّ لا يُقرأ ولا يُمحى.
+         */
+        $disk = $type === 'expense' ? 'local' : 'public';
+
         foreach ($files as $file) {
             // رابطٌ خارجيّ لا ملفّ على قرصنا — لا يُمَسّ
             if ($file && ! str_starts_with($file, 'http')) {
-                Storage::disk('public')->delete($file);
+                Storage::disk($disk)->delete($file);
             }
         }
 

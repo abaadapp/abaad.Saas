@@ -4486,5 +4486,19 @@
     "منه ضريبة": "Of which tax",
     "الحدّ الأعلى": "Maximum",
     "مثال: رُدّت باقتان": "e.g. two bouquets returned",
-    "حفظ الإشعار": "Save credit note"
+    "حفظ الإشعار": "Save credit note",
+    "معلومات إضافية للجهة": "Additional organisation details",
+    "اختياري": "Optional",
+    "بيانات اختيارية للشركات والجهات الحكومية، وتظهر في الفاتورة عند تعبئتها.": "Optional details for companies and government entities — they appear on the invoice when filled in.",
+    "رقم المرجع": "Reference no.",
+    "القسم / الإدارة": "Department",
+    "موجه إلى / عناية": "Attention to",
+    "مستحق فورًا": "Due immediately",
+    "تاريخ مخصص": "Custom date",
+    "أيام": "days",
+    "يومًا": "days",
+    "محسوب من شروط الدفع": "Derived from payment terms",
+    "مكتوب يدويًّا": "Set manually",
+    "تاريخ الاستحقاق قبل تاريخ الفاتورة.": "The due date is before the invoice date.",
+    "مركز التكلفة": "Cost centre"
 }

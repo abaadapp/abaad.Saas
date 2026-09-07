@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
 import { ChevronDown, Plus, Search, Trash2, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -71,8 +71,49 @@ const NUMBER = (v: string) => {
     return Number.isFinite(n) ? n : 0;
 };
 
-/** مدد السداد المعروضة — والحقلُ يبقى قابلًا للكتابة في تاريخ الاستحقاق */
-const TERMS = [0, 7, 15, 30, 45, 60, 90];
+/**
+ * مددُ السداد المعروضة — و«تاريخ مخصص» آخرُها.
+ *
+ * وهي مصدرُ الخيارات ومصدرُ نصوصها معًا: قائمتان تفترقان يومًا، فيُضاف
+ * أسبوعان إلى إحداهما ويُقرأ نصُّ الأخرى.
+ */
+const TERMS = [0, 7, 15, 30, 45, 60, 90] as const;
+
+/** «تاريخ مخصص» ليس مدّة — قيمةٌ تقول إنّ الاستحقاق بيد كاتب الورقة */
+const CUSTOM = 'custom';
+
+/**
+ * حقولُ الجهة — مصدرٌ واحدٌ للمفتاح والتسمية والمثال.
+ *
+ * والتسمياتُ مطوّلةٌ عمدًا: «المرجع» وحدَه لا يقول مرجعَ ماذا، و«عناية» بلا
+ * «موجه إلى» تُقرأ تحذيرًا. ومن يملأ ورقةً لجهةٍ حكوميّة يقرأ الاسمَ مرّةً
+ * واحدة — فليقُل ما يعنيه من أوّل قراءة.
+ */
+const ORG_FIELDS = [
+    ['po_number', 'رقم أمر الشراء (PO)', 'PO-2026-154'],
+    ['contract_number', 'رقم العقد', 'CNT-2026-08'],
+    ['external_reference', 'رقم المرجع', 'REF-8842'],
+    ['department', 'القسم / الإدارة', ''],
+    ['cost_center', 'مركز التكلفة', 'CC-104'],
+    ['attention_to', 'موجه إلى / عناية', ''],
+] as const;
+
+/**
+ * خياراتُ شروط الدفع — والجمعُ يتبع العدد.
+ *
+ * «7 يوم» عربيّةٌ مكسورة يقرؤها صاحبُ المتجر كلَّ مرّة، و«15 أيام» مثلها.
+ * فالثلاثةُ إلى العشرة جمعُ قلّة، وما فوقها مفردٌ منصوب.
+ */
+function termOptions(t: (s: string) => string) {
+    return [
+        { label: 'مستحق فورًا', value: '0' },
+        ...TERMS.filter((d) => d > 0).map((d) => ({
+            label: `${d} ${d <= 10 ? t('أيام') : t('يومًا')}`,
+            value: String(d),
+        })),
+        { label: 'تاريخ مخصص', value: CUSTOM },
+    ];
+}
 
 /**
  * إنشاءُ فاتورةِ عميل.
@@ -97,6 +138,15 @@ export default function CustomerInvoiceCreate({
 
     const [lines, setLines] = useState<Line[]>([blank(tax_rate)]);
     const [extra, setExtra] = useState(false);
+    /*
+     * وتاريخُ الاستحقاق له حالان: محسوبٌ من المدّة، أو مكتوبٌ بيد.
+     *
+     * وبلا التفريق بينهما يقع أحدُ عطبين: إمّا أن يُعاد الحسابُ فوق ما كتبه
+     * التاجر — فيكتب ٥ أكتوبر ويجده ٧ لأنّه غيّر تاريخ الفاتورة بعدها —
+     * وإمّا أن يُترك المحسوبُ قديمًا فتُصدَر ورقةٌ استحقاقُها قبل تاريخها.
+     */
+    const [dueManual, setDueManual] = useState(false);
+    const dueRef = useRef<HTMLInputElement>(null);
     const [picking, setPicking] = useState(false);
     const [adding, setAdding] = useState(false);
 
@@ -154,16 +204,50 @@ export default function CustomerInvoiceCreate({
     }, [lines]);
 
     /* ومدّةُ السداد تُحرّك تاريخ الاستحقاق — والتاريخُ يبقى قابلًا للكتابة */
-    const setTerms = (days: string) => {
+    const setTerms = (value: string) => {
+        if (value === CUSTOM) {
+            setDueManual(true);
+            form.setData('payment_terms_days', CUSTOM);
+            // ومن اختار «مخصص» يقصد الكتابة — فالمؤشّر يقع حيث يكتب
+            window.setTimeout(() => dueRef.current?.focus(), 0);
+
+            return;
+        }
+
+        setDueManual(false);
         form.setData((d) => ({
             ...d,
-            payment_terms_days: days,
-            due_at: addDays(d.issued_at || today, NUMBER(days)),
+            payment_terms_days: value,
+            due_at: addDays(d.issued_at || today, NUMBER(value)),
         }));
     };
 
+    /* وتغييرُ تاريخ الفاتورة يُزحزح المحسوبَ وحدَه — ولا يمسّ المكتوبَ بيد */
+    const setIssued = (value: string) => {
+        form.setData((d) => ({
+            ...d,
+            issued_at: value,
+            due_at:
+                dueManual || d.payment_terms_days === CUSTOM
+                    ? d.due_at
+                    : addDays(value || today, NUMBER(d.payment_terms_days)),
+        }));
+    };
+
+    /* ومن كتب الاستحقاق بيده ملكه — وتصير المدّةُ «مخصصًا» فلا تكذب الشاشة */
+    const setDue = (value: string) => {
+        setDueManual(true);
+        form.setData((d) => ({ ...d, due_at: value, payment_terms_days: CUSTOM }));
+    };
+
     const submit = (issue: boolean) => {
-        form.transform((data) => ({ ...data, issue, items: lines }));
+        // و«مخصص» لا يُرسَل مدّةً: الخادمُ يخزّن عددَ أيّامٍ أو لا شيء
+        form.transform((data) => ({
+            ...data,
+            issue,
+            items: lines,
+            payment_terms_days: data.payment_terms_days === CUSTOM ? '' : data.payment_terms_days,
+        }));
         form.post('/admin/customer-invoices', { preserveScroll: true });
     };
 
@@ -188,112 +272,6 @@ export default function CustomerInvoiceCreate({
             />
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {/* ───────── معلومات الفاتورة ───────── */}
-                <div className="space-y-4">
-                    <Card className="p-5">
-                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('معلومات الفاتورة')}</h2>
-
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <div className="space-y-1.5">
-                                <Label>{t('رقم الفاتورة')}</Label>
-                                <Input value={next_number} readOnly disabled dir="ltr" />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label required>{t('تاريخ الفاتورة')}</Label>
-                                <Input
-                                    type="date"
-                                    value={form.data.issued_at}
-                                    onChange={(e) => form.setData('issued_at', e.target.value)}
-                                />
-                                {form.errors.issued_at && <Err msg={form.errors.issued_at} />}
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label required>{t('تاريخ الاستحقاق')}</Label>
-                                <Input
-                                    type="date"
-                                    value={form.data.due_at}
-                                    onChange={(e) => form.setData('due_at', e.target.value)}
-                                />
-                                {form.errors.due_at && <Err msg={form.errors.due_at} />}
-                            </div>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <div className="space-y-1.5">
-                                <Label>{t('شروط الدفع')}</Label>
-                                <Select
-                                    value={form.data.payment_terms_days}
-                                    onChange={(e) => setTerms(e.target.value)}
-                                    options={TERMS.map((d) => ({
-                                        label: d === 0 ? 'عند الاستلام' : `${d} ${t('يوم')}`,
-                                        value: String(d),
-                                    }))}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label>{t('رقم أمر الشراء (PO)')}</Label>
-                                <Input
-                                    value={form.data.po_number}
-                                    onChange={(e) => form.setData('po_number', e.target.value)}
-                                    placeholder="PO-2026-001"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label>{t('المرجع / رقم العقد')}</Label>
-                                <Input
-                                    value={form.data.contract_number}
-                                    onChange={(e) => form.setData('contract_number', e.target.value)}
-                                    placeholder="C-2026-001"
-                                />
-                            </div>
-                        </div>
-                    </Card>
-
-                    {/*
-                        وبياناتُ الجهة مطويّة: نصفُ الفواتير لأفرادٍ لا مركزَ
-                        تكلفةٍ لهم، ونموذجٌ بأربعةَ عشرَ حقلًا يجعل الأسهلَ أن
-                        يُملأ بأيّ شيء.
-                    */}
-                    <Card className="p-5">
-                        <button
-                            type="button"
-                            className="flex w-full items-center justify-between gap-3 text-start"
-                            onClick={() => setExtra((v) => !v)}
-                        >
-                            <span>
-                                <span className="block text-[14px] font-semibold text-[#1d4ed8]">
-                                    {t('معلومات إضافية (اختيارية)')}
-                                </span>
-                                <span className="mt-0.5 block text-[12px] text-[#9ca3af]">
-                                    {t('القسم، مركز التكلفة، الشخص المسؤول، والمرجع الداخلي.')}
-                                </span>
-                            </span>
-                            <ChevronDown className={cn('size-4 shrink-0 text-[#6b7280]', extra && 'rotate-180')} />
-                        </button>
-
-                        {extra && (
-                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                {(
-                                    [
-                                        ['department', 'القسم'],
-                                        ['cost_center', 'مركز التكلفة'],
-                                        ['attention_to', 'الشخص المسؤول'],
-                                        ['external_reference', 'المرجع الداخلي'],
-                                    ] as const
-                                ).map(([key, label]) => (
-                                    <div key={key} className="space-y-1.5">
-                                        <Label>{t(label)}</Label>
-                                        <Input
-                                            value={form.data[key]}
-                                            onChange={(e) => form.setData(key, e.target.value)}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </Card>
-                </div>
-
                 {/* ───────── بيانات العميل ───────── */}
                 <Card className="p-5">
                     <div className="mb-4 flex items-center justify-between gap-3">
@@ -309,16 +287,22 @@ export default function CustomerInvoiceCreate({
                         value={form.data.customer_id}
                         onChange={(id) => {
                             const picked = customers.find((c) => String(c.id) === id);
+                            /*
+                             * ولا يُنسخ «القسم» من صفّ العميل هنا.
+                             *
+                             * الخادمُ يسقط إليه حين يُترك الحقلُ فارغًا — ونسخُه
+                             * في الشاشة أيضًا موضعان يقرّران الشيء نفسه، وأوّلُ
+                             * تغييرٍ في أحدهما يجعل الورقةَ تحمل قسمًا لم يُقصد.
+                             */
                             form.setData((d) => ({
                                 ...d,
                                 customer_id: id,
-                                department: picked?.department ?? d.department,
                                 payment_terms_days:
-                                    picked?.payment_terms_days != null
+                                    picked?.payment_terms_days != null && !dueManual
                                         ? String(picked.payment_terms_days)
                                         : d.payment_terms_days,
                                 due_at:
-                                    picked?.payment_terms_days != null
+                                    picked?.payment_terms_days != null && !dueManual
                                         ? addDays(d.issued_at || today, picked.payment_terms_days)
                                         : d.due_at,
                             }));
@@ -328,6 +312,128 @@ export default function CustomerInvoiceCreate({
 
                     {customer && <CustomerCard customer={customer} onClear={() => form.setData('customer_id', '')} />}
                 </Card>
+                {/* ───────── معلومات الفاتورة ───────── */}
+                <div className="space-y-4">
+                    <Card className="p-5">
+                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('معلومات الفاتورة')}</h2>
+
+                        {/*
+                            والأساسيُّ وحدَه هنا: رقمٌ وتاريخان ومدّة.
+                            وأمرُ الشراء والعقدُ نزلا إلى «معلومات إضافية» —
+                            ليسا من الورقة، بل من الجهة التي تطلبها، ونصفُ
+                            الفواتير لأفرادٍ لا أمرَ شراء لهم.
+                        */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="invoice-number">{t('رقم الفاتورة')}</Label>
+                                {/* يُولَّد في الخادم تحت قفل — ولا يُكتب ولا يُرسَل */}
+                                <Input id="invoice-number" value={next_number} readOnly disabled dir="ltr" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="issued-at" required>
+                                    {t('تاريخ الفاتورة')}
+                                </Label>
+                                <Input
+                                    id="issued-at"
+                                    type="date"
+                                    value={form.data.issued_at}
+                                    onChange={(e) => setIssued(e.target.value)}
+                                />
+                                {form.errors.issued_at && <Err msg={form.errors.issued_at} />}
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="due-at" required>
+                                    {t('تاريخ الاستحقاق')}
+                                </Label>
+                                <Input
+                                    id="due-at"
+                                    ref={dueRef}
+                                    type="date"
+                                    value={form.data.due_at}
+                                    onChange={(e) => setDue(e.target.value)}
+                                />
+                                {form.errors.due_at ? (
+                                    <Err msg={form.errors.due_at} />
+                                ) : (
+                                    <p className="text-[12px] text-[#9ca3af]">
+                                        {dueManual || form.data.payment_terms_days === CUSTOM
+                                            ? t('مكتوب يدويًّا')
+                                            : t('محسوب من شروط الدفع')}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="payment-terms">{t('شروط الدفع')}</Label>
+                                <Select
+                                    id="payment-terms"
+                                    value={form.data.payment_terms_days}
+                                    onChange={(e) => setTerms(e.target.value)}
+                                    options={termOptions(t)}
+                                />
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/*
+                        وبياناتُ الجهة مطويّة، وخفيفةٌ في النظر.
+
+                        نصفُ الفواتير لأفرادٍ لا مركزَ تكلفةٍ لهم ولا أمرَ شراء،
+                        وستّةُ حقولٍ مفتوحةٍ دائمًا تدفع البنودَ — وهي لبُّ
+                        الورقة — تحت طيّة الشاشة.
+                    */}
+                    <Card className="border-dashed p-5">
+                        <button
+                            type="button"
+                            id="org-toggle"
+                            aria-expanded={extra}
+                            aria-controls="org-fields"
+                            className="flex w-full items-center justify-between gap-3 rounded-[8px] text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d1d5db]"
+                            onClick={() => setExtra((v) => !v)}
+                        >
+                            <span>
+                                <span className="flex items-center gap-2">
+                                    <span className="text-[14px] font-semibold text-[#4b4b4b]">
+                                        {t('معلومات إضافية للجهة')}
+                                    </span>
+                                    <span className="rounded-full bg-[#f2f2f0] px-2 py-0.5 text-[11px] text-[#71717a]">
+                                        {t('اختياري')}
+                                    </span>
+                                </span>
+                                <span className="mt-1 block text-[12px] leading-relaxed text-[#9ca3af]">
+                                    {t('بيانات اختيارية للشركات والجهات الحكومية، وتظهر في الفاتورة عند تعبئتها.')}
+                                </span>
+                            </span>
+                            <ChevronDown
+                                className={cn('size-4 shrink-0 text-[#6b7280] transition-transform', extra && 'rotate-180')}
+                            />
+                        </button>
+
+                        {/*
+                            وستّةٌ لا أكثر، وكلُّها اختياريّة: ما لا يُملأ لا
+                            يُخزَّن ولا يُطبع — انظر `pdf/customer-invoice`.
+                        */}
+                        <div id="org-fields" role="region" aria-labelledby="org-toggle" hidden={!extra}>
+                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                {ORG_FIELDS.map(([key, label, placeholder]) => (
+                                    <div key={key} className="space-y-1.5">
+                                        <Label htmlFor={`org-${key}`}>{t(label)}</Label>
+                                        <Input
+                                            id={`org-${key}`}
+                                            value={form.data[key]}
+                                            onChange={(e) => form.setData(key, e.target.value)}
+                                            placeholder={placeholder}
+                                        />
+                                        {form.errors[key] && <Err msg={form.errors[key] as string} />}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+
             </div>
 
             {/* ───────── البنود ───────── */}

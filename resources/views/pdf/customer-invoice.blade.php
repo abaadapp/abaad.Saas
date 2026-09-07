@@ -22,33 +22,43 @@
             <td><strong>{{ __('السجل التجاري:') }}</strong> {{ $invoice->customer_cr ?: '—' }}</td>
             <td><strong>{{ __('العنوان:') }}</strong> {{ $invoice->customer_address ?: '—' }}</td>
         </tr>
-        @if ($invoice->attention_to || $invoice->department)
-            <tr>
-                <td><strong>{{ __('عناية:') }}</strong> {{ $invoice->attention_to ?: '—' }}</td>
-                <td><strong>{{ __('القسم:') }}</strong> {{ $invoice->department ?: '—' }}</td>
-            </tr>
-        @endif
     </table>
 
-    {{-- ولا تُطبع الحقولُ الفارغة: ورقةٌ نصفُها شُرَطٌ تُقرأ نموذجًا لم يُملأ --}}
-    @if ($invoice->po_number || $invoice->contract_number || $invoice->external_reference || $invoice->cost_center)
+    {{--
+        بياناتُ الجهة — ما مُلئ منها وحدَه.
+
+        وتُبنى من قائمةٍ ثمّ تُقسَّم اثنين اثنين، لا بصفوفٍ مكتوبةٍ باليد:
+        صفٌّ يُكتب بحقلين يُخرج خانةً فارغةً حين يُملأ أحدُهما، ويُخرج صفًّا
+        كاملًا فارغًا حين لا يُملأ أيٌّ منهما. وورقةٌ فيها خاناتٌ خاوية تُقرأ
+        نموذجًا لم يُكمَل.
+
+        والشُّرَطُ «—» كانت تُطبع مكان الفارغ في «عناية» و«القسم»: تقول للجهة
+        إنّ للورقة قسمًا لم يُذكر — ولا قسمَ لها أصلًا.
+    --}}
+    @php
+        $orgFields = array_values(array_filter([
+            ['label' => __('رقم أمر الشراء (PO)'), 'value' => $invoice->po_number],
+            ['label' => __('رقم العقد'), 'value' => $invoice->contract_number],
+            ['label' => __('رقم المرجع'), 'value' => $invoice->external_reference],
+            ['label' => __('القسم / الإدارة'), 'value' => $invoice->department],
+            ['label' => __('مركز التكلفة'), 'value' => $invoice->cost_center],
+            ['label' => __('موجه إلى / عناية'), 'value' => $invoice->attention_to],
+        ], fn ($f) => filled($f['value'])));
+    @endphp
+
+    @if ($orgFields !== [])
         <table class="grid">
-            <tr>
-                @if ($invoice->po_number)
-                    <td><strong>{{ __('أمر الشراء:') }}</strong> {{ $invoice->po_number }}</td>
-                @endif
-                @if ($invoice->contract_number)
-                    <td><strong>{{ __('رقم العقد:') }}</strong> {{ $invoice->contract_number }}</td>
-                @endif
-            </tr>
-            <tr>
-                @if ($invoice->external_reference)
-                    <td><strong>{{ __('المرجع:') }}</strong> {{ $invoice->external_reference }}</td>
-                @endif
-                @if ($invoice->cost_center)
-                    <td><strong>{{ __('مركز التكلفة:') }}</strong> {{ $invoice->cost_center }}</td>
-                @endif
-            </tr>
+            @foreach (array_chunk($orgFields, 2) as $pair)
+                <tr>
+                    @foreach ($pair as $field)
+                        <td style="width:50%;"><strong>{{ $field['label'] }}:</strong> {{ $field['value'] }}</td>
+                    @endforeach
+                    {{-- والفردُ الأخير يُكمَّل بخانةٍ صامتة كي لا يمتدّ عمودُه --}}
+                    @if (count($pair) === 1)
+                        <td style="width:50%;"></td>
+                    @endif
+                </tr>
+            @endforeach
         </table>
     @endif
 

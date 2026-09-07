@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
 import { Check, Plus, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
@@ -100,6 +101,18 @@ export default function PurchaseCreate() {
 
     return (
         <AdminLayout title="أمر شراء جديد">
+            {/*
+                وصفحةٌ داخليّة بلا شريط تبويبات تحتاج بابَ رجوع.
+                «أوامر الشراء» وجهتُه: هي أمُّ هذه الصفحة، ومنها يُفتح أكثرُ
+                مداخلها. ووجهةٌ مكتوبةٌ باسمها تصدق ولو فُتحت الصفحة من رابطٍ
+                محفوظ — انظر `BackLink`.
+            */}
+            <BackLink
+                routeName="admin.purchases.orders"
+                href={route('admin.purchases.orders')}
+                label="أوامر الشراء"
+            />
+
             <PageHeader
                 title="أمر شراء جديد"
                 subtitle={t('حدّد المورّد والأصناف المطلوبة')}

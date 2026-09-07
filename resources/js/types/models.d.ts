@@ -191,8 +191,11 @@ export interface PurchaseOrder {
     items_count: number;
     /** بنود الأمر — تُرسَل للمفتوح وحده، فالمستلَم لا يُفتح في نافذة الاستلام */
     items: PurchaseOrderLine[];
+    /** رابطُ الإيصال — فارغٌ لمن لا يملك فتحَ المرفقات */
     receipt: string | null;
     receipt_name: string | null;
+    /** وهل للأمر إيصالٌ أصلًا — سؤالٌ غيرُ «هل تقرؤه؟» */
+    has_receipt: boolean;
     ordered: string;
     received: string | null;
 }

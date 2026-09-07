@@ -135,6 +135,17 @@ export default function PurchasesIndex() {
                         <Paperclip className="size-4 text-[#9ca3af]" />
                         {t('عرض')}
                     </a>
+                ) : o.has_receipt ? (
+                    /*
+                        إيصالٌ موجودٌ لا يُقرأ — لا زرَّ رفعٍ فوقه.
+                        كان الفراغُ يُقرأ «لا إيصال» فيُرسم «رفع»، ورفعُ بديلٍ
+                        يحذف الأوّل من القرص: من لا يُؤتمن على قراءته لا
+                        يُترك ليمحوه.
+                    */
+                    <span className="inline-flex items-center gap-1.5 text-sm text-[#9ca3af]">
+                        <Paperclip className="size-4" />
+                        {t('مرفوع')}
+                    </span>
                 ) : (
                     <>
                         <button

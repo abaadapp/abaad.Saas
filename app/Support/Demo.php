@@ -1334,6 +1334,14 @@ class Demo
                 'items_count' => $p->items_count,
                 'receipt' => $p->receipt,
                 'receipt_name' => $p->receipt_name,
+                /*
+                 * وهل للأمر إيصالٌ أصلًا — سؤالٌ غيرُ «هل تقرؤه؟».
+                 *
+                 * المتحكّمُ يُفرّغ `receipt` لمن لا يملك فتحَ المرفقات،
+                 * والشاشةُ كانت تقرأ الفراغَ «لا إيصال» فترسم زرَّ الرفع فوق
+                 * إيصالٍ موجود — ورفعُ بديلٍ يحذف الأوّل من القرص.
+                 */
+                'has_receipt' => $p->receipt !== null,
                 'ordered' => optional($p->ordered_at)->format('Y-m-d') ?? '—',
                 'received' => optional($p->received_at)->format('Y-m-d'),
             ])->all();

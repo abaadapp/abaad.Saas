@@ -13,8 +13,11 @@ use App\Support\Pagination;
 use App\Support\Search;
 use App\Support\Sort;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Throwable;
 
 class ExpenseController extends Controller
 {
@@ -160,8 +163,6 @@ class ExpenseController extends Controller
         $data['attachment'] = $attachment;
         $data['attachment_name'] = $attachmentName;
 
-        $expense = Expense::create($data);
-
         /*
          * المصروف يظهر في دفتر المالية أيضًا — إن كان قد دُفع.
          *
@@ -172,16 +173,51 @@ class ExpenseController extends Controller
          *
          * والقيد يوم خروج المال لا يوم تسجيل الورقة: فاتورةٌ سُجّلت اليوم
          * وتُدفع بعد أسبوع ليست نقدًا خرج من الدرج.
+         *
+         * والثلاثةُ معًا أو لا شيء — انظر `postToLedger`.
          */
-        if ($expense->isPaid()) {
-            $this->postToLedger($expense);
+        try {
+            $expense = DB::transaction(function () use ($data) {
+                $expense = Expense::create($data);
+
+                if ($expense->isPaid()) {
+                    $this->postToLedger($expense);
+                }
+
+                return $expense;
+            });
+        } catch (Throwable $e) {
+            // ومرفقٌ رُفع قبل المعاملة لا يبقى على القرص بلا صفٍّ يشير إليه
+            if ($attachment) {
+                Storage::disk('public')->delete($attachment);
+            }
+
+            throw ValidationException::withMessages(['amount' => $this->postingFailed($e)]);
         }
+
         Activity::log('created', 'سجّل مصروف '.$data['type'].' بقيمة '.$data['amount']);
 
         return redirect()->route('admin.expenses.index')->with('toast', ['msg' => __('تم تسجيل المصروف بنجاح'), 'type' => 'success']);
     }
 
-    /** يكتب قيد الدفتر المقابل ويربطه بالمصروف */
+    /**
+     * يكتب قيد الدفتر المقابل ويربطه بالمصروف.
+     *
+     * ═══ الثلاثةُ معًا أو لا شيء ═══
+     *
+     * كان القيد يُكتب خارج معاملة، وفشلُه يُبتلع ويُقيَّد في سجلّ النشاط:
+     *
+     *     try { Books::recordExpense(...); } catch (Throwable) { Activity::log(...); }
+     *
+     * فيبقى في القاعدة مصروفٌ يقول «مدفوع»، وصفُّ حركةٍ يقول إنّ مالًا خرج،
+     * **ولا قيدَ في الدفتر**. فتقرأ شاشةُ المصروفات ثلاثمئة، ويقرأ ميزانُ
+     * المراجعة صفرًا، ويُقرأ ربحُ الشهر أعلى ممّا هو. ولا يظهر ذلك إلّا
+     * لمن يطابق الدفترَ بالشاشة — وهو آخرُ من يُطابق.
+     *
+     * ولا تُبتلع الاستثناءات هنا: تصعد فتُلغي المعاملةَ كلَّها، فلا يُكتب
+     * مصروفٌ لا يستطيع الدفترُ حملَه. والرسالةُ تصل من كتبه لا سجلًّا لا
+     * يفتحه أحد.
+     */
     private function postToLedger(Expense $expense): void
     {
         $transaction = Transaction::create([
@@ -205,13 +241,24 @@ class ExpenseController extends Controller
          * — مصروفٌ مدين ونقدٌ دائن — وبدونهما يظهر في الشجرة إيرادٌ بلا ما
          * يقابله من مصروفات المحلّ، فيُقرأ ربحٌ لم يتحقّق.
          */
-        try {
-            Books::recordExpense($expense->fresh());
-        } catch (\Throwable $e) {
-            Activity::log('updated', 'تعذّر ترحيل قيد المصروف '.$expense->id.': '.$e->getMessage(), [
-                'subject_id' => $expense->id, 'subject_type' => 'expense',
-            ]);
-        }
+        Books::recordExpense($expense->fresh());
+    }
+
+    /**
+     * رسالةٌ تُقرأ بدل نصّ استثناءٍ داخليّ.
+     *
+     * وسببُ الفشل يُقيَّد **خارج** المعاملة الساقطة: `Activity::log` داخلها
+     * يسقط معها، فيضيع الخبرُ الذي من أجله كُتب.
+     */
+    private function postingFailed(Throwable $e): string
+    {
+        Activity::log('updated', 'تعذّر ترحيل قيد مصروف: '.$e->getMessage(), [
+            'subject_type' => 'expense',
+        ]);
+
+        return $e instanceof \RuntimeException
+            ? $e->getMessage()
+            : __('تعذّر ترحيل المصروف إلى الدفتر — لم يُسجَّل شيء.');
     }
 
     /**
@@ -229,8 +276,18 @@ class ExpenseController extends Controller
             return back()->with('toast', ['msg' => __('الفاتورة مسدَّدة أصلًا'), 'type' => 'info']);
         }
 
-        $expense->update(['status' => Expense::PAID, 'spent_at' => now()]);
-        $this->postToLedger($expense->fresh());
+        /*
+         * والوسمُ والقيدُ في معاملةٍ واحدة: مصروفٌ يقول «مدفوع» بلا قيدٍ في
+         * الدفتر هو العطبُ نفسُه الذي في `store`.
+         */
+        try {
+            DB::transaction(function () use ($expense) {
+                $expense->update(['status' => Expense::PAID, 'spent_at' => now()]);
+                $this->postToLedger($expense->fresh());
+            });
+        } catch (Throwable $e) {
+            return back()->withErrors(['pay' => $this->postingFailed($e)]);
+        }
 
         Activity::log('updated', 'سدّد المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
 

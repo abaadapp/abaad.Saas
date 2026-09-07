@@ -4505,5 +4505,6 @@
     "معاينة الفاتورة": "Invoice preview",
     "افتح واتساب وأرسل الفاتورة": "Open WhatsApp and send the invoice",
     "لا رقم واتساب لهذا الطلب — أضِفه في صفحة العميل.": "No WhatsApp number for this order — add one on the customer's page.",
-    ":shop — فاتورتك رقم :number بمبلغ :amount. شكرًا لك.": ":shop — your invoice :number for :amount. Thank you."
+    ":shop — فاتورتك رقم :number بمبلغ :amount. شكرًا لك.": ":shop — your invoice :number for :amount. Thank you.",
+    "تعذّر ترحيل المصروف إلى الدفتر — لم يُسجَّل شيء.": "The expense could not be posted to the ledger — nothing was recorded."
 }

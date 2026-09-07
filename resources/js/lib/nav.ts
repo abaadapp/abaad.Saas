@@ -122,7 +122,7 @@ export const NAV: NavGroup[] = [
                 icon: FileText,
                 route: 'admin.customerInvoices.index',
                 section: 'orders',
-                covers: ['admin.customerInvoices.show'],
+                covers: ['admin.customerInvoices.show', 'admin.customerInvoices.create'],
             },
             // لوحة التجهيز — قسمٌ مستقلّ، فمن مُنحه وحده يراه ولا يرى المبيعات
             { label: 'لوحة التجهيز', icon: ClipboardList, route: 'admin.preparation.index', section: 'preparation' },

@@ -6,12 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
+use App\Models\Product;
+use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
+use App\Support\Customers;
 use App\Support\Demo;
 use App\Support\Receivables;
 use App\Support\Search;
+use App\Support\Vat;
 use App\Support\WhatsAppPhone;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -65,8 +69,6 @@ class CustomerInvoiceController extends Controller
 
         return Inertia::render('Admin/CustomerInvoices/Index', [
             'invoices' => $rows->map(fn ($i) => $this->row($i))->all(),
-            'customers' => Customer::where('business_id', $bid)->orderBy('name')
-                ->get(['id', 'name'])->all(),
             'filters' => $request->only('q', 'customer_id', 'status', 'from', 'to', 'overdue'),
             'totals' => Receivables::totals($bid),
         ]);
@@ -135,6 +137,77 @@ class CustomerInvoiceController extends Controller
         ]);
     }
 
+    /**
+     * شاشةُ الإنشاء — صفحةٌ قائمةٌ بذاتها لا لوحةٌ تنطوي فوق الجدول.
+     *
+     * وفاتورةُ شركةٍ ليست سطرًا يُملأ في ثانية: بياناتُ الجهة، وأمرُ الشراء،
+     * وبنودٌ لكلٍّ ضريبتُه، وشروطُ سدادٍ تُحسب منها مدّةُ الاستحقاق. وحشرُ
+     * ذلك في لوحةٍ فوق الجدول كان يجعل نصفَه مخفيًّا خلف زرّ.
+     */
+    public function create(Request $request): Response
+    {
+        $bid = $this->bid();
+
+        return Inertia::render('Admin/CustomerInvoices/Create', [
+            'customers' => Customer::where('business_id', $bid)->orderBy('name')->get([
+                'id', 'name', 'customer_type', 'legal_name', 'tax_number',
+                'commercial_registration', 'phone', 'contact_phone', 'email', 'contact_email',
+                'address', 'billing_address', 'department', 'customer_reference',
+                'contact_person', 'payment_terms_days', 'allow_credit_sales',
+            ])->all(),
+            /*
+             * والكتالوج للاختيار لا للإلزام: بندٌ مخصَّصٌ يُكتب بيده كذلك.
+             * أكثرُ فواتير الجهات خدماتٌ لا أصنافَ رفٍّ — «تنسيق قاعة» ليس
+             * منتجًا في المخزون، وإلزامُ التاجر باختيار صنفٍ يجعله يخترع صنفًا.
+             */
+            'products' => Product::where('business_id', $bid)->orderBy('name')
+                ->limit(500)->get(['id', 'name', 'price'])->all(),
+            /*
+             * ورقمُ الفاتورة معاينةٌ لا حجز: التسلسل يُقطع لحظةَ الحفظ تحت
+             * قفل. وعرضُه هنا يُطمئن من يكتب الرقم على أمر شراء، ولا يُرسَل
+             * من الواجهة بحال.
+             */
+            'next_number' => CustomerInvoices::nextNumber($bid),
+            'tax_rate' => Vat::enabled($bid)
+                ? (float) (Setting::where('business_id', $bid)->where('key', 'vat_rate')->value('value') ?? 5)
+                : 0.0,
+            'today' => now()->toDateString(),
+            'methods' => ['آجل', 'نقدي', 'بطاقة', 'تحويل'],
+            // عميلٌ أُضيف من هذه الشاشة نفسها — يُختار فور العودة إليها
+            'new_customer_id' => $request->session()->get('new_customer_id'),
+        ]);
+    }
+
+    /**
+     * عميلٌ جديد من داخل شاشة الفاتورة.
+     *
+     * ولا يُحال إلى شاشة العملاء: من كتب خمسةَ بنودٍ ثمّ اكتشف أنّ الجهة ليست
+     * مسجَّلة كان يفقد ما كتب. فالبابُ هنا، والعودةُ إلى الصفحة نفسها،
+     * والعميلُ الجديد يُختار وحده.
+     */
+    public function storeCustomer(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => Customers::phoneRule($this->bid()),
+            'email' => ['nullable', 'email', 'max:255'],
+            'tax_number' => ['nullable', 'string', 'max:50'],
+            'commercial_registration' => ['nullable', 'string', 'max:50'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'customer_type' => ['nullable', 'string', 'in:فرد,شركة,جهة حكومية'],
+        ], [], ['name' => __('اسم العميل')]);
+
+        $data['business_id'] = $this->bid();
+        $data['customer_type'] = $data['customer_type'] ?? 'شركة';
+
+        $customer = Customer::create(Customers::localizeName($data));
+        Activity::log('created', 'أضاف عميلًا: '.$customer->name);
+
+        return back()
+            ->with('new_customer_id', $customer->id)
+            ->with('toast', ['msg' => __('أُضيف العميل'), 'type' => 'success']);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -156,6 +229,10 @@ class CustomerInvoiceController extends Controller
             'items.*.quantity' => ['required', 'numeric', 'gt:0'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
+            // نسبةُ البند لقطةٌ تُحفظ في السطر — والإعفاءُ يُكتب صفرًا
+            'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'payment_method' => ['nullable', 'string', 'in:آجل,نقدي,بطاقة,تحويل'],
+            'bank_account_id' => ['nullable', 'integer'],
         ], [], [
             'customer_id' => __('العميل'),
             'items' => __('بنود الفاتورة'),
@@ -170,11 +247,54 @@ class CustomerInvoiceController extends Controller
             ]);
         }
 
+        /*
+         * ونسبةٌ فارغةٌ تُحذف لا تُقرأ صفرًا.
+         *
+         * `compute` تقرأ وجودَ المفتاح لا قيمتَه — لأنّ الصفر إعفاءٌ مقصود.
+         * فبندٌ يصل بـ`tax_rate: null` كان يُعفى من الضريبة في صمت.
+         */
+        $data['items'] = array_map(function (array $line) {
+            if (($line['tax_rate'] ?? null) === null) {
+                unset($line['tax_rate']);
+            }
+
+            return $line;
+        }, $data['items']);
+
+        $method = $data['payment_method'] ?? 'آجل';
+
+        /*
+         * والمقبوضُ لا يُسجَّل على مسودّة.
+         *
+         * التحصيلُ يُخصَّص على فاتورةٍ **صادرة** — والمسودّةُ ورقةٌ لم تُسلَّم
+         * بعد ولا ذمّةَ لها. فلو قُبل هنا لبقي المبلغ معلّقًا بلا ما يقابله،
+         * أو ذهب إلى فاتورةٍ أخرى في التوزيع التلقائيّ.
+         */
+        if ($method !== 'آجل' && ! $request->boolean('issue')) {
+            throw ValidationException::withMessages([
+                'payment_method' => __('التحصيل يُسجَّل على فاتورةٍ صادرة — أصدر الفاتورة، أو احفظها مسودّةً آجلة.'),
+            ]);
+        }
+
         try {
             $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $data['items'], auth()->id());
 
             if ($request->boolean('issue')) {
                 CustomerInvoices::issue($invoice, auth()->id());
+            }
+
+            /*
+             * وفاتورةٌ تُسدَّد لحظةَ إصدارها تُسجَّل تحصيلًا كأيّ تحصيل — لا
+             * تُوسَم «مدفوعة» في عمود. مسارٌ ثانٍ للسداد يعني رصيدَ صندوقٍ لا
+             * يعرف به الدفتر، وفاتورةً تقول مدفوعةً بلا إيصالٍ يقابلها.
+             */
+            if ($method !== 'آجل') {
+                CustomerPayments::record(
+                    $this->bid(), $customer, (float) $invoice->total,
+                    ['method' => $method, 'bank_account_id' => $data['bank_account_id'] ?? null,
+                        'occurred_at' => $invoice->issued_at],
+                    [$invoice->id => (float) $invoice->total], auth()->id(),
+                );
             }
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['items' => $e->getMessage()]);

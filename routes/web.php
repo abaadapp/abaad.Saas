@@ -753,6 +753,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * يعدّل في أحدهما ويقرأ من الآخر.
      */
     Route::get('/customer-invoices', [CustomerInvoiceController::class, 'index'])->name('customerInvoices.index');
+    /*
+     * و«create» تسبق «{id}» — والذي يحميها فعلًا `Route::pattern('id', '[0-9]+')`
+     * في أعلى الملفّ: بلا ذلك القيد يبتلع المعرّفُ كلَّ كلمةٍ تليه، فتُقرأ
+     * «create» رقمَ فاتورةٍ ويُردّ ٤٠٤ على بابٍ معروضٍ في الشاشة. والترتيبُ
+     * هنا احتياطٌ ثانٍ لا الحارسَ الأوّل.
+     */
+    Route::get('/customer-invoices/create', [CustomerInvoiceController::class, 'create'])->name('customerInvoices.create');
+    Route::post('/customer-invoices/customers', [CustomerInvoiceController::class, 'storeCustomer'])->name('customerInvoices.storeCustomer');
     Route::get('/customer-invoices/{id}', [CustomerInvoiceController::class, 'show'])->name('customerInvoices.show');
     Route::post('/customer-invoices', [CustomerInvoiceController::class, 'store'])->name('customerInvoices.store');
     Route::post('/customer-invoices/{id}/issue', [CustomerInvoiceController::class, 'issue'])->name('customerInvoices.issue');

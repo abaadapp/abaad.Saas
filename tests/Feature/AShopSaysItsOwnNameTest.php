@@ -202,6 +202,61 @@ class AShopSaysItsOwnNameTest extends TestCase
             ->assertOk();
     }
 
+    // ————— بابُ الورقة —————
+
+    public function test_the_shop_that_charges_vat_is_given_a_door_to_its_paper(): void
+    {
+        /*
+         * رُفع الزرّ مرّةً فبقيت الورقة بلا مدخل: مسارٌ وقالبٌ واختباراتٌ لا
+         * يقود إليها زرّ. والتاجر يجبي الضريبة ولا يجد بابًا يُخرج ورقتَها.
+         */
+        $this->business->update(['name' => 'زهور مسقط']);
+        Setting::create(['business_id' => $this->business->id, 'key' => 'vat_number', 'value' => 'OM1100']);
+        $order = $this->order();
+
+        $this->actingAs($this->owner)->get('/admin/orders/'.$order->number)
+            ->assertInertia(fn ($p) => $p->where('taxInvoice.registered', true)
+                ->where('taxInvoice.ready', true));
+    }
+
+    public function test_the_door_is_not_shown_to_a_shop_that_charges_no_vat(): void
+    {
+        // القالبُ يُسقط الرمز ولا يدّعي أنّها ضريبيّة — فزرٌّ بهذا الاسم يَعِد
+        // بورقةٍ لا تُنتَج
+        $this->business->update(['name' => 'زهور مسقط']);
+        $order = $this->order();
+
+        $this->actingAs($this->owner)->get('/admin/orders/'.$order->number)
+            ->assertInertia(fn ($p) => $p->where('taxInvoice.registered', false));
+    }
+
+    public function test_the_door_is_never_offered_open_when_the_server_would_refuse_it(): void
+    {
+        /*
+         * وهذا هو الحارس: «جاهز» في الشاشة تعني أنّ الخادم يقبل. ولو افترقا
+         * لضغط التاجر زرًّا يردّه الخادم — بابٌ معروضٌ لا يُفتح.
+         */
+        Setting::create(['business_id' => $this->business->id, 'key' => 'vat_number', 'value' => 'OM1100']);
+        $order = $this->order();
+
+        foreach (['متجري' => false, 'زهور مسقط' => true] as $name => $expected) {
+            $this->business->update(['name' => $name, 'identity_confirmed_at' => null]);
+
+            $screen = $this->actingAs($this->owner)->get('/admin/orders/'.$order->number);
+            $ready = $screen->viewData('page')['props']['taxInvoice']['ready'];
+            $this->assertSame($expected, $ready);
+
+            $paper = $this->actingAs($this->owner)
+                ->get('/admin/orders/'.$order->number.'/tax-invoice');
+
+            $this->assertSame(
+                $ready,
+                $paper->getStatusCode() === 200,
+                "الشاشة تقول ready={$screen->viewData('page')['props']['taxInvoice']['ready']} والخادم يقول {$paper->getStatusCode()}"
+            );
+        }
+    }
+
     // ————— ما لا يُسأل عنه مرّتين —————
 
     public function test_a_restored_shop_is_not_asked_its_name_again(): void

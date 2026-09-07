@@ -9,6 +9,7 @@ import {
     PencilLine,
     Phone,
     Receipt,
+    ReceiptText,
     Truck,
     User,
 } from 'lucide-react';
@@ -96,7 +97,9 @@ interface OrderDetail {
  * فمن يصحّح رقم هاتفٍ لا يُحرّك ريالًا ولا يُقدّم طلبًا في مساره.
  */
 export default function OrderShow() {
-    const { order, context } = usePage<PageProps<{ order: OrderDetail }>>().props;
+    const { order, context, taxInvoice } = usePage<
+        PageProps<{ order: OrderDetail; taxInvoice: { registered: boolean; ready: boolean } }>
+    >().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -192,7 +195,6 @@ export default function OrderShow() {
                 title={`${t('الطلب')} ${order.id}`}
                 subtitle={order.date}
                 actions={
-                    /* زرّ «فاتورة ضريبية» أُزيل من هنا بطلب صاحب النظام */
                     <>
                         <Button variant="outline" asChild>
                             <a href={route('admin.orders.pdf', order.id)} target="_blank" rel="noreferrer">
@@ -200,6 +202,44 @@ export default function OrderShow() {
                                 {t('تصدير PDF')}
                             </a>
                         </Button>
+                        {/*
+                            الفاتورة الضريبيّة — ولا تُعرض لمن لا فاتورةَ ضريبيّةَ
+                            له.
+
+                            رُفع هذا الزرّ مرّةً فبقيت الورقة بلا مدخل: مسارٌ
+                            وقالبٌ واختباراتٌ لا يقود إليها زرّ، فلا تُفتح إلا
+                            بكتابة عنوانها. والتاجر يجبي الضريبة ولا يجد بابًا
+                            يُخرج ورقتَها.
+
+                            وعاد بشرطه: متجرٌ غير مسجَّلٍ في الضريبة لا يراه —
+                            القالبُ يُسقط الرمز ولا يدّعي أنّها ضريبيّة، فزرٌّ
+                            بهذا الاسم يَعِد بورقةٍ لا تُنتَج. ومتجرٌ لم يُسمَّ
+                            يراه معطَّلًا بسببه مكتوبًا: بابٌ يُفتح على رفضٍ
+                            أسوأ من بابٍ يقول لمَ لا يُفتح.
+                        */}
+                        {taxInvoice.registered &&
+                            (taxInvoice.ready ? (
+                                <Button variant="outline" asChild>
+                                    <a
+                                        href={route('admin.orders.taxInvoice', order.id)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                    >
+                                        <ReceiptText />
+                                        {t('فاتورة ضريبية')}
+                                    </a>
+                                </Button>
+                            ) : (
+                                <Button variant="outline" asChild>
+                                    <a
+                                        href="/admin/setup"
+                                        title={t('لم يُسمَّ متجرك بعد — والفاتورة الضريبية تحمل اسمه.')}
+                                    >
+                                        <ReceiptText />
+                                        {t('فاتورة ضريبية — سمِّ متجرك أولًا')}
+                                    </a>
+                                </Button>
+                            ))}
                         {/*
                             وسندُ التسليم ورقةٌ أخرى لا نسخةٌ من الفاتورة:
                             يحملها السائق، ويوقّعها المستلم، وقالبُها يُخفي

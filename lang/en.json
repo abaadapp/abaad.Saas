@@ -4326,5 +4326,7 @@
     "أقرّ هويّة المتجر": "Confirm shop identity",
     "اكتب اسم متجرك كما تريده على الفاتورة — «:name» اسمٌ يكتبه النظام حين لا اسم.": "Enter your shop name as you want it on the invoice — “:name” is what the system writes when there is no name.",
     "تمّت التهيئة. أوراقُ متجرك تحمل اسمَ «:name».": "Setup complete. Your documents now carry the name “:name”.",
-    "لم يُسمَّ متجرك بعد — والفاتورة الضريبية تحمل اسمه. أتمّ تهيئة المتجر من «الإعدادات ‹ تهيئة المتجر» ثمّ أصدِرها.": "Your shop has no name yet — and the tax invoice carries it. Complete shop setup from “Settings ‹ Shop setup”, then issue it."
+    "لم يُسمَّ متجرك بعد — والفاتورة الضريبية تحمل اسمه. أتمّ تهيئة المتجر من «الإعدادات ‹ تهيئة المتجر» ثمّ أصدِرها.": "Your shop has no name yet — and the tax invoice carries it. Complete shop setup from “Settings ‹ Shop setup”, then issue it.",
+    "فاتورة ضريبية — سمِّ متجرك أولًا": "Tax invoice — name your shop first",
+    "لم يُسمَّ متجرك بعد — والفاتورة الضريبية تحمل اسمه.": "Your shop has no name yet — and the tax invoice carries it."
 }

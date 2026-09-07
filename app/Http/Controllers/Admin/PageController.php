@@ -21,6 +21,7 @@ use App\Support\Permissions;
 use App\Support\ProductImages;
 use App\Support\Reports;
 use App\Support\Roles;
+use App\Support\ShopIdentity;
 use App\Support\Storefront;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -158,6 +159,19 @@ class PageController extends Controller
 
         return Inertia::render('Admin/Orders/Show', [
             'order' => $order,
+            /*
+             * هل تُعرض «فاتورة ضريبية» على هذا الطلب — وإن لم تُعرض فلمَ.
+             *
+             * والحالتان تُفترقان لأنّ علاجَهما مختلف. متجرٌ غير مسجَّلٍ في
+             * الضريبة لا فاتورةَ ضريبيّةً له أصلًا: القالبُ يُسقط الرمزَ ولا
+             * يدّعي أنّها ضريبيّة، فزرٌّ بهذا الاسم يَعِد بورقةٍ لا تُنتَج.
+             * ومتجرٌ مسجَّلٌ لم يُسمَّ بعد سيُردّ عند الباب — فيُقال له ذلك
+             * على الزرّ لا بعد الضغط عليه.
+             */
+            'taxInvoice' => [
+                'registered' => Demo::vatSettings()['number'] !== '',
+                'ready' => ShopIdentity::confirmed(Business::find(Demo::bid())),
+            ],
         ]);
     }
 
@@ -421,7 +435,7 @@ class PageController extends Controller
                         'id' => $p->id,
                         'name' => $p->name,
                         // الخام لا المقروء: الصورة البديلة من الإنترنت لا تُعرض بضاعةً
-                        'image' => \App\Support\ProductImages::hasRealMain($p) ? $p->image : null,
+                        'image' => ProductImages::hasRealMain($p) ? $p->image : null,
                         'active' => (bool) $p->active,
                         'published' => (bool) $p->published,
                     ])->all(),

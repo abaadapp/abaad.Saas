@@ -594,6 +594,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/purchases', [PurchaseRegisterController::class, 'index'])->name('purchases.index');
     Route::get('/purchases/invoices', [SupplierInvoiceController::class, 'index'])->name('purchases.invoices');
     Route::post('/purchases/invoices', [SupplierInvoiceController::class, 'store'])->name('purchases.invoices.store');
+    /*
+     * اعتمادُ السند ورفضُه — وهما بابُ الذمّة لا بابُ السداد.
+     *
+     * والسدادُ بعدهما: مالٌ يخرج مقابل دَينٍ نشأ، لا مقابل ورقةٍ وصلت.
+     */
+    Route::post('/purchases/invoices/{id}/approve', [SupplierInvoiceController::class, 'approve'])->name('purchases.invoices.approve');
+    Route::post('/purchases/invoices/{id}/reject', [SupplierInvoiceController::class, 'reject'])->name('purchases.invoices.reject');
+    // والمعتمَدُ يُلغى بعكس قيده لا يُحذف — مستندٌ ماليٌّ صدر يبقى مقروءًا
+    Route::post('/purchases/invoices/{id}/cancel', [SupplierInvoiceController::class, 'cancel'])->name('purchases.invoices.cancel');
     Route::post('/purchases/invoices/{id}/pay', [SupplierInvoiceController::class, 'pay'])->name('purchases.invoices.pay');
     Route::delete('/purchases/invoices/{id}', [SupplierInvoiceController::class, 'destroy'])->name('purchases.invoices.destroy');
     Route::get('/purchases/orders', [PurchaseOrderController::class, 'index'])->name('purchases.orders');

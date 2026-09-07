@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Check, FileText, Plus, Trash2, Wallet } from 'lucide-react';
+import { Check, FileText, Plus, ShieldAlert, Trash2, Wallet, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PURCHASE_TABS } from '@/Components/SectionTabs';
@@ -32,9 +32,22 @@ interface Invoice {
     paid: number;
     outstanding: number;
     status: string;
+    approval_status: string;
+    match_status: string | null;
+    match_notes: string[];
+    override_reason: string | null;
+    rejection_reason: string | null;
+    /** قيمةُ ما وصل فعلًا على أمره — من الاستلامات المعتمَدة وحدها */
+    received_value: number | null;
+    order_total: number | null;
     overdue: boolean;
     notes: string | null;
 }
+
+/** كما يكتبها الخادم في `SupplierInvoices` — نصٌّ واحد لا نصّان */
+const PENDING = 'بانتظار الاعتماد';
+const APPROVED = 'معتمد';
+const BLOCKED = 'ممنوع';
 
 interface Props {
     invoices: Invoice[];
@@ -46,11 +59,14 @@ interface Props {
     orders: { value: number; label: string; supplier_id: number | null; total: number }[];
     summary: { count: number; outstanding: number; overdue: number; overdue_value: number };
     today: string;
+    pendingCount: number;
+    canApprove: boolean;
+    canOverride: boolean;
 }
 
 export default function SupplierInvoices() {
-    const { invoices, pagination, filters, sorts, suppliers, orders, summary, today, context } =
-        usePage<PageProps<Props>>().props;
+    const { invoices, pagination, filters, sorts, suppliers, orders, summary, today,
+        pendingCount, canApprove, canOverride, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
@@ -58,6 +74,9 @@ export default function SupplierInvoices() {
 
     const [adding, setAdding] = useState(false);
     const [paying, setPaying] = useState<Invoice | null>(null);
+    const [deciding, setDeciding] = useState<Invoice | null>(null);
+    // ورسالةُ الردّ تصل في `approve` — فيُحجَز لها موضعٌ في النموذج
+    const decide = useForm({ override_reason: '', reason: '', approve: '' });
 
     const form = useForm({
         supplier_id: '',
@@ -141,8 +160,35 @@ export default function SupplierInvoices() {
             ),
         },
         {
+            /*
+                حالان لا حالٌ واحدة: الاعتمادُ والسداد.
+                وخلطُهما يجعل «معتمد» و«مدفوع» في خانةٍ واحدة — فلا يُعرف
+                سندٌ اعتُمد ولم يُدفع من سندٍ لم يُعتمد أصلًا.
+            */
+            key: 'approval',
+            header: 'الاعتماد',
+            cell: (i) => (
+                <div className="flex flex-col items-start gap-1">
+                    <Badge
+                        variant={
+                            i.approval_status === APPROVED ? 'success'
+                            : i.approval_status === PENDING ? 'warning'
+                            : 'danger'
+                        }
+                    >
+                        {t(i.approval_status)}
+                    </Badge>
+                    {/* وسببُ المنع يُقال في الصفّ لا خلف نقرة: من يعتمد يريد
+                        أن يعرف لماذا مُنع قبل أن يفتح شيئًا */}
+                    {i.approval_status === PENDING && i.match_status === BLOCKED && (
+                        <span className="text-[11px] text-[#b91c1c]">{i.match_notes[0]}</span>
+                    )}
+                </div>
+            ),
+        },
+        {
             key: 'status',
-            header: 'الحالة',
+            header: 'السداد',
             cell: (i) => (
                 <Badge variant={i.status === 'مدفوع' ? 'success' : i.overdue ? 'danger' : 'warning'}>
                     {t(i.overdue ? 'متأخّر' : i.status)}
@@ -155,7 +201,22 @@ export default function SupplierInvoices() {
             align: 'end',
             cell: (i) => (
                 <div className="flex items-center justify-end gap-1">
-                    {i.outstanding > 0 && (
+                    {/* والقرارُ قبل السداد: لا يُسدَّد ما لم يُعتمد */}
+                    {canApprove && i.approval_status === PENDING && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                decide.clearErrors();
+                                decide.setData({ override_reason: '', reason: '' });
+                                setDeciding(i);
+                            }}
+                        >
+                            <Check />
+                            {t('مراجعة')}
+                        </Button>
+                    )}
+                    {i.outstanding > 0 && i.approval_status === APPROVED && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -217,6 +278,37 @@ export default function SupplierInvoices() {
             />
 
             <SectionTabs tabs={PURCHASE_TABS} current="admin.purchases.invoices" />
+
+            {/*
+                طابورُ الاعتماد فوق كلّ شيء.
+
+                والذمّةُ لا تنشأ حتى يُعتمد السند — فسندٌ ينتظر يعني دَينًا
+                على المتجر لا يقوله الدفتر. ومن لا يعرف أنّه ينتظر لا يعتمده،
+                فيصل موعدُ السداد وهو خارج الحساب.
+            */}
+            {pendingCount > 0 && (
+                <Card className="mb-4 flex flex-wrap items-center gap-3 border-[#fed7aa] bg-[#fffbeb] p-4">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#fef3c7] text-[#b45309]">
+                        <ShieldAlert className="size-5" />
+                    </span>
+                    <div className="min-w-0">
+                        <p className="text-[14px] font-semibold text-[#92400e]">
+                            {t(':n سند بانتظار الاعتماد', { n: pendingCount })}
+                        </p>
+                        <p className="text-[12px] text-[#b45309]">
+                            {t('الذمّة لا تنشأ في الدفتر حتى يُعتمد السند.')}
+                        </p>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="ms-auto"
+                        onClick={() => router.get(route('admin.purchases.invoices'), { approval: PENDING }, { preserveState: true })}
+                    >
+                        {t('عرض الطابور')}
+                    </Button>
+                </Card>
+            )}
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard stat={{ label: t('السندات'), value: number(summary.count), icon: 'file-text', color: 'info' }} index={0} />
@@ -462,6 +554,121 @@ export default function SupplierInvoices() {
                             </Button>
                         </div>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/*
+                نافذةُ المراجعة — الأرقامُ الثلاثة معًا ثمّ القرار.
+
+                ما طُلب، وما وصل، وما طُولبنا به. ومن يعتمد رقمًا لا يرى
+                جاريه يعتمد على غير علم — وهو ما كان يقع: يُرحَّل السند لحظةَ
+                كتابته بلا أن يُقابَل بشيء.
+            */}
+            <Dialog open={deciding !== null} onOpenChange={(open) => !open && setDeciding(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {t('مراجعة السند')} <span className="font-mono">{deciding?.reference}</span>
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {deciding && (
+                        <div className="space-y-4">
+                            <dl className="grid grid-cols-3 gap-3 text-center">
+                                <div className="rounded-[10px] bg-[#fafafa] p-3">
+                                    <dt className="text-[11px] text-[#9ca3af]">{t('أمر الشراء')}</dt>
+                                    <dd className="mt-1 text-[15px] font-bold tabular-nums text-[#111]">
+                                        {deciding.order_total === null ? '—' : m(deciding.order_total)}
+                                    </dd>
+                                </div>
+                                <div className="rounded-[10px] bg-[#fafafa] p-3">
+                                    <dt className="text-[11px] text-[#9ca3af]">{t('ما وصل واعتُمد')}</dt>
+                                    <dd className="mt-1 text-[15px] font-bold tabular-nums text-[#111]">
+                                        {deciding.received_value === null ? '—' : m(deciding.received_value)}
+                                    </dd>
+                                </div>
+                                <div className="rounded-[10px] bg-[#fafafa] p-3">
+                                    <dt className="text-[11px] text-[#9ca3af]">{t('السند')}</dt>
+                                    <dd className="mt-1 text-[15px] font-bold tabular-nums text-[#111]">
+                                        {m(deciding.total)}
+                                    </dd>
+                                </div>
+                            </dl>
+
+                            {deciding.match_notes.length > 0 && (
+                                <ul
+                                    className={cn(
+                                        'space-y-1 rounded-[10px] p-3 text-[13px]',
+                                        deciding.match_status === BLOCKED
+                                            ? 'bg-[#fef2f2] text-[#b91c1c]'
+                                            : 'bg-[#fffbeb] text-[#b45309]',
+                                    )}
+                                >
+                                    {deciding.match_notes.map((n) => (
+                                        <li key={n}>• {n}</li>
+                                    ))}
+                                </ul>
+                            )}
+
+                            {/*
+                                والتجاوزُ بسببٍ يُكتب ويُنسب — ولا يقع صامتًا.
+                                ولمن يملكه وحده: الدفعُ عن بضاعةٍ لم تصل قرارُ
+                                من يملك المال.
+                            */}
+                            {deciding.match_status === BLOCKED && (
+                                canOverride ? (
+                                    <Field label="سبب التجاوز" error={decide.errors.approve}>
+                                        <Input
+                                            value={decide.data.override_reason}
+                                            onChange={(e) => decide.setData('override_reason', e.target.value)}
+                                            placeholder={t('مثال: وافقتُ على رفع السعر هاتفيًّا')}
+                                        />
+                                    </Field>
+                                ) : (
+                                    <p className="rounded-[10px] bg-[#fef2f2] p-3 text-[12px] text-[#b91c1c]">
+                                        {t('هذا السند لا يطابق أمره، وتجاوزُ ذلك ليس من صلاحياتك.')}
+                                    </p>
+                                )
+                            )}
+
+                            <Field label="سبب الرفض" hint="يُكتب إن رفضتَ السند" error={decide.errors.reason}>
+                                <Input
+                                    value={decide.data.reason}
+                                    onChange={(e) => decide.setData('reason', e.target.value)}
+                                />
+                            </Field>
+
+                            <div className="flex flex-wrap justify-end gap-2">
+                                <Button
+                                    variant="outline"
+                                    disabled={decide.processing}
+                                    onClick={() => {
+                                        decide.transform((d) => ({ reason: d.reason }));
+                                        decide.post(route('admin.purchases.invoices.reject', deciding.id), {
+                                            preserveScroll: true,
+                                            onSuccess: () => setDeciding(null),
+                                        });
+                                    }}
+                                >
+                                    <X />
+                                    {t('رفض')}
+                                </Button>
+                                <Button
+                                    disabled={decide.processing || (deciding.match_status === BLOCKED && !canOverride)}
+                                    onClick={() => {
+                                        decide.transform((d) => ({ override_reason: d.override_reason }));
+                                        decide.post(route('admin.purchases.invoices.approve', deciding.id), {
+                                            preserveScroll: true,
+                                            onSuccess: () => setDeciding(null),
+                                        });
+                                    }}
+                                >
+                                    <Check />
+                                    {t('اعتماد السند')}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
 

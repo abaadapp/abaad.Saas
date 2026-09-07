@@ -53,15 +53,26 @@ class SupplierInvoiceTest extends TestCase
         return $this->business->id;
     }
 
+    /**
+     * سندٌ يُكتب ثمّ يُعتمد.
+     *
+     * وصار الاعتمادُ هو ما يُنشئ الذمّة، والكتابةُ لا تُرحّل. وأكثرُ ما في
+     * هذا الملفّ يفحص أثرَ الذمّة والسداد لا مسارَ الاعتماد نفسه — فهو فيها
+     * شرطُ السيناريو لا موضوعُه.
+     */
     private function record(array $overrides = [])
     {
-        return $this->post(route('admin.purchases.invoices.store'), array_merge([
+        $response = $this->post(route('admin.purchases.invoices.store'), array_merge([
             'supplier_id' => $this->supplier->id,
             'supplier_ref' => 'INV-77',
             'issued_at' => now()->toDateString(),
             'subtotal' => 500,
             'tax' => 0,
         ], $overrides));
+
+        $this->approvePendingSupplierInvoices($this->business->id);
+
+        return $response;
     }
 
     /* ----------------------------- التسجيل ----------------------------- */
@@ -170,16 +181,49 @@ class SupplierInvoiceTest extends TestCase
 
     /* ------------------------------ الحذف ------------------------------ */
 
-    public function test_deleting_an_untouched_invoice_takes_its_entry_with_it(): void
+    /**
+     * سندٌ لم يُعتمد يُحذف بلا أثر — لا قيدَ له أصلًا.
+     *
+     * وكان الحذفُ يمحو القيد معه لأنّ الكتابة كانت تُرحّل. صار الترحيل عند
+     * الاعتماد، فما لم يُعتمد لا شيءَ في الدفتر يتبعه.
+     */
+    public function test_deleting_an_unapproved_invoice_leaves_nothing_behind(): void
     {
-        // قيدٌ يتيم يُبقي الدَّين في الدفتر بلا مستند يُراجَع
-        $this->record();
+        $this->post(route('admin.purchases.invoices.store'), [
+            'supplier_id' => $this->supplier->id, 'supplier_ref' => 'INV-77',
+            'issued_at' => now()->toDateString(), 'subtotal' => 500, 'tax' => 0,
+        ])->assertSessionHasNoErrors();
+
         $invoice = SupplierInvoice::first();
+        $this->assertSame(0, JournalEntry::where('business_id', $this->bid())->count());
 
         $this->delete(route('admin.purchases.invoices.destroy', $invoice->id));
 
         $this->assertNull(SupplierInvoice::find($invoice->id));
-        $this->assertSame(0, JournalEntry::where('business_id', $this->bid())->count());
+        $this->assertSame(0.0, Ledger::account($this->bid(), 'payable')->balance());
+    }
+
+    /**
+     * والمعتمَدُ لا يُحذف — يُلغى فيُعكس قيدُه.
+     *
+     * محوُ الصفّ يمحو الذمّة ويترك تكلفةَ المخزون مرحَّلةً بلا ما يقابلها:
+     * يتضخّم المخزون في الميزانية بمبلغٍ لا يقابله دَينٌ ولا نقدٌ خرج.
+     */
+    public function test_an_approved_invoice_is_cancelled_by_reversal_not_deleted(): void
+    {
+        $this->record();
+        $invoice = SupplierInvoice::first();
+
+        $this->delete(route('admin.purchases.invoices.destroy', $invoice->id));
+        $this->assertNotNull(SupplierInvoice::find($invoice->id), 'حُذف سندٌ معتمَد');
+
+        $this->post(route('admin.purchases.invoices.cancel', $invoice->id), ['reason' => 'أُعيدت البضاعة'])
+            ->assertSessionHasNoErrors();
+
+        // الصفُّ يبقى، والقيدُ الأصلُ يبقى، ويُكتب ثانٍ يعكسه — والأثرُ صفر
+        $this->assertNotNull(SupplierInvoice::find($invoice->id));
+        $this->assertSame('ملغاة', $invoice->fresh()->approval_status);
+        $this->assertSame(2, JournalEntry::where('business_id', $this->bid())->count());
         $this->assertSame(0.0, Ledger::account($this->bid(), 'payable')->balance());
     }
 

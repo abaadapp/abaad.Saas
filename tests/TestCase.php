@@ -53,6 +53,27 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
+     * اعتمادُ كلّ سند مورّدٍ معلَّق — وبه تنشأ الذمّة في الدفتر.
+     *
+     * وصار السندُ يُكتب أوّلًا ويُعتمد ثانيًا، كالاستلام. وأكثرُ الاختبارات
+     * تفحص أثرَ الذمّة أو السداد لا مسارَ الاعتماد نفسه.
+     *
+     * ولا تُطابَق: التجاوزُ مُمرَّرٌ بسببٍ صريح كي تمرّ سنداتُ الاختبارات
+     * التي لا أوامرَ مستلَمةً لها — والمطابقةُ تُفحص في اختبارها وحده.
+     */
+    protected function approvePendingSupplierInvoices(int $businessId, ?\App\Models\User $by = null): int
+    {
+        $invoices = \App\Models\SupplierInvoice::where('business_id', $businessId)
+            ->where('approval_status', \App\Support\SupplierInvoices::PENDING)->orderBy('id')->get();
+
+        foreach ($invoices as $invoice) {
+            \App\Support\SupplierInvoices::approve($invoice, $by ?? auth()->user(), 'اعتمادُ اختبار');
+        }
+
+        return $invoices->count();
+    }
+
+    /**
      * جهاز نقطة بيع مفعَّل على هذا المتصفّح.
      *
      * صار البيع يتطلّبه: الجهاز هو من يعرف الفرع، وبلا تفعيل يعود الفرع إلى

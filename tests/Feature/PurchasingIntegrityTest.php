@@ -243,11 +243,19 @@ class PurchasingIntegrityTest extends TestCase
 
     /* ------------------- السداد لا يتجاوز المستحقّ ------------------- */
 
+    /**
+     * سندٌ مكتوبٌ ومعتمَد.
+     *
+     * والاعتمادُ هنا شرطُ السيناريو لا موضوعُه: هذه الحالاتُ تفحص السدادَ
+     * وحدَّه، والسدادُ لا يقع على سندٍ لم يُعتمد.
+     */
     private function invoice(float $total = 420): SupplierInvoice
     {
         $this->post(route('admin.purchases.invoices.store'), $this->invoicePayload([
             'subtotal' => $total, 'tax' => 0,
         ]))->assertSessionHasNoErrors();
+
+        $this->approvePendingSupplierInvoices($this->business->id, $this->owner);
 
         return SupplierInvoice::latest('id')->firstOrFail();
     }

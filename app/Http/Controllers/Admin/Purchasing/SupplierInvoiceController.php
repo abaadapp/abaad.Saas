@@ -11,11 +11,14 @@ use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Pagination;
+use App\Support\Permissions;
 use App\Support\Search;
 use App\Support\Sort;
+use App\Support\SupplierInvoices;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -68,6 +71,9 @@ class SupplierInvoiceController extends Controller
         if ($status = $request->query('status')) {
             $q->where('status', $status);
         }
+        if ($approval = $request->query('approval')) {
+            $q->where('approval_status', $approval);
+        }
         if ($supplier = $request->query('supplier')) {
             $q->where('supplier_id', $supplier);
         }
@@ -93,11 +99,21 @@ class SupplierInvoiceController extends Controller
                 'paid' => (float) $i->paid,
                 'outstanding' => $i->outstanding(),
                 'status' => $i->status,
+                'approval_status' => $i->approval_status,
+                'match_status' => $i->match_status,
+                'match_notes' => array_values(array_filter(explode("\n", (string) $i->match_notes))),
+                'override_reason' => $i->override_reason,
+                'rejection_reason' => $i->rejection_reason,
+                // قيمةُ ما وصل فعلًا على أمره — الرقمُ الذي يُقابَل به السند
+                'received_value' => $i->purchase_order_id
+                    ? SupplierInvoices::receivedValue((int) $i->purchase_order_id)
+                    : null,
+                'order_total' => $i->purchaseOrder ? (float) $i->purchaseOrder->total : null,
                 'overdue' => $i->isOverdue(),
                 'notes' => $i->notes,
             ])->all(),
             'pagination' => Pagination::meta($invoices),
-            'filters' => $request->only('q', 'status', 'supplier')
+            'filters' => $request->only('q', 'status', 'supplier', 'approval')
                 + Sort::params($request, self::SORTS),
             'sorts' => Sort::keys(self::SORTS),
             'suppliers' => Supplier::where('business_id', $bid)->orderBy('name')
@@ -121,6 +137,11 @@ class SupplierInvoiceController extends Controller
                 'overdue_value' => round($all->filter(fn ($i) => $i->isOverdue())->sum(fn ($i) => $i->outstanding()), 3),
             ],
             'today' => now()->format('Y-m-d'),
+            'pendingCount' => SupplierInvoice::where('business_id', $bid)
+                ->where('approval_status', SupplierInvoices::PENDING)->count(),
+            // ومن يرى الزرّ هو من يملك الفعل
+            'canApprove' => (bool) auth()->user()?->may(Permissions::INVOICE_APPROVE),
+            'canOverride' => (bool) auth()->user()?->may(Permissions::INVOICE_OVERRIDE),
         ]);
     }
 
@@ -150,6 +171,9 @@ class SupplierInvoiceController extends Controller
             'subtotal' => ['required', 'numeric', 'min:0'],
             'tax' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'attachment' => ['nullable', 'file', 'max:10240', 'extensions:jpg,jpeg,png,pdf,webp,heic'],
+            'approve_now' => ['nullable', 'boolean'],
+            'override_reason' => ['nullable', 'string', 'max:200'],
         ], [
             'purchase_order_id.exists' => __('أمر الشراء ليس لهذا المورّد'),
             'purchase_order_id.unique' => __('هذا الأمر مفوتَرٌ بسندٍ سابق'),
@@ -172,59 +196,109 @@ class SupplierInvoiceController extends Controller
             ]);
         }
 
-        $subtotal = round((float) $data['subtotal'], 3);
-        $tax = round((float) ($data['tax'] ?? 0), 3);
-        $total = round($subtotal + $tax, 3);
-
-        if ($total <= 0) {
-            return back()->withInput()->withErrors(['subtotal' => __('السند بلا مبلغ لا يُسجَّل')]);
+        $stored = null;
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            $data['attachment_name'] = $file->getClientOriginalName();
+            // القرصُ الخاصّ لا العامّ: ورقةُ مورّدٍ فيها أسعارُ شرائك
+            $stored = $data['attachment'] = $file->store("supplier-invoices/{$bid}", 'local');
         }
 
         try {
-            DB::transaction(function () use ($bid, $data, $subtotal, $tax, $total) {
-                $invoice = SupplierInvoice::create([
-                    'business_id' => $bid,
-                    'supplier_id' => $data['supplier_id'],
-                    'purchase_order_id' => $data['purchase_order_id'] ?? null,
-                    'supplier_ref' => $data['supplier_ref'],
-                    'issued_at' => $data['issued_at'],
-                    'due_at' => $data['due_at'] ?? null,
-                    'subtotal' => $subtotal,
-                    'tax' => $tax,
-                    'total' => $total,
-                    'notes' => $data['notes'] ?? null,
-                ]);
+            /*
+             * والكتابةُ لا تُرحّل.
+             *
+             * كان القيدُ يقع هنا: يُدخله المحاسب فيصير على المتجر دَينٌ في
+             * الدفتر قبل أن يراه أحد. والذمّةُ تنشأ بالاعتماد وحده — انظر
+             * `SupplierInvoices::approve`.
+             *
+             * و«اعتمِد الآن» لمن يملك الفعل: متجرٌ صاحبُه محاسبُه لا يُلزَم
+             * بضغطتين على ورقةٍ كتبها بيده.
+             */
+            $invoice = SupplierInvoices::create($bid, $data, auth()->user());
 
-                /*
-                 * الضريبة تدخل في التكلفة لا في حسابٍ مستقلّ.
-                 *
-                 * فصلُها يصحّ لمن كان مسجَّلًا في الضريبة فيستردّها؛ ومن لم
-                 * يكن فالضريبة عنده جزءٌ من ثمن البضاعة. وفصلُها عن غير
-                 * المسجَّل يُنشئ أصلًا لا يُستردّ أبدًا ويُنقص تكلفة المخزون.
-                 */
-                Ledger::post(
-                    $bid,
-                    __('سند مورّد: ').$data['supplier_ref'],
-                    [
-                        ['account' => 'inventory', 'debit' => $total, 'memo' => $invoice->supplier?->name],
-                        ['account' => 'payable', 'credit' => $total],
-                    ],
-                    Carbon::parse($data['issued_at']),
-                    'سند مورّد',
-                    null,
-                    auth()->id(),
-                    $invoice,
-                );
-
-                $invoice->syncStatus();
-            });
+            if ($request->boolean('approve_now') && auth()->user()?->may(Permissions::INVOICE_APPROVE)) {
+                SupplierInvoices::approve($invoice, auth()->user(), $request->input('override_reason'));
+            }
         } catch (RuntimeException $e) {
+            if ($stored) {
+                Storage::disk('local')->delete($stored);
+            }
+
             return back()->withInput()->withErrors(['subtotal' => $e->getMessage()]);
         }
 
-        Activity::log('created', 'سجّل سند مورّد '.$data['supplier_ref'].' بقيمة '.$total);
+        return back()->with('toast', [
+            'msg' => $invoice->fresh()->approval_status === SupplierInvoices::APPROVED
+                ? __('سُجّل السند واعتُمد')
+                : __('سُجّل السند — بانتظار الاعتماد'),
+            'type' => 'success',
+        ]);
+    }
 
-        return back()->with('toast', ['msg' => __('سُجّل السند'), 'type' => 'success']);
+    /** اعتمادُ السند — وهنا وحدَه تنشأ الذمّة */
+    public function approve(Request $request, $id)
+    {
+        if (! auth()->user()?->may(Permissions::INVOICE_APPROVE)) {
+            abort(403);
+        }
+
+        $data = $request->validate(['override_reason' => ['nullable', 'string', 'max:200']]);
+        $invoice = SupplierInvoice::where('business_id', $this->bid())->findOrFail($id);
+
+        try {
+            SupplierInvoices::approve($invoice, auth()->user(), $data['override_reason'] ?? null);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['approve' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', [
+            'msg' => __('اعتُمد السند :n', ['n' => $invoice->supplier_ref]), 'type' => 'success',
+        ]);
+    }
+
+    /** رفضُ السند — بسببٍ مكتوب، ولا قيدَ له */
+    public function reject(Request $request, $id)
+    {
+        if (! auth()->user()?->may(Permissions::INVOICE_APPROVE)) {
+            abort(403);
+        }
+
+        $data = $request->validate(['reason' => ['required', 'string', 'max:200']], [], [
+            'reason' => __('سبب الرفض'),
+        ]);
+
+        $invoice = SupplierInvoice::where('business_id', $this->bid())->findOrFail($id);
+
+        try {
+            SupplierInvoices::reject($invoice, $data['reason'], auth()->user());
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['approve' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('رُفض السند'), 'type' => 'warning']);
+    }
+
+    /** إلغاءُ سندٍ معتمَد — عكسُ قيده لا محوُه */
+    public function cancel(Request $request, $id)
+    {
+        if (! auth()->user()?->may(Permissions::INVOICE_APPROVE)) {
+            abort(403);
+        }
+
+        $data = $request->validate(['reason' => ['required', 'string', 'max:200']], [], [
+            'reason' => __('سبب الإلغاء'),
+        ]);
+
+        $invoice = SupplierInvoice::where('business_id', $this->bid())->findOrFail($id);
+
+        try {
+            SupplierInvoices::cancel($invoice, $data['reason'], auth()->user());
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['approve' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('أُلغي السند وعُكس قيده'), 'type' => 'warning']);
     }
 
     /** تسجيل دفعة على سند — كاملةً أو جزءًا */
@@ -238,6 +312,19 @@ class SupplierInvoiceController extends Controller
             'paid_at' => ['required', 'date'],
             'from' => ['required', Rule::in(['cash', 'bank'])],
         ]);
+
+        /*
+         * ولا يُدفع على سندٍ لم يُعتمد.
+         *
+         * الذمّةُ تنشأ بالاعتماد؛ فسدادٌ قبله يُخرج مالًا من الصندوق مقابل
+         * دَينٍ لا وجود له في الدفتر — يصير حسابُ الموردين مدينًا، وهو حسابٌ
+         * طبيعتُه دائنة، فيُقرأ كأنّ المورّدين يدينون للمتجر.
+         */
+        if ($invoice->approval_status !== SupplierInvoices::APPROVED) {
+            return back()->withErrors([
+                'amount' => __('لا يُسدَّد سندٌ لم يُعتمد — اعتمده أوّلًا.'),
+            ]);
+        }
 
         $amount = round((float) $data['amount'], 3);
 
@@ -312,6 +399,17 @@ class SupplierInvoiceController extends Controller
          * حذفُه يترك قيد السداد يتيمًا: مالٌ خرج من الصندوق مقابل ذمّةٍ لا
          * وجود لها، فلا يتوازن حساب الموردين ولا يُعرف لمن دُفع.
          */
+        /*
+         * وسندٌ اعتُمد لا يُحذف: قيدُه في الدفتر، ومحوُه يمحو الذمّة ويترك
+         * تكلفةَ المخزون مرحَّلةً بلا ما يقابلها. والملغى يُعكس لا يُمحى.
+         */
+        if ($invoice->approval_status === SupplierInvoices::APPROVED) {
+            return back()->with('toast', [
+                'msg' => __('سندٌ معتمَد لا يُحذف — أَلغِه فيُعكس قيدُه'),
+                'type' => 'warning',
+            ]);
+        }
+
         if ((float) $invoice->paid > 0) {
             return back()->with('toast', [
                 'msg' => __('سُدّد من هذا السند — لا يُحذف بعد أن خرج مقابله مال'),

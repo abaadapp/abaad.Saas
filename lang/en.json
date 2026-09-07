@@ -4500,5 +4500,10 @@
     "محسوب من شروط الدفع": "Derived from payment terms",
     "مكتوب يدويًّا": "Set manually",
     "تاريخ الاستحقاق قبل تاريخ الفاتورة.": "The due date is before the invoice date.",
-    "مركز التكلفة": "Cost centre"
+    "مركز التكلفة": "Cost centre",
+    "إرسال": "Send",
+    "معاينة الفاتورة": "Invoice preview",
+    "افتح واتساب وأرسل الفاتورة": "Open WhatsApp and send the invoice",
+    "لا رقم واتساب لهذا الطلب — أضِفه في صفحة العميل.": "No WhatsApp number for this order — add one on the customer's page.",
+    ":shop — فاتورتك رقم :number بمبلغ :amount. شكرًا لك.": ":shop — your invoice :number for :amount. Thank you."
 }

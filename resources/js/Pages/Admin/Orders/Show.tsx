@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
     Calendar,
@@ -8,15 +8,15 @@ import {
     MapPin,
     PencilLine,
     Phone,
-    Receipt,
+    Download,
     ReceiptText,
+    Send,
     Truck,
     User,
 } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import Tabs from '@/Components/Tabs';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -104,7 +104,11 @@ export default function OrderShow() {
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
-    const [tab, setTab] = useState<'data' | 'sheet'>('data');
+    /*
+     * ومرجعٌ إلى ورقة التفاصيل: زرُّ «تعديل» فوق الفاتورة يفتحها ويمضي
+     * إليها. وبلا ذلك يضغط التاجر زرًّا فيتغيّر شيءٌ خارج نظره.
+     */
+    const sheetRef = useRef<HTMLDivElement>(null);
 
     /*
      * نموذج تعديل التنفيذ — يبدأ من القيم المحفوظة.
@@ -128,7 +132,9 @@ export default function OrderShow() {
         internal_notes: order.internal_notes ?? '',
     });
     const isDelivery = form.data.fulfillment_type === 'delivery';
-    const hasErrors = Object.keys(form.errors).length > 0;
+
+    /* إرسالُ الفاتورة — نموذجٌ فارغ: النصُّ كلُّه يُكتب في الخادم */
+    const sending = useForm({});
 
     const occasionLabel = order.occasions.find((o) => o.value === order.occasion_type)?.label;
     const fulfillmentLabel = order.fulfillments.find((f) => f.value === order.fulfillment_type)?.label;
@@ -256,23 +262,18 @@ export default function OrderShow() {
             />
 
             {/*
-                التبويب لا يُخفي خطأً: حين يردّ الخادم خطأ تحقّقٍ على حقلٍ في
-                الورقة ونحن في تبويب البيانات، تُوضع نقطة على تبويب الورقة —
-                وإلا بدا الحفظ كأنه لم يستجب.
-            */}
-            <Tabs
-                className="mb-6"
-                current={tab}
-                onChange={(k) => setTab(k as 'data' | 'sheet')}
-                tabs={[
-                    { key: 'data', label: 'بيانات الطلب', icon: Receipt },
-                    { key: 'sheet', label: 'ورقة التفاصيل', icon: ClipboardList, alert: hasErrors },
-                ]}
-            />
+                قسمان جنبًا إلى جنب لا تبويبان.
 
-            {tab === 'data' ? (
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                    <div className="space-y-6 lg:col-span-2">
+                كان التبويب يجعل الورقةَ والبياناتِ لا يُقرآن معًا: من يراجع
+                فاتورةً أمام زبونٍ يبدّل ذهابًا وإيابًا بين ما يقوله النظام
+                وما يقوله الورق. وشاشةُ اللوحة تتّسع لهما.
+
+                والانقسامُ من `xl` وحدها: على شاشةٍ أضيق تصير الورقةُ عمودًا
+                من ثلاثمئة بكسل — لا تُقرأ ولا تُصوَّر، وتزاحم ما ينفع.
+            */}
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                <div className="min-w-0 space-y-6">
+                    <div className="space-y-6">
                         <div>
                             <h3 className="mb-3 font-bold text-[#111]">{t('تفاصيل المنتجات')}</h3>
                             <Card className="overflow-hidden">
@@ -445,200 +446,273 @@ export default function OrderShow() {
                             </Card>
                         )}
                     </div>
-                </div>
-            ) : (
-                <Card className="p-6">
-                    <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-[var(--ui-border,#e8e8e8)] pb-4">
-                        <div>
-                            <h3 className="flex items-center gap-2 font-bold text-[#111]">
-                                <ClipboardList className="size-4 text-[#9ca3af]" />
-                                {t('ورقة تفاصيل الطلب')}
-                            </h3>
-                            {/* الحدّ يُقال قبل الضغط لا بعده: من يفتح «تعديل» باحثًا عن
-                                المبلغ يجب أن يعرف أنه ليس هنا */}
-                            <p className="mt-1 text-[12px] text-[#9ca3af]">
-                                {t('بيانات التنفيذ وحدها — لا تمسّ المبالغ ولا حالة الطلب')}
-                            </p>
+                    <Card ref={sheetRef} className="p-6">
+                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-[var(--ui-border,#e8e8e8)] pb-4">
+                            <div>
+                                <h3 className="flex items-center gap-2 font-bold text-[#111]">
+                                    <ClipboardList className="size-4 text-[#9ca3af]" />
+                                    {t('ورقة تفاصيل الطلب')}
+                                </h3>
+                                {/* الحدّ يُقال قبل الضغط لا بعده: من يفتح «تعديل» باحثًا عن
+                                    المبلغ يجب أن يعرف أنه ليس هنا */}
+                                <p className="mt-1 text-[12px] text-[#9ca3af]">
+                                    {t('بيانات التنفيذ وحدها — لا تمسّ المبالغ ولا حالة الطلب')}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Badge status={order.status}>{t(order.status)}</Badge>
+                                <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>
+                                    <PencilLine />
+                                    {t(editing ? 'إلغاء' : 'تعديل')}
+                                </Button>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Badge status={order.status}>{t(order.status)}</Badge>
-                            <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>
-                                <PencilLine />
-                                {t(editing ? 'إلغاء' : 'تعديل')}
-                            </Button>
-                        </div>
-                    </div>
 
-                    {editing ? (
-                        <form
-                            className="grid grid-cols-1 gap-4 md:grid-cols-2"
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                form.put(route('admin.orders.details.update', order.id), {
-                                    preserveScroll: true,
-                                    onSuccess: () => setEditing(false),
-                                });
-                            }}
-                        >
-                            <Field label="نوع التنفيذ" error={form.errors.fulfillment_type}>
-                                <Select
-                                    placeholder="—"
-                                    options={order.fulfillments}
-                                    value={form.data.fulfillment_type}
-                                    onChange={(e) => form.setData('fulfillment_type', e.target.value)}
-                                />
-                            </Field>
-                            <Field label="موعد التسليم" error={form.errors.scheduled_for}>
-                                <Input
-                                    type="datetime-local"
-                                    value={form.data.scheduled_for}
-                                    onChange={(e) => form.setData('scheduled_for', e.target.value)}
-                                />
-                            </Field>
-                            <Field label="اسم المستلِم" required={isDelivery} error={form.errors.recipient_name}>
-                                <Input
-                                    value={form.data.recipient_name}
-                                    onChange={(e) => form.setData('recipient_name', e.target.value)}
-                                />
-                            </Field>
-                            <Field label="هاتف المستلِم" required={isDelivery} error={form.errors.recipient_phone}>
-                                <Input
-                                    inputMode="tel"
-                                    value={form.data.recipient_phone}
-                                    onChange={(e) => form.setData('recipient_phone', e.target.value)}
-                                />
-                            </Field>
-                            {isDelivery && (
-                                <>
-                                    <Field label="عنوان التوصيل" required error={form.errors.delivery_address}>
-                                        <Input
-                                            value={form.data.delivery_address}
-                                            onChange={(e) => form.setData('delivery_address', e.target.value)}
-                                        />
-                                    </Field>
-                                    <Field label="تعليمات التوصيل" error={form.errors.delivery_notes}>
-                                        <Input
-                                            value={form.data.delivery_notes}
-                                            onChange={(e) => form.setData('delivery_notes', e.target.value)}
-                                        />
-                                    </Field>
-                                </>
-                            )}
-                            <Field label="المناسبة" error={form.errors.occasion_type}>
-                                <Select
-                                    placeholder="—"
-                                    options={order.occasions}
-                                    value={form.data.occasion_type}
-                                    onChange={(e) => form.setData('occasion_type', e.target.value)}
-                                />
-                            </Field>
-                            <Field label="اسم المُهدي" error={form.errors.sender_name}>
-                                <Input
-                                    value={form.data.sender_name}
-                                    onChange={(e) => form.setData('sender_name', e.target.value)}
-                                />
-                            </Field>
-                            <div className="md:col-span-2">
-                                <Field label="نصّ البطاقة" error={form.errors.card_message}>
-                                    <textarea
-                                        rows={3}
-                                        value={form.data.card_message}
-                                        onChange={(e) => form.setData('card_message', e.target.value)}
-                                        className="w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-2 text-sm transition-[border-color,box-shadow] focus:border-[#d1d5db] focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)] focus:outline-none"
+                        {editing ? (
+                            <form
+                                className="grid grid-cols-1 gap-4 md:grid-cols-2"
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    form.put(route('admin.orders.details.update', order.id), {
+                                        preserveScroll: true,
+                                        onSuccess: () => setEditing(false),
+                                    });
+                                }}
+                            >
+                                <Field label="نوع التنفيذ" error={form.errors.fulfillment_type}>
+                                    <Select
+                                        placeholder="—"
+                                        options={order.fulfillments}
+                                        value={form.data.fulfillment_type}
+                                        onChange={(e) => form.setData('fulfillment_type', e.target.value)}
                                     />
                                 </Field>
-                            </div>
-                            <Field label="إخفاء المُهدي" hint="لا يظهر للمستلِم">
-                                <label className="flex h-9 items-center gap-2 text-sm text-[#4b4b4b]">
-                                    <input
-                                        type="checkbox"
-                                        checked={form.data.hide_sender}
-                                        onChange={(e) => form.setData('hide_sender', e.target.checked)}
-                                        className="size-4 accent-[#6d28d9]"
+                                <Field label="موعد التسليم" error={form.errors.scheduled_for}>
+                                    <Input
+                                        type="datetime-local"
+                                        value={form.data.scheduled_for}
+                                        onChange={(e) => form.setData('scheduled_for', e.target.value)}
                                     />
-                                    {t('إخفاء')}
-                                </label>
-                            </Field>
-                            <Field label="ملاحظات داخلية" hint="لا تُطبع للزبون" error={form.errors.internal_notes}>
-                                <Input
-                                    value={form.data.internal_notes}
-                                    onChange={(e) => form.setData('internal_notes', e.target.value)}
-                                />
-                            </Field>
+                                </Field>
+                                <Field label="اسم المستلِم" required={isDelivery} error={form.errors.recipient_name}>
+                                    <Input
+                                        value={form.data.recipient_name}
+                                        onChange={(e) => form.setData('recipient_name', e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="هاتف المستلِم" required={isDelivery} error={form.errors.recipient_phone}>
+                                    <Input
+                                        inputMode="tel"
+                                        value={form.data.recipient_phone}
+                                        onChange={(e) => form.setData('recipient_phone', e.target.value)}
+                                    />
+                                </Field>
+                                {isDelivery && (
+                                    <>
+                                        <Field label="عنوان التوصيل" required error={form.errors.delivery_address}>
+                                            <Input
+                                                value={form.data.delivery_address}
+                                                onChange={(e) => form.setData('delivery_address', e.target.value)}
+                                            />
+                                        </Field>
+                                        <Field label="تعليمات التوصيل" error={form.errors.delivery_notes}>
+                                            <Input
+                                                value={form.data.delivery_notes}
+                                                onChange={(e) => form.setData('delivery_notes', e.target.value)}
+                                            />
+                                        </Field>
+                                    </>
+                                )}
+                                <Field label="المناسبة" error={form.errors.occasion_type}>
+                                    <Select
+                                        placeholder="—"
+                                        options={order.occasions}
+                                        value={form.data.occasion_type}
+                                        onChange={(e) => form.setData('occasion_type', e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="اسم المُهدي" error={form.errors.sender_name}>
+                                    <Input
+                                        value={form.data.sender_name}
+                                        onChange={(e) => form.setData('sender_name', e.target.value)}
+                                    />
+                                </Field>
+                                <div className="md:col-span-2">
+                                    <Field label="نصّ البطاقة" error={form.errors.card_message}>
+                                        <textarea
+                                            rows={3}
+                                            value={form.data.card_message}
+                                            onChange={(e) => form.setData('card_message', e.target.value)}
+                                            className="w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-2 text-sm transition-[border-color,box-shadow] focus:border-[#d1d5db] focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)] focus:outline-none"
+                                        />
+                                    </Field>
+                                </div>
+                                <Field label="إخفاء المُهدي" hint="لا يظهر للمستلِم">
+                                    <label className="flex h-9 items-center gap-2 text-sm text-[#4b4b4b]">
+                                        <input
+                                            type="checkbox"
+                                            checked={form.data.hide_sender}
+                                            onChange={(e) => form.setData('hide_sender', e.target.checked)}
+                                            className="size-4 accent-[#6d28d9]"
+                                        />
+                                        {t('إخفاء')}
+                                    </label>
+                                </Field>
+                                <Field label="ملاحظات داخلية" hint="لا تُطبع للزبون" error={form.errors.internal_notes}>
+                                    <Input
+                                        value={form.data.internal_notes}
+                                        onChange={(e) => form.setData('internal_notes', e.target.value)}
+                                    />
+                                </Field>
 
-                            <div className="flex items-center gap-2 md:col-span-2">
-                                <Button type="submit" disabled={form.processing}>
-                                    {t('حفظ')}
-                                </Button>
-                                <Button type="button" variant="outline" onClick={() => setEditing(false)}>
-                                    {t('إلغاء')}
-                                </Button>
-                            </div>
-                        </form>
-                    ) : hasSheet ? (
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <Block icon={Truck} title="التنفيذ والموعد">
-                                <Row label="نوع التنفيذ" value={fulfillmentLabel ? t(fulfillmentLabel) : null} />
-                                <Row
-                                    label="موعد التسليم"
-                                    value={order.scheduled_for?.replace('T', ' ') ?? null}
-                                    ltr
-                                />
-                            </Block>
+                                <div className="flex items-center gap-2 md:col-span-2">
+                                    <Button type="submit" disabled={form.processing}>
+                                        {t('حفظ')}
+                                    </Button>
+                                    <Button type="button" variant="outline" onClick={() => setEditing(false)}>
+                                        {t('إلغاء')}
+                                    </Button>
+                                </div>
+                            </form>
+                        ) : hasSheet ? (
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <Block icon={Truck} title="التنفيذ والموعد">
+                                    <Row label="نوع التنفيذ" value={fulfillmentLabel ? t(fulfillmentLabel) : null} />
+                                    <Row
+                                        label="موعد التسليم"
+                                        value={order.scheduled_for?.replace('T', ' ') ?? null}
+                                        ltr
+                                    />
+                                </Block>
 
-                            <Block icon={Phone} title="المستلِم">
-                                <Row label="الاسم" value={order.recipient_name} />
-                                <Row label="الهاتف" value={order.recipient_phone} ltr />
-                            </Block>
+                                <Block icon={Phone} title="المستلِم">
+                                    <Row label="الاسم" value={order.recipient_name} />
+                                    <Row label="الهاتف" value={order.recipient_phone} ltr />
+                                </Block>
 
-                            <Block icon={MapPin} title="العنوان والتعليمات">
-                                <Row label="عنوان التوصيل" value={order.delivery_address} />
-                                <Row label="تعليمات التوصيل" value={order.delivery_notes} />
-                            </Block>
+                                <Block icon={MapPin} title="العنوان والتعليمات">
+                                    <Row label="عنوان التوصيل" value={order.delivery_address} />
+                                    <Row label="تعليمات التوصيل" value={order.delivery_notes} />
+                                </Block>
 
-                            <Block icon={Gift} title="المناسبة والبطاقة">
-                                <Row label="المناسبة" value={occasionLabel ? t(occasionLabel) : null} />
-                                <Row
-                                    label="اسم المُهدي"
-                                    value={
-                                        order.sender_name
-                                            ? order.hide_sender
-                                                ? `${order.sender_name} · ${t('مخفيّ عن المستلِم')}`
-                                                : order.sender_name
-                                            : null
-                                    }
-                                />
-                                {order.card_message && (
-                                    <div className="pt-3">
-                                        <p className="mb-1 text-[13px] text-[#6b7280]">{t('نصّ البطاقة')}</p>
-                                        <p className="rounded-[10px] bg-[#faf5ff] p-3 text-sm leading-relaxed text-[#4b4b4b]">
-                                            {order.card_message}
+                                <Block icon={Gift} title="المناسبة والبطاقة">
+                                    <Row label="المناسبة" value={occasionLabel ? t(occasionLabel) : null} />
+                                    <Row
+                                        label="اسم المُهدي"
+                                        value={
+                                            order.sender_name
+                                                ? order.hide_sender
+                                                    ? `${order.sender_name} · ${t('مخفيّ عن المستلِم')}`
+                                                    : order.sender_name
+                                                : null
+                                        }
+                                    />
+                                    {order.card_message && (
+                                        <div className="pt-3">
+                                            <p className="mb-1 text-[13px] text-[#6b7280]">{t('نصّ البطاقة')}</p>
+                                            <p className="rounded-[10px] bg-[#faf5ff] p-3 text-sm leading-relaxed text-[#4b4b4b]">
+                                                {order.card_message}
+                                            </p>
+                                        </div>
+                                    )}
+                                </Block>
+
+                                {order.internal_notes && (
+                                    <div className="md:col-span-2">
+                                        <p className="rounded-[10px] bg-gray-50 p-3 text-[13px] text-[#6b7280]">
+                                            {t('ملاحظات داخلية')} · {t('لا تُطبع للزبون')}: {order.internal_notes}
                                         </p>
                                     </div>
                                 )}
-                            </Block>
+                            </div>
+                        ) : (
+                            /* طلبٌ قديم بلا تفاصيل: يُقال له أين تُضاف بدل أن يختفي الباب */
+                            <div className="py-10 text-center">
+                                <ClipboardList className="mx-auto mb-3 size-8 text-[#d1d5db]" />
+                                <p className="text-sm text-[#6b7280]">{t('لا تفاصيل تنفيذ لهذا الطلب بعد')}</p>
+                                <Button className="mt-4" variant="outline" onClick={() => setEditing(true)}>
+                                    <PencilLine />
+                                    {t('أضِف التفاصيل')}
+                                </Button>
+                            </div>
+                        )}
+                    </Card>
+                </div>
 
-                            {order.internal_notes && (
-                                <div className="md:col-span-2">
-                                    <p className="rounded-[10px] bg-gray-50 p-3 text-[13px] text-[#6b7280]">
-                                        {t('ملاحظات داخلية')} · {t('لا تُطبع للزبون')}: {order.internal_notes}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        /* طلبٌ قديم بلا تفاصيل: يُقال له أين تُضاف بدل أن يختفي الباب */
-                        <div className="py-10 text-center">
-                            <ClipboardList className="mx-auto mb-3 size-8 text-[#d1d5db]" />
-                            <p className="text-sm text-[#6b7280]">{t('لا تفاصيل تنفيذ لهذا الطلب بعد')}</p>
-                            <Button className="mt-4" variant="outline" onClick={() => setEditing(true)}>
-                                <PencilLine />
-                                {t('أضِف التفاصيل')}
-                            </Button>
-                        </div>
-                    )}
-                </Card>
-            )}
+                {/*
+                    القسمُ الثاني: الورقةُ نفسُها بقياس A4.
+
+                    وهي الملفُّ الذي يُطبع لا نسخةٌ منه مرسومةٌ في الشاشة:
+                    نسخةٌ ثانيةٌ تفترق عن أصلها يومًا، فيرى التاجر في اللوحة
+                    غيرَ ما يقرؤه الزبون في يده — وهو أسوأ ما يقع لورقةِ مال.
+
+                    والنسبةُ 210:297 كنسبة الورقة، فما يُرى هنا هو ما يخرج
+                    من الطابعة بلا مفاجأة.
+                */}
+                <div className="min-w-0 space-y-3 xl:sticky xl:top-6 xl:self-start">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/*
+                            و«تحميل» على الرابط نفسه: القالبُ يُخرج الورقة
+                            «inline» كي تُعرض هنا، و`download` تجعل الضغطةَ
+                            تحفظها — بلا مسارٍ ثانٍ يُخرج الشيء نفسه.
+                        */}
+                        <Button variant="outline" size="sm" asChild>
+                            <a href={route('admin.orders.pdf', order.id)} download>
+                                <Download />
+                                {t('تحميل')}
+                            </a>
+                        </Button>
+
+                        {/*
+                            و«إرسال» يُعدّ النصَّ في الخادم ويفتح واتساب التاجر:
+                            رقمُ الطلب وإجماليُّه واسمُ المتجر تُقرأ من هناك لا
+                            من واجهةٍ يفتحها من يشاء. ولا يُرسَل رابطُ الورقة —
+                            هي خلف تسجيل دخول، ورابطٌ يفتح صفحةَ دخولٍ في يد
+                            الزبون أسوأ من ألّا يُرسَل شيء.
+                        */}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={sending.processing}
+                            onClick={() =>
+                                sending.post(route('admin.orders.send', order.id), { preserveScroll: true })
+                            }
+                        >
+                            <Send />
+                            {t('إرسال')}
+                        </Button>
+
+                        {/* و«تعديل» يفتح ورقةَ التفاصيل ويمضي إليها — لا يغيّر
+                            شيئًا خارج نظر من ضغطه */}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                setEditing(true);
+                                sheetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                        >
+                            <PencilLine />
+                            {t('تعديل')}
+                        </Button>
+                    </div>
+
+                    <Card className="overflow-hidden p-0">
+                        {/*
+                            و`lazy`: كلُّ عرضٍ لهذه الصفحة يعني رسمَ ملفِّ PDF
+                            على الخادم. فلا يُطلب إلّا حين تقترب الورقةُ من
+                            الشاشة — ومن فتح الطلب ليقرأ حالتَه وحدها على
+                            الهاتف لا يدفع ثمنَ رسمٍ لا يراه.
+                        */}
+                        <iframe
+                            title={t('معاينة الفاتورة')}
+                            src={route('admin.orders.pdf', order.id)}
+                            loading="lazy"
+                            className="block w-full bg-[#f7f7f5] aspect-[210/297]"
+                        />
+                    </Card>
+                </div>
+            </div>
         </AdminLayout>
     );
 }

@@ -8,6 +8,8 @@ use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\OrderStatus;
+use App\Support\OrderTransition;
+use App\Support\WhatsAppPhone;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -43,6 +45,54 @@ class OrderDetailController extends Controller
             ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()))
             ->where('number', $number)
             ->firstOrFail();
+    }
+
+    /**
+     * إرسالُ الفاتورة إلى الزبون — عبر واتساب التاجر لا عبر مُرسِلٍ ثانٍ.
+     *
+     * والنصُّ يُكتب هنا لا في الشاشة: رقمُ الطلب وإجماليُّه واسمُ المتجر
+     * تُقرأ من الخادم، فلا تُرسَل أرقامٌ صنعتها واجهةٌ يفتحها من يشاء.
+     *
+     * ولا يُرسَل رابطُ الورقة: ملفُّ الفاتورة خلف تسجيل دخول، ورابطٌ يفتح
+     * صفحةَ دخولٍ في يد الزبون أسوأ من ألّا يُرسَل شيء. فالنصُّ يذهب،
+     * والورقةُ تُحمَّل وتُرفَق بيد من يرسل — وهو ما يفعله فعلًا.
+     */
+    public function send(string $number)
+    {
+        $order = $this->find($number);
+
+        $phone = WhatsAppPhone::normalize(
+            $order->customer?->phone ?: $order->recipient_phone
+        );
+
+        if (! $phone) {
+            /*
+             * ورسالةٌ تُرى لا خطأُ نموذجٍ لا يرسمه أحد.
+             *
+             * `withErrors` تكتب في `errors` — ومن لم يرسم الحقلَ في الشاشة
+             * لا يظهر عنده شيء: يضغط التاجر «إرسال» فلا يقع شيءٌ ولا يُقال
+             * لماذا. وهو ما كان يقع في «تذكير بالسداد» حرفًا بحرف.
+             */
+            return back()->with('toast', [
+                'msg' => __('لا رقم واتساب لهذا الطلب — أضِفه في صفحة العميل.'), 'type' => 'danger',
+            ]);
+        }
+
+        $text = __(':shop — فاتورتك رقم :number بمبلغ :amount. شكرًا لك.', [
+            'shop' => Demo::businessName(),
+            'number' => $order->number,
+            'amount' => number_format((float) $order->total, 3),
+        ]);
+
+        Activity::log('updated', 'أعدّ إرسال فاتورة الطلب '.$order->number, [
+            'subject_id' => $order->id, 'subject_type' => 'order',
+        ]);
+
+        return back()->with('toast', [
+            'msg' => __('افتح واتساب وأرسل الفاتورة'),
+            'type' => 'success',
+            'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
+        ]);
     }
 
     /** تعديل بيانات التنفيذ — المستلِم والموعد والمناسبة والبطاقة والتوصيل */
@@ -103,7 +153,7 @@ class OrderDetailController extends Controller
         $from = $order->status;
 
         // بابٌ واحد للنقل تدخل منه هذه الشاشة ولوحة التجهيز — انظر OrderTransition
-        if ($error = \App\Support\OrderTransition::apply($order, $data['status'])) {
+        if ($error = OrderTransition::apply($order, $data['status'])) {
             return back()
                 ->with('toast', ['msg' => $error, 'type' => 'danger'])
                 ->withErrors(['status' => $error]);

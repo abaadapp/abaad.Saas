@@ -440,8 +440,15 @@ class CustomerInvoiceController extends Controller
     {
         $invoice = $this->find($id);
 
+        /*
+         * ورسالتا الردّ تُرسمان: `withErrors` تكتب في `errors`، والشاشةُ لا
+         * ترسم حقلًا اسمه `remind` — فكان الزرُّ يُضغط ولا يقع شيءٌ ولا يُقال
+         * لماذا. بابٌ يُفتح على صمتٍ أسوأ من بابٍ لا يُفتح.
+         */
         if ($invoice->outstanding() <= 0) {
-            return back()->withErrors(['remind' => __('لا مبلغ مستحقًّا على هذه الفاتورة.')]);
+            return back()->with('toast', [
+                'msg' => __('لا مبلغ مستحقًّا على هذه الفاتورة.'), 'type' => 'danger',
+            ]);
         }
 
         $phone = WhatsAppPhone::normalize(
@@ -449,7 +456,9 @@ class CustomerInvoiceController extends Controller
         );
 
         if (! $phone) {
-            return back()->withErrors(['remind' => __('لا رقم واتساب لهذا العميل — أضِفه في صفحته.')]);
+            return back()->with('toast', [
+                'msg' => __('لا رقم واتساب لهذا العميل — أضِفه في صفحته.'), 'type' => 'danger',
+            ]);
         }
 
         $text = __(':shop — تذكير بفاتورة :number. المبلغ المستحق :amount:due', [

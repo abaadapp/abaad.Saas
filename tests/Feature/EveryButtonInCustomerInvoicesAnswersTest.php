@@ -291,7 +291,13 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         $this->assertStringContainsString($invoice->number, urldecode(session('toast')['link']['url']));
     }
 
-    /** ولا تذكيرَ لفاتورةٍ لا مستحقَّ عليها — الزرُّ نفسُه لا يُرسم */
+    /**
+     * ولا تذكيرَ لفاتورةٍ لا مستحقَّ عليها — ويُقال ذلك، لا يُصمَت عنه.
+     *
+     * والردُّ رسالةٌ تُرسم لا خطأُ نموذج: الشاشةُ لا ترسم حقلًا اسمه
+     * `remind`، فكان `withErrors` يُكتب في مكانٍ لا يقرؤه أحد — تُضغط
+     * الضغطةُ فلا يقع شيءٌ ولا يُقال لماذا.
+     */
     public function test_a_settled_invoice_refuses_the_reminder(): void
     {
         $invoice = $this->invoice();
@@ -304,7 +310,10 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
 
         $this->actingAs($this->owner)
             ->post('/admin/customer-invoices/'.$invoice->id.'/remind')
-            ->assertSessionHasErrors('remind');
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('danger', session('toast')['type']);
+        $this->assertArrayNotHasKey('link', session('toast'));
     }
 
     /* ------------------------ والدفترُ يوافق ------------------------ */

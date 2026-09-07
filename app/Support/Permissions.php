@@ -343,6 +343,8 @@ class Permissions
         'goals' => 'dashboard',
         'alerts' => 'settings',
         'backup' => 'settings',
+        // تهيئةُ المتجر أوّلَ مرّة تكتب بيانات النشاط — فتتبع بابَها
+        'setup' => 'settings',
         'activity' => 'settings',
         // أجهزة نقطة البيع إعدادٌ إداريّ: من يملك الإعدادات يفعّل ويُلغي
         'devices' => 'settings',

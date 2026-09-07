@@ -98,6 +98,8 @@ export interface SharedProps {
         currencies: Currency[];
         /** اشتراك المتجر — null لمن لا مدّة محدَّدة له */
         subscription: { endsAt: string; daysLeft: number; graceLeft: number | null } | null;
+        /** تهيئة المتجر — null حين أقرّ التاجر هويّته، فلا يبقى شريط بعد إتمامه */
+        setup: { done: number; total: number; missing: string[] } | null;
     } | null;
     /** الموظف الواقف على الصندوق — غير الحساب المسجَّل دخوله */
     posCashier: { id: number; name: string } | null;

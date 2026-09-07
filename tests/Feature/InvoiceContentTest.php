@@ -32,8 +32,10 @@ class InvoiceContentTest extends TestCase
     {
         parent::setUp();
 
+        // ومتجرٌ يُصدر فاتورةً ضريبيّةً له اسمٌ اختاره صاحبُه — انظر
+        // `AShopSaysItsOwnNameTest`
         $this->business = Business::create([
-            'name' => 'متجري', 'type' => 'عام', 'status' => 'نشط',
+            'name' => 'زهور مسقط', 'type' => 'عام', 'status' => 'نشط',
         ]);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الفرع الرئيسي']);
         Currency::create([

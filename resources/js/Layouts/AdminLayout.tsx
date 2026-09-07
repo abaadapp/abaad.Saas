@@ -5,6 +5,7 @@ import { Toaster, toast } from 'sonner';
 import ImpersonationBar from '@/Components/ImpersonationBar';
 import Sidebar from '@/Components/Sidebar';
 import SubscriptionBanner from '@/Components/SubscriptionBanner';
+import SetupBanner from '@/Components/SetupBanner';
 import Topbar from '@/Components/Topbar';
 import { useOnScreenKeyboard } from '@/lib/keyboard';
 import type { NavGroup } from '@/lib/nav';
@@ -112,6 +113,7 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
                     className="mx-auto w-full max-w-[1600px] p-4 lg:p-6"
                 >
                     <SubscriptionBanner />
+                    <SetupBanner />
                     {children}
                 </motion.main>
             </div>

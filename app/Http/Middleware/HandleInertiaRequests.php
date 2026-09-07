@@ -8,6 +8,7 @@ use App\Support\PlanFeatures;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\Reports;
+use App\Support\ShopIdentity;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -121,6 +122,19 @@ class HandleInertiaRequests extends Middleware
                         'graceLeft' => Tenancy::graceLeft($user->business),
                     ]
                     : null,
+
+                /*
+                 * تهيئةُ المتجر: ما لم يُكتب بعد من هويّته.
+                 *
+                 * `null` حين أُقرّت — فلا يبقى شريطٌ يُرى كلَّ يوم بعد إتمامه.
+                 * وهو في العقد المشترك لا في اللوحة وحدها: من يهبط على
+                 * «المنتجات» أوّلًا يجب أن يراه هناك.
+                 */
+                /*
+                 * ولا يُرسَل إلّا لمن يستطيع إتمامه: الكاشيرُ لا يملك بيانات
+                 * النشاط، وشريطٌ يطلب منه ما لا باب له إليه إزعاجٌ لا تنبيه.
+                 */
+                'setup' => $user->allows('settings') ? ShopIdentity::context($user->business) : null,
             ] : null,
 
             // الموظف الواقف على الصندوق — تعرضه ترويسة نقطة البيع، وهو غير

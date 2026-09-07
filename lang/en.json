@@ -4312,5 +4312,19 @@
     "امضِ على أيّ حال": "Go ahead anyway",
     "فُعّل «:name» — عاد يظهر في نقطة البيع.": "“:name” is active again — it shows at the register.",
     "عُطّل «:name» — اختفى من نقطة البيع، ورصيدُه وتاريخه كما هما.": "“:name” is deactivated — hidden from the register, with its stock and history untouched.",
-    "تعطيل المنتج": "Deactivate product"
+    "تعطيل المنتج": "Deactivate product",
+    "متجرك لم يُسمَّ بعد — واسمُه يُطبع على كلّ فاتورة.": "Your shop has no name yet — and its name is printed on every invoice.",
+    "أكملها الآن": "Complete it now",
+    "تهيئة المتجر": "Shop setup",
+    "اسمُ متجرك يُطبع في رأس كلّ فاتورة وإيصال وتقرير — اكتبه مرّةً هنا.": "Your shop name is printed at the head of every invoice, receipt and report — write it once here.",
+    "— مطلوب": "— required",
+    "مثال: زهور مسقط": "e.g. Muscat Flowers",
+    "هذا ما يكتبه النظام حين لا اسم للمتجر — اكتب اسمك التجاري كما تريده على الفاتورة.": "This is what the system writes when a shop has no name — enter your trade name as you want it on the invoice.",
+    "متجري غير مسجّل في ضريبة القيمة المضافة": "My shop is not registered for VAT",
+    "بعد الحفظ، أقرّ هويّة متجرك — عندها تحمل أوراقُك اسمَه ويختفي التنبيه.": "After saving, confirm your shop identity — your documents will then carry its name and the notice disappears.",
+    "الهويّة مُقرَّة": "Identity confirmed",
+    "أقرّ هويّة المتجر": "Confirm shop identity",
+    "اكتب اسم متجرك كما تريده على الفاتورة — «:name» اسمٌ يكتبه النظام حين لا اسم.": "Enter your shop name as you want it on the invoice — “:name” is what the system writes when there is no name.",
+    "تمّت التهيئة. أوراقُ متجرك تحمل اسمَ «:name».": "Setup complete. Your documents now carry the name “:name”.",
+    "لم يُسمَّ متجرك بعد — والفاتورة الضريبية تحمل اسمه. أتمّ تهيئة المتجر من «الإعدادات ‹ تهيئة المتجر» ثمّ أصدِرها.": "Your shop has no name yet — and the tax invoice carries it. Complete shop setup from “Settings ‹ Shop setup”, then issue it."
 }

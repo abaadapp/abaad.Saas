@@ -9,7 +9,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Business extends Model
 {
     protected $guarded = [];
-    protected $casts = ['starts_at' => 'date', 'ends_at' => 'date', 'is_demo' => 'boolean'];
+    protected $casts = [
+        'starts_at' => 'date',
+        'ends_at' => 'date',
+        'is_demo' => 'boolean',
+        // ختمُ التاجر على هويّة متجره — انظر `Support\ShopIdentity`
+        'identity_confirmed_at' => 'datetime',
+    ];
 
     /**
      * المتجر تاجرٌ حقيقيّ ما لم يُوسَم تجريبيًّا — والقيمة هنا لا في القاعدة
@@ -30,6 +36,8 @@ class Business extends Model
     public const BACKUP_FIELDS = [
         'name', 'type', 'owner_name', 'phone', 'email',
         'country', 'city', 'address', 'logo',
+        // والإقرارُ بالهويّة معها: استعادةُ متجرٍ مكتملٍ لا تُعيد سؤاله عن اسمه
+        'identity_confirmed_at',
     ];
 
     /** متاجر التجّار وحدها — ما تُبنى عليه إحصاءات المنصّة وتقاريرها */

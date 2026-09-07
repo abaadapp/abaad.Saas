@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Business as BusinessModel;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Order;
@@ -17,6 +18,7 @@ use App\Support\PosTerminal;
 use App\Support\PublicDocument;
 use App\Support\ReceiptTemplate;
 use App\Support\Reports;
+use App\Support\ShopIdentity;
 
 class PdfController extends Controller
 {
@@ -286,10 +288,25 @@ class PdfController extends Controller
         return $this->pdf($html, 'invoices-report-'.now()->format('Y-m-d'));
     }
 
+    /**
+     * الفاتورةُ الضريبيّة — ولا تخرج باسمٍ يكتبه النظام.
+     *
+     * `Paper::brand()` تطبع اسمَ المتجر في رأسها، و`EInvoice` تضعه في رمز
+     * الاستجابة. ومتجرٌ لم يُسمَّ بعدُ يخرج ورقُه باسمٍ لم يختره صاحبُه —
+     * «متجري» أو «نظام Abad POS» — والزبونُ الذي يطلبها لمحاسبه يعيدها،
+     * والرقمُ الضريبيّ عليها منسوبٌ إلى اسمٍ لا وجود له.
+     *
+     * والمنعُ هنا لا في الشاشة: هذا البابُ يُفتح برابطٍ مباشر، ولا زرَّ
+     * يقوده اليوم أصلًا.
+     */
     public function taxInvoice($number)
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
         $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
+
+        if (! ShopIdentity::confirmed(BusinessModel::find($bid))) {
+            abort(409, __('لم يُسمَّ متجرك بعد — والفاتورة الضريبية تحمل اسمه. أتمّ تهيئة المتجر من «الإعدادات ‹ تهيئة المتجر» ثمّ أصدِرها.'));
+        }
 
         $vat = Demo::vatSettings();
         $business = Demo::business($bid);

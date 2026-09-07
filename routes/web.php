@@ -44,6 +44,7 @@ use App\Http\Controllers\Admin\ReportDownloadController;
 use App\Http\Controllers\Admin\ReportExportController;
 use App\Http\Controllers\Admin\ReportFeedController;
 use App\Http\Controllers\Admin\ReportPageController;
+use App\Http\Controllers\Admin\SetupController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\SupplierExportController;
 use App\Http\Controllers\Admin\TemplateController;
@@ -323,6 +324,16 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 /* ------------------------------- Admin ----------------------------- */
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business', 'panel', 'ability', 'plan'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'admin'])->name('dashboard');
+
+    /*
+     * تهيئةُ المتجر أوّلَ مرّة — اسمٌ يُطبع على الورق قبل أن يُطبع.
+     *
+     * ومن لم يُقرَّ هويّتُه تُحوَّل لوحتُه إليها، ويصله إليها الشريطُ في أعلى
+     * كلّ شاشة. وبعد الإقرار تُعدَّل البيانات من «الإعدادات ‹ بيانات النشاط» —
+     * فهذه شاشةُ أوّل مرّة لا شاشةٌ ثانيةٌ تكتب ما تكتبه الإعدادات.
+     */
+    Route::get('/setup', [SetupController::class, 'index'])->name('setup.index');
+    Route::post('/setup/confirm', [SetupController::class, 'confirm'])->name('setup.confirm');
     Route::get('/dashboard/stats', [DashboardController::class, 'adminStats'])->name('dashboard.stats');
 
     /*

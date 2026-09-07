@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\GoodsReceiptNote;
 use App\Models\SupplierInvoice;
 use App\Support\Demo;
+use App\Support\Permissions;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -23,6 +24,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  * والاسمُ المخزَّن عشوائيّ والمعروضُ هو ما سمّاه صاحبه: اسمٌ يُبنى من
  * الأصل يُخمَّن، واسمٌ عشوائيٌّ بلا حفظِ الأصل يُنزَّل إلى المحاسب بلا معنى.
+ *
+ * والبابُ يسأل سؤالين لا سؤالًا: أهذا مستندُ متجرك؟ وهل مُنحتَ فتحَ
+ * المرفقات؟ والسؤالُ الأوّل وحده كان يجعل كلَّ من يفتح شاشةَ السندات يقرأ
+ * أوراق المورّد كما وصلت — وفيها أسعارُ الشراء صريحةً بخطّ صاحبها.
  */
 class FinancialAttachmentController extends Controller
 {
@@ -38,6 +43,8 @@ class FinancialAttachmentController extends Controller
      */
     public function receipt(int|string $id): StreamedResponse
     {
+        $this->mustBeAllowed();
+
         $note = GoodsReceiptNote::where('business_id', $this->bid())->findOrFail($id);
 
         return $this->stream($note->attachment, $note->attachment_name, $note->number);
@@ -46,9 +53,17 @@ class FinancialAttachmentController extends Controller
     /** فاتورةُ المورّد كما وصلت */
     public function supplierInvoice(int|string $id): StreamedResponse
     {
+        $this->mustBeAllowed();
+
         $invoice = SupplierInvoice::where('business_id', $this->bid())->findOrFail($id);
 
         return $this->stream($invoice->attachment, $invoice->attachment_name, $invoice->supplier_ref);
+    }
+
+    /** فتحُ المرفقات فعلٌ يُمنح باسمه — لا قسمٌ يُفتح */
+    private function mustBeAllowed(): void
+    {
+        abort_if(! auth()->user()?->may(Permissions::ATTACHMENT_VIEW), 403);
     }
 
     /**

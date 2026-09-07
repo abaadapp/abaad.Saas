@@ -67,6 +67,9 @@ interface Props {
     sorts: string[];
     pendingCount: number;
     canApprove: boolean;
+    /** والرفضُ فعلٌ غيرُ الاعتماد: نصفُ المراجعة الآمن يُمنح وحدَه */
+    canReject: boolean;
+    canSeeAttachment: boolean;
 }
 
 /**
@@ -77,7 +80,7 @@ interface Props {
  * إشعارًا بلا استلامٍ يجعل الورقة تقول ما لم يقله المخزون.
  */
 export default function InventoryReceipts() {
-    const { notes, pagination, filters, sorts, pendingCount, canApprove, context } =
+    const { notes, pagination, filters, sorts, pendingCount, canApprove, canReject, canSeeAttachment, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -172,15 +175,15 @@ export default function InventoryReceipts() {
                         وزرّا القرار لمن يملكه وحده، وعلى المعلَّق وحده:
                         زرٌّ يُرسم لمن يُردّ عند ضغطه أسوأ من غيابه.
                     */}
-                    {canApprove && n.status === PENDING && (
-                        <>
-                            <Button variant="ghost" size="icon-sm" aria-label={t('اعتماد الاستلام')} onClick={() => approve(n)}>
-                                <Check className="text-[#047857]" />
-                            </Button>
-                            <Button variant="ghost" size="icon-sm" aria-label={t('رفض')} onClick={() => setRejecting(n)}>
-                                <X className="text-[#b91c1c]" />
-                            </Button>
-                        </>
+                    {n.status === PENDING && canApprove && (
+                        <Button variant="ghost" size="icon-sm" aria-label={t('اعتماد الاستلام')} onClick={() => approve(n)}>
+                            <Check className="text-[#047857]" />
+                        </Button>
+                    )}
+                    {n.status === PENDING && canReject && (
+                        <Button variant="ghost" size="icon-sm" aria-label={t('رفض')} onClick={() => setRejecting(n)}>
+                            <X className="text-[#b91c1c]" />
+                        </Button>
                     )}
                 </div>
             ),
@@ -387,7 +390,7 @@ export default function InventoryReceipts() {
                             )}
                             {/* وورقةُ المورّد تُفتح من هنا: من يعتمد يريد أن
                                 يقابل ما في الشاشة بما في يده */}
-                            {viewing.attachment && (
+                            {viewing.attachment && canSeeAttachment && (
                                 <Button variant="outline" asChild>
                                     <a
                                         href={route('admin.inventory.receipts.attachment', viewing.id)}
@@ -410,17 +413,17 @@ export default function InventoryReceipts() {
                                 </a>
                             </Button>
                             {/* والقرارُ من حيث تُقرأ الورقة: من فتحها ليراجعها هو من يقرّر */}
-                            {canApprove && viewing.status === PENDING && (
-                                <>
-                                    <Button variant="outline" onClick={() => setRejecting(viewing)}>
-                                        <X />
-                                        {t('رفض')}
-                                    </Button>
-                                    <Button onClick={() => approve(viewing)}>
-                                        <Check />
-                                        {t('اعتماد الاستلام')}
-                                    </Button>
-                                </>
+                            {viewing.status === PENDING && canReject && (
+                                <Button variant="outline" onClick={() => setRejecting(viewing)}>
+                                    <X />
+                                    {t('رفض')}
+                                </Button>
+                            )}
+                            {viewing.status === PENDING && canApprove && (
+                                <Button onClick={() => approve(viewing)}>
+                                    <Check />
+                                    {t('اعتماد الاستلام')}
+                                </Button>
                             )}
                         </div>
                     )}

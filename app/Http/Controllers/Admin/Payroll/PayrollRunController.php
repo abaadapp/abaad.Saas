@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Ledger;
+use App\Support\Permissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,17 @@ use RuntimeException;
  *
  * والرجوع من حالةٍ إلى ما قبلها ممنوع: الاعتماد يترك قيدًا، والتراجع عن قيدٍ
  * يكون بقيدٍ عكسيّ لا بمحوه.
+ *
+ * ═══ ومن يفتح هذه الشاشة ═══
+ *
+ * كانت تحت قسم «الرواتب والموظفين» وحدَه، فمن مُنح القسمَ ليضيف موظّفًا أو
+ * يصحّح مسمّاه كان يقرأ راتبَ كلّ من في المتجر ويعتمد المسيرة ويصرفها.
+ * وصارت ثلاثةَ أفعالٍ تُمنح بأسمائها: قراءةٌ، واعتمادٌ يُنشئ الالتزام، وصرفٌ
+ * يُخرج المال (انظر `PayrollPaymentController`).
+ *
+ * والمسودّةُ تُكتب وتُعدَّل وتُحذف بصلاحية القراءة نفسها: من يقرأ الرواتب
+ * يجرّبها. وحارسُ الطلب يوافق حارسَ الشاشة، فلا بابٌ مغلقٌ في الشاشة
+ * مفتوحٌ في الطلب.
  */
 class PayrollRunController extends Controller
 {
@@ -35,8 +47,16 @@ class PayrollRunController extends Controller
         return auth()->user()->business_id ?? Demo::bid();
     }
 
+    /** قراءةُ الرواتب فعلٌ يُمنح باسمه — والمسودّةُ تُكتب بمن يقرأ */
+    private function mustRead(): void
+    {
+        abort_if(! auth()->user()?->may(Permissions::PAYROLL_VIEW), 403);
+    }
+
     public function index(Request $request): Response
     {
+        $this->mustRead();
+
         $bid = $this->bid();
         Ledger::ensureSystemAccounts($bid);
 
@@ -54,6 +74,9 @@ class PayrollRunController extends Controller
             'openPeriods' => $this->openPeriods($bid, $runs->pluck('period')->map->format('Y-m')->all()),
             'employeeCount' => $this->payableEmployees($bid)->count(),
             'today' => now()->format('Y-m-d'),
+            // ومن يرى الزرّ هو من يملك الفعل
+            'canApprove' => (bool) auth()->user()?->may(Permissions::PAYROLL_APPROVE),
+            'canPay' => (bool) auth()->user()?->may(Permissions::PAYROLL_PAY),
         ]);
     }
 
@@ -65,6 +88,8 @@ class PayrollRunController extends Controller
      */
     public function store(Request $request)
     {
+        $this->mustRead();
+
         $bid = $this->bid();
 
         $data = $request->validate([
@@ -118,6 +143,8 @@ class PayrollRunController extends Controller
     /** تعديل سطر — ما دامت المسيرة مسودة */
     public function updateLine(Request $request, $id)
     {
+        $this->mustRead();
+
         $bid = $this->bid();
         $line = PayrollLine::whereHas('run', fn ($q) => $q->where('business_id', $bid))->findOrFail($id);
 
@@ -168,6 +195,8 @@ class PayrollRunController extends Controller
     /** حذف سطر من مسودة — موظّفٌ لا يستحقّ راتب هذا الشهر */
     public function destroyLine($id)
     {
+        $this->mustRead();
+
         $bid = $this->bid();
         $line = PayrollLine::whereHas('run', fn ($q) => $q->where('business_id', $bid))->findOrFail($id);
 
@@ -190,6 +219,10 @@ class PayrollRunController extends Controller
      */
     public function approve($id)
     {
+        if (! auth()->user()?->may(Permissions::PAYROLL_APPROVE)) {
+            abort(403);
+        }
+
         $bid = $this->bid();
         $run = PayrollRun::where('business_id', $bid)->with('lines')->findOrFail($id);
 
@@ -283,6 +316,8 @@ class PayrollRunController extends Controller
     /** حذف مسيرة — ما دامت مسودة لم تدخل الدفتر */
     public function destroy($id)
     {
+        $this->mustRead();
+
         $bid = $this->bid();
         $run = PayrollRun::where('business_id', $bid)->findOrFail($id);
 

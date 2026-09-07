@@ -66,6 +66,8 @@ export interface SharedProps {
     auth: {
         user: User;
         abilities: string[];
+        /** الأفعالُ التي يملكها — غيرُ الأقسام، انظر Permissions::ACTIONS */
+        mayActions: string[];
         /**
          * ما تفتحه باقة المتجر — سؤالٌ آخر غير `abilities`.
          *

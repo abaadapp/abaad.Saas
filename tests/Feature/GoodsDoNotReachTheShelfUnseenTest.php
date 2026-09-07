@@ -48,7 +48,8 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $this->clerk = User::create([
             'business_id' => $this->business->id, 'name' => 'أمين المخزن', 'email' => 'k@abaad.om',
             'password' => bcrypt('password'), 'role' => 'employee', 'status' => 'نشط',
-            'permissions' => ['purchases', 'inventory'],
+            // ما كان قسمُه يبيحه أمسِ — كما تمنحه هجرةُ الترقية بحرفه
+            'permissions' => Permissions::withLegacyActions(['purchases', 'inventory']),
         ]);
         $this->product = Product::create([
             'business_id' => $this->business->id, 'name' => 'باقة', 'price' => 10,
@@ -241,7 +242,9 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
     /** ومن مُنح الفعل باسمه يعتمد وإن لم يكن مالكًا */
     public function test_a_clerk_granted_the_action_may_approve(): void
     {
-        $this->clerk->update(['permissions' => ['purchases', 'inventory', Permissions::RECEIPT_APPROVE]]);
+        $this->clerk->update([
+            'permissions' => Permissions::withLegacyActions(['purchases', 'inventory', Permissions::RECEIPT_APPROVE]),
+        ]);
         $po = $this->order();
         $this->actingAs($this->clerk)->post(route('admin.purchases.receive', $po->id));
 

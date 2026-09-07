@@ -42,6 +42,15 @@ class GoodsReceiptNoteController extends Controller
 
     public function index(Request $request): Response
     {
+        /*
+         * والقراءةُ نفسُها فعلٌ يُمنح: هذه الأوراق تحمل تكلفةَ كلّ صنفٍ
+         * اشتراه المتجر، وقسمُ «المخزون» يُمنح لمن يعدّ الرفوف لا لمن يقرأ
+         * بكم اشتُريت.
+         */
+        if (! auth()->user()?->may(Permissions::RECEIPT_VIEW)) {
+            abort(403);
+        }
+
         $bid = $this->bid();
 
         $q = GoodsReceiptNote::where('business_id', $bid)
@@ -109,6 +118,8 @@ class GoodsReceiptNoteController extends Controller
                 ->where('status', GoodsReceipts::PENDING)->count(),
             // من يرى الزرّ هو من يملك الفعل — وبابٌ يُعرض ولا يُفتح أسوأ من غيابه
             'canApprove' => (bool) auth()->user()?->may(Permissions::RECEIPT_APPROVE),
+            'canReject' => (bool) auth()->user()?->may(Permissions::RECEIPT_REJECT),
+            'canSeeAttachment' => (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW),
         ]);
     }
 }

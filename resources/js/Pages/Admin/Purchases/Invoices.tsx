@@ -64,11 +64,17 @@ interface Props {
     pendingCount: number;
     canApprove: boolean;
     canOverride: boolean;
+    /** والرفضُ فعلٌ غيرُ الاعتماد، والسدادُ ثالثٌ غيرُهما */
+    canReject: boolean;
+    canCreate: boolean;
+    canPay: boolean;
+    canSeeAttachment: boolean;
 }
 
 export default function SupplierInvoices() {
     const { invoices, pagination, filters, sorts, suppliers, orders, summary, today,
-        pendingCount, canApprove, canOverride, context } = usePage<PageProps<Props>>().props;
+        pendingCount, canApprove, canOverride, canReject, canCreate, canPay,
+        canSeeAttachment, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
@@ -204,7 +210,7 @@ export default function SupplierInvoices() {
             cell: (i) => (
                 <div className="flex items-center justify-end gap-1">
                     {/* والقرارُ قبل السداد: لا يُسدَّد ما لم يُعتمد */}
-                    {canApprove && i.approval_status === PENDING && (
+                    {(canApprove || canReject) && i.approval_status === PENDING && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -218,7 +224,7 @@ export default function SupplierInvoices() {
                             {t('مراجعة')}
                         </Button>
                     )}
-                    {i.outstanding > 0 && i.approval_status === APPROVED && (
+                    {canPay && i.outstanding > 0 && i.approval_status === APPROVED && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -232,7 +238,7 @@ export default function SupplierInvoices() {
                             {t('سداد')}
                         </Button>
                     )}
-                    {i.paid === 0 && (
+                    {canCreate && i.paid === 0 && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -272,10 +278,12 @@ export default function SupplierInvoices() {
                 title="سندات الموردين"
                 subtitle={t('فواتير الموردين كما وصلت — وما بقي عليها')}
                 actions={
-                    <Button onClick={() => setAdding(true)} disabled={suppliers.length === 0}>
-                        <Plus />
-                        {t('سند جديد')}
-                    </Button>
+                    canCreate ? (
+                        <Button onClick={() => setAdding(true)} disabled={suppliers.length === 0}>
+                            <Plus />
+                            {t('سند جديد')}
+                        </Button>
+                    ) : null
                 }
             />
 
@@ -633,17 +641,19 @@ export default function SupplierInvoices() {
                                 )
                             )}
 
-                            <Field label="سبب الرفض" hint="يُكتب إن رفضتَ السند" error={decide.errors.reason}>
-                                <Input
-                                    value={decide.data.reason}
-                                    onChange={(e) => decide.setData('reason', e.target.value)}
-                                />
-                            </Field>
+                            {canReject && (
+                                <Field label="سبب الرفض" hint="يُكتب إن رفضتَ السند" error={decide.errors.reason}>
+                                    <Input
+                                        value={decide.data.reason}
+                                        onChange={(e) => decide.setData('reason', e.target.value)}
+                                    />
+                                </Field>
+                            )}
 
                             <div className="flex flex-wrap justify-end gap-2">
                                 {/* وورقةُ المورّد تُفتح هنا: من يعتمد يقابل
                                     الرقمَ بما في يده لا بما نُقل عنه */}
-                                {deciding.attachment && (
+                                {deciding.attachment && canSeeAttachment && (
                                     <Button variant="outline" className="me-auto" asChild>
                                         <a
                                             href={route('admin.purchases.invoices.attachment', deciding.id)}
@@ -655,20 +665,23 @@ export default function SupplierInvoices() {
                                         </a>
                                     </Button>
                                 )}
-                                <Button
-                                    variant="outline"
-                                    disabled={decide.processing}
-                                    onClick={() => {
-                                        decide.transform((d) => ({ reason: d.reason }));
-                                        decide.post(route('admin.purchases.invoices.reject', deciding.id), {
-                                            preserveScroll: true,
-                                            onSuccess: () => setDeciding(null),
-                                        });
-                                    }}
-                                >
-                                    <X />
-                                    {t('رفض')}
-                                </Button>
+                                {canReject && (
+                                    <Button
+                                        variant="outline"
+                                        disabled={decide.processing}
+                                        onClick={() => {
+                                            decide.transform((d) => ({ reason: d.reason }));
+                                            decide.post(route('admin.purchases.invoices.reject', deciding.id), {
+                                                preserveScroll: true,
+                                                onSuccess: () => setDeciding(null),
+                                            });
+                                        }}
+                                    >
+                                        <X />
+                                        {t('رفض')}
+                                    </Button>
+                                )}
+                                {canApprove && (
                                 <Button
                                     disabled={decide.processing || (deciding.match_status === BLOCKED && !canOverride)}
                                     onClick={() => {
@@ -682,6 +695,7 @@ export default function SupplierInvoices() {
                                     <Check />
                                     {t('اعتماد السند')}
                                 </Button>
+                                )}
                             </div>
                         </div>
                     )}

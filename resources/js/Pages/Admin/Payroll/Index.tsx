@@ -67,6 +67,10 @@ interface Props {
     openPeriods: string[];
     employeeCount: number;
     today: string;
+    /** والاعتمادُ فعلٌ يُمنح باسمه: هو الذي يُنشئ التزام المتجر */
+    canApprove: boolean;
+    /** وهل يفتح شاشةَ الصرف أصلًا؟ — بابٌ يُعرض ولا يُفتح أسوأ من غيابه */
+    canPay: boolean;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -76,7 +80,8 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export default function PayrollIndex() {
-    const { runs, current, openPeriods, employeeCount, context } = usePage<PageProps<Props>>().props;
+    const { runs, current, openPeriods, employeeCount, canApprove, canPay, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
@@ -225,23 +230,25 @@ export default function PayrollIndex() {
                                                     <Trash2 />
                                                     {t('حذف')}
                                                 </Button>
-                                                <Button
-                                                    size="sm"
-                                                    onClick={async () => {
-                                                        if (! await ask({ message: 'اعتماد المسيرة؟ بعده لا تُعدَّل سطورها.', action: 'اعتماد' })) return;
-                                                        router.post(
-                                                            route('admin.payroll.approve', current.id),
-                                                            {},
-                                                            { preserveScroll: true },
-                                                        );
-                                                    }}
-                                                >
-                                                    <BadgeCheck />
-                                                    {t('اعتماد')}
-                                                </Button>
+                                                {canApprove && (
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={async () => {
+                                                            if (! await ask({ message: 'اعتماد المسيرة؟ بعده لا تُعدَّل سطورها.', action: 'اعتماد' })) return;
+                                                            router.post(
+                                                                route('admin.payroll.approve', current.id),
+                                                                {},
+                                                                { preserveScroll: true },
+                                                            );
+                                                        }}
+                                                    >
+                                                        <BadgeCheck />
+                                                        {t('اعتماد')}
+                                                    </Button>
+                                                )}
                                             </>
                                         )}
-                                        {!current.editable && (
+                                        {!current.editable && canPay && (
                                             <Button variant="outline" size="sm" asChild>
                                                 <SmartLink
                                                     routeName="admin.payroll.payments"

@@ -144,6 +144,10 @@ class PurchaseOrderController extends Controller
      */
     public function receive(Request $request, $id)
     {
+        if (! auth()->user()?->may(Permissions::RECEIPT_CREATE)) {
+            abort(403);
+        }
+
         $bid = $this->bid();
         $po = PurchaseOrder::where('business_id', $bid)->with('items')->findOrFail($id);
 
@@ -231,10 +235,15 @@ class PurchaseOrderController extends Controller
         ]);
     }
 
-    /** رفضُ الاستلام — بسببٍ مكتوب، ولا يتحرّك به شيء */
+    /**
+     * رفضُ الاستلام — بسببٍ مكتوب، ولا يتحرّك به شيء.
+     *
+     * وصلاحيتُه غيرُ صلاحية الاعتماد: الرفضُ لا يُدخل بضاعةً ولا يكتب قيدًا،
+     * فمن يُوثَق به ليقول «هذه ناقصة» لا يلزم أن يُوثَق به ليُدخلها الرفّ.
+     */
     public function rejectReceipt(Request $request, $id)
     {
-        if (! auth()->user()?->may(Permissions::RECEIPT_APPROVE)) {
+        if (! auth()->user()?->may(Permissions::RECEIPT_REJECT)) {
             abort(403);
         }
 

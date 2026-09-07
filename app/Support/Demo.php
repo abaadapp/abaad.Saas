@@ -3014,8 +3014,11 @@ class Demo
          * يقول «ينتظر» عن شيءٍ فُرغ منه أمس.
          *
          * ولمن يملك الاعتماد وحده: من لا يقدر على الفعل لا يُنبَّه به.
+         *
+         * والقراءةُ معه: الرابطُ يقود إلى شاشة الإشعارات، وهي تُحرَس بفعلها.
+         * فمن مُنح الاعتماد ولم يُمنح القراءة كان الجرسُ يقوده إلى ٤٠٣.
          */
-        if ($u && $u->may(Permissions::RECEIPT_APPROVE)) {
+        if ($u && $u->may(Permissions::RECEIPT_APPROVE) && $u->may(Permissions::RECEIPT_VIEW)) {
             $waiting = \App\Models\GoodsReceiptNote::where('business_id', $bid)
                 ->where('status', GoodsReceipts::PENDING)
                 ->with('supplier')->orderBy('id')->limit($limit)->get();

@@ -53,10 +53,12 @@ interface Props {
     /** ما ينتظر الصرف في المسيرات المعتمدة كلّها */
     due: number;
     today: string;
+    /** والصرفُ فعلٌ غيرُ القراءة: هذه الشاشةُ تُقرأ ولا يُخرج منها مالٌ بلا منح */
+    canPay: boolean;
 }
 
 export default function PayrollPayments() {
-    const { runs, current, remaining, due, today, context } = usePage<PageProps<Props>>().props;
+    const { runs, current, remaining, due, today, canPay, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -185,23 +187,27 @@ export default function PayrollPayments() {
                                             {t('المختار')}: {number(selected.length)} · {m(total)}
                                         </span>
                                     )}
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={selected.length === 0}
-                                        onClick={() => openPay(picked)}
-                                    >
-                                        <Wallet />
-                                        {t('صرف المختار')}
-                                    </Button>
-                                    <Button
-                                        size="sm"
-                                        disabled={unpaid.length === 0}
-                                        onClick={() => openPay(unpaid.map((l) => l.id))}
-                                    >
-                                        <Banknote />
-                                        {t('صرف الباقي')}
-                                    </Button>
+                                    {canPay && (
+                                        <>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={selected.length === 0}
+                                                onClick={() => openPay(picked)}
+                                            >
+                                                <Wallet />
+                                                {t('صرف المختار')}
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                disabled={unpaid.length === 0}
+                                                onClick={() => openPay(unpaid.map((l) => l.id))}
+                                            >
+                                                <Banknote />
+                                                {t('صرف الباقي')}
+                                            </Button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 

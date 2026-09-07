@@ -51,7 +51,8 @@ class TheSupplierDebtWaitsForASignatureTest extends TestCase
         $this->clerk = User::create([
             'business_id' => $this->business->id, 'name' => 'المحاسب', 'email' => 'k@abaad.om',
             'password' => bcrypt('password'), 'role' => 'employee', 'status' => 'نشط',
-            'permissions' => ['purchases', 'finance'],
+            // ما كان قسمُه يبيحه أمسِ — كما تمنحه هجرةُ الترقية بحرفه
+            'permissions' => Permissions::withLegacyActions(['purchases', 'finance']),
         ]);
         $this->supplier = Supplier::create(['business_id' => $this->business->id, 'name' => 'ورد الخليج']);
         $this->product = Product::create([
@@ -426,7 +427,9 @@ class TheSupplierDebtWaitsForASignatureTest extends TestCase
     /** ومن مُنح الاعتماد باسمه يعتمد */
     public function test_a_clerk_granted_the_action_may_approve(): void
     {
-        $this->clerk->update(['permissions' => ['purchases', 'finance', Permissions::INVOICE_APPROVE]]);
+        $this->clerk->update([
+            'permissions' => Permissions::withLegacyActions(['purchases', 'finance', Permissions::INVOICE_APPROVE]),
+        ]);
 
         $this->actingAs($this->clerk)->post(route('admin.purchases.invoices.store'), $this->payload());
         $invoice = SupplierInvoice::firstOrFail();

@@ -18,6 +18,14 @@ export interface SectionTab {
      * الشيء نفسه: هذا يخفيه وذاك يعرضه.
      */
     section?: string;
+    /**
+     * فعلُ الصلاحية إن كانت الشاشة يحرسها فعلٌ لا قسم.
+     *
+     * القسمُ لا يكفي لثلاثِ شاشات: مسيرةُ الرواتب وصرفُها تحت «الموظفين»،
+     * وإشعارُ الاستلام تحت «المخزون»، وسنداتُ الموردين تحت «المشتريات» —
+     * ومن مُنح القسم ولم يُمنح الفعل يرى التبويب ويُردّ بـ403.
+     */
+    action?: string;
 }
 
 interface Props {
@@ -44,7 +52,11 @@ export default function SectionTabs({ tabs: all, current, className }: Props) {
     const { auth } = usePage<PageProps>().props;
 
     // بلا قسم يظهر التبويب دائمًا — انظر SectionTab.section
-    const tabs = all.filter((tb) => !tb.section || (auth?.abilities.includes(tb.section) ?? false));
+    const tabs = all.filter(
+        (tb) =>
+            (!tb.section || (auth?.abilities.includes(tb.section) ?? false)) &&
+            (!tb.action || (auth?.mayActions?.includes(tb.action) ?? false)),
+    );
 
     /*
      * تبويب نشط واحد لا أكثر.
@@ -174,8 +186,8 @@ export const WEBSITE_TABS: SectionTab[] = [
  */
 export const EMPLOYEE_TABS: SectionTab[] = [
     { label: 'الموظفين', routeName: 'admin.employees.index', section: 'employees' },
-    { label: 'مسيرة الرواتب', routeName: 'admin.payroll.index', section: 'employees' },
-    { label: 'صرف الرواتب', routeName: 'admin.payroll.payments', section: 'employees' },
+    { label: 'مسيرة الرواتب', routeName: 'admin.payroll.index', section: 'employees', action: 'payroll.view' },
+    { label: 'صرف الرواتب', routeName: 'admin.payroll.payments', section: 'employees', action: 'payroll.view' },
 ];
 
 /*
@@ -186,7 +198,7 @@ export const EMPLOYEE_TABS: SectionTab[] = [
  */
 export const PURCHASE_TABS: SectionTab[] = [
     { label: 'قائمة المشتريات', routeName: 'admin.purchases.index', section: 'purchases' },
-    { label: 'سندات الموردين', routeName: 'admin.purchases.invoices', section: 'purchases' },
+    { label: 'سندات الموردين', routeName: 'admin.purchases.invoices', section: 'purchases', action: 'invoice.view' },
     { label: 'أوامر الشراء', routeName: 'admin.purchases.orders', section: 'purchases' },
 ];
 
@@ -201,5 +213,5 @@ export const INVENTORY_TABS: SectionTab[] = [
     { label: 'المنتجات', routeName: 'admin.inventory.index', section: 'inventory' },
     { label: 'عمليات جرد المخزون', routeName: 'admin.inventory.stocktake', section: 'inventory' },
     { label: 'سجل المخزون', routeName: 'admin.inventory.adjustments', section: 'inventory' },
-    { label: 'إشعار استلام بضاعة', routeName: 'admin.inventory.receipts', section: 'inventory' },
+    { label: 'إشعار استلام بضاعة', routeName: 'admin.inventory.receipts', section: 'inventory', action: 'receipt.view' },
 ];

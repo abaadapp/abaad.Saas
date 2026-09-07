@@ -7,6 +7,7 @@ use App\Models\PayrollLine;
 use App\Models\PayrollRun;
 use App\Support\Demo;
 use App\Support\Ledger;
+use App\Support\Permissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,8 @@ class PayrollPaymentController extends Controller
 
     public function index(Request $request): Response
     {
+        abort_if(! auth()->user()?->may(Permissions::PAYROLL_VIEW), 403);
+
         $bid = $this->bid();
         Ledger::ensureSystemAccounts($bid);
 
@@ -59,11 +62,18 @@ class PayrollPaymentController extends Controller
             'remaining' => $current ? PayrollRunController::unpaidNet($current) : 0.0,
             'due' => round($runs->where('status', 'معتمدة')->sum(fn ($r) => PayrollRunController::unpaidNet($r)), 3),
             'today' => now()->format('Y-m-d'),
+            'canPay' => (bool) auth()->user()?->may(Permissions::PAYROLL_PAY),
         ]);
     }
 
     public function pay(Request $request, $id)
     {
+        /*
+         * والصرفُ فعلٌ غيرُ الاعتماد: ذاك يُقرّ بالالتزام، وهذا يُخرج المال.
+         * ومن يعتمد المسيرة ليس بالضرورة من يوقّع تحويلها.
+         */
+        abort_if(! auth()->user()?->may(Permissions::PAYROLL_PAY), 403);
+
         $bid = $this->bid();
         $run = PayrollRun::where('business_id', $bid)->with('lines')->findOrFail($id);
 

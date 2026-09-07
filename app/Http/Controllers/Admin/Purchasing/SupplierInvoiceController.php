@@ -57,6 +57,14 @@ class SupplierInvoiceController extends Controller
 
     public function index(Request $request): Response
     {
+        /*
+         * والقراءةُ فعلٌ يُمنح: هذه الشاشة تقول ما على المتجر لمورّديه وبكم
+         * اشترى منهم — وقسمُ «المشتريات» يُمنح لمن يطلب البضاعة.
+         */
+        if (! auth()->user()?->may(Permissions::INVOICE_VIEW)) {
+            abort(403);
+        }
+
         $bid = $this->bid();
         Ledger::ensureSystemAccounts($bid);
 
@@ -143,11 +151,19 @@ class SupplierInvoiceController extends Controller
             // ومن يرى الزرّ هو من يملك الفعل
             'canApprove' => (bool) auth()->user()?->may(Permissions::INVOICE_APPROVE),
             'canOverride' => (bool) auth()->user()?->may(Permissions::INVOICE_OVERRIDE),
+            'canReject' => (bool) auth()->user()?->may(Permissions::INVOICE_REJECT),
+            'canCreate' => (bool) auth()->user()?->may(Permissions::INVOICE_CREATE),
+            'canPay' => (bool) auth()->user()?->may(Permissions::INVOICE_PAY),
+            'canSeeAttachment' => (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW),
         ]);
     }
 
     public function store(Request $request)
     {
+        if (! auth()->user()?->may(Permissions::INVOICE_CREATE)) {
+            abort(403);
+        }
+
         $bid = $this->bid();
 
         $data = $request->validate([
@@ -258,10 +274,14 @@ class SupplierInvoiceController extends Controller
         ]);
     }
 
-    /** رفضُ السند — بسببٍ مكتوب، ولا قيدَ له */
+    /**
+     * رفضُ السند — بسببٍ مكتوب، ولا قيدَ له.
+     *
+     * وصلاحيتُه غيرُ صلاحية الاعتماد: الرفضُ لا يُنشئ ذمّةً ولا يكتب قيدًا.
+     */
     public function reject(Request $request, $id)
     {
-        if (! auth()->user()?->may(Permissions::INVOICE_APPROVE)) {
+        if (! auth()->user()?->may(Permissions::INVOICE_REJECT)) {
             abort(403);
         }
 
@@ -302,9 +322,18 @@ class SupplierInvoiceController extends Controller
         return back()->with('toast', ['msg' => __('أُلغي السند وعُكس قيده'), 'type' => 'warning']);
     }
 
-    /** تسجيل دفعة على سند — كاملةً أو جزءًا */
+    /**
+     * تسجيل دفعة على سند — كاملةً أو جزءًا.
+     *
+     * وهو فعلٌ ثالثٌ غيرُ الكتابة وغيرُ الاعتماد: مالٌ يخرج من الصندوق. وكان
+     * يُفتح لكلّ من يملك «المشتريات» — أي لأمين المخزن.
+     */
     public function pay(Request $request, $id)
     {
+        if (! auth()->user()?->may(Permissions::INVOICE_PAY)) {
+            abort(403);
+        }
+
         $bid = $this->bid();
         $invoice = SupplierInvoice::where('business_id', $bid)->findOrFail($id);
 
@@ -391,6 +420,11 @@ class SupplierInvoiceController extends Controller
 
     public function destroy($id)
     {
+        // ومن كتب الورقة يرفعها ما دامت لم تُعتمد — والمعتمَدُ محروسٌ أدناه
+        if (! auth()->user()?->may(Permissions::INVOICE_CREATE)) {
+            abort(403);
+        }
+
         $bid = $this->bid();
         $invoice = SupplierInvoice::where('business_id', $bid)->findOrFail($id);
 

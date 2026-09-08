@@ -168,7 +168,7 @@ class ThePurchaseUnitIsRememberedNotRewrittenTest extends TestCase
         $screen = file_get_contents(resource_path('js/Pages/Admin/Purchases/Create.tsx'));
 
         $this->assertStringNotContainsString('<datalist', $screen, 'عادت القائمة التي يرسمها نظام التشغيل');
-        $this->assertStringContainsString('<UnitPicker', $screen, 'حقل الوحدة بلا منتقٍ مرسوم في الصفحة');
+        $this->assertStringContainsString('<ComboBox', $screen, 'حقل الوحدة بلا منتقٍ مرسوم في الصفحة');
     }
 
     /* ==================== الحفظ ==================== */

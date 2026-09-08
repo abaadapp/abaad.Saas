@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import { Check, Package, Plus, TrendingDown, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import ComboBox from '@/Components/ComboBox';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
 import StatCard from '@/Components/StatCard';
@@ -60,6 +61,15 @@ export default function Assets() {
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
     const m = (v: number) => money(v, context!.currency);
+
+    /*
+     * وتصنيفٌ يكتبه صاحبُ المحلّ يبقى معه في هذه الفتحة.
+     *
+     * والخادمُ يعيده في التالية لأنّه يقرأ التصنيفاتِ من الأصول المسجَّلة —
+     * فما سُجّل به أصلٌ واحد يصير خيارًا لما بعده.
+     */
+    const [known, setKnown] = useState<string[]>(categories);
+    const addCategory = (c: string) => setKnown((prev) => (prev.includes(c) ? prev : [c, ...prev]));
 
     const [adding, setAdding] = useState(false);
     const [disposing, setDisposing] = useState<Asset | null>(null);
@@ -274,17 +284,14 @@ export default function Assets() {
                                 <Input value={form.data.code} onChange={(e) => form.setData('code', e.target.value)} />
                             </Field>
                             <Field label="التصنيف" error={form.errors.category}>
-                                <Input
-                                    list="asset-categories"
+                                <ComboBox
                                     value={form.data.category}
-                                    onChange={(e) => form.setData('category', e.target.value)}
-                                    placeholder={t('أجهزة')}
+                                    options={known}
+                                    onPick={(c) => form.setData('category', c)}
+                                    onAdd={addCategory}
+                                    label="التصنيف"
+                                    placeholder="اختر التصنيف"
                                 />
-                                <datalist id="asset-categories">
-                                    {categories.map((c) => (
-                                        <option key={c} value={c} />
-                                    ))}
-                                </datalist>
                             </Field>
                         </div>
 

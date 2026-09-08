@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\FixedAsset;
+use App\Support\AssetCategories;
 use App\Support\Demo;
 use App\Support\Ledger;
 use Illuminate\Http\Request;
@@ -65,7 +66,11 @@ class FixedAssetController extends Controller
             ],
             'month' => $through->format('Y-m'),
             'today' => now()->format('Y-m-d'),
-            'categories' => $assets->pluck('category')->filter()->unique()->values()->all(),
+            /*
+             * والتصنيفاتُ ممّا صنّف به المتجرُ أصولَه، مذيَّلةً بالمقترَحات —
+             * انظر `AssetCategories`. ومتجرٌ بلا أصلٍ بعد لا يُفتح له منتقٍ فارغ.
+             */
+            'categories' => AssetCategories::forBusiness($bid),
         ]);
     }
 

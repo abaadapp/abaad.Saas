@@ -1,21 +1,21 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { UnitPicker } from '@/Pages/Admin/Purchases/Create';
+import ComboBox from '@/Components/ComboBox';
 
 /**
- * منتقي وحدة الشراء.
+ * المنتقي الواحد — يخدم وحدةَ الشراء وتصنيفَ الأصل.
  *
  * وخطأُ هذا الحقل لا تراه اختباراتُ الخادم: الخادمُ يقبل أيَّ نصّ، والعطبُ
  * كان في الشاشة — قائمةٌ يرسمها نظامُ التشغيل لا سهمَ يقول إنّها هناك، فلا
- * يفتحها التاجرُ ولا يعرف أنّه يستطيع كتابة وحدةٍ ليست فيها.
+ * يفتحها التاجرُ ولا يعرف أنّه يستطيع كتابة ما ليس فيها.
  */
 
 const UNITS = ['حبة', 'صندوق', 'كيلو'];
 
 function draw(value = 'حبة') {
     const on = { onPick: vi.fn(), onAdd: vi.fn() };
-    render(<UnitPicker value={value} units={UNITS} {...on} />);
+    render(<ComboBox value={value} options={UNITS} label="وحدة الشراء" placeholder="اختر الوحدة" {...on} />);
 
     return { ...on, user: userEvent.setup() };
 }
@@ -28,6 +28,12 @@ describe('القائمة تُرسم في الصفحة', () => {
         draw('صندوق');
 
         expect(screen.getByRole('button', { name: 'وحدة الشراء' })).toHaveTextContent('صندوق');
+    });
+
+    it('وحقلٌ لم يُختر له شيءٌ يقول ما يُنتظر منه', () => {
+        draw('');
+
+        expect(screen.getByRole('button', { name: 'وحدة الشراء' })).toHaveTextContent('اختر الوحدة');
     });
 
     it('ولا تُعرض قبل الضغط', () => {

@@ -490,9 +490,19 @@ final class CustomerInvoices
         $businessId = (int) $customer->business_id;
 
         return DB::transaction(function () use ($businessId, $customer, $orderIds, $data, $userId) {
+            /*
+             * وبترتيب وقوعها لا بترتيب قاعدة البيانات.
+             *
+             * كانت تُقرأ بلا `ORDER BY`، فتخرج على PostgreSQL بترتيبٍ لا يُوعد
+             * به: ورقةُ الشهر نفسُها تُطبع مرّتين فتقول مرّتين ترتيبًا مختلفًا،
+             * والشركةُ التي تُطابق ورقتَها بطلباتها تقرأ سطورًا مبعثرة. وكشفه
+             * اختبارٌ سقط على PostgreSQL وحده — وهو DEC-003 نفسُه:
+             * «لا يُفترض ترتيبٌ لم يُطلب».
+             */
             $orders = Order::where('business_id', $businessId)
                 ->where('customer_id', $customer->id)
                 ->whereIn('id', $orderIds)
+                ->orderBy('ordered_at')->orderBy('id')
                 ->lockForUpdate()->with('items')->get();
 
             if ($orders->isEmpty()) {

@@ -92,12 +92,21 @@ class ReportPagesTest extends TestCase
         return $this->get(route($route, $query))->viewData('page')['props'];
     }
 
-    /** بيعةٌ في وقتٍ محدّد — تقع داخل فترةٍ وخارج أخرى */
+    private int $seq = 0;
+
+    /**
+     * بيعةٌ في وقتٍ محدّد — تقع داخل فترةٍ وخارج أخرى.
+     *
+     * ورقمُها متسلسلٌ لا `uniqid()`: الرقمُ يُكتب في ملفّ التصدير، واختبارٌ
+     * يسأل «هل فيه ٥٠٠؟» كان يسقط حين يقع «500» في الرقم العشوائيّ نفسِه.
+     * فيسقط بناءٌ سليم مرّةً كلَّ عشرات المرّات ولا يُعاد إنتاجُه محلّيًّا —
+     * وتقريرُ فشلٍ كاذب أسوأ من غياب التقرير.
+     */
     private function sale(float $total, string $when, ?User $by = null): Order
     {
         return Order::create([
             'business_id' => $this->business->id,
-            'number' => 'INV-'.uniqid(),
+            'number' => 'INV-'.str_pad((string) ++$this->seq, 6, '0', STR_PAD_LEFT),
             'customer_name' => 'زبون',
             'total' => $total,
             'status' => 'مكتمل',

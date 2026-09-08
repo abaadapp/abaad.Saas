@@ -114,6 +114,23 @@ class OnePaperMayCoverAMonthTest extends TestCase
         $this->assertStringContainsString($a->number, $invoice->items->first()->description);
     }
 
+    public function test_the_paper_lists_its_orders_in_the_order_they_happened(): void
+    {
+        $a = $this->sell(8);
+        $b = $this->sell(12);
+        $c = $this->sell(5);
+
+        // وتُمرَّر مبعثرةً: الورقةُ ترتّب بتاريخها لا بترتيب ما وصلها
+        $invoice = CustomerInvoices::consolidate(
+            $this->company, [$c->id, $a->id, $b->id], [], $this->owner->id
+        );
+
+        $this->assertSame(
+            ['باقة ورد — '.$a->number, 'باقة ورد — '.$b->number, 'باقة ورد — '.$c->number],
+            $invoice->items->pluck('description')->all(),
+        );
+    }
+
     public function test_the_monthly_paper_posts_no_second_revenue(): void
     {
         $a = $this->sell(8);

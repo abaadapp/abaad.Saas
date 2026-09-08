@@ -20,13 +20,6 @@ function draw(value = 'حبة') {
     return { ...on, user: userEvent.setup() };
 }
 
-/** بلا `onDelete` — كما تستعملها شاشةُ الأصول */
-function drawPlain() {
-    const on = { onPick: vi.fn(), onAdd: vi.fn() };
-    render(<ComboBox value="حبة" options={UNITS} label="التصنيف" placeholder="اختر التصنيف" {...on} />);
-
-    return { ...on, user: userEvent.setup() };
-}
 
 const open = async (user: ReturnType<typeof userEvent.setup>) =>
     user.click(screen.getByRole('button', { name: 'وحدة الشراء' }));
@@ -141,12 +134,4 @@ describe('وما يُضاف يُرفع', () => {
         expect(onPick).not.toHaveBeenCalled();
     });
 
-    it('ولا يُرسم زرُّ رفعٍ لمن لا يملك رفعًا', async () => {
-        const { user } = drawPlain();
-        await user.click(screen.getByRole('button', { name: 'التصنيف' }));
-
-        expect(screen.queryByRole('button', { name: /احذف/ })).not.toBeInTheDocument();
-        // ‏والقائمةُ نفسُها تُعرض كما هي
-        expect(screen.getByRole('button', { name: 'كيلو' })).toBeInTheDocument();
-    });
 });

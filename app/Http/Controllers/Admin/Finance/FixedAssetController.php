@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\FixedAsset;
+use App\Support\Activity;
 use App\Support\AssetCategories;
 use App\Support\Demo;
 use App\Support\Ledger;
@@ -74,6 +75,26 @@ class FixedAssetController extends Controller
         ]);
     }
 
+    /**
+     * رفعُ تصنيفٍ من قائمة المتجر.
+     *
+     * ولا يُمحى من أصلٍ سُجّل به: أصلٌ سُجّل «أثاثًا» يبقى أثاثًا في بطاقته
+     * وفي تقاريره — والقائمةُ تُقرأ ممّا صُنّفت به الأصول، فالمرفوعُ يُطرح
+     * منها عند القراءة. وهو البابُ نفسُه الذي لوحدات الشراء.
+     */
+    public function hideCategory(Request $request)
+    {
+        $data = $request->validate([
+            'category' => ['required', 'string', 'max:255'],
+        ]);
+
+        AssetCategories::hide($this->bid(), $data['category']);
+
+        Activity::log('updated', 'رفع تصنيف الأصول «'.trim($data['category']).'» من قائمته');
+
+        return back();
+    }
+
     public function store(Request $request)
     {
         $bid = $this->bid();
@@ -104,6 +125,14 @@ class FixedAssetController extends Controller
             'life_months' => $data['life_months'],
             'notes' => $data['notes'] ?? null,
         ]);
+
+        /*
+         * وما استُعمل عاد إلى القائمة.
+         *
+         * تصنيفٌ رفعه التاجرُ من قائمته ثمّ سجّل به أصلًا يريده: وبقاؤه
+         * مرفوعًا يجعله يكتبه في كلّ أصلٍ ولا يعرف لماذا لا يظهر.
+         */
+        AssetCategories::unhide($bid, [$data['category'] ?? null]);
 
         if (! empty($data['paid_from'])) {
             try {

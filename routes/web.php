@@ -865,6 +865,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // الأصول الثابتة وإهلاكها
     Route::get('/finance/assets', [FixedAssetController::class, 'index'])->name('finance.assets');
     Route::post('/finance/assets', [FixedAssetController::class, 'store'])->name('finance.assets.store');
+    // ورفعُ تصنيفٍ من قائمة المتجر — لا من أصلٍ سُجّل به
+    Route::delete('/finance/assets/categories', [FixedAssetController::class, 'hideCategory'])->name('finance.assets.categories.destroy');
     Route::post('/finance/assets/depreciate', [FixedAssetController::class, 'depreciate'])->name('finance.assets.depreciate');
     Route::post('/finance/assets/{id}/dispose', [FixedAssetController::class, 'dispose'])->name('finance.assets.dispose');
     Route::delete('/finance/assets/{id}', [FixedAssetController::class, 'destroy'])->name('finance.assets.destroy');

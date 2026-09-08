@@ -71,6 +71,23 @@ export default function Assets() {
     const [known, setKnown] = useState<string[]>(categories);
     const addCategory = (c: string) => setKnown((prev) => (prev.includes(c) ? prev : [c, ...prev]));
 
+    /*
+     * ورفعُ تصنيفٍ من القائمة يُحفظ للمتجر — لا لهذه الفتحة.
+     *
+     * ولا يُمسّ أصلٌ سُجّل به: ما كان «أثاثًا» يبقى أثاثًا في بطاقته وفي
+     * تقاريره. والقائمةُ تُقرأ ممّا صُنّفت به الأصول، فالرفعُ يُطرح منها.
+     *
+     * والشاشةُ تنقص بعد ردّ الخادم لا قبله — كما في وحدة الشراء.
+     */
+    const dropCategory = (category: string) =>
+        router.delete(route('admin.finance.assets.categories.destroy'), {
+            data: { category },
+            preserveScroll: true,
+            preserveState: true,
+            only: ['categories'],
+            onSuccess: () => setKnown((prev) => prev.filter((c) => c !== category)),
+        });
+
     const [adding, setAdding] = useState(false);
     const [disposing, setDisposing] = useState<Asset | null>(null);
 
@@ -289,6 +306,7 @@ export default function Assets() {
                                     options={known}
                                     onPick={(c) => form.setData('category', c)}
                                     onAdd={addCategory}
+                                    onDelete={dropCategory}
                                     label="التصنيف"
                                     placeholder="اختر التصنيف"
                                 />

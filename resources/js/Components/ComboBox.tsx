@@ -23,8 +23,11 @@ import { cn } from '@/lib/utils';
  *
  * ═══ وما يُضاف يُرفع ═══
  *
- * `onDelete` — حين تُمرَّر — تضع بجانب كلّ خيارٍ زرَّ رفعٍ من القائمة. وقائمةٌ
- * يُضاف إليها ولا يُرفع منها تمتلئ بأخطاء الكتابة ولا تنقص أبدًا.
+ * بجانب كلّ خيارٍ زرُّ رفعٍ من القائمة. وقائمةٌ يُضاف إليها ولا يُرفع منها
+ * تمتلئ بأخطاء الكتابة ولا تنقص أبدًا.
+ *
+ * و`onDelete` مطلوبةٌ لا اختياريّة: حين كانت اختياريّةً كان لها فرعٌ لا
+ * يقرؤه أحد — والحقلان كلاهما يرفع.
  *
  * ═══ وواحدٌ لا اثنان ═══
  *
@@ -45,8 +48,8 @@ export default function ComboBox({
     onPick: (value: string) => void;
     /** ما يُكتب ولا يُطابق شيئًا — يبقى في قائمة هذه الشاشة */
     onAdd: (value: string) => void;
-    /** رفعُ خيارٍ من القائمة — بلا هذه لا يُرسم زرُّ الرفع أصلًا */
-    onDelete?: (value: string) => void;
+    /** رفعُ خيارٍ من القائمة — والحفظُ على من يمرّرها */
+    onDelete: (value: string) => void;
     /** اسمُ الحقل لقارئ الشاشة — وهو ما يُطلب به الزرُّ في الاختبارات */
     label: string;
     /** ما يقوله الزرُّ قبل أن يُختار شيء */
@@ -150,16 +153,14 @@ export default function ComboBox({
                                     {o === value && <Check className="size-4 shrink-0 text-[#5b21b6]" />}
                                 </button>
 
-                                {onDelete && (
-                                    <button
-                                        type="button"
-                                        aria-label={t('احذف «:value»', { value: o })}
-                                        className="shrink-0 rounded-[6px] p-1.5 text-[#9ca3af] hover:bg-[#fee2e2] hover:text-[#b91c1c]"
-                                        onClick={() => onDelete(o)}
-                                    >
-                                        <X className="size-3.5" />
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    aria-label={t('احذف «:value»', { value: o })}
+                                    className="shrink-0 rounded-[6px] p-1.5 text-[#9ca3af] hover:bg-[#fee2e2] hover:text-[#b91c1c]"
+                                    onClick={() => onDelete(o)}
+                                >
+                                    <X className="size-3.5" />
+                                </button>
                             </div>
                         ))}
                     </div>

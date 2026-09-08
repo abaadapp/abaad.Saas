@@ -118,6 +118,64 @@ class OneListIsChosenOrTypedNotDrawnByTheSystemTest extends TestCase
             );
     }
 
+    /* ==================== والرفعُ من القائمة ==================== */
+
+    public function test_a_category_the_shop_removed_leaves_its_list(): void
+    {
+        $this->actingAs($this->owner)
+            ->delete(route('admin.finance.assets.categories.destroy'), ['category' => 'مركبات'])
+            ->assertRedirect();
+
+        $this->assertNotContains('مركبات', AssetCategories::forBusiness($this->business->id));
+        $this->assertContains('أجهزة', AssetCategories::forBusiness($this->business->id));
+    }
+
+    public function test_removing_a_category_does_not_touch_an_asset_filed_under_it(): void
+    {
+        $this->asset('مركبات');
+
+        $this->actingAs($this->owner)
+            ->delete(route('admin.finance.assets.categories.destroy'), ['category' => 'مركبات'])
+            ->assertRedirect();
+
+        // ‏أصلٌ سُجّل «مركبةً» يبقى كذلك في بطاقته وفي تقاريره
+        $this->assertSame('مركبات', FixedAsset::latest('id')->firstOrFail()->category);
+        $this->assertNotContains('مركبات', AssetCategories::forBusiness($this->business->id));
+    }
+
+    public function test_a_removed_category_comes_back_when_it_is_used_again(): void
+    {
+        AssetCategories::hide($this->business->id, 'مركبات');
+
+        $this->actingAs($this->owner)->post(route('admin.finance.assets.store'), [
+            'name' => 'سيارة توصيل', 'category' => 'مركبات',
+            'purchased_at' => now()->toDateString(), 'cost' => 1000,
+            'salvage_value' => 0, 'life_months' => 60,
+        ])->assertRedirect();
+
+        $this->assertContains('مركبات', AssetCategories::forBusiness($this->business->id));
+    }
+
+    public function test_an_empty_category_is_not_a_removal(): void
+    {
+        $this->actingAs($this->owner)
+            ->delete(route('admin.finance.assets.categories.destroy'), ['category' => '  '])
+            ->assertSessionHasErrors('category');
+
+        $this->assertSame([], AssetCategories::hidden($this->business->id));
+    }
+
+    public function test_one_shop_does_not_empty_anothers_list(): void
+    {
+        $other = Business::create(['name' => 'متجر آخر', 'type' => 'عام', 'status' => 'نشط']);
+
+        $this->actingAs($this->owner)
+            ->delete(route('admin.finance.assets.categories.destroy'), ['category' => 'مركبات'])
+            ->assertRedirect();
+
+        $this->assertContains('مركبات', AssetCategories::forBusiness($other->id));
+    }
+
     /* ==================== والأداةُ واحدة ==================== */
 
     public function test_no_screen_leans_on_the_list_the_system_draws(): void
@@ -149,6 +207,26 @@ class OneListIsChosenOrTypedNotDrawnByTheSystemTest extends TestCase
                 "«{$screen}» لا تستعمل المنتقي المشترك",
             );
         }
+    }
+
+    public function test_and_both_of_them_can_remove(): void
+    {
+        /*
+         * وزرُّ الرفع موصولٌ ببابه في الحقلين — لا مقبضًا يُدير حالةً في
+         * المتصفّح وحده. و`onDelete` مطلوبةٌ في المنتقي: فرعٌ اختياريٌّ لا
+         * يقرؤه أحدٌ يُرفع.
+         */
+        foreach ([
+            'js/Pages/Admin/Purchases/Create.tsx' => "route('admin.purchases.units.destroy')",
+            'js/Pages/Admin/Finance/Assets.tsx' => "route('admin.finance.assets.categories.destroy')",
+        ] as $screen => $door) {
+            $this->assertStringContainsString($door, (string) file_get_contents(resource_path($screen)));
+        }
+
+        $widget = (string) file_get_contents(resource_path('js/Components/ComboBox.tsx'));
+
+        $this->assertStringContainsString('onDelete: (value: string) => void;', $widget, 'الرفعُ ما زال اختياريًّا');
+        $this->assertStringNotContainsString('onDelete?:', $widget);
     }
 
     /** @return list<string> */

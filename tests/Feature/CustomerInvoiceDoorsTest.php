@@ -195,7 +195,7 @@ class CustomerInvoiceDoorsTest extends TestCase
 
     public function test_credit_settings_are_written_through_one_door(): void
     {
-        $this->actingAs($this->owner)->put('/admin/customers/'.$this->customer->id.'/credit', [
+        $this->actingAs($this->owner)->put(route('admin.finance.customerCredit', $this->customer->id), [
             'allow_credit_sales' => true, 'credit_limit' => 500, 'payment_terms_days' => 45,
         ])->assertSessionHasNoErrors();
 

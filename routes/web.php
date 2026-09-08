@@ -840,9 +840,23 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/finance/receivables/{customer}/statement', [ReceivablesController::class, 'statement'])->name('finance.customerStatement');
     Route::get('/finance/receivables/{customer}/statement/pdf', [PdfController::class, 'customerAccountStatement'])->name('finance.customerStatement.pdf');
-    Route::put('/customers/{customer}/credit', [ReceivablesController::class, 'credit'])->name('customers.credit');
+    /*
+     * ═══ وهما تحت «المالية» لأنّ شاشتَهما تحتها ═══
+     *
+     * كان اسماهما `customers.credit` و`customers.bill`، فيشتقّ الحارسُ منهما
+     * قسم «العملاء» — والنموذجُ الذي يرسلهما يعيش في شاشة كشف الحساب، وهي
+     * تحت «المالية». فالبابُ والغرفةُ بمفتاحين مختلفين:
+     *
+     * ١) من مُنح «العملاء» ولا يملك «المالية» لا يفتح الشاشة أصلًا — ويكتب
+     *    شروطَ الائتمان بطلبٍ مباشر. والبائع من هؤلاء.
+     * ٢) ومن مُنح «المالية» ولا يملك «العملاء» يرى النموذج على شاشته ويُردّ
+     *    عند الحفظ بـ٤٠٣ — مقبضٌ مرسومٌ لا يُدير شيئًا.
+     *
+     * فصار اسمُهما وعنوانُهما تحت المالية: ما يُفتح هناك يُحفظ هناك.
+     */
+    Route::put('/finance/receivables/{customer}/credit', [ReceivablesController::class, 'credit'])->name('finance.customerCredit');
     // فوترةُ الشهر: ورقةٌ واحدة على طلباتٍ آجلةٍ لم تُفوتَر بعد
-    Route::post('/customers/{customer}/bill', [ReceivablesController::class, 'bill'])->name('customers.bill');
+    Route::post('/finance/receivables/{customer}/bill', [ReceivablesController::class, 'bill'])->name('finance.customerBill');
 
     // الحركة المالية — ما دخل وما خرج، وبابُ تسجيل ما لا مستند له
     Route::get('/finance/transactions', [FinanceController::class, 'index'])->name('finance.transactions');

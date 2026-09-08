@@ -30,10 +30,12 @@ interface Props {
     };
     summary: { outstanding: number; credit: number; headroom: number | null };
     range: { from: string; to: string };
+    /** ما يستطيع فاتحُ الشاشة حفظَه — انظر `ReceivablesController::statement` */
+    may: { credit: boolean; bill: boolean };
 }
 
 /** حسابُ العميل — رصيدُه وحركتُه وشروطُ ائتمانه في شاشةٍ واحدة */
-export default function CustomerStatement({ customer, statement, summary, range, uninvoiced }: Props) {
+export default function CustomerStatement({ customer, statement, summary, range, uninvoiced, may }: Props) {
     const { context } = usePage<PageProps>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -79,6 +81,12 @@ export default function CustomerStatement({ customer, statement, summary, range,
                 <StatCard stat={{ label: t('رصيد آخر المدة'), value: m(statement.closing), icon: 'file-text', color: 'primary' }} index={3} />
             </div>
 
+            {/*
+                شروطُ الائتمان تُكتب بفعلٍ يُمنح باسمه — «تجاوز حدّ الائتمان».
+                ومن لا يملكه يقرأ الشروط ولا يكتبها: كان النموذج يُرسم له
+                كاملًا ويُردّ عند الحفظ بـ٤٠٣.
+            */}
+            {may.credit ? (
             <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
                 <label className="flex items-center gap-2 text-[13px]">
                     <input
@@ -106,13 +114,27 @@ export default function CustomerStatement({ customer, statement, summary, range,
                 </label>
                 <Button
                     disabled={credit.processing}
-                    onClick={() => credit.put(`/admin/customers/${customer.id}/credit`, { preserveScroll: true })}
+                    onClick={() => credit.put(route('admin.finance.customerCredit', customer.id), { preserveScroll: true })}
                 >
                     {t('حفظ')}
                 </Button>
             </Card>
+            ) : (
+                <Card className="mb-4 flex flex-wrap items-center gap-4 p-4 text-[13px]">
+                    <span>
+                        {t('البيع الآجل')}: <b>{customer.allow_credit_sales ? t('مسموح') : t('ممنوع')}</b>
+                    </span>
+                    <span>
+                        {t('حد الائتمان')}: <b>{customer.credit_limit === null ? t('بلا حد') : m(customer.credit_limit)}</b>
+                    </span>
+                    <span>
+                        {t('مدة السداد (يومًا)')}: <b>{customer.payment_terms_days ?? '—'}</b>
+                    </span>
+                    <span className="text-[12px] text-[#9ca3af]">{t('تعديلُها صلاحيةٌ لا تملكها.')}</span>
+                </Card>
+            )}
 
-            {uninvoiced.length > 0 && <BillMonth customer={customer} rows={uninvoiced} m={m} />}
+            {uninvoiced.length > 0 && <BillMonth customer={customer} rows={uninvoiced} m={m} mayBill={may.bill} />}
 
             <Card className="mb-4 flex flex-wrap items-end gap-2 p-3">
                 <label className="text-[13px]">
@@ -182,10 +204,13 @@ function BillMonth({
     customer,
     rows,
     m,
+    mayBill,
 }: {
     customer: Props['customer'];
     rows: Props['uninvoiced'];
     m: (v: number) => string;
+    /** إصدارُ الفاتورة فعلٌ يُمنح باسمه — والقائمةُ تُقرأ بلا إصدار */
+    mayBill: boolean;
 }) {
     const t = useTranslate();
     const [picked, setPicked] = useState<number[]>(rows.map((r) => r.id));
@@ -224,16 +249,22 @@ function BillMonth({
                 {form.errors.order_ids && (
                     <p className="w-full text-[12px] text-[#b91c1c]">{form.errors.order_ids}</p>
                 )}
-                <Button
-                    className="ms-auto"
-                    disabled={form.processing || picked.length === 0}
-                    onClick={() => {
-                        form.transform((d) => ({ ...d, order_ids: picked }));
-                        form.post(`/admin/customers/${customer.id}/bill`);
-                    }}
-                >
-                    {t('أصدر فاتورة بها')}
-                </Button>
+                {/*
+                    والقائمةُ تبقى لمن لا يُصدر: هي تقول إنّ ما لم يُفوتَر قد
+                    بيع — وهو ما لا يعرفه أحدٌ إن حُجبت. الزرُّ وحده يُرفع.
+                */}
+                {mayBill && (
+                    <Button
+                        className="ms-auto"
+                        disabled={form.processing || picked.length === 0}
+                        onClick={() => {
+                            form.transform((d) => ({ ...d, order_ids: picked }));
+                            form.post(route('admin.finance.customerBill', customer.id));
+                        }}
+                    >
+                        {t('أصدر فاتورة بها')}
+                    </Button>
+                )}
             </div>
         </Card>
     );

@@ -191,7 +191,8 @@ class OnePaperMayCoverAMonthTest extends TestCase
         $a = $this->sell(8);
         $b = $this->sell(12);
 
-        $this->post('/admin/customers/'.$this->company->id.'/bill', [
+        // بالاسم لا بعنوانٍ مكتوبٍ بيد: عنوانٌ منسوخٌ لا يتبع بابَه إن انتقل
+        $this->post(route('admin.finance.customerBill', $this->company->id), [
             'order_ids' => [$a->id, $b->id],
         ])->assertRedirect()->assertSessionHasNoErrors();
 

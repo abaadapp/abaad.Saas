@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Support\Activity;
+use App\Support\CreditSales;
 use App\Support\CustomerInvoices;
 use App\Support\Demo;
 use App\Support\Permissions;
@@ -88,6 +89,17 @@ class ReceivablesController extends Controller
                 'headroom' => Receivables::creditHeadroom($customer),
             ],
             'range' => ['from' => $from->format('Y-m-d'), 'to' => $to->format('Y-m-d')],
+            /*
+             * وما لا يُحفظ لا يُرسم.
+             *
+             * نموذجُ شروط الائتمان وزرُّ «أصدر فاتورة بها» كانا يُرسمان لكلّ
+             * من فتح الشاشة، ويُردّان عند الضغط بـ٤٠٣. والموظّف يظنّ العطبَ
+             * في النظام فيعيد المحاولة — وزرٌّ لا يُدير شيئًا أسوأ من غيابه.
+             */
+            'may' => [
+                'credit' => (bool) auth()->user()?->may(CreditSales::OVERRIDE),
+                'bill' => (bool) auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE),
+            ],
         ]);
     }
 
@@ -134,9 +146,28 @@ class ReceivablesController extends Controller
         ]);
     }
 
-    /** إعداداتُ ائتمان العميل — بابٌ واحدٌ يكتبها، ويُسجَّل تغييرُها */
+    /**
+     * إعداداتُ ائتمان العميل — بابٌ واحدٌ يكتبها، ويُسجَّل تغييرُها.
+     *
+     * ═══ ومن يضع الحدَّ هو من يتجاوزه ═══
+     *
+     * كان هذا البابُ مفتوحًا بقسم «العملاء» وحده، بلا فعلٍ يُمنح باسمه —
+     * و`credit.override` (تجاوزُ الحدّ في البيع) للمالك ومدير الفرع وحدهما.
+     * فالحارسُ كان يُتجاوَز بطلبٍ واحد: من لا يملك التجاوز يرفع الحدَّ، أو
+     * يمحوه فيصير `null` — و`Receivables::creditHeadroom` تقرأ الفراغَ «بلا
+     * حدّ». ثمّ يبيع آجلًا بلا سقفٍ ولا سببٍ مكتوبٍ ولا سطرٍ في السجلّ.
+     *
+     * ويفتح «السماحَ بالبيع الآجل» كذلك — والقاعدةُ الأصل «لا آجلَ إلّا
+     * بإذن» (انظر `CreditSales`). فزبونُ المارّة يصير مدينًا بضغطة.
+     *
+     * فصارا فعلًا واحدًا: من يُؤتمن على تجاوز السقف يُؤتمن على وضعه، ولا
+     * يُؤتمن على وضعه من لا يُؤتمن على تجاوزه. ومفتاحان لثقةٍ واحدة
+     * يفترقان يومًا.
+     */
     public function credit(Request $request, int|string $customer)
     {
+        abort_if(! auth()->user()?->may(CreditSales::OVERRIDE), 403);
+
         $data = $request->validate([
             'allow_credit_sales' => ['required', 'boolean'],
             'monthly_billing' => ['sometimes', 'boolean'],

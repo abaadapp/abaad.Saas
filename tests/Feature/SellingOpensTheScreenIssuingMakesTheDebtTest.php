@@ -228,7 +228,7 @@ class SellingOpensTheScreenIssuingMakesTheDebtTest extends TestCase
     public function test_the_other_issuing_door_carries_the_same_guard(): void
     {
         $this->actingAs($this->seller)
-            ->post(route('admin.customers.bill', $this->ministry->id), [
+            ->post(route('admin.finance.customerBill', $this->ministry->id), [
                 'order_ids' => [1],
             ])->assertForbidden();
     }

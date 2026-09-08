@@ -3873,6 +3873,7 @@
     "حفظ ونشر": "Save and publish",
     "السلام عليكم، أريد طلب:": "Hello, I would like to order:",
     "العنوان حروفٌ إنجليزية صغيرة وأرقام وشرطة، من :min إلى :max حرفًا، وليس اسمًا محجوزًا.": "The address takes lowercase English letters, digits and hyphens, :min to :max characters, and cannot be a reserved name.",
+    "هذا النطاق مسجَّلٌ لمتجرٍ آخر — إن كان لك فراسِلنا.": "This domain is registered to another shop — contact us if it is yours.",
     "هذا العنوان محجوز لمتجرٍ آخر — اختر غيره.": "That address is taken by another shop — choose a different one.",
     "اكتب عنوان متجرك قبل نشره — بلا عنوانٍ لا يُفتح من أيّ رابط.": "Enter your shop address before publishing — with no address it opens from no link at all.",
     "حُفظ متجرك الإلكتروني": "Your online shop was saved",

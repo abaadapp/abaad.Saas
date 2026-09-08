@@ -73,6 +73,25 @@ class Preview
         }
         unset($slot);
 
+        /*
+         * وصورةُ المشاركة تخرج مطلقةً كما تخرج صورُ الأقسام.
+         *
+         * `seo.image` هي ما يُبنى منه `og:image` — الصورةُ التي تظهر حين
+         * يُشارَك رابط الموقع في واتساب أو غيره. وكانت تخرج كما كُتبت: من
+         * كتب فيها مسارًا خرجت برابطٍ نسبيّ يعني — على نطاق التاجر —
+         * `https://متجره.om/storage/…`، عنوانًا لا شيء عليه. ولا يراه صاحبُه
+         * أبدًا، فهو لا يشارك رابط موقعه بنفسه.
+         *
+         * وسيوُ كلّ صفحةٍ مثلُه. والغائبُ يبقى غائبًا: `null` لا تصير فراغًا،
+         * والفراغُ لا يصير رابطًا إلى جذر الموقع.
+         */
+        $snapshot['seo'] = self::absoluteSeo($snapshot['seo'] ?? null);
+
+        foreach ($snapshot['pages'] as &$page) {
+            $page['seo'] = self::absoluteSeo($page['seo'] ?? null);
+        }
+        unset($page);
+
         $snapshot['data'] = $bag;
 
         /*
@@ -92,6 +111,24 @@ class Preview
         $snapshot['dir'] = $locale === 'en' ? 'ltr' : 'rtl';
 
         return $snapshot;
+    }
+
+    /**
+     * سيوٌ وقد صارت صورتُه مطلقة — وما لا صورة فيه يُترك كما هو.
+     *
+     * @param  array<string, mixed>|null  $seo
+     * @return array<string, mixed>|null
+     */
+    private static function absoluteSeo(?array $seo): ?array
+    {
+        if ($seo === null || ! isset($seo['image'])) {
+            return $seo;
+        }
+
+        // الفراغ فراغٌ: `Media::url` تردّ null، والحقل يخرج كما دخل
+        $seo['image'] = Media::url((string) $seo['image']) ?? '';
+
+        return $seo;
     }
 
     /**

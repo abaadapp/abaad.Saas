@@ -190,7 +190,16 @@ class BuilderController extends Controller
             'maintenance' => $data['maintenance'],
             'maintenance_message' => $data['maintenance_message'] ?? $site->maintenance_message,
         ]);
-        $site->touchDraft();
+
+        /*
+         * ولا `touchDraft` معها — الصيانة ليست تغييرًا ينتظر النشر.
+         *
+         * العارض يفحص `websites.maintenance` حيًّا قبل أن ينظر في اللقطة، فرفعُ
+         * المفتاح يُغلق الموقع في اللحظة. وكانت تُعدّ مع ذلك تغييرًا في المسوّدة:
+         * فمن شغّل الصيانة ثمّ أطفأها تقول لوحتُه بعدها «فيه تغييرات لم تُنشر»
+         * وليس فيه تغييرٌ واحد — فيضغط «انشر» فتُكتب نشرةٌ برقمٍ جديد لا تحمل
+         * شيئًا. وتقريرُ حالٍ كاذب أسوأ من غياب التقرير.
+         */
 
         return back()->with('toast', [
             'msg' => $data['maintenance']

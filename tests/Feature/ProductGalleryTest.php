@@ -258,8 +258,17 @@ class ProductGalleryTest extends TestCase
 
         $this->assertNull($this->main());
         Storage::disk('public')->assertMissing($wasMain);
-        // والمقروء يبقى رابطًا صالحًا للعرض لا فراغًا يكسر الشاشة
-        $this->assertNotEmpty($this->product->fresh()->image);
+        /*
+         * والمقروءُ فراغٌ لا رابطٌ عشوائيّ.
+         *
+         * كان يُردّ رابط `picsum.photos` — صورةُ شيءٍ لا صلة له بالمنتج —
+         * وكان هذا الاختبار يحرسه بحجّة أنّ الفراغَ «يكسر الشاشة». ولا يكسرها:
+         * كلُّ شاشةٍ تعرض صورةَ منتجٍ تكتب حالتَها الفارغة (مربّعٌ رماديّ في
+         * القائمة، و«📦» في نقطة البيع، ومربّعٌ في لوحة التجهيز) — وهي حالاتٌ
+         * لم تقع مرّةً لأنّ المقروء لم يكن فارغًا قطّ.
+         */
+        $this->assertSame('', $this->product->fresh()->image);
+        $this->assertTrue(ProductImages::gallery($this->product->fresh())[0]['placeholder']);
     }
 
     /* ============================== السقف ============================== */

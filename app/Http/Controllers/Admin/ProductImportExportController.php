@@ -399,7 +399,8 @@ class ProductImportExportController extends Controller
                     $product = Product::create($fields + [
                         'business_id' => $bid,
                         'quantity' => $r['quantity'],
-                        'image' => Demo::image('prod' . uniqid()),
+                        // ‏ولا صورةَ تُخترع للمستورَد: مئتا صنفٍ بمئتَي صورةٍ عشوائيّة
+                        'image' => null,
                     ]);
                     foreach ($this->allocation($r, $branchId) as $branch => $qty) {
                         BranchStock::adjust($bid, $branch, $product->id, $qty);

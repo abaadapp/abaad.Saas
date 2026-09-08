@@ -13,6 +13,7 @@ use App\Support\Lexicon;
 use App\Support\ListFilters;
 use App\Support\Pagination;
 use App\Support\PlanLimits;
+use App\Support\ProductImages;
 use App\Support\Sort;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -213,9 +214,18 @@ class ProductController extends Controller
         $data['published'] = $request->boolean('published', true);
         // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
         $data = Lexicon::fill($data);
+        /*
+         * وما لم تُرفع له صورةٌ يبقى بلا صورة.
+         *
+         * كان يُكتب في عموده رابطُ `picsum.photos` — صورةٌ عشوائيّةٌ من
+         * الإنترنت. فيصير المنتجُ في نظر النظام **مصوَّرًا**: يُنشر بها في
+         * متجر التاجر على الإنترنت (`Storefront` تسأل `hasRealMain`)،
+         * وتُعدّ في سقف الصور، ويُرسم لها زرُّ حذفٍ لملفٍّ لا وجود له.
+         * ووقع على متجرٍ حقيقيّ: صنفٌ اسمه «لانيارد» يحمل صورةَ شيءٍ آخر.
+         */
         $data['image'] = $request->hasFile('image')
             ? $request->file('image')->store('products', 'public')
-            : Demo::image('prod'.uniqid());
+            : null;
         $product = Product::create($data);
         // إسناد الكمية الافتتاحية إلى الفرع الحالي/الأول ليبقى مجموع الفروع = كمية المنتج
         BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) ($data['quantity'] ?? 0));
@@ -327,6 +337,15 @@ class ProductController extends Controller
         $copy->sku = $this->generateSku();
         $copy->barcode = $this->generateBarcode();
         $copy->quantity = 0;
+        /*
+         * وصورةُ النسخة ملفٌّ خاصٌّ بها لا مسارٌ مشترك.
+         *
+         * كان `replicate` ينسخ المسار كما هو، فيتقاسم المنتجان ملفًّا واحدًا.
+         * ثمّ يُحذف أحدهما وتمرّ عليه سلّةُ المحذوفات بعد تسعين يومًا فيُمحى
+         * الملفّ — فيفقد الآخر، وهو حيٌّ معروضٌ في المتجر، صورتَه بلا أن
+         * يلمسه أحد.
+         */
+        $copy->image = ProductImages::copyMainFile($source);
 
         /*
          * وتركيبُه معه: المقاسات والوصفة والإضافات.

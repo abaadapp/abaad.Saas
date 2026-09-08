@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { ImagePlus, Star, Trash2 } from 'lucide-react';
+import { ImageOff, ImagePlus, Star, Trash2 } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import {
@@ -174,7 +174,21 @@ export default function Gallery({ productId, images, max, limits }: Props) {
                                 : 'border-[var(--ui-border,#e8e8e8)]',
                         )}
                     >
-                        <img src={image.url} alt="" className="size-full object-cover" />
+                        {/*
+                            والبديلُ لا صورةَ له.
+
+                            كان `url` رابطًا عشوائيًّا من `picsum.photos` يُعرض
+                            صورةً للمنتج — فيرى التاجر شيئًا لا يبيعه معلَّمًا
+                            «بديل مؤقّت». وصار الفراغُ فراغًا: مربّعٌ ساكنٌ
+                            يقول ما هو.
+                        */}
+                        {image.placeholder ? (
+                            <span className="flex size-full items-center justify-center text-3xl text-[#d4d4d8]">
+                                <ImageOff className="size-8" />
+                            </span>
+                        ) : (
+                            <img src={image.url} alt="" className="size-full object-cover" />
+                        )}
 
                         {image.main && (
                             <span

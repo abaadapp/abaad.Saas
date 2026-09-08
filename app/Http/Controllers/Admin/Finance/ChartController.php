@@ -83,6 +83,10 @@ class ChartController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
+        if ($refusal = $this->systemParentRefusal($bid, $data['parent_id'] ?? null)) {
+            return back()->withErrors(['parent_id' => $refusal])->withInput();
+        }
+
         Account::create([
             'business_id' => $bid,
             'parent_id' => $data['parent_id'] ?? null,
@@ -114,6 +118,10 @@ class ChartController extends Controller
         // أبٌ يصير ابنًا لابنه يجعل الشجرة حلقةً لا نهاية لجمعها
         if (! empty($data['parent_id']) && $this->wouldLoop($account, (int) $data['parent_id'])) {
             return back()->withErrors(['parent_id' => __('لا يصير الحساب تابعًا لأحد فروعه')]);
+        }
+
+        if ($refusal = $this->systemParentRefusal($bid, $data['parent_id'] ?? null)) {
+            return back()->withErrors(['parent_id' => $refusal]);
         }
 
         /*
@@ -175,6 +183,39 @@ class ChartController extends Controller
         $account->delete();
 
         return back()->with('toast', ['msg' => __('حُذف الحساب'), 'type' => 'warning']);
+    }
+
+    /**
+     * حسابٌ يرحّل إليه النظامُ تلقائيًّا لا يصير أبًا.
+     *
+     * ═══ وهذا عطبٌ وقع على متجرٍ حقيقيّ ═══
+     *
+     * `isPostable` تشترط ألّا فروعَ للحساب — وهي القاعدة الصحيحة: مجموعُ
+     * الأب هو مجموعُ فروعه، وقيدٌ عليه مباشرةً يجعل الشجرة تقول رقمين.
+     *
+     * وكانت قائمةُ «الحساب الأب» تعرض الحسابات كلَّها، ومنها ما يرحّل إليه
+     * النظام. فأضاف تاجرٌ «بترول (تنقل)» تحت «٥٩٠٠ مصروفات أخرى» — تبويبٌ
+     * معقول تمامًا — فصار ٥٩٠٠ أبًا، فتوقّف كلُّ ما يُرحَّل إليه: تسويةُ
+     * مخزون، وفاقدُ جرد، وقيدٌ يدويّ (الشاشةُ تُسقط الآباء من قائمتها).
+     * ولا رسالةَ تقول ذلك: يضغط «حفظ التسوية» فيُردّ بخطأ خادم.
+     *
+     * والإغلاقُ محروسٌ منذ زمن («إغلاقه يوقف البيع والشراء») — وأثرُ الأبوّة
+     * هو أثرُ الإغلاق بحرفه. فحارسٌ في بابٍ وبابان بلا حارس.
+     *
+     * وأوراقُ الحسابات البنكية تفعل الصواب أصلًا: ورقةُ كلّ بنكٍ تُوضع
+     * **أختًا** للحساب النظاميّ لا ابنةً له — انظر `BankAccountController`.
+     */
+    private function systemParentRefusal(int $businessId, $parentId): ?string
+    {
+        if (blank($parentId)) {
+            return null;
+        }
+
+        $parent = Account::where('business_id', $businessId)->find($parentId);
+
+        return $parent?->system_key
+            ? __('«:name» يرحّل إليه النظام تلقائيًّا — والحسابُ الذي تحته فروعٌ لا يقبل قيدًا. اجعله أختًا له لا ابنًا.', ['name' => $parent->name])
+            : null;
     }
 
     /** هل يجعل هذا الأبُ الشجرةَ حلقة؟ */

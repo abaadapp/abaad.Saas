@@ -61,7 +61,24 @@ class Books
         $tax = round((float) $order->tax, 3);
         $total = round((float) $order->total, 3);
 
-        if ($total <= 0) {
+        $at = Carbon::parse($order->ordered_at ?? $order->created_at);
+        $cost = round(self::costOf($order), 3);
+
+        /*
+         * ═══ وبيعةٌ بلا ثمن تُخرج بضاعةً ═══
+         *
+         * كان الصفرُ يُنهي الدالّة كلَّها: `if ($total <= 0) return`. وبيعةٌ
+         * بكوبون «١٠٠٪» أو بنقاطٍ تغطّي ثمنَها كلَّه إجماليُّها صفر — فتخرج
+         * الباقةُ من الرفّ، ويُنقص المخزونُ الفعليّ، ولا يُكتب في الدفتر
+         * حرفٌ واحد. فيبقى المخزونُ في الميزانية بتكلفة بضاعةٍ لم تعد فيه،
+         * وتُقرأ الأرباحُ أعلى ممّا هي بكلّ هديّةٍ وُزّعت.
+         *
+         * ولا يُكتشف بالنظر: الميزان متوازن (لأنّ ما لم يُكتب لا يُخلّ به)،
+         * والحملةُ التي وُضعت لتجلب زبائن تُظهر ربحًا لا نقصان.
+         *
+         * فصار الصفرُ يمنع قيدَ الإيراد وحدَه — وتكلفةُ ما خرج تُكتب.
+         */
+        if ($total <= 0 && $cost <= 0) {
             return;
         }
 
@@ -78,29 +95,29 @@ class Books
             default => 'bank',
         };
 
-        $at = Carbon::parse($order->ordered_at ?? $order->created_at);
-        $cost = round(self::costOf($order), 3);
-
         DB::transaction(function () use ($order, $debit, $total, $subtotal, $tax, $cost, $at) {
-            $lines = [['account' => $debit, 'debit' => $total]];
+            // ‏ولا قيدَ إيرادٍ بصفر: طرفاه صفران، وهو سطرٌ يقول لا شيء
+            if ($total > 0) {
+                $lines = [['account' => $debit, 'debit' => $total]];
 
-            if ($subtotal > 0) {
-                $lines[] = ['account' => 'sales', 'credit' => $subtotal];
-            }
-            if ($tax > 0) {
-                $lines[] = ['account' => 'tax_payable', 'credit' => $tax];
-            }
+                if ($subtotal > 0) {
+                    $lines[] = ['account' => 'sales', 'credit' => $subtotal];
+                }
+                if ($tax > 0) {
+                    $lines[] = ['account' => 'tax_payable', 'credit' => $tax];
+                }
 
-            Ledger::post(
-                $order->business_id,
-                __('بيع — فاتورة ').$order->number,
-                $lines,
-                $at,
-                self::SALE,
-                $order->branch_id,
-                $order->user_id,
-                $order,
-            );
+                Ledger::post(
+                    $order->business_id,
+                    __('بيع — فاتورة ').$order->number,
+                    $lines,
+                    $at,
+                    self::SALE,
+                    $order->branch_id,
+                    $order->user_id,
+                    $order,
+                );
+            }
 
             // البضاعة تخرج من المخزون بتكلفتها لا بثمنها — وبلا هذا القيد
             // ينتفخ المخزون في الميزانية بكلّ ما بيع منه

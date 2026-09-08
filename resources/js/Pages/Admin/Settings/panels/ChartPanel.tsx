@@ -104,7 +104,18 @@ export default function ChartPanel({ accounts, trial, types }: ChartData) {
         return out;
     }, [accounts]);
 
-    const parents = accounts.map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }));
+    /*
+     * وما يرحّل إليه النظامُ لا يُعرض أبًا.
+     *
+     * الحسابُ الذي تحته فروعٌ لا يقبل قيدًا — فجعلُ «مصروفات أخرى» أو
+     * «الصندوق» أبًا يوقف ما يُرحَّل إليه: تسويةَ مخزونٍ أو بيعةً أو شراء.
+     * ووقع فعلًا: «بترول (تنقل)» تحت «مصروفات أخرى» أوقفت تسويات المخزون.
+     *
+     * والخادمُ يردّه على كلّ حال — وهذا كي لا يُعرض بابٌ يُردّ فاتحُه.
+     */
+    const parents = accounts
+        .filter((a) => !a.system)
+        .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }));
 
     const form = useForm({
         parent_id: '',

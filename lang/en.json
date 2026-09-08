@@ -3040,6 +3040,7 @@
     "لا مبلغ يُصرف": "There is no amount to pay out",
     "لا متجر تجريبيّ — أنشئه أوّلًا.": "There is no demo store — create one first.",
     "لا موظّف له راتبٌ مسجَّل — اضبط الرواتب في صفحة الموظفين أولًا": "No employee has a recorded salary — set salaries on the Employees page first",
+    "«:name» يرحّل إليه النظام تلقائيًّا — والحسابُ الذي تحته فروعٌ لا يقبل قيدًا. اجعله أختًا له لا ابنًا.": "“:name” is posted to automatically by the system — and an account with sub-accounts under it accepts no entries. Place the new account beside it, not under it.",
     "لا يصير الحساب تابعًا لأحد فروعه": "An account cannot become a child of one of its own descendants",
     "لا يمكن حذف آخر بند — الفاتورة لا تبقى بلا أصناف.": "The last line cannot be removed — an invoice cannot stand without items.",
     "لا يمكن حذف آخر مدير منصة": "The last platform administrator cannot be deleted",

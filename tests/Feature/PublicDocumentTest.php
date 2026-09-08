@@ -230,11 +230,18 @@ class PublicDocumentTest extends TestCase
             ->assertJsonStructure(['version', 'published_at', 'site' => ['pages', 'globals', 'tokens', 'brand']]);
     }
 
+    /**
+     * والحجزُ يُقرأ من موضعه الحيّ — `businesses.site_slug`.
+     *
+     * كان يُقرأ من إعدادٍ اسمه `site_subdomain` لا يكتبه شيءٌ في النظام، فكان
+     * هذا الاختبار يكتبه بيده ويمرّ — يحرس فرعًا لا يسلكه تاجر. والاسمُ الذي
+     * يحجزه التاجر فعلًا هو `site_slug`.
+     */
     public function test_a_shop_with_no_domain_of_its_own_is_reached_by_its_reserved_subdomain(): void
     {
         $this->seedShop();
         Setting::where('business_id', $this->business->id)->where('key', 'site_domain')->delete();
-        Setting::create(['business_id' => $this->business->id, 'key' => 'site_subdomain', 'value' => 'wrood']);
+        $this->business->forceFill(['site_slug' => 'wrood'])->save();
 
         $site = Builder::create($this->business, 'store', 'modern', $this->owner->id);
         Publisher::publish($site, $this->owner->id);

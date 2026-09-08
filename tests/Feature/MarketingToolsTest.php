@@ -80,7 +80,7 @@ class MarketingToolsTest extends TestCase
         $this->assertSame([
             'site_on', 'site_domain',
             // طريقُ العنوان واسمُ النطاق الفرعي — تقرؤهما `DomainOptions`
-            'site_domain_mode', 'site_subdomain',
+            'site_domain_mode',
             'site_path',
             'store_on', 'store_theme', 'store_headline', 'store_about', 'store_show_prices',
             'store_whatsapp',

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin\Website;
 
+use App\Models\Business;
 use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
@@ -97,8 +98,10 @@ trait Concerns
     /**
      * عنوان الموقع على الإنترنت — أو null إن لم يُضبط بعد.
      *
-     * ولا يُخترع من الاسم الفرعيّ المحجوز: لا شيء على الخادم يقدّمه بعد،
-     * ورابطٌ لا يردّ أسوأ من لا رابط. انظر MarketingSettings::site_subdomain.
+     * ويقرؤه `Demo::websiteUrl`: متجرُ أبعاد المنشور أوّلًا، ثمّ النطاقُ
+     * الذي يملكه التاجر. ولا يُخترع هنا عنوانٌ ثالث — العنوانُ المحجوز
+     * يُعرض في `domainState` بجانب النطاق، ومن يخدمه قرارُ استضافةٍ لا سطرُ
+     * شفرة.
      */
     protected function publicUrl(): ?string
     {
@@ -115,11 +118,23 @@ trait Concerns
     protected function domainState(): array
     {
         $site = MarketingSettings::group($this->bid(), 'website');
-        $subdomain = trim((string) $site['site_subdomain']);
+
+        /*
+         * والاسمُ المحجوز من موضعه — `businesses.site_slug`.
+         *
+         * كان يُقرأ من إعدادٍ اسمه `site_subdomain` لا يكتبه شيءٌ في النظام،
+         * فيردّ `null` دائمًا: شاشةُ المعالج وشاشةُ السيو تعرضان مثالًا
+         * (`example.om`) مكان عنوان التاجر، ولو كان محجوزًا في لوحته.
+         *
+         * وهو الاسمُ نفسه الذي يفتح موقعَه عند العارض — انظر
+         * `PublishedSiteController::bySubdomain`. فما يُعرض هنا هو ما يُجاب
+         * هناك، لا اسمان.
+         */
+        $slug = trim((string) Business::whereKey($this->bid())->value('site_slug'));
 
         return [
             'domain' => trim((string) $site['site_domain']),
-            'subdomain' => $subdomain !== '' ? DomainOptions::host($subdomain) : null,
+            'subdomain' => $slug !== '' ? DomainOptions::host($slug) : null,
         ];
     }
 

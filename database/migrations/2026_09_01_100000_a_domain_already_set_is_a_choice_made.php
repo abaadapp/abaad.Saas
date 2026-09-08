@@ -1,8 +1,6 @@
 <?php
 
-use App\Support\DomainOptions;
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
 
 /**
  * من ضبط نطاقه قبل هذه النسخة صاحبُ خيارٍ لا صاحبُ فراغ.
@@ -15,45 +13,37 @@ use Illuminate\Support\Facades\DB;
  */
 return new class extends Migration
 {
+    /**
+     * ولا تكتب شيئًا بعد اليوم.
+     *
+     * ═══ ما كانت تفعل ═══
+     *
+     * تكتب `site_domain_mode` لمن ضبط نطاقه قبل أن يصير للعنوان طرقٌ ثلاث،
+     * كي لا تُفتح شاشةُ الاختيار في وجهه فيغيّر عنوانه وهو يظنّ أنّه يؤكّده.
+     *
+     * ═══ ولماذا سكتت ═══
+     *
+     * الطريقُ المختار صار يسكن `site_path` وحده — و`Storefront::path`
+     * تستنتجه لمن سبق الاختيار (من حجز عنوانًا فطريقُه `sub`، ومن كتب نطاقه
+     * فطريقُه `own`). فما كانت تكتبه هذه الهجرة لا يقرؤه شيءٌ في النظام،
+     * وحارسٌ في `OneListForTheAddressPathsTest` يمنع عودةَ قارئه.
+     *
+     * وأخطرُ من ذلك: سطرُها كان يكتب `DomainOptions::OWN` — ثابتٌ **رُفع**
+     * من الصنف بعدها. فهي لا تنفجر على قاعدةٍ فارغة (الحلقةُ لا تُدخَل)،
+     * وتنفجر على قاعدةٍ فيها صفُّ `site_domain`: «ثابتٌ غير معرَّف». ولا
+     * يقع ذلك على الإنتاج — جرت يوم كان الثابت قائمًا — بل على **استعادةِ
+     * نسخةٍ أو خادمٍ جديد يُبنى ببياناتٍ حقيقية**، وهو أسوأُ وقتٍ تنفجر فيه.
+     *
+     * والملفّ لا يُحذف: اسمُه مقيَّدٌ في جدول الهجرات على كلّ قاعدةٍ جرت
+     * عليها. فيبقى ويسكت.
+     */
     public function up(): void
     {
-        /*
-         * الخيار يُكتب لمن له نطاقٌ ولا خيار له — ولمن له خيارٌ يُترك خيارُه.
-         *
-         * ولا `insertOrIgnore` هنا: جدول الإعدادات بلا قيدٍ فريد على
-         * (business_id, key)، فالتجاهل لا يتجاهل شيئًا. والمكتوب سلفًا
-         * يُستثنى صراحةً: صفّان لمفتاحٍ واحد يعنيان قيمتين لإعدادٍ واحد ولا
-         * أحد يعرف أيّهما تُقرأ.
-         */
-        $already = DB::table('settings')
-            ->where('key', 'site_domain_mode')
-            ->whereNotNull('business_id')
-            ->pluck('business_id')
-            ->all();
-
-        $rows = DB::table('settings')
-            ->where('key', 'site_domain')
-            ->whereNotNull('business_id')
-            ->whereNotNull('value')
-            ->where('value', '!=', '')
-            ->whereNotIn('business_id', $already ?: [0])
-            ->distinct()
-            ->pluck('business_id');
-
-        foreach ($rows as $businessId) {
-            DB::table('settings')->insert([
-                'business_id' => $businessId,
-                'key' => 'site_domain_mode',
-                'value' => DomainOptions::OWN,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
+        // ‏لا شيء: ما كانت تكتبه مفتاحٌ لا يقرؤه أحد — انظر الشرح أعلاه
     }
 
     public function down(): void
     {
-        DB::table('settings')->where('key', 'site_domain_mode')->delete();
-        DB::table('settings')->where('key', 'site_subdomain')->delete();
+        // ‏ولا شيء تردّه: لم تكتب شيئًا
     }
 };

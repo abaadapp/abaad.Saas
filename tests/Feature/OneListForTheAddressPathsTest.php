@@ -53,10 +53,25 @@ class OneListForTheAddressPathsTest extends TestCase
         $this->assertStringNotContainsString('site_path', $body);
     }
 
-    /** وما بقي من `DomainOptions` يُقرأ فعلًا */
+    /**
+     * وما بقي من `DomainOptions` يُقرأ فعلًا — ومن مصدرٍ واحد.
+     *
+     * و`DEFAULT_SUFFIX` و`SUFFIX_KEY` رُفعا معه: كانا يقرآن إعدادَ منصّةٍ لا
+     * يكتبه شيء، بينما المسارُ الذي يخدم عناوين المتاجر يُبنى من
+     * `config('storefront.domain')`. لاحقتان لشيءٍ واحد، تتّفقان بالمصادفة
+     * لا بالضبط.
+     */
     public function test_what_survives_is_read(): void
     {
-        $this->assertSame('abaadapp.om', DomainOptions::DEFAULT_SUFFIX);
-        $this->assertSame('my-store.abaadapp.om', DomainOptions::host('my-store'));
+        $this->assertSame(Storefront::domain(), DomainOptions::suffix());
+        $this->assertSame('my-store.'.Storefront::domain(), DomainOptions::host('my-store'));
+    }
+
+    /** ولا تبقى اللاحقةُ مكتوبةً في موضعين */
+    public function test_the_suffix_has_one_source(): void
+    {
+        config(['storefront.domain' => 'example.om']);
+
+        $this->assertSame('my-store.example.om', DomainOptions::host('my-store'));
     }
 }

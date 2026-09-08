@@ -2,8 +2,6 @@
 
 namespace App\Support;
 
-use App\Models\Setting;
-
 /**
  * لاحقةُ النطاق الفرعيّ لأبعاد — وبناءُ العنوان الكامل منها.
  *
@@ -19,29 +17,24 @@ use App\Models\Setting;
  * `site_path` الذي تكتبه شاشةُ الإعدادات. وكانت هنا قائمةٌ ثانية تسمّي
  * الطريقَ نفسه باسمٍ آخر (`subdomain` مقابل `sub`) وتقرأ مفتاحًا آخر —
  * وقائمتان لسؤالٍ واحد تفترقان يومًا.
+ *
+ * ═══ واللاحقةُ من مصدرٍ واحد: ما يخدمه الخادم ═══
+ *
+ * كانت تُقرأ من إعداد منصّةٍ اسمه `domain_subdomain_suffix` — **لا يكتبه شيءٌ
+ * في النظام**: لا شاشةَ له ولا متحكّم، ولا صفَّ له في قاعدة الإنتاج. بينما
+ * المسارُ الذي يخدم عناوين المتاجر يُبنى من `config('storefront.domain')`،
+ * ومنه يُبنى العنوان الذي يُعرض للتاجر.
+ *
+ * فلاحقتان لشيءٍ واحد. وكلتاهما تردّ `abaadapp.om` اليوم — بالمصادفة لا
+ * بالضبط: لو كُتب ذلك الإعداد يومًا لَبحث العارضُ الخارجيّ في لاحقةٍ لا
+ * يخدمها خادمٌ، والتاجر يقرأ عنوانًا ويفتح غيرَه.
  */
 class DomainOptions
 {
-    /** لاحقةُ نطاقات أبعاد الفرعية حين لا تضبطها المنصّة */
-    public const DEFAULT_SUFFIX = 'abaadapp.om';
-
-    /** مفتاحُ اللاحقة في إعدادات المنصّة */
-    public const SUFFIX_KEY = 'domain_subdomain_suffix';
-
-    /** اللاحقة كما ضبطتها المنصّة — أو الافتراضية */
+    /** اللاحقة التي يخدمها الخادم فعلًا — مصدرُها واحد */
     public static function suffix(): string
     {
-        return self::suffixFrom([
-            self::SUFFIX_KEY => Setting::whereNull('business_id')->where('key', self::SUFFIX_KEY)->value('value'),
-        ]);
-    }
-
-    /** @param  array<string, string|null>  $saved */
-    private static function suffixFrom(array $saved): string
-    {
-        $value = trim((string) ($saved[self::SUFFIX_KEY] ?? ''));
-
-        return $value !== '' ? $value : self::DEFAULT_SUFFIX;
+        return Storefront::domain();
     }
 
     /** العنوان الكامل للنطاق الفرعي — الاسم واللاحقة */

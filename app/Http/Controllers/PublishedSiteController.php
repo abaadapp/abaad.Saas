@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Business;
 use App\Models\Setting;
 use App\Models\Website;
 use App\Support\DomainOptions;
@@ -86,17 +87,27 @@ class PublishedSiteController extends Controller
     }
 
     /**
-     * ومن لا نطاق له: النطاق الفرعيّ الذي حجزه.
+     * ومن لا نطاق له: الاسمُ الذي حجزه.
      *
-     * التاجر الذي لا يملك نطاقًا يحجز `اسمه.abaadapp.om` من شاشة الدومين،
-     * ويُحفظ الاسم في `site_subdomain` وحده — لأنّه يوم كُتب لم يكن ثمّة ما
-     * يعرض موقعًا أصلًا، فبقي حجزًا على ورق.
+     * ═══ وهو `site_slug` لا مفتاحٌ آخر ═══
      *
-     * وقد صار ثمّة عارض. فالاسم يُقرأ هنا، ويصير موقعُ من لا نطاق له مفتوحًا
-     * كموقع من يملكه — ولا يبقى في النظام حجزٌ لا يؤدّي إلى شيء.
+     * كان يُبحث عنه في إعدادٍ اسمه `site_subdomain` — **مفتاحٌ لا يكتبه شيءٌ
+     * في النظام كلِّه**: لا شاشةَ تحفظه ولا متحكّمَ يمرّره، ولا صفَّ له في
+     * قاعدة الإنتاج. فالفرعُ كلُّه لم يكن يقع مرّةً واحدة.
      *
-     * ويبقى ما ليس من شأن هذا الملفّ: أن يُوجَّه `*.abaadapp.om` إلى العارض
-     * وأن تُصدَر له شهادة. انظر `Storefront/docs/DEPLOY.md`.
+     * والاسمُ المحجوز فعلًا في `businesses.site_slug`: هو الذي يُفحص تفرّدُه
+     * عند الحفظ، وهو الذي يُعرض للتاجر عنوانًا في لوحته، وهو الذي يُبنى عليه
+     * مسارُ متجر أبعاد. فمن حجز اسمه وبنى موقعه ونشره ثمّ فتح عنوانه وجد
+     * «غير موجود» — ولوحتُه تقول إنّ العنوان له.
+     *
+     * فصار الاسمُ واحدًا: ما يحجزه التاجر هو ما يفتح موقعه.
+     *
+     * ولا يُقرأ موقعٌ بمعرّفه: عدّادٌ بسيط يمرّ على مواقع المتاجر كلّها. والاسم
+     * المحجوز نصٌّ اختاره صاحبُه — لا يُخمَّن بالعدّ.
+     *
+     * ويبقى ما ليس من شأن هذا الملفّ: **أيُّ خادمٍ يخدم `*.abaadapp.om`**.
+     * هذا المسار يقول من صاحبُ العنوان ويردّ لقطته؛ وتوجيهُ DNS والشهادةُ
+     * قرارُ استضافة. انظر `Storefront/docs/DEPLOY.md`.
      */
     private static function bySubdomain(string $host): ?int
     {
@@ -113,9 +124,6 @@ class PublishedSiteController extends Controller
             return null;
         }
 
-        return Setting::whereNotNull('business_id')
-            ->where('key', 'site_subdomain')
-            ->whereRaw('LOWER(value) = ?', [$label])
-            ->value('business_id');
+        return Business::whereRaw('LOWER(site_slug) = ?', [$label])->value('id');
     }
 }

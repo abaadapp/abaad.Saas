@@ -51,6 +51,13 @@ interface Invoice {
  * والمقابضُ تُرسم عليه: «بابٌ معروضٌ لا يُفتح أسوأ من بابٍ لا يُعرض» — من
  * يضغط «إلغاء» فيُردّ بـ٤٠٣ يظنّ النظامَ معطوبًا لا نفسَه غيرَ مأذون.
  */
+/** حسابٌ بنكيٌّ من «المالية» — اسمُه محسوبٌ في الخادم، انظر شاشةَ الإنشاء */
+interface BankRow {
+    id: number;
+    name: string;
+    is_primary: boolean;
+}
+
 interface May {
     issue: boolean;
     cancel: boolean;
@@ -60,7 +67,8 @@ interface May {
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, context } = usePage<PageProps<{ invoice: Invoice; may: May }>>().props;
+    const { invoice, may, bank_accounts, context } =
+        usePage<PageProps<{ invoice: Invoice; may: May; bank_accounts: BankRow[] }>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
     /* ومسودّةٌ بلا رقم تُعرف بمعرّفها — والعنوانُ لا يكون فراغًا */
@@ -149,7 +157,9 @@ export default function CustomerInvoiceShow() {
                 </Card>
             )}
 
-            {paying && <PayForm invoice={invoice} onDone={() => setPaying(false)} />}
+            {paying && (
+                <PayForm invoice={invoice} accounts={bank_accounts} onDone={() => setPaying(false)} />
+            )}
             {crediting && <CreditNoteForm invoice={invoice} onDone={() => setCrediting(false)} />}
 
             <div className="grid gap-4 lg:grid-cols-3">
@@ -310,16 +320,29 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
     );
 }
 
-function PayForm({ invoice, onDone }: { invoice: Invoice; onDone: () => void }) {
+function PayForm({
+    invoice,
+    accounts,
+    onDone,
+}: {
+    invoice: Invoice;
+    accounts: BankRow[];
+    onDone: () => void;
+}) {
     const t = useTranslate();
     const form = useForm({
         customer_id: String(invoice.customer_id),
         customer_invoice_id: String(invoice.id),
         amount: String(invoice.outstanding),
         method: 'نقدي',
+        // والرئيسيُّ أوّلُ القائمة — انظر `CustomerInvoiceController::bankAccounts`
+        bank_account_id: accounts.length > 0 ? String(accounts[0].id) : '',
         occurred_at: '',
         external_reference: '',
     });
+
+    /* والحسابُ يُسأل عنه حين يدخل المالُ بنكًا — والنقدُ يدخل الصندوق */
+    const needsAccount = form.data.method !== 'نقدي';
 
     return (
         <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
@@ -340,13 +363,45 @@ function PayForm({ invoice, onDone }: { invoice: Invoice; onDone: () => void }) 
                     ))}
                 </select>
             </label>
+
+            {/*
+                وأيُّ حسابٍ استقبل المال — لا «بنك» وحدَها.
+
+                كانت النافذةُ تسأل عن الوسيلة وتسكت عن الحساب، والخادمُ يقبل
+                `bank_account_id` منذ كُتب. فكلُّ تحصيلٍ غيرِ نقديٍّ كان يُكتب
+                بحسابٍ فارغ، ولا تجد له مطابقةُ كشف الحساب حسابًا تُسنده إليه.
+            */}
+            {needsAccount && accounts.length > 0 && (
+                <label className="text-[13px]">
+                    {t('الحساب البنكي')}
+                    <select
+                        className="mt-1 block rounded-[8px] border border-[var(--ui-border,#e8e8e8)] p-2"
+                        value={form.data.bank_account_id}
+                        onChange={(e) => form.setData('bank_account_id', e.target.value)}
+                    >
+                        {accounts.map((a) => (
+                            <option key={a.id} value={String(a.id)}>
+                                {a.is_primary ? `${a.name} — ${t('رئيسي')}` : a.name}
+                            </option>
+                        ))}
+                    </select>
+                    {form.errors.bank_account_id && (
+                        <p className="text-[12px] text-[#b91c1c]">{form.errors.bank_account_id}</p>
+                    )}
+                </label>
+            )}
+
             <label className="text-[13px]">
                 {t('التاريخ')}
                 <Input type="date" value={form.data.occurred_at} onChange={(e) => form.setData('occurred_at', e.target.value)} />
             </label>
             <Button
                 disabled={form.processing}
-                onClick={() => form.post('/admin/customer-payments', { preserveScroll: true, onSuccess: onDone })}
+                onClick={() => {
+                    // وحسابٌ اختير ثمّ رُدَّت الوسيلةُ إلى النقد لا يُرسَل
+                    form.transform((d) => ({ ...d, bank_account_id: needsAccount ? d.bank_account_id : '' }));
+                    form.post('/admin/customer-payments', { preserveScroll: true, onSuccess: onDone });
+                }}
             >
                 {t('حفظ التحصيل')}
             </Button>

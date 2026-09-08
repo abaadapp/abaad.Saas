@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\BankAccount;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceAttachment;
@@ -22,6 +23,7 @@ use App\Support\Search;
 use App\Support\Vat;
 use App\Support\WhatsAppPhone;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -41,6 +43,28 @@ class CustomerInvoiceController extends Controller
     private function bid(): int
     {
         return (int) (auth()->user()->business_id ?? Demo::bid());
+    }
+
+    /**
+     * الحساباتُ البنكيّة التي يجوز أن يُسمّى أحدُها مستقبِلًا للمال.
+     *
+     * والمعطَّلُ لا يُعرض: حسابٌ أُغلق لا يُوجَّه إليه تحصيلٌ جديد — ويبقى
+     * مقبولًا في الخادم لأنّ تحصيلًا قديمًا قد يشير إليه.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function bankAccounts(): array
+    {
+        return BankAccount::where('business_id', $this->bid())
+            ->where('active', true)
+            // والرئيسيُّ أوّلًا: هو ما تختاره الشاشةُ وحدَها، فليكن أوّلَ ما يُقرأ
+            ->orderByDesc('is_primary')->orderBy('id')
+            ->get(['id', 'label', 'bank_name', 'account_name', 'iban', 'is_primary'])
+            ->map(fn (BankAccount $a) => [
+                'id' => $a->id,
+                'name' => $a->displayName(),
+                'is_primary' => (bool) $a->is_primary,
+            ])->all();
     }
 
     /** الفاتورةُ من متجر الطالب لا من رقمٍ في الرابط */
@@ -165,6 +189,8 @@ class CustomerInvoiceController extends Controller
 
         return Inertia::render('Admin/CustomerInvoices/Show', [
             'may' => $this->may(),
+            // ونافذةُ التحصيل هنا تسأل السؤال نفسه — انظر `create`
+            'bank_accounts' => $this->bankAccounts(),
             'invoice' => $this->row($invoice) + [
                 'subtotal' => (float) $invoice->subtotal,
                 'discount_total' => (float) $invoice->discount_total,
@@ -268,6 +294,15 @@ class CustomerInvoiceController extends Controller
             'today' => now()->toDateString(),
             'may' => $this->may(),
             'methods' => ['آجل', 'نقدي', 'بطاقة', 'تحويل'],
+            /*
+             * وأيُّ حسابٍ بنكيٍّ استقبل المال — من المالية لا مكتوبًا هنا.
+             *
+             * كانت الشاشةُ تعرض «بطاقة» و«تحويل» ولا تسأل عن الحساب، والخادمُ
+             * يقبل `bank_account_id` ولا ترسله شاشة. فالمالُ يدخل «البنك» في
+             * الدفتر بلا أن يُقال أيَّ بنك — ومطابقةُ كشف الحساب تسأل هذا
+             * بالضبط.
+             */
+            'bank_accounts' => $this->bankAccounts(),
             // عميلٌ أُضيف من هذه الشاشة نفسها — يُختار فور العودة إليها
             'new_customer_id' => $request->session()->get('new_customer_id'),
         ]);
@@ -329,7 +364,15 @@ class CustomerInvoiceController extends Controller
             // نسبةُ البند لقطةٌ تُحفظ في السطر — والإعفاءُ يُكتب صفرًا
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'payment_method' => ['nullable', 'string', 'in:آجل,نقدي,بطاقة,تحويل'],
-            'bank_account_id' => ['nullable', 'integer'],
+            /*
+             * وملكيّةُ الحساب تُسأل هنا كي يقع الخطأ على حقله.
+             *
+             * `CustomerPayments::accountFor` ترمي على حسابٍ من متجرٍ آخر —
+             * و`catch (RuntimeException)` أسفلُ كانت تكتب رسالتَها تحت
+             * `items`، فيقرأ التاجرُ عطبًا في البنود وعطبُه في حقلٍ آخر.
+             */
+            'bank_account_id' => ['nullable', 'integer', Rule::exists('bank_accounts', 'id')
+                ->where('business_id', $this->bid())],
         ] + InvoiceAttachments::rules('attachments'), [
             'attachments.*.extensions' => __('الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC.'),
             'attachments.*.max' => __('أقصى حجم 10 ميجابايت.'),
@@ -337,6 +380,7 @@ class CustomerInvoiceController extends Controller
         ], [
             'customer_id' => __('العميل'),
             'items' => __('بنود الفاتورة'),
+            'bank_account_id' => __('الحساب البنكي'),
         ]);
 
         $customer = Customer::where('business_id', $this->bid())
@@ -573,12 +617,16 @@ class CustomerInvoiceController extends Controller
             'customer_id' => ['required', 'integer'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'method' => ['required', 'string'],
-            'bank_account_id' => ['nullable', 'integer'],
+            'bank_account_id' => ['nullable', 'integer', Rule::exists('bank_accounts', 'id')
+                ->where('business_id', $this->bid())],
             'occurred_at' => ['nullable', 'date'],
             'external_reference' => ['nullable', 'string', 'max:80'],
             'notes' => ['nullable', 'string', 'max:500'],
             'customer_invoice_id' => ['nullable', 'integer'],
-        ], [], ['amount' => __('المبلغ'), 'method' => __('وسيلة الدفع')]);
+        ], [], [
+            'amount' => __('المبلغ'), 'method' => __('وسيلة الدفع'),
+            'bank_account_id' => __('الحساب البنكي'),
+        ]);
 
         $customer = Customer::where('business_id', $this->bid())
             ->whereKey($data['customer_id'])->first();

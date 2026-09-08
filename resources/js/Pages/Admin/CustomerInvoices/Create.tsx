@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { ChevronDown, Paperclip, Plus, Search, Trash2, UserPlus } from 'lucide-react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import { ChevronDown, Info, Paperclip, Plus, Save, Search, Send, Trash2, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -52,6 +52,19 @@ interface ProductRow {
     price: number;
 }
 
+/**
+ * حسابٌ بنكيٌّ من «المالية» — والاسمُ محسوبٌ في الخادم لا مركَّبٌ هنا.
+ *
+ * `BankAccount::displayName` تعرف أيَّ حقلٍ تقرأ: ما سمّاه به التاجر، وإلّا
+ * اسمَ البنك مع آخر أربعةٍ من الآيبان. وتركيبُه في الشاشة يعني قاعدتين
+ * لتسميةٍ واحدة تفترقان يومًا.
+ */
+interface BankRow {
+    id: number;
+    name: string;
+    is_primary: boolean;
+}
+
 /** ما يملكه من يكتب — والمقابضُ تُرسم عليه لا على الأمنيات */
 interface May {
     issue: boolean;
@@ -69,6 +82,8 @@ interface Props {
     today: string;
     may: May;
     methods: string[];
+    /** حساباتُ المتجر النشطة — الرئيسيُّ أوّلها */
+    bank_accounts: BankRow[];
     new_customer_id: number | null;
 }
 
@@ -114,11 +129,8 @@ const SHOWN = 40;
  * واحدة — فليقُل ما يعنيه من أوّل قراءة.
  */
 const ORG_FIELDS = [
-    ['po_number', 'رقم أمر الشراء (PO)', 'PO-2026-154'],
     ['contract_number', 'رقم العقد', 'CNT-2026-08'],
     ['external_reference', 'رقم المرجع', 'REF-8842'],
-    ['department', 'القسم / الإدارة', ''],
-    ['cost_center', 'مركز التكلفة', 'CC-104'],
     ['attention_to', 'موجه إلى / عناية', ''],
 ] as const;
 
@@ -155,6 +167,7 @@ export default function CustomerInvoiceCreate({
     tax_rate,
     today,
     may,
+    bank_accounts,
     new_customer_id,
 }: Props) {
     const { context } = usePage<PageProps>().props;
@@ -174,6 +187,8 @@ export default function CustomerInvoiceCreate({
     const dueRef = useRef<HTMLInputElement>(null);
     const [picking, setPicking] = useState(false);
     const [adding, setAdding] = useState(false);
+    /* والملاحظاتُ الداخليّة مطفأةٌ حتى تُطلَب — وإطفاؤها يمحوها، انظر المُبدِّل */
+    const [internal, setInternal] = useState(false);
 
     const form = useForm({
         customer_id: new_customer_id ? String(new_customer_id) : '',
@@ -191,6 +206,8 @@ export default function CustomerInvoiceCreate({
         // المرفقاتُ في النموذج لا بجواره: فيصل خطؤها مكتوبًا باسمها
         attachments: [] as File[],
         payment_method: 'آجل',
+        // والرئيسيُّ أوّلُ القائمة — فما تراه الشاشةُ هو ما يُخزَّن
+        bank_account_id: bank_accounts.length > 0 ? String(bank_accounts[0].id) : '',
         issue: false,
         items: [] as Line[],
     });
@@ -269,6 +286,35 @@ export default function CustomerInvoiceCreate({
     };
 
     /*
+     * واختيارُ العميل يجرّ شروطَ سداده — ولا يجرّ قسمَه.
+     *
+     * الخادمُ يسقط إلى قسم العميل حين يُترك الحقلُ فارغًا؛ ونسخُه في الشاشة
+     * أيضًا موضعان يقرّران الشيء نفسه، وأوّلُ تغييرٍ في أحدهما يجعل الورقة
+     * تحمل قسمًا لم يُقصد.
+     */
+    const pickCustomer = (id: string) => {
+        const picked = customers.find((c) => String(c.id) === id);
+
+        form.setData((d) => ({
+            ...d,
+            customer_id: id,
+            payment_terms_days:
+                picked?.payment_terms_days != null && !dueManual
+                    ? String(picked.payment_terms_days)
+                    : d.payment_terms_days,
+            due_at:
+                picked?.payment_terms_days != null && !dueManual
+                    ? addDays(d.issued_at || today, picked.payment_terms_days)
+                    : d.due_at,
+        }));
+    };
+
+    const clearCustomer = () => form.setData('customer_id', '');
+
+    /* والحسابُ يُسأل عنه حين يدخل المالُ بنكًا — لا مع النقد ولا مع الآجل */
+    const needsAccount = form.data.payment_method === 'بطاقة' || form.data.payment_method === 'تحويل';
+
+    /*
      * والملفّاتُ خارج `useForm`: تُضاف عند الإرسال.
      *
      * `transform` تحقنها في الحمولة، و`forceFormData` يجعلها ترحل كنموذجٍ
@@ -289,6 +335,14 @@ export default function CustomerInvoiceCreate({
             issue,
             items: lines,
             payment_terms_days: data.payment_terms_days === CUSTOM ? '' : data.payment_terms_days,
+            /*
+             * وحسابٌ اختير ثمّ بُدِّلت الوسيلةُ لا يُرسَل.
+             *
+             * الشاشةُ تُخفي القائمة، والحقلُ يبقى في النموذج — فيصل مع «نقدي»
+             * حسابُ بنكٍ لم يمرّ به المال. والخادمُ يُسقطه أيضًا
+             * (`CustomerPayments::accountFor`)، وحارسان لا يضرّان.
+             */
+            bank_account_id: needsAccount ? data.bank_account_id : '',
         }));
         form.post('/admin/customer-invoices', { preserveScroll: true, forceFormData: files.length > 0 });
     };
@@ -304,8 +358,8 @@ export default function CustomerInvoiceCreate({
             />
 
             <PageHeader
-                title="إنشاء فاتورة"
-                subtitle={t('فاتورة جديدة للعميل مع تحديد البنود والشروط.')}
+                title="إنشاء فاتورة عميل جديدة"
+                subtitle={t('إصدار فاتورة لعميل مقابل منتجات أو خدمات.')}
                 actions={
                     <span className="rounded-full bg-[#eff6ff] px-3 py-1 text-[12px] font-medium text-[#1d4ed8]">
                         {t('مسودة')}
@@ -313,80 +367,63 @@ export default function CustomerInvoiceCreate({
                 }
             />
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {/* ───────── بيانات العميل ───────── */}
-                <Card className="p-5">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                        <h2 className="text-[15px] font-bold text-[#111]">{t('بيانات العميل')}</h2>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)}>
-                            <UserPlus />
-                            {t('عميل جديد')}
-                        </Button>
-                    </div>
+            {/*
+                وعمودان: الورقةُ في الأوسع، وما يُقرأ عنها في الأضيق.
 
-                    <CustomerPicker
-                        customers={customers}
-                        value={form.data.customer_id}
-                        onChange={(id) => {
-                            const picked = customers.find((c) => String(c.id) === id);
-                            /*
-                             * ولا يُنسخ «القسم» من صفّ العميل هنا.
-                             *
-                             * الخادمُ يسقط إليه حين يُترك الحقلُ فارغًا — ونسخُه
-                             * في الشاشة أيضًا موضعان يقرّران الشيء نفسه، وأوّلُ
-                             * تغييرٍ في أحدهما يجعل الورقةَ تحمل قسمًا لم يُقصد.
-                             */
-                            form.setData((d) => ({
-                                ...d,
-                                customer_id: id,
-                                payment_terms_days:
-                                    picked?.payment_terms_days != null && !dueManual
-                                        ? String(picked.payment_terms_days)
-                                        : d.payment_terms_days,
-                                due_at:
-                                    picked?.payment_terms_days != null && !dueManual
-                                        ? addDays(d.issued_at || today, picked.payment_terms_days)
-                                        : d.due_at,
-                            }));
-                        }}
-                    />
-                    {form.errors.customer_id && <Err msg={form.errors.customer_id} />}
-
-                    {customer && <CustomerCard customer={customer} onClear={() => form.setData('customer_id', '')} />}
-                </Card>
-                {/* ───────── معلومات الفاتورة ───────── */}
-                <div className="space-y-4">
+                الملخّصُ وطريقةُ السداد والمرفقات تُقرأ وتُراجَع أثناء الكتابة
+                لا بعدها — فتبقى في العين بينما تُملأ البنود، ولا تنزل تحت طيّة
+                الشاشة كما كانت.
+            */}
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="min-w-0 space-y-4">
+                    {/* ───────── معلومات الفاتورة ───────── */}
                     <Card className="p-5">
                         <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('معلومات الفاتورة')}</h2>
 
-                        {/*
-                            والأساسيُّ وحدَه هنا: رقمٌ وتاريخان ومدّة.
-                            وأمرُ الشراء والعقدُ نزلا إلى «معلومات إضافية» —
-                            ليسا من الورقة، بل من الجهة التي تطلبها، ونصفُ
-                            الفواتير لأفرادٍ لا أمرَ شراء لهم.
-                        */}
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            {/*
-                                والرقمُ لا يُعرض قبل الإصدار — لأنّه لا يوجد.
-
-                                كان يُعرض «الرقم التالي» فيكتبه التاجر على أمر
-                                شراء عميله قبل أن يُصدر، ثمّ يهجر المسودّة أو
-                                يسبقه غيرُه إلى الرقم — فتصل الورقةُ برقمٍ
-                                غير الذي وعد به. والرقمُ يُقطع عند الإصدار
-                                وحده: `CustomerInvoices::issue`.
-                            */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {/* ── العميل ── */}
                             <div className="space-y-1.5">
-                                <Label htmlFor="invoice-number">{t('رقم الفاتورة')}</Label>
-                                <div
-                                    id="invoice-number"
-                                    className="flex h-10 items-center rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 text-[13px] text-[#9ca3af]"
-                                >
-                                    {t('سيتم إنشاء الرقم عند الإصدار')}
-                                </div>
+                                <Label htmlFor="customer" required>
+                                    {t('العميل')}
+                                </Label>
+                                {customer ? (
+                                    /*
+                                        والمختارُ يُعرض اسمًا لا حقلَ بحثٍ فارغًا.
+
+                                        و«تغيير» واحدةٌ لا اثنتان: هي في بطاقة
+                                        العميل أسفلُ — ومقبضان يفعلان الشيء
+                                        نفسه يجعلان أحدهما يُنسى فيُترك معطوبًا.
+                                    */
+                                    <div className="flex h-10 items-center rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3">
+                                        <span className="truncate text-[13px] font-medium text-[#111]">
+                                            {customer.name}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <CustomerPicker
+                                        customers={customers}
+                                        value={form.data.customer_id}
+                                        onChange={pickCustomer}
+                                    />
+                                )}
+                                {form.errors.customer_id ? (
+                                    <Err msg={form.errors.customer_id} />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-1 text-[12px] font-medium text-[#6d28d9] hover:underline"
+                                        onClick={() => setAdding(true)}
+                                    >
+                                        <UserPlus className="size-3.5" />
+                                        {t('إضافة عميل جديد')}
+                                    </button>
+                                )}
                             </div>
+
+                            {/* ── تاريخ الإصدار ── */}
                             <div className="space-y-1.5">
                                 <Label htmlFor="issued-at" required>
-                                    {t('تاريخ الفاتورة')}
+                                    {t('تاريخ الإصدار')}
                                 </Label>
                                 <Input
                                     id="issued-at"
@@ -396,6 +433,37 @@ export default function CustomerInvoiceCreate({
                                 />
                                 {form.errors.issued_at && <Err msg={form.errors.issued_at} />}
                             </div>
+
+                            {/*
+                                ── رقم الفاتورة ──
+
+                                ولا يُعرض قبل الإصدار لأنّه لا يوجد.
+
+                                كان يُعرض «الرقم التالي» فيكتبه التاجر على أمر
+                                شراء عميله قبل أن يُصدر، ثمّ يهجر المسودّة أو
+                                يسبقه غيرُه إلى الرقم — فتصل الورقةُ برقمٍ غير
+                                الذي وعد به. والرقمُ يُقطع عند الإصدار وحده:
+                                `CustomerInvoices::issue`.
+
+                                وصندوقٌ منقّطٌ لا قائمةٌ معطّلة: ما لا يُدار لا
+                                يُرسم مقبضًا.
+                            */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="invoice-number">
+                                    <span className="flex items-center gap-1.5">
+                                        {t('رقم الفاتورة')}
+                                        <Info className="size-3.5 text-[#9ca3af]" />
+                                    </span>
+                                </Label>
+                                <div
+                                    id="invoice-number"
+                                    className="flex h-10 items-center rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 text-[13px] text-[#9ca3af]"
+                                >
+                                    {t('سيتم إنشاء رقم الفاتورة عند الإصدار')}
+                                </div>
+                            </div>
+
+                            {/* ── تاريخ الاستحقاق ── */}
                             <div className="space-y-1.5">
                                 <Label htmlFor="due-at" required>
                                     {t('تاريخ الاستحقاق')}
@@ -417,9 +485,8 @@ export default function CustomerInvoiceCreate({
                                     </p>
                                 )}
                             </div>
-                        </div>
 
-                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            {/* ── شروط الدفع ── */}
                             <div className="space-y-1.5">
                                 <Label htmlFor="payment-terms">{t('شروط الدفع')}</Label>
                                 <Select
@@ -429,15 +496,87 @@ export default function CustomerInvoiceCreate({
                                     options={termOptions(t)}
                                 />
                             </div>
+
+                            {/*
+                                ── مرجع العميل ──
+
+                                وهو عمود `po_number` باسمه الذي يفهمه من يملأ
+                                الورقة: الجهةُ تكتب على طلبها رقمًا وتطلب أن
+                                يعود إليها في الفاتورة. والعقدُ والمرجعُ
+                                الخارجيّ عمودان آخران — تحت «معلومات إضافية»،
+                                ولا يُدمجان في واحد.
+                            */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="org-po_number">{t('مرجع العميل (أمر الشراء)')}</Label>
+                                <Input
+                                    id="org-po_number"
+                                    value={form.data.po_number}
+                                    onChange={(e) => form.setData('po_number', e.target.value)}
+                                    placeholder="PO-2026-154"
+                                />
+                                {form.errors.po_number && <Err msg={form.errors.po_number} />}
+                            </div>
+
+                            {/* ── مركز التكلفة ── */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="org-cost_center">{t('مركز التكلفة')}</Label>
+                                <Input
+                                    id="org-cost_center"
+                                    value={form.data.cost_center}
+                                    onChange={(e) => form.setData('cost_center', e.target.value)}
+                                    placeholder="CC-104"
+                                />
+                                {form.errors.cost_center && <Err msg={form.errors.cost_center} />}
+                            </div>
+
+                            {/* ── القسم ── */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="org-department">{t('القسم / الإدارة')}</Label>
+                                <Input
+                                    id="org-department"
+                                    value={form.data.department}
+                                    onChange={(e) => form.setData('department', e.target.value)}
+                                    placeholder={customer?.department ?? ''}
+                                />
+                                {form.errors.department ? (
+                                    <Err msg={form.errors.department} />
+                                ) : (
+                                    customer?.department && (
+                                        <p className="text-[12px] text-[#9ca3af]">
+                                            {t('يسقط إلى قسم العميل إن تُرك فارغًا.')}
+                                        </p>
+                                    )
+                                )}
+                            </div>
+
+                            {/*
+                                ── العملة ──
+
+                                نصٌّ لا قائمة: الفاتورةُ تُكتب بعملة المتجر،
+                                ولا مسارَ في النظام يُصدرها بغيرها. وقائمةٌ
+                                بسهمٍ لا تُفتح تَعِد بما لا تفعل.
+                            */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="currency">{t('العملة')}</Label>
+                                <div
+                                    id="currency"
+                                    className="flex h-10 items-center rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 text-[13px] text-[#4b4b4b]"
+                                >
+                                    {context!.currency.symbol} — {t(context!.currency.name)}
+                                </div>
+                            </div>
                         </div>
+
+                        {customer && <CustomerCard customer={customer} onClear={clearCustomer} />}
                     </Card>
 
                     {/*
-                        وبياناتُ الجهة مطويّة، وخفيفةٌ في النظر.
+                        وبقيّةُ بيانات الجهة مطويّة، وخفيفةٌ في النظر.
 
-                        نصفُ الفواتير لأفرادٍ لا مركزَ تكلفةٍ لهم ولا أمرَ شراء،
-                        وستّةُ حقولٍ مفتوحةٍ دائمًا تدفع البنودَ — وهي لبُّ
-                        الورقة — تحت طيّة الشاشة.
+                        ثلاثةٌ صعدت إلى الشبكة أعلاه لأنّها تُملأ في أكثر فواتير
+                        الجهات، وثلاثةٌ بقيت هنا لأنّ نصف الفواتير لأفرادٍ لا
+                        عقدَ لهم ولا «عناية» — وستّةُ حقولٍ مفتوحةٍ دائمًا تدفع
+                        البنودَ، وهي لبُّ الورقة، تحت طيّة الشاشة.
                     */}
                     <Card className="border-dashed p-5">
                         <button
@@ -466,12 +605,8 @@ export default function CustomerInvoiceCreate({
                             />
                         </button>
 
-                        {/*
-                            وستّةٌ لا أكثر، وكلُّها اختياريّة: ما لا يُملأ لا
-                            يُخزَّن ولا يُطبع — انظر `pdf/customer-invoice`.
-                        */}
                         <div id="org-fields" role="region" aria-labelledby="org-toggle" hidden={!extra}>
-                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                                 {ORG_FIELDS.map(([key, label, placeholder]) => (
                                     <div key={key} className="space-y-1.5">
                                         <Label htmlFor={`org-${key}`}>{t(label)}</Label>
@@ -487,302 +622,410 @@ export default function CustomerInvoiceCreate({
                             </div>
                         </div>
                     </Card>
-                </div>
 
-            </div>
+                    {/* ───────── الأصناف ───────── */}
+                    <Card className="p-5">
+                        <div className="mb-4 flex flex-wrap items-center gap-2">
+                            <h2 className="me-auto text-[15px] font-bold text-[#111]">{t('الأصناف')}</h2>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setPicking(true)}>
+                                <Search />
+                                {t('منتج من الكتالوج')}
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => setLines((p) => [...p, blank(tax_rate)])}
+                            >
+                                <Plus />
+                                {t('إضافة صنف')}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="text-[#b91c1c]"
+                                title={t('تفريغ كل البنود')}
+                                onClick={() => setLines([blank(tax_rate)])}
+                            >
+                                <Trash2 />
+                            </Button>
+                        </div>
 
-            {/* ───────── البنود ───────── */}
-            <Card className="mt-4 p-5">
-                <div className="mb-4 flex flex-wrap items-center gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => setPicking(true)}>
-                        <Search />
-                        {t('منتج من الكتالوج')}
-                    </Button>
-                    <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => setLines((p) => [...p, blank(tax_rate)])}
-                    >
-                        <Plus />
-                        {t('بند مخصص')}
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="ms-auto text-[#b91c1c]"
-                        title={t('تفريغ كل البنود')}
-                        onClick={() => setLines([blank(tax_rate)])}
-                    >
-                        <Trash2 />
-                    </Button>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full min-w-[820px] text-[13px]">
-                        <thead className="text-[12px] text-[#71717a]">
-                            <tr>
-                                <th className="p-2 text-start font-medium">#</th>
-                                <th className="p-2 text-start font-medium">{t('الوصف')}</th>
-                                <th className="w-[100px] p-2 text-start font-medium">{t('الكمية')}</th>
-                                <th className="w-[130px] p-2 text-start font-medium">{t('سعر الوحدة')}</th>
-                                <th className="w-[120px] p-2 text-start font-medium">{t('الخصم')}</th>
-                                <th className="w-[120px] p-2 text-start font-medium">{t('الضريبة')}</th>
-                                <th className="w-[110px] p-2 text-start font-medium">{t('الإجمالي')}</th>
-                                <th className="w-[52px] p-2 text-start font-medium">{t('إجراءات')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {lines.map((line, i) => {
-                                const net = Math.max(
-                                    0,
-                                    NUMBER(line.quantity) * NUMBER(line.unit_price) - NUMBER(line.discount),
-                                );
-
-                                return (
-                                    <tr key={i} className="border-t border-[var(--ui-border,#e8e8e8)]">
-                                        <td className="p-2 text-[#9ca3af]">{i + 1}</td>
-                                        <td className="p-2">
-                                            <Input
-                                                value={line.description}
-                                                onChange={(e) => setLine(i, 'description', e.target.value)}
-                                                placeholder={t('الوصف')}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <Input
-                                                value={line.quantity}
-                                                onChange={(e) => setLine(i, 'quantity', e.target.value)}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <Input
-                                                value={line.unit_price}
-                                                onChange={(e) => setLine(i, 'unit_price', e.target.value)}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <Input
-                                                value={line.discount}
-                                                onChange={(e) => setLine(i, 'discount', e.target.value)}
-                                            />
-                                        </td>
-                                        <td className="p-2">
-                                            <Select
-                                                value={line.tax_rate}
-                                                onChange={(e) => setLine(i, 'tax_rate', e.target.value)}
-                                                options={taxOptions(tax_rate)}
-                                            />
-                                        </td>
-                                        <td className="p-2 font-semibold tabular-nums">
-                                            {(net + (net * NUMBER(line.tax_rate)) / 100).toFixed(3)}
-                                        </td>
-                                        <td className="p-2">
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="text-[#b91c1c]"
-                                                title={t('حذف البند')}
-                                                onClick={() =>
-                                                    setLines((p) =>
-                                                        p.length > 1 ? p.filter((_, idx) => idx !== i) : p,
-                                                    )
-                                                }
-                                            >
-                                                <Trash2 />
-                                            </Button>
-                                        </td>
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[820px] text-[13px]">
+                                <thead className="text-[12px] text-[#71717a]">
+                                    <tr>
+                                        <th className="p-2 text-start font-medium">#</th>
+                                        <th className="p-2 text-start font-medium">{t('الوصف')}</th>
+                                        <th className="w-[100px] p-2 text-start font-medium">{t('الكمية')}</th>
+                                        <th className="w-[130px] p-2 text-start font-medium">
+                                            {t('سعر الوحدة')} ({context!.currency.symbol})
+                                        </th>
+                                        {/*
+                                            والخصمُ مبلغٌ لا نسبة — هكذا يُخزَّن
+                                            ويُحسب في `CustomerInvoices::compute`.
+                                            وعنوانٌ يقول «%» يجعل من يكتب ١٠
+                                            قاصدًا عُشرَ الثمن يخصم عشرة ريالات.
+                                        */}
+                                        <th className="w-[120px] p-2 text-start font-medium">
+                                            {t('الخصم')} ({context!.currency.symbol})
+                                        </th>
+                                        <th className="w-[120px] p-2 text-start font-medium">{t('الضريبة (%)')}</th>
+                                        <th className="w-[110px] p-2 text-start font-medium">
+                                            {t('الإجمالي')} ({context!.currency.symbol})
+                                        </th>
+                                        <th className="w-[52px] p-2 text-start font-medium">{t('إجراءات')}</th>
                                     </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                                </thead>
+                                <tbody>
+                                    {lines.map((line, i) => {
+                                        const net = Math.max(
+                                            0,
+                                            NUMBER(line.quantity) * NUMBER(line.unit_price) - NUMBER(line.discount),
+                                        );
 
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => setLines((p) => [...p, blank(tax_rate)])}
-                >
-                    <Plus />
-                    {t('إضافة بند')}
-                </Button>
+                                        return (
+                                            <tr key={i} className="border-t border-[var(--ui-border,#e8e8e8)]">
+                                                <td className="p-2 text-[#9ca3af]">{i + 1}</td>
+                                                <td className="p-2">
+                                                    <Input
+                                                        value={line.description}
+                                                        onChange={(e) => setLine(i, 'description', e.target.value)}
+                                                        placeholder={t('الوصف')}
+                                                    />
+                                                </td>
+                                                <td className="p-2">
+                                                    <Input
+                                                        value={line.quantity}
+                                                        onChange={(e) => setLine(i, 'quantity', e.target.value)}
+                                                    />
+                                                </td>
+                                                <td className="p-2">
+                                                    <Input
+                                                        value={line.unit_price}
+                                                        onChange={(e) => setLine(i, 'unit_price', e.target.value)}
+                                                    />
+                                                </td>
+                                                <td className="p-2">
+                                                    <Input
+                                                        value={line.discount}
+                                                        onChange={(e) => setLine(i, 'discount', e.target.value)}
+                                                    />
+                                                </td>
+                                                <td className="p-2">
+                                                    <Select
+                                                        value={line.tax_rate}
+                                                        onChange={(e) => setLine(i, 'tax_rate', e.target.value)}
+                                                        options={taxOptions(tax_rate)}
+                                                    />
+                                                </td>
+                                                <td className="p-2 font-semibold tabular-nums">
+                                                    {(net + (net * NUMBER(line.tax_rate)) / 100).toFixed(3)}
+                                                </td>
+                                                <td className="p-2">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="text-[#b91c1c]"
+                                                        title={t('حذف البند')}
+                                                        onClick={() =>
+                                                            setLines((p) =>
+                                                                p.length > 1 ? p.filter((_, idx) => idx !== i) : p,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Trash2 />
+                                                    </Button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
 
-                {form.errors.items && <Err msg={form.errors.items} />}
-            </Card>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-3"
+                            onClick={() => setLines((p) => [...p, blank(tax_rate)])}
+                        >
+                            <Plus />
+                            {t('إضافة بند')}
+                        </Button>
 
-            {/* ───────── السداد · الملخّص · الملاحظات ───────── */}
-            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <Card className="p-5">
-                    <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('طريقة السداد')}</h2>
-
-                    <div className="flex flex-wrap gap-4">
-                        {(
-                            [
-                                ['آجل', 'آجل'],
-                                ['نقدي', 'مدفوع نقدًا'],
-                                ['بطاقة', 'مدفوع بالبطاقة'],
-                                ['تحويل', 'تحويل بنكي'],
-                            ] as const
-                        ).map(([value, label]) => (
-                            <label key={value} className="flex items-center gap-2 text-[13px]">
-                                <input
-                                    type="radio"
-                                    name="payment_method"
-                                    className="size-4 accent-[#1d4ed8]"
-                                    checked={form.data.payment_method === value}
-                                    onChange={() => form.setData('payment_method', value)}
-                                />
-                                {t(label)}
-                            </label>
-                        ))}
-                    </div>
+                        {form.errors.items && <Err msg={form.errors.items} />}
+                    </Card>
 
                     {/*
-                        وما يقع بعد الإصدار يُقال قبله: من اختار «آجل» يصنع
-                        ذمّةً، ومن اختار غيره يُسجَّل له إيصالُ تحصيلٍ بالمبلغ
-                        كلِّه — ولا تُوسَم فاتورةٌ «مدفوعة» بلا إيصال.
+                        ───────── الملاحظتان ─────────
+
+                        وملاحظتان لا واحدة.
+
+                        كان الحقل واحدًا وهو يُطبع على الفاتورة. فمن أراد أن
+                        يكتب لنفسه «العميل يماطل، لا تُسلَّم قبل الدفع» كتبها
+                        حيث يقرؤها العميلُ في الورقة التي تصله.
                     */}
-                    <p className="mt-4 rounded-[10px] bg-[#eff6ff] p-3 text-[12px] leading-relaxed text-[#1d4ed8]">
-                        {credit
-                            ? t('تُنشأ ذمّة على العميل بالمبلغ المستحق بعد إصدار الفاتورة.')
-                            : t('يُسجَّل إيصال تحصيل بالمبلغ كاملًا عند إصدار الفاتورة — ولا يُسجَّل على مسودّة.')}
-                    </p>
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <Card className="p-5">
+                            <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('ملاحظة للعميل')}</h2>
+                            <p className="mb-3 text-[12px] text-[#9ca3af]">{t('تظهر في الفاتورة المطبوعة.')}</p>
+                            <Textarea
+                                value={form.data.notes}
+                                maxLength={500}
+                                onChange={(e) => form.setData('notes', e.target.value)}
+                                placeholder={t('ستظهر هذه الملاحظة في الفاتورة…')}
+                                className="min-h-24"
+                            />
+                            <p className="mt-1 text-[12px] text-[#9ca3af]" dir="ltr">
+                                {form.data.notes.length}/500
+                            </p>
+                        </Card>
 
-                    {form.errors.payment_method && <Err msg={form.errors.payment_method} />}
-                </Card>
+                        <Card className="p-5">
+                            <div className="mb-3 flex items-start justify-between gap-3">
+                                <div>
+                                    <h2 className="text-[15px] font-bold text-[#111]">{t('ملاحظات إضافية')}</h2>
+                                    <p className="mt-1 text-[12px] text-[#9ca3af]">
+                                        {t('لا تظهر للعميل ولا تُطبع.')}
+                                    </p>
+                                </div>
 
-                <Card className="p-5">
-                    <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('ملخص الفاتورة')}</h2>
+                                {/*
+                                    والمُبدِّلُ يمحو ما يُخفيه.
 
-                    <dl className="space-y-2 text-[13px]">
-                        <Row label={t('المجموع الفرعي')} value={m(totals.subtotal)} />
-                        <Row label={t('الخصم')} value={m(totals.discount)} />
-                        <Row label={t('الضريبة')} value={m(totals.tax)} />
-                    </dl>
+                                    حقلٌ مخفيٌّ يبقى في النموذج يُرسَل مع الطلب —
+                                    فمن كتب ملاحظةً ثمّ أطفأ المفتاح ظنَّ أنّه
+                                    محاها وهي محفوظةٌ في الورقة.
+                                */}
+                                <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[12px] text-[#4b4b4b]">
+                                    <input
+                                        type="checkbox"
+                                        className="size-4 accent-[#6d28d9]"
+                                        checked={internal}
+                                        onChange={(e) => {
+                                            setInternal(e.target.checked);
+                                            if (! e.target.checked) {
+                                                form.setData('internal_notes', '');
+                                            }
+                                        }}
+                                    />
+                                    {t('إضافة ملاحظات داخلية')}
+                                </label>
+                            </div>
 
-                    <div className="mt-3 flex items-center justify-between rounded-[10px] bg-[#f7f7f5] px-3 py-2.5">
-                        <span className="text-[14px] font-bold text-[#111]">{t('الإجمالي')}</span>
-                        <span className="text-[16px] font-bold tabular-nums text-[#111]">{m(totals.total)}</span>
+                            {internal ? (
+                                <>
+                                    <Textarea
+                                        value={form.data.internal_notes}
+                                        maxLength={500}
+                                        onChange={(e) => form.setData('internal_notes', e.target.value)}
+                                        placeholder={t('لفريقك وحده…')}
+                                        className="min-h-24"
+                                    />
+                                    <p className="mt-1 text-[12px] text-[#9ca3af]" dir="ltr">
+                                        {form.data.internal_notes.length}/500
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-4 text-[12px] leading-relaxed text-[#9ca3af]">
+                                    {t('شغّل المفتاح لكتابة ملاحظةٍ لفريقك وحده — لا تصل العميل ولا تُطبع على فاتورته.')}
+                                </p>
+                            )}
+                        </Card>
                     </div>
-                </Card>
 
-                {/*
-                    وملاحظتان لا واحدة.
+                    {/* ───────── الأزرار ───────── */}
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        {/*
+                            ومن لا يملك الإصدار يُقال له — ولا يُرسم له زرٌّ
+                            يُردّ عنه. والمسودّةُ تبقى له: هي عملُه، ولا تُنشئ
+                            ذمّةً ولا تكتب قيدًا. فيكتبها ويتركها لمن يُصدر.
+                        */}
+                        {! may.issue && (
+                            <p className="me-auto text-[12px] text-[#9ca3af]">
+                                {t('الإصدار صلاحيةٌ لا تملكها — احفظها مسودّةً ليُصدرها من يملكها.')}
+                            </p>
+                        )}
 
-                    كان الحقل واحدًا وهو يُطبع على الفاتورة. فمن أراد أن يكتب
-                    لنفسه «العميل يماطل، لا تُسلَّم قبل الدفع» كتبها حيث
-                    يقرؤها العميلُ في الورقة التي تصله.
-                */}
-                <Card className="p-5">
-                    <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('ملاحظة للعميل')}</h2>
-                    <p className="mb-3 text-[12px] text-[#9ca3af]">{t('تظهر في الفاتورة المطبوعة.')}</p>
-                    <Textarea
-                        value={form.data.notes}
-                        maxLength={500}
-                        onChange={(e) => form.setData('notes', e.target.value)}
-                        placeholder={t('شروط السداد، أو شكرٌ، أو أي بيانٍ يُطبع…')}
-                        className="min-h-24"
-                    />
-                    <p className="mt-1 text-[12px] text-[#9ca3af]" dir="ltr">
-                        {form.data.notes.length}/500
-                    </p>
-                </Card>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={form.processing}
+                            onClick={() => router.visit(route('admin.customerInvoices.index'))}
+                        >
+                            {t('إلغاء')}
+                        </Button>
 
-                <Card className="p-5">
-                    <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('ملاحظات داخلية')}</h2>
-                    <p className="mb-3 text-[12px] text-[#9ca3af]">{t('لا تظهر للعميل ولا تُطبع.')}</p>
-                    <Textarea
-                        value={form.data.internal_notes}
-                        maxLength={500}
-                        onChange={(e) => form.setData('internal_notes', e.target.value)}
-                        placeholder={t('لفريقك وحده…')}
-                        className="min-h-24"
-                    />
-                    <p className="mt-1 text-[12px] text-[#9ca3af]" dir="ltr">
-                        {form.data.internal_notes.length}/500
-                    </p>
-                </Card>
+                        {/*
+                            و«حفظ كمسودة» يختفي مع طريقةِ سدادٍ مقبوضة — لا
+                            يُعرض بابٌ يردّ الخادمُ من خلفه. والحارسُ في الخادم
+                            على أيّ حال.
+                        */}
+                        {(credit || ! may.issue) && (
+                            <Button variant="outline" disabled={form.processing} onClick={() => submit(false)}>
+                                <Save />
+                                {t('حفظ كمسودة')}
+                            </Button>
+                        )}
+                        {may.issue && (
+                            <Button disabled={form.processing} onClick={() => submit(true)}>
+                                <Send />
+                                {t('إصدار الفاتورة')}
+                            </Button>
+                        )}
+                    </div>
+                </div>
 
-                {/*
-                    ومرفقاتُ الورقة: أمرُ شراء الجهة وعقدُها وطلبُها الموقَّع.
+                {/* ───────── العمود الجانبي ───────── */}
+                <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+                    <Card className="p-5">
+                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('ملخص الفاتورة')}</h2>
 
-                    وهي على قرصٍ خاصّ تُقرأ ببابٍ يسأل — لا على القرص العامّ:
-                    أمرُ شراء وزارةٍ ليس مستندًا يُفتح برابطٍ يُخمَّن.
-                */}
-                <Card className="p-5">
-                    <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('مرفقات الفاتورة')}</h2>
-                    <p className="mb-3 text-[12px] text-[#9ca3af]">
-                        {t('أمر الشراء، أو العقد، أو أي مستند داعم. حتى ٦ ملفات، ١٠ ميجابايت لكلٍّ.')}
-                    </p>
+                        <dl className="space-y-2 text-[13px]">
+                            <Row label={t('قيمة الأصناف')} value={m(totals.subtotal)} />
+                            {/*
+                                و«الخصم» لا «خصم عام»: هو مجموعُ خصومات البنود،
+                                ولا خصمَ على مستوى الفاتورة في النظام. واسمٌ
+                                يَعِد بحقلٍ لا وجود له يجعل من يبحث عنه يظنّ
+                                الشاشةَ ناقصة.
+                            */}
+                            <Row label={t('الخصم')} value={m(totals.discount)} />
+                            <Row label={t('الضريبة')} value={m(totals.tax)} />
+                        </dl>
 
-                    <label className="flex cursor-pointer flex-col items-center gap-1.5 rounded-[12px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-4 py-6 text-center transition-colors hover:bg-[#f4f4f5]">
-                        <Paperclip className="size-5 text-[#6d28d9]" />
-                        <span className="text-[13px] font-medium text-[#6d28d9]">{t('اختيار ملفات')}</span>
-                        <span className="text-[11px] text-[#9ca3af]">JPG · PNG · PDF · WEBP · HEIC</span>
-                        <input
-                            type="file"
-                            multiple
-                            className="hidden"
-                            accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
-                            onChange={(e) => addFiles(e.target.files)}
-                        />
-                    </label>
+                        <div className="mt-3 flex items-center justify-between rounded-[10px] bg-[#f5f3ff] px-3 py-2.5">
+                            <span className="text-[14px] font-bold text-[#111]">{t('الإجمالي')}</span>
+                            <span className="text-[16px] font-bold tabular-nums text-[#6d28d9]">{m(totals.total)}</span>
+                        </div>
+                    </Card>
 
-                    {files.length > 0 && (
-                        <ul className="mt-3 space-y-1.5 text-[13px]">
-                            {files.map((f, i) => (
-                                <li key={`${f.name}-${i}`} className="flex items-center gap-2">
-                                    <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                                    <button
-                                        type="button"
-                                        aria-label={t('إزالة المرفق')}
-                                        className="text-[#b91c1c]"
-                                        onClick={() => form.setData('attachments', files.filter((_, k) => k !== i))}
-                                    >
-                                        <Trash2 className="size-4" />
-                                    </button>
-                                </li>
+                    {/* ───────── طريقة السداد ───────── */}
+                    <Card className="p-5">
+                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('طريقة السداد')}</h2>
+
+                        <div className="space-y-2.5">
+                            {(
+                                [
+                                    ['آجل', 'آجل'],
+                                    ['نقدي', 'مدفوع نقدًا'],
+                                    ['بطاقة', 'مدفوع بالبطاقة'],
+                                    ['تحويل', 'تحويل بنكي'],
+                                ] as const
+                            ).map(([value, label]) => (
+                                <label key={value} className="flex items-center gap-2 text-[13px]">
+                                    <input
+                                        type="radio"
+                                        name="payment_method"
+                                        className="size-4 accent-[#6d28d9]"
+                                        checked={form.data.payment_method === value}
+                                        onChange={() => form.setData('payment_method', value)}
+                                    />
+                                    {t(label)}
+                                </label>
                             ))}
-                        </ul>
-                    )}
+                        </div>
 
-                    {form.errors.attachments && <Err msg={form.errors.attachments} />}
-                </Card>
+                        {/*
+                            ───────── وأيُّ حسابٍ استقبل المال ─────────
+
+                            «بنك» في الدفتر تكفي القيدَ ولا تكفي المطابقة: كشفُ
+                            الحساب يصل من بنكٍ بعينه، وسطرٌ لا يعرف حسابَه لا
+                            يجد ما يُطابقه. والقائمةُ من «المالية» لا مكتوبةً
+                            هنا — ومتجرٌ بلا حسابٍ مسجَّل يُقال له أين يُسجِّله.
+                        */}
+                        {needsAccount && (
+                            <div className="mt-4 space-y-1.5">
+                                <Label htmlFor="bank-account">{t('الحساب البنكي المستلِم')}</Label>
+
+                                {bank_accounts.length > 0 ? (
+                                    <Select
+                                        id="bank-account"
+                                        value={form.data.bank_account_id}
+                                        onChange={(e) => form.setData('bank_account_id', e.target.value)}
+                                        options={bank_accounts.map((a) => ({
+                                            label: a.is_primary ? `${a.name} — ${t('رئيسي')}` : a.name,
+                                            value: String(a.id),
+                                        }))}
+                                    />
+                                ) : (
+                                    <p className="rounded-[10px] border border-dashed border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] leading-relaxed text-[#92400e]">
+                                        {t('لا حساب بنكي مسجَّل. سجّله في «المالية ← الحسابات البنكية» ليُطابَق التحصيل بكشف الحساب.')}
+                                    </p>
+                                )}
+
+                                {form.errors.bank_account_id && <Err msg={form.errors.bank_account_id} />}
+                            </div>
+                        )}
+
+                        {/*
+                            وما يقع بعد الإصدار يُقال قبله: من اختار «آجل» يصنع
+                            ذمّةً، ومن اختار غيره يُسجَّل له إيصالُ تحصيلٍ
+                            بالمبلغ كلِّه — ولا تُوسَم فاتورةٌ «مدفوعة» بلا إيصال.
+                        */}
+                        <p className="mt-4 rounded-[10px] bg-[#f5f3ff] p-3 text-[12px] leading-relaxed text-[#5b21b6]">
+                            {credit
+                                ? t('تُنشأ ذمّة على العميل بالمبلغ المستحق بعد إصدار الفاتورة.')
+                                : t('يُسجَّل إيصال تحصيل بالمبلغ كاملًا عند إصدار الفاتورة — ولا يُسجَّل على مسودّة.')}
+                        </p>
+
+                        {form.errors.payment_method && <Err msg={form.errors.payment_method} />}
+                    </Card>
+
+                    {/*
+                        ───────── المرفقات ─────────
+
+                        ومرفقاتُ الورقة: أمرُ شراء الجهة وعقدُها وطلبُها الموقَّع.
+
+                        وهي على قرصٍ خاصّ تُقرأ ببابٍ يسأل — لا على القرص العامّ:
+                        أمرُ شراء وزارةٍ ليس مستندًا يُفتح برابطٍ يُخمَّن.
+                    */}
+                    <Card className="p-5">
+                        <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('مرفقات الفاتورة')}</h2>
+                        <p className="mb-3 text-[12px] text-[#9ca3af]">
+                            {t('عرض سعر، عقد، أو أي مستندات داعمة.')}
+                        </p>
+
+                        <label className="flex cursor-pointer flex-col items-center gap-1.5 rounded-[12px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-4 py-6 text-center transition-colors hover:bg-[#f4f4f5]">
+                            <Paperclip className="size-5 text-[#6d28d9]" />
+                            <span className="text-[13px] font-medium text-[#6d28d9]">{t('اختيار ملفات')}</span>
+                            <span className="text-[11px] text-[#9ca3af]">JPG · PNG · PDF · WEBP · HEIC</span>
+                            <span className="text-[11px] text-[#9ca3af]">
+                                {t('حتى ٦ ملفات، ١٠ ميجابايت لكلٍّ')}
+                            </span>
+                            <input
+                                type="file"
+                                multiple
+                                className="hidden"
+                                accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
+                                onChange={(e) => addFiles(e.target.files)}
+                            />
+                        </label>
+
+                        {files.length > 0 && (
+                            <ul className="mt-3 space-y-1.5 text-[13px]">
+                                {files.map((f, i) => (
+                                    <li key={`${f.name}-${i}`} className="flex items-center gap-2">
+                                        <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                                        <button
+                                            type="button"
+                                            aria-label={t('إزالة المرفق')}
+                                            className="text-[#b91c1c]"
+                                            onClick={() => form.setData('attachments', files.filter((_, k) => k !== i))}
+                                        >
+                                            <Trash2 className="size-4" />
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+
+                        {form.errors.attachments && <Err msg={form.errors.attachments} />}
+                    </Card>
+                </div>
             </div>
-
-            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-                {/*
-                    ومن لا يملك الإصدار يُقال له — ولا يُرسم له زرٌّ يُردّ عنه.
-
-                    والمسودّةُ تبقى له: هي عملُه، ولا تُنشئ ذمّةً ولا تكتب
-                    قيدًا. فيكتبها ويتركها لمن يُصدر.
-                */}
-                {! may.issue && (
-                    <p className="me-auto text-[12px] text-[#9ca3af]">
-                        {t('الإصدار صلاحيةٌ لا تملكها — احفظها مسودّةً ليُصدرها من يملكها.')}
-                    </p>
-                )}
-
-                {/*
-                    و«حفظ كمسودة» يختفي مع طريقةِ سدادٍ مقبوضة — لا يُعرض بابٌ
-                    يردّ الخادمُ من خلفه. والحارسُ في الخادم على أيّ حال.
-                */}
-                {(credit || ! may.issue) && (
-                    <Button variant="outline" disabled={form.processing} onClick={() => submit(false)}>
-                        {t('حفظ كمسودة')}
-                    </Button>
-                )}
-                {may.issue && (
-                    <Button disabled={form.processing} onClick={() => submit(true)}>
-                        {t('إصدار الفاتورة')}
-                    </Button>
-                )}
-            </div>
-
             <ProductDialog
                 open={picking}
                 onOpenChange={setPicking}

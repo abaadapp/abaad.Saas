@@ -52,6 +52,53 @@ final class CustomerPayments
     }
 
     /**
+     * أيُّ حسابٍ بنكيٍّ **بعينه** استقبل المال.
+     *
+     * ═══ ولماذا يُختار هنا لا في الشاشة ═══
+     *
+     * `sideFor` تقول «بنك» أو «صندوق»، وهي كافيةٌ للدفتر وحده. ومطابقةُ كشف
+     * الحساب تسأل سؤالًا آخر: **أيُّ** بنك. والعمودُ موجودٌ منذ كُتب الجدول،
+     * والخادمُ يقبله منذ كُتب الباب — ولم تكن في النظام كلِّه شاشةٌ واحدة
+     * ترسله. فكلُّ تحصيلٍ ببطاقةٍ أو تحويلٍ كان يُكتب بحسابٍ فارغ، ولا يجد
+     * `bank/rematch` له حسابًا يُسنده إليه.
+     *
+     * وحين لا يُسمّى يسقط إلى الحساب الرئيسيّ الذي وسمه التاجر بنفسه في
+     * المالية — لا إلى أوّل صفٍّ في الجدول. ومتجرٌ بلا حسابٍ مسجَّل يبقى
+     * فارغًا: لا يُخترع له حساب.
+     *
+     * والاختيارُ هنا لا في المتحكّم: بابان يقرّران الشيء نفسه يفترقان يومًا،
+     * وبابٌ ثالثٌ يُكتب غدًا لا يعرف بهما.
+     */
+    public static function accountFor(int $businessId, string $method, int|string|null $given): ?int
+    {
+        /*
+         * والنقدُ لا حسابَ بنكيًّا له مهما أُرسل.
+         *
+         * الشاشةُ تُخفي القائمة عند «نقدي»، لكنّ الحقلَ يبقى في النموذج —
+         * ومن يبدّل الوسيلةَ بعد اختيار الحساب كان يُرسل الاثنين. فيدخل
+         * المالُ الصندوقَ في الدفتر ويحمل اسمَ بنكٍ في الصفّ، ولا يُطابقه
+         * كشفُ الحساب أبدًا لأنّه لم يمرّ به.
+         */
+        if (self::sideFor($method) !== 'bank') {
+            return null;
+        }
+
+        if ($given !== null && $given !== '') {
+            $owned = BankAccount::where('business_id', $businessId)->whereKey($given)->exists();
+
+            if (! $owned) {
+                throw new RuntimeException(__('هذا الحساب البنكي ليس من حسابات متجرك.'));
+            }
+
+            // ومعطَّلٌ سمّاه المستخدم يُقبل: حسابٌ أُغلق بعد تحصيلٍ وقع فيه
+            return (int) $given;
+        }
+
+        return BankAccount::where('business_id', $businessId)
+            ->where('active', true)->where('is_primary', true)->value('id');
+    }
+
+    /**
      * تسجيلُ تحصيل.
      *
      * `$allocations` خريطةُ «رقم الفاتورة ⇽ المبلغ». وإن جاءت فارغةً وُزّعت
@@ -80,14 +127,7 @@ final class CustomerPayments
         }
 
         $method = in_array($data['method'] ?? '', self::METHODS, true) ? $data['method'] : 'نقدي';
-        $bankAccountId = $data['bank_account_id'] ?? null;
-
-        if ($bankAccountId !== null) {
-            $ok = BankAccount::where('business_id', $businessId)->whereKey($bankAccountId)->exists();
-            if (! $ok) {
-                throw new RuntimeException(__('هذا الحساب البنكي ليس من حسابات متجرك.'));
-            }
-        }
+        $bankAccountId = self::accountFor($businessId, $method, $data['bank_account_id'] ?? null);
 
         return DB::transaction(function () use ($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId) {
             $payment = CustomerPayment::create([

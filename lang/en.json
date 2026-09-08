@@ -4691,5 +4691,19 @@
     "إصدار فاتورة عميل": "Issue a customer invoice",
     "إلغاء فاتورة عميل صادرة": "Cancel an issued customer invoice",
     "إصدار إشعار دائن": "Issue a credit note",
-    "تسجيل تحصيل من عميل": "Record a customer collection"
+    "تسجيل تحصيل من عميل": "Record a customer collection",
+    "إصدار فاتورة لعميل مقابل منتجات أو خدمات.": "Issue an invoice to a customer for products or services.",
+    "سيتم إنشاء رقم الفاتورة عند الإصدار": "The invoice number is created on issue",
+    "مرجع العميل (أمر الشراء)": "Customer reference (purchase order)",
+    "يسقط إلى قسم العميل إن تُرك فارغًا.": "Falls back to the customer's department when left empty.",
+    "الضريبة (%)": "Tax (%)",
+    "ستظهر هذه الملاحظة في الفاتورة…": "This note will appear on the invoice…",
+    "ملاحظات إضافية": "Additional notes",
+    "إضافة ملاحظات داخلية": "Add internal notes",
+    "شغّل المفتاح لكتابة ملاحظةٍ لفريقك وحده — لا تصل العميل ولا تُطبع على فاتورته.": "Turn the switch on to write a note for your team only — the customer never sees it and it is not printed on the invoice.",
+    "الحساب البنكي المستلِم": "Receiving bank account",
+    "لا حساب بنكي مسجَّل. سجّله في «المالية ← الحسابات البنكية» ليُطابَق التحصيل بكشف الحساب.": "No bank account on file. Add one under Finance → Bank accounts so the payment can be matched against the statement.",
+    "عرض سعر، عقد، أو أي مستندات داعمة.": "A quotation, a contract, or any supporting document.",
+    "حتى ٦ ملفات، ١٠ ميجابايت لكلٍّ": "Up to 6 files, 10 MB each",
+    "إنشاء فاتورة عميل جديدة": "New customer invoice"
 }

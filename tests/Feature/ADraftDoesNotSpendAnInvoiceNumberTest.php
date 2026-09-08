@@ -231,6 +231,6 @@ class ADraftDoesNotSpendAnInvoiceNumberTest extends TestCase
             ->assertInertia(fn ($p) => $p->missing('next_number')->etc());
 
         $screen = file_get_contents(base_path('resources/js/Pages/Admin/CustomerInvoices/Create.tsx'));
-        $this->assertStringContainsString('سيتم إنشاء الرقم عند الإصدار', $screen);
+        $this->assertStringContainsString('سيتم إنشاء رقم الفاتورة عند الإصدار', $screen);
     }
 }

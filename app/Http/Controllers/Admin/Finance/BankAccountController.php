@@ -31,16 +31,19 @@ class BankAccountController extends Controller
         $bid = $this->bid();
         Ledger::ensureSystemAccounts($bid);
 
-        // نشاطٌ بلا حساب يرى شاشةً فارغة لا تقول ماذا يفعل — فيُهيّأ الأوّل
-        Bank::account($bid);
-
         /*
-         * حسابٌ بلا ورقةٍ في الشجرة يُستدرك هنا.
+         * ولا يُهيَّأ حسابٌ هنا.
          *
-         * الحسابات التي أُنشئت قبل هذه النسخة — ومنها الأوّل الذي يُهيّئه
-         * `Bank::account` — لا `account_id` لها. وبلا ورقة يبقى رصيدها رقمًا
-         * في هذه الشاشة لا يظهر في ميزان المراجعة ولا في الميزانية، ويُحذف
-         * الحساب بلا حارسٍ لأن الحارس يسأل عن حركة ورقته.
+         * كان `Bank::account($bid)` يُنشئ صفًّا بلا اسمٍ ولا بنكٍ ولا آيبان
+         * لمن ليس له حساب — من **قراءة** الشاشة. فحجب الحالةَ الفارغة
+         * المكتوبة أسفل الجدول («أضف حساب نشاطك البنكي…») فلم تُعرض قطّ،
+         * وولّد في الشجرة مالكًا لورقة «البنك» ليس هو بنكَ التاجر: يُضيف
+         * حسابَه الحقيقيّ فيأخذ ورقةً أختًا لا يدخلها ريال.
+         *
+         * وحسابٌ بلا ورقةٍ في الشجرة يُستدرك هنا: الحسابات التي أُنشئت قبل
+         * هذه النسخة لا `account_id` لها، وبلا ورقة يبقى رصيدها رقمًا في هذه
+         * الشاشة لا يظهر في ميزان المراجعة ولا في الميزانية، ويُحذف الحساب
+         * بلا حارسٍ لأن الحارس يسأل عن حركة ورقته.
          */
         BankAccount::where('business_id', $bid)->whereNull('account_id')->orderBy('id')->get()
             ->each(fn ($a) => $a->update(['account_id' => $this->leafFor($bid, $a)->id]));
@@ -70,7 +73,8 @@ class BankAccountController extends Controller
             ])->all(),
             'summary' => [
                 'count' => $accounts->where('active', true)->count(),
-                'balance' => round($accounts->where('active', true)->sum(fn ($a) => $a->balance()), 3),
+                // والمجموعُ من `Bank::total` — هو نفسه الذي يقرؤه الملخّص
+                'balance' => Bank::total($bid),
             ],
             'today' => now()->format('Y-m-d'),
         ]);
@@ -119,7 +123,21 @@ class BankAccountController extends Controller
         return back()->with('toast', ['msg' => __('حُفظ الحساب البنكي'), 'type' => 'success']);
     }
 
-    /** تعيين الحساب الرئيسيّ — واحدٌ لا غير */
+    /**
+     * تعيين الحساب الرئيسيّ — واحدٌ لا غير.
+     *
+     * ═══ ولماذا بالاستعلام لا بالكائن ═══
+     *
+     * كان يُقرأ الكائن، ثمّ يُصفَّر العمود على كلّ الصفوف بالاستعلام، ثمّ
+     * `$account->update(['is_primary' => true])`. والكائن قُرئ قبل التصفير
+     * فهو يحمل `true` أصلًا — فلا يرى Eloquent تغييرًا **ولا يُرسل استعلامًا**.
+     *
+     * فمن ضغط «اجعله الرئيسيّ» على الحساب الرئيسيّ نفسه — وهو أوّل ما يُضغط
+     * حين لا يكون في المتجر غيرُ حسابٍ واحد — بقي متجرُه **بلا رئيسيّ**. ولا
+     * رسالةَ خطأ: الشاشة تقول «صار الحساب الرئيسيّ» وقد صار العكس. وعندها
+     * يُكتب كلّ تحصيلٍ ببطاقةٍ أو تحويلٍ بلا حسابٍ بنكيّ، فلا يجد كشفُ
+     * الحساب ما يُطابقه.
+     */
     public function primary($id)
     {
         $bid = $this->bid();
@@ -127,7 +145,7 @@ class BankAccountController extends Controller
 
         DB::transaction(function () use ($bid, $account) {
             BankAccount::where('business_id', $bid)->update(['is_primary' => false]);
-            $account->update(['is_primary' => true, 'active' => true]);
+            BankAccount::whereKey($account->id)->update(['is_primary' => true, 'active' => true]);
         });
 
         return back()->with('toast', ['msg' => __('صار الحساب الرئيسيّ'), 'type' => 'success']);
@@ -168,13 +186,24 @@ class BankAccountController extends Controller
     }
 
     /** كشف حسابٍ واحد ومطابقته */
-    public function statement(Request $request, $id = null): Response
+    public function statement(Request $request, $id = null)
     {
         $bid = $this->bid();
-        Bank::account($bid);
 
         $accounts = BankAccount::where('business_id', $bid)->orderByDesc('is_primary')->orderBy('id')->get();
         $current = ($id ? $accounts->firstWhere('id', (int) $id) : null) ?? $accounts->first();
+
+        /*
+         * ولا كشفَ بلا حساب.
+         *
+         * الشاشةُ كلُّها مبنيّةٌ على حسابٍ قائم — تعدّل بياناته وتستورد كشفه
+         * وتُطابقه. وبلا واحدٍ كانت تُنشئ له صفًّا فارغًا لتعرض نفسها؛
+         * والصوابُ أن تدلّه على البابَ الذي يُنشئ الحساب باسمه.
+         */
+        if (! $current) {
+            return redirect()->route('admin.finance.index')
+                ->with('toast', ['msg' => __('أضف حسابك البنكي أوّلًا ليُقرأ كشفه'), 'type' => 'warning']);
+        }
 
         return Inertia::render('Admin/Finance/Statement', [
             'account' => Demo::bankAccount($current?->id),

@@ -8,6 +8,7 @@ use App\Models\Expense;
 use App\Models\PayrollRun;
 use App\Models\SupplierInvoice;
 use App\Models\Transaction;
+use App\Support\Bank;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Receivables;
@@ -69,13 +70,8 @@ class OverviewController extends Controller
         return Inertia::render('Admin/Finance/Summary', [
             'range' => $range,
             'cash' => round(Ledger::account($bid, 'cash')?->balance() ?? 0.0, 3),
-            /*
-             * والموقوفة تُجمع مع المفعّلة — انظر BankAccountController::index.
-             *
-             * حسابٌ أُوقف قد يبقى فيه رصيد، وإخفاؤه من «أين المال الآن» يجعل
-             * الشاشة تقول رقمًا أصغر ممّا في الدفتر بلا أن تقول لماذا.
-             */
-            'bank' => round($banks->sum(fn ($a) => $a->balance()), 3),
+            // ومجموعُ البنك من `Bank::total` — رقمٌ واحد هنا وفي شاشة الحسابات
+            'bank' => Bank::total($bid),
             'accounts' => $banks->map(fn ($a) => [
                 'id' => $a->id,
                 'label' => $a->displayName(),

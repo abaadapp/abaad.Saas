@@ -3144,7 +3144,16 @@ class Demo
         $a = $accountId
             ? \App\Models\BankAccount::where('business_id', self::bid())->find($accountId)
             : null;
-        $a ??= \App\Support\Bank::account(self::bid());
+        $a ??= Bank::current(self::bid());
+
+        // ولا يُخترع حسابٌ ليُعرض: متجرٌ بلا حساب بنكيّ يُقرأ فارغًا
+        if (! $a) {
+            return [
+                'id' => null, 'label' => __('حساب بنكي'), 'bank_name' => null,
+                'account_name' => null, 'iban' => null,
+                'opening_balance' => 0.0, 'opening_date' => null,
+            ];
+        }
 
         return [
             'id' => $a->id,
@@ -3167,7 +3176,7 @@ class Demo
         $acc = self::bankAccount($accountId);
         $balance = $acc['opening_balance'];
 
-        $rows = \App\Support\Bank::transactions(self::bid())
+        $rows = Bank::transactions(self::bid())
             ->orderBy('occurred_at')->orderBy('id')->get()->map(function ($t) use (&$balance) {
                 // المصروفات مخزّنة بإشارة سالبة — نوحّد على القيمة المطلقة والاتجاه من النوع
                 $in = $t->type === 'دخل';
@@ -3224,7 +3233,7 @@ class Demo
          * السابقة «ناقصة من البنك» — وهي في كشوفها هي. رقمٌ يخيف بلا سبب،
          * ويُفقد الرقمَ معناه حين يكبر.
          */
-        $unmatchedSystem = \App\Support\Bank::transactions($bid)
+        $unmatchedSystem = Bank::transactions($bid)
             ->when($matchedIds, fn ($q) => $q->whereNotIn('id', $matchedIds))
             ->when($lines->count(), fn ($q) => $q
                 ->whereBetween('occurred_at', [

@@ -323,12 +323,12 @@ class FinanceSectionTest extends TestCase
 
         $this->assertTrue($bank->isPostable(), 'صار حساب البنك أبًا فسقط كلّ ترحيلٍ إليه');
         $this->assertSame(
-            3,
+            2,
             BankAccount::where('business_id', $this->bid())->whereNotNull('account_id')->count(),
             'حسابٌ بنكيّ بلا ورقة في الشجرة لا يُقرأ رصيده في الميزانية'
         );
         $this->assertSame(
-            3,
+            2,
             BankAccount::where('business_id', $this->bid())->distinct()->count('account_id'),
             'حسابان بنكيّان على ورقةٍ واحدة يجمعان رصيدهما فلا يُعرف ما في كلٍّ منهما'
         );
@@ -336,7 +336,7 @@ class FinanceSectionTest extends TestCase
 
     public function test_only_one_bank_account_is_primary(): void
     {
-        $this->get(route('admin.finance.index'));
+        $this->post(route('admin.finance.banks.store'), ['label' => 'الأوّل']);
         $this->post(route('admin.finance.banks.store'), ['label' => 'الثاني']);
 
         $second = BankAccount::where('business_id', $this->bid())->latest('id')->first();
@@ -346,10 +346,28 @@ class FinanceSectionTest extends TestCase
         $this->assertTrue($second->fresh()->is_primary);
     }
 
+    /**
+     * والرئيسيُّ يبقى رئيسيًّا إن أُعيد تعيينه.
+     *
+     * كان التصفيرُ بالاستعلام والتثبيتُ بالكائن — والكائن يحمل `true` قبل
+     * التصفير فلا يرى Eloquent تغييرًا ولا يكتب شيئًا. فمن ضغط الزرّ على
+     * حسابه الوحيد بقي بلا رئيسيّ، والشاشةُ تقول «صار الحساب الرئيسيّ».
+     */
+    public function test_making_the_primary_primary_again_does_not_leave_the_shop_without_one(): void
+    {
+        $this->post(route('admin.finance.banks.store'), ['label' => 'الوحيد']);
+        $only = BankAccount::where('business_id', $this->bid())->firstOrFail();
+
+        $this->post(route('admin.finance.banks.primary', $only->id));
+
+        $this->assertTrue($only->fresh()->is_primary, 'ضاع الحساب الرئيسيّ بضغطة زرٍّ تقول إنّها ثبّتته');
+        $this->assertSame(1, BankAccount::where('business_id', $this->bid())->where('is_primary', true)->count());
+    }
+
     public function test_a_bank_account_with_ledger_movement_is_not_deleted(): void
     {
-        $this->get(route('admin.finance.index'));
-        $account = BankAccount::where('business_id', $this->bid())->first();
+        $this->post(route('admin.finance.banks.store'), ['label' => 'الرئيسي', 'bank_name' => 'بنك مسقط']);
+        $account = BankAccount::where('business_id', $this->bid())->firstOrFail();
 
         Ledger::post($this->bid(), 'إيداع', [
             ['account' => 'bank', 'debit' => 500],
@@ -363,9 +381,11 @@ class FinanceSectionTest extends TestCase
 
     public function test_the_statement_opens_for_the_primary_and_for_a_named_account(): void
     {
-        // المسار يحمل معرّفًا اختياريًّا، فلا يمرّ به زاحف الصفحات
-        $this->get(route('admin.finance.statement'))->assertOk();
+        // ولا كشفَ بلا حساب: يُردّ إلى الباب الذي يُنشئه باسمه
+        $this->get(route('admin.finance.statement'))
+            ->assertRedirect(route('admin.finance.index'));
 
+        $this->post(route('admin.finance.banks.store'), ['label' => 'الأوّل']);
         $this->post(route('admin.finance.banks.store'), ['label' => 'الثاني']);
         $second = BankAccount::where('business_id', $this->bid())->latest('id')->first();
 

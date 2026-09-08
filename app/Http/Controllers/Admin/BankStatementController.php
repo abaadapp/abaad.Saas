@@ -36,7 +36,7 @@ class BankStatementController extends Controller
      * صار للنشاط أكثر من حساب بنكي، و«أوّل ما يوجد» يتبدّل بترتيب الصفوف:
      * تستورد كشف حساب التحصيل فيدخل على حساب المصروفات بلا أن تدري.
      */
-    private function account(?Request $request = null): BankAccount
+    private function account(?Request $request = null): ?BankAccount
     {
         $id = $request?->input('bank_account_id');
 
@@ -47,7 +47,16 @@ class BankStatementController extends Controller
             }
         }
 
-        return Bank::account($this->bid());
+        return Bank::current($this->bid());
+    }
+
+    /** ولا كشفَ يُستورد ولا يُطابَق ولا يُمسح بلا حسابٍ يُنسب إليه */
+    private function noAccount()
+    {
+        return back()->with('toast', [
+            'msg' => __('أضف حسابك البنكي أوّلًا — لا يُنسب كشفٌ إلى حسابٍ غير موجود'),
+            'type' => 'warning',
+        ]);
     }
 
     /*
@@ -85,6 +94,10 @@ class BankStatementController extends Controller
 
         $bid = $this->bid();
         $account = $this->account($request);
+
+        if (! $account) {
+            return $this->noAccount();
+        }
 
         /*
          * الاستيراد يضيف ولا يمسح.
@@ -204,6 +217,10 @@ class BankStatementController extends Controller
     public function clear(Request $request)
     {
         $account = $this->account($request);
+
+        if (! $account) {
+            return $this->noAccount();
+        }
 
         BankStatementLine::where('business_id', $this->bid())
             ->where(fn ($w) => $w->where('bank_account_id', $account->id)->orWhereNull('bank_account_id'))

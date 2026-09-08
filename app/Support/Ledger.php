@@ -210,6 +210,26 @@ class Ledger
     }
 
     /**
+     * المفتاحُ النظاميُّ ← ورقتُه في الشجرة.
+     *
+     * و«البنك» وحده يمرّ بطبقةٍ ثانية: المفتاح يقصد ورقةً واحدة (1200)،
+     * والمتجر قد يكون له أكثر من حسابٍ بنكيّ لكلٍّ ورقتُه. فالوجهةُ ورقةُ
+     * **الحساب الرئيسيّ** — وهو الذي يسقط إليه ما لا يُنسب في
+     * `CustomerPayments::accountFor` أيضًا. قاعدةٌ واحدة في موضعين لا
+     * تفترقان: الصفُّ يقول «بنك مسقط» والدفترُ يقول ورقتَه هي.
+     *
+     * ومن قصد ورقةً بعينها يمرّرها كائنًا — `Account` — فلا يُسأل هنا.
+     */
+    private static function resolve(int $businessId, string $key): ?Account
+    {
+        if ($key === 'bank') {
+            return Bank::leaf($businessId) ?? self::account($businessId, 'bank');
+        }
+
+        return self::account($businessId, $key);
+    }
+
+    /**
      * كتابة قيدٍ وترحيله في عمليّةٍ واحدة.
      *
      * `$lines` مصفوفة: ['account' => مفتاح نظاميّ أو Account, 'debit'|'credit' => مبلغ, 'memo' => نص].
@@ -253,7 +273,7 @@ class Ledger
             foreach ($lines as $line) {
                 $account = $line['account'] instanceof Account
                     ? $line['account']
-                    : self::account($businessId, (string) $line['account']);
+                    : self::resolve($businessId, (string) $line['account']);
 
                 if (! $account) {
                     throw new RuntimeException(__('حسابٌ غير موجود في الشجرة: :key', ['key' => (string) $line['account']]));

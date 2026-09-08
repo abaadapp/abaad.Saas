@@ -204,14 +204,25 @@ final class CustomerPayments
         }
     }
 
-    /** قيدُ التحصيل: مدين الصندوق/البنك — دائن ذمم العملاء */
+    /**
+     * قيدُ التحصيل: مدين الصندوق/البنك — دائن ذمم العملاء.
+     *
+     * والبنكُ ورقةُ الحساب الذي استقبل المال بعينه، لا ورقة «البنك» العامّة:
+     * الصفُّ يقول «بنك ظفار» فيجب أن يقوله الدفتر. وحين لا يُنسب — أو لا
+     * ورقةَ للحساب — يسقط المفتاح النظاميّ إلى ورقة الرئيسيّ في `Ledger`.
+     */
     private static function post(CustomerPayment $payment, ?int $userId): void
     {
+        $side = self::sideFor((string) $payment->method);
+        $target = $side === 'bank'
+            ? (Bank::leaf((int) $payment->business_id, $payment->bank_account_id) ?? 'bank')
+            : $side;
+
         Ledger::post(
             (int) $payment->business_id,
             __('تحصيل ').$payment->number,
             [
-                ['account' => self::sideFor((string) $payment->method), 'debit' => round((float) $payment->amount, 3)],
+                ['account' => $target, 'debit' => round((float) $payment->amount, 3)],
                 ['account' => 'receivable', 'credit' => round((float) $payment->amount, 3)],
             ],
             Carbon::parse($payment->occurred_at),

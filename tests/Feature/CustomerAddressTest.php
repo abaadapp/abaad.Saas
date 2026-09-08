@@ -50,6 +50,32 @@ class CustomerAddressTest extends TestCase
         $this->assertTrue($customer->addresses()->sole()->is_default);
     }
 
+    /**
+     * والافتراضيُّ يبقى افتراضيًّا إن أُعيد تعيينه.
+     *
+     * كان التصفيرُ بالاستعلام والرفعُ بالكائن — والكائن قُرئ قبل التصفير فهو
+     * يحمل `true` أصلًا، فلا يرى Eloquent تغييرًا ولا يكتب شيئًا. فمن ضغط
+     * الزرّ على العنوان الافتراضي نفسه بقي عميلُه بلا عنوانٍ افتراضي،
+     * والشاشةُ تقول «تم تعيين العنوان الافتراضي».
+     */
+    public function test_making_the_default_default_again_does_not_leave_the_customer_without_one(): void
+    {
+        [$owner, $customer] = $this->scenario();
+
+        $this->actingAs($owner)->post(route('admin.customers.addresses.save', $customer->id), [
+            'label' => 'المنزل', 'city' => 'مسقط', 'area' => 'الخوير',
+        ]);
+
+        $only = $customer->addresses()->sole();
+
+        $this->actingAs($owner)
+            ->post(route('admin.customers.addresses.default', [$customer->id, $only->id]))
+            ->assertRedirect();
+
+        $this->assertTrue($only->fresh()->is_default, 'ضاع العنوان الافتراضي بضغطة زرٍّ تقول إنّها ثبّتته');
+        $this->assertSame(1, $customer->addresses()->where('is_default', true)->count());
+    }
+
     public function test_only_one_address_can_be_the_default(): void
     {
         [$owner, $customer] = $this->scenario();

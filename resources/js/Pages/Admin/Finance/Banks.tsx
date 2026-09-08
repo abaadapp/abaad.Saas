@@ -148,6 +148,11 @@ export default function Banks() {
                     <p className="mx-auto mt-1 max-w-md text-[13px] text-[#9ca3af]">
                         {t('أضف حساب نشاطك البنكي ليُقرأ رصيده في الدفتر ويُطابَق كشفه مع معاملات النظام.')}
                     </p>
+                    {/* والدعوةُ تُنفَّذ من موضعها: زرُّ الترويسة بعيدٌ عن العين هنا */}
+                    <Button className="mx-auto mt-4" onClick={() => open()}>
+                        <Plus />
+                        {t('أضف حسابك البنكي')}
+                    </Button>
                 </Card>
             ) : (
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

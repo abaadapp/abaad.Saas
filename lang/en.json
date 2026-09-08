@@ -4723,5 +4723,8 @@
     "حساب :name يفتح ما لا تفتحه (:what) — لا يُمسّ إلا ممّن يملكه.": "The account of :name opens what you cannot (:what) — only someone who holds that may touch it.",
     "صلاحيةٌ لا تملكها": "A permission you do not hold",
     "هذا الحساب يفتح ما لا تفتحه — لا يُعدَّل ولا تُغيَّر كلمة مروره إلا ممّن يملك ذلك.": "This account opens what you cannot — only someone who holds that may edit it or change its password.",
-    "يُحفظ في قائمة العملاء ويُختار في هذه الفاتورة فورًا.": "Saved to your customers and selected on this invoice straight away."
+    "يُحفظ في قائمة العملاء ويُختار في هذه الفاتورة فورًا.": "Saved to your customers and selected on this invoice straight away.",
+    "أضف حسابك البنكي": "Add your bank account",
+    "أضف حسابك البنكي أوّلًا ليُقرأ كشفه": "Add your bank account first so its statement can be read",
+    "أضف حسابك البنكي أوّلًا — لا يُنسب كشفٌ إلى حسابٍ غير موجود": "Add your bank account first — a statement cannot belong to an account that does not exist"
 }

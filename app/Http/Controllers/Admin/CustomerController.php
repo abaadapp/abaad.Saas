@@ -247,6 +247,11 @@ class CustomerController extends Controller
     /**
      * الافتراضي واحد لا أكثر: نُنزل العَلَم عن الباقي في المعاملة نفسها،
      * وإلا ظهر عنوانان افتراضيان لو نُقر عليهما بسرعة.
+     *
+     * ورفعُه بالاستعلام لا بالكائن: الكائن قُرئ قبل التصفير فهو يحمل `true`
+     * أصلًا، فلا يرى Eloquent تغييرًا ولا يُرسل استعلامًا. فمن ضغط الزرّ على
+     * العنوان الافتراضي نفسه بقي عميلُه **بلا عنوانٍ افتراضي** — والشاشة
+     * تقول «تم تعيين العنوان الافتراضي».
      */
     public function defaultAddress($id, $addressId)
     {
@@ -255,7 +260,7 @@ class CustomerController extends Controller
 
         \DB::transaction(function () use ($customer, $address) {
             $customer->addresses()->update(['is_default' => false]);
-            $address->update(['is_default' => true]);
+            $customer->addresses()->whereKey($address->id)->update(['is_default' => true]);
         });
 
         return back()->with('toast', ['msg' => __('تم تعيين العنوان الافتراضي'), 'type' => 'success']);

@@ -8,7 +8,6 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Transaction;
 use App\Models\User;
-use App\Support\Bank;
 use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -33,6 +32,8 @@ class BankReconciliationTest extends TestCase
 
     private User $owner;
 
+    private BankAccount $account;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -46,6 +47,12 @@ class BankReconciliationTest extends TestCase
         ]);
 
         $this->actingAs($this->owner);
+
+        // ولم يعد النظام يخترع حسابًا بنكيًّا عند القراءة — فالتاجر يضيفه
+        $this->account = BankAccount::create([
+            'business_id' => $this->business->id, 'label' => 'الحساب الرئيسي',
+            'bank_name' => 'بنك مسقط', 'active' => true, 'is_primary' => true,
+        ]);
     }
 
     private function trx(string $type, float $amount, string $method, ?string $when = null): Transaction
@@ -158,7 +165,7 @@ class BankReconciliationTest extends TestCase
 
     public function test_an_empty_opening_balance_does_not_break_the_page(): void
     {
-        $account = Bank::account($this->business->id);
+        $account = $this->account;
 
         // كان مسحُ الرقم لتصحيحه يُسقط الشاشة بخطأ ٥٠٠
         $this->put(route('admin.finance.banks.update', $account->id), [

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { ChevronDown, Plus, Search, Trash2, UserPlus } from 'lucide-react';
+import { Check, ChevronDown, Copy, Plus, Search, Trash2, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -341,11 +341,7 @@ export default function CustomerInvoiceCreate({
                             الفواتير لأفرادٍ لا أمرَ شراء لهم.
                         */}
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <div className="space-y-1.5">
-                                <Label htmlFor="invoice-number">{t('رقم الفاتورة')}</Label>
-                                {/* يُولَّد في الخادم تحت قفل — ولا يُكتب ولا يُرسَل */}
-                                <Input id="invoice-number" value={next_number} readOnly disabled dir="ltr" />
-                            </div>
+                            <InvoiceNumberField number={next_number} />
                             <div className="space-y-1.5">
                                 <Label htmlFor="issued-at" required>
                                     {t('تاريخ الفاتورة')}
@@ -714,6 +710,82 @@ function addDays(from: string, days: number): string {
     d.setDate(d.getDate() + days);
 
     return d.toISOString().slice(0, 10);
+}
+
+/**
+ * رقمُ الفاتورة قبل حفظها — يُقرأ ويُنسخ ولا يُكتب.
+ *
+ * ═══ ولماذا لم يعد `disabled` ═══
+ *
+ * كان الحقل معطَّلًا، والمعطَّل في المتصفّح لا يُضغط ولا يُركَّز عليه ولا
+ * يُحدَّد نصُّه — فمن أراد أن يكتب الرقم على أمر شراء عميله أو يرسله في
+ * رسالة لم يستطع حتى نسخَه، وهو رقمٌ من ثمانية محارف يُنقل باليد فيُخطأ
+ * فيه. وهيئتُه تقول «حقل» فتدعو إلى الضغط، وضغطُه لا يفعل شيئًا.
+ *
+ * فصار `readOnly` لا `disabled`: يبقى غيرَ قابل للكتابة — ولا يُرسَل مع
+ * النموذج بحال، فالرقم يُولَّد في الخادم تحت قفل — ويصير مقروءًا ومحدَّدًا
+ * ومنسوخًا بضغطة.
+ *
+ * ═══ والحافظةُ قد تُمنع ═══
+ *
+ * `navigator.clipboard` غيرُ موجود على أصلٍ غير آمن (http)، ومحجوبٌ في
+ * بعض المتصفّحات. فالضغطةُ تُحدّد النصَّ أوّلًا — وهو ما ينفع في كلّ حال —
+ * ثمّ تحاول النسخ. فمن مُنع منه يجد الرقمَ محدَّدًا أمامه ينسخه بلوحته.
+ */
+export function InvoiceNumberField({ number }: { number: string }) {
+    const t = useTranslate();
+    const [copied, setCopied] = useState(false);
+    const box = useRef<HTMLInputElement>(null);
+
+    const copy = async () => {
+        box.current?.select();
+
+        try {
+            await navigator.clipboard.writeText(number);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1600);
+        } catch {
+            // متصفّحٌ يمنع الحافظة: الرقم محدَّدٌ فيُنسخ باليد
+            setCopied(false);
+        }
+    };
+
+    return (
+        <div className="space-y-1.5">
+            <Label htmlFor="invoice-number">{t('رقم الفاتورة')}</Label>
+
+            <div className="flex items-center gap-1.5">
+                {/*
+                    والخلفيةُ الباهتة تبقى: الحقل يُقرأ ولا يُكتب، ورفعُ
+                    التعطيل لا يعني دعوةً إلى الكتابة فيه.
+                */}
+                <Input
+                    id="invoice-number"
+                    ref={box}
+                    value={number}
+                    readOnly
+                    dir="ltr"
+                    onClick={copy}
+                    title={t('اضغط لنسخ الرقم')}
+                    className="flex-1 cursor-pointer bg-[#fafafa] text-[#4b4b4b]"
+                />
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={copy}
+                    aria-label={t('نسخ رقم الفاتورة')}
+                >
+                    {copied ? <Check className="text-[#047857]" /> : <Copy />}
+                </Button>
+            </div>
+
+            {/* والقولُ يُعلَن لقارئ الشاشة كما يُرى — لا لونًا وحده */}
+            <p aria-live="polite" className="text-[12px] text-[#9ca3af]">
+                {copied ? t('نُسخ') : t('اضغط لنسخ الرقم')}
+            </p>
+        </div>
+    );
 }
 
 function Err({ msg }: { msg: string }) {

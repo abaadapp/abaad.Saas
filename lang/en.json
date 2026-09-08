@@ -4657,5 +4657,8 @@
     "اعتُمد سند المورّد :r — قُيّدت الذمّة": "Supplier invoice :r approved — the liability was posted",
     "أُلغي سند المورّد :r — عُكس قيدُه": "Supplier invoice :r cancelled — its entry was reversed",
     "رُفض سند المورّد :r": "Supplier invoice :r rejected",
-    "كل أوامر الشراء": "All purchase orders"
+    "كل أوامر الشراء": "All purchase orders",
+    "اضغط لنسخ الرقم": "Click to copy the number",
+    "نسخ رقم الفاتورة": "Copy invoice number",
+    "نُسخ": "Copied"
 }

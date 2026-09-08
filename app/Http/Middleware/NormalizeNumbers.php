@@ -72,7 +72,7 @@ class NormalizeNumbers
          * والتاجرُ يكتب «٥٫٥٠٠» بلوحةٍ عربية، فيصل النصُّ إلى `numeric`
          * فيُردّ «قيمة غير صحيحة» على رقمٍ صحيح.
          */
-        'supplier_discount', 'shipping_cost', 'units_per_purchase_unit',
+        'supplier_discount', 'shipping_cost', 'units_per_purchase_unit', 'tax_rate',
     ];
 
     public function handle(Request $request, Closure $next)

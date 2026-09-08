@@ -4705,5 +4705,15 @@
     "لا حساب بنكي مسجَّل. سجّله في «المالية ← الحسابات البنكية» ليُطابَق التحصيل بكشف الحساب.": "No bank account on file. Add one under Finance → Bank accounts so the payment can be matched against the statement.",
     "عرض سعر، عقد، أو أي مستندات داعمة.": "A quotation, a contract, or any supporting document.",
     "حتى ٦ ملفات، ١٠ ميجابايت لكلٍّ": "Up to 6 files, 10 MB each",
-    "إنشاء فاتورة عميل جديدة": "New customer invoice"
+    "إنشاء فاتورة عميل جديدة": "New customer invoice",
+    "لا موردين بعد — أضف الأول": "No suppliers yet — add the first one",
+    "إضافة مورد جديد": "Add a new supplier",
+    "مجموع (تكلفة الوحدة × الكمية) — تُكتب في جدول الأصناف": "Sum of (unit cost × quantity) — entered in the items table",
+    "نسبة مختلفة عن نسبة المتجر": "Different from the shop's rate",
+    "مورد جديد": "New supplier",
+    "يُحفظ في قائمة الموردين ويُختار في هذا الأمر فورًا.": "Saved to your suppliers and selected on this order straight away.",
+    "اسم المورد": "Supplier name",
+    "مثل: مشتل الباطنة": "e.g. Al Batinah Nursery",
+    "جهة الاتصال": "Contact person",
+    "حفظ المورد": "Save supplier"
 }

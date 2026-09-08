@@ -23,10 +23,21 @@ class SupplierController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
         $data = \App\Support\LocalName::apply($data);
-        Supplier::create(array_merge($data, ['business_id' => $this->bid()]));
+        $supplier = Supplier::create(array_merge($data, ['business_id' => $this->bid()]));
         \App\Support\Activity::log('created', 'أضاف مورّدًا: ' . $data['name']);
 
-        return back()->with('toast', ['msg' => __('تم إضافة المورّد بنجاح'), 'type' => 'success']);
+        /*
+         * ومن أضافه من داخل شاشةٍ أخرى يُختار له فور العودة.
+         *
+         * شاشةُ أمر الشراء تفتح النافذة وتعود إلى نفسها، فلا يبقى إلّا أن
+         * يُقال أيُّهم. ومن لا يُختار له يعود يبحث في القائمة عن اسمٍ كتبه
+         * قبل ثانية — أو يظنّ أنّ الحفظ لم يقع.
+         *
+         * والبابُ واحدٌ لا يُنسخ: شاشةُ الموردين تمرّ من هنا كذلك وتُهمل
+         * المفتاح، فلا تتفرّق قاعدتان لإنشاء مورّد.
+         */
+        return back()->with('toast', ['msg' => __('تم إضافة المورّد بنجاح'), 'type' => 'success'])
+            ->with('new_supplier_id', $supplier->id);
     }
 
     public function update(Request $request, $id)

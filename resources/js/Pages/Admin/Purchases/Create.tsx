@@ -1,19 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { Package, Paperclip, Plus, Send, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import { Package, Paperclip, Plus, Send, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/Components/ui/dialog';
 import { Input, Textarea } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { currencyLabel, money } from '@/lib/format';
 import { fold } from '@/lib/pages';
 import { baseQuantity, lineTotal, purchaseTotals } from '@/lib/purchase-totals';
 import { useTranslate } from '@/lib/i18n';
-import { cn } from '@/lib/utils';
 import type { Currency, PageProps } from '@/types';
 import type { Branch, Product, Supplier } from '@/types/models';
 
@@ -45,6 +52,8 @@ interface Props {
     taxRate: number;
     /** مفتاحُ هذه الصفحة: ضغطتان عليه أمرٌ واحد لا أمران */
     formToken: string;
+    /** مورّدٌ أُضيف من نافذة هذه الشاشة — يُختار فور العودة */
+    newSupplierId: number | null;
 }
 
 /**
@@ -81,12 +90,23 @@ const blank = (): Line => ({
  * و`lib/purchase-totals` — واختبارٌ يقابلهما رقمًا برقم.
  */
 export default function PurchaseCreate() {
-    const { suppliers, products, reorderSuggestions, branches, currentBranchId, fromReorder, today, taxRate, formToken, context } =
+    const { suppliers, products, reorderSuggestions, branches, currentBranchId, fromReorder, today, taxRate, formToken, newSupplierId, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
+    /*
+     * وسطرٌ فارغٌ جاهزٌ عند الفتح لا صندوقٌ خالٍ.
+     *
+     * كانت الشاشة تفتح بلا صفٍّ البتّة: صندوقٌ يقول «لا توجد أصناف مضافة
+     * بعد» وزرُّ الإضافة بعيدٌ في رأس البطاقة. فلا حقلَ سعرٍ يُرى أصلًا —
+     * ومن جاء ليكتب سعرًا يبحث عنه في الملخّص حيث «قيمة الأصناف» رقمٌ محسوب
+     * لا يُكتب فيه شيء. والسعرُ كان مفتوحًا طوال الوقت خلف ضغطةٍ لم تُرَ.
+     *
+     * وشاشةُ فاتورة العميل تفتح بسطرٍ كذلك — فلا تفترق شاشتا إنشاءٍ في
+     * النظام الواحد.
+     */
     const [lines, setLines] = useState<Line[]>(() =>
         fromReorder && reorderSuggestions.length
             ? reorderSuggestions.map((r) => {
@@ -100,7 +120,7 @@ export default function PurchaseCreate() {
                       qty: String(r.suggested),
                   };
               })
-            : [],
+            : [blank()],
     );
 
     const form = useForm({
@@ -111,6 +131,8 @@ export default function PurchaseCreate() {
         supplier_reference: '',
         supplier_discount: '',
         shipping_cost: '',
+        // ونسبةُ الضريبة تبدأ من نسبة المتجر ثمّ تتبع الورقة — انظر الملخّص
+        tax_rate: String(taxRate),
         notes: '',
         attachment: null as File | null,
         form_token: formToken,
@@ -123,10 +145,25 @@ export default function PurchaseCreate() {
                 items: lines.map((l) => ({ cost: l.cost, quantity: l.qty })),
                 discount: form.data.supplier_discount,
                 shipping: form.data.shipping_cost,
-                taxRate,
+                taxRate: Number(form.data.tax_rate) || 0,
             }),
-        [lines, form.data.supplier_discount, form.data.shipping_cost, taxRate],
+        [lines, form.data.supplier_discount, form.data.shipping_cost, form.data.tax_rate],
     );
+
+    const [addingSupplier, setAddingSupplier] = useState(false);
+
+    /*
+     * ومورّدٌ أُضيف من النافذة يُختار وحدَه.
+     *
+     * الصفحةُ تُعاد بعد الحفظ ومعها القائمةُ الجديدة، وحالةُ النموذج محفوظة
+     * — فلا يبقى إلّا أن يُقال أيُّهم. ومن لا يُختار له يظنّ الحفظَ لم يقع.
+     */
+    useEffect(() => {
+        if (newSupplierId) {
+            form.setData('supplier_id', String(newSupplierId));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [newSupplierId]);
 
     const setLine = (i: number, patch: Partial<Line>) =>
         setLines((prev) => prev.map((l, x) => (x === i ? { ...l, ...patch } : l)));
@@ -198,13 +235,16 @@ export default function PurchaseCreate() {
                         <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('تفاصيل أمر الشراء')}</h2>
 
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                            {/*
+                                والمورّدُ يُضاف من هنا لا من شاشةٍ أخرى.
+
+                                كان يُقال «يُضافون من صفحة الموردين» — فمن كتب
+                                خمسةَ أصنافٍ ثمّ اكتشف أنّ المورّد غيرُ مسجَّل
+                                يخرج من الشاشة ويفقد ما كتب. والبابُ نفسُه
+                                (`suppliers.store`) لا نسخةٌ ثانية منه.
+                            */}
                             <Field label="المورد" required error={err('supplier_id')}>
-                                {suppliers.length === 0 ? (
-                                    /* ولا يُخترع مورّد: من لا مورّدَ له يُقاد إلى بابه */
-                                    <p className="rounded-[10px] bg-[#fffbeb] p-3 text-[12px] text-[#b45309]">
-                                        {t('لا موردين بعد — يُضافون من صفحة الموردين.')}
-                                    </p>
-                                ) : (
+                                {suppliers.length > 0 && (
                                     <Select
                                         value={form.data.supplier_id}
                                         onChange={(e) => form.setData('supplier_id', e.target.value)}
@@ -215,6 +255,15 @@ export default function PurchaseCreate() {
                                         }))}
                                     />
                                 )}
+
+                                <button
+                                    type="button"
+                                    className="mt-1.5 flex items-center gap-1 text-[12px] font-medium text-[#6d28d9] hover:underline"
+                                    onClick={() => setAddingSupplier(true)}
+                                >
+                                    <UserPlus className="size-3.5" />
+                                    {suppliers.length === 0 ? t('لا موردين بعد — أضف الأول') : t('إضافة مورد جديد')}
+                                </button>
                             </Field>
 
                             <Field label="الفرع" required error={err('branch_id')}>
@@ -320,6 +369,11 @@ export default function PurchaseCreate() {
                                 <p className="mt-1 text-[12px] text-[#9ca3af]">
                                     {t('ابدأ بإضافة الأصناف إلى أمر الشراء')}
                                 </p>
+                                {/* والزرُّ حيث تقع العين لا في رأس البطاقة وحده */}
+                                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={addLine}>
+                                    <Plus />
+                                    {t('إضافة صنف')}
+                                </Button>
                             </div>
                         ) : (
                             <ItemRows
@@ -334,7 +388,18 @@ export default function PurchaseCreate() {
 
                     {/* ═══════════ الأزرار ═══════════ */}
                     <Card className="flex flex-wrap items-center justify-end gap-2 p-4">
-                        <Button type="button" variant="outline" onClick={() => window.history.back()}>
+                        {/*
+                            و«إلغاء» وجهةٌ مكتوبةٌ باسمها لا `history.back()`.
+
+                            الرجوعُ إلى ما كان قبلُ أيًّا كان: صفحةَ نموذجٍ
+                            أُعيد التوجيه منها، أو موقعًا خارج النظام، أو لا
+                            شيء إن فُتحت الصفحة من رابطٍ محفوظ.
+                        */}
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => router.visit(route('admin.purchases.orders'))}
+                        >
                             {t('إلغاء')}
                         </Button>
                         <Button
@@ -364,7 +429,22 @@ export default function PurchaseCreate() {
                         <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('ملخص أمر الشراء')}</h2>
 
                         <dl className="space-y-3 text-[13px]">
-                            <Row label={t('قيمة الأصناف')} value={m(totals.items_subtotal)} />
+                            {/*
+                                و«قيمة الأصناف» تقول من أين جاءت.
+
+                                رقمٌ محسوبٌ بلا مصدرٍ مكتوب يجعل من أراد
+                                تغييرَه يبحث عن صندوقٍ يكتب فيه هنا — والسعرُ
+                                مفتوحٌ في جدول الأصناف لا هنا.
+                            */}
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <dt className="text-[#71717a]">{t('قيمة الأصناف')}</dt>
+                                    <p className="mt-0.5 text-[11px] text-[#9ca3af]">
+                                        {t('مجموع (تكلفة الوحدة × الكمية) — تُكتب في جدول الأصناف')}
+                                    </p>
+                                </div>
+                                <dd className="tabular-nums font-medium text-[#111]">{m(totals.items_subtotal)}</dd>
+                            </div>
 
                             <div className="flex items-center justify-between gap-3">
                                 <Label htmlFor="po-discount">{t('خصم المورد')}</Label>
@@ -400,15 +480,47 @@ export default function PurchaseCreate() {
                             </div>
 
                             {/*
-                                والضريبةُ تُقرأ من إعدادات المتجر ولا تُكتب هنا.
-                                نسبةٌ تُختار في شاشة أمر شراء تجعل الوعاء الضريبيّ
-                                يتبع من يكتب الورقة لا من يقرّر السياسة.
+                                ═══ ونسبةُ الضريبة تُكتب على الورقة ═══
+
+                                كانت تُقرأ من إعدادات المتجر جبرًا، والتعليقُ
+                                هنا كان يقول إنّ اختيارها «يجعل الوعاء الضريبيّ
+                                يتبع من يكتب الورقة». وذلك صحيحٌ في **البيع** —
+                                نسبتُنا سياستُنا. أمّا في **الشراء** فالضريبةُ
+                                ليست سياستَنا أصلًا: هي ما يفرضه المورّد، ومورّدٌ
+                                غير مسجَّلٍ ضريبيًّا لا يفرض شيئًا.
+
+                                وأثرُه تجاوز الورقة: `SupplierInvoices::match`
+                                تقابل إجماليَّ السند بإجماليّ الأمر — فمتجرٌ
+                                ضريبتُه مُطفأة يشتري ممّن يفرضها كان **يُمنع**
+                                سندُه بمقدار الضريبة بالضبط.
+
+                                وتبدأ من نسبة المتجر: من لا يعرف يترك ما كان.
                             */}
-                            <Row
-                                label={`${t('الضريبة')} (${taxRate}%)`}
-                                value={m(totals.tax)}
-                                muted={taxRate === 0}
-                            />
+                            <div className="flex items-center justify-between gap-3">
+                                <Label htmlFor="po-tax-rate">{t('الضريبة (%)')}</Label>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        id="po-tax-rate"
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        max="100"
+                                        inputMode="decimal"
+                                        className="max-w-[90px] text-end"
+                                        value={form.data.tax_rate}
+                                        onChange={(e) => form.setData('tax_rate', e.target.value)}
+                                    />
+                                    <span className="min-w-[80px] text-end tabular-nums font-medium text-[#111]">
+                                        {m(totals.tax)}
+                                    </span>
+                                </div>
+                            </div>
+                            {err('tax_rate') && <p className="text-[12px] text-[#b91c1c]">{err('tax_rate')}</p>}
+                            {Number(form.data.tax_rate) !== taxRate && (
+                                <p className="text-[11px] text-[#b45309]">
+                                    {t('نسبة مختلفة عن نسبة المتجر')} ({taxRate}%)
+                                </p>
+                            )}
 
                             <div className="mt-2 flex items-center justify-between rounded-[10px] bg-[#f5f3ff] px-3 py-2.5">
                                 <dt className="text-[14px] font-bold text-[#111]">{t('الإجمالي')}</dt>
@@ -449,18 +561,81 @@ export default function PurchaseCreate() {
                     </Card>
                 </div>
             </div>
+
+            <SupplierDialog open={addingSupplier} onOpenChange={setAddingSupplier} />
         </AdminLayout>
     );
 }
 
 /* ───────────────────────── قطعٌ صغيرة ───────────────────────── */
 
-function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+/**
+ * مورّدٌ جديد من داخل شاشة أمر الشراء.
+ *
+ * ولا يُحال إلى شاشة الموردين: من كتب خمسةَ أصنافٍ ثمّ اكتشف أنّ المورّد
+ * غيرُ مسجَّل كان يفقد ما كتب. والبابُ هو `suppliers.store` نفسُه — لا نسخةٌ
+ * ثانية منه — والعودةُ إلى الصفحة نفسها، والمورّدُ الجديد يُختار وحده.
+ *
+ * والاسمُ وحدَه مطلوب: باقي الحقول تُكمَّل من شاشة الموردين متى شاء. ونموذجُ
+ * تسجيلٍ كاملٌ في نافذةٍ منبثقة يجعل التاجر يخرج ليكمله فيفقد ورقتَه.
+ */
+function SupplierDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+    const t = useTranslate();
+    const form = useForm({ name: '', phone: '', contact_person: '' });
+
+    const save = () =>
+        form.post(route('admin.suppliers.store'), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                form.reset();
+                onOpenChange(false);
+            },
+        });
+
     return (
-        <div className="flex items-center justify-between gap-3">
-            <dt className={cn('text-[#6b7280]', muted && 'text-[#9ca3af]')}>{label}</dt>
-            <dd className={cn('tabular-nums font-medium text-[#111]', muted && 'text-[#9ca3af]')}>{value}</dd>
-        </div>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>{t('مورد جديد')}</DialogTitle>
+                    <DialogDescription>
+                        {t('يُحفظ في قائمة الموردين ويُختار في هذا الأمر فورًا.')}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                    <Field label="اسم المورد" required error={form.errors.name}>
+                        <Input
+                            value={form.data.name}
+                            onChange={(e) => form.setData('name', e.target.value)}
+                            placeholder={t('مثل: مشتل الباطنة')}
+                        />
+                    </Field>
+                    <Field label="الهاتف" error={form.errors.phone}>
+                        <Input
+                            value={form.data.phone}
+                            onChange={(e) => form.setData('phone', e.target.value)}
+                            placeholder="9xxxxxxx"
+                        />
+                    </Field>
+                    <Field label="جهة الاتصال" error={form.errors.contact_person}>
+                        <Input
+                            value={form.data.contact_person}
+                            onChange={(e) => form.setData('contact_person', e.target.value)}
+                        />
+                    </Field>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                        {t('إلغاء')}
+                    </Button>
+                    <Button disabled={form.processing || form.data.name.trim() === ''} onClick={save}>
+                        {t('حفظ المورد')}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 

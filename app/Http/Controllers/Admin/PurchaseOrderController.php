@@ -360,6 +360,22 @@ class PurchaseOrderController extends Controller
             'supplier_reference' => ['nullable', 'string', 'max:100'],
             'supplier_discount' => ['nullable', 'numeric', 'min:0'],
             'shipping_cost' => ['nullable', 'numeric', 'min:0'],
+            /*
+             * ═══ ونسبةُ الضريبة على الأمر لا على المتجر ═══
+             *
+             * كانت تُقرأ من إعدادات المتجر جبرًا. وهي في **البيع** سياسةٌ لا
+             * تُترك لمن يكتب الورقة — أمّا في **الشراء** فليست سياستَنا أصلًا:
+             * هي ما يفرضه المورّد. ومورّدٌ غير مسجَّلٍ ضريبيًّا لا يفرض شيئًا،
+             * ومورّدٌ خارج البلد كذلك.
+             *
+             * وأثرُه لم يكن في الورقة وحدها: `SupplierInvoices::match` تقابل
+             * إجماليَّ السند بإجماليّ الأمر. فمتجرٌ ضريبتُه مُطفأة يشتري من
+             * مورّدٍ يفرضها ⇒ السندُ أعلى من الأمر ⇒ **يُمنع** بمقدار الضريبة
+             * بالضبط. والعكسُ يشتكي في كلّ أمر.
+             *
+             * وفارغةً تسقط إلى نسبة المتجر: من لا يعرف يترك ما كان.
+             */
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'draft' => ['nullable', 'boolean'],
             /*
@@ -419,7 +435,10 @@ class PurchaseOrderController extends Controller
             $items,
             (float) ($data['supplier_discount'] ?? 0),
             (float) ($data['shipping_cost'] ?? 0),
-            PurchaseOrderTotals::taxRateFor($bid),
+            // والمكتوبةُ على الورقة تعلو، وفارغةً تسقط إلى نسبة المتجر
+            ($data['tax_rate'] ?? null) !== null && $data['tax_rate'] !== ''
+                ? (float) $data['tax_rate']
+                : PurchaseOrderTotals::taxRateFor($bid),
         );
 
         // وخصمٌ أكبرُ من البضاعة يُردّ برسالة لا يُحصر صامتًا

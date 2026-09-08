@@ -348,6 +348,8 @@ class PageController extends Controller
              * المتصفّح لأمكن تبديلُه بضغطة تحديث.
              */
             'formToken' => (string) Str::uuid(),
+            // ومورّدٌ أُضيف من هذه الشاشة نفسها — يُختار فور العودة إليها
+            'newSupplierId' => $request->session()->get('new_supplier_id'),
         ]);
     }
 

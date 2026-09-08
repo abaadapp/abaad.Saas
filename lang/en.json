@@ -4611,6 +4611,7 @@
     "اختر التصنيف": "Choose the category",
     "ابحث أو اكتب جديدًا": "Search, or type a new one",
     "أضف «:value»": "Add “:value”",
+    "احذف «:value»": "Remove “:value”",
     "يدخل المخزون: :n :unit": "Enters inventory: :n :unit",
     "وحدة تخزين": "stock units",
     "اسم الصنف غير المسجل": "Name of the unlisted item",

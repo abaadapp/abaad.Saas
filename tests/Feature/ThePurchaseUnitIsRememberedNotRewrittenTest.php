@@ -143,6 +143,71 @@ class ThePurchaseUnitIsRememberedNotRewrittenTest extends TestCase
         $this->assertContains('لفة', PurchaseUnits::forBusiness($other->id));
     }
 
+    /* ==================== والرفعُ من القائمة ==================== */
+
+    public function test_a_unit_the_shop_removed_leaves_its_list(): void
+    {
+        $this->actingAs($this->owner)
+            ->delete(route('admin.purchases.units.destroy'), ['unit' => 'رول'])
+            ->assertRedirect();
+
+        $this->assertNotContains('رول', PurchaseUnits::forBusiness($this->business->id));
+        // ‏وما سواها باقٍ
+        $this->assertContains('حبة', PurchaseUnits::forBusiness($this->business->id));
+    }
+
+    public function test_removing_a_unit_does_not_touch_an_order_written_with_it(): void
+    {
+        $this->bought('رول');
+
+        $this->actingAs($this->owner)
+            ->delete(route('admin.purchases.units.destroy'), ['unit' => 'رول'])
+            ->assertRedirect();
+
+        // ‏حذفُ خيارٍ من شاشةٍ لا يُعيد كتابة تاريخ الشراء
+        $this->assertSame('رول', PurchaseOrderItem::latest('id')->firstOrFail()->purchase_unit);
+        $this->assertNotContains('رول', PurchaseUnits::forBusiness($this->business->id));
+    }
+
+    public function test_a_removed_unit_comes_back_when_it_is_used_again(): void
+    {
+        PurchaseUnits::hide($this->business->id, 'رول');
+
+        $this->actingAs($this->owner)->post(route('admin.purchases.store'), [
+            'supplier_id' => $this->supplier->id,
+            'branch_id' => $this->branch->id,
+            'ordered_at' => now()->toDateString(),
+            'items' => [[
+                'product_id' => $this->product->id, 'name' => 'وردة حمراء',
+                'purchase_unit' => 'رول', 'units_per_purchase_unit' => 1,
+                'cost' => 10, 'quantity' => 1,
+            ]],
+        ])->assertRedirect();
+
+        // ‏الرفعُ رأيٌ في القائمة يُنقض باستعمالٍ جديد
+        $this->assertContains('رول', PurchaseUnits::forBusiness($this->business->id));
+    }
+
+    public function test_an_empty_unit_is_not_a_removal(): void
+    {
+        $this->actingAs($this->owner)
+            ->delete(route('admin.purchases.units.destroy'), ['unit' => '  '])
+            ->assertSessionHasErrors('unit');
+
+        $this->assertSame([], PurchaseUnits::hidden($this->business->id));
+    }
+
+    public function test_one_shop_does_not_empty_anothers_list(): void
+    {
+        $other = Business::create(['name' => 'متجر آخر', 'type' => 'عام', 'status' => 'نشط']);
+
+        $this->actingAs($this->owner)
+            ->delete(route('admin.purchases.units.destroy'), ['unit' => 'رول'])
+            ->assertRedirect();
+
+        $this->assertContains('رول', PurchaseUnits::forBusiness($other->id));
+    }
+
     /* ==================== الشاشة ==================== */
 
     public function test_the_screen_is_given_the_units_it_offers(): void
@@ -169,6 +234,8 @@ class ThePurchaseUnitIsRememberedNotRewrittenTest extends TestCase
 
         $this->assertStringNotContainsString('<datalist', $screen, 'عادت القائمة التي يرسمها نظام التشغيل');
         $this->assertStringContainsString('<ComboBox', $screen, 'حقل الوحدة بلا منتقٍ مرسوم في الصفحة');
+        // ‏وزرُّ الرفع موصولٌ بالباب — لا مقبضًا يُدير حالةً في المتصفّح وحده
+        $this->assertStringContainsString("route('admin.purchases.units.destroy')", $screen);
     }
 
     /* ==================== الحفظ ==================== */

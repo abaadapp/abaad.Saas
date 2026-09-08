@@ -617,6 +617,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/purchases/orders', [PurchaseOrderController::class, 'index'])->name('purchases.orders');
     Route::get('/purchases/create', [PageController::class, 'purchasesCreate'])->name('purchases.create');
     Route::post('/purchases', [PurchaseOrderController::class, 'store'])->name('purchases.store');
+    // ورفعُ وحدةِ شراءٍ من قائمة المتجر — لا من أوامره التي كُتبت بها
+    Route::delete('/purchases/units', [PurchaseOrderController::class, 'hideUnit'])->name('purchases.units.destroy');
     Route::post('/purchases/{id}/receipt', [PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');
     // وإيصالُ الدفع يُقرأ من هنا — وهو غيرُ ورقة الشحنة عمودًا وبابًا
     Route::get('/purchases/{id}/receipt-file', [FinancialAttachmentController::class, 'purchaseReceipt'])

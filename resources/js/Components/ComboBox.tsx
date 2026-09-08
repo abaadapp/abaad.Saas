@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Plus } from 'lucide-react';
+import { Check, ChevronDown, Plus, X } from 'lucide-react';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { fold } from '@/lib/pages';
@@ -21,6 +21,11 @@ import { cn } from '@/lib/utils';
  * قائمة الشاشة، والخادمُ يعيده في الفتحة التالية لأنّ قوائم هذا النظام
  * تُقرأ ممّا استُعمل فعلًا لا من كلماتٍ مكتوبةٍ في الشاشة.
  *
+ * ═══ وما يُضاف يُرفع ═══
+ *
+ * `onDelete` — حين تُمرَّر — تضع بجانب كلّ خيارٍ زرَّ رفعٍ من القائمة. وقائمةٌ
+ * يُضاف إليها ولا يُرفع منها تمتلئ بأخطاء الكتابة ولا تنقص أبدًا.
+ *
  * ═══ وواحدٌ لا اثنان ═══
  *
  * يخدم وحدةَ الشراء وتصنيفَ الأصل. وحقلان يقولان الشيء نفسه يفترقان يومًا:
@@ -31,6 +36,7 @@ export default function ComboBox({
     options,
     onPick,
     onAdd,
+    onDelete,
     label,
     placeholder,
 }: {
@@ -39,6 +45,8 @@ export default function ComboBox({
     onPick: (value: string) => void;
     /** ما يُكتب ولا يُطابق شيئًا — يبقى في قائمة هذه الشاشة */
     onAdd: (value: string) => void;
+    /** رفعُ خيارٍ من القائمة — بلا هذه لا يُرسم زرُّ الرفع أصلًا */
+    onDelete?: (value: string) => void;
     /** اسمُ الحقل لقارئ الشاشة — وهو ما يُطلب به الزرُّ في الاختبارات */
     label: string;
     /** ما يقوله الزرُّ قبل أن يُختار شيء */
@@ -127,16 +135,32 @@ export default function ComboBox({
                     />
 
                     <div className="mt-1 max-h-48 overflow-y-auto">
+                        {/*
+                            وزرٌّ داخل زرّ لا يصحّ في HTML: الصفُّ حاويةٌ فيها
+                            زرُّ الاختيار وزرُّ الرفع، لا زرٌّ يبتلع الآخر.
+                        */}
                         {hits.map((o) => (
-                            <button
-                                key={o}
-                                type="button"
-                                className="flex w-full items-center justify-between gap-2 rounded-[8px] px-2 py-1.5 text-start text-[13px] hover:bg-[#f7f7f5]"
-                                onClick={() => commit(o)}
-                            >
-                                <span className="min-w-0 truncate">{o}</span>
-                                {o === value && <Check className="size-4 shrink-0 text-[#5b21b6]" />}
-                            </button>
+                            <div key={o} className="flex items-center gap-1 rounded-[8px] hover:bg-[#f7f7f5]">
+                                <button
+                                    type="button"
+                                    className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-[8px] px-2 py-1.5 text-start text-[13px]"
+                                    onClick={() => commit(o)}
+                                >
+                                    <span className="min-w-0 truncate">{o}</span>
+                                    {o === value && <Check className="size-4 shrink-0 text-[#5b21b6]" />}
+                                </button>
+
+                                {onDelete && (
+                                    <button
+                                        type="button"
+                                        aria-label={t('احذف «:value»', { value: o })}
+                                        className="shrink-0 rounded-[6px] p-1.5 text-[#9ca3af] hover:bg-[#fee2e2] hover:text-[#b91c1c]"
+                                        onClick={() => onDelete(o)}
+                                    >
+                                        <X className="size-3.5" />
+                                    </button>
+                                )}
+                            </div>
                         ))}
                     </div>
 

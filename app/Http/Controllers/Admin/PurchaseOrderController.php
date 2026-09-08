@@ -16,6 +16,7 @@ use App\Support\GoodsReceipts;
 use App\Support\Permissions;
 use App\Support\PurchaseOrders;
 use App\Support\PurchaseOrderTotals;
+use App\Support\PurchaseUnits;
 use App\Support\ReceiveRefused;
 use App\Support\Search;
 use App\Support\SupplierInvoices;
@@ -502,6 +503,15 @@ class PurchaseOrderController extends Controller
                     $po->items()->create($line);
                 }
 
+                /*
+                 * وما استُعمل عاد إلى القائمة.
+                 *
+                 * وحدةٌ رفعها التاجرُ من قائمته ثمّ كتبها في أمرٍ جديد يريدها:
+                 * وبقاؤها مرفوعةً يجعله يكتبها في كلّ بندٍ من كلّ أمر ولا يعرف
+                 * لماذا لا تظهر. والرفعُ رأيٌ في القائمة يُنقض باستعمالٍ جديد.
+                 */
+                PurchaseUnits::unhide($bid, array_column($items, 'purchase_unit'));
+
                 return $po;
             });
         } catch (Throwable $e) {
@@ -522,6 +532,27 @@ class PurchaseOrderController extends Controller
                 : __('أُنشئ أمر الشراء :number', ['number' => $po->number]),
             'type' => 'success',
         ]);
+    }
+
+    /**
+     * رفعُ وحدةِ شراءٍ من قائمة المتجر.
+     *
+     * ولا تُمحى من أمرٍ كُتبت فيه: أمرٌ اشترى «بالرول» يبقى يقول «رول» —
+     * وإلا صار حذفُ خيارٍ من شاشةٍ يُعيد كتابة تاريخ الشراء. والقائمةُ تُقرأ
+     * ممّا اشترى به المتجر، فالمرفوعُ يُطرح منها عند القراءة — انظر
+     * `PurchaseUnits`.
+     */
+    public function hideUnit(Request $request)
+    {
+        $data = $request->validate([
+            'unit' => ['required', 'string', 'max:40'],
+        ]);
+
+        PurchaseUnits::hide($this->bid(), $data['unit']);
+
+        Activity::log('updated', 'رفع وحدة الشراء «'.trim($data['unit']).'» من قائمته');
+
+        return back();
     }
 
     /**

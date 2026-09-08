@@ -14,8 +14,16 @@ import ComboBox from '@/Components/ComboBox';
 const UNITS = ['حبة', 'صندوق', 'كيلو'];
 
 function draw(value = 'حبة') {
-    const on = { onPick: vi.fn(), onAdd: vi.fn() };
+    const on = { onPick: vi.fn(), onAdd: vi.fn(), onDelete: vi.fn() };
     render(<ComboBox value={value} options={UNITS} label="وحدة الشراء" placeholder="اختر الوحدة" {...on} />);
+
+    return { ...on, user: userEvent.setup() };
+}
+
+/** بلا `onDelete` — كما تستعملها شاشةُ الأصول */
+function drawPlain() {
+    const on = { onPick: vi.fn(), onAdd: vi.fn() };
+    render(<ComboBox value="حبة" options={UNITS} label="التصنيف" placeholder="اختر التصنيف" {...on} />);
 
     return { ...on, user: userEvent.setup() };
 }
@@ -46,18 +54,19 @@ describe('القائمة تُرسم في الصفحة', () => {
         const { user } = draw();
         await open(user);
 
+        // ‏بالاسم تمامًا: «احذف «حبة»» زرٌّ آخرُ في الصفّ نفسه
         for (const u of UNITS) {
-            expect(screen.getByRole('button', { name: new RegExp(u) })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: u })).toBeInTheDocument();
         }
     });
 
     it('واختيارُ وحدةٍ يقولها ويُغلق', async () => {
         const { onPick, user } = draw();
         await open(user);
-        await user.click(screen.getByRole('button', { name: /صندوق/ }));
+        await user.click(screen.getByRole('button', { name: 'صندوق' }));
 
         expect(onPick).toHaveBeenCalledWith('صندوق');
-        expect(screen.queryByRole('button', { name: /كيلو/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'كيلو' })).not.toBeInTheDocument();
     });
 });
 
@@ -86,8 +95,8 @@ describe('والقائمةُ لا تحدّ', () => {
         await open(user);
         await user.type(screen.getByRole('textbox'), 'صند');
 
-        expect(screen.getByRole('button', { name: /صندوق/ })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /كيلو/ })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'صندوق' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'كيلو' })).not.toBeInTheDocument();
     });
 
     it('و«Enter» تأخذ أوّلَ ما طابق لا ما نصفَ كُتب', async () => {
@@ -112,5 +121,32 @@ describe('والقائمةُ لا تحدّ', () => {
         await user.type(screen.getByRole('textbox'), '   {Enter}');
 
         expect(onPick).not.toHaveBeenCalled();
+    });
+});
+
+describe('وما يُضاف يُرفع', () => {
+    it('ولكلّ خيارٍ زرُّ رفعٍ من القائمة', async () => {
+        const { onDelete, user } = draw();
+        await open(user);
+        await user.click(screen.getByRole('button', { name: 'احذف «كيلو»' }));
+
+        expect(onDelete).toHaveBeenCalledWith('كيلو');
+    });
+
+    it('والرفعُ لا يختار ما رُفع', async () => {
+        const { onPick, user } = draw();
+        await open(user);
+        await user.click(screen.getByRole('button', { name: 'احذف «كيلو»' }));
+
+        expect(onPick).not.toHaveBeenCalled();
+    });
+
+    it('ولا يُرسم زرُّ رفعٍ لمن لا يملك رفعًا', async () => {
+        const { user } = drawPlain();
+        await user.click(screen.getByRole('button', { name: 'التصنيف' }));
+
+        expect(screen.queryByRole('button', { name: /احذف/ })).not.toBeInTheDocument();
+        // ‏والقائمةُ نفسُها تُعرض كما هي
+        expect(screen.getByRole('button', { name: 'كيلو' })).toBeInTheDocument();
     });
 });

@@ -118,6 +118,24 @@ export default function PurchaseCreate() {
     const [units, setUnits] = useState<string[]>(knownUnits);
     const addUnit = (unit: string) =>
         setUnits((prev) => (prev.includes(unit) ? prev : [unit, ...prev]));
+
+    /*
+     * ورفعُ وحدةٍ من القائمة يُحفظ للمتجر — لا لهذه الفتحة.
+     *
+     * ولا يُمسّ ما كُتب في السطور: من اشترى «بالرول» أمس يبقى أمرُه يقول
+     * «رول». والقائمةُ تُقرأ ممّا اشترى به المتجر، فالرفعُ يُطرح منها.
+     *
+     * والشاشةُ تُحدَّث بعد ردّ الخادم لا قبله: قائمةٌ تنقص ثمّ تعود بعد
+     * تحديث الصفحة تقول للتاجر إنّ ضغطته لم تقع — ولا يعرف أيَّهما الصحيح.
+     */
+    const dropUnit = (unit: string) =>
+        router.delete(route('admin.purchases.units.destroy'), {
+            data: { unit },
+            preserveScroll: true,
+            preserveState: true,
+            only: ['units'],
+            onSuccess: () => setUnits((prev) => prev.filter((u) => u !== unit)),
+        });
     /** ما يفتح به السطرُ الجديد حقلَ وحدته — رأسُ القائمة */
     const defaultUnit = () => units[0] ?? '';
 
@@ -398,6 +416,7 @@ export default function PurchaseCreate() {
                                 onChange={setLine}
                                 onRemove={dropLine}
                                 onAddUnit={addUnit}
+                                onDropUnit={dropUnit}
                             />
                         )}
                     </Card>
@@ -676,6 +695,7 @@ export function ItemRows({
     onChange,
     onRemove,
     onAddUnit,
+    onDropUnit,
 }: {
     lines: Line[];
     products: Product[];
@@ -684,6 +704,7 @@ export function ItemRows({
     onChange: (i: number, patch: Partial<Line>) => void;
     onRemove: (i: number) => void;
     onAddUnit: (unit: string) => void;
+    onDropUnit: (unit: string) => void;
 }) {
     const t = useTranslate();
     const m = (v: number) => money(v, currency);
@@ -739,6 +760,7 @@ export function ItemRows({
                                 options={units}
                                 onPick={(u) => onChange(i, { purchase_unit: u })}
                                 onAdd={onAddUnit}
+                                onDelete={onDropUnit}
                                 label="وحدة الشراء"
                                 placeholder="اختر الوحدة"
                             />

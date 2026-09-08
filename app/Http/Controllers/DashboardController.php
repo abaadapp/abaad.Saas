@@ -34,10 +34,24 @@ class DashboardController extends Controller
             // التقارير العامة تبقى مستقلة عن هذا العقد ولا نغيّر معناها هنا.
             'salesSeries' => DashboardMetrics::salesYear(),
             'paymentDistribution' => DashboardMetrics::paymentDistribution(),
-            // أحدث 6 طلبات وأفضل 5 منتجات وموظفين — ما تعرضه اللوحة فقط
-            'recentOrders' => collect(Demo::orders())->take(6)->values()->all(),
-            'topProducts' => collect(Demo::products())->take(5)->values()->all(),
-            'topEmployees' => collect(Demo::employees())->take(5)->values()->all(),
+            /*
+             * أحدث ستّة طلباتٍ وأفضل خمسة أصنافٍ وأعلى خمسةِ موظّفين.
+             *
+             * والثلاثةُ كانت تُقتطع في PHP من جداولَ تُحمَّل كاملة: كلُّ طلبٍ
+             * مباعٍ في المتجر ليُعرض ستّة، وكلُّ صنفٍ بمقاساته وإضافاته
+             * ووصفاته ليُعرض خمسة.
+             *
+             * وأسوأُ من ثمنِها أنّ اثنتين منها لم تكونا ما يقول اسمُهما:
+             * «أفضل المنتجات» كانت أقدمَ خمسةِ أصنافٍ بالمعرّف — لا تُرتَّب
+             * ببيعٍ ولا تُذكر فيها كميّة — و«أداء الموظفين» أقدمَ خمسةِ
+             * موظّفين. ودالّةُ الأفضل مبيعًا موجودةٌ في النظام تخدم التقارير
+             * منذ بُنيت، ولم تكن اللوحة تناديها.
+             */
+            'recentOrders' => Demo::orders(null, 6),
+            'topProducts' => Demo::topSellingProducts(5, 'month', Demo::currentBranchId()),
+            // والترتيبُ بما حقّقه هذا الشهر — وعددُ الموظّفين محدودٌ بالباقة
+            'topEmployees' => collect(Demo::employees())
+                ->sortByDesc('achieved')->take(5)->values()->all(),
         ]);
     }
 

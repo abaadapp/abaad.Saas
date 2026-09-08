@@ -23,6 +23,7 @@ import useLiveStats from '@/hooks/useLiveStats';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
+import type { Employee } from '@/types/models';
 
 interface Order {
     id: string;
@@ -32,24 +33,15 @@ interface Order {
     date?: string;
 }
 
-interface Product {
-    id: number;
-    name: string;
-    price: number;
-    qty: number;
-    image?: string;
-}
-
-interface Employee {
-    // الرقم يصل من Demo::employees لكن الواجهة لم تكن تعلنه، فاضطرّ العرض
-    // إلى التمييز بالاسم — وموظفان باسم واحد أمر عادي في متجر حقيقي،
-    // فتتصادم مفاتيح React وتُحذف صفوف أو تتكرّر.
-    id: number;
-    name: string;
-    role: string;
-    sales: number;
-    avatar?: string;
-}
+/*
+ * ونوعُ الموظّف من مصدره — لا نسخةٌ محليّة منه.
+ *
+ * كانت هنا نسخةٌ تعلن خمسةَ حقولٍ من عشرة، فيُرسل الخادم `achieved` ولا
+ * تعرفه الشاشة — فلا يُرسم، ولا يقول المترجمُ شيئًا لأنّ الحقل غيرُ معلَن
+ * أصلًا. والنوعُ الواحد يجعل ما يصل وما يُقرأ شيئًا واحدًا.
+ *
+ * ونوعُ المنتج رُفع: اللوحة لم تعد تعرض صفوفًا من الكتالوج.
+ */
 
 /**
  * لا تنبيهات في اللوحة بطلب المالك: كانت تتصدّر الصفحة بما لا يحتاج تدخّلًا
@@ -62,7 +54,13 @@ interface DashboardProps {
     salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[] };
     paymentDistribution: { labels: string[]; series: number[] };
     recentOrders: Order[];
-    topProducts: Product[];
+    /*
+     * أفضل الأصناف مبيعًا — لا صفوفٌ من الكتالوج.
+     *
+     * كانت `Product[]`: أوّلُ خمسةِ أصنافٍ في الجرد بأسعارها. والاسمُ فوقها
+     * «أفضل المنتجات» — فتُقرأ صدارةً وهي ترتيبُ تسجيل.
+     */
+    topProducts: { name: string; cat: string; sold: number; revenue: number }[];
     topEmployees: Employee[];
 }
 
@@ -183,10 +181,18 @@ export default function Dashboard() {
                                 </p>
                             ) : (
                                 topProducts.map((product) => (
-                                    <div key={product.id} className="flex items-center justify-between gap-3">
-                                        <span className="truncate text-[13px] text-[#111]">{product.name}</span>
+                                    <div key={product.name} className="flex items-center justify-between gap-3">
+                                        <span className="min-w-0">
+                                            <span className="block truncate text-[13px] text-[#111]">
+                                                {product.name}
+                                            </span>
+                                            {/* الكميّة تقول لماذا تصدّر — والسعر لا يقول شيئًا عن البيع */}
+                                            <span className="block text-[11px] text-[#9ca3af]">
+                                                {t(':n مبيعًا', { n: product.sold })}
+                                            </span>
+                                        </span>
                                         <span className="shrink-0 text-[12px] tabular-nums text-[#6b7280]">
-                                            {fmt(product.price)}
+                                            {fmt(product.revenue)}
                                         </span>
                                     </div>
                                 ))
@@ -214,8 +220,9 @@ export default function Dashboard() {
                                                 {t(employee.role)}
                                             </span>
                                         </span>
+                                        {/* ما حقّقه هذا الشهر — لا عمودٌ لا يكتبه شيء */}
                                         <span className="shrink-0 text-[12px] tabular-nums text-[#6b7280]">
-                                            {fmt(employee.sales)}
+                                            {fmt(employee.achieved)}
                                         </span>
                                     </div>
                                 ))

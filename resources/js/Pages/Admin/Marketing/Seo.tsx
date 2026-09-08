@@ -4,7 +4,6 @@ import {
     AlertTriangle,
     BarChart3,
     Check,
-    Copy,
     ExternalLink,
     Globe,
     Minus,
@@ -14,6 +13,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import CopyButton from '@/Components/CopyButton';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -84,7 +84,6 @@ export default function MarketingSeo() {
     const t = useTranslate();
 
     const form = useForm({ ga_measurement_id: link.measurement_id ?? '' });
-    const [copied, setCopied] = useState(false);
     const [checking, setChecking] = useState(false);
 
     const submit = (e: React.FormEvent) => {
@@ -98,19 +97,6 @@ export default function MarketingSeo() {
             preserveScroll: true,
             onFinish: () => setChecking(false),
         });
-    };
-
-    const copy = async () => {
-        if (! link.snippet) return;
-
-        try {
-            await navigator.clipboard.writeText(link.snippet);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1600);
-        } catch {
-            // متصفّحٌ يمنع الحافظة: الوسم ظاهرٌ ويُحدَّد باليد
-            setCopied(false);
-        }
     };
 
     const tagged = audit.site?.tagged ?? false;
@@ -224,10 +210,7 @@ export default function MarketingSeo() {
                                             {t('داخل <head> في كل صفحة. موقعك خارج النظام فلا نستطيع وضعه فيه نيابةً عنك.')}
                                         </p>
                                     </div>
-                                    <Button type="button" size="sm" variant="outline" onClick={copy}>
-                                        {copied ? <Check className="text-[#047857]" /> : <Copy />}
-                                        {t(copied ? 'نُسخ' : 'نسخ')}
-                                    </Button>
+                                    <CopyButton text={link.snippet ?? ''} label="نسخ" />
                                 </div>
                                 <pre
                                     dir="ltr"

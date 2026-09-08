@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Check, Copy, ExternalLink, KeyRound, MapPin, QrCode, RefreshCw, Star, Trash2 } from 'lucide-react';
+import { Check, ExternalLink, KeyRound, MapPin, QrCode, RefreshCw, Star, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import CopyButton from '@/Components/CopyButton';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -57,28 +58,13 @@ interface Props {
 /** رابطٌ يُنسخ بضغطة — العنوان طويلٌ ولا يُكتب بيد */
 function CopyRow({ label, url, hint }: { label: string; url: string; hint?: string }) {
     const t = useTranslate();
-    const [copied, setCopied] = useState(false);
-
-    const copy = async () => {
-        try {
-            await navigator.clipboard.writeText(url);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1600);
-        } catch {
-            // متصفّحٌ يمنع الحافظة: الرابط ظاهرٌ ويُحدَّد باليد
-            setCopied(false);
-        }
-    };
 
     return (
         <div className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3">
             <div className="mb-1.5 flex items-center justify-between gap-2">
                 <span className="text-[13px] font-medium text-[#111]">{t(label)}</span>
                 <div className="flex items-center gap-1.5">
-                    <Button type="button" size="sm" variant="outline" onClick={copy}>
-                        {copied ? <Check className="text-[#047857]" /> : <Copy />}
-                        {t(copied ? 'نُسخ' : 'نسخ')}
-                    </Button>
+                    <CopyButton text={url} label="نسخ" />
                     <Button asChild size="sm" variant="outline">
                         <a href={url} target="_blank" rel="noreferrer">
                             <ExternalLink />

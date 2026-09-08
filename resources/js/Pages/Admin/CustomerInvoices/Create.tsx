@@ -18,6 +18,7 @@ import {
 import { Input, Textarea } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { money } from '@/lib/format';
+import { useCopy } from '@/lib/copy';
 import { fold } from '@/lib/pages';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -726,28 +727,26 @@ function addDays(from: string, days: number): string {
  * النموذج بحال، فالرقم يُولَّد في الخادم تحت قفل — ويصير مقروءًا ومحدَّدًا
  * ومنسوخًا بضغطة.
  *
- * ═══ والحافظةُ قد تُمنع ═══
+ * ═══ ولمَ لا يستعمل `CopyButton` ═══
  *
- * `navigator.clipboard` غيرُ موجود على أصلٍ غير آمن (http)، ومحجوبٌ في
- * بعض المتصفّحات. فالضغطةُ تُحدّد النصَّ أوّلًا — وهو ما ينفع في كلّ حال —
- * ثمّ تحاول النسخ. فمن مُنع منه يجد الرقمَ محدَّدًا أمامه ينسخه بلوحته.
+ * لأنّ الضغطةَ هنا تُحدّد نصَّ الحقل قبل النسخ، والقولُ يقع في سطرٍ تحته
+ * لا على الزرّ. فيقرأ من `useCopy` — وهي موضعُ الحافظة الوحيد في النظام —
+ * ويرسم نفسَه. والمشترَكُ هو المنطق لا الهيئة.
  */
 export function InvoiceNumberField({ number }: { number: string }) {
     const t = useTranslate();
-    const [copied, setCopied] = useState(false);
+    const { copy, copied } = useCopy();
     const box = useRef<HTMLInputElement>(null);
 
-    const copy = async () => {
+    /*
+     * والتحديدُ قبل المحاولة لا بعدها.
+     *
+     * فمن مُنع من الحافظة يجد الرقمَ محدَّدًا أمامه ينسخه بلوحته — وهو ما
+     * ينفع في كلّ حال. ولا يُعلَن «نُسخ» إلّا بعد أن يفي الوعد: `useCopy`.
+     */
+    const press = () => {
         box.current?.select();
-
-        try {
-            await navigator.clipboard.writeText(number);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1600);
-        } catch {
-            // متصفّحٌ يمنع الحافظة: الرقم محدَّدٌ فيُنسخ باليد
-            setCopied(false);
-        }
+        void copy(number);
     };
 
     return (
@@ -765,7 +764,7 @@ export function InvoiceNumberField({ number }: { number: string }) {
                     value={number}
                     readOnly
                     dir="ltr"
-                    onClick={copy}
+                    onClick={press}
                     title={t('اضغط لنسخ الرقم')}
                     className="flex-1 cursor-pointer bg-[#fafafa] text-[#4b4b4b]"
                 />
@@ -773,7 +772,7 @@ export function InvoiceNumberField({ number }: { number: string }) {
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={copy}
+                    onClick={press}
                     aria-label={t('نسخ رقم الفاتورة')}
                 >
                     {copied ? <Check className="text-[#047857]" /> : <Copy />}

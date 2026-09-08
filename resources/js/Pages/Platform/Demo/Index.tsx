@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, Copy, FlaskConical, LogIn, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { AlertTriangle, FlaskConical, LogIn, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
+import CopyButton from '@/Components/CopyButton';
 import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -48,7 +49,6 @@ export default function DemoIndex() {
 
     const [creating, setCreating] = useState(false);
     const [removing, setRemoving] = useState<Store | null>(null);
-    const [copied, setCopied] = useState<string | null>(null);
 
     const create = useForm({ name: 'متجر أبعاد التجريبي', size: 'متوسط' });
     const reseed = useForm({ size: 'متوسط' });
@@ -57,12 +57,6 @@ export default function DemoIndex() {
     const submitCreate = (e: React.FormEvent) => {
         e.preventDefault();
         create.post(route('super-admin.demo.store'), { onSuccess: () => setCreating(false) });
-    };
-
-    const copy = (value: string) => {
-        navigator.clipboard?.writeText(value);
-        setCopied(value);
-        window.setTimeout(() => setCopied(null), 1500);
     };
 
     const detail = (size: string) => {
@@ -204,17 +198,9 @@ export default function DemoIndex() {
                                             <span dir="ltr" className="truncate font-mono text-[#111]">
                                                 {value}
                                             </span>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon-sm"
-                                                aria-label={t('نسخ')}
-                                                onClick={() => copy(value as string)}
-                                            >
-                                                <Copy />
-                                            </Button>
+                                            <CopyButton text={value as string} variant="ghost" size="icon-sm" />
                                         </span>
                                     ))}
-                                {copied && <span className="text-[12px] text-[#047857]">{t('نُسخ.')}</span>}
                             </div>
                         </Card>
                     ))}

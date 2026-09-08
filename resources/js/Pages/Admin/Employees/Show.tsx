@@ -3,7 +3,6 @@ import { router, usePage } from '@inertiajs/react';
 import {
     Check,
     Contact,
-    Copy,
     KeyRound,
     Lock,
     LockOpen,
@@ -15,6 +14,7 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
+import CopyButton from '@/Components/CopyButton';
 import StatCard from '@/Components/StatCard';
 import Tabs from '@/Components/Tabs';
 import SmartLink from '@/Components/SmartLink';
@@ -46,7 +46,6 @@ export default function EmployeeShow() {
 
     const [tab, setTab] = useState<'sales' | 'activity' | 'permissions'>('sales');
     const [resetting, setResetting] = useState(false);
-    const [copied, setCopied] = useState(false);
     /*
      * تُخفى بعد إغلاق النافذة ولو بقيت في الوميض: الوميض يعيش حتى الطلب
      * التالي، ولا يُترك رقمُ سرٍّ معروضًا على شاشةٍ في محلٍّ بعد أن قُرئ.
@@ -293,18 +292,7 @@ export default function EmployeeShow() {
                                     <code className="text-[15px] font-semibold tracking-wide text-[#047857]" dir="ltr">
                                         {issued}
                                     </code>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                            navigator.clipboard?.writeText(issued);
-                                            setCopied(true);
-                                        }}
-                                    >
-                                        {copied ? <Check /> : <Copy />}
-                                        {t(copied ? 'نُسخت' : 'نسخ')}
-                                    </Button>
+                                    <CopyButton text={issued} label="نسخ" done="نُسخت" />
                                 </div>
                                 <div className="mt-5 flex justify-end">
                                     <Button
@@ -332,7 +320,6 @@ export default function EmployeeShow() {
                                     <Button
                                         onClick={() => {
                                             setSeen(false);
-                                            setCopied(false);
                                             router.post(route('admin.employees.resetPassword', employee.id), {}, {
                                                 preserveScroll: true,
                                             });

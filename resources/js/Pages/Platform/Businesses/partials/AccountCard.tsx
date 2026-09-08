@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { Check, Copy, KeyRound, Pencil, RefreshCw } from 'lucide-react';
+import { KeyRound, Pencil, RefreshCw } from 'lucide-react';
+import CopyButton from '@/Components/CopyButton';
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -35,14 +36,6 @@ export default function AccountCard({ businessId, ownerEmail, bare = false }: Pr
     const [changing, setChanging] = useState(false);
     /** تُعرض بعد الحفظ لتُنسخ — ثم لا تُقرأ من القاعدة أبدًا */
     const [issued, setIssued] = useState<string | null>(null);
-    const [copied, setCopied] = useState<string | null>(null);
-
-    const copy = (text: string) => {
-        navigator.clipboard?.writeText(text);
-        setCopied(text);
-        setTimeout(() => setCopied(null), 1500);
-    };
-
     /*
      * القطع عند @ لا بنزع نطاقنا: حسابات أُنشئت قبل توحيد النطاق تحمل نطاقًا
      * آخر، فنزعُ «@abaadapp.om» منها لا يطابق شيئًا — فيمتلئ الحقل بالبريد
@@ -103,16 +96,7 @@ export default function AccountCard({ businessId, ownerEmail, bare = false }: Pr
                         <span className="min-w-0 flex-1 truncate font-mono text-sm text-[#111]" dir="ltr">
                             {ownerEmail}
                         </span>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => copy(ownerEmail)}
-                            title={t('نسخ')}
-                            aria-label={t('نسخ')}
-                        >
-                            {copied === ownerEmail ? <Check /> : <Copy />}
-                        </Button>
+                        <CopyButton text={ownerEmail} variant="ghost" size="icon-sm" />
                         <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
                             <Pencil />
                             {t('تعديل')}
@@ -231,10 +215,7 @@ export default function AccountCard({ businessId, ownerEmail, bare = false }: Pr
                                     <span className="min-w-0 flex-1 truncate font-mono text-sm text-[#111]" dir="ltr">
                                         {issued}
                                     </span>
-                                    <Button type="button" variant="outline" size="sm" onClick={() => copy(issued)}>
-                                        {copied === issued ? <Check /> : <Copy />}
-                                        {t(copied === issued ? 'نُسخت' : 'نسخ')}
-                                    </Button>
+                                    <CopyButton text={issued} label="نسخ" done="نُسخت" />
                                 </div>
                             </div>
                         )}

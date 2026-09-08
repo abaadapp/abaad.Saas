@@ -113,11 +113,26 @@ export default function Coupons() {
                                 </div>
 
                                 <div className="flex items-center gap-2">
+                                    {/*
+                                      * الشارةُ تقول ما سيفعله الصندوق.
+                                      *
+                                      * كانت تقرأ شرطين من ثلاثة: «منتهٍ» لمن مضى
+                                      * تاريخه، و«فعّال» لكلّ ما عداه. فكودٌ حدُّه
+                                      * خمسون استُخدم خمسين يُقرأ أخضرَ في اللوحة
+                                      * ويُردّ عند الدفع — والتاجر يظنّ العطبَ في
+                                      * الكاشير أو في الكود الذي طبعه على لافتته.
+                                      *
+                                      * و«استُنفد» ليست «موقوف»: الثانيةُ قرارٌ
+                                      * يُلغى بالمقبض الذي بجانبها، والأولى حدٌّ
+                                      * بلغه الكود — لا يردّه إلا كودٌ جديد.
+                                      */}
                                     {c.expired ? (
                                         <Badge variant="danger">{t('منتهٍ')}</Badge>
+                                    ) : c.exhausted ? (
+                                        <Badge variant="danger">{t('استُنفد')}</Badge>
                                     ) : (
-                                        <Badge variant={c.active ? 'success' : 'neutral'}>
-                                            {c.active ? t('فعّال') : t('موقوف')}
+                                        <Badge variant={c.usable ? 'success' : 'neutral'}>
+                                            {c.usable ? t('فعّال') : t('موقوف')}
                                         </Badge>
                                     )}
 

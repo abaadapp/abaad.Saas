@@ -64,8 +64,6 @@ class ReviewController extends Controller
 
         $reviews = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
 
-        $all = Review::where('business_id', $bid)->get();
-
         return Inertia::render('Admin/Marketing/Reviews', [
             'reviews' => collect($reviews->items())->map(fn ($r) => [
                 'id' => $r->id,
@@ -86,16 +84,47 @@ class ReviewController extends Controller
                 ->get(['id', 'name'])->map(fn ($p) => ['value' => $p->id, 'label' => $p->name])->all(),
             'customers' => Customer::where('business_id', $bid)->orderBy('name')->limit(500)
                 ->get(['id', 'name'])->map(fn ($c) => ['value' => $c->id, 'label' => $c->name])->all(),
-            'summary' => [
-                'count' => $all->count(),
-                'pending' => $all->where('status', 'معلّق')->count(),
-                'published' => $all->where('status', 'منشور')->count(),
-                // المعدّل على المنشور وحده: المعلّق لم يُقرأ بعد فلا يُحتسب رأيًا
-                'average' => $all->where('status', 'منشور')->count()
-                    ? round($all->where('status', 'منشور')->avg('rating'), 2)
-                    : 0.0,
-            ],
+            'summary' => $this->summary($bid),
         ]);
+    }
+
+    /**
+     * البطاقات الأربع — بمسحةٍ واحدة لا بجدولٍ في الذاكرة.
+     *
+     * كانت تُحسب بـ`Review::…->get()`: كلُّ تقييمٍ في المتجر يُبنى نموذجًا
+     * ليُعدّ، والصفحة تحته مرقَّمةٌ بعشرين. فمتجرٌ بألف تقييمٍ يبني ألفَ
+     * نموذجٍ ليكتب أربعة أرقام، ويكبر الثمن مع كلّ تقييمٍ يصل.
+     *
+     * والجمعُ الشرطيّ يفعلها في استعلامٍ واحد، ويعمل على PostgreSQL وSQLite
+     * معًا (`case when` قياسيّ، خلافًا لـ`FILTER` التي لا يعرفها الثاني).
+     *
+     * والمعدّل يُقسَم هنا لا في SQL: `avg` مع `case` تحسب المعلَّقة أصفارًا
+     * أو تردّ NULL بحسب المحرّك — والقسمة على عدد المنشور صريحةٌ لا تختلف.
+     *
+     * @return array<string, mixed>
+     */
+    private function summary(int $businessId): array
+    {
+        $when = fn (string $expr) => "sum(case when {$expr} then 1 else 0 end)";
+
+        $row = Review::where('business_id', $businessId)
+            ->selectRaw(
+                'count(*) as total, '
+                .$when('status = ?').' as pending_count, '
+                .$when('status = ?').' as published_count, '
+                .'sum(case when status = ? then rating else 0 end) as published_stars',
+                ['معلّق', 'منشور', 'منشور'],
+            )->first();
+
+        $published = (int) ($row->published_count ?? 0);
+
+        return [
+            'count' => (int) ($row->total ?? 0),
+            'pending' => (int) ($row->pending_count ?? 0),
+            'published' => $published,
+            // المعدّل على المنشور وحده: المعلّق لم يُقرأ بعد فلا يُحتسب رأيًا
+            'average' => $published ? round((float) $row->published_stars / $published, 2) : 0.0,
+        ];
     }
 
     /** تسجيل تقييمٍ يدويًّا — ما يصل بالهاتف أو في المحل */
@@ -126,7 +155,20 @@ class ReviewController extends Controller
             'status' => ['required', Rule::in(['معلّق', 'منشور', 'مرفوض'])],
         ]);
 
+        $from = $review->status;
         $review->update(['status' => $data['status']]);
+
+        /*
+         * والنشرُ يُقيَّد — هو أخطر الأفعال الثلاثة لا أهونها.
+         *
+         * التسجيلُ يُقيَّد والحذفُ يُقيَّد، وكان النشرُ والرفض لا. والنشرُ
+         * يُخرج كلامَ زبونٍ إلى واجهة المتجر يقرؤه كلّ زائر، والرفضُ يحجب
+         * شكوى — فيسأل صاحب المحلّ من نشر هذا؟ ومن حجب تلك؟ ولا جواب.
+         */
+        Activity::log('updated', 'التقييم: من «'.$from.'» إلى «'.$data['status'].'»', [
+            'subject_id' => $review->id,
+            'subject_type' => 'review',
+        ]);
 
         return back()->with('toast', [
             'msg' => __('صار التقييم :status', ['status' => $data['status']]),
@@ -153,6 +195,12 @@ class ReviewController extends Controller
             'replied_at' => now(),
             // الردّ إذنٌ بالنشر ضمنًا: لا يُردّ إلا على ما يُعرض
             'status' => $review->status === 'معلّق' ? 'منشور' : $review->status,
+        ]);
+
+        // ردٌّ يُكتب باسم المحلّ ويقرؤه كلّ زائر — يُعرف كاتبُه
+        Activity::log('updated', 'ردّ على تقييم', [
+            'subject_id' => $review->id,
+            'subject_type' => 'review',
         ]);
 
         return back()->with('toast', ['msg' => __('نُشر الردّ'), 'type' => 'success']);

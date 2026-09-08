@@ -1374,7 +1374,15 @@ class Demo
             'expires' => optional($c->expires_at)->format('Y-m-d'),
             // نهاية اليوم لا أوّله — انظر Coupon::endsAt
             'expired' => $c->isExpired(),
+            'exhausted' => $c->isExhausted(),
             'active' => (bool) $c->active,
+            /*
+             * وحُكمٌ واحد يقرؤه الصندوق والشارة.
+             *
+             * الشاشة كانت تجمعه من `expired` و`active` فتُسقط الشرط الثالث:
+             * كودٌ حدُّه خمسون استُخدم خمسين يُقرأ «فعّالًا» ويُردّ عند الدفع.
+             */
+            'usable' => $c->isValid(),
             'display' => $c->type === 'نسبة' ? rtrim(rtrim(number_format($c->value, 2, '.', ''), '0'), '.') . '%' : self::money($c->value),
         ])->all();
     }
@@ -1383,10 +1391,8 @@ class Demo
     public static function activeCoupons(): array
     {
         return \App\Models\Coupon::where('business_id', self::bid())
-            ->where('active', true)
-            // من ينتهي اليوم يعمل اليوم كلّه: المقارنة ببداية اليوم لا بالساعة
-            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', now()->startOfDay()))
-            ->whereRaw('(max_uses IS NULL OR used_count < max_uses)')
+            // الشروط الثلاثة في موضعٍ واحد تقرؤه البطاقة معه — انظر scopeUsable
+            ->usable()
             ->orderByDesc('id')->get()->map(fn ($c) => [
                 'code' => $c->code,
                 'min_order' => (float) $c->min_order,
@@ -1402,61 +1408,10 @@ class Demo
 
         return [
             'total' => \App\Models\Coupon::where('business_id', $bid)->count(),
-            'active' => \App\Models\Coupon::where('business_id', $bid)->where('active', true)->count(),
+            // «فعّالة» تعني «يقبلها الصندوق» — لا «عمودُها مرفوع»
+            'active' => \App\Models\Coupon::where('business_id', $bid)->usable()->count(),
             'redemptions' => (int) \App\Models\Coupon::where('business_id', $bid)->sum('used_count'),
         ];
-    }
-
-    /** شرائح العملاء للحملات التسويقية (مع أرقام واتساب) */
-    public static function marketingSegment(string $segment = 'all'): array
-    {
-        $bid = self::bid();
-        $q = Customer::where('business_id', $bid)->whereNotNull('phone');
-
-        /*
-         * استعلامان للكلّ لا استعلامان لكلّ عميل.
-         *
-         * كان الصفّ الواحد يكلّف استعلامَين — آخر طلبٍ ومجموع إنفاق — فمتجرٌ
-         * بألفَي عميل يدفع أربعة آلاف استعلامٍ وواحدًا لفتح صفحة التسويق
-         * مرّة. والمعلّق لا يُعدّ طلبًا هنا كما لا يُعدّ في الإنفاق: عميلٌ
-         * علّق سلّةً ولم يدفع كان يظهر نشطًا فيسقط من قائمة «لم يشتروا منذ
-         * شهرين» — وهي القائمة التي صُنعت الصفحة لأجلها.
-         */
-        $sales = Order::where('business_id', $bid)
-            ->sold()
-            ->whereNotNull('customer_id')
-            ->selectRaw('customer_id, MAX(ordered_at) as last_at, SUM(total) as spent')
-            ->groupBy('customer_id')
-            ->get()
-            ->keyBy('customer_id');
-
-        $customers = $q->get()->map(function ($c) use ($sales) {
-            $row = $sales->get($c->id);
-
-            return [
-                'id' => $c->id,
-                'name' => $c->name,
-                'phone' => $c->phone,
-                'wa' => preg_replace('/\D/', '', (string) $c->phone),
-                'last_order' => $row?->last_at ? \Illuminate\Support\Carbon::parse($row->last_at) : null,
-                'spent' => (float) ($row->spent ?? 0),
-            ];
-        });
-
-        $filtered = match ($segment) {
-            'inactive' => $customers->filter(fn ($c) => ! $c['last_order'] || $c['last_order']->lt(now()->subDays(60))),
-            'top' => $customers->sortByDesc('spent')->take(10),
-            default => $customers,
-        };
-
-        return $filtered->map(fn ($c) => [
-            'id' => $c['id'],
-            'name' => $c['name'],
-            'phone' => $c['phone'],
-            'wa' => $c['wa'],
-            'spent' => $c['spent'],
-            'last_order' => $c['last_order']?->format('Y-m-d') ?? __('لا يوجد'),
-        ])->values()->all();
     }
 
     /* ============================ ضريبة القيمة المضافة ============================ */

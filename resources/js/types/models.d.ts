@@ -124,7 +124,12 @@ export interface Coupon {
     used_count: number;
     expires: string;
     expired: boolean;
+    /** بلغ حدَّه — يبقى في القائمة ولا يقبله الصندوق */
+    exhausted: boolean;
+    /** عمودُ التفعيل وحده — والمقبضُ يقلبه */
     active: boolean;
+    /** ما سيفعله الصندوق: مفعَّل وغيرُ منتهٍ ولم يُستنفد — انظر `Coupon::isValid` */
+    usable: boolean;
     display: string;
 }
 

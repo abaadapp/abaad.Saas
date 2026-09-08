@@ -4722,5 +4722,6 @@
     "قراءة الرواتب صلاحيةٌ لا تملكها — يكتبها من يملكها، ولا يتغيّر ما هو مسجَّل بحفظك.": "Reading payroll is a permission you do not hold — whoever holds it sets these, and saving here leaves them untouched.",
     "حساب :name يفتح ما لا تفتحه (:what) — لا يُمسّ إلا ممّن يملكه.": "The account of :name opens what you cannot (:what) — only someone who holds that may touch it.",
     "صلاحيةٌ لا تملكها": "A permission you do not hold",
-    "هذا الحساب يفتح ما لا تفتحه — لا يُعدَّل ولا تُغيَّر كلمة مروره إلا ممّن يملك ذلك.": "This account opens what you cannot — only someone who holds that may edit it or change its password."
+    "هذا الحساب يفتح ما لا تفتحه — لا يُعدَّل ولا تُغيَّر كلمة مروره إلا ممّن يملك ذلك.": "This account opens what you cannot — only someone who holds that may edit it or change its password.",
+    "يُحفظ في قائمة العملاء ويُختار في هذه الفاتورة فورًا.": "Saved to your customers and selected on this invoice straight away."
 }

@@ -30,7 +30,7 @@ class PurchaseOrder extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(PurchaseOrderItem::class);
+        return $this->hasMany(PurchaseOrderItem::class)->orderBy('id');
     }
 
     public function branch(): BelongsTo

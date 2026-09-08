@@ -7,7 +7,13 @@ import BackLink from '@/Components/BackLink';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -425,6 +431,8 @@ export default function PurchaseOrderShow() {
                         <DialogTitle>{t('تسجيل استلام')} — {order.number}</DialogTitle>
                     </DialogHeader>
 
+                    {/* والحشوُ على الجسم: `DialogContent` بلا حشو — انظر ui/dialog */}
+                    <div className="space-y-4 px-5 pb-5">
                     <div className="space-y-2">
                         {order.items.map((i) => (
                             <div key={i.id} className="flex items-center gap-3 text-[13px]">
@@ -447,15 +455,16 @@ export default function PurchaseOrderShow() {
                     <p className="text-[12px] text-[#6b7280]">
                         {t('الورقة تُسجَّل بانتظار الاعتماد — ولا تدخل البضاعة الرفّ إلّا باعتمادها')}
                     </p>
+                    </div>
 
-                    <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setReceiving(false)}>
-                            {t('إلغاء')}
-                        </Button>
+                    <DialogFooter>
                         <Button variant="success" disabled={takingTotal <= 0} onClick={submitReceive}>
                             {t('تسجيل الاستلام')}
                         </Button>
-                    </div>
+                        <Button variant="outline" onClick={() => setReceiving(false)}>
+                            {t('إلغاء')}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -464,20 +473,20 @@ export default function PurchaseOrderShow() {
                     <DialogHeader>
                         <DialogTitle>{t('حذف أمر الشراء')}</DialogTitle>
                     </DialogHeader>
-                    <p className="text-[13px] text-[#4b4b4b]">
+                    <p className="px-5 pb-5 text-[13px] text-[#4b4b4b]">
                         {t('سيُحذف الأمر :number ولا يمكن التراجع.', { number: order.number })}
                     </p>
-                    <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setDeleting(false)}>
-                            {t('إلغاء')}
-                        </Button>
+                    <DialogFooter>
                         <Button
                             variant="danger"
                             onClick={() => router.delete(route('admin.purchases.destroy', order.id))}
                         >
                             {t('حذف')}
                         </Button>
-                    </div>
+                        <Button variant="outline" onClick={() => setDeleting(false)}>
+                            {t('إلغاء')}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </AdminLayout>

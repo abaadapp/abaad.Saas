@@ -9,7 +9,13 @@ import DataTable, { type Column, type ServerPagination } from '@/Components/Data
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/Components/ui/dialog';
 import {
     Table,
     TableBody,
@@ -276,7 +282,7 @@ export default function InventoryReceipts() {
                     {viewing && (
                         /* الجسم وحده يمرّ تحت اليد: الترويسة والذيل يبقيان
                            ظاهرين مهما طالت قائمة الأصناف */
-                        <div className="max-h-[70dvh] space-y-5 overflow-y-auto overscroll-contain">
+                        <div className="max-h-[70dvh] space-y-5 overflow-y-auto overscroll-contain px-5 pb-5">
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
                                     <p className="mb-2 text-[12px] font-medium text-[#9ca3af]">{t('من أين جاءت')}</p>
@@ -442,23 +448,23 @@ export default function InventoryReceipts() {
                         </DialogTitle>
                     </DialogHeader>
 
-                    <p className="mb-3 text-[13px] text-[#6b7280]">
-                        {t('لن تدخل البضاعة المخزون، ولا تُمحى الورقة — تبقى مرفوضةً بسببها.')}
-                    </p>
+                    {/* والحشوُ على الجسم: `DialogContent` بلا حشو — انظر ui/dialog */}
+                    <div className="px-5 pb-5">
+                        <p className="mb-3 text-[13px] text-[#6b7280]">
+                            {t('لن تدخل البضاعة المخزون، ولا تُمحى الورقة — تبقى مرفوضةً بسببها.')}
+                        </p>
 
-                    <Input
-                        value={reject.data.reason}
-                        onChange={(e) => reject.setData('reason', e.target.value)}
-                        placeholder={t('سبب الرفض — مثال: الشحنة تالفة')}
-                    />
-                    {reject.errors.reason && (
-                        <p className="mt-1 text-[12px] text-[#b91c1c]">{reject.errors.reason}</p>
-                    )}
+                        <Input
+                            value={reject.data.reason}
+                            onChange={(e) => reject.setData('reason', e.target.value)}
+                            placeholder={t('سبب الرفض — مثال: الشحنة تالفة')}
+                        />
+                        {reject.errors.reason && (
+                            <p className="mt-1 text-[12px] text-[#b91c1c]">{reject.errors.reason}</p>
+                        )}
+                    </div>
 
-                    <div className="mt-4 flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setRejecting(null)}>
-                            {t('إلغاء')}
-                        </Button>
+                    <DialogFooter>
                         <Button
                             variant="danger"
                             disabled={reject.processing}
@@ -476,7 +482,10 @@ export default function InventoryReceipts() {
                         >
                             {t('رفض الاستلام')}
                         </Button>
-                    </div>
+                        <Button variant="outline" onClick={() => setRejecting(null)}>
+                            {t('إلغاء')}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </AdminLayout>

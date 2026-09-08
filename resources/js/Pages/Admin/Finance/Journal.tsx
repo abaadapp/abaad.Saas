@@ -209,11 +209,14 @@ export default function Journal() {
                         </DialogTitle>
                     </DialogHeader>
 
-                    <p className="text-[12px] text-[#9ca3af]">
+                    {/* والحشوُ على الجسم: `DialogContent` بلا حشو — انظر ui/dialog */}
+                    <p className="px-5 text-[12px] text-[#9ca3af]">
                         {viewing?.date} · {t(viewing?.source ?? '')}
                         {viewing?.author ? ` · ${viewing.author}` : ''}
                     </p>
 
+                    {/* والجدولُ يمتدّ إلى الحافّتين عمدًا — وقاعُه يبقى محشوًّا */}
+                    <div className="pb-5">
                     <Table>
                         <TableHeader>
                             <TableRow className="hover:bg-transparent">
@@ -246,6 +249,7 @@ export default function Journal() {
                             </TableRow>
                         </TableBody>
                     </Table>
+                    </div>
                 </DialogContent>
             </Dialog>
 

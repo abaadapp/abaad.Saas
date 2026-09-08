@@ -58,7 +58,7 @@ class Order extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(OrderItem::class);
+        return $this->hasMany(OrderItem::class)->orderBy('id');
     }
 
     /**

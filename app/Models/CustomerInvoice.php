@@ -57,9 +57,30 @@ class CustomerInvoice extends Model
         return $this->orders()->exists();
     }
 
+    /**
+     * بنودُ الورقة بترتيبها المكتوب — `sort_order` يكتبه `CustomerInvoices::compute`.
+     *
+     * ═══ ولماذا صار الترتيبُ مطلوبًا ═══
+     *
+     * SQLite يردّ الصفوف بترتيب الإدخال فتبدو مرتّبةً بلا طلب، وPostgreSQL
+     * لا يضمن ترتيبًا بلا `ORDER BY` — وهو محرّك الإنتاج. فالورقةُ المطبوعة
+     * والشاشةُ والـPDF كانت تعرض البنودَ بترتيبٍ يقع لا بترتيبٍ كُتب، ويختلف
+     * بين قراءةٍ وأخرى. ولا خطأَ يقول شيئًا: الأرقامُ صحيحة والسطورُ مبعثرة.
+     *
+     * وكشفه CI على PostgreSQL في اختبارٍ يقرأ أوّلَ بند — وكان يمرّ محلّيًّا
+     * على SQLite في كلّ مرّة. وهو الصنفُ نفسُه الذي وثّقه DEC-003:
+     * «لا يُفترض ترتيبٌ لم يُطلب».
+     *
+     * ═══ ولماذا لا تُرتَّب كلُّ علاقةٍ ═══
+     *
+     * `Account::lines` و`BankAccount::lines` و`Product::orderItems` تُجمَّع
+     * لا تُعرض: `Account::balance` تكتب `SUM(debit)` عبر العلاقة، و`ORDER BY`
+     * مع تجميعٍ بلا `GROUP BY` يرفضه PostgreSQL. وهي جماعاتٌ تحليليّة لا
+     * سطورُ مستند — فلا ترتيبَ لها يُقصد.
+     */
     public function items(): HasMany
     {
-        return $this->hasMany(CustomerInvoiceItem::class);
+        return $this->hasMany(CustomerInvoiceItem::class)->orderBy('sort_order')->orderBy('id');
     }
 
     public function allocations(): HasMany

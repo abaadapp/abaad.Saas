@@ -39,7 +39,7 @@ class GoodsReceiptNote extends Model
 
     public function purchaseOrder(): BelongsTo { return $this->belongsTo(PurchaseOrder::class); }
 
-    public function items(): HasMany { return $this->hasMany(GoodsReceiptNoteItem::class); }
+    public function items(): HasMany { return $this->hasMany(GoodsReceiptNoteItem::class)->orderBy('id'); }
 
     /**
      * الرقم التالي — على قالب `DeliveryNote::nextNumber` نفسه.

@@ -574,7 +574,8 @@ export default function SupplierInvoices() {
                     </DialogHeader>
 
                     {deciding && (
-                        <div className="space-y-4">
+                        /* والحشوُ على الجسم: `DialogContent` بلا حشو — انظر ui/dialog */
+                        <div className="space-y-4 px-5 pb-5">
                             <dl className="grid grid-cols-3 gap-3 text-center">
                                 <div className="rounded-[10px] bg-[#fafafa] p-3">
                                     <dt className="text-[11px] text-[#9ca3af]">{t('أمر الشراء')}</dt>

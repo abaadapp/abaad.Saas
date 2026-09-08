@@ -41,7 +41,7 @@ class Product extends Model
     /** مكوّناته ومكوّنات مقاساته جميعًا — التصفية على المقاس في Recipe */
     public function recipeItems(): HasMany
     {
-        return $this->hasMany(RecipeItem::class);
+        return $this->hasMany(RecipeItem::class)->orderBy('id');
     }
 
     /** الإضافات المسموحة معه — الفارغة تعني «كلّ إضافات المتجر» لا «لا شيء» */

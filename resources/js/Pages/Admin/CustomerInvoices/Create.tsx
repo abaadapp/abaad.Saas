@@ -4,7 +4,7 @@ import { ChevronDown, Info, Paperclip, Plus, Save, Search, Send, Trash2, UserPlu
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
-import { Select } from '@/Components/Field';
+import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import {
@@ -1469,17 +1469,24 @@ function NewCustomerDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>{t('عميل جديد')}</DialogTitle>
+                    <DialogDescription>
+                        {t('يُحفظ في قائمة العملاء ويُختار في هذه الفاتورة فورًا.')}
+                    </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-3">
-                    <div className="space-y-1.5">
-                        <Label required>{t('الاسم')}</Label>
-                        <Input value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} />
-                        {form.errors.name && <Err msg={form.errors.name} />}
-                    </div>
+                {/*
+                    والحشوُ على الجسم لا على النافذة.
 
-                    <div className="space-y-1.5">
-                        <Label>{t('نوع العميل')}</Label>
+                    `DialogHeader` و`DialogFooter` يحملان `p-5` و`DialogContent`
+                    لا حشوَ فيه — فجسمٌ يُكتب بلا `px-5 pb-5` تلتصق حقولُه
+                    بحافّتَي النافذة. وهي القاعدةُ في كلّ نوافذ النظام.
+                */}
+                <div className="space-y-4 px-5 pb-5">
+                    <Field label="الاسم" required error={form.errors.name}>
+                        <Input value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} />
+                    </Field>
+
+                    <Field label="نوع العميل">
                         <Select
                             value={form.data.customer_type}
                             onChange={(e) => form.setData('customer_type', e.target.value)}
@@ -1489,49 +1496,42 @@ function NewCustomerDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                                 { label: 'فرد', value: 'فرد' },
                             ]}
                         />
-                    </div>
+                    </Field>
 
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                            <Label>{t('الهاتف')}</Label>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <Field label="الهاتف" error={form.errors.phone}>
                             <Input value={form.data.phone} onChange={(e) => form.setData('phone', e.target.value)} />
-                            {form.errors.phone && <Err msg={form.errors.phone} />}
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>{t('البريد')}</Label>
+                        </Field>
+                        <Field label="البريد" error={form.errors.email}>
                             <Input value={form.data.email} onChange={(e) => form.setData('email', e.target.value)} />
-                            {form.errors.email && <Err msg={form.errors.email} />}
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>{t('الرقم الضريبي')}</Label>
+                        </Field>
+                        <Field label="الرقم الضريبي">
                             <Input
                                 value={form.data.tax_number}
                                 onChange={(e) => form.setData('tax_number', e.target.value)}
                             />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>{t('سجل تجاري')}</Label>
+                        </Field>
+                        <Field label="سجل تجاري">
                             <Input
                                 value={form.data.commercial_registration}
                                 onChange={(e) => form.setData('commercial_registration', e.target.value)}
                             />
-                        </div>
+                        </Field>
                     </div>
 
-                    <div className="space-y-1.5">
-                        <Label>{t('العنوان')}</Label>
+                    <Field label="العنوان">
                         <Input value={form.data.address} onChange={(e) => form.setData('address', e.target.value)} />
-                    </div>
+                    </Field>
                 </div>
 
-                <div className="mt-4 flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
-                        {t('إلغاء')}
-                    </Button>
+                <DialogFooter>
                     <Button disabled={form.processing} onClick={save}>
                         {t('حفظ العميل')}
                     </Button>
-                </div>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                        {t('إلغاء')}
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

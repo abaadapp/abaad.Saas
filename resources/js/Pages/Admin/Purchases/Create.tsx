@@ -603,7 +603,14 @@ function SupplierDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-3">
+                {/*
+                    والحشوُ على الجسم لا على النافذة.
+
+                    `DialogHeader` و`DialogFooter` يحملان `p-5` و`DialogContent`
+                    لا حشوَ فيه — فجسمٌ يُكتب بلا `px-5 pb-5` تلتصق حقولُه
+                    بحافّتَي النافذة. وهي القاعدةُ في كلّ نوافذ النظام.
+                */}
+                <div className="space-y-4 px-5 pb-5">
                     <Field label="اسم المورد" required error={form.errors.name}>
                         <Input
                             value={form.data.name}

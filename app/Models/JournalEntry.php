@@ -31,7 +31,7 @@ class JournalEntry extends Model
 
     public function branch(): BelongsTo { return $this->belongsTo(Branch::class); }
 
-    public function lines(): HasMany { return $this->hasMany(JournalLine::class); }
+    public function lines(): HasMany { return $this->hasMany(JournalLine::class)->orderBy('id'); }
 
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
 

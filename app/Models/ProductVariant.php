@@ -32,7 +32,7 @@ class ProductVariant extends Model
     /** مكوّنات هذا المقاس وحده — انظر Recipe::forLine لقاعدة الرجوع إلى وصفة المنتج */
     public function recipeItems(): HasMany
     {
-        return $this->hasMany(RecipeItem::class, 'variant_id');
+        return $this->hasMany(RecipeItem::class, 'variant_id')->orderBy('id');
     }
 
     /** الاسم كما يُعرض للزبون بلغته */

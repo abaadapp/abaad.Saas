@@ -26,7 +26,7 @@ class DeliveryNote extends Model
 
     public function order(): BelongsTo { return $this->belongsTo(Order::class); }
 
-    public function items(): HasMany { return $this->hasMany(DeliveryNoteItem::class); }
+    public function items(): HasMany { return $this->hasMany(DeliveryNoteItem::class)->orderBy('id'); }
 
     public function isEditable(): bool { return $this->status === 'مسودة'; }
 

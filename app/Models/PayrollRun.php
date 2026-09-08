@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 /**
  * مسيرة رواتب شهر.
@@ -26,19 +27,39 @@ class PayrollRun extends Model
         'net' => 'decimal:3',
     ];
 
-    public function business(): BelongsTo { return $this->belongsTo(Business::class); }
+    public function business(): BelongsTo
+    {
+        return $this->belongsTo(Business::class);
+    }
 
-    public function lines(): HasMany { return $this->hasMany(PayrollLine::class); }
+    public function lines(): HasMany
+    {
+        return $this->hasMany(PayrollLine::class)->orderBy('id');
+    }
 
-    public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 
-    public function isEditable(): bool { return $this->status === 'مسودة'; }
+    public function isEditable(): bool
+    {
+        return $this->status === 'مسودة';
+    }
 
     /** إعادة حساب الإجماليات من سطورها — لا تُكتب يدويًّا فتفترق عنها */
     public function recalculate(): void
     {
         $this->update([
-            'gross' => $this->lines()->selectRaw('COALESCE(SUM(basic + allowances + overtime),0) t')->value('t') ?? 0,
+            /*
+             * والمجموعُ بـ`sum` لا بـ`selectRaw`.
+             *
+             * `lines()` صارت مرتّبةً بـ`id` — والورقةُ تُعرض سطرًا سطرًا فلا
+             * تُترك لترتيبٍ يقع. و`selectRaw` تُبقي `ORDER BY` مع تجميعٍ بلا
+             * `GROUP BY`، وPostgreSQL يرفضه بـ42803 (وSQLite يتساهل).
+             * و`sum()` تمسح الترتيبَ بنفسها حين لا تجميعَ يدويّ — فهي الطريق.
+             */
+            'gross' => $this->lines()->sum(DB::raw('basic + allowances + overtime')),
             'deductions' => $this->lines()->sum('deductions'),
             'net' => $this->lines()->sum('net'),
         ]);

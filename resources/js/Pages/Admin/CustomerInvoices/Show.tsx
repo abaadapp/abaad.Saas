@@ -45,9 +45,22 @@ interface Invoice {
     credit_notes: { number: string; amount: number; reason: string | null; at: string | null }[];
 }
 
+/**
+ * ما يملكه من يقرأ.
+ *
+ * والمقابضُ تُرسم عليه: «بابٌ معروضٌ لا يُفتح أسوأ من بابٍ لا يُعرض» — من
+ * يضغط «إلغاء» فيُردّ بـ٤٠٣ يظنّ النظامَ معطوبًا لا نفسَه غيرَ مأذون.
+ */
+interface May {
+    issue: boolean;
+    cancel: boolean;
+    credit_note: boolean;
+    pay: boolean;
+}
+
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, context } = usePage<PageProps<{ invoice: Invoice }>>().props;
+    const { invoice, may, context } = usePage<PageProps<{ invoice: Invoice; may: May }>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
     /* ومسودّةٌ بلا رقم تُعرف بمعرّفها — والعنوانُ لا يكون فراغًا */
@@ -83,16 +96,18 @@ export default function CustomerInvoiceShow() {
                 subtitle={`${invoice.customer} — ${invoice.state}`}
                 actions={
                     <>
-                        {invoice.status === 'مسودة' && (
+                        {invoice.status === 'مسودة' && may.issue && (
                             <Button disabled={issue.processing} onClick={() => issue.post(`/admin/customer-invoices/${invoice.id}/issue`, { preserveScroll: true })}>
                                 {t('إصدار الفاتورة')}
                             </Button>
                         )}
                         {invoice.status === 'صادرة' && (
                             <>
-                                <Button variant="outline" onClick={() => setPaying((v) => !v)}>
-                                    {t('تسجيل دفعة')}
-                                </Button>
+                                {may.pay && (
+                                    <Button variant="outline" onClick={() => setPaying((v) => !v)}>
+                                        {t('تسجيل دفعة')}
+                                    </Button>
+                                )}
                                 {invoice.outstanding > 0 && (
                                     <Button
                                         variant="outline"
@@ -110,7 +125,7 @@ export default function CustomerInvoiceShow() {
                                     الورقة كلِّها — وورقةٌ سُلّمت لا تُلغى لأنّ
                                     عشرةً منها رُدّت.
                                 */}
-                                {invoice.outstanding + invoice.paid > 0 && (
+                                {may.credit_note && invoice.outstanding + invoice.paid > 0 && (
                                     <Button variant="outline" onClick={() => setCrediting((v) => !v)}>
                                         <Undo2 />
                                         {t('إشعار دائن')}
@@ -201,7 +216,7 @@ export default function CustomerInvoiceShow() {
                 </Card>
             )}
 
-            {invoice.status !== 'ملغاة' && (
+            {invoice.status !== 'ملغاة' && may.cancel && (
                 <Card className="mt-4 flex flex-wrap items-end gap-2 p-4">
                     <label className="flex-1 text-[13px]">
                         {t('سبب الإلغاء')}

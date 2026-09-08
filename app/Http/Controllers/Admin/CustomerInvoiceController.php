@@ -139,11 +139,32 @@ class CustomerInvoiceController extends Controller
         ];
     }
 
+    /**
+     * ما يملكه من يقرأ — تُرسَل مع الشاشة فلا تُرسم مقابضُ يردّها الخادم.
+     *
+     * «بابٌ معروضٌ لا يُفتح أسوأ من بابٍ لا يُعرض»: من يضغط «إلغاء» فيُردّ
+     * بـ٤٠٣ لا يعرف أنّه لم يُمنح — يظنّ النظامَ معطوبًا.
+     *
+     * @return array<string, bool>
+     */
+    private function may(): array
+    {
+        $user = auth()->user();
+
+        return [
+            'issue' => (bool) $user?->may(Permissions::CUSTOMER_INVOICE_ISSUE),
+            'cancel' => (bool) $user?->may(Permissions::CUSTOMER_INVOICE_CANCEL),
+            'credit_note' => (bool) $user?->may(Permissions::CUSTOMER_CREDIT_NOTE),
+            'pay' => (bool) $user?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
+        ];
+    }
+
     public function show(int|string $id): Response
     {
         $invoice = $this->find($id);
 
         return Inertia::render('Admin/CustomerInvoices/Show', [
+            'may' => $this->may(),
             'invoice' => $this->row($invoice) + [
                 'subtotal' => (float) $invoice->subtotal,
                 'discount_total' => (float) $invoice->discount_total,
@@ -245,6 +266,7 @@ class CustomerInvoiceController extends Controller
                 ? (float) (Setting::where('business_id', $bid)->where('key', 'vat_rate')->value('value') ?? 5)
                 : 0.0,
             'today' => now()->toDateString(),
+            'may' => $this->may(),
             'methods' => ['آجل', 'نقدي', 'بطاقة', 'تحويل'],
             // عميلٌ أُضيف من هذه الشاشة نفسها — يُختار فور العودة إليها
             'new_customer_id' => $request->session()->get('new_customer_id'),
@@ -363,6 +385,26 @@ class CustomerInvoiceController extends Controller
          * بعد ولا ذمّةَ لها. فلو قُبل هنا لبقي المبلغ معلّقًا بلا ما يقابله،
          * أو ذهب إلى فاتورةٍ أخرى في التوزيع التلقائيّ.
          */
+        /*
+         * ═══ وهذا بابُ إصدارٍ ثالث — أضيقُ من أن يُرى ═══
+         *
+         * «احفظ وأصدر» في شاشة الإنشاء تكتب الورقة وتُصدرها في طلبٍ واحد،
+         * فلا تمرّ على `issue()` ولا على حارسه. فمن رُدَّ عن زرّ «إصدار» كان
+         * يبلغ الفعلَ نفسَه بمربّع اختيارٍ في النموذج — وحارسٌ يُلتفّ حوله
+         * ليس حارسًا.
+         *
+         * ═══ وقبل `try` لا داخله ═══
+         *
+         * `HttpException` تَرِث `RuntimeException` — و`catch (RuntimeException)`
+         * أسفلُ كانت تبتلع الردَّ ٤٠٣ وتحوّله إلى خطأ تحقّقٍ برسالةٍ فارغة.
+         * فيُردّ الطلبُ بشيءٍ لا يشبه المنع ولا يقول شيئًا. والإذنُ يُسأل قبل
+         * العمل لا في وسطه.
+         */
+        abort_if(
+            $request->boolean('issue') && ! auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE),
+            403,
+        );
+
         if ($method !== 'آجل' && ! $request->boolean('issue')) {
             throw ValidationException::withMessages([
                 'payment_method' => __('التحصيل يُسجَّل على فاتورةٍ صادرة — أصدر الفاتورة، أو احفظها مسودّةً آجلة.'),
@@ -386,6 +428,7 @@ class CustomerInvoiceController extends Controller
              * رقم — فيقول التنبيهُ «أُنشئت الفاتورة » وينتهي عند الفراغ.
              */
             if ($request->boolean('issue')) {
+
                 $invoice = CustomerInvoices::issue($invoice, auth()->id());
             }
 
@@ -460,6 +503,9 @@ class CustomerInvoiceController extends Controller
 
     public function issue(int|string $id)
     {
+        // الإصدارُ يولد الذمّة ويكتب القيد — فعلٌ يُمنح باسمه لا بفتح القسم
+        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE), 403);
+
         try {
             $invoice = CustomerInvoices::issue($this->find($id), auth()->id());
         } catch (RuntimeException $e) {
@@ -473,6 +519,9 @@ class CustomerInvoiceController extends Controller
 
     public function cancel(Request $request, int|string $id)
     {
+        // وعكسُ قيدٍ وُقّع ليس تصحيحَ خطأٍ مطبعيّ
+        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_INVOICE_CANCEL), 403);
+
         $data = $request->validate(['reason' => ['required', 'string', 'max:200']], [], [
             'reason' => __('سبب الإلغاء'),
         ]);
@@ -488,6 +537,9 @@ class CustomerInvoiceController extends Controller
 
     public function creditNote(Request $request, int|string $id)
     {
+        // والإشعارُ الدائن يُنقص دَينًا قائمًا — فعلٌ يُمنح باسمه
+        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_CREDIT_NOTE), 403);
+
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'gt:0'],
             'tax_amount' => ['nullable', 'numeric', 'min:0'],
@@ -514,6 +566,9 @@ class CustomerInvoiceController extends Controller
     /** تسجيلُ تحصيل — من الفاتورة أو على حساب العميل */
     public function pay(Request $request)
     {
+        // والتحصيلُ مالٌ يدخل الصندوق — غيرُ الإصدار وغيرُ فتح الشاشة
+        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE), 403);
+
         $data = $request->validate([
             'customer_id' => ['required', 'integer'],
             'amount' => ['required', 'numeric', 'gt:0'],

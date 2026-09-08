@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Support\Activity;
 use App\Support\CustomerInvoices;
 use App\Support\Demo;
+use App\Support\Permissions;
 use App\Support\Receivables;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -98,6 +99,15 @@ class ReceivablesController extends Controller
      */
     public function bill(Request $request, int|string $customer)
     {
+        /*
+         * وبابٌ ثانٍ للإصدار يحمل حارسَ الأوّل.
+         *
+         * `consolidate` تُصدر الورقةَ وتكتب قيدَها كما يفعل زرُّ «إصدار» في
+         * شاشة الفاتورة. وبابان لفعلٍ واحد أحدُهما محروسٌ يعني أنّ الحارس
+         * زينة: من يُردّ هناك يدخل من هنا.
+         */
+        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE), 403);
+
         $data = $request->validate([
             'order_ids' => ['required', 'array', 'min:1'],
             'order_ids.*' => ['integer'],

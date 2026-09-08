@@ -4686,5 +4686,10 @@
     "أقصى عدد المرفقات ستة.": "At most six attachments.",
     "المرفقات": "Attachments",
     "أُرفقت المستندات": "Documents attached",
-    "حُذف المرفق": "Attachment deleted"
+    "حُذف المرفق": "Attachment deleted",
+    "الإصدار صلاحيةٌ لا تملكها — احفظها مسودّةً ليُصدرها من يملكها.": "Issuing is a permission you do not have — save a draft for someone who does.",
+    "إصدار فاتورة عميل": "Issue a customer invoice",
+    "إلغاء فاتورة عميل صادرة": "Cancel an issued customer invoice",
+    "إصدار إشعار دائن": "Issue a credit note",
+    "تسجيل تحصيل من عميل": "Record a customer collection"
 }

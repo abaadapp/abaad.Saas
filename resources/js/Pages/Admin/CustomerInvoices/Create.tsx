@@ -52,6 +52,14 @@ interface ProductRow {
     price: number;
 }
 
+/** ما يملكه من يكتب — والمقابضُ تُرسم عليه لا على الأمنيات */
+interface May {
+    issue: boolean;
+    cancel: boolean;
+    credit_note: boolean;
+    pay: boolean;
+}
+
 interface Props {
     customers: CustomerRow[];
     products: ProductRow[];
@@ -59,6 +67,7 @@ interface Props {
     catalog_truncated: boolean;
     tax_rate: number;
     today: string;
+    may: May;
     methods: string[];
     new_customer_id: number | null;
 }
@@ -145,6 +154,7 @@ export default function CustomerInvoiceCreate({
     catalog_truncated,
     tax_rate,
     today,
+    may,
     new_customer_id,
 }: Props) {
     const { context } = usePage<PageProps>().props;
@@ -744,19 +754,33 @@ export default function CustomerInvoiceCreate({
                 </Card>
             </div>
 
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                {/*
+                    ومن لا يملك الإصدار يُقال له — ولا يُرسم له زرٌّ يُردّ عنه.
+
+                    والمسودّةُ تبقى له: هي عملُه، ولا تُنشئ ذمّةً ولا تكتب
+                    قيدًا. فيكتبها ويتركها لمن يُصدر.
+                */}
+                {! may.issue && (
+                    <p className="me-auto text-[12px] text-[#9ca3af]">
+                        {t('الإصدار صلاحيةٌ لا تملكها — احفظها مسودّةً ليُصدرها من يملكها.')}
+                    </p>
+                )}
+
                 {/*
                     و«حفظ كمسودة» يختفي مع طريقةِ سدادٍ مقبوضة — لا يُعرض بابٌ
                     يردّ الخادمُ من خلفه. والحارسُ في الخادم على أيّ حال.
                 */}
-                {credit && (
+                {(credit || ! may.issue) && (
                     <Button variant="outline" disabled={form.processing} onClick={() => submit(false)}>
                         {t('حفظ كمسودة')}
                     </Button>
                 )}
-                <Button disabled={form.processing} onClick={() => submit(true)}>
-                    {t('إصدار الفاتورة')}
-                </Button>
+                {may.issue && (
+                    <Button disabled={form.processing} onClick={() => submit(true)}>
+                        {t('إصدار الفاتورة')}
+                    </Button>
+                )}
             </div>
 
             <ProductDialog

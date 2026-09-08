@@ -82,6 +82,30 @@ class Permissions
     /** صرفُ الرواتب — مالٌ يخرج، وهو فعلٌ غيرُ الاعتماد */
     public const PAYROLL_PAY = 'payroll.pay';
 
+    /*
+     * ═══ فواتيرُ العملاء: أفعالُ المال تُمنح بأسمائها ═══
+     *
+     * القسمُ («المبيعات») يفتح الشاشةَ ويكتب المسودّة — والمسودّةُ لا تُنشئ
+     * ذمّةً ولا تكتب قيدًا، فلا تحتاج اسمًا. وما بعدها يحتاج: الإصدارُ يولد
+     * الذمّة ويكتب القيد، والإلغاءُ يعكسه، والإشعارُ الدائن يُنقصه، والتحصيلُ
+     * مالٌ يدخل الصندوق.
+     *
+     * وكان الأربعةُ يُملَكون بفتح «المبيعات» — فمن يُؤتمن على قراءة الطلبات
+     * يُلغي فاتورةً صادرةً على وزارة.
+     */
+
+    /** إصدارُ فاتورة العميل — وهو الفعل الذي يُنشئ الذمّة ويكتب القيد */
+    public const CUSTOMER_INVOICE_ISSUE = 'customerInvoice.issue';
+
+    /** إلغاءُ فاتورةٍ صادرة — عكسُ قيدٍ وُقّع، لا محوُ ورقة */
+    public const CUSTOMER_INVOICE_CANCEL = 'customerInvoice.cancel';
+
+    /** إشعارٌ دائن — يُنقص دَينًا قائمًا على العميل */
+    public const CUSTOMER_CREDIT_NOTE = 'customerCreditNote.create';
+
+    /** تسجيلُ تحصيل — مالٌ يدخل، وهو فعلٌ غيرُ الإصدار */
+    public const CUSTOMER_PAYMENT_CREATE = 'customerPayment.create';
+
     /** فتحُ مرفقات المستندات المالية — وفيها أثمنُ ما في المتجر: أسعارُ شرائه */
     public const ATTACHMENT_VIEW = 'attachment.view';
 
@@ -139,6 +163,10 @@ class Permissions
          *
          * ورقةُ المورّد فيها أسعارُ شرائك — أثمنُ ما في متجرك عند منافسك.
          */
+        self::CUSTOMER_INVOICE_ISSUE => 'إصدار فاتورة عميل',
+        self::CUSTOMER_INVOICE_CANCEL => 'إلغاء فاتورة عميل صادرة',
+        self::CUSTOMER_CREDIT_NOTE => 'إصدار إشعار دائن',
+        self::CUSTOMER_PAYMENT_CREATE => 'تسجيل تحصيل من عميل',
         self::ATTACHMENT_VIEW => 'فتح مرفقات المستندات المالية',
     ];
 
@@ -180,6 +208,17 @@ class Permissions
          * والرواتب: المحاسبُ يقرؤها لأنّها عملُه، ولا يعتمد ولا يصرف.
          * والاعتمادُ إقرارٌ بالتزام، والصرفُ إخراجُ مال — كلاهما لصاحبهما.
          */
+        /*
+         * وفواتيرُ العملاء: البائعُ يكتب المسودّة بقسمه، ولا يُصدر ولا يُلغي.
+         *
+         * والمحاسبُ يُصدر ويحصّل ويُصدر الإشعارَ الدائن — فذلك عملُه. والإلغاءُ
+         * وحدَه للمالك ومدير الفرع: عكسُ قيدٍ وُقّع على وزارةٍ ليس تصحيحَ
+         * خطأٍ مطبعيّ.
+         */
+        self::CUSTOMER_INVOICE_ISSUE => ['admin', 'manager', 'accountant'],
+        self::CUSTOMER_PAYMENT_CREATE => ['admin', 'manager', 'accountant'],
+        self::CUSTOMER_CREDIT_NOTE => ['admin', 'manager', 'accountant'],
+        self::CUSTOMER_INVOICE_CANCEL => ['admin', 'manager'],
         self::PAYROLL_VIEW => ['admin', 'manager', 'accountant'],
         self::PAYROLL_APPROVE => ['admin', 'manager'],
         self::PAYROLL_PAY => ['admin', 'manager'],
@@ -203,6 +242,22 @@ class Permissions
             self::INVOICE_PAY,
             self::ATTACHMENT_VIEW,
         ],
+        /*
+         * و«المبيعات» كانت تبيح ثلاثةً: من فتحها أصدر وألغى وأصدر الإشعارَ
+         * الدائن.
+         *
+         * والتحصيلُ ليس منها: بابُه `customerPayments` وهو محسوبٌ على
+         * «المالية» في `ALIASES` — فمن مُنح «المبيعات» وحدها لم يكن يبلغه
+         * أصلًا. ووضعُه هنا كان يمنح البائعَ فعلًا لم يملكه يومًا.
+         */
+        'orders' => [
+            self::CUSTOMER_INVOICE_ISSUE,
+            self::CUSTOMER_INVOICE_CANCEL,
+            self::CUSTOMER_CREDIT_NOTE,
+        ],
+
+        // والتحصيلُ لمن كانت له «المالية» — وهي بابُه قبل التفصيل وبعده
+        'finance' => [self::CUSTOMER_PAYMENT_CREATE],
         'employees' => [self::PAYROLL_VIEW, self::PAYROLL_APPROVE, self::PAYROLL_PAY],
         'expenses' => [self::ATTACHMENT_VIEW],
     ];

@@ -12,7 +12,8 @@ import type { PageProps } from '@/types';
 
 interface Invoice {
     id: number;
-    number: string;
+    /** فارغٌ للمسودّة: الرقمُ يُقطع عند الإصدار */
+    number: string | null;
     customer: string;
     customer_id: number;
     status: string;
@@ -45,6 +46,9 @@ export default function CustomerInvoiceShow() {
     const { invoice, context } = usePage<PageProps<{ invoice: Invoice }>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
+    /* ومسودّةٌ بلا رقم تُعرف بمعرّفها — والعنوانُ لا يكون فراغًا */
+    const label = invoice.number ?? `${t('مسودة')} #${invoice.id}`;
+
     const [paying, setPaying] = useState(false);
     const [crediting, setCrediting] = useState(false);
 
@@ -53,9 +57,9 @@ export default function CustomerInvoiceShow() {
     const remind = useForm({});
 
     return (
-        <AdminLayout title={invoice.number}>
+        <AdminLayout title={label}>
             <PageHeader
-                title={invoice.number}
+                title={label}
                 subtitle={`${invoice.customer} — ${invoice.state}`}
                 actions={
                     <>

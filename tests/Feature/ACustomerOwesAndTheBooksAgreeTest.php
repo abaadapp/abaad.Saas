@@ -371,25 +371,31 @@ class ACustomerOwesAndTheBooksAgreeTest extends TestCase
 
     // ————— الترقيم —————
 
+    /**
+     * الترقيمُ متسلسلٌ في المتجر، مستقلٌّ بين المتاجر — ويقع عند الإصدار.
+     *
+     * وكان يقع عند الإنشاء، فمسودّةٌ تُهجر تأخذ رقمَها معها ويقفز التسلسل
+     * في دفترٍ يُقرأ عند الضريبة.
+     */
     public function test_numbers_are_sequential_per_shop_and_independent_between_shops(): void
     {
-        $this->assertSame('CINV-000001', $this->govInvoice()->number);
-        $this->assertSame('CINV-000002', $this->govInvoice()->number);
+        $this->assertSame('CINV-000001', CustomerInvoices::issue($this->govInvoice(), $this->owner->id)->number);
+        $this->assertSame('CINV-000002', CustomerInvoices::issue($this->govInvoice(), $this->owner->id)->number);
 
         $other = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
         Ledger::seedChart($other->id);
         $theirs = Customer::create(['business_id' => $other->id, 'name' => 'عميلهم']);
 
-        $this->assertSame('CINV-000001', CustomerInvoices::create($other->id, $theirs, [], [
+        $this->assertSame('CINV-000001', CustomerInvoices::issue(CustomerInvoices::create($other->id, $theirs, [], [
             ['description' => 'بند', 'quantity' => 1, 'unit_price' => 5],
-        ])->number);
+        ]))->number);
     }
 
     public function test_a_cancelled_number_is_not_reused(): void
     {
-        $first = $this->govInvoice();
+        $first = CustomerInvoices::issue($this->govInvoice(), $this->owner->id);
         CustomerInvoices::cancel($first, 'خطأ', $this->owner->id);
 
-        $this->assertSame('CINV-000002', $this->govInvoice()->number);
+        $this->assertSame('CINV-000002', CustomerInvoices::issue($this->govInvoice(), $this->owner->id)->number);
     }
 }

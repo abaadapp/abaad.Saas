@@ -14,7 +14,8 @@ import type { PageProps } from '@/types';
 
 interface Row {
     id: number;
-    number: string;
+    /** فارغٌ للمسودّة: الرقمُ يُقطع عند الإصدار */
+    number: string | null;
     customer: string;
     status: string;
     state: string;
@@ -117,7 +118,8 @@ export default function CustomerInvoicesIndex({ invoices, filters, totals }: Pro
                             <tr key={i.id} className="border-t border-[var(--ui-border,#e8e8e8)]">
                                 <td className="p-3">
                                     <Link href={`/admin/customer-invoices/${i.id}`} className="font-medium text-[#1d4ed8]">
-                                        {i.number}
+                                        {/* ومسودّةٌ بلا رقم تُعرف بمعرّفها — لا بفراغ */}
+                                        {i.number ?? `${t('مسودة')} #${i.id}`}
                                     </Link>
                                     {i.po_number && <div className="text-[11px] text-[#9ca3af]">{i.po_number}</div>}
                                 </td>

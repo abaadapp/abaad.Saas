@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, Copy, Plus, Search, Trash2, UserPlus } from 'lucide-react';
+import { ChevronDown, Plus, Search, Trash2, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -18,7 +18,6 @@ import {
 import { Input, Textarea } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { money } from '@/lib/format';
-import { useCopy } from '@/lib/copy';
 import { fold } from '@/lib/pages';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -58,7 +57,6 @@ interface Props {
     products: ProductRow[];
     /** هل في الكتالوج ما لم يُرسَل؟ — انظر CATALOG_LIMIT في المتحكّم */
     catalog_truncated: boolean;
-    next_number: string;
     tax_rate: number;
     today: string;
     methods: string[];
@@ -145,7 +143,6 @@ export default function CustomerInvoiceCreate({
     customers,
     products,
     catalog_truncated,
-    next_number,
     tax_rate,
     today,
     new_customer_id,
@@ -342,7 +339,24 @@ export default function CustomerInvoiceCreate({
                             الفواتير لأفرادٍ لا أمرَ شراء لهم.
                         */}
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <InvoiceNumberField number={next_number} />
+                            {/*
+                                والرقمُ لا يُعرض قبل الإصدار — لأنّه لا يوجد.
+
+                                كان يُعرض «الرقم التالي» فيكتبه التاجر على أمر
+                                شراء عميله قبل أن يُصدر، ثمّ يهجر المسودّة أو
+                                يسبقه غيرُه إلى الرقم — فتصل الورقةُ برقمٍ
+                                غير الذي وعد به. والرقمُ يُقطع عند الإصدار
+                                وحده: `CustomerInvoices::issue`.
+                            */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="invoice-number">{t('رقم الفاتورة')}</Label>
+                                <div
+                                    id="invoice-number"
+                                    className="flex h-10 items-center rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 text-[13px] text-[#9ca3af]"
+                                >
+                                    {t('سيتم إنشاء الرقم عند الإصدار')}
+                                </div>
+                            </div>
                             <div className="space-y-1.5">
                                 <Label htmlFor="issued-at" required>
                                     {t('تاريخ الفاتورة')}
@@ -711,80 +725,6 @@ function addDays(from: string, days: number): string {
     d.setDate(d.getDate() + days);
 
     return d.toISOString().slice(0, 10);
-}
-
-/**
- * رقمُ الفاتورة قبل حفظها — يُقرأ ويُنسخ ولا يُكتب.
- *
- * ═══ ولماذا لم يعد `disabled` ═══
- *
- * كان الحقل معطَّلًا، والمعطَّل في المتصفّح لا يُضغط ولا يُركَّز عليه ولا
- * يُحدَّد نصُّه — فمن أراد أن يكتب الرقم على أمر شراء عميله أو يرسله في
- * رسالة لم يستطع حتى نسخَه، وهو رقمٌ من ثمانية محارف يُنقل باليد فيُخطأ
- * فيه. وهيئتُه تقول «حقل» فتدعو إلى الضغط، وضغطُه لا يفعل شيئًا.
- *
- * فصار `readOnly` لا `disabled`: يبقى غيرَ قابل للكتابة — ولا يُرسَل مع
- * النموذج بحال، فالرقم يُولَّد في الخادم تحت قفل — ويصير مقروءًا ومحدَّدًا
- * ومنسوخًا بضغطة.
- *
- * ═══ ولمَ لا يستعمل `CopyButton` ═══
- *
- * لأنّ الضغطةَ هنا تُحدّد نصَّ الحقل قبل النسخ، والقولُ يقع في سطرٍ تحته
- * لا على الزرّ. فيقرأ من `useCopy` — وهي موضعُ الحافظة الوحيد في النظام —
- * ويرسم نفسَه. والمشترَكُ هو المنطق لا الهيئة.
- */
-export function InvoiceNumberField({ number }: { number: string }) {
-    const t = useTranslate();
-    const { copy, copied } = useCopy();
-    const box = useRef<HTMLInputElement>(null);
-
-    /*
-     * والتحديدُ قبل المحاولة لا بعدها.
-     *
-     * فمن مُنع من الحافظة يجد الرقمَ محدَّدًا أمامه ينسخه بلوحته — وهو ما
-     * ينفع في كلّ حال. ولا يُعلَن «نُسخ» إلّا بعد أن يفي الوعد: `useCopy`.
-     */
-    const press = () => {
-        box.current?.select();
-        void copy(number);
-    };
-
-    return (
-        <div className="space-y-1.5">
-            <Label htmlFor="invoice-number">{t('رقم الفاتورة')}</Label>
-
-            <div className="flex items-center gap-1.5">
-                {/*
-                    والخلفيةُ الباهتة تبقى: الحقل يُقرأ ولا يُكتب، ورفعُ
-                    التعطيل لا يعني دعوةً إلى الكتابة فيه.
-                */}
-                <Input
-                    id="invoice-number"
-                    ref={box}
-                    value={number}
-                    readOnly
-                    dir="ltr"
-                    onClick={press}
-                    title={t('اضغط لنسخ الرقم')}
-                    className="flex-1 cursor-pointer bg-[#fafafa] text-[#4b4b4b]"
-                />
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={press}
-                    aria-label={t('نسخ رقم الفاتورة')}
-                >
-                    {copied ? <Check className="text-[#047857]" /> : <Copy />}
-                </Button>
-            </div>
-
-            {/* والقولُ يُعلَن لقارئ الشاشة كما يُرى — لا لونًا وحده */}
-            <p aria-live="polite" className="text-[12px] text-[#9ca3af]">
-                {copied ? t('نُسخ') : t('اضغط لنسخ الرقم')}
-            </p>
-        </div>
-    );
 }
 
 function Err({ msg }: { msg: string }) {

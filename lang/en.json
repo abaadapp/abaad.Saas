@@ -4660,5 +4660,7 @@
     "كل أوامر الشراء": "All purchase orders",
     "اضغط لنسخ الرقم": "Click to copy the number",
     "نسخ رقم الفاتورة": "Copy invoice number",
-    "نُسخ": "Copied"
+    "نُسخ": "Copied",
+    "سيتم إنشاء الرقم عند الإصدار": "The number will be created on issue",
+    "حُفظت مسودّة الفاتورة": "Invoice draft saved"
 }

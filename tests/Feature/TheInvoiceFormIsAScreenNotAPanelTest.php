@@ -72,7 +72,7 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
                 ->where('customers.0.payment_terms_days', 45)
                 ->where('products.0.name', 'باقة ورد')
                 ->where('tax_rate', 5)
-                ->has('next_number'));
+                ->missing('next_number'));
     }
 
     /** ومن لا يملك المبيعات لا يفتحها */

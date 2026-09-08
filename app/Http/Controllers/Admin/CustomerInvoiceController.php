@@ -181,12 +181,6 @@ class CustomerInvoiceController extends Controller
              * بهذا الاسم» — وهو أسوأ من قائمةٍ تعتذر.
              */
             'catalog_truncated' => Product::where('business_id', $bid)->count() > self::CATALOG_LIMIT,
-            /*
-             * ورقمُ الفاتورة معاينةٌ لا حجز: التسلسل يُقطع لحظةَ الحفظ تحت
-             * قفل. وعرضُه هنا يُطمئن من يكتب الرقم على أمر شراء، ولا يُرسَل
-             * من الواجهة بحال.
-             */
-            'next_number' => CustomerInvoices::nextNumber($bid),
             'tax_rate' => Vat::enabled($bid)
                 ? (float) (Setting::where('business_id', $bid)->where('key', 'vat_rate')->value('value') ?? 5)
                 : 0.0,
@@ -312,8 +306,13 @@ class CustomerInvoiceController extends Controller
         try {
             $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $data['items'], auth()->id());
 
+            /*
+             * والمُصدَرةُ تُلتقط: `issue` تقرأ الصفَّ تحت قفلٍ وتردّ نسختَه،
+             * فالرقمُ يُكتب هناك. وإهمالُ ما تردّه يترك في اليد نسخةً بلا
+             * رقم — فيقول التنبيهُ «أُنشئت الفاتورة » وينتهي عند الفراغ.
+             */
             if ($request->boolean('issue')) {
-                CustomerInvoices::issue($invoice, auth()->id());
+                $invoice = CustomerInvoices::issue($invoice, auth()->id());
             }
 
             /*
@@ -334,7 +333,11 @@ class CustomerInvoiceController extends Controller
         }
 
         return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
-            'msg' => __('أُنشئت الفاتورة :n', ['n' => $invoice->number]), 'type' => 'success',
+            // ومسودّةٌ لا رقمَ لها: لا يُقال «أُنشئت الفاتورة » وينتهي عند فراغ
+            'msg' => $invoice->number
+                ? __('أُنشئت الفاتورة :n', ['n' => $invoice->number])
+                : __('حُفظت مسودّة الفاتورة'),
+            'type' => 'success',
         ]);
     }
 

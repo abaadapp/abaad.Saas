@@ -68,13 +68,26 @@ final class CustomerInvoices
         return DB::transaction(function () use ($businessId, $model, $prefix) {
             Business::whereKey($businessId)->lockForUpdate()->first();
 
-            $last = $model::where('business_id', $businessId)
+            /*
+             * والأكبرُ عددًا لا الأحدثُ صفًّا.
+             *
+             * كان يقرأ آخرَ معرّفٍ لأنّ الرقم كان يُقطع لحظةَ الإنشاء، فترتيبُ
+             * المعرّفات هو ترتيبُ الأرقام. ولم يعد: الرقمُ يُقطع عند الإصدار،
+             * ومسودّةٌ كُتبت أمس تُصدَر اليوم بعد واحدةٍ كُتبت صباحًا — فآخرُ
+             * صفٍّ ليس أكبرَ رقم، وقراءتُه تُعيد رقمًا مستعمَلًا يردّه فهرسُ
+             * التفرّد في وجه من ضغط «إصدار».
+             *
+             * والقراءةُ في PHP لا `CAST` في SQL: نصٌّ غير رقميّ يتساهل معه
+             * SQLite ويرفضه PostgreSQL، فرقمٌ شاذٌّ واحد من نسخةٍ مستعادة
+             * يُعطّل الإصدار كلَّه بعد النقل.
+             */
+            $highest = (int) $model::where('business_id', $businessId)
                 ->where('number', 'like', $prefix.'%')
-                ->orderByDesc('id')->value('number');
+                ->get(['number'])
+                ->map(fn ($r) => (int) substr((string) $r->number, strlen($prefix)))
+                ->max();
 
-            $n = $last ? ((int) substr($last, strlen($prefix))) + 1 : 1;
-
-            return $prefix.str_pad((string) $n, 6, '0', STR_PAD_LEFT);
+            return $prefix.str_pad((string) ($highest + 1), 6, '0', STR_PAD_LEFT);
         });
     }
 
@@ -183,7 +196,14 @@ final class CustomerInvoices
                 'business_id' => $businessId,
                 'customer_id' => $customer->id,
                 'branch_id' => $data['branch_id'] ?? null,
-                'number' => self::nextNumber($businessId),
+                /*
+                 * ولا رقمَ للمسودّة.
+                 *
+                 * كان يُقطع هنا، فمسودّةٌ تُهجر تأخذ رقمَها معها ويقفز التسلسل
+                 * في دفترٍ يُقرأ عند الضريبة. والرقمُ يُقطع عند الإصدار — حيث
+                 * يقع القيد. انظر `issue`.
+                 */
+                'number' => null,
                 'status' => CustomerInvoice::DRAFT,
                 'issued_at' => $issuedAt->toDateString(),
                 'due_at' => $data['due_at']
@@ -220,7 +240,7 @@ final class CustomerInvoices
                 CustomerInvoiceItem::create($item + ['customer_invoice_id' => $invoice->id]);
             }
 
-            Activity::log('created', 'أنشأ فاتورة عميل '.$invoice->number.' — '.$customer->name, [
+            Activity::log('created', 'أنشأ مسودّة فاتورة عميل — '.$customer->name, [
                 'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice',
             ]);
 
@@ -235,29 +255,48 @@ final class CustomerInvoices
      */
     public static function issue(CustomerInvoice $invoice, ?int $userId = null): CustomerInvoice
     {
-        if ($invoice->status === CustomerInvoice::CANCELLED) {
-            throw new RuntimeException(__('لا تُصدَر فاتورةٌ ملغاة.'));
-        }
-        if ($invoice->status === CustomerInvoice::ISSUED) {
-            return $invoice;
-        }
-        if ((float) $invoice->total <= 0) {
-            throw new RuntimeException(__('لا تُصدَر فاتورةٌ بلا مبلغ.'));
-        }
-
         return DB::transaction(function () use ($invoice, $userId) {
-            $invoice->update([
+            /*
+             * والحالةُ تُقرأ تحت قفلٍ داخل المعاملة لا قبلها.
+             *
+             * ضغطتان على «إصدار» — أو ردٌّ يبطؤ فيُعاد الطلب — كانتا تقرآن
+             * «مسودة» كلتاهما خارج المعاملة فتمضيان: قيدان لفاتورةٍ واحدة،
+             * وإيرادٌ مضاعف، وذمّتان لدَينٍ واحد. والقفلُ يجعل الثانيةَ تنتظر
+             * ثمّ تجدها صادرةً فتخرج بها.
+             */
+            $locked = CustomerInvoice::where('business_id', $invoice->business_id)
+                ->lockForUpdate()->findOrFail($invoice->id);
+
+            if ($locked->status === CustomerInvoice::CANCELLED) {
+                throw new RuntimeException(__('لا تُصدَر فاتورةٌ ملغاة.'));
+            }
+            if ($locked->status === CustomerInvoice::ISSUED) {
+                return $locked;
+            }
+            if ((float) $locked->total <= 0) {
+                throw new RuntimeException(__('لا تُصدَر فاتورةٌ بلا مبلغ.'));
+            }
+
+            /*
+             * وهنا يُقطع الرقم — لا قبلُ.
+             *
+             * `?:` لا إسنادٌ مطلق: مسودّةٌ كُتبت تحت القاعدة القديمة تحمل
+             * رقمًا حجزته، فتُصدَر به ولا تُرقَّم ثانيةً. وورقةٌ لا تُرقَّم
+             * مرّتين ولو أُعيد نداءُ الإصدار عليها.
+             */
+            $locked->update([
+                'number' => $locked->number ?: self::nextNumber((int) $locked->business_id),
                 'status' => CustomerInvoice::ISSUED,
                 'issued_by_at' => now(),
             ]);
 
-            self::post($invoice, $userId);
+            self::post($locked, $userId);
 
-            Activity::log('updated', 'أصدر فاتورة عميل '.$invoice->number.' بمبلغ '.$invoice->total, [
-                'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice',
+            Activity::log('updated', 'أصدر فاتورة عميل '.$locked->number.' بمبلغ '.$locked->total, [
+                'subject_id' => $locked->id, 'subject_type' => 'customer_invoice',
             ]);
 
-            return $invoice->fresh();
+            return $locked->fresh();
         });
     }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { ChevronDown, Plus, Search, Trash2, UserPlus } from 'lucide-react';
+import { ChevronDown, Paperclip, Plus, Search, Trash2, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -177,6 +177,9 @@ export default function CustomerInvoiceCreate({
         cost_center: '',
         attention_to: '',
         notes: '',
+        internal_notes: '',
+        // المرفقاتُ في النموذج لا بجواره: فيصل خطؤها مكتوبًا باسمها
+        attachments: [] as File[],
         payment_method: 'آجل',
         issue: false,
         items: [] as Line[],
@@ -255,6 +258,20 @@ export default function CustomerInvoiceCreate({
         form.setData((d) => ({ ...d, due_at: value, payment_terms_days: CUSTOM }));
     };
 
+    /*
+     * والملفّاتُ خارج `useForm`: تُضاف عند الإرسال.
+     *
+     * `transform` تحقنها في الحمولة، و`forceFormData` يجعلها ترحل كنموذجٍ
+     * متعدّد الأجزاء — ولا تُجبَر إلّا حين توجد، فطلبٌ بلا ملفّاتٍ يبقى JSON
+     * كما كان.
+     */
+    const files = form.data.attachments;
+
+    const addFiles = (list: FileList | null) => {
+        if (! list) return;
+        form.setData('attachments', [...files, ...Array.from(list)].slice(0, 6));
+    };
+
     const submit = (issue: boolean) => {
         // و«مخصص» لا يُرسَل مدّةً: الخادمُ يخزّن عددَ أيّامٍ أو لا شيء
         form.transform((data) => ({
@@ -263,7 +280,7 @@ export default function CustomerInvoiceCreate({
             items: lines,
             payment_terms_days: data.payment_terms_days === CUSTOM ? '' : data.payment_terms_days,
         }));
-        form.post('/admin/customer-invoices', { preserveScroll: true });
+        form.post('/admin/customer-invoices', { preserveScroll: true, forceFormData: files.length > 0 });
     };
 
     const credit = form.data.payment_method === 'آجل';
@@ -643,18 +660,87 @@ export default function CustomerInvoiceCreate({
                     </div>
                 </Card>
 
+                {/*
+                    وملاحظتان لا واحدة.
+
+                    كان الحقل واحدًا وهو يُطبع على الفاتورة. فمن أراد أن يكتب
+                    لنفسه «العميل يماطل، لا تُسلَّم قبل الدفع» كتبها حيث
+                    يقرؤها العميلُ في الورقة التي تصله.
+                */}
                 <Card className="p-5">
-                    <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('ملاحظات')}</h2>
+                    <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('ملاحظة للعميل')}</h2>
+                    <p className="mb-3 text-[12px] text-[#9ca3af]">{t('تظهر في الفاتورة المطبوعة.')}</p>
                     <Textarea
                         value={form.data.notes}
                         maxLength={500}
                         onChange={(e) => form.setData('notes', e.target.value)}
-                        placeholder={t('أضف أي ملاحظات أو شروط إضافية في الفاتورة…')}
-                        className="min-h-28"
+                        placeholder={t('شروط السداد، أو شكرٌ، أو أي بيانٍ يُطبع…')}
+                        className="min-h-24"
                     />
                     <p className="mt-1 text-[12px] text-[#9ca3af]" dir="ltr">
                         {form.data.notes.length}/500
                     </p>
+                </Card>
+
+                <Card className="p-5">
+                    <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('ملاحظات داخلية')}</h2>
+                    <p className="mb-3 text-[12px] text-[#9ca3af]">{t('لا تظهر للعميل ولا تُطبع.')}</p>
+                    <Textarea
+                        value={form.data.internal_notes}
+                        maxLength={500}
+                        onChange={(e) => form.setData('internal_notes', e.target.value)}
+                        placeholder={t('لفريقك وحده…')}
+                        className="min-h-24"
+                    />
+                    <p className="mt-1 text-[12px] text-[#9ca3af]" dir="ltr">
+                        {form.data.internal_notes.length}/500
+                    </p>
+                </Card>
+
+                {/*
+                    ومرفقاتُ الورقة: أمرُ شراء الجهة وعقدُها وطلبُها الموقَّع.
+
+                    وهي على قرصٍ خاصّ تُقرأ ببابٍ يسأل — لا على القرص العامّ:
+                    أمرُ شراء وزارةٍ ليس مستندًا يُفتح برابطٍ يُخمَّن.
+                */}
+                <Card className="p-5">
+                    <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('مرفقات الفاتورة')}</h2>
+                    <p className="mb-3 text-[12px] text-[#9ca3af]">
+                        {t('أمر الشراء، أو العقد، أو أي مستند داعم. حتى ٦ ملفات، ١٠ ميجابايت لكلٍّ.')}
+                    </p>
+
+                    <label className="flex cursor-pointer flex-col items-center gap-1.5 rounded-[12px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-4 py-6 text-center transition-colors hover:bg-[#f4f4f5]">
+                        <Paperclip className="size-5 text-[#6d28d9]" />
+                        <span className="text-[13px] font-medium text-[#6d28d9]">{t('اختيار ملفات')}</span>
+                        <span className="text-[11px] text-[#9ca3af]">JPG · PNG · PDF · WEBP · HEIC</span>
+                        <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
+                            onChange={(e) => addFiles(e.target.files)}
+                        />
+                    </label>
+
+                    {files.length > 0 && (
+                        <ul className="mt-3 space-y-1.5 text-[13px]">
+                            {files.map((f, i) => (
+                                <li key={`${f.name}-${i}`} className="flex items-center gap-2">
+                                    <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                                    <button
+                                        type="button"
+                                        aria-label={t('إزالة المرفق')}
+                                        className="text-[#b91c1c]"
+                                        onClick={() => form.setData('attachments', files.filter((_, k) => k !== i))}
+                                    >
+                                        <Trash2 className="size-4" />
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+
+                    {form.errors.attachments && <Err msg={form.errors.attachments} />}
                 </Card>
             </div>
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\CustomerInvoiceAttachment;
 use App\Models\Expense;
 use App\Models\GoodsReceiptNote;
 use App\Models\PurchaseOrder;
@@ -105,6 +106,23 @@ class FinancialAttachmentController extends Controller
         $po = PurchaseOrder::where('business_id', $this->bid())->findOrFail($id);
 
         return $this->stream($po->receipt, $po->receipt_name, $po->number);
+    }
+
+    /**
+     * مستندُ عميلٍ مرفقٌ بفاتورته — أمرُ شراءٍ أو عقدٌ أو طلبٌ موقَّع.
+     *
+     * والمرفقُ يُسأل عن ورقته كما يُسأل عن متجره: رقمُ مرفقٍ من فاتورةٍ
+     * أخرى لا يُفتح من عنوان هذه. فالشرطان معًا في الاستعلام.
+     */
+    public function customerInvoice(int|string $id, int|string $attachment): StreamedResponse
+    {
+        $this->mustBeAllowed();
+
+        $row = CustomerInvoiceAttachment::where('business_id', $this->bid())
+            ->where('customer_invoice_id', $id)
+            ->findOrFail($attachment);
+
+        return $this->stream($row->path, $row->name, 'attachment-'.$row->id);
     }
 
     /** فاتورةُ المورّد كما وصلت */

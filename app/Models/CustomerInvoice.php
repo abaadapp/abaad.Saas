@@ -67,6 +67,12 @@ class CustomerInvoice extends Model
         return $this->hasMany(CustomerPaymentAllocation::class);
     }
 
+    /** مستنداتُ العميل المرفقة — أمرُ شراءٍ أو عقدٌ أو طلبٌ موقَّع */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(CustomerInvoiceAttachment::class);
+    }
+
     public function creditNotes(): HasMany
     {
         return $this->hasMany(CustomerCreditNote::class);

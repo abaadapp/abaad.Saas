@@ -813,6 +813,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/customer-invoices/{id}/cancel', [CustomerInvoiceController::class, 'cancel'])->name('customerInvoices.cancel');
     Route::post('/customer-invoices/{id}/credit-note', [CustomerInvoiceController::class, 'creditNote'])->name('customerInvoices.creditNote');
     Route::get('/customer-invoices/{id}/pdf', [PdfController::class, 'customerInvoice'])->name('customerInvoices.pdf');
+    /*
+     * مرفقاتُ الفاتورة — على القرص الخاصّ، وتُقرأ ببابٍ يسأل.
+     *
+     * والقراءةُ من `FinancialAttachmentController` كأخواتها: حارسٌ واحد
+     * يسأل عن المتجر وعن صلاحية فتح المرفقات، لا حارسٌ سادس يفترق يومًا.
+     */
+    Route::post('/customer-invoices/{id}/attachments', [CustomerInvoiceController::class, 'attach'])
+        ->name('customerInvoices.attach');
+    Route::get('/customer-invoices/{id}/attachments/{attachment}', [FinancialAttachmentController::class, 'customerInvoice'])
+        ->name('customerInvoices.attachment');
+    Route::delete('/customer-invoices/{id}/attachments/{attachment}', [CustomerInvoiceController::class, 'detach'])
+        ->name('customerInvoices.detach');
     Route::post('/customer-invoices/{id}/remind', [CustomerInvoiceController::class, 'remind'])->name('customerInvoices.remind');
     Route::post('/customer-payments', [CustomerInvoiceController::class, 'pay'])->name('customerPayments.store');
     Route::post('/customer-payments/{id}/cancel', [CustomerInvoiceController::class, 'cancelPayment'])->name('customerPayments.cancel');

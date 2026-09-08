@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerInvoiceAttachment;
 use App\Models\CustomerPayment;
 use App\Models\Product;
 use App\Models\Setting;
@@ -13,7 +14,9 @@ use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\Customers;
 use App\Support\Demo;
+use App\Support\InvoiceAttachments;
 use App\Support\Pagination;
+use App\Support\Permissions;
 use App\Support\Receivables;
 use App\Support\Search;
 use App\Support\Vat;
@@ -145,7 +148,9 @@ class CustomerInvoiceController extends Controller
                 'subtotal' => (float) $invoice->subtotal,
                 'discount_total' => (float) $invoice->discount_total,
                 'tax_total' => (float) $invoice->tax_total,
+                // ملاحظةُ العميل تُطبع، والداخليّةُ لا تخرج من هذه الشاشة
                 'notes' => $invoice->notes,
+                'internal_notes' => $invoice->internal_notes,
                 'contract_number' => $invoice->contract_number,
                 'external_reference' => $invoice->external_reference,
                 'department' => $invoice->department,
@@ -169,6 +174,22 @@ class CustomerInvoiceController extends Controller
                         'method' => $a->payment->method,
                         'at' => optional($a->payment->occurred_at)->format('Y-m-d'),
                     ])->values()->all(),
+                /*
+                 * والمرفقُ يُقال موجودًا ولو لم يُفتح.
+                 *
+                 * من لا يملك فتحَ المرفقات لا يُبنى له رابط — ولا يُكتم عنه
+                 * وجودُ المستند، فيظنّ الورقةَ بلا سندٍ وهي مسنودة. وهي
+                 * الحفرةُ التي وقع فيها إيصالُ أمر الشراء.
+                 */
+                'may_read_attachments' => (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW),
+                'attachments' => $invoice->attachments()->orderBy('id')->get()->map(fn ($a) => [
+                    'id' => $a->id,
+                    'name' => $a->name,
+                    'size' => (int) $a->size,
+                    'url' => auth()->user()?->may(Permissions::ATTACHMENT_VIEW)
+                        ? route('admin.customerInvoices.attachment', [$invoice->id, $a->id])
+                        : null,
+                ])->all(),
                 'credit_notes' => $invoice->creditNotes->map(fn ($n) => [
                     'number' => $n->number,
                     'amount' => (float) $n->amount,
@@ -274,6 +295,8 @@ class CustomerInvoiceController extends Controller
             'cost_center' => ['nullable', 'string', 'max:60'],
             'attention_to' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            // وما لا يُطبع: يُحفظ في عمودٍ آخر ولا يبلغ ورقةَ العميل
+            'internal_notes' => ['nullable', 'string', 'max:2000'],
             'issue' => ['nullable', 'boolean'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['nullable', 'integer'],
@@ -285,7 +308,11 @@ class CustomerInvoiceController extends Controller
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'payment_method' => ['nullable', 'string', 'in:آجل,نقدي,بطاقة,تحويل'],
             'bank_account_id' => ['nullable', 'integer'],
-        ], [], [
+        ] + InvoiceAttachments::rules('attachments'), [
+            'attachments.*.extensions' => __('الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC.'),
+            'attachments.*.max' => __('أقصى حجم 10 ميجابايت.'),
+            'attachments.max' => __('أقصى عدد المرفقات ستة.'),
+        ], [
             'customer_id' => __('العميل'),
             'items' => __('بنود الفاتورة'),
         ]);
@@ -346,6 +373,14 @@ class CustomerInvoiceController extends Controller
             $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $data['items'], auth()->id());
 
             /*
+             * والمرفقاتُ بعد الورقة لا قبلها: مرفقٌ بلا فاتورةٍ يشير إليه
+             * ملفٌّ على القرص لا يقرؤه شيء.
+             */
+            foreach ($request->file('attachments') ?? [] as $file) {
+                InvoiceAttachments::store($invoice, $file, auth()->id());
+            }
+
+            /*
              * والمُصدَرةُ تُلتقط: `issue` تقرأ الصفَّ تحت قفلٍ وتردّ نسختَه،
              * فالرقمُ يُكتب هناك. وإهمالُ ما تردّه يترك في اليد نسخةً بلا
              * رقم — فيقول التنبيهُ «أُنشئت الفاتورة » وينتهي عند الفراغ.
@@ -378,6 +413,49 @@ class CustomerInvoiceController extends Controller
                 : __('حُفظت مسودّة الفاتورة'),
             'type' => 'success',
         ]);
+    }
+
+    /**
+     * إرفاقُ مستندٍ بفاتورةٍ قائمة — أمرُ شراءٍ أو عقدٌ أو طلبٌ موقَّع.
+     *
+     * ويُقبل على الصادرة كما على المسودّة: أمرُ شراء الوزارة قد يصل بعد
+     * إصدار الفاتورة، ومنعُ إرفاقه يجعل المستند يعيش في بريدِ أحدهم.
+     */
+    public function attach(Request $request, int|string $id)
+    {
+        $invoice = $this->find($id);
+
+        $request->validate(InvoiceAttachments::rules('attachments') + [
+            'attachments' => ['required', 'array', 'min:1', 'max:'.InvoiceAttachments::MAX_FILES],
+        ], [
+            'attachments.*.extensions' => __('الصيغ المدعومة: JPG، PNG، PDF، WEBP، HEIC.'),
+            'attachments.*.max' => __('أقصى حجم 10 ميجابايت.'),
+        ], ['attachments' => __('المرفقات')]);
+
+        foreach ($request->file('attachments') as $file) {
+            InvoiceAttachments::store($invoice, $file, auth()->id());
+        }
+
+        return back()->with('toast', ['msg' => __('أُرفقت المستندات'), 'type' => 'success']);
+    }
+
+    /**
+     * حذفُ مرفق — الصفُّ وملفُّه معًا.
+     *
+     * والمرفقُ يُسأل عن ورقته: رقمُ مرفقٍ من فاتورةٍ أخرى لا يُحذف من
+     * عنوان هذه.
+     */
+    public function detach(int|string $id, int|string $attachment)
+    {
+        $invoice = $this->find($id);
+
+        $row = CustomerInvoiceAttachment::where('business_id', $this->bid())
+            ->where('customer_invoice_id', $invoice->id)
+            ->findOrFail($attachment);
+
+        InvoiceAttachments::remove($row);
+
+        return back()->with('toast', ['msg' => __('حُذف المرفق'), 'type' => 'warning']);
     }
 
     public function issue(int|string $id)

@@ -62,6 +62,15 @@ class TenantTables
          * بعدُ يُردّه المفتاحُ الأجنبيّ، فتسقط الاستعادةُ في منتصفها.
          */
         'customer_invoices', 'customer_invoice_items', 'customer_invoice_orders',
+        /*
+         * ومرفقاتُ الفاتورة صفوفُها لا ملفّاتُها.
+         *
+         * النسخُ يحمل القاعدة، والملفّاتُ على القرص خارجَه — كما هي حالُ
+         * مرفقات المشتريات والمصروفات منذ اليوم الأوّل. فالصفُّ يُستعاد
+         * ويشير إلى ملفٍّ قد لا يعود، وهو أصدقُ من ألّا يُستعاد فيختفي أنّ
+         * ثمّة مستندًا كان.
+         */
+        'customer_invoice_attachments',
         'customer_payments', 'customer_payment_allocations',
         'customer_credit_notes',
         'delivery_notes', 'delivery_note_items',

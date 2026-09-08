@@ -145,7 +145,16 @@ class PasswordsAreNotReadableTest extends TestCase
 
         foreach ($seen as $one) {
             $this->assertSame(10, strlen($one));
-            $this->assertStringStartsNotWith('Ab', $one);
+            /*
+             * والشكلُ القديم هو المقصود لا الحرفان.
+             *
+             * كان `assertStringStartsNotWith('Ab', ...)` — وكلمةٌ عشوائيّة من
+             * ستٍّ وخمسين محرفًا تبدأ بهما مرّةً في كلّ ٣١٣٦، وخمسون في
+             * الجولة: نحوَ ٢٪ من كلّ تشغيل. فكانت البوّابةُ تحمرّ بلا عطب —
+             * وحُمرةٌ عشوائيّة تُعلّم الناسَ إعادةَ التشغيل بدل القراءة، وهي
+             * أخطرُ من بوّابةٍ غائبة. والمقصودُ أنّ `Ab####` لم تعد تُولَّد.
+             */
+            $this->assertDoesNotMatchRegularExpression('/^Ab\d{4}$/', $one);
             // بلا حروفٍ تلتبس عند الإملاء
             $this->assertDoesNotMatchRegularExpression('/[lO01]/', $one);
         }

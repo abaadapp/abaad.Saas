@@ -233,6 +233,8 @@ final class CustomerInvoices
                 'cost_center' => $data['cost_center'] ?? null,
                 'attention_to' => $data['attention_to'] ?? $customer->contact_person,
                 'notes' => $data['notes'] ?? null,
+                // وما لا يُطبع: عمودٌ آخر لا يبلغ ورقةَ العميل
+                'internal_notes' => $data['internal_notes'] ?? null,
                 'created_by' => $userId,
             ]);
 

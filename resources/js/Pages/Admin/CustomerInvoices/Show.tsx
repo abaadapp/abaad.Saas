@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { FileText, MessageCircle, Undo2 } from 'lucide-react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import { FileText, MessageCircle, Paperclip, Trash2, Undo2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import { Button } from '@/Components/ui/button';
@@ -34,6 +34,10 @@ interface Invoice {
     discount_total: number;
     tax_total: number;
     notes: string | null;
+    /** لا تُطبع ولا تخرج من هذه الشاشة */
+    internal_notes: string | null;
+    may_read_attachments: boolean;
+    attachments: { id: number; name: string; size: number; url: string | null }[];
     orders: string[];
     cancellation_reason: string | null;
     items: { description: string; quantity: number; unit_price: number; discount: number; tax_rate: number; line_total: number }[];
@@ -53,6 +57,22 @@ export default function CustomerInvoiceShow() {
     const [crediting, setCrediting] = useState(false);
 
     const issue = useForm({});
+
+    /*
+     * والرفعُ والحذفُ يمرّان على البابين القائمين — لا نسخةَ ثانية من
+     * القاعدة في المتصفّح: الخادمُ يقول ما يُقبل حجمًا وصيغةً وعددًا.
+     */
+    const attach = (list: FileList | null) => {
+        if (! list || list.length === 0) return;
+        router.post(
+            `/admin/customer-invoices/${invoice.id}/attachments`,
+            { attachments: Array.from(list) },
+            { forceFormData: true, preserveScroll: true },
+        );
+    };
+
+    const detach = (id: number) =>
+        router.delete(`/admin/customer-invoices/${invoice.id}/attachments/${id}`, { preserveScroll: true });
     const cancel = useForm({ reason: '' });
     const remind = useForm({});
 
@@ -198,6 +218,70 @@ export default function CustomerInvoiceShow() {
                     </Button>
                 </Card>
             )}
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                {/*
+                    ومستنداتُ الورقة: أمرُ شراء الجهة وعقدُها وطلبُها الموقَّع.
+                    على قرصٍ خاصّ تُقرأ ببابٍ يسأل عن المتجر وعن الصلاحية.
+                */}
+                <Card className="p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                        <h2 className="font-bold text-[#111]">{t('مرفقات الفاتورة')}</h2>
+                        <label className="cursor-pointer text-[13px] font-medium text-[#6d28d9] hover:underline">
+                            {t('إضافة مستند')}
+                            <input
+                                type="file"
+                                multiple
+                                className="hidden"
+                                accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
+                                onChange={(e) => attach(e.target.files)}
+                            />
+                        </label>
+                    </div>
+
+                    {invoice.attachments.length === 0 ? (
+                        <p className="text-[13px] text-[#9ca3af]">{t('لا مستندات مرفقة')}</p>
+                    ) : (
+                        <ul className="space-y-2 text-[13px]">
+                            {invoice.attachments.map((a) => (
+                                <li key={a.id} className="flex items-center gap-2">
+                                    <Paperclip className="size-3.5 shrink-0 text-[#9ca3af]" />
+                                    {/*
+                                        ومرفقٌ لا يُقرأ يُقال موجودًا ولا يُبنى
+                                        له رابط — لا يُكتم فيُظنّ غيرَ موجود.
+                                    */}
+                                    {a.url ? (
+                                        <a href={a.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-[#6d28d9] hover:underline">
+                                            {a.name}
+                                        </a>
+                                    ) : (
+                                        <span className="min-w-0 flex-1 truncate text-[#9ca3af]" title={t('فتحُ المرفقات صلاحيةٌ لا تملكها')}>
+                                            {a.name}
+                                        </span>
+                                    )}
+                                    <button
+                                        type="button"
+                                        aria-label={t('حذف المرفق')}
+                                        className="shrink-0 text-[#b91c1c]"
+                                        onClick={() => detach(a.id)}
+                                    >
+                                        <Trash2 className="size-4" />
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </Card>
+
+                {/* والملاحظةُ الداخليّة لا تُطبع ولا تصل العميل */}
+                <Card className="p-4">
+                    <h2 className="mb-1 font-bold text-[#111]">{t('ملاحظات داخلية')}</h2>
+                    <p className="mb-3 text-[12px] text-[#9ca3af]">{t('لا تظهر للعميل ولا تُطبع.')}</p>
+                    <p className="whitespace-pre-line text-[13px] text-[#4b4b4b]">
+                        {invoice.internal_notes || t('لا ملاحظات داخلية')}
+                    </p>
+                </Card>
+            </div>
         </AdminLayout>
     );
 }

@@ -10,9 +10,12 @@ use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\User;
 use App\Support\CustomerInvoices;
+use App\Support\InvoiceAttachments;
 use App\Support\Ledger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -75,7 +78,24 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
     {
         $invoice = $this->invoice();
 
-        $bindings = ['id' => $invoice->id, 'customer' => $this->customer->id];
+        /*
+         * ومرفقٌ حقيقيّ ليُربط به `{attachment}`.
+         *
+         * والحارسُ أمسك بابَ المرفقات ساعةَ أُضيف: القائمةُ تُقرأ من جدول
+         * المسارات، فأوّلُ عنوانٍ يُضاف يُسأل عنه في الجولة التالية.
+         */
+        Storage::fake('local');
+        $attachment = InvoiceAttachments::store(
+            $invoice,
+            UploadedFile::fake()->create('أمر شراء.pdf', 12, 'application/pdf'),
+            $this->owner->id,
+        );
+
+        $bindings = [
+            'id' => $invoice->id,
+            'customer' => $this->customer->id,
+            'attachment' => $attachment->id,
+        ];
         $checked = 0;
 
         foreach (Route::getRoutes() as $route) {
@@ -95,8 +115,8 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
             $checked++;
         }
 
-        // ثلاثة: القائمة، والإنشاء، والعرض — ورابعٌ للـPDF
-        $this->assertGreaterThanOrEqual(4, $checked);
+        // القائمة، والإنشاء، والعرض، وPDF، والمرفق
+        $this->assertGreaterThanOrEqual(5, $checked);
     }
 
     /** وشاشتا الذمم وكشف الحساب معهما — مصدرُ أرقامهما واحد */

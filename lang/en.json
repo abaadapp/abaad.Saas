@@ -4669,5 +4669,22 @@
     "صدرت إلى": "Issued to",
     "تستحق من": "Due from",
     "تستحق إلى": "Due to",
-    "عدد الصفوف": "Rows per page"
+    "عدد الصفوف": "Rows per page",
+    "ملاحظة للعميل": "Note to the customer",
+    "تظهر في الفاتورة المطبوعة.": "Shown on the printed invoice.",
+    "شروط السداد، أو شكرٌ، أو أي بيانٍ يُطبع…": "Payment terms, thanks, or anything to be printed…",
+    "لا تظهر للعميل ولا تُطبع.": "Not shown to the customer and never printed.",
+    "لفريقك وحده…": "For your team only…",
+    "مرفقات الفاتورة": "Invoice attachments",
+    "أمر الشراء، أو العقد، أو أي مستند داعم. حتى ٦ ملفات، ١٠ ميجابايت لكلٍّ.": "Purchase order, contract, or any supporting document. Up to 6 files, 10 MB each.",
+    "اختيار ملفات": "Choose files",
+    "إضافة مستند": "Add a document",
+    "لا مستندات مرفقة": "No documents attached",
+    "فتحُ المرفقات صلاحيةٌ لا تملكها": "Opening attachments is a permission you do not have",
+    "حذف المرفق": "Delete attachment",
+    "لا ملاحظات داخلية": "No internal notes",
+    "أقصى عدد المرفقات ستة.": "At most six attachments.",
+    "المرفقات": "Attachments",
+    "أُرفقت المستندات": "Documents attached",
+    "حُذف المرفق": "Attachment deleted"
 }

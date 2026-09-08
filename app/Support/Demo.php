@@ -1668,7 +1668,8 @@ class Demo
         $start = self::rangeStart($range);
 
         // صافي الإيرادات (بلا ضريبة) من معاملات الدخل في الفترة
-        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
+        // والملغاة لا تُجمع — التعريف واحدٌ هنا وفي الحركة وفي التقارير
+        $income = Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $netRevenue = (float) (clone $income)->sum('amount') - (float) (clone $income)->sum('tax_amount');
 
@@ -1884,7 +1885,14 @@ class Demo
         // الفترة تُردّ إلى المفهوم كما في أخواتها: فترةٌ مجهولة كانت تسقط إلى
         // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
         $start = self::rangeStart(self::range($range));
-        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
+        /*
+         * والملغاة لا تُجمع — التعريف واحدٌ هنا وفي الحركة وفي التقارير.
+         *
+         * وأخطرُ ما كانت تنفخه هذه البطاقاتُ الأربع: «ضريبة القيمة المضافة
+         * المحصّلة». ضريبةٌ على بيعةٍ أُلغيت لم تُحصَّل، ومن يقرأ الرقم
+         * ليقرّره يُقرّ بما لا يملك.
+         */
+        $income = Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $total = (float) (clone $income)->sum('amount');       // إجمالي المقبوض (شامل الضريبة)
         $tax = (float) (clone $income)->sum('tax_amount');     // ضريبة القيمة المضافة المحصّلة (التزام)
@@ -1895,7 +1903,8 @@ class Demo
         $prev = self::rangePrev($range);
         $pTotal = $pTax = $pNet = $pCash = 0.0;
         if ($prev) {
-            $pIncome = Transaction::where('business_id', $bid)->where('type', 'دخل')
+            // والفترةُ السابقة تُقاس بالمقياس نفسه، وإلا كان الاتجاهُ فرقَ تعريفين
+            $pIncome = Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
                 ->whereBetween('occurred_at', $prev);
             $pTotal = (float) (clone $pIncome)->sum('amount');
             $pTax = (float) (clone $pIncome)->sum('tax_amount');
@@ -1911,13 +1920,23 @@ class Demo
         ];
     }
 
-    public static function paymentMethods(string $range = 'month'): array
+    /**
+     * توزيعُ المقبوض على الوسائل.
+     *
+     * و`$bid` صريحٌ لا مشتقٌّ من الجلسة وحدها: `ReportData::payments` تأخذ
+     * المتجرَ في توقيعها وتمرّره إلى كلّ أخواتها، وكانت تمرّره إلى هذه ثمّ
+     * تُهمَل فتُقرأ من `auth()`. توقيعٌ يَعِد بما لا يفعل — ومن يستدعيها غدًا
+     * من مهمّةٍ في الخلفية أو من شاشة مشرف المنصّة يقرأ متجرًا غير الذي طلب،
+     * بلا خطأ يقول شيئًا.
+     */
+    public static function paymentMethods(string $range = 'month', ?int $businessId = null): array
     {
-        $bid = self::bid();
+        $bid = $businessId ?? self::bid();
         // الفترة تُردّ إلى المفهوم كما في أخواتها: فترةٌ مجهولة كانت تسقط إلى
         // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
         $start = self::rangeStart(self::range($range));
-        $income = Transaction::where('business_id', $bid)->where('type', 'دخل')
+        // والملغاة لا تُجمع — كما في `paymentBreakdown` التي تقرأ الطلبات
+        $income = Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
         $grand = max(0.001, (float) (clone $income)->sum('amount'));
         $defs = [
@@ -1955,6 +1974,7 @@ class Demo
             // فيخرج ملفُّ «كل الحركات» بأحدث خمسمئةٍ ولا سطرَ فيه يقول ذلك —
             // ومحاسبٌ يجمع عمودًا مبتورًا لا يعرف أنه مبتور.
             ->when($limit !== null, fn ($q) => $q->limit($limit))
+            ->with('order:id,status')
             ->orderByDesc('occurred_at')->get()->map(fn ($t) => [
             // المرجع للعرض، والمفتاح للهوية: مرجعان متطابقان (تصحيح يشير
             // لفاتورة أصلية مثلًا) كانا يجعلان React يُسقط صفًّا من دفتر مالي
@@ -1966,6 +1986,15 @@ class Demo
             'type' => $t->type,
             'amount' => (float) $t->amount,
             'employee' => $t->employee_name,
+            /*
+             * والملغاة تُوسم في الملفّ كما تُوسم في الشاشة.
+             *
+             * الشاشةُ تشطبها وتُخرجها من مجموعها؛ والملفُّ كان يكتبها صفًّا
+             * كأيّ صفّ بلا كلمةٍ تقول ما هي. فيقرأ المحاسبُ مؤشّراتِ الورقة
+             * — وهي تستثنيها — فوق جدولٍ يجمعها، ويجمع العمودَ بنفسه فيخرج
+             * برقمٍ ثالث لا يطابق أيًّا منهما.
+             */
+            'cancelled' => $t->isCancelled(),
         ])->all();
     }
 
@@ -3211,7 +3240,7 @@ class Demo
                 'reference' => $l->reference ?: '—',
                 'amount' => (float) $l->amount,
                 'status' => $l->match_status,
-                'matched' => $l->match_status === 'مطابق',
+                'matched' => $l->match_status === \App\Models\BankStatementLine::MATCHED,
                 'transaction' => $l->transaction?->reference,
             ])->all();
     }
@@ -3244,8 +3273,8 @@ class Demo
 
         return [
             'lines' => $lines->count(),
-            'matched' => $lines->where('match_status', 'مطابق')->count(),
-            'unmatched_bank' => $lines->where('match_status', '!=', 'مطابق')->count(),
+            'matched' => $lines->where('match_status', \App\Models\BankStatementLine::MATCHED)->count(),
+            'unmatched_bank' => $lines->where('match_status', '!=', \App\Models\BankStatementLine::MATCHED)->count(),
             'unmatched_system' => $lines->count() ? $unmatchedSystem : 0,
             'bank_total' => round((float) $lines->sum('amount'), 3),
         ];

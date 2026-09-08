@@ -257,7 +257,7 @@ class BankStatementController extends Controller
         $bid = $this->bid();
 
         BankStatementLine::where('business_id', $bid)
-            ->update(['transaction_id' => null, 'match_status' => 'غير مطابق']);
+            ->update(['transaction_id' => null, 'match_status' => BankStatementLine::UNMATCHED]);
 
         $transactions = Bank::transactions($bid)->get();
         $lines = BankStatementLine::where('business_id', $bid)->orderBy('date')->orderBy('id')->get();
@@ -307,7 +307,7 @@ class BankStatementController extends Controller
 
             $usedLines[$lineId] = true;
             $usedTransactions[$trxId] = true;
-            $pair['line']->update(['transaction_id' => $trxId, 'match_status' => 'مطابق']);
+            $pair['line']->update(['transaction_id' => $trxId, 'match_status' => BankStatementLine::MATCHED]);
             $matched++;
         }
 

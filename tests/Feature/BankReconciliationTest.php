@@ -9,6 +9,7 @@ use App\Models\Business;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\ReportData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
@@ -184,6 +185,51 @@ class BankReconciliationTest extends TestCase
         file_put_contents($path, $body);
 
         return new UploadedFile($path, 'statement.csv', 'text/csv', null, true);
+    }
+
+    /* ------------------- والتقريرُ يقول ما تقوله الشاشة ------------------- */
+
+    /**
+     * «مطابق» في تقرير البنك هي «مطابق» في شاشة المالية.
+     *
+     * كان التقرير يعدّ ما حالتُه `'matched'` بالإنجليزية — والعمودُ لا يحمل
+     * إلا العربية. فما طابق قطُّ شيئًا: يُطابق التاجر كشفَه في شاشة المالية
+     * فتقول «مطابق ١ من ١»، ويفتح التقرير فيقرأ «مطابق: ٠ · غير مطابق: ١».
+     * رقمان صحيحان في الشكل، أحدهما يكذب.
+     */
+    public function test_the_bank_report_counts_a_matched_line_as_matched(): void
+    {
+        $this->trx('دخل', 100, 'تحويل بنكي', '2026-01-05 10:00:00');
+
+        $this->post(route('admin.bank.import'), [
+            'statement' => $this->csv("التاريخ,البيان,المبلغ\n2026-01-05,إيداع,100\n"),
+        ])->assertSessionHasNoErrors();
+
+        $line = BankStatementLine::sole();
+        $this->assertSame(BankStatementLine::MATCHED, $line->match_status, 'لم تقع المطابقة أصلًا فلا معنى لقياس التقرير');
+
+        $report = ReportData::bank($this->business->id, ['range' => 'all']);
+        $screen = Demo::reconciliationSummary($this->account->id);
+
+        $this->assertSame(1, $report['summary']['matched'], 'التقريرُ يقرأ سطرًا مطابَقًا غيرَ مطابَق');
+        $this->assertSame(0, $report['summary']['unmatched']);
+        $this->assertSame($screen['matched'], $report['summary']['matched'], 'شاشتان تقولان في السطر نفسه قولين');
+        $this->assertSame($screen['unmatched_bank'], $report['summary']['unmatched']);
+    }
+
+    /** وغيرُ المطابَق يُعدّ غيرَ مطابَق */
+    public function test_the_bank_report_counts_an_unmatched_line_as_unmatched(): void
+    {
+        $this->post(route('admin.bank.import'), [
+            'statement' => $this->csv("التاريخ,البيان,المبلغ\n2026-01-05,إيداع,777\n"),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(BankStatementLine::UNMATCHED, BankStatementLine::sole()->match_status);
+
+        $report = ReportData::bank($this->business->id, ['range' => 'all']);
+
+        $this->assertSame(0, $report['summary']['matched']);
+        $this->assertSame(1, $report['summary']['unmatched']);
     }
 
     public function test_importing_a_second_month_keeps_the_first(): void

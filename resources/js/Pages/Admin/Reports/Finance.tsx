@@ -12,6 +12,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
+import { cn } from '@/lib/utils';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -24,6 +25,8 @@ interface Row {
     type: string;
     amount: number;
     at: string | null;
+    /** بيعةٌ أُلغيت فاتورتها — تبقى في السجلّ ولا تُجمع */
+    cancelled: boolean;
 }
 
 interface Props {
@@ -102,8 +105,21 @@ export default function ReportsFinance() {
                                     <TableCell className="font-medium text-[#111]">{r.reference ?? '—'}</TableCell>
                                     <TableCell className="font-medium text-[#111]">{r.description ?? '—'}</TableCell>
                                     <TableCell className="text-[#6b7280]">{r.method ?? '—'}</TableCell>
-                                    <TableCell>{r.type ? <Badge status={r.type} /> : null}</TableCell>
-                                    <TableCell className="text-end tabular-nums">{m(r.amount)}</TableCell>
+                                    <TableCell>
+                                        <span className="flex flex-wrap items-center gap-1.5">
+                                            {r.type ? <Badge status={r.type} /> : null}
+                                            {/* الملغاة تُوسم ولا تُحذف: خرجت من المجموع وبقيت في السجلّ */}
+                                            {r.cancelled && <Badge variant="warning">{t('ملغاة')}</Badge>}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell
+                                        className={cn(
+                                            'text-end tabular-nums',
+                                            r.cancelled && 'text-[#9ca3af] line-through',
+                                        )}
+                                    >
+                                        {m(r.amount)}
+                                    </TableCell>
                                 </TableRow>
                             ))
                         )}

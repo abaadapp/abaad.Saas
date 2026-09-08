@@ -40,6 +40,7 @@
         <tr>
             <th>{{ __('المرجع') }}</th><th>{{ __('التاريخ') }}</th><th>{{ __('البيان') }}</th>
             <th>{{ __('الوسيلة') }}</th><th>{{ __('النوع') }}</th><th>{{ __('المبلغ') }}</th>
+            <th>{{ __('الحالة') }}</th>
         </tr>
         @foreach ($transactions as $t)
             <tr>
@@ -48,16 +49,27 @@
                 <td>{{ $t['description'] }}</td>
                 <td>{{ __($t['method']) }}</td>
                 <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">{{ __($t['type']) }}</td>
-                <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">
-                    {{ $t['type'] === 'دخل' ? '+' : '−' }}{{ number_format(abs($t['amount']), 3) }} {{ __('ر.ع') }}
+                <td class="{{ $t['cancelled'] ? '' : ($t['type'] === 'دخل' ? 'income' : 'expense') }}"
+                    @if ($t['cancelled']) style="text-decoration:line-through;color:#9ca3af;" @endif>
+                    {{ $t['cancelled'] ? '' : ($t['type'] === 'دخل' ? '+' : '−') }}{{ number_format(abs($t['amount']), 3) }} {{ __('ر.ع') }}
                 </td>
+                {{-- الملغاة تُوسم ولا تُحذف: خرجت من المجموع وبقيت في السجلّ --}}
+                <td>{{ $t['cancelled'] ? __('ملغاة') : '—' }}</td>
             </tr>
         @endforeach
     </table>
 
     @php
-        $totalIn = collect($transactions)->where('type', 'دخل')->sum(fn ($t) => abs($t['amount']));
-        $totalOut = collect($transactions)->where('type', '!=', 'دخل')->sum(fn ($t) => abs($t['amount']));
+        /*
+         * والمجموعُ يستثني الملغاة — كما تستثنيها المؤشّرات في أعلى الورقة.
+         *
+         * كان يجمع كلَّ صفٍّ في الجدول، فتخرج ورقةٌ واحدة برقمين: مؤشّرٌ
+         * فوق يقول «الدخل ١٠٠» ومجموعٌ تحت يقول «١٠٠٠». ورقةٌ تناقض نفسها
+         * تُطبع وتُرسَل إلى المحاسب.
+         */
+        $live = collect($transactions)->where('cancelled', false);
+        $totalIn = $live->where('type', 'دخل')->sum(fn ($t) => abs($t['amount']));
+        $totalOut = $live->where('type', '!=', 'دخل')->sum(fn ($t) => abs($t['amount']));
     @endphp
     <table style="margin-top:10px;">
         <tr>

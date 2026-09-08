@@ -205,6 +205,30 @@ class ReportPagesTest extends TestCase
         $this->assertSame('الثاني', $rows[0]['name'], 'الصفوف مرتّبةٌ بالمعرّف لا بالمبيعات');
     }
 
+    /**
+     * وتقريرُ وسائل الدفع يقرأ المتجرَ الذي يُطلب منه.
+     *
+     * كان توقيعُه يأخذ المتجر ويمرّره إلى `Demo::paymentMethods` — وهي
+     * تُهمله وتقرأ من الجلسة. توقيعٌ يَعِد بما لا يفعل: من يستدعيه غدًا من
+     * مهمّةٍ في الخلفية يقرأ متجرًا غير الذي طلب، بلا خطأ يقول شيئًا.
+     */
+    public function test_the_payments_report_reads_the_shop_it_is_asked_for(): void
+    {
+        $neighbour = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
+
+        Transaction::create([
+            'business_id' => $this->business->id, 'type' => 'دخل', 'method' => 'نقدي',
+            'reference' => Transaction::nextReference($this->business->id),
+            'amount' => 250, 'occurred_at' => now(), 'description' => 'بيع',
+        ]);
+
+        $mine = ReportData::payments($this->business->id, ['range' => 'all'])['summary']['total'];
+        $theirs = ReportData::payments($neighbour->id, ['range' => 'all'])['summary']['total'];
+
+        $this->assertGreaterThan(0.0, $mine, 'لا بيانات في متجري فلا معنى للمقارنة');
+        $this->assertSame(0.0, $theirs, 'قرأ التقريرُ متجري وهو يُسأل عن متجر الجار');
+    }
+
     public function test_the_payment_indicators_count_only_what_actually_moved(): void
     {
         Transaction::create([

@@ -52,7 +52,7 @@ class BankAccountController extends Controller
             ->orderByDesc('is_primary')->orderBy('id')->get();
 
         $lineCounts = BankStatementLine::where('business_id', $bid)
-            ->selectRaw('bank_account_id, COUNT(*) total, SUM(CASE WHEN match_status = ? THEN 1 ELSE 0 END) matched', ['مطابق'])
+            ->selectRaw('bank_account_id, COUNT(*) total, SUM(CASE WHEN match_status = ? THEN 1 ELSE 0 END) matched', [BankStatementLine::MATCHED])
             ->groupBy('bank_account_id')->get()->keyBy('bank_account_id');
 
         return Inertia::render('Admin/Finance/Banks', [

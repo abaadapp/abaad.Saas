@@ -288,7 +288,8 @@ class ReportExportController extends Controller
         $this->row++;
 
         // المعاملات
-        $firstDataRow = $this->tableHead($sheet, [__('المرجع'), __('التاريخ'), __('البيان'), __('الوسيلة'), __('النوع'), __('المبلغ (ر.ع)'), __('الموظف')]);
+        // و«الحالة» عمودٌ في الملفّ: الملغاة تُوسم كما تُوسم في الشاشة
+        $firstDataRow = $this->tableHead($sheet, [__('المرجع'), __('التاريخ'), __('البيان'), __('الوسيلة'), __('النوع'), __('المبلغ (ر.ع)'), __('الموظف'), __('الحالة')]);
         // بلا سقف: هذا هو الباب إلى الدفتر كاملًا (انظر Demo::transactions)
         foreach (Demo::transactions($range, null) as $t) {
             $r = $this->row;
@@ -299,11 +300,15 @@ class ReportExportController extends Controller
             $sheet->setCellValue("E{$r}", $t['type']);
             $sheet->setCellValue("F{$r}", round((float) $t['amount'], 3));
             $sheet->setCellValue("G{$r}", $t['employee']);
+            $sheet->setCellValue("H{$r}", $t['cancelled'] ? __('ملغاة') : '—');
             $money[] = "F{$r}";
 
-            // تمييز المصروفات بالأحمر الفاتح لتُقرأ بنظرة
-            if ($t['type'] !== 'دخل') {
-                $sheet->getStyle("A{$r}:G{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDF0F0');
+            // والملغاة أوّلًا: صفٌّ لا يُجمع لا يُقرأ كصفٍّ يُجمع
+            if ($t['cancelled']) {
+                $sheet->getStyle("A{$r}:H{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEF3C7');
+            } elseif ($t['type'] !== 'دخل') {
+                // تمييز المصروفات بالأحمر الفاتح لتُقرأ بنظرة
+                $sheet->getStyle("A{$r}:H{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDF0F0');
             }
             $this->row++;
         }

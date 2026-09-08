@@ -12,6 +12,7 @@ use App\Models\SupplierInvoice;
 use App\Models\User;
 use App\Support\ReportData;
 use App\Support\Reports;
+use App\Support\SupplierInvoices;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -62,7 +63,8 @@ class VatReportTest extends TestCase
         ]);
     }
 
-    private function purchase(float $subtotal, float $tax): SupplierInvoice
+    /** سندُ مورّدٍ — والمعتمَدُ هو الحال الطبيعيّة، وهو وحده يدخل الإقرار */
+    private function purchase(float $subtotal, float $tax, ?string $status = null): SupplierInvoice
     {
         $supplier = Supplier::firstOrCreate(
             ['business_id' => $this->business->id, 'name' => 'مورّد'],
@@ -76,6 +78,7 @@ class VatReportTest extends TestCase
             'subtotal' => $subtotal,
             'tax' => $tax,
             'total' => $subtotal + $tax,
+            'approval_status' => $status ?? SupplierInvoices::APPROVED,
         ]);
     }
 
@@ -134,6 +137,47 @@ class VatReportTest extends TestCase
 
         $this->assertSame(300.0, $summary['purchases']);
         $this->assertSame(15.0, $summary['input']);
+    }
+
+    /**
+     * وسندٌ رُفض أو أُلغي لا تُخصَم ضريبتُه.
+     *
+     * الرفضُ لا قيدَ له، والإلغاءُ يعكس قيدَه — فالدفترُ لا يعرف واحدًا
+     * منهما. وكان الإقرار يجمع كلَّ سندٍ في الجدول أيًّا كانت حاله: يُخصَم
+     * ما لا يُملَك خصمُه، ولا يظهر ذلك إلا عند التدقيق.
+     */
+    public function test_a_rejected_or_cancelled_invoice_is_not_deducted(): void
+    {
+        $this->sale(100, 0, 5);
+        $this->purchase(200, 10);
+        $this->purchase(600, 30, SupplierInvoices::REJECTED);
+        $this->purchase(400, 20, SupplierInvoices::CANCELLED);
+
+        $summary = $this->vat()['summary'];
+
+        $this->assertSame(10.0, $summary['input'], 'خُصمت ضريبةُ سندٍ رُفض أو أُلغي');
+        $this->assertSame(200.0, $summary['purchases']);
+        $this->assertSame(-5.0, $summary['due']);
+    }
+
+    /**
+     * وما ينتظر الاعتماد يُقال ولا يُخصَم.
+     *
+     * الذمّةُ لا تُقيَّد إلا بالاعتماد، فخصمُ ضريبته يجعل الإقرارَ يسبق
+     * الدفتر. ويُعرض عددُه وضريبتُه كي لا يُقرأ الرقمُ ناقصًا بلا سبب —
+     * ورقمٌ ناقصٌ بلا سببٍ ظاهر يُبنى عليه قرار.
+     */
+    public function test_what_waits_for_approval_is_told_not_deducted(): void
+    {
+        $this->purchase(200, 10);
+        $this->purchase(600, 30, SupplierInvoices::PENDING);
+        $this->purchase(100, 5, SupplierInvoices::PENDING);
+
+        $summary = $this->vat()['summary'];
+
+        $this->assertSame(10.0, $summary['input'], 'خُصمت ضريبةُ سندٍ لم يُعتمد بعد');
+        $this->assertSame(2, $summary['pending'], 'لم تقل الشاشةُ كم سندًا ينتظر');
+        $this->assertSame(35.0, $summary['pendingTax']);
     }
 
     public function test_the_due_is_output_minus_input(): void

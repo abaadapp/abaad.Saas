@@ -110,7 +110,24 @@ class ReportData
         }
 
         $sold = (clone $orders)->get(['ordered_at', 'subtotal', 'discount', 'tax', 'delivery_fee']);
-        $bought = (clone $invoices)->get(['issued_at', 'subtotal', 'tax']);
+
+        /*
+         * وضريبةُ المدخلات من السندات **المعتمَدة** وحدها.
+         *
+         * كان الإقرار يجمع كلَّ سندٍ في الجدول أيًّا كانت حاله. فسندٌ رُفض —
+         * والرفضُ لا قيدَ له — أو أُلغي — والإلغاءُ يعكس قيدَه — تبقى ضريبتُه
+         * مخصومةً في الإقرار: يُخصَم ما لا يُملَك خصمُه، وهي مخالفةٌ لا
+         * يكتشفها التاجر إلا عند التدقيق.
+         *
+         * والمعلَّقُ لا يُخصَم أيضًا — والدفترُ لا يعرفه: الذمّةُ لا تُقيَّد
+         * إلا بالاعتماد، فخصمُ ضريبته يجعل الإقرارَ يسبق الدفتر. ويُقال عددُه
+         * وضريبتُه على الشاشة كي لا يُقرأ الرقمُ ناقصًا بلا سبب.
+         */
+        $bought = (clone $invoices)->where('approval_status', SupplierInvoices::APPROVED)
+            ->get(['issued_at', 'subtotal', 'tax']);
+
+        $waiting = (clone $invoices)->where('approval_status', SupplierInvoices::PENDING)
+            ->get(['tax']);
 
         /*
          * الصفوف شهريّة لا يوميّة.
@@ -166,6 +183,9 @@ class ReportData
                  * صفرًا أو بقيمةٍ مطلقة يجعله يدفع ما لا يجب.
                  */
                 'due' => round($output - $input, 3),
+                // ما ينتظر الاعتماد: يُقال ولا يُخصَم — انظر أعلاه
+                'pending' => $waiting->count(),
+                'pendingTax' => round((float) $waiting->sum('tax'), 3),
                 'rate' => (float) (Demo::vatSettings()['rate'] ?? 0),
                 'number' => (string) (Demo::vatSettings()['number'] ?? ''),
             ],
@@ -193,7 +213,7 @@ class ReportData
     public static function payments(int $bid, array $filters): array
     {
         $range = Demo::range($filters['range'] ?? 'month');
-        $methods = Demo::paymentMethods($range);
+        $methods = Demo::paymentMethods($range, $bid);
 
         $rows = collect($methods)->map(fn ($m) => [
             'id' => $m['key'],
@@ -344,11 +364,23 @@ class ReportData
                 ->where('reference', Search::like(), '%'.$search.'%')
                 ->orWhere('description', Search::like(), '%'.$search.'%')));
 
-        $income = (float) (clone $base)->where('type', 'دخل')->sum('amount');
-        $outgo = (float) (clone $base)->where('type', '!=', 'دخل')->sum('amount');
+        /*
+         * والفاتورة الملغاة تخرج من المجموع وتبقى في الجدول موسومة.
+         *
+         * هكذا تقرؤها شاشةُ «الحركة المالية» ومعها ملخّصُ المالية — وكان
+         * التقريرُ يقرأ الجدول نفسه بلا هذا الشرط. فيقرأ التاجر عن الفترة
+         * الواحدة «الدخل ١٠٠٠» في التقرير و«١٠٠» في الشاشة، ولا شيء يقول
+         * أيّهما الصحيح. ومالٌ لم يُقبض لا يُجمع، وسجلٌّ وقع لا يُمحى —
+         * انظر Transaction::scopeNotCancelled.
+         */
+        $live = (clone $base)->notCancelled();
+
+        $income = (float) (clone $live)->where('type', 'دخل')->sum('amount');
+        $outgo = (float) (clone $live)->where('type', '!=', 'دخل')->sum('amount');
         $total = (clone $base)->count();
 
-        $rows = (clone $base)->orderByDesc('occurred_at')->orderByDesc('id')->limit(self::LIMIT)->get()
+        $rows = (clone $base)->with('order:id,status')
+            ->orderByDesc('occurred_at')->orderByDesc('id')->limit(self::LIMIT)->get()
             ->map(fn ($t) => [
                 'id' => $t->id,
                 'reference' => $t->reference,
@@ -357,6 +389,8 @@ class ReportData
                 'type' => $t->type,
                 'amount' => round((float) $t->amount, 3),
                 'at' => optional($t->occurred_at)->format('Y-m-d'),
+                // تُوسم في الجدول كما تُوسم في الشاشة: خرجت من المجموع وبقيت
+                'cancelled' => $t->isCancelled(),
             ]);
 
         return array_merge(self::capped($rows, $total), [
@@ -445,7 +479,7 @@ class ReportData
         $scope = BankStatementLine::where('business_id', $bid)
             ->when($start, fn ($q) => $q->where('date', '>=', $start));
 
-        $matched = (clone $scope)->where('match_status', 'matched')->count();
+        $matched = (clone $scope)->where('match_status', BankStatementLine::MATCHED)->count();
 
         $rows = (clone $base)->orderByDesc('date')->orderByDesc('id')->limit(self::LIMIT)->get()
             ->map(fn ($l) => [

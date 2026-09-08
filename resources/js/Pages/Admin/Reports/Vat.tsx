@@ -1,6 +1,8 @@
 import { Link, usePage } from '@inertiajs/react';
 import ReportScreen from '@/Components/ReportScreen';
 import { type ReportRange } from '@/Components/RangeTabs';
+import SmartLink from '@/Components/SmartLink';
+import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import {
     Table,
@@ -11,7 +13,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
-import { money } from '@/lib/format';
+import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -36,6 +38,9 @@ interface Props {
         input: number;
         delivery: number;
         due: number;
+        /** سنداتُ مورّدين لم تُعتمد بعد — تُقال ولا تُخصَم */
+        pending: number;
+        pendingTax: number;
         rate: number;
         number: string;
     };
@@ -149,6 +154,33 @@ export default function ReportsVat() {
                     {t('رقم التسجيل الضريبي')}: <TrnValue number={summary.number} canEdit={canEdit} />
                 </span>
             </Card>
+
+            {/*
+                وما ينتظر الاعتماد يُقال هنا.
+
+                ضريبةُ المدخلات تُخصَم من السندات المعتمَدة وحدها — الذمّةُ
+                لا تُقيَّد إلا بالاعتماد. ورقمٌ ناقصٌ بلا سببٍ ظاهر يُبنى
+                عليه إقرارٌ يُقدَّم للجهة، فيُقال العددُ وقيمتُه والبابُ.
+            */}
+            {summary.pending > 0 && (
+                <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 border-[#fde68a] bg-[#fffbeb] p-4 text-[13px]">
+                    <span className="text-[#92400e]">
+                        {t('سندات مورّدين تنتظر الاعتماد')}:{' '}
+                        <span className="font-bold">{number(summary.pending)}</span>
+                        {' — '}
+                        {t('ضريبتها')} <span className="font-bold tabular-nums">{m(summary.pendingTax)}</span>{' '}
+                        {t('لا تدخل الإقرار حتى تُعتمد.')}
+                    </span>
+                    <Button variant="outline" size="sm" asChild>
+                        <SmartLink
+                            routeName="admin.purchases.invoices"
+                            href={route('admin.purchases.invoices')}
+                        >
+                            {t('اعتمدها')}
+                        </SmartLink>
+                    </Button>
+                </Card>
+            )}
 
             <Card className="overflow-hidden">
                 <Table>

@@ -667,22 +667,6 @@ class Demo
         ])->all();
     }
 
-    public static function platformUsers(): array
-    {
-        return User::with('business')->orderByDesc('id')->get()->map(fn ($u) => [
-            'id' => $u->id,
-            'name' => $u->name,
-            'email' => $u->email,
-            'phone' => $u->phone,
-            'business' => $u->business?->name ?? __('المنصة'),
-            'role' => $u->roleLabel(),
-            'status' => $u->status,
-            'last_login' => optional($u->last_login_at)->format('Y-m-d H:i') ?? '—',
-            'created' => optional($u->created_at)->format('Y-m-d') ?? '—',
-            'avatar' => $u->avatar ?? self::image('user' . $u->id, 100, 100),
-        ])->all();
-    }
-
     /** أحدث الأنشطة من سجل النشاط (حسب الدور) */
     public static function activities(int $limit = 8): array
     {
@@ -1174,7 +1158,6 @@ class Demo
                 'last_invoice' => $c->last_invoice,
                 'last_invoice_total' => $c->last_invoice === null ? null : (float) $c->last_invoice_total,
                 'points' => $c->points,
-                'avatar' => self::image('cust' . $c->id, 100, 100),
             ])->all();
     }
 
@@ -1221,7 +1204,8 @@ class Demo
                 return [
                     'id' => $u->id,
                     'name' => $u->name,
-                    'avatar' => $u->avatar ?? self::image('emp' . $u->id, 100, 100),
+                    // ما رُفع وحده — انظر `EmployeeController::store`
+                    'avatar' => $u->avatar,
                     'role' => $u->job_title ?: $u->roleLabel(),
                     'branch' => $u->branch ?? __('الفرع الرئيسي'),
                     'phone' => $u->phone,
@@ -2847,7 +2831,6 @@ class Demo
 
         return $business ? self::businessRow($business) : [];
     }
-    public static function platformUser($id): array { return self::findById(self::platformUsers(), $id); }
 
     /* ============================ POS ============================ */
 

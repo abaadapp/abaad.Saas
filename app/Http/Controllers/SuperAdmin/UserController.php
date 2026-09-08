@@ -4,7 +4,6 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Support\Demo;
 use App\Rules\PlatformEmailDomain;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -50,7 +49,13 @@ class UserController extends Controller
             'id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'phone' => $u->phone,
             'business' => $u->business?->name ?? __('المنصة'), 'role' => $u->roleLabel(),
             'status' => $u->status, 'last_login' => optional($u->last_login_at)->format('Y-m-d H:i') ?? '—',
-            'avatar' => $u->avatar ?? Demo::image('user' . $u->id, 100, 100),
+            /*
+             * ولا صورة: هذه الشاشة لا ترسم واحدة أصلًا.
+             *
+             * كان يُرسَل رابطُ `picsum.photos` لكلّ من لا صورة له — صفٌّ في
+             * الحمولة يُحسب في كلّ صفحة، ويُقرأ من أدوات المتصفّح، ولا يصل
+             * إلى بكسلٍ واحد على الشاشة. ولو رُسم يومًا لَرسم وجه غريب.
+             */
             'deleted' => $u->trashed(),
             /*
              * ما يمنعه من الدخول فعلًا — لا ما تقوله شارته.
@@ -175,7 +180,7 @@ class UserController extends Controller
             'role' => $data['role'],
             'business_id' => $data['role'] === 'super_admin' ? null : $data['business_id'],
             'status' => 'نشط',
-            'avatar' => Demo::image('user' . uniqid()),
+            // ولا صورة تُخترع — انظر `EmployeeController::store` والسبب نفسه
             'password' => \Illuminate\Support\Facades\Hash::make($data['password']),
         ]);
         \App\Support\Activity::log('created', 'أضاف مستخدمًا للمنصة: ' . $data['name']);

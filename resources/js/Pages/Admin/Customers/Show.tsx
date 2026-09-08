@@ -186,13 +186,10 @@ export default function CustomerShow() {
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6">
                     <Card className="p-6 text-center">
-                        {customer.avatar ? (
-                            <img src={customer.avatar} alt="" className="mx-auto size-24 rounded-full object-cover ring-4 ring-[#f5f3ff]" />
-                        ) : (
-                            <span className="mx-auto flex size-24 items-center justify-center rounded-full bg-[#f5f3ff] text-[28px] font-bold text-[#6d28d9]">
-                                {(customer.label || customer.name).slice(0, 1)}
-                            </span>
-                        )}
+                        {/* الحرف الأول — ولا عمود صورةٍ للعملاء، انظر `CustomerController::index` */}
+                        <span className="mx-auto flex size-24 items-center justify-center rounded-full bg-[#f5f3ff] text-[28px] font-bold text-[#6d28d9]">
+                            {(customer.label || customer.name).slice(0, 1)}
+                        </span>
                         <h2 className="mt-4 text-[17px] font-bold text-[#111]">{customer.label || customer.name}</h2>
                         {customer.name_en && customer.label !== customer.name && (
                             <p className="text-[12px] text-[#9ca3af]">{customer.name}</p>

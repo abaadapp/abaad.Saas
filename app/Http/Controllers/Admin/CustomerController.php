@@ -62,7 +62,17 @@ class CustomerController extends Controller
             'total_spent' => (float) ($c->orders_sum_total ?? 0),
             'last_order' => $c->orders_max_ordered_at
                 ? \Illuminate\Support\Carbon::parse($c->orders_max_ordered_at)->format('Y-m-d') : '—',
-            'points' => $c->points, 'avatar' => Demo::image('cust' . $c->id, 100, 100),
+            /*
+             * ولا صورة: لا عمود لها في `customers` أصلًا.
+             *
+             * كان يُحسب هنا رابطُ `picsum.photos` من معرّف العميل — فيُعرض
+             * لكلّ عميلٍ وجهُ إنسانٍ لا يعرفه أحد، في القائمة وفي ملفّه.
+             * والحقلُ لم يكن يُقرأ من عمود، فلا صورةَ رُفعت قطّ ولا يمكن أن
+             * تُرفع: الشرط `{c.avatar ? …}` في الشاشتين لم يقع أبدًا.
+             *
+             * فرُفع الحقل من الحمولة، ووقع البديل: الحرف الأول من الاسم.
+             */
+            'points' => $c->points,
         ]);
 
         $stats = Demo::customerStats();

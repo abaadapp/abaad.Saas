@@ -171,6 +171,7 @@ class FlowerOrderTest extends TestCase
             'fulfillment_type' => FlowerOrder::DELIVERY,
             'recipient_name' => 'سارة', 'recipient_phone' => '91234567',
             'delivery_address' => 'صحار', 'delivery_fee' => 0,
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
         ])->assertOk();
 
         $this->assertEquals(0, (float) $this->lastOrder()->delivery_fee);
@@ -185,6 +186,7 @@ class FlowerOrderTest extends TestCase
             'fulfillment_type' => FlowerOrder::DELIVERY,
             'recipient_name' => 'سارة', 'recipient_phone' => '91234567',
             'delivery_address' => 'مسقط',
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
         ])->assertOk();
 
         $order = $this->lastOrder();
@@ -199,6 +201,7 @@ class FlowerOrderTest extends TestCase
             'fulfillment_type' => FlowerOrder::DELIVERY,
             'recipient_name' => 'سارة المستلِمة', 'recipient_phone' => '91234567',
             'delivery_address' => 'مسقط',
+            'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
         ])->assertOk();
 
         $this->assertFalse(
@@ -407,6 +410,7 @@ class FlowerOrderTest extends TestCase
                 'fulfillment_type' => FlowerOrder::DELIVERY,
                 'recipient_name' => 'سارة', 'recipient_phone' => $phone,
                 'delivery_address' => 'عنوان',
+                'scheduled_for' => now()->addDay()->format('Y-m-d H:i:s'),
             ])->assertOk("رُفض رقمٌ صحيح: {$phone}");
         }
     }

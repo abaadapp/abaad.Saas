@@ -265,6 +265,18 @@ export default function PreparationIndex() {
                                                     {a.qty > 1 && ` ×${a.qty}`}
                                                 </span>
                                             ))}
+                                            {/*
+                                              * ملاحظةُ السطر: «بلا ورد أحمر»، «اكتب الاسم على الشريط».
+                                              *
+                                              * كانت تُرسل من الخادم ولا تُرسم هنا — يكتبها الكاشير على
+                                              * الصنف وهو يبيع، ولا يقرؤها من يصنع الباقة. وهي أوجبُ ما
+                                              * على البطاقة: الاسمُ يقول ماذا، والملاحظةُ تقول كيف.
+                                              */}
+                                            {i.note && (
+                                                <span className="block text-[12px] font-medium text-[#b45309]">
+                                                    {i.note}
+                                                </span>
+                                            )}
                                         </span>
                                         <span className="font-bold tabular-nums text-[#111]">×{i.qty}</span>
                                     </li>

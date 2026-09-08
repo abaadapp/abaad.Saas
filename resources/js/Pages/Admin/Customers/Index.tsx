@@ -89,11 +89,17 @@ export default function CustomersIndex() {
             header: 'العميل',
             cell: (c) => (
                 <div className="flex items-center gap-3">
-                    {c.avatar ? (
-                        <img src={c.avatar} alt="" className="size-9 rounded-full object-cover ring-2 ring-[#f2f2f0]" loading="lazy" />
-                    ) : (
-                        <span className="size-9 rounded-full bg-[#f2f2f0]" />
-                    )}
+                    {/*
+                      * الحرف الأول — لا صورة.
+                      *
+                      * كان الصفّ يعرض صورةً عشوائيّة من الإنترنت يخترعها الخادم
+                      * من رقم العميل. ولا عمودَ صورةٍ للعملاء أصلًا، فالبديل هو
+                      * كلّ ما هناك — ودائرةٌ رمادية متساوية في كلّ الصفوف لا
+                      * تميّز صفًّا عن صفّ، والحرفُ يميّز.
+                      */}
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#f5f3ff] text-[13px] font-bold text-[#6d28d9]">
+                        {(c.label || c.name).slice(0, 1)}
+                    </span>
                     <span className="min-w-0">
                         <span className="block truncate font-medium text-[#111]">{c.label || c.name}</span>
                         {c.name_en && c.label !== c.name && (

@@ -59,7 +59,6 @@ export interface Customer {
     last_invoice?: string | null;
     last_invoice_total?: number | null;
     points: number;
-    avatar: string | null;
 }
 
 export interface Employee {

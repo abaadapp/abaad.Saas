@@ -60,6 +60,14 @@ interface Props {
     actions?: Record<string, string>;
     /** لا يُعدّل المدير صلاحيات حسابه */
     canEditPermissions?: boolean;
+    /*
+     * ومن لا يقرأ الرواتب لا يرى حقولَها.
+     *
+     * `PAYROLL_VIEW` تحرس شاشةَ المسيرة — وكان الرقمُ نفسُه معروضًا هنا
+     * ومكتوبًا، فمن مُنح القسم ليصحّح مسمًّى يقرأ رواتب المتجر كلَّه ويغيّرها.
+     * والخادمُ يرفع الحقلين من الحمولة كذلك، فلا يكفي إخفاؤهما.
+     */
+    mayReadPayroll?: boolean;
 }
 
 /** قسم داخل النموذج: عنوان وشرح سطر، ثم حقوله */
@@ -110,6 +118,7 @@ export default function EmployeeForm({
     sections,
     actions,
     canEditPermissions = true,
+    mayReadPayroll = true,
 }: Props) {
     const t = useTranslate();
     /*
@@ -429,9 +438,15 @@ export default function EmployeeForm({
             <Section
                 icon={Wallet}
                 title="الراتب"
-                hint="منه تُملأ مسيرة رواتب الشهر"
+                hint={mayReadPayroll ? 'منه تُملأ مسيرة رواتب الشهر' : 'صلاحيةٌ لا تملكها'}
             >
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {! mayReadPayroll && (
+                    <p className="rounded-[10px] bg-[#fffbeb] p-3 text-[12px] leading-relaxed text-[#b45309]">
+                        {t('قراءة الرواتب صلاحيةٌ لا تملكها — يكتبها من يملكها، ولا يتغيّر ما هو مسجَّل بحفظك.')}
+                    </p>
+                )}
+
+                <div className={cn('grid grid-cols-1 gap-4 md:grid-cols-2', ! mayReadPayroll && 'hidden')}>
                     <Field label="الراتب الأساسي" hint="اتركه فارغًا لمن لا راتب له" error={form.errors.basic_salary}>
                         <Input
                             inputMode="decimal"

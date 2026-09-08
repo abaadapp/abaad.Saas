@@ -14,10 +14,12 @@ interface Props {
     currentBranchName: string | null;
     sections: Record<string, string>;
     actions: Record<string, string>;
+    /** ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر EmployeeController */
+    may_read_payroll: boolean;
 }
 
 export default function EmployeeCreate() {
-    const { branches, branchOptions, jobTitles, currentBranchName, sections, actions } =
+    const { branches, branchOptions, jobTitles, currentBranchName, sections, actions, may_read_payroll } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -33,6 +35,7 @@ export default function EmployeeCreate() {
                 subtitle={t('أضف موظفًا جديدًا وحدّد دوره وفرعه')}
             />
             <EmployeeForm
+                mayReadPayroll={may_read_payroll}
                 branches={branches}
                 branchOptions={branchOptions}
                 jobTitles={jobTitles}

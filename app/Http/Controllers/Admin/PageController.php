@@ -248,6 +248,8 @@ class PageController extends Controller
             'currentBranchName' => Demo::currentBranchName(),
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),
+            // ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر EmployeeController
+            'may_read_payroll' => (bool) auth()->user()?->may(Permissions::PAYROLL_VIEW),
         ]);
     }
 
@@ -256,6 +258,9 @@ class PageController extends Controller
         $employee = Demo::employee($id);
         abort_if(empty($employee), 404);
 
+        // والصفُّ نفسُه لا بطاقتُه: `allows` و`may` تُسألان على النموذج
+        $user = User::where('business_id', Demo::bid())->find((int) $id);
+
         return Inertia::render('Admin/Employees/Show', [
             'employee' => $employee,
             'orderCount' => Demo::employeeOrderCount($id),
@@ -263,19 +268,29 @@ class PageController extends Controller
             // سجل نشاط حقيقي من ActivityLog — القالب القديم كان يعرض قائمة
             // مكتوبة يدويًا («أتمّ طلب بيع بقيمة 45.000») لا تخص أحدًا.
             'activities' => Demo::userActivities((int) $id, 20),
-            // الصلاحيات معروضة للاسترشاد؛ الفرض الفعلي يتم بدور الموظف عبر middleware
-            'permissions' => [
-                'فتح نقطة البيع' => true,
-                'إنشاء طلب جديد' => true,
-                'تطبيق خصومات' => true,
-                'إلغاء طلب' => false,
-                'إدارة المنتجات' => false,
-                'إدارة المخزون' => true,
-                'عرض التقارير' => true,
-                'إدارة الموظفين' => false,
-                'إدارة المصروفات' => false,
-                'تعديل الإعدادات' => false,
-            ],
+            /*
+             * ═══ صلاحياتُه هو — لا قائمةٌ مكتوبةٌ باليد ═══
+             *
+             * كانت هنا عشرةُ أسطرٍ ثابتة تُعرض لكلّ موظّفٍ على حدة: «فتح نقطة
+             * البيع: نعم»، «إلغاء طلب: لا»… لا تُقرأ من صفّه ولا تتغيّر
+             * بتغيّره. فيفتح صاحبُ النشاط بطاقةَ موظّفٍ يملك «الرواتب
+             * والموظفين» فيقرأ «إدارة الموظفين: لا» ويطمئنّ.
+             *
+             * وتقريرُ أمانٍ كاذب أسوأ من غياب التقرير: من لا يجد شاشةً يذهب
+             * ليتحقّق، ومن يجدها تكذب لا يذهب.
+             *
+             * ويُقرأ بـ`allows` و`may` أنفسِهما اللتين يسأل بهما الحارس —
+             * فلا تفترق الشاشةُ عن الباب.
+             */
+            'permissions' => collect(Permissions::sectionLabels())
+                ->filter(fn ($label, $key) => $user?->allows($key))
+                ->merge(
+                    collect(Permissions::actionLabels())
+                        ->filter(fn ($label, $key) => $user?->may($key))
+                )
+                ->values()->all(),
+            // و«يتبع وظيفته» أو «مخصَّصة بيد» — الفرقُ يُقال لا يُخمَّن
+            'permissions_are_manual' => is_array($user?->permissions),
         ]);
     }
 

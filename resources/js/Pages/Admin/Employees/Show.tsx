@@ -9,7 +9,6 @@ import {
     Mail,
     Pencil,
     TriangleAlert,
-    X,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
@@ -33,12 +32,20 @@ interface Props {
     employee: Employee;
     orderCount: number;
     salesSeries: { labels: string[]; data: number[] };
-    permissions: Record<string, boolean>;
+    /*
+     * ما يفتحه هذا الموظّف فعلًا — أسماءُ ما مُنح، لا خريطةُ نعم/لا ثابتة.
+     *
+     * كانت `Record<string, boolean>` تُملأ في الخادم بعشرة أسطرٍ مكتوبةٍ
+     * باليد، متطابقةٍ لكلّ موظّف. انظر `PageController::employeesShow`.
+     */
+    permissions: string[];
+    /** أمخصَّصةٌ بيدٍ أم تتبع وظيفته؟ — الفرقُ يُقال لا يُخمَّن */
+    permissions_are_manual: boolean;
     activities: ActivityItem[];
 }
 
 export default function EmployeeShow() {
-    const { employee, orderCount, salesSeries, permissions, activities, context, flash } =
+    const { employee, orderCount, salesSeries, permissions, permissions_are_manual, activities, context, flash } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -224,40 +231,52 @@ export default function EmployeeShow() {
                         )}
 
                         {/*
-                            للقراءة فقط عن قصد. كانت هنا مربّعات اختيار تُؤشَّر
-                            ولا تُحفظ ولا تُفرض — فيظن التاجر أنه منع الكاشير من
-                            إلغاء الطلبات وهو لم يمنعه. أمان زائف حول المال أسوأ
-                            من لا شيء. ما يُفرض فعلًا هو الدور عبر middleware،
-                            فنعرضه كما هو ونوجّه التغيير إلى مكانه الحقيقي.
+                            ═══ ما يفتحه هو — لا قائمةٌ ثابتة ═══
+
+                            كانت هنا عشرةُ أسطرٍ مكتوبةٍ في الخادم باليد، تُعرض
+                            لكلّ موظّفٍ على حدة ولا تُقرأ من صفّه: «إدارة
+                            الموظفين: ممنوع» لمن يملكها. فيفتح صاحبُ النشاط
+                            بطاقةَ موظّفه ليتحقّق فيقرأ ما ليس صحيحًا ويطمئنّ.
+
+                            وتقريرُ أمانٍ كاذب أسوأ من غياب التقرير: من لا يجد
+                            شاشةً يذهب ليتحقّق، ومن يجدها تكذب لا يذهب.
+
+                            ويُعرض الممنوحُ وحده: قائمةُ «ممنوع» تطول بطول
+                            الأقسام والأفعال فتدفن ما مُنح فعلًا.
                         */}
                         {tab === 'permissions' && (
                             <div className="p-6">
                                 <p className="mb-4 text-sm text-[#6b7280]">
-                                    {t('ما يسمح به دور «:role» — يُفرض على الخادم.', { role: t(employee.role) })}
+                                    {permissions_are_manual
+                                        ? t('صلاحيات مخصَّصة لهذا الموظف — تُفرض على الخادم.')
+                                        : t('ما يسمح به دور «:role» — يُفرض على الخادم.', {
+                                              role: t(employee.role),
+                                          })}
                                 </p>
-                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    {Object.entries(permissions).map(([name, granted]) => (
-                                        <div
-                                            key={name}
-                                            className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] px-4 py-3"
-                                        >
-                                            <span className="text-sm font-medium text-[#4b4b4b]">{t(name)}</span>
-                                            {granted ? (
+
+                                {permissions.length === 0 ? (
+                                    <p className="rounded-[12px] border border-dashed border-[var(--ui-border,#e8e8e8)] p-5 text-center text-[13px] text-[#9ca3af]">
+                                        {t('لا يفتح هذا الموظف شيئًا — لم تُمنح له صلاحية.')}
+                                    </p>
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        {permissions.map((name) => (
+                                            <div
+                                                key={name}
+                                                className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] px-4 py-3"
+                                            >
+                                                <span className="text-sm font-medium text-[#4b4b4b]">{name}</span>
                                                 <span className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-[#047857]">
                                                     <Check className="size-4" />
                                                     {t('مسموح')}
                                                 </span>
-                                            ) : (
-                                                <span className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-[#9ca3af]">
-                                                    <X className="size-4" />
-                                                    {t('ممنوع')}
-                                                </span>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
                                 <p className="mt-5 text-[12px] text-[#9ca3af]">
-                                    {t('لتغيير الصلاحيات، غيّر دور الموظف من صفحة التعديل.')}
+                                    {t('لتغيير الصلاحيات، افتح صفحة تعديل الموظف.')}
                                 </p>
                             </div>
                         )}

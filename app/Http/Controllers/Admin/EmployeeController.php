@@ -101,6 +101,9 @@ class EmployeeController extends Controller
 
         PlanLimits::enforce(auth()->user()->business, 'employees');
 
+        // ولا يُكتب راتبٌ بيد من لا يقرؤه — يبقى صفرًا حتى يكتبه صاحبُه
+        $data = $this->withoutPayrollFields($data);
+
         $employee = User::create([
             'business_id' => $this->bid(),
             'name' => $data['name'],
@@ -305,10 +308,98 @@ class EmployeeController extends Controller
      * فيُشترط أن يكون الماسّ صاحبَ نشاطٍ هو الآخر. والقراءة تبقى مفتوحة:
      * المحاسب يرى الصفّ في القائمة كما كان، ولا يكتب فيه.
      */
-    private function refuseTouchingTheOwner(User $employee): void
+    /**
+     * لا يُمسّ حسابُ من يملك أكثر ممّا أملك.
+     *
+     * ═══ العطب ═══
+     *
+     * كان الحارسُ يسأل سؤالًا واحدًا: «أهذا صاحبُ النشاط؟». وما دونه مباح.
+     * فموظّفٌ مُنح قسم «الرواتب والموظفين» وحدَه — ليضيف موظّفًا أو يصحّح
+     * مسمًّى — كان **يعيد تعيين كلمة مرور مدير الفرع**، وتُعرض له الكلمةُ
+     * الجديدة في الشاشة لينسخها. ثمّ يدخل بها فيصير له ما للمدير: كلُّ قسم،
+     * وكلُّ فعل، وكلُّ ريال في الدفتر.
+     *
+     * ويقدر كذلك أن يُعطّل حسابه فيقفله عن صاحبه، وأن يعدّل بياناته.
+     *
+     * ═══ والقاعدةُ هي قاعدةُ المنح نفسها ═══
+     *
+     * `refuseGrantingMoreThanIHave` تمنع أن يَمنح المرءُ ما لا يملك. وهذه
+     * تمنع أن **يستولي** على ما لا يملك — وهما وجهان لباب واحد: من لا يملك
+     * أن يكتب الصلاحية لا يملك أن يأخذها بكلمة مرور.
+     *
+     * فيُقارَن ما يفتحه المستهدَف بما يفتحه الفاعل، قسمًا قسمًا وفعلًا فعلًا.
+     * ومن كان مثلَه أو دونه يُمسّ، ومن فوقه لا. وصاحبُ النشاط يملك كلَّ شيء
+     * فلا يبلغه أحدٌ سواه — وهو ما كان الحارسُ القديم يقوله وحده.
+     */
+    /**
+     * هل يقرأ هذا الفاعلُ الرواتب؟
+     *
+     * ═══ وبابٌ حُرس نصفَه ═══
+     *
+     * `PAYROLL_VIEW` فُصلت عن القسم لأنّ «من مُنح القسمَ ليضيف موظّفًا أو
+     * يصحّح مسمّاه كان يقرأ راتبَ كلّ من في المتجر». وحُرست شاشةُ المسيرة
+     * وحدَها — وبقي **الرقمُ نفسُه** في شاشة تعديل الموظّف: يُعرض لمن يفتح
+     * القسم، ويُكتب كذلك.
+     *
+     * فالحارسُ كان يقف على باب، والدارُ لها بابان.
+     */
+    private function readsPayroll(): bool
     {
-        if ($employee->role === 'admin' && auth()->user()?->role !== 'admin') {
-            abort(403, __('حساب صاحب النشاط لا يُعدَّل إلا بيده.'));
+        return (bool) auth()->user()?->may(Permissions::PAYROLL_VIEW);
+    }
+
+    /**
+     * ورقمُ الراتب لا يُكتب بيد من لا يقرؤه.
+     *
+     * والحقلُ يُرفع من الحمولة لا يُكتب صفرًا: الشاشةُ لا تعرضه لمن لا يملكه،
+     * فما يصل من طلبٍ مصنوع لا يُطاع — ولا يُمحى راتبٌ قائمٌ بحفظةٍ عابرة.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function withoutPayrollFields(array $data): array
+    {
+        if ($this->readsPayroll()) {
+            return $data;
+        }
+
+        unset($data['basic_salary'], $data['allowances']);
+
+        return $data;
+    }
+
+    private function refuseTouchingSomeoneAboveMe(User $employee): void
+    {
+        $actor = auth()->user();
+
+        if (! $actor || $actor->role === 'admin') {
+            return;
+        }
+
+        // ونفسُه ليست فوقه — وحارسٌ آخر يمنع ما لا يُفعل بالنفس
+        if ($actor->id === $employee->id) {
+            return;
+        }
+
+        $beyond = [
+            ...array_filter(
+                Permissions::sections(),
+                fn ($s) => $employee->allows($s) && ! $actor->allows($s),
+            ),
+            ...array_filter(
+                Permissions::actions(),
+                fn ($a) => $employee->may($a) && ! $actor->may($a),
+            ),
+        ];
+
+        if ($beyond) {
+            abort(403, __('حساب :name يفتح ما لا تفتحه (:what) — لا يُمسّ إلا ممّن يملكه.', [
+                'name' => $employee->name,
+                'what' => implode('، ', array_map(
+                    fn ($k) => Permissions::sectionLabels()[$k] ?? Permissions::actionLabels()[$k] ?? $k,
+                    array_slice(array_values($beyond), 0, 4),
+                )),
+            ]));
         }
     }
 
@@ -334,9 +425,15 @@ class EmployeeController extends Controller
                 'status' => $employee->status,
                 'monthly_target' => $employee->monthly_target,
                 'commission_rate' => $employee->commission_rate,
-                // منهما تُملأ مسيرة الشهر — وحقلٌ لا يُرسل يُقرأ فارغًا فيُمسح عند الحفظ
-                'basic_salary' => $employee->basic_salary,
-                'allowances' => $employee->allowances,
+                /*
+                 * منهما تُملأ مسيرة الشهر — ولا يبلغان من لا يقرأ الرواتب.
+                 *
+                 * و`null` لا صفر: الشاشةُ تعرف الفرق بين «راتبُه صفر» و«ليس
+                 * لك أن تراه»، فلا تعرض صفرًا كاذبًا. و`may_read_payroll`
+                 * تقول لها أيَّهما.
+                 */
+                'basic_salary' => $this->readsPayroll() ? $employee->basic_salary : null,
+                'allowances' => $this->readsPayroll() ? $employee->allowances : null,
                 // null تعني «اتبع الدور»؛ مصفوفة تعني قائمة يدوية
                 'permissions' => $employee->permissions,
                 'role_permissions' => collect(Permissions::sections())
@@ -345,6 +442,8 @@ class EmployeeController extends Controller
             ],
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),
+            // ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر `readsPayroll`
+            'may_read_payroll' => $this->readsPayroll(),
             'branches' => Demo::branches(),
             'branchOptions' => Branch::where('business_id', Demo::bid())
                 ->orderBy('id')->get(['id', 'name'])
@@ -356,7 +455,7 @@ class EmployeeController extends Controller
     public function update(Request $request, $id)
     {
         $employee = $this->findEmployee($id);
-        $this->refuseTouchingTheOwner($employee);
+        $this->refuseTouchingSomeoneAboveMe($employee);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             /*
@@ -452,6 +551,9 @@ class EmployeeController extends Controller
             $data['status'] = $wantsActive ? 'نشط' : 'معطل';
         }
 
+        // ورقمُ الراتب لا يُكتب بيد من لا يقرؤه — انظر `withoutPayrollFields`
+        $data = $this->withoutPayrollFields($data);
+
         // الأرقام الفارغة تعني «بلا هدف/عمولة» لا صفرًا مفروضًا
         foreach (['monthly_target', 'commission_rate', 'basic_salary', 'allowances'] as $numeric) {
             if (array_key_exists($numeric, $data)) {
@@ -518,7 +620,7 @@ class EmployeeController extends Controller
     public function toggleStatus($id)
     {
         $employee = $this->findEmployee($id);
-        $this->refuseTouchingTheOwner($employee);
+        $this->refuseTouchingSomeoneAboveMe($employee);
         if ($employee->id === auth()->id()) {
             return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'error']);
         }
@@ -533,7 +635,7 @@ class EmployeeController extends Controller
     public function resetPassword($id)
     {
         $employee = $this->findEmployee($id);
-        $this->refuseTouchingTheOwner($employee);
+        $this->refuseTouchingSomeoneAboveMe($employee);
         if ($employee->id === auth()->id()) {
             return back()->with('toast', ['msg' => __('استخدم صفحة «الملف الشخصي» لتغيير كلمة مرورك'), 'type' => 'warning']);
         }

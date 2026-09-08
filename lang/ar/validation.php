@@ -294,7 +294,6 @@ return [
         'monthly_target' => 'الهدف الشهري',
         'monthly_price' => 'السعر الشهري',
         'yearly_price' => 'السعر السنوي',
-        'commission_rate' => 'نسبة العمولة',
         'is_popular' => 'الأكثر شيوعًا',
 
         // البنوك

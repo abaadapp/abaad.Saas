@@ -8,6 +8,19 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
+/**
+ * ═══ أعمدةٌ متقاعدة في هذا الجدول ═══
+ *
+ * تبقى في القاعدة بما فيها — لا تُقرأ ولا تُكتب — حتى تُحذفها مهاجرةٌ صريحة.
+ * وذِكرُها هنا كي لا يُبنى عليها حسابٌ جديد ظنًّا أنّها حيّة:
+ *
+ * - `sales_total` — لا بيعةٌ تزيده ولا وردية. مبيعاتُ الموظّف تُحسب من
+ *   الطلبات (انظر `Demo::employees`).
+ * - `commission_rate` — نسبةٌ كان التاجر يُدخلها ولا يُصرف منها شيء: لا
+ *   مسيرةَ رواتبَ تقرؤها ولا كشفَ عمولةٍ في النظام. رُفع حقلُها من شاشة
+ *   الموظّف كي لا تَعِد لافتةٌ بما لا يقع.
+ * - `pin` — رُفع الدخولُ بالرمز؛ انظر التعليق في `casts`.
+ */
 class User extends Authenticatable
 {
     use HasFactory, Notifiable, SoftDeletes;

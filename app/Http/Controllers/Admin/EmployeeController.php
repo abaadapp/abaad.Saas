@@ -281,8 +281,8 @@ class EmployeeController extends Controller
             return __('لا يمكنك تغيير وظيفتك بنفسك.');
         }
 
-        foreach (['basic_salary' => $employee->basic_salary, 'allowances' => $employee->allowances,
-            'commission_rate' => $employee->commission_rate] as $field => $current) {
+        foreach (['basic_salary' => $employee->basic_salary,
+            'allowances' => $employee->allowances] as $field => $current) {
             if ($request->has($field) && (float) $request->input($field) > (float) $current) {
                 return __('لا يمكنك رفع راتبك أو بدلاتك بنفسك.');
             }
@@ -426,7 +426,6 @@ class EmployeeController extends Controller
                 'avatar' => $employee->avatar,
                 'status' => $employee->status,
                 'monthly_target' => $employee->monthly_target,
-                'commission_rate' => $employee->commission_rate,
                 /*
                  * منهما تُملأ مسيرة الشهر — ولا يبلغان من لا يقرأ الرواتب.
                  *
@@ -485,8 +484,15 @@ class EmployeeController extends Controller
             // تغيير كانت تُبتلع بصمت ويظنّ المدير أنه غيّرها.
             'password' => ['nullable', 'string', 'min:4'],
             'status' => ['nullable', 'boolean'],
+            /*
+             * ولا `commission_rate` معه — رُفع الحقل.
+             *
+             * كان يُدخَل ويُحفظ ولا يُصرف منه شيء: لا مسيرةَ رواتبَ تقرؤه ولا
+             * كشفَ عمولةٍ يُبنى عليه. مقبضٌ لا يُدير شيئًا، ولافتتُه («الهدف
+             * والعمولة») تُوهم أنّه يُدير. والعمود يبقى بما فيه حتى تُحذفه
+             * مهاجرةٌ صريحة — انظر `User`.
+             */
             'monthly_target' => ['nullable', 'numeric', 'min:0'],
-            'commission_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             /*
              * الراتب وبدلاته — مصدرُ مسيرة الشهر.
              *
@@ -556,8 +562,8 @@ class EmployeeController extends Controller
         // ورقمُ الراتب لا يُكتب بيد من لا يقرؤه — انظر `withoutPayrollFields`
         $data = $this->withoutPayrollFields($data);
 
-        // الأرقام الفارغة تعني «بلا هدف/عمولة» لا صفرًا مفروضًا
-        foreach (['monthly_target', 'commission_rate', 'basic_salary', 'allowances'] as $numeric) {
+        // الأرقام الفارغة تعني «بلا هدف» لا صفرًا مفروضًا
+        foreach (['monthly_target', 'basic_salary', 'allowances'] as $numeric) {
             if (array_key_exists($numeric, $data)) {
                 $data[$numeric] = $data[$numeric] === null || $data[$numeric] === '' ? 0 : $data[$numeric];
             }

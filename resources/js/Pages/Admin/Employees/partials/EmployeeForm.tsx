@@ -36,7 +36,6 @@ export interface EmployeeFormValues {
     avatar?: string | null;
     status?: string;
     monthly_target?: number | string | null;
-    commission_rate?: number | string | null;
     basic_salary?: number | string | null;
     allowances?: number | string | null;
     /** null تعني «اتبع الدور»؛ مصفوفة تعني قائمة يدوية */
@@ -156,7 +155,6 @@ export default function EmployeeForm({
         status: (employee?.status ?? 'نشط') === 'نشط',
         // صفرٌ يعني «بلا هدف» — يُعرض فارغًا كما يقول التلميح، لا رقمًا مضبوطًا
         monthly_target: Number(employee?.monthly_target ?? 0) ? String(employee!.monthly_target) : '',
-        commission_rate: Number(employee?.commission_rate ?? 0) ? String(employee!.commission_rate) : '',
         basic_salary: Number(employee?.basic_salary ?? 0) ? String(employee!.basic_salary) : '',
         allowances: Number(employee?.allowances ?? 0) ? String(employee!.allowances) : '',
         // علمٌ يُرسل دائمًا: مصفوفة فارغة تسقط من طلب HTTP، فبدونه لا يميّز
@@ -469,10 +467,21 @@ export default function EmployeeForm({
                 </div>
             </Section>
 
+            {/*
+                والعمولةُ رُفعت من هنا.
+
+                كان تحت هذا العنوان حقلٌ ثانٍ — «نسبة العمولة %» — يُدخَل
+                ويُحفظ ولا يُصرف منه شيء: لا مسيرةَ رواتبَ تقرؤه، ولا كشفَ
+                عمولةٍ في النظام يُبنى عليه. ولافتةُ القسم كانت تقول «الهدف
+                والعمولة»، فيُصدّق التاجرُ أنّ ما يكتبه يُحتسب لموظّفه.
+
+                والحقلُ الذي لا يُدير شيئًا أسوأ من غيابه: صاحبُه يظنّ أنّ
+                الأمر مضبوطٌ فلا يسأل عنه. فرُفع، والعمود يبقى بما فيه.
+            */}
             <Section
                 icon={Target}
-                title="الهدف والعمولة"
-                hint="على الهدف وحده يُحتسب «تحقيق الهدف» في قائمة الموظفين"
+                title="الهدف الشهري"
+                hint="عليه يُحتسب «تحقيق الهدف» في قائمة الموظفين"
             >
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Field
@@ -485,16 +494,6 @@ export default function EmployeeForm({
                             dir="ltr"
                             value={form.data.monthly_target}
                             onChange={(e) => form.setData('monthly_target', e.target.value)}
-                            placeholder="0"
-                        />
-                    </Field>
-
-                    <Field label="نسبة العمولة %" error={form.errors.commission_rate}>
-                        <Input
-                            inputMode="decimal"
-                            dir="ltr"
-                            value={form.data.commission_rate}
-                            onChange={(e) => form.setData('commission_rate', e.target.value)}
                             placeholder="0"
                         />
                     </Field>

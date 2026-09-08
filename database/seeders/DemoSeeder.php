@@ -396,7 +396,6 @@ class DemoSeeder extends Seeder
         foreach (User::where('role', '!=', 'super_admin')->get() as $i => $u) {
             $u->update([
                 'monthly_target' => [3000, 4500, 6000, 2500, 5000][$i % 5],
-                'commission_rate' => [2, 3, 2.5, 1.5, 4][$i % 5],
             ]);
         }
 

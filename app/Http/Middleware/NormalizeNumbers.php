@@ -60,7 +60,7 @@ class NormalizeNumbers
         'salary', 'basic_salary', 'basic', 'allowances', 'deductions', 'overtime',
 
         // النسب والحدود
-        'commission_rate', 'vat_rate', 'loyalty_earn_rate', 'percent',
+        'vat_rate', 'loyalty_earn_rate', 'percent',
         'wastage_percent', 'threshold', 'monthly_target',
 
         // الكميّات — عشريّةٌ في التركيب والاستلام

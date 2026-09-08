@@ -77,7 +77,7 @@ class EmployeesAndTemplatesTest extends TestCase
     public function test_the_edit_form_carries_the_fields_it_shows(): void
     {
         $e = $this->employee();
-        $e->update(['monthly_target' => 500, 'commission_rate' => 2.5]);
+        $e->update(['monthly_target' => 500]);
 
         $props = $this->actingAs($this->owner)->get(route('admin.employees.edit', $e->id))
             ->assertOk()->viewData('page')['props']['employee'];
@@ -144,27 +144,92 @@ class EmployeesAndTemplatesTest extends TestCase
         $this->assertSame('نشط', $this->owner->fresh()->status);
     }
 
-    public function test_target_and_commission_are_saved(): void
+    public function test_the_target_is_saved(): void
     {
         $this->title();
         $e = $this->employee();
 
         $this->actingAs($this->owner)->put(route('admin.employees.update', $e->id), $this->updatePayload($e, [
-            'monthly_target' => '1200', 'commission_rate' => '3.5',
+            'monthly_target' => '1200',
         ]));
 
         $this->assertSame(1200.0, (float) $e->fresh()->monthly_target);
-        $this->assertSame(3.5, (float) $e->fresh()->commission_rate);
     }
 
-    public function test_a_commission_above_a_hundred_percent_is_refused(): void
+    /* ============ نسبةُ عمولةٍ لا تُصرف — رُفع الحقل ============ */
+
+    /**
+     * ═══ مقبضٌ لا يُدير شيئًا ═══
+     *
+     * «نسبة العمولة %» كانت حقلًا في ملفّ الموظّف تحت لافتة «الهدف والعمولة»:
+     * يُدخله التاجر، ويُحفظ في `users.commission_rate`، ولا يُصرف منه شيء —
+     * لا مسيرةَ رواتبَ تقرؤه، ولا كشفَ عمولةٍ في النظام أصلًا. ويُقرأ في
+     * موضعٍ واحدٍ فقط: حارسٌ يمنع الموظّف من رفع نسبته بنفسه — يحرس رقمًا لا
+     * يُصرف منه شيء.
+     *
+     * وحقلٌ كهذا أسوأ من غيابه: صاحبُه يظنّ أنّ الأمر مضبوطٌ فلا يسأل عنه،
+     * ويكتشف عند أوّل مسيرةٍ أنّ ما كتبه لم يبلغ أحدًا.
+     *
+     * والعمودُ يبقى بما فيه: رفعُ المقبض لا يمحو ما أدخله التاجر.
+     */
+    public function test_the_commission_field_no_longer_reaches_the_screen(): void
+    {
+        $e = $this->employee();
+        $e->update(['commission_rate' => 2.5]);
+
+        $props = $this->actingAs($this->owner)->get(route('admin.employees.edit', $e->id))
+            ->assertOk()->viewData('page')['props']['employee'];
+
+        $this->assertArrayNotHasKey('commission_rate', $props);
+        // والهدفُ باقٍ — رُفعت العمولة وحدها
+        $this->assertArrayHasKey('monthly_target', $props);
+    }
+
+    public function test_a_commission_posted_by_hand_is_not_written(): void
+    {
+        /*
+         * والحارس في الخادم لا في الشاشة: رفعُ الحقل من النموذج لا يمنع
+         * أحدًا من إرسال المفتاح في الطلب. ولو مرّ لكُتب في عمودٍ متقاعد
+         * رقمٌ يظنّ صاحبُه أنّه يُصرف.
+         */
+        $this->title();
+        $e = $this->employee();
+        $e->update(['commission_rate' => 2.5]);
+
+        $this->actingAs($this->owner)->put(
+            route('admin.employees.update', $e->id),
+            $this->updatePayload($e, ['commission_rate' => '99']),
+        );
+
+        $this->assertSame(2.5, (float) $e->fresh()->commission_rate, 'مفتاحٌ مرفوعٌ لا يُكتب من طلب');
+    }
+
+    public function test_lifting_the_handle_does_not_erase_what_was_entered(): void
     {
         $this->title();
         $e = $this->employee();
+        $e->update(['commission_rate' => 4.25, 'monthly_target' => 800]);
 
-        $this->actingAs($this->owner)->put(route('admin.employees.update', $e->id), $this->updatePayload($e, [
-            'commission_rate' => '150',
-        ]))->assertSessionHasErrors('commission_rate');
+        $this->actingAs($this->owner)->put(
+            route('admin.employees.update', $e->id),
+            $this->updatePayload($e, ['monthly_target' => '900']),
+        );
+
+        $this->assertSame(4.25, (float) $e->fresh()->commission_rate, 'العمود يبقى بما فيه');
+        $this->assertSame(900.0, (float) $e->fresh()->monthly_target);
+    }
+
+    public function test_no_live_field_carries_the_commission_on_the_employee_form(): void
+    {
+        /*
+         * وعلى شكل الشفرة لا على النصّ: تعليقي في الملفّ يذكر «نسبة العمولة»
+         * شرحًا لِما رُفع — وحارسٌ يقرأ كلمةً كتبتُها بنفسي يحرس نفسه.
+         */
+        $form = file_get_contents(resource_path('js/Pages/Admin/Employees/partials/EmployeeForm.tsx'));
+
+        $this->assertStringNotContainsString('form.data.commission_rate', $form);
+        $this->assertStringNotContainsString("setData('commission_rate'", $form);
+        $this->assertStringNotContainsString('form.errors.commission_rate', $form);
     }
 
     /* ======================= تعديل الوظيفة ======================= */

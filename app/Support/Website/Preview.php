@@ -325,16 +325,30 @@ class Preview
             ->map(fn ($p) => self::product($p))->all();
     }
 
+    /**
+     * «الأكثر مبيعًا» — من البيع وحده.
+     *
+     * كانت تعدّ كلّ سطرٍ في كلّ طلب: الملغى منها والمعلَّق. والملغى ليس بيعًا —
+     * بضاعةٌ رجعت أو طلبٌ لم يتمّ — والمعلَّق سلّةٌ مفتوحةٌ على شاشة الكاشير لم
+     * تُدفع بعد. فطلبٌ كبير أُلغي كان يرفع صنفه إلى صدر موقع التاجر، وسلّةٌ
+     * نسيها موظّفٌ مفتوحةً تفعل مثلها.
+     *
+     * وأسوأُ ما فيه أنّه يُعرض على الزبائن لا على التاجر: هو لا يرى موقعه
+     * المنشور كلّ يوم، فيبقى صنفٌ لم يُبَع في صدر الصفحة شهورًا.
+     *
+     * و`Order::scopeSold` هو تعريف «بيعة» في النظام كلِّه — يقرؤه التقرير
+     * والإقرار الضريبيّ ولوحة التاجر. فيُقرأ منه هنا أيضًا، لا يُعاد كتابةُ
+     * الشرطين بيدٍ تنسى أحدهما.
+     */
     private static function bestSellers(int $businessId, int $limit, int $days): array
     {
-        $ids = OrderItem::query()
-            ->join('orders', 'orders.id', '=', 'order_items.order_id')
-            ->where('orders.business_id', $businessId)
-            ->where('orders.ordered_at', '>=', now()->subDays(max(7, $days)))
-            ->whereNotNull('order_items.product_id')
-            ->groupBy('order_items.product_id')
-            ->orderByRaw('SUM(order_items.quantity) DESC')
-            ->limit($limit)->pluck('order_items.product_id');
+        $ids = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $businessId)->sold()
+            ->where('ordered_at', '>=', now()->subDays(max(7, $days))))
+            ->whereNotNull('product_id')
+            ->groupBy('product_id')
+            // وعند التساوي يُرتَّب بالمعرّف: صفحةٌ تتبدّل بلا سببٍ عند كلّ طلب
+            ->orderByRaw('SUM(quantity) DESC')->orderBy('product_id')
+            ->limit($limit)->pluck('product_id');
 
         if ($ids->isEmpty()) {
             return [];

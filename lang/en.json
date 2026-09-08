@@ -2323,7 +2323,7 @@
     "يوليو": "July",
     "يونيو": "June",
     "يُتجاهل": "Skipped",
-    "يُحتسب عليهما «تحقيق الهدف» في قائمة الموظفين": "“Target achieved” in the employee list is computed from these",
+    "على الهدف وحده يُحتسب «تحقيق الهدف» في قائمة الموظفين": "“Target achieved” in the employee list is computed from the target alone",
     "يُربط الجهاز بفرع واحد. تغييره لاحقًا من الإعدادات ويحتاج إعادة تفعيل.": "A device is bound to one branch. Changing it later is done in Settings and requires re-activation.",
     "يُرسل إلى بريد صاحب النشاط عند إتمام أي عملية بيع.": "Sent to the business owner's email whenever a sale is completed.",
     "يُستخدم فقط للصفوف التي لا تحوي عمود «الفرع» في الملف — وإلا يُعتمد فرع الملف.": "Used only for rows without a «Branch» column in the file — otherwise the file's branch is used.",

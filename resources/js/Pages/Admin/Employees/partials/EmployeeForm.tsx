@@ -472,7 +472,7 @@ export default function EmployeeForm({
             <Section
                 icon={Target}
                 title="الهدف والعمولة"
-                hint="يُحتسب عليهما «تحقيق الهدف» في قائمة الموظفين"
+                hint="على الهدف وحده يُحتسب «تحقيق الهدف» في قائمة الموظفين"
             >
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Field

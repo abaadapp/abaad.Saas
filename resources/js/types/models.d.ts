@@ -72,7 +72,12 @@ export interface Employee {
     sales: number;
     status: string;
     joined: string;
+    /** مبيعات الشهر الجاري — مبلغٌ لا نسبة */
     achieved: number;
+    /** هدفه الشهري كما ضبطه التاجر — صفرٌ يعني «بلا هدف» */
+    target: number;
+    /** نسبة تحقيق الهدف، أو `null` لمن لا هدف له — انظر `Demo::employees` */
+    target_pct: number | null;
 }
 
 export interface Supplier {

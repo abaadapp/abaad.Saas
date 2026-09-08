@@ -26,6 +26,15 @@ export interface JobTitle {
     usage: number;
 }
 
+/**
+ * مفتاحُ ترتيب عمود «تحقيق الهدف».
+ *
+ * ومن لا هدف له ليس عند صفر: `-1` تضعه تحت من حقّق صفرًا من هدفٍ مضبوط.
+ * ولو خُلطا لَقرأ التاجرُ ترتيبًا يقول إنّ من لم يُكلَّف بهدفٍ مقصّرٌ مثلَ
+ * من كُلِّف ولم يبع.
+ */
+export const targetSortKey = (e: Pick<Employee, 'target_pct'>): number => e.target_pct ?? -1;
+
 const TABS = [
     { key: 'employees', label: 'الموظفون' },
     { key: 'titles', label: 'الوظائف' },
@@ -149,12 +158,28 @@ export default function EmployeesPanel({ employees, jobTitles }: { employees: Em
             cell: (e) => <span className="tabular-nums">{money(e.sales, currency)}</span>,
         },
         {
+            /*
+             * نسبةُ تحقيق الهدف — لا مبلغُ المبيعات وعليه علامة `%`.
+             *
+             * كان يرسم `achieved` (مبيعات الشهر بالريال) ويُلحق به `%`: «٢١٪»
+             * لواحدٍ وعشرين ريالًا. والهدفُ الذي يضبطه التاجر في ملفّ الموظف
+             * لم يكن يدخل الحساب — انظر `Demo::employees`.
+             *
+             * ومن لا هدف له تُرسم له شرطة: صفرٌ يُقرأ تقصيرًا، والشرطةُ تقول
+             * «لم يُضبط له هدف» — وهو ما يقوله نموذجُه: «اتركه فارغًا لبلا هدف».
+             */
             key: 'achieved',
             header: 'تحقيق الهدف',
             align: 'end',
             sortable: true,
-            value: (e) => e.achieved,
-            cell: (e) => <span className="tabular-nums">{number(e.achieved)}%</span>,
+            // ومن لا هدف له يقع في ذيل الترتيب لا في صدره — انظر `targetSortKey`
+            value: targetSortKey,
+            cell: (e) =>
+                e.target_pct === null ? (
+                    <span className="text-[#9ca3af]">—</span>
+                ) : (
+                    <span className="tabular-nums">{number(e.target_pct)}%</span>
+                ),
         },
         { key: 'status', header: 'الحالة', cell: (e) => <Badge status={e.status} /> },
         {

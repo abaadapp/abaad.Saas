@@ -188,10 +188,17 @@ class NoOneSeizesAnAccountAboveHisOwnTest extends TestCase
 
     // ═════════════ الرواتب: بابان لا باب ═════════════
 
-    /** وشاشةُ التعديل لا تُرسل راتبًا لمن لا يقرأ الرواتب */
+    /**
+     * وشاشةُ التعديل لا تُرسل راتبًا لمن لا يقرأ الرواتب.
+     *
+     * والفاعلُ مشرفٌ يبلغ الكاشير فعلًا — فالكاتبُ لا تُفتح له الشاشة أصلًا
+     * (الكاشيرُ يفتح «نقطة البيع» ولا يفتحها هو).
+     */
     public function test_the_edit_screen_hides_the_salary_from_who_may_not_read_it(): void
     {
-        $this->actingAs($this->clerk)->get(route('admin.employees.edit', $this->cashier->id))
+        $supervisor = $this->staff('مشرف الشاشة', 'sup2', 'sales', ['employees', 'dashboard', 'pos']);
+
+        $this->actingAs($supervisor)->get(route('admin.employees.edit', $this->cashier->id))
             ->assertOk()
             ->assertInertia(fn ($p) => $p
                 ->where('employee.basic_salary', null)
@@ -267,6 +274,36 @@ class NoOneSeizesAnAccountAboveHisOwnTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $this->assertEqualsWithDelta(700.0, (float) $this->cashier->fresh()->basic_salary, 0.001);
+    }
+
+    /**
+     * وشاشةُ التعديل تُغلق قبل ملء النموذج لا بعده.
+     *
+     * كانت تُفتح لكلّ من يملك القسم ويردّ الحفظُ من لا يمسّه — فيملأ الموظّف
+     * النموذج كلَّه ثمّ يُردّ. وبطاقةُ الموظّف هي شاشةُ القراءة وتبقى مفتوحة.
+     */
+    public function test_the_edit_screen_closes_before_the_form_is_filled(): void
+    {
+        $this->actingAs($this->clerk)
+            ->get(route('admin.employees.edit', $this->manager->id))
+            ->assertForbidden();
+
+        // والبطاقةُ تبقى: القراءةُ ليست الكتابة
+        $this->actingAs($this->clerk)
+            ->get(route('admin.employees.show', $this->manager->id))
+            ->assertOk();
+    }
+
+    /** والبطاقةُ تقول للشاشة أيَّ الأزرار تُرسم — فلا تُعرض أبوابٌ تُردّ */
+    public function test_the_card_says_whether_its_buttons_may_be_drawn(): void
+    {
+        $this->actingAs($this->clerk)->get(route('admin.employees.show', $this->manager->id))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('may_touch', false)->etc());
+
+        $this->actingAs($this->owner)->get(route('admin.employees.show', $this->manager->id))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('may_touch', true)->etc());
     }
 
     // ═════════════ بطاقةُ الموظّف تقول الحقّ ═════════════

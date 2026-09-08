@@ -279,6 +279,50 @@ class Permissions
         return array_values(array_unique($list));
     }
 
+    /**
+     * ما يفتحه هذا الموظّف ولا يفتحه الفاعل — وفارغةٌ تعني «يُمسّ حسابُه».
+     *
+     * ═══ ولماذا هنا لا في المتحكّم ═══
+     *
+     * سؤالان يُسألان عن الشيء نفسه: الحارسُ يسأله ليردّ، والشاشةُ تسأله
+     * لترسم. ولو كُتب في موضعين لافترقا يومًا — فتُرسم أزرارُ «إعادة تعيين
+     * كلمة المرور» و«تعطيل الحساب» لمن يردّه الخادمُ عنها، وهو أسوأ من
+     * غيابها: الموظّف يظنّ العطبَ في النظام ويعيد المحاولة.
+     *
+     * والقاعدة: من لا يملك أن **يَمنح** الصلاحية لا يملك أن **يأخذها**
+     * بكلمة مرور. انظر `EmployeeController::refuseTouchingSomeoneAboveMe`.
+     *
+     * @return list<string> مفاتيحُ ما يفوقه به — أقسامًا وأفعالًا
+     */
+    public static function beyond(?User $actor, User $employee): array
+    {
+        if (! $actor) {
+            return ['*'];
+        }
+
+        // صاحبُ النشاط يمسّ الجميع، ونفسُه ليست فوقه
+        if ($actor->role === 'admin' || $actor->id === $employee->id) {
+            return [];
+        }
+
+        return [
+            ...array_filter(
+                self::SECTIONS,
+                fn ($s) => $employee->allows($s) && ! $actor->allows($s),
+            ),
+            ...array_filter(
+                self::actions(),
+                fn ($a) => $employee->may($a) && ! $actor->may($a),
+            ),
+        ];
+    }
+
+    /** هل يمسّ هذا الفاعلُ حسابَ هذا الموظّف؟ */
+    public static function mayTouch(?User $actor, User $employee): bool
+    {
+        return self::beyond($actor, $employee) === [];
+    }
+
     /** هل هذا المفتاح فعلٌ لا قسم؟ — النقطة تفصلهما */
     public static function isAction(string $key): bool
     {

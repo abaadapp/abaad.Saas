@@ -41,11 +41,19 @@ interface Props {
     permissions: string[];
     /** أمخصَّصةٌ بيدٍ أم تتبع وظيفته؟ — الفرقُ يُقال لا يُخمَّن */
     permissions_are_manual: boolean;
+    /*
+     * وهل يُمسّ حسابُ هذا الموظّف بيد من يقرأ بطاقته؟
+     *
+     * الحارسُ يردّ من يمسّ حسابًا يفتح أكثر ممّا يفتح — وأزرارُ «تعطيل»
+     * و«إعادة تعيين كلمة المرور» و«تعديل» كانت تُرسم للجميع، فتُضغط فيُردّ
+     * صاحبُها بـ٤٠٣ لا يقول شيئًا. انظر `Permissions::mayTouch`.
+     */
+    may_touch: boolean;
     activities: ActivityItem[];
 }
 
 export default function EmployeeShow() {
-    const { employee, orderCount, salesSeries, permissions, permissions_are_manual, activities, context, flash } =
+    const { employee, orderCount, salesSeries, permissions, permissions_are_manual, may_touch, activities, context, flash } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -93,14 +101,14 @@ export default function EmployeeShow() {
                 title="ملف الموظف"
                 subtitle={t('عرض بيانات الموظف وأدائه وصلاحياته')}
                 actions={
-                    <>
+                    may_touch ? (
                         <Button asChild>
                             <SmartLink routeName="admin.employees.edit" href={route('admin.employees.edit', employee.id)}>
                                 <Pencil />
                                 {t('تعديل')}
                             </SmartLink>
                         </Button>
-                    </>
+                    ) : undefined
                 }
             />
 
@@ -147,22 +155,33 @@ export default function EmployeeShow() {
                                 </a>
                             </Button>
 
-                            <Button
-                                variant={active ? 'outline' : 'success'}
-                                size="sm"
-                                onClick={() =>
-                                    router.post(route('admin.employees.toggle', employee.id), {}, { preserveScroll: true })
-                                }
-                            >
-                                {active ? <Lock /> : <LockOpen />}
-                                {active ? t('تعطيل الحساب') : t('تفعيل الحساب')}
-                            </Button>
+                            {may_touch && (
+                                <>
+                                    <Button
+                                        variant={active ? 'outline' : 'success'}
+                                        size="sm"
+                                        onClick={() =>
+                                            router.post(route('admin.employees.toggle', employee.id), {}, { preserveScroll: true })
+                                        }
+                                    >
+                                        {active ? <Lock /> : <LockOpen />}
+                                        {active ? t('تعطيل الحساب') : t('تفعيل الحساب')}
+                                    </Button>
 
-                            <Button variant="outline" size="sm" onClick={() => setResetting(true)}>
-                                <KeyRound />
-                                {t('إعادة تعيين كلمة المرور')}
-                            </Button>
+                                    <Button variant="outline" size="sm" onClick={() => setResetting(true)}>
+                                        <KeyRound />
+                                        {t('إعادة تعيين كلمة المرور')}
+                                    </Button>
+                                </>
+                            )}
                         </div>
+
+                        {/* ومن لا يمسّه يُقال له لماذا — لا يُترك أمام فراغ */}
+                        {! may_touch && (
+                            <p className="mt-4 rounded-[10px] bg-[#fffbeb] p-3 text-center text-[12px] leading-relaxed text-[#b45309]">
+                                {t('هذا الحساب يفتح ما لا تفتحه — لا يُعدَّل ولا تُغيَّر كلمة مروره إلا ممّن يملك ذلك.')}
+                            </p>
+                        )}
                     </Card>
 
                     <Card className="p-6">

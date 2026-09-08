@@ -372,25 +372,8 @@ class EmployeeController extends Controller
     {
         $actor = auth()->user();
 
-        if (! $actor || $actor->role === 'admin') {
-            return;
-        }
-
-        // ونفسُه ليست فوقه — وحارسٌ آخر يمنع ما لا يُفعل بالنفس
-        if ($actor->id === $employee->id) {
-            return;
-        }
-
-        $beyond = [
-            ...array_filter(
-                Permissions::sections(),
-                fn ($s) => $employee->allows($s) && ! $actor->allows($s),
-            ),
-            ...array_filter(
-                Permissions::actions(),
-                fn ($a) => $employee->may($a) && ! $actor->may($a),
-            ),
-        ];
+        // والمقارنةُ في `Permissions::beyond` — تقرؤها الشاشةُ كما يقرؤها الحارس
+        $beyond = Permissions::beyond($actor, $employee);
 
         if ($beyond) {
             abort(403, __('حساب :name يفتح ما لا تفتحه (:what) — لا يُمسّ إلا ممّن يملكه.', [
@@ -406,6 +389,15 @@ class EmployeeController extends Controller
     public function edit($id)
     {
         $employee = $this->findEmployee($id);
+
+        /*
+         * وشاشةُ التعديل بابُ كتابةٍ لا بابُ قراءة.
+         *
+         * كانت تُفتح لكلّ من يملك القسم، ويردّ `update` من لا يمسّه — فيملأ
+         * الموظّفُ النموذج كلَّه ثمّ يُردّ عند الحفظ. وبطاقةُ الموظّف هي
+         * شاشةُ القراءة، وهي تبقى مفتوحة.
+         */
+        $this->refuseTouchingSomeoneAboveMe($employee);
 
         return Inertia::render('Admin/Employees/Edit', [
             'employee' => [

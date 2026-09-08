@@ -15,6 +15,7 @@ import {
     Save,
     Search,
     Trash2,
+    TriangleAlert,
     Upload,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -64,6 +65,8 @@ interface Props {
     settings: Settings;
     business: { name: string; phone: string | null; email: string | null; address: string | null; logo: string | null };
     recovery: Recovery;
+    /** أيصل البريد فعلًا — وسببُ التعذّر إن لم يصل (انظر App\Support\Mailer) */
+    mail: { deliverable: boolean; reason: string | null };
     /** نطاق موقع التاجر — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
     /** بطاقاتُ القوالب — تُبنى من `DocumentTemplates` لا تُكتب في الشاشة */
@@ -177,7 +180,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, recovery, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, business, recovery, mail, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
@@ -1514,6 +1517,20 @@ export default function SettingsIndex() {
                         {tab === 'notifications' && (
                             <>
                                 <h3 className="mb-4 font-bold text-[#111]">{t('الإشعارات')}</h3>
+                                {/*
+                                    والحقيقةُ فوق المفاتيح لا بعد شهرٍ من صمتها.
+
+                                    الثلاثةُ تَعِد صراحةً بأنّ بريدًا يصل. و`Mail::send`
+                                    تنجح مهما كان المُرسِل، فمن كان مُرسِلُه `log` كُتبت
+                                    رسائلُه في ملفٍّ على الخادم ولم تغادره — بلا خطأ ولا
+                                    أثر. والمفتاحُ يبقى يُحفظ: الإعدادُ اختيارُ صاحبه.
+                                */}
+                                {mail.reason && (
+                                    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]">
+                                        <TriangleAlert className="size-4 shrink-0" />
+                                        <span>{t(mail.reason)}</span>
+                                    </div>
+                                )}
                                 <Toggle
                                     on={form.data.notify_new_order}
                                     onChange={(v) => form.setData('notify_new_order', v)}

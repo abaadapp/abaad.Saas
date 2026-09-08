@@ -290,4 +290,33 @@ class DocumentTemplatesTest extends TestCase
 
         $this->assertFalse(DocumentTemplates::settings($this->business->id, 'sale')['show_employee']);
     }
+
+    /**
+     * وبطاقةُ القوالب لا تَعِد بورقةٍ لا محرّرَ لها.
+     *
+     * كانت تقول «فاتورة البيع وسند التسليم وأمر الشراء وسندا الاستلام
+     * **والتحويل**» — خمسةٌ، والموجود أربعة. و`transfer` رُفع مع شاشته حين
+     * حُذف النقل بين الفروع. فمن قرأ الوصف بحث عن محرّرٍ خامسٍ لا وجود له،
+     * وظنّ العطبَ في نظامه.
+     */
+    public function test_the_templates_card_promises_only_what_it_holds(): void
+    {
+        $nav = file_get_contents(base_path('resources/js/Pages/Admin/Settings/partials/SettingsNav.tsx'));
+        $desc = null;
+
+        foreach (explode("\n", $nav) as $line) {
+            if (str_contains($line, 'desc:') && str_contains($line, 'أمر الشراء')) {
+                $desc = $line;
+                break;
+            }
+        }
+
+        $this->assertNotNull($desc, 'لم تُوجد بطاقةُ القوالب في القائمة');
+        $this->assertArrayNotHasKey('transfer', DocumentTemplates::TYPES, 'عاد قالبُ التحويل — فليُذكر في الوصف');
+        $this->assertStringNotContainsString(
+            'التحويل',
+            $desc,
+            'الوصفُ يَعِد بمحرّر «سند التحويل» ولا وجود له في DocumentTemplates::TYPES'
+        );
+    }
 }

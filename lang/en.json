@@ -4725,6 +4725,8 @@
     "صلاحيةٌ لا تملكها": "A permission you do not hold",
     "هذا الحساب يفتح ما لا تفتحه — لا يُعدَّل ولا تُغيَّر كلمة مروره إلا ممّن يملك ذلك.": "This account opens what you cannot — only someone who holds that may edit it or change its password.",
     "يُحفظ في قائمة العملاء ويُختار في هذه الفاتورة فورًا.": "Saved to your customers and selected on this invoice straight away.",
+    "إرسالُ البريد غير مضبوط على الخادم — تُحفظ هذه الخيارات ولا يصل منها شيء حتى يُضبط.": "Email sending is not configured on the server — these choices are saved, but nothing will arrive until it is.",
+    "لا بريد إلكتروني لنشاطك — اكتبه في «بيانات النشاط» ليصلك ما تفتحه هنا.": "Your business has no email address — add it under Business details so what you switch on here can reach you.",
     "أضف حسابك البنكي": "Add your bank account",
     "سندات مورّدين تنتظر الاعتماد": "Supplier invoices awaiting approval",
     "ضريبتها": "their tax",

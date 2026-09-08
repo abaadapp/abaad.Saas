@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Support\Demo;
 use App\Support\DocumentTemplates;
 use App\Support\Emojis;
+use App\Support\Mailer;
 use App\Support\MarketingSettings;
 use App\Support\Permissions;
 use App\Support\ProductImages;
@@ -457,6 +458,25 @@ class PageController extends Controller
              * برحلةٍ إلى الخادم أغلى من إرسالها.
              */
             'site' => MarketingSettings::group(Demo::bid(), 'website'),
+            /*
+             * أيصل البريدُ فعلًا؟ — الجوابُ فوق مفاتيحه لا بعد شهرٍ من صمتها.
+             *
+             * ثلاثةُ مفاتيح في «الإشعارات» تَعِد صراحةً: «يُرسل إلى بريد صاحب
+             * النشاط»، «يصل آخر اليوم». وكلُّها يمرّ بـ`Mail::to(...)->send()`
+             * — وهي تنجح بلا اعتراضٍ مهما كان المُرسِل. فمن كان `MAIL_MAILER`
+             * عنده `log` كُتبت رسائلُه في ملفٍّ على الخادم ولم تغادره قطّ،
+             * ولا خطأ، ولا سطرٌ في الشاشة: يظنّ التاجر أنّ ملخّصَه يصله كلّ
+             * ليلة وهو لا يصل أحدًا.
+             *
+             * ومتجرٌ بلا بريدٍ مسجَّل كذلك: لا مُرسَلَ إليه أصلًا.
+             *
+             * ولا يُطفأ المفتاح ولا يُخفى — الإعدادُ اختيارُ صاحبه ويبقى
+             * محفوظًا حتى يُضبط البريد. إنّما تُقال الحقيقةُ فوقه.
+             */
+            'mail' => [
+                'deliverable' => Mailer::deliverable($b),
+                'reason' => Mailer::reason($b),
+            ],
             /*
              * ما يلزم بانيَ المتجر: عنوانُه المحجوز، والنطاق الذي يُبنى عليه،
              * والثيمات المتاحة. ولا يُخمَّن شيءٌ منها في الواجهة: النطاق

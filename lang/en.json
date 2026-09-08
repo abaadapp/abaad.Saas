@@ -4662,5 +4662,12 @@
     "نسخ رقم الفاتورة": "Copy invoice number",
     "نُسخ": "Copied",
     "سيتم إنشاء الرقم عند الإصدار": "The number will be created on issue",
-    "حُفظت مسودّة الفاتورة": "Invoice draft saved"
+    "حُفظت مسودّة الفاتورة": "Invoice draft saved",
+    "أيام التأخير": "Days overdue",
+    "حالة المستند": "Document status",
+    "صدرت من": "Issued from",
+    "صدرت إلى": "Issued to",
+    "تستحق من": "Due from",
+    "تستحق إلى": "Due to",
+    "عدد الصفوف": "Rows per page"
 }

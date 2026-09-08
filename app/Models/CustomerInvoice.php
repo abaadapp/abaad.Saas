@@ -79,6 +79,92 @@ class CustomerInvoice extends Model
     }
 
     /**
+     * «المسدَّد» و«الباقي» بلغة القاعدة — لأنّ الترشيح لا يقع في PHP.
+     *
+     * ═══ ولماذا كُتبا مرّتين ═══
+     *
+     * القائمةُ كانت تُحمَّل كاملةً ثمّ تُرشَّح في الذاكرة. ومع ترقيم الصفحات
+     * صار ذلك مستحيلًا: من يُرشّح صفحةً بعد جلبها يُرشّح عشرين صفًّا من
+     * أربعمئة، فتقول الشاشةُ «لا فواتير متأخّرة» ولها عشرون. فالسؤالُ يجب
+     * أن يبلغ القاعدة.
+     *
+     * ═══ وكيف لا يفترقان ═══
+     *
+     * تعبيرٌ واحد يُكتب هنا ويُقرأ في الاختيار وفي الترشيح معًا — لا نسخةٌ
+     * في كلّ استعلام. واختبارٌ يقابل ما تردّه القاعدة بما تقوله `paymentState`
+     * على مصفوفةِ حالاتٍ كاملة، فإن افترقا سقط.
+     */
+    public static function paidSql(): string
+    {
+        return '(SELECT COALESCE(SUM(a.amount), 0) FROM customer_payment_allocations a'
+            .' JOIN customer_payments p ON p.id = a.customer_payment_id'
+            .' WHERE a.customer_invoice_id = customer_invoices.id AND p.cancelled_at IS NULL)';
+    }
+
+    public static function creditedSql(): string
+    {
+        return '(SELECT COALESCE(SUM(n.amount), 0) FROM customer_credit_notes n'
+            .' WHERE n.customer_invoice_id = customer_invoices.id)';
+    }
+
+    /**
+     * الباقي — بلا حصرٍ عند الصفر، عمدًا.
+     *
+     * `outstanding()` تحصره لأنّها تُعرَض: فاتورةٌ سالبة على الشاشة خبرٌ
+     * كاذب. وهذا التعبيرُ يُقارَن ولا يُعرض، والحصرُ لا يغيّر جوابَ مقارنة:
+     * زيادةُ الدفع تجعله سالبًا فيقع تحت العتبة — «مدفوعة»، وهو الصواب.
+     *
+     * ولا `MAX(0, …)`: هي دالّةُ قيمةٍ في SQLite ودالّةُ **تجميع** في
+     * PostgreSQL — فتمرّ محلّيًّا وتنهار على محرّك الإنتاج. ونظيرتُها هناك
+     * `GREATEST` ولا وجود لها في SQLite. فالتخلّي عمّا لا يلزم أسلمُ من
+     * تفريعٍ على اسم المحرّك.
+     */
+    public static function outstandingSql(): string
+    {
+        return '(customer_invoices.total - '.self::paidSql().' - '.self::creditedSql().')';
+    }
+
+    /**
+     * والمتأخّرةُ: صادرةٌ، لها استحقاقٌ مضى، وعليها باقٍ.
+     *
+     * والمقارنةُ بنهاية يوم الاستحقاق لا ببدايته — كما في `paymentState`:
+     * من يستحقّ اليوم لا يتأخّر اليوم.
+     */
+    public function scopeOverdue($query)
+    {
+        return $query->where('status', self::ISSUED)
+            ->whereNotNull('due_at')
+            ->whereDate('due_at', '<', now()->toDateString())
+            ->whereRaw(self::outstandingSql().' > 0.0005');
+    }
+
+    /**
+     * ترشيحٌ بحال السداد — بالقاعدة، وبنفس القواعد التي تقرأها الشاشة.
+     */
+    public function scopePaymentState($query, string $state)
+    {
+        return match ($state) {
+            'مسودة' => $query->where('status', self::DRAFT),
+            'ملغاة' => $query->where('status', self::CANCELLED),
+            'مدفوعة' => $query->where('status', self::ISSUED)
+                ->whereRaw(self::outstandingSql().' <= 0.0005'),
+            'متأخرة' => $query->overdue(),
+            'مدفوعة جزئيًا' => $query->where('status', self::ISSUED)
+                ->whereRaw(self::outstandingSql().' > 0.0005')
+                ->whereRaw(self::paidSql().' > 0')
+                ->where(fn ($q) => $q->whereNull('due_at')
+                    ->orWhereDate('due_at', '>=', now()->toDateString())),
+            'غير مدفوعة' => $query->where('status', self::ISSUED)
+                ->whereRaw(self::outstandingSql().' > 0.0005')
+                ->whereRaw(self::paidSql().' <= 0')
+                ->where(fn ($q) => $q->whereNull('due_at')
+                    ->orWhereDate('due_at', '>=', now()->toDateString())),
+            // وحالٌ لا يعرفها لا تُرجع الجدولَ كلَّه — تُرجع لا شيء
+            default => $query->whereRaw('1 = 0'),
+        };
+    }
+
+    /**
      * المسدَّد — مجموعُ تخصيصات الدفعات غير الملغاة.
      *
      * ويُشتقّ ولا يُخزَّن: عمودٌ وجدولٌ يقولان الشيء نفسه يفترقان يومًا،

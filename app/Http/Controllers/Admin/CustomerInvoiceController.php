@@ -13,6 +13,7 @@ use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\Customers;
 use App\Support\Demo;
+use App\Support\Pagination;
 use App\Support\Receivables;
 use App\Support\Search;
 use App\Support\Vat;
@@ -46,11 +47,33 @@ class CustomerInvoiceController extends Controller
             ->whereKey($id)->with('items', 'customer')->firstOrFail();
     }
 
+    /** كم صفًّا في الصفحة — والتاجر يختار، وما سواها يسقط إلى العشرين */
+    private const PER_PAGE = [20, 50, 100];
+
+    /**
+     * قائمةُ الفواتير — صفحةً صفحة.
+     *
+     * ═══ ولماذا لم تعد تُحمَّل كاملة ═══
+     *
+     * كانت `limit(300)`. ومتجرٌ يكتب عشرين فاتورةً في الشهر يبلغها في سنة،
+     * وبعدها **تختفي أقدمُ فواتيره من الشاشة بلا كلمة**: لا رسالة، ولا صفحة
+     * ثانية، ولا رقمٌ يقول «من ٣٠٠ من ٤٢٠». والبحثُ يجدها لأنّه يمرّ على
+     * القاعدة — فيظنّ التاجر أنّ القائمة كلُّ ما لديه وهي ثلاثةُ أرباعه.
+     *
+     * ═══ والترشيحُ نزل إلى القاعدة معها ═══
+     *
+     * «المتأخّرة» كانت تُرشَّح في الذاكرة بعد الجلب. ومع الصفحات يعني ذلك
+     * ترشيحَ عشرين صفًّا من أربعمئة — فتقول الشاشة «لا متأخّرات» ولها عشرون
+     * في الصفحة الثالثة. انظر `CustomerInvoice::scopePaymentState`.
+     */
     public function index(Request $request): Response
     {
         $bid = $this->bid();
 
-        $rows = CustomerInvoice::where('business_id', $bid)->with('customer')
+        $per = (int) $request->integer('per_page');
+        $per = in_array($per, self::PER_PAGE, true) ? $per : self::PER_PAGE[0];
+
+        $page = CustomerInvoice::where('business_id', $bid)->with('customer')
             // والمعاملُ من `Search::like` لا مكتوبًا بيده: `like` على Postgres
             // حسّاسٌ لحالة الأحرف و`ilike` ليس كذلك — ومن كتبه بيده أصاب في
             // شاشةٍ وأخطأ في أخرى
@@ -60,19 +83,35 @@ class CustomerInvoiceController extends Controller
                     ->orWhereHas('customer', fn ($c) => $c->where('name', Search::like(), "%{$s}%"))
             ))
             ->when($request->integer('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
+            // حالُ المستند: مسودة / صادرة / ملغاة
             ->when($request->string('status')->toString(), fn ($q, $s) => $q->where('status', $s))
+            // وحالُ السداد غيرُها: مدفوعة / جزئيًا / غير مدفوعة / متأخرة
+            ->when($request->string('state')->toString(), fn ($q, $s) => $q->paymentState($s))
+            ->when($request->boolean('overdue'), fn ($q) => $q->overdue())
             ->when($request->date('from'), fn ($q, $d) => $q->whereDate('issued_at', '>=', $d))
             ->when($request->date('to'), fn ($q, $d) => $q->whereDate('issued_at', '<=', $d))
-            ->orderByDesc('id')->limit(300)->get();
-
-        // و«المتأخّرة» تُرشَّح بعد الاشتقاق لا بعمودٍ مخزَّن يحتاج مهمّةً ليليّة
-        if ($request->boolean('overdue')) {
-            $rows = $rows->filter(fn ($i) => $i->daysOverdue() > 0)->values();
-        }
+            ->when($request->date('due_from'), fn ($q, $d) => $q->whereDate('due_at', '>=', $d))
+            ->when($request->date('due_to'), fn ($q, $d) => $q->whereDate('due_at', '<=', $d))
+            ->orderByDesc('id')
+            ->paginate($per)
+            ->withQueryString();
 
         return Inertia::render('Admin/CustomerInvoices/Index', [
-            'invoices' => $rows->map(fn ($i) => $this->row($i))->all(),
-            'filters' => $request->only('q', 'customer_id', 'status', 'from', 'to', 'overdue'),
+            'invoices' => collect($page->items())->map(fn ($i) => $this->row($i))->all(),
+            /*
+             * وشكلُ الترقيم من `Pagination::meta` لا مكتوبًا هنا بيده.
+             *
+             * `DataTable` في وضعه الخادميّ يقرأ هذا الشكل بعينه في المنتجات
+             * والعملاء والمصروفات والنشاط. وشكلٌ سادسٌ يُكتب هنا يعني شريطَ
+             * صفحاتٍ يختلف عن أخواته في شاشةٍ واحدة.
+             */
+            'pagination' => Pagination::meta($page),
+            'filters' => $request->only(
+                'q', 'customer_id', 'status', 'state', 'from', 'to', 'due_from', 'due_to', 'overdue', 'per_page',
+            ),
+            'states' => ['غير مدفوعة', 'مدفوعة جزئيًا', 'مدفوعة', 'متأخرة'],
+            'statuses' => [CustomerInvoice::DRAFT, CustomerInvoice::ISSUED, CustomerInvoice::CANCELLED],
+            'customers' => Customer::where('business_id', $bid)->orderBy('name')->get(['id', 'name'])->all(),
             'totals' => Receivables::totals($bid),
         ]);
     }

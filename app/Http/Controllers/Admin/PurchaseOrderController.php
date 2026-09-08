@@ -558,6 +558,7 @@ class PurchaseOrderController extends Controller
             $out[] = [
                 'product_id' => isset($row['product_id']) ? ($owned[$row['product_id']] ?? null) : null,
                 'name' => $row['name'],
+                // ‏والمسافاتُ مقلَّمةٌ سلفًا بـ`TrimStrings` — وقصُّها هنا فرعٌ لا يُقرأ
                 'purchase_unit' => ($row['purchase_unit'] ?? null) ?: null,
                 'units_per_purchase_unit' => $per > 0 ? round($per, 3) : 1,
                 'cost' => $cost,

@@ -21,6 +21,7 @@ use App\Support\MarketingSettings;
 use App\Support\Permissions;
 use App\Support\ProductImages;
 use App\Support\PurchaseOrderTotals;
+use App\Support\PurchaseUnits;
 use App\Support\Reports;
 use App\Support\Roles;
 use App\Support\ShopIdentity;
@@ -373,6 +374,13 @@ class PageController extends Controller
              * المتصفّح لأمكن تبديلُه بضغطة تحديث.
              */
             'formToken' => (string) Str::uuid(),
+            /*
+             * ووحداتُ الشراء تُقرأ ممّا اشترى به المتجر — انظر `PurchaseUnits`.
+             *
+             * ورأسُ القائمة هو ما يُفتح به الحقل، فلا يُرسل «الافتراضيُّ»
+             * حقلًا ثانيًا يقول ما تقوله القائمةُ نفسها.
+             */
+            'units' => PurchaseUnits::forBusiness($bid),
             // ومورّدٌ أُضيف من هذه الشاشة نفسها — يُختار فور العودة إليها
             'newSupplierId' => $request->session()->get('new_supplier_id'),
         ]);

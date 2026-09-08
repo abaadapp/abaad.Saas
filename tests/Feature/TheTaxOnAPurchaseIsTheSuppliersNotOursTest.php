@@ -282,7 +282,8 @@ class TheTaxOnAPurchaseIsTheSuppliersNotOursTest extends TestCase
     {
         $screen = file_get_contents(base_path('resources/js/Pages/Admin/Purchases/Create.tsx'));
 
-        $this->assertStringContainsString(': [blank()],', $screen);
+        // ‏و`blank` صارت تأخذ وحدةَ الشراء الافتراضية — والصفُّ الجاهزُ هو المقصود
+        $this->assertStringContainsString(': [blank(', $screen);
         $this->assertStringContainsString('مجموع (تكلفة الوحدة × الكمية)', $screen);
     }
 

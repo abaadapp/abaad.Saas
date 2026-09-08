@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Package, Paperclip, Plus, Send, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { Check, ChevronDown, Package, Paperclip, Plus, Send, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -21,6 +21,7 @@ import { currencyLabel, money } from '@/lib/format';
 import { fold } from '@/lib/pages';
 import { baseQuantity, lineTotal, purchaseTotals } from '@/lib/purchase-totals';
 import { useTranslate } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import type { Currency, PageProps } from '@/types';
 import type { Branch, Product, Supplier } from '@/types/models';
 
@@ -43,6 +44,8 @@ interface Line {
 interface Props {
     suppliers: Supplier[];
     products: Product[];
+    /** وحداتُ الشراء: ما اشترى به المتجرُ أوّلًا، ثمّ المقترَحات — ورأسُها افتراضيُّ الحقل */
+    units: string[];
     reorderSuggestions: ReorderRow[];
     branches: Branch[];
     currentBranchId: number | null;
@@ -57,18 +60,16 @@ interface Props {
 }
 
 /**
- * وحداتُ الشراء المقترَحة — اقتراحٌ لا حصر.
+ * سطرٌ جديد — بوحدةِ شرائه مكتوبةً سلفًا.
  *
- * الحقلُ نصٌّ حرّ: من يشتري بوحدةٍ ليست هنا يكتبها. والقائمةُ تُسرّع الشائع
- * ولا تمنع النادر — ولا جدولَ وحداتٍ في النظام تُقرأ منه، فاختراعُ جدولٍ
- * لأجل قائمةٍ في شاشةٍ واحدة أكبرُ من حاجته.
+ * كان الحقلُ يفتح فارغًا فيُحفظ البندُ بلا وحدة، ثمّ يُقرأ في الأمر «—»:
+ * كم صندوقًا طُلب وكم حبّة؟ لا أحدَ يعرف. والافتراضُ ما يشتري به المتجرُ
+ * أكثرَ ما يشتري — لا كلمةً مكتوبةً في الشاشة تُخالف عادتَه.
  */
-const UNITS = ['حبة', 'ربطة', 'باقة', 'صندوق', 'كرتون', 'رول', 'عبوة', 'كيلو', 'متر', 'وحدة'] as const;
-
-const blank = (): Line => ({
+const blank = (unit: string): Line => ({
     product_id: '',
     name: '',
-    purchase_unit: '',
+    purchase_unit: unit,
     units_per_purchase_unit: '1',
     qty: '1',
     cost: '',
@@ -90,7 +91,7 @@ const blank = (): Line => ({
  * و`lib/purchase-totals` — واختبارٌ يقابلهما رقمًا برقم.
  */
 export default function PurchaseCreate() {
-    const { suppliers, products, reorderSuggestions, branches, currentBranchId, fromReorder, today, taxRate, formToken, newSupplierId, context } =
+    const { suppliers, products, reorderSuggestions, branches, currentBranchId, fromReorder, today, taxRate, formToken, newSupplierId, units: knownUnits, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -107,20 +108,33 @@ export default function PurchaseCreate() {
      * وشاشةُ فاتورة العميل تفتح بسطرٍ كذلك — فلا تفترق شاشتا إنشاءٍ في
      * النظام الواحد.
      */
+    /*
+     * ووحدةٌ يكتبها التاجرُ هنا تبقى معه إلى آخر السطور.
+     *
+     * من اشترى «شتلة» في البند الأوّل يجدها في قائمة الثاني بلا إعادة كتابة،
+     * ومن حفظ الأمر وجدها في انتظاره في الأمر التالي — لأنّها تُقرأ حينها
+     * ممّا اشترى به فعلًا (انظر `PurchaseUnits`)، لا من قائمةٍ في الشاشة.
+     */
+    const [units, setUnits] = useState<string[]>(knownUnits);
+    const addUnit = (unit: string) =>
+        setUnits((prev) => (prev.includes(unit) ? prev : [unit, ...prev]));
+    /** ما يفتح به السطرُ الجديد حقلَ وحدته — رأسُ القائمة */
+    const defaultUnit = () => units[0] ?? '';
+
     const [lines, setLines] = useState<Line[]>(() =>
         fromReorder && reorderSuggestions.length
             ? reorderSuggestions.map((r) => {
                   const p = products.find((x) => x.sku === r.sku);
 
                   return {
-                      ...blank(),
+                      ...blank(knownUnits[0] ?? ''),
                       product_id: p ? String(p.id) : '',
                       name: r.name,
                       cost: String(r.cost),
                       qty: String(r.suggested),
                   };
               })
-            : [blank()],
+            : [blank(knownUnits[0] ?? '')],
     );
 
     const form = useForm({
@@ -168,7 +182,7 @@ export default function PurchaseCreate() {
     const setLine = (i: number, patch: Partial<Line>) =>
         setLines((prev) => prev.map((l, x) => (x === i ? { ...l, ...patch } : l)));
 
-    const addLine = () => setLines((prev) => [...prev, blank()]);
+    const addLine = () => setLines((prev) => [...prev, blank(defaultUnit())]);
     const dropLine = (i: number) => setLines((prev) => prev.filter((_, x) => x !== i));
 
     /** ملءُ الأصناف المقترَحة — من بيانات إعادة الطلب القائمة لا من اختراع */
@@ -179,7 +193,7 @@ export default function PurchaseCreate() {
                 .map((r) => ({ r, p: products.find((x) => x.sku === r.sku) }))
                 .filter(({ p }) => p && !have.has(String(p.id)))
                 .map(({ r, p }) => ({
-                    ...blank(),
+                    ...blank(defaultUnit()),
                     product_id: String(p!.id),
                     name: r.name,
                     cost: String(r.cost),
@@ -379,9 +393,11 @@ export default function PurchaseCreate() {
                             <ItemRows
                                 lines={lines}
                                 products={products}
+                                units={units}
                                 currency={currency}
                                 onChange={setLine}
                                 onRemove={dropLine}
+                                onAddUnit={addUnit}
                             />
                         )}
                     </Card>
@@ -655,15 +671,19 @@ function SupplierDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 export function ItemRows({
     lines,
     products,
+    units,
     currency,
     onChange,
     onRemove,
+    onAddUnit,
 }: {
     lines: Line[];
     products: Product[];
+    units: string[];
     currency: Currency;
     onChange: (i: number, patch: Partial<Line>) => void;
     onRemove: (i: number) => void;
+    onAddUnit: (unit: string) => void;
 }) {
     const t = useTranslate();
     const m = (v: number) => money(v, currency);
@@ -714,12 +734,11 @@ export function ItemRows({
 
                         <div>
                             <MobileLabel>{t('وحدة الشراء')}</MobileLabel>
-                            <Input
-                                list="po-units"
+                            <UnitPicker
                                 value={line.purchase_unit}
-                                onChange={(e) => onChange(i, { purchase_unit: e.target.value })}
-                                placeholder={t('حبة')}
-                                aria-label={t('وحدة الشراء')}
+                                units={units}
+                                onPick={(u) => onChange(i, { purchase_unit: u })}
+                                onAdd={onAddUnit}
                             />
                         </div>
 
@@ -798,18 +817,151 @@ export function ItemRows({
                     </div>
                 );
             })}
-
-            <datalist id="po-units">
-                {UNITS.map((u) => (
-                    <option key={u} value={u} />
-                ))}
-            </datalist>
         </div>
     );
 }
 
 function MobileLabel({ children }: { children: React.ReactNode }) {
     return <span className="mb-1 block text-[11px] text-[#9ca3af] lg:hidden">{children}</span>;
+}
+
+/**
+ * وحدةُ الشراء — قائمةٌ مرسومةٌ في الصفحة، وبابٌ لما ليس فيها.
+ *
+ * ═══ ولماذا لا `datalist` ═══
+ *
+ * كان الحقلُ نصًّا حرًّا بقائمةٍ يرسمها نظامُ التشغيل: نافذةٌ داكنةٌ ضيّقة
+ * تطفو فوق الحقل فتحجبه، لا تحترم عرضَه ولا خطَّه ولا اتجاهَ الواجهة، ولا
+ * سهمَ فيها يقول إنّ ثمّةَ قائمةً أصلًا — فمن لم يعرف أنّها هناك كتب بيده
+ * أو ترك الحقلَ فارغًا. وهي القائمةُ نفسُها التي رُفعت من مرشّحات التقارير.
+ *
+ * ═══ والقائمةُ لا تحدّ ═══
+ *
+ * ما يُكتب ولا يُطابق شيئًا يُعرض زرًّا يقول «أضف "كذا"» — فتُضاف الوحدةُ
+ * إلى قائمة السطور كلِّها في هذه الشاشة، وتعود في الأمر التالي لأنّ القائمة
+ * تُقرأ ممّا اشترى به المتجرُ فعلًا. ووحدةٌ تُكتب مرّتين بيدٍ تصير وحدتين.
+ */
+export function UnitPicker({
+    value,
+    units,
+    onPick,
+    onAdd,
+}: {
+    value: string;
+    units: string[];
+    onPick: (unit: string) => void;
+    onAdd: (unit: string) => void;
+}) {
+    const t = useTranslate();
+    const [open, setOpen] = useState(false);
+    const [q, setQ] = useState('');
+    const box = useRef<HTMLDivElement>(null);
+    const search = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        const away = (e: MouseEvent) => {
+            if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener('mousedown', away);
+
+        return () => document.removeEventListener('mousedown', away);
+    }, []);
+
+    // ‏والمطابقة تُهمل الهمزةَ وشكلَ الرقم — انظر `fold`
+    const typed = q.trim();
+    const hits = useMemo(() => {
+        const needle = fold(typed);
+
+        return needle === '' ? units : units.filter((u) => fold(u).includes(needle));
+    }, [units, typed]);
+
+    const exact = hits.some((u) => fold(u) === fold(typed));
+
+    // ‏وما يصلها مقلَّمٌ سلفًا: `typed` تقصّ المسافات، وما في القائمة نظيفٌ من مصدره
+    const commit = (unit: string) => {
+        onAdd(unit);
+        onPick(unit);
+        setQ('');
+        setOpen(false);
+    };
+
+    return (
+        <div ref={box} className="relative">
+            <button
+                type="button"
+                aria-label={t('وحدة الشراء')}
+                aria-expanded={open}
+                onClick={() => {
+                    setOpen((v) => !v);
+                    setQ('');
+                    // ‏والكتابةُ تبدأ فورًا: من فتحها ليكتب وحدةً جديدة لا يبحث عن الحقل
+                    window.setTimeout(() => search.current?.focus(), 0);
+                }}
+                className={cn(
+                    'flex h-10 w-full items-center justify-between gap-2 rounded-[10px] pointer-coarse:h-11',
+                    'border border-[var(--ui-border,#e8e8e8)] bg-white px-3 text-start text-sm text-[#111]',
+                    'transition-[border-color,box-shadow] outline-none',
+                    'focus:border-[#d1d5db] focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)]',
+                )}
+            >
+                <span className={cn('min-w-0 truncate', value === '' && 'text-[#9ca3af]')}>
+                    {value === '' ? t('اختر الوحدة') : value}
+                </span>
+                <ChevronDown className="size-4 shrink-0 text-[#6b7280]" />
+            </button>
+
+            {open && (
+                <div className="absolute z-20 mt-1 w-full min-w-[11rem] rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white p-1 shadow-lg">
+                    <Input
+                        ref={search}
+                        value={q}
+                        onChange={(e) => setQ(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                // ‏وحقلُ بحثٍ فارغٌ لا يختار شيئًا: يُغلق ويترك الوحدةَ كما هي
+                                if (typed === '') setOpen(false);
+                                else commit(hits[0] ?? typed);
+                            }
+
+                            if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setOpen(false);
+                            }
+                        }}
+                        placeholder={t('ابحث أو اكتب وحدة جديدة')}
+                        aria-label={t('ابحث أو اكتب وحدة جديدة')}
+                        className="h-9 text-[13px]"
+                    />
+
+                    <div className="mt-1 max-h-48 overflow-y-auto">
+                        {hits.map((u) => (
+                            <button
+                                key={u}
+                                type="button"
+                                className="flex w-full items-center justify-between gap-2 rounded-[8px] px-2 py-1.5 text-start text-[13px] hover:bg-[#f7f7f5]"
+                                onClick={() => commit(u)}
+                            >
+                                <span className="min-w-0 truncate">{u}</span>
+                                {u === value && <Check className="size-4 shrink-0 text-[#5b21b6]" />}
+                            </button>
+                        ))}
+                    </div>
+
+                    {typed !== '' && !exact && (
+                        <button
+                            type="button"
+                            className="mt-1 flex w-full items-center gap-1.5 rounded-[8px] border-t border-[var(--ui-border,#e8e8e8)] px-2 py-2 text-start text-[13px] text-[#5b21b6]"
+                            onClick={() => commit(typed)}
+                        >
+                            <Plus className="size-4 shrink-0" />
+                            <span className="min-w-0 truncate">{t('أضف «:unit»', { unit: typed })}</span>
+                        </button>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }
 
 /**

@@ -14,6 +14,7 @@ use App\Support\Ledger;
 use App\Support\Pagination;
 use App\Support\Search;
 use App\Support\Sort;
+use App\Support\StockLosses;
 use App\Support\Waste;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -231,32 +232,27 @@ class StockAdjustmentController extends Controller
                 ]);
 
                 /*
-                 * القيد يتبع الحركة — إن كان لها قيمة.
+                 * الحدثُ يُكتب في الدفترين — والوصفةُ في `StockLosses`.
                  *
-                 * النقص خسارة: المخزون يُنقص ومصروفٌ يُقيَّد. والزيادة عكسها:
-                 * بضاعةٌ وُجدت لم تكن مسجَّلة، فتزيد الأصول ويقلّ ما حُمّل على
-                 * المصروف. ومنتجٌ بلا تكلفة لا قيد له — لا مبلغ يُقيَّد.
+                 * كان هذا الباب يُرحّل إلى الأستاذ ولا يكتب صفَّ مصروف،
+                 * والجردُ — وهو البابُ الشقيق — يكتب الصفَّ ولا يُرحّل. فخسارةُ
+                 * التلف المسجَّلة هنا لا تُنقص الربح الذي يقرؤه التاجر أبدًا،
+                 * لأنّ الربح يُقرأ من جدول المصروفات لا من الأستاذ.
+                 *
+                 * ومنتجٌ بلا تكلفة لا قيد له — لا مبلغ يُقيَّد.
                  */
-                if ($value > 0) {
-                    Ledger::post(
-                        $bid,
-                        __('تعديل مخزون: ').$data['reason'].' — '.$product->name,
-                        $delta < 0
-                            ? [
-                                ['account' => 'other_expenses', 'debit' => $value, 'memo' => $product->name],
-                                ['account' => 'inventory', 'credit' => $value],
-                            ]
-                            : [
-                                ['account' => 'inventory', 'debit' => $value, 'memo' => $product->name],
-                                ['account' => 'other_expenses', 'credit' => $value],
-                            ],
-                        Carbon::parse($data['adjusted_at']),
-                        'تعديل مخزون',
-                        $branch->id,
-                        auth()->id(),
-                        $adjustment,
-                    );
-                }
+                StockLosses::record(
+                    $bid,
+                    $value,
+                    $delta < 0,
+                    __('تعديل مخزون: ').$data['reason'].' — '.$product->name,
+                    Carbon::parse($data['adjusted_at']),
+                    $branch->id,
+                    auth()->id(),
+                    auth()->user()?->name,
+                    $data['reason'],
+                    $adjustment,
+                );
             });
         } catch (RuntimeException $e) {
             return back()->withInput()->withErrors(['quantity_delta' => $e->getMessage()]);

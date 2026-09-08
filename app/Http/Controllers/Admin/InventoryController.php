@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Support\Demo;
+use App\Support\StockLosses;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -74,6 +75,7 @@ class InventoryController extends Controller
 
         $adjusted = 0;
         $shortage = 0.0;
+        $surplus = 0.0;
 
         /*
          * كلّ فرقٍ يصير صفَّ تعديلِ مخزون — لا مصروفًا واحدًا مجمَّعًا.
@@ -111,7 +113,7 @@ class InventoryController extends Controller
          * يقول أين وقف. والجرد هو اللحظة التي يقرّر فيها التاجر أيثق
          * بأرقام المخزون أم لا.
          */
-        DB::transaction(function () use ($data, $branch, $books, $loss, &$adjusted, &$shortage, &$rows, &$serial) {
+        DB::transaction(function () use ($data, $branch, $books, $loss, &$adjusted, &$shortage, &$surplus, &$rows, &$serial) {
             foreach ($data['counts'] as $productId => $counted) {
                 if ($counted === null || $counted === '') {
                     continue;
@@ -208,6 +210,8 @@ class InventoryController extends Controller
                 $adjusted++;
                 if ($delta < 0) {
                     $shortage += abs($delta) * $cost;
+                } else {
+                    $surplus += $delta * $cost;
                 }
             }
 
@@ -217,32 +221,43 @@ class InventoryController extends Controller
             }
 
             /*
-             * الفاقد يُقيَّد مصروفًا — وإلا اختفت الخسارة بدل أن تُقاس.
+             * الفاقد يُقيَّد مصروفًا **وفي الأستاذ** — وإلا اختفت الخسارة.
              *
-             * كان الجرد يصحّح الرقم ولا يمسّ شيئًا آخر: تجد خمسين قطعةً ناقصة
-             * فتُطرح من المخزون، ولا تظهر في الربح ولا في المصروفات. فيقرأ التاجر
-             * أرباحًا لم يجنها، ولا يرى كم يكلّفه الفاقد شهريًّا — وهو الرقم الذي
-             * يدفعه إلى تغيير شيء.
+             * كان الجرد يصحّح الرقم ويكتب صفَّ مصروفٍ ولا يُرحّل شيئًا: فيبقى
+             * المخزون في الميزانية بقيمة بضاعةٍ ليست عنده، ويقرأ المتجر نفسَه
+             * أغنى ممّا هو بقيمة كلّ ما فُقد منذ أوّل جرد. وهو العطبُ نفسه
+             * الذي وُصف في `ExpenseController::postToLedger` — دخل من هنا.
              *
              * والزيادة لا تُقيَّد إيرادًا: بضاعةٌ ظهرت في العدّ غالبًا خطأُ تسجيلٍ
-             * سابق لا ربحٌ جديد، وقيدُها دخلًا يضخّم الأرباح بلا بيعة.
+             * سابق لا ربحٌ جديد، وقيدُها دخلًا يضخّم الأرباح بلا بيعة. لكنّها
+             * أصلٌ وُجد فعلًا، فتُردّ إلى المخزون في الأستاذ ولا صفَّ مصروفٍ
+             * لها — انظر `StockLosses`.
              *
              * وداخل المعاملة مع التسوية نفسها: قيدُ فاقدٍ بلا التسوية التي
              * أنتجته — أو تسويةٌ بلا قيدها — أسوأ من كليهما.
              */
-            if ($shortage > 0) {
-                \App\Models\Expense::create([
-                    'business_id' => $this->bid(),
-                    // لا عمود فرعٍ في المصروفات — فالفرع في الوصف ليُقرأ في التقرير
-                    'reference' => 'SHR-'.now()->format('YmdHis'),
-                    'type' => 'فاقد جرد',
-                    'description' => __('فاقد جرد — :branch (:n صنفًا)', ['branch' => $branch->name, 'n' => $adjusted]),
-                    'amount' => round($shortage, 3),
-                    'method' => 'قيد داخلي',
-                    'employee_name' => auth()->user()->name,
-                    'spent_at' => now(),
-                ]);
-            }
+            StockLosses::record(
+                $this->bid(),
+                $shortage,
+                true,
+                __('فاقد جرد — :branch (:n صنفًا)', ['branch' => $branch->name, 'n' => $adjusted]),
+                now(),
+                $branch->id,
+                auth()->id(),
+                auth()->user()->name,
+                'فاقد جرد',
+            );
+
+            StockLosses::record(
+                $this->bid(),
+                $surplus,
+                false,
+                __('زيادة جرد — :branch (:n صنفًا)', ['branch' => $branch->name, 'n' => $adjusted]),
+                now(),
+                $branch->id,
+                auth()->id(),
+                auth()->user()->name,
+            );
         });
 
         \App\Support\Activity::log('updated', ($loss ? 'كمية معدومة: خصم ' : 'جرد فعلي: سوّى ')

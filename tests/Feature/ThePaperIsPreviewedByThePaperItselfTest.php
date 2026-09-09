@@ -246,6 +246,58 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
         $this->assertArrayNotHasKey('address', Demo::business($this->business->id));
     }
 
+    /**
+     * وبندٌ بلا نسبةٍ يُعاين بنسبة المتجر — كما يُحفظ بها تمامًا.
+     *
+     * ═══ وهذا مطبٌّ يُخفيه أنّ الصفر رقمٌ صحيح ═══
+     *
+     * `compute` تقرأ **وجودَ** المفتاح لا قيمتَه، لأنّ `tax_rate: 0` إعفاءٌ
+     * مقصودٌ يُحفظ لقطةً في السطر. وبندٌ يصل بـ`tax_rate: null` — وهو ما
+     * ترسله الشاشةُ لصفٍّ لم يُلمس — يُقرأ صفرًا لا غيابًا، فيُعفى في صمت.
+     *
+     * فـ`store` تحذف المفتاحَ الفارغ قبل الحساب، والمعاينةُ يجب أن تحذفه
+     * مثلَها. ولو لم تفعل لرأى التاجر ورقةً بلا ضريبة ثمّ استلم عميلُه
+     * ورقةً بها — ومعاينةٌ تكذب أسوأ من غياب المعاينة.
+     *
+     * وقد نجت هذه الطفرةُ في أوّل قياس: كان الحارسُ يرسل نسبةً صريحة في
+     * كلّ بند، فلا يمرّ بالمسار الذي يحرسه.
+     */
+    public function test_a_line_without_a_rate_previews_at_the_shop_rate_exactly_as_it_saves(): void
+    {
+        Setting::updateOrCreate(
+            ['business_id' => $this->business->id, 'key' => 'vat_enabled'],
+            ['value' => '1'],
+        );
+        Setting::updateOrCreate(
+            ['business_id' => $this->business->id, 'key' => 'vat_rate'],
+            ['value' => '5'],
+        );
+
+        $line = ['description' => 'خدمة', 'quantity' => 1, 'unit_price' => 200, 'tax_rate' => null];
+
+        // ١) ما تعرضه المعاينة
+        $html = $this->previewHtml(['items' => [$line]]);
+
+        $this->assertStringContainsString('210.000', $html, 'المعاينةُ أعفت بندًا لم يُعفَ');
+        $this->assertStringNotContainsString('200.000</strong>', $html);
+
+        // ٢) وما يُحفظ فعلًا — والرقمان واحد
+        $this->actingAs($this->owner)->post(route('admin.customerInvoices.store'), [
+            'customer_id' => $this->customer->id,
+            'items' => [$line],
+        ])->assertSessionHasNoErrors();
+
+        $saved = DB::table('customer_invoices')->latest('id')->first();
+
+        $this->assertSame(10.0, round((float) $saved->tax_total, 3), 'المحفوظُ لا يحمل ضريبة المتجر');
+        $this->assertSame(210.0, round((float) $saved->total, 3));
+        $this->assertStringContainsString(
+            number_format((float) $saved->total, 3),
+            $html,
+            'إجماليُّ المعاينة يخالف إجماليَّ المحفوظ',
+        );
+    }
+
     /* ─────────────── وسائلُ السداد: قائمةٌ واحدة ─────────────── */
 
     /**

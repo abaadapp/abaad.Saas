@@ -5,6 +5,7 @@ namespace App\Http\Controllers\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class BusinessController extends Controller
 {
@@ -413,7 +414,8 @@ class BusinessController extends Controller
             'logo' => ['nullable', 'image', 'max:2048'],
             // لا يُحفظ في العمود — يُقرأ في update ويُستبعد هنا
             'remove_logo' => ['nullable', 'boolean'],
-            'status' => ['required', 'string', 'max:50'],
+            // من القائمة التي تعرضها الشاشة لا نصًّا حرًّا — انظر `PageController::STATUSES`
+            'status' => ['required', Rule::in(PageController::STATUSES)],
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date'],
         ]);

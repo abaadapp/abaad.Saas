@@ -4740,5 +4740,7 @@
     "اعتماد مسيرة الرواتب": "Approve the payroll run",
     "فتح مرفقات المستندات المالية": "Open financial document attachments",
     "البيع الآجل": "Credit sales",
-    "تعديلُها صلاحيةٌ لا تملكها.": "Editing them is a permission you do not have."
+    "تعديلُها صلاحيةٌ لا تملكها.": "Editing them is a permission you do not have.",
+    "لا يمكن تنزيل آخر مدير منصة — لن يبقى حسابٌ يفتح اللوحة. أنشئ مديرًا غيره أولًا.": "The last platform admin cannot be demoted — no account would be left to open the panel. Create another admin first.",
+    "لا يمكن إيقاف آخر مدير منصة": "The last platform admin cannot be suspended"
 }

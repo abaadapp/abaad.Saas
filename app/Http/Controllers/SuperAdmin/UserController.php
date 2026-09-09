@@ -74,16 +74,60 @@ class UserController extends Controller
                 + \App\Support\Sort::params($request, self::SORTS),
             'sorts' => \App\Support\Sort::keys(self::SORTS),
             'roles' => PageController::roles(),
-            'businesses' => \App\Models\Business::orderBy('name')->get()
+            /*
+             * والمتاجر الحقيقيّة وحدها تُعرض للإسناد.
+             *
+             * كانت القائمة تشمل المتاجر التجريبيّة، والقائمةُ أعلاه تستبعد
+             * مستخدميها. فمن أُسند إلى متجرٍ تجريبيّ يُنشأ في القاعدة، ويقول
+             * التوست «تم إضافة المستخدم بنجاح»، ثمّ لا يظهر في أيّ صفحة —
+             * يبحث عنه المشغّل ولا يجده ويظنّ أنّ الحفظ لم يقع، فيعيد
+             * المحاولة فيُردّ «هذا البريد مستعمل في حساب آخر».
+             *
+             * ومصدرٌ واحد للاستبعاد: ما لا يُعرض في القائمة لا يُعرض للإسناد.
+             */
+            'businesses' => \App\Models\Business::real()->orderBy('name')->get()
                 ->map(fn ($b) => ['label' => $b->name, 'value' => $b->id])->all(),
         ]);
     }
 
     /**
+     * هل هذا آخرُ مدير منصّةٍ يستطيع الدخول؟
+     *
+     * ═══ ولماذا في موضعٍ واحد ═══
+     *
+     * ثلاثةُ أبوابٍ تُفضي إلى النتيجة نفسها — لوحةُ المنصّة تُغلق على الجميع
+     * ولا حساب يبقى ليفتحها: الحذف، وتنزيلُ الدور، وإيقافُ الحساب. وكان
+     * الحارس على الأوّل وحده.
+     *
+     * فالمشغّل الوحيد يفتح «تعديل بيانات المستخدم» على حسابه، يختار دورًا
+     * آخر، فيصير كاشيرًا في متجر — وعددُ مدراء المنصّة صفر. ولا استعادةَ
+     * له كما في الحذف: لا مسارَ في النظام كلِّه يُعيد الدور، ولا حسابَ
+     * يفتح الشاشة التي فيها المسار. الإصلاحُ من قاعدة البيانات وحدها.
+     *
+     * وعلى الإنتاج اليوم **مدير منصّةٍ واحد**.
+     *
+     * ═══ والعدُّ على من يدخل فعلًا ═══
+     *
+     * الموقوفُ لا يحمي اللوحة: لا يدخل، ولا يُفعَّل حسابُه إلا من داخلها.
+     * فحسابٌ موقوفٌ باقٍ ليس بابًا — وعدُّه بابًا هو نفسُه العطب.
+     */
+    private static function lastWayIntoThePanel(User $user): bool
+    {
+        if ($user->role !== 'super_admin') {
+            return false;
+        }
+
+        return User::where('role', 'super_admin')
+            ->where('status', 'نشط')
+            ->whereKeyNot($user->id)
+            ->doesntExist();
+    }
+
+    /**
      * ما يمنع هذا الحساب من العمل — أو null إن كان سليمًا.
      *
-     * تُقرأ في القائمة فتُوسم الصفوف المعطوبة، وتُقرأ عند الحفظ فلا يُصنع
-     * معطوبٌ جديد.
+     * تُقرأ في القائمة فتُوسم الصفوف المعطوبة. والحفظُ يحرس نفسه بقواعده:
+     * البريد مطلوب، والنشاط لازمٌ لغير مدير المنصّة — فلا يُصنع معطوبٌ جديد.
      */
     private static function blockedReason(User $user): ?string
     {
@@ -203,6 +247,13 @@ class UserController extends Controller
             'password' => ['nullable', 'string', 'min:8'],
         ], $this->messages($request));
 
+        // ولا يُنزَّل آخرُ بابٍ إلى اللوحة — انظر `lastWayIntoThePanel`
+        if ($data['role'] !== 'super_admin' && self::lastWayIntoThePanel($user)) {
+            return back()->withInput()->withErrors([
+                'role' => __('لا يمكن تنزيل آخر مدير منصة — لن يبقى حسابٌ يفتح اللوحة. أنشئ مديرًا غيره أولًا.'),
+            ]);
+        }
+
         $password = $data['password'] ?? null;
         unset($data['password']);
 
@@ -243,7 +294,7 @@ class UserController extends Controller
          * حذفُه يُغلق لوحة المنصّة على الجميع، ولا حساب يبقى ليستعيده —
          * ضغطةٌ لا رجعة عنها إلا من قاعدة البيانات.
          */
-        if ($user->role === 'super_admin' && User::where('role', 'super_admin')->count() <= 1) {
+        if (self::lastWayIntoThePanel($user)) {
             return back()->with('toast', ['msg' => __('لا يمكن حذف آخر مدير منصة'), 'type' => 'error']);
         }
 
@@ -270,6 +321,11 @@ class UserController extends Controller
         if ($user->id === auth()->id()) {
             return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'error']);
         }
+        // وإيقافُ آخر مدير منصّة يُغلق اللوحة كما يُغلقها حذفُه
+        if ($user->status === 'نشط' && self::lastWayIntoThePanel($user)) {
+            return back()->with('toast', ['msg' => __('لا يمكن إيقاف آخر مدير منصة'), 'type' => 'error']);
+        }
+
         $user->status = $user->status === 'نشط' ? 'موقوف' : 'نشط';
         $user->save();
         $on = $user->status === 'نشط';

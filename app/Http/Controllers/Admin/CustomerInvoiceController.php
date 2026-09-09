@@ -17,6 +17,7 @@ use App\Support\Customers;
 use App\Support\Demo;
 use App\Support\InvoiceAttachments;
 use App\Support\Pagination;
+use App\Support\Paper;
 use App\Support\Permissions;
 use App\Support\Receivables;
 use App\Support\Search;
@@ -191,6 +192,15 @@ class CustomerInvoiceController extends Controller
             'may' => $this->may(),
             // ونافذةُ التحصيل هنا تسأل السؤال نفسه — انظر `create`
             'bank_accounts' => $this->bankAccounts(),
+            /*
+             * ووسائلُ التحصيل من مالكها — كانت مكتوبةً بيدها في هذه الشاشة.
+             *
+             * وهي غيرُ قائمة الإنشاء بحرفٍ واحد: لا «آجل» هنا. التحصيلُ مالٌ
+             * وقع، و«آجل» تعني أنّه لم يقع — فوسيلةٌ اسمُها «لم يُدفع» في
+             * نافذةِ دفعٍ بابٌ يردّه الخادم.
+             */
+            'methods' => CustomerPayments::METHODS,
+            'bank_methods' => CustomerInvoices::bankMethods(),
             'invoice' => $this->row($invoice) + [
                 'subtotal' => (float) $invoice->subtotal,
                 'discount_total' => (float) $invoice->discount_total,
@@ -293,7 +303,22 @@ class CustomerInvoiceController extends Controller
                 : 0.0,
             'today' => now()->toDateString(),
             'may' => $this->may(),
-            'methods' => ['آجل', 'نقدي', 'بطاقة', 'تحويل'],
+            /*
+             * ووسائلُ السداد من مالكها لا مكتوبةً هنا.
+             *
+             * كانت هذه القائمةُ إحدى ثلاث: هذه، وقاعدةُ المصادقة في `store`
+             * أسفلُ، وثالثةٌ مكتوبةٌ بيدها في شاشة الفاتورة المفتوحة. وقائمةُ
+             * التحصيل الحقيقيّة فيها «شيك» ولم تكن هنا — انظر
+             * `CustomerInvoices::methods`.
+             */
+            'methods' => CustomerInvoices::methods(),
+            /*
+             * وأيُّها يدخل مالُه بنكًا — فتُسأل الشاشةُ عن الحساب.
+             *
+             * كان الشرطُ مكتوبًا في الشاشة `بطاقة || تحويل`، و«شيك» تدخل
+             * البنكَ مثلَهما. والجوابُ من `CustomerPayments::sideFor` وحدَها.
+             */
+            'bank_methods' => CustomerInvoices::bankMethods(),
             /*
              * وأيُّ حسابٍ بنكيٍّ استقبل المال — من المالية لا مكتوبًا هنا.
              *
@@ -306,6 +331,114 @@ class CustomerInvoiceController extends Controller
             // عميلٌ أُضيف من هذه الشاشة نفسها — يُختار فور العودة إليها
             'new_customer_id' => $request->session()->get('new_customer_id'),
         ]);
+    }
+
+    /**
+     * الورقةُ كما ستُطبع بما على الشاشة الآن — قبل أن تُحفظ.
+     *
+     * ═══ ولماذا لا تُرسم في الشاشة ═══
+     *
+     * القاعدةُ مكتوبةٌ في `DocumentRenderer`: «المعاينةُ تُرسم بالقالب الذي
+     * يُطبع لا بنسخةٍ ثانية منه في الشاشة». وصندوقٌ يشبه الفاتورةَ مرسومٌ
+     * في JSX يفترق عنها عند أوّل تعديل: يُرفع سطرٌ من الورقة ويبقى في
+     * المعاينة، فيعتمد التاجرُ شكلًا لا يخرج من الطابعة — ويرسل إلى عميله
+     * ورقةً غيرَ التي رآها.
+     *
+     * فهنا `pdf.customer-invoice` نفسُه يُرسم بمسودّةٍ **غيرِ محفوظة**.
+     *
+     * ═══ ولا شيءَ يُكتب ═══
+     *
+     * لا صفَّ فاتورةٍ، ولا رقمَ يُقطع من التسلسل، ولا قيدَ يقع، ولا سطرَ في
+     * سجلّ النشاط. من فتح الشاشةَ وكتب بندًا ثمّ تركها لا يترك خلفه شيئًا.
+     *
+     * ═══ ولا حقلَ مطلوبًا ═══
+     *
+     * `store` تشترط عميلًا وبندًا، وهذه لا تشترط: المعاينةُ تُرافق الكتابةَ
+     * من أوّل حرف. ومعاينةٌ لا تظهر حتى يكتمل النموذج لا يراها أحدٌ إلّا
+     * بعد أن يفرغ من حاجته إليها.
+     */
+    public function preview(Request $request)
+    {
+        $bid = $this->bid();
+
+        $data = $request->validate([
+            'customer_id' => ['nullable', 'integer'],
+            'issued_at' => ['nullable', 'date'],
+            'due_at' => ['nullable', 'date'],
+            'payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'po_number' => ['nullable', 'string', 'max:60'],
+            'contract_number' => ['nullable', 'string', 'max:60'],
+            'external_reference' => ['nullable', 'string', 'max:60'],
+            'department' => ['nullable', 'string', 'max:120'],
+            'cost_center' => ['nullable', 'string', 'max:60'],
+            'attention_to' => ['nullable', 'string', 'max:120'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'items' => ['nullable', 'array'],
+            'items.*.product_id' => ['nullable', 'integer'],
+            'items.*.description' => ['nullable', 'string', 'max:255'],
+            'items.*.quantity' => ['nullable', 'numeric'],
+            'items.*.unit_price' => ['nullable', 'numeric'],
+            'items.*.discount' => ['nullable', 'numeric'],
+            'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'bank_account_id' => ['nullable', 'integer'],
+        ]);
+
+        /*
+         * والعميلُ من متجر الطالب أو لا عميل.
+         *
+         * `first()` لا `firstOrFail()`: رقمٌ من متجرٍ آخر يُهمَل فتُرسم ورقةٌ
+         * بلا اسم — ولا يُردّ الطلبُ بـ٤٠٤ في شاشةٍ تكتب. ولا يُقرأ صفُّ
+         * عميلٍ ليس من المتجر بحال.
+         */
+        $customer = ! empty($data['customer_id'])
+            ? Customer::where('business_id', $bid)->whereKey($data['customer_id'])->first()
+            : null;
+
+        /*
+         * ونسبةٌ فارغةٌ تُحذف لا تُقرأ صفرًا — كما في `store` تمامًا.
+         *
+         * `compute` تقرأ **وجودَ** المفتاح لا قيمتَه، لأنّ الصفر إعفاءٌ
+         * مقصود. وبندٌ يصل بـ`tax_rate: null` كان يُعفى في صمت — فتُعاين
+         * ورقةً بلا ضريبةٍ وتُحفظ ورقةٌ بها.
+         */
+        $items = array_map(function (array $line) {
+            if (($line['tax_rate'] ?? null) === null) {
+                unset($line['tax_rate']);
+            }
+
+            return $line;
+        }, $data['items'] ?? []);
+
+        $invoice = CustomerInvoices::draft($bid, $customer, $data, $items);
+
+        return response()->json([
+            'html' => view('pdf.customer-invoice', [
+                'invoice' => $invoice,
+                'business' => Demo::business($bid),
+                'vatNumber' => Vat::enabled($bid) ? Paper::vatNumber($bid) : '',
+                // ولا مسدَّدَ على ورقةٍ لم تُصدر بعد: الباقي كلُّه
+                'paid' => 0.0,
+                'outstanding' => (float) $invoice->total,
+                'bank' => $this->previewBank($bid, $data['bank_account_id'] ?? null),
+                'generatedAt' => now()->format('Y-m-d H:i'),
+            ])->render(),
+        ]);
+    }
+
+    /**
+     * حسابُ السداد المطبوع في ذيل المعاينة.
+     *
+     * وهو الحسابُ الذي اختارته الشاشةُ إن اختارت — فمن بدّل الحسابَ يرى
+     * الآيبانَ يتبدّل في ورقته. وإلّا فالأوّلُ كما تفعل الطباعة نفسُها،
+     * حتى لا تَعِد المعاينةُ بذيلٍ لا يُطبع أو تكتم ذيلًا يُطبع.
+     */
+    private function previewBank(int $bid, int|string|null $accountId): ?BankAccount
+    {
+        $q = BankAccount::where('business_id', $bid);
+
+        return $accountId
+            ? ($q->clone()->whereKey($accountId)->first() ?? $q->orderBy('id')->first())
+            : $q->orderBy('id')->first();
     }
 
     /**
@@ -363,7 +496,7 @@ class CustomerInvoiceController extends Controller
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             // نسبةُ البند لقطةٌ تُحفظ في السطر — والإعفاءُ يُكتب صفرًا
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'payment_method' => ['nullable', 'string', 'in:آجل,نقدي,بطاقة,تحويل'],
+            'payment_method' => ['nullable', 'string', Rule::in(CustomerInvoices::methods())],
             /*
              * وملكيّةُ الحساب تُسأل هنا كي يقع الخطأ على حقله.
              *
@@ -420,7 +553,7 @@ class CustomerInvoiceController extends Controller
             return $line;
         }, $data['items']);
 
-        $method = $data['payment_method'] ?? 'آجل';
+        $method = $data['payment_method'] ?? CustomerInvoices::CREDIT;
 
         /*
          * والمقبوضُ لا يُسجَّل على مسودّة.
@@ -449,7 +582,7 @@ class CustomerInvoiceController extends Controller
             403,
         );
 
-        if ($method !== 'آجل' && ! $request->boolean('issue')) {
+        if ($method !== CustomerInvoices::CREDIT && ! $request->boolean('issue')) {
             throw ValidationException::withMessages([
                 'payment_method' => __('التحصيل يُسجَّل على فاتورةٍ صادرة — أصدر الفاتورة، أو احفظها مسودّةً آجلة.'),
             ]);
@@ -481,7 +614,7 @@ class CustomerInvoiceController extends Controller
              * تُوسَم «مدفوعة» في عمود. مسارٌ ثانٍ للسداد يعني رصيدَ صندوقٍ لا
              * يعرف به الدفتر، وفاتورةً تقول مدفوعةً بلا إيصالٍ يقابلها.
              */
-            if ($method !== 'آجل') {
+            if ($method !== CustomerInvoices::CREDIT) {
                 CustomerPayments::record(
                     $this->bid(), $customer, (float) $invoice->total,
                     ['method' => $method, 'bank_account_id' => $data['bank_account_id'] ?? null,
@@ -616,7 +749,16 @@ class CustomerInvoiceController extends Controller
         $data = $request->validate([
             'customer_id' => ['required', 'integer'],
             'amount' => ['required', 'numeric', 'gt:0'],
-            'method' => ['required', 'string'],
+            /*
+             * ووسيلةٌ لا يعرفها النظام تُردّ — ولا تُقرأ نقدًا.
+             *
+             * كانت القاعدة `['required','string']` بلا قائمة، و`record` تسقط
+             * إلى «نقدي» عند ما لا تعرفه. فطلبٌ يحمل وسيلةً مكتوبةً بحرفٍ
+             * زائد — أو باسمٍ من شاشةٍ قديمة — كان **يدخل المالَ الصندوقَ**
+             * ويكتب قيدَه على `cash`، والمالُ في البنك. ولا خطأَ يُقال: يقول
+             * التنبيهُ «سُجّل التحصيل» ويقول الإيصالُ «نقدي».
+             */
+            'method' => ['required', 'string', Rule::in(CustomerPayments::METHODS)],
             'bank_account_id' => ['nullable', 'integer', Rule::exists('bank_accounts', 'id')
                 ->where('business_id', $this->bid())],
             'occurred_at' => ['nullable', 'date'],

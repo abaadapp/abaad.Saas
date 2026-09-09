@@ -808,6 +808,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * هنا احتياطٌ ثانٍ لا الحارسَ الأوّل.
      */
     Route::get('/customer-invoices/create', [CustomerInvoiceController::class, 'create'])->name('customerInvoices.create');
+    /*
+     * معاينةُ الورقة قبل حفظها — تُرسم ولا تُكتب.
+     *
+     * و`POST` لا `GET`: النموذجُ كلُّه يرحل معها — بنودٌ وملاحظاتٌ وتواريخ —
+     * وشريطُ عنوانٍ يحمل فاتورةَ جهةٍ كاملة يُسجَّل في كلّ سجلّ وصولٍ بينه
+     * وبين الخادم. ولا تُحمى بـ`customerInvoices.create` وحدها: هي في نطاق
+     * القسم نفسِه فتقرأ حارسَه.
+     */
+    Route::post('/customer-invoices/preview', [CustomerInvoiceController::class, 'preview'])->name('customerInvoices.preview');
     Route::post('/customer-invoices/customers', [CustomerInvoiceController::class, 'storeCustomer'])->name('customerInvoices.storeCustomer');
     Route::get('/customer-invoices/{id}', [CustomerInvoiceController::class, 'show'])->name('customerInvoices.show');
     Route::post('/customer-invoices', [CustomerInvoiceController::class, 'store'])->name('customerInvoices.store');

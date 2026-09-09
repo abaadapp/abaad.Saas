@@ -3,7 +3,8 @@
 @section('title', $invoice->tax_total > 0 && $vatNumber !== '' ? __('فاتورة ضريبية') : __('فاتورة'))
 
 @section('meta')
-    <div>{{ __('رقم الفاتورة:') }} {{ $invoice->number }}</div>
+    {{-- ورقمٌ لم يُقطع بعدُ يُقال «مسودّة» — لا سطرٌ ينتهي عند فراغ --}}
+    <div>{{ __('رقم الفاتورة:') }} {{ $invoice->number ?: __('مسودة') }}</div>
     <div>{{ __('تاريخ الإصدار:') }} {{ optional($invoice->issued_at)->format('Y-m-d') }}</div>
     @if ($invoice->due_at)
         <div>{{ __('تاريخ الاستحقاق:') }} {{ $invoice->due_at->format('Y-m-d') }}</div>
@@ -11,17 +12,43 @@
 @endsection
 
 @section('body')
-    {{-- بياناتُ العميل من لقطة الفاتورة لا من صفّه اليوم: تغييرُ اسمٍ بعد
-         سنةٍ لا يعيد كتابة ورقةٍ صدرت --}}
+    {{--
+        بياناتُ العميل من لقطة الفاتورة لا من صفّه اليوم: تغييرُ اسمٍ بعد
+        سنةٍ لا يعيد كتابة ورقةٍ صدرت.
+
+        ═══ ولا عنوانَ مبنًى في هذه الورقة ═══
+
+        كان يُطبع «العنوان: …» للعميل، ويُطبع عنوانُ المتجر في الترويسة —
+        وقد رُفعا بطلب صاحب النظام. والترويسةُ تُخفيه بـ`hideAddress`
+        (انظر pdf/layout)، وهنا يُرفع سطرُ العميل.
+
+        وما بقي يُبنى من قائمةٍ تُرشَّح لا من صفوفٍ مكتوبةٍ باليد: كانت
+        «—» تُطبع مكان الرقم الضريبيّ والسجلّ التجاريّ لعميلٍ فردٍ لا سجلَّ
+        له — فتُقرأ الورقةُ نموذجًا نقصت خاناتُه، وهو الصنفُ نفسُه الذي
+        عولج في حقول الجهة أسفلُ.
+    --}}
+    @php
+        $partyFields = array_values(array_filter([
+            ['label' => __('الرقم الضريبي'), 'value' => $invoice->customer_tax_number],
+            ['label' => __('السجل التجاري'), 'value' => $invoice->customer_cr],
+        ], fn ($f) => filled($f['value'])));
+    @endphp
+
     <table class="grid">
         <tr>
             <td style="width:50%;"><strong>{{ __('العميل:') }}</strong> {{ $invoice->customer_name ?: '—' }}</td>
-            <td style="width:50%;"><strong>{{ __('الرقم الضريبي:') }}</strong> {{ $invoice->customer_tax_number ?: '—' }}</td>
+            @if ($partyFields !== [])
+                <td style="width:50%;"><strong>{{ $partyFields[0]['label'] }}:</strong> {{ $partyFields[0]['value'] }}</td>
+            @else
+                <td style="width:50%;"></td>
+            @endif
         </tr>
-        <tr>
-            <td><strong>{{ __('السجل التجاري:') }}</strong> {{ $invoice->customer_cr ?: '—' }}</td>
-            <td><strong>{{ __('العنوان:') }}</strong> {{ $invoice->customer_address ?: '—' }}</td>
-        </tr>
+        @if (count($partyFields) > 1)
+            <tr>
+                <td><strong>{{ $partyFields[1]['label'] }}:</strong> {{ $partyFields[1]['value'] }}</td>
+                <td></td>
+            </tr>
+        @endif
     </table>
 
     {{--

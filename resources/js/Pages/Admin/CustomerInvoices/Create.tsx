@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { ChevronDown, Info, Paperclip, Plus, Save, Search, Send, Trash2, UserPlus } from 'lucide-react';
+import { ChevronDown, Info, Paperclip, Plus, RefreshCw, Save, Search, Send, Trash2, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -81,7 +81,10 @@ interface Props {
     tax_rate: number;
     today: string;
     may: May;
+    /** «آجل» ثمّ وسائلُ التحصيل — من `CustomerInvoices::methods` لا مكتوبةً هنا */
     methods: string[];
+    /** أيُّها يسأل عن حسابٍ بنكيّ — من `CustomerPayments::sideFor` */
+    bank_methods: string[];
     /** حساباتُ المتجر النشطة — الرئيسيُّ أوّلها */
     bank_accounts: BankRow[];
     new_customer_id: number | null;
@@ -112,6 +115,28 @@ const TERMS = [0, 7, 15, 30, 45, 60, 90] as const;
 
 /** «تاريخ مخصص» ليس مدّة — قيمةٌ تقول إنّ الاستحقاق بيد كاتب الورقة */
 const CUSTOM = 'custom';
+
+/**
+ * «آجل» — تُقابل `CustomerInvoices::CREDIT` في الخادم.
+ *
+ * وهي الوحيدةُ التي تُسمّى هنا لأنّ الشاشةَ تسألها سؤالًا خاصًّا: أتُنشأ
+ * ذمّةٌ أم يُسجَّل إيصال. وسائرُ الوسائل أسماءٌ تُعرض ولا يُقرَّر بها شيء.
+ */
+const CREDIT = 'آجل';
+
+/**
+ * نصُّ كلِّ وسيلةٍ كما يُقرأ في الشاشة — والقائمةُ من الخادم لا من هنا.
+ *
+ * والمفتاحُ الغائبُ يُعرض باسمه: وسيلةٌ تُضاف في الخادم تظهر في الشاشة
+ * ولو لم تُترجَم — لا تختفي من القائمة لأنّ أحدًا نسي سطرًا هنا.
+ */
+const METHOD_LABEL: Record<string, string> = {
+    'آجل': 'آجل — لا يُقبض الآن',
+    'نقدي': 'مدفوع نقدًا',
+    'بطاقة': 'مدفوع بالبطاقة',
+    'تحويل': 'تحويل بنكي',
+    'شيك': 'شيك',
+};
 
 /**
  * كم صفًّا يُرسَم في نافذة الكتالوج.
@@ -167,6 +192,8 @@ export default function CustomerInvoiceCreate({
     tax_rate,
     today,
     may,
+    methods,
+    bank_methods,
     bank_accounts,
     new_customer_id,
 }: Props) {
@@ -205,7 +232,8 @@ export default function CustomerInvoiceCreate({
         internal_notes: '',
         // المرفقاتُ في النموذج لا بجواره: فيصل خطؤها مكتوبًا باسمها
         attachments: [] as File[],
-        payment_method: 'آجل',
+        // و«آجل» أوّلُ القائمة دائمًا — والافتراضُ منها لا مكتوبًا بيده
+        payment_method: methods[0] ?? CREDIT,
         // والرئيسيُّ أوّلُ القائمة — فما تراه الشاشةُ هو ما يُخزَّن
         bank_account_id: bank_accounts.length > 0 ? String(bank_accounts[0].id) : '',
         issue: false,
@@ -311,8 +339,14 @@ export default function CustomerInvoiceCreate({
 
     const clearCustomer = () => form.setData('customer_id', '');
 
-    /* والحسابُ يُسأل عنه حين يدخل المالُ بنكًا — لا مع النقد ولا مع الآجل */
-    const needsAccount = form.data.payment_method === 'بطاقة' || form.data.payment_method === 'تحويل';
+    /*
+     * والحسابُ يُسأل عنه حين يدخل المالُ بنكًا — والجوابُ من الخادم.
+     *
+     * كان الشرطُ مكتوبًا هنا `=== 'بطاقة' || === 'تحويل'`، و«شيك» تدخل
+     * البنكَ مثلَهما في `CustomerPayments::sideFor`. فلمّا أُضيفت إلى
+     * القائمة كانت الشاشةُ ستسجّلها بلا حسابٍ منسوب.
+     */
+    const needsAccount = bank_methods.includes(form.data.payment_method);
 
     /*
      * والملفّاتُ خارج `useForm`: تُضاف عند الإرسال.
@@ -327,6 +361,87 @@ export default function CustomerInvoiceCreate({
         if (! list) return;
         form.setData('attachments', [...files, ...Array.from(list)].slice(0, 6));
     };
+
+    /*
+     * ───────── الورقة كما ستخرج ─────────
+     *
+     * تُرسم في الخادم بالقالب الذي يُطبع — انظر العمود الأيسر أسفلُ
+     * و`CustomerInvoiceController::preview`.
+     */
+    const [html, setHtml] = useState('');
+    const [drawing, setDrawing] = useState(true);
+
+    /*
+     * وورقةٌ واحدة تُرسم في كلّ لحظة.
+     *
+     * كلُّ ضغطة حرفٍ في البنود أو الملاحظة تطلب رسمًا، وردودُ الخادم لا تصل
+     * بالترتيب الذي أُرسلت به — فتحلّ صورةٌ قديمة محلَّ أحدث واحدة، ويرى
+     * التاجر بندَه الأخير وقد اختفى. والعدّاد يُسقط كلَّ ردٍّ سبقه أحدثُ منه.
+     */
+    const ticket = useRef(0);
+
+    /*
+     * وما يُرسَل للرسم هو ما يُرسَل للحفظ — لا مجموعةٌ ثانية تُختار بيدها.
+     *
+     * حقلٌ يُنسى هنا يعني ورقةً تُعاين بلا «مرجع العميل» ثمّ تُطبع به —
+     * ومعاينةٌ تكذب أسوأ من غياب المعاينة.
+     */
+    const payload = useMemo(
+        () => ({
+            customer_id: form.data.customer_id,
+            issued_at: form.data.issued_at,
+            due_at: form.data.due_at,
+            payment_terms_days:
+                form.data.payment_terms_days === CUSTOM ? '' : form.data.payment_terms_days,
+            po_number: form.data.po_number,
+            contract_number: form.data.contract_number,
+            external_reference: form.data.external_reference,
+            department: form.data.department,
+            cost_center: form.data.cost_center,
+            attention_to: form.data.attention_to,
+            notes: form.data.notes,
+            bank_account_id: needsAccount ? form.data.bank_account_id : '',
+            items: lines,
+        }),
+        [form.data, lines, needsAccount],
+    );
+
+    const draw = useCallback(async () => {
+        const mine = ++ticket.current;
+        setDrawing(true);
+
+        try {
+            const res = await fetch(route('admin.customerInvoices.preview'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(payload),
+            });
+
+            const body = await res.json();
+
+            if (mine === ticket.current) {
+                setHtml(typeof body.html === 'string' ? body.html : '');
+            }
+        } catch {
+            /* شبكةٌ انقطعت: تبقى آخر صورةٍ رُسمت، ولا تُمحى الورقة أمام صاحبها */
+        } finally {
+            if (mine === ticket.current) {
+                setDrawing(false);
+            }
+        }
+    }, [payload]);
+
+    // تأخيرٌ قصير: الكتابة في البنود لا ترسل طلبًا لكلّ حرف
+    useEffect(() => {
+        const id = window.setTimeout(draw, 400);
+
+        return () => window.clearTimeout(id);
+    }, [draw]);
 
     const submit = (issue: boolean) => {
         // و«مخصص» لا يُرسَل مدّةً: الخادمُ يخزّن عددَ أيّامٍ أو لا شيء
@@ -347,7 +462,7 @@ export default function CustomerInvoiceCreate({
         form.post('/admin/customer-invoices', { preserveScroll: true, forceFormData: files.length > 0 });
     };
 
-    const credit = form.data.payment_method === 'آجل';
+    const credit = form.data.payment_method === CREDIT;
 
     return (
         <AdminLayout title={t('إنشاء فاتورة')}>
@@ -357,15 +472,66 @@ export default function CustomerInvoiceCreate({
                 label="فواتير العملاء"
             />
 
+            {/*
+                والأزرارُ في الترويسة لا في ذيل النموذج.
+
+                الصفحةُ صارت عمودين: تفاصيلُ إلى جانب ورقةٍ حيّة، والورقةُ
+                ملتصقةٌ بأعلى الشاشة تمتدّ بامتداد البنود. فزرٌّ في الذيل
+                يعني نزولًا إلى أسفل عمودٍ لا يُرى قاعُه ليُصدَر ما يُقرأ في
+                الأعلى — وهو ما دفع الأزرار خارج العين كلّما طالت الفاتورة.
+
+                ولا يُنسخ: هو زرٌّ واحد انتقل موضعُه، لا اثنان في صفحةٍ يضغط
+                التاجرُ أحدَهما ويظنّ الآخر شيئًا غيرَه.
+            */}
             <PageHeader
                 title="إنشاء فاتورة عميل جديدة"
                 subtitle={t('إصدار فاتورة لعميل مقابل منتجات أو خدمات.')}
                 actions={
-                    <span className="rounded-full bg-[#eff6ff] px-3 py-1 text-[12px] font-medium text-[#1d4ed8]">
-                        {t('مسودة')}
-                    </span>
+                    <>
+                        <span className="rounded-full bg-[#eff6ff] px-3 py-1 text-[12px] font-medium text-[#1d4ed8]">
+                            {t('مسودة')}
+                        </span>
+
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={form.processing}
+                            onClick={() => router.visit(route('admin.customerInvoices.index'))}
+                        >
+                            {t('إلغاء')}
+                        </Button>
+
+                        {/*
+                            و«حفظ كمسودة» يختفي مع طريقةِ سدادٍ مقبوضة — لا
+                            يُعرض بابٌ يردّ الخادمُ من خلفه. والحارسُ في الخادم
+                            على أيّ حال.
+                        */}
+                        {(credit || ! may.issue) && (
+                            <Button variant="outline" disabled={form.processing} onClick={() => submit(false)}>
+                                <Save />
+                                {t('حفظ كمسودة')}
+                            </Button>
+                        )}
+                        {may.issue && (
+                            <Button disabled={form.processing} onClick={() => submit(true)}>
+                                <Send />
+                                {t('إصدار الفاتورة')}
+                            </Button>
+                        )}
+                    </>
                 }
             />
+
+            {/*
+                ومن لا يملك الإصدار يُقال له — ولا يُرسم له زرٌّ يُردّ عنه.
+                والمسودّةُ تبقى له: هي عملُه، ولا تُنشئ ذمّةً ولا تكتب قيدًا.
+                فيكتبها ويتركها لمن يُصدر.
+            */}
+            {! may.issue && (
+                <p className="mb-4 rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3 text-[12px] text-[#6b7280]">
+                    {t('الإصدار صلاحيةٌ لا تملكها — احفظها مسودّةً ليُصدرها من يملكها.')}
+                </p>
+            )}
 
             {/*
                 وعمودان: الورقةُ في الأوسع، وما يُقرأ عنها في الأضيق.
@@ -374,7 +540,7 @@ export default function CustomerInvoiceCreate({
                 لا بعدها — فتبقى في العين بينما تُملأ البنود، ولا تنزل تحت طيّة
                 الشاشة كما كانت.
             */}
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,460px)]">
                 <div className="min-w-0 space-y-4">
                     {/* ───────── معلومات الفاتورة ───────── */}
                     <Card className="p-5">
@@ -759,6 +925,100 @@ export default function CustomerInvoiceCreate({
                         {form.errors.items && <Err msg={form.errors.items} />}
                     </Card>
 
+                    <Card className="p-5">
+                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('ملخص الفاتورة')}</h2>
+
+                        <dl className="space-y-2 text-[13px]">
+                            <Row label={t('قيمة الأصناف')} value={m(totals.subtotal)} />
+                            {/*
+                                و«الخصم» لا «خصم عام»: هو مجموعُ خصومات البنود،
+                                ولا خصمَ على مستوى الفاتورة في النظام. واسمٌ
+                                يَعِد بحقلٍ لا وجود له يجعل من يبحث عنه يظنّ
+                                الشاشةَ ناقصة.
+                            */}
+                            <Row label={t('الخصم')} value={m(totals.discount)} />
+                            <Row label={t('الضريبة')} value={m(totals.tax)} />
+                        </dl>
+
+                        <div className="mt-3 flex items-center justify-between rounded-[10px] bg-[#f5f3ff] px-3 py-2.5">
+                            <span className="text-[14px] font-bold text-[#111]">{t('الإجمالي')}</span>
+                            <span className="text-[16px] font-bold tabular-nums text-[#6d28d9]">{m(totals.total)}</span>
+                        </div>
+                    </Card>
+
+                    {/* ───────── طريقة السداد ───────── */}
+                    <Card className="p-5">
+                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('طريقة السداد')}</h2>
+
+        {/*
+                            والقائمةُ من الخادم لا مكتوبةً هنا.
+
+                            كانت أربعًا مكتوبةً بيدها تنقصها «شيك» — وهي وسيلةٌ
+                            يقبلها التحصيلُ منذ كُتب. فمن قبض شيكًا مع فاتورته
+                            لم يجد وسيلتَه: يكتبها «تحويل» فيكذب الدفتر، أو
+                            يحفظها آجلةً ثمّ يفتح الورقة ويسجّل من شاشةٍ ثانية.
+                        */}
+                        <div className="space-y-2.5">
+                            {methods.map((value) => (
+                                <label key={value} className="flex items-center gap-2 text-[13px]">
+                                    <input
+                                        type="radio"
+                                        name="payment_method"
+                                        className="size-4 accent-[#6d28d9]"
+                                        checked={form.data.payment_method === value}
+                                        onChange={() => form.setData('payment_method', value)}
+                                    />
+                                    {t(METHOD_LABEL[value] ?? value)}
+                                </label>
+                            ))}
+                        </div>
+
+                        {/*
+                            ───────── وأيُّ حسابٍ استقبل المال ─────────
+
+                            «بنك» في الدفتر تكفي القيدَ ولا تكفي المطابقة: كشفُ
+                            الحساب يصل من بنكٍ بعينه، وسطرٌ لا يعرف حسابَه لا
+                            يجد ما يُطابقه. والقائمةُ من «المالية» لا مكتوبةً
+                            هنا — ومتجرٌ بلا حسابٍ مسجَّل يُقال له أين يُسجِّله.
+                        */}
+                        {needsAccount && (
+                            <div className="mt-4 space-y-1.5">
+                                <Label htmlFor="bank-account">{t('الحساب البنكي المستلِم')}</Label>
+
+                                {bank_accounts.length > 0 ? (
+                                    <Select
+                                        id="bank-account"
+                                        value={form.data.bank_account_id}
+                                        onChange={(e) => form.setData('bank_account_id', e.target.value)}
+                                        options={bank_accounts.map((a) => ({
+                                            label: a.is_primary ? `${a.name} — ${t('رئيسي')}` : a.name,
+                                            value: String(a.id),
+                                        }))}
+                                    />
+                                ) : (
+                                    <p className="rounded-[10px] border border-dashed border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] leading-relaxed text-[#92400e]">
+                                        {t('لا حساب بنكي مسجَّل. سجّله في «المالية ← الحسابات البنكية» ليُطابَق التحصيل بكشف الحساب.')}
+                                    </p>
+                                )}
+
+                                {form.errors.bank_account_id && <Err msg={form.errors.bank_account_id} />}
+                            </div>
+                        )}
+
+                        {/*
+                            وما يقع بعد الإصدار يُقال قبله: من اختار «آجل» يصنع
+                            ذمّةً، ومن اختار غيره يُسجَّل له إيصالُ تحصيلٍ
+                            بالمبلغ كلِّه — ولا تُوسَم فاتورةٌ «مدفوعة» بلا إيصال.
+                        */}
+                        <p className="mt-4 rounded-[10px] bg-[#f5f3ff] p-3 text-[12px] leading-relaxed text-[#5b21b6]">
+                            {credit
+                                ? t('تُنشأ ذمّة على العميل بالمبلغ المستحق بعد إصدار الفاتورة.')
+                                : t('يُسجَّل إيصال تحصيل بالمبلغ كاملًا عند إصدار الفاتورة — ولا يُسجَّل على مسودّة.')}
+                        </p>
+
+                        {form.errors.payment_method && <Err msg={form.errors.payment_method} />}
+                    </Card>
+
                     {/*
                         ───────── الملاحظتان ─────────
 
@@ -837,143 +1097,6 @@ export default function CustomerInvoiceCreate({
                         </Card>
                     </div>
 
-                    {/* ───────── الأزرار ───────── */}
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                        {/*
-                            ومن لا يملك الإصدار يُقال له — ولا يُرسم له زرٌّ
-                            يُردّ عنه. والمسودّةُ تبقى له: هي عملُه، ولا تُنشئ
-                            ذمّةً ولا تكتب قيدًا. فيكتبها ويتركها لمن يُصدر.
-                        */}
-                        {! may.issue && (
-                            <p className="me-auto text-[12px] text-[#9ca3af]">
-                                {t('الإصدار صلاحيةٌ لا تملكها — احفظها مسودّةً ليُصدرها من يملكها.')}
-                            </p>
-                        )}
-
-                        <Button
-                            type="button"
-                            variant="outline"
-                            disabled={form.processing}
-                            onClick={() => router.visit(route('admin.customerInvoices.index'))}
-                        >
-                            {t('إلغاء')}
-                        </Button>
-
-                        {/*
-                            و«حفظ كمسودة» يختفي مع طريقةِ سدادٍ مقبوضة — لا
-                            يُعرض بابٌ يردّ الخادمُ من خلفه. والحارسُ في الخادم
-                            على أيّ حال.
-                        */}
-                        {(credit || ! may.issue) && (
-                            <Button variant="outline" disabled={form.processing} onClick={() => submit(false)}>
-                                <Save />
-                                {t('حفظ كمسودة')}
-                            </Button>
-                        )}
-                        {may.issue && (
-                            <Button disabled={form.processing} onClick={() => submit(true)}>
-                                <Send />
-                                {t('إصدار الفاتورة')}
-                            </Button>
-                        )}
-                    </div>
-                </div>
-
-                {/* ───────── العمود الجانبي ───────── */}
-                <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-                    <Card className="p-5">
-                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('ملخص الفاتورة')}</h2>
-
-                        <dl className="space-y-2 text-[13px]">
-                            <Row label={t('قيمة الأصناف')} value={m(totals.subtotal)} />
-                            {/*
-                                و«الخصم» لا «خصم عام»: هو مجموعُ خصومات البنود،
-                                ولا خصمَ على مستوى الفاتورة في النظام. واسمٌ
-                                يَعِد بحقلٍ لا وجود له يجعل من يبحث عنه يظنّ
-                                الشاشةَ ناقصة.
-                            */}
-                            <Row label={t('الخصم')} value={m(totals.discount)} />
-                            <Row label={t('الضريبة')} value={m(totals.tax)} />
-                        </dl>
-
-                        <div className="mt-3 flex items-center justify-between rounded-[10px] bg-[#f5f3ff] px-3 py-2.5">
-                            <span className="text-[14px] font-bold text-[#111]">{t('الإجمالي')}</span>
-                            <span className="text-[16px] font-bold tabular-nums text-[#6d28d9]">{m(totals.total)}</span>
-                        </div>
-                    </Card>
-
-                    {/* ───────── طريقة السداد ───────── */}
-                    <Card className="p-5">
-                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('طريقة السداد')}</h2>
-
-                        <div className="space-y-2.5">
-                            {(
-                                [
-                                    ['آجل', 'آجل'],
-                                    ['نقدي', 'مدفوع نقدًا'],
-                                    ['بطاقة', 'مدفوع بالبطاقة'],
-                                    ['تحويل', 'تحويل بنكي'],
-                                ] as const
-                            ).map(([value, label]) => (
-                                <label key={value} className="flex items-center gap-2 text-[13px]">
-                                    <input
-                                        type="radio"
-                                        name="payment_method"
-                                        className="size-4 accent-[#6d28d9]"
-                                        checked={form.data.payment_method === value}
-                                        onChange={() => form.setData('payment_method', value)}
-                                    />
-                                    {t(label)}
-                                </label>
-                            ))}
-                        </div>
-
-                        {/*
-                            ───────── وأيُّ حسابٍ استقبل المال ─────────
-
-                            «بنك» في الدفتر تكفي القيدَ ولا تكفي المطابقة: كشفُ
-                            الحساب يصل من بنكٍ بعينه، وسطرٌ لا يعرف حسابَه لا
-                            يجد ما يُطابقه. والقائمةُ من «المالية» لا مكتوبةً
-                            هنا — ومتجرٌ بلا حسابٍ مسجَّل يُقال له أين يُسجِّله.
-                        */}
-                        {needsAccount && (
-                            <div className="mt-4 space-y-1.5">
-                                <Label htmlFor="bank-account">{t('الحساب البنكي المستلِم')}</Label>
-
-                                {bank_accounts.length > 0 ? (
-                                    <Select
-                                        id="bank-account"
-                                        value={form.data.bank_account_id}
-                                        onChange={(e) => form.setData('bank_account_id', e.target.value)}
-                                        options={bank_accounts.map((a) => ({
-                                            label: a.is_primary ? `${a.name} — ${t('رئيسي')}` : a.name,
-                                            value: String(a.id),
-                                        }))}
-                                    />
-                                ) : (
-                                    <p className="rounded-[10px] border border-dashed border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] leading-relaxed text-[#92400e]">
-                                        {t('لا حساب بنكي مسجَّل. سجّله في «المالية ← الحسابات البنكية» ليُطابَق التحصيل بكشف الحساب.')}
-                                    </p>
-                                )}
-
-                                {form.errors.bank_account_id && <Err msg={form.errors.bank_account_id} />}
-                            </div>
-                        )}
-
-                        {/*
-                            وما يقع بعد الإصدار يُقال قبله: من اختار «آجل» يصنع
-                            ذمّةً، ومن اختار غيره يُسجَّل له إيصالُ تحصيلٍ
-                            بالمبلغ كلِّه — ولا تُوسَم فاتورةٌ «مدفوعة» بلا إيصال.
-                        */}
-                        <p className="mt-4 rounded-[10px] bg-[#f5f3ff] p-3 text-[12px] leading-relaxed text-[#5b21b6]">
-                            {credit
-                                ? t('تُنشأ ذمّة على العميل بالمبلغ المستحق بعد إصدار الفاتورة.')
-                                : t('يُسجَّل إيصال تحصيل بالمبلغ كاملًا عند إصدار الفاتورة — ولا يُسجَّل على مسودّة.')}
-                        </p>
-
-                        {form.errors.payment_method && <Err msg={form.errors.payment_method} />}
-                    </Card>
-
                     {/*
                         ───────── المرفقات ─────────
 
@@ -1024,6 +1147,68 @@ export default function CustomerInvoiceCreate({
 
                         {form.errors.attachments && <Err msg={form.errors.attachments} />}
                     </Card>
+                </div>
+
+                {/*
+                    ───────── الورقة كما ستخرج ─────────
+
+                    ═══ ولماذا لا تُرسم هنا ═══
+
+                    القاعدةُ مكتوبةٌ في `DocumentRenderer`: المعاينةُ تُرسم
+                    بالقالب الذي يُطبع لا بنسخةٍ ثانية منه في الشاشة. وصندوقٌ
+                    يشبه الفاتورةَ مبنيٌّ من JSX يفترق عنها عند أوّل تعديل —
+                    يُرفع سطرٌ من الورقة ويبقى في الصورة، فيعتمد التاجر شكلًا
+                    لا يخرج من الطابعة ويرسل إلى عميله ورقةً غيرَ التي رآها.
+
+                    فما في الإطار هنا هو `pdf.customer-invoice` نفسُه، مرسومًا
+                    في الخادم بمسودّةٍ **غيرِ محفوظة**: لا صفَّ يُكتب، ولا رقمَ
+                    يُقطع من التسلسل، ولا قيدَ يقع.
+                */}
+                <div className="min-w-0 space-y-2 xl:sticky xl:top-4 xl:self-start">
+                    <div className="flex items-center justify-between gap-3 px-1">
+                        <div className="min-w-0">
+                            <h2 className="text-[15px] font-bold text-[#111]">{t('معاينة الفاتورة')}</h2>
+                            {/*
+                                والشعارُ والاسمُ يُضبطان من موضعٍ واحد — ولا
+                                يُكتبان هنا مرّةً ثانية. حقلان يقولان اسمَ
+                                المتجر يفترقان يومًا، فتحمل الفاتورةُ اسمًا
+                                والإيصالُ غيرَه.
+                            */}
+                            <p className="mt-0.5 truncate text-[12px] text-[#9ca3af]">
+                                {t('الشعار واسم المتجر من')}{' '}
+                                <a
+                                    href={route('admin.settings.index')}
+                                    className="font-medium text-[#6d28d9] hover:underline"
+                                >
+                                    {t('الإعدادات')}
+                                </a>
+                            </p>
+                        </div>
+                        {drawing && <RefreshCw className="size-3.5 shrink-0 animate-spin text-[#d1d5db]" />}
+                    </div>
+
+                    <div className="overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white">
+                        {/*
+                            sandbox بلا allow-scripts: الورقة نصٌّ يُطبع لا
+                            صفحةٌ تعمل، وتنفيذُ شيءٍ منها في اللوحة لا داعيَ له.
+                        */}
+                        <iframe
+                            title={t('معاينة الفاتورة')}
+                            srcDoc={html}
+                            sandbox=""
+                            className="h-[60dvh] w-full border-0 bg-white xl:h-[calc(100dvh-13rem)]"
+                        />
+                    </div>
+
+                    {/*
+                        وما لا يُطبع يُقال إنّه لا يُطبع.
+
+                        الملاحظاتُ الداخليّة والمرفقاتُ ليست في الورقة، ومن
+                        يكتبها ولا يجدها في المعاينة يظنّ المعاينةَ معطوبة.
+                    */}
+                    <p className="px-1 text-[12px] leading-relaxed text-[#9ca3af]">
+                        {t('الملاحظات الداخلية والمرفقات لا تظهر في الورقة المطبوعة.')}
+                    </p>
                 </div>
             </div>
             <ProductDialog

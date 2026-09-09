@@ -349,13 +349,22 @@ class SellingOpensTheScreenIssuingMakesTheDebtTest extends TestCase
                 continue;
             }
 
-            // والمسودّةُ وعميلُها ومرفقُها تبقى بالقسم عمدًا — انظر أعلاه
+            /*
+             * والمسودّةُ وعميلُها ومرفقُها تبقى بالقسم عمدًا — انظر أعلاه.
+             *
+             * و«المعاينة» ليست بابَ كتابةٍ أصلًا: `POST` لأنّ النموذجَ كلَّه
+             * يرحل معها لا لأنّها تكتب شيئًا — لا صفَّ، ولا رقمًا من التسلسل،
+             * ولا قيدًا، ولا سطرًا في سجلّ النشاط. والفعلُ هنا مقياسٌ بالنيابة
+             * عن الأثر، وهذه تكسره. وأنّها لا تكتب مُثبتٌ لا مزعوم:
+             * `ThePaperIsPreviewedByThePaperItselfTest`.
+             */
             if (in_array($name, [
                 'admin.customerInvoices.store',
                 'admin.customerInvoices.storeCustomer',
                 'admin.customerInvoices.remind',
                 'admin.customerInvoices.attach',
                 'admin.customerInvoices.detach',
+                'admin.customerInvoices.preview',
             ], true)) {
                 continue;
             }

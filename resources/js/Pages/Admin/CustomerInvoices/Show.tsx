@@ -67,8 +67,18 @@ interface May {
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, context } =
-        usePage<PageProps<{ invoice: Invoice; may: May; bank_accounts: BankRow[] }>>().props;
+    const { invoice, may, bank_accounts, methods, bank_methods, context } =
+        usePage<
+            PageProps<{
+                invoice: Invoice;
+                may: May;
+                bank_accounts: BankRow[];
+                /** وسائلُ التحصيل — من `CustomerPayments::METHODS` لا مكتوبةً هنا */
+                methods: string[];
+                /** أيُّها يدخل مالُه بنكًا — من `CustomerPayments::sideFor` */
+                bank_methods: string[];
+            }>
+        >().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
     /* ومسودّةٌ بلا رقم تُعرف بمعرّفها — والعنوانُ لا يكون فراغًا */
@@ -158,7 +168,13 @@ export default function CustomerInvoiceShow() {
             )}
 
             {paying && (
-                <PayForm invoice={invoice} accounts={bank_accounts} onDone={() => setPaying(false)} />
+                <PayForm
+                    invoice={invoice}
+                    accounts={bank_accounts}
+                    methods={methods}
+                    bankMethods={bank_methods}
+                    onDone={() => setPaying(false)}
+                />
             )}
             {crediting && <CreditNoteForm invoice={invoice} onDone={() => setCrediting(false)} />}
 
@@ -323,10 +339,14 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 function PayForm({
     invoice,
     accounts,
+    methods,
+    bankMethods,
     onDone,
 }: {
     invoice: Invoice;
     accounts: BankRow[];
+    methods: string[];
+    bankMethods: string[];
     onDone: () => void;
 }) {
     const t = useTranslate();
@@ -334,15 +354,22 @@ function PayForm({
         customer_id: String(invoice.customer_id),
         customer_invoice_id: String(invoice.id),
         amount: String(invoice.outstanding),
-        method: 'نقدي',
+        // وأوّلُ ما يقبله الخادم — لا اسمًا مكتوبًا هنا قد يسقط من قائمته
+        method: methods[0] ?? '',
         // والرئيسيُّ أوّلُ القائمة — انظر `CustomerInvoiceController::bankAccounts`
         bank_account_id: accounts.length > 0 ? String(accounts[0].id) : '',
         occurred_at: '',
         external_reference: '',
     });
 
-    /* والحسابُ يُسأل عنه حين يدخل المالُ بنكًا — والنقدُ يدخل الصندوق */
-    const needsAccount = form.data.method !== 'نقدي';
+    /*
+     * والحسابُ يُسأل عنه حين يدخل المالُ بنكًا — والجوابُ من الخادم.
+     *
+     * كان الشرطُ `!== 'نقدي'` — يصيب اليوم ويخطئ غدًا: وسيلةٌ نقديّةٌ ثانية
+     * تُضاف في `CustomerPayments::sideFor` تسأل هنا عن حسابٍ بنكيٍّ لا يمرّ
+     * به مالُها.
+     */
+    const needsAccount = bankMethods.includes(form.data.method);
 
     return (
         <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
@@ -358,7 +385,8 @@ function PayForm({
                     value={form.data.method}
                     onChange={(e) => form.setData('method', e.target.value)}
                 >
-                    {['نقدي', 'بطاقة', 'تحويل', 'شيك'].map((x) => (
+                    {/* والقائمةُ من الخادم — كانت مكتوبةً بيدها هنا وثالثةً في شاشة الإنشاء */}
+                    {methods.map((x) => (
                         <option key={x} value={x}>{t(x)}</option>
                     ))}
                 </select>

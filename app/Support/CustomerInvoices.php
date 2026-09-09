@@ -50,6 +50,55 @@ final class CustomerInvoices
     /** إشعارٌ وُلد من إلغاء طلبٍ مفوتَر — لا يُقيَّد، فقيدُه سبقه */
     public const NOTE_ORDER_CANCELLED = 'إلغاء طلب';
 
+    /**
+     * «آجل» — الورقةُ تُصدَر ولا مالَ يقع معها.
+     *
+     * وليست وسيلةَ سدادٍ كأخواتها: لا إيصالَ لها ولا قيدَ صندوق. وهي في
+     * القائمة لأنّ من يكتب الفاتورة يختار بين «قُبض» و«لم يُقبض» في المكان
+     * نفسه — لا في شاشتين.
+     */
+    public const CREDIT = 'آجل';
+
+    /**
+     * ما يُعرض في شاشة الفاتورة وسيلةً — «آجل» ثمّ ما يقبله التحصيل نفسُه.
+     *
+     * ═══ ولماذا تُشتقّ ولا تُكتب ═══
+     *
+     * كانت ثلاثَ قوائم: هذه مكتوبةً في `create`، ومثلُها في قاعدة المصادقة
+     * `in:آجل,نقدي,بطاقة,تحويل`، وثالثةٌ مكتوبةٌ بيدها في شاشة الفاتورة
+     * المفتوحة. وقائمةُ التحصيل الحقيقيّة `CustomerPayments::METHODS` فيها
+     * **«شيك»** — ولم تكن في شاشة الإنشاء أصلًا. فمن قبض شيكًا مع الفاتورة
+     * لم يجد وسيلته: إمّا يكتبها «تحويل» فيكذب الدفتر، وإمّا يحفظها آجلةً
+     * ثمّ يفتح الورقة ويسجّل التحصيل من شاشةٍ ثانية.
+     *
+     * وهنا قائمةٌ واحدة تُشتقّ من مالكها: ما يقبله `CustomerPayments::record`
+     * هو ما تعرضه الشاشة وهو ما تقبله المصادقة — تُضاف وسيلةٌ هناك فتظهر في
+     * الثلاثة معًا.
+     *
+     * @return array<int, string>
+     */
+    public static function methods(): array
+    {
+        return array_merge([self::CREDIT], CustomerPayments::METHODS);
+    }
+
+    /**
+     * الوسائلُ التي يدخل مالُها بنكًا — فتُسأل عن الحساب بعينه.
+     *
+     * والجوابُ من `CustomerPayments::sideFor` لا من شرطٍ مكتوبٍ في الشاشة:
+     * كانت تقول `بطاقة || تحويل`، و«شيك» تدخل البنك مثلَهما — فتُسجَّل بلا
+     * حسابٍ منسوب، ولا يجد `bank/rematch` لها ما يُسندها إليه.
+     *
+     * @return array<int, string>
+     */
+    public static function bankMethods(): array
+    {
+        return array_values(array_filter(
+            CustomerPayments::METHODS,
+            fn (string $m) => CustomerPayments::sideFor($m) === 'bank',
+        ));
+    }
+
     /** رقمٌ متسلسلٌ داخل المتجر — لا عشوائيّ، ولا يُعاد استعمالُ رقمٍ أُلغي */
     public static function nextNumber(int $businessId): string
     {
@@ -164,6 +213,114 @@ final class CustomerInvoices
     }
 
     /**
+     * أعمدةُ الورقة كما تُكتب — من موضعٍ واحد تقرؤه المحفوظةُ والمعاينةُ معًا.
+     *
+     * ═══ ولماذا خرجت من `create` ═══
+     *
+     * المعاينةُ الحيّة في شاشة الإنشاء تُرسم بالقالب الذي يُطبع
+     * (`pdf.customer-invoice`)، والقالبُ يقرأ صفَّ فاتورة. فلو بُنيت المعاينةُ
+     * صفًّا ثانيًا مكتوبًا بيده لافترق عن المحفوظ عند أوّل عمودٍ يُضاف: يُقرأ
+     * «القسم» من العميل في الحفظ ولا يُقرأ في المعاينة، فيرى التاجر ورقةً
+     * ويستلم عميلُه غيرَها. وهي القاعدةُ نفسُها المكتوبة في `DocumentRenderer`.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $totals  ما ردّته `compute`
+     * @return array<string, mixed>
+     */
+    private static function attributes(int $businessId, ?Customer $customer, array $data, array $totals): array
+    {
+        $terms = $data['payment_terms_days'] ?? $customer?->payment_terms_days;
+        $issuedAt = isset($data['issued_at']) ? Carbon::parse($data['issued_at']) : now();
+
+        return [
+            'business_id' => $businessId,
+            'customer_id' => $customer?->id,
+            'branch_id' => $data['branch_id'] ?? null,
+            /*
+             * ولا رقمَ للمسودّة.
+             *
+             * كان يُقطع هنا، فمسودّةٌ تُهجر تأخذ رقمَها معها ويقفز التسلسل
+             * في دفترٍ يُقرأ عند الضريبة. والرقمُ يُقطع عند الإصدار — حيث
+             * يقع القيد. انظر `issue`.
+             */
+            'number' => null,
+            'status' => CustomerInvoice::DRAFT,
+            'issued_at' => $issuedAt->toDateString(),
+            'due_at' => $data['due_at']
+                ?? ($terms !== null ? $issuedAt->copy()->addDays((int) $terms)->toDateString() : null),
+            'payment_terms_days' => $terms,
+            /*
+             * وعملةُ الورقة عملةُ المتجر لا عملةُ عرض القارئ.
+             *
+             * `displayCurrency` تفضيلُ مشاهدةٍ يُبدَّل من الترويسة — وورقةٌ
+             * صدرت لا يغيّر عملتَها من فتحها. ولا صرفَ أجنبيًّا هنا: النظام
+             * يمسك عملةً تشغيليّةً واحدة، والباقي عرضٌ.
+             */
+            'currency' => Currency::where('business_id', $businessId)
+                ->where('is_base', true)->value('code'),
+            'subtotal' => $totals['subtotal'],
+            'discount_total' => $totals['discount'],
+            'tax_total' => $totals['tax'],
+            'total' => $totals['total'],
+            'customer_name' => $customer?->legal_name ?: $customer?->name,
+            'customer_tax_number' => $customer?->tax_number,
+            'customer_cr' => $customer?->commercial_registration,
+            'customer_address' => $customer?->billing_address ?: $customer?->address,
+            'po_number' => $data['po_number'] ?? null,
+            'contract_number' => $data['contract_number'] ?? null,
+            'external_reference' => $data['external_reference'] ?? null,
+            'department' => $data['department'] ?? $customer?->department,
+            'cost_center' => $data['cost_center'] ?? null,
+            'attention_to' => $data['attention_to'] ?? $customer?->contact_person,
+            'notes' => $data['notes'] ?? null,
+            // وما لا يُطبع: عمودٌ آخر لا يبلغ ورقةَ العميل
+            'internal_notes' => $data['internal_notes'] ?? null,
+        ];
+    }
+
+    /**
+     * ورقةٌ **غيرُ محفوظة** — لمعاينة ما لم يُكتب بعد.
+     *
+     * ولا تلمس القاعدة: لا صفَّ يُكتب، ولا رقمَ يُقطع، ولا قيدَ يقع. من فتح
+     * شاشة الإنشاء وكتب بندًا ثمّ تركها لا يجب أن يترك خلفه مسودّةً في
+     * دفتره ولا فجوةً في تسلسل أرقامه.
+     *
+     * والعميلُ قد لا يكون اختير بعد — والمعاينةُ تُرسم على أيّ حال: من يكتب
+     * البنودَ قبل أن يختار الجهة يرى ورقتَه تتشكّل، ولا تُقفل عليه الشاشةُ
+     * حتى يملأ حقلًا بعينه.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    public static function draft(int $businessId, ?Customer $customer, array $data, array $lines): CustomerInvoice
+    {
+        if ($customer !== null && (int) $customer->business_id !== $businessId) {
+            throw new RuntimeException(__('هذا العميل ليس من عملاء متجرك.'));
+        }
+
+        $totals = self::compute($businessId, $lines);
+
+        $invoice = new CustomerInvoice(self::attributes($businessId, $customer, $data, $totals));
+
+        /*
+         * والبنودُ تُعلَّق بلا حفظ.
+         *
+         * `setRelation` يجعل `$invoice->items` تردّ ما بُني هنا بدل أن تسأل
+         * القاعدةَ عن صفوفٍ لا وجود لها — والقالبُ يمرّ عليها كما يمرّ على
+         * بنود ورقةٍ محفوظة، فهو قالبٌ واحد لا اثنان.
+         */
+        $invoice->setRelation('items', collect($totals['items'])->map(
+            fn (array $item) => new CustomerInvoiceItem($item)
+        ));
+
+        if ($customer !== null) {
+            $invoice->setRelation('customer', $customer);
+        }
+
+        return $invoice;
+    }
+
+    /**
      * إنشاءُ فاتورةٍ — مسودّةً أو صادرة.
      *
      * والمنتجُ يُقرأ من متجر الفاتورة لا من الطلب: معرّفٌ من متجرٍ آخر يُرفض
@@ -188,55 +345,11 @@ final class CustomerInvoices
         }
 
         $totals = self::compute($businessId, $lines);
-        $terms = $data['payment_terms_days'] ?? $customer->payment_terms_days;
-        $issuedAt = isset($data['issued_at']) ? Carbon::parse($data['issued_at']) : now();
 
-        return DB::transaction(function () use ($businessId, $customer, $data, $totals, $terms, $issuedAt, $userId) {
-            $invoice = CustomerInvoice::create([
-                'business_id' => $businessId,
-                'customer_id' => $customer->id,
-                'branch_id' => $data['branch_id'] ?? null,
-                /*
-                 * ولا رقمَ للمسودّة.
-                 *
-                 * كان يُقطع هنا، فمسودّةٌ تُهجر تأخذ رقمَها معها ويقفز التسلسل
-                 * في دفترٍ يُقرأ عند الضريبة. والرقمُ يُقطع عند الإصدار — حيث
-                 * يقع القيد. انظر `issue`.
-                 */
-                'number' => null,
-                'status' => CustomerInvoice::DRAFT,
-                'issued_at' => $issuedAt->toDateString(),
-                'due_at' => $data['due_at']
-                    ?? ($terms !== null ? $issuedAt->copy()->addDays((int) $terms)->toDateString() : null),
-                'payment_terms_days' => $terms,
-                /*
-                 * وعملةُ الورقة عملةُ المتجر لا عملةُ عرض القارئ.
-                 *
-                 * `displayCurrency` تفضيلُ مشاهدةٍ يُبدَّل من الترويسة — وورقةٌ
-                 * صدرت لا يغيّر عملتَها من فتحها. ولا صرفَ أجنبيًّا هنا: النظام
-                 * يمسك عملةً تشغيليّةً واحدة، والباقي عرضٌ.
-                 */
-                'currency' => Currency::where('business_id', $businessId)
-                    ->where('is_base', true)->value('code'),
-                'subtotal' => $totals['subtotal'],
-                'discount_total' => $totals['discount'],
-                'tax_total' => $totals['tax'],
-                'total' => $totals['total'],
-                'customer_name' => $customer->legal_name ?: $customer->name,
-                'customer_tax_number' => $customer->tax_number,
-                'customer_cr' => $customer->commercial_registration,
-                'customer_address' => $customer->billing_address ?: $customer->address,
-                'po_number' => $data['po_number'] ?? null,
-                'contract_number' => $data['contract_number'] ?? null,
-                'external_reference' => $data['external_reference'] ?? null,
-                'department' => $data['department'] ?? $customer->department,
-                'cost_center' => $data['cost_center'] ?? null,
-                'attention_to' => $data['attention_to'] ?? $customer->contact_person,
-                'notes' => $data['notes'] ?? null,
-                // وما لا يُطبع: عمودٌ آخر لا يبلغ ورقةَ العميل
-                'internal_notes' => $data['internal_notes'] ?? null,
-                'created_by' => $userId,
-            ]);
+        return DB::transaction(function () use ($businessId, $customer, $data, $totals, $userId) {
+            $invoice = CustomerInvoice::create(
+                self::attributes($businessId, $customer, $data, $totals) + ['created_by' => $userId]
+            );
 
             foreach ($totals['items'] as $item) {
                 CustomerInvoiceItem::create($item + ['customer_invoice_id' => $invoice->id]);

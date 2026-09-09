@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import { AlertTriangle, CheckCircle2, Save, Send } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
@@ -41,6 +41,48 @@ interface MailStatus {
  * المشغّل فلا يتغيّر شيء، ويظنّ أنه ضبط. ومقبضٌ لا يُمسك أسوأ من غيابه لأنه
  * يُطمئن. وما بقي هنا كلُّه موصولٌ بشيء — أو معروضٌ للقراءة لا للتحرير.
  */
+/**
+ * أيُّ تبويبٍ يملك أيَّ حقل — مصدرٌ واحد.
+ *
+ * ═══ ولماذا وُجدت أصلًا ═══
+ *
+ * النموذجُ واحدٌ والتبويباتُ ثمانية، فالحفظُ يُرسل الحقولَ كلَّها مهما كان
+ * التبويبُ المفتوح. وردُّ الخادم يكتب خطأه على حقلٍ بعينه — وإن كان ذلك
+ * الحقلُ في تبويبٍ مطويّ **لم يُرسَم في الصفحة أصلًا**، فلا شيء يُعرض.
+ *
+ * ووقع هذا فعلًا: `default_plan` كان يُرسل بقيمةٍ افتراضيّة لا تطابق أيّ
+ * باقة، فيردّ الخادمُ كلَّ حفظٍ برسالةٍ على حقلٍ في «الاشتراكات». ومن كان
+ * في «واتساب» يضغط «حفظ» فترتدّ الصفحة كأنّ شيئًا لم يكن — عشرَ مرّات.
+ * بابٌ يُردّ ولا يُقال لماذا.
+ *
+ * فهنا: يُفتح التبويبُ الذي فيه الخطأ، ويُقال في أعلى الصفحة ما وقع.
+ */
+const FIELD_TAB: Record<string, string> = {
+    app_name: 'general',
+    locale: 'general',
+    maintenance_mode: 'general',
+
+    company: 'platform',
+    official_email: 'platform',
+    phone: 'platform',
+    website: 'platform',
+
+    trial_days: 'subscriptions',
+    grace_days: 'subscriptions',
+    default_plan: 'subscriptions',
+    auto_suspend: 'subscriptions',
+
+    vat_rate: 'taxes',
+    tax_mode: 'taxes',
+
+    from_address: 'mail',
+    from_name: 'mail',
+
+    whatsapp_enabled: 'whatsapp',
+    whatsapp_shared_enabled: 'whatsapp',
+    whatsapp_shared_default_monthly_limit: 'whatsapp',
+};
+
 const TABS = [
     { key: 'general', label: 'عامة' },
     { key: 'language', label: 'اللغة' },
@@ -122,6 +164,28 @@ export default function PlatformSettings() {
         form.post(route('super-admin.settings.update'), { preserveScroll: true });
     };
 
+    /*
+     * وخطأٌ في تبويبٍ مطويّ يُفتح تبويبُه — لا يُترك صامتًا.
+     *
+     * `form.errors` تُملأ بعد ردّ الخادم. وحقلٌ لا يُرسَم لا يعرض خطأه، فلا
+     * يبقى من الرفض إلّا ارتدادُ الصفحة. انظر `FIELD_TAB`.
+     */
+    const errorKeys = Object.keys(form.errors);
+    const firstError = errorKeys[0];
+
+    useEffect(() => {
+        if (! firstError) {
+            return;
+        }
+
+        const owner = FIELD_TAB[firstError];
+
+        if (owner && owner !== tab) {
+            setTab(owner);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [firstError]);
+
     const saveBar = (
         <div className="mt-6 flex justify-end">
             <Button type="submit" loading={form.processing}>
@@ -160,6 +224,26 @@ export default function PlatformSettings() {
             />
 
             <Tabs tabs={TABS} current={tab} onChange={setTab} className="mb-6" />
+
+            {/*
+                وما رُدّ يُقال — نصًّا لا ارتدادًا.
+
+                والرسالةُ من الخادم لا مصنوعةً هنا: هو الذي يعرف لماذا رَدّ.
+            */}
+            {errorKeys.length > 0 && (
+                <div className="mb-4 rounded-[12px] border border-[#fecaca] bg-[#fef2f2] p-4">
+                    <p className="text-[13px] font-semibold text-[#991b1b]">
+                        {t('لم تُحفظ الإعدادات')}
+                    </p>
+                    <ul className="mt-1.5 space-y-1">
+                        {errorKeys.map((key) => (
+                            <li key={key} className="text-[12px] leading-relaxed text-[#b91c1c]">
+                                {form.errors[key as Key]}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             <form onSubmit={submit}>
                 {tab === 'general' && (

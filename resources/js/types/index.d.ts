@@ -79,6 +79,13 @@ export interface SharedProps {
         panelUrl?: string | null;
         /** هل يدخل هذا المستخدم لوحة النشاط؟ الكاشير لا يدخلها */
         entersPanel: boolean;
+        /**
+         * هل هو موظّفٌ في متجر؟ — لا صاحبُه ولا مديرُ المنصّة.
+         *
+         * يقرّر عرضَ «حسابي وراتبي». ومن الخادم لا يُحسب هنا: هو المصدر
+         * نفسه الذي يحرس المسار — انظر `User::isEmployee`.
+         */
+        isEmployee: boolean;
         /** جلسة انتحالٍ من لوحة المنصة — تُعلَن في كل صفحة */
         impersonating: boolean;
     } | null;

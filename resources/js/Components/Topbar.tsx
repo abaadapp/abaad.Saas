@@ -391,11 +391,21 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                          * ولا تُعرض لصاحب النشاط: ملفُّه ليس ملفَّ موظّف —
                          * لا مسيرةَ له ولا راتبَ مسجَّلًا، فتُفتح على فراغ.
                          *
+                         * ولا لمدير المنصّة: كان الشرط «دورُه ليس admin»،
+                         * ومديرُ المنصّة ليس admin — فيُرسم له البند. فإن
+                         * ضغطه قذفه `RequiresBusiness` إلى لوحة المنصّة
+                         * برسالةٍ عن «لوحة النشاط» لا عن راتب. بابٌ مرسومٌ
+                         * لا يؤدّي إلى شيء — وهو ليس موظّفًا أصلًا.
+                         *
+                         * والسؤالُ يأتي من الخادم (`auth.isEmployee`) لا
+                         * يُحسب هنا: قاعدتان تفترقان يومًا — انظر
+                         * `User::isEmployee` و`MeController::show`.
+                         *
                          * وتُشترط صلاحية «نقطة البيع» لأنّ المسار تحتها: من
                          * لا يملكها يُردّ بـ٤٠٣ — وبابٌ معروضٌ لا يُفتح أسوأ
                          * من بابٍ لا يُعرض.
                          */}
-                        {auth?.user.role !== 'admin' && auth?.abilities.includes('pos') && (
+                        {auth?.isEmployee && auth?.abilities.includes('pos') && (
                             <DropdownMenuItem asChild>
                                 <Link href={route('pos.me')} className="text-[14px] font-medium">
                                     {t('حسابي وراتبي')}

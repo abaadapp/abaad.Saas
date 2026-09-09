@@ -71,7 +71,7 @@ class GoodsReceiptNoteController extends Controller
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('received_at')->orderByDesc('id'));
 
-        $notes = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
+        $notes = $q->paginate(Pagination::perPage($request, 20))->withQueryString();
 
         return Inertia::render('Admin/Inventory/Receipts', [
             'notes' => collect($notes->items())->map(fn ($n) => [

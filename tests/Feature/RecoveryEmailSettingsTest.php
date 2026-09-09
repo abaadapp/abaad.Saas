@@ -8,6 +8,7 @@ use App\Models\Business;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -240,25 +241,28 @@ class RecoveryEmailSettingsTest extends TestCase
     /* ---------------------------- رمز الكاشير ---------------------------- */
 
     /**
-     * ولا رمزَ كاشيرٍ يُرسل بالبريد ولا يُعرض.
+     * ولا رمزَ كاشيرٍ يتسرّب — ولا رمزَ في القاعدة أصلًا.
      *
-     * الرمز مبصومٌ في القاعدة (`pin` => hashed) فلا يُستخرج أصلًا؛ وهذا
-     * الفحص يحرس ألّا يتسرّب من هذا الباب: من نسي رمزه يُعطيه مديرُه رمزًا
-     * جديدًا، ولا يُقرأ القديم لأحد.
+     * كان الفحص يكتب رمزًا في العمود ثمّ يتأكّد ألّا يخرج في بريد الاستعادة.
+     * ورُفع الدخولُ بالرمز من النظام كلِّه، ثمّ **حُذف العمود** بمهاجرةٍ
+     * صريحة — فصار الحارس أقوى: لا يُخفى الرمز، بل لا وجود له.
+     *
+     * ويبقى فحصُ البريد: بريدُ الاستعادة لا يحمل كلمةً عن رمزٍ ولا رقمًا
+     * يُشبهه — فرعٌ لو عاد الرمزُ يومًا لَحَرَسه من هذا الباب.
      */
-    public function test_no_cashier_pin_is_ever_mailed_or_exposed(): void
+    public function test_no_cashier_pin_exists_to_be_mailed_or_exposed(): void
     {
-        $this->cashier->forceFill(['pin' => '1234'])->save();
+        $this->assertFalse(
+            Schema::hasColumn('users', 'pin'),
+            'عمودُ الرمز عاد إلى الجدول'
+        );
 
         $this->actingAs($this->owner)->post(route('admin.settings.recovery.start'), [
             'recovery_email' => 'owner@gmail.com', 'current_password' => 'my-password',
         ]);
 
         Mail::assertSent(RecoveryOtpMail::class, function ($mail) {
-            $rendered = $mail->render();
-
-            $this->assertStringNotContainsString('1234', $rendered);
-            $this->assertStringNotContainsString('pin', mb_strtolower($rendered));
+            $this->assertStringNotContainsString('pin', mb_strtolower($mail->render()));
 
             return true;
         });

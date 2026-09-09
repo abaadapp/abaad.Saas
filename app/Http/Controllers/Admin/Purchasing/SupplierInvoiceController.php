@@ -88,7 +88,7 @@ class SupplierInvoiceController extends Controller
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('issued_at')->orderByDesc('id'));
 
-        $invoices = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
+        $invoices = $q->paginate(Pagination::perPage($request, 20))->withQueryString();
 
         $all = SupplierInvoice::where('business_id', $bid)->get();
 

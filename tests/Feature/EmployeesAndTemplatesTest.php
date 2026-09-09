@@ -12,6 +12,7 @@ use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -175,7 +176,6 @@ class EmployeesAndTemplatesTest extends TestCase
     public function test_the_commission_field_no_longer_reaches_the_screen(): void
     {
         $e = $this->employee();
-        $e->update(['commission_rate' => 2.5]);
 
         $props = $this->actingAs($this->owner)->get(route('admin.employees.edit', $e->id))
             ->assertOk()->viewData('page')['props']['employee'];
@@ -185,38 +185,36 @@ class EmployeesAndTemplatesTest extends TestCase
         $this->assertArrayHasKey('monthly_target', $props);
     }
 
+    public function test_the_column_itself_is_gone(): void
+    {
+        /*
+         * ورُفع المقبضُ أوّلًا ثمّ حُذف العمود بكلمةٍ صريحة من صاحب النظام —
+         * انظر مهاجرة `a_column_nothing_writes_is_dropped`. وذِكرُه هنا كي
+         * لا يعود إسنادًا في شفرةٍ جديدة.
+         */
+        $this->assertFalse(Schema::hasColumn('users', 'commission_rate'));
+    }
+
     public function test_a_commission_posted_by_hand_is_not_written(): void
     {
         /*
          * والحارس في الخادم لا في الشاشة: رفعُ الحقل من النموذج لا يمنع
-         * أحدًا من إرسال المفتاح في الطلب. ولو مرّ لكُتب في عمودٍ متقاعد
-         * رقمٌ يظنّ صاحبُه أنّه يُصرف.
+         * أحدًا من إرسال المفتاح في الطلب.
+         *
+         * وبعد حذف العمود صار الحارسُ ألزمَ لا أهون: لو عاد المفتاح إلى
+         * قائمة التحقّق لَبلغ `update()` ولَسقط الحفظُ كلُّه على عمودٍ لا
+         * وجود له — فيُردّ التاجرُ عن تعديلٍ لا صلة له بالعمولة.
          */
         $this->title();
         $e = $this->employee();
-        $e->update(['commission_rate' => 2.5]);
 
         $this->actingAs($this->owner)->put(
             route('admin.employees.update', $e->id),
-            $this->updatePayload($e, ['commission_rate' => '99']),
-        );
+            $this->updatePayload($e, ['commission_rate' => '99', 'name' => 'أحمد المعدَّل']),
+        )->assertSessionHasNoErrors();
 
-        $this->assertSame(2.5, (float) $e->fresh()->commission_rate, 'مفتاحٌ مرفوعٌ لا يُكتب من طلب');
-    }
-
-    public function test_lifting_the_handle_does_not_erase_what_was_entered(): void
-    {
-        $this->title();
-        $e = $this->employee();
-        $e->update(['commission_rate' => 4.25, 'monthly_target' => 800]);
-
-        $this->actingAs($this->owner)->put(
-            route('admin.employees.update', $e->id),
-            $this->updatePayload($e, ['monthly_target' => '900']),
-        );
-
-        $this->assertSame(4.25, (float) $e->fresh()->commission_rate, 'العمود يبقى بما فيه');
-        $this->assertSame(900.0, (float) $e->fresh()->monthly_target);
+        // والتعديلُ نفسه وقع: المفتاحُ الغريب أُسقط ولم يُسقِط ما معه
+        $this->assertSame('أحمد المعدَّل', $e->fresh()->name);
     }
 
     public function test_no_live_field_carries_the_commission_on_the_employee_form(): void

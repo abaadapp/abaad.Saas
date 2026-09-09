@@ -162,7 +162,7 @@ class DemoSeeder extends Seeder
             User::firstOrCreate(['email' => $email], [
                 'business_id' => $primary->id, 'name' => $e['name'], 'phone' => $e['phone'],
                 'role' => $role, 'status' => $e['status'], 'branch' => $e['branch'],
-                'sales_total' => $e['sales'], 'avatar' => $e['avatar'],
+                'avatar' => $e['avatar'],
                 'password' => Hash::make('password'), 'last_login_at' => now(),
             ]);
         }

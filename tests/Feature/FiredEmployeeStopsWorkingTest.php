@@ -41,7 +41,7 @@ class FiredEmployeeStopsWorkingTest extends TestCase
 
         $this->employee = User::create([
             'business_id' => $this->business->id, 'name' => 'موظف', 'email' => 'e@abaad.om',
-            'password' => bcrypt('password'), 'role' => 'manager', 'status' => 'نشط', 'pin' => '7361',
+            'password' => bcrypt('password'), 'role' => 'manager', 'status' => 'نشط',
         ]);
     }
 

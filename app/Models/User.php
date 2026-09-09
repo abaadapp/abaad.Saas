@@ -9,17 +9,17 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 /**
- * ═══ أعمدةٌ متقاعدة في هذا الجدول ═══
+ * ═══ أعمدةٌ حُذفت من هذا الجدول ═══
  *
- * تبقى في القاعدة بما فيها — لا تُقرأ ولا تُكتب — حتى تُحذفها مهاجرةٌ صريحة.
- * وذِكرُها هنا كي لا يُبنى عليها حسابٌ جديد ظنًّا أنّها حيّة:
+ * ثلاثةٌ تقاعدت ثمّ حُذفت بمهاجرةٍ صريحة
+ * (`a_column_nothing_writes_is_dropped`) — وذِكرُها هنا كي لا يُكتب لها
+ * إسنادٌ جديد فيسقط الحفظُ على عمودٍ لا وجود له:
  *
- * - `sales_total` — لا بيعةٌ تزيده ولا وردية. مبيعاتُ الموظّف تُحسب من
- *   الطلبات (انظر `Demo::employees`).
+ * - `sales_total` — لا بيعةٌ كانت تزيده ولا وردية. ومبيعاتُ الموظّف تُحسب
+ *   من الطلبات (انظر `Demo::employees`).
  * - `commission_rate` — نسبةٌ كان التاجر يُدخلها ولا يُصرف منها شيء: لا
- *   مسيرةَ رواتبَ تقرؤها ولا كشفَ عمولةٍ في النظام. رُفع حقلُها من شاشة
- *   الموظّف كي لا تَعِد لافتةٌ بما لا يقع.
- * - `pin` — رُفع الدخولُ بالرمز؛ انظر التعليق في `casts`.
+ *   مسيرةَ رواتبَ تقرؤها ولا كشفَ عمولةٍ في النظام.
+ * - `pin` — رُفع الدخولُ بالرمز من النظام كلِّه.
  */
 class User extends Authenticatable
 {
@@ -27,7 +27,7 @@ class User extends Authenticatable
 
     protected $guarded = [];
 
-    protected $hidden = ['password', 'remember_token', 'pin'];
+    protected $hidden = ['password', 'remember_token'];
 
     protected function casts(): array
     {
@@ -42,13 +42,6 @@ class User extends Authenticatable
             'recovery_email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'password' => 'hashed',
-            /*
-             * `pin` عمودٌ متقاعد: رُفع الدخول بالرمز، فلا يُقرأ ولا يُكتب في
-             * شيء. يبقى العمود بما فيه — لا حاجة إلى محو بيانات — ويبقى
-             * مبصومًا ومخفيًّا كما كان حتى يُحذف بمهاجرةٍ صريحة.
-             */
-            'pin' => 'hashed',
-            'sales_total' => 'decimal:3',
             'permissions' => 'array',
         ];
     }

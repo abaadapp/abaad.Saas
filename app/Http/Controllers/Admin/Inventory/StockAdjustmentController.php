@@ -68,7 +68,7 @@ class StockAdjustmentController extends Controller
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('adjusted_at')->orderByDesc('id'));
 
-        $adjustments = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
+        $adjustments = $q->paginate(Pagination::perPage($request, 20))->withQueryString();
 
         $all = StockAdjustment::where('business_id', $bid)->get();
 

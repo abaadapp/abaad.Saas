@@ -84,7 +84,7 @@ class FinanceController extends Controller
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('occurred_at')->orderByDesc('id'));
 
-        $rows = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
+        $rows = $q->paginate(Pagination::perPage($request, 20))->withQueryString();
 
         return Inertia::render('Admin/Finance/Transactions', [
             'rows' => collect($rows->items())->map(fn ($t) => [

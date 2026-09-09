@@ -62,7 +62,7 @@ class ReviewController extends Controller
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
 
-        $reviews = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
+        $reviews = $q->paginate(Pagination::perPage($request, 20))->withQueryString();
 
         return Inertia::render('Admin/Marketing/Reviews', [
             'reviews' => collect($reviews->items())->map(fn ($r) => [

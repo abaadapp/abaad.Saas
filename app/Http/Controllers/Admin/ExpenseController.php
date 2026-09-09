@@ -81,7 +81,7 @@ class ExpenseController extends Controller
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('spent_at')->orderByDesc('id'));
 
-        $expenses = $q->paginate((int) $request->query('per_page', 10))->withQueryString();
+        $expenses = $q->paginate(Pagination::perPage($request, 10))->withQueryString();
 
         $mayRead = (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW);
 

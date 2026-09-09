@@ -70,7 +70,7 @@ class JournalController extends Controller
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('entry_date')->orderByDesc('id'));
 
-        $entries = $q->paginate((int) $request->query('per_page', 20))->withQueryString();
+        $entries = $q->paginate(Pagination::perPage($request, 20))->withQueryString();
 
         return Inertia::render('Admin/Finance/Journal', [
             'entries' => collect($entries->items())->map(fn ($e) => [

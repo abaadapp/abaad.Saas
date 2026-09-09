@@ -154,10 +154,15 @@ class DatabaseSeeder extends Seeder
         }
 
         /* ---------------- الإعدادات ---------------- */
+        /*
+         * وعلى مستوى المنصّة `vat_rate` وحده — يقرؤه `Vat`.
+         *
+         * كانت معه ثلاثةُ صفوفٍ لا يقرؤها سطر: `platform_name` (اسمٌ قديم،
+         * والشاشةُ تكتب `app_name`)، و`currency`، و`currency_decimals` —
+         * وكلاهما يُقرأ من صفّ المتجر لا من صفّ المنصّة. وافتراضاتُ شاشة
+         * الإعدادات مصدرُها واحد: `PageController::SETTING_DEFAULTS`.
+         */
         $settings = [
-            [null, 'platform_name', 'Abad POS'],
-            [null, 'currency', 'ريال عماني'],
-            [null, 'currency_decimals', '3'],
             [null, 'vat_rate', '5'],
             [$business->id, 'vat_rate', '5'],
         ];

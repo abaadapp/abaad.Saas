@@ -121,9 +121,10 @@
                     <td class="num faint">{{ $i + 1 }}</td>
                     <td>{{ $item->description }}</td>
                     <td class="num">{{ rtrim(rtrim(number_format((float) $item->quantity, 3, '.', ''), '0'), '.') }}</td>
-                    <td class="amt muted">{{ $money($item->unit_price) }}</td>
-                    <td class="amt muted">{{ $money($item->tax_amount) }}</td>
-                    <td class="amt b">{{ $money($item->line_total) }}</td>
+                    {{-- والمبالغُ معزولةٌ عن اتّجاه السطر: انظر `partials/items` --}}
+                    <td class="amt muted"><span dir="ltr">{{ $money($item->unit_price) }}</span></td>
+                    <td class="amt muted"><span dir="ltr">{{ $money($item->tax_amount) }}</span></td>
+                    <td class="amt b"><span dir="ltr">{{ $money($item->line_total) }}</span></td>
                 </tr>
             @empty
                 <tr><td class="empty" colspan="6">{{ __('لا بنود على هذه الفاتورة') }}</td></tr>
@@ -170,6 +171,8 @@
         'paperUrl' => $paperUrl ?? '',
         'googleReview' => '',
         'size' => 1.0,
+        /* وهذه وحدها تفتح صفحةَ تحقّقٍ لا نسخةً كاملة — انظر `public/verify` */
+        'verify' => true,
     ])
 @endsection
 

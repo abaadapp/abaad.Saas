@@ -73,10 +73,17 @@
 <table class="items">
     <thead>
         <tr>
+            {{--
+                ومسمّياتُ الشريط قصيرةٌ عمدًا.
+
+                عرضُه المطبوع ٧٤ مم، و«Quantity» عليه تلتفّ سطرين وتصطدم
+                بعمود «Total». والعربيّةُ تنجو بقِصَرها فلا يظهر العطب لمن
+                ضبط متجرَه بالعربية — يظهر على إيصال زبونه.
+            --}}
             <th>{{ __('الصنف') }}</th>
-            <th style="width:22%; text-align:center">{{ __('السعر') }}</th>
-            <th style="width:12%; text-align:center">{{ __('الكمية') }}</th>
-            <th style="width:24%; text-align:left">{{ __('الإجمالي') }}</th>
+            <th style="width:24%; text-align:center">{{ __('السعر') }}</th>
+            <th style="width:14%; text-align:center">{{ __('كمية') }}</th>
+            <th style="width:26%">{{ __('الإجمالي') }}</th>
         </tr>
     </thead>
     <tbody>
@@ -88,9 +95,9 @@
                         <div class="muted tiny">— {{ $it->note }}</div>
                     @endif
                 </td>
-                <td class="c" dir="ltr">{{ $money($it->price) }}</td>
+                <td class="c"><span dir="ltr">{{ $money($it->price) }}</span></td>
                 <td class="c" dir="ltr">{{ $it->quantity }}</td>
-                <td class="l">{{ $money($it->total) }}</td>
+                <td class="l"><span dir="ltr">{{ $money($it->total) }}</span></td>
             </tr>
         @endforeach
     </tbody>
@@ -103,17 +110,17 @@
 <div class="rule"></div>
 
 <table class="tot">
-    <tr><td class="k">{{ __('المجموع الفرعي') }}</td><td class="l">{{ $money($order->subtotal) }}</td></tr>
+    <tr><td class="k">{{ __('المجموع الفرعي') }}</td><td class="l"><span dir="ltr">{{ $money($order->subtotal) }}</span></td></tr>
     @if ((float) $order->discount > 0)
-        <tr><td class="k">{{ __('الخصم') }}</td><td class="l">{{ $money($order->discount) }}</td></tr>
+        <tr><td class="k">{{ __('الخصم') }}</td><td class="l"><span dir="ltr">{{ $money($order->discount) }}</span></td></tr>
     @endif
     @if ((float) $order->tax > 0)
-        <tr><td class="k">{{ __('الضريبة') }}</td><td class="l">{{ $money($order->tax) }}</td></tr>
+        <tr><td class="k">{{ __('الضريبة') }}</td><td class="l"><span dir="ltr">{{ $money($order->tax) }}</span></td></tr>
     @endif
     @if ((float) $order->delivery_fee > 0)
-        <tr><td class="k">{{ __('رسوم التوصيل') }}</td><td class="l">{{ $money($order->delivery_fee) }}</td></tr>
+        <tr><td class="k">{{ __('رسوم التوصيل') }}</td><td class="l"><span dir="ltr">{{ $money($order->delivery_fee) }}</span></td></tr>
     @endif
-    <tr class="grand"><td>{{ __('الإجمالي') }}</td><td class="l">{{ $money($order->total) }}</td></tr>
+    <tr class="grand"><td>{{ __('الإجمالي') }}</td><td class="l"><span dir="ltr">{{ $money($order->total) }}</span></td></tr>
     <tr><td class="k">{{ __('وسيلة الدفع') }}</td><td class="l">{{ $order->payment_method === 'بطاقة' ? __('فيزا') : __($order->payment_method) }}</td></tr>
     @if (($order->points_earned ?? 0) > 0)
         <tr><td class="k">{{ __('نقاط ولاء مكتسبة') }}</td><td class="l" dir="ltr">{{ $order->points_earned }}</td></tr>

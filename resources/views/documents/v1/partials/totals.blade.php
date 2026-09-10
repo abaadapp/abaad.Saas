@@ -28,7 +28,8 @@
                                     <span class="xs faint">{{ $row['hint'] }}</span>
                                 @endif
                             </td>
-                            <td class="amt">{{ $row['value'] }}</td>
+                            {{-- والمبلغُ معزول: انظر `partials/items` --}}
+                            <td class="amt"><span dir="ltr">{{ $row['value'] }}</span></td>
                         </tr>
                     @endforeach
                 </table>

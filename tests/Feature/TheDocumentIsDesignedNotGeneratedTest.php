@@ -303,6 +303,60 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
     }
 
     /**
+     * والشريطُ الحراريُّ يتبع لغتَه كالورقة — لا يُثبَّت على العربية.
+     *
+     * ═══ وهذا عطبٌ وقع فعلًا ولم يُرَ ═══
+     *
+     * كان `direction: rtl` مكتوبًا في أنماط الشريط، فإيصالٌ إنجليزيّ يخرج
+     * بأعمدةٍ معكوسة وبنقطةٍ تقفز إلى أوّل السطر: «‎.Invoice no» بدل
+     * «Invoice no.». ولا يراه من ضبط متجرَه بالعربية أبدًا — يراه زبونُه
+     * الذي اختار الإنجليزية، ولا يشتكي: يظنّ أنّ هكذا يطبع هذا المتجر.
+     */
+    public function test_the_thermal_strip_follows_its_language(): void
+    {
+        $order = $this->order();
+        $values = \App\Support\DocumentTemplates::settings($this->business->id, 'sale');
+
+        app()->setLocale('ar');
+        $ar = DocumentRenderer::saleStrip($this->business->id, $order, $values, 80);
+
+        app()->setLocale('en');
+        $en = DocumentRenderer::saleStrip($this->business->id, $order, $values, 80);
+
+        $this->assertStringContainsString('direction: rtl', $ar);
+        $this->assertStringContainsString('text-align: right', $ar);
+
+        $this->assertStringContainsString('direction: ltr', $en);
+        $this->assertStringContainsString('text-align: left', $en);
+        $this->assertStringNotContainsString('direction: rtl', $en, 'الشريطُ الإنجليزيّ يُرسم بترتيبٍ عربيّ');
+    }
+
+    /**
+     * والمبلغُ يُقرأ رقمًا ثمّ عملة — في اللغتين.
+     *
+     * «5.000 ر.ع» في فقرةٍ عربيّة ينقلب فيخرج «ر.ع 5.000»: الرقمُ محايدٌ
+     * ضعيف و«ر.ع» عربيّةٌ قويّة، فيتقدّمها ترتيبُ الفقرة. ولا يلاحظه من
+     * كتب المبلغ — يعرف ما كتب فيقرؤه صحيحًا في رأسه.
+     */
+    public function test_amounts_are_isolated_from_the_line_direction(): void
+    {
+        $order = $this->order();
+        $values = \App\Support\DocumentTemplates::settings($this->business->id, 'sale');
+
+        foreach ([
+            DocumentRenderer::saleSheet($this->business->id, $order, $values),
+            DocumentRenderer::saleStrip($this->business->id, $order, $values, 80),
+        ] as $html) {
+            /* كلُّ مبلغٍ ملفوفٌ بـ`dir` — والقاعدةُ في CSS وحدها لا يقرؤها mpdf هنا */
+            $this->assertMatchesRegularExpression(
+                '/<span dir="ltr">[^<]*'.preg_quote(__('ر.ع'), '/').'/u',
+                $html,
+                'مبلغٌ يُرسم بلا عزلٍ عن اتّجاه السطر',
+            );
+        }
+    }
+
+    /**
      * والأرقامُ تُقرأ من اليسار في اللغتين — معزولةً عمّا حولها.
      *
      * رقمُ فاتورةٍ أو آيبانٌ داخل سطرٍ عربيّ يتبع اتّجاهَ السطر لا اتّجاهَ

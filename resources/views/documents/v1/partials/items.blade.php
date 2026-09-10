@@ -54,8 +54,16 @@
                 @endif
                 <td class="num">{{ $item['qty'] }}</td>
                 @if ($prices)
-                    <td class="amt muted">{{ $item['unit'] ?? '—' }}</td>
-                    <td class="amt b">{{ $item['total'] ?? '—' }}</td>
+                    {{--
+                        والمبلغُ معزولٌ عن اتّجاه السطر.
+
+                        «5.000 ر.ع» في فقرةٍ عربيّة يخرج «ر.ع 5.000»: الرقمُ
+                        محايدٌ ضعيف و«ر.ع» عربيّة، فتتقدّمها العينُ في القراءة
+                        من اليمين. و`direction` في CSS لا يكفي هنا — mpdf يقرأ
+                        السمة. فيُلَفّ المبلغُ ليُقرأ كما كُتب: رقمٌ ثمّ عملة.
+                    --}}
+                    <td class="amt muted"><span dir="ltr">{{ $item['unit'] ?? '—' }}</span></td>
+                    <td class="amt b"><span dir="ltr">{{ $item['total'] ?? '—' }}</span></td>
                 @endif
             </tr>
         @empty

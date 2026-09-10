@@ -26,17 +26,35 @@
     $width = $width ?? 80;
     $fit = $width <= 60 ? 0.86 : ($width >= 100 ? 1.08 : 1.0);
     $pt = fn (float $base) => round($base * $fit * ((float) ($t['scale'] ?? 1.0)), 2) . 'pt';
+
+    /*
+        واتّجاهُ الشريط يتبع لغته — ولا يُثبَّت على rtl.
+
+        كان مثبَّتًا، فإيصالٌ إنجليزيّ يخرج بأعمدةٍ معكوسة وبنقطةٍ تقفز إلى
+        أوّل السطر: «‎.Invoice no» بدل «Invoice no.». وهو ما لا يراه من ضبط
+        متجرَه بالعربية أبدًا — يراه زبونُه الذي اختار الإنجليزية.
+    */
+    $rtl = \App\Support\Paper::rtl();
+    $start = $rtl ? 'right' : 'left';
+    $end = $rtl ? 'left' : 'right';
 @endphp
 <style>
     * { font-family: xbriyaz, 'IBM Plex Sans Arabic', sans-serif; }
 
     body {
-        direction: rtl; text-align: right; color: #000;
+        direction: {{ $rtl ? 'rtl' : 'ltr' }}; text-align: {{ $start }}; color: #000;
         font-size: {{ $pt(8) }}; line-height: 1.35;
     }
 
     .c { text-align: center; }
-    .l { text-align: left; direction: ltr; }
+    /*
+        عمودُ القيم إلى الطرف المقابل للمسمّى، ومعزولًا عن اتّجاه السطر.
+
+        و`direction` لازمة لا زينة: «2026-09-03 01:34» مدًيان لاتينيّان
+        يفصلهما فراغ، وفي فقرةٍ عربيّة ينعكس ترتيبُهما فيُقرأ التاريخ
+        «01:34 2026-09-03». والعزلُ يُبقي كلَّ سطرٍ كما كُتب.
+    */
+    .l { text-align: {{ $end }}; direction: ltr; }
     .b { font-weight: bold; }
     .muted { color: #444; }
     .tiny { font-size: {{ $pt(6.6) }}; }
@@ -57,7 +75,7 @@
     .kv .k { color: #444; }
 
     .items th {
-        text-align: right; font-size: {{ $pt(7) }};
+        text-align: {{ $start }}; font-size: {{ $pt(7) }};
         border-bottom: 0.6pt solid #000; padding: 2pt 0;
     }
     .items td { font-size: {{ $pt(7.4) }}; padding: 2pt 0; border-bottom: 0.4pt dotted #999; }

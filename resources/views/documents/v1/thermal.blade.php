@@ -15,7 +15,20 @@
 @php
     // والصيغةُ من `Support\Money` لا من هنا: قرارُ «كيف يُكتب المبلغ» واحدٌ في النظام
     $money = fn ($v) => \App\Support\Money::format((float) $v, $currency);
+    /*
+     * وهويّةُ البائع من لقطة الورقة إن كانت مختومة — لا من المتجر اليوم.
+     *
+     * والشعارُ وحده يبقى حيًّا: صورةٌ لا واقعةٌ ماليّة، ونسخُها في كلّ
+     * صفٍّ يضخّم القاعدةَ بلا أن يحفظ شيئًا يُراجَع.
+     * انظر `Document\Snapshot`.
+     */
     $business = $order->business;
+    $stamped = (object) (array_filter($seller ?? []) + [
+        'logo' => $business->logo ?? null,
+        'name' => $business->name ?? null,
+        'city' => $business->city ?? null,
+        'phone' => $business->phone ?? null,
+    ]);
     $itemsCount = $order->items->sum('quantity');
 
     $tpl = $tpl ?? [];
@@ -31,19 +44,19 @@
 <div class="paper">
 
 <div class="c">
-    @if ($show('tpl_show_logo', false) && ($business->logo ?? null))
-        <img src="{{ $business->logo }}" style="max-height:30pt; margin-bottom:2pt;" alt="">
+    @if ($show('tpl_show_logo', false) && ($stamped->logo ?? null))
+        <img src="{{ $stamped->logo }}" style="max-height:30pt; margin-bottom:2pt;" alt="">
     @endif
-    <div class="shop">{{ $business->name ?? __('نظام Abad POS') }}</div>
+    <div class="shop">{{ $stamped->name ?? __('نظام Abad POS') }}</div>
     @if ($line('tpl_header') !== '')
         <div class="muted tiny">{{ $line('tpl_header') }}</div>
     @endif
     @if ($show('tpl_show_branch'))
         <div class="muted tiny">{{ $order->branch ?? __('الفرع الرئيسي') }}</div>
     @endif
-    @if ($business && ($business->city || $business->phone))
+    @if ($stamped->city || $stamped->phone)
         <div class="muted tiny">
-            {{ $business->city }}@if ($business->city && $business->phone) · @endif<span dir="ltr">{{ $business->phone }}</span>
+            {{ $stamped->city }}@if ($stamped->city && $stamped->phone) · @endif<span dir="ltr">{{ $stamped->phone }}</span>
         </div>
     @endif
     @if ($show('tpl_show_vat_no', false) && $vat !== '')

@@ -24,6 +24,7 @@ class CustomerInvoice extends Model
     protected $guarded = [];
 
     protected $casts = [
+        'document_snapshot' => 'array',
         'issued_at' => 'date',
         'due_at' => 'date',
         'issued_by_at' => 'datetime',

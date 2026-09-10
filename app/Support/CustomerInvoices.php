@@ -12,6 +12,7 @@ use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Setting;
+use App\Support\Document\Snapshot;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -180,7 +181,25 @@ final class CustomerInvoices
             }
 
             $gross = round($qty * $price, 3);
-            $net = round(max(0, $gross - $lineDiscount), 3);
+
+            /*
+             * ═══ والخصمُ المحتسَب هو المطبَّق، لا المطلوب ═══
+             *
+             * كان البندُ يُقصَر على صفرٍ (`max(0, ...)`) بينما يُجمَع الخصمُ
+             * **كما طُلب** في رأس الفاتورة. فبندٌ بعشرةٍ وخصمٍ بخمسةٍ وعشرين
+             * يُخرج سطرًا مجموعُه صفرٌ وإجماليًّا في الرأس **سالبًا بخمسة
+             * عشر** — ورقةٌ بنودُها لا تجمع إلى مجموعها.
+             *
+             * والخصمُ السالب أسوأ: `items.*.discount` يقبل `numeric` بلا
+             * `min:0`، فقيمةٌ سالبة كانت تُنقص من الخصم فتضخّم الإجماليَّ
+             * بلا سطرٍ يقابلها.
+             *
+             * فيُحسب مرّةً ما **وقع فعلًا**، ويُجمَع هو في الرأس. فيصير
+             * `subtotal − discount + tax` مساويًا لمجموع البنود دائمًا،
+             * وهي الخاصّيّةُ التي تُراجَع بها الورقة.
+             */
+            $lineDiscount = round(min(max(0.0, $lineDiscount), $gross), 3);
+            $net = round($gross - $lineDiscount, 3);
             // بندٌ معفًى يُكتب بنسبة صفر — والإعفاء لقطةٌ في السطر لا قاعدةٌ عامّة
             $lineRate = array_key_exists('tax_rate', $line) ? (float) $line['tax_rate'] : $rate;
             $lineTax = round($net * $lineRate / 100, 3);
@@ -403,6 +422,15 @@ final class CustomerInvoices
                 'number' => $locked->number ?: self::nextNumber((int) $locked->business_id),
                 'status' => CustomerInvoice::ISSUED,
                 'issued_by_at' => now(),
+                /*
+                 * وتُختم بحال متجرها لحظةَ الإصدار — لا لحظةَ الكتابة.
+                 *
+                 * المسودّةُ تُكتب اليوم وتُصدَر بعد أسبوع، وما بينهما قد
+                 * يتغيّر اسمُ المتجر أو رقمُه الضريبيّ أو عملتُه. والورقةُ
+                 * الرسميّة هي التي صدرت، فحالُها حالُ ساعتها.
+                 * انظر `Document\Snapshot`.
+                 */
+                Snapshot::COLUMN => Snapshot::capture((int) $locked->business_id),
             ]);
 
             self::post($locked, $userId);

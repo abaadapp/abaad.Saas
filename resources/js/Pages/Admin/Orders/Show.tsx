@@ -8,12 +8,12 @@ import {
     MapPin,
     PencilLine,
     Phone,
-    Download,
     ReceiptText,
     Send,
     Truck,
     User,
 } from 'lucide-react';
+import DocumentPreview from '@/Components/DocumentPreview';
 import Field, { Select } from '@/Components/Field';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -30,7 +30,7 @@ import {
 } from '@/Components/ui/table';
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
-import { useTranslate } from '@/lib/i18n';
+import { useTranslate } from "@/lib/i18n";
 import type { PageProps } from '@/types';
 
 interface OrderDetail {
@@ -118,6 +118,7 @@ export default function OrderShow() {
      * تحذيرًا في المتصفّح.
      */
     const [editing, setEditing] = useState(false);
+    const [previewing, setPreviewing] = useState(false);
     const form = useForm({
         fulfillment_type: order.fulfillment_type ?? '',
         recipient_name: order.recipient_name ?? '',
@@ -202,11 +203,44 @@ export default function OrderShow() {
                 subtitle={order.date}
                 actions={
                     <>
-                        <Button variant="outline" asChild>
-                            <a href={route('admin.orders.pdf', order.id)} target="_blank" rel="noreferrer">
-                                <FileText />
-                                {t('تصدير PDF')}
-                            </a>
+                        {/*
+                            ═══ وتسلسلُ الأفعال: ماذا يفعل من فتح هذه الصفحة ═══
+
+                            **الأوّلُ إرسال** — وهو الفعلُ الذي جاء له أكثرُ من
+                            يفتح طلبًا: يبلّغ الزبونَ أنّ طلبَه جاهز. فيأخذ
+                            الوزنَ البصريّ وحده.
+
+                            ثمّ **أوراقُ الطلب** — معاينةٌ وفاتورةٌ ضريبيّةٌ
+                            وسندُ تسليم: ثلاثةُ مستنداتٍ مختلفة لا ثلاثُ نسخٍ
+                            من واحد.
+
+                            و**تعديل** آخرًا: فعلٌ يخصّ حالاتٍ بعينها، وموضعُه
+                            حيث لا يُضغَط سهوًا.
+                        */}
+                        <Button
+                            disabled={sending.processing}
+                            onClick={() =>
+                                sending.post(route('admin.orders.send', order.id), { preserveScroll: true })
+                            }
+                        >
+                            <Send />
+                            {t('إرسال')}
+                        </Button>
+
+                        {/*
+                            و«معاينة» تفتح الورقةَ عند الطلب لا دائمًا.
+
+                            وكان في الشاشة زرّان — «تصدير PDF» هنا و«تحميل»
+                            بجانب الإطار — على **الرابط نفسِه تمامًا**: أحدُهما
+                            يفتح لسانًا والآخر يحفظ. فيقف من يريد الطباعة
+                            بينهما لا يعرف أيَّهما يوصله.
+
+                            فصارا فعلًا واحدًا يقود إلى نافذةٍ فيها الثلاثةُ
+                            مفرَّقةً بأسمائها: معاينةٌ وتحميلٌ وطباعة.
+                        */}
+                        <Button variant="outline" onClick={() => setPreviewing(true)}>
+                            <FileText />
+                            {t('معاينة الفاتورة')}
                         </Button>
                         {/*
                             الفاتورة الضريبيّة — ولا تُعرض لمن لا فاتورةَ ضريبيّةَ
@@ -257,6 +291,18 @@ export default function OrderShow() {
                                 {t('سند تسليم')}
                             </a>
                         </Button>
+
+                        {/* و«تعديل» يفتح ورقةَ التفاصيل ويمضي إليها — لا يغيّر شيئًا خارج نظر من ضغطه */}
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setEditing(true);
+                                sheetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                        >
+                            <PencilLine />
+                            {t('تعديل')}
+                        </Button>
                     </>
                 }
             />
@@ -271,7 +317,14 @@ export default function OrderShow() {
                 والانقسامُ من `xl` وحدها: على شاشةٍ أضيق تصير الورقةُ عمودًا
                 من ثلاثمئة بكسل — لا تُقرأ ولا تُصوَّر، وتزاحم ما ينفع.
             */}
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            {/*
+                عمودٌ واحد: التفاصيلُ هي المقصودة، والورقةُ تُطلب.
+
+                وكان الانقسامُ نصفين ليُقرآ معًا — وهو صحيحٌ لو كانت الورقةُ
+                تقول شيئًا لا يقوله الجدول. وهي لا تقول: الأصنافُ والمجاميعُ
+                نفسُها مكرّرةً في صورةٍ لا تُنسَخ ولا تُبحَث.
+            */}
+            <div className="grid grid-cols-1 gap-6">
                 <div className="min-w-0 space-y-6">
                     <div className="space-y-6">
                         <div>
@@ -639,80 +692,27 @@ export default function OrderShow() {
                     </Card>
                 </div>
 
-                {/*
-                    القسمُ الثاني: الورقةُ نفسُها بقياس A4.
-
-                    وهي الملفُّ الذي يُطبع لا نسخةٌ منه مرسومةٌ في الشاشة:
-                    نسخةٌ ثانيةٌ تفترق عن أصلها يومًا، فيرى التاجر في اللوحة
-                    غيرَ ما يقرؤه الزبون في يده — وهو أسوأ ما يقع لورقةِ مال.
-
-                    والنسبةُ 210:297 كنسبة الورقة، فما يُرى هنا هو ما يخرج
-                    من الطابعة بلا مفاجأة.
-                */}
-                <div className="min-w-0 space-y-3 xl:sticky xl:top-6 xl:self-start">
-                    <div className="flex flex-wrap items-center gap-2">
-                        {/*
-                            و«تحميل» على الرابط نفسه: القالبُ يُخرج الورقة
-                            «inline» كي تُعرض هنا، و`download` تجعل الضغطةَ
-                            تحفظها — بلا مسارٍ ثانٍ يُخرج الشيء نفسه.
-                        */}
-                        <Button variant="outline" size="sm" asChild>
-                            <a href={route('admin.orders.pdf', order.id)} download>
-                                <Download />
-                                {t('تحميل')}
-                            </a>
-                        </Button>
-
-                        {/*
-                            و«إرسال» يُعدّ النصَّ في الخادم ويفتح واتساب التاجر:
-                            رقمُ الطلب وإجماليُّه واسمُ المتجر تُقرأ من هناك لا
-                            من واجهةٍ يفتحها من يشاء. ولا يُرسَل رابطُ الورقة —
-                            هي خلف تسجيل دخول، ورابطٌ يفتح صفحةَ دخولٍ في يد
-                            الزبون أسوأ من ألّا يُرسَل شيء.
-                        */}
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={sending.processing}
-                            onClick={() =>
-                                sending.post(route('admin.orders.send', order.id), { preserveScroll: true })
-                            }
-                        >
-                            <Send />
-                            {t('إرسال')}
-                        </Button>
-
-                        {/* و«تعديل» يفتح ورقةَ التفاصيل ويمضي إليها — لا يغيّر
-                            شيئًا خارج نظر من ضغطه */}
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                                setEditing(true);
-                                sheetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }}
-                        >
-                            <PencilLine />
-                            {t('تعديل')}
-                        </Button>
-                    </div>
-
-                    <Card className="overflow-hidden p-0">
-                        {/*
-                            و`lazy`: كلُّ عرضٍ لهذه الصفحة يعني رسمَ ملفِّ PDF
-                            على الخادم. فلا يُطلب إلّا حين تقترب الورقةُ من
-                            الشاشة — ومن فتح الطلب ليقرأ حالتَه وحدها على
-                            الهاتف لا يدفع ثمنَ رسمٍ لا يراه.
-                        */}
-                        <iframe
-                            title={t('معاينة الفاتورة')}
-                            src={route('admin.orders.pdf', order.id)}
-                            loading="lazy"
-                            className="block w-full bg-[#f7f7f5] aspect-[210/297]"
-                        />
-                    </Card>
-                </div>
             </div>
+
+            {/*
+                والورقةُ في نافذةٍ تُطلب — لا عمودًا دائمًا بنصف الشاشة.
+
+                كان الإطارُ مفتوحًا على الدوام وفوقه شريطُ قارئ المتصفّح
+                (تنزيلٌ وطباعةٌ وتكبيرٌ وقائمة)، فيرى التاجر واجهتين ويقرأ
+                البياناتِ مرّتين: في الجدول وفي الورقة إلى جانبه. وعلى
+                الهاتف يهبط الإطارُ بعرض الشاشة كاملًا بين المستخدم وأزراره
+                — وورقةُ A4 لا تُقرأ على تلك السعة أصلًا.
+
+                وكلُّ فتحةٍ للصفحة كانت **ترسم ملفَّ PDF على الخادم** لمن
+                جاء يقرأ حالةَ طلبٍ ولا يريد ورقة.
+            */}
+            <DocumentPreview
+                url={route('admin.orders.pdf', order.id)}
+                title={`${t('الفاتورة')} ${order.id}`}
+                filename={`${order.id}.pdf`}
+                open={previewing}
+                onOpenChange={setPreviewing}
+            />
         </AdminLayout>
     );
 }

@@ -12,6 +12,7 @@ use App\Models\OrderItem;
 use App\Models\PurchaseOrder;
 use App\Support\Document\Branding;
 use App\Support\Document\PaperSize;
+use App\Support\Document\Snapshot;
 use App\Support\Document\Version;
 use Illuminate\Database\Eloquent\Model;
 
@@ -181,6 +182,7 @@ class DocumentRenderer
     public static function saleSheet(int $businessId, Order $order, array $values, array $extra = []): string
     {
         $scale = self::scale((string) $values['font']);
+        $snapshot = Snapshot::of($order, $businessId);
 
         return view(Version::views($extra['version'] ?? null).'.sale', [
             'doc' => DocumentPaper::forSale($order, ['customerTax' => $extra['customerTax'] ?? null]),
@@ -189,10 +191,20 @@ class DocumentRenderer
             'paper' => $extra['paper'] ?? ($values['paper'] ?? PaperSize::A4),
             'tokens' => Branding::tokens($businessId, $scale),
             'coverImage' => Branding::cover($businessId),
-            'business' => DocumentPaper::business($businessId),
+            /*
+             * وهويّةُ البائع من لقطة الورقة إن كانت مختومة.
+             *
+             * أصدرتُ فاتورةً ثمّ غيّرتُ اسمَ المتجر وعنوانَه ورقمَه الضريبيّ،
+             * وأعدتُ رسمَها: تبدّلت كلُّها — وظهر على ورقةٍ صدرت في يناير
+             * رقمٌ ضريبيٌّ لم يكن قائمًا يومَها. انظر `Document\Snapshot`.
+             *
+             * و`Paper::brand` تقبل المصفوفةَ كما تقبل الصفَّ، فتُمرَّر اللقطةُ
+             * إليها بلا فرعٍ ثانٍ في الشفرة يبني منها ما تبنيه هي.
+             */
+            'business' => Snapshot::seller($snapshot) ?: DocumentPaper::business($businessId),
             'headerNote' => trim((string) ($values['header'] ?? '')),
             'scale' => $scale,
-            'vatNumber' => Paper::vatNumber($businessId),
+            'vatNumber' => Snapshot::stamped($order) ? Snapshot::vat($snapshot) : Paper::vatNumber($businessId),
             /*
              * ولا رمزَ ولا رابطَ في المعاينة.
              *
@@ -225,10 +237,13 @@ class DocumentRenderer
      */
     public static function saleStrip(int $businessId, Order $order, array $values, int $width, array $extra = []): string
     {
+        $snapshot = Snapshot::of($order, $businessId);
+
         return view(Version::views($extra['version'] ?? null).'.thermal', [
             'order' => $order,
-            /* وعملةُ الورقة من متجرها — انظر `Support\Money` */
-            'currency' => Money::of($businessId),
+            /* وعملةُ الورقة من لقطتها إن كانت مختومة — انظر `Document\Snapshot` */
+            'currency' => Snapshot::currency($snapshot) ?: Money::of($businessId),
+            'seller' => Snapshot::seller($snapshot),
             'paper' => $width <= 60 ? PaperSize::T58 : PaperSize::T80,
             'tpl' => self::legacy($businessId, $values),
             'tokens' => Branding::tokens($businessId, self::scale((string) $values['font'])),

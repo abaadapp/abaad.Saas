@@ -25,6 +25,7 @@ use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\Customers;
 use App\Support\Demo;
+use App\Support\Document\Snapshot;
 use App\Support\FlowerOrder;
 use App\Support\Loyalty;
 use App\Support\OrderStatus;
@@ -654,7 +655,20 @@ class PosController extends Controller
     private function createNumbered(array $attrs, string $prefix, int $start = 1): Order
     {
         return Contention::retry(
-            fn () => Order::create($attrs + ['number' => $this->nextNumber($prefix, $start)]),
+            /*
+             * والرقمُ المولَّد يسبق `$attrs` في الدمج.
+             *
+             * `+` على المصفوفات **لا يدهس** مفتاحًا موجودًا: فلو حمل
+             * `$attrs` يومًا `number` — سطرٌ يُضاف بحسن نيّة يقرأ الطلب —
+             * لسقط الرقمُ المولَّد صامتًا ومضى رقمُ العميل. ولا يظهر ذلك في
+             * اختبار: الرقمُ يبقى فريدًا لأنّ فهرسَ التفرّد لا يعرف من كتبه.
+             *
+             * وتُختم الورقةُ بحال متجرها يومها — انظر `Document\Snapshot`.
+             */
+            fn () => Order::create([
+                'number' => $this->nextNumber($prefix, $start),
+                Snapshot::COLUMN => Snapshot::capture($this->bid()),
+            ] + $attrs),
         );
     }
 

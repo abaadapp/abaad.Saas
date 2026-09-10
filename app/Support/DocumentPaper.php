@@ -9,6 +9,8 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Support\Demo;
+use App\Support\Document\Snapshot;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * الورقة كما تُرسم — بيانُ المستند مفصولًا عن رسمه.
@@ -32,9 +34,20 @@ class DocumentPaper
      *
      * @return array<string, mixed>
      */
-    private static function currency(mixed $businessId): array
+    private static function currency(mixed $businessId, ?Model $document = null): array
     {
-        return Money::of((int) $businessId);
+        /*
+         * وعملةُ الورقة من لقطتها إن كانت مختومة — لا من المتجر اليوم.
+         *
+         * تاجرٌ بدّل عملتَه من الريال إلى الدرهم كانت فواتيرُه القديمة
+         * تُعاد طباعتُها بالدرهم: الرقمُ في القاعدة ١٢٫٥٠٠ ولم يتغيّر،
+         * لكنّه أُعيد وسمُه بعملةٍ أخرى وفقد منزلة — فتقول الورقةُ إنّ
+         * الزبون دفع اثني عشر درهمًا وهو دفع ريالًا ونصفًا.
+         * انظر `Document\Snapshot`.
+         */
+        $snap = Snapshot::currency(Snapshot::of($document, (int) $businessId));
+
+        return $snap !== [] ? $snap : Money::of((int) $businessId);
     }
 
     /**
@@ -85,7 +98,7 @@ class DocumentPaper
      */
     public static function forSale(Order $order, array $extra = []): array
     {
-        $cur = self::currency($order->business_id);
+        $cur = self::currency($order->business_id, $order);
         $pay = self::payment($order);
 
         $vatBase = (float) $order->subtotal - (float) $order->discount;
@@ -209,7 +222,7 @@ class DocumentPaper
      */
     public static function forDelivery(Order $order): array
     {
-        $cur = self::currency($order->business_id);
+        $cur = self::currency($order->business_id, $order);
 
         return [
             'title' => __('سند تسليم'),
@@ -269,7 +282,7 @@ class DocumentPaper
      */
     public static function forPurchase(PurchaseOrder $po): array
     {
-        $cur = self::currency($po->business_id);
+        $cur = self::currency($po->business_id, $po);
 
         $meta = array_values(array_filter([
             [
@@ -358,7 +371,7 @@ class DocumentPaper
 
     public static function forGrn(GoodsReceiptNote $grn): array
     {
-        $cur = self::currency($grn->business_id);
+        $cur = self::currency($grn->business_id, $grn);
 
         return [
             'title' => __('سند استلام بضاعة'),

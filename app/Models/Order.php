@@ -13,6 +13,7 @@ class Order extends Model
     protected $guarded = [];
 
     protected $casts = [
+        'document_snapshot' => 'array',
         'subtotal' => 'decimal:3', 'discount' => 'decimal:3', 'tax' => 'decimal:3',
         'delivery_fee' => 'decimal:3', 'total' => 'decimal:3', 'is_held' => 'boolean',
         'coupon_discount' => 'decimal:3',

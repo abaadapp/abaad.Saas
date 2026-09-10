@@ -526,6 +526,31 @@ class CustomerInvoiceController extends Controller
             unset($brand['logo']);
         }
 
+        /* ولقطةُ الورقة تسبق حالَ المتجر اليوم — انظر `Document\Snapshot` */
+        $snapshot = \App\Support\Document\Snapshot::of($invoice, $bid);
+
+        /*
+         * وبياناتُ البائع من اللقطة — **بمفاتيح هذه الورقة وحدها**.
+         *
+         * ═══ ولمَ `array_intersect_key` لا دمجٌ مطلق ═══
+         *
+         * لهذه الورقة سياسةٌ صريحةٌ يحرسها اختبار: **لا مفتاحَ عنوانٍ يبلغ
+         * قالبَها أصلًا** — لا فارغًا ولا مطفأً. عنوانُ المبنى محفوظٌ في
+         * صفّ المتجر ولا يُطبع على فاتورةٍ تمضي إلى جهة.
+         *
+         * ودمجٌ مطلق للّقطة يُدخل `address` من الباب الخلفيّ، فتخرج
+         * الفواتيرُ القديمة بعنوانِ المبنى والجديدةُ بدونه.
+         *
+         * و`name` يبقى من `InvoiceBranding`: هو **الاسمُ المعروض** الذي
+         * اختاره صاحبُ المحلّ لورقته، لا الاسمُ المسجَّل في صفّ المتجر.
+         */
+        if (($stamped = \App\Support\Document\Snapshot::seller($snapshot)) !== []) {
+            $brand = array_intersect_key(
+                array_filter(\Illuminate\Support\Arr::except($stamped, ['name', 'address'])),
+                $brand,
+            ) + $brand;
+        }
+
         return view(\App\Support\Document\Version::views($options['version'] ?? null).'.customer-invoice', [
             'invoice' => $invoice,
             /*
@@ -534,7 +559,7 @@ class CustomerInvoiceController extends Controller
              * وكان القالبُ يكتبهما بيده، فورقةُ تاجرٍ في دبي تخرج بريالٍ
              * عمانيٍّ ومنزلةٍ زائدة. انظر `Support\Money`.
              */
-            'currency' => \App\Support\Money::of($bid),
+            'currency' => \App\Support\Document\Snapshot::currency($snapshot) ?: \App\Support\Money::of($bid),
             /*
              * ورموزُ التصميم وغلافُ الورقة — من `Document\Branding`.
              *
@@ -564,7 +589,12 @@ class CustomerInvoiceController extends Controller
              * صاحبُه على هذه الورقة. وإطفاؤه لا يُطفئ الضريبةَ نفسَها —
              * المبلغُ يبقى في الجدول، وإنّما يُرفع رقمُ التسجيل من الترويسة.
              */
-            'vatNumber' => Vat::enabled($bid) && $tpl['show_vat_no'] ? Paper::vatNumber($bid) : '',
+            /* والرقمُ الضريبيُّ من اللقطة: ورقةُ يناير تحمل رقمَ يناير */
+            'vatNumber' => Vat::enabled($bid) && $tpl['show_vat_no']
+                ? (\App\Support\Document\Snapshot::stamped($invoice)
+                    ? \App\Support\Document\Snapshot::vat($snapshot)
+                    : Paper::vatNumber($bid))
+                : '',
             'paid' => $paid,
             'outstanding' => $outstanding,
             'bank' => $bank,

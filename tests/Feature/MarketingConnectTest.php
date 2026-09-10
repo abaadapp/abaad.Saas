@@ -56,8 +56,8 @@ class MarketingConnectTest extends TestCase
     public function test_a_merchant_who_never_started_sees_the_door_not_the_screen(): void
     {
         // ولا رقمَ مشتركًا مربوطًا في المنصّة، فلا شيء جاهزٌ بعد
-        $this->assertFalse($this->props('admin.marketing.whatsapp')['automation']['readiness']['connected']);
-        $this->assertFalse($this->props('admin.marketing.google')['readiness']['connected']);
+        $this->assertFalse($this->props('admin.integrations.whatsapp')['automation']['readiness']['connected']);
+        $this->assertFalse($this->props('admin.integrations.google')['readiness']['connected']);
     }
 
     /**
@@ -68,9 +68,9 @@ class MarketingConnectTest extends TestCase
      */
     public function test_pressing_connect_opens_the_stages_and_survives_a_reload(): void
     {
-        foreach ([['whatsapp', 'admin.marketing.whatsapp'], ['google', 'admin.marketing.google']] as [$tool, $screen]) {
+        foreach ([['whatsapp', 'admin.integrations.whatsapp'], ['google', 'admin.integrations.google']] as [$tool, $screen]) {
             $this->actingAs($this->owner)
-                ->post(route('admin.marketing.connect', $tool))
+                ->post(route('admin.integrations.connect', $tool))
                 ->assertRedirect(route($screen));
 
             $props = $this->props($screen);
@@ -83,15 +83,15 @@ class MarketingConnectTest extends TestCase
     /** والبابُ لا يُفتح بزيارةٍ — يكتب في القاعدة، فلا يُنفَّذ بجلبٍ مسبق */
     public function test_the_door_is_not_opened_by_merely_visiting_a_link(): void
     {
-        $this->actingAs($this->owner)->get('/admin/marketing/connect/whatsapp')->assertStatus(405);
+        $this->actingAs($this->owner)->get('/admin/integrations/connect/whatsapp')->assertStatus(405);
 
-        $this->assertFalse($this->props('admin.marketing.whatsapp')['automation']['readiness']['connected']);
+        $this->assertFalse($this->props('admin.integrations.whatsapp')['automation']['readiness']['connected']);
     }
 
     /** وأداةٌ لا نعرفها لا تُفتح لها علامة */
     public function test_an_unknown_tool_is_not_found(): void
     {
-        $this->actingAs($this->owner)->post(route('admin.marketing.connect', 'facebook'))->assertNotFound();
+        $this->actingAs($this->owner)->post(route('admin.integrations.connect', 'facebook'))->assertNotFound();
     }
 
     /**
@@ -112,7 +112,7 @@ class MarketingConnectTest extends TestCase
             'connected_at' => now(),
         ]);
 
-        $this->assertTrue($this->props('admin.marketing.whatsapp')['automation']['readiness']['connected']);
+        $this->assertTrue($this->props('admin.integrations.whatsapp')['automation']['readiness']['connected']);
     }
 
     public function test_the_google_door_closes_once_the_shop_is_pinned(): void
@@ -123,7 +123,7 @@ class MarketingConnectTest extends TestCase
             'value' => 'ChIJrTLr-GyuEmsRBfy61i59si0',
         ]);
 
-        $this->assertTrue($this->props('admin.marketing.google')['readiness']['connected']);
+        $this->assertTrue($this->props('admin.integrations.google')['readiness']['connected']);
     }
 
     /* --------------------- أبعاد مهيّأةٌ للربط أوّلًا --------------------- */
@@ -137,7 +137,7 @@ class MarketingConnectTest extends TestCase
      */
     public function test_the_platform_key_completes_the_first_stage_for_every_merchant(): void
     {
-        $first = fn () => $this->props('admin.marketing.google')['readiness']['steps'][0];
+        $first = fn () => $this->props('admin.integrations.google')['readiness']['steps'][0];
 
         $this->assertFalse($first()['done'], 'الخطوة الأولى تمّت بلا مفتاحٍ في المنصّة');
         $this->assertTrue($first()['theirs'], 'خطوةُ أبعاد تُقال للتاجر بصيغة الأمر');
@@ -152,7 +152,7 @@ class MarketingConnectTest extends TestCase
     {
         GoogleReviews::storePlatformKey('AIza-platform-key');
 
-        $this->assertNull($this->props('admin.marketing.google')['keyHint']);
+        $this->assertNull($this->props('admin.integrations.google')['keyHint']);
     }
 
     /** ومفتاحُ التاجر يتقدّم على مفتاح المنصّة: فاتورتُه فاتورتُه */
@@ -162,7 +162,7 @@ class MarketingConnectTest extends TestCase
         GoogleReviews::storeKey($this->business->id, 'AIza-merchant-key');
 
         $this->assertSame('AIza-merchant-key', GoogleReviews::apiKey($this->business->id));
-        $this->assertSame('••••-key', $this->props('admin.marketing.google')['keyHint']);
+        $this->assertSame('••••-key', $this->props('admin.integrations.google')['keyHint']);
     }
 
     /**
@@ -175,7 +175,7 @@ class MarketingConnectTest extends TestCase
     {
         GoogleReviews::storePlatformKey('AIza-platform-key');
 
-        $merchant = $this->actingAs($this->owner)->get(route('admin.marketing.google'));
+        $merchant = $this->actingAs($this->owner)->get(route('admin.integrations.google'));
         $merchant->assertOk()->assertDontSee('AIza-platform-key', false);
 
         $admin = User::create([

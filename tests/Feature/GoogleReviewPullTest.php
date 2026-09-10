@@ -194,7 +194,7 @@ class GoogleReviewPullTest extends TestCase
         $this->fakeOk();
 
         GoogleReviews::pull($this->business->id);
-        $this->post(route('admin.marketing.google.refresh'))->assertRedirect();
+        $this->post(route('admin.integrations.google.refresh'))->assertRedirect();
 
         Http::assertSentCount(2);
     }
@@ -210,7 +210,7 @@ class GoogleReviewPullTest extends TestCase
         GoogleReviews::pull($this->business->id);
 
         // ربطٌ جديد — ومحلٌّ آخر لا يرث تقييمات الأوّل
-        $this->post(route('admin.marketing.google.save'), ['google_maps_url' => self::OTHER])
+        $this->post(route('admin.integrations.google.save'), ['google_maps_url' => self::OTHER])
             ->assertSessionHasNoErrors();
 
         $this->assertSame(7, GoogleReviews::pull($this->business->id)['place']['count']);
@@ -232,8 +232,8 @@ class GoogleReviewPullTest extends TestCase
          * ولولا إسقاطُ القديم قبل الكتابة لَقرأ ما كان قبل ستّ ساعات، وظنّ
          * أنّ إعادة الربط لم تصنع شيئًا.
          */
-        $this->post(route('admin.marketing.google.save'), ['google_maps_url' => self::OTHER]);
-        $this->post(route('admin.marketing.google.save'), ['google_maps_url' => self::PLACE]);
+        $this->post(route('admin.integrations.google.save'), ['google_maps_url' => self::OTHER]);
+        $this->post(route('admin.integrations.google.save'), ['google_maps_url' => self::PLACE]);
 
         $this->assertSame(140, GoogleReviews::pull($this->business->id)['place']['count']);
     }
@@ -269,7 +269,7 @@ class GoogleReviewPullTest extends TestCase
         GoogleReviews::storeKey($this->business->id, self::KEY);
         $this->fakeOk();
 
-        $response = $this->get(route('admin.marketing.google'));
+        $response = $this->get(route('admin.integrations.google'));
 
         $response->assertOk();
         // المفتاح لا يخرج في حمولة الصفحة — تُقرأ على شاشةٍ في المحلّ
@@ -292,7 +292,7 @@ class GoogleReviewPullTest extends TestCase
          * الشاشة لا تعرض المفتاح المحفوظ، فحفظُها لتبديل شيءٍ آخر يصل بحقلٍ
          * فارغ. ولو عُدّ ذلك محوًا لَفقد التاجر مفتاحه كلّما حفظ.
          */
-        $this->post(route('admin.marketing.google.key'), ['google_api_key' => ''])
+        $this->post(route('admin.integrations.google.key'), ['google_api_key' => ''])
             ->assertSessionHasErrors('google_api_key');
 
         $this->assertSame(self::KEY, GoogleReviews::apiKey($this->business->id));
@@ -302,7 +302,7 @@ class GoogleReviewPullTest extends TestCase
     {
         GoogleReviews::storeKey($this->business->id, self::KEY);
 
-        $this->delete(route('admin.marketing.google.key.forget'))->assertRedirect();
+        $this->delete(route('admin.integrations.google.key.forget'))->assertRedirect();
 
         $this->assertNull(GoogleReviews::apiKey($this->business->id));
     }
@@ -315,6 +315,6 @@ class GoogleReviewPullTest extends TestCase
 
         $this->assertNull(GoogleReviews::apiKey($this->business->id));
         $this->assertSame('nokey', GoogleReviews::pull($this->business->id)['state']);
-        $this->get(route('admin.marketing.google'))->assertOk();
+        $this->get(route('admin.integrations.google'))->assertOk();
     }
 }

@@ -52,7 +52,7 @@ class GoogleReviewLinkTest extends TestCase
 
     private function save(array $data)
     {
-        return $this->post(route('admin.marketing.google.save'), $data);
+        return $this->post(route('admin.integrations.google.save'), $data);
     }
 
     /* ======================= قراءة المعرّف ======================= */
@@ -158,7 +158,7 @@ class GoogleReviewLinkTest extends TestCase
     {
         $this->save(['google_maps_url' => self::PLACE]);
 
-        $this->get(route('admin.marketing.google'))
+        $this->get(route('admin.integrations.google'))
             ->assertOk()
             ->assertInertia(fn ($p) => $p
                 ->where('link.place_id', self::PLACE)
@@ -177,7 +177,7 @@ class GoogleReviewLinkTest extends TestCase
 
         // رابطًا لا ذِكرًا: الكلمة تَرِد في تعليقٍ يشرح ما كان
         $this->assertStringNotContainsString('href="https://business.google.com', $source, 'الزرّ ما زال يخرج من النظام');
-        $this->assertStringContainsString('admin.marketing.google', $source, 'الزرّ لا يقود إلى صفحة الربط');
+        $this->assertStringContainsString('admin.integrations.google', $source, 'الزرّ لا يقود إلى صفحة الربط');
     }
 
     public function test_it_is_measured_by_the_marketing_section(): void
@@ -188,8 +188,8 @@ class GoogleReviewLinkTest extends TestCase
             'permissions' => ['reports'],
         ]);
 
-        $this->actingAs($staff)->get(route('admin.marketing.google'))->assertForbidden();
-        $this->actingAs($staff)->post(route('admin.marketing.google.save'), ['google_maps_url' => self::PLACE])
+        $this->actingAs($staff)->get(route('admin.integrations.google'))->assertForbidden();
+        $this->actingAs($staff)->post(route('admin.integrations.google.save'), ['google_maps_url' => self::PLACE])
             ->assertForbidden();
     }
 }

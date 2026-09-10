@@ -112,7 +112,7 @@ class WhatsAppOwnNumberTest extends TestCase
 
     public function test_a_business_cannot_connect_its_own_number_without_the_entitlement(): void
     {
-        $this->post(route('admin.marketing.whatsapp.connect'), [
+        $this->post(route('admin.integrations.whatsapp.connect'), [
             'phone_number_id' => 'SHOP-PN',
             'access_token' => 'shop-token-value-9876543210',
         ])->assertSessionHasErrors('access_token');
@@ -122,7 +122,7 @@ class WhatsAppOwnNumberTest extends TestCase
 
     public function test_a_business_cannot_switch_to_own_mode_without_the_entitlement(): void
     {
-        $this->post(route('admin.marketing.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
+        $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
             ->assertSessionHasErrors('mode');
 
         $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->business->fresh()->whatsapp_mode);
@@ -133,7 +133,7 @@ class WhatsAppOwnNumberTest extends TestCase
     {
         $this->grant();
 
-        $this->post(route('admin.marketing.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
+        $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
             ->assertSessionHasErrors('mode');
 
         $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->business->fresh()->whatsapp_mode);
@@ -143,13 +143,13 @@ class WhatsAppOwnNumberTest extends TestCase
     {
         $this->grant();
 
-        $this->post(route('admin.marketing.whatsapp.connect'), [
+        $this->post(route('admin.integrations.whatsapp.connect'), [
             'phone_number_id' => 'SHOP-PN',
             'display_phone_number' => '+96892222222',
             'access_token' => 'shop-token-value-9876543210',
         ])->assertRedirect();
 
-        $this->post(route('admin.marketing.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
+        $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
             ->assertRedirect()->assertSessionHasNoErrors();
 
         $this->assertSame(WhatsAppMode::BUSINESS_OWN, $this->business->fresh()->whatsapp_mode);
@@ -299,7 +299,7 @@ class WhatsAppOwnNumberTest extends TestCase
 
         $this->grant();
 
-        $this->post(route('admin.marketing.whatsapp.connect'), [
+        $this->post(route('admin.integrations.whatsapp.connect'), [
             'phone_number_id' => 'TAKEN-PN',
             'access_token' => 'my-token-value-1234567890',
         ])->assertSessionHasErrors('phone_number_id');
@@ -321,7 +321,7 @@ class WhatsAppOwnNumberTest extends TestCase
         $other = Business::create(['name' => 'ورد آخر', 'type' => 'محل ورود', 'status' => 'نشط']);
         $this->grant();
 
-        $this->post(route('admin.marketing.whatsapp.connect'), [
+        $this->post(route('admin.integrations.whatsapp.connect'), [
             'business_id' => $other->id,
             'phone_number_id' => 'SHOP-PN',
             'access_token' => 'shop-token-value-9876543210',
@@ -341,7 +341,7 @@ class WhatsAppOwnNumberTest extends TestCase
         $this->connectOwn();
         $this->business->update(['whatsapp_mode' => WhatsAppMode::BUSINESS_OWN]);
 
-        $this->delete(route('admin.marketing.whatsapp.disconnect'))->assertRedirect();
+        $this->delete(route('admin.integrations.whatsapp.disconnect'))->assertRedirect();
 
         $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->business->fresh()->whatsapp_mode);
         $this->assertSame(

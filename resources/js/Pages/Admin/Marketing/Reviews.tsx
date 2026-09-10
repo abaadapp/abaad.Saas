@@ -196,7 +196,7 @@ export default function Reviews() {
                             «ربط» ولا يربط شيئًا، ولا يعود منه التاجر بمعرّفٍ.
                         */}
                         <Button asChild variant="outline">
-                            <Link href={route('admin.marketing.google')}>
+                            <Link href={route('admin.integrations.google')}>
                                 <MapPin />
                                 {t('ربط خرائط Google')}
                             </Link>

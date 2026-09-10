@@ -24,6 +24,7 @@ use App\Http\Controllers\Admin\FinancialAttachmentController;
 use App\Http\Controllers\Admin\GoalController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
 use App\Http\Controllers\Admin\Inventory\StockAdjustmentController;
+use App\Http\Controllers\Admin\IntegrationsController;
 use App\Http\Controllers\Admin\InventoryController;
 use App\Http\Controllers\Admin\JobTitleController;
 use App\Http\Controllers\Admin\LanguageController;
@@ -739,48 +740,63 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
         Route::put('/settings', [SettingsController::class, 'saveSite'])->name('settings.save');
     });
 
+    /*
+     * التطبيقات التكاملية — الربطُ وحده، وما يُفعَل بالأداة في قسمه.
+     *
+     * وأسماءُ المسارات تحمل القسم: `admin.integrations.*` — منها يشتقّ
+     * `CheckAbility` الصلاحيةَ المطلوبة. فلو بقيت تحت `marketing` لَحرسها
+     * قسمُ التسويق، ولَكان منحُ الكوبونات منحًا لمفتاح Places معه.
+     */
+    Route::prefix('integrations')->name('integrations.')->group(function () {
+        Route::get('/', [IntegrationsController::class, 'index'])->name('index');
+
+        /*
+         * «ربط مع أبعاد» — بابُ كلّ أداةٍ تُربط.
+         *
+         * وهو POST لا رابط: يكتب علامةَ البدء في القاعدة، ورابطٌ يكتب يُنفَّذ
+         * بجلبٍ مسبقٍ من المتصفّح أو بزيارةٍ من زاحف.
+         */
+        Route::post('/connect/{tool}', [IntegrationsController::class, 'connect'])
+            ->whereIn('tool', ['whatsapp', 'google'])->name('connect');
+
+        /*
+         * ربط خرائط Google — صفحةٌ في النظام لا رابطٌ يخرج منه.
+         *
+         * كان زرًّا يفتح `business.google.com` في تبويبٍ خارجيّ: اسمُه «ربط» ولا
+         * يربط شيئًا — يُخرج التاجر من لوحته ولا يعود بمعرّفٍ ولا يُحفظ شيء.
+         */
+        Route::get('/google', [IntegrationsController::class, 'google'])->name('google');
+        Route::post('/google', [IntegrationsController::class, 'saveGoogle'])->name('google.save');
+        Route::post('/google/key', [IntegrationsController::class, 'saveGoogleKey'])->name('google.key');
+        Route::delete('/google/key', [IntegrationsController::class, 'forgetGoogleKey'])->name('google.key.forget');
+        Route::post('/google/refresh', [IntegrationsController::class, 'refreshGoogle'])->name('google.refresh');
+
+        /*
+         * واتساب — ما يملكه التاجر: وضع الإرسال وربط رقمه.
+         *
+         * ومعرّف متجره يُقرأ من جلسته في المتحكّم لا ممّا يصل في الطلب — انظر
+         * `Admin\WhatsAppController::bid`.
+         */
+        Route::get('/whatsapp', [IntegrationsController::class, 'whatsapp'])->name('whatsapp');
+        Route::post('/whatsapp/mode', [App\Http\Controllers\Admin\WhatsAppController::class, 'mode'])->name('whatsapp.mode');
+        Route::post('/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'connect'])->name('whatsapp.connect');
+        Route::delete('/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'disconnect'])->name('whatsapp.disconnect');
+    });
+
     Route::get('/marketing/loyalty', [MarketingController::class, 'loyalty'])->name('marketing.loyalty');
     Route::post('/marketing/loyalty', [MarketingController::class, 'saveLoyalty'])->name('marketing.loyalty.save');
-    /*
-     * واتساب — ما يملكه التاجر: وضع الإرسال وربط رقمه.
-     *
-     * ومعرّف متجره يُقرأ من جلسته في المتحكّم لا ممّا يصل في الطلب — انظر
-     * `Admin\WhatsAppController::bid`.
-     */
     /*
      * بريد الاستعادة — يضبطه صاحب الحساب وهو داخل، قبل أن يحتاج إليه.
      * ويُشترط معه كلمةُ المرور الحالية: جلسةٌ مفتوحة وحدها لا تكفي.
      */
     Route::post('/settings/recovery-email', [RecoveryEmailController::class, 'start'])->name('settings.recovery.start');
     Route::post('/settings/recovery-email/confirm', [RecoveryEmailController::class, 'confirm'])->name('settings.recovery.confirm');
-    Route::post('/marketing/whatsapp/mode', [App\Http\Controllers\Admin\WhatsAppController::class, 'mode'])->name('marketing.whatsapp.mode');
-    Route::post('/marketing/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'connect'])->name('marketing.whatsapp.connect');
-    Route::delete('/marketing/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'disconnect'])->name('marketing.whatsapp.disconnect');
-    /*
-     * ربط خرائط Google — صفحةٌ في النظام لا رابطٌ يخرج منه.
-     *
-     * كان زرًّا يفتح `business.google.com` في تبويبٍ خارجيّ: اسمُه «ربط» ولا
-     * يربط شيئًا — يُخرج التاجر من لوحته ولا يعود بمعرّفٍ ولا يُحفظ شيء.
-     */
-    Route::get('/marketing/google', [MarketingController::class, 'google'])->name('marketing.google');
-    Route::post('/marketing/google', [MarketingController::class, 'saveGoogle'])->name('marketing.google.save');
-    Route::post('/marketing/google/key', [MarketingController::class, 'saveGoogleKey'])->name('marketing.google.key');
-    Route::delete('/marketing/google/key', [MarketingController::class, 'forgetGoogleKey'])->name('marketing.google.key.forget');
-    Route::post('/marketing/google/refresh', [MarketingController::class, 'refreshGoogle'])->name('marketing.google.refresh');
     Route::get('/marketing/reviews', [ReviewController::class, 'index'])->name('marketing.reviews');
     Route::post('/marketing/reviews', [ReviewController::class, 'store'])->name('marketing.reviews.store');
     Route::post('/marketing/reviews/{id}/status', [ReviewController::class, 'status'])->name('marketing.reviews.status');
     Route::post('/marketing/reviews/{id}/reply', [ReviewController::class, 'reply'])->name('marketing.reviews.reply');
     Route::delete('/marketing/reviews/{id}', [ReviewController::class, 'destroy'])->name('marketing.reviews.destroy');
     Route::get('/marketing/coupons', [MarketingController::class, 'coupons'])->name('marketing.coupons');
-    /*
-     * «ربط مع أبعاد» — بابُ كلّ أداةٍ تُربط.
-     *
-     * وهو POST لا رابط: يكتب علامةَ البدء في القاعدة، ورابطٌ يكتب يُنفَّذ
-     * بجلبٍ مسبقٍ من المتصفّح أو بزيارةٍ من زاحف.
-     */
-    Route::post('/marketing/connect/{tool}', [MarketingController::class, 'connect'])
-        ->whereIn('tool', ['whatsapp', 'google'])->name('marketing.connect');
     Route::get('/marketing/whatsapp', [MarketingController::class, 'whatsapp'])->name('marketing.whatsapp');
     Route::post('/marketing/whatsapp', [MarketingController::class, 'saveWhatsapp'])->name('marketing.whatsapp.save');
 
@@ -1049,6 +1065,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/settings/templates/{type}', [TemplateController::class, 'edit'])->name('settings.templates.edit');
     Route::post('/settings/templates/{type}', [TemplateController::class, 'update'])->name('settings.templates.update');
     Route::post('/settings/templates/{type}/preview', [TemplateController::class, 'preview'])->name('settings.templates.preview');
+    /*
+     * وهويّةُ الأوراق بابان مستقلّان عن القالب.
+     *
+     * لأنّها تخصّ المتجر كلَّه لا ورقةً بعينها — ولأنّ الغلافَ ملفٌّ يُرفع
+     * بـmultipart، وخلطُه بحقولِ JSON يكسر مصادقةَ الأعلام.
+     */
+    Route::post('/settings/documents/brand', [TemplateController::class, 'brand'])->name('settings.documents.brand');
+    Route::post('/settings/documents/cover', [TemplateController::class, 'cover'])->name('settings.documents.cover');
 
     Route::get('/settings/trash', [TrashController::class, 'index'])->name('settings.trash');
 

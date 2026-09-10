@@ -10,7 +10,7 @@ import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { ConnectGate, ConnectSteps, type Readiness } from './partials/Connect';
+import { ConnectGate, ConnectSteps, type Readiness } from '@/Components/Connect';
 import type { PageProps } from '@/types';
 
 interface Link {
@@ -122,12 +122,12 @@ export default function MarketingGoogle() {
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        form.post(route('admin.marketing.google.save'), { preserveScroll: true });
+        form.post(route('admin.integrations.google.save'), { preserveScroll: true });
     };
 
     const saveKey = (e: React.FormEvent) => {
         e.preventDefault();
-        keyForm.post(route('admin.marketing.google.key'), {
+        keyForm.post(route('admin.integrations.google.key'), {
             preserveScroll: true,
             // المفتاح لا يبقى في الحقل بعد حفظه — لا يُعرض ولا يُعاد إرساله
             onSuccess: () => keyForm.reset('google_api_key'),
@@ -136,14 +136,14 @@ export default function MarketingGoogle() {
 
     const refresh = () => {
         setRefreshing(true);
-        router.post(route('admin.marketing.google.refresh'), {}, {
+        router.post(route('admin.integrations.google.refresh'), {}, {
             preserveScroll: true,
             onFinish: () => setRefreshing(false),
         });
     };
 
     const forgetKey = () => {
-        router.delete(route('admin.marketing.google.key.forget'), { preserveScroll: true });
+        router.delete(route('admin.integrations.google.key.forget'), { preserveScroll: true });
     };
 
     const linked = !! link.place_id;

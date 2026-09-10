@@ -11,6 +11,7 @@ import {
 import {
     AppWindow,
     BarChart3,
+    Blocks,
     FileText,
     Boxes,
     Building2,
@@ -19,7 +20,6 @@ import {
     History,
     Layers,
     LayoutDashboard,
-    MapPin,
     Search,
     Megaphone,
     MessageCircle,
@@ -183,7 +183,6 @@ export const NAV: NavGroup[] = [
                 children: [
                     { label: 'برنامج ولاء', icon: Star, route: 'admin.marketing.loyalty', section: 'marketing', feature: 'loyalty' },
                     { label: 'تقييمات العملاء', icon: MessageSquare, route: 'admin.marketing.reviews', section: 'marketing' },
-                    { label: 'ربط خرائط Google', icon: MapPin, route: 'admin.marketing.google', section: 'marketing' },
                     { label: 'الظهور في البحث', icon: Search, route: 'admin.marketing.seo', section: 'marketing' },
                     { label: 'الكوبونات والعروض', icon: TicketPercent, route: 'admin.marketing.coupons', section: 'marketing' },
                     { label: 'إشعارات واتساب', icon: MessageCircle, route: 'admin.marketing.whatsapp', section: 'marketing', feature: 'whatsapp' },
@@ -199,6 +198,24 @@ export const NAV: NavGroup[] = [
                 route: 'admin.website.index',
                 section: 'website',
                 covers: covers(WEBSITE_TABS),
+            },
+        ],
+    },
+    {
+        /*
+         * التطبيقات التكاملية — فوق «الإعدادات» لا داخلها.
+         *
+         * وربطُ أداةٍ خارجية ليس ضبطَ ضريبةٍ ولا إضافةَ فرع: هو تسليمُ مفتاحٍ
+         * يُنفِق على حساب المتجر، أو فتحُ قناةٍ تخاطب زبائنه باسمه. فبابُه
+         * بابُه، ومنحُه منحٌ على حدة — انظر Permissions::SECTIONS.
+         */
+        items: [
+            {
+                label: 'التطبيقات التكاملية',
+                icon: Blocks,
+                route: 'admin.integrations.index',
+                section: 'integrations',
+                covers: ['admin.integrations.google', 'admin.integrations.whatsapp'],
             },
         ],
     },

@@ -366,6 +366,15 @@ class Permissions
          * يفعلهما الشخص نفسه في أكثر المتاجر.
          */
         'website',
+        /*
+         * التطبيقات التكاملية قسمٌ مستقلّ عن «أدوات التسويق».
+         *
+         * ربطُ أداةٍ خارجية يعني تسليمَ مفتاحٍ يُنفِق على حساب المتجر، أو
+         * فتحَ قناةٍ تخاطب زبائنه باسمه. وهذا قرارُ صاحبِ المتجر، لا قرارُ
+         * من يكتب كوبونًا أو يردّ على تقييم — وكلاهما كان يُمنح «التسويق»
+         * فيُمنح معه مفتاحُ Places ووصلةُ واتساب.
+         */
+        'integrations',
         'suppliers', 'purchases', 'employees', 'pos', 'reports',
         /*
          * التجهيز قسمٌ مستقلّ لا جزءٌ من «المبيعات».
@@ -472,6 +481,7 @@ class Permissions
         'marketing' => 'admin.marketing.loyalty', 'inventory' => 'admin.inventory.index',
         'finance' => 'admin.finance.index', 'expenses' => 'admin.expenses.index',
         'website' => 'admin.website.index',
+        'integrations' => 'admin.integrations.index',
         'settings' => 'admin.settings.index', 'suppliers' => 'admin.suppliers.index',
         'purchases' => 'admin.purchases.index', 'employees' => 'admin.employees.index',
         'pos' => 'pos.index',
@@ -534,6 +544,7 @@ class Permissions
             'orders' => 'المبيعات', 'marketing' => 'أدوات التسويق', 'inventory' => 'المخزون',
             'finance' => 'المالية', 'expenses' => 'مصاريف شهرية', 'settings' => 'الإعدادات',
             'website' => 'الموقع الإلكتروني',
+            'integrations' => 'التطبيقات التكاملية',
             'suppliers' => 'الموردين', 'purchases' => 'المشتريات',
             'employees' => 'الرواتب والموظفين', 'pos' => 'نقطة البيع',
             // كانت ساقطةً فتُعرض «reports» بحروفٍ لاتينية في قائمة صلاحيات عربية

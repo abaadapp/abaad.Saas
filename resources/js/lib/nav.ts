@@ -232,7 +232,11 @@ export const NAV: NavGroup[] = [
                 icon: Blocks,
                 route: 'admin.integrations.index',
                 section: 'integrations',
-                covers: ['admin.integrations.google', 'admin.integrations.whatsapp'],
+                covers: [
+                    'admin.integrations.google',
+                    'admin.integrations.googleBusiness',
+                    'admin.integrations.whatsapp',
+                ],
             },
             /*
              * والمساعدةُ بلا حارسِ قسم.

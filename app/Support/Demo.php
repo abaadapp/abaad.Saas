@@ -18,6 +18,7 @@ use App\Models\DismissedNotification;
 use App\Models\Expense;
 use App\Models\ExpenseType;
 use App\Models\GoodsReceiptNote;
+use App\Models\GoogleBusinessReview;
 use App\Models\InventoryMovement;
 use App\Models\Invoice;
 use App\Models\Order;
@@ -3165,6 +3166,53 @@ class Demo
                     'time' => optional($c->last_message_at)->diffForHumans(),
                     'icon' => 'message-square', 'color' => 'info',
                     'url' => route('admin.help.show', $c->id),
+                ]);
+            }
+        }
+
+        /*
+         * تقييماتُ Google — الجديدُ منها والمنخفض.
+         *
+         * ═══ ولمَ «الجديد» يُقاس بأوّل مرّةٍ وصلنا فيها ═══
+         *
+         * لو قِيس بتاريخ Google لَانهال على التاجر مئةُ إشعارٍ يومَ يربط
+         * ملفَّه أوّلَ مرّة — تقييماتُ سنتين تصير كلُّها «جديدة».
+         *
+         * ═══ والمنخفضُ يُقال منخفضًا ═══
+         *
+         * تقييمٌ بنجمةٍ يُترك يومين يقرؤه كلُّ من يفتح ملفَّ المحلّ. وردٌّ في
+         * ساعته يقلب أثرَه.
+         *
+         * ولا يُنبَّه مديرُ المنصّة بتقييمِ متجرٍ: شأنُ صاحبه لا شأنُنا.
+         */
+        $googleSettings = MarketingSettings::group($bid, 'google');
+
+        if (($googleSettings['gbp_alerts_enabled'] ?? '1') === '1') {
+            $threshold = (int) ($googleSettings['gbp_low_rating'] ?? 2);
+
+            $fresh = GoogleBusinessReview::live()
+                ->whereIn('branch_id', Branch::where('business_id', $bid)->pluck('id'))
+                ->where('first_seen_at', '>=', now()->subDays(14))
+                ->with('branch:id,name')
+                ->orderByDesc('reviewed_at')
+                ->limit($limit)->get();
+
+            foreach ($fresh as $review) {
+                $low = $review->rating > 0 && $review->rating <= $threshold;
+
+                $add('gbp-review-'.$review->id, [
+                    'text' => $low
+                        ? __('تقييم منخفض ⭐:n على :branch', [
+                            'n' => $review->rating, 'branch' => $review->branch?->name ?? '—',
+                        ])
+                        : __('تقييم Google جديد ⭐:n على :branch', [
+                            'n' => $review->rating, 'branch' => $review->branch?->name ?? '—',
+                        ]),
+                    'time' => optional($review->reviewed_at)->diffForHumans(),
+                    'icon' => 'star',
+                    /* واللونُ يفرّق: المنخفضُ يُقرأ قبل أن يُقرأ نصُّه */
+                    'color' => $low ? 'danger' : 'info',
+                    'url' => route('admin.integrations.googleBusiness'),
                 ]);
             }
         }

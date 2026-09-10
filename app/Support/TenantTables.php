@@ -44,7 +44,7 @@ class TenantTables
         'whatsapp_connections', 'whatsapp_template_mappings', 'whatsapp_usage_periods',
 
         // ما يتفرّع عنها
-        'branch_user', 'branch_google_places',
+        'branch_user', 'branch_google_places', 'google_business_accounts', 'google_business_reviews',
         'custom_alerts', 'products', 'product_variants', 'product_images',
         'addons', 'product_addons', 'recipe_items',
         'customers', 'customer_addresses',
@@ -116,6 +116,13 @@ class TenantTables
          * ولا سرَّ فيه: معرّفُ المكان عامٌّ عند Google، ولا مفتاحَ في الجدول.
          */
         'branch_google_places' => ['branches', 'branch_id'],
+        /*
+         * تقييماتُ ملفّ الأعمال — تخصّ الفرع، وتُنسخ معه.
+         *
+         * ولا سرَّ فيها: نصُّ التقييم واسمُ كاتبه كما يعرضهما Google للعامّة،
+         * ولا رمزَ وصولٍ ولا بريدَ أحد.
+         */
+        'google_business_reviews' => ['branches', 'branch_id'],
         'customer_addresses' => ['customers', 'customer_id'],
         'delivery_note_items' => ['delivery_notes', 'delivery_note_id'],
         'goods_receipt_note_items' => ['goods_receipt_notes', 'goods_receipt_note_id'],
@@ -180,6 +187,17 @@ class TenantTables
     public const SECRETS = [
         'users' => ['password', 'remember_token'],
         'whatsapp_connections' => ['access_token'],
+        /*
+         * ورمزا Google لا يخرجان في ملفٍّ يُنزَّل.
+         *
+         * من يملك رمزَ التجديد يقرأ تقييمات المتجر **ويردّ عليها باسمه** حتّى
+         * يُلغيه صاحبُه بيده. وملفُّ نسخةٍ يُرسَل في بريدٍ أو يُنسى في مجلّد
+         * تنزيلاتٍ ليس مكانَه.
+         *
+         * وليسا إلزاميَّين فلا يُولَّدان: المتجرُ يعود بعد الاستعادة «غيرَ
+         * مربوط»، فيربط بضغطتين — وذلك أهونُ من إذنٍ يُنسخ مع الملفّ.
+         */
+        'google_business_accounts' => ['access_token', 'refresh_token'],
     ];
 
     /**

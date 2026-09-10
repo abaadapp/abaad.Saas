@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\Finance\OverviewController;
 use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\FinancialAttachmentController;
 use App\Http\Controllers\Admin\GoalController;
+use App\Http\Controllers\Admin\GoogleBusinessController;
 use App\Http\Controllers\Admin\HelpController;
 use App\Http\Controllers\Admin\IntegrationsController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
@@ -822,6 +823,25 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
         Route::post('/google/branches/{branch}', [IntegrationsController::class, 'linkBranch'])->name('google.branch.link');
         Route::delete('/google/branches/{branch}', [IntegrationsController::class, 'unlinkBranch'])->name('google.branch.unlink');
         Route::post('/google/branches/{branch}/refresh', [IntegrationsController::class, 'refreshBranch'])->name('google.branch.refresh');
+
+        /*
+         * ملفُّ الأعمال — بابٌ آخرُ غيرُ الخرائط.
+         *
+         * الخرائطُ تقرأ الملفَّ العامّ بمفتاح؛ وهذا يفتح ملفَّ التاجر بإذنه
+         * فيقرأ تقييماته كلَّها ويردّ عليها باسمه.
+         */
+        Route::get('/google-business', [GoogleBusinessController::class, 'index'])->name('googleBusiness');
+        Route::get('/google-business/connect', [GoogleBusinessController::class, 'connect'])->name('googleBusiness.connect');
+        /* عنوانُ العودة من Google — يُطابق `GOOGLE_BUSINESS_REDIRECT` حرفًا بحرف */
+        Route::get('/google-business/callback', [GoogleBusinessController::class, 'callback'])->name('googleBusiness.callback');
+        Route::delete('/google-business', [GoogleBusinessController::class, 'disconnect'])->name('googleBusiness.disconnect');
+        Route::post('/google-business/locations', [GoogleBusinessController::class, 'locations'])
+            ->middleware('throttle:20,1')->name('googleBusiness.locations');
+        Route::post('/google-business/branches/{branch}', [GoogleBusinessController::class, 'linkLocation'])->name('googleBusiness.branch.link');
+        Route::post('/google-business/branches/{branch}/sync', [GoogleBusinessController::class, 'sync'])
+            ->middleware('throttle:20,1')->name('googleBusiness.branch.sync');
+        Route::post('/google-business/reviews/{review}/reply', [GoogleBusinessController::class, 'reply'])->name('googleBusiness.reply');
+        Route::post('/google-business/alerts', [GoogleBusinessController::class, 'alerts'])->name('googleBusiness.alerts');
 
         /*
          * واتساب — ما يملكه التاجر: وضع الإرسال وربط رقمه.

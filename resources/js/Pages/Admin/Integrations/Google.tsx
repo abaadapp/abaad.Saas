@@ -7,6 +7,7 @@ import PageHeader from '@/Components/PageHeader';
 import CopyButton from '@/Components/CopyButton';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import SmartLink from '@/Components/SmartLink';
 import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -243,6 +244,31 @@ export default function MarketingGoogle() {
                                 <BranchRow key={b.id} branch={b} min={searchMin} />
                             ))}
                         </ul>
+                    </Card>
+
+                    {/*
+                        وبابُ الإدارة الكاملة — بابٌ آخرُ غيرُ هذا.
+
+                        هذه الشاشةُ تقرأ الملفَّ العامّ: معدّلٌ وعددٌ وخمسةُ نصوصٍ
+                        تختارها Google. وقراءةُ التقييمات كلِّها والردُّ عليها
+                        باسم المتجر تحتاج إذنَ صاحبه — فتُذكر ولا تُخلط بهذه.
+                    */}
+                    <Card className="p-6">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <h3 className="font-bold text-[#111]">{t('الرد على التقييمات')}</h3>
+                                <p className="mt-0.5 text-[13px] leading-relaxed text-[#6b7280]">
+                                    {t('اقرأ تقييماتك كلّها وردّ عليها باسم متجرك — يحتاج ربط حساب Google بإذنك.')}
+                                </p>
+                            </div>
+                            <SmartLink
+                                routeName="admin.integrations.googleBusiness"
+                                href={route('admin.integrations.googleBusiness')}
+                                className="shrink-0 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-3 py-1.5 text-[13px] text-[#111] hover:bg-[#fafafa]"
+                            >
+                                {t('إدارة التقييمات')}
+                            </SmartLink>
+                        </div>
                     </Card>
 
                     {/* ------------------------- رمز الإيصال ------------------------- */}

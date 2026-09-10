@@ -498,6 +498,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/orders/{number}/status', [OrderDetailController::class, 'status'])->name('orders.status');
     // إرسالُ الفاتورة إلى الزبون — نصٌّ يُكتب في الخادم ويُفتح على واتساب التاجر
     Route::post('/orders/{number}/send', [OrderDetailController::class, 'send'])->name('orders.send');
+    /* طلبُ تقييمٍ على Google — بملفّ فرع الطلب، وبعد التسليم وحده */
+    Route::post('/orders/{number}/review-request', [OrderDetailController::class, 'reviewRequest'])
+        ->name('orders.reviewRequest');
     Route::get('/orders/{number}/pdf', [PdfController::class, 'orderReceipt'])->name('orders.pdf');
     Route::get('/orders/{number}/delivery-note', [DocumentPrintController::class, 'delivery'])->name('orders.deliveryNote');
 
@@ -790,6 +793,21 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
         Route::post('/google/key', [IntegrationsController::class, 'saveGoogleKey'])->name('google.key');
         Route::delete('/google/key', [IntegrationsController::class, 'forgetGoogleKey'])->name('google.key.forget');
         Route::post('/google/refresh', [IntegrationsController::class, 'refreshGoogle'])->name('google.refresh');
+
+        /*
+         * البحثُ عن المحلّ — محدودُ المعدّل لأنّه نداءٌ مدفوع.
+         *
+         * والتمهّلُ في الشاشة لا يكفي: من يكتب العنوان بيده يتجاوزه، ومئةُ
+         * نداءٍ في الدقيقة فاتورةٌ يدفعها من يملك المفتاح — أبعادُ غالبًا.
+         * عشرون في الدقيقة تكفي بحثًا بشريًّا وتقف دون الآليّ.
+         */
+        Route::post('/google/search', [IntegrationsController::class, 'searchPlaces'])
+            ->middleware('throttle:20,1')->name('google.search');
+
+        /* ولكلّ فرعٍ مكانُه — لا للمتجر كلِّه مكانٌ واحد */
+        Route::post('/google/branches/{branch}', [IntegrationsController::class, 'linkBranch'])->name('google.branch.link');
+        Route::delete('/google/branches/{branch}', [IntegrationsController::class, 'unlinkBranch'])->name('google.branch.unlink');
+        Route::post('/google/branches/{branch}/refresh', [IntegrationsController::class, 'refreshBranch'])->name('google.branch.refresh');
 
         /*
          * واتساب — ما يملكه التاجر: وضع الإرسال وربط رقمه.

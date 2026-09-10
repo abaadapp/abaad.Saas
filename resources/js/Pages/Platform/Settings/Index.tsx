@@ -96,7 +96,7 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, supportReach, googleKeyHint } =
+    const { settings, locale, mail, plans, whatsapp, supportReach, googleHealth, googleKeyHint } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
@@ -104,6 +104,7 @@ export default function PlatformSettings() {
             googleKeyHint?: string | null;
             whatsapp?: SharedConnection | null;
             supportReach?: { reachable: number; total: number; ambiguous: number };
+            googleHealth?: { configured: boolean; linkedBranches: number; branches: number };
         }>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('general');
@@ -616,6 +617,20 @@ export default function PlatformSettings() {
                                     : t('لا مفتاح — «ربط خرائط Google» عند التجّار يقف عند خطوته الأولى.')}
                             </span>
                         </div>
+
+                        {/*
+                            وكم فرعًا رُبط فعلًا — عددٌ محسوب.
+                            مفتاحٌ محفوظٌ وصفرُ فروع يعني أنّ الميزة لم تصل التجّار،
+                            وهو خبرٌ يُقرأ هنا لا يُكتشف بعد شهر.
+                        */}
+                        {googleHealth && (
+                            <p className="mb-5 text-[12px] leading-relaxed text-[#6b7280]">
+                                {t(':n من :total فرعًا مربوطٌ بملفّه على الخرائط.', {
+                                    n: googleHealth.linkedBranches,
+                                    total: googleHealth.branches,
+                                })}
+                            </p>
+                        )}
 
                         <Field
                             label={t('مفتاح Places API (New)')}

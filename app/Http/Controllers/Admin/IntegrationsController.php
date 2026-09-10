@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Review;
 use App\Support\Activity;
+use App\Support\BranchGoogle;
 use App\Support\Demo;
+use App\Support\GooglePlaces;
 use App\Support\GoogleReviews;
 use App\Support\Integrations;
 use App\Support\MarketingSettings;
@@ -94,7 +97,99 @@ class IntegrationsController extends Controller
             'readiness' => GoogleReviews::readiness($bid, $pulled),
             /* عددُ ما في النظام من تقييمات — ليُقرأ الفرق بين الاثنين */
             'internal' => Review::where('business_id', $bid)->count(),
+            /*
+             * وفروعُ المتجر وحالُ كلٍّ منها — لكلّ فرعٍ ملفُّه.
+             *
+             * والمزامنةُ للقديم وحده (اثنتا عشرةَ ساعة): الشاشةُ تُفتح كثيرًا،
+             * ونداءُ Google لكلّ فرعٍ في كلّ فتحةٍ فاتورةٌ تكبر بلا رقمٍ جديد.
+             */
+            'branches' => BranchGoogle::branches($bid),
+            'searchMin' => GooglePlaces::MIN_QUERY,
         ]);
+    }
+
+    /* ------------------------- الفرعُ ومكانُه على الخريطة ------------------------- */
+
+    /**
+     * البحثُ عن محلٍّ بالاسم أو الرقم — والنداءُ من خادمنا لا من المتصفّح.
+     *
+     * ولا يصل المفتاحُ إلى الشاشة بحال: لو أُرسل لَقرأه أيُّ زائرٍ من مصدر
+     * الصفحة، والنداءاتُ تُحتسب على من يملكه — أبعادَ أو التاجر.
+     */
+    public function searchPlaces(Request $request)
+    {
+        $data = $request->validate([
+            'q' => ['required', 'string', 'max:120'],
+        ]);
+
+        $key = GoogleReviews::apiKey($this->bid());
+
+        if ($key === null) {
+            return response()->json([
+                'ok' => false,
+                'error' => __('خدمة Google Maps غير مفعلة حاليًا.'),
+                'results' => [],
+            ]);
+        }
+
+        return response()->json(GooglePlaces::search($data['q'], $key));
+    }
+
+    /**
+     * ربطُ فرعٍ بمكان — والمُرسَل معرّفٌ وحده.
+     *
+     * وما يُحفظ يُقرأ من ردّ Google لا من الطلب: من بدّل الاسمَ أو المعدّل في
+     * المتصفّح لا يجعل شاشتَنا تشهد بما لم تقله Google.
+     */
+    public function linkBranch(Request $request, int $branch)
+    {
+        $data = $request->validate([
+            'place_id' => ['required', 'string', 'max:255'],
+        ]);
+
+        $result = BranchGoogle::link($this->branch($branch), $data['place_id'], $request->user());
+
+        if (! $result['ok']) {
+            return back()->withErrors(['place_id' => $result['error']]);
+        }
+
+        return back()->with('toast', [
+            'msg' => __('تم ربط المتجر بنجاح'),
+            'type' => 'success',
+        ]);
+    }
+
+    public function unlinkBranch(int $branch)
+    {
+        BranchGoogle::unlink($this->branch($branch));
+
+        return back()->with('toast', ['msg' => __('أُلغي الربط'), 'type' => 'warning']);
+    }
+
+    /** سحبٌ جديدٌ لهذا الفرع — يتخطّى حدَّ التقادم */
+    public function refreshBranch(int $branch)
+    {
+        $place = BranchGoogle::for($this->branch($branch));
+
+        if (! $place) {
+            return back()->withErrors(['branch' => __('هذا الفرع غير مربوط.')]);
+        }
+
+        return back()->with('toast', BranchGoogle::sync($place, force: true)
+            ? ['msg' => __('حُدِّثت التقييمات'), 'type' => 'success']
+            : ['msg' => __('تعذر الاتصال بـ Google حاليًا. حاول مرة أخرى.'), 'type' => 'error']);
+    }
+
+    /**
+     * فرعٌ من فروع هذا المتجر — أو ٤٠٤.
+     *
+     * والحصرُ في الاستعلام لا في فحصٍ بعده: `findOrFail` ثمّ مقارنةُ
+     * `business_id` تُفرِّق بين «ليس لك» و«غير موجود»، وكلاهما يجب أن يُقال
+     * الشيءَ نفسه — وإلّا صار رقمُ الفرع يُخمَّن بالردّ.
+     */
+    private function branch(int $id): Branch
+    {
+        return Branch::where('business_id', $this->bid())->findOrFail($id);
     }
 
     /**
@@ -146,51 +241,36 @@ class IntegrationsController extends Controller
             : ['msg' => $result['error'] ?? __('لم تُسحب التقييمات'), 'type' => 'error']);
     }
 
+    /**
+     * مقبضُ رمز التقييم على الإيصال — ولا معرّفَ يُلصق بيد.
+     *
+     * ═══ ولمَ رُفع حقلُ اللصق ═══
+     *
+     * كان التاجر يلصق «Place ID» نصًّا فيُحفظ بلا أن تُسأل Google عنه. ومعرّفٌ
+     * خاطئ لا يُخطئ أحدًا في الشاشة: الحفظ ينجح، والرمز يُطبع، ويمسحه الزبون
+     * فيفتح ملفَّ محلٍّ آخر — أو لا يفتح شيئًا. عطبٌ لا يراه صاحبه أبدًا لأنّه
+     * لا يمسح إيصاله بنفسه.
+     *
+     * فصار الطريقُ واحدًا: يبحث عن محلّه بالاسم أو الرقم، ويختار، ويُنادى
+     * Google بالمعرّف فتشهد بالاسم قبل أن يُكتب صفّ. انظر `linkBranch`.
+     */
     public function saveGoogle(Request $request)
     {
-        $data = $request->validate([
-            'google_maps_url' => ['nullable', 'string', 'max:500'],
+        $request->validate([
             'google_review_on_receipt' => ['nullable', 'boolean'],
+            'google_show_on_site' => ['nullable', 'boolean'],
         ]);
 
-        $input = trim((string) ($data['google_maps_url'] ?? ''));
-
-        /*
-         * الرابط يُقرأ قبل أن يُحفظ، ولا يُقبل ما لا يُقرأ.
-         *
-         * ومعرّفٌ خاطئ لا يُخطئ أحدًا في الشاشة: الحفظ ينجح، والرمز يُطبع،
-         * ويمسحه الزبون فيفتح ملفَّ محلٍّ آخر — أو لا يفتح شيئًا. عطبٌ لا
-         * يراه صاحبه أبدًا لأنّه لا يمسح إيصاله بنفسه.
-         */
-        if ($input !== '' && ! GoogleReviews::readable($input)) {
-            return back()->withInput()->withErrors([
-                'google_maps_url' => __('لم أستطع قراءة معرّف المكان من هذا الرابط. الصق «Place ID» نفسه، أو رابطًا يحمل place_id.'),
-            ]);
-        }
-
-        $bid = $this->bid();
-
-        MarketingSettings::save($bid, 'google', [
-            'google_maps_url' => $input,
-            'google_place_id' => GoogleReviews::placeId($input) ?? '',
+        MarketingSettings::save($this->bid(), 'google', [
             'google_review_on_receipt' => $request->boolean('google_review_on_receipt'),
+            'google_show_on_site' => $request->boolean('google_show_on_site'),
         ]);
 
-        /*
-         * والمسحوبُ يسقط بعد الكتابة — بالمعرّف الجديد.
-         *
-         * ولا يخلط معرّفٌ بآخر: موضعُ الذاكرة يحمل المعرّف في اسمه، فلا يرث
-         * محلٌّ تقييماتِ محلٍّ آخر أبدًا. وإنّما هو التقادم: من ربط الآن يقصد
-         * أن يرى ما عند Google الآن، لا ما بقي في الذاكرة من قبل.
-         */
-        GoogleReviews::forget($bid);
+        Activity::log('updated', $request->boolean('google_review_on_receipt')
+            ? 'شغّل رمز تقييم Google على الإيصال'
+            : 'أطفأ رمز تقييم Google على الإيصال');
 
-        Activity::log('updated', $input === '' ? 'فكّ ربط خرائط Google' : 'ربط خرائط Google');
-
-        return back()->with('toast', [
-            'msg' => $input === '' ? __('أُلغي الربط') : __('حُفظ الربط'),
-            'type' => 'success',
-        ]);
+        return back()->with('toast', ['msg' => __('حُفظت الإعدادات'), 'type' => 'success']);
     }
 
     /* ---------------------------- واتساب بزنس ---------------------------- */

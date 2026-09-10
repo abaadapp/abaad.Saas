@@ -114,7 +114,7 @@ class PdfController extends Controller
              * والشرطان في `onReceipt` معًا: مقبضٌ مُشغَّل ومعرّفٌ مقروء.
              * فمقبضٌ يعمل بلا معرّف يطبع مربّعًا أسود يمسحه الزبون فلا يجد.
              */
-            'googleReview' => GoogleReviews::onReceipt($bid),
+            'googleReview' => GoogleReviews::onReceipt($bid, $order->branch_id),
         ];
 
         $name = 'receipt-'.$order->number;

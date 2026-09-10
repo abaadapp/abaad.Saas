@@ -2,13 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Models\Branch;
+use App\Models\BranchGooglePlace;
 use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\WhatsAppConnection;
 use App\Support\GoogleReviews;
 use App\Support\Integration;
 use App\Support\WhatsAppFeature;
+use App\Support\WhatsAppMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -102,13 +106,13 @@ class MarketingConnectTest extends TestCase
      */
     public function test_a_tool_that_already_works_shows_no_door(): void
     {
-        \App\Models\Setting::updateOrCreate(['business_id' => null, 'key' => 'whatsapp_enabled'], ['value' => '1']);
-        \App\Models\WhatsAppConnection::create([
-            'owner_type' => \App\Support\WhatsAppMode::OWNER_PLATFORM,
+        Setting::updateOrCreate(['business_id' => null, 'key' => 'whatsapp_enabled'], ['value' => '1']);
+        WhatsAppConnection::create([
+            'owner_type' => WhatsAppMode::OWNER_PLATFORM,
             'phone_number_id' => 'ABAAD-PN',
             'display_phone_number' => '+96890000000',
             'access_token' => 'platform-token-value-0123456789',
-            'status' => \App\Models\WhatsAppConnection::ACTIVE,
+            'status' => WhatsAppConnection::ACTIVE,
             'connected_at' => now(),
         ]);
 
@@ -117,10 +121,18 @@ class MarketingConnectTest extends TestCase
 
     public function test_the_google_door_closes_once_the_shop_is_pinned(): void
     {
-        Setting::create([
-            'business_id' => $this->business->id,
-            'key' => 'google_place_id',
-            'value' => 'ChIJrTLr-GyuEmsRBfy61i59si0',
+        /* والمعرّفُ يسكن الفرع لا إعداداتِ المتجر — لكلّ فرعٍ ملفُّه */
+        /* والمتجرُ في هذا الملفّ قد لا يكون له فرع — والربطُ ينتمي إلى فرع */
+        $branchId = Branch::where('business_id', $this->business->id)->value('id')
+            ?? Branch::create([
+                'business_id' => $this->business->id, 'name' => 'الرئيسي',
+            ])->id;
+
+        BranchGooglePlace::create([
+            'branch_id' => $branchId,
+            'place_id' => 'ChIJrTLr-GyuEmsRBfy61i59si0',
+            'place_name' => 'محل الورد',
+            'linked_at' => now(),
         ]);
 
         $this->assertTrue($this->props('admin.integrations.google')['readiness']['connected']);

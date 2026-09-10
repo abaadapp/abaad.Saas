@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Branch;
+use App\Models\BranchGooglePlace;
 use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\Plan;
@@ -11,6 +13,7 @@ use App\Support\Integrations;
 use App\Support\MarketingSettings;
 use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -86,14 +89,27 @@ class IntegrationsTest extends TestCase
      * ومفتاحٌ بلا محلٍّ لا يقرأ شيئًا، ومحلٌّ بلا مفتاحٍ لا يُقرأ. فأيُّهما
      * وحده «لم يكتمل» — ولو قيلت «مربوط» لَانتظر التاجر تقييماتٍ لا تأتي.
      */
+    /** ربطُ فرع المتجر بمكانه — والمعرّفُ يسكن الفرع لا الإعدادات */
+    private function pinTheShop(string $placeId = 'ChIJN1t_tDeuEmsRUsoyG83frY4'): void
+    {
+        /* والمتجرُ في هذا الملفّ قد لا يكون له فرع — والربطُ ينتمي إلى فرع */
+        $branchId = Branch::where('business_id', $this->business->id)->value('id')
+            ?? Branch::create([
+                'business_id' => $this->business->id, 'name' => 'الرئيسي',
+            ])->id;
+
+        BranchGooglePlace::updateOrCreate(
+            ['branch_id' => $branchId],
+            ['place_id' => $placeId, 'place_name' => 'محل الورد', 'linked_at' => now(), 'unlinked_at' => null],
+        );
+    }
+
     public function test_google_is_ready_only_when_both_the_place_and_the_key_are_there(): void
     {
         $this->assertSame('off', $this->cards()[Integrations::GOOGLE]['status']['state']);
 
-        // محلٌّ بلا مفتاح — بدأ ولم يكتمل
-        MarketingSettings::save($this->business->id, 'google', [
-            'google_place_id' => 'ChIJN1t_tDeuEmsRUsoyG83frY4',
-        ]);
+        // محلٌّ بلا مفتاح — بدأ ولم يكتمل. والربطُ للفرع لا للمتجر
+        $this->pinTheShop();
         $this->assertSame('partial', $this->cards()[Integrations::GOOGLE]['status']['state']);
 
         // ومع المفتاح يتمّ الشرطان
@@ -117,12 +133,10 @@ class IntegrationsTest extends TestCase
      */
     public function test_the_hub_never_calls_google_to_draw_a_card(): void
     {
-        MarketingSettings::save($this->business->id, 'google', [
-            'google_place_id' => 'ChIJN1t_tDeuEmsRUsoyG83frY4',
-        ]);
+        $this->pinTheShop();
         GoogleReviews::storeKey($this->business->id, 'AIza-merchant-key');
 
-        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        Http::preventStrayRequests();
 
         $this->assertSame('ready', $this->cards()[Integrations::GOOGLE]['status']['state']);
     }

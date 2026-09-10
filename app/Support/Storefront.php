@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\Category;
 use App\Models\Product;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -319,6 +320,45 @@ class Storefront
             'currency' => $currency,
             'products' => self::products($bid, $showPrices, $whatsapp, $currency),
             'logo' => $business->logo ? Storage::url($business->logo) : null,
+            /*
+             * معدّلُ Google — إن أذن صاحبُه، وإن كان لفرعه ملفٌّ مربوط.
+             *
+             * والمعروضُ رقمان وإسنادٌ: المعدّلُ وعددُ التقييمات و«المصدر
+             * Google». ولا نصوصَ تقييماتٍ في هذه الصفحة — شروطُ Google تمنع
+             * الاحتفاظ بمحتوى الأماكن، وما لا يُحفظ لا يُعرض من محفوظ.
+             *
+             * والفرعُ أقدمُ فرعٍ مربوط: صفحةُ المتجر واحدةٌ لا صفحةَ لكلّ فرع.
+             */
+            'google' => self::googleRating($bid),
+        ];
+    }
+
+    /**
+     * معدّلُ المتجر على Google كما يُعرض للزائر — أو لا شيء.
+     *
+     * ولا نداءَ على Google من هذه الصفحة: تُفتح للزوّار، ونداءٌ في كلّ فتحةٍ
+     * فاتورةٌ يدفعها من يملك المفتاح — وحصّةٌ تنفد فتسقط شاشةُ التاجر معها.
+     * فيُقرأ المحفوظ، وتحديثُه يقع في لوحة التاجر.
+     *
+     * @return array{rating: float, count: int, url: ?string}|null
+     */
+    private static function googleRating(int $businessId): ?array
+    {
+        if ((MarketingSettings::group($businessId, 'google')['google_show_on_site'] ?? '0') !== '1') {
+            return null;
+        }
+
+        $place = BranchGoogle::primaryFor($businessId);
+
+        // ولا يُعرض «٠ تقييم»: مكانٌ لم يُقيَّم بعد لا رقمَ له يُقال
+        if (! $place || $place->rating === null || (int) $place->review_count < 1) {
+            return null;
+        }
+
+        return [
+            'rating' => (float) $place->rating,
+            'count' => (int) $place->review_count,
+            'url' => $place->maps_url ?: GoogleReviews::placeUrl($place->place_id),
         ];
     }
 
@@ -371,7 +411,7 @@ class Storefront
      * وموضعُ الشرطين واحدٌ عمدًا: قائمةٌ تُصفّى وأقسامٌ لا تُصفّى معها تعني
      * تبويبَ قسمٍ يفتح على صفحةٍ فارغة.
      */
-    private static function shown(int $bid): \Illuminate\Database\Eloquent\Builder
+    private static function shown(int $bid): Builder
     {
         return Product::where('business_id', $bid)
             ->where('active', true)

@@ -25,7 +25,107 @@ class GooglePlaces
     /** ما نطلبه من الحقول — والسعرُ يُحسب بها، فلا يُطلب ما لا يُعرض */
     private const FIELDS = 'id,displayName,rating,userRatingCount,googleMapsUri,reviews';
 
+    /**
+     * حقولُ البحث — أقلُّ ما يُعرض في نتيجة، ولا حرفَ زائد.
+     *
+     * ولا `reviews` هنا: البحثُ يعرض ثمانيَ نتائجَ ليختار التاجر منها واحدة،
+     * وطلبُ نصوص التقييمات للثماني جميعًا يعني ثمانيةَ أضعافِ ما يُقرأ منه
+     * شيء — والسعرُ يُحسب بالحقول.
+     */
+    private const SEARCH_FIELDS = 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri';
+
     private const URL = 'https://places.googleapis.com/v1/places/';
+
+    private const SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
+
+    /**
+     * أقصى ما يُعرض من نتائج.
+     *
+     * ثمانٍ تكفي: من لا يجد محلَّه في الثماني الأولى لن يجده في العشرين —
+     * يكتب اسمًا أدقّ أو رقمَ هاتفه. وكلُّ نتيجةٍ زائدةٍ حقولٌ تُحتسب.
+     */
+    public const LIMIT = 8;
+
+    /**
+     * أقلُّ ما يُبحث به.
+     *
+     * حرفان يُعيدان نصفَ مسقط، والنداءُ مدفوع. وهو مفحوصٌ في الخادم لا في
+     * الشاشة وحدها: من يكتب العنوان بيده يتجاوز أيّ تمهّلٍ في المتصفّح.
+     */
+    public const MIN_QUERY = 3;
+
+    /**
+     * الإقليمُ الذي تُرجَّح نتائجُه — عُمان.
+     *
+     * وهو ترجيحٌ لا حصر: محلٌّ خارجها يظهر إن كان اسمُه مطابقًا. ويُبدَّل هنا
+     * وحده يومَ تخرج أبعادُ من عُمان — لا في كلّ موضعِ نداء.
+     */
+    private const REGION = 'OM';
+
+    /**
+     * البحثُ عن محلٍّ بالاسم أو بالرقم — ولا يُطلب من التاجر معرّفٌ يكتبه.
+     *
+     * ═══ ولمَ لا يُقرأ منه شيءٌ إلا المعرّف ═══
+     *
+     * ما تُعيده هذه الدالّة يُعرض في الشاشة ليختار التاجر. وما يُحفظ بعد
+     * الاختيار **لا يُؤخذ من هنا**: يُنادى `details` بالمعرّف فيُكتب ما ردّته
+     * Google في تلك اللحظة. لأنّ ما يمرّ بالمتصفّح يُبدَّل في المتصفّح، ومن
+     * بدّل اسمَ مكانٍ في الطلب يجعل شاشتَنا تشهد باسمٍ لم تقله Google.
+     *
+     * @return array{ok:bool, error:?string, results:list<array<string,mixed>>}
+     */
+    public static function search(string $query, string $apiKey, string $language = 'ar'): array
+    {
+        $query = trim($query);
+
+        if (mb_strlen($query) < self::MIN_QUERY) {
+            return ['ok' => true, 'error' => null, 'results' => []];
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'X-Goog-Api-Key' => $apiKey,
+                'X-Goog-FieldMask' => self::SEARCH_FIELDS,
+            ])->timeout(12)->acceptJson()->post(self::SEARCH_URL, [
+                'textQuery' => $query,
+                'languageCode' => $language,
+                'regionCode' => self::REGION,
+                'maxResultCount' => self::LIMIT,
+            ]);
+        } catch (\Throwable) {
+            return ['ok' => false, 'error' => __('تعذّر الوصول إلى Google. حاول بعد قليل.'), 'results' => []];
+        }
+
+        if (! $response->successful()) {
+            return [
+                'ok' => false,
+                'error' => self::message($response->status(), (string) ($response->json('error.message') ?? '')),
+                'results' => [],
+            ];
+        }
+
+        $results = [];
+
+        foreach ((array) ($response->json('places') ?? []) as $place) {
+            $id = (string) ($place['id'] ?? '');
+
+            // نتيجةٌ بلا معرّفٍ لا تُعرض: لا شيء يُختار بها
+            if ($id === '') {
+                continue;
+            }
+
+            $results[] = [
+                'place_id' => $id,
+                'name' => (string) ($place['displayName']['text'] ?? ''),
+                'address' => (string) ($place['formattedAddress'] ?? ''),
+                'rating' => isset($place['rating']) ? round((float) $place['rating'], 1) : null,
+                'count' => (int) ($place['userRatingCount'] ?? 0),
+                'maps_url' => $place['googleMapsUri'] ?? null,
+            ];
+        }
+
+        return ['ok' => true, 'error' => null, 'results' => $results];
+    }
 
     /**
      * تفاصيلُ مكانٍ بمعرّفه.

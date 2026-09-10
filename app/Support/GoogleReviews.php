@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Branch;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 
@@ -81,18 +83,31 @@ class GoogleReviews
         return $id === null ? null : 'https://www.google.com/maps/place/?q=place_id:'.$id;
     }
 
-    /** إعدادات المتجر — المعرّف كما حُفظ ورابطاه */
+    /**
+     * ربطُ المتجر كما يُقرأ في الشاشات العامّة — من **فرعه** لا من إعداده.
+     *
+     * ═══ ولمَ تبدّل الموضع ═══
+     *
+     * كان المعرّف صفًّا في `settings` تحت المتجر، ومعناه أنّ متجرًا بثلاثة
+     * فروعٍ له مكانٌ واحد. وقد انتقل إلى `branch_google_places` بهجرة
+     * `a_branch_has_its_own_place_on_the_map`، وهذه تقرأ **أقدمَ فرعٍ
+     * مربوط** لتُجيب من لا يعرف الفرعَ الذي يسأل عنه: شاشةُ التقييمات،
+     * وحالُ الربط، وموقعُ المتجر.
+     *
+     * ومن يعرف فرعَه يسأل `BranchGoogle::for` — وهو ما يفعله الإيصال.
+     */
     public static function forBusiness(int $businessId): array
     {
-        $settings = MarketingSettings::group($businessId, 'google');
-        $id = self::placeId($settings['google_place_id'] ?? null);
+        $place = BranchGoogle::primaryFor($businessId);
+        $id = $place?->place_id;
 
         return [
             'place_id' => $id,
-            'source' => $settings['google_maps_url'] ?? '',
-            'on_receipt' => ($settings['google_review_on_receipt'] ?? '0') === '1',
+            'place_name' => $place?->place_name,
+            'branch_id' => $place?->branch_id,
+            'on_receipt' => (MarketingSettings::group($businessId, 'google')['google_review_on_receipt'] ?? '0') === '1',
             'review_url' => self::reviewUrl($id),
-            'place_url' => self::placeUrl($id),
+            'place_url' => $place?->maps_url ?: self::placeUrl($id),
         ];
     }
 
@@ -102,11 +117,31 @@ class GoogleReviews
      * الشرطان معًا: مقبضٌ مُشغَّل ومعرّفٌ مقروء. ومقبضٌ يعمل بلا معرّف يطبع
      * رمزًا لا يفتح شيئًا — ورقةٌ فيها مربّعٌ أسود يمسحه الزبون فلا يجد.
      */
-    public static function onReceipt(int $businessId): ?string
+    /**
+     * @param  int|null  $branchId  فرعُ الورقة — ولا يُطبع رمزُ فرعٍ على إيصال آخر
+     *
+     * ═══ ولا احتياطَ إلى فرعٍ آخر ═══
+     *
+     * فرعٌ غيرُ مربوطٍ لا يُطبع على إيصاله رمزُ الفرع المربوط. ولو طُبع لَمسحه
+     * زبونٌ اشترى من المعبيلة فكتب تقييمًا يُحسب للخوض — وهو بعينه العطب
+     * الذي جاء الربطُ بالفرع ليُصلحه. فلا رمزَ، ويقرأ التاجر «غير مربوط» في
+     * شاشته فيربطه.
+     */
+    public static function onReceipt(int $businessId, ?int $branchId = null): ?string
     {
-        $config = self::forBusiness($businessId);
+        $on = (MarketingSettings::group($businessId, 'google')['google_review_on_receipt'] ?? '0') === '1';
 
-        return $config['on_receipt'] && $config['review_url'] ? $config['review_url'] : null;
+        if (! $on) {
+            return null;
+        }
+
+        $branch = $branchId === null ? null : Branch::where('business_id', $businessId)->find($branchId);
+
+        $url = $branch
+            ? BranchGoogle::reviewUrl(BranchGoogle::for($branch))
+            : self::reviewUrl(BranchGoogle::primaryFor($businessId)?->place_id);
+
+        return $url;
     }
 
     /* ------------------------------ سحب التقييمات ----------------------------- */
@@ -186,48 +221,48 @@ class GoogleReviews
         return Integration::payload(
             $started === '1' || $placeId !== null,
             [
-            /*
+                /*
              * المفتاح أوّلًا لأنّه شرطُ القراءة — وهو على أبعاد لا عليه.
              *
              * وكان على التاجر أن يفتح حسابًا في Google Cloud ويُنشئ مشروعًا
              * ويربط بطاقة ليقرأ تقييمات محلّه. فلا يفعل، فتبقى الشاشة فارغة.
              */
-            Integration::step(
-                'platform',
-                'خرائط Google مهيّأة في أبعاد',
-                self::apiKey($businessId) !== null,
-                detail: $own ? __('تُقرأ بمفتاحك أنت — والنداءات على حسابك.') : null,
-                fix: 'مفتاح الخرائط إعدادُ أبعاد لا إعدادُك — راجعنا لتهيئته، أو الصق مفتاحك الخاصّ.',
-                theirs: true,
-            ),
-            /* وهذه وحدها بيده: أيُّ محلٍّ من ملايين المحلّات هو محلُّك */
-            Integration::step(
-                'place',
-                'محلّك محدَّد على الخرائط',
-                $placeId !== null,
-                fix: 'الصق معرّف المكان أدناه — ورابطُ الخرائط العاديّ لا يحمله.',
-            ),
-            Integration::step(
-                'reviews',
-                'تقييماتك تُقرأ هنا',
-                ($pulled['state'] ?? '') === 'ok',
-                fix: match ($pulled['state'] ?? '') {
-                    // خطأُ Google يُقال بنصّه: «لم تُقرأ» لا يقول ما يُصلَح
-                    'error' => $pulled['error'] ?? 'لم تُقرأ التقييمات — راجع المعرّف والمفتاح.',
-                    'nokey' => 'لا مفتاح — أكمل الخطوة الأولى.',
-                    'unlinked' => 'حدّد محلّك أوّلًا.',
-                    default => null,
-                },
-                theirs: ($pulled['state'] ?? '') === 'nokey',
-            ),
-        ]);
+                Integration::step(
+                    'platform',
+                    'خرائط Google مهيّأة في أبعاد',
+                    self::apiKey($businessId) !== null,
+                    detail: $own ? __('تُقرأ بمفتاحك أنت — والنداءات على حسابك.') : null,
+                    fix: 'مفتاح الخرائط إعدادُ أبعاد لا إعدادُك — راجعنا لتهيئته، أو الصق مفتاحك الخاصّ.',
+                    theirs: true,
+                ),
+                /* وهذه وحدها بيده: أيُّ محلٍّ من ملايين المحلّات هو محلُّك */
+                Integration::step(
+                    'place',
+                    'فروعك مربوطة على الخرائط',
+                    $placeId !== null,
+                    fix: 'ابحث عن فرعك بالاسم أو رقم الهاتف واختره من القائمة أدناه.',
+                ),
+                Integration::step(
+                    'reviews',
+                    'تقييماتك تُقرأ هنا',
+                    ($pulled['state'] ?? '') === 'ok',
+                    fix: match ($pulled['state'] ?? '') {
+                        // خطأُ Google يُقال بنصّه: «لم تُقرأ» لا يقول ما يُصلَح
+                        'error' => $pulled['error'] ?? 'لم تُقرأ التقييمات — راجع المعرّف والمفتاح.',
+                        'nokey' => 'لا مفتاح — أكمل الخطوة الأولى.',
+                        'unlinked' => 'حدّد محلّك أوّلًا.',
+                        default => null,
+                    },
+                    theirs: ($pulled['state'] ?? '') === 'nokey',
+                ),
+            ]);
     }
 
     /** مفتاح أبعاد — يُقرأ لكلّ تاجرٍ لم يلصق مفتاحه */
     public static function platformKey(): ?string
     {
         return self::decrypt(
-            \App\Models\Setting::whereNull('business_id')->where('key', self::PLATFORM_KEY)->value('value')
+            Setting::whereNull('business_id')->where('key', self::PLATFORM_KEY)->value('value')
         );
     }
 
@@ -236,7 +271,7 @@ class GoogleReviews
     {
         $plain = trim((string) $plain);
 
-        \App\Models\Setting::updateOrCreate(
+        Setting::updateOrCreate(
             ['business_id' => null, 'key' => self::PLATFORM_KEY],
             ['value' => $plain === '' ? '' : Crypt::encryptString($plain)],
         );

@@ -371,6 +371,18 @@ class PageController extends Controller
             /* تلميحُ مفتاح الخرائط لا المفتاح — أربعةُ أحرفٍ ليُعرف أيُّه محفوظ */
             'googleKeyHint' => \App\Support\GoogleReviews::platformKeyHint(),
             /*
+             * حالُ خرائط Google في المنصّة — مهيَّأةٌ أو لا، وكم فرعًا رُبط.
+             *
+             * والعددُ محسوبٌ لا موعود: مفتاحٌ محفوظٌ وصفرُ فروعٍ مربوطة يعني
+             * أنّ الميزة لم تصل التجّار، وذلك خبرٌ يُقرأ في سطرٍ لا يُكتشف
+             * بعد شهر.
+             */
+            'googleHealth' => [
+                'configured' => \App\Support\GoogleReviews::platformKey() !== null,
+                'linkedBranches' => \App\Models\BranchGooglePlace::query()->linked()->count(),
+                'branches' => \App\Models\Branch::count(),
+            ],
+            /*
              * ومن يستطيع أن يكلّمنا على واتساب — عددٌ محسوبٌ لا وعد.
              *
              * القناةُ تُشعَل ثمّ لا يصل شيء فيُظنّ العطبُ في الربط، والسببُ

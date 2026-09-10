@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Order;
 use App\Support\Activity;
+use App\Support\BranchGoogle;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\OrderStatus;
@@ -90,6 +92,78 @@ class OrderDetailController extends Controller
 
         return back()->with('toast', [
             'msg' => __('افتح واتساب وأرسل الفاتورة'),
+            'type' => 'success',
+            'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
+        ]);
+    }
+
+    /**
+     * طلبُ تقييمٍ على Google — بملفّ **فرع هذا الطلب** لا بملفّ المتجر.
+     *
+     * ═══ ولمَ بعد التسليم وحده ═══
+     *
+     * التقييمُ حكمٌ على تجربة، ولا تجربةَ قبل أن يصل الورد. وطلبُه عن طلبٍ في
+     * التجهيز يسأل الزبونَ عمّا لم يقع — وأسوأ ما فيه أن يُكتب حكمٌ قبل أن
+     * يُرى المنتج.
+     *
+     * ═══ ولمَ الفرع ═══
+     *
+     * لكلّ فرعٍ ملفُّه عند Google. وإرسالُ رابط المتجر «عمومًا» يعني تقييمًا
+     * يُحسب لفرعٍ لم يشترِ منه هذا الزبون.
+     *
+     * ═══ وما يقع فعلًا ═══
+     *
+     * يُفتح واتساب التاجر بنصٍّ مكتوب، ويضغط هو «إرسال». لا مُرسِلَ آليّ
+     * ولا قالبَ ميتا: قوالبُ واتساب تُعتمد عندهم واحدةً واحدة، وقالبُ
+     * تقييمٍ غيرُ معتمد. فلا يُقال «أُرسل» — يُقال «طُلب»، وهو ما جرى.
+     *
+     * ولا يُرسَل رقمُ الزبون ولا بريدُه إلى Google بحال: الذاهبُ إليه رابطٌ
+     * عامٌّ يفتحه من يفتحه.
+     */
+    public function reviewRequest(string $number)
+    {
+        $order = $this->find($number);
+
+        /* بعد التسليم أو الاستلام أو الإتمام — وما دون ذلك سؤالٌ عمّا لم يقع */
+        if (! in_array($order->status, [OrderStatus::DELIVERED, OrderStatus::PICKED_UP, OrderStatus::COMPLETED], true)) {
+            return back()->with('toast', [
+                'msg' => __('يُطلب التقييم بعد تسليم الطلب.'), 'type' => 'danger',
+            ]);
+        }
+
+        $branch = $order->branch_id
+            ? Branch::where('business_id', $this->bid())->find($order->branch_id)
+            : null;
+
+        $url = $branch ? BranchGoogle::reviewUrl(BranchGoogle::for($branch)) : null;
+
+        if (! $url) {
+            return back()->with('toast', [
+                'msg' => __('اربط فرع هذا الطلب بخرائط Google أوّلًا.'), 'type' => 'danger',
+            ]);
+        }
+
+        $phone = WhatsAppPhone::normalize($order->customer?->phone ?: $order->recipient_phone);
+
+        if (! $phone) {
+            return back()->with('toast', [
+                'msg' => __('لا رقم واتساب لهذا الطلب — أضِفه في صفحة العميل.'), 'type' => 'danger',
+            ]);
+        }
+
+        /* والنصُّ ثلاثةُ مفاتيحَ لا مفتاحٌ فيه أسطر: مفتاحٌ بسطرٍ جديدٍ لا يُترجَم */
+        $text = __('شكرًا لطلبك من :shop 🌷', ['shop' => Demo::businessName()])
+            ."\n".__('يسعدنا تقييم تجربتك معنا على Google:')
+            ."\n".$url;
+
+        $order->forceFill(['review_request_sent_at' => now()])->save();
+
+        Activity::log('updated', 'أعدّ طلب تقييم Google للطلب '.$order->number, [
+            'subject_id' => $order->id, 'subject_type' => 'order',
+        ]);
+
+        return back()->with('toast', [
+            'msg' => __('افتح واتساب وأرسل طلب التقييم'),
             'type' => 'success',
             'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
         ]);

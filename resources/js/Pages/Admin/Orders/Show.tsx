@@ -10,6 +10,7 @@ import {
     Phone,
     ReceiptText,
     Send,
+    Star,
     Truck,
     User,
 } from 'lucide-react';
@@ -97,8 +98,13 @@ interface OrderDetail {
  * فمن يصحّح رقم هاتفٍ لا يُحرّك ريالًا ولا يُقدّم طلبًا في مساره.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice } = usePage<
-        PageProps<{ order: OrderDetail; taxInvoice: { registered: boolean; ready: boolean } }>
+    const { order, context, taxInvoice, googleReview } = usePage<
+        PageProps<{
+            order: OrderDetail;
+            taxInvoice: { registered: boolean; ready: boolean };
+            /** حالُ طلب التقييم — تُقاس في الخادم، والشاشةُ ترسم ما قِيس */
+            googleReview: { show: boolean; reason: string | null; requestedAt: string | null };
+        }>
     >().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -242,6 +248,28 @@ export default function OrderShow() {
                             <FileText />
                             {t('معاينة الفاتورة')}
                         </Button>
+
+                        {/*
+                            و«طلب تقييم Google» يُعرض بعد التسليم وحده، ولفرعٍ
+                            مربوط — والشرطان يُقاسان في الخادم. والنصُّ والرابط
+                            يُبنيان هناك بملفّ **فرع هذا الطلب**، ثمّ يُفتح واتساب
+                            التاجر ليضغط هو «إرسال»: لا مُرسِلَ آليّ ولا قالبَ
+                            ميتا معتمَد لطلب تقييم.
+                        */}
+                        {googleReview.show && (
+                            <Button
+                                variant="outline"
+                                disabled={sending.processing}
+                                onClick={() =>
+                                    sending.post(route('admin.orders.reviewRequest', order.id), {
+                                        preserveScroll: true,
+                                    })
+                                }
+                            >
+                                <Star />
+                                {googleReview.requestedAt ? t('طلب التقييم مجددًا') : t('طلب تقييم Google')}
+                            </Button>
+                        )}
                         {/*
                             الفاتورة الضريبيّة — ولا تُعرض لمن لا فاتورةَ ضريبيّةَ
                             له.

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
+use App\Models\BranchGooglePlace;
 use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\User;
@@ -35,6 +36,8 @@ class GoogleReviewPullTest extends TestCase
 
     private Business $business;
 
+    private Branch $branch;
+
     private User $owner;
 
     protected function setUp(): void
@@ -44,7 +47,7 @@ class GoogleReviewPullTest extends TestCase
         Cache::clear();
 
         $this->business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
-        Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
+        $this->branch = Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         JobTitle::create(['business_id' => $this->business->id, 'name' => 'مدير', 'role' => 'admin']);
 
         $this->owner = User::create([
@@ -55,12 +58,15 @@ class GoogleReviewPullTest extends TestCase
         $this->actingAs($this->owner);
     }
 
-    private function link(string $placeId = self::PLACE): void
+    /** ربطُ الفرع مباشرةً — لا عبر الشاشة: هذا الملفّ يقيس السحب لا الربط */
+    private function link(string $placeId = self::PLACE, ?int $branchId = null): void
     {
-        MarketingSettings::save($this->business->id, 'google', [
-            'google_place_id' => $placeId,
-            'google_maps_url' => $placeId,
-        ]);
+        BranchGooglePlace::updateOrCreate(
+            ['branch_id' => $branchId ?? $this->branch->id],
+            ['place_id' => $placeId, 'place_name' => 'محل الورد', 'linked_at' => now(), 'unlinked_at' => null],
+        );
+
+        GoogleReviews::forget($this->business->id);
     }
 
     /** ردٌّ كما ترسله Google — بحقولها هي، لا بحقولنا */
@@ -210,8 +216,7 @@ class GoogleReviewPullTest extends TestCase
         GoogleReviews::pull($this->business->id);
 
         // ربطٌ جديد — ومحلٌّ آخر لا يرث تقييمات الأوّل
-        $this->post(route('admin.integrations.google.save'), ['google_maps_url' => self::OTHER])
-            ->assertSessionHasNoErrors();
+        $this->link(self::OTHER);
 
         $this->assertSame(7, GoogleReviews::pull($this->business->id)['place']['count']);
     }
@@ -232,8 +237,8 @@ class GoogleReviewPullTest extends TestCase
          * ولولا إسقاطُ القديم قبل الكتابة لَقرأ ما كان قبل ستّ ساعات، وظنّ
          * أنّ إعادة الربط لم تصنع شيئًا.
          */
-        $this->post(route('admin.integrations.google.save'), ['google_maps_url' => self::OTHER]);
-        $this->post(route('admin.integrations.google.save'), ['google_maps_url' => self::PLACE]);
+        $this->link(self::OTHER);
+        $this->link(self::PLACE);
 
         $this->assertSame(140, GoogleReviews::pull($this->business->id)['place']['count']);
     }

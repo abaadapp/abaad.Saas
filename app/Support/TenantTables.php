@@ -44,7 +44,8 @@ class TenantTables
         'whatsapp_connections', 'whatsapp_template_mappings', 'whatsapp_usage_periods',
 
         // ما يتفرّع عنها
-        'branch_user', 'custom_alerts', 'products', 'product_variants', 'product_images',
+        'branch_user', 'branch_google_places',
+        'custom_alerts', 'products', 'product_variants', 'product_images',
         'addons', 'product_addons', 'recipe_items',
         'customers', 'customer_addresses',
         'pos_devices', 'pos_peripherals',
@@ -105,6 +106,16 @@ class TenantTables
      */
     public const THROUGH = [
         'branch_user' => ['branches', 'branch_id'],
+        /*
+         * ربطُ الفرع بخرائط Google — يخصّ المتجر ويُنسخ معه.
+         *
+         * ومَن استعاد نسختَه ولم يعد الربطُ معها يجد فروعَه كلَّها «غير
+         * مربوطة» — فيربطها من جديدٍ واحدًا واحدًا، وإيصالاتُه في ما بينهما
+         * تُطبع بلا رمز.
+         *
+         * ولا سرَّ فيه: معرّفُ المكان عامٌّ عند Google، ولا مفتاحَ في الجدول.
+         */
+        'branch_google_places' => ['branches', 'branch_id'],
         'customer_addresses' => ['customers', 'customer_id'],
         'delivery_note_items' => ['delivery_notes', 'delivery_note_id'],
         'goods_receipt_note_items' => ['goods_receipt_notes', 'goods_receipt_note_id'],

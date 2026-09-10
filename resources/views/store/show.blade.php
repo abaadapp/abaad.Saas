@@ -57,6 +57,10 @@
                 background: #fff; border: 1px solid var(--line); flex-shrink: 0; }
         .hero h1 { margin: 0; font-size: 24px; line-height: 1.3; color: var(--ink); }
         .hero p { margin: 6px 0 0; font-size: 14px; color: #555; max-width: 60ch; }
+        .meta .rating { display: inline-flex; align-items: center; gap: 6px; }
+        .meta .rating a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+        .meta .rating a:hover { text-decoration: underline; }
+        .meta .rating .src { font-size: 11px; color: #888; }
         .meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: #666; }
 
         /* الأقسام */
@@ -128,6 +132,20 @@
             <div class="meta">
                 @if ($address)<span>📍 {{ $address }}</span>@endif
                 @if ($phone)<span dir="ltr">📞 {{ $phone }}</span>@endif
+                {{--
+                    معدّلُ Google — رقمان وإسناد، ولا نصَّ تقييمٍ واحد.
+                    والإسنادُ «المصدر: Google» شرطُ عرض بياناتهم، لا زينة.
+                --}}
+                @if ($google)
+                    <span class="rating">
+                        <a href="{{ $google['url'] }}" target="_blank" rel="noopener noreferrer nofollow">
+                            <span aria-hidden="true">★</span>
+                            <span dir="ltr">{{ number_format($google['rating'], 1) }}</span>
+                            <span>({{ $google['count'] }} تقييم)</span>
+                        </a>
+                        <span class="src">المصدر: Google</span>
+                    </span>
+                @endif
             </div>
         </div>
     </div>

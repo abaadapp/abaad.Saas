@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Check, ExternalLink, KeyRound, MapPin, QrCode, RefreshCw, Star, Trash2 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Check, ExternalLink, KeyRound, Link2Off, MapPin, QrCode, RefreshCw, Search, Star, Store, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import CopyButton from '@/Components/CopyButton';
@@ -8,6 +9,8 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import { csrfHeaders } from '@/lib/csrf';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { ConnectGate, ConnectSteps, type Readiness } from '@/Components/Connect';
@@ -15,10 +18,34 @@ import type { PageProps } from '@/types';
 
 interface Link {
     place_id: string | null;
-    source: string;
+    place_name: string | null;
+    branch_id: number | null;
     on_receipt: boolean;
     review_url: string | null;
     place_url: string | null;
+}
+
+/** فرعٌ وحالُ ربطه — ولا يصل معرّفُ المكان إلى الشاشة: لا يفعل به التاجر شيئًا */
+interface BranchLink {
+    id: number;
+    name: string;
+    linked: boolean;
+    placeName: string | null;
+    rating: number | null;
+    reviewCount: number | null;
+    mapsUrl: string | null;
+    reviewUrl: string | null;
+    syncedAt: string | null;
+}
+
+/** نتيجةُ بحثٍ كما ردّها خادمُنا عن Google — تُعرض ولا يُحفظ منها إلا المعرّف */
+interface PlaceResult {
+    place_id: string;
+    name: string;
+    address: string;
+    rating: number | null;
+    count: number;
+    maps_url: string | null;
 }
 
 interface GoogleReview {
@@ -53,6 +80,9 @@ interface Props {
     internal: number;
     /** مراحل الربط — شكلُها شكلُ واتساب، انظر App\Support\Integration */
     readiness: Readiness;
+    branches: BranchLink[];
+    /** أقلُّ ما يُبحث به — من الخادم لا رقمٌ مكتوبٌ هنا أيضًا */
+    searchMin: number;
 }
 
 /** رابطٌ يُنسخ بضغطة — العنوان طويلٌ ولا يُكتب بيد */
@@ -109,12 +139,13 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
  * تقييماتِه ومعدّلَه من Google بمفتاح Places فتُقرأ هنا بلا مغادرة اللوحة.
  */
 export default function MarketingGoogle() {
-    const { settings, link, keyHint, google, internal, readiness } = usePage<PageProps<Props>>().props;
+    const { settings, link, keyHint, google, internal, readiness, branches, searchMin } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const form = useForm({
-        google_maps_url: settings.google_maps_url ?? '',
         google_review_on_receipt: (settings.google_review_on_receipt ?? '0') === '1',
+        google_show_on_site: (settings.google_show_on_site ?? '0') === '1',
     });
 
     const keyForm = useForm({ google_api_key: '' });
@@ -189,48 +220,35 @@ export default function MarketingGoogle() {
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
+                    {/* ---------------------- فروعك على الخرائط ---------------------- */}
+                    <Card className="p-6">
+                        <div className="mb-5 flex items-start gap-3">
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#f3f4f6] text-[#111]">
+                                <MapPin className="size-[18px]" />
+                            </span>
+                            <div>
+                                <h3 className="font-bold text-[#111]">{t('موقع المتجر على خرائط Google')}</h3>
+                                <p className="mt-0.5 text-[13px] text-[#6b7280]">
+                                    {/*
+                                        ولمَ لكلّ فرعٍ ربطُه — يُقال هنا لا يُترك للاكتشاف:
+                                        رمزٌ على إيصال فرعٍ يفتح ملفَّ فرعٍ آخر عطبٌ لا يراه صاحبه.
+                                    */}
+                                    {t('لكلّ فرعٍ ملفُّه على Google بتقييماته. اربط كلّ فرعٍ بملفّه ليصل تقييم الزبون إلى الفرع الذي اشترى منه.')}
+                                </p>
+                            </div>
+                        </div>
+
+                        <ul className="space-y-3">
+                            {branches.map((b) => (
+                                <BranchRow key={b.id} branch={b} min={searchMin} />
+                            ))}
+                        </ul>
+                    </Card>
+
+                    {/* ------------------------- رمز الإيصال ------------------------- */}
                     <form onSubmit={submit}>
                         <Card className="p-6">
-                            <div className="mb-4 flex items-start gap-3">
-                                <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#f3f4f6] text-[#111]">
-                                    <MapPin className="size-[18px]" />
-                                </span>
-                                <div>
-                                    <h3 className="font-bold text-[#111]">{t('معرّف المكان')}</h3>
-                                    <p className="mt-0.5 text-[13px] text-[#6b7280]">
-                                        {t('الصق «Place ID» الخاصّ بمحلّك، أو رابطًا يحمله.')}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <Input
-                                dir="ltr"
-                                value={form.data.google_maps_url}
-                                onChange={(e) => form.setData('google_maps_url', e.target.value)}
-                                placeholder="ChIJ… أو https://…place_id:ChIJ…"
-                                aria-label={t('معرّف المكان')}
-                            />
-                            {form.errors.google_maps_url && (
-                                <p className="mt-2 text-[12px] text-[#b91c1c]">{form.errors.google_maps_url}</p>
-                            )}
-
-                            {/*
-                                من أين يأتي المعرّف يُقال هنا لا يُترك للبحث: رابطُ
-                                الخرائط العاديّ لا يحمله، وهو أوّل ما يلصقه التاجر.
-                            */}
-                            <p className="mt-2 text-[12px] text-[#9ca3af]">
-                                {t('رابط الخرائط العاديّ لا يحمل المعرّف. خُذه من أداة Google:')}{' '}
-                                <a
-                                    href="https://developers.google.com/maps/documentation/places/web-service/place-id"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-[#111] underline"
-                                >
-                                    Place ID Finder
-                                </a>
-                            </p>
-
-                            <label className="mt-5 flex cursor-pointer items-start gap-2.5">
+                            <label className="flex cursor-pointer items-start gap-2.5">
                                 <input
                                     type="checkbox"
                                     checked={form.data.google_review_on_receipt}
@@ -245,6 +263,35 @@ export default function MarketingGoogle() {
                                     <span className="mt-0.5 block text-[12px] text-[#6b7280]">
                                         {t('يمسحه الزبون وهو عند المنضدة — وهي اللحظة الوحيدة التي يكتب فيها أحدٌ تقييمًا.')}
                                     </span>
+                                    {/*
+                                        وحدُّه يُقال: الرمزُ يُطبع بملفّ الفرع الذي طُبعت منه
+                                        الورقة، وفرعٌ غيرُ مربوطٍ لا يُطبع على إيصاله شيء.
+                                    */}
+                                    <span className="mt-1 block text-[12px] text-[#9ca3af]">
+                                        {t('يُطبع بملفّ الفرع الذي صدرت منه الورقة — والفرع غير المربوط لا يُطبع على إيصاله رمز.')}
+                                    </span>
+                                </span>
+                            </label>
+
+                            <label className="mt-5 flex cursor-pointer items-start gap-2.5 border-t border-[var(--ui-border,#e8e8e8)] pt-5">
+                                <input
+                                    type="checkbox"
+                                    checked={form.data.google_show_on_site}
+                                    onChange={(e) => form.setData('google_show_on_site', e.target.checked)}
+                                    className="mt-0.5 size-4 rounded border-[#d1d5db] accent-[#111]"
+                                />
+                                <span>
+                                    <span className="flex items-center gap-1.5 text-sm font-medium text-[#111]">
+                                        <Star className="size-4" />
+                                        {t('عرض تقييم Google في الموقع')}
+                                    </span>
+                                    <span className="mt-0.5 block text-[12px] text-[#6b7280]">
+                                        {/*
+                                            وحدُّه يُقال: رقمان وإسناد، ولا نصوص.
+                                            شروطُ Google تمنع الاحتفاظ بمحتوى الأماكن.
+                                        */}
+                                        {t('يُعرض المعدّل وعدد التقييمات مع الإسناد إلى Google — ولا تُعرض نصوص التقييمات.')}
+                                    </span>
                                 </span>
                             </label>
 
@@ -255,7 +302,7 @@ export default function MarketingGoogle() {
                                 {linked && (
                                     <span className="flex items-center gap-1.5 text-[13px] text-[#047857]">
                                         <Check className="size-4" />
-                                        {t('مربوط')}
+                                        {t('مرتبط')}
                                     </span>
                                 )}
                             </div>
@@ -463,5 +510,318 @@ export default function MarketingGoogle() {
                 </div>
             </div>
         </AdminLayout>
+    );
+}
+
+/* ═══════════════════ فرعٌ وربطُه ═══════════════════ */
+
+function BranchRow({ branch, min }: { branch: BranchLink; min: number }) {
+    const t = useTranslate();
+    const [searching, setSearching] = useState(false);
+    const [busy, setBusy] = useState(false);
+
+    const act = (run: () => void) => {
+        setBusy(true);
+        run();
+    };
+
+    return (
+        <li className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 font-medium text-[#111]">
+                        <Store className="size-4 shrink-0 text-[#9ca3af]" />
+                        {branch.name}
+                    </p>
+
+                    {branch.linked ? (
+                        <>
+                            <p className="mt-1 truncate text-[13px] text-[#6b7280]">{branch.placeName}</p>
+                            <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+                                {branch.rating === null ? (
+                                    /* لا تقييمَ بعد — وهي ليست صفرًا، والفرقُ يراه صاحبُ المحلّ */
+                                    <span className="text-[#9ca3af]">{t('لا تقييمات بعد')}</span>
+                                ) : (
+                                    <>
+                                        <span className="flex items-center gap-1 font-medium text-[#111]">
+                                            <Star className="size-3.5 fill-[#f59e0b] text-[#f59e0b]" />
+                                            {branch.rating.toFixed(1)}
+                                        </span>
+                                        <span className="text-[#6b7280]">
+                                            {t(':n تقييم', { n: branch.reviewCount ?? 0 })}
+                                        </span>
+                                    </>
+                                )}
+                                {/* والإسنادُ شرطُ Google لعرض معدّلها — لا يُحذف */}
+                                <span className="text-[11px] text-[#9ca3af]">{t('المصدر: Google')}</span>
+                            </p>
+                        </>
+                    ) : (
+                        <p className="mt-1 text-[13px] text-[#9ca3af]">{t('غير مربوط')}</p>
+                    )}
+                </div>
+
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {branch.linked && branch.mapsUrl && (
+                        <a
+                            href={branch.mapsUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-2.5 py-1.5 text-[12px] text-[#111] hover:bg-[#fafafa]"
+                        >
+                            <ExternalLink className="size-3.5" />
+                            {t('فتح في Google Maps')}
+                        </a>
+                    )}
+
+                    {branch.linked && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() =>
+                                act(() =>
+                                    router.post(
+                                        route('admin.integrations.google.branch.refresh', branch.id),
+                                        {},
+                                        { preserveScroll: true, onFinish: () => setBusy(false) },
+                                    ),
+                                )
+                            }
+                        >
+                            <RefreshCw />
+                            {t('حدِّث الآن')}
+                        </Button>
+                    )}
+
+                    <Button type="button" size="sm" variant={branch.linked ? 'outline' : 'primary'} onClick={() => setSearching(true)}>
+                        <Search />
+                        {branch.linked ? t('تغيير المتجر') : t('ربط Google Maps')}
+                    </Button>
+
+                    {branch.linked && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                                /* الفكُّ يُؤكَّد: ضغطةٌ واحدةٌ تُطفئ رمزَ الإيصال في الفرع كلِّه */
+                                if (! window.confirm(t('إلغاء ربط هذا الفرع بخرائط Google؟'))) return;
+                                act(() =>
+                                    router.delete(route('admin.integrations.google.branch.unlink', branch.id), {
+                                        preserveScroll: true,
+                                        onFinish: () => setBusy(false),
+                                    }),
+                                );
+                            }}
+                        >
+                            <Link2Off />
+                            {t('إلغاء الربط')}
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            <PlaceSearchDialog
+                open={searching}
+                onClose={() => setSearching(false)}
+                branch={branch}
+                min={min}
+            />
+        </li>
+    );
+}
+
+/* ═══════════════════ ابحث عن متجرك ═══════════════════ */
+
+function PlaceSearchDialog({
+    open,
+    onClose,
+    branch,
+    min,
+}: {
+    open: boolean;
+    onClose: () => void;
+    branch: BranchLink;
+    min: number;
+}) {
+    const t = useTranslate();
+    const [query, setQuery] = useState('');
+    const [results, setResults] = useState<PlaceResult[]>([]);
+    const [state, setState] = useState<'idle' | 'loading' | 'empty' | 'error'>('idle');
+    const [error, setError] = useState<string | null>(null);
+    const [saving, setSaving] = useState<string | null>(null);
+
+    /* آخرُ طلبٍ هو الذي يُعرض — وردٌّ متأخّرٌ لكلمةٍ قديمة لا يدهس الأحدث */
+    const seq = useRef(0);
+
+    useEffect(() => {
+        if (! open) return;
+
+        const q = query.trim();
+
+        if (q.length < min) {
+            setResults([]);
+            setState('idle');
+            setError(null);
+
+            return;
+        }
+
+        /*
+            تمهُّلٌ قبل النداء — والنداءُ مدفوع.
+
+            بلا هذا يصير «محل الورد» تسعةَ نداءاتٍ على Google، ثمانيةٌ منها
+            لكلماتٍ ناقصةٍ لا يقرأ أحدٌ نتيجتها.
+        */
+        const timer = window.setTimeout(async () => {
+            const mine = ++seq.current;
+            setState('loading');
+            setError(null);
+
+            try {
+                const res = await fetch(route('admin.integrations.google.search'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                    body: JSON.stringify({ q }),
+                });
+
+                if (mine !== seq.current) return;
+
+                if (res.status === 429) {
+                    setState('error');
+                    setError(t('تجاوزتَ حدّ البحث — انتظر قليلًا ثم حاول.'));
+
+                    return;
+                }
+
+                const body = await res.json();
+
+                if (mine !== seq.current) return;
+
+                if (! body.ok) {
+                    setState('error');
+                    setError(body.error ?? t('تعذر الاتصال بـ Google حاليًا. حاول مرة أخرى.'));
+
+                    return;
+                }
+
+                setResults(body.results ?? []);
+                setState((body.results ?? []).length === 0 ? 'empty' : 'idle');
+            } catch {
+                if (mine !== seq.current) return;
+                setState('error');
+                setError(t('تعذر الاتصال بـ Google حاليًا. حاول مرة أخرى.'));
+            }
+        }, 400);
+
+        return () => window.clearTimeout(timer);
+    }, [query, open, min, t]);
+
+    const choose = (placeId: string) => {
+        setSaving(placeId);
+        router.post(
+            route('admin.integrations.google.branch.link', branch.id),
+            { place_id: placeId },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    onClose();
+                    setQuery('');
+                    setResults([]);
+                },
+                onError: (errors) => setError(errors.place_id ?? null),
+                onFinish: () => setSaving(null),
+            },
+        );
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(o) => ! o && onClose()}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>{t('ابحث عن متجرك في Google')}</DialogTitle>
+                </DialogHeader>
+
+                <div className="px-5 pb-5">
+                    <p className="mb-3 text-[13px] text-[#6b7280]">
+                        {t('الفرع: :name', { name: branch.name })}
+                    </p>
+
+                    <Input
+                        autoFocus
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder={t('ابحث باسم المتجر أو رقم الهاتف')}
+                        aria-label={t('ابحث باسم المتجر أو رقم الهاتف')}
+                    />
+
+                    {query.trim().length > 0 && query.trim().length < min && (
+                        <p className="mt-2 text-[12px] text-[#9ca3af]">
+                            {t('اكتب :n أحرف على الأقل.', { n: min })}
+                        </p>
+                    )}
+
+                    {state === 'loading' && (
+                        <p className="mt-3 text-[13px] text-[#6b7280]">{t('جارٍ البحث…')}</p>
+                    )}
+
+                    {state === 'empty' && (
+                        <p className="mt-3 rounded-[10px] bg-[#fafafa] p-3 text-[13px] text-[#6b7280]">
+                            {t('لم نجد متجرًا مطابقًا. جرّب الاسم أو رقم الهاتف.')}
+                        </p>
+                    )}
+
+                    {error && (
+                        <p className="mt-3 rounded-[10px] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">{error}</p>
+                    )}
+
+                    <ul className="mt-3 max-h-[46svh] space-y-2 overflow-y-auto">
+                        {results.map((r) => (
+                            <li
+                                key={r.place_id}
+                                className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-3"
+                            >
+                                <p className="font-medium text-[#111]">{r.name}</p>
+                                {r.address && (
+                                    <p className="mt-0.5 text-[12px] text-[#6b7280]">{r.address}</p>
+                                )}
+
+                                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                    <span className="flex items-center gap-2 text-[12px]">
+                                        {r.rating === null ? (
+                                            <span className="text-[#9ca3af]">{t('لا تقييمات بعد')}</span>
+                                        ) : (
+                                            <>
+                                                <span className="flex items-center gap-1 font-medium text-[#111]">
+                                                    <Star className="size-3 fill-[#f59e0b] text-[#f59e0b]" />
+                                                    {r.rating.toFixed(1)}
+                                                </span>
+                                                <span className="text-[#6b7280]">
+                                                    {t(':n تقييم', { n: r.count })}
+                                                </span>
+                                            </>
+                                        )}
+                                        <span className="text-[11px] text-[#9ca3af]">{t('المصدر: Google')}</span>
+                                    </span>
+
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        loading={saving === r.place_id}
+                                        disabled={saving !== null}
+                                        onClick={() => choose(r.place_id)}
+                                    >
+                                        {t('اختيار هذا المتجر')}
+                                    </Button>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }

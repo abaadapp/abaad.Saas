@@ -3,13 +3,15 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
+use App\Models\BranchGooglePlace;
 use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\GoogleReviews;
-use App\Support\MarketingSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -31,6 +33,8 @@ class GoogleReviewLinkTest extends TestCase
 
     private Business $business;
 
+    private Branch $branch;
+
     private User $owner;
 
     protected function setUp(): void
@@ -39,7 +43,7 @@ class GoogleReviewLinkTest extends TestCase
         app()->setLocale('ar');
 
         $this->business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
-        Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
+        $this->branch = Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         JobTitle::create(['business_id' => $this->business->id, 'name' => 'مدير', 'role' => 'admin']);
 
         $this->owner = User::create([
@@ -53,6 +57,33 @@ class GoogleReviewLinkTest extends TestCase
     private function save(array $data)
     {
         return $this->post(route('admin.integrations.google.save'), $data);
+    }
+
+    /**
+     * ربطُ الفرع كما تفعله الشاشة — والمعرّفُ وحده يُرسل.
+     *
+     * وتُزوَّر Google هنا لأنّ الربط يسألها قبل أن يكتب صفًّا: هذا هو الفرق
+     * بين هذه النسخة وما قبلها، وكان المعرّفُ يُحفظ بلا أن يسأله أحد.
+     */
+    private function link(string $placeId = self::PLACE, ?int $branchId = null, string $name = 'محل الورد')
+    {
+        Setting::updateOrCreate(
+            ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
+            ['value' => Crypt::encryptString('platform-key')],
+        );
+
+        Http::fake(['places.googleapis.com/*' => Http::response([
+            'id' => $placeId,
+            'displayName' => ['text' => $name],
+            'rating' => 4.8,
+            'userRatingCount' => 127,
+            'googleMapsUri' => 'https://maps.google.com/?cid=1',
+        ], 200)]);
+
+        return $this->post(
+            route('admin.integrations.google.branch.link', $branchId ?? $this->branch->id),
+            ['place_id' => $placeId],
+        );
     }
 
     /* ======================= قراءة المعرّف ======================= */
@@ -92,14 +123,20 @@ class GoogleReviewLinkTest extends TestCase
 
     public function test_saving_a_readable_link_stores_the_id_and_builds_the_urls(): void
     {
-        $this->save(['google_maps_url' => 'https://www.google.com/maps/place/?q=place_id:'.self::PLACE])
-            ->assertSessionHasNoErrors();
+        $this->link()->assertSessionHasNoErrors();
 
         $link = GoogleReviews::forBusiness($this->business->id);
 
         $this->assertSame(self::PLACE, $link['place_id']);
         $this->assertSame('https://search.google.com/local/writereview?placeid='.self::PLACE, $link['review_url']);
-        $this->assertStringContainsString(self::PLACE, $link['place_url']);
+        /*
+         * ورابطُ الخرائط هو ما ردّته Google لا رابطٌ نبنيه بالمعرّف.
+         *
+         * `googleMapsUri` هو العنوان الرسميّ للملفّ. والمبنيُّ بيدنا
+         * (`?q=place_id:`) يبقى احتياطًا لمن رُبط قبل أن يُحفظ الرابط.
+         */
+        $this->assertSame('https://maps.google.com/?cid=1', $link['place_url']);
+        $this->assertSame('محل الورد', $link['place_name']);
     }
 
     public function test_an_unreadable_link_is_refused_not_stored_half_way(): void
@@ -108,19 +145,25 @@ class GoogleReviewLinkTest extends TestCase
          * ولا يُحفظ نصفُه: لو حُفظ الرابط وتُرك المعرّف فارغًا لبدت الشاشة
          * مربوطةً — فيها رابط التاجر — ولا رمزَ يُطبع ولا رابطَ يُرسل.
          */
-        $this->save(['google_maps_url' => 'https://www.google.com/maps/place/My+Shop/@23.58,58.38,17z'])
-            ->assertSessionHasErrors('google_maps_url');
+        $this->link('https://www.google.com/maps/place/My+Shop/@23.58,58.38,17z')
+            ->assertSessionHasErrors('place_id');
 
-        $this->assertSame('', MarketingSettings::group($this->business->id, 'google')['google_maps_url']);
+        $this->assertSame(0, BranchGooglePlace::count(), 'كُتب صفٌّ لمعرّفٍ غير مقروء');
         $this->assertNull(GoogleReviews::forBusiness($this->business->id)['place_id']);
     }
 
     public function test_clearing_the_field_unlinks_it(): void
     {
-        $this->save(['google_maps_url' => self::PLACE])->assertSessionHasNoErrors();
-        $this->save(['google_maps_url' => ''])->assertSessionHasNoErrors();
+        $this->link()->assertSessionHasNoErrors();
+
+        $this->delete(route('admin.integrations.google.branch.unlink', $this->branch->id))
+            ->assertSessionHasNoErrors();
 
         $this->assertNull(GoogleReviews::forBusiness($this->business->id)['place_id']);
+
+        /* والصفُّ باقٍ مختومًا — الفكُّ لا يمحو الأثر */
+        $this->assertSame(1, BranchGooglePlace::count());
+        $this->assertNotNull(BranchGooglePlace::first()->unlinked_at);
     }
 
     /* ===================== الرمز على الإيصال ===================== */
@@ -128,13 +171,15 @@ class GoogleReviewLinkTest extends TestCase
     public function test_the_receipt_code_needs_the_switch_and_the_id_together(): void
     {
         // مقبضٌ يعمل بلا معرّف يطبع مربّعًا أسود يمسحه الزبون فلا يجد
-        $this->save(['google_maps_url' => '', 'google_review_on_receipt' => true]);
+        $this->save(['google_review_on_receipt' => true]);
         $this->assertNull(GoogleReviews::onReceipt($this->business->id), 'طُبع رمزٌ بلا معرّف');
 
-        $this->save(['google_maps_url' => self::PLACE, 'google_review_on_receipt' => false]);
+        $this->link();
+
+        $this->save(['google_review_on_receipt' => false]);
         $this->assertNull(GoogleReviews::onReceipt($this->business->id), 'طُبع رمزٌ والمقبض مُطفأ');
 
-        $this->save(['google_maps_url' => self::PLACE, 'google_review_on_receipt' => true]);
+        $this->save(['google_review_on_receipt' => true]);
         $this->assertSame(
             'https://search.google.com/local/writereview?placeid='.self::PLACE,
             GoogleReviews::onReceipt($this->business->id),
@@ -144,9 +189,13 @@ class GoogleReviewLinkTest extends TestCase
     public function test_one_shops_link_never_reaches_another(): void
     {
         $neighbour = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
-        Setting::create(['business_id' => $neighbour->id, 'key' => 'google_place_id', 'value' => 'ChIJneighbourneighbour']);
+        $theirs = Branch::create(['business_id' => $neighbour->id, 'name' => 'فرعهم']);
+        BranchGooglePlace::create([
+            'branch_id' => $theirs->id, 'place_id' => 'ChIJneighbourneighbour',
+            'place_name' => 'محل الجار', 'linked_at' => now(),
+        ]);
 
-        $this->save(['google_maps_url' => self::PLACE, 'google_review_on_receipt' => true]);
+        $this->link();
 
         $this->assertSame(self::PLACE, GoogleReviews::forBusiness($this->business->id)['place_id']);
         $this->assertSame('ChIJneighbourneighbour', GoogleReviews::forBusiness($neighbour->id)['place_id']);
@@ -156,7 +205,7 @@ class GoogleReviewLinkTest extends TestCase
 
     public function test_the_page_opens_and_carries_its_links(): void
     {
-        $this->save(['google_maps_url' => self::PLACE]);
+        $this->link();
 
         $this->get(route('admin.integrations.google'))
             ->assertOk()

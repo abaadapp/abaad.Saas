@@ -178,7 +178,49 @@ class PageController extends Controller
                 'registered' => Demo::vatSettings()['number'] !== '',
                 'ready' => ShopIdentity::confirmed(Business::find(Demo::bid())),
             ],
+            /*
+             * طلبُ تقييم Google — ويُعرض حين يعمل وحدَه.
+             *
+             * الشرطان يُقاسان في الخادم لا في الشاشة: الحالةُ بعد التسليم،
+             * وفرعُ الطلب مربوطٌ بملفّه. وزرٌّ يُعرض ثمّ يردّ «اربط فرعك
+             * أوّلًا» بابٌ معروضٌ لا يُفتح.
+             */
+            'googleReview' => $this->googleReviewState($number),
         ]);
+    }
+
+    /**
+     * حالُ طلب التقييم لهذا الطلب — ولمَ لا يُعرض إن لم يُعرض.
+     *
+     * @return array{show:bool, reason:?string, requestedAt:?string}
+     */
+    private function googleReviewState(string $number): array
+    {
+        $order = \App\Models\Order::where('business_id', Demo::bid())
+            ->where('is_held', false)->where('number', $number)->first();
+
+        if (! $order) {
+            return ['show' => false, 'reason' => null, 'requestedAt' => null];
+        }
+
+        $delivered = in_array($order->status, [
+            \App\Support\OrderStatus::DELIVERED,
+            \App\Support\OrderStatus::PICKED_UP,
+            \App\Support\OrderStatus::COMPLETED,
+        ], true);
+
+        $branch = $order->branch_id
+            ? \App\Models\Branch::where('business_id', Demo::bid())->find($order->branch_id)
+            : null;
+
+        $linked = $branch !== null && \App\Support\BranchGoogle::for($branch) !== null;
+
+        return [
+            'show' => $delivered && $linked,
+            /* ولا يُقال «غير مربوط» قبل التسليم: سببٌ واحدٌ يكفي، وهو الأقرب */
+            'reason' => $delivered && ! $linked ? __('اربط فرع هذا الطلب بخرائط Google أوّلًا.') : null,
+            'requestedAt' => optional($order->review_request_sent_at)->toIso8601String(),
+        ];
     }
 
     /* ------------------------------ العملاء ------------------------------ */

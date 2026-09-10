@@ -22,9 +22,10 @@ use App\Http\Controllers\Admin\Finance\OverviewController;
 use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\FinancialAttachmentController;
 use App\Http\Controllers\Admin\GoalController;
+use App\Http\Controllers\Admin\HelpController;
+use App\Http\Controllers\Admin\IntegrationsController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
 use App\Http\Controllers\Admin\Inventory\StockAdjustmentController;
-use App\Http\Controllers\Admin\IntegrationsController;
 use App\Http\Controllers\Admin\InventoryController;
 use App\Http\Controllers\Admin\JobTitleController;
 use App\Http\Controllers\Admin\LanguageController;
@@ -83,6 +84,7 @@ use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\BillingController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
+use App\Http\Controllers\SuperAdmin\ConversationController;
 use App\Http\Controllers\SuperAdmin\DemoController;
 use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
@@ -92,6 +94,7 @@ use App\Http\Controllers\SuperAdmin\SettingController;
 use App\Http\Controllers\SuperAdmin\SubscriptionController;
 use App\Http\Controllers\SuperAdmin\UserController;
 use App\Http\Controllers\SuperAdmin\WhatsAppController;
+use App\Http\Controllers\SupportAttachmentController;
 use App\Http\Controllers\WhatsApp\WebhookController;
 use App\Support\Storefront;
 use Illuminate\Support\Facades\Route;
@@ -304,6 +307,22 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // التقارير والإعدادات وسجل النشاط
     Route::get('/reports', [SuperAdminPageController::class, 'reports'])->name('reports.index');
     Route::get('/reports/pdf', [PdfController::class, 'platformReport'])->name('reports.pdf');
+    /*
+     * مركزُ المحادثات — دعمُ أبعاد لأصحاب المتاجر.
+     *
+     * داخل `role:super_admin` لا خارجه: ما يُقرأ هنا محادثاتُ المتاجر كلِّها،
+     * وبابٌ يحرسه إخفاءُ زرٍّ ليس بابًا محروسًا.
+     *
+     * وليست محادثاتِ التاجر مع زبائنه — تلك لا يبلغها هذا الباب بحال.
+     */
+    Route::get('/conversations', [ConversationController::class, 'index'])->name('conversations.index');
+    Route::post('/conversations/{id}/reply', [ConversationController::class, 'reply'])->name('conversations.reply');
+    Route::post('/conversations/{id}/assign', [ConversationController::class, 'assign'])->name('conversations.assign');
+    Route::post('/conversations/{id}/status', [ConversationController::class, 'status'])->name('conversations.status');
+    Route::post('/conversations/{id}/priority', [ConversationController::class, 'priority'])->name('conversations.priority');
+    Route::get('/conversations/{id}/files/{attachment}', SupportAttachmentController::class)
+        ->name('conversations.attachment');
+
     Route::get('/activity', [ActivityController::class, 'superIndex'])->name('activity.index');
     Route::get('/settings', [SuperAdminPageController::class, 'settings'])->name('settings.index');
     Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
@@ -1073,6 +1092,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::post('/settings/documents/brand', [TemplateController::class, 'brand'])->name('settings.documents.brand');
     Route::post('/settings/documents/cover', [TemplateController::class, 'cover'])->name('settings.documents.cover');
+
+    /*
+     * «المساعدة والدعم» — بابُ التاجر إلى أبعاد.
+     *
+     * بلا حارسِ قسمٍ ولا قدرةِ باقة: من يدخل اللوحة يستطيع أن يسأل. وبابُ
+     * دعمٍ يُغلق أمام موظّفٍ يرى العطبَ بعينه يعني أن يمرّ البلاغُ بصاحب
+     * المتجر أو لا يمرّ.
+     *
+     * وكلُّ ما هنا محصورٌ بمتجر صاحب الجلسة — انظر `HelpController::mine`.
+     */
+    Route::get('/help', [HelpController::class, 'index'])->name('help.index');
+    Route::post('/help', [HelpController::class, 'store'])->name('help.store');
+    Route::get('/help/{id}', [HelpController::class, 'show'])->name('help.show');
+    Route::post('/help/{id}/reply', [HelpController::class, 'reply'])->name('help.reply');
+    Route::get('/help/{id}/files/{attachment}', SupportAttachmentController::class)
+        ->name('help.attachment');
 
     Route::get('/settings/trash', [TrashController::class, 'index'])->name('settings.trash');
 

@@ -604,6 +604,18 @@ class Permissions
     public const SHELL = [
         'admin.search', 'admin.currency.switch', 'admin.language.update',
         'admin.notifications.feed', 'admin.notifications.dismiss', 'admin.notifications.clear',
+        /*
+         * و«المساعدة والدعم» من الهيكل لا من الأقسام.
+         *
+         * قسمٌ يُمنح يعني قسمًا يُمنع — وبابُ دعمٍ يُغلق أمام كاشيرٍ يرى
+         * العطبَ بعينه يعني أن يمرّ البلاغُ بصاحب المتجر أو لا يمرّ. ومن
+         * يدخل اللوحة يستطيع أن يسأل، كما يستطيع أن يبحث ويقرأ تنبيهاته.
+         *
+         * والحصرُ بمتجره قائمٌ على كلّ حال في `HelpController::mine` — فهذا
+         * إعفاءٌ من سؤال «أيُّ قسمٍ؟» لا من سؤال «أيُّ متجر؟».
+         */
+        'admin.help.index', 'admin.help.store', 'admin.help.show',
+        'admin.help.reply', 'admin.help.attachment',
     ];
 
     /**

@@ -19,11 +19,13 @@ import {
     FlaskConical,
     History,
     Layers,
+    LifeBuoy,
     LayoutDashboard,
     Search,
     Megaphone,
     MessageCircle,
     MessageSquare,
+    MessagesSquare,
     Package,
     RefreshCw,
     Settings,
@@ -61,6 +63,14 @@ export interface NavItem {
      * عليها يُطفئ القائمة كلّها: لا عنصر مضيء، فلا يعرف من فتحها أين هو.
      */
     covers?: string[];
+    /**
+     * شارةُ عددٍ على العنصر — تُقرأ من `supportBadge` المشترك.
+     *
+     * والعددُ لا يُكتب هنا: الشريطُ لا يعرف كم محادثةً تنتظر، ورقمٌ ثابتٌ
+     * في القائمة يقول الشيءَ نفسه أبدًا. فالحقلُ يقول «لهذا العنصر شارة»
+     * والقيمةُ تأتي من الخادم في كلّ طلب.
+     */
+    badge?: 'support';
     /**
      * قائمةٌ منسدلة تحت العنصر — لا وجهةَ له هو.
      *
@@ -224,6 +234,19 @@ export const NAV: NavGroup[] = [
                 section: 'integrations',
                 covers: ['admin.integrations.google', 'admin.integrations.whatsapp'],
             },
+            /*
+             * والمساعدةُ بلا حارسِ قسم.
+             *
+             * من يدخل اللوحة يستطيع أن يسأل. وبابُ دعمٍ يُغلق أمام كاشيرٍ
+             * يرى العطبَ بعينه يعني أن يمرّ البلاغُ بصاحب المتجر أو لا يمرّ.
+             */
+            {
+                label: 'المساعدة والدعم',
+                icon: LifeBuoy,
+                route: 'admin.help.index',
+                covers: ['admin.help.show'],
+                badge: 'support',
+            },
             { label: 'الإعدادات', icon: Settings, route: 'admin.settings.index', section: 'settings' },
         ],
     },
@@ -244,6 +267,23 @@ export const PLATFORM_NAV: NavGroup[] = [
             { label: 'الاشتراكات', icon: RefreshCw, route: 'super-admin.subscriptions.index' },
             { label: 'الباقات', icon: Layers, route: 'super-admin.subscriptions.plans' },
             { label: 'المستخدمون', icon: Users, route: 'super-admin.users.index' },
+        ],
+    },
+    {
+        /*
+         * الدعمُ قسمٌ قائمٌ بذاته لا بندٌ في «أخرى».
+         *
+         * هو البابُ الذي يُفتح كلّ يوم — ومن يبحث عن رسالةِ تاجرٍ ينتظر لا
+         * يمرّ بالتقارير ليجدها.
+         */
+        heading: 'الدعم',
+        items: [
+            {
+                label: 'مركز المحادثات',
+                icon: MessagesSquare,
+                route: 'super-admin.conversations.index',
+                badge: 'support',
+            },
         ],
     },
     {

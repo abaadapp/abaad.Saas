@@ -9,6 +9,7 @@ use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\Reports;
 use App\Support\ShopIdentity;
+use App\Support\Support;
 use App\Support\Tenancy;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -187,6 +188,21 @@ class HandleInertiaRequests extends Middleware
                 'items' => Demo::notifications(),
                 'count' => Demo::notificationsCount(),
             ] : null,
+
+            /*
+             * شارةُ الدعم — محسوبةٌ في كلّ طلب لا مكتوبةٌ في الشاشة.
+             *
+             * لمدير المنصّة: محادثاتٌ حيّةٌ فيها كلامٌ من متجرٍ لم يقرأه.
+             * وللتاجر: ردودٌ من أبعادٍ لم يقرأها. ورقمٌ ثابتٌ يقول «٨» أبدًا
+             * يصير جزءًا من الأثاث فلا تقع عليه عين.
+             *
+             * وصفرٌ لا يُرسم: شارةٌ بصفرٍ تشغل موضعَ شارةٍ تعني شيئًا.
+             */
+            'supportBadge' => fn () => $user
+                ? ($user->isSuperAdmin()
+                    ? Support::platformBadge($user)
+                    : Support::businessBadge($user))
+                : 0,
 
             // رسائل الجلسة — الواجهة تعرضها كـtoast
             'flash' => fn () => [

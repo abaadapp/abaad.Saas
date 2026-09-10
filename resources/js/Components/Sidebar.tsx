@@ -19,7 +19,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarProps) {
-    const { auth } = usePage<PageProps>().props;
+    const { auth, supportBadge } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
 
@@ -104,6 +104,15 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
             >
                 <Icon className={cn('shrink-0', depth ? 'size-4' : 'size-[18px]')} />
                 <span className="truncate">{t(item.label)}</span>
+                {/*
+                    وصفرٌ لا يُرسم: شارةٌ بصفرٍ تشغل موضعَ شارةٍ تعني شيئًا،
+                    فتُدرَّب العينُ على تجاهل الموضع كلِّه.
+                */}
+                {item.badge === 'support' && (supportBadge ?? 0) > 0 && (
+                    <span className="ms-auto flex min-w-[18px] items-center justify-center rounded-full bg-[#dc2626] px-1 text-[10px] font-bold tabular-nums text-white">
+                        {supportBadge}
+                    </span>
+                )}
             </SmartLink>
         );
     };

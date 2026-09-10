@@ -2,24 +2,44 @@
 
 namespace App\Support;
 
+use App\Http\Controllers\Pos\PosController;
 use App\Models\ActivityLog;
+use App\Models\Addon;
+use App\Models\BankAccount;
+use App\Models\BankStatementLine;
+use App\Models\Branch;
+use App\Models\BranchStock;
 use App\Models\Business;
 use App\Models\Category;
+use App\Models\Coupon;
 use App\Models\Currency;
+use App\Models\CustomAlert;
 use App\Models\Customer;
+use App\Models\DismissedNotification;
 use App\Models\Expense;
+use App\Models\ExpenseType;
+use App\Models\GoodsReceiptNote;
 use App\Models\InventoryMovement;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\OrderEdit;
 use App\Models\OrderItem;
+use App\Models\OrderItemAddon;
 use App\Models\Plan;
 use App\Models\Product;
-use App\Models\Setting;
+use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
-use App\Models\Supplier;
+use App\Models\RecipeItem;
+use App\Models\Setting;
 use App\Models\Subscription;
+use App\Models\Supplier;
+use App\Models\SupportConversation;
 use App\Models\Transaction;
 use App\Models\User;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * طبقة الوصول للبيانات لواجهات Abad POS.
@@ -33,6 +53,7 @@ class Demo
     /* ============================ مساعدات ============================ */
 
     private static $baseCur = null;
+
     private static $displayCur = null;
 
     /**
@@ -144,7 +165,7 @@ class Demo
         }
         self::$baseBid = self::bid();
         $s = self::businessSettings();
-        $c = \App\Models\Currency::where('business_id', self::bid())->where('is_base', true)->first();
+        $c = Currency::where('business_id', self::bid())->where('is_base', true)->first();
 
         if ($c) {
             $cur = ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => true];
@@ -168,7 +189,7 @@ class Demo
         self::$displayBid = self::bid();
         $code = session('display_currency');
         if ($code) {
-            $c = \App\Models\Currency::where('business_id', self::bid())->where('code', $code)->where('active', true)->first();
+            $c = Currency::where('business_id', self::bid())->where('code', $code)->where('active', true)->first();
             if ($c) {
                 return self::$displayCur = self::withFormat(
                     ['code' => $c->code, 'symbol' => $c->symbol ?: $c->code, 'rate' => (float) $c->rate, 'is_base' => (bool) $c->is_base],
@@ -188,7 +209,7 @@ class Demo
         $symbol = __($cur['symbol']);
         $amount = number_format($value, $decimals, '.', ',');
 
-        return ($cur['before'] ?? false) ? $symbol . ' ' . $amount : $amount . ' ' . $symbol;
+        return ($cur['before'] ?? false) ? $symbol.' '.$amount : $amount.' '.$symbol;
     }
 
     /** المبلغ بعملة العرض المختارة (تحويل تلقائي حسب سعر الصرف) */
@@ -256,7 +277,7 @@ class Demo
     public static function activeBranchId(): ?int
     {
         return self::currentBranchId()
-            ?? \App\Models\Branch::where('business_id', self::bid())->orderBy('id')->value('id');
+            ?? Branch::where('business_id', self::bid())->orderBy('id')->value('id');
     }
 
     /**
@@ -285,7 +306,7 @@ class Demo
         // مقيّد بالنشاط: الحارس على مسار التبديل يمنع الدخول أصلًا، لكن قيمة
         // عالقة في جلسة قديمة (أو تغيّر مالك الفرع) كانت تكفي لعرض اسم فرع
         // من متجر آخر في الترويسة.
-        return \App\Models\Branch::where('id', $id)
+        return Branch::where('id', $id)
             ->where('business_id', self::bid())
             ->value('name') ?? __('كل الفروع');
     }
@@ -301,7 +322,7 @@ class Demo
         // مصدر واحد: جدول businesses. كان إعداد business_name يسبقه فيحجبه،
         // ونموذج الإعدادات لا يكتبه أصلًا — فيتغيّر الاسم في الحقل ولا يتغيّر
         // في الترويسة، أو العكس.
-        return \App\Models\Business::where('id', $bid)->value('name')
+        return Business::where('id', $bid)->value('name')
             ?? __('متجري');
     }
 
@@ -312,7 +333,7 @@ class Demo
      */
     public static function businessSettings(): array
     {
-        return \App\Models\Setting::where('business_id', self::bid())
+        return Setting::where('business_id', self::bid())
             ->pluck('value', 'key')
             ->all();
     }
@@ -389,7 +410,7 @@ class Demo
      */
     public static function branches(): array
     {
-        return \App\Models\Branch::where('business_id', self::bid())
+        return Branch::where('business_id', self::bid())
             ->withCount([
                 'orders as orders_count' => fn ($q) => $q->sold(),
                 'devices as devices_count',
@@ -702,8 +723,8 @@ class Demo
         return $q->limit($limit)->get()->map(fn ($a) => [
             // «عبر الدعم» تُلحق بالاسم: السطر الواحد لا يتّسع لشارة
             'text' => $a->user_name
-                . ($a->impersonator_name ? ' (' . __('عبر الدعم') . ')' : '')
-                . ' — ' . $a->description,
+                .($a->impersonator_name ? ' ('.__('عبر الدعم').')' : '')
+                .' — '.$a->description,
             'time' => optional($a->created_at)?->diffForHumans() ?? '—',
             'icon' => $a->icon,
             'color' => $a->color,
@@ -871,7 +892,7 @@ class Demo
     /** الإضافات (خدمات/عناصر تُضاف على المنتج مثل التغليف والبطاقة) */
     public static function addons(): array
     {
-        return \App\Models\Addon::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($a) => [
+        return Addon::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($a) => [
             'id' => $a->id,
             // للشاشة كي تعرف أنّ هذه الإضافة تنقص من الرفّ — لا لتحسبها
             'inventory_product_id' => $a->inventory_product_id,
@@ -892,9 +913,9 @@ class Demo
      * لكاشير صلالة بضاعةً في مسقط.
      */
     /**
-     * @param  \Illuminate\Http\Request|null  $filter  مُرشِّحات الشاشة — الملفّ يتبعها
+     * @param  Request|null  $filter  مُرشِّحات الشاشة — الملفّ يتبعها
      */
-    public static function products(?int $branchId = null, ?\Illuminate\Http\Request $filter = null): array
+    public static function products(?int $branchId = null, ?Request $filter = null): array
     {
         $available = Stock::availabilityResolver(self::bid(), $branchId);
 
@@ -904,11 +925,11 @@ class Demo
          * استعلامان لا استعلامان في كلّ منتج: شاشةُ بيعٍ فيها مئتا صنف كانت
          * ستُطلق أربعمئة استعلامٍ قبل أن تُرسم.
          */
-        $variants = \App\Models\ProductVariant::where('business_id', self::bid())
+        $variants = ProductVariant::where('business_id', self::bid())
             ->where('active', true)->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
-        $addonMap = \App\Support\ProductAddons::map(self::bid());
-        $allAddons = \App\Models\Addon::where('business_id', self::bid())->orderBy('id')->get();
-        $recipeOwners = \App\Models\RecipeItem::where('business_id', self::bid())->distinct()->pluck('product_id')
+        $addonMap = ProductAddons::map(self::bid());
+        $allAddons = Addon::where('business_id', self::bid())->orderBy('id')->get();
+        $recipeOwners = RecipeItem::where('business_id', self::bid())->distinct()->pluck('product_id')
             ->flip()->all();
 
         $query = Product::where('business_id', self::bid())->with('category')->orderBy('id');
@@ -946,7 +967,7 @@ class Demo
                  * يحتسب الخادم خمسة — ونسبةٌ تُقرأ هنا وتُحتسب هناك لا يجوز
                  * أن تُشتقّ بقاعدتين.
                  */
-                'tax' => \App\Support\Vat::rateFor($p, self::bid()),
+                'tax' => Vat::rateFor($p, self::bid()),
                 /*
                  * المقاسات — الفعّالة منها وحدها.
                  *
@@ -972,7 +993,7 @@ class Demo
                  *
                  * والقاعدة واحدة للشاشة والخادم: ProductAddons::for.
                  */
-                'addon_ids' => \App\Support\ProductAddons::for($p, $allAddons, $addonMap)
+                'addon_ids' => ProductAddons::for($p, $allAddons, $addonMap)
                     ->pluck('id')->map(fn ($i) => (int) $i)->all(),
                 // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — تقرؤه الشاشة كي لا
                 // تحذّر من نفادِ باقةٍ لا يُخصم رصيدها أصلًا
@@ -992,12 +1013,12 @@ class Demo
      * وكان التصدير يقرأ الفرع الأوّل وحده: مَن رشّح الملغاة وصدّر لا يجد
      * ملغاةً واحدة في ملفّه.
      *
-     * @param  \Illuminate\Http\Request|null  $filter  مُرشِّحات الشاشة
+     * @param  Request|null  $filter  مُرشِّحات الشاشة
      */
     /**
      * @param  int|null  $limit  أكثر ما يُرجَع — للوحة التي تعرض ستّة لا للقائمة
      */
-    public static function orders(?\Illuminate\Http\Request $filter = null, ?int $limit = null): array
+    public static function orders(?Request $filter = null, ?int $limit = null): array
     {
         $query = Order::where('business_id', self::bid())
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()))
@@ -1017,16 +1038,16 @@ class Demo
          * نموذجٍ تُبنى في الذاكرة لستّة أسطر، ويكبر الثمن مع كلّ بيعة.
          */
         return $query->when($limit, fn ($q) => $q->limit($limit))->get()->map(fn ($o) => [
-                'id' => $o->number,
-                'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
-                'employee' => $o->employee_name ?? '—',
-                'branch' => $o->branch,
-                'items_count' => $o->items_count,
-                'total' => (float) $o->total,
-                'payment' => $o->payment_method,
-                'status' => $o->status,
-                'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
-            ])->all();
+            'id' => $o->number,
+            'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
+            'employee' => $o->employee_name ?? '—',
+            'branch' => $o->branch,
+            'items_count' => $o->items_count,
+            'total' => (float) $o->total,
+            'payment' => $o->payment_method,
+            'status' => $o->status,
+            'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
+        ])->all();
     }
 
     /** تفاصيل طلب كامل بأصنافه الحقيقية (حسب رقم الطلب) */
@@ -1087,13 +1108,13 @@ class Demo
             'delivery_notes' => $o->delivery_notes,
             'internal_notes' => $o->internal_notes,
             // ما يجوز الانتقال إليه من الحالة الحالية — لا كلّ الحالات
-            'next_statuses' => \App\Support\OrderStatus::nextFrom($o->status),
-            'occasions' => \App\Support\FlowerOrder::occasionOptions(),
-            'fulfillments' => \App\Support\FlowerOrder::fulfillmentOptions(),
+            'next_statuses' => OrderStatus::nextFrom($o->status),
+            'occasions' => FlowerOrder::occasionOptions(),
+            'fulfillments' => FlowerOrder::fulfillmentOptions(),
             'items' => $items,
             'edits' => self::orderEdits($o->id),
             // ما أذن به التاجر وحده يُعرض في التصحيح — لا يُصحَّح إلى وسيلةٍ مُطفأة
-            'payment_methods' => \App\Http\Controllers\Pos\PosController::enabledPaymentMethods(self::businessSettings()),
+            'payment_methods' => PosController::enabledPaymentMethods(self::businessSettings()),
         ];
     }
 
@@ -1105,7 +1126,7 @@ class Demo
      */
     public static function orderEdits(int $orderId): array
     {
-        return \App\Models\OrderEdit::where('order_id', $orderId)->orderBy('id')->get()->map(fn ($e) => [
+        return OrderEdit::where('order_id', $orderId)->orderBy('id')->get()->map(fn ($e) => [
             'kind' => $e->kind,
             'subject' => $e->subject,
             'qty_before' => $e->qty_before === null ? null : (int) $e->qty_before,
@@ -1121,9 +1142,9 @@ class Demo
     }
 
     /**
-     * @param  \Illuminate\Http\Request|null  $filter  بحث الشاشة — الملفّ يتبعه
+     * @param  Request|null  $filter  بحث الشاشة — الملفّ يتبعه
      */
-    public static function customers(?\Illuminate\Http\Request $filter = null): array
+    public static function customers(?Request $filter = null): array
     {
         /*
          * المُباع وحده، وباستعلامٍ واحد.
@@ -1166,14 +1187,14 @@ class Demo
         }
 
         return $query->get()->map(fn ($c) => [
-                'id' => $c->id,
-                'name' => $c->name,
-                'name_en' => $c->name_en,
-                'label' => self::ln($c->name, $c->name_en),
-                'phone' => $c->phone,
-                'email' => $c->email,
-                'tax_number' => $c->tax_number,
-                /*
+            'id' => $c->id,
+            'name' => $c->name,
+            'name_en' => $c->name_en,
+            'label' => self::ln($c->name, $c->name_en),
+            'phone' => $c->phone,
+            'email' => $c->email,
+            'tax_number' => $c->tax_number,
+            /*
                  * ما تقرأه صفحة العميل — لا ما يكفي جدولَ القائمة.
                  *
                  * الصفحة تعرض العنوان، وتفتح صندوق الملاحظات على محتواه،
@@ -1184,24 +1205,24 @@ class Demo
                  * العميل كان يفصله عن فرعه بصمت. لا رسالة خطأ في شيءٍ من ذلك،
                  * إنما حقولٌ غائبة تُقرأ فراغًا.
                  */
-                'address' => $c->address,
-                'notes' => $c->notes,
-                'branch_id' => $c->branch_id,
-                'orders' => $c->orders_count,
-                'total_spent' => (float) ($c->orders_sum_total ?? 0),
-                'last_order' => $c->orders_max_ordered_at
-                    ? \Illuminate\Support\Carbon::parse($c->orders_max_ordered_at)->format('Y-m-d')
-                    : '—',
-                'last_invoice' => $c->last_invoice,
-                'last_invoice_total' => $c->last_invoice === null ? null : (float) $c->last_invoice_total,
-                'points' => $c->points,
-            ])->all();
+            'address' => $c->address,
+            'notes' => $c->notes,
+            'branch_id' => $c->branch_id,
+            'orders' => $c->orders_count,
+            'total_spent' => (float) ($c->orders_sum_total ?? 0),
+            'last_order' => $c->orders_max_ordered_at
+                ? \Illuminate\Support\Carbon::parse($c->orders_max_ordered_at)->format('Y-m-d')
+                : '—',
+            'last_invoice' => $c->last_invoice,
+            'last_invoice_total' => $c->last_invoice === null ? null : (float) $c->last_invoice_total,
+            'points' => $c->points,
+        ])->all();
     }
 
     /** عملات النشاط (مع العملة الأساسية) */
     public static function currencies(): array
     {
-        return \App\Models\Currency::where('business_id', self::bid())->orderByDesc('is_base')->orderBy('code')->get()->map(fn ($c) => [
+        return Currency::where('business_id', self::bid())->orderByDesc('is_base')->orderBy('code')->get()->map(fn ($c) => [
             'id' => $c->id,
             'code' => $c->code,
             'name' => $c->name,
@@ -1373,7 +1394,7 @@ class Demo
 
     public static function purchaseOrders(): array
     {
-        $branches = \App\Models\Branch::where('business_id', self::bid())->pluck('name', 'id');
+        $branches = Branch::where('business_id', self::bid())->pluck('name', 'id');
 
         /*
          * بنود الأوامر المفتوحة وحدها تُرسَل.
@@ -1447,7 +1468,7 @@ class Demo
 
     public static function coupons(): array
     {
-        return \App\Models\Coupon::where('business_id', self::bid())->orderByDesc('id')->get()->map(fn ($c) => [
+        return Coupon::where('business_id', self::bid())->orderByDesc('id')->get()->map(fn ($c) => [
             'id' => $c->id,
             'code' => $c->code,
             'type' => $c->type,
@@ -1467,21 +1488,21 @@ class Demo
              * كودٌ حدُّه خمسون استُخدم خمسين يُقرأ «فعّالًا» ويُردّ عند الدفع.
              */
             'usable' => $c->isValid(),
-            'display' => $c->type === 'نسبة' ? rtrim(rtrim(number_format($c->value, 2, '.', ''), '0'), '.') . '%' : self::money($c->value),
+            'display' => $c->type === 'نسبة' ? rtrim(rtrim(number_format($c->value, 2, '.', ''), '0'), '.').'%' : self::money($c->value),
         ])->all();
     }
 
     /** الكوبونات الصالحة للاستخدام الآن (مفعّلة، غير منتهية، لم تُستنفد) — لعرضها في نقطة البيع */
     public static function activeCoupons(): array
     {
-        return \App\Models\Coupon::where('business_id', self::bid())
+        return Coupon::where('business_id', self::bid())
             // الشروط الثلاثة في موضعٍ واحد تقرؤه البطاقة معه — انظر scopeUsable
             ->usable()
             ->orderByDesc('id')->get()->map(fn ($c) => [
                 'code' => $c->code,
                 'min_order' => (float) $c->min_order,
                 'display' => $c->type === 'نسبة'
-                    ? rtrim(rtrim(number_format($c->value, 2, '.', ''), '0'), '.') . '%'
+                    ? rtrim(rtrim(number_format($c->value, 2, '.', ''), '0'), '.').'%'
                     : self::money($c->value),
             ])->all();
     }
@@ -1491,10 +1512,10 @@ class Demo
         $bid = self::bid();
 
         return [
-            'total' => \App\Models\Coupon::where('business_id', $bid)->count(),
+            'total' => Coupon::where('business_id', $bid)->count(),
             // «فعّالة» تعني «يقبلها الصندوق» — لا «عمودُها مرفوع»
-            'active' => \App\Models\Coupon::where('business_id', $bid)->usable()->count(),
-            'redemptions' => (int) \App\Models\Coupon::where('business_id', $bid)->sum('used_count'),
+            'active' => Coupon::where('business_id', $bid)->usable()->count(),
+            'redemptions' => (int) Coupon::where('business_id', $bid)->sum('used_count'),
         ];
     }
 
@@ -1503,11 +1524,11 @@ class Demo
     public static function vatSettings(): array
     {
         $bid = self::bid();
-        $get = fn ($k, $d) => \App\Models\Setting::where('business_id', $bid)->where('key', $k)->value('value') ?? $d;
+        $get = fn ($k, $d) => Setting::where('business_id', $bid)->where('key', $k)->value('value') ?? $d;
 
         // مطفأةً: النسبة صفرٌ والرقم الضريبي لا يُطبع — ورقةٌ تحمل رقمًا
         // ضريبيًّا لمتجرٍ لا يجبي الضريبة تدّعي تسجيلًا لا يخصّها
-        if (! \App\Support\Vat::enabled($bid)) {
+        if (! Vat::enabled($bid)) {
             return ['rate' => 0.0, 'number' => ''];
         }
 
@@ -1530,7 +1551,7 @@ class Demo
      * والقراءة من لقطة البند لا من الإضافة اليوم: تكلفتُها منسوخةٌ لحظة
      * البيع مضروبةً فيما تأكله — انظر AddonStock.
      *
-     * @return array<int, array{revenue: float, cost: float}>  [معرّف المنتج => ...]
+     * @return array<int, array{revenue: float, cost: float}> [معرّف المنتج => ...]
      */
     private static function addonProfitByProduct(int $bid, ?string $start, ?\Illuminate\Support\Carbon $end = null, ?int $branchId = null): array
     {
@@ -1540,7 +1561,7 @@ class Demo
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->select('id');
 
-        return \App\Models\OrderItemAddon::query()
+        return OrderItemAddon::query()
             ->join('order_items', 'order_items.id', '=', 'order_item_addons.order_item_id')
             ->whereIn('order_items.order_id', $orders)
             ->groupBy('order_items.product_id')
@@ -1670,7 +1691,7 @@ class Demo
          * بأربعين صنفًا يبني أربعين نموذجًا في كلّ نداء، ونداءان في اللوحة
          * (هذا الشهر والسابق). و`DB::table` تقرأ العمود وحده.
          */
-        $costs = \Illuminate\Support\Facades\DB::table('products')
+        $costs = DB::table('products')
             ->where('business_id', $bid)->pluck('cost', 'id');
         $cogs = 0.0;
 
@@ -1760,9 +1781,9 @@ class Demo
      */
     public static function inventory(): array
     {
-        $branchNames = \App\Models\Branch::where('business_id', self::bid())->pluck('name', 'id');
-        $stocks = \App\Models\BranchStock::where('business_id', self::bid())->get()->groupBy('product_id');
-        $books = \App\Models\BranchStock::books(self::bid());
+        $branchNames = Branch::where('business_id', self::bid())->pluck('name', 'id');
+        $stocks = BranchStock::where('business_id', self::bid())->get()->groupBy('product_id');
+        $books = BranchStock::books(self::bid());
         $here = self::currentBranchId();
 
         return Product::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($p) => [
@@ -1797,7 +1818,7 @@ class Demo
 
     public static function movements(): array
     {
-        $branches = \App\Models\Branch::where('business_id', self::bid())->pluck('name', 'id');
+        $branches = Branch::where('business_id', self::bid())->pluck('name', 'id');
 
         return InventoryMovement::where('business_id', self::bid())->orderByDesc('id')->get()->map(fn ($m) => [
             // المفتاح الحقيقي: الواجهة كانت تركّب مفتاحًا من (الصنف+التاريخ+الكمية)
@@ -1821,9 +1842,9 @@ class Demo
      * الشاشة تفتح على الشهر الجاري، والملفّ كان يخرج بالتاريخ كلّه: يُرشِّح
      * التاجر سبتمبر ويصدّر، فيفتح ملفًّا فيه ثلاث سنوات.
      *
-     * @param  \Illuminate\Http\Request|null  $filter  مُرشِّحات الشاشة
+     * @param  Request|null  $filter  مُرشِّحات الشاشة
      */
-    public static function expenses(?\Illuminate\Http\Request $filter = null): array
+    public static function expenses(?Request $filter = null): array
     {
         $query = Expense::where('business_id', self::bid())->orderByDesc('spent_at');
 
@@ -1852,7 +1873,7 @@ class Demo
             ->groupBy('type')->get()
             ->keyBy('type');
 
-        return \App\Models\ExpenseType::where('business_id', $bid)->orderBy('name')->get()->map(fn ($t) => [
+        return ExpenseType::where('business_id', $bid)->orderBy('name')->get()->map(fn ($t) => [
             'id' => $t->id,
             'name' => $t->name,
             'description' => $t->description,
@@ -1875,9 +1896,9 @@ class Demo
      * وموضعٌ واحد لهما: خمسة مواضع كانت تكتب startOfWeek() بيدها، وواحدٌ
      * يُنسى يكفي ليفترق التقرير عن مقارنته.
      */
-    public const WEEK_START = \Carbon\CarbonInterface::SUNDAY;
+    public const WEEK_START = CarbonInterface::SUNDAY;
 
-    public const WEEK_END = \Carbon\CarbonInterface::SATURDAY;
+    public const WEEK_END = CarbonInterface::SATURDAY;
 
     /** بداية الفترة المختارة (اليوم/الأسبوع/الشهر/السنة) — null تعني كل الفترات */
     public static function rangeStart(string $range): ?\Illuminate\Support\Carbon
@@ -1913,7 +1934,8 @@ class Demo
         }
         $pct = ($curr - $prev) / $prev * 100;
         $up = $pct >= 0;
-        return ['trend' => ($up ? '+' : '−') . round(abs($pct)) . '%', 'up' => $up];
+
+        return ['trend' => ($up ? '+' : '−').round(abs($pct)).'%', 'up' => $up];
     }
 
     public static function financeStats(string $range = 'month'): array
@@ -1981,9 +2003,11 @@ class Demo
             ['name' => __('تحويل بنكي'), 'key' => 'تحويل بنكي', 'icon' => 'landmark', 'color' => 'info'],
             ['name' => __('بطاقة (فيزا)'), 'key' => 'بطاقة', 'icon' => 'credit-card', 'color' => 'primary'],
         ];
+
         return array_map(function ($d) use ($income, $grand) {
             $total = (float) (clone $income)->where('method', $d['key'])->sum('amount');
             $count = (clone $income)->where('method', $d['key'])->count();
+
             return array_merge($d, [
                 'total' => $total,
                 'count' => $count,
@@ -2004,6 +2028,7 @@ class Demo
     public static function transactions(string $range = 'all', ?int $limit = 500): array
     {
         $start = self::rangeStart($range);
+
         return Transaction::where('business_id', self::bid())
             ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start))
             // والسقف للشاشة وحدها: null يعني الدفتر كاملًا، وهو ما يَعِد به
@@ -2013,17 +2038,17 @@ class Demo
             ->when($limit !== null, fn ($q) => $q->limit($limit))
             ->with('order:id,status')
             ->orderByDesc('occurred_at')->get()->map(fn ($t) => [
-            // المرجع للعرض، والمفتاح للهوية: مرجعان متطابقان (تصحيح يشير
-            // لفاتورة أصلية مثلًا) كانا يجعلان React يُسقط صفًّا من دفتر مالي
-            'key' => $t->id,
-            'id' => $t->reference,
-            'date' => optional($t->occurred_at)->format('Y-m-d H:i') ?? '—',
-            'description' => $t->description,
-            'method' => $t->method,
-            'type' => $t->type,
-            'amount' => (float) $t->amount,
-            'employee' => $t->employee_name,
-            /*
+                // المرجع للعرض، والمفتاح للهوية: مرجعان متطابقان (تصحيح يشير
+                // لفاتورة أصلية مثلًا) كانا يجعلان React يُسقط صفًّا من دفتر مالي
+                'key' => $t->id,
+                'id' => $t->reference,
+                'date' => optional($t->occurred_at)->format('Y-m-d H:i') ?? '—',
+                'description' => $t->description,
+                'method' => $t->method,
+                'type' => $t->type,
+                'amount' => (float) $t->amount,
+                'employee' => $t->employee_name,
+                /*
              * والملغاة تُوسم في الملفّ كما تُوسم في الشاشة.
              *
              * الشاشةُ تشطبها وتُخرجها من مجموعها؛ والملفُّ كان يكتبها صفًّا
@@ -2031,8 +2056,8 @@ class Demo
              * — وهي تستثنيها — فوق جدولٍ يجمعها، ويجمع العمودَ بنفسه فيخرج
              * برقمٍ ثالث لا يطابق أيًّا منهما.
              */
-            'cancelled' => $t->isCancelled(),
-        ])->all();
+                'cancelled' => $t->isCancelled(),
+            ])->all();
     }
 
     /* ============================ بيانات المخططات (من قاعدة البيانات) ============================ */
@@ -2046,7 +2071,7 @@ class Demo
      * و«يوليو» على لوحةٍ إنجليزية كاملة — ومن لا يقرأ العربية لا يعرف أيّ
      * عمودٍ أيّ شهر، فيقرأ المخطط بالعكس ولا يشكّ.
      */
-    private static function monthLabel(\Carbon\Carbon|\Illuminate\Support\Carbon $m): string
+    private static function monthLabel(Carbon|\Illuminate\Support\Carbon $m): string
     {
         return app()->getLocale() === 'ar' ? self::AR_MONTHS[$m->month] : $m->translatedFormat('F');
     }
@@ -2136,7 +2161,7 @@ class Demo
     {
         $bid = self::bid();
         $range = self::range($range);
-        $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+        $driver = DB::connection()->getDriverName();
 
         [$unit, $start, $end] = match ($range) {
             'today' => ['hour', now()->startOfDay(), now()->endOfDay()],
@@ -2191,8 +2216,8 @@ class Demo
             [$key, $label, $detail] = match ($unit) {
                 'hour' => [
                     $cursor->format('H'),
-                    $cursor->format('H') . ':00',
-                    $cursor->format('H:00') . ' — ' . $cursor->format('H') . ':59',
+                    $cursor->format('H').':00',
+                    $cursor->format('H:00').' — '.$cursor->format('H').':59',
                 ],
                 /*
                  * السنة تُكتب على المحور متى عبَرت النافذةُ رأسَ سنة.
@@ -2251,6 +2276,7 @@ class Demo
             $data[] = round((float) Order::where('business_id', $bid)->sold()
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)->sum('total'), 3);
         }
+
         return ['labels' => $labels, 'data' => $data];
     }
 
@@ -2263,7 +2289,7 @@ class Demo
     public static function employeeSalesSeries($id): array
     {
         $bid = self::bid();
-        $name = \App\Models\User::where('business_id', $bid)->whereKey($id)->value('name');
+        $name = User::where('business_id', $bid)->whereKey($id)->value('name');
 
         $labels = [];
         $data = [];
@@ -2397,7 +2423,7 @@ class Demo
             ->whereNotNull('branch')
             ->selectRaw('branch, COUNT(*) as c')->groupBy('branch')->pluck('c', 'branch');
 
-        return \App\Models\Branch::where('business_id', $businessId)->orderBy('id')->get()
+        return Branch::where('business_id', $businessId)->orderBy('id')->get()
             ->map(fn ($b) => [
                 'id' => $b->id,
                 'name' => $b->name,
@@ -2607,7 +2633,7 @@ class Demo
                 'cat' => $catName,
                 'sold' => (int) $r->sold,
                 'revenue' => round((float) $r->revenue, 3),
-                'pct' => $totalRev > 0 ? round($r->revenue / $totalRev * 100) . '%' : '0%',
+                'pct' => $totalRev > 0 ? round($r->revenue / $totalRev * 100).'%' : '0%',
             ];
         })->all();
     }
@@ -2616,7 +2642,7 @@ class Demo
     public static function kpi(): array
     {
         $bid = self::bid();
-        $target = (float) (\App\Models\Setting::where('business_id', $bid)->where('key', 'monthly_target')->value('value') ?? 0);
+        $target = (float) (Setting::where('business_id', $bid)->where('key', 'monthly_target')->value('value') ?? 0);
         $now = now();
         $achieved = (float) Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()])->sum('total');
@@ -2741,7 +2767,7 @@ class Demo
      */
     private static function datePartSql(string $part, string $column): string
     {
-        $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+        $driver = DB::connection()->getDriverName();
 
         return match ($driver) {
             'pgsql' => $part === 'dow'
@@ -2813,13 +2839,13 @@ class Demo
     public static function categorySales(string $range = 'month'): array
     {
         $start = self::rangeStart(self::range($range));
-        $rows = \Illuminate\Support\Facades\DB::table('order_items')
+        $rows = DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
             ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
             // بيدٍ لأنه انضمام — انظر Order::scopeSold
             ->where('orders.business_id', self::bid())->where('orders.is_held', false)
-            ->where('orders.status', '!=', \App\Models\Order::CANCELLED)
+            ->where('orders.status', '!=', Order::CANCELLED)
             ->when($start, fn ($q) => $q->where('orders.ordered_at', '>=', $start))
             // علامة تنصيص مفردة لا مزدوجة: SQLite يتساهل ويعدّ "..." نصًّا،
             // أما PostgreSQL فيعدّها اسم عمود ويفشل بـ«column does not exist».
@@ -2839,6 +2865,7 @@ class Demo
             $labels[] = self::monthLabel($m);
             $data[] = round((float) Invoice::whereYear('issued_at', $m->year)->whereMonth('issued_at', $m->month)->sum('amount'), 3);
         }
+
         return ['labels' => $labels, 'data' => $data];
     }
 
@@ -2851,6 +2878,7 @@ class Demo
             $labels[] = self::monthLabel($m);
             $data[] = Business::real()->whereYear('starts_at', $m->year)->whereMonth('starts_at', $m->month)->count();
         }
+
         return ['labels' => $labels, 'data' => $data];
     }
 
@@ -2858,6 +2886,7 @@ class Demo
     public static function planDistribution(): array
     {
         $rows = Business::with('plan')->get()->groupBy(fn ($b) => $b->plan?->name ?? __('بدون باقة'))->map->count();
+
         return ['labels' => $rows->keys()->all(), 'series' => $rows->values()->all()];
     }
 
@@ -2874,10 +2903,26 @@ class Demo
         return collect($rows)->firstWhere($key, is_numeric($id) ? (int) $id : $id) ?? [];
     }
 
-    public static function product($id): array { return self::findById(self::products(), $id); }
-    public static function order($id): array { return self::findById(self::orders(), $id); }
-    public static function customer($id): array { return self::findById(self::customers(), $id); }
-    public static function employee($id): array { return self::findById(self::employees(), $id); }
+    public static function product($id): array
+    {
+        return self::findById(self::products(), $id);
+    }
+
+    public static function order($id): array
+    {
+        return self::findById(self::orders(), $id);
+    }
+
+    public static function customer($id): array
+    {
+        return self::findById(self::customers(), $id);
+    }
+
+    public static function employee($id): array
+    {
+        return self::findById(self::employees(), $id);
+    }
+
     /**
      * متجرٌ بعينه — صفٌّ واحد باستعلامٍ واحد، والتجريبيّ منها.
      *
@@ -2928,6 +2973,7 @@ class Demo
         foreach ($cats as $c) {
             $list[] = ['value' => $c->name, 'label' => self::ln($c->name, $c->name_en)];
         }
+
         return $list;
     }
 
@@ -2969,7 +3015,7 @@ class Demo
     {
         $bid = self::bid();
         // خريطة الاسم → الهاتف لعملاء النشاط (لعرض الهاتف والبحث به)
-        $phones = \App\Models\Customer::where('business_id', $bid)
+        $phones = Customer::where('business_id', $bid)
             ->whereNotNull('phone')->pluck('phone', 'name');
 
         $query = Order::where('business_id', $bid)->sold()
@@ -2982,7 +3028,7 @@ class Demo
         if ($term !== '') {
             $op = Search::like();
             // أسماء العملاء الذين يطابق هاتفهم كلمة البحث (للبحث برقم الهاتف)
-            $namesByPhone = \App\Models\Customer::where('business_id', $bid)
+            $namesByPhone = Customer::where('business_id', $bid)
                 ->where('phone', $op, "%{$term}%")->pluck('name')->all();
             $query->where(function ($w) use ($term, $namesByPhone, $op) {
                 $w->where('number', $op, "%{$term}%")
@@ -2994,32 +3040,32 @@ class Demo
         }
 
         return $query->orderByDesc('ordered_at')->limit($limit)->get()->map(fn ($o) => [
-                'number' => $o->number,
-                'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
-                'phone' => $phones[$o->customer_name] ?? '',
-                'total' => (float) $o->total,
-                'subtotal' => (float) $o->subtotal,
-                'discount' => (float) $o->discount,
-                'tax' => (float) $o->tax,
-                'delivery_fee' => (float) $o->delivery_fee,
-                'payment' => $o->payment_method,
-                'time' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
-                'employee' => $o->employee_name ?? '—',
-                'lines' => $o->items->map(fn ($it) => [
-                    // الاسم بمقاسه من لقطة البند لا من علاقةٍ حيّة: مقاسٌ
-                    // أُعيد تسميته لا يُغيّر فاتورةً طُبعت — انظر OrderItem::displayName
-                    'name' => $it->displayName(),
-                    'qty' => $it->quantity,
-                    'price' => (float) $it->price,
-                    'total' => $it->lineTotal(),
-                    'note' => $it->note,
-                    'addons' => $it->addons->map(fn ($a) => [
-                        'name' => $a->name,
-                        'qty' => (int) $a->quantity,
-                        'total' => (float) $a->total,
-                    ])->all(),
+            'number' => $o->number,
+            'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
+            'phone' => $phones[$o->customer_name] ?? '',
+            'total' => (float) $o->total,
+            'subtotal' => (float) $o->subtotal,
+            'discount' => (float) $o->discount,
+            'tax' => (float) $o->tax,
+            'delivery_fee' => (float) $o->delivery_fee,
+            'payment' => $o->payment_method,
+            'time' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
+            'employee' => $o->employee_name ?? '—',
+            'lines' => $o->items->map(fn ($it) => [
+                // الاسم بمقاسه من لقطة البند لا من علاقةٍ حيّة: مقاسٌ
+                // أُعيد تسميته لا يُغيّر فاتورةً طُبعت — انظر OrderItem::displayName
+                'name' => $it->displayName(),
+                'qty' => $it->quantity,
+                'price' => (float) $it->price,
+                'total' => $it->lineTotal(),
+                'note' => $it->note,
+                'addons' => $it->addons->map(fn ($a) => [
+                    'name' => $a->name,
+                    'qty' => (int) $a->quantity,
+                    'total' => (float) $a->total,
                 ])->all(),
-            ])->all();
+            ])->all(),
+        ])->all();
     }
 
     /* ============================ الإشعارات والوردية ============================ */
@@ -3033,7 +3079,7 @@ class Demo
             return [];
         }
 
-        return \App\Models\DismissedNotification::where('user_id', $u->id)->pluck('notif_key')->all();
+        return DismissedNotification::where('user_id', $u->id)->pluck('notif_key')->all();
     }
 
     /**
@@ -3052,12 +3098,40 @@ class Demo
         };
 
         if ($u && $u->isSuperAdmin()) {
+            /*
+             * محادثاتُ الدعم التي تنتظر — قبل الاشتراكات.
+             *
+             * تاجرٌ ينتظر جوابًا أعجلُ من اشتراكٍ ينتهي بعد ثلاثين يومًا.
+             * والمعيّنةُ لهذا القارئ أوّلًا: من عُيّنت إليه محادثةٌ يُنبَّه
+             * إليها هو، ولا تُدفَع نسخةٌ منها إلى كلّ مدير في المنصّة.
+             */
+            $waiting = SupportConversation::with('business')
+                ->whereIn('status', Support::LIVE)
+                ->where(fn ($q) => $q->where('assigned_to', $u->id)->orWhereNull('assigned_to'))
+                ->orderByRaw('case when assigned_to is null then 1 else 0 end')
+                ->orderByDesc('last_message_at')
+                ->limit($limit)->get();
+
+            foreach ($waiting as $c) {
+                if (Support::unreadFor($c, $u) === 0) {
+                    continue;
+                }
+
+                $add('support-'.$c->id.'-'.$c->last_message_at?->timestamp, [
+                    'text' => __('رسالة جديدة من :name', ['name' => $c->business?->name ?? '—']),
+                    'time' => optional($c->last_message_at)->diffForHumans(),
+                    'icon' => 'message-square', 'color' => 'info',
+                    /* والرابطُ يفتح المحادثةَ بعينها لا القائمة */
+                    'url' => route('super-admin.conversations.index', ['conversation' => $c->id]),
+                ]);
+            }
+
             $subs = Subscription::with('business')
                 ->whereNotNull('ends_at')->whereDate('ends_at', '>=', now())
                 ->whereDate('ends_at', '<=', now()->addDays(30))
                 ->orderBy('ends_at')->limit($limit)->get();
             foreach ($subs as $s) {
-                $add('sub-' . $s->id, [
+                $add('sub-'.$s->id, [
                     'text' => __('اشتراك «:name» ينتهي قريبًا', ['name' => $s->business?->name ?? '—']),
                     'time' => optional($s->ends_at)->format('Y-m-d'),
                     'icon' => 'badge-x', 'color' => 'warning',
@@ -3070,12 +3144,36 @@ class Demo
 
         $bid = self::bid();
 
+        /*
+         * وردُّ أبعادٍ لم يُقرأ — أعلى ما يعني التاجر في جرسه.
+         *
+         * والملاحظاتُ الداخليّة لا تُعدّ ولا تُذكر: `businessBadge` تُرشّحها،
+         * ومن ينبّه بها يُخرج كلامَ الفريق إلى صاحب المتجر بلا أن يفتحه أحد.
+         */
+        if ($u) {
+            $replies = SupportConversation::where('business_id', $bid)
+                ->orderByDesc('last_message_at')->limit($limit)->get();
+
+            foreach ($replies as $c) {
+                if (Support::unreadFor($c, $u) === 0) {
+                    continue;
+                }
+
+                $add('support-reply-'.$c->id.'-'.$c->last_message_at?->timestamp, [
+                    'text' => __('لديك رد جديد من دعم أبعاد'),
+                    'time' => optional($c->last_message_at)->diffForHumans(),
+                    'icon' => 'message-square', 'color' => 'info',
+                    'url' => route('admin.help.show', $c->id),
+                ]);
+            }
+        }
+
         // ملخّص اليوم (بطاقة في الجرس) — يظهر فقط إذا كان مفعّلًا في الإعدادات وهناك نشاط اليوم
-        $dailyPref = \App\Models\Setting::where('business_id', $bid)->where('key', 'notify_daily_summary')->value('value');
+        $dailyPref = Setting::where('business_id', $bid)->where('key', 'notify_daily_summary')->value('value');
         if ($dailyPref !== '0') {
             $sum = self::dailySummaryFor($bid);
             if ($sum['orders'] > 0 || $sum['sales'] > 0) {
-                $add('daily-' . $sum['date'], [
+                $add('daily-'.$sum['date'], [
                     'text' => __('ملخّص اليوم: :sales · :orders طلب · صافي :net', [
                         'sales' => self::money($sum['sales']),
                         'orders' => $sum['orders'],
@@ -3102,7 +3200,7 @@ class Demo
          * فمن مُنح الاعتماد ولم يُمنح القراءة كان الجرسُ يقوده إلى ٤٠٣.
          */
         if ($u && $u->may(Permissions::RECEIPT_APPROVE) && $u->may(Permissions::RECEIPT_VIEW)) {
-            $waiting = \App\Models\GoodsReceiptNote::where('business_id', $bid)
+            $waiting = GoodsReceiptNote::where('business_id', $bid)
                 ->where('status', GoodsReceipts::PENDING)
                 ->with('supplier')->orderBy('id')->limit($limit)->get();
 
@@ -3122,7 +3220,7 @@ class Demo
         $low = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')
             ->orderBy('quantity')->limit($limit)->get();
         foreach ($low as $p) {
-            $add('low-' . $p->id, [
+            $add('low-'.$p->id, [
                 'text' => $p->quantity <= 0
                     ? __('نفد المخزون: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity])
                     : __('مخزون منخفض: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity]),
@@ -3136,13 +3234,13 @@ class Demo
          * لم يبدأ — انظر AlertMetrics::dormantCustomers. المدّة تُضبط من
          * الإعدادات (dormant_customer_days) وافتراضها ٦٠ يومًا.
          */
-        $dormantPref = \App\Models\Setting::where('business_id', $bid)
+        $dormantPref = Setting::where('business_id', $bid)
             ->where('key', 'notify_dormant_customers')->value('value');
         if ($dormantPref !== '0') {
-            $days = \App\Support\AlertMetrics::dormantDays($bid);
-            foreach (\App\Support\AlertMetrics::dormantCustomers($bid, $days)->take($limit) as $c) {
+            $days = AlertMetrics::dormantDays($bid);
+            foreach (AlertMetrics::dormantCustomers($bid, $days)->take($limit) as $c) {
                 $since = \Illuminate\Support\Carbon::parse($c->last_at);
-                $add('dormant-' . $c->id, [
+                $add('dormant-'.$c->id, [
                     'text' => __('عميل راكد: :name — آخر شراء قبل :days يومًا', [
                         'name' => self::ln($c->name, $c->name_en),
                         'days' => $since->diffInDays(now()),
@@ -3155,16 +3253,16 @@ class Demo
         }
 
         // تنبيهات عرّفها صاحب النشاط بنفسه — قواعد تُفحص الآن، وتذكيرات بموعد
-        foreach (\App\Models\CustomAlert::where('business_id', $bid)->where('active', true)->get() as $alert) {
+        foreach (CustomAlert::where('business_id', $bid)->where('active', true)->get() as $alert) {
             $due = $alert->type === 'reminder'
                 ? ($alert->due_at !== null && $alert->due_at->lte(now()))
-                : \App\Support\AlertMetrics::triggered($alert, $bid);
+                : AlertMetrics::triggered($alert, $bid);
 
             if (! $due) {
                 continue;
             }
 
-            $add('custom-' . $alert->id, [
+            $add('custom-'.$alert->id, [
                 'text' => $alert->message,
                 'time' => $alert->type === 'reminder'
                     ? optional($alert->due_at)->format('Y-m-d')
@@ -3178,7 +3276,7 @@ class Demo
         $pending = Order::where('business_id', $bid)->sold()
             ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit($limit)->get();
         foreach ($pending as $o) {
-            $add('order-' . $o->number, [
+            $add('order-'.$o->number, [
                 'text' => __('طلب :number بانتظار التجهيز', ['number' => $o->number]),
                 'time' => optional($o->ordered_at)->format('Y-m-d H:i'),
                 'icon' => 'receipt', 'color' => 'info',
@@ -3205,7 +3303,6 @@ class Demo
         return self::buildNotifications(100);
     }
 
-
     /* ============================ الحساب البنكي وكشف الحساب ============================ */
 
     /**
@@ -3217,7 +3314,7 @@ class Demo
     public static function bankAccount(?int $accountId = null): array
     {
         $a = $accountId
-            ? \App\Models\BankAccount::where('business_id', self::bid())->find($accountId)
+            ? BankAccount::where('business_id', self::bid())->find($accountId)
             : null;
         $a ??= Bank::current(self::bid());
 
@@ -3276,7 +3373,7 @@ class Demo
     /** أسطر كشف البنك المستوردة مع حالة المطابقة — لحسابٍ واحد */
     public static function bankLines(?int $accountId = null): array
     {
-        return \App\Models\BankStatementLine::where('business_id', self::bid())
+        return BankStatementLine::where('business_id', self::bid())
             ->when($accountId, fn ($q) => $q->where(fn ($w) => $w
                 ->where('bank_account_id', $accountId)->orWhereNull('bank_account_id')))
             ->with('transaction')->orderBy('date')->get()->map(fn ($l) => [
@@ -3286,7 +3383,7 @@ class Demo
                 'reference' => $l->reference ?: '—',
                 'amount' => (float) $l->amount,
                 'status' => $l->match_status,
-                'matched' => $l->match_status === \App\Models\BankStatementLine::MATCHED,
+                'matched' => $l->match_status === BankStatementLine::MATCHED,
                 'transaction' => $l->transaction?->reference,
             ])->all();
     }
@@ -3295,7 +3392,7 @@ class Demo
     public static function reconciliationSummary(?int $accountId = null): array
     {
         $bid = self::bid();
-        $lines = \App\Models\BankStatementLine::where('business_id', $bid)
+        $lines = BankStatementLine::where('business_id', $bid)
             ->when($accountId, fn ($q) => $q->where(fn ($w) => $w
                 ->where('bank_account_id', $accountId)->orWhereNull('bank_account_id')))
             ->get();
@@ -3319,8 +3416,8 @@ class Demo
 
         return [
             'lines' => $lines->count(),
-            'matched' => $lines->where('match_status', \App\Models\BankStatementLine::MATCHED)->count(),
-            'unmatched_bank' => $lines->where('match_status', '!=', \App\Models\BankStatementLine::MATCHED)->count(),
+            'matched' => $lines->where('match_status', BankStatementLine::MATCHED)->count(),
+            'unmatched_bank' => $lines->where('match_status', '!=', BankStatementLine::MATCHED)->count(),
             'unmatched_system' => $lines->count() ? $unmatchedSystem : 0,
             'bank_total' => round((float) $lines->sum('amount'), 3),
         ];

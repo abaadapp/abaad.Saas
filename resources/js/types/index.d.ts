@@ -128,6 +128,8 @@ export interface SharedProps {
         items: Notification[];
         count: number;
     } | null;
+    /** عددُ محادثات الدعم التي تنتظر هذا المستخدم — محسوبٌ في كلّ طلب */
+    supportBadge: number;
     flash: {
         toast: Toast | null;
         status: string | null;

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
-import { Check, Clock, X, type LucideIcon } from 'lucide-react';
+import { Check, Clock, X } from 'lucide-react';
+import { ToolMark } from '@/Components/BrandMarks';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
@@ -34,22 +35,17 @@ export interface Readiness {
  * فصار البابُ بابًا: شيءٌ واحدٌ يُضغط. وما وراءه يُعرض بعده.
  */
 export function ConnectGate({
-    icon: Icon,
     name,
     line,
     tool,
-    tint,
     note,
 }: {
-    icon: LucideIcon;
     /* مترجَمةً من المنادي لا هنا: `t()` داخل مكوّنٍ يبتلع النصّ من حارس
        الترجمة — يفحص `t('…')` في المصدر وخصائصَ معدودة، لا خاصّيةً نخترعها */
     name: string;
     line: string;
     /** الأداة كما يعرفها المسار — انظر IntegrationsController::connect */
     tool: 'whatsapp' | 'google';
-    /** لونُ الأداة — واتساب أخضر والخرائط حمراء، فتُعرف قبل أن تُقرأ */
-    tint: string;
     /** سطرٌ تحت الزرّ حين يكون على أبعاد شيءٌ قبل أن يبدأ */
     note?: string | null;
 }) {
@@ -58,12 +54,8 @@ export function ConnectGate({
 
     return (
         <Card className="mx-auto flex max-w-xl flex-col items-center px-6 py-16 text-center">
-            <span
-                className="flex size-20 items-center justify-center rounded-[24px]"
-                style={{ background: tint + '14', color: tint }}
-            >
-                <Icon className="size-9" />
-            </span>
+            {/* شعارُ الأداة نفسه — يُعرف قبل أن يُقرأ اسمُه تحته */}
+            <ToolMark tool={tool} name={name} size={80} />
 
             <h2 className="mt-6 text-[20px] font-bold text-[#111]">{name}</h2>
             <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-[#6b7280]">{line}</p>

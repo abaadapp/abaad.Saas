@@ -1,14 +1,8 @@
 import { Link, usePage } from '@inertiajs/react';
-import {
-    CreditCard,
-    ExternalLink,
-    MapPin,
-    MessageCircle,
-    Puzzle,
-    type LucideIcon,
-} from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import { ToolMark } from '@/Components/BrandMarks';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -35,17 +29,12 @@ interface Props {
 }
 
 /**
- * أيقونةُ الأداة — مرسومةٌ هنا لا مُرسَلةٌ من الخادم.
+ * والشعارُ يُختار في المتصفّح لا يُرسله الخادم.
  *
- * والخادم يرسل المفتاح واللون: اسمُ أيقونةٍ يعبر الشبكة يصير عقدًا بين
- * PHP ومكتبة رسمٍ في المتصفّح — تُبدَّل المكتبة فتنكسر أسماءٌ في ملفّ
- * PHP لا يعرف أحدٌ لماذا هي فيه.
+ * الخادم يرسل المفتاح واللون: اسمُ شعارٍ يعبر الشبكة يصير عقدًا بين PHP
+ * وطبقةِ رسمٍ في المتصفّح — تُبدَّل الطبقة فتنكسر أسماءٌ في ملفّ PHP لا
+ * يعرف أحدٌ لماذا هي فيه. انظر `Components/BrandMarks`.
  */
-const ICONS: Record<string, LucideIcon> = {
-    google: MapPin,
-    whatsapp: MessageCircle,
-    amwalpay: CreditCard,
-};
 
 /** حالُ الأداة → لونُ شارتها. وما لا يُعرف رماديّ لا أخضر */
 const TONE: Record<string, 'success' | 'warning' | 'neutral' | 'outline'> = {
@@ -57,17 +46,12 @@ const TONE: Record<string, 'success' | 'warning' | 'neutral' | 'outline'> = {
 
 function AppCard({ app }: { app: App }) {
     const t = useTranslate();
-    const Icon = ICONS[app.key] ?? Puzzle;
 
     return (
         <Card className="flex flex-col p-5">
             <div className="flex items-start gap-3">
-                <span
-                    className="flex size-12 shrink-0 items-center justify-center rounded-[14px]"
-                    style={{ background: app.tint + '14', color: app.tint }}
-                >
-                    <Icon className="size-6" />
-                </span>
+                {/* الشعارُ يحمل مربّعَه وألوانَه — فلا يُلفّ بخلفيّةٍ ثانية تحته */}
+                <ToolMark tool={app.key} name={app.name} tint={app.tint} size={48} className="shrink-0" />
 
                 <div className="min-w-0">
                     <h3 className="truncate font-bold text-[#111]">{app.name}</h3>

@@ -1,5 +1,5 @@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
-import { MessageCircle, Save, SlidersHorizontal } from 'lucide-react';
+import { Save, SlidersHorizontal } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field from '@/Components/Field';
@@ -82,11 +82,9 @@ export default function IntegrationsWhatsapp() {
                     subtitle={t('اربط واتساب ليصل العميل خبرُ طلبه لحظةَ تغيّره')}
                 />
                 <ConnectGate
-                    icon={MessageCircle}
                     name={t('واتساب بزنس')}
                     line={t('يصل العميل خبرُ طلبه على واتساب لحظةَ تغيّره — بلا أن يتّصل أحد.')}
                     tool="whatsapp"
-                    tint="#25d366"
                     note={automation.global_enabled ? null : t('واتساب غير مفعَّل في المنصّة بعد — يفتحه أبعاد.')}
                 />
             </AdminLayout>

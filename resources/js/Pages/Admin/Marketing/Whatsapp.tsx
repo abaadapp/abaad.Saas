@@ -1,5 +1,6 @@
 import { Link, useForm, usePage } from '@inertiajs/react';
 import { AlertTriangle, MessageCircle, Save } from 'lucide-react';
+import { WhatsAppBusinessMark } from '@/Components/BrandMarks';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Toggle from '@/Components/Toggle';
@@ -65,12 +66,8 @@ export default function Whatsapp() {
                     subtitle={t('رسائل تُرسَل للعميل عند تغيّر حال طلبه')}
                 />
                 <Card className="mx-auto flex max-w-xl flex-col items-center px-6 py-16 text-center">
-                    <span
-                        className="flex size-20 items-center justify-center rounded-[24px]"
-                        style={{ background: '#25d36614', color: '#25d366' }}
-                    >
-                        <MessageCircle className="size-9" />
-                    </span>
+                    {/* الشعارُ نفسه الذي في اللوحة وفي باب الأداة — لا ثالثَ له */}
+                    <WhatsAppBusinessMark size={80} />
 
                     <h2 className="mt-6 text-[20px] font-bold text-[#111]">{t('واتساب غير مربوط بعد')}</h2>
                     <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-[#6b7280]">

@@ -164,11 +164,9 @@ export default function MarketingGoogle() {
                     subtitle={t('اربط محلّك بملفّه على الخرائط: رابطٌ لطلب التقييم، وتقييماتُ Google تُقرأ هنا')}
                 />
                 <ConnectGate
-                    icon={MapPin}
                     name={t('خرائط Google')}
                     line={t('اربط محلّك بملفّه على الخرائط: يمسح الزبون رمزًا على الإيصال فيكتب تقييمه، وتُقرأ تقييماتك هنا.')}
                     tool="google"
-                    tint="#ea4335"
                     note={readiness.steps[0]?.done ? null : readiness.steps[0]?.fix}
                 />
             </AdminLayout>

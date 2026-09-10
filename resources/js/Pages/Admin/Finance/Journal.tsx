@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { Check, Plus, Trash2 } from 'lucide-react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import { Check, Plus, Trash2, Undo2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
@@ -40,6 +40,12 @@ interface Entry {
     author: string | null;
     total: number;
     lines: EntryLine[];
+    /** عُكس هذا القيد بقيدٍ ثانٍ — يبقى في الدفتر ولا يُجمع */
+    reversed: boolean;
+    /** هو نفسُه قيدُ عكس */
+    reverses: boolean;
+    /** يدويٌّ مُرحَّل لم يُعكس — وحدَه يُعكس من هنا */
+    mayReverse: boolean;
 }
 
 interface Props {
@@ -70,6 +76,9 @@ export default function Journal() {
     const m = (v: number) => money(v, context!.currency);
 
     const [viewing, setViewing] = useState<Entry | null>(null);
+    const [reversing, setReversing] = useState<Entry | null>(null);
+    const [reason, setReason] = useState('');
+    const [sending, setSending] = useState(false);
     const [adding, setAdding] = useState(false);
 
     const form = useForm({
@@ -138,7 +147,30 @@ export default function Journal() {
                 </span>
             ),
         },
-        { key: 'description', header: 'البيان', cell: (e) => e.description },
+        {
+            key: 'description',
+            header: 'البيان',
+            /*
+                وحالُ العكس تُقال في الصفّ لا في نافذةٍ تُفتح.
+                قيدٌ عُكس يبقى في الدفتر، ومن لا يعرف أنّه عُكس يحسبه قائمًا
+                فيجمعه مرّتين.
+            */
+            cell: (e) => (
+                <span className="flex flex-wrap items-center gap-2">
+                    <span className={cn(e.reversed && 'text-[#9ca3af] line-through')}>{e.description}</span>
+                    {e.reversed && (
+                        <Badge variant="neutral" className="shrink-0">
+                            {t('معكوس')}
+                        </Badge>
+                    )}
+                    {e.reverses && (
+                        <Badge variant="neutral" className="shrink-0">
+                            {t('قيد عكس')}
+                        </Badge>
+                    )}
+                </span>
+            ),
+        },
         {
             key: 'source',
             header: 'المصدر',
@@ -155,9 +187,22 @@ export default function Journal() {
             header: 'إجراءات',
             align: 'end',
             cell: (e) => (
-                <Button variant="ghost" size="sm" onClick={() => setViewing(e)}>
-                    {t('السطور')}
-                </Button>
+                <span className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => setViewing(e)}>
+                        {t('السطور')}
+                    </Button>
+                    {/*
+                        ولا يُعرض الزرُّ لمن لا يُدير شيئًا: قيدُ مستندٍ يُلغى
+                        من مستنده، وقيدٌ عُكس لا يُعكس مرّتين. وزرٌّ يُعرض
+                        ويردّ برسالةٍ يُقرأ عطبًا لا منعًا.
+                    */}
+                    {e.mayReverse && (
+                        <Button variant="ghost" size="sm" onClick={() => setReversing(e)}>
+                            <Undo2 className="size-4" />
+                            {t('عكس')}
+                        </Button>
+                    )}
+                </span>
             ),
         },
     ];
@@ -385,6 +430,81 @@ export default function Journal() {
                             </Button>
                         </div>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/*
+                ═══ نافذةُ العكس ═══
+
+                والسببُ يُسأل ولا يُفرَض: من يقرأ الدفتر بعد سنةٍ يجد قيدًا
+                وعكسَه ولا يعرف لماذا. وحقلٌ إلزاميٌّ يُملأ بنقطةٍ لا يقول
+                شيئًا، فيُترك اختياريًّا ويُقال إنّه يُطبع في البيان.
+
+                ولا تُغيَّر سطورُ القيد ولا يُحذف — يُقال ذلك صراحةً في
+                النافذة: من يضغط «عكس» يظنّه حذفًا فيفزع حين يجد القيد باقيًا.
+            */}
+            <Dialog open={reversing !== null} onOpenChange={(o) => !o && setReversing(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{t('عكس القيد')}</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-4 px-5 pb-5">
+                        <p className="text-[13px] leading-relaxed text-[#4b4b4b]">
+                            {t('يُكتب قيدٌ ثانٍ يعكس :n بتاريخه نفسِه. والقيدُ الأصلي يبقى في الدفتر ولا تُغيَّر سطورُه — فتاريخُ الدفتر يُقرأ كاملًا.', {
+                                n: reversing?.number ?? '',
+                            })}
+                        </p>
+
+                        <div className="rounded-[10px] bg-[#fafafa] p-3 text-[12px]">
+                            <p className="font-medium text-[#111]">{reversing?.description}</p>
+                            <p className="mt-1 text-[#71717a]">
+                                <span dir="ltr">{reversing?.date}</span>
+                                <span className="mx-1.5">·</span>
+                                <span className="tabular-nums">{m(reversing?.total ?? 0)}</span>
+                            </p>
+                        </div>
+
+                        <Field label="السبب" hint="اختياري — يُطبع في بيان قيد العكس">
+                            <Input
+                                value={reason}
+                                maxLength={200}
+                                onChange={(e) => setReason(e.target.value)}
+                                placeholder={t('مثل: اتجاه معكوس')}
+                            />
+                        </Field>
+
+                        <div className="flex justify-end gap-2">
+                            <Button type="button" variant="ghost" onClick={() => setReversing(null)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button
+                                type="button"
+                                loading={sending}
+                                /* والضغطتان أمرٌ واحد: عكسان يقلبان الرصيد */
+                                disabled={sending || reversing === null}
+                                onClick={() => {
+                                    if (!reversing) return;
+                                    setSending(true);
+                                    router.post(
+                                        route('admin.finance.journal.reverse', reversing.id),
+                                        { reason },
+                                        {
+                                            preserveScroll: true,
+                                            onFinish: () => {
+                                                setSending(false);
+                                                setReversing(null);
+                                                setReason('');
+                                            },
+                                        },
+                                    );
+                                }}
+                            >
+                                <Undo2 />
+                                {t('عكس القيد')}
+                            </Button>
+                        </div>
+                    </div>
                 </DialogContent>
             </Dialog>
         </AdminLayout>

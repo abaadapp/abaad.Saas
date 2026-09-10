@@ -939,6 +939,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // القيود اليومية
     Route::get('/finance/journal', [JournalController::class, 'index'])->name('finance.journal');
     Route::post('/finance/journal', [JournalController::class, 'store'])->name('finance.journal.store');
+    /*
+     * وعكسُ قيدٍ يدويّ — البابُ الذي لم يكن.
+     *
+     * `Ledger::reverse` كانت تُستدعى من إلغاء المستندات وحدَها، والقيدُ الذي
+     * يكتبه التاجر بيده لا سبيلَ إلى تصحيحه من أيّ شاشة.
+     */
+    Route::post('/finance/journal/{id}/reverse', [JournalController::class, 'reverse'])
+        ->name('finance.journal.reverse');
 
     // الأصول الثابتة وإهلاكها
     Route::get('/finance/assets', [FixedAssetController::class, 'index'])->name('finance.assets');

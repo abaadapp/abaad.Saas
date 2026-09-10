@@ -4941,5 +4941,16 @@
     "منذ :n يوم": ":n d ago",
     "أمس": "Yesterday",
     "رقم التواصل": "Contact Number",
-    "أُرسلت": "Sent"
+    "أُرسلت": "Sent",
+    "عكس": "Reverse",
+    "عكس القيد": "Reverse Entry",
+    "معكوس": "Reversed",
+    "قيد عكس": "Reversal",
+    "اختياري — يُطبع في بيان قيد العكس": "Optional — printed in the reversal description",
+    "مثل: اتجاه معكوس": "e.g. wrong direction",
+    "عُكس القيد — رقم العكس :n": "Entry reversed — reversal :n",
+    "القيد معكوسٌ أصلًا.": "This entry is already reversed.",
+    "هذا قيدُ عكسٍ — ولا يُعكس العكس.": "This is a reversal — a reversal is not reversed.",
+    "قيدُ :source يُلغى من مستنده لا من هنا.": "A :source entry is voided from its document, not here.",
+    "يُكتب قيدٌ ثانٍ يعكس :n بتاريخه نفسِه. والقيدُ الأصلي يبقى في الدفتر ولا تُغيَّر سطورُه — فتاريخُ الدفتر يُقرأ كاملًا.": "A second entry is posted reversing :n on its own date. The original stays in the ledger with its lines untouched — so the ledger reads its full history."
 }

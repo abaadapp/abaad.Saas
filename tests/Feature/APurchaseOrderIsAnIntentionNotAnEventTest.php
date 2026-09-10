@@ -441,7 +441,15 @@ class APurchaseOrderIsAnIntentionNotAnEventTest extends TestCase
         $screen = file_get_contents(resource_path('js/Pages/Admin/Purchases/Create.tsx'));
 
         $this->assertStringContainsString("route('admin.settings.templates.edit', 'purchase')", $screen);
-        $this->assertStringContainsString('srcDoc={html}', $screen, 'المعاينةُ ليست في إطارٍ يقرأ ردَّ الخادم');
+        /*
+         * والمعاينةُ صارت في `Components/PaperFrame` — مكوّنٌ واحد لثلاث
+         * شاشات، يرسم الورقة بمقاسها الحقيقيّ ثمّ يُصغّرها. والمحروسُ هنا
+         * أنّ الشاشةَ **تعرض ردَّ الخادم** لا صورةً ترسمها بنفسها؛ أمّا
+         * عزلُ الإطار ومقاسُه فيحرسهما `tests/js/preview-frame-height`
+         * حيث يُكتبان مرّةً واحدة.
+         */
+        $this->assertStringContainsString('<PaperFrame', $screen, 'الشاشةُ لا تعرض ورقةً');
+        $this->assertStringContainsString('html={html}', $screen, 'المعاينةُ لا تقرأ ردَّ الخادم');
         $this->assertStringContainsString("route('admin.purchases.preview')", $screen);
 
         // و«أمر الشراء» ورقةٌ معروفةٌ في السجلّ — وإلّا كان الزرُّ يقود إلى ٤٠٤

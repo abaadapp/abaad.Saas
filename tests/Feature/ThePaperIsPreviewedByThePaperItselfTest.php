@@ -197,7 +197,15 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
 
         // ولا صورةَ ثانيةً في الشاشة: الإطارُ يعرض ما يردّه الخادم
         $screen = file_get_contents(resource_path('js/Pages/Admin/CustomerInvoices/Create.tsx'));
-        $this->assertStringContainsString('srcDoc={html}', $screen, 'المعاينةُ ليست في إطارٍ يقرأ ردَّ الخادم');
+        /*
+         * والمعاينةُ صارت في `Components/PaperFrame` — مكوّنٌ واحد لثلاث
+         * شاشات، يرسم الورقة بمقاسها الحقيقيّ ثمّ يُصغّرها. والمحروسُ هنا
+         * أنّ الشاشةَ **تعرض ردَّ الخادم** لا صورةً ترسمها بنفسها؛ أمّا
+         * عزلُ الإطار ومقاسُه فيحرسهما `tests/js/preview-frame-height`
+         * حيث يُكتبان مرّةً واحدة.
+         */
+        $this->assertStringContainsString('<PaperFrame', $screen, 'الشاشةُ لا تعرض ورقةً');
+        $this->assertStringContainsString('html={html}', $screen, 'المعاينةُ لا تقرأ ردَّ الخادم');
         $this->assertStringContainsString(
             "route('admin.customerInvoices.preview')",
             $screen,
@@ -481,8 +489,12 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
         $this->assertStringContainsString('xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]', $screen);
         $this->assertStringContainsString('xl:sticky xl:top-4 xl:self-start', $screen);
 
-        // والإطارُ معزولٌ بلا تنفيذ: الورقةُ نصٌّ يُطبع لا صفحةٌ تعمل
-        $this->assertStringContainsString('sandbox=""', $screen);
+        /*
+         * وعزلُ الإطار انتقل إلى `Components/PaperFrame` — ويحرسه
+         * `tests/js/preview-frame-height`: القاعدةُ تُحرس حيث تُكتب مرّةً،
+         * لا في كلّ شاشةٍ تقرؤها.
+         */
+        $this->assertStringContainsString('<PaperFrame', $screen);
     }
 
     /* ------------------------------ أدوات ------------------------------ */

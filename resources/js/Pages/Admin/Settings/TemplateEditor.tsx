@@ -8,6 +8,7 @@ import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
+import PaperFrame, { type Medium } from '@/Components/PaperFrame';
 import DocumentBrand, { type Brand } from './partials/DocumentBrand';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -48,6 +49,21 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
     const t = useTranslate();
 
     const form = useForm<Record<string, string | boolean>>({ ...template.values });
+
+    /*
+     * ومقاسُ الورقة يتبع ما اختاره التاجر لا نوعَ المستند وحده.
+     *
+     * `sale` وحدها تملك «مقاس الورق» (`hasPaper`): من اختار ٨٠ مم يعاين
+     * شريطًا حراريًّا، ومن اختار A4 يعاين صفحة. وسائرُ الأنواع أوراقُ A4
+     * دائمًا — لا يُطبع أمرُ شراءٍ على شريط.
+     *
+     * ويُقرأ من `form.data` لا من القيمة المحفوظة: المعاينةُ تتبع ما على
+     * الشاشة الآن، وإلّا بدّل التاجر المقاسَ فتغيّر المحتوى وبقي الإطار.
+     */
+    const paper = template.hasPaper ? String(form.data.paper ?? 'A4') : 'A4';
+    const medium: Medium = paper === 'A4'
+        ? { kind: 'sheet' }
+        : { kind: 'strip', widthMm: paper === '58mm' ? 58 : 80 };
 
     const [html, setHtml] = useState<string>('');
     const [drawing, setDrawing] = useState(true);
@@ -147,18 +163,19 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
                         {drawing && <RefreshCw className="size-3.5 animate-spin text-[#d1d5db]" />}
                     </div>
 
-                    <div className="overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white">
-                        {/*
-                            sandbox بلا allow-scripts: الورقة نصٌّ يُطبع لا
-                            صفحةٌ تعمل، وتنفيذُ شيءٍ منها في اللوحة لا داعيَ له.
-                        */}
-                        <iframe
-                            title={t('معاينة الورقة')}
-                            srcDoc={html}
-                            sandbox=""
-                            className="h-[70svh] w-full border-0 bg-white lg:h-[calc(100svh-14rem)]"
-                        />
-                    </div>
+                    {/*
+                        والورقةُ بمقاسها الحقيقيّ — A4 قائمةً أو شريطًا حراريًّا.
+
+                        وكانت صندوقًا بعرض العمود: مستطيلٌ عريضٌ يتغيّر شكلُه
+                        بحجم النافذة، فيضبط التاجر قالبَه على شكلٍ لا وجود
+                        له. انظر `Components/PaperFrame`.
+                    */}
+                    <PaperFrame
+                        html={html}
+                        medium={medium}
+                        title={t('معاينة الورقة')}
+                        viewport="min(78svh, 1000px)"
+                    />
                 </div>
 
                 <form onSubmit={submit} className="min-w-0 space-y-4">

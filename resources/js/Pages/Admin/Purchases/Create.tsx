@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
+import PaperFrame from '@/Components/PaperFrame';
 import { Package, Paperclip, Plus, RefreshCw, Send, Settings2, Sparkles, Star, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
@@ -826,11 +827,11 @@ export default function PurchaseCreate() {
                             وارتفاعُ اللوحة نفسِها يبقى `dvh` — تغيُّرُ حدٍّ
                             أدنى لا يُعيد ترتيب شيء.
                         */}
-                        <iframe
+                        <PaperFrame
+                            html={html}
                             title={t('معاينة أمر الشراء')}
-                            srcDoc={html}
-                            sandbox=""
-                            className="h-[60svh] w-full border-0 bg-white xl:h-[calc(100svh-13rem)]"
+                            viewport="min(72svh, 1000px)"
+                            className="border-0 rounded-none"
                         />
                     </div>
 

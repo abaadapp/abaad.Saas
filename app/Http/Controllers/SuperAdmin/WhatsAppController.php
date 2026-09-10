@@ -107,6 +107,46 @@ class WhatsAppController extends Controller
     }
 
     /**
+     * فتحُ الوارد على الرقم المشترك — أو إغلاقُه.
+     *
+     * ═══ ولمَ هو مقبضٌ صريحٌ لا استنتاج ═══
+     *
+     * الرقمُ يُرسل إشعاراتِ الطلبات **نيابةً عن المحلّات**، فيردّ عليه
+     * زبائنُهم. وفتحُ الوارد بلا قرارٍ يعني أنّ ردودَ الزبائن تصير مادّةً
+     * تُقرأ — ولو أُسقط منها ما لا يُطابق مستخدمًا، فالقرارُ في فتح الباب
+     * لا في ما يُصفّى بعده.
+     *
+     * وما يُخزَّن بعد الفتح محدودٌ في `SupportWhatsApp::receive`: رقمٌ
+     * يُطابق مستخدمًا **واحدًا** له متجر، وما عداه يُسقَط ولا يُكتب.
+     */
+    public function supportInbox(Request $request)
+    {
+        $data = $request->validate(['supports_inbox' => ['required', 'boolean']]);
+
+        $connection = WhatsAppConnection::query()->platform()->orderByDesc('id')->first();
+
+        // ولا يُفتح بابٌ على رقمٍ لا وجود له
+        if (! $connection) {
+            return back()->withErrors([
+                'supports_inbox' => __('اربط رقم أبعاد المشترك أوّلًا.'),
+            ]);
+        }
+
+        $connection->update(['supports_inbox' => $data['supports_inbox']]);
+
+        Activity::log('settings', $data['supports_inbox']
+            ? 'فُتح استقبال رسائل الدعم على رقم أبعاد المشترك'
+            : 'أُغلق استقبال رسائل الدعم على رقم أبعاد المشترك');
+
+        return back()->with('toast', [
+            'msg' => $data['supports_inbox']
+                ? __('يُقرأ الواردُ الآن في مركز المحادثات')
+                : __('أُغلق الوارد — لا رسالةَ تُخزَّن'),
+            'type' => 'success',
+        ]);
+    }
+
+    /**
      * ضبط واتساب لمتجرٍ بعينه — التفعيل والحدّ وإذن الرقم الخاص.
      *
      * والحقول تُكتب حين تُرسل وحدها: نموذجٌ يُرسل حقلًا واحدًا لا يمحو الثلاثة

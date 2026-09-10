@@ -20,6 +20,7 @@ class SupportConversation extends Model
     protected $casts = [
         'assigned_at' => 'datetime',
         'last_message_at' => 'datetime',
+        'whatsapp_window_at' => 'datetime',
         'resolved_at' => 'datetime',
         'closed_at' => 'datetime',
         'external_meta' => 'array',

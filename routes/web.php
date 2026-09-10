@@ -348,6 +348,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 
     Route::post('/whatsapp/shared', [WhatsAppController::class, 'connectShared'])->name('whatsapp.shared.connect');
     Route::delete('/whatsapp/shared', [WhatsAppController::class, 'disconnectShared'])->name('whatsapp.shared.disconnect');
+    Route::post('/whatsapp/support-inbox', [WhatsAppController::class, 'supportInbox'])->name('whatsapp.support-inbox');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
 });
 

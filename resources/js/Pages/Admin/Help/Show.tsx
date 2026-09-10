@@ -73,6 +73,12 @@ export default function HelpShow({ conversation, messages, maxFiles, maxKb, exte
                             {conversation.category}
                             <span className="mx-1.5 text-[#d4d4d8]">·</span>
                             <span dir="ltr">{conversation.reference}</span>
+                            {/*
+                                ومن أين بدأت — خيطٌ فُتح من واتساب يجده صاحبُه هنا
+                                ولم يفتحه في اللوحة، فيُقال له من أين جاء.
+                            */}
+                            <span className="mx-1.5 text-[#d4d4d8]">·</span>
+                            {conversation.channelLabel}
                         </p>
                     </div>
 

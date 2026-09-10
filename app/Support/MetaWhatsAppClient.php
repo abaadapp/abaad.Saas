@@ -91,6 +91,63 @@ class MetaWhatsAppClient
         );
     }
 
+    /**
+     * إرسال نصٍّ حرّ — لا قالب.
+     *
+     * ولا يصلح لمخاطبة زبونٍ ابتداءً: ميتا تمنع النصّ الحرّ خارج نافذة
+     * الأربعِ والعشرين ساعةً من آخر رسالةٍ وصلت منه، وتردّه بالخطأ ١٣١٠٤٧.
+     * فالنافذةُ تُفحص عند صاحب القرار (`SupportWhatsApp::windowOpen`) قبل
+     * النداء — لا ليُخفى الخطأ، بل لأنّ نداءً يُعرف ردُّه سلفًا وقتٌ ضائع
+     * وحالٌ تُكتب «فشل الإرسال» عن منعٍ نعرفه.
+     *
+     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}
+     */
+    public static function sendText(WhatsAppConnection $connection, string $to, string $body): array
+    {
+        $url = rtrim((string) config('whatsapp.graph_url'), '/')
+            .'/'.config('whatsapp.api_version')
+            .'/'.$connection->phone_number_id.'/messages';
+
+        try {
+            $response = Http::withToken($connection->access_token)
+                ->timeout((int) config('whatsapp.timeout', 15))
+                ->acceptJson()
+                ->post($url, [
+                    'messaging_product' => 'whatsapp',
+                    'recipient_type' => 'individual',
+                    'to' => $to,
+                    'type' => 'text',
+                    /*
+                     * ومعاينةُ الروابط مطفأة.
+                     *
+                     * ردُّ الدعم قد يحمل رابطَ شاشةٍ في لوحة التاجر؛ ومعاينةُ
+                     * ميتا تفتح الرابط من خوادمها لتسحب عنوانه وصورته.
+                     */
+                    'text' => ['preview_url' => false, 'body' => $body],
+                ]);
+        } catch (\Throwable $e) {
+            return self::failure('network_error', $e->getMessage(), retryable: true);
+        }
+
+        $payload = $response->json() ?? [];
+
+        if ($response->successful()) {
+            $id = $payload['messages'][0]['id'] ?? null;
+
+            return $id
+                ? ['ok' => true, 'id' => $id, 'code' => null, 'message' => null, 'retryable' => false]
+                : self::failure('no_message_id', __('لم يُعِد المزوّد معرّفًا للرسالة.'), retryable: false);
+        }
+
+        $error = $payload['error'] ?? [];
+
+        return self::failure(
+            (string) ($error['code'] ?? $response->status()),
+            (string) ($error['message'] ?? __('تعذّر الإرسال.')),
+            retryable: $response->status() === 429 || $response->serverError(),
+        );
+    }
+
     private static function failure(string $code, string $message, bool $retryable): array
     {
         return ['ok' => false, 'id' => null, 'code' => $code, 'message' => $message, 'retryable' => $retryable];

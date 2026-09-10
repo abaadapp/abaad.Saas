@@ -1,8 +1,10 @@
 import { router, useForm } from '@inertiajs/react';
 import { useMemo, useRef, useState } from 'react';
 import {
+    AlertTriangle,
     ArrowLeft,
     Building2,
+    CheckCircle2,
     ExternalLink,
     FileText,
     Inbox,
@@ -49,6 +51,10 @@ interface Message {
     eventText: string | null;
     sender: string;
     at: string | null;
+    /* حالُ الخروج إلى واتساب — وفارغةٌ في المحادثات التي لا تخرج أصلًا */
+    delivery: 'sent' | 'failed' | 'blocked' | null;
+    deliveryLabel: string | null;
+    deliveryError: string | null;
     files: { id: number; name: string; size: number; isImage: boolean; url: string }[];
 }
 
@@ -60,7 +66,11 @@ interface Active {
     status: string;
     statusLabel: string;
     priority: string;
+    channel: string;
     channelLabel: string;
+    whatsappWindowOpen: boolean;
+    whatsappWindowEndsAt: string | null;
+    whatsappLine: boolean | null;
     assigneeId: number | null;
     assignee: string | null;
     lastMessageAt: string | null;
@@ -400,7 +410,12 @@ export default function Conversations({
                         <>
                             <Header active={active} onBack={() => setPane('list')} onDetails={() => setPane('details')} />
                             <Thread messages={messages} />
-                            <Composer conversationId={active.id} maxFiles={maxFiles} maxKb={maxKb} extensions={extensions} />
+                            <Composer
+                                active={active}
+                                maxFiles={maxFiles}
+                                maxKb={maxKb}
+                                extensions={extensions}
+                            />
                         </>
                     )}
                 </section>
@@ -559,6 +574,30 @@ function Bubble({ m }: { m: Message }) {
                         </>
                     )}
                 </p>
+
+                {/*
+                    وحالُ الخروج تُقرأ تحت الرسالة نفسِها.
+                    ردٌّ حُفظ ولم يخرج إلى هاتف التاجر هو ردٌّ لم يصل — وصمتُ
+                    الشاشة عنه يجعل الدعمَ ينتظر جوابًا على كلامٍ لم يقرأه أحد.
+                */}
+                {m.deliveryLabel && (
+                    <p
+                        className={cn(
+                            'mt-1 flex items-start gap-1 text-[10px]',
+                            m.delivery === 'sent' ? 'text-[#15803d]' : 'text-[#b91c1c]',
+                        )}
+                    >
+                        {m.delivery === 'sent' ? (
+                            <CheckCircle2 className="mt-px size-3 shrink-0" />
+                        ) : (
+                            <AlertTriangle className="mt-px size-3 shrink-0" />
+                        )}
+                        <span>
+                            {m.deliveryLabel}
+                            {m.deliveryError && ` — ${m.deliveryError}`}
+                        </span>
+                    </p>
+                )}
             </div>
         </div>
     );
@@ -567,12 +606,12 @@ function Bubble({ m }: { m: Message }) {
 /* ═══════════════════ المُنشئ ═══════════════════ */
 
 function Composer({
-    conversationId,
+    active,
     maxFiles,
     maxKb,
     extensions,
 }: {
-    conversationId: number;
+    active: Active;
     maxFiles: number;
     maxKb: number;
     extensions: string[];
@@ -580,6 +619,17 @@ function Composer({
     const t = useTranslate();
     const [internal, setInternal] = useState(false);
     const picker = useRef<HTMLInputElement>(null);
+    const conversationId = active.id;
+
+    /*
+        ونافذةُ واتساب تُقال قبل الكتابة لا بعد المنع.
+
+        ميتا لا تُمرّر نصًّا حرًّا بعد أربعٍ وعشرين ساعةً من آخر رسالةٍ وصلت
+        من التاجر. ومن يكتب ردًّا في محادثةٍ أُغلقت نافذتُها يستحقّ أن يعرف
+        وهو يكتب: سيُحفظ الردُّ ولن يخرج إلى هاتفه.
+    */
+    const wa = active.channel === 'whatsapp' && !internal;
+    const waBlocked = wa && (!active.whatsappLine || !active.whatsappWindowOpen);
 
     const form = useForm<{ body: string; internal: boolean; files: File[] }>({
         body: '',
@@ -637,7 +687,33 @@ function Composer({
 
             {internal && (
                 <p className="mb-2 text-[11px] text-[#b45309]">
-                    {t('لا تظهر لصاحب المتجر ولا تُرسل إليه إشعارًا.')}
+                    {t('لا تظهر لصاحب المتجر ولا تُرسل إليه إشعارًا، ولا تخرج إلى واتساب.')}
+                </p>
+            )}
+
+            {wa && (
+                <p
+                    className={cn(
+                        'mb-2 flex items-start gap-1.5 rounded-[10px] p-2 text-[11px]',
+                        waBlocked ? 'bg-[#fef2f2] text-[#b91c1c]' : 'bg-[#f0fdf4] text-[#166534]',
+                    )}
+                >
+                    {waBlocked ? (
+                        <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                    ) : (
+                        <CheckCircle2 className="mt-px size-3.5 shrink-0" />
+                    )}
+                    <span>
+                        {!active.whatsappLine
+                            ? t('خطُّ دعم واتساب غير موصول — سيُحفظ ردّك هنا ولن يخرج.')
+                            : active.whatsappWindowOpen
+                              ? t('يخرج ردّك إلى واتساب. تُغلق النافذة :at', {
+                                    at: active.whatsappWindowEndsAt
+                                        ? new Date(active.whatsappWindowEndsAt).toLocaleString()
+                                        : '—',
+                                })
+                              : t('نافذة واتساب مغلقة — سيُحفظ ردّك هنا ولن يخرج حتى يكتب التاجر من جديد.')}
+                    </span>
                 </p>
             )}
 

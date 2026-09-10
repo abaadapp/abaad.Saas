@@ -4,9 +4,11 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SupportConversation;
+use App\Models\SupportMessage;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Support;
+use App\Support\SupportWhatsApp;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -95,7 +97,7 @@ class ConversationController extends Controller
             /* والقنواتُ المرسومة هي العاملةُ وحدَها — لا بابَ يُعرض ولا يُفتح */
             'channels' => array_map(fn (string $c) => [
                 'value' => $c, 'label' => Support::channelLabel($c),
-            ], Support::WORKING_CHANNELS),
+            ], Support::workingChannels()),
             'maxFiles' => Support::MAX_FILES,
             'maxKb' => Support::MAX_KB,
             'extensions' => Support::EXTENSIONS,
@@ -117,7 +119,7 @@ class ConversationController extends Controller
 
         $internal = (bool) ($data['internal'] ?? false);
 
-        DB::transaction(function () use ($conversation, $user, $data, $internal, $request) {
+        $message = DB::transaction(function () use ($conversation, $user, $data, $internal, $request) {
             $message = Support::say($conversation, $user, 'platform', $data['body'], $internal);
 
             foreach ($request->file('files', []) as $file) {
@@ -134,13 +136,50 @@ class ConversationController extends Controller
             if (! $internal && in_array($conversation->status, ['new', 'open', 'waiting_abaad'], true)) {
                 $conversation->forceFill(['status' => 'waiting_customer'])->save();
             }
+
+            return $message;
         });
 
         if ($internal) {
             Activity::log('support', 'ملاحظة داخلية على المحادثة: '.$conversation->reference);
+
+            /*
+             * وملاحظةُ الفريق تقف هنا.
+             *
+             * لا تخرج إلى واتساب، ولا إلى بريد، ولا إلى قناةٍ تُوصَل غدًا.
+             * والخروجُ المبكّر أوضحُ من شرطٍ داخل `deliver` وحده: من يقرأ هذا
+             * المتحكّم يرى المنعَ بعينه لا يستنتجه.
+             */
+            return back();
         }
 
-        return back();
+        /*
+         * والتسليمُ **بعد** المعاملة لا داخلها.
+         *
+         * نداءُ ميتا يمضي إلى خادمٍ في بلدٍ آخر بمهلةٍ خمسَ عشرةَ ثانية؛
+         * وداخلَ معاملةٍ مفتوحةٍ يعني قفلًا على الصفوف طوالها.
+         */
+        SupportWhatsApp::deliver($conversation, $message);
+
+        return $this->deliveryToast($message);
+    }
+
+    /**
+     * ما يُقال للدعم عن ردّه — والصمتُ ليس نجاحًا.
+     *
+     * ردٌّ كُتب في المركز ولم يخرج إلى هاتف التاجر هو ردٌّ لم يصل، والدعمُ
+     * ينتظر جوابًا على كلامٍ لم يقرأه أحد. فيُقال في اللحظة نفسِها.
+     */
+    private function deliveryToast(SupportMessage $message): RedirectResponse
+    {
+        return match ($message->delivery) {
+            'sent' => back()->with('toast', ['msg' => __('أُرسل الردّ عبر واتساب'), 'type' => 'success']),
+            'blocked', 'failed' => back()->with('toast', [
+                'msg' => __('حُفظ الردّ ولم يخرج إلى واتساب — :why', ['why' => (string) $message->delivery_error]),
+                'type' => 'error',
+            ]),
+            default => back(),
+        };
     }
 
     /** تعيينُ المحادثة — ولا تُعيَّن إلّا إلى فريق المنصّة */
@@ -359,6 +398,15 @@ class ConversationController extends Controller
             'priority' => $c->priority,
             'channel' => $c->channel,
             'channelLabel' => Support::channelLabel($c->channel),
+            /*
+             * ونافذةُ واتساب تُقرأ قبل الكتابة لا بعد المنع.
+             *
+             * من يكتب ردًّا في محادثةٍ أُغلقت نافذتُها يستحقّ أن يعرف قبل أن
+             * يكتب: الردُّ سيُحفظ ولن يخرج.
+             */
+            'whatsappWindowOpen' => $c->channel === 'whatsapp' && SupportWhatsApp::windowOpen($c),
+            'whatsappWindowEndsAt' => $c->channel === 'whatsapp' ? SupportWhatsApp::windowEndsAt($c) : null,
+            'whatsappLine' => $c->channel === 'whatsapp' ? SupportWhatsApp::connected() : null,
             'assigneeId' => $c->assigned_to,
             'assignee' => $c->assignee?->name,
             'lastMessageAt' => optional($c->last_message_at)->toIso8601String(),
@@ -388,6 +436,10 @@ class ConversationController extends Controller
                 'eventText' => $this->eventText($m->event, $m->event_meta),
                 'sender' => $m->sender?->name ?? '',
                 'at' => optional($m->created_at)->toIso8601String(),
+                /* وحالُ الخروج تُقرأ في الرسالة نفسِها — لا في سجلٍّ يُفتح بجانبها */
+                'delivery' => $m->delivery,
+                'deliveryLabel' => SupportWhatsApp::deliveryLabel($m->delivery),
+                'deliveryError' => $m->delivery_error,
                 'files' => $m->attachments->map(fn ($a) => [
                     'id' => $a->id,
                     'name' => $a->name,

@@ -23,6 +23,7 @@ interface SharedConnection {
     connected_at: string | null;
     waba_id?: string | null;
     phone_number_id?: string | null;
+    supports_inbox?: boolean;
 }
 
 /** حال البريد على الخادم كما تقرؤه PlatformConfig::mailStatus */
@@ -95,13 +96,14 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, googleKeyHint } =
+    const { settings, locale, mail, plans, whatsapp, supportReach, googleKeyHint } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
             plans: SelectOption[];
             googleKeyHint?: string | null;
             whatsapp?: SharedConnection | null;
+            supportReach?: { reachable: number; total: number; ambiguous: number };
         }>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('general');
@@ -465,6 +467,48 @@ export default function PlatformSettings() {
                                 ltr: true,
                                 hint: 'يُطبَّق على كل متجرٍ لم يُحدَّد له حدٌّ خاص. و‎-1 تعني بلا حد.',
                             })}
+                        </div>
+
+                        {/*
+                            استقبالُ الوارد — مقبضٌ وحده، يُحفظ بضغطته لا مع الإعدادات.
+                            وهو قرارٌ لا إعداد: الرقمُ يُرسل نيابةً عن المحلّات فيردّ
+                            عليه زبائنُهم، وفتحُ البابِ يعني قراءةَ ما يصل.
+                        */}
+                        <div className="mt-6 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
+                            <Toggle
+                                on={whatsapp?.supports_inbox ?? false}
+                                onChange={(v) =>
+                                    router.post(
+                                        route('super-admin.whatsapp.support-inbox'),
+                                        { supports_inbox: v },
+                                        { preserveScroll: true },
+                                    )
+                                }
+                                label="استقبال رسائل الدعم على هذا الرقم"
+                                hint="يفتح مركز المحادثات على واتساب: تُخزَّن الرسالة فقط إن جاءت من رقمٍ يطابق مستخدمًا واحدًا له متجر. وردود الزبائن على إشعارات طلباتهم تُسقَط ولا تُكتب."
+                            />
+
+                            <p className="mt-3 text-[12px] leading-relaxed text-[#6b7280]">
+                                {t('وردُّ الدعم لا يخرج إلى واتساب إلا خلال ٢٤ ساعة من آخر رسالة كتبها التاجر — قاعدةُ ميتا لا قاعدتُنا. وما لا يخرج يُكتب في المحادثة أنه لم يخرج.')}
+                            </p>
+
+                            {/* ومن لا رقمَ له لا تصل رسالتُه — يُقال بعددٍ لا بوعد */}
+                            {supportReach && (
+                                <p className="mt-2 text-[12px] leading-relaxed text-[#6b7280]">
+                                    {t(':n من :total مستخدمًا لهم رقمٌ يُطابَق. ومن لا رقمَ مسجّلًا له لا تصل رسالتُه.', {
+                                        n: supportReach.reachable,
+                                        total: supportReach.total,
+                                    })}
+                                    {supportReach.ambiguous > 0 && (
+                                        <span className="text-[#b45309]">
+                                            {' '}
+                                            {t('و:n رقمًا مكرّرًا بين مستخدمين — رسائلُها تُسقَط حتى يُصحَّح التكرار.', {
+                                                n: supportReach.ambiguous,
+                                            })}
+                                        </span>
+                                    )}
+                                </p>
+                            )}
                         </div>
 
                         {saveBar}

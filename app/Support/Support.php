@@ -43,8 +43,25 @@ final class Support
      */
     public const CHANNELS = ['in_app', 'whatsapp', 'email', 'instagram', 'facebook'];
 
-    /** ما يعمل فعلًا اليوم — والشاشةُ لا ترسم غيره */
-    public const WORKING_CHANNELS = ['in_app'];
+    /** ما يعمل بلا شرط — داخلُ أبعادٍ لا يحتاج مزوّدًا ولا رقمًا */
+    public const ALWAYS_ON = ['in_app'];
+
+    /**
+     * ما يعمل **الآن** — والشاشةُ لا ترسم غيره.
+     *
+     * وواتسابُ الدعم يُضاف حين يُوصَل خطُّه لا حين يُكتب عمودُه: مُرشِّحٌ
+     * لقناةٍ لم تُوصَل يقول إنّها موصولة، ومن يضغطه يجد صفرًا فيظنّ أنّ لا
+     * أحد راسله عليها. وحقيقةُ الوصل تُقرأ من `SupportWhatsApp::connected`
+     * لا من إعدادٍ يقول «مفعّل».
+     *
+     * @return list<string>
+     */
+    public static function workingChannels(): array
+    {
+        return SupportWhatsApp::connected()
+            ? [...self::ALWAYS_ON, 'whatsapp']
+            : self::ALWAYS_ON;
+    }
 
     public const CATEGORIES = [
         'الحساب والاشتراك',
@@ -149,21 +166,29 @@ final class Support
      * والمتجرُ والفاتحُ يُقرآن من الجلسة لا من النموذج: `business_id` قادمًا
      * من المتصفّح يعني أنّ من يبدّل رقمًا في الطلب يفتح محادثةً باسم جارِه.
      */
-    public static function open(User $user, string $subject, string $category, string $body): SupportConversation
-    {
+    public static function open(
+        User $user,
+        string $subject,
+        string $category,
+        string $body,
+        string $channel = 'in_app',
+        ?string $contactPhone = null,
+        ?string $externalId = null,
+    ): SupportConversation {
         $conversation = SupportConversation::create([
             'reference' => self::nextReference(),
             'business_id' => $user->business_id,
             'opened_by' => $user->id,
             'subject' => $subject,
             'category' => $category,
-            'channel' => 'in_app',
+            'channel' => in_array($channel, self::CHANNELS, true) ? $channel : 'in_app',
+            'contact_phone' => $contactPhone,
             'status' => 'new',
             'priority' => 'normal',
             'last_message_at' => now(),
         ]);
 
-        self::say($conversation, $user, 'business', $body);
+        self::say($conversation, $user, 'business', $body, externalId: $externalId);
 
         return $conversation;
     }
@@ -183,6 +208,7 @@ final class Support
         bool $internal = false,
         ?string $event = null,
         ?array $meta = null,
+        ?string $externalId = null,
     ): SupportMessage {
         $message = SupportMessage::create([
             'conversation_id' => $conversation->id,
@@ -192,6 +218,14 @@ final class Support
             'is_internal' => $internal,
             'event' => $event,
             'event_meta' => $meta,
+            /*
+             * ومعرّفُ ميتا يُكتب مع الصفّ لا بعده.
+             *
+             * الفهرسُ الفريدُ عليه هو ما يمنع تكرارَ رسالةِ التاجر حين تُعيد
+             * ميتا الإشعارَ نفسَه — وكتابتُه في تحديثٍ لاحقٍ تترك بينهما
+             * نافذةً يمرّ منها الثاني.
+             */
+            'external_message_id' => $externalId,
         ]);
 
         /*
@@ -224,10 +258,14 @@ final class Support
      * الآن في ملعب أبعاد. ومحادثةٌ «تم حلّها» أو «مغلقة» تُفتح من جديد —
      * ومن يجد بابَه مغلقًا يفتح محادثةً ثانيةً بالسؤال نفسه.
      */
-    public static function businessReplied(SupportConversation $conversation, User $user, string $body): SupportMessage
-    {
+    public static function businessReplied(
+        SupportConversation $conversation,
+        User $user,
+        string $body,
+        ?string $externalId = null,
+    ): SupportMessage {
         $was = $conversation->status;
-        $message = self::say($conversation, $user, 'business', $body);
+        $message = self::say($conversation, $user, 'business', $body, externalId: $externalId);
 
         $conversation->forceFill([
             'status' => 'waiting_abaad',

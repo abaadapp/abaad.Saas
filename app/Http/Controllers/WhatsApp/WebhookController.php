@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessage;
 use App\Support\MetaWhatsAppClient;
+use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppStatus;
 use Illuminate\Http\Request;
 
@@ -95,12 +96,19 @@ class WebhookController extends Controller
         }
 
         /*
-         * الرسائل الواردة من الزبائن: لا صندوقَ وارد في هذه النسخة.
+         * والرسائل الواردة: لا تُقرأ إلّا على خطّ دعمٍ أُذن له، ولا يُخزَّن
+         * منها إلّا ما جاء من رقمٍ يُطابق مستخدمًا واحدًا له متجر.
          *
-         * والرقم مشترك، فبناء محادثاتٍ عليه يعني أن تصل رسالة زبون محلٍّ إلى
-         * محلٍّ آخر إن أخطأ سطرٌ واحد في الربط. فلا تُخزَّن ولا تُعرض — وما
-         * لا يُخزَّن لا يُسرَّب.
+         * الرقمُ مشترك، فأكثرُ ما يصله ردودُ زبائنَ على إشعاراتِ طلباتهم:
+         * «وصل؟»، «غيّر العنوان». وتلك رسائلُ زبونٍ لمحلِّه لا رسائلُ تاجرٍ
+         * لأبعاد، وخزنُها هنا يعني أنّ من يفتح لوحةَ المنصّة يقرؤها.
+         *
+         * والقرارُ كلُّه في `SupportWhatsApp::receive` — بابٌ واحد يُغلق،
+         * وشرطٌ مكرَّرٌ في موضعين يُخفَّف في أحدهما يومًا.
          */
+        foreach ((array) ($value['messages'] ?? []) as $message) {
+            SupportWhatsApp::receive($connection, (array) $message);
+        }
     }
 
     private function applyStatus(WhatsAppConnection $connection, array $status): void

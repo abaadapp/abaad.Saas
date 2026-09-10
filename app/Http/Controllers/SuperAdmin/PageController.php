@@ -370,6 +370,13 @@ class PageController extends Controller
              */
             /* تلميحُ مفتاح الخرائط لا المفتاح — أربعةُ أحرفٍ ليُعرف أيُّه محفوظ */
             'googleKeyHint' => \App\Support\GoogleReviews::platformKeyHint(),
+            /*
+             * ومن يستطيع أن يكلّمنا على واتساب — عددٌ محسوبٌ لا وعد.
+             *
+             * القناةُ تُشعَل ثمّ لا يصل شيء فيُظنّ العطبُ في الربط، والسببُ
+             * أنّ أصحابَ المتاجر لم يكتبوا أرقامهم. فيُقال قبل أن يُسأل.
+             */
+            'supportReach' => \App\Support\SupportWhatsApp::reach(),
             'whatsapp' => WhatsAppConnections::publicView(
                 WhatsAppConnection::query()->platform()->orderByDesc('id')->first(),
                 withIds: true,

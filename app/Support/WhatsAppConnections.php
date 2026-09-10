@@ -74,6 +74,8 @@ class WhatsAppConnections
         if ($withIds) {
             $out['waba_id'] = $c->waba_id;
             $out['phone_number_id'] = $c->phone_number_id;
+            /* وهل يُقرأ الواردُ عليه — شأنُ مدير المنصّة وحده */
+            $out['supports_inbox'] = (bool) $c->supports_inbox;
         }
 
         return $out;

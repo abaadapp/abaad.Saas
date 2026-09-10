@@ -301,7 +301,7 @@ class WhatsAppReadinessTest extends TestCase
             'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN,
         ]);
 
-        $this->post(route('admin.marketing.whatsapp.mode'), ['mode' => WhatsAppMode::ABAAD_SHARED])
+        $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::ABAAD_SHARED])
             ->assertSessionHasNoErrors();
 
         $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->business->fresh()->whatsapp_mode);

@@ -46,7 +46,7 @@ export function ConnectGate({
        الترجمة — يفحص `t('…')` في المصدر وخصائصَ معدودة، لا خاصّيةً نخترعها */
     name: string;
     line: string;
-    /** الأداة كما يعرفها المسار — انظر MarketingController::connect */
+    /** الأداة كما يعرفها المسار — انظر IntegrationsController::connect */
     tool: 'whatsapp' | 'google';
     /** لونُ الأداة — واتساب أخضر والخرائط حمراء، فتُعرف قبل أن تُقرأ */
     tint: string;
@@ -75,7 +75,7 @@ export function ConnectGate({
                 loading={busy}
                 onClick={() => {
                     setBusy(true);
-                    router.post(route('admin.marketing.connect', tool), {}, {
+                    router.post(route('admin.integrations.connect', tool), {}, {
                         onFinish: () => setBusy(false),
                     });
                 }}

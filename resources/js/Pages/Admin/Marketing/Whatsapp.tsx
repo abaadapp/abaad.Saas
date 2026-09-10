@@ -1,41 +1,23 @@
-import { router, useForm, usePage } from '@inertiajs/react';
+import { Link, useForm, usePage } from '@inertiajs/react';
 import { AlertTriangle, MessageCircle, Save } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Toggle from '@/Components/Toggle';
-import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
-import { Input } from '@/Components/ui/input';
-import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
-import { ConnectGate, ConnectSteps, type Readiness } from './partials/Connect';
+import type { Readiness } from '@/Components/Connect';
 import type { PageProps } from '@/types';
 
-/** ما يُعرض من حال الأتمتة — بلا رمزٍ ولا سرّ (انظر Admin\WhatsAppController::view) */
+/**
+ * ما تقرؤه هذه الشاشة من حال الأتمتة — لا كلَّ ما يصلها.
+ *
+ * والحمولة أوسع (الوصلةُ والحصّةُ ووضعُ الإرسال) لأنّ شاشة الربط تقرؤها،
+ * وهي تصل هنا كما هي. والمكتوبُ هنا ما يُقرأ في هذا الملفّ وحده: حقلٌ
+ * يُعلَن ولا يُقرأ يصير عقدًا يظنّ من يعدّله أنّ أحدًا يعتمد عليه.
+ */
 interface Automation {
     readiness: Readiness;
-    global_enabled: boolean;
-    enabled: boolean;
-    mode: string;
-    effective_mode: string;
-    sending_via: string;
-    own_allowed: boolean;
-    own_connection: {
-        status: string;
-        usable: boolean;
-        display_phone_number: string | null;
-        phone_number_id?: string | null;
-    } | null;
-    shared_active: boolean;
-    usage: {
-        used: number;
-        limit: number;
-        unlimited: boolean;
-        remaining: number | null;
-        percentage: number | null;
-        is_exhausted: boolean;
-    } | null;
     events: { key: string; setting: string; label: string }[];
 }
 
@@ -44,42 +26,36 @@ interface Props {
     automation: Automation;
 }
 
+/**
+ * إشعارات واتساب — أيُّ رسالةٍ تخرج ومتى، ولا وصلةَ ولا رمز.
+ *
+ * والوصلةُ ووضعُ الإرسال في «التطبيقات التكاملية»: تلك تُفتح مرّةً عند
+ * الربط ثمّ لا تُفتح، وهذه تُفتح كلّما بُدّلت خطّةُ المتجر في مخاطبة
+ * زبائنه. وجمعُهما كان يجعل من يريد إطفاء رسالةٍ واحدة يمرّ على رمز
+ * تفعيلٍ من ميتا لا شأن له به.
+ */
 export default function Whatsapp() {
     const { settings, automation } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
-
-    /*
-     * ربط رقم المتجر — نموذجٌ منفصل عن نموذج القوالب.
-     *
-     * الرمز يُرسل مرّةً ولا يُعاد إلى الشاشة، فلا يسكن في نموذجٍ يُعاد إرساله
-     * مع كلّ «حفظ».
-     */
-    const connectForm = useForm({
-        phone_number_id: '',
-        waba_id: '',
-        display_phone_number: '',
-        access_token: '',
-    });
 
     /*
      * أربعةُ مقابضَ لا أكثر — ولا مقبضَ لا يُدير شيئًا.
      *
      * كانت الشاشة تعرض معها مفتاح «تفعيل الإشعارات» وحقلَ «رقم المتجر»
      * وثلاثةَ نصوصِ رسائلَ بمعاينةٍ حيّة تحتها. يكتبها التاجر ويحفظها ولا
-     * يقرأ منها أحدٌ حرفًا: الإطفاء في بطاقة الوصلة أعلاه، والرقم رقمُ
-     * الوصلة المعتمدة، والنصّ قالبٌ معتمَدٌ عند ميتا باسمه — فميتا لا تقبل
-     * نصًّا حرًّا في رسالةٍ يبدؤها العمل.
+     * يقرأ منها أحدٌ حرفًا: الإطفاء في عمود `businesses.whatsapp_enabled`،
+     * والرقم رقمُ الوصلة المعتمدة، والنصّ قالبٌ معتمَدٌ عند ميتا باسمه —
+     * فميتا لا تقبل نصًّا حرًّا في رسالةٍ يبدؤها العمل.
      */
     const form = useForm<Record<string, boolean>>(
         Object.fromEntries(automation.events.map((e) => [e.setting, settings[e.setting] === '1'])),
     );
 
     /*
-        بابٌ قبل الشاشة — لمن لم يبدأ.
+        ومن لم يربط بعدُ يُقاد إلى الربط، لا يُعرض له بابُه هنا.
 
-        وكانت تُفتح على كلّ شيءٍ دفعةً واحدة: مراحلُ ربطٍ لم تبدأ، وحقولُ
-        معرّفاتٍ من حساب ميتا، ومقابضُ أحداثٍ لا تُرسل حرفًا قبل الربط. فيقرأ
-        التاجر عشرين سطرًا ليعرف أنّ لا شيء منها يعمل بعد.
+        وكان «ربط مع أبعاد» يُضغط من شاشتين: هذه وشاشةُ الأداة. وبابان
+        لفعلٍ واحد يعني أنّ من ضغط أحدهما لا يعرف أين يعود ليكمل.
     */
     if (! automation.readiness.connected) {
         return (
@@ -88,14 +64,23 @@ export default function Whatsapp() {
                     title="إشعارات واتساب"
                     subtitle={t('رسائل تُرسَل للعميل عند تغيّر حال طلبه')}
                 />
-                <ConnectGate
-                    icon={MessageCircle}
-                    name={t('إشعارات واتساب')}
-                    line={t('يصل العميل خبرُ طلبه على واتساب لحظةَ تغيّره — بلا أن يتّصل أحد.')}
-                    tool="whatsapp"
-                    tint="#25d366"
-                    note={automation.global_enabled ? null : t('واتساب غير مفعَّل في المنصّة بعد — يفتحه أبعاد.')}
-                />
+                <Card className="mx-auto flex max-w-xl flex-col items-center px-6 py-16 text-center">
+                    <span
+                        className="flex size-20 items-center justify-center rounded-[24px]"
+                        style={{ background: '#25d36614', color: '#25d366' }}
+                    >
+                        <MessageCircle className="size-9" />
+                    </span>
+
+                    <h2 className="mt-6 text-[20px] font-bold text-[#111]">{t('واتساب غير مربوط بعد')}</h2>
+                    <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-[#6b7280]">
+                        {t('اختيارُ الأحداث يأتي بعد الربط — فلا معنى لإشعالِ رسالةٍ لا قناةَ تخرج منها.')}
+                    </p>
+
+                    <Button asChild size="lg" className="mt-8">
+                        <Link href={route('admin.integrations.whatsapp')}>{t('اذهب إلى ربط واتساب')}</Link>
+                    </Button>
+                </Card>
             </AdminLayout>
         );
     }
@@ -105,188 +90,15 @@ export default function Whatsapp() {
             <PageHeader
                 title="إشعارات واتساب"
                 subtitle={t('رسائل تُرسَل للعميل عند تغيّر حال طلبه')}
+                actions={
+                    <Button asChild variant="outline">
+                        <Link href={route('admin.integrations.whatsapp')}>
+                            <MessageCircle />
+                            {t('الوصلة وإعدادات الربط')}
+                        </Link>
+                    </Button>
+                }
             />
-
-            <ConnectSteps
-                readiness={automation.readiness}
-                title={t('مراحل الربط')}
-                done={`${t('جاهز — تخرج الرسائل عبر')} ${t(automation.sending_via)}`}
-                waiting={t('لا تخرج رسالةٌ واحدة قبل أن تكتمل هذه المراحل.')}
-            />
-
-            {/* وبطاقةٌ فارغة لا تُرسم: من لا حصّة له ولا رقمَ خاصًّا لا شيء له هنا */}
-            {(automation.usage || automation.own_allowed || automation.mode === 'business_own') && (
-            <Card className="mb-6 max-w-3xl p-6">
-
-                {/* الاستهلاك للمشترك وحده: من ربط رقمه يُرسل على حسابه فلا حدَّ عليه منّا */}
-                {automation.usage && (
-                    <dl className="mb-5 space-y-2 rounded-[12px] bg-[#fafafa] p-4 text-[13px]">
-                        <div className="flex justify-between gap-3">
-                            <dt className="text-[#6b7280]">{t('رسائل هذا الشهر')}</dt>
-                            <dd className="font-medium text-[#111]" dir="ltr">
-                                {automation.usage.unlimited
-                                    ? String(automation.usage.used)
-                                    : `${automation.usage.used} / ${automation.usage.limit}`}
-                            </dd>
-                        </div>
-                        <div className="flex justify-between gap-3">
-                            <dt className="text-[#6b7280]">{t('المتبقّي')}</dt>
-                            <dd className="font-medium text-[#111]" dir="ltr">
-                                {automation.usage.unlimited ? t('بلا حد') : String(automation.usage.remaining)}
-                            </dd>
-                        </div>
-                        {automation.usage.is_exhausted && (
-                            <p className="text-[12px] text-[#b45309]">
-                                {t('نفدت رسائل هذا الشهر — الطلبات تعمل كالمعتاد، والرسائل تعود مع الشهر الجديد.')}
-                            </p>
-                        )}
-                    </dl>
-                )}
-
-                {/*
-                    ومن سُحبت منه الميزة وهو على رقمه لا يبقى واقفًا.
-
-                    الوضع يبقى `business_own` ولا يُدفع إلى الرقم المشترك
-                    بصمت — وهو الصواب. لكنّ بطاقة الربط تختفي معها أزرارُ
-                    التبديل، فيقرأ «بدّل الإرسال إلى رقم أبعاد» ولا يجد زرًّا.
-                */}
-                {! automation.own_allowed && automation.mode === 'business_own' && (
-                    <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                        <h4 className="mb-1 font-bold text-[#111]">{t('الرقم الذي يُرسل منه')}</h4>
-                        <p className="mb-4 text-[13px] text-[#6b7280]">
-                            {t('متجرك مضبوطٌ على رقمه الخاص وميزتُه غير مفعّلة الآن — فلا تخرج رسالة.')}
-                        </p>
-                        <Button
-                            type="button"
-                            onClick={() =>
-                                router.post(
-                                    route('admin.marketing.whatsapp.mode'),
-                                    { mode: 'abaad_shared' },
-                                    { preserveScroll: true },
-                                )
-                            }
-                        >
-                            {t('أرسل عبر أبعاد')}
-                        </Button>
-                    </div>
-                )}
-
-                {/* ربط رقم المتجر — لمن مُنح الميزة وحده */}
-                {automation.own_allowed && (
-                    <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                        <h4 className="mb-1 font-bold text-[#111]">{t('رقم متجرك على واتساب')}</h4>
-                        <p className="mb-4 text-[13px] text-[#6b7280]">
-                            {t('المعرّفان والرمز من حساب المطوّرين في ميتا — والرمز يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ.')}
-                        </p>
-
-                        {automation.own_connection?.usable ? (
-                            <>
-                                <p className="mb-4 text-[13px] text-[#166534]">
-                                    {t('مربوط')} —{' '}
-                                    <span dir="ltr">
-                                        {automation.own_connection.display_phone_number ??
-                                            automation.own_connection.phone_number_id}
-                                    </span>
-                                </p>
-
-                                <div className="flex flex-wrap gap-2">
-                                    <Button
-                                        type="button"
-                                        variant={automation.mode === 'business_own' ? 'primary' : 'outline'}
-                                        onClick={() =>
-                                            router.post(
-                                                route('admin.marketing.whatsapp.mode'),
-                                                { mode: 'business_own' },
-                                                { preserveScroll: true },
-                                            )
-                                        }
-                                    >
-                                        {t('أرسل من رقم متجري')}
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant={automation.mode === 'abaad_shared' ? 'primary' : 'outline'}
-                                        onClick={() =>
-                                            router.post(
-                                                route('admin.marketing.whatsapp.mode'),
-                                                { mode: 'abaad_shared' },
-                                                { preserveScroll: true },
-                                            )
-                                        }
-                                    >
-                                        {t('أرسل عبر أبعاد')}
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        onClick={() =>
-                                            router.delete(route('admin.marketing.whatsapp.disconnect'), {
-                                                preserveScroll: true,
-                                            })
-                                        }
-                                    >
-                                        {t('فصل الرقم')}
-                                    </Button>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="space-y-4">
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <Field
-                                        label="معرّف الرقم (Phone Number ID)"
-                                        error={connectForm.errors.phone_number_id}
-                                    >
-                                        <Input
-                                            dir="ltr"
-                                            value={connectForm.data.phone_number_id}
-                                            onChange={(e) => connectForm.setData('phone_number_id', e.target.value)}
-                                        />
-                                    </Field>
-                                    <Field
-                                        label="معرّف حساب الأعمال (WABA ID)"
-                                        error={connectForm.errors.waba_id}
-                                    >
-                                        <Input
-                                            dir="ltr"
-                                            value={connectForm.data.waba_id}
-                                            onChange={(e) => connectForm.setData('waba_id', e.target.value)}
-                                        />
-                                    </Field>
-                                </div>
-
-                                <Field
-                                    label="رمز الوصول الدائم"
-                                    hint="يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ"
-                                    error={connectForm.errors.access_token}
-                                >
-                                    <PasswordInput
-                                        dir="ltr"
-                                        value={connectForm.data.access_token}
-                                        onChange={(e) => connectForm.setData('access_token', e.target.value)}
-                                    />
-                                </Field>
-
-                                <div className="flex justify-end">
-                                    <Button
-                                        type="button"
-                                        loading={connectForm.processing}
-                                        onClick={() =>
-                                            connectForm.post(route('admin.marketing.whatsapp.connect'), {
-                                                preserveScroll: true,
-                                                onSuccess: () => connectForm.reset('access_token'),
-                                            })
-                                        }
-                                    >
-                                        <Save />
-                                        {t('ربط الرقم')}
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </Card>
-            )}
 
             <form
                 onSubmit={(e) => {
@@ -296,7 +108,7 @@ export default function Whatsapp() {
                 className="max-w-3xl space-y-6"
             >
                 <Card className="p-6">
-                    <h3 className="mb-1 font-bold text-[#111]">{t('٢ · متى تُرسَل الرسالة')}</h3>
+                    <h3 className="mb-1 font-bold text-[#111]">{t('متى تُرسَل الرسالة')}</h3>
                     <p className="mb-5 text-[13px] text-[#6b7280]">
                         {t('نصّ الرسالة قالبٌ معتمَدٌ لدى واتساب ولا يُكتب هنا — وهذه الأحداث قرارُك.')}
                     </p>
@@ -310,7 +122,7 @@ export default function Whatsapp() {
                         <div className="mb-5 flex items-start gap-2 rounded-[10px] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]">
                             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                             <span>
-                                {t('اختيارُك هنا يُحفظ، ولا تخرج رسالةٌ حتى تكتمل الخطوة الأولى أعلاه.')}
+                                {t('اختيارُك هنا يُحفظ، ولا تخرج رسالةٌ حتى تكتمل مراحلُ الربط.')}
                             </span>
                         </div>
                     )}

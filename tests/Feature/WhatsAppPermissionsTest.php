@@ -226,12 +226,12 @@ class WhatsAppPermissionsTest extends TestCase
         $this->business->update(['whatsapp_own_allowed' => true]);
 
         $this->actingAs($this->cashier)
-            ->post(route('admin.marketing.whatsapp.connect'), [
+            ->post(route('admin.integrations.whatsapp.connect'), [
                 'phone_number_id' => 'SHOP-PN', 'access_token' => 'shop-token-value-9876543210',
             ])->assertForbidden();
 
         $this->actingAs($this->cashier)
-            ->delete(route('admin.marketing.whatsapp.disconnect'))->assertForbidden();
+            ->delete(route('admin.integrations.whatsapp.disconnect'))->assertForbidden();
 
         $this->assertSame(0, WhatsAppConnection::count());
     }
@@ -239,7 +239,7 @@ class WhatsAppPermissionsTest extends TestCase
     public function test_a_cashier_cannot_change_the_sending_mode(): void
     {
         $this->actingAs($this->cashier)
-            ->post(route('admin.marketing.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
+            ->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
             ->assertForbidden();
     }
 

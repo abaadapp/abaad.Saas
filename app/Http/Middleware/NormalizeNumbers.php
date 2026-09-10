@@ -55,6 +55,12 @@ class NormalizeNumbers
         'min_order', 'value', 'salvage_value',
         // البيعُ الآجل: المدفوعُ الآن وحدُّ الائتمان يُكتبان بأرقامٍ عربيّة كغيرها
         'paid_now', 'credit_limit', 'tax_amount',
+        /*
+         * والمقبوضُ مع الفاتورة: صاحبُ المحلّ يكتب «٤٠٫٥٠٠» بلوحةٍ عربيّة
+         * فيُردّ بـ«يجب أن يكون رقمًا» على رقمٍ صحيح — وهو واقفٌ والعميل
+         * أمامه. وكشفه `ArabicNumeralsTest` قبل أن يصل الخادم.
+         */
+        'paid_amount',
 
         // الرواتب — وكانت كلُّها خارج القائمة
         'salary', 'basic_salary', 'basic', 'allowances', 'deductions', 'overtime',

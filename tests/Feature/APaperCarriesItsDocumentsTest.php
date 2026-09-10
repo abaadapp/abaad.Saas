@@ -85,6 +85,7 @@ class APaperCarriesItsDocumentsTest extends TestCase
     {
         $this->post(route('admin.customerInvoices.store'), [
             'customer_id' => $this->ministry->id,
+            'payment_method' => 'آجل',
             'issued_at' => now()->toDateString(),
             'notes' => 'يُرجى السداد خلال شهر',
             'internal_notes' => 'العميل يماطل — لا تُسلَّم قبل الدفع',
@@ -132,6 +133,7 @@ class APaperCarriesItsDocumentsTest extends TestCase
     {
         $this->post(route('admin.customerInvoices.store'), [
             'customer_id' => $this->ministry->id,
+            'payment_method' => 'آجل',
             'issued_at' => now()->toDateString(),
             'items' => [['description' => 'توريد', 'quantity' => 1, 'unit_price' => 400]],
             'attachments' => [$this->pdf(), $this->pdf('عقد.pdf')],

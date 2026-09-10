@@ -98,6 +98,7 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
     {
         $this->actingAs($this->owner)->post('/admin/customer-invoices', [
             'customer_id' => $this->customer->id,
+            'payment_method' => 'آجل',
             'items' => [
                 ['description' => 'توريد زهور', 'quantity' => 1, 'unit_price' => 100, 'tax_rate' => 5],
                 ['description' => 'خدمة معفاة', 'quantity' => 1, 'unit_price' => 100, 'tax_rate' => 0],
@@ -121,6 +122,7 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
     {
         $this->actingAs($this->owner)->post('/admin/customer-invoices', [
             'customer_id' => $this->customer->id,
+            'payment_method' => 'آجل',
             'items' => [['description' => 'توريد', 'quantity' => 1, 'unit_price' => 100, 'tax_rate' => null]],
         ])->assertSessionHasNoErrors();
 
@@ -255,6 +257,7 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
     {
         $this->actingAs($this->owner)->post('/admin/customer-invoices', [
             'customer_id' => $this->customer->id,
+            'payment_method' => 'آجل',
             'total' => 1, 'subtotal' => 1, 'tax_total' => 999,
             'items' => [['description' => 'توريد', 'quantity' => 2, 'unit_price' => 50, 'tax_rate' => 5]],
         ])->assertSessionHasNoErrors();
@@ -267,6 +270,7 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
     {
         $this->actingAs($this->owner)->post('/admin/customer-invoices', [
             'customer_id' => $this->customer->id,
+            'payment_method' => 'آجل',
             'issued_at' => '2026-09-01',
             'payment_terms_days' => 60,
             'items' => [['description' => 'توريد', 'quantity' => 1, 'unit_price' => 10]],

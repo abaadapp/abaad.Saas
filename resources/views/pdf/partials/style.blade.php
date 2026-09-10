@@ -16,13 +16,22 @@
 --}}
 @php
     $pt = fn (float $size) => round($size * ($scale ?? 1.0), 2) . 'pt';
+    /*
+        واتّجاهُ الورقة من مصدرٍ واحد — لا شرطٌ يُكتب في اثنين وعشرين قالبًا.
+
+        وكان `rtl` مثبَّتًا هنا، فورقةٌ تُطبع إنجليزيّةً تخرج بنصٍّ يبدأ من
+        اليمين وأعمدةٍ معكوسة — تُقرأ عربيّةً كُتبت بحروفٍ لاتينية.
+    */
+    $rtl = \App\Support\Paper::rtl();
+    $start = $rtl ? 'right' : 'left';
+    $end = $rtl ? 'left' : 'right';
 @endphp
 <style>
     * { font-family: xbriyaz, sans-serif; }
 
     body {
-        direction: rtl;
-        text-align: right;
+        direction: {{ $rtl ? 'rtl' : 'ltr' }};
+        text-align: {{ $start }};
         color: #111;
         font-size: {{ $pt(10) }};
         line-height: 1.45;
@@ -38,7 +47,7 @@
        يُقسَم سطرين في عمودٍ ضيّق فيُقرأ رقمين. ولا مثالَ هنا برمز العملة
        نفسه: الحارس يقرأ الورقة نصًّا خامًا، فيجد في تعليقٍ ما أطفأه
        التاجر — انظر DocumentTemplatesTest */
-    .amt   { text-align: left; white-space: nowrap; direction: ltr; }
+    .amt   { text-align: {{ $end }}; white-space: nowrap; direction: ltr; }
     .num   { text-align: center; direction: ltr; }
 
     /* ————— الترويسة ————— */
@@ -52,7 +61,7 @@
     /* ————— الجداول ————— */
     table.grid { width: 100%; border-collapse: collapse; margin: 4pt 0 10pt; }
     table.grid th {
-        background: #f5f5f4; color: #111; text-align: right;
+        background: #f5f5f4; color: #111; text-align: {{ $start }};
         padding: 5pt 6pt; font-size: {{ $pt(8.5) }}; font-weight: bold;
         border-bottom: 0.8pt solid #d4d4d4;
     }

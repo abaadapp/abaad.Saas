@@ -49,6 +49,7 @@ class CustomerInvoiceDoorsTest extends TestCase
         // و`$extra` أوّلًا: العامل `+` لا يستبدل مفتاحًا موجودًا
         return $extra + [
             'customer_id' => $this->customer->id,
+            'payment_method' => 'آجل',
             'items' => [['description' => 'توريد زهور', 'quantity' => 2, 'unit_price' => 50]],
         ];
     }
@@ -96,6 +97,7 @@ class CustomerInvoiceDoorsTest extends TestCase
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices', [
             'customer_id' => $this->customer->id,
+            'payment_method' => 'آجل',
             'items' => [['product_id' => $theirs->id, 'description' => 'صنفهم', 'quantity' => 1, 'unit_price' => 5]],
         ])->assertSessionHasErrors('items');
     }

@@ -818,6 +818,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::post('/customer-invoices/preview', [CustomerInvoiceController::class, 'preview'])->name('customerInvoices.preview');
     Route::post('/customer-invoices/customers', [CustomerInvoiceController::class, 'storeCustomer'])->name('customerInvoices.storeCustomer');
+    /*
+     * هويّةُ الورقة والعميلُ الافتراضيّ — مقبضان في شاشة الفاتورة وأثرُهما
+     * إعدادُ متجر. فيُقاسان بقسم «الإعدادات» داخل المتحكّم لا بقسم المبيعات:
+     * من مُنح كتابةَ الفواتير لم يُمنح تبديلَ ما يُطبع على كلّ ورقةٍ قادمة.
+     */
+    Route::post('/customer-invoices/branding', [CustomerInvoiceController::class, 'branding'])->name('customerInvoices.branding');
+    Route::post('/customer-invoices/default-customer', [CustomerInvoiceController::class, 'defaultCustomer'])->name('customerInvoices.defaultCustomer');
     Route::get('/customer-invoices/{id}', [CustomerInvoiceController::class, 'show'])->name('customerInvoices.show');
     Route::post('/customer-invoices', [CustomerInvoiceController::class, 'store'])->name('customerInvoices.store');
     Route::post('/customer-invoices/{id}/issue', [CustomerInvoiceController::class, 'issue'])->name('customerInvoices.issue');

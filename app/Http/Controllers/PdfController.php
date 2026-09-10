@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Admin\CustomerInvoiceController;
 use App\Models\BankAccount;
 use App\Models\Business as BusinessModel;
 use App\Models\Customer;
@@ -14,6 +15,7 @@ use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\EInvoice;
 use App\Support\GoogleReviews;
+use App\Support\InvoiceBranding;
 use App\Support\OrderStatus;
 use App\Support\Paper;
 use App\Support\Pdf;
@@ -346,15 +348,20 @@ class PdfController extends Controller
         $invoice = CustomerInvoice::where('business_id', $bid)->whereKey($id)
             ->with('items')->firstOrFail();
 
-        $html = view('pdf.customer-invoice', [
-            'invoice' => $invoice,
-            'business' => Demo::business($bid),
-            'vatNumber' => Paper::vatNumber($bid),
-            'paid' => $invoice->paidTotal(),
-            'outstanding' => $invoice->outstanding(),
-            'bank' => BankAccount::where('business_id', $bid)->orderBy('id')->first(),
-            'generatedAt' => now()->format('Y-m-d H:i'),
-        ])->render();
+        /*
+         * والورقةُ تُبنى حيث تُبنى المعاينة — لا نسخةٌ ثانية هنا.
+         *
+         * كانت قائمةُ المتغيّرات مكتوبةً في الموضعين، فما يُضاف لأحدهما لا
+         * يبلغ الآخر: يُضبط الشعارُ فيُرى في الشاشة ويغيب عن الطابعة.
+         * وباللغةِ التي اختارها صاحبُ المحلّ لورقته، لا بلغة من ضغط الزرّ.
+         */
+        $html = InvoiceBranding::render($bid, null, fn () => CustomerInvoiceController::paper(
+            $bid,
+            $invoice,
+            $invoice->paidTotal(),
+            $invoice->outstanding(),
+            BankAccount::where('business_id', $bid)->orderBy('id')->first(),
+        )->render());
 
         Activity::log('report', 'صدّر فاتورة عميل: '.$invoice->number, ['subject_id' => $invoice->id]);
 

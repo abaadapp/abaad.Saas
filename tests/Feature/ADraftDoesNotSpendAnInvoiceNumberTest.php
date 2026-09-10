@@ -214,6 +214,7 @@ class ADraftDoesNotSpendAnInvoiceNumberTest extends TestCase
     {
         $this->post(route('admin.customerInvoices.store'), [
             'customer_id' => $this->ministry->id,
+            'payment_method' => 'آجل',
             'issued_at' => now()->toDateString(),
             'number' => 'CINV-999999',
             'issue' => true,

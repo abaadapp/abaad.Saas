@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Business;
 use App\Models\Setting;
+use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\InvoiceBranding;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 class SettingController extends Controller
 {
@@ -151,10 +155,10 @@ class SettingController extends Controller
             }
         }
         if ($profile) {
-            \App\Models\Business::whereKey($bid)->update($profile);
+            Business::whereKey($bid)->update($profile);
         }
 
-        foreach (\Illuminate\Support\Arr::except($data, array_keys(self::PROFILE)) as $key => $value) {
+        foreach (Arr::except($data, array_keys(self::PROFILE)) as $key => $value) {
             /*
              * المنطقيّ يُخزَّن '1'/'0' صراحةً لا true/false.
              *
@@ -173,7 +177,7 @@ class SettingController extends Controller
             );
         }
 
-        \App\Support\Activity::log('settings', 'حدّث إعدادات النشاط');
+        Activity::log('settings', 'حدّث إعدادات النشاط');
 
         return back()->with('toast', ['msg' => __('تم حفظ الإعدادات بنجاح'), 'type' => 'success']);
     }
@@ -199,18 +203,22 @@ class SettingController extends Controller
             'logo.max' => __('أقصى حجمٍ للشعار ٢ ميغابايت'),
         ]);
 
-        $business = \App\Models\Business::findOrFail(Demo::bid());
+        $business = Business::findOrFail(Demo::bid());
 
-        if ($request->hasFile('logo')) {
-            $business->logo = $request->file('logo')->store('logos', 'public');
-        } elseif ($request->boolean('remove')) {
-            $business->logo = null;
-        } else {
+        /*
+         * والكتابةُ من مالكٍ واحد — `InvoiceBranding::storeLogo`.
+         *
+         * البابُ الثاني في «تخصيص التصميم» بشاشة الفاتورة، وقاعدةٌ تُكتب
+         * في البابين تفترق: يُخزَّن هنا بمسارٍ ويُقرأ هناك بغيره.
+         */
+        if (! InvoiceBranding::storeLogo(
+            $business,
+            $request->file('logo'),
+            $request->boolean('remove'),
+        )) {
             return back();
         }
-
-        $business->save();
-        \App\Support\Activity::log('settings', $business->logo ? 'حدّث شعار المتجر' : 'حذف شعار المتجر');
+        Activity::log('settings', $business->logo ? 'حدّث شعار المتجر' : 'حذف شعار المتجر');
 
         return back()->with('toast', [
             'msg' => $business->logo ? __('حُفظ الشعار') : __('حُذف الشعار'),

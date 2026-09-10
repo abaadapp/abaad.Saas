@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\BankAccount;
+use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceAttachment;
@@ -16,6 +17,7 @@ use App\Support\CustomerPayments;
 use App\Support\Customers;
 use App\Support\Demo;
 use App\Support\InvoiceAttachments;
+use App\Support\InvoiceBranding;
 use App\Support\Pagination;
 use App\Support\Paper;
 use App\Support\Permissions;
@@ -23,7 +25,9 @@ use App\Support\Receivables;
 use App\Support\Search;
 use App\Support\Vat;
 use App\Support\WhatsAppPhone;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -180,6 +184,12 @@ class CustomerInvoiceController extends Controller
             'issue' => (bool) $user?->may(Permissions::CUSTOMER_INVOICE_ISSUE),
             'cancel' => (bool) $user?->may(Permissions::CUSTOMER_INVOICE_CANCEL),
             'credit_note' => (bool) $user?->may(Permissions::CUSTOMER_CREDIT_NOTE),
+            /*
+             * وهويّةُ الورقة إعدادُ متجرٍ لا فعلُ فاتورة — فتُقاس بقسم
+             * الإعدادات. ومن لا يملكها لا يُرسَم له زرُّ «تخصيص التصميم»:
+             * بابٌ معروضٌ يردّ بـ٤٠٣ يُقرأ عطبًا في النظام لا منعًا.
+             */
+            'brand' => (bool) $user?->allows('settings'),
             'pay' => (bool) $user?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
         ];
     }
@@ -330,6 +340,24 @@ class CustomerInvoiceController extends Controller
             'bank_accounts' => $this->bankAccounts(),
             // عميلٌ أُضيف من هذه الشاشة نفسها — يُختار فور العودة إليها
             'new_customer_id' => $request->session()->get('new_customer_id'),
+            /*
+             * ═══ العميلُ الافتراضيّ ═══
+             *
+             * أكثرُ المحلّات تفوتر جهةً واحدة أكثرَ ممّا تفوتر غيرَها —
+             * عقدٌ شهريّ مع فندق، أو حسابٌ مفتوح لشركة. واختيارُه في كلّ
+             * مرّةٍ من قائمةٍ فيها مئتا اسم عملٌ يُعاد بلا سبب.
+             *
+             * ويبقى قابلًا للتبديل: هو اختيارٌ مبدئيّ لا قفل. وصفُّه يُتحقّق
+             * منه عند كلّ قراءة — انظر `InvoiceBranding::defaultCustomerId`.
+             */
+            'default_customer_id' => InvoiceBranding::defaultCustomerId($bid),
+            /*
+             * وهويّةُ الورقة: الشعارُ والاسمُ واللغةُ والذيل.
+             *
+             * تُرسَل لتُعرض في «تخصيص التصميم» — والمعاينةُ لا تقرأ منها
+             * حرفًا: هي تُرسَم في الخادم بالقالب نفسه. فلا نسختان للاسم.
+             */
+            'branding' => InvoiceBranding::settings($bid),
         ]);
     }
 
@@ -381,6 +409,14 @@ class CustomerInvoiceController extends Controller
             'items.*.discount' => ['nullable', 'numeric'],
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'bank_account_id' => ['nullable', 'integer'],
+            /*
+             * ولغةُ الورقة تُرسَل لتُعاين — ولا تُحفظ من هنا.
+             *
+             * صاحبُ المحلّ يقلّب بين العربية والإنجليزية قبل أن يقرّر، وكلُّ
+             * تقليبةٍ ليست حفظًا: من نظر إلى الشكل الإنجليزيّ ثمّ عاد لا يجب
+             * أن يجد ورقتَه القادمة إنجليزيّة. والحفظُ من «تخصيص التصميم».
+             */
+            'lang' => ['nullable', 'string', Rule::in(InvoiceBranding::LANGUAGES)],
         ]);
 
         /*
@@ -412,16 +448,52 @@ class CustomerInvoiceController extends Controller
         $invoice = CustomerInvoices::draft($bid, $customer, $data, $items);
 
         return response()->json([
-            'html' => view('pdf.customer-invoice', [
-                'invoice' => $invoice,
-                'business' => Demo::business($bid),
-                'vatNumber' => Vat::enabled($bid) ? Paper::vatNumber($bid) : '',
-                // ولا مسدَّدَ على ورقةٍ لم تُصدر بعد: الباقي كلُّه
-                'paid' => 0.0,
-                'outstanding' => (float) $invoice->total,
-                'bank' => $this->previewBank($bid, $data['bank_account_id'] ?? null),
-                'generatedAt' => now()->format('Y-m-d H:i'),
-            ])->render(),
+            'html' => InvoiceBranding::render(
+                $bid,
+                $data['lang'] ?? null,
+                fn () => self::paper($bid, $invoice, 0.0, (float) $invoice->total,
+                    $this->previewBank($bid, $data['bank_account_id'] ?? null))->render(),
+            ),
+        ]);
+    }
+
+    /**
+     * الورقةُ مبنيّةً — موضعٌ واحد تقرؤه المعاينةُ والطباعة.
+     *
+     * ═══ ولمَ خرجت من الاثنين ═══
+     *
+     * `preview` ترسم في الشاشة، و`PdfController::customerInvoice` ترسم على
+     * الورق. وكانتا تبنيان قائمةَ المتغيّرات كلٌّ على حدة — فمتغيّرٌ يُضاف
+     * لإحداهما لا يبلغ الأخرى: يُضبط الشعارُ فيظهر في المعاينة ويغيب عن
+     * الطبع، أو تُكتب لغةٌ فتُقرأ في موضعٍ دون موضع. وهو الخلافُ الذي لا
+     * يُكتشف إلّا بعد أن تصل الورقةُ إلى العميل.
+     *
+     * وهي `static` كي يناديَها متحكّمُ الطباعة وهو ليس من هذا الصنف.
+     */
+    public static function paper(
+        int $bid,
+        CustomerInvoice $invoice,
+        float $paid,
+        float $outstanding,
+        ?BankAccount $bank,
+    ): View {
+        return view('pdf.customer-invoice', [
+            'invoice' => $invoice,
+            /*
+             * والترويسةُ من `InvoiceBranding` لا من `Demo::business`.
+             *
+             * الأولى تقرأ الاسمَ المعروض الذي اختاره صاحبُ المحلّ وتضمّن
+             * شعارَه في الورقة نفسها، **ولا مفتاحَ عنوانٍ فيها أصلًا**.
+             * والثانيةُ صفُّ المتجر كما هو في لوحة المنصّة — وأوّلُ من يضيف
+             * إليها `address` يجعل عنوانَ المبنى يُطبع على كلّ فاتورة.
+             */
+            'business' => InvoiceBranding::paper($bid),
+            'footerNote' => InvoiceBranding::footer($bid),
+            'vatNumber' => Vat::enabled($bid) ? Paper::vatNumber($bid) : '',
+            'paid' => $paid,
+            'outstanding' => $outstanding,
+            'bank' => $bank,
+            'generatedAt' => now()->format('Y-m-d H:i'),
         ]);
     }
 
@@ -439,6 +511,100 @@ class CustomerInvoiceController extends Controller
         return $accountId
             ? ($q->clone()->whereKey($accountId)->first() ?? $q->orderBy('id')->first())
             : $q->orderBy('id')->first();
+    }
+
+    /**
+     * «تخصيص التصميم» — شعارُ الورقة واسمُها ولغتُها وذيلُها.
+     *
+     * ═══ ولمَ من هذه الشاشة ═══
+     *
+     * صاحبُ المحلّ يرى ورقتَه أمامه فيقرّر أنّ الشعار ناقصٌ أو أنّ الاسم
+     * ليس ما يريد. وإرسالُه إلى شاشة الإعدادات ليعود بعدها يعني أن يترك
+     * فاتورةً نصفَ مكتوبة — فالمقبضُ حيث يُرى أثرُه.
+     *
+     * ═══ ولا مالكَ ثانيًا للشعار ═══
+     *
+     * العمودُ يُكتب من `InvoiceBranding::storeLogo` وحدها، تناديها هذه
+     * و«شعار المتجر» في الإعدادات معًا. وبابان يكتبان عمودًا واحدًا بقاعدتين
+     * يفترقان يومًا: يقبل أحدُهما ملفًّا يردّه الآخر.
+     *
+     * ═══ وهي إعدادُ متجرٍ لا فعلَ فاتورة ═══
+     *
+     * تُغيّر ما يُطبع على **كلّ** ورقةٍ قادمة — فلا تُمنح لمن مُنح كتابة
+     * الفواتير وحدها. وحارسُها `allows('settings')` كحارس شعار المتجر
+     * نفسِه، والشاشةُ تقرأ `may.brand` فلا تعرض بابًا يُردّ.
+     */
+    public function branding(Request $request)
+    {
+        abort_unless((bool) auth()->user()?->allows('settings'), 403);
+
+        $data = $request->validate([
+            'display_name' => ['nullable', 'string', 'max:120'],
+            'language' => ['nullable', 'string', Rule::in(InvoiceBranding::LANGUAGES)],
+            'footer_note' => ['nullable', 'string', 'max:160'],
+            /*
+             * و`image` لا امتدادٌ يُقرأ من الاسم: ملفٌّ اسمُه `.png` وفيه
+             * سكربتٌ يُخزَّن ثمّ يُقدَّم من القرص العامّ. والقاعدةُ تفتح
+             * الصورةَ وتقرأ أبعادها فعلًا.
+             */
+            'logo' => ['nullable', 'image', 'max:2048'],
+            'remove_logo' => ['nullable', 'boolean'],
+        ], [
+            'logo.image' => __('الشعار صورة — PNG أو JPG أو WEBP'),
+            'logo.max' => __('أقصى حجمٍ للشعار ٢ ميغابايت'),
+        ], [
+            'display_name' => __('اسم المتجر في الفاتورة'),
+            'footer_note' => __('سطر أسفل الفاتورة'),
+        ]);
+
+        $bid = $this->bid();
+
+        InvoiceBranding::save($bid, $data);
+        InvoiceBranding::storeLogo(
+            Business::findOrFail($bid),
+            $request->file('logo'),
+            $request->boolean('remove_logo'),
+        );
+
+        Activity::log('settings', 'عدّل هويّة فاتورة العميل');
+
+        return back()->with('toast', ['msg' => __('حُفظ تصميم الفاتورة'), 'type' => 'success']);
+    }
+
+    /**
+     * العميلُ الذي تُفتح عليه الشاشة — يُضبط أو يُرفع.
+     *
+     * ولا يُحفظ رقمٌ لا صفَّ له: معرّفٌ من متجرٍ آخر يُردّ برسالةٍ على حقله،
+     * لا يُكتب صامتًا ثمّ يُهمَل عند القراءة فيقول التنبيهُ «حُفظ» ولا يتغيّر
+     * شيءٌ في الشاشة القادمة.
+     */
+    public function defaultCustomer(Request $request)
+    {
+        abort_unless((bool) auth()->user()?->allows('settings'), 403);
+
+        $bid = $this->bid();
+
+        $data = $request->validate([
+            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->where('business_id', $bid)],
+        ], [
+            'customer_id.exists' => __('هذا العميل ليس من عملاء متجرك.'),
+        ], ['customer_id' => __('العميل الافتراضي')]);
+
+        Setting::updateOrCreate(
+            ['business_id' => $bid, 'key' => InvoiceBranding::DEFAULT_CUSTOMER],
+            ['value' => (string) ($data['customer_id'] ?? '')],
+        );
+
+        Activity::log('settings', blank($data['customer_id'] ?? null)
+            ? 'رفع العميل الافتراضي لفواتير العملاء'
+            : 'ضبط العميل الافتراضي لفواتير العملاء');
+
+        return back()->with('toast', [
+            'msg' => blank($data['customer_id'] ?? null)
+                ? __('رُفع العميل الافتراضي')
+                : __('حُفظ العميل الافتراضي'),
+            'type' => 'success',
+        ]);
     }
 
     /**
@@ -496,7 +662,30 @@ class CustomerInvoiceController extends Controller
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             // نسبةُ البند لقطةٌ تُحفظ في السطر — والإعفاءُ يُكتب صفرًا
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'payment_method' => ['nullable', 'string', Rule::in(CustomerInvoices::methods())],
+            /*
+             * ووسيلةُ السداد **مطلوبة** — لا تسقط إلى «آجل» في صمت.
+             *
+             * كانت `nullable`، فطلبٌ بلا وسيلةٍ يُكتب ذمّةً على العميل ويُقال
+             * «أُنشئت الفاتورة». ومن قبض المال نقدًا ثمّ نسي أن يختار خرج من
+             * الشاشة بفاتورةٍ آجلة ومالٍ في الدرج لا يعرف به الدفتر — ولا
+             * رسالةَ تُنبّهه. و«آجل» اختيارٌ يُقال لا صمتٌ يُفسَّر.
+             */
+            'payment_method' => ['required', 'string', Rule::in(CustomerInvoices::methods())],
+            /*
+             * والمقبوضُ قد يكون بعضَ الورقة لا كلَّها.
+             *
+             * شركةٌ تدفع أربعين من مئة عند التسليم والباقي بعد شهر — وهي
+             * أكثرُ ما يقع في فواتير الجهات. وكان الخادمُ يسجّل الإجماليّ
+             * دائمًا: فتُقفل ورقةٌ لم يُقبض ثمنُها كلُّه، ويُدين الدفترُ
+             * الصندوقَ بستّين لم تدخله.
+             *
+             * والفراغُ يعني الكلّ — فلا ينكسر بابٌ لا يرسله.
+             */
+            'paid_amount' => ['nullable', 'numeric', 'gt:0'],
+            /* وتاريخُ القبض قد يسبق كتابةَ الورقة — والفراغُ يعني تاريخَها */
+            'payment_date' => ['nullable', 'date'],
+            /* رقمُ الحوالة أو الشيك — يُطابَق به كشفُ الحساب */
+            'payment_reference' => ['nullable', 'string', 'max:60'],
             /*
              * وملكيّةُ الحساب تُسأل هنا كي يقع الخطأ على حقله.
              *
@@ -514,6 +703,9 @@ class CustomerInvoiceController extends Controller
             'customer_id' => __('العميل'),
             'items' => __('بنود الفاتورة'),
             'bank_account_id' => __('الحساب البنكي'),
+            'payment_method' => __('طريقة الدفع'),
+            'paid_amount' => __('المبلغ المدفوع'),
+            'payment_date' => __('تاريخ الدفع'),
         ]);
 
         $customer = Customer::where('business_id', $this->bid())
@@ -553,7 +745,7 @@ class CustomerInvoiceController extends Controller
             return $line;
         }, $data['items']);
 
-        $method = $data['payment_method'] ?? CustomerInvoices::CREDIT;
+        $method = $data['payment_method'];
 
         /*
          * والمقبوضُ لا يُسجَّل على مسودّة.
@@ -588,42 +780,60 @@ class CustomerInvoiceController extends Controller
             ]);
         }
 
+        /*
+         * ═══ الورقةُ وإيصالُها يقعان معًا أو لا يقع أحدُهما ═══
+         *
+         * كانت ثلاثَ معاملاتٍ متتابعة: تُكتب الفاتورة، ثمّ تُصدَر، ثمّ
+         * يُسجَّل التحصيل. فسقوطُ الثالثة — حسابٌ بنكيٌّ من متجرٍ آخر، أو
+         * قفلٌ لم يُظفر به — كان يترك **فاتورةً صادرةً بذمّةٍ في الدفتر
+         * ومالًا في يد التاجر لا إيصالَ له**. ويقرأ التاجرُ رسالةَ خطأ
+         * فيعيد الضغط، فتُكتب ورقةٌ ثانية.
+         *
+         * والمرفقاتُ خارج المعاملة لأنّ القرصَ لا يُلغى بالتراجع: تُرفَع
+         * أوّلًا، وتُمحى بيدنا إن سقطت المعاملة — انظر `discard`.
+         */
+        $uploaded = [];
+
         try {
-            $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $data['items'], auth()->id());
+            $invoice = DB::transaction(function () use ($request, $customer, $data, $method, &$uploaded) {
+                $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $data['items'], auth()->id());
 
-            /*
-             * والمرفقاتُ بعد الورقة لا قبلها: مرفقٌ بلا فاتورةٍ يشير إليه
-             * ملفٌّ على القرص لا يقرؤه شيء.
-             */
-            foreach ($request->file('attachments') ?? [] as $file) {
-                InvoiceAttachments::store($invoice, $file, auth()->id());
-            }
+                /*
+                 * والمرفقاتُ بعد الورقة لا قبلها: مرفقٌ بلا فاتورةٍ يشير إليه
+                 * ملفٌّ على القرص لا يقرؤه شيء.
+                 */
+                foreach ($request->file('attachments') ?? [] as $file) {
+                    $uploaded[] = InvoiceAttachments::store($invoice, $file, auth()->id())->path;
+                }
 
-            /*
-             * والمُصدَرةُ تُلتقط: `issue` تقرأ الصفَّ تحت قفلٍ وتردّ نسختَه،
-             * فالرقمُ يُكتب هناك. وإهمالُ ما تردّه يترك في اليد نسخةً بلا
-             * رقم — فيقول التنبيهُ «أُنشئت الفاتورة » وينتهي عند الفراغ.
-             */
-            if ($request->boolean('issue')) {
+                /*
+                 * والمُصدَرةُ تُلتقط: `issue` تقرأ الصفَّ تحت قفلٍ وتردّ نسختَه،
+                 * فالرقمُ يُكتب هناك. وإهمالُ ما تردّه يترك في اليد نسخةً بلا
+                 * رقم — فيقول التنبيهُ «أُنشئت الفاتورة » وينتهي عند الفراغ.
+                 */
+                if ($request->boolean('issue')) {
+                    $invoice = CustomerInvoices::issue($invoice, auth()->id());
+                }
 
-                $invoice = CustomerInvoices::issue($invoice, auth()->id());
-            }
+                /*
+                 * وفاتورةٌ تُسدَّد لحظةَ إصدارها تُسجَّل تحصيلًا كأيّ تحصيل — لا
+                 * تُوسَم «مدفوعة» في عمود. مسارٌ ثانٍ للسداد يعني رصيدَ صندوقٍ لا
+                 * يعرف به الدفتر، وفاتورةً تقول مدفوعةً بلا إيصالٍ يقابلها.
+                 */
+                if ($method !== CustomerInvoices::CREDIT) {
+                    $this->collect($invoice, $customer, $method, $data);
+                }
 
-            /*
-             * وفاتورةٌ تُسدَّد لحظةَ إصدارها تُسجَّل تحصيلًا كأيّ تحصيل — لا
-             * تُوسَم «مدفوعة» في عمود. مسارٌ ثانٍ للسداد يعني رصيدَ صندوقٍ لا
-             * يعرف به الدفتر، وفاتورةً تقول مدفوعةً بلا إيصالٍ يقابلها.
-             */
-            if ($method !== CustomerInvoices::CREDIT) {
-                CustomerPayments::record(
-                    $this->bid(), $customer, (float) $invoice->total,
-                    ['method' => $method, 'bank_account_id' => $data['bank_account_id'] ?? null,
-                        'occurred_at' => $invoice->issued_at],
-                    [$invoice->id => (float) $invoice->total], auth()->id(),
-                );
-            }
+                return $invoice;
+            });
         } catch (RuntimeException $e) {
+            InvoiceAttachments::discard($uploaded);
+
             throw ValidationException::withMessages(['items' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            InvoiceAttachments::discard($uploaded);
+
+            throw $e;
         }
 
         return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
@@ -633,6 +843,46 @@ class CustomerInvoiceController extends Controller
                 : __('حُفظت مسودّة الفاتورة'),
             'type' => 'success',
         ]);
+    }
+
+    /**
+     * إيصالُ التحصيل المرافقُ للإصدار.
+     *
+     * والمبلغُ يُقاس على **إجماليّ الخادم** لا على ما أرسلته الشاشة: من
+     * يفتح أدوات المتصفّح يستطيع أن يرسل «دفعتُ ألفًا» على ورقةٍ بعشرة،
+     * فيُقيَّد في الصندوق ألفٌ لم يدخله ويبقى للعميل رصيدٌ دائنٌ مخترَع.
+     *
+     * وما زاد يُردّ برسالةٍ على حقله لا يُقصّ في صمت: من كتب ٤٠٠ وهو يقصد
+     * ٤٠ يستحقّ أن يُقال له، لا أن تُقفل ورقتُه بأربعين ويظنّ الباقيَ محصَّلًا.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function collect(CustomerInvoice $invoice, Customer $customer, string $method, array $data): void
+    {
+        $total = round((float) $invoice->total, 3);
+        $amount = isset($data['paid_amount']) ? round((float) $data['paid_amount'], 3) : $total;
+
+        if ($amount > $total) {
+            throw ValidationException::withMessages([
+                'paid_amount' => __('المبلغ المدفوع أكبر من إجمالي الفاتورة :n.', ['n' => number_format($total, 3)]),
+            ]);
+        }
+
+        CustomerPayments::record(
+            $this->bid(),
+            $customer,
+            $amount,
+            [
+                'method' => $method,
+                'bank_account_id' => $data['bank_account_id'] ?? null,
+                /* وتاريخُ القبض إن كُتب — وإلّا تاريخُ الورقة كما كان */
+                'occurred_at' => $data['payment_date'] ?? $invoice->issued_at,
+                'external_reference' => $data['payment_reference'] ?? null,
+            ],
+            /* والتخصيصُ صريحٌ على هذه الورقة: التلقائيُّ قد يذهب إلى أقدمَ منها */
+            [$invoice->id => $amount],
+            auth()->id(),
+        );
     }
 
     /**

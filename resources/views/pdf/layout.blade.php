@@ -14,6 +14,8 @@
 --}}
 @php
     $brand = \App\Support\Paper::brand($business ?? null, $vatNumber ?? '');
+    /* والترويسةُ تتبع اتّجاهَ الورقة: العنوانُ في الطرف المقابل للاسم */
+    $headEnd = \App\Support\Paper::rtl() ? 'left' : 'right';
 @endphp
 @include('pdf.partials.style')
 
@@ -39,7 +41,7 @@
                 <div class="muted small">{{ $line }}</div>
             @endforeach
         </td>
-        <td style="text-align:left">
+        <td style="text-align:{{ $headEnd }}">
             <div class="p-title">@yield('title')</div>
             <div class="p-meta">@yield('meta')</div>
         </td>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { ChevronDown, Info, Paperclip, Plus, RefreshCw, Save, Search, Send, Trash2, UserPlus } from 'lucide-react';
+import { ChevronDown, Info, Paperclip, Plus, RefreshCw, Save, Search, Send, Settings2, Star, Trash2, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -71,6 +71,8 @@ interface May {
     cancel: boolean;
     credit_note: boolean;
     pay: boolean;
+    /** تبديلُ هويّة الورقة — قسمُ «الإعدادات» لا كتابةُ الفواتير */
+    brand: boolean;
 }
 
 interface Props {
@@ -88,6 +90,27 @@ interface Props {
     /** حساباتُ المتجر النشطة — الرئيسيُّ أوّلها */
     bank_accounts: BankRow[];
     new_customer_id: number | null;
+    /** العميلُ الذي تُفتح عليه الشاشة — من `InvoiceBranding::defaultCustomerId` */
+    default_customer_id: number | null;
+    branding: Branding;
+}
+
+/**
+ * هويّةُ الورقة كما حُفظت — تُعرض في «تخصيص التصميم» ولا تُرسم بها المعاينة.
+ *
+ * المعاينةُ تُرسم في الخادم بالقالب الذي يُطبع، فلا تقرأ من هنا حرفًا:
+ * قراءتُها هنا تعني اسمين للمتجر يفترقان يومًا — واحدٌ في الصورة وآخرُ على
+ * الورق.
+ */
+interface Branding {
+    display_name: string;
+    language: string;
+    footer_note: string;
+    /** جاهزًا للعرض: `data:` أو رابطٌ مطلق — انظر `InvoiceBranding::logo` */
+    logo: string | null;
+    default_customer_id: number | null;
+    /** الاسمُ المسجَّل — يُعرض ليُعرف ما يحلّ محلّه المعروضُ حين يُترك فارغًا */
+    legal_name: string;
 }
 
 interface Line {
@@ -154,8 +177,11 @@ const SHOWN = 40;
  * واحدة — فليقُل ما يعنيه من أوّل قراءة.
  */
 const ORG_FIELDS = [
+    ['po_number', 'مرجع العميل (أمر الشراء)', 'PO-2026-154'],
     ['contract_number', 'رقم العقد', 'CNT-2026-08'],
     ['external_reference', 'رقم المرجع', 'REF-8842'],
+    ['department', 'القسم / الإدارة', ''],
+    ['cost_center', 'مركز التكلفة', 'CC-104'],
     ['attention_to', 'موجه إلى / عناية', ''],
 ] as const;
 
@@ -196,6 +222,8 @@ export default function CustomerInvoiceCreate({
     bank_methods,
     bank_accounts,
     new_customer_id,
+    default_customer_id,
+    branding,
 }: Props) {
     const { context } = usePage<PageProps>().props;
     const t = useTranslate();
@@ -216,9 +244,27 @@ export default function CustomerInvoiceCreate({
     const [adding, setAdding] = useState(false);
     /* والملاحظاتُ الداخليّة مطفأةٌ حتى تُطلَب — وإطفاؤها يمحوها، انظر المُبدِّل */
     const [internal, setInternal] = useState(false);
+    /* ونافذةُ «تخصيص التصميم» — الشعارُ والاسمُ واللغةُ والذيل */
+    const [branding_open, setBrandingOpen] = useState(false);
+    /*
+     * ولغةُ المعاينة تقليبٌ لا حفظ.
+     *
+     * من نظر إلى الشكل الإنجليزيّ ليرى كيف يقرؤها عميلُه الأجنبيّ ثمّ عاد
+     * لا يجب أن يجد فواتيرَه القادمة إنجليزيّة. واللغةُ المحفوظة تُبدَّل من
+     * «تخصيص التصميم» وحده — وهذه تبدأ منها.
+     */
+    const [lang, setLang] = useState(branding.language === 'en' ? 'en' : 'ar');
 
     const form = useForm({
-        customer_id: new_customer_id ? String(new_customer_id) : '',
+        /*
+         * والعميلُ الافتراضيّ يُفتح عليه — ومن أضاف عميلًا للتوّ يسبقه.
+         *
+         * «الافتراضيّ» اختيارٌ مبدئيٌّ لهذه الزيارة لا قفل: من بدّله بدّله،
+         * ولا يُعاد فرضُه عليه بعد أن اختار. وهو مضبوطٌ في `useForm` لا في
+         * `useEffect`: ضبطُه بعد أوّل رسمٍ يجعل المعاينةَ تُرسم مرّةً بلا
+         * عميلٍ ثمّ تُعاد — وميضٌ في ورقةٍ تحت العين بلا سبب.
+         */
+        customer_id: String(new_customer_id ?? default_customer_id ?? ''),
         issued_at: today,
         due_at: addDays(today, 30),
         payment_terms_days: '30',
@@ -234,6 +280,15 @@ export default function CustomerInvoiceCreate({
         attachments: [] as File[],
         // و«آجل» أوّلُ القائمة دائمًا — والافتراضُ منها لا مكتوبًا بيده
         payment_method: methods[0] ?? CREDIT,
+        /*
+         * والمقبوضُ يُعرض ويُملأ بالإجماليّ — ويُترك قابلًا للنقصان.
+         *
+         * الفراغُ يعني «كلَّ الورقة» عند الخادم، والشاشةُ تكتبه صراحةً كي
+         * يقرأ من يقبض بعضَ المبلغ رقمًا يعدّله لا حقلًا يخمّن معناه.
+         */
+        paid_amount: '',
+        payment_date: today,
+        payment_reference: '',
         // والرئيسيُّ أوّلُ القائمة — فما تراه الشاشةُ هو ما يُخزَّن
         bank_account_id: bank_accounts.length > 0 ? String(bank_accounts[0].id) : '',
         issue: false,
@@ -255,6 +310,9 @@ export default function CustomerInvoiceCreate({
     }, [new_customer_id]);
 
     const customer = customers.find((c) => String(c.id) === form.data.customer_id) ?? null;
+
+    /* أهذا هو المضبوطُ افتراضيًّا؟ — يُقرأ من المحفوظ لا من أوّل قيمةٍ في النموذج */
+    const isDefault = customer !== null && customer.id === default_customer_id;
 
     const setLine = (i: number, key: keyof Line, value: string) =>
         setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, [key]: value } : l)));
@@ -401,9 +459,11 @@ export default function CustomerInvoiceCreate({
             attention_to: form.data.attention_to,
             notes: form.data.notes,
             bank_account_id: needsAccount ? form.data.bank_account_id : '',
+            /* ولغةُ الرسم مع الحمولة: الورقةُ تُبنى في الخادم بها لا تُترجَم هنا */
+            lang,
             items: lines,
         }),
-        [form.data, lines, needsAccount],
+        [form.data, lines, needsAccount, lang],
     );
 
     const draw = useCallback(async () => {
@@ -443,6 +503,8 @@ export default function CustomerInvoiceCreate({
         return () => window.clearTimeout(id);
     }, [draw]);
 
+    const credit = form.data.payment_method === CREDIT;
+
     const submit = (issue: boolean) => {
         // و«مخصص» لا يُرسَل مدّةً: الخادمُ يخزّن عددَ أيّامٍ أو لا شيء
         form.transform((data) => ({
@@ -458,11 +520,20 @@ export default function CustomerInvoiceCreate({
              * (`CustomerPayments::accountFor`)، وحارسان لا يضرّان.
              */
             bank_account_id: needsAccount ? data.bank_account_id : '',
+            /*
+             * ولا مبلغَ ولا تاريخَ قبضٍ مع «آجل».
+             *
+             * الحقولُ تبقى في النموذج حين تُخفى — فمن ملأ مبلغًا ثمّ بدّل
+             * إلى «آجل» كان يرسل «قبضتُ كذا» مع ورقةٍ لا قبضَ فيها. ولا
+             * أثرَ له اليوم لأنّ الخادم يتجاهله عند «آجل»، وحقلٌ يُرسَل ولا
+             * يُقرأ ينتظر البابَ الذي يقرؤه.
+             */
+            paid_amount: credit ? '' : data.paid_amount,
+            payment_date: credit ? '' : data.payment_date,
+            payment_reference: credit ? '' : data.payment_reference,
         }));
         form.post('/admin/customer-invoices', { preserveScroll: true, forceFormData: files.length > 0 });
     };
-
-    const credit = form.data.payment_method === CREDIT;
 
     return (
         <AdminLayout title={t('إنشاء فاتورة')}>
@@ -540,7 +611,7 @@ export default function CustomerInvoiceCreate({
                 لا بعدها — فتبقى في العين بينما تُملأ البنود، ولا تنزل تحت طيّة
                 الشاشة كما كانت.
             */}
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,460px)]">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
                 <div className="min-w-0 space-y-4">
                     {/* ───────── معلومات الفاتورة ───────── */}
                     <Card className="p-5">
@@ -575,14 +646,51 @@ export default function CustomerInvoiceCreate({
                                 {form.errors.customer_id ? (
                                     <Err msg={form.errors.customer_id} />
                                 ) : (
-                                    <button
-                                        type="button"
-                                        className="flex items-center gap-1 text-[12px] font-medium text-[#6d28d9] hover:underline"
-                                        onClick={() => setAdding(true)}
-                                    >
-                                        <UserPlus className="size-3.5" />
-                                        {t('إضافة عميل جديد')}
-                                    </button>
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                        <button
+                                            type="button"
+                                            className="flex items-center gap-1 text-[12px] font-medium text-[#6d28d9] hover:underline"
+                                            onClick={() => setAdding(true)}
+                                        >
+                                            <UserPlus className="size-3.5" />
+                                            {t('إضافة عميل جديد')}
+                                        </button>
+
+                                        {/*
+                                            ───────── العميلُ الافتراضيّ ─────────
+
+                                            والمقبضُ حيث يُرى أثرُه: من فتح الشاشة
+                                            فوجد جهتَه المعتادة مختارةً يعرف من
+                                            أين تُبدَّل، ومن أرادها لغيرها يبدّلها
+                                            هنا لا في شاشةٍ أخرى يبحث عنها.
+
+                                            وهو إعدادُ متجرٍ لا فعلُ فاتورة — فلا
+                                            يُعرض لمن لا يملك «الإعدادات».
+                                        */}
+                                        {may.brand && customer && (
+                                            <button
+                                                type="button"
+                                                className="flex items-center gap-1 text-[12px] font-medium text-[#4b4b4b] hover:underline"
+                                                onClick={() =>
+                                                    router.post(
+                                                        route('admin.customerInvoices.defaultCustomer'),
+                                                        {
+                                                            customer_id: isDefault ? '' : form.data.customer_id,
+                                                        },
+                                                        { preserveScroll: true, preserveState: false },
+                                                    )
+                                                }
+                                            >
+                                                <Star
+                                                    className={cn(
+                                                        'size-3.5',
+                                                        isDefault && 'fill-[#f59e0b] text-[#f59e0b]',
+                                                    )}
+                                                />
+                                                {isDefault ? t('إلغاء العميل الافتراضي') : t('اجعله العميل الافتراضي')}
+                                            </button>
+                                        )}
+                                    </div>
                                 )}
                             </div>
 
@@ -664,58 +772,6 @@ export default function CustomerInvoiceCreate({
                             </div>
 
                             {/*
-                                ── مرجع العميل ──
-
-                                وهو عمود `po_number` باسمه الذي يفهمه من يملأ
-                                الورقة: الجهةُ تكتب على طلبها رقمًا وتطلب أن
-                                يعود إليها في الفاتورة. والعقدُ والمرجعُ
-                                الخارجيّ عمودان آخران — تحت «معلومات إضافية»،
-                                ولا يُدمجان في واحد.
-                            */}
-                            <div className="space-y-1.5">
-                                <Label htmlFor="org-po_number">{t('مرجع العميل (أمر الشراء)')}</Label>
-                                <Input
-                                    id="org-po_number"
-                                    value={form.data.po_number}
-                                    onChange={(e) => form.setData('po_number', e.target.value)}
-                                    placeholder="PO-2026-154"
-                                />
-                                {form.errors.po_number && <Err msg={form.errors.po_number} />}
-                            </div>
-
-                            {/* ── مركز التكلفة ── */}
-                            <div className="space-y-1.5">
-                                <Label htmlFor="org-cost_center">{t('مركز التكلفة')}</Label>
-                                <Input
-                                    id="org-cost_center"
-                                    value={form.data.cost_center}
-                                    onChange={(e) => form.setData('cost_center', e.target.value)}
-                                    placeholder="CC-104"
-                                />
-                                {form.errors.cost_center && <Err msg={form.errors.cost_center} />}
-                            </div>
-
-                            {/* ── القسم ── */}
-                            <div className="space-y-1.5">
-                                <Label htmlFor="org-department">{t('القسم / الإدارة')}</Label>
-                                <Input
-                                    id="org-department"
-                                    value={form.data.department}
-                                    onChange={(e) => form.setData('department', e.target.value)}
-                                    placeholder={customer?.department ?? ''}
-                                />
-                                {form.errors.department ? (
-                                    <Err msg={form.errors.department} />
-                                ) : (
-                                    customer?.department && (
-                                        <p className="text-[12px] text-[#9ca3af]">
-                                            {t('يسقط إلى قسم العميل إن تُرك فارغًا.')}
-                                        </p>
-                                    )
-                                )}
-                            </div>
-
-                            {/*
                                 ── العملة ──
 
                                 نصٌّ لا قائمة: الفاتورةُ تُكتب بعملة المتجر،
@@ -737,12 +793,15 @@ export default function CustomerInvoiceCreate({
                     </Card>
 
                     {/*
-                        وبقيّةُ بيانات الجهة مطويّة، وخفيفةٌ في النظر.
+                        بياناتُ الجهة الستّة — مطويّةً، وخفيفةً في النظر.
 
-                        ثلاثةٌ صعدت إلى الشبكة أعلاه لأنّها تُملأ في أكثر فواتير
-                        الجهات، وثلاثةٌ بقيت هنا لأنّ نصف الفواتير لأفرادٍ لا
-                        عقدَ لهم ولا «عناية» — وستّةُ حقولٍ مفتوحةٍ دائمًا تدفع
-                        البنودَ، وهي لبُّ الورقة، تحت طيّة الشاشة.
+                        وكانت ثلاثةٌ منها في شبكة «معلومات الفاتورة» أعلاه.
+                        فنزلت إليها: نصفُ الفواتير لأفرادٍ لا أمرَ شراءٍ لهم
+                        ولا قسمَ ولا «عناية»، وحقولٌ مفتوحةٌ دائمًا لا تُملأ
+                        تدفع البنودَ — وهي لبُّ الورقة — تحت طيّة الشاشة.
+
+                        ولم يسقط منها حرف: تُحفظ كما كانت وتُطبع كما كانت،
+                        وإنّما تغيّر موضعُ الحقل لا مصيرُه.
                     */}
                     <Card className="border-dashed p-5">
                         <button
@@ -946,31 +1005,131 @@ export default function CustomerInvoiceCreate({
                         </div>
                     </Card>
 
-                    {/* ───────── طريقة السداد ───────── */}
+                    {/* ───────── معلومات الدفع ───────── */}
                     <Card className="p-5">
-                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('طريقة السداد')}</h2>
+                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('معلومات الدفع')}</h2>
 
-        {/*
-                            والقائمةُ من الخادم لا مكتوبةً هنا.
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label required>{t('طريقة الدفع')}</Label>
+                                {/*
+                                    والقائمةُ من الخادم لا مكتوبةً هنا.
 
-                            كانت أربعًا مكتوبةً بيدها تنقصها «شيك» — وهي وسيلةٌ
-                            يقبلها التحصيلُ منذ كُتب. فمن قبض شيكًا مع فاتورته
-                            لم يجد وسيلتَه: يكتبها «تحويل» فيكذب الدفتر، أو
-                            يحفظها آجلةً ثمّ يفتح الورقة ويسجّل من شاشةٍ ثانية.
-                        */}
-                        <div className="space-y-2.5">
-                            {methods.map((value) => (
-                                <label key={value} className="flex items-center gap-2 text-[13px]">
-                                    <input
-                                        type="radio"
-                                        name="payment_method"
-                                        className="size-4 accent-[#6d28d9]"
-                                        checked={form.data.payment_method === value}
-                                        onChange={() => form.setData('payment_method', value)}
-                                    />
-                                    {t(METHOD_LABEL[value] ?? value)}
-                                </label>
-                            ))}
+                                    كانت أربعًا مكتوبةً بيدها تنقصها «شيك» — وهي
+                                    وسيلةٌ يقبلها التحصيلُ منذ كُتب. فمن قبض شيكًا
+                                    مع فاتورته لم يجد وسيلتَه: يكتبها «تحويل»
+                                    فيكذب الدفتر، أو يحفظها آجلةً ثمّ يفتح الورقة
+                                    ويسجّل من شاشةٍ ثانية.
+                                */}
+                                <div className="space-y-2.5 pt-1">
+                                    {methods.map((value) => (
+                                        <label key={value} className="flex items-center gap-2 text-[13px]">
+                                            <input
+                                                type="radio"
+                                                name="payment_method"
+                                                className="size-4 accent-[#6d28d9]"
+                                                checked={form.data.payment_method === value}
+                                                onChange={() => form.setData('payment_method', value)}
+                                            />
+                                            {t(METHOD_LABEL[value] ?? value)}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/*
+                                ───────── ما يُقبض الآن ─────────
+
+                                والمبلغُ والتاريخُ لا يُعرضان مع «آجل»: لا قبضَ
+                                فيها، وحقلُ «المبلغ المدفوع» فوق ورقةٍ آجلة يُقرأ
+                                دعوةً لكتابة رقمٍ لا يُسجَّل.
+                            */}
+                            {! credit && (
+                                <div className="space-y-3">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="paid-amount">
+                                            {t('المبلغ المدفوع')} ({context!.currency.symbol})
+                                        </Label>
+                                        <Input
+                                            id="paid-amount"
+                                            inputMode="decimal"
+                                            value={form.data.paid_amount}
+                                            onChange={(e) => form.setData('paid_amount', e.target.value)}
+                                            placeholder={totals.total.toFixed(3)}
+                                        />
+                                        {form.errors.paid_amount ? (
+                                            <Err msg={form.errors.paid_amount} />
+                                        ) : (
+                                            /*
+                                                والفراغُ يعني الكلّ — يُقال ولا
+                                                يُترك ليُخمَّن. ومن قبض بعضَ
+                                                المبلغ يكتب ما قبض، فتبقى الورقةُ
+                                                مدفوعةً جزئيًّا وباقيها ذمّة.
+                                            */
+                                            <p className="text-[12px] text-[#9ca3af]">
+                                                {t('اتركه فارغًا لتسجيل المبلغ كاملًا. وما دونه يترك الباقي ذمّةً على العميل.')}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="payment-date">{t('تاريخ الدفع')}</Label>
+                                        <Input
+                                            id="payment-date"
+                                            type="date"
+                                            value={form.data.payment_date}
+                                            onChange={(e) => form.setData('payment_date', e.target.value)}
+                                        />
+                                        {form.errors.payment_date && <Err msg={form.errors.payment_date} />}
+                                    </div>
+
+                                    {/*
+                                        ورقمُ المرجع للتحويل والشيك والبطاقة —
+                                        وهو ما يُطابَق به كشفُ الحساب. ولا يُسأل
+                                        عن نقدٍ: لا مرجعَ لورقةٍ نقديّة.
+                                    */}
+                                    {needsAccount && (
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="payment-reference">{t('رقم المرجع')}</Label>
+                                            <Input
+                                                id="payment-reference"
+                                                value={form.data.payment_reference}
+                                                onChange={(e) => form.setData('payment_reference', e.target.value)}
+                                                placeholder={t('رقم العملية أو التحويل')}
+                                            />
+                                            {form.errors.payment_reference && (
+                                                <Err msg={form.errors.payment_reference} />
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/*
+                                        وإثباتُ الدفع مرفقٌ كسائر مرفقات الورقة —
+                                        على القرص الخاصّ يُقرأ ببابٍ يسأل، لا
+                                        مسارٌ ثانٍ للملفّات يُكتب له حارسٌ ثانٍ.
+                                    */}
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="payment-proof">{t('إثبات الدفع')}</Label>
+                                        <label
+                                            htmlFor="payment-proof"
+                                            className="flex h-10 cursor-pointer items-center gap-2 rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 text-[13px] text-[#6d28d9]"
+                                        >
+                                            <Paperclip className="size-4" />
+                                            {t('اختيار ملف')}
+                                        </label>
+                                        <input
+                                            id="payment-proof"
+                                            type="file"
+                                            className="hidden"
+                                            accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
+                                            onChange={(e) => addFiles(e.target.files)}
+                                        />
+                                        <p className="text-[12px] text-[#9ca3af]">
+                                            {t('يُحفظ ضمن مرفقات الفاتورة.')}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/*
@@ -1013,7 +1172,7 @@ export default function CustomerInvoiceCreate({
                         <p className="mt-4 rounded-[10px] bg-[#f5f3ff] p-3 text-[12px] leading-relaxed text-[#5b21b6]">
                             {credit
                                 ? t('تُنشأ ذمّة على العميل بالمبلغ المستحق بعد إصدار الفاتورة.')
-                                : t('يُسجَّل إيصال تحصيل بالمبلغ كاملًا عند إصدار الفاتورة — ولا يُسجَّل على مسودّة.')}
+                                : t('يُسجَّل إيصال تحصيل بالمبلغ المدخل عند إصدار الفاتورة — ولا يُسجَّل على مسودّة.')}
                         </p>
 
                         {form.errors.payment_method && <Err msg={form.errors.payment_method} />}
@@ -1165,26 +1324,67 @@ export default function CustomerInvoiceCreate({
                     يُقطع من التسلسل، ولا قيدَ يقع.
                 */}
                 <div className="min-w-0 space-y-2 xl:sticky xl:top-4 xl:self-start">
-                    <div className="flex items-center justify-between gap-3 px-1">
-                        <div className="min-w-0">
-                            <h2 className="text-[15px] font-bold text-[#111]">{t('معاينة الفاتورة')}</h2>
-                            {/*
-                                والشعارُ والاسمُ يُضبطان من موضعٍ واحد — ولا
-                                يُكتبان هنا مرّةً ثانية. حقلان يقولان اسمَ
-                                المتجر يفترقان يومًا، فتحمل الفاتورةُ اسمًا
-                                والإيصالُ غيرَه.
-                            */}
-                            <p className="mt-0.5 truncate text-[12px] text-[#9ca3af]">
-                                {t('الشعار واسم المتجر من')}{' '}
-                                <a
-                                    href={route('admin.settings.index')}
-                                    className="font-medium text-[#6d28d9] hover:underline"
+                    <div className="flex flex-wrap items-center gap-2 px-1">
+                        <h2 className="me-auto text-[15px] font-bold text-[#111]">
+                            {t('معاينة الفاتورة')}
+                            {drawing && (
+                                <RefreshCw className="ms-2 inline size-3.5 animate-spin text-[#d1d5db]" />
+                            )}
+                        </h2>
+
+                        {/*
+                            ───────── لغةُ الورقة ─────────
+
+                            ولغةُ الورقة ليست لغةَ اللوحة.
+
+                            موظّفٌ يقرأ اللوحةَ إنجليزيّةً يُصدر لوزارةٍ ورقتُها
+                            عربيّة، وصاحبُ محلٍّ عربيِّ اللوحة يفوتر شركةً
+                            أجنبيّة. وربطُ الاثنين يجعل من يريد ورقةً بلغةٍ
+                            يقلب لوحته كلَّها ثمّ يعود.
+
+                            والرسمُ في الخادم بهذه اللغة — لا ترجمةَ في الشاشة
+                            لنصٍّ خرج من القالب: نسختان للنصّ تفترقان يومًا.
+                        */}
+                        <div
+                            role="group"
+                            aria-label={t('لغة الفاتورة')}
+                            className="flex overflow-hidden rounded-[10px] border border-[var(--ui-border,#e8e8e8)]"
+                        >
+                            {(['ar', 'en'] as const).map((code) => (
+                                <button
+                                    key={code}
+                                    type="button"
+                                    aria-pressed={lang === code}
+                                    onClick={() => setLang(code)}
+                                    className={cn(
+                                        'px-2.5 py-1 text-[12px] font-medium transition-colors',
+                                        lang === code
+                                            ? 'bg-[#111] text-white'
+                                            : 'bg-white text-[#4b4b4b] hover:bg-[#fafafa]',
+                                    )}
                                 >
-                                    {t('الإعدادات')}
-                                </a>
-                            </p>
+                                    {code === 'ar' ? t('العربية') : t('English')}
+                                </button>
+                            ))}
                         </div>
-                        {drawing && <RefreshCw className="size-3.5 shrink-0 animate-spin text-[#d1d5db]" />}
+
+                        {/*
+                            و«تخصيص التصميم» لمن يملك الإعدادات وحده — وما
+                            يُبدَّل منه يُطبع على كلّ ورقةٍ قادمة لا على هذه.
+                            ومن لا يملكه لا يراه: بابٌ معروضٌ يردّ بـ٤٠٣ يُقرأ
+                            عطبًا لا منعًا.
+                        */}
+                        {may.brand && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setBrandingOpen(true)}
+                            >
+                                <Settings2 />
+                                {t('تخصيص التصميم')}
+                            </Button>
+                        )}
                     </div>
 
                     <div className="overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white">
@@ -1235,7 +1435,192 @@ export default function CustomerInvoiceCreate({
             />
 
             <NewCustomerDialog open={adding} onOpenChange={setAdding} />
+
+            <BrandingDialog open={branding_open} onOpenChange={setBrandingOpen} branding={branding} />
         </AdminLayout>
+    );
+}
+
+/**
+ * «تخصيص التصميم» — ما يُطبع على كلّ ورقةٍ قادمة.
+ *
+ * ═══ ولا محرّرَ سحبٍ وإفلات ═══
+ *
+ * أربعةٌ يُبدَّلن ولا خامس: الشعارُ والاسمُ واللغةُ وسطرُ الذيل. ومحرّرُ
+ * تصميمٍ حرّ يعني ورقةً يخرج نصفُها خارج A4 ولا يكتشفه صاحبُه إلّا على ورق.
+ *
+ * ═══ والاسمُ المعروض لا الاسمُ المسجَّل ═══
+ *
+ * «أبعاد للورود ش.م.م» في السجلّ التجاريّ و«أبعاد للورود» على الفاتورة —
+ * وتبديلُ الأوّل ليُجمَّل الطبع يغيّره في العقود والاشتراك معًا. فحقلان
+ * منفصلان، والفراغُ في هذا يعني «استعمل المسجَّل» لا اسمًا خاويًا.
+ */
+function BrandingDialog({
+    open,
+    onOpenChange,
+    branding,
+}: {
+    open: boolean;
+    onOpenChange: (v: boolean) => void;
+    branding: Branding;
+}) {
+    const t = useTranslate();
+
+    const form = useForm({
+        display_name: branding.display_name,
+        language: branding.language,
+        footer_note: branding.footer_note,
+        logo: null as File | null,
+        remove_logo: false as boolean,
+    });
+
+    /*
+     * والمعاينةُ في النافذة للشعار الجديد قبل حفظه.
+     *
+     * من رفع ملفًّا خطأً — لقطةَ شاشةٍ بدل الشعار — لا يجب أن يكتشفه على
+     * أوّل فاتورةٍ يرسلها. و`URL.revokeObjectURL` عند التبديل: كلُّ اختيارٍ
+     * يحجز ذاكرةً لا يحرّرها المتصفّح وحده.
+     */
+    const [localLogo, setLocalLogo] = useState<string | null>(null);
+
+    useEffect(() => () => {
+        if (localLogo) URL.revokeObjectURL(localLogo);
+    }, [localLogo]);
+
+    const pickLogo = (file: File | null) => {
+        if (localLogo) URL.revokeObjectURL(localLogo);
+        setLocalLogo(file ? URL.createObjectURL(file) : null);
+        form.setData((d) => ({ ...d, logo: file, remove_logo: false }));
+    };
+
+    const dropLogo = () => {
+        if (localLogo) URL.revokeObjectURL(localLogo);
+        setLocalLogo(null);
+        form.setData((d) => ({ ...d, logo: null, remove_logo: true }));
+    };
+
+    /* والشعارُ المعروض: الجديدُ إن اختير، ثمّ المحفوظُ ما لم يُطلب رفعُه */
+    const shown = localLogo ?? (form.data.remove_logo ? null : branding.logo);
+
+    const save = () =>
+        form.post(route('admin.customerInvoices.branding'), {
+            preserveScroll: true,
+            /*
+             * ولا `preserveState`: الحفظُ يغيّر ما تُرسم به الورقة، والصفحةُ
+             * تُعاد بالهويّة الجديدة فتُعاد المعاينةُ معها. وإبقاءُ الحالة
+             * يترك في العين ورقةً بالاسم القديم بعد تنبيهٍ يقول «حُفظ».
+             */
+            forceFormData: true,
+            onSuccess: () => onOpenChange(false),
+        });
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>{t('تخصيص التصميم')}</DialogTitle>
+                    <DialogDescription>
+                        {t('يُطبَّق على كل فاتورة قادمة — ولا يغيّر فاتورةً صدرت.')}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 px-5 pb-5">
+                    <Field label="شعار الفاتورة" error={form.errors.logo}>
+                        <div className="flex items-center gap-3">
+                            <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa]">
+                                {shown ? (
+                                    <img src={shown} alt="" className="max-h-full max-w-full object-contain" />
+                                ) : (
+                                    <span className="text-[11px] text-[#9ca3af]">{t('لا شعار')}</span>
+                                )}
+                            </div>
+
+                            <div className="min-w-0 space-y-1.5">
+                                <label
+                                    htmlFor="brand-logo"
+                                    className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-[10px] border border-[var(--border-strong,#dcdcdc)] bg-white px-3 text-[13px] font-medium text-[#111] hover:bg-[#fafafa]"
+                                >
+                                    <Paperclip className="size-4" />
+                                    {shown ? t('تغيير الشعار') : t('رفع شعار')}
+                                </label>
+                                <input
+                                    id="brand-logo"
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/png,image/jpeg,image/webp"
+                                    onChange={(e) => pickLogo(e.target.files?.[0] ?? null)}
+                                />
+                                <p className="text-[11px] text-[#9ca3af]">PNG · JPG · WEBP — {t('حتى ٢ ميغابايت')}</p>
+
+                                {shown && (
+                                    <button
+                                        type="button"
+                                        className="text-[12px] font-medium text-[#b91c1c] hover:underline"
+                                        onClick={dropLogo}
+                                    >
+                                        {t('إزالة الشعار')}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </Field>
+
+                    <Field
+                        label="اسم المتجر في الفاتورة"
+                        hint={`${'اتركه فارغًا لاستعمال الاسم المسجَّل'}: ${branding.legal_name}`}
+                        error={form.errors.display_name}
+                    >
+                        <Input
+                            value={form.data.display_name}
+                            maxLength={120}
+                            onChange={(e) => form.setData('display_name', e.target.value)}
+                            placeholder={branding.legal_name}
+                        />
+                    </Field>
+
+                    <Field label="لغة الفاتورة" error={form.errors.language}>
+                        <Select
+                            value={form.data.language}
+                            onChange={(e) => form.setData('language', e.target.value)}
+                            options={[
+                                { label: 'العربية', value: 'ar' },
+                                { label: 'English', value: 'en' },
+                            ]}
+                        />
+                    </Field>
+
+                    <Field
+                        label="سطر أسفل الفاتورة"
+                        hint="شعارٌ أو عبارةُ شكر — يُطبع في ذيل الورقة"
+                        error={form.errors.footer_note}
+                    >
+                        <Input
+                            value={form.data.footer_note}
+                            maxLength={160}
+                            onChange={(e) => form.setData('footer_note', e.target.value)}
+                            placeholder={t('نصنع الجمال لكل مناسبة')}
+                        />
+                    </Field>
+
+                    {/*
+                        ولا عنوانَ مبنًى على ورقة العميل — يُقال ولا يُترك
+                        ليُبحث عنه في قائمةٍ لا وجودَ له فيها.
+                    */}
+                    <p className="rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3 text-[12px] leading-relaxed text-[#6b7280]">
+                        {t('عنوان المبنى لا يُطبع على فواتير العملاء. والهاتف والبريد والرقم الضريبي تُقرأ من بيانات النشاط.')}
+                    </p>
+                </div>
+
+                <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                        {t('إلغاء')}
+                    </Button>
+                    <Button type="button" loading={form.processing} onClick={save}>
+                        {t('حفظ')}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 

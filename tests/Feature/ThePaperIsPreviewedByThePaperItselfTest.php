@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Admin\CustomerInvoiceController;
 use App\Models\BankAccount;
 use App\Models\Business;
 use App\Models\Currency;
@@ -77,6 +78,7 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
     {
         return array_merge([
             'customer_id' => $this->customer->id,
+            'payment_method' => 'آجل',
             'issued_at' => '2026-09-09',
             'due_at' => '2026-10-24',
             'notes' => 'شكرًا لثقتكم.',
@@ -165,8 +167,27 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
         $controller = file_get_contents(app_path('Http/Controllers/Admin/CustomerInvoiceController.php'));
         $pdf = file_get_contents(app_path('Http/Controllers/PdfController.php'));
 
-        $this->assertStringContainsString("view('pdf.customer-invoice'", $controller, 'المعاينةُ لا ترسم القالب');
-        $this->assertStringContainsString("view('pdf.customer-invoice'", $pdf);
+        /*
+         * وموضعُ البناء واحدٌ لا اثنان.
+         *
+         * كان كلٌّ منهما يكتب `view('pdf.customer-invoice', [...])` بقائمة
+         * متغيّراتٍ خاصّةٍ به. والقالبُ واحدٌ فعلًا، لكنّ **ما يُمرَّر إليه**
+         * كان اثنين — فمتغيّرٌ يُضاف لأحدهما لا يبلغ الآخر: يُضبط الشعارُ
+         * فيُرى في المعاينة ويغيب عن الطابعة، وهو خلافٌ لا يُكتشف إلّا بعد
+         * أن تصل الورقةُ إلى العميل. فصار البناءُ في `CustomerInvoiceController::paper`
+         * وحدها، ومتحكّمُ الطباعة يناديها.
+         */
+        $this->assertSame(
+            1,
+            substr_count($controller, "view('pdf.customer-invoice'"),
+            'الورقةُ تُبنى في أكثر من موضع داخل متحكّم الفواتير',
+        );
+        $this->assertStringNotContainsString(
+            "view('pdf.customer-invoice'",
+            $pdf,
+            'متحكّمُ الطباعة يبني الورقةَ بنفسه بدل أن ينادي بانيَها',
+        );
+        $this->assertStringContainsString('CustomerInvoiceController::paper(', $pdf);
 
         // ولا صورةَ ثانيةً في الشاشة: الإطارُ يعرض ما يردّه الخادم
         $screen = file_get_contents(resource_path('js/Pages/Admin/CustomerInvoices/Create.tsx'));
@@ -284,6 +305,7 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
         // ٢) وما يُحفظ فعلًا — والرقمان واحد
         $this->actingAs($this->owner)->post(route('admin.customerInvoices.store'), [
             'customer_id' => $this->customer->id,
+            'payment_method' => 'آجل',
             'items' => [$line],
         ])->assertSessionHasNoErrors();
 
@@ -443,7 +465,14 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
     {
         $screen = file_get_contents(resource_path('js/Pages/Admin/CustomerInvoices/Create.tsx'));
 
-        $this->assertStringContainsString('xl:grid-cols-[minmax(0,1fr)_minmax(0,460px)]', $screen);
+        /*
+         * والنسبةُ نحو ٥٧ إلى ٤٣ — لا عمودٌ ثابتُ العرض.
+         *
+         * كان الأيمنُ مقيَّدًا بـ`460px`، فعلى شاشةٍ عريضة تنكمش الورقةُ إلى
+         * ثُلثٍ ويبقى النموذجُ ممدودًا بلا حاجة — والورقةُ هي ما يُراجَع.
+         * وهي نسبةُ التصميم المعتمد.
+         */
+        $this->assertStringContainsString('xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]', $screen);
         $this->assertStringContainsString('xl:sticky xl:top-4 xl:self-start', $screen);
 
         // والإطارُ معزولٌ بلا تنفيذ: الورقةُ نصٌّ يُطبع لا صفحةٌ تعمل
@@ -463,27 +492,24 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
     }
 
     /**
-     * ما يُمرَّر إلى القالب عند الطباعة — كما يبنيه `PdfController`.
+     * الورقةُ المطبوعة نصًّا — قبل أن يبتلعها محرّكُ الـPDF.
      *
-     * @return array<string, mixed>
+     * ═══ وتُبنى ببانيها لا بنسخةٍ هنا ═══
+     *
+     * كانت قائمةُ المتغيّرات تُكتب في هذا الملفّ بيدها. وهي نسخةٌ ثالثة إلى
+     * جانب نسختَي المتحكّمَين — فحارسٌ يقول «لا عنوان في المطبوع» وهو إنّما
+     * يفحص ورقةً بناها الاختبارُ لنفسه، لا التي تخرج من الطابعة. وحارسٌ
+     * يفحص نسختَه هو أسوأ من غياب الحارس: يقول «سليم» عن بابٍ لم يمرّ به.
      */
-    private function paperData(CustomerInvoice $invoice): array
-    {
-        return [
-            'invoice' => $invoice,
-            'business' => Demo::business($this->business->id),
-            'vatNumber' => Paper::vatNumber($this->business->id),
-            'paid' => $invoice->paidTotal(),
-            'outstanding' => $invoice->outstanding(),
-            'bank' => BankAccount::where('business_id', $this->business->id)->orderBy('id')->first(),
-            'generatedAt' => now()->format('Y-m-d H:i'),
-        ];
-    }
-
-    /** الورقةُ المطبوعة نصًّا — قبل أن يبتلعها محرّكُ الـPDF */
     private function printedHtml(CustomerInvoice $invoice): string
     {
-        return view('pdf.customer-invoice', $this->paperData($invoice) + ['hideAddress' => true])->render();
+        return CustomerInvoiceController::paper(
+            $this->business->id,
+            $invoice,
+            $invoice->paidTotal(),
+            $invoice->outstanding(),
+            BankAccount::where('business_id', $this->business->id)->orderBy('id')->first(),
+        )->render();
     }
 
     private function issued(): CustomerInvoice

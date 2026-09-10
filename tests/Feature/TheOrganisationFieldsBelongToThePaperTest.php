@@ -68,6 +68,7 @@ class TheOrganisationFieldsBelongToThePaperTest extends TestCase
     {
         return $extra + [
             'customer_id' => $this->customer->id,
+            'payment_method' => 'آجل',
             'items' => [['description' => 'توريد زهور', 'quantity' => 1, 'unit_price' => 100, 'tax_rate' => 5]],
         ];
     }

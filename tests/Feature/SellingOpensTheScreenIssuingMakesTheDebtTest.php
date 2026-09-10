@@ -101,6 +101,7 @@ class SellingOpensTheScreenIssuingMakesTheDebtTest extends TestCase
 
         $this->actingAs($this->seller)->post(route('admin.customerInvoices.store'), [
             'customer_id' => $this->ministry->id,
+            'payment_method' => 'آجل',
             'issued_at' => now()->toDateString(),
             'items' => [['description' => 'توريد', 'quantity' => 1, 'unit_price' => 400]],
         ])->assertSessionHasNoErrors();
@@ -133,6 +134,7 @@ class SellingOpensTheScreenIssuingMakesTheDebtTest extends TestCase
     {
         $this->actingAs($this->seller)->post(route('admin.customerInvoices.store'), [
             'customer_id' => $this->ministry->id,
+            'payment_method' => 'آجل',
             'issued_at' => now()->toDateString(),
             'issue' => true,
             'items' => [['description' => 'توريد', 'quantity' => 1, 'unit_price' => 400]],

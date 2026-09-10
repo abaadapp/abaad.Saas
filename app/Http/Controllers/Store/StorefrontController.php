@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Store;
 
 use App\Http\Controllers\Controller;
+use App\Models\Business;
 use App\Support\Storefront;
+use App\Support\Website\Published;
 use Illuminate\Http\Response;
 
 /**
@@ -15,18 +17,39 @@ use Illuminate\Http\Response;
  * يُنشر فهو ٤٠٤ لا صفحةٌ فارغة: صفحةٌ فارغة تقول للزائر إنّ المحلّ مغلق،
  * و٤٠٤ تقول إنّه لا عنوان هنا — وهي الحقيقة.
  *
- * والرسم بقالب Blade لا بـInertia عن قصد: الزائر يفتحها من إعلانٍ أو رسالة،
- * وتحميلُ حزمة React كاملةً لعرض شبكة صور تأخيرٌ لا مقابل له — ومحرّكُ البحث
- * يقرأ HTML لا JavaScript.
+ * ═══ وبابٌ واحد لموقعين ═══
+ *
+ * في النظام طريقان إلى «موقع التاجر»، بُنيا في وقتين:
+ *
+ *  1. **بانِي المواقع** — أقسامٌ وصفحاتٌ يركّبها التاجر ويُجمّدها نسخةً
+ *     تُنشر (`websites` و`website_versions`).
+ *  2. **صفحةُ المتجر البسيطة** — شبكةُ منتجاتٍ بمفتاح `store_on`، والطلبُ
+ *     فيها يقع في واتساب.
+ *
+ * والبانِي يتقدّم: هو ما بناه التاجر بيده وضغط «انشر» عليه. ولو تقدّمت
+ * البسيطةُ لَبنى موقعَه ونشره ثمّ فتح عنوانه فوجد شبكةَ صورٍ لم يصنعها.
+ *
+ * ولا عنوانَ ثانٍ للجديد: عنوانٌ لكلّ طريق يعني أنّ التاجر يوزّع رابطًا ثمّ
+ * يبدّل طريقَه فيموت ما وزّعه. فالعنوان واحد، والذي يُعرض عليه هو الأحدث
+ * ممّا نشره صاحبُه.
  */
 class StorefrontController extends Controller
 {
     public function show(string $slug): Response
     {
         $clean = Storefront::slug($slug);
-        $business = $clean ? Storefront::find($clean) : null;
+        $business = $clean ? Storefront::open($clean) : null;
 
         abort_if($business === null, 404);
+
+        $site = Published::forBusiness((int) $business->id);
+
+        if ($site['state'] !== Published::NOT_PUBLISHED) {
+            return $this->built($site, $business);
+        }
+
+        // ولمن لم يبنِ موقعًا: صفحةُ المتجر البسيطة إن نشرها
+        abort_if(! Storefront::published($business), 404);
 
         return response()
             ->view('store.show', Storefront::page($business))
@@ -37,6 +60,41 @@ class StorefrontController extends Controller
              * يخزّنها بمفتاح المسار وحده قد يردّها لمتجرٍ آخر. والخصوصية
              * تُقال صراحةً لا تُترك للافتراض.
              */
+            ->header('Cache-Control', 'public, max-age=120');
+    }
+
+    /**
+     * موقعٌ بُني في بانِي المواقع — يُرسم بطبقة الرسم نفسها التي في المعاينة.
+     *
+     * ولا يُنسخ الرسمُ إلى Blade: طبقة الرسم سبعةَ عشرَ نوعَ قسمٍ في نحو
+     * ألفَي سطر، ونسخةٌ ثانية منها بلغةٍ أخرى تفترق عند أوّل إصلاح — فيرى
+     * التاجر في معاينته غير ما يرى زبونُه. وهو العطبُ الذي وُضع له
+     * `RendererParityTest` أصلًا.
+     */
+    private function built(array $site, Business $business): Response
+    {
+        if ($site['state'] === Published::MAINTENANCE) {
+            /*
+             * والصيانةُ تردّ ٥٠٣ لا ٢٠٠.
+             *
+             * محرّكُ البحث يقرأ ٢٠٠ على أنّها الصفحة، فيحفظ «نعود قريبًا»
+             * مكانَ المتجر ويعرضها للناس بعد أن يعود. و٥٠٣ تقول «تعذّر
+             * الآن» فيعود ويسأل.
+             */
+            return response()
+                ->view('site.maintenance', ['doc' => $site])
+                ->setStatusCode(503)
+                ->header('Cache-Control', 'no-store')
+                ->header('Retry-After', '3600');
+        }
+
+        return response()
+            ->view('site.show', [
+                'doc' => $site['site'],
+                'head' => Published::head($site['site']),
+                'outline' => Published::outline($site['site']),
+                'canonical' => Storefront::canonical($business->site_slug),
+            ])
             ->header('Cache-Control', 'public, max-age=120');
     }
 
@@ -55,7 +113,7 @@ class StorefrontController extends Controller
      */
     public function preview(): Response
     {
-        $business = \App\Models\Business::findOrFail(
+        $business = Business::findOrFail(
             auth()->user()->business_id ?? \App\Support\Demo::bid()
         );
 

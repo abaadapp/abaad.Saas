@@ -8,10 +8,15 @@ import path from 'node:path';
 export default defineConfig({
     plugins: [
         laravel({
-            // نقطة دخول واحدة: كل الصفحات صارت Inertia بما فيها الدخول والرمز.
-            // حزمة app.js القديمة (Alpine + ApexCharts + Sortable) لم يبقَ لها
-            // مستهلك بعد تحويل صفحتَي المصادقة، فحُذفت.
-            input: ['resources/css/app.css', 'resources/js/app.tsx'],
+            // مدخلان: لوحةُ التاجر، وموقعُ متجره.
+            //
+            // و`site.tsx` لا يمرّ بـ`app.tsx`: تلك حزمةُ اللوحة — Inertia
+            // وقوائمُها وجداولُها — وهي ثلث ميغابايت. وزبونٌ يفتح رابطًا من
+            // واتساب لينظر إلى منتجٍ لا شأن له بشيءٍ منها.
+            //
+            // وحزمة app.js القديمة (Alpine + ApexCharts + Sortable) لم يبقَ
+            // لها مستهلك بعد تحويل صفحتَي المصادقة، فحُذفت.
+            input: ['resources/css/app.css', 'resources/js/app.tsx', 'resources/js/site.tsx'],
             refresh: true,
             fonts: [
                 bunny('Tajawal', {

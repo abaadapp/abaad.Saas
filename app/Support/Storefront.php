@@ -113,6 +113,25 @@ class Storefront
         return $slug ? url('/s/'.$slug) : null;
     }
 
+    /**
+     * العنوانُ الذي يُكتب في `canonical` — وهو ما يُخدَم لا ما يُتمنّى.
+     *
+     * الأصلُ هو النطاق الفرعيّ متى وُجد، لكنّه لا يوجد قبل سجلِّ DNS بالحرف
+     * البدل وشهادةٍ مثله. وإشارةُ `canonical` إلى عنوانٍ لا يُحلّ تدلّ محرّكَ
+     * البحث على بابٍ مغلق وتترك البابَ المفتوح بلا فهرسة — فتضرّ حيث يُراد
+     * بها النفع.
+     *
+     * فيُقرأ العلَم: ما دام الخادم لا يخدمها، فالأصلُ هو البديل العامل.
+     */
+    public static function canonical(?string $slug): ?string
+    {
+        if ($slug === null) {
+            return null;
+        }
+
+        return config('storefront.subdomains') ? self::url($slug) : self::fallbackUrl($slug);
+    }
+
     /* --------------------------- طريق العنوان --------------------------- */
 
     /**
@@ -186,6 +205,24 @@ class Storefront
     /** المتجر صاحبُ هذا الاسم — إن كان منشورًا */
     public static function find(string $slug): ?Business
     {
+        $business = self::open($slug);
+
+        return $business && self::published($business) ? $business : null;
+    }
+
+    /**
+     * المتجرُ صاحبُ الاسم — مفتوحًا، بلا سؤالٍ عمّا نشره.
+     *
+     * وفُصل عن `find` لأنّ للمتجر اليوم بابين: موقعٌ يبنيه بنفسه في بانِي
+     * المواقع، وصفحةُ متجرٍ بسيطة يفتحها بمفتاح `store_on`. والحارسان
+     * الأوّلان واحدٌ لهما — أن يكون نشطًا وألّا يكون مقفلًا — وأمّا «هل
+     * نشر؟» فسؤالٌ يختلف جوابُه بالباب.
+     *
+     * ولو نُسخ الحارسان في الباب الجديد لَافترقا: يُشدَّد أحدهما يومًا ويبقى
+     * الآخر، فيُغلق متجرٌ في بابٍ ويبقى مفتوحًا في الآخر.
+     */
+    public static function open(string $slug): ?Business
+    {
         $business = Business::where('site_slug', $slug)->first();
 
         if (! $business || $business->status !== 'نشط') {
@@ -208,7 +245,7 @@ class Storefront
             return null;
         }
 
-        return self::published($business) ? $business : null;
+        return $business;
     }
 
     /** هل نشر صاحبُه متجره؟ */

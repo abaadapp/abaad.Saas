@@ -313,7 +313,14 @@ class Storefront
      */
     public static function amount(float $value, array $currency): string
     {
-        return number_format($value, $currency['decimals']).' '.$currency['symbol'];
+        /*
+         * والكتابةُ من `Money` لا هنا.
+         *
+         * وكان السطرُ هنا يتجاهل شيئين تحفظهما الإعدادات: موضعَ الرمز —
+         * فالدولارُ يسبق مبلغَه ولا يتبعه — وترجمةَ الرمز. فيرى الزبون في
+         * المتجر غيرَ ما يرى التاجر في لوحته للمبلغ نفسه.
+         */
+        return Money::format($value, $currency);
     }
 
     /**

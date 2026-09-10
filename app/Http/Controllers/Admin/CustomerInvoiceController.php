@@ -529,6 +529,13 @@ class CustomerInvoiceController extends Controller
         return view(\App\Support\Document\Version::views($options['version'] ?? null).'.customer-invoice', [
             'invoice' => $invoice,
             /*
+             * وعملةُ الورقة من متجرها — لا ثلاثُ منازلَ و«ر.ع» مثبَّتتان.
+             *
+             * وكان القالبُ يكتبهما بيده، فورقةُ تاجرٍ في دبي تخرج بريالٍ
+             * عمانيٍّ ومنزلةٍ زائدة. انظر `Support\Money`.
+             */
+            'currency' => \App\Support\Money::of($bid),
+            /*
              * ورموزُ التصميم وغلافُ الورقة — من `Document\Branding`.
              *
              * وبمعامل الخطّ نفسِه الذي يقرؤه `scale` أدناه: قيمتان لمعاملٍ

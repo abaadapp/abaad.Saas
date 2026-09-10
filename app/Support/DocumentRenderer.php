@@ -227,6 +227,8 @@ class DocumentRenderer
     {
         return view(Version::views($extra['version'] ?? null).'.thermal', [
             'order' => $order,
+            /* وعملةُ الورقة من متجرها — انظر `Support\Money` */
+            'currency' => Money::of($businessId),
             'paper' => $width <= 60 ? PaperSize::T58 : PaperSize::T80,
             'tpl' => self::legacy($businessId, $values),
             'tokens' => Branding::tokens($businessId, self::scale((string) $values['font'])),

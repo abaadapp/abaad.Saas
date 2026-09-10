@@ -23,10 +23,33 @@ use App\Support\Demo;
  */
 class DocumentPaper
 {
-    /** مبلغٌ منسَّق — أو null فلا يُطبع عمودٌ فارغ */
-    private static function money(mixed $value): string
+    /**
+     * عملةُ المستند — من متجرِه هو، لا من متجر من يقرأ.
+     *
+     * ورقةٌ تُرسم حيث لا جلسة: رابطٌ عامٌّ يفتحه زبونٌ لا حساب له، وطابورٌ
+     * يعالج متجرين بالتتابع. فـ`Demo::baseCurrency` — وهي تقرأ متجر الداخل
+     * — تُخرج فاتورةَ متجرٍ بعملة متجرٍ آخر.
+     *
+     * @return array<string, mixed>
+     */
+    private static function currency(mixed $businessId): array
     {
-        return number_format((float) $value, 3).' '.__('ر.ع');
+        return Money::of((int) $businessId);
+    }
+
+    /**
+     * مبلغٌ منسَّق بعملة صاحبه.
+     *
+     * وكان السطرُ هنا `number_format($value, 3).' '.__('ر.ع')` — ثلاثُ
+     * منازلَ وريالٌ عمانيٌّ **مثبَّتان**. فتاجرٌ في دبي عملتُه الدرهم كانت
+     * لوحتُه تكتب «5.25 د.إ» وفاتورتُه «5.250 ر.ع»: منزلةٌ زائدة وعملةُ
+     * بلدٍ آخر، على الورقة التي يرسلها باسمه.
+     *
+     * @param  array<string, mixed>  $cur  وصفُ العملة من `currency()`
+     */
+    private static function money(mixed $value, array $cur): string
+    {
+        return Money::format((float) $value, $cur);
     }
 
     /** كميّةٌ بلا كسورٍ زائدة: «3» لا «3.000» */
@@ -62,15 +85,16 @@ class DocumentPaper
      */
     public static function forSale(Order $order, array $extra = []): array
     {
+        $cur = self::currency($order->business_id);
         $pay = self::payment($order);
 
         $vatBase = (float) $order->subtotal - (float) $order->discount;
         $vatRate = $vatBase > 0 ? round((float) $order->tax / $vatBase * 100, 2) : 0.0;
 
-        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($order->subtotal)]];
+        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($order->subtotal, $cur)]];
 
         if ((float) $order->discount > 0) {
-            $totals[] = ['label' => __('الخصم'), 'value' => '− '.self::money($order->discount)];
+            $totals[] = ['label' => __('الخصم'), 'value' => '− '.self::money($order->discount, $cur)];
         }
 
         /*
@@ -83,20 +107,20 @@ class DocumentPaper
             $totals[] = [
                 'label' => __('ضريبة القيمة المضافة'),
                 'hint' => $vatRate > 0 ? '('.rtrim(rtrim(number_format($vatRate, 2, '.', ''), '0'), '.').'%)' : null,
-                'value' => self::money($order->tax),
+                'value' => self::money($order->tax, $cur),
             ];
         }
 
         if ((float) $order->delivery_fee > 0) {
-            $totals[] = ['label' => __('رسوم التوصيل'), 'value' => self::money($order->delivery_fee)];
+            $totals[] = ['label' => __('رسوم التوصيل'), 'value' => self::money($order->delivery_fee, $cur)];
         }
 
-        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($order->total), 'grand' => true];
+        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($order->total, $cur), 'grand' => true];
 
         /* ولا سطرَ سدادٍ على بيعةٍ دُفعت كاملةً عند الصندوق: صفرٌ لا يُطبع */
         if ($pay['partial']) {
-            $totals[] = ['label' => __('المسدَّد'), 'value' => self::money($pay['paid'])];
-            $totals[] = ['label' => __('الباقي'), 'value' => self::money($pay['outstanding']), 'due' => true];
+            $totals[] = ['label' => __('المسدَّد'), 'value' => self::money($pay['paid'], $cur)];
+            $totals[] = ['label' => __('الباقي'), 'value' => self::money($pay['outstanding'], $cur), 'due' => true];
         }
 
         return [
@@ -124,8 +148,8 @@ class DocumentPaper
                 'name' => $i->name,
                 'note' => $i->note,
                 'qty' => self::qty($i->quantity),
-                'unit' => self::money($i->price),
-                'total' => self::money($i->total ?: $i->price * $i->quantity),
+                'unit' => self::money($i->price, $cur),
+                'total' => self::money($i->total ?: $i->price * $i->quantity, $cur),
             ])->all(),
             'totals' => $totals,
             'notes' => (string) ($order->notes ?: ''),
@@ -185,6 +209,8 @@ class DocumentPaper
      */
     public static function forDelivery(Order $order): array
     {
+        $cur = self::currency($order->business_id);
+
         return [
             'title' => __('سند تسليم'),
             'number' => $order->number,
@@ -209,11 +235,11 @@ class DocumentPaper
             'items' => $order->items->map(fn ($i) => [
                 'name' => $i->name,
                 'qty' => self::qty($i->quantity),
-                'unit' => self::money($i->price),
-                'total' => self::money($i->total ?: $i->price * $i->quantity),
+                'unit' => self::money($i->price, $cur),
+                'total' => self::money($i->total ?: $i->price * $i->quantity, $cur),
             ])->all(),
             'totals' => [
-                ['label' => __('الإجمالي'), 'value' => self::money($order->total), 'grand' => true],
+                ['label' => __('الإجمالي'), 'value' => self::money($order->total, $cur), 'grand' => true],
             ],
             'notes' => (string) ($order->delivery_notes ?: $order->notes ?: ''),
         ];
@@ -243,6 +269,8 @@ class DocumentPaper
      */
     public static function forPurchase(PurchaseOrder $po): array
     {
+        $cur = self::currency($po->business_id);
+
         $meta = array_values(array_filter([
             [
                 'label' => __('تاريخ الاستلام المتوقع'),
@@ -268,19 +296,19 @@ class DocumentPaper
          * `items_subtotal` قيمةُ الأصناف قبل الخصم والشحن والضريبة، وهي ما
          * يُطابقه المورّدُ بجدول أسعاره. ومجموعٌ وحده لا يُطابَق بشيء.
          */
-        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($po->items_subtotal)]];
+        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($po->items_subtotal, $cur)]];
 
         if ((float) $po->supplier_discount > 0) {
-            $totals[] = ['label' => __('الخصم'), 'value' => self::money($po->supplier_discount)];
+            $totals[] = ['label' => __('الخصم'), 'value' => self::money($po->supplier_discount, $cur)];
         }
         if ((float) $po->shipping_cost > 0) {
-            $totals[] = ['label' => __('الشحن'), 'value' => self::money($po->shipping_cost)];
+            $totals[] = ['label' => __('الشحن'), 'value' => self::money($po->shipping_cost, $cur)];
         }
         if ((float) $po->tax > 0) {
-            $totals[] = ['label' => __('الضريبة'), 'value' => self::money($po->tax)];
+            $totals[] = ['label' => __('الضريبة'), 'value' => self::money($po->tax, $cur)];
         }
 
-        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($po->total), 'grand' => true];
+        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($po->total, $cur), 'grand' => true];
 
         return [
             'title' => __('أمر شراء'),
@@ -303,8 +331,8 @@ class DocumentPaper
             'items' => $po->items->map(fn ($i) => [
                 'name' => $i->name,
                 'qty' => self::qty($i->quantity),
-                'unit' => self::money($i->cost),
-                'total' => self::money($i->cost * $i->quantity),
+                'unit' => self::money($i->cost, $cur),
+                'total' => self::money($i->cost * $i->quantity, $cur),
             ])->all(),
             'totals' => $totals,
             'notes' => (string) ($po->notes ?? ''),
@@ -330,6 +358,8 @@ class DocumentPaper
 
     public static function forGrn(GoodsReceiptNote $grn): array
     {
+        $cur = self::currency($grn->business_id);
+
         return [
             'title' => __('سند استلام بضاعة'),
             'number' => $grn->number,
@@ -350,13 +380,13 @@ class DocumentPaper
             'items' => $grn->items->map(fn ($i) => [
                 'name' => $i->name,
                 'qty' => self::qty($i->quantity),
-                'unit' => self::money($i->cost),
-                'total' => self::money($i->cost * $i->quantity),
+                'unit' => self::money($i->cost, $cur),
+                'total' => self::money($i->cost * $i->quantity, $cur),
             ])->all(),
             'totals' => [
                 [
                     'label' => __('الإجمالي'),
-                    'value' => self::money($grn->items->sum(fn ($i) => $i->cost * $i->quantity)),
+                    'value' => self::money($grn->items->sum(fn ($i) => $i->cost * $i->quantity), $cur),
                     'grand' => true,
                 ],
             ],
@@ -372,6 +402,7 @@ class DocumentPaper
      */
     public static function sample(int $businessId, string $type): array
     {
+        $cur = self::currency($businessId);
         $names = Product::where('business_id', $businessId)
             ->where('active', true)->orderBy('id')->limit(3)->pluck('name')->all();
 
@@ -390,8 +421,8 @@ class DocumentPaper
             $items[] = [
                 'name' => $name,
                 'qty' => self::qty($qty),
-                'unit' => self::money($price),
-                'total' => self::money($price * $qty),
+                'unit' => self::money($price, $cur),
+                'total' => self::money($price * $qty, $cur),
             ];
         }
 
@@ -415,7 +446,7 @@ class DocumentPaper
             'parties' => $parties,
             'items' => $items,
             'totals' => $total === null ? [] : [
-                ['label' => __('الإجمالي'), 'value' => self::money($total), 'grand' => true],
+                ['label' => __('الإجمالي'), 'value' => self::money($total, $cur), 'grand' => true],
             ],
             'notes' => __('ملاحظة تجريبية تظهر هنا إن كانت على المستند.'),
         ];

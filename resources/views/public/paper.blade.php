@@ -6,6 +6,17 @@
 
     و`noindex`: الفاتورة ليست صفحةً تُبحث. رابطُها لا يُخمَّن، لكنّ محرّك
     بحثٍ يزحف إليه من مشاركةٍ عابرة يجعله مفهرسًا للجميع.
+
+    ═══ والبيانُ من `DocumentPaper::forSale` لا من الطلب رأسًا ═══
+
+    وكانت هذه الصفحة تجمع المستندَ بيدها ثانيةً: تقرأ `$order->subtotal`
+    و`$order->tax` وتقرّر أيَّ سطرٍ يُطبع، وتكتب `number_format($v, 3)`
+    و«ر.ع» **مثبَّتتين**. فصارت نسخةً ثانيةً من المستند تفترق عن المطبوع:
+    سطرُ سدادٍ يُضاف إلى الورقة ولا يبلغ هنا، وتاجرٌ عملتُه الدرهم يطبع
+    «5.25 د.إ» ويقرأ زبونُه «5.250 ر.ع» للمبلغ نفسه.
+
+    فبقي **الوسطُ** مختلفًا — هذه صفحةُ هاتفٍ لا ورقةُ A4، وبطاقةٌ بعرض
+    ٥٢٠ بكسل خيرٌ من ٢١٠ مليمترًا يُزحلق عرضًا — وصار **البيانُ** واحدًا.
 --}}
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -86,12 +97,15 @@
     </div>
 
     <div class="pad">
-        <div class="row"><span class="muted sm">{{ __('رقم الفاتورة') }}</span><strong class="ltr">{{ $order->number }}</strong></div>
-        <div class="row"><span class="muted sm">{{ __('التاريخ') }}</span><span class="ltr">{{ optional($order->ordered_at)->format('Y-m-d H:i') ?? '—' }}</span></div>
+        <div class="row"><span class="muted sm">{{ __('رقم الفاتورة') }}</span><strong class="ltr">{{ $paper['number'] }}</strong></div>
+        <div class="row"><span class="muted sm">{{ __('التاريخ') }}</span><span class="ltr">{{ $paper['date'] ?: '—' }}</span></div>
         @if ($order->customer_name)
             <div class="row"><span class="muted sm">{{ __('العميل') }}</span><span>{{ $order->customer_name }}</span></div>
         @endif
-        <div class="row"><span class="muted sm">{{ __('وسيلة الدفع') }}</span><span>{{ __($order->payment_method ?? 'نقدي') }}</span></div>
+        {{-- ووسيلةُ الدفع وشروطُه واستحقاقُه من البيان — وهي تُطفأ حيث لا معنى لها --}}
+        @foreach ($paper['meta'] as $m)
+            <div class="row"><span class="muted sm">{{ $m['label'] }}</span><span>{{ $m['value'] }}</span></div>
+        @endforeach
     </div>
 
     <div class="pad" style="padding-top:0">
@@ -104,32 +118,36 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach ($order->items as $it)
+                @foreach ($paper['items'] as $it)
                     <tr>
                         <td>
-                            {{ $it->name }}
-                            <div class="faint xs ltr">{{ number_format((float) $it->price, 3) }}</div>
+                            {{ $it['name'] }}
+                            <div class="faint xs ltr">{{ $it['unit'] }}</div>
                         </td>
-                        <td class="qty">{{ $it->quantity }}</td>
-                        <td class="amt">{{ number_format((float) $it->total, 3) }}</td>
+                        <td class="qty">{{ $it['qty'] }}</td>
+                        <td class="amt"><span class="ltr">{{ $it['total'] }}</span></td>
                     </tr>
                 @endforeach
             </tbody>
         </table>
     </div>
 
+    {{--
+        والمجاميعُ تُقرأ كما بُنيت للورقة — لا تُبنى هنا ثانيةً.
+
+        أيُّ سطرٍ يُطبع وأيُّه يُطفأ قرارٌ في `DocumentPaper::forSale`: الخصمُ
+        صفرًا لا يُطبع، والضريبةُ تحمل نسبتَها، والبيعُ الآجل يُظهر المسدَّدَ
+        والباقي. وتكرارُ الشرط هنا يعني سطرًا يُضاف هناك ولا يبلغ الزبون.
+    --}}
     <div class="pad totals">
-        <div class="row"><span class="muted sm">{{ __('المجموع الفرعي') }}</span><span class="ltr">{{ number_format((float) $order->subtotal, 3) }}</span></div>
-        @if ((float) $order->discount > 0)
-            <div class="row"><span class="muted sm">{{ __('الخصم') }}</span><span class="ltr">− {{ number_format((float) $order->discount, 3) }}</span></div>
-        @endif
-        @if ((float) $order->tax > 0)
-            <div class="row"><span class="muted sm">{{ __('الضريبة') }}</span><span class="ltr">{{ number_format((float) $order->tax, 3) }}</span></div>
-        @endif
-        @if ((float) $order->delivery_fee > 0)
-            <div class="row"><span class="muted sm">{{ __('رسوم التوصيل') }}</span><span class="ltr">{{ number_format((float) $order->delivery_fee, 3) }}</span></div>
-        @endif
-        <div class="row grand"><span>{{ __('الإجمالي') }}</span><span class="ltr">{{ number_format((float) $order->total, 3) }} {{ __('ر.ع') }}</span></div>
+        @foreach ($paper['totals'] as $t)
+            <div class="row @if (! empty($t['grand'])) grand @endif">
+                <span class="@if (empty($t['grand'])) muted sm @endif">
+                    {{ $t['label'] }}@if (! empty($t['hint'])) <span class="faint xs ltr">{{ $t['hint'] }}</span>@endif
+                </span>
+                <span class="ltr">{{ $t['value'] }}</span>
+            </div>
+        @endforeach
     </div>
 
     {{--

@@ -28,7 +28,15 @@
 @extends('documents.v1.layout')
 
 @php
-    $money = fn ($v) => number_format((float) $v, 3);
+    /*
+     * والصيغةُ من `Support\Money` لا من هنا.
+     *
+     * `$amount` رقمٌ بلا رمز — لخلايا الجدول، إذ يتكرّر الرمزُ فيها عشرين
+     * مرّةً بلا فائدة. و`$money` رقمٌ برمزه — للإجمالي وللباقي وحدهما،
+     * وهما ما تقع عليه العين.
+     */
+    $amount = fn ($v) => \App\Support\Money::amount((float) $v, $currency);
+    $money = fn ($v) => \App\Support\Money::format((float) $v, $currency);
     $vat = trim((string) ($vatNumber ?? ''));
     $numberLabel = __('رقم الفاتورة');
 
@@ -54,19 +62,19 @@
             ? __('مستحق فورًا')
             : __('صافي :n يومًا', ['n' => (int) $invoice->payment_terms_days]));
 
-    $totals = [['label' => __('المجموع الفرعي'), 'value' => $money($invoice->subtotal)]];
+    $totals = [['label' => __('المجموع الفرعي'), 'value' => $amount($invoice->subtotal)]];
 
     if ((float) $invoice->discount_total > 0) {
-        $totals[] = ['label' => __('الخصم'), 'value' => '− '.$money($invoice->discount_total)];
+        $totals[] = ['label' => __('الخصم'), 'value' => '− '.$amount($invoice->discount_total)];
     }
 
     if ((float) $invoice->tax_total > 0) {
-        $totals[] = ['label' => __('ضريبة القيمة المضافة'), 'value' => $money($invoice->tax_total)];
+        $totals[] = ['label' => __('ضريبة القيمة المضافة'), 'value' => $amount($invoice->tax_total)];
     }
 
-    $totals[] = ['label' => __('الإجمالي'), 'value' => $money($invoice->total).' '.__('ر.ع'), 'grand' => true];
-    $totals[] = ['label' => __('المسدَّد'), 'value' => $money($paid)];
-    $totals[] = ['label' => __('الباقي'), 'value' => $money($outstanding).' '.__('ر.ع'), 'due' => true];
+    $totals[] = ['label' => __('الإجمالي'), 'value' => $money($invoice->total), 'grand' => true];
+    $totals[] = ['label' => __('المسدَّد'), 'value' => $amount($paid)];
+    $totals[] = ['label' => __('الباقي'), 'value' => $money($outstanding), 'due' => true];
 @endphp
 
 @section('type', $invoice->tax_total > 0 && $vat !== '' ? __('فاتورة ضريبية') : __('فاتورة'))
@@ -122,9 +130,9 @@
                     <td>{{ $item->description }}</td>
                     <td class="num">{{ rtrim(rtrim(number_format((float) $item->quantity, 3, '.', ''), '0'), '.') }}</td>
                     {{-- والمبالغُ معزولةٌ عن اتّجاه السطر: انظر `partials/items` --}}
-                    <td class="amt muted"><span dir="ltr">{{ $money($item->unit_price) }}</span></td>
-                    <td class="amt muted"><span dir="ltr">{{ $money($item->tax_amount) }}</span></td>
-                    <td class="amt b"><span dir="ltr">{{ $money($item->line_total) }}</span></td>
+                    <td class="amt muted"><span dir="ltr">{{ $amount($item->unit_price) }}</span></td>
+                    <td class="amt muted"><span dir="ltr">{{ $amount($item->tax_amount) }}</span></td>
+                    <td class="amt b"><span dir="ltr">{{ $amount($item->line_total) }}</span></td>
                 </tr>
             @empty
                 <tr><td class="empty" colspan="6">{{ __('لا بنود على هذه الفاتورة') }}</td></tr>

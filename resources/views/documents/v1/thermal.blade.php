@@ -13,7 +13,8 @@
     طرف الورقة الذي تقصّه الطابعة.
 --}}
 @php
-    $money = fn ($v) => number_format((float) $v, 3) . ' ' . __('ر.ع');
+    // والصيغةُ من `Support\Money` لا من هنا: قرارُ «كيف يُكتب المبلغ» واحدٌ في النظام
+    $money = fn ($v) => \App\Support\Money::format((float) $v, $currency);
     $business = $order->business;
     $itemsCount = $order->items->sum('quantity');
 

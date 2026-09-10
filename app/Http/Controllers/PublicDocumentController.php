@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\CustomerInvoice;
 use App\Models\Order;
 use App\Support\Document\Branding;
+use App\Support\DocumentPaper;
 use App\Support\InvoiceBranding;
+use App\Support\Money;
 use App\Support\Paper;
 use App\Support\PublicDocument;
 use Illuminate\Contracts\View\View;
@@ -66,6 +68,14 @@ class PublicDocumentController extends Controller
 
             return view('public.paper', [
                 'order' => $document,
+                /*
+                 * والبيانُ من `DocumentPaper` — هو نفسُه الذي تُرسم به الورقة.
+                 *
+                 * وكانت الصفحةُ تجمعه بيدها: تقرأ أعمدةَ الطلب وتقرّر أيَّ
+                 * سطرٍ يُطبع وتكتب صيغةَ المال. فصارت مستندًا ثانيًا يفترق
+                 * عن المطبوع كلّما تغيّر أحدُهما.
+                 */
+                'paper' => DocumentPaper::forSale($document),
                 'brand' => Paper::brand($link->business, Paper::vatNumber($link->business_id)),
                 'stampedAt' => now()->format('Y-m-d H:i'),
             ]);
@@ -113,7 +123,8 @@ class PublicDocumentController extends Controller
             'number' => (string) ($invoice->number ?: __('مسودة')),
             'date' => (string) (optional($invoice->issued_at)->format('Y-m-d') ?: ''),
             'due' => (string) (optional($invoice->due_at)->format('Y-m-d') ?: ''),
-            'total' => number_format((float) $invoice->total, 3).' '.__('ر.ع'),
+            /* وبعملة المتجر — لا بثلاث منازلَ و«ر.ع» مثبَّتتين. انظر `Support\Money` */
+            'total' => Money::format((float) $invoice->total, Money::of((int) $invoice->business_id)),
             'state' => $state,
             'status' => $status,
         ];

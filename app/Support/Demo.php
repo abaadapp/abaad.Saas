@@ -201,15 +201,16 @@ class Demo
         return self::$displayCur = self::baseCurrency();
     }
 
+    /**
+     * الكتابةُ نفسُها في `Money` — وهذه بابُها لمن يقرأ الجلسة.
+     *
+     * وكانت هنا وحدها، فنسختها الورقةُ وصفحةُ الرابط والمتجرُ لأنّها
+     * `private` لا تُنادى من خارج. فصارت أربعَ قواعدَ لقرارٍ واحد، وافترقت:
+     * ثلاثُ منازلَ و`ر.ع` مثبَّتتان في الورقة مهما كانت عملةُ التاجر.
+     */
     private static function formatMoney(float $value, array $cur): string
     {
-        $decimals = (int) ($cur['decimals'] ?? (in_array($cur['code'], ['OMR', 'KWD', 'BHD']) ? 3 : 2));
-
-        // الترجمة هنا لا عند تعريف العملة، لتشمل الرمز القادم من قاعدة البيانات أيضًا
-        $symbol = __($cur['symbol']);
-        $amount = number_format($value, $decimals, '.', ',');
-
-        return ($cur['before'] ?? false) ? $symbol.' '.$amount : $amount.' '.$symbol;
+        return Money::format($value, $cur);
     }
 
     /** المبلغ بعملة العرض المختارة (تحويل تلقائي حسب سعر الصرف) */

@@ -11,10 +11,10 @@
 
         ─────────────────────────────────────
 
-        من                        إلى
+        البائع                    إلى
         ...                       ...
 
-        التواريخُ والمراجع
+        التواريخُ والمراجع — أعمدةً متجاورة
 
         ─────────────────────────────────────
 
@@ -86,11 +86,7 @@
 
 @yield('parties')
 
-@hasSection('meta')
-    <table class="meta">
-        @yield('meta')
-    </table>
-@endif
+@include('documents.v1.partials.meta', ['cells' => $metaCells ?? []])
 
 @yield('body')
 

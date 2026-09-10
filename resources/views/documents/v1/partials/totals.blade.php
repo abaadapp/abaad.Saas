@@ -17,7 +17,11 @@
 @if (count($rows) > 0)
     <table class="totals-wrap">
         <tr>
-            <td style="width:54%"></td>
+            <td style="width:54%" class="aside">
+                @if (filled($aside ?? null))
+                    <div class="sm muted">{{ $aside }}</div>
+                @endif
+            </td>
             <td style="width:46%">
                 <table class="totals">
                     @foreach ($rows as $row)

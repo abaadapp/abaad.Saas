@@ -124,6 +124,14 @@ class PdfController extends Controller
                 DocumentRenderer::saleSheet($bid, $order, $values, $extra + ['paper' => $paper]),
                 $name,
                 $paper,
+                /*
+                 * وسياقُ الورقة يتكرّر في تذييل كلّ صفحة.
+                 *
+                 * فاتورةٌ بخمسين صنفًا تمتدّ ثلاثَ صفحات، وصفحةٌ ثانيةٌ لا
+                 * تحمل إلّا رقمَها ورقةٌ لا يُعرف إلى أيّ حزمةٍ تعود إن
+                 * سقطت. انظر `MpdfDriver::pageNumbers`.
+                 */
+                context: self::context($order->number, $bid),
             );
         }
 
@@ -373,7 +381,20 @@ class PdfController extends Controller
 
         Activity::log('report', 'أصدر فاتورة ضريبية للطلب: '.$order->number, ['subject_id' => $order->id]);
 
-        return Pdf::sheet($html, 'tax-invoice-'.$order->number, $sheet);
+        return Pdf::sheet($html, 'tax-invoice-'.$order->number, $sheet, context: self::context($order->number, $bid));
+    }
+
+    /**
+     * ما يُعرِّف الورقةَ في تذييل كلّ صفحة — رقمُها واسمُ متجرها.
+     *
+     * ويُقرأ اسمُ المتجر من `Paper::brand` كبقيّة الورق: هي التي تعرف الاسمَ
+     * المعروض الذي اختاره صاحبُ المحلّ، لا صفَّ المتجر في لوحة المنصّة.
+     */
+    private static function context(?string $number, int $businessId): string
+    {
+        $shop = Paper::brand(Demo::business($businessId))['name'];
+
+        return trim(trim((string) $number).' · '.$shop, ' ·');
     }
 
     /**

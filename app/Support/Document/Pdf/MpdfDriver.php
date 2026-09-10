@@ -45,7 +45,7 @@ class MpdfDriver implements Driver
      */
     private const HEADER_SPACE = 18;
 
-    public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null): Response
+    public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null, ?string $context = null): Response
     {
         $repeats = $runningHeader !== null && trim($runningHeader) !== '';
 
@@ -90,7 +90,7 @@ class MpdfDriver implements Driver
         }
 
         if ($preset['footer'] > 0) {
-            self::pageNumbers($mpdf);
+            self::pageNumbers($mpdf, $context);
         }
         $mpdf->WriteHTML($html);
 
@@ -157,13 +157,34 @@ class MpdfDriver implements Driver
      * الحزمة فلا يعرف قارئها أنّها سقطت. وكتابتُه في اثنين وعشرين قالبًا
      * تعني نسيانَه في واحدٍ منها على الأقلّ.
      */
-    private static function pageNumbers(Mpdf $mpdf): void
+    private static function pageNumbers(Mpdf $mpdf, ?string $context = null): void
     {
+        /*
+         * ═══ وسياقُ المستند في التذييل لا في ترويسةٍ متكرّرة ═══
+         *
+         * فاتورةٌ بخمسين صنفًا تمتدّ ثلاثَ صفحات، وصفحةٌ ثانيةٌ لا تحمل إلّا
+         * «٢ / ٣» ورقةٌ لا يُعرف إلى أيّ حزمةٍ تعود إن سقطت — وهو ما يقع في
+         * مكاتب المحاسبة حين تُفكّ الحزمةُ وتُصوَّر.
+         *
+         * والترويسةُ المتكرّرة كانت الحلَّ الأوّل، وطريقُها في mpdf يمرّ
+         * بـ`@page` — وهو ما أطفأ `SetHTMLFooter` مرّةً فاختفى ترقيمُ
+         * الصفحات من كلّ ورقةٍ في النظام بلا أن يسقط اختبار. والتذييلُ بابٌ
+         * قائمٌ يعمل على كلّ صفحة بلا أن يُمسّ شيءٌ من ذلك.
+         *
+         * ولا يُطبع فارغًا: تقريرُ مخزونٍ لا سياقَ له، فيبقى على رقمه وحده.
+         */
+        $left = $context !== null && trim($context) !== ''
+            ? '<span>'.htmlspecialchars(trim($context), ENT_QUOTES, 'UTF-8').'</span>'
+            : '';
+
         $mpdf->SetHTMLFooter(
-            '<div style="font-family:xbriyaz; font-size:8pt; color:#9ca3af; text-align:center; '
-            .'border-top:0.4pt solid #e5e7eb; padding-top:2mm;">'
-            .'<span dir="ltr">{PAGENO} / {nbpg}</span>'
-            .'</div>'
+            '<table style="width:100%; border-collapse:collapse; font-family:xbriyaz; font-size:8pt; '
+            .'color:#9ca3af; border-top:0.4pt solid #e5e7eb;"><tr>'
+            .'<td style="border:none; padding:2mm 0 0; width:35%;">'.$left.'</td>'
+            .'<td style="border:none; padding:2mm 0 0; width:30%; text-align:center;">'
+            .'<span dir="ltr">{PAGENO} / {nbpg}</span></td>'
+            .'<td style="border:none; padding:2mm 0 0; width:35%;"></td>'
+            .'</tr></table>'
         );
     }
 

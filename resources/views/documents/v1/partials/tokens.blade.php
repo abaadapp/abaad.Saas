@@ -113,6 +113,18 @@
         فيُقرأ كما كُتب — انظر ReceiptTemplate::printableHtml للسطور الحرّة.
     */
     .ltr { direction: ltr; unicode-bidi: isolate; display: inline-block; }
+    {{--
+        ونصُّ البشر: اتّجاهُه من لغته، ومحاذاتُه من الورقة.
+
+        و`dir` يحملهما معًا — فسمةُ `rtl` على اسم صنفٍ عربيٍّ داخل ورقةٍ
+        إنجليزيّة تصحّح ترتيبَ حروفه **وتزيحه إلى يمين خليّته**، فيخرج
+        عمودُ الأصناف مبعثرًا: عربيُّه يمينًا وإنجليزيُّه يسارًا في جدولٍ
+        واحد.
+
+        فتُفصل المحاذاة: تتبع الورقةَ دائمًا، ويبقى لـ`dir` ترتيبُ الحروف
+        وحدَه — وهو ما أردناه منه.
+    --}}
+    .bidi { text-align: {{ $start }}; }
 
     /* ————————————————— الغلاف والترويسة ————————————————— */
 
@@ -139,7 +151,7 @@
         margin-bottom: {{ $fx(14) }};
     }
 
-    .head { width: 100%; margin-bottom: {{ $fx(16) }}; }
+    .head { width: 100%; margin-bottom: {{ $fx(Theme::GEOMETRY['section_gap'] + 4) }}; }
     .head td { vertical-align: top; border: none; padding: 0; }
 
     .doctype {
@@ -165,20 +177,35 @@
         mpdf لا يعرف `flexbox`، وجدولٌ بخليّتين يفعل ما يُراد هنا تمامًا:
         عمودان متساويان يعلوان معًا. والحدودُ منزوعة، فالفصلُ بالفراغ.
     */
-    .parties { width: 100%; margin-bottom: {{ $fx(14) }}; }
+    .parties { width: 100%; margin-bottom: {{ $fx(Theme::GEOMETRY['section_gap']) }}; }
     .parties td {
         vertical-align: top; border: none;
         padding: {{ $fx(0) }} {{ $fx(10) }} {{ $fx(0) }} 0;
     }
 
     /* سطورُ التعريف: مفتاحٌ خافتٌ وقيمةٌ بعده */
-    .meta { width: 100%; margin-bottom: {{ $fx(14) }}; }
-    .meta td { border: none; padding: {{ $fx(1.5) }} 0; vertical-align: top; }
-    .meta .k {
-        color: var(--document-faint); color: {{ $t['faint'] }};
-        font-size: {{ $s(Theme::GEOMETRY['text_sm']) }};
-        width: 34%;
+    {{--
+        شريطُ التعريف — أعمدةٌ متجاورة، عنوانٌ صغيرٌ فوق قيمته.
+
+        وكان جدولًا بعمودين وعنوانُه بعرض ٣٤٪، فيبقى نصفُ كلّ سطرٍ خاليًا:
+        منطقةٌ ميّتةٌ بعرض راحةِ اليد بين التاريخ وجدول الأصناف.
+
+        و`table-layout: fixed` لأنّ العرض معلَنٌ في الخليّة: بدونه يوسّع
+        المحرّكُ العمودَ لأطول قيمةٍ فيه، فيعيد الشريطُ ترتيبَ نفسه كلّما
+        طال اسمُ موظّف.
+    --}}
+    table.metastrip {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        margin-bottom: {{ $fx(Theme::GEOMETRY['section_gap']) }};
     }
+    table.metastrip td {
+        border: none;
+        padding: {{ $fx(0) }} {{ $fx(9) }} {{ $fx(0) }} 0;
+        vertical-align: top;
+    }
+    table.metastrip tr + tr td { padding-top: {{ $fx(7) }}; }
 
     /* ————————————————— جدول الأصناف ————————————————— */
 
@@ -191,6 +218,8 @@
     */
     table.items { width: 100%; border-collapse: collapse; margin-bottom: {{ $fx(12) }}; }
 
+    table.items th.num { text-align: center; }
+    table.items th.amt { text-align: {{ $end }}; }
     table.items th {
         text-align: {{ $start }};
         padding: {{ $fx(6) }} {{ $fx(7) }};
@@ -217,6 +246,15 @@
         font-size: {{ $s(Theme::GEOMETRY['text_base']) }};
         border-bottom: {{ $fx(0.4) }} solid {{ $t['rule'] }};
         vertical-align: top;
+        {{--
+            ورمزُ صنفٍ لا فراغَ فيه يُكسَر بدل أن يخرج.
+
+            `SKU-ABAAD-2026-XL-0099` أو آيبانٌ بأربعة وعشرين حرفًا كلمةٌ
+            واحدةٌ عند المحرّك: لا موضعَ كسرٍ فيها، فتمتدّ خارج عمودها
+            وتُقصّ عند حافّة الورقة.
+        --}}
+        word-wrap: break-word;
+        overflow-wrap: break-word;
     }
 
     /*
@@ -255,6 +293,22 @@
         border: none;
     }
     table.totals td.k { color: var(--document-muted); color: {{ $t['muted'] }}; }
+    {{--
+        وتلميحُ النسبة «(٥٪)» يبقى في سطر عنوانه.
+
+        عمودُ العناوين ضيّق، و«ضريبة القيمة المضافة (٥٪)» يتجاوزه فينكسر
+        التلميحُ سطرًا ثانيًا تحت العنوان — فيطول الصفُّ ويختلّ إيقاعُ
+        الكتلة. والتلميحُ ثلاثةُ محارف: يُمنع كسرُه ويُترك للعنوان أن ينكسر.
+    --}}
+    table.totals td .xs { white-space: nowrap; }
+    {{--
+        والجانبيُّ يحاذي أعلى الكتلة صراحةً.
+
+        `.totals-wrap > tbody > tr > td` تضبطه، لكنّ mpdf لا يُعوَّل عليه
+        في محدّد الابن المباشر عبر `tbody` ضمنيّ — فتسقط القاعدةُ صامتةً
+        ويحاذي الوسطَ، فيهبط السطرُ إلى منتصف المجاميع بلا سبب ظاهر.
+    --}}
+    .totals-wrap td.aside { padding-top: {{ $fx(3.5) }}; vertical-align: top; }
 
     /*
         و«الإجمالي» أقوى عنصرٍ ماليٍّ في الورقة.
@@ -289,12 +343,17 @@
 
     /* ————————————————— كتلٌ متفرّقة ————————————————— */
 
+    {{--
+        الملاحظاتُ والشروط — عنوانٌ وخطٌّ جانبيّ، لا بطاقةٌ بإطارٍ وزوايا.
+
+        إطارٌ مستديرٌ حول كلّ كتلةٍ يجعل الورقةَ شاشةَ لوحةٍ طُبعت. والخطُّ
+        الرفيع في أوّل السطر يفصل الكتلةَ عمّا قبلها بالقدر نفسه ولا يرسم
+        صندوقًا حولها.
+    --}}
     .panel {
-        background: var(--document-surface); background: {{ $t['surface'] }};
-        border: {{ $fx(0.4) }} solid {{ $t['border'] }};
-        border-radius: var(--document-radius); border-radius: {{ $fx($t['radius']) }};
-        padding: {{ $fx(9) }} {{ $fx(11) }};
-        margin-top: {{ $fx(10) }};
+        border-{{ $start }}: {{ $fx(1.6) }} solid {{ $t['primary_edge'] }};
+        padding-{{ $start }}: {{ $fx(9) }};
+        margin-top: {{ $fx(14) }};
         page-break-inside: avoid;
     }
 

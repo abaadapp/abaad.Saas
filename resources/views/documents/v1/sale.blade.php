@@ -46,26 +46,15 @@
     @endif
 @endsection
 
-@section('meta')
-    @if ($show('show_datetime') && filled($doc['date']))
-        <tr>
-            <td class="k">{{ __('التاريخ') }}</td>
-            <td><span class="ltr">{{ $doc['date'] }}</span></td>
-        </tr>
-    @endif
-    @foreach ($doc['meta'] ?? [] as $row)
-        <tr>
-            <td class="k">{{ $row['label'] }}</td>
-            <td>{{ $row['value'] }}</td>
-        </tr>
-    @endforeach
-    @if ($show('show_branch') && filled($doc['branch']))
-        <tr><td class="k">{{ __('الفرع') }}</td><td>{{ $doc['branch'] }}</td></tr>
-    @endif
-    @if ($show('show_employee') && filled($doc['employee']))
-        <tr><td class="k">{{ __('الموظف') }}</td><td>{{ $doc['employee'] }}</td></tr>
-    @endif
-@endsection
+@php
+    /* شريطُ التعريف — أعمدةٌ لا قائمة. انظر `partials/meta` */
+    $metaCells = array_merge(
+        $show('show_datetime') && filled($doc['date']) ? [['label' => __('التاريخ'), 'value' => $doc['date']]] : [],
+        $doc['meta'] ?? [],
+        $show('show_branch') && filled($doc['branch']) ? [['label' => __('الفرع'), 'value' => $doc['branch']]] : [],
+        $show('show_employee') && filled($doc['employee']) ? [['label' => __('الموظف'), 'value' => $doc['employee']]] : [],
+    );
+@endphp
 
 @section('body')
     @include('documents.v1.partials.items', [
@@ -74,18 +63,24 @@
         'itemsLabel' => __('الصنف'),
     ])
 
-    @if ($show('show_items_count'))
-        <div class="sm muted" style="margin-bottom:8pt">
-            {{ __('عدد الأصناف') }}: <span class="ltr">{{ count($doc['items']) }}</span>
-        </div>
-    @endif
+    {{--
+        وعددُ الأصناف يقع بجانب الإجماليّات لا فوقها.
 
-    @include('documents.v1.partials.totals', ['totals' => $doc['totals']])
+        وكان سطرًا يطفو وحده بين الجدول والمجاميع، في شريطٍ خالٍ بعرض
+        الورقة كلِّها. والإجماليّاتُ تشغل طرفًا واحدًا وتترك الطرفَ المقابل
+        فارغًا — فهو مكانُه: يملأ الفراغَ ويُقرأ مع ما يخصّه.
+    --}}
+    @include('documents.v1.partials.totals', [
+        'totals' => $doc['totals'],
+        'aside' => $show('show_items_count')
+            ? __('عدد الأصناف').': '.count($doc['items'])
+            : null,
+    ])
 
     @if ($show('show_notes', false) && trim((string) $doc['notes']) !== '')
         <div class="panel sm">
             <div class="eyebrow">{{ __('ملاحظات') }}</div>
-            {{ $doc['notes'] }}
+            <div class="bidi" dir="{{ \App\Support\Paper::dirOf($doc['notes']) }}">{{ $doc['notes'] }}</div>
         </div>
     @endif
 
@@ -107,7 +102,14 @@
             <div class="c xs faint" style="margin-bottom:3pt">
                 {{ __('فاتورة ضريبية صادرة آليًا عبر نظام أبعاد') }}
                 — <span class="ltr">{{ $generatedAt ?? now()->format('Y-m-d H:i') }}</span>
-                — {{ __('القيم بالريال العماني') }}
+                {{--
+                    والعملةُ تُسمّى من عملة المتجر لا مثبَّتةً.
+
+                    كان السطرُ يقول «القيم بالريال العماني» على ورقة كلّ
+                    تاجر، ومنهم من يبيع بالدرهم — فتقول الورقةُ الضريبيّة
+                    عملةً غير التي في جدولها. انظر `Support\Money`.
+                --}}
+                — {{ __('القيم بعملة') }} <span class="ltr">{{ \App\Support\Money::of($business['id'] ?? ($business->id ?? 0))['code'] }}</span>
             </div>
         @endif
         <div class="c">

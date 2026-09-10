@@ -35,20 +35,14 @@
     @endif
 @endsection
 
-@section('meta')
-    @if ($show('show_datetime') && filled($doc['date']))
-        <tr><td class="k">{{ __('تاريخ الاستلام') }}</td><td><span class="ltr">{{ $doc['date'] }}</span></td></tr>
-    @endif
-    @foreach ($doc['meta'] ?? [] as $row)
-        <tr><td class="k">{{ $row['label'] }}</td><td>{{ $row['value'] }}</td></tr>
-    @endforeach
-    @if ($show('show_branch') && filled($doc['branch']))
-        <tr><td class="k">{{ __('المخزن / الفرع') }}</td><td>{{ $doc['branch'] }}</td></tr>
-    @endif
-    @if ($show('show_employee') && filled($doc['employee']))
-        <tr><td class="k">{{ __('المستلِم') }}</td><td>{{ $doc['employee'] }}</td></tr>
-    @endif
-@endsection
+@php
+    $metaCells = array_merge(
+        $show('show_datetime') && filled($doc['date']) ? [['label' => __('تاريخ الاستلام'), 'value' => $doc['date']]] : [],
+        $doc['meta'] ?? [],
+        $show('show_branch') && filled($doc['branch']) ? [['label' => __('المخزن / الفرع'), 'value' => $doc['branch']]] : [],
+        $show('show_employee') && filled($doc['employee']) ? [['label' => __('المستلِم'), 'value' => $doc['employee']]] : [],
+    );
+@endphp
 
 @section('body')
     @include('documents.v1.partials.items', [

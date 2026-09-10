@@ -4983,5 +4983,7 @@
     "أُرسل الردّ عبر واتساب": "The reply was sent on WhatsApp",
     "حُفظ الردّ ولم يخرج إلى واتساب — :why": "The reply was saved but did not go out on WhatsApp — :why",
     "استقبال رسائل الدعم على هذا الرقم": "Receive support messages on this number",
-    "يفتح مركز المحادثات على واتساب: تُخزَّن الرسالة فقط إن جاءت من رقمٍ يطابق مستخدمًا واحدًا له متجر. وردود الزبائن على إشعارات طلباتهم تُسقَط ولا تُكتب.": "Opens the Conversation Center on WhatsApp: a message is stored only if it comes from a number matching exactly one user who belongs to a shop. Customer replies to their order notifications are dropped and never written."
+    "يفتح مركز المحادثات على واتساب: تُخزَّن الرسالة فقط إن جاءت من رقمٍ يطابق مستخدمًا واحدًا له متجر. وردود الزبائن على إشعارات طلباتهم تُسقَط ولا تُكتب.": "Opens the Conversation Center on WhatsApp: a message is stored only if it comes from a number matching exactly one user who belongs to a shop. Customer replies to their order notifications are dropped and never written.",
+    "البائع": "From",
+    "القيم بعملة": "Amounts in"
 }

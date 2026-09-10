@@ -43,10 +43,16 @@
         @forelse ($items as $i => $item)
             <tr>
                 <td class="num faint">{{ $i + 1 }}</td>
-                <td>
+                {{--
+                    والاتّجاهُ محسوبٌ لاسم الصنف: تاجرٌ عربيٌّ يبيع أصنافًا
+                    بأسماءٍ إنجليزية — والعكس. فيتبع كلُّ سطرٍ أوّلَ حرفٍ
+                    قويٍّ فيه ولا تنقلب نقطتُه إلى أوّله. و`dir="auto"` لا
+                    يكفي: mpdf لا يعرفه — انظر `Paper::dirOf`.
+                --}}
+                <td class="bidi" dir="{{ \App\Support\Paper::dirOf($item['name']) }}">
                     {{ $item['name'] }}
                     @if (filled($item['note'] ?? null))
-                        <div class="sm muted">{{ $item['note'] }}</div>
+                        <div dir="{{ \App\Support\Paper::dirOf($item['note']) }}" class="sm muted bidi">{{ $item['note'] }}</div>
                     @endif
                 </td>
                 @if ($ordered)

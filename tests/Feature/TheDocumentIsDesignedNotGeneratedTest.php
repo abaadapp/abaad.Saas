@@ -551,7 +551,7 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
         {
             public array $calls = [];
 
-            public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null): \Illuminate\Http\Response
+            public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null, ?string $context = null): \Illuminate\Http\Response
             {
                 $this->calls[] = $name;
 

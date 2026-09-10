@@ -11,7 +11,29 @@
     المتغيّر: `$parties` قائمةُ `['cap' => ..., 'lines' => [...]]`.
 --}}
 @php
-    $shown = array_values(array_filter($parties ?? [], fn ($p) => count(array_filter($p['lines'] ?? [])) > 0));
+    /*
+     * ═══ والبائعُ أوّلُ الطرفين ═══
+     *
+     * كلُّ ورقةٍ في النظام كانت تحمل طرفًا واحدًا — «فاتورة إلى» أو
+     * «المورّد» — فيبقى نصفُ السطر خاليًا، وتنزوي بياناتُ البائع خمسةَ
+     * أسطرٍ رماديّةٍ صغيرة في ركن الترويسة.
+     *
+     * وهو ترتيبٌ يخالف ما تفعله كلُّ فاتورةٍ تُقرأ: الترويسةُ تحمل الهويّة
+     * — شعارًا واسمًا — وما تحتها يحمل **الطرفين متقابلين**. فمن يراجع
+     * الورقة يجد «من» و«إلى» في مستوى بصريٍّ واحد بدل أن يبحث عن أحدهما
+     * في الحاشية.
+     *
+     * والاسمُ لا يتكرّر: الترويسةُ قالته، وهنا تفاصيلُ الاتّصال وحدها
+     * تحت عنوانٍ يقول لمن هي.
+     */
+    $brand = \App\Support\Paper::brand($business ?? null, $vatNumber ?? '');
+
+    $seller = ['cap' => $sellerCap ?? __('البائع'), 'lines' => $brand['lines'], 'contact' => true];
+
+    $shown = array_values(array_filter(
+        array_merge([$seller], $parties ?? []),
+        fn ($p) => count(array_filter($p['lines'] ?? [])) > 0,
+    ));
 @endphp
 
 @if (count($shown) > 0)
@@ -21,7 +43,16 @@
                 <td style="width:{{ (int) (100 / count($shown)) }}%">
                     <div class="eyebrow">{{ $party['cap'] }}</div>
                     @foreach (array_values(array_filter($party['lines'])) as $i => $l)
-                        <div class="{{ $i === 0 ? 'b' : 'sm muted' }}">{{ $l }}</div>
+                        {{--
+                            واتّجاهُ كلّ سطرٍ يكتبه بشرٌ محسوبٌ من أوّله.
+
+                            اسمُ عميلٍ عربيٍّ داخل ورقةٍ إنجليزيّة — أو
+                            العكس — تنقلب علاماتُ ترقيمه: تخرج النقطةُ إلى
+                            أوّل السطر. و`dir="auto"` لا يحلّها: mpdf لا
+                            يعرفه ولا يعرف `unicode-bidi: plaintext`.
+                            انظر `Paper::dirOf`.
+                        --}}
+                        <div dir="{{ \App\Support\Paper::dirOf($l) }}" class="bidi {{ $i === 0 && ! ($party['contact'] ?? false) ? 'b' : 'sm muted' }}">{{ $l }}</div>
                     @endforeach
                 </td>
             @endforeach

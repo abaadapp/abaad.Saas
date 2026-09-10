@@ -92,24 +92,14 @@
     ]]])
 @endsection
 
-@section('meta')
-    <tr>
-        <td class="k">{{ __('تاريخ الإصدار') }}</td>
-        <td><span class="ltr">{{ optional($invoice->issued_at)->format('Y-m-d') }}</span></td>
-    </tr>
-    @if ($invoice->due_at)
-        <tr>
-            <td class="k">{{ __('تاريخ الاستحقاق') }}</td>
-            <td class="b"><span class="ltr">{{ $invoice->due_at->format('Y-m-d') }}</span></td>
-        </tr>
-    @endif
-    @if ($terms !== null)
-        <tr><td class="k">{{ __('شروط الدفع') }}</td><td>{{ $terms }}</td></tr>
-    @endif
-    @foreach ($orgFields as $field)
-        <tr><td class="k">{{ $field['label'] }}</td><td>{{ $field['value'] }}</td></tr>
-    @endforeach
-@endsection
+@php
+    $metaCells = array_merge(
+        [['label' => __('تاريخ الإصدار'), 'value' => optional($invoice->issued_at)->format('Y-m-d')]],
+        $invoice->due_at ? [['label' => __('تاريخ الاستحقاق'), 'value' => $invoice->due_at->format('Y-m-d')]] : [],
+        $terms !== null ? [['label' => __('شروط الدفع'), 'value' => $terms]] : [],
+        $orgFields,
+    );
+@endphp
 
 @section('body')
     <table class="items">

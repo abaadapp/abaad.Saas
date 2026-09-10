@@ -76,9 +76,9 @@ class Pdf
      * والمقاسُ يُحلّ هنا مرّةً إلى أرقامه، ثمّ تُبنى منه الورقةُ والقالبُ
      * معًا. فلا يقع أن يُبنى المحرّك على ١٤٨ مم ويُرسم القالبُ على ٢١٠.
      */
-    public static function sheet(string $html, string $name, ?string $paper = null, bool $landscape = false, ?string $runningHeader = null): Response
+    public static function sheet(string $html, string $name, ?string $paper = null, bool $landscape = false, ?string $runningHeader = null, ?string $context = null): Response
     {
-        return self::driver()->sheet($html, $name, PaperSize::of($paper), $landscape, $runningHeader);
+        return self::driver()->sheet($html, $name, PaperSize::of($paper), $landscape, $runningHeader, $context);
     }
 
     /** شريطُ الطابعة الحراريّة — بعرض ورقها وبطول محتواه */

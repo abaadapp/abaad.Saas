@@ -38,8 +38,9 @@ interface Driver
      * @param  array<string, mixed>  $preset  وصفُ المقاس من `PaperSize::of`
      * @param  bool  $landscape  عرضيّةً — لجدولٍ لا تسعه الصفحة قائمة
      * @param  string|null  $runningHeader  ترويسةٌ تتكرّر على كلّ صفحة، أو null
+     * @param  string|null  $context  ما يُعرِّف المستندَ في تذييل كلّ صفحة — رقمُه واسمُ متجره
      */
-    public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null): Response;
+    public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null, ?string $context = null): Response;
 
     /**
      * شريطُ طابعةٍ حراريّة — بعرض ورقها وبطول محتواه.

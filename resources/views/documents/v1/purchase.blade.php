@@ -29,17 +29,13 @@
     @endif
 @endsection
 
-@section('meta')
-    @if ($show('show_datetime') && filled($doc['date']))
-        <tr><td class="k">{{ __('تاريخ الأمر') }}</td><td><span class="ltr">{{ $doc['date'] }}</span></td></tr>
-    @endif
-    @foreach ($doc['meta'] ?? [] as $row)
-        <tr><td class="k">{{ $row['label'] }}</td><td>{{ $row['value'] }}</td></tr>
-    @endforeach
-    @if ($show('show_branch', false) && filled($doc['branch']))
-        <tr><td class="k">{{ __('يُشحن إلى') }}</td><td>{{ $doc['branch'] }}</td></tr>
-    @endif
-@endsection
+@php
+    $metaCells = array_merge(
+        $show('show_datetime') && filled($doc['date']) ? [['label' => __('تاريخ الأمر'), 'value' => $doc['date']]] : [],
+        $doc['meta'] ?? [],
+        $show('show_branch', false) && filled($doc['branch']) ? [['label' => __('يُشحن إلى'), 'value' => $doc['branch']]] : [],
+    );
+@endphp
 
 @section('body')
     @include('documents.v1.partials.items', [

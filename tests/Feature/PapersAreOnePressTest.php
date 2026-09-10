@@ -83,13 +83,19 @@ class PapersAreOnePressTest extends TestCase
      * ستّةُ مواضع كانت تفعل، ولكلٍّ هوامشُه: هذا يكتب ١٢ وذاك ١٤ وثالثٌ ١٠.
      * فالورقةُ التي تخرج من «تصدير المنتجات» لا تشبه التي تخرج من «تقرير
      * المبيعات»، ولا سطرَ في المستودع يقول لماذا.
+     *
+     * والموضعُ المسموح صار `Document\Pdf\MpdfDriver` بعد أن خرج التنفيذُ
+     * من `Support\Pdf` إلى خلف واجهة. وهو شرطٌ **أضيق** لا أوسع: البابُ
+     * `Support\Pdf` نفسُه لم يعد يُسمح له ببنائه — يفوّض ولا يبني. فمن
+     * أراد محرّكًا ثانيًا يكتب صنفًا يُنفّذ `Driver`، ولا يدسّ `new Mpdf`
+     * في متحكّم.
      */
     public function test_only_one_class_builds_the_engine(): void
     {
         $offenders = [];
 
         foreach ($this->php(app_path()) as $file) {
-            if (str_ends_with($file, 'Support/Pdf.php')) {
+            if (str_ends_with($file, 'Document/Pdf/MpdfDriver.php')) {
                 continue;
             }
 

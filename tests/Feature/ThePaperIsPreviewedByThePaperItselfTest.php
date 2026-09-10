@@ -177,13 +177,19 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
          * أن تصل الورقةُ إلى العميل. فصار البناءُ في `CustomerInvoiceController::paper`
          * وحدها، ومتحكّمُ الطباعة يناديها.
          */
+        /*
+         * واسمُ القالب صار يُشتقّ من نسخته (`Version::views`) لا يُكتب
+         * حرفيًّا: فاتورةُ العام الماضي تُرسم بقالبها لا بقالب اليوم. فما
+         * يُعَدُّ هنا هو اسمُ الملفّ في آخر التعبير — والحارسُ نفسُه: موضعُ
+         * بناءٍ واحد، لا اثنان يفترقان عند أوّل متغيّرٍ يُضاف.
+         */
         $this->assertSame(
             1,
-            substr_count($controller, "view('pdf.customer-invoice'"),
+            substr_count($controller, ".'.customer-invoice'"),
             'الورقةُ تُبنى في أكثر من موضع داخل متحكّم الفواتير',
         );
         $this->assertStringNotContainsString(
-            "view('pdf.customer-invoice'",
+            "customer-invoice'",
             $pdf,
             'متحكّمُ الطباعة يبني الورقةَ بنفسه بدل أن ينادي بانيَها',
         );

@@ -2,6 +2,8 @@
 
 namespace App\Support\Website;
 
+use App\Support\Color;
+
 /**
  * رموز التصميم — ستّة اختياراتٍ يبني منها النظام موقعًا متناسقًا.
  *
@@ -118,97 +120,54 @@ class Theme
 
     /* ------------------------------ الألوان ------------------------------ */
 
+    /*
+     * والحسابُ نفسُه في `App\Support\Color` — لا نسخةٌ هنا.
+     *
+     * الورقةُ صارت تختار لونًا كما يختار الموقع، فخرج الحسابُ إلى موضعٍ
+     * يقرأه الاثنان. وهذه الدوالُّ تبقى بأسمائها لأنّ الموقعَ يناديها من
+     * ستّة مواضع واختبارُه يقيس بها — ونقلُ النداءات تغييرٌ بلا مقابل.
+     *
+     * والسياسةُ تبقى هنا: `MIN_CONTRAST` وما يُصحَّح عند الحفظ قرارُ الموقع
+     * لا قاعدةٌ في حساب الألوان.
+     */
+
     /** لونٌ بصيغة `#rrggbb` — والمختصر يُمدّ، وما ليس لونًا يعود إلى سابقه */
     public static function color(mixed $value, string $fallback): string
     {
-        $raw = mb_strtolower(trim((string) (is_scalar($value) ? $value : '')));
-
-        if (preg_match('/^#([0-9a-f]{3})$/', $raw, $m) === 1) {
-            [$r, $g, $b] = str_split($m[1]);
-
-            return "#{$r}{$r}{$g}{$g}{$b}{$b}";
-        }
-
-        return preg_match('/^#[0-9a-f]{6}$/', $raw) === 1 ? $raw : $fallback;
+        return Color::normalize($value, $fallback);
     }
 
-    /**
-     * نسبة التباين بين لونين — WCAG.
-     *
-     * تُقاس بالإضاءة النسبية لا بالفرق بين الأرقام: `#0000ff` و`#000000`
-     * متقاربان رقمًا وبعيدان في العين، والعكس يقع كثيرًا.
-     */
+    /** نسبة التباين بين لونين — WCAG */
     public static function contrast(string $a, string $b): float
     {
-        $la = self::luminance($a);
-        $lb = self::luminance($b);
-
-        return (max($la, $lb) + 0.05) / (min($la, $lb) + 0.05);
+        return Color::contrast($a, $b);
     }
 
     /** الأسود أو الأبيض — أيّهما يُقرأ فوق هذا اللون */
     public static function readableOn(string $background): string
     {
-        return self::contrast('#ffffff', $background) >= self::contrast('#111111', $background)
-            ? '#ffffff' : '#111111';
+        return Color::readableOn($background);
     }
 
     /** الإضاءة النسبية (0 أسود · 1 أبيض) */
     public static function luminance(string $hex): float
     {
-        [$r, $g, $b] = self::rgb($hex);
-
-        $channel = function (float $c): float {
-            $c /= 255;
-
-            return $c <= 0.03928 ? $c / 12.92 : (($c + 0.055) / 1.055) ** 2.4;
-        };
-
-        return 0.2126 * $channel($r) + 0.7152 * $channel($g) + 0.0722 * $channel($b);
-    }
-
-    /** @return array{0: float, 1: float, 2: float} */
-    private static function rgb(string $hex): array
-    {
-        $hex = ltrim(self::color($hex, '#000000'), '#');
-
-        return [
-            (float) hexdec(substr($hex, 0, 2)),
-            (float) hexdec(substr($hex, 2, 2)),
-            (float) hexdec(substr($hex, 4, 2)),
-        ];
-    }
-
-    private static function toHex(float $r, float $g, float $b): string
-    {
-        return sprintf('#%02x%02x%02x',
-            (int) round(max(0, min(255, $r))),
-            (int) round(max(0, min(255, $g))),
-            (int) round(max(0, min(255, $b))),
-        );
+        return Color::luminance($hex);
     }
 
     public static function mix(string $a, string $b, float $weight): string
     {
-        [$r1, $g1, $b1] = self::rgb($a);
-        [$r2, $g2, $b2] = self::rgb($b);
-        $w = max(0.0, min(1.0, $weight));
-
-        return self::toHex(
-            $r1 + ($r2 - $r1) * $w,
-            $g1 + ($g2 - $g1) * $w,
-            $b1 + ($b2 - $b1) * $w,
-        );
+        return Color::mix($a, $b, $weight);
     }
 
     public static function lighten(string $hex, float $amount): string
     {
-        return self::mix($hex, '#ffffff', $amount);
+        return Color::lighten($hex, $amount);
     }
 
     public static function darken(string $hex, float $amount): string
     {
-        return self::mix($hex, '#000000', $amount);
+        return Color::darken($hex, $amount);
     }
 
     /** @param array<string, string> $allowed */

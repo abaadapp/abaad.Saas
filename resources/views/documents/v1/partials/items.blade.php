@@ -1,0 +1,65 @@
+{{--
+    جدولُ الأصناف — واحدٌ لكلّ الأنواع، وأعمدتُه تتبع ما تعرضه الورقة.
+
+    ═══ والأسعارُ علمٌ واحد يحكم العمودين ═══
+
+    لو حُسب في رأس الجدول وفي الصفوف كلٌّ على حدة لخرجت ورقةٌ بعمودٍ في
+    الرأس بلا خلايا تحته — أو العكس. وسندُ التسليم يمشي مع الشحنة في يد
+    سائق، وورقةٌ تُظهر له تكلفةَ ما يحمل عطبٌ لا سهو.
+
+    ═══ ولا صفوفَ فارغة ═══
+
+    مستندٌ بلا أصناف يقول ذلك بسطرٍ واحدٍ في وسط الجدول، لا بجدولٍ خاوٍ
+    يُقرأ «لم تُحمَّل البيانات».
+
+    المتغيّرات: `$items` قائمةُ `['name','qty','unit','total','note']` ·
+    `$showPrices` · `$showOrdered` عمودُ الكميّة المطلوبة لسند الاستلام.
+--}}
+@php
+    $items = $items ?? [];
+    $prices = (bool) ($showPrices ?? true);
+    $ordered = (bool) ($showOrdered ?? false);
+    $cols = 3 + ($ordered ? 1 : 0) + ($prices ? 2 : 0);
+@endphp
+
+<table class="items">
+    <thead>
+        <tr>
+            <th style="width:6%" class="num">#</th>
+            <th>{{ $itemsLabel ?? __('البيان') }}</th>
+            @if ($ordered)
+                <th style="width:13%" class="num">{{ __('المطلوبة') }}</th>
+                <th style="width:13%" class="num">{{ __('المستلمة') }}</th>
+            @else
+                <th style="width:13%" class="num">{{ __('الكمية') }}</th>
+            @endif
+            @if ($prices)
+                <th style="width:19%" class="amt">{{ __('سعر الوحدة') }}</th>
+                <th style="width:21%" class="amt">{{ __('الإجمالي') }}</th>
+            @endif
+        </tr>
+    </thead>
+    <tbody>
+        @forelse ($items as $i => $item)
+            <tr>
+                <td class="num faint">{{ $i + 1 }}</td>
+                <td>
+                    {{ $item['name'] }}
+                    @if (filled($item['note'] ?? null))
+                        <div class="sm muted">{{ $item['note'] }}</div>
+                    @endif
+                </td>
+                @if ($ordered)
+                    <td class="num muted">{{ $item['ordered'] ?? '—' }}</td>
+                @endif
+                <td class="num">{{ $item['qty'] }}</td>
+                @if ($prices)
+                    <td class="amt muted">{{ $item['unit'] ?? '—' }}</td>
+                    <td class="amt b">{{ $item['total'] ?? '—' }}</td>
+                @endif
+            </tr>
+        @empty
+            <tr><td class="empty" colspan="{{ $cols }}">{{ __('لا أصناف على هذا المستند') }}</td></tr>
+        @endforelse
+    </tbody>
+</table>

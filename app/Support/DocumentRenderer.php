@@ -10,6 +10,8 @@ use App\Models\GoodsReceiptNote;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\PurchaseOrder;
+use App\Support\Document\Branding;
+use App\Support\Document\Version;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -67,17 +69,34 @@ class DocumentRenderer
      * @param  array<string,mixed>|null  $override  قيمٌ لم تُحفظ بعد — للمعاينة
      * @param  Model|null  $source  الصفُّ الذي رُسمت منه — لبناء رابطها العامّ
      */
-    public static function generic(int $businessId, string $type, array $doc, ?array $override = null, ?Model $source = null): string
+    public static function generic(int $businessId, string $type, array $doc, ?array $override = null, ?Model $source = null, ?string $version = null): string
     {
         $tpl = DocumentTemplates::settings($businessId, $type, $override);
         $business = DocumentPaper::business($businessId);
+        $scale = self::scale((string) $tpl['font']);
 
-        return view('pdf.document', [
+        /*
+         * و«إظهار الشعار» يُطفئ الشعار فعلًا.
+         *
+         * الترويسةُ تقرأ الشعار من صفّ المتجر مباشرةً، فمقبضٌ مطفأٌ كان
+         * يُطبع معه الشعار ولا رسالةَ تقول لماذا. والصفُّ يُنسَخ إلى مصفوفةٍ
+         * بلا شعار ولا يُعدَّل: تعديلُ النموذج يُغيّر ما تقرؤه أوراقٌ أخرى
+         * في الطلب نفسه.
+         */
+        if (! ($tpl['show_logo'] ?? false) && $business !== null) {
+            $business = collect(['name', 'type', 'city', 'phone', 'email', 'address'])
+                ->mapWithKeys(fn (string $k) => [$k => $business->{$k} ?? ''])
+                ->all();
+        }
+
+        return view(Version::views($version).'.'.self::template($type), [
+            'tokens' => Branding::tokens($businessId, $scale),
+            'coverImage' => Branding::cover($businessId),
             'doc' => $doc,
             'tpl' => $tpl,
             'business' => $business,
-            'scale' => self::scale((string) $tpl['font']),
-            'logo' => $business?->logo,
+            'headerNote' => trim((string) ($tpl['header'] ?? '')),
+            'scale' => $scale,
             'vatNumber' => Paper::vatNumber($businessId),
             /*
              * ورمزُ الورقة لسند التسليم وحده — انظر PublicDocument.
@@ -96,6 +115,25 @@ class DocumentRenderer
     }
 
     /**
+     * ملفُّ رسمِ نوعٍ — من هنا وحده.
+     *
+     * والأسماءُ في السجلّ لا تصلح أسماءَ ملفّات: `grn` مفتاحُ إعداداتٍ
+     * اختير حين كُتب السجلّ، و`customer_invoice` فيه شرطة سفليّة. وخريطةٌ
+     * تُكتب في كلّ موضعٍ يرسم تُنسي التاليَ نوعًا.
+     */
+    private static function template(string $type): string
+    {
+        return match ($type) {
+            'sale' => 'sale',
+            'customer_invoice' => 'customer-invoice',
+            'delivery' => 'delivery',
+            'purchase' => 'purchase',
+            'grn' => 'grn',
+            default => 'sale',
+        };
+    }
+
+    /**
      * ورقةُ البيع مرسومةً — بالقالب الذي يُطبع فعلًا.
      *
      * وبطلبٍ حقيقيّ من دفتر المتجر إن وُجد: التاجر يحكم على قالبه بما يراه،
@@ -105,19 +143,23 @@ class DocumentRenderer
     public static function sale(int $businessId, ?array $override = null): string
     {
         $values = DocumentTemplates::settings($businessId, 'sale', $override);
-        $tpl = self::legacy($businessId, $values);
         $paper = (string) ($values['paper'] ?? '80mm');
 
         $order = Order::where('business_id', $businessId)
             ->where('is_held', false)
-            ->with('items')
+            ->with('items', 'customerInvoices')
             ->latest('id')
             ->first() ?? self::sampleOrder($businessId);
 
-        return view($paper === 'A4' ? 'pdf.invoice' : 'pdf.receipt', [
+        if ($paper === 'A4') {
+            return self::saleSheet($businessId, $order, $values);
+        }
+
+        return view(Version::views(null).'.thermal', [
             'order' => $order,
-            'tpl' => $tpl,
-            // عرضُ الشريط في المعاينة كما اختاره التاجر — انظر pdf/partials/strip-style
+            'tpl' => self::legacy($businessId, $values),
+            'tokens' => Branding::tokens($businessId, self::scale((string) $values['font'])),
+            // عرضُ الشريط في المعاينة كما اختاره التاجر
             'width' => self::stripWidth($paper),
             /*
              * ولا رابطَ في المعاينة: الطلبُ المعروض قد يكون مُخترعًا، ورمزٌ
@@ -133,6 +175,43 @@ class DocumentRenderer
             'qr' => null,
             'customerTax' => null,
             'googleReview' => null,
+        ])->render();
+    }
+
+    /**
+     * فاتورةُ البيع على A4 — الورقةُ التي تُرسَل إلى منشأةٍ تطلب فاتورة.
+     *
+     * وليست شريطَ الإيصال مُمدَّدًا: كانت تُرسم بقالبه نفسه فتخرج بمحتوًى
+     * منكمشٍ في أعلى الصفحة وثلثيها بياض — وهي الورقة التي تصل جهةً
+     * تحكم على المتجر بما تراه.
+     *
+     * @param  array<string,mixed>  $values  إعداداتُ القالب محلولةً
+     * @param  array<string,mixed>  $extra  ما يخصّ الطباعة لا المعاينة
+     */
+    public static function saleSheet(int $businessId, Order $order, array $values, array $extra = []): string
+    {
+        $scale = self::scale((string) $values['font']);
+
+        return view(Version::views($extra['version'] ?? null).'.sale', [
+            'doc' => DocumentPaper::forSale($order, ['customerTax' => $extra['customerTax'] ?? null]),
+            'tpl' => $values,
+            'tokens' => Branding::tokens($businessId, $scale),
+            'coverImage' => Branding::cover($businessId),
+            'business' => DocumentPaper::business($businessId),
+            'headerNote' => trim((string) ($values['header'] ?? '')),
+            'scale' => $scale,
+            'vatNumber' => Paper::vatNumber($businessId),
+            /*
+             * ولا رمزَ ولا رابطَ في المعاينة.
+             *
+             * `EInvoice` تبني رمزًا يحمل رقمَ المتجر الضريبيّ والمبلغ، ورسمُه
+             * لطلبٍ مُخترع يضع في يد التاجر صورةَ رمزٍ لا تُقابله فاتورة.
+             * والرابطُ يقود إلى ٤٠٤ — أو أسوأ: يصنع صفًّا يتيمًا في جدول
+             * الروابط عند كلّ فتحةٍ للمحرّر.
+             */
+            'qr' => $extra['qr'] ?? null,
+            'paperUrl' => $extra['paperUrl'] ?? '',
+            'googleReview' => $extra['googleReview'] ?? null,
         ])->render();
     }
 

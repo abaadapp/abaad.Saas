@@ -515,8 +515,17 @@ class CustomerInvoiceController extends Controller
             unset($brand['logo']);
         }
 
-        return view('pdf.customer-invoice', [
+        return view(\App\Support\Document\Version::views($override['version'] ?? null).'.customer-invoice', [
             'invoice' => $invoice,
+            /*
+             * ورموزُ التصميم وغلافُ الورقة — من `Document\Branding`.
+             *
+             * وبمعامل الخطّ نفسِه الذي يقرؤه `scale` أدناه: قيمتان لمعاملٍ
+             * واحد تجعلان الجدولَ يكبر والترويسةَ تبقى.
+             */
+            'tokens' => \App\Support\Document\Branding::tokens($bid, DocumentRenderer::scale((string) $tpl['font'])),
+            'coverImage' => \App\Support\Document\Branding::cover($bid),
+            'paperUrl' => $override['paperUrl'] ?? '',
             /*
              * والترويسةُ من `InvoiceBranding` لا من `Demo::business`.
              *

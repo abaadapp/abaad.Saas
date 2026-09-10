@@ -378,7 +378,14 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
     {
         $html = $this->previewHtml(['lang' => 'ar']);
 
-        foreach (['رقم الفاتورة:', 'تاريخ الإصدار:', 'فاتورة إلى:', 'البيان', 'الكمية', 'الإجمالي', 'المجموع الفرعي'] as $label) {
+        /*
+         * والنقطتانِ لم تعودا في النصّ.
+         *
+         * كان المسمّى يُكتب «رقم الفاتورة:» ثمّ قيمتُه بعده في السطر نفسه.
+         * وصار المسمّى في عمودٍ والقيمةُ في عمود، فالنقطتان زينةٌ تُكرّر ما
+         * يقوله التخطيط. والمحروسُ هو **المسمّى بلغته** لا ترقيمُه.
+         */
+        foreach (['رقم الفاتورة', 'تاريخ الإصدار', 'فاتورة إلى', 'البيان', 'الكمية', 'الإجمالي', 'المجموع الفرعي'] as $label) {
             $this->assertStringContainsString($label, $html, "«{$label}» ليست في الورقة العربية");
         }
     }
@@ -388,11 +395,11 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
     {
         $html = $this->previewHtml(['lang' => 'en']);
 
-        foreach (['Invoice number:', 'Issue date:', 'Bill to:', 'Description', 'Quantity', 'Total', 'Subtotal'] as $label) {
+        foreach (['Invoice no.', 'Issued on', 'Bill to', 'Description', 'Quantity', 'Total', 'Subtotal'] as $label) {
             $this->assertStringContainsString($label, $html, "«{$label}» ليست في الورقة الإنجليزية");
         }
 
-        foreach (['رقم الفاتورة:', 'المجموع الفرعي', 'البيان', 'فاتورة إلى:'] as $label) {
+        foreach (['رقم الفاتورة', 'المجموع الفرعي', 'البيان', 'فاتورة إلى'] as $label) {
             $this->assertStringNotContainsString($label, $html, "«{$label}» عربيّةٌ في ورقةٍ إنجليزية");
         }
 
@@ -458,7 +465,7 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
             fn () => $this->printedHtml($invoice),
         );
 
-        $this->assertStringContainsString('Invoice number:', $html, 'الورقةُ طُبعت بغير لغتها المحفوظة');
+        $this->assertStringContainsString('Invoice no.', $html, 'الورقةُ طُبعت بغير لغتها المحفوظة');
 
         // واللغةُ تعود إلى ما كانت بعد الرسم — ولا تبقى الجلسةُ بلغةٍ لم تُختَر
         $this->assertSame('ar', app()->getLocale());
@@ -484,10 +491,10 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
         // يُسلَّم في المحلّ، لا ورقةٍ تُطالب بها وزارةٌ بمبلغ
         $this->assertStringNotContainsString('شكرًا لزيارتكم', $bare);
         /*
-         * و`class="p-foot"` لا `p-foot`: الاسمُ مكتوبٌ في ورقة الأنماط على
+         * و`class="foot"` لا `foot`: الاسمُ مكتوبٌ في ورقة الأنماط على
          * كلّ ورقة، فالبحثُ عنه مجرَّدًا يجده دائمًا — حارسٌ يقول «سليم» أبدًا.
          */
-        $this->assertStringNotContainsString('class="p-foot', $bare, 'صندوقُ الذيل يُطبع بلا نصّ');
+        $this->assertStringNotContainsString('class="foot"', $bare, 'صندوقُ الذيل يُطبع بلا نصّ');
 
         $this->actingAs($this->owner)
             ->post(route('admin.customerInvoices.branding'), ['footer' => 'نصنع الجمال لكل مناسبة'])
@@ -495,7 +502,7 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
 
         $written = $this->previewHtml();
 
-        $this->assertStringContainsString('class="p-foot', $written);
+        $this->assertStringContainsString('class="foot"', $written);
         $this->assertStringContainsString('نصنع الجمال لكل مناسبة', $written);
     }
 
@@ -512,7 +519,7 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
     {
         $html = $this->previewHtml(['payment_terms_days' => 30]);
 
-        $this->assertStringContainsString('شروط الدفع:', $html);
+        $this->assertStringContainsString('شروط الدفع', $html);
         $this->assertStringContainsString('صافي 30 يومًا', $html);
     }
 

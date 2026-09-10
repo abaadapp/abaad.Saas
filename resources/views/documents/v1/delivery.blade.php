@@ -1,0 +1,96 @@
+{{--
+    سندُ تسليم — يمشي مع الشحنة ويُوقَّع عند الباب.
+
+    ═══ وهو ليس فاتورة ═══
+
+    يحمله سائقٌ إلى بيت المستلِم. فما فيه: **ما الذي يُسلَّم، وكم عددُه،
+    ومن استلمه**. أمّا الأسعار فتُطفأ افتراضًا (`show_prices` = false في
+    السجلّ) — وورقةٌ تُظهر للسائق ولمن في البيت تكلفةَ ما يحمل ليست ورقةَ
+    تسليم.
+
+    والتوقيعُ خانتان لا واحدة: ورقةٌ يوقّعها المستلِم وحده لا تُثبت من
+    سلّم، وورقةٌ يوقّعها المسلِّم وحده لا تُثبت أنّها وصلت.
+
+    والرمزُ يبقى: هذه ورقةُ زبونٍ، والمستلِمُ يمسحه ليرى ما وصله كاملًا.
+--}}
+@extends('documents.v1.layout')
+
+@php
+    $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
+    $headerNote = trim((string) ($tpl['header'] ?? ''));
+    $vatNumber = $show('show_vat_no', false) ? ($vatNumber ?? '') : '';
+    $numberLabel = __('رقم السند');
+@endphp
+
+@section('type', __('سند تسليم'))
+@section('number', $doc['number'])
+
+@section('parties')
+    @if ($show('show_customer'))
+        @include('documents.v1.partials.parties', ['parties' => $doc['parties']])
+    @endif
+@endsection
+
+@section('meta')
+    @if ($show('show_datetime') && filled($doc['date']))
+        <tr><td class="k">{{ __('تاريخ التسليم') }}</td><td><span class="ltr">{{ $doc['date'] }}</span></td></tr>
+    @endif
+    @foreach ($doc['meta'] ?? [] as $row)
+        <tr><td class="k">{{ $row['label'] }}</td><td>{{ $row['value'] }}</td></tr>
+    @endforeach
+    @if ($show('show_branch') && filled($doc['branch']))
+        <tr><td class="k">{{ __('الفرع') }}</td><td>{{ $doc['branch'] }}</td></tr>
+    @endif
+    @if ($show('show_employee') && filled($doc['employee']))
+        <tr><td class="k">{{ __('المسؤول') }}</td><td>{{ $doc['employee'] }}</td></tr>
+    @endif
+@endsection
+
+@section('body')
+    @include('documents.v1.partials.items', [
+        'items' => $doc['items'],
+        'showPrices' => $showPrices,
+        'itemsLabel' => __('الصنف المُسلَّم'),
+    ])
+
+    @if ($show('show_items_count'))
+        <div class="sm muted" style="margin-bottom:8pt">
+            {{ __('عدد الأصناف') }}: <span class="ltr">{{ count($doc['items']) }}</span>
+        </div>
+    @endif
+
+    @if ($showPrices)
+        @include('documents.v1.partials.totals', ['totals' => $doc['totals']])
+    @endif
+
+    @if ($show('show_notes') && trim((string) $doc['notes']) !== '')
+        <div class="panel sm">
+            <div class="eyebrow">{{ __('ملاحظات التسليم') }}</div>
+            {{ $doc['notes'] }}
+        </div>
+    @endif
+
+    @if ($show('show_signature'))
+        <table class="sign sm">
+            <tr>
+                <td><div class="rule">{{ __('توقيع المسلِّم') }}</div></td>
+                <td><div class="rule">{{ __('توقيع المستلِم — الاسم والتاريخ') }}</div></td>
+            </tr>
+        </table>
+    @endif
+
+    @include('documents.v1.partials.qr', [
+        'eInvoice' => '',
+        'paperUrl' => $paperUrl ?? '',
+        'googleReview' => '',
+        'size' => 1.0,
+    ])
+@endsection
+
+@if (trim((string) ($tpl['footer'] ?? '')) !== '')
+    @section('foot')
+        @foreach (preg_split('/\r\n|\r|\n/', $tpl['footer']) as $l)
+            <div>{{ $l }}</div>
+        @endforeach
+    @endsection
+@endif

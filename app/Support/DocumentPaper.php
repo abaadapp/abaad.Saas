@@ -3,10 +3,12 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Models\CustomerInvoice;
 use App\Models\GoodsReceiptNote;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Support\Demo;
 
 /**
  * الورقة كما تُرسم — بيانُ المستند مفصولًا عن رسمه.
@@ -33,6 +35,144 @@ class DocumentPaper
         $n = (float) $value;
 
         return $n == (int) $n ? (string) (int) $n : rtrim(rtrim(number_format($n, 3, '.', ''), '0'), '.');
+    }
+
+    /**
+     * فاتورةُ البيع ورقةً — أكملُ ما يُطبع في النظام.
+     *
+     * ═══ وحقولُ السداد تُقرأ من الدفتر لا من عمودٍ في `orders` ═══
+     *
+     * «المسدَّد» و«الباقي» و«تاريخ الاستحقاق» و«شروط الدفع» ليست أعمدةً في
+     * `orders`، ولا يجوز أن تكون:
+     *
+     *  • البيعُ الآجل في نقطة البيع **يُصدر فاتورةَ عميلٍ فعلًا**
+     *    (`CustomerInvoices::fromOrder`)، وهي التي تحمل الاستحقاقَ والشروط.
+     *  • و«المسدَّد» ليس عمودًا هناك أيضًا: `CustomerInvoice::paidTotal()`
+     *    يجمعه من `customer_payment_allocations` — أي من الدفتر نفسِه.
+     *
+     * فعمودٌ ثانٍ في `orders` يحمل ما دُفع يعني مصدرين للرقم نفسه: كلُّ
+     * تحصيلٍ وكلُّ إلغاءٍ وكلُّ إشعارٍ دائن يجب أن يكتب في الاثنين، ونسيانُ
+     * أحدها مرّةً واحدة يُخرج ورقةً تقول «الباقي صفر» ودفترًا يقول غير ذلك.
+     * وهو الصنفُ الذي لا يُكتشف إلّا عند مراجعةٍ خارجيّة.
+     *
+     * والبيعُ النقديّ لا استحقاقَ له أصلًا: دُفع عند الصندوق، فلا تُطبع له
+     * سطورُ سدادٍ فارغة — انظر `payment()`.
+     *
+     * @return array<string, mixed>
+     */
+    public static function forSale(Order $order, array $extra = []): array
+    {
+        $pay = self::payment($order);
+
+        $vatBase = (float) $order->subtotal - (float) $order->discount;
+        $vatRate = $vatBase > 0 ? round((float) $order->tax / $vatBase * 100, 2) : 0.0;
+
+        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($order->subtotal)]];
+
+        if ((float) $order->discount > 0) {
+            $totals[] = ['label' => __('الخصم'), 'value' => '− '.self::money($order->discount)];
+        }
+
+        /*
+         * والنسبةُ مطبوعةٌ مع القيمة، ومقروءةٌ من الفعل لا من الإعلان.
+         *
+         * فاتورةٌ تقول «الضريبة ١٫٢٥٠» ولا تقول على أيّ نسبةٍ حُسبت لا
+         * تُراجَع. ونسبةٌ معلنةٌ تخالف المحتسبة فاتورةٌ تقول ما لا تفعل.
+         */
+        if ((float) $order->tax > 0) {
+            $totals[] = [
+                'label' => __('ضريبة القيمة المضافة'),
+                'hint' => $vatRate > 0 ? '('.rtrim(rtrim(number_format($vatRate, 2, '.', ''), '0'), '.').'%)' : null,
+                'value' => self::money($order->tax),
+            ];
+        }
+
+        if ((float) $order->delivery_fee > 0) {
+            $totals[] = ['label' => __('رسوم التوصيل'), 'value' => self::money($order->delivery_fee)];
+        }
+
+        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($order->total), 'grand' => true];
+
+        /* ولا سطرَ سدادٍ على بيعةٍ دُفعت كاملةً عند الصندوق: صفرٌ لا يُطبع */
+        if ($pay['partial']) {
+            $totals[] = ['label' => __('المسدَّد'), 'value' => self::money($pay['paid'])];
+            $totals[] = ['label' => __('الباقي'), 'value' => self::money($pay['outstanding']), 'due' => true];
+        }
+
+        return [
+            'title' => $extra['title'] ?? __('فاتورة'),
+            'number' => $order->number,
+            'date' => optional($order->ordered_at)->format('Y-m-d H:i'),
+            'branch' => $order->branch,
+            'employee' => $order->employee_name,
+            'meta' => array_values(array_filter([
+                ['label' => __('وسيلة الدفع'), 'value' => __((string) ($order->payment_method ?: 'نقدي'))],
+                ['label' => __('شروط الدفع'), 'value' => $pay['terms']],
+                ['label' => __('تاريخ الاستحقاق'), 'value' => $pay['due_at']],
+            ], fn (array $r) => filled($r['value']))),
+            'parties' => [[
+                'cap' => __('فاتورة إلى'),
+                'lines' => array_values(array_filter([
+                    Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي'),
+                    $extra['customerTax'] ? __('الرقم الضريبي').': '.$extra['customerTax'] : null,
+                    $order->recipient_phone ?: null,
+                ])),
+            ]],
+            'items' => $order->items->map(fn ($i) => [
+                'name' => $i->name,
+                'note' => $i->note,
+                'qty' => self::qty($i->quantity),
+                'unit' => self::money($i->price),
+                'total' => self::money($i->total ?: $i->price * $i->quantity),
+            ])->all(),
+            'totals' => $totals,
+            'notes' => (string) ($order->notes ?: ''),
+        ];
+    }
+
+    /**
+     * حالُ سداد بيعةٍ — من فاتورتها إن صدرت، وإلّا فهي مدفوعة.
+     *
+     * والفاتورةُ تُقرأ عبر العلاقة القائمة (`Order::customerInvoices`) لا
+     * باستعلامٍ يُكتب هنا: هي التي تعرف أن الملغاةَ لا تُحتسب.
+     *
+     * @return array{paid: float, outstanding: float, partial: bool, terms: string, due_at: string}
+     */
+    private static function payment(Order $order): array
+    {
+        /*
+         * وطلبٌ لم يُحفظ لا يُستعلَم عنه.
+         *
+         * معاينةُ المحرّر ترسم طلبًا مُخترعًا بلا مفتاح، واستعلامُ علاقته
+         * يخرج بـ`order_id is null` — فيردّ صفًّا عشوائيًّا أو يسقط. وهو
+         * لا يملك فاتورةً بحال: نقديٌّ حتى يُثبت غيرَ ذلك.
+         */
+        $invoice = ! $order->exists ? null : ($order->relationLoaded('customerInvoices')
+            ? $order->customerInvoices->firstWhere('status', '!=', CustomerInvoice::CANCELLED)
+            : $order->customerInvoices()->where('status', '!=', CustomerInvoice::CANCELLED)->first());
+
+        if ($invoice === null) {
+            /* بيعةٌ نقديّة: دُفعت عند الصندوق، ولا سطرَ سدادٍ يُطبع لها */
+            return [
+                'paid' => (float) $order->total,
+                'outstanding' => 0.0,
+                'partial' => false,
+                'terms' => '',
+                'due_at' => '',
+            ];
+        }
+
+        $paid = $invoice->paidTotal();
+        $outstanding = $invoice->outstanding();
+
+        return [
+            'paid' => $paid,
+            'outstanding' => $outstanding,
+            /* والسطرُ يُطبع حين يبقى شيء — أو حين سُدِّد بعضُه فيُعرف كم */
+            'partial' => $outstanding > 0 || ($paid > 0 && $paid < (float) $invoice->total),
+            'terms' => self::terms($invoice->payment_terms_days),
+            'due_at' => optional($invoice->due_at)->format('Y-m-d') ?: '',
+        ];
     }
 
     /**

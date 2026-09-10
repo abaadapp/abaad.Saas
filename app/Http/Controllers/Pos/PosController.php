@@ -26,6 +26,7 @@ use App\Support\CustomerPayments;
 use App\Support\Customers;
 use App\Support\Demo;
 use App\Support\Document\Snapshot;
+use App\Support\PaymentMethods;
 use App\Support\FlowerOrder;
 use App\Support\Loyalty;
 use App\Support\OrderStatus;
@@ -607,18 +608,6 @@ class PosController extends Controller
      * ولا تعود فارغةً أبدًا: من أطفأ الثلاث لا يُراد به أن يقف البيع، فيبقى
      * النقد. حجبُ وسيلةٍ إعدادٌ، وإيقافُ الصندوق عطل.
      */
-    public static function enabledPaymentMethods(array $settings): array
-    {
-        $all = ['نقدي' => 'pay_cash', 'بطاقة' => 'pay_card', 'تحويل بنكي' => 'pay_transfer'];
-        $on = [];
-        foreach ($all as $label => $key) {
-            if (($settings[$key] ?? '1') !== '0') {
-                $on[] = $label;
-            }
-        }
-
-        return $on ?: ['نقدي'];
-    }
 
     /**
      * وسيلة الدفع تُختار ولا تُخمَّن.
@@ -634,7 +623,7 @@ class PosController extends Controller
      */
     private function paymentMethod(?string $requested): string
     {
-        $allowed = self::enabledPaymentMethods(Demo::businessSettings());
+        $allowed = PaymentMethods::enabled(Demo::businessSettings());
 
         if (! in_array($requested, $allowed, true)) {
             throw ValidationException::withMessages([

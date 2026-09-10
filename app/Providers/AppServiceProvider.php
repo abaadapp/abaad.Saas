@@ -12,6 +12,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        /*
+         * مزوّدُ نطاقات التجّار — واحدٌ اليوم وقد يُبدَّل غدًا.
+         *
+         * والربطُ هنا لا في مكان الاستعمال: يوم يُتعاقَد مع مزوّدٍ يتولّى
+         * الشهادات، يُبدَّل هذا السطرُ وحده — ولا تُفتح شاشةٌ ولا نموذج.
+         */
+        $this->app->bind(
+            \App\Support\Website\Domain\CustomDomainProvider::class,
+            \App\Support\Website\Domain\ManualDnsProvider::class,
+        );
+
         //
     }
 

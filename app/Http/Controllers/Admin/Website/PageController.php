@@ -179,13 +179,21 @@ class PageController extends Controller
         $owned = $site->pages()->pluck('id')->all();
 
         DB::transaction(function () use ($data, $owned, $site) {
+            /*
+             * وما لم يُذكر يلحق آخرَه — لا يبقى على موضعه.
+             *
+             * قائمةٌ ناقصة كانت تُرقّم المذكورَ من واحد وتترك الباقي كما هو،
+             * فيتساوى موضعان ويصير ترتيبُ صفحتين في قائمة الموقع ما يقرّره
+             * محرّكُ القاعدة — يتبدّل بين فتحةٍ وفتحة بلا سبب يُرى.
+             */
+            $wanted = array_values(array_filter(
+                array_map('intval', $data['order']),
+                fn ($id) => in_array($id, $owned, true),
+            ));
+
             $position = 0;
 
-            foreach ($data['order'] as $id) {
-                if (! in_array((int) $id, $owned, true)) {
-                    continue;
-                }
-
+            foreach (array_merge($wanted, array_values(array_diff($owned, $wanted))) as $id) {
                 WebsitePage::where('id', $id)->where('website_id', $site->id)
                     ->update(['position' => ++$position]);
             }

@@ -1,4 +1,4 @@
-import { orderUrl, sells, whatsappUrl } from './commerce';
+import { allowOrders, orderUrl, showPrices, whatsappUrl } from './commerce';
 import { mapEmbed, videoEmbed } from './embed';
 import { AtSign, Mail, MapPin, Phone, Play, ShoppingBag, Star, BENEFIT_ICONS } from './icons';
 import { money } from './money';
@@ -47,13 +47,21 @@ function ProductCard({
      * والموجود فعلًا واتساب: من له رقمٌ يظهر عنده زرُّ طلبٍ يفتح محادثةً
      * باسم المنتج وسعره.
      */
-    const order = sells(doc.goal) ? orderUrl(doc.brand, p, doc.currency, 'أودّ طلب') : null;
+    const order = allowOrders(doc) ? orderUrl(doc.brand, p, doc.currency, 'أودّ طلب') : null;
+    /*
+     * والسعرُ يُخفى ولا يُصفَّر.
+     *
+     * من أطفأ الأسعار يريد أن يُسأل عنها لا أن تُعرض صفرًا — وبطاقةٌ ثمنُها
+     * `0.000` تقول للزبون إنّ الصنف مجّانيّ أو إنّ المتجر معطوب.
+     */
+    const price = showPrices(doc);
 
     return (
         <article style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Media src={p.image} alt={p.name} ratio="1 / 1" eager={eager} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                 <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0, lineHeight: 1.6 }}>{p.name}</h3>
+                {price && (
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--w-primary)' }}>
                     {money(p.final, doc.currency)}
                     {p.was !== null && (
@@ -70,6 +78,7 @@ function ProductCard({
                         </span>
                     )}
                 </p>
+                )}
                 {order && (
                     <Link
                         href={order}

@@ -15,6 +15,7 @@ use App\Support\Website\Builder;
 use App\Support\Website\Publisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use App\Support\Website\Domains;
 
 /**
  * قسم الموقع من بابه — ما يراه التاجر وما يُردّ عنه.
@@ -159,12 +160,38 @@ class WebsiteBuilderTest extends TestCase
         $this->assertSame(Website::PUBLISHED, $this->props(route('admin.website.index'))['site']['state']);
     }
 
-    public function test_the_site_url_appears_once_a_domain_is_set(): void
+    /**
+     * واللوحةُ تعرض العنوان الذي **يُفتح** — لا الذي يُملَك.
+     *
+     * زرُّ «افتح موقعك» أوّلُ ما يجرّبه التاجر بعد النشر. وعرضُ نطاقٍ رُبط
+     * ولم يُخدَم بعد يفتح له صفحةَ خطأ في متصفّحه، فيظنّ أنّ موقعه معطوب.
+     */
+    public function test_the_panel_shows_the_address_that_opens(): void
     {
+        $this->business->forceFill(['site_slug' => 'wurood'])->save();
         $this->build();
-        Setting::create(['business_id' => $this->bid(), 'key' => 'site_domain', 'value' => 'wurood.om']);
+        Domains::attach($this->business->refresh(), 'wurood.om');
 
-        $this->assertStringContainsString('wurood.om', (string) $this->props(route('admin.website.index'))['site']['url']);
+        $url = (string) $this->props(route('admin.website.index'))['site']['url'];
+
+        $this->assertStringContainsString('/s/wurood', $url, 'عُرض عنوانٌ لا يُخدَم بعد');
+        $this->assertStringNotContainsString('wurood.om', $url);
+    }
+
+    /** فإذا صار نطاقُه يُخدَم وهو نشط، صار هو ما يُعرض */
+    public function test_a_served_domain_becomes_the_address_shown(): void
+    {
+        config(['storefront.custom_domains' => true]);
+
+        $this->business->forceFill(['site_slug' => 'wurood'])->save();
+        $this->build();
+        Domains::attach($this->business->refresh(), 'wurood.om');
+        \App\Models\WebsiteDomain::query()->update(['status' => Domains::ACTIVE]);
+
+        $this->assertStringContainsString(
+            'wurood.om',
+            (string) $this->props(route('admin.website.index'))['site']['url'],
+        );
     }
 
     public function test_a_sub_screen_without_a_site_leads_to_the_wizard(): void
@@ -587,7 +614,7 @@ class WebsiteBuilderTest extends TestCase
     public function test_a_domain_whose_site_is_not_published_gets_nothing(): void
     {
         $this->build();
-        Setting::create(['business_id' => $this->bid(), 'key' => 'site_domain', 'value' => 'wurood.om']);
+        Domains::attach($this->business, 'wurood.om');
 
         $this->get('/site/wurood.om')->assertNotFound();
     }
@@ -596,7 +623,7 @@ class WebsiteBuilderTest extends TestCase
     {
         $this->catalogue();
         $site = $this->build();
-        Setting::create(['business_id' => $this->bid(), 'key' => 'site_domain', 'value' => 'wurood.om']);
+        Domains::attach($this->business, 'wurood.om');
         Publisher::publish($site, $this->owner->id);
 
         $body = $this->get('/site/WUROOD.OM')->assertOk()->json();
@@ -614,7 +641,7 @@ class WebsiteBuilderTest extends TestCase
     public function test_the_draft_never_leaves_the_building(): void
     {
         $site = $this->build();
-        Setting::create(['business_id' => $this->bid(), 'key' => 'site_domain', 'value' => 'wurood.om']);
+        Domains::attach($this->business, 'wurood.om');
         Publisher::publish($site, $this->owner->id);
 
         $hero = WebsiteSection::where('website_id', $site->id)->where('type', 'hero')->firstOrFail();
@@ -630,7 +657,7 @@ class WebsiteBuilderTest extends TestCase
     public function test_maintenance_answers_without_opening_the_site(): void
     {
         $site = $this->build();
-        Setting::create(['business_id' => $this->bid(), 'key' => 'site_domain', 'value' => 'wurood.om']);
+        Domains::attach($this->business, 'wurood.om');
         Publisher::publish($site, $this->owner->id);
         $site->update(['maintenance' => true, 'maintenance_message' => 'نعود بعد ساعة']);
 
@@ -645,11 +672,11 @@ class WebsiteBuilderTest extends TestCase
     {
         $other = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
         $theirs = Builder::create($other, Blueprints::PROFILE, 'bold');
-        Setting::create(['business_id' => $other->id, 'key' => 'site_domain', 'value' => 'jar.om']);
+        Domains::attach($other, 'jar.om');
         Publisher::publish($theirs);
 
         $mine = $this->build();
-        Setting::create(['business_id' => $this->bid(), 'key' => 'site_domain', 'value' => 'wurood.om']);
+        Domains::attach($this->business, 'wurood.om');
         Publisher::publish($mine, $this->owner->id);
 
         $this->assertSame('الجار', $this->get('/site/jar.om')->json('site.name'));

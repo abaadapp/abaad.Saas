@@ -15,6 +15,7 @@ use App\Support\Loyalty;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
 use App\Support\Storefront;
+use App\Support\Website\Domains;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -69,43 +70,26 @@ class MarketingController extends Controller
         ]);
 
         /*
-         * ═══ والنطاق يخصّ متجرًا واحدًا ═══
+         * ═══ والنطاق يمرّ بطبقته لا يُكتب هنا ═══
          *
-         * عنوانُ متجر أبعاد (`site_slug`) يُفحص تفرّدُه منذ بُني، والنطاق
-         * الذي يملكه التاجر كان يُقبل من أيّ عدد من المتاجر بلا كلمة.
+         * كان يُفحص تفرّدُه بشرطٍ مكتوبٍ في هذا المتحكّم ثمّ يُحفظ صفًّا في
+         * جدول المفاتيح. فلا تفرّدَ في القاعدة — طلبان متزامنان يمرّان
+         * كلاهما — ولا حالَ للربط: التاجر يكتب نطاقه ويرى «حُفظ» ثمّ يفتحه
+         * فلا يعمل، ولا شيء يقول له أين وقف.
          *
-         * والعارض الخارجيّ يقرأ النطاق ليعرف صاحبه — صفٌّ واحد يُنتقى من
-         * صفّين متطابقين بترتيبٍ لا يضمنه محرّكُ قاعدةٍ لأحد. فالثاني يضبط
-         * نطاقه، ويوجّه DNS إليه، وينشر موقعه، ثمّ يفتح الرابط فيرى **موقع
-         * متجرٍ آخر** — ولوحتُه تقول «منشور» ولا شيء فيها يقول لماذا.
-         * والاتّجاه الآخر أسوأ: زوّار الأوّل يرون متجر من كتب نطاقه بعده.
-         *
-         * ولا مِلكيّةَ نطاقٍ تُتحقَّق هنا — تلك DNS لا قاعدةُ بيانات. وإنّما
-         * يُمنع صفّان لعنوانٍ واحد: من سبق، كما في `site_slug`.
-         *
-         * والمقارنةُ بلا حالةِ حرف، والمحفوظُ صغيرٌ كلُّه: النطاقات لا تفرّق
-         * بين `WROOD.OM` و`wrood.om`، والعارض يبحث بـ`LOWER(value)` — فلو
-         * حُفظ بحرفٍ كبير لَما وجده أحد.
+         * و`Domains::attach` تملك الاثنين: الصفَّ ذا الحال، والمرآةَ في
+         * `site_domain` التي يقرؤها زرُّ الشريط والسيو. وكاتبٌ واحدٌ للاثنين
+         * لا يفترق عن نفسه.
          */
         if (array_key_exists('site_domain', $data)) {
-            $data['site_domain'] = mb_strtolower(trim((string) ($data['site_domain'] ?? '')));
+            $result = Domains::attach(Business::findOrFail($this->bid()), $data['site_domain']);
 
-            if ($data['site_domain'] !== '' && $this->domainTakenBySomeoneElse($data['site_domain'])) {
-                return back()->withInput()->withErrors([
-                    'site_domain' => __('هذا النطاق مسجَّلٌ لمتجرٍ آخر — إن كان لك فراسِلنا.'),
-                ]);
+            if (! ($result['ok'] ?? false)) {
+                return back()->withInput()->withErrors(['site_domain' => $result['error']]);
             }
-        }
 
-        /*
-         * والمنطقيّ يُخزَّن '1'/'0' نصًّا صراحةً.
-         *
-         * `false` يُكتب في العمود سلسلةً فارغة، و`MarketingSettings::group`
-         * تعدّ الفارغةَ قصدًا لا غيابًا فتردّها كما هي — ثمّ تُقارن بـ'1'
-         * فتكون خطأً بالمصادفة لا بالضبط. والمصادفةُ تنقلب يومًا.
-         */
-        if (array_key_exists('site_on', $data)) {
-            $data['site_on'] = $request->boolean('site_on') ? '1' : '0';
+            // والمرآةُ كتبتها الطبقة — فلا تُكتب هنا ثانيةً بقيمةٍ غير مطبَّعة
+            unset($data['site_domain']);
         }
 
         MarketingSettings::save($this->bid(), 'website', $data);
@@ -113,21 +97,6 @@ class MarketingController extends Controller
         Activity::log('updated', 'حدّث إعدادات الموقع الإلكتروني');
 
         return back()->with('toast', ['msg' => __('حُفظت إعدادات الموقع'), 'type' => 'success']);
-    }
-
-    /**
-     * أحجزه متجرٌ غيرُنا؟
-     *
-     * والمقارنة على `LOWER(value)` هي المقارنة التي يبحث بها العارض نفسُه —
-     * فلا يمرّ من هنا ما سيصطدم هناك.
-     */
-    private function domainTakenBySomeoneElse(string $domain): bool
-    {
-        return Setting::whereNotNull('business_id')
-            ->where('business_id', '!=', $this->bid())
-            ->where('key', 'site_domain')
-            ->whereRaw('LOWER(value) = ?', [$domain])
-            ->exists();
     }
 
     /**
@@ -247,6 +216,15 @@ class MarketingController extends Controller
         }
 
         $business->forceFill(['site_slug' => $slug])->save();
+
+        /*
+         * والاسمُ المحجوز يصير عنوانًا في جدول العناوين.
+         *
+         * ولولا هذا السطر لَكان الاسمُ يُحفظ في عمودٍ ولا يُعرف صاحبُ العنوان
+         * حين يصل: القارئُ يسأل جدولَ العناوين وحده (انظر `Domains::resolve`)،
+         * ومن كتب اسمه بعد الهجرة لا صفَّ له فيه.
+         */
+        Domains::sync($business->refresh());
 
         foreach (['store_on', 'store_show_prices', 'store_pay_cod', 'store_pay_transfer'] as $flag) {
             if (array_key_exists($flag, $data)) {

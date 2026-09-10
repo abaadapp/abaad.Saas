@@ -51,6 +51,16 @@ class Preview
      */
     public static function resolve(array $snapshot, int $businessId): array
     {
+        /*
+         * والمستندُ يُرقَّى قبل أن يُقرأ — أيًّا كان تاريخُ نشره.
+         *
+         * هذه الدالّة تقرأ لقطاتٍ نُشرت اليوم ولقطاتٍ نُشرت قبل نسخةٍ من
+         * العقد. وكانت تفترض شكلَ اليوم: `foreach ($snapshot['pages'])`
+         * على لقطةٍ لا `pages` فيها استثناءٌ في مسارٍ يخدم زبونًا على نطاق
+         * تاجر. والمُرقّي يجعل ما يخرج منه شكلًا واحدًا لا ينقصه مفتاح.
+         */
+        $snapshot = Publication::upgrade($snapshot);
+
         $needs = self::needs($snapshot);
         $bag = [
             'products' => $needs['products'] ? self::products($businessId, $needs['products']) : [],
@@ -226,15 +236,16 @@ class Preview
      * ولا مصدر ثانٍ لها: تاجرٌ يُطفئ «تحويل بنكي» في نقطة البيع ويبقى شعارُه
      * في تذييل موقعه هو بالضبط ما يجعل زبونًا يحوّل ثم لا يُقبَل تحويلُه.
      *
+     * وتُقرأ من `PaymentMethods` لا من متحكّم نقطة البيع: مكتبةٌ يناديها
+     * الاثنان، لا طبقةُ ويبٍ تناديها طبقةُ نطاق.
+     *
      * @return array<int, string>
      */
     private static function payments(int $businessId, string $locale): array
     {
-        $settings = \App\Models\Setting::where('business_id', $businessId)->pluck('value', 'key')->all();
-
         return array_values(array_map(
             fn ($label) => trans($label, [], $locale),
-            \App\Http\Controllers\Pos\PosController::enabledPaymentMethods($settings),
+            \App\Support\PaymentMethods::enabledFor($businessId),
         ));
     }
 

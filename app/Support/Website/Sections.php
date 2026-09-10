@@ -78,6 +78,37 @@ class Sections
                     'item' => [
                         'label' => ['label' => 'الاسم', 'type' => 'text', 'default' => ''],
                         'href' => ['label' => 'الوجهة', 'type' => 'link', 'default' => '/'],
+                        /*
+                         * ونوعُ الوجهة يُحفظ ولا يُعرض.
+                         *
+                         * التاجر لا يُسأل «أهذا رابطُ صفحةٍ أم رابطٌ خارجيّ» —
+                         * هو يكتب اسمًا ووجهةً. لكنّ النظام يحتاج الجواب:
+                         * رابطُ الصفحة يتبعها إن بدّلت عنوانها ويسقط إن
+                         * حُذفت، ورابطُ التاجر لا يُمسّ. وبلا هذين الحقلين
+                         * كان الجواب يُخمَّن من شكل العنوان — فيُحذف كلُّ
+                         * رابطٍ داخليٍّ كتبه بيده. انظر `Nav`.
+                         *
+                         * و`hidden` تعني: يمرّ في التنظيف ولا يبلغ الشاشة.
+                         */
+                        'type' => [
+                            /*
+                             * وافتراضيُّه فراغٌ لا `external` — وهي حالٌ ثالثة.
+                             *
+                             * الفراغ يعني «لم يُقل بعد»: رابطٌ حُفظ قبل وجود
+                             * هذا الحقل، أو صفٌّ جديد من نموذجٍ لا يعرضه.
+                             * فيُشتقّ نوعُه من وجهته مرّةً ثمّ يُكتب صريحًا.
+                             * ولو كان افتراضيُّه `external` لَصارت روابطُ
+                             * الصفحات القديمة كلُّها «كتبها التاجر»، فتتكرّر
+                             * في القائمة عند أوّل مزامنة.
+                             */
+                            'label' => 'نوع الوجهة', 'type' => 'select', 'default' => '',
+                            'hidden' => true,
+                            'options' => [Nav::PAGE => 'صفحة في موقعك', Nav::EXTERNAL => 'رابط تكتبه'],
+                        ],
+                        'page_id' => [
+                            'label' => 'الصفحة', 'type' => 'number', 'default' => 0,
+                            'hidden' => true, 'min' => 0, 'max' => 2147483647,
+                        ],
                     ],
                 ],
             ],
@@ -98,6 +129,37 @@ class Sections
                     'item' => [
                         'label' => ['label' => 'الاسم', 'type' => 'text', 'default' => ''],
                         'href' => ['label' => 'الوجهة', 'type' => 'link', 'default' => '/'],
+                        /*
+                         * ونوعُ الوجهة يُحفظ ولا يُعرض.
+                         *
+                         * التاجر لا يُسأل «أهذا رابطُ صفحةٍ أم رابطٌ خارجيّ» —
+                         * هو يكتب اسمًا ووجهةً. لكنّ النظام يحتاج الجواب:
+                         * رابطُ الصفحة يتبعها إن بدّلت عنوانها ويسقط إن
+                         * حُذفت، ورابطُ التاجر لا يُمسّ. وبلا هذين الحقلين
+                         * كان الجواب يُخمَّن من شكل العنوان — فيُحذف كلُّ
+                         * رابطٍ داخليٍّ كتبه بيده. انظر `Nav`.
+                         *
+                         * و`hidden` تعني: يمرّ في التنظيف ولا يبلغ الشاشة.
+                         */
+                        'type' => [
+                            /*
+                             * وافتراضيُّه فراغٌ لا `external` — وهي حالٌ ثالثة.
+                             *
+                             * الفراغ يعني «لم يُقل بعد»: رابطٌ حُفظ قبل وجود
+                             * هذا الحقل، أو صفٌّ جديد من نموذجٍ لا يعرضه.
+                             * فيُشتقّ نوعُه من وجهته مرّةً ثمّ يُكتب صريحًا.
+                             * ولو كان افتراضيُّه `external` لَصارت روابطُ
+                             * الصفحات القديمة كلُّها «كتبها التاجر»، فتتكرّر
+                             * في القائمة عند أوّل مزامنة.
+                             */
+                            'label' => 'نوع الوجهة', 'type' => 'select', 'default' => '',
+                            'hidden' => true,
+                            'options' => [Nav::PAGE => 'صفحة في موقعك', Nav::EXTERNAL => 'رابط تكتبه'],
+                        ],
+                        'page_id' => [
+                            'label' => 'الصفحة', 'type' => 'number', 'default' => 0,
+                            'hidden' => true, 'min' => 0, 'max' => 2147483647,
+                        ],
                     ],
                 ],
             ],
@@ -279,6 +341,15 @@ class Sections
             'group' => 'التجارة',
             'goals' => ['store', 'catalog'],
             'source' => 'products',
+            /*
+             * ويحتاج مبيعاتٍ لا منتجات — و`requires` غير `source`.
+             *
+             * `source` يقول من أين يقرأ محتواه (جدولُ المنتجات)، و`requires`
+             * يقول ما الذي لولاه لَخرج فارغًا. وهما هنا شيئان: متجرٌ رفع مئةَ
+             * صنفٍ ولم يبع بعد كان يُبنى له «الأكثر مبيعًا» شريطًا فارغًا في
+             * صدر صفحته أوّلَ يوم — وهو ما يحكم به على الموقع كلِّه.
+             */
+            'requires' => 'sales',
             'fields' => [
                 'title' => ['label' => 'العنوان', 'type' => 'text', 'default' => 'الأكثر مبيعًا', 'max' => 120],
                 'limit' => ['label' => 'كم منتجًا يظهر', 'type' => 'number', 'default' => 8, 'min' => 2, 'max' => 24],
@@ -401,6 +472,18 @@ class Sections
     }
 
     /** مصدر محتوى القسم من النظام — أو null إن كان يكتبه التاجر كلَّه */
+    /**
+     * ما الذي لولاه لَخرج هذا القسم فارغًا — أو null إن كفاه ما يكتبه صاحبُه.
+     *
+     * وهو `source` في أكثر الأقسام، ويفترق عنه حين يقرأ القسمُ من جدولٍ
+     * ويحتاج شيئًا آخر ليقول شيئًا — كـ«الأكثر مبيعًا»: يقرأ المنتجات
+     * ويحتاج مبيعات.
+     */
+    public static function requires(string $type): ?string
+    {
+        return self::CATALOGUE[$type]['requires'] ?? self::source($type);
+    }
+
     public static function source(string $type): ?string
     {
         return self::CATALOGUE[$type]['source'] ?? null;
@@ -417,7 +500,7 @@ class Sections
         $out = [];
 
         foreach (self::CATALOGUE[$type]['fields'] ?? [] as $key => $field) {
-            if (! self::fieldFitsGoal($field, $goal)) {
+            if (! self::fieldFitsGoal($field, $goal) || ($field['hidden'] ?? false)) {
                 continue;
             }
             $out[$key] = $field['default'];
@@ -446,7 +529,9 @@ class Sections
             if (! self::fitsGoal($spec, $goal)) {
                 continue;
             }
-            if (($source = $spec['source'] ?? null) && ($available[$source] ?? true) === false) {
+            $source = $spec['source'] ?? null;
+
+            if (($needs = self::requires($type)) && ($available[$needs] ?? true) === false) {
                 continue;
             }
 
@@ -473,7 +558,7 @@ class Sections
         $out = [];
 
         foreach (self::CATALOGUE[$type]['fields'] ?? [] as $key => $field) {
-            if (! self::fieldFitsGoal($field, $goal)) {
+            if (! self::fieldFitsGoal($field, $goal) || ($field['hidden'] ?? false)) {
                 continue;
             }
 
@@ -498,7 +583,7 @@ class Sections
     /** @param array<string, mixed> $item */
     private static function itemSchema(array $item): array
     {
-        return collect($item)->map(fn ($f, $k) => [
+        return collect($item)->reject(fn ($f) => $f['hidden'] ?? false)->map(fn ($f, $k) => [
             'key' => $k,
             'label' => __($f['label']),
             'type' => $f['type'],

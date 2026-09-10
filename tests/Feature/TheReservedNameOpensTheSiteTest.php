@@ -12,6 +12,7 @@ use App\Support\Website\Builder;
 use App\Support\Website\Publisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use App\Support\Website\Domains;
 
 /**
  * الاسمُ الذي حجزه التاجر هو الذي يفتح موقعه.
@@ -144,7 +145,7 @@ class TheReservedNameOpensTheSiteTest extends TestCase
     /** والنطاقُ الذي يملكه التاجر يبقى كما كان */
     public function test_an_owned_domain_still_opens_the_site(): void
     {
-        Setting::create(['business_id' => $this->business->id, 'key' => 'site_domain', 'value' => 'wrood.om']);
+        Domains::attach($this->business, 'wrood.om');
         $this->publish();
 
         $this->get(route('site.published', 'wrood.om'))->assertSuccessful();
@@ -203,7 +204,7 @@ class TheReservedNameOpensTheSiteTest extends TestCase
         $props = $this->actingAs($this->owner)
             ->get(route('admin.website.seo'))->viewData('page')['props'];
 
-        $this->assertSame($this->host('wrood'), $props['domain']['subdomain']);
+        $this->assertSame($this->host('wrood'), $props['domain']['platform']['host'] ?? null);
     }
 
     /** ومن لم يحجز اسمًا لا يُعرض له عنوانٌ مخترع */
@@ -214,7 +215,7 @@ class TheReservedNameOpensTheSiteTest extends TestCase
         $props = $this->actingAs($this->owner)
             ->get(route('admin.website.seo'))->viewData('page')['props'];
 
-        $this->assertNull($props['domain']['subdomain']);
+        $this->assertNull($props['domain']['platform']['host'] ?? null);
     }
 
     /**
@@ -245,7 +246,7 @@ class TheReservedNameOpensTheSiteTest extends TestCase
         $props = $this->actingAs($this->owner)
             ->get(route('admin.website.seo'))->viewData('page')['props'];
 
-        $this->assertNull($props['domain']['subdomain']);
+        $this->assertNull($props['domain']['platform']['host'] ?? null);
     }
 
     /**

@@ -101,9 +101,7 @@ class MaintenanceIsNotAnUnpublishedChangeTest extends TestCase
     /** والزائرُ يُردّ في اللحظة بلا نشرةٍ جديدة */
     public function test_the_visitor_is_turned_away_at_once(): void
     {
-        Setting::create([
-            'business_id' => $this->business->id, 'key' => 'site_domain', 'value' => 'wrood.om',
-        ]);
+        \App\Support\Website\Domains::attach($this->business, 'wrood.om');
 
         $this->get(route('site.published', 'wrood.om'))->assertSuccessful();
 

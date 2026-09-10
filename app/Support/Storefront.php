@@ -123,9 +123,16 @@ class Storefront
      * بها النفع.
      *
      * فيُقرأ العلَم: ما دام الخادم لا يخدمها، فالأصلُ هو البديل العامل.
+     *
+     * ومن مرّر معرّفَ نشاطه يُجاب من طبقة النطاقات — فتُقرأ حالُ نطاقه
+     * الخاصّ أيضًا، لا نطاقُ أبعاد وحده.
      */
-    public static function canonical(?string $slug): ?string
+    public static function canonical(?string $slug, ?int $businessId = null): ?string
     {
+        if ($businessId !== null) {
+            return \App\Support\Website\Domains::canonical($businessId, $slug);
+        }
+
         if ($slug === null) {
             return null;
         }
@@ -226,8 +233,20 @@ class Storefront
     {
         $business = Business::where('site_slug', $slug)->first();
 
-        if (! $business || $business->status !== 'نشط') {
-            return null;
+        return $business !== null && self::serving($business) ? $business : null;
+    }
+
+    /**
+     * أيُخدَم متجرُ هذا النشاط الآن؟ — نشطًا وغيرَ مقفَل.
+     *
+     * وأُخرج من `open` ليُسأل بلا اسمٍ محجوز: من ربط نطاقَه الخاصّ قد لا
+     * يكون له `site_slug` أصلًا، وسؤالُ الحارس عنه بالاسم يجعل بابًا يُحرَس
+     * وبابًا لا يُحرَس.
+     */
+    public static function serving(Business $business): bool
+    {
+        if ($business->status !== 'نشط') {
+            return false;
         }
 
         /*
@@ -242,11 +261,7 @@ class Storefront
          * ومن المُدقِّق نفسه الذي يسأله الحارس لا من فحصٍ ثانٍ يُكتب هنا:
          * فحصان لسؤالٍ واحد يفترقان يوم يُبدَّل أحدهما.
          */
-        if (Tenancy::locked($business)) {
-            return null;
-        }
-
-        return $business;
+        return ! Tenancy::locked($business);
     }
 
     /** هل نشر صاحبُه متجره؟ */

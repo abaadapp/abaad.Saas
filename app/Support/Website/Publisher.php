@@ -2,6 +2,8 @@
 
 namespace App\Support\Website;
 
+use App\Events\Website\WebsitePublished;
+use App\Events\Website\WebsiteRestored;
 use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
@@ -16,44 +18,76 @@ use Illuminate\Support\Facades\DB;
  * الشاشة نصفَ عمل — ولا يرى زبونٌ شيئًا من ذلك. وبلا هذا الفصل يصير كلُّ
  * تعديلٍ نشرًا، فلا يُعدَّل موقعٌ يعمل إلا ليلًا وبقلبٍ واجف.
  *
- * واللقطة كاملةٌ لا فروق: الصفحات وأقسامها ومحتواها والقالب والألوان والسيو
- * في مستندٍ واحد. فالاستعادة كتابةٌ لا تجميع، وقارئ الموقع يقرأ مستندًا
- * واحدًا لا يحتاج معه استعلامًا في جداولنا.
- *
- * ولا يُقرأ من هذا الملفّ محتوى المنتجات: القسم يحمل «اعرض ثمانية من أحدث
- * المنتجات» لا المنتجاتِ نفسها. ولو جُمّدت المنتجات في اللقطة لبقي سعرُ
- * الأمس في الموقع بعد أن غيّره التاجر اليوم — والكتالوج مصدرُه واحدٌ، هو
- * جدول المنتجات.
+ * وشكلُ اللقطة ليس هنا: هو عقدٌ له نسخةٌ ومُرقٍّ في `Publication`. وهذا
+ * الملفّ يملك **متى** تُكتب و**كيف** تُكتب بلا أن تنكسر — لا **ماذا** فيها.
  */
 class Publisher
 {
     /**
      * نشرةٌ جديدة — لقطةٌ ورقمٌ ووقت.
      *
-     * والقديمة تبقى: «استعادة النسخة» لا تعمل إن كانت النشرةُ تمحو سابقتها.
+     * ═══ والعملية كلُّها تحت قفلِ صفِّ الموقع ═══
+     *
+     * كان الرقم يُحسب `MAX(number) + 1` بلا قفل. ونشرتان تقعان معًا — تاجرٌ
+     * ضغط مرّتين، أو شريكان في اللوحة نفسها — تقرآن الأقصى نفسه وتكتبان
+     * الرقم نفسه، فيصطدم أحدهما بالفهرس الفريد `(website_id, number)` ويرى
+     * صاحبُه صفحةَ خطأ بلا سبب.
+     *
+     * وأخطرُ منه ما لا يُرى: اللقطة كانت تُقرأ خارج أيّ قفل، ومراجعةُ
+     * المسوّدة تُقرأ من نسخةٍ في الذاكرة حُمّلت قبل الطلب. فحفظٌ يقع بين
+     * القراءتين يُجمَّد نصفُه — أقسامٌ بعده وصفحاتٌ قبله — ثمّ يُكتب
+     * `published_revision` رقمًا أقدم، فتقول اللوحة «فيه تغييرات» أبدًا عن
+     * تغييرٍ نُشر، أو تقول «منشور» عن نصفٍ لم يُنشر.
+     *
+     * فالقفل يُؤخذ أوّلًا، ويُقرأ منه كلُّ شيء: الرقمُ واللقطةُ والمراجعة.
+     * وما بعده متناسقٌ بالبناء لا بحسن التوقيت.
      */
     public static function publish(Website $website, ?int $userId = null, ?string $note = null): WebsiteVersion
     {
-        return DB::transaction(function () use ($website, $userId, $note) {
+        $version = DB::transaction(function () use ($website, $userId, $note) {
+            /*
+             * وصفُّ الموقع هو المقفول لا صفُّ النشرة.
+             *
+             * النشرةُ لا وجود لها بعد، ولا يُقفل ما لم يُخلق. والموقع هو ما
+             * يتنازع عليه الطلبان: منه يُقرأ الأقصى، وفيه يُكتب المؤشّر.
+             */
+            $locked = Website::whereKey($website->getKey())->lockForUpdate()->first();
+
+            if (! $locked) {
+                throw new \RuntimeException('الموقع حُذف قبل أن يُنشر');
+            }
+
+            $number = ((int) WebsiteVersion::where('website_id', $locked->id)->max('number')) + 1;
+
             $version = WebsiteVersion::create([
-                'website_id' => $website->id,
-                'business_id' => $website->business_id,
-                'number' => WebsiteVersion::nextNumber($website->id),
-                'payload' => self::snapshot($website),
-                'note' => $note ? mb_substr($note, 0, 255) : null,
+                'website_id' => $locked->id,
+                'business_id' => $locked->business_id,
+                'number' => $number,
+                'payload' => Publication::compile($locked),
+                'note' => $note !== null && $note !== '' ? mb_substr($note, 0, 255) : null,
                 'created_by' => $userId,
                 'published_at' => now(),
             ]);
 
-            $website->update([
+            $locked->update([
                 'published_version_id' => $version->id,
                 'published_at' => $version->published_at,
-                // ما نُشر هو مراجعةُ المسوّدة الآن — فتتساويان حتى أوّل تعديل
-                'published_revision' => $website->draft_revision,
+                /*
+                 * وما نُشر هو مراجعةُ **الصفّ المقفول** لا مراجعةُ النسخة
+                 * التي في يد المنادي — تلك قد تكون حُمّلت قبل حفظٍ وقع.
+                 */
+                'published_revision' => $locked->draft_revision,
             ]);
 
             return $version;
         });
+
+        // والنسخة التي في يد المنادي تُوافق ما صار في القاعدة
+        $website->refresh();
+
+        WebsitePublished::dispatch($website, $version);
+
+        return $version;
     }
 
     /**
@@ -70,21 +104,34 @@ class Publisher
         }
 
         DB::transaction(function () use ($website, $version) {
-            $payload = $version->payload;
+            /*
+             * واللقطةُ تمرّ بالمُرقّي قبل أن تُكتب.
+             *
+             * نسخةٌ نُشرت قبل نسخةٍ من العقد شكلُها شكلُ يومها. وكتابتُها
+             * كما هي تُدخل إلى المسوّدة الحيّة مفاتيحَ ناقصة، فيقع النقص
+             * في النشرة التالية أيضًا — والعطبُ يبقى بعد أن تُنسى استعادتُه.
+             */
+            $payload = Publication::upgrade((array) $version->payload);
 
             // الحيّ يُمحى ثمّ يُكتب من اللقطة: الدمج يترك أقسامًا لا أصل لها
             WebsiteSection::where('website_id', $website->id)->delete();
             WebsitePage::where('website_id', $website->id)->delete();
 
             $website->update([
-                'name' => $payload['name'] ?? $website->name,
+                'name' => $payload['name'] ?: $website->name,
                 'goal' => Blueprints::goal($payload['goal'] ?? null),
                 'template' => Templates::key($payload['template'] ?? null),
                 'theme' => Theme::normalize($payload['theme'] ?? []),
-                'seo' => $payload['seo'] ?? $website->seo,
+                'seo' => $payload['seo'],
             ]);
 
-            foreach ($payload['globals'] ?? [] as $slot) {
+            $goal = $website->goal();
+
+            foreach ($payload['globals'] as $slot) {
+                if (! Sections::isSlot((string) ($slot['type'] ?? ''))) {
+                    continue;
+                }
+
                 WebsiteSection::create([
                     'website_id' => $website->id,
                     'business_id' => $website->business_id,
@@ -93,26 +140,31 @@ class Publisher
                     'type' => $slot['type'],
                     'position' => 0,
                     'visible' => (bool) ($slot['visible'] ?? true),
-                    'data' => Content::clean($slot['type'], $slot['data'] ?? [], $website->goal),
+                    'data' => Content::clean($slot['type'], (array) ($slot['data'] ?? []), $goal),
                 ]);
             }
 
-            foreach ($payload['pages'] ?? [] as $i => $spec) {
+            foreach ($payload['pages'] as $i => $spec) {
                 $page = WebsitePage::create([
                     'website_id' => $website->id,
                     'business_id' => $website->business_id,
                     'key' => $spec['key'] ?? 'custom',
-                    'title' => $spec['title'] ?? __('صفحة'),
-                    'slug' => WebsitePage::normalizeSlug($spec['slug'] ?? '/'),
-                    'status' => $spec['status'] ?? WebsitePage::PUBLISHED,
-                    'is_home' => (bool) ($spec['is_home'] ?? false),
+                    'title' => $spec['title'] ?: __('صفحة'),
+                    'slug' => WebsitePage::normalizeSlug($spec['slug']),
+                    'status' => $spec['status'],
+                    'is_home' => $spec['is_home'],
                     'removable' => (bool) ($spec['removable'] ?? true),
                     'position' => $i,
                     'seo' => $spec['seo'] ?? null,
                 ]);
 
-                foreach ($spec['sections'] ?? [] as $j => $section) {
-                    if (! Sections::exists($section['type'] ?? '')) {
+                $position = 0;
+
+                foreach ($spec['sections'] as $section) {
+                    $type = (string) ($section['type'] ?? '');
+
+                    // وما لا يدخل النشرةَ لا يخرج منها — القاعدة واحدة
+                    if (! Publication::carries($type, $goal)) {
                         continue;
                     }
 
@@ -121,62 +173,35 @@ class Publisher
                         'business_id' => $website->business_id,
                         'page_id' => $page->id,
                         'slot' => null,
-                        'type' => $section['type'],
-                        'position' => $j,
+                        'type' => $type,
+                        'position' => ++$position,
                         'visible' => (bool) ($section['visible'] ?? true),
-                        'data' => Content::clean($section['type'], $section['data'] ?? [], $website->goal),
+                        'data' => Content::clean($type, (array) ($section['data'] ?? []), $goal),
                     ]);
                 }
             }
 
+            // والقائمة تُبنى من الصفحات المستعادة لا تبقى على صفحاتٍ حُذفت
+            Nav::sync($website->fresh());
+
             $website->touchDraft();
         });
+
+        $website->refresh();
+
+        WebsiteRestored::dispatch($website, $version);
     }
 
     /**
-     * اللقطة — الموقع كلُّه في مصفوفةٍ واحدة.
+     * اللقطة — والشكلُ في `Publication::compile`.
      *
-     * وهي أيضًا ما يقرؤه العارض الخارجيّ: صيغةٌ واحدة للنشر وللمعاينة
-     * وللاستعادة. وصيغتان لشيءٍ واحد تفترقان عند أوّل حقلٍ يُضاف.
+     * ويبقى هذا الاسم لأنّ المعاينة تناديه ولأنّه يُقرأ في اختبارات قائمة؛
+     * وهو سطرٌ واحد لا منطقَ فيه، فلا مصدرين لشكلٍ واحد.
      *
      * @return array<string, mixed>
      */
     public static function snapshot(Website $website): array
     {
-        $website->loadMissing(['pages.sections', 'sections']);
-
-        return [
-            'version' => 1,
-            'name' => $website->name,
-            'goal' => $website->goal,
-            'template' => $website->template,
-            'theme' => $website->theme,
-            'tokens' => $website->tokens(),
-            'seo' => $website->seo,
-            'maintenance' => $website->maintenance,
-            'maintenance_message' => $website->maintenance_message,
-            'globals' => $website->sections->whereNotNull('slot')->sortBy('slot')->map(fn ($s) => [
-                'slot' => $s->slot,
-                'type' => $s->type,
-                'visible' => $s->visible,
-                'data' => $s->data,
-            ])->values()->all(),
-            'pages' => $website->pages->map(fn ($page) => [
-                'key' => $page->key,
-                'title' => $page->title,
-                'slug' => $page->slug,
-                'status' => $page->status,
-                'is_home' => $page->is_home,
-                'removable' => $page->removable,
-                'seo' => $page->seo,
-                'sections' => $page->sections->map(fn ($s) => [
-                    'type' => $s->type,
-                    'visible' => $s->visible,
-                    // مصدرُ محتواه إن كان يقرأ من النظام — يقرؤه العارض ليصله
-                    'source' => Sections::source($s->type),
-                    'data' => $s->data,
-                ])->values()->all(),
-            ])->values()->all(),
-        ];
+        return Publication::compile($website);
     }
 }

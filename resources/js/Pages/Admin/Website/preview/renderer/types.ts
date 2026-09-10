@@ -102,6 +102,22 @@ export interface DocPage {
     sections: DocSection[];
 }
 
+/**
+ * ما يراه الزائر وما يستطيع فعله — مُجمَّدٌ مع التصميم لا مقروءٌ حيًّا.
+ *
+ * «أخفِ الأسعار» قرارُ عرضٍ كتبديل لونٍ أو إخفاء قسم، فيتبع النشر كما يتبعه
+ * سائرُ التصميم. ولذلك يسكن العقد ولا يُحقن عند القراءة.
+ *
+ * ويغيب في مستندٍ نُشر قبل النسخة الثانية من العقد — و`Publication::upgrade`
+ * تملؤه بما كان يراه زائرُ تلك النشرة، لا بالافتراضيّ الجديد.
+ */
+export interface DocCommerce {
+    /** أيُعرض ثمنُ المنتج؟ */
+    show_prices: boolean;
+    /** أيظهر زرُّ الطلب؟ — والطلبُ محادثةُ واتساب، لا سلّة */
+    allow_orders: boolean;
+}
+
 export interface DocSeo {
     title?: string;
     description?: string;
@@ -110,6 +126,9 @@ export interface DocSeo {
 }
 
 export interface SiteDocument {
+    /** نسخةُ العقد — يقرؤها المُرقّي في أبعاد قبل أن يصل المستندُ هنا */
+    schema_version?: number;
+    /** الاسمُ القديم لنسخة العقد — يُكتب بالقيمة نفسها، ومهجور */
     version: number;
     name: string;
     goal: string;
@@ -117,6 +136,7 @@ export interface SiteDocument {
     theme: Record<string, string>;
     tokens: Tokens;
     seo: DocSeo | null;
+    commerce?: DocCommerce;
     maintenance: boolean;
     maintenance_message: string | null;
     globals: DocSection[];

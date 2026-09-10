@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Support\Storefront;
+use App\Support\Website\Domains;
 use App\Support\Website\Published;
 use Illuminate\Http\Response;
 
@@ -64,6 +65,43 @@ class StorefrontController extends Controller
     }
 
     /**
+     * ونطاقُ التاجر نفسه — `myshop.om` يفتح موقعه.
+     *
+     * ولا يُقرأ منه شيءٌ إلّا ما يقوله جدولُ العناوين: مضيفٌ لا صفَّ **نشطًا**
+     * له لا يُخدَم. ولو خُدم لَأمكن أن يوجّه أحدٌ نطاقًا إلينا فيُعرض عليه
+     * موقعُ متجرٍ لا يملكه — أو أن يُخدَم على نطاقٍ رُبط ولم يُتحقَّق منه بعد،
+     * فيبطل معنى التحقّق كلُّه.
+     *
+     * والبانِي وحده هنا: صفحةُ المتجر البسيطة عنوانُها `‎/s/{slug}‎` وما
+     * زالت تعمل عليه. ونطاقٌ خاصٌّ يُربط اليوم يُربط بموقعٍ بُني.
+     */
+    public function byHost(string $host): Response
+    {
+        /*
+         * والعلَمُ يُقرأ هنا لا عند تسجيل المسار.
+         *
+         * خدمةُ الصفحة على نطاق التاجر تلزمها كتلةُ nginx تلتقط المضيف
+         * المجهول وشهادةٌ تُصدَر له. وقبلهما يصل الزائرُ إلى تحذير أمانٍ
+         * يحمل اسم متجر التاجر — وهو أسوأ من عنوانٍ لا يفتح.
+         */
+        abort_if(! config('storefront.custom_domains'), 404);
+
+        $businessId = Domains::resolve($host);
+
+        abort_if($businessId === null, 404);
+
+        $business = Business::find($businessId);
+
+        abort_if($business === null || ! Storefront::serving($business), 404);
+
+        $site = Published::forBusiness($businessId);
+
+        abort_if($site['state'] === Published::NOT_PUBLISHED, 404);
+
+        return $this->built($site, $business);
+    }
+
+    /**
      * موقعٌ بُني في بانِي المواقع — يُرسم بطبقة الرسم نفسها التي في المعاينة.
      *
      * ولا يُنسخ الرسمُ إلى Blade: طبقة الرسم سبعةَ عشرَ نوعَ قسمٍ في نحو
@@ -93,7 +131,7 @@ class StorefrontController extends Controller
                 'doc' => $site['site'],
                 'head' => Published::head($site['site']),
                 'outline' => Published::outline($site['site']),
-                'canonical' => Storefront::canonical($business->site_slug),
+                'canonical' => Storefront::canonical($business->site_slug, (int) $business->id),
             ])
             ->header('Cache-Control', 'public, max-age=120');
     }

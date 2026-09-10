@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
-use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use App\Support\Website\MerchantData;
+use App\Support\Website\Publication;
 use App\Support\Website\Publisher;
 use App\Support\Website\Templates;
 use Illuminate\Http\Request;
@@ -140,11 +140,17 @@ class BuilderController extends Controller
     {
         $site = $this->siteOrFail();
 
-        if (! $site->pages()->where('status', WebsitePage::PUBLISHED)->exists()) {
-            return back()->with('toast', [
-                'msg' => __('لا صفحة منشورة في موقعك — انشر صفحةً واحدة على الأقل'),
-                'type' => 'warning',
-            ]);
+        /*
+         * وما يمنع النشر يُسأل عنه العقدُ لا هذا المتحكّم.
+         *
+         * الشروطُ تكثر مع الوقت — صفحةٌ منشورة، ورئيسيةٌ قائمة، وما يأتي —
+         * وكتابتُها هنا تجعلها تُفحص في زرّ «انشر» وحده. ومن ينشر من أمرٍ
+         * مجدول أو من طابور يتخطّاها كلَّها. انظر `Publication::problems`.
+         */
+        $problems = Publication::problems($site);
+
+        if ($problems !== []) {
+            return back()->with('toast', ['msg' => $problems[0], 'type' => 'warning']);
         }
 
         $note = $request->input('note');

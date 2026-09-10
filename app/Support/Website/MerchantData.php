@@ -69,6 +69,17 @@ class MerchantData
             'products' => Product::where('business_id', $businessId)->where('active', true)->exists(),
             'categories' => Category::where('business_id', $businessId)->exists(),
             'reviews' => Review::where('business_id', $businessId)->where('status', 'منشور')->exists(),
+            /*
+             * وهل باع أصلًا؟
+             *
+             * و`Order::scopeSold` هو تعريف «بيعة» في النظام كلِّه — يقرؤه
+             * التقرير والإقرار الضريبيّ. فيُقرأ منه هنا أيضًا، لا يُعاد
+             * كتابةُ الشرطين بيدٍ تنسى أحدهما.
+             */
+            'sales' => \App\Models\OrderItem::whereHas(
+                'order',
+                fn ($q) => $q->where('business_id', $businessId)->sold(),
+            )->whereNotNull('product_id')->exists(),
         ];
     }
 

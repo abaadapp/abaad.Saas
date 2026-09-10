@@ -29,12 +29,12 @@ import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
-import { STATE_TONE, STATE_LABEL, type SiteShell } from './shell';
+import { type DomainState, domainHost, STATE_LABEL, STATE_TONE, type SiteShell } from './shell';
 
 interface Props extends SiteShell {
     pages: { id: number; title: string; slug: string; status: string; is_home: boolean; sections: number }[];
     summary: { pages: number; sections: number; hidden: number; versions: number };
-    domain: { domain: string; subdomain: string | null };
+    domain: DomainState;
     template_label: string;
     versions: {
         id: number;
@@ -104,7 +104,21 @@ export default function Dashboard() {
             hint: 'عنوان موقعك في غوغل ووصفه وصورة المشاركة',
             icon: Search,
             route: 'admin.website.seo',
-            meta: domain.domain || domain.subdomain || t('بلا نطاق'),
+            meta: site.name,
+        },
+        {
+            label: 'الدومين',
+            hint: 'عنوان موقعك على الإنترنت، وربط نطاقك الخاص',
+            icon: Globe,
+            route: 'admin.website.domain',
+            /*
+             * وحالُ النطاق الخاصّ تُقال هنا لا في الشاشة وحدها.
+             *
+             * من ربط نطاقه ولم يوجّه سجلَّه لا يفتح شاشةَ الدومين ثانيةً
+             * ليتفقّده — فيبقى شهرًا يظنّ أنّه رُبط. واللوحةُ تقول له في
+             * سطرٍ يمرّ عليه كلّ مرّة.
+             */
+            meta: domain.custom ? `${domain.custom.host} · ${domain.custom.label}` : (domainHost(domain) ?? t('بلا عنوان بعد')),
         },
     ];
 

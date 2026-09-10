@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use App\Http\Controllers\Pos\PosController;
 use App\Models\BranchStock;
 use App\Models\Coupon;
 use App\Models\Customer;
@@ -19,6 +18,7 @@ use App\Models\Transaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use App\Support\PaymentMethods;
 
 /**
  * تصحيح فاتورةٍ بيعت — البابُ الوحيد الذي تُعدَّل منه بنودها.
@@ -543,7 +543,7 @@ class OrderCorrection
     {
         self::assertSameDay($order);
 
-        $allowed = PosController::enabledPaymentMethods(
+        $allowed = PaymentMethods::enabled(
             Setting::where('business_id', $order->business_id)->pluck('value', 'key')->all(),
         );
 

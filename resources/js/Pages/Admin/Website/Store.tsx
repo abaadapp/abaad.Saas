@@ -92,7 +92,7 @@ export default function Store() {
                                 <Toggle
                                     on={form.data.allow_orders}
                                     label="السماح بالطلب من الموقع"
-                                    hint="يضيف الزائر إلى السلّة ويُتمّ الطلب"
+                                    hint="يظهر على كلّ منتج زرُّ طلبٍ يفتح محادثة واتساب باسمه وسعره"
                                     onChange={(v) => form.setData('allow_orders', v)}
                                 />
                             )}

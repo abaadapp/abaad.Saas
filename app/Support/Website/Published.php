@@ -2,10 +2,7 @@
 
 namespace App\Support\Website;
 
-use App\Models\Business;
-use App\Models\Setting;
 use App\Models\Website;
-use App\Support\DomainOptions;
 
 /**
  * اللقطةُ المنشورة — من يملك هذا العنوان، وما الذي يُعرض عليه.
@@ -44,21 +41,21 @@ final class Published
      */
     public static function forHost(string $host): array
     {
-        $host = mb_strtolower(trim($host));
-
         /*
-         * النطاق → المتجر، من إعداداته لا من جدول المواقع.
+         * والعنوانُ يُحلّ من جدول العناوين وحده.
          *
-         * `site_domain` هو مصدر النطاق الوحيد في النظام منذ توحيده — يقرؤه
-         * زرّ «الموقع» وشاشة الدومين والفاتورة. وعمودٌ ثانٍ في `websites`
-         * كان سيفترق عنه عند أوّل تعديل.
+         * كان يُقرأ من موضعين: صفٌّ في `settings` للنطاق الخاصّ، وعمودٌ في
+         * `businesses` للاسم المحجوز. ولا تفرّدَ في أيٍّ منهما ولا حالَ ربط
+         * — فعنوانٌ لم يُوجَّه بعد كان يُخدَم كعنوانٍ عامل، ونطاقٌ كتبه
+         * اثنان يُنتقى أحدُهما بترتيبٍ لا يضمنه محرّكٌ لأحد.
+         *
+         * و`website_domains` تحمل الاثنين صفوفًا، وتفرّدُها في الفهرس.
+         * ولا يُخدَم إلّا النشط: من ادّعى نطاقًا لا يملكه لا يُخدَم عليه
+         * موقعُه قبل أن يثبت توجيهُه.
          */
-        $businessId = Setting::whereNotNull('business_id')
-            ->where('key', 'site_domain')
-            ->whereRaw('LOWER(value) = ?', [$host])
-            ->value('business_id') ?: self::bySubdomain($host);
+        $businessId = Domains::resolve($host);
 
-        return $businessId ? self::forBusiness((int) $businessId) : ['state' => self::NOT_FOUND];
+        return $businessId ? self::forBusiness($businessId) : ['state' => self::NOT_FOUND];
     }
 
     /**
@@ -103,36 +100,48 @@ final class Published
             'published_at' => optional($version->published_at)->toIso8601String(),
             'version' => $version->number,
             // اللقطة المجمّدة، ومعها الكتالوج كما هو اليوم — انظر Preview
-            'site' => Preview::resolve($version->payload, $businessId),
+            'site' => self::visible(Preview::resolve($version->payload, $businessId)),
         ];
     }
 
     /**
-     * ومن لا نطاق له: الاسمُ الذي حجزه.
+     * المستندُ العلنيّ — ما يجوز أن يراه زائر، لا أكثر.
      *
-     * وهو `site_slug` لا مفتاحٌ آخر: هو الذي يُفحص تفرّدُه عند الحفظ، وهو
-     * الذي يُعرض للتاجر عنوانًا في لوحته. فمن حجز اسمه وبنى موقعه ونشره ثمّ
-     * فتح عنوانه وجد «غير موجود» — ولوحتُه تقول إنّ العنوان له.
+     * ═══ ولا يكفي أن يُسقطه الرسم ═══
      *
-     * ولا يُقرأ موقعٌ بمعرّفه: عدّادٌ بسيط يمرّ على مواقع المتاجر كلّها.
-     * والاسم المحجوز نصٌّ اختاره صاحبُه — لا يُخمَّن بالعدّ.
+     * طبقةُ الرسم تُسقط المخفيَّ في وضع الموقع، فلا يظهر على الشاشة. لكنّ
+     * المستند كلَّه يخرج مع الصفحة — لقطةً في وسم `application/json` يقرؤها
+     * المتصفّح — فيبقى نصُّ ما أخفاه التاجر في مصدر صفحته لمن يفتحه.
+     * والتاجر الذي أخفى «آراء العملاء» أو ترك صفحةً مسوّدةً فيها أسعارُ
+     * موسمٍ قادم يظنّ أنّه أخفاها.
+     *
+     * فما لا يُرسم لا يخرج أصلًا. والنشرةُ في `website_versions` تبقى كاملةً
+     * — منها تُستعاد المسوّدة بكلّ ما فيها؛ وهذا التنقيةُ عند الخروج لا عند
+     * التجميد.
+     *
+     * @param  array<string, mixed>  $doc
+     * @return array<string, mixed>
      */
-    private static function bySubdomain(string $host): ?int
+    public static function visible(array $doc): array
     {
-        $suffix = '.'.mb_strtolower(DomainOptions::suffix());
+        $doc['globals'] = array_values(array_filter(
+            (array) ($doc['globals'] ?? []),
+            fn ($slot) => is_array($slot) && ($slot['visible'] ?? true) !== false,
+        ));
 
-        if (! str_ends_with($host, $suffix)) {
-            return null;
-        }
+        $doc['pages'] = array_values(array_map(static function ($page) {
+            $page['sections'] = array_values(array_filter(
+                (array) ($page['sections'] ?? []),
+                fn ($section) => is_array($section) && ($section['visible'] ?? true) !== false,
+            ));
 
-        $label = mb_substr($host, 0, -mb_strlen($suffix));
+            return $page;
+        }, array_filter(
+            (array) ($doc['pages'] ?? []),
+            fn ($page) => is_array($page) && (string) ($page['status'] ?? 'published') === 'published',
+        )));
 
-        // اسمٌ من جزءٍ واحد لا غير: `a.b.abaadapp.om` ليس نطاقًا فرعيًّا محجوزًا
-        if ($label === '' || str_contains($label, '.')) {
-            return null;
-        }
-
-        return Business::whereRaw('LOWER(site_slug) = ?', [$label])->value('id');
+        return $doc;
     }
 
     /* ─────────────────────────── ما يُقرأ بلا JavaScript ─────────────────────────── */
@@ -161,6 +170,19 @@ final class Published
         $out = [];
 
         foreach (self::pagesOf($site) as $page) {
+            /*
+             * ═══ والمسوّدةُ لا تخرج من هنا ═══
+             *
+             * كانت الصفحات تُمشى كلُّها والأقسام كلُّها: فصفحةٌ حالُها
+             * «مسوّدة» — كتبها التاجر ولم يرضَ عنها — يخرج نصُّها في جسد
+             * الصفحة الحيّة، وقسمٌ **أخفاه** يخرج معه. وطبقةُ الرسم تُسقط
+             * الاثنين في وضع الموقع، فلا يراهما من عنده JavaScript ويراهما
+             * من يزحف. وهو أسوأ التقسيمين: المخفيُّ يُفهرس ولا يُرى.
+             */
+            if ((string) ($page['status'] ?? 'published') !== 'published') {
+                continue;
+            }
+
             foreach ((array) ($page['sections'] ?? []) as $section) {
                 foreach (self::textOf($section) as $line) {
                     $out[] = $line;
@@ -195,7 +217,13 @@ final class Published
      * إنستغرام لا يُنفّذ JavaScript قبل أن يرسم بطاقتَه، فما لا يكن في
      * `<head>` لا يظهر في البطاقة — ويُشارَك رابطُ متجرٍ بلا اسمٍ ولا صورة.
      *
-     * @return array{title:string, description:string, image:?string}
+     * ═══ و«السماح لمحرّكات البحث» يخرج من هنا ═══
+     *
+     * `seo.index` تُحفظ في شاشة الظهور منذ بُنيت **ولا يقرؤها شيء**: التاجر
+     * يُطفئها ويرى «حُفظ»، وموقعُه يبقى مفهرسًا. ومقبضٌ لا يُدير شيئًا أسوأ
+     * من غياب المقبض — لأنّ صاحبه يظنّ أنّه فعل.
+     *
+     * @return array{title:string, description:string, image:?string, robots:string}
      */
     public static function head(array $site): array
     {
@@ -208,6 +236,11 @@ final class Published
             'description' => trim((string) ($seo['description'] ?? '')),
             // الفراغ فراغٌ لا رابطٌ إلى جذر الموقع — انظر Preview::absoluteSeo
             'image' => $image !== '' ? $image : null,
+            /*
+             * والغيابُ إذنٌ بالفهرسة: موقعٌ نُشر قبل وجود المفتاح لا يُخفى
+             * من غوغل فجأةً لأنّ مفتاحًا أُضيف بعده.
+             */
+            'robots' => ($seo['index'] ?? true) ? 'index, follow' : 'noindex, nofollow',
         ];
     }
 
@@ -218,6 +251,11 @@ final class Published
      */
     private static function textOf(array $section): array
     {
+        // والمخفيُّ مخفيٌّ في القراءتين — انظر `outline`
+        if (($section['visible'] ?? true) === false) {
+            return [];
+        }
+
         $type = (string) ($section['type'] ?? '');
         $fields = Sections::CATALOGUE[$type]['fields'] ?? null;
 

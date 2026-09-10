@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { ChevronDown, Plus, Search, Settings2, Trash2, Upload, X } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
@@ -452,6 +452,28 @@ function SocialRow({
 
 /* ========================= منتقي المنتجات ========================= */
 
+/** قائمتان تصيران واحدة بلا تكرار — والأحدثُ يغلب على القديم */
+function merge(old: PickerProduct[], fresh: PickerProduct[]): PickerProduct[] {
+    const by = new Map(old.map((p) => [p.id, p]));
+
+    for (const p of fresh) {
+        by.set(p.id, p);
+    }
+
+    return [...by.values()];
+}
+
+/**
+ * منتقي المنتجات — يسأل الخادمَ ولا ينتظر أن يُرسَل إليه الكتالوج.
+ *
+ * كان يُرسَل ثلاثمئة منتجٍ في حمولة المحرّر عند كلّ فتحة، ويُرشَّح البحثُ في
+ * المتصفّح. ومتجرٌ بألفَي صنفٍ يدفع الثمن مرّتين: في الشبكة، وفي أنّ التاجر
+ * يبحث عن صنفه فلا يجده — لأنّه ليس في الثلاثمئة — فيظنّه محذوفًا.
+ *
+ * والمختارُ سلفًا يُرسَل دائمًا مهما كان ترتيبُه (انظر
+ * `EditorController::pickerProducts`): وإلّا رأى التاجر بطاقاتٍ بلا أسماء
+ * لِما اختاره أمس.
+ */
 function ProductsRow({
     spec,
     value,
@@ -466,10 +488,61 @@ function ProductsRow({
     const t = useTranslate();
     const [q, setQ] = useState('');
 
-    const chosen = value.map((id) => products.find((p) => p.id === id)).filter(Boolean) as PickerProduct[];
-    const found = q.trim()
-        ? products.filter((p) => !value.includes(p.id) && p.name.includes(q.trim())).slice(0, 8)
-        : [];
+    /*
+     * وما يصل يُضمّ ولا يُستبدَل.
+     *
+     * أسماءُ المختار جاءت في الحمولة الأولى، ونتائجُ البحث تأتي بعدها. ولو
+     * استُبدلت القائمةُ في كلّ بحثٍ لَاختفى اسمُ منتجٍ مختارٍ لا يطابق ما
+     * كُتب في الحقل — فيرى التاجر مكانه فراغًا.
+     */
+    const [pool, setPool] = useState<PickerProduct[]>(products);
+    const [found, setFound] = useState<PickerProduct[]>([]);
+
+    useEffect(() => {
+        setPool((old) => merge(old, products));
+    }, [products]);
+
+    useEffect(() => {
+        const term = q.trim();
+
+        if (term === '') {
+            setFound([]);
+
+            return;
+        }
+
+        /*
+         * ومهلةٌ قبل السؤال، وإلغاءٌ لِما سبقها.
+         *
+         * الكتابةُ تُطلق طلبًا لكلّ حرف، وأجوبتُها تصل بترتيبٍ لا يُضمن —
+         * فيستقرّ المنتقي على جواب حرفٍ قديم. و`AbortController` يقطع
+         * السابقَ عند كلّ حرف، فلا يصل إلّا جوابُ آخر ما كُتب.
+         */
+        const stop = new AbortController();
+        const timer = window.setTimeout(() => {
+            fetch(route('admin.website.products', { q: term }), {
+                headers: { Accept: 'application/json' },
+                signal: stop.signal,
+            })
+                .then((r) => (r.ok ? r.json() : { products: [] }))
+                .then((body: { products?: PickerProduct[] }) => {
+                    const rows = body.products ?? [];
+                    setPool((old) => merge(old, rows));
+                    setFound(rows);
+                })
+                .catch(() => {
+                    /* أُلغي الطلب أو تعذّرت الشبكة — والقائمة تبقى كما هي */
+                });
+        }, 250);
+
+        return () => {
+            window.clearTimeout(timer);
+            stop.abort();
+        };
+    }, [q]);
+
+    const chosen = value.map((id) => pool.find((p) => p.id === id)).filter(Boolean) as PickerProduct[];
+    const shown = found.filter((p) => !value.includes(p.id)).slice(0, 8);
 
     return (
         <div className="space-y-2">
@@ -502,7 +575,7 @@ function ProductsRow({
                 <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ابحث عن منتج…')} />
             </div>
 
-            {found.map((p) => (
+            {shown.map((p) => (
                 <button
                     key={p.id}
                     type="button"

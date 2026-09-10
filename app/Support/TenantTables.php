@@ -85,7 +85,7 @@ class TenantTables
          * `websites.published_version_id` يشير إلى نسخةٍ، و`website_versions.website_id`
          * يشير إلى الموقع. فلا يسبق أحدُهما الآخر — انظر `DEFERRED`.
          */
-        'websites', 'website_versions', 'website_pages', 'website_sections',
+        'websites', 'website_versions', 'website_pages', 'website_sections', 'website_domains',
         'whatsapp_messages',
     ];
 

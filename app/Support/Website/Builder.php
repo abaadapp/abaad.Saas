@@ -62,6 +62,15 @@ class Builder
             self::buildPages($website, $identity);
             self::syncMenu($website);
 
+            /*
+             * وعناوينُ النشاط تعرف موقعَها.
+             *
+             * الاسمُ يُحجز قبل أن يُبنى الموقع غالبًا، فصفُّ عنوانه بلا
+             * `website_id`. وهنا يُوصَل — فمن يسأل «أيُّ موقعٍ على هذا
+             * العنوان» يجد الجواب في الصفّ لا في استعلامٍ ثانٍ.
+             */
+            Domains::sync($business);
+
             return $website->fresh(['pages.sections']);
         });
     }
@@ -126,7 +135,7 @@ class Builder
             if (! Blueprints::sectionFits($type, $website->goal)) {
                 continue;
             }
-            if (($source = Sections::source($type)) && ! ($available[$source] ?? true)) {
+            if (($needs = Sections::requires($type)) && ! ($available[$needs] ?? true)) {
                 continue;
             }
 
@@ -144,40 +153,14 @@ class Builder
     }
 
     /**
-     * قائمةُ الترويسة والتذييل تتبع الصفحات — وتبقي ما زاده التاجر.
+     * قائمةُ الترويسة والتذييل — والمنطقُ في `Nav`.
      *
-     * وثلاث قواعد تحكمها، وكلٌّ منها تمنع عطبًا رآه من يستعمل هذه الشاشات:
-     *
-     * ١) صفحةٌ منشورة لها رابطٌ في القائمة. من ينشئ صفحةً ولا يجدها في قائمة
-     *    موقعه يظنّ أنّها لم تُحفظ.
-     * ٢) رابطٌ داخليّ إلى صفحةٍ لم تعد موجودة يسقط. حذفُ الصفحة وإبقاءُ
-     *    رابطها يعني قائمةً تقود الزائر إلى «غير موجود».
-     * ٣) الرابط الخارجيّ يبقى كما هو. التاجر يضع رابط حسابه أو رقمه، وليس
-     *    للنظام أن يمحوه لأنّه لا يعرفه.
+     * ويبقى هذا الاسم لأنّ شاشة الصفحات تناديه من ثلاثة مواضع، وهو سطرٌ
+     * واحد لا منطقَ فيه.
      */
     public static function syncMenu(Website $website): void
     {
-        $pages = $website->pages()->where('status', WebsitePage::PUBLISHED)
-            ->orderBy('position')->get();
-
-        $links = $pages->map(fn ($p) => ['label' => $p->title, 'href' => $p->slug]);
-
-        foreach (Sections::SLOTS as $slot) {
-            $section = $website->slot($slot);
-
-            if (! $section) {
-                continue;
-            }
-
-            $custom = collect($section->data['links'] ?? [])
-                ->reject(fn ($l) => str_starts_with((string) ($l['href'] ?? ''), '/'))
-                ->values();
-
-            $data = $section->data;
-            $data['links'] = $links->concat($custom)->take(Content::MAX_ITEMS)->values()->all();
-
-            $section->update(['data' => Content::clean($section->type, $data, $website->goal)]);
-        }
+        Nav::sync($website);
     }
 
     /** سيو الموقع الأوّل — عنوانٌ ووصفٌ من بيانات النشاط لا من فراغ */

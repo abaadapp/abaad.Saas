@@ -175,6 +175,7 @@ export const WEBSITE_TABS: SectionTab[] = [
     { label: 'التصميم', routeName: 'admin.website.design', section: 'website' },
     { label: 'المتجر', routeName: 'admin.website.shop', section: 'website' },
     { label: 'الظهور في البحث', routeName: 'admin.website.seo', section: 'website' },
+    { label: 'الدومين', routeName: 'admin.website.domain', section: 'website' },
 ];
 
 /*

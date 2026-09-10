@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use App\Http\Controllers\Pos\PosController;
 use App\Models\ActivityLog;
 use App\Models\Addon;
 use App\Models\BankAccount;
@@ -40,6 +39,7 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Support\PaymentMethods;
 
 /**
  * طبقة الوصول للبيانات لواجهات Abad POS.
@@ -1115,7 +1115,7 @@ class Demo
             'items' => $items,
             'edits' => self::orderEdits($o->id),
             // ما أذن به التاجر وحده يُعرض في التصحيح — لا يُصحَّح إلى وسيلةٍ مُطفأة
-            'payment_methods' => PosController::enabledPaymentMethods(self::businessSettings()),
+            'payment_methods' => PaymentMethods::enabled(self::businessSettings()),
         ];
     }
 

@@ -22,6 +22,7 @@ import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import { type DomainState, domainHost } from './shell';
 
 interface Goal {
     key: string;
@@ -54,7 +55,7 @@ interface Props {
     };
     available: Record<string, boolean>;
     counts: { products: number; categories: number; reviews: number };
-    domain: { domain: string; subdomain: string | null };
+    domain: DomainState;
 }
 
 const GOAL_ICONS: Record<string, typeof ShoppingBag> = {
@@ -301,7 +302,7 @@ export default function Wizard() {
                                 </p>
                             )}
 
-                            {!domain.domain && (
+                            {!domainHost(domain) && (
                                 <p className="mt-3 text-[12px] leading-6 text-[#9ca3af]">
                                     {t('لا نطاق لموقعك بعد — تضبطه بعد الإنشاء، ولا يمنعك ذلك من البناء الآن.')}
                                 </p>

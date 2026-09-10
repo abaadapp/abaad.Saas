@@ -928,7 +928,25 @@ class DemoStore
             ]);
         }
 
-        MarketingSettings::save($bid, 'website', ['site_domain' => 'demo-flowers.abaadapp.om']);
+        /*
+         * والديمو يحجز اسمًا ولا «يربط نطاقًا خاصًّا».
+         *
+         * كان يُكتب `demo-flowers.abaadapp.om` في خانة النطاق الخاصّ — وهو
+         * عنوانٌ من عناوين أبعاد لا نطاقٌ يملكه أحد. فيبدو في اللوحة كأنّه
+         * نطاقٌ رُبط، ويُشغل عنوانًا في جدول العناوين لا يخصّ صاحبَه.
+         * والاسمُ المحجوز يبني العنوانَ نفسه بلا ادّعاء.
+         */
+        /*
+         * والاسمُ فريدٌ لكلّ متجرِ ديمو.
+         *
+         * العمود فريدٌ في القاعدة، ومتجرا ديمو باسمٍ واحد يُسقطان البذر.
+         * فيُلحق المعرّف بالأوّل وحدَه — «demo-flowers» يبقى للأوّل كما كان.
+         */
+        $slug = \App\Models\Business::where('site_slug', 'demo-flowers')->whereKeyNot($bid)->exists()
+            ? 'demo-flowers-'.$bid
+            : 'demo-flowers';
+
+        \App\Models\Business::whereKey($bid)->update(['site_slug' => $slug]);
     }
 
     /* -------------------------- المنصّة وسجل النشاط -------------------------- */

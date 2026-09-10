@@ -12,7 +12,7 @@ import Field from '@/Components/Field';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
-import type { SiteShell } from './shell';
+import { type DomainState, domainHost, type SiteShell } from './shell';
 
 interface Props extends SiteShell {
     seo: { title: string; description: string; image: string; index: boolean };
@@ -23,7 +23,7 @@ interface Props extends SiteShell {
         status: string;
         seo: { title: string; description: string; image: string };
     }[];
-    domain: { domain: string; subdomain: string | null };
+    domain: DomainState;
 }
 
 /**
@@ -47,7 +47,7 @@ export default function Seo() {
         index: seo.index,
     });
 
-    const host = domain.domain || domain.subdomain || 'example.om';
+    const host = domainHost(domain) ?? 'example.om';
     const missing = pages.filter((p) => p.status === 'published' && !p.seo.description);
 
     return (
@@ -152,22 +152,18 @@ export default function Seo() {
                             {t('نطاق موقعك')}
                         </h3>
 
-                        {domain.domain ? (
-                            <p dir="ltr" className="mt-3 font-mono text-[13px] text-[#374151]">
-                                {domain.domain}
-                            </p>
-                        ) : (
-                            <p className="mt-3 text-[13px] leading-6 text-[#6b7280]">
-                                {t('لا نطاق لموقعك بعد — بدونه لا يصل إليه أحد.')}
-                            </p>
+                        {/* والعنوانُ يُعرض ولو لم يربط التاجر نطاقًا: عنوان أبعاد يعمل */}
+                        <p dir="ltr" className="mt-3 font-mono text-[13px] text-[#374151]">
+                            {domainHost(domain) ?? t('بلا عنوان بعد')}
+                        </p>
+
+                        {domain.custom && domain.custom.status !== 'active' && (
+                            <p className="mt-2 text-[12px] leading-6 text-[#b45309]">{domain.custom.label}</p>
                         )}
 
                         <Button variant="outline" size="sm" className="mt-3" asChild>
-                            <SmartLink
-                                routeName="admin.settings.index"
-                                href={route('admin.settings.index', { section: 'website' })}
-                            >
-                                {t(domain.domain ? 'إعدادات النطاق' : 'اضبط النطاق')}
+                            <SmartLink routeName="admin.website.domain" href={route('admin.website.domain')}>
+                                {t('الدومين')}
                             </SmartLink>
                         </Button>
                     </Card>

@@ -66,10 +66,11 @@ class PublicDocumentTest extends TestCase
             'store_instagram' => 'wroodmuscat',
             'store_whatsapp' => '96890000000',
             'currency' => 'OMR',
-            'site_domain' => 'wrood.om',
         ] as $key => $value) {
             Setting::create(['business_id' => $bid, 'key' => $key, 'value' => $value]);
         }
+
+        \App\Support\Website\Domains::attach($this->business, 'wrood.om');
 
         $cat = Category::create(['business_id' => $bid, 'name' => 'باقات']);
         Category::create(['business_id' => $bid, 'name' => 'نباتات داخلية']);

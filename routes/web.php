@@ -761,6 +761,20 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
         Route::get('/seo', [SettingsController::class, 'seo'])->name('seo');
         Route::put('/seo', [SettingsController::class, 'saveSeo'])->name('seo.save');
         Route::put('/settings', [SettingsController::class, 'saveSite'])->name('settings.save');
+
+        /*
+         * الدومين — بابٌ قائمٌ بذاته لا حقلٌ في شاشة السيو.
+         *
+         * وهو الشاشةُ الوحيدة التي قد يُطلب فيها من التاجر عملٌ خارج أبعاد
+         * (سجلٌّ في لوحة مسجّله)، فيستحقّ عنوانًا يُحفظ ويُرسَل: «افتح هذا
+         * الرابط وأضف السجلّ» أقصرُ من شرحٍ في رسالة.
+         */
+        Route::get('/domain', [App\Http\Controllers\Admin\Website\DomainController::class, 'index'])->name('domain');
+        Route::put('/domain', [App\Http\Controllers\Admin\Website\DomainController::class, 'save'])->name('domain.save');
+        Route::post('/domain/check', [App\Http\Controllers\Admin\Website\DomainController::class, 'check'])->name('domain.check');
+
+        // مُنتقي المنتجات يبحث ولا يُحمَّل كاملًا — انظر EditorController::products
+        Route::get('/products', [EditorController::class, 'products'])->name('products');
     });
 
     /*
@@ -1251,6 +1265,35 @@ Route::domain('{slug}.'.config('storefront.domain'))
     });
 
 Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
+
+/*
+ * ونطاقُ التاجر نفسه — `myshop.om` يفتح موقعه.
+ *
+ * ويقع بعد مسار النطاق الفرعيّ عمدًا: ذاك أخصُّ، فيلتقط `متجري.abaadapp.om`
+ * قبل أن يصل هذا.
+ *
+ * وخدمتُه خلف علَمٍ مطفأ افتراضيًّا (`storefront.custom_domains`) — والعلَمُ
+ * يُقرأ في المتحكّم لا هنا. والسبب أنّ الفرق بين مضيفٍ مجهولٍ يُردّ «غير
+ * موجود» ومضيفٍ مجهولٍ يُردّ صفحةَ دخول أبعاد ليس فرقًا في التسجيل بل في
+ * الجواب: من وجّه نطاقه إلينا قبل أن نجهز يجب أن يُقال له «لا شيء هنا» لا
+ * أن يُعرض عليه بابُ نظامٍ لا يخصّه.
+ */
+Route::domain('{host}')
+    /*
+     * والنمطُ يستثني مضيفاتِ أبعاد كلَّها.
+     *
+     * هذا المسار يلتقط كلَّ مضيفٍ ليس لنا، ولاراڤيل تُقدّم المسار المقيَّد
+     * بنطاق على المطلق. فلولا الاستثناء لَابتلع `app.abaadapp.om` نفسها
+     * وردّها «غير موجود» — وهو عطبٌ وقع مرّةً في هذا الملفّ ولا يُترك بابُه.
+     *
+     * و«لاحقةٌ من حرفين فأكثر» تُخرج `localhost` وعناوينَ الأرقام وفحوصَ
+     * الصحّة من المطابقة أصلًا.
+     */
+    ->group(function () {
+        Route::get('/', [StorefrontController::class, 'byHost'])
+            ->where('host', '(?!.*'.preg_quote(config('storefront.domain'), '/').'$)[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}')
+            ->name('store.custom');
+    });
 
 /*
  * الورقةُ أونلاين — ما يفتحه من مسح الرمز أسفل إيصاله.

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
 use App\Support\MarketingSettings;
+use App\Support\PaymentMethods;
 use App\Support\Website\Blueprints;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -180,20 +181,13 @@ class SettingsController extends Controller
     /**
      * طرق الدفع المفعّلة في النظام — تُعرض ولا تُضبط.
      *
-     * وتُقرأ بالدالّة التي تقرؤها نقطة البيع نفسها لا بشرطٍ مكتوبٍ هنا:
+     * وتُقرأ من `PaymentMethods` — المكتبة التي تقرأ منها نقطةُ البيع نفسها
+     * — لا بشرطٍ مكتوبٍ هنا ولا بنداء متحكّمها:
      * «الغياب يعني مفعّل» و«من أطفأ الثلاث يبقى له النقد» قاعدتان لو نُسختا
      * لافترقتا، فيعرض الموقعُ وسيلةً لا تقبلها نقطة البيع.
      */
     private function payments(int $bid): array
     {
-        $settings = \App\Models\Setting::where('business_id', $bid)
-            ->pluck('value', 'key')->all();
-
-        $on = \App\Http\Controllers\Pos\PosController::enabledPaymentMethods($settings);
-
-        return collect(['نقدي', 'بطاقة', 'تحويل بنكي'])->map(fn ($label) => [
-            'label' => __($label),
-            'on' => in_array($label, $on, true),
-        ])->values()->all();
+        return PaymentMethods::state($bid);
     }
 }

@@ -10,6 +10,7 @@ use App\Support\Website\Published;
 use App\Support\Website\Publisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use App\Support\Website\Domains;
 
 /**
  * موقعُ التاجر يُفتح — بابٌ يصله زبونٌ، لا مستندٌ ينتظر عارضًا.
@@ -229,7 +230,7 @@ class AMerchantSiteOpensTest extends TestCase
      */
     public function test_the_external_document_endpoint_keeps_its_shape(): void
     {
-        Setting::create(['business_id' => $this->business->id, 'key' => 'site_domain', 'value' => 'wrood.om']);
+        Domains::attach($this->business, 'wrood.om');
         $this->publish();
 
         $this->getJson('/site/wrood.om')

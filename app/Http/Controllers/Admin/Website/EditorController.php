@@ -94,22 +94,85 @@ class EditorController extends Controller
         ];
     }
 
-    /** المنتجات كما يعرضها مُنتقي «منتجات مختارة» — اسمٌ وصورةٌ وسعر */
+    /** كم منتجًا يُرسَل مع المحرّر أو مع بحثٍ واحد */
+    private const PICKER = 40;
+
+    /**
+     * ما يبدأ به مُنتقي المنتجات — أوّلُ صفحةٍ لا الكتالوج كلُّه.
+     *
+     * كان يُرسَل ثلاثمئة منتجٍ في حمولة المحرّر عند كلّ فتحة: صورةٌ واسمٌ
+     * وسعرٌ لكلٍّ منها، في شاشةٍ يفتحها التاجر ليكتب عنوانًا. ومتجرٌ بألفَي
+     * صنف يدفع الثمن مرّتين — في الشبكة، وفي أنّ المنتقي لا يعرض إلّا
+     * ثلاثمئةً منها فيبحث التاجر عن صنفه فلا يجده ويظنّه محذوفًا.
+     *
+     * فصار المُنتقي يسأل حين يُفتح (`products` أدناه)، ويبدأ بأربعين تكفي
+     * للاختيار السريع. والمنتجاتُ المختارةُ سلفًا تُرسَل معها مهما كان
+     * ترتيبُها — وإلّا رأى التاجر بطاقاتٍ بلا أسماء لِما اختاره أمس.
+     */
     private function pickerProducts(Website $site): array
     {
         if (! Blueprints::hasCatalogue($site->goal())) {
             return [];
         }
 
-        return \App\Models\Product::where('business_id', $site->business_id)
-            ->where('active', true)->orderBy('name')->limit(300)
-            ->get(['id', 'name', 'price', 'image'])
-            ->map(fn ($p) => [
-                'id' => $p->id,
-                'name' => $p->name,
-                'price' => (float) $p->price,
-                'image' => $p->image,
-            ])->all();
+        $chosen = collect($site->pages->flatMap(fn ($p) => $p->sections)->concat($site->sections))
+            ->flatMap(fn ($s) => (array) ($s->data['product_ids'] ?? []))
+            ->map(fn ($id) => (int) $id)->filter()->unique()->take(Content::MAX_ITEMS)->all();
+
+        return $this->productRows($site, null, $chosen);
+    }
+
+    /**
+     * بحثُ المنتقي — يُنادى من الشاشة عند الفتح وعند الكتابة.
+     *
+     * وهو `GET` يردّ JSON لا صفحةَ Inertia: المنتقي جزءٌ من شاشةٍ مفتوحة،
+     * وردُّ صفحةٍ كاملة له يعيد بناء المحرّر كلَّه ويُضيّع ما لم يُحفظ فيه.
+     */
+    public function products(Request $request)
+    {
+        $site = $this->siteOrFail();
+
+        abort_if(! Blueprints::hasCatalogue($site->goal()), 404);
+
+        $term = \App\Support\Search::term($request);
+
+        return response()->json(['products' => $this->productRows($site, $term !== '' ? $term : null)]);
+    }
+
+    /**
+     * صفوفُ المنتجات — اسمٌ وصورةٌ وسعر، لا أكثر.
+     *
+     * @param  array<int, int>  $ids  معرّفاتٌ تُضمّ مهما كان ترتيبُها
+     */
+    private function productRows(Website $site, ?string $term, array $ids = []): array
+    {
+        $query = \App\Models\Product::where('business_id', $site->business_id)
+            ->where('active', true);
+
+        if ($term !== null) {
+            // والبحثُ في الاسم وحده، بمعامل المحرّك لا بيدٍ — انظر `Search::like`
+            $query->where('name', \App\Support\Search::like(), '%'.$term.'%');
+        }
+
+        $rows = $query->orderBy('name')->limit(self::PICKER)->get(['id', 'name', 'price', 'image']);
+
+        if ($ids !== []) {
+            $missing = array_diff($ids, $rows->pluck('id')->all());
+
+            if ($missing !== []) {
+                $rows = $rows->concat(
+                    \App\Models\Product::where('business_id', $site->business_id)
+                        ->whereIn('id', $missing)->get(['id', 'name', 'price', 'image']),
+                );
+            }
+        }
+
+        return $rows->unique('id')->map(fn ($p) => [
+            'id' => $p->id,
+            'name' => $p->name,
+            'price' => (float) $p->price,
+            'image' => $p->image,
+        ])->values()->all();
     }
 
     /* ============================ الأقسام ============================ */
@@ -257,14 +320,27 @@ class EditorController extends Controller
         $owned = $page->sections()->pluck('id')->all();
 
         DB::transaction(function () use ($data, $owned, $page, $site) {
+            /*
+             * ═══ وما لم يُذكر في الطلب يلحق آخرَه ═══
+             *
+             * كان يُمشى على المُرسَل وحده فيُرقَّم من واحد، ويبقى ما لم
+             * يُرسَل على موضعه القديم. فقائمةٌ ناقصةٌ — تبويبٌ قديم، أو
+             * قسمٌ أُضيف في نافذةٍ أخرى بعد أن حُمّلت هذه — تُخرج موضعين
+             * متساويين، ويصير ترتيبُ القسمين ما يقرّره محرّكُ القاعدة:
+             * يتبدّل بين طلبٍ وطلب، والتاجر يرى موقعه يعيد ترتيب نفسه.
+             *
+             * فالترتيبُ يُكتب على الصفحة كلّها لا على ما وصل: المذكورُ
+             * بترتيبه، وما بقي بعده على ترتيبه السابق.
+             */
+            $wanted = array_values(array_filter(
+                array_map('intval', $data['order']),
+                fn ($id) => in_array($id, $owned, true),
+            ));
+
+            $rest = array_values(array_diff($owned, $wanted));
             $position = 0;
 
-            foreach ($data['order'] as $id) {
-                // معرّفٌ من خارج الصفحة يُتخطّى: الترتيب لا ينقل أقسام غيرها
-                if (! in_array((int) $id, $owned, true)) {
-                    continue;
-                }
-
+            foreach (array_merge($wanted, $rest) as $id) {
                 WebsiteSection::where('id', $id)->where('page_id', $page->id)
                     ->update(['position' => ++$position]);
             }

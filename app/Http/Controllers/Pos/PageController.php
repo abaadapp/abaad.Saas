@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Support\PaymentMethods;
 
 /**
  * صفحات عرض نقطة البيع — نُقل جلب البيانات من القوالب إلى هنا.
@@ -45,7 +46,7 @@ class PageController extends Controller
             'redeemMin' => (float) ($s['loyalty_redeem_min'] ?? 100),
             // الوسائل المأذونة — والخادم يرفض ما عداها، فالإخفاء هنا عرضٌ لقرارٍ
             // مُنفَّذ لا حاجزٌ وحيد (انظر PosController::enabledPaymentMethods)
-            'paymentMethods' => PosController::enabledPaymentMethods($s),
+            'paymentMethods' => PaymentMethods::enabled($s),
             /*
              * الضريبة كما ضبطها التاجر — لا خمسةٌ مكتوبةٌ في شيفرة الشاشة.
              *

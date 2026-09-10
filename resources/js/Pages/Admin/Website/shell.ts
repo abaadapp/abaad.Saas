@@ -38,3 +38,35 @@ export const STATE_TONE: Record<string, 'neutral' | 'success' | 'warning' | 'inf
     changed: 'warning',
     maintenance: 'danger',
 };
+
+/**
+ * حالُ عناوين الموقع كما يرسلها الخادم — انظر `App\Support\Website\Domains`.
+ *
+ * وعنوانان لا واحد: عنوانُ أبعاد يعمل من اليوم الأوّل، ونطاقُ التاجر إن
+ * ربطه. والأصلُ بينهما ما يُخدَم فعلًا لا ما يُملَك.
+ */
+export interface DomainRecord {
+    type: string;
+    name: string;
+    value: string;
+}
+
+export interface DomainState {
+    platform: { host: string; url: string } | null;
+    custom: {
+        id: number;
+        host: string;
+        url: string;
+        status: string;
+        label: string;
+        reason: string | null;
+        checked_at: string | null;
+        records: DomainRecord[];
+    } | null;
+    primary: string | null;
+}
+
+/** العنوانُ الذي يُعرض في سطرٍ واحد — نطاقُ التاجر إن ربطه، وإلّا عنوانُ أبعاد */
+export function domainHost(domain: DomainState): string | null {
+    return domain.custom?.host ?? domain.platform?.host ?? null;
+}

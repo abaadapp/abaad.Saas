@@ -2,14 +2,11 @@
 
 namespace App\Http\Controllers\Admin\Website;
 
-use App\Models\Business;
 use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
-use App\Support\Demo;
-use App\Support\DomainOptions;
-use App\Support\MarketingSettings;
 use App\Support\Website\Blueprints;
+use App\Support\Website\Domains;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Sections;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -23,9 +20,27 @@ use Illuminate\Http\Exceptions\HttpResponseException;
  */
 trait Concerns
 {
+    /**
+     * نشاطُ من يعمل الآن — ولا يُخمَّن.
+     *
+     * ═══ ولا يُردّ إلى `Demo::bid()` صامتًا ═══
+     *
+     * تلك تردّ صفرًا لمستخدمٍ مسجَّلٍ بلا نشاط، وتردّ **أوّلَ نشاطٍ في
+     * القاعدة** حين تُنادى من الطرفية. والصفرُ يمرّ في كلّ استعلامٍ هنا فلا
+     * يجد شيئًا، فيُساق التاجرُ إلى معالج الإنشاء ثمّ يصطدم بـ«غير موجود»
+     * بلا أن يفهم لماذا.
+     *
+     * والأخطرُ أنّ كلَّ استعلامٍ في هذه الشاشات مقيَّدٌ بهذا الرقم — ورقمٌ
+     * مخمَّن في موضع معرّف المستأجر بابٌ لا يُترك مفتوحًا على حسن النيّة.
+     * فمن لا نشاطَ له يُردّ هنا بكلمةٍ، ولا يُخدَم بنشاطٍ لا يملكه.
+     */
     protected function bid(): int
     {
-        return auth()->user()->business_id ?? Demo::bid();
+        $bid = (int) (auth()->user()?->business_id ?? 0);
+
+        abort_if($bid <= 0, 403, __('حسابك غير مرتبطٍ بنشاط — راجع مدير النظام'));
+
+        return $bid;
     }
 
     /** موقع هذا النشاط — أو null إن لم يُنشأ بعد */
@@ -96,46 +111,34 @@ trait Concerns
     }
 
     /**
-     * عنوان الموقع على الإنترنت — أو null إن لم يُضبط بعد.
+     * عنوان الموقع على الإنترنت — وهو **ما يُخدَم** لا ما يُملَك.
      *
-     * ويقرؤه `Demo::websiteUrl`: متجرُ أبعاد المنشور أوّلًا، ثمّ النطاقُ
-     * الذي يملكه التاجر. ولا يُخترع هنا عنوانٌ ثالث — العنوانُ المحجوز
-     * يُعرض في `domainState` بجانب النطاق، ومن يخدمه قرارُ استضافةٍ لا سطرُ
-     * شفرة.
+     * وكان يُقرأ من `Demo::websiteUrl`، فيردّ `متجري.abaadapp.om` لمن نشر
+     * متجره. وذلك عنوانٌ لا يُحلّ قبل سجلِّ DNS بالحرف البدل وشهادةٍ مثله —
+     * فزرُّ «افتح موقعك» في لوحة التاجر يفتح صفحةَ خطأ في متصفّحه، وهو أوّل
+     * ما يجرّبه بعد النشر.
+     *
+     * و`Domains::canonical` تقرأ الحال والعلَم معًا فتردّ البابَ العامل:
+     * نطاقُ التاجر إن خُدم ونشط، ثمّ عنوانُ أبعاد إن ضُبط له نطاقٌ بالحرف
+     * البدل، ثمّ البابُ البديل الذي يعمل اليوم.
      */
     protected function publicUrl(): ?string
     {
-        return Demo::websiteUrl();
+        return Domains::canonical($this->bid());
     }
 
     /**
-     * حال النطاق كما تقرؤها لوحة الموقع — بلا تكرار شاشة النطاق.
+     * حالُ العناوين كما تقرؤها لوحة الموقع.
      *
-     * ولا `mode` معها: كانت تُرسَل ولا تقرؤها شاشة. `DomainOptions::mode`
-     * تقرأ `site_domain_mode`، ومن يكتبه هجرةٌ واحدة لا شاشةٌ حيّة —
-     * فالقيمةُ تُحسب وتُرسل وتُهمل في الطرف الآخر.
+     * وتُقرأ من `Domains` لا من ثلاثة مواضع: كان الاسمُ المحجوز يُقرأ من
+     * عمودٍ في `businesses` والنطاقُ من صفٍّ في `settings`، ولا حالَ لأيٍّ
+     * منهما — فتعرض الشاشةُ عنوانًا ولا تعرف أيفتح أم لا.
+     *
+     * @return array<string, mixed>
      */
     protected function domainState(): array
     {
-        $site = MarketingSettings::group($this->bid(), 'website');
-
-        /*
-         * والاسمُ المحجوز من موضعه — `businesses.site_slug`.
-         *
-         * كان يُقرأ من إعدادٍ اسمه `site_subdomain` لا يكتبه شيءٌ في النظام،
-         * فيردّ `null` دائمًا: شاشةُ المعالج وشاشةُ السيو تعرضان مثالًا
-         * (`example.om`) مكان عنوان التاجر، ولو كان محجوزًا في لوحته.
-         *
-         * وهو الاسمُ نفسه الذي يفتح موقعَه عند العارض — انظر
-         * `PublishedSiteController::bySubdomain`. فما يُعرض هنا هو ما يُجاب
-         * هناك، لا اسمان.
-         */
-        $slug = trim((string) Business::whereKey($this->bid())->value('site_slug'));
-
-        return [
-            'domain' => trim((string) $site['site_domain']),
-            'subdomain' => $slug !== '' ? DomainOptions::host($slug) : null,
-        ];
+        return Domains::state($this->bid());
     }
 
     /** ما يملكه المتجر ممّا تقرؤه الأقسام */

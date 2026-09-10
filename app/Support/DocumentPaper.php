@@ -114,7 +114,9 @@ class DocumentPaper
                 'cap' => __('فاتورة إلى'),
                 'lines' => array_values(array_filter([
                     Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي'),
-                    $extra['customerTax'] ? __('الرقم الضريبي').': '.$extra['customerTax'] : null,
+                    filled($extra['customerTax'] ?? null)
+                        ? __('الرقم الضريبي').': '.$extra['customerTax']
+                        : null,
                     $order->recipient_phone ?: null,
                 ])),
             ]],

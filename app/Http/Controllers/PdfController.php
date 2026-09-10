@@ -361,6 +361,15 @@ class PdfController extends Controller
             $invoice->paidTotal(),
             $invoice->outstanding(),
             BankAccount::where('business_id', $bid)->orderBy('id')->first(),
+            /*
+             * ورمزُ التحقّق يُبنى عند الطباعة لا عند المعاينة.
+             *
+             * الورقةُ تُرسَل إلى جهةٍ تراجعها، فتحمل طريقَها إلى سجلّ
+             * المتجر. والمعاينةُ قد تُرسم لمسودّةٍ لا صفَّ لها — ورمزٌ لها
+             * يقود إلى ٤٠٤ في يد التاجر.
+             */
+            null,
+            ['paperUrl' => PublicDocument::url($invoice) ?? ''],
         )->render());
 
         Activity::log('report', 'صدّر فاتورة عميل: '.$invoice->number, ['subject_id' => $invoice->id]);

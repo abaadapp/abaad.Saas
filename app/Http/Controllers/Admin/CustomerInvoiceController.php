@@ -477,7 +477,17 @@ class CustomerInvoiceController extends Controller
      * وهي `static` كي يناديَها متحكّمُ الطباعة وهو ليس من هذا الصنف.
      */
     /**
+     * ═══ ووسيطان لا واحد، ولكلٍّ معناه ═══
+     *
+     * `$override` قيمُ **قالبٍ** لم تُحفظ بعد — يرسلها محرّرُ القوالب ليرى
+     * صاحبُه أثرَ مقبضٍ قبل حفظه، وتمرّ إلى `DocumentTemplates::settings`.
+     *
+     * و`$options` ما يخصّ **هذه الرسمة** لا القالب: رابطُ التحقّق ونسخةُ
+     * القالب. وحشوُها في الأوّل يجعل `settings` تتلقّى مفاتيحَ ليست منها
+     * — تتجاهلها اليوم بلا ضرر، وتلتقطها غدًا حين يُضاف حقلٌ باسم أحدها.
+     *
      * @param  array<string,mixed>|null  $override  قيمُ قالبٍ لم تُحفظ بعد — لمعاينة المحرّر
+     * @param  array<string,mixed>  $options  خيارُ الرسمة: `paperUrl` و`version`
      */
     public static function paper(
         int $bid,
@@ -486,6 +496,7 @@ class CustomerInvoiceController extends Controller
         float $outstanding,
         ?BankAccount $bank,
         ?array $override = null,
+        array $options = [],
     ): View {
         /*
          * وقالبُ الورقة من «قوالب الأوراق» كأخواتها الأربع.
@@ -515,7 +526,7 @@ class CustomerInvoiceController extends Controller
             unset($brand['logo']);
         }
 
-        return view(\App\Support\Document\Version::views($override['version'] ?? null).'.customer-invoice', [
+        return view(\App\Support\Document\Version::views($options['version'] ?? null).'.customer-invoice', [
             'invoice' => $invoice,
             /*
              * ورموزُ التصميم وغلافُ الورقة — من `Document\Branding`.
@@ -525,7 +536,7 @@ class CustomerInvoiceController extends Controller
              */
             'tokens' => \App\Support\Document\Branding::tokens($bid, DocumentRenderer::scale((string) $tpl['font'])),
             'coverImage' => \App\Support\Document\Branding::cover($bid),
-            'paperUrl' => $override['paperUrl'] ?? '',
+            'paperUrl' => $options['paperUrl'] ?? '',
             /*
              * والترويسةُ من `InvoiceBranding` لا من `Demo::business`.
              *

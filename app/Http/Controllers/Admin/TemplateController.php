@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
+use App\Support\Document\Branding;
 use App\Support\Demo;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
@@ -33,6 +34,14 @@ class TemplateController extends Controller
         return Inertia::render('Admin/Settings/TemplateEditor', [
             'template' => DocumentTemplates::describe($this->bid(), $type),
             'templates' => DocumentTemplates::all(),
+            /*
+             * والهويّةُ تُرسَل مع كلّ نوع — وهي واحدةٌ لأوراق المتجر كلّها.
+             *
+             * الشعارُ والغلافُ واللون ليست إعدادَ ورقةٍ بعينها: من ضبطها من
+             * محرّر «أمر الشراء» يجدها على فاتورته أيضًا. وشاشةٌ تُوحي بغير
+             * ذلك تجعله يضبطها خمس مرّات — أو يظنّ أنّه فعل.
+             */
+            'brand' => Branding::settings($this->bid()),
         ]);
     }
 
@@ -58,6 +67,59 @@ class TemplateController extends Controller
         Activity::log('updated', 'عدّل قالب: '.(DocumentTemplates::TYPES[$type]['label'] ?? $type));
 
         return back()->with('toast', ['msg' => __('حُفظ القالب'), 'type' => 'success']);
+    }
+
+    /**
+     * حفظُ هويّة الأوراق — اللونان.
+     *
+     * وهي مستقلّةٌ عن حفظ القالب: القالبُ إعدادُ ورقةٍ بعينها، والهويّةُ
+     * تخصّ المتجر كلَّه. وزرٌّ واحد يحفظ الاثنين يجعل من بدّل لونَه في
+     * محرّر «سند التسليم» يظنّ أنّه بدّله لسند التسليم وحده.
+     */
+    public function brand(Request $request)
+    {
+        $data = $request->validate([
+            'primary' => ['sometimes', 'nullable', 'string', 'max:9'],
+            'accent' => ['sometimes', 'nullable', 'string', 'max:9'],
+        ]);
+
+        /*
+         * ولا تُفحص صيغةُ اللون هنا: `Theme::normalize` تفعل — وهي القاعدةُ
+         * التي تُقرأ بها. وقاعدتان لشيءٍ واحد تقبل إحداهما ما تردّه الأخرى.
+         */
+        Branding::save($this->bid(), $data);
+        Activity::log('settings', 'عدّل هوية الأوراق');
+
+        return back()->with('toast', ['msg' => __('حُفظت الهوية'), 'type' => 'success']);
+    }
+
+    /**
+     * غلافُ الأوراق — صورةٌ تعلو المستند، أو حذفُها.
+     *
+     * وبابٌ مستقلٌّ عن حفظ النموذج: الملفُّ يُرفع بـ`multipart` وبقيّةُ
+     * الحقول بـJSON، وخلطُهما في طلبٍ واحد يجعل المصادقة تقرأ «false»
+     * نصًّا فتنكسر — وهو العطبُ نفسُه الذي فُصل لأجله بابُ الشعار.
+     */
+    public function cover(Request $request)
+    {
+        $request->validate([
+            'cover' => ['nullable', 'image', 'max:4096'],
+        ], [
+            'cover.image' => __('الغلاف صورة — PNG أو JPG أو WEBP'),
+            'cover.max' => __('أقصى حجمٍ للغلاف ٤ ميغابايت'),
+        ]);
+
+        if (! Branding::storeCover($this->bid(), $request->file('cover'), $request->boolean('remove'))) {
+            return back();
+        }
+
+        $has = Branding::coverPath($this->bid()) !== null;
+        Activity::log('settings', $has ? 'حدّث غلاف الأوراق' : 'حذف غلاف الأوراق');
+
+        return back()->with('toast', [
+            'msg' => $has ? __('حُفظ الغلاف') : __('حُذف الغلاف'),
+            'type' => 'success',
+        ]);
     }
 
     /**

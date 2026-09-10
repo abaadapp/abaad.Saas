@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use App\Models\CustomerInvoice;
 use App\Models\DocumentLink;
+use App\Models\Order;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
@@ -24,6 +26,35 @@ class PublicDocument
     private const LENGTH = 22;
 
     /**
+     * ما يُمنح وجهًا عامًّا — سياسةٌ في موضعٍ واحد لا شرطٌ في كلّ متحكّم.
+     *
+     * ═══ وأوراقُ الزبون وحدها ═══
+     *
+     * فاتورةُ البيع، وإيصالُها الحراريّ، وسندُ التسليم، وفاتورةُ العميل:
+     * أربعُها تصل يدَ الزبون على ورق، فرمزٌ يفتح نسختَها الحيّة يخدمه —
+     * إيصالٌ يبهت في جيبٍ خلال أشهر، وزبونٌ يعود بضمانٍ بعد سنة.
+     *
+     * ═══ وأمرُ الشراء وسندُ الاستلام لا ═══
+     *
+     * يمضيان إلى المورّد وفيهما **تكلفةُ البضاعة**. ورابطٌ عامٌّ لا يحرسه
+     * إلّا كونُه غير مخمَّن يضع هامشَ ربح التاجر خلف قصاصةِ ورقٍ تُصوَّر
+     * بهاتف. وقرارُ المالك صريحٌ ومُعادٌ تأكيدُه: أوراق الزبون وحدها.
+     *
+     * وتُمنع من **مصدرها** لا بشرطٍ في القالب: `token()` لا يُنشئ لها رمزًا
+     * أصلًا، فلو نسي قالبٌ شرطَه لم يجد ما يرسمه. ومقبضٌ يُخفي رابطًا
+     * موجودًا يُنسى فيُشعَل، ورابطٌ لا يُبنى لا يُسرَّب أبدًا.
+     *
+     * @var list<class-string>
+     */
+    private const PUBLIC = [Order::class, CustomerInvoice::class];
+
+    /** أيُمنح هذا النوعُ وجهًا عامًّا؟ */
+    public static function allows(?Model $document): bool
+    {
+        return $document !== null && in_array($document::class, self::PUBLIC, true);
+    }
+
+    /**
      * رابطُ الورقة العامّ — يُنشأ عند أوّل طباعة ويبقى.
      *
      * وnull لما لا يُحفظ: معاينةُ المحرّر ترسم طلبًا مُخترعًا لا وجود له في
@@ -40,7 +71,7 @@ class PublicDocument
     /** رمزُ الورقة — يُقرأ إن وُجد ويُكتب إن لم يوجد */
     public static function token(?Model $document): ?string
     {
-        if ($document === null || ! $document->exists) {
+        if ($document === null || ! $document->exists || ! self::allows($document)) {
             return null;
         }
 

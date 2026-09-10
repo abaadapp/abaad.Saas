@@ -1049,6 +1049,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/settings/templates/{type}', [TemplateController::class, 'edit'])->name('settings.templates.edit');
     Route::post('/settings/templates/{type}', [TemplateController::class, 'update'])->name('settings.templates.update');
     Route::post('/settings/templates/{type}/preview', [TemplateController::class, 'preview'])->name('settings.templates.preview');
+    /*
+     * وهويّةُ الأوراق بابان مستقلّان عن القالب.
+     *
+     * لأنّها تخصّ المتجر كلَّه لا ورقةً بعينها — ولأنّ الغلافَ ملفٌّ يُرفع
+     * بـmultipart، وخلطُه بحقولِ JSON يكسر مصادقةَ الأعلام.
+     */
+    Route::post('/settings/documents/brand', [TemplateController::class, 'brand'])->name('settings.documents.brand');
+    Route::post('/settings/documents/cover', [TemplateController::class, 'cover'])->name('settings.documents.cover');
 
     Route::get('/settings/trash', [TrashController::class, 'index'])->name('settings.trash');
 

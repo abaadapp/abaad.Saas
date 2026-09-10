@@ -8,6 +8,7 @@ import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
+import DocumentBrand, { type Brand } from './partials/DocumentBrand';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -29,6 +30,7 @@ type Template = {
 type Props = PageProps<{
     template: Template;
     templates: { key: string; label: string; desc: string; section: string }[];
+    brand: Brand;
 }>;
 
 /**
@@ -42,7 +44,7 @@ type Props = PageProps<{
  * وفي إطارٍ معزول (`iframe`) لا في الصفحة: الورقة تحمل `<style>` خاصًّا بها
  * يضبط `body` والجداول، ولصقُه في الصفحة يُعيد تنسيق اللوحة كلّها.
  */
-export default function TemplateEditor({ template, templates }: Props) {
+export default function TemplateEditor({ template, templates, brand }: Props) {
     const t = useTranslate();
 
     const form = useForm<Record<string, string | boolean>>({ ...template.values });
@@ -57,6 +59,15 @@ export default function TemplateEditor({ template, templates }: Props) {
      * حرفَه الأخير وقد اختفى. والعدّاد يُسقط كلّ ردٍّ سبقه أحدثُ منه.
      */
     const ticket = useRef(0);
+
+    /*
+     * وتبديلُ الهويّة يُعيد الرسم.
+     *
+     * اللونُ والغلافُ يُحفظان في الخادم ثمّ تقرؤهما المعاينة منه — لا
+     * تُرسَل معها كبقيّة الحقول: ملفُّ غلافٍ مُرمَّزًا في حمولة كلّ ضغطةِ
+     * حرفٍ في التذييل. والعدّادُ يُعلم `draw` أنّ شيئًا تغيّر خلفها.
+     */
+    const [brandStamp, setBrandStamp] = useState(0);
 
     const draw = useCallback(async () => {
         const mine = ++ticket.current;
@@ -86,7 +97,7 @@ export default function TemplateEditor({ template, templates }: Props) {
                 setDrawing(false);
             }
         }
-    }, [form.data, template.key]);
+    }, [form.data, template.key, brandStamp]);
 
     // تأخيرٌ قصير: الكتابة في التذييل لا ترسل طلبًا لكل حرف
     useEffect(() => {
@@ -151,6 +162,12 @@ export default function TemplateEditor({ template, templates }: Props) {
                 </div>
 
                 <form onSubmit={submit} className="min-w-0 space-y-4">
+                    {/*
+                        والهويّةُ أوّلًا: هي ما يراه التاجر في المعاينة أوّلَ
+                        نظرة — شعارُه ولونُه — قبل أن يفكّر في المقابض.
+                    */}
+                    <DocumentBrand brand={brand} onChange={() => setBrandStamp((n) => n + 1)} />
+
                     <Card className="p-5">
                         <h3 className="mb-4 font-bold text-[#111]">{t('إعدادات الورقة')}</h3>
 

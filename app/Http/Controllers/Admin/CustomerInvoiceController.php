@@ -536,6 +536,8 @@ class CustomerInvoiceController extends Controller
              */
             'tokens' => \App\Support\Document\Branding::tokens($bid, DocumentRenderer::scale((string) $tpl['font'])),
             'coverImage' => \App\Support\Document\Branding::cover($bid),
+            /* وفاتورةُ العميل ورقةُ A4 دائمًا — لا تُطبع على شريطٍ حراريّ */
+            'paper' => \App\Support\Document\PaperSize::A4,
             'paperUrl' => $options['paperUrl'] ?? '',
             /*
              * والترويسةُ من `InvoiceBranding` لا من `Demo::business`.

@@ -11,6 +11,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\Color;
 use App\Support\Document\Branding;
+use App\Support\Document\PaperSize;
 use App\Support\Document\Theme;
 use App\Support\Document\Version;
 use App\Support\DocumentPaper;
@@ -447,6 +448,100 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
         }
     }
 
+    /* ═══════════════════ مقاسُ الورقة ═══════════════════ */
+
+    /**
+     * الورقةُ تخرج بمقاسها المعلَن — والمحتوى يملؤها بهوامشها هي.
+     *
+     * ═══ والعطبُ الذي وُلد منه هذا الحارس ═══
+     *
+     * كانت هندسةُ الورقة تعيش في مُنشئ mpdf وحده: لا `@page` في القالب،
+     * ولا عرضَ في `body`، ولا هامش. فالورقةُ في المتصفّح — وهو ما يراه
+     * التاجر في المعاينة ويفتحه الزبون من الرابط — بلا مقاسٍ ولا هامش:
+     * تمتدّ على عرض ما تُوضع فيه ثمّ يُقلّصها المتصفّح عند الطبع.
+     *
+     * فيُفحص أنّ القالب **يقول مقاسَه**: `@page` بمقاس الورقة، وصندوقٌ
+     * بعرضها وحشوِها للشاشة. ويُفحص أنّ الأرقام من السجلّ لا مكتوبةً.
+     */
+    public function test_every_paper_declares_its_own_size(): void
+    {
+        $order = $this->order();
+
+        foreach ([PaperSize::A4, PaperSize::A5] as $paper) {
+            $values = \App\Support\DocumentTemplates::settings($this->business->id, 'sale');
+            $values['paper'] = $paper;
+
+            $html = DocumentRenderer::saleSheet($this->business->id, $order, $values, ['paper' => $paper]);
+            $p = PaperSize::of($paper);
+
+            $this->assertStringContainsString(
+                'size: '.(int) $p['width'].'mm '.(int) $p['height'].'mm',
+                $html,
+                "{$paper}: الورقةُ لا تعلن مقاسَها لمن يطبعها من المتصفّح",
+            );
+            $this->assertStringContainsString('width: '.(int) $p['width'].'mm', $html);
+            $this->assertStringContainsString('.paper {', $html, 'لا صندوقَ للورقة على الشاشة');
+        }
+    }
+
+    /**
+     * ولا تصغيرَ في أيّ موضع — لا `scale` ولا `zoom`.
+     *
+     * تصميمٌ صغيرٌ يُكبَّر داخل الورقة، أو كبيرٌ يُصغَّر لتسعه، كلاهما يجعل
+     * مقاسَ الخطّ على الورق غيرَ الذي اختير. والتخطيطُ مبنيٌّ على المقاس
+     * الحقيقيّ، فيُطبع بمقياس ١٠٠٪ بلا «ملاءمةٍ للصفحة».
+     */
+    public function test_no_paper_is_scaled_to_fit(): void
+    {
+        $order = $this->order();
+        $values = \App\Support\DocumentTemplates::settings($this->business->id, 'sale');
+
+        foreach ([
+            DocumentRenderer::saleSheet($this->business->id, $order, $values),
+            DocumentRenderer::saleStrip($this->business->id, $order, $values, 80),
+            DocumentRenderer::preview($this->business->id, 'purchase'),
+        ] as $html) {
+            foreach (['transform:', 'zoom:', 'scale('] as $forbidden) {
+                $this->assertStringNotContainsString($forbidden, $html, "الورقةُ تُصغَّر بـ«{$forbidden}»");
+            }
+        }
+    }
+
+    /**
+     * و`@page` لا يبلغ mpdf — وإلّا اختفى ترقيمُ الصفحات.
+     *
+     * mpdf يقرأ `@media print` افتراضًا، و`@page` عنده يُبطل
+     * `SetHTMLFooter`. وقد وقع فعلًا: خرجت الورقةُ بلا رقمِ صفحة، ولم
+     * يظهر إلّا بقياس آخر سطرٍ فيه حبر — ١٨٣ مم بدل ٢٩٠.
+     */
+    public function test_the_page_rule_is_kept_away_from_the_engine(): void
+    {
+        $html = DocumentRenderer::saleSheet(
+            $this->business->id,
+            $this->order(),
+            \App\Support\DocumentTemplates::settings($this->business->id, 'sale'),
+        );
+
+        /* `@page` محبوسٌ في `@media print` — لا في جسد الأنماط */
+        $this->assertStringNotContainsString("\n    @page", $html, '`@page` خارج `@media print` فيقرؤه mpdf');
+        $this->assertStringContainsString('@media print {', $html);
+
+        $engine = file_get_contents(app_path('Support/Document/Pdf/MpdfDriver.php'));
+        $this->assertStringContainsString("'CSSselectMedia' => 'mpdf'", $engine, 'المحرّكُ ما زال يقرأ `print`');
+    }
+
+    /** وكلُّ مقاسٍ في السجلّ مقبولٌ في الحفظ ومعروضٌ في الشاشة */
+    public function test_the_registry_is_the_only_list_of_papers(): void
+    {
+        $this->assertSame(PaperSize::keys(), \App\Support\DocumentTemplates::papers());
+
+        foreach (PaperSize::keys() as $paper) {
+            $this->actingAs($this->owner)
+                ->post(route('admin.settings.templates.update', 'sale'), ['paper' => $paper])
+                ->assertSessionHasNoErrors();
+        }
+    }
+
     /* ═══════════════════ المحرّكُ خلف واجهة ═══════════════════ */
 
     /** والطباعةُ تمرّ بالسائق — فيُستبدل يومًا بلا أن تُمسّ القوالب */
@@ -456,7 +551,7 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
         {
             public array $calls = [];
 
-            public function a4(string $html, string $name, bool $landscape = false, ?string $runningHeader = null): \Illuminate\Http\Response
+            public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null): \Illuminate\Http\Response
             {
                 $this->calls[] = $name;
 

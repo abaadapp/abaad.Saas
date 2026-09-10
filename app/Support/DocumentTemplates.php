@@ -134,8 +134,16 @@ class DocumentTemplates
     /** أحجام الخطّ المتاحة — والورقة تُرسم بها لا بعددٍ حرّ يُخرج سطرًا لا يُقرأ */
     public const FONTS = ['صغير', 'عادي', 'كبير'];
 
-    /** مقاسات الورق — لورقة البيع وحدها */
-    public const PAPERS = ['80mm', '58mm', 'A4'];
+    /**
+     * مقاسات الورق — لورقة البيع وحدها، ومن سجلّ المقاسات لا مكتوبةً هنا.
+     *
+     * وقائمةٌ تُكتب باليد هنا وأخرى في `PaperSize` تفترقان عند أوّل مقاسٍ
+     * يُضاف: يُعرض في الشاشة ولا يُقبل في الحفظ، أو يُحفظ ولا يعرفه المحرّك.
+     */
+    public static function papers(): array
+    {
+        return \App\Support\Document\PaperSize::keys();
+    }
 
     /** التذييل حين لا يكتب التاجر شيئًا — واحدٌ للأوراق الثلاث لا اثنان */
     public const DEFAULT_FOOTER = "شكرًا لزيارتكم\nنتشرف بخدمتكم دائمًا";
@@ -244,7 +252,7 @@ class DocumentTemplates
             return $default;
         }
 
-        if ($field === 'paper' && ! in_array($value, self::PAPERS, true)) {
+        if ($field === 'paper' && ! in_array($value, self::papers(), true)) {
             return $default;
         }
 
@@ -264,7 +272,7 @@ class DocumentTemplates
             $rules[$field] = match (true) {
                 str_starts_with($field, 'show_') => ['sometimes', 'boolean'],
                 $field === 'font' => ['sometimes', 'in:'.implode(',', self::FONTS)],
-                $field === 'paper' => ['sometimes', 'in:'.implode(',', self::PAPERS)],
+                $field === 'paper' => ['sometimes', 'in:'.implode(',', self::papers())],
                 $field === 'header' => ['sometimes', 'nullable', 'string', 'max:120'],
                 default => ['sometimes', 'nullable', 'string', 'max:500'],
             };
@@ -335,7 +343,7 @@ class DocumentTemplates
             'hasPaper' => ($spec['paper'] ?? false) === true,
             'fields' => $fields,
             'fonts' => self::FONTS,
-            'papers' => self::PAPERS,
+            'papers' => self::papers(),
             'values' => self::settings($businessId, $type),
         ];
     }

@@ -18,9 +18,12 @@
     فتكبر الورقةُ معًا، لا سطرُ الجسد وحده فيصير الجدولُ أصغر ممّا حوله.
 --}}
 @php
+    use App\Support\Document\PaperSize;
     use App\Support\Document\Theme;
 
     $t = $tokens;
+    /* مقاسُ الورقة — من السجلّ نفسِه الذي يُبنى به المحرّك */
+    $size = PaperSize::of($paper ?? PaperSize::A4);
     $scale = (float) ($t['scale'] ?? 1.0);
 
     /** مقاسٌ بالنقطة، مضروبًا بمعامل التاجر */
@@ -45,9 +48,21 @@
 {!! Theme::css($t) !!}
     }
 
-    * { font-family: xbriyaz, 'IBM Plex Sans Arabic', sans-serif; }
+{!! PaperSize::css($size) !!}
+
+    /*
+        و`border-box` على كلّ شيء — لا على الصندوق وحده.
+
+        بلا ذلك يُضاف الحشوُ إلى العرض المصرَّح به: عمودٌ عرضُه ٢٠٪ وحشوُه
+        ٧pt يخرج أعرضَ من خُمس الورقة، فتتجاوز الأعمدةُ مجتمعةً حدَّها
+        ويُقلّص المحرّكُ الجدولَ ليُلائمه — وهو تصغيرٌ لا يطلبه أحد.
+    */
+    * { font-family: xbriyaz, 'IBM Plex Sans Arabic', sans-serif; box-sizing: border-box; }
 
     body {
+        /* ولا هامشَ افتراضيًّا من المتصفّح: ٨ بكسل تُزيح الورقة عن حدّها */
+        margin: 0;
+        padding: 0;
         direction: {{ $rtl ? 'rtl' : 'ltr' }};
         text-align: {{ $start }};
         color: var(--document-text); color: {{ $t['text'] }};

@@ -22,8 +22,11 @@
     ثلاثة أسطر، ويخرج إيصالٌ طولُه ضِعفُ ما يلزم.
 --}}
 @php
+    use App\Support\Document\PaperSize;
+
     $t = $tokens;
     $width = $width ?? 80;
+    $size = PaperSize::of($paper ?? ($width <= 60 ? PaperSize::T58 : PaperSize::T80));
     $fit = $width <= 60 ? 0.86 : ($width >= 100 ? 1.08 : 1.0);
     $pt = fn (float $base) => round($base * $fit * ((float) ($t['scale'] ?? 1.0)), 2) . 'pt';
 
@@ -39,9 +42,13 @@
     $end = $rtl ? 'left' : 'right';
 @endphp
 <style>
-    * { font-family: xbriyaz, 'IBM Plex Sans Arabic', sans-serif; }
+{!! PaperSize::css($size) !!}
+
+    * { font-family: xbriyaz, 'IBM Plex Sans Arabic', sans-serif; box-sizing: border-box; }
 
     body {
+        /* ولا هامشَ افتراضيًّا من المتصفّح — انظر tokens */
+        margin: 0; padding: 0;
         direction: {{ $rtl ? 'rtl' : 'ltr' }}; text-align: {{ $start }}; color: #000;
         font-size: {{ $pt(8) }}; line-height: 1.35;
     }

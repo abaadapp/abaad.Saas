@@ -70,8 +70,15 @@ class PdfController extends Controller
          * وثلثيها بياض — وهي الورقة التي تُرسَل إلى شركةٍ تطلب فاتورة ضريبية.
          * والقالب واحدٌ يحكم الاثنين، فلا تفترق ورقتان لطلبٍ واحد.
          */
-        $onA4 = ($tpl['paper'] ?? '80mm') === 'A4';
-        $width = $this->stripWidth((string) ($tpl['paper'] ?? '80mm'));
+        /*
+         * والاختيارُ بين الشريط والصفحة من سجلّ المقاسات لا بمقارنةٍ نصّية.
+         *
+         * `=== 'A4'` تعني أنّ كلّ مقاسٍ يُضاف — A5 مثلًا — يُقرأ شريطًا
+         * حراريًّا فيخرج على ثمانين مليمترًا.
+         */
+        $paper = (string) ($tpl['paper'] ?? \App\Support\Document\PaperSize::T80);
+        $onSheet = ! \App\Support\Document\PaperSize::isStrip($paper);
+        $width = $this->stripWidth($paper);
 
         /*
          * والرسمُ من `DocumentRenderer` لا من قائمةٍ تُكتب هنا.
@@ -112,8 +119,12 @@ class PdfController extends Controller
 
         $name = 'receipt-'.$order->number;
 
-        if ($onA4) {
-            return Pdf::a4(DocumentRenderer::saleSheet($bid, $order, $values, $extra), $name);
+        if ($onSheet) {
+            return Pdf::sheet(
+                DocumentRenderer::saleSheet($bid, $order, $values, $extra + ['paper' => $paper]),
+                $name,
+                $paper,
+            );
         }
 
         return Pdf::strip(DocumentRenderer::saleStrip($bid, $order, $values, $width, $extra), $name, $width);
@@ -131,7 +142,7 @@ class PdfController extends Controller
      */
     private function stripWidth(string $paper): int
     {
-        if ($paper === 'A4') {
+        if (! \App\Support\Document\PaperSize::isStrip($paper)) {
             return 0;
         }
 
@@ -344,8 +355,15 @@ class PdfController extends Controller
          * وما يخصّها وحدها — أنّ رقمَ البائع الضريبيّ **بلا مقبض** — علمٌ
          * يُمرَّر لا قالبٌ يُنسَخ. انظر رأس `documents/v1/sale.blade.php`.
          */
-        $html = DocumentRenderer::saleSheet($bid, $order, DocumentTemplates::settings($bid, 'sale'), [
+        $values = DocumentTemplates::settings($bid, 'sale');
+        /* والضريبيةُ ورقةٌ لا شريط: من اختار ٨٠ مم يأخذها على A4 */
+        $sheet = \App\Support\Document\PaperSize::isStrip((string) ($values['paper'] ?? ''))
+            ? \App\Support\Document\PaperSize::A4
+            : (string) $values['paper'];
+
+        $html = DocumentRenderer::saleSheet($bid, $order, $values, [
             'taxInvoice' => true,
+            'paper' => $sheet,
             'customerTax' => $order->customer_id ? optional(Customer::find($order->customer_id))->tax_number : null,
             'qr' => EInvoice::forOrder($order, $vat, $business),
             // ورمزُ الورقة أونلاين — كما في فاتورة البيع وإيصالها
@@ -355,7 +373,7 @@ class PdfController extends Controller
 
         Activity::log('report', 'أصدر فاتورة ضريبية للطلب: '.$order->number, ['subject_id' => $order->id]);
 
-        return $this->pdf($html, 'tax-invoice-'.$order->number);
+        return Pdf::sheet($html, 'tax-invoice-'.$order->number, $sheet);
     }
 
     /**

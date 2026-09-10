@@ -22,11 +22,6 @@ use Mpdf\Mpdf;
  */
 class MpdfDriver implements Driver
 {
-    /** هوامش A4 بالمليمتر — واحدةٌ لكل ورقةٍ في النظام */
-    private const A4_MARGIN = 13;
-
-    private const A4_TOP = 14;
-
     /** ما يُترك أسفل الشريط الحراريّ قبل القصّ */
     private const STRIP_MARGIN = 4;
 
@@ -50,14 +45,28 @@ class MpdfDriver implements Driver
      */
     private const HEADER_SPACE = 18;
 
-    public function a4(string $html, string $name, bool $landscape = false, ?string $runningHeader = null): Response
+    public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null): Response
     {
         $repeats = $runningHeader !== null && trim($runningHeader) !== '';
 
+        /*
+         * والمقاسُ يُمرَّر أرقامًا لا اسمًا مثل `'A4'`.
+         *
+         * الاسمُ يعرفه mpdf وحده، والقالبُ يحتاج العرضَ والارتفاعَ ليكتب
+         * `@page` وصندوقَ الورقة. ورقمان في موضعين يفترقان عند أوّل مقاسٍ
+         * يُضاف — فيُبنى المحرّك على ١٤٨ مم ويُرسم القالبُ على ٢١٠.
+         *
+         * والعرضيّةُ تقلب البُعدين: تقريرٌ بعشرة أعمدة على ورقةٍ قائمة يخرج
+         * بأعمدةٍ ملتصقة تُقرأ بالتخمين.
+         */
+        $format = $landscape
+            ? [$preset['height'], $preset['width']]
+            : [$preset['width'], $preset['height']];
+
         $mpdf = new Mpdf(self::base() + [
-            'format' => $landscape ? 'A4-L' : 'A4',
-            'margin_left' => self::A4_MARGIN,
-            'margin_right' => self::A4_MARGIN,
+            'format' => $format,
+            'margin_left' => $preset['side'],
+            'margin_right' => $preset['side'],
             /*
              * والهامشُ العلويّ يتّسع للترويسة المتكرّرة إن وُجدت.
              *
@@ -66,21 +75,23 @@ class MpdfDriver implements Driver
              * تعود إن سقطت منها. والترويسةُ الكاملةُ لا تتكرّر — سطرٌ
              * واحدٌ يعرّف: من، وأيُّ مستند، وبأيّ رقم.
              */
-            'margin_top' => $repeats ? self::HEADER_SPACE + 6 : self::A4_TOP,
+            'margin_top' => $repeats ? self::HEADER_SPACE + 6 : $preset['top'],
             'margin_header' => $repeats ? 8 : 0,
             /*
              * والسفليُّ يتّسع للتذييل: mpdf يرسم تذييل الصفحة **داخل** الهامش
              * السفليّ، فهامشٌ بقدر النصّ يجعل رقم الصفحة يركب على آخر سطر.
              */
-            'margin_bottom' => self::A4_TOP + 6,
-            'margin_footer' => 6,
+            'margin_bottom' => $preset['bottom'],
+            'margin_footer' => $preset['footer'],
         ]);
 
         if ($repeats) {
             $mpdf->SetHTMLHeader($runningHeader);
         }
 
-        self::pageNumbers($mpdf);
+        if ($preset['footer'] > 0) {
+            self::pageNumbers($mpdf);
+        }
         $mpdf->WriteHTML($html);
 
         return self::respond($mpdf, $name);
@@ -180,6 +191,23 @@ class MpdfDriver implements Driver
              * التاجر بصفحة خطأٍ بدل فاتورته — والشعار زينةٌ فيها.
              */
             'showImageErrors' => false,
+            /*
+             * ═══ ووسيطُ الأنماط `mpdf` لا `print` ═══
+             *
+             * الافتراضيُّ أنّ mpdf يقرأ `@media print`. والقالبُ يضع فيه
+             * `@page` ليعرف **المتصفّحُ** مقاسَ الورقة عند الطبع — وهو ما
+             * لا يحتاجه mpdf: مقاسُه يصله من `format` وهوامشُه من
+             * `margin_*`.
+             *
+             * وحين يقرؤه mpdf يقع تعارض: `@page` يُبطل `SetHTMLFooter`،
+             * فيختفي ترقيمُ الصفحات من كلّ ورقةٍ في النظام — وقد وقع فعلًا،
+             * ولم يظهر إلّا بقياس آخر سطرٍ فيه حبر (١٨٣ مم بدل ٢٩٠).
+             *
+             * فيُقرأ وسيطٌ لا يكتبه أحد. وبه يتجاهل mpdf `print` و`screen`
+             * معًا، ويبقى على القواعد غير المقيَّدة بوسيط — وهي جسدُ
+             * الأنماط كلُّه. فيصير لكلّ محرّكٍ ما يفهمه بلا أن يتنازعا.
+             */
+            'CSSselectMedia' => 'mpdf',
         ];
     }
 

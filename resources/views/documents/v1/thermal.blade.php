@@ -26,6 +26,9 @@
 @endphp
 @include('documents.v1.partials.thermal-tokens')
 
+{{-- صندوقُ الشريط — للشاشة وحدها، انظر `layout` و`Document\PaperSize` --}}
+<div class="paper">
+
 <div class="c">
     @if ($show('tpl_show_logo', false) && ($business->logo ?? null))
         <img src="{{ $business->logo }}" style="max-height:30pt; margin-bottom:2pt;" alt="">
@@ -145,4 +148,6 @@
         @php($clean = \App\Support\ReceiptTemplate::printableHtml($l))
         @if ($clean !== ''){!! $clean !!}@if (! $loop->last)<br>@endif @endif
     @endforeach
+</div>
+
 </div>

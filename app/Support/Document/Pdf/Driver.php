@@ -27,14 +27,19 @@ use Illuminate\Http\Response;
 interface Driver
 {
     /**
-     * ورقةٌ بمقاس A4.
+     * ورقةٌ ذاتُ صفحات — A4 أو A5.
+     *
+     * والمقاسُ يصل وصفًا لا اسمًا: عرضٌ وارتفاعٌ وهوامشُ بالمليمتر، من
+     * `Document\PaperSize`. فالقالبُ والمحرّكُ يقرآن الأرقامَ نفسَها، ولا
+     * تخرج ورقةٌ مبنيّةٌ على مقاسٍ وتُطبع على آخر.
      *
      * @param  string  $html  الرسمُ كاملًا — بأنماطه ضمنه
      * @param  string  $name  اسمُ الملفّ بلا لاحقة
+     * @param  array<string, mixed>  $preset  وصفُ المقاس من `PaperSize::of`
      * @param  bool  $landscape  عرضيّةً — لجدولٍ لا تسعه الصفحة قائمة
      * @param  string|null  $runningHeader  ترويسةٌ تتكرّر على كلّ صفحة، أو null
      */
-    public function a4(string $html, string $name, bool $landscape = false, ?string $runningHeader = null): Response;
+    public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null): Response;
 
     /**
      * شريطُ طابعةٍ حراريّة — بعرض ورقها وبطول محتواه.

@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\PurchaseOrder;
 use App\Support\Document\Branding;
+use App\Support\Document\PaperSize;
 use App\Support\Document\Version;
 use Illuminate\Database\Eloquent\Model;
 
@@ -90,6 +91,8 @@ class DocumentRenderer
         }
 
         return view(Version::views($version).'.'.self::template($type), [
+            /* والأوراقُ العامّة على A4: أمرُ شراءٍ لا يُطبع على شريطٍ حراريّ */
+            'paper' => PaperSize::A4,
             'tokens' => Branding::tokens($businessId, $scale),
             'coverImage' => Branding::cover($businessId),
             'doc' => $doc,
@@ -151,8 +154,8 @@ class DocumentRenderer
             ->latest('id')
             ->first() ?? self::sampleOrder($businessId);
 
-        if ($paper === 'A4') {
-            return self::saleSheet($businessId, $order, $values);
+        if (! PaperSize::isStrip($paper)) {
+            return self::saleSheet($businessId, $order, $values, ['paper' => $paper]);
         }
 
         /*
@@ -182,6 +185,8 @@ class DocumentRenderer
         return view(Version::views($extra['version'] ?? null).'.sale', [
             'doc' => DocumentPaper::forSale($order, ['customerTax' => $extra['customerTax'] ?? null]),
             'tpl' => $values,
+            /* ومقاسُ الورقة يبلغ القالبَ ليكتب `@page` وصندوقَها — انظر PaperSize */
+            'paper' => $extra['paper'] ?? ($values['paper'] ?? PaperSize::A4),
             'tokens' => Branding::tokens($businessId, $scale),
             'coverImage' => Branding::cover($businessId),
             'business' => DocumentPaper::business($businessId),
@@ -222,6 +227,7 @@ class DocumentRenderer
     {
         return view(Version::views($extra['version'] ?? null).'.thermal', [
             'order' => $order,
+            'paper' => $width <= 60 ? PaperSize::T58 : PaperSize::T80,
             'tpl' => self::legacy($businessId, $values),
             'tokens' => Branding::tokens($businessId, self::scale((string) $values['font'])),
             'width' => $width,

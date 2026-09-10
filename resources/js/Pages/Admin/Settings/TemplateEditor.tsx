@@ -8,7 +8,7 @@ import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
-import PaperFrame, { type Medium } from '@/Components/PaperFrame';
+import PaperFrame from '@/Components/PaperFrame';
 import DocumentBrand, { type Brand } from './partials/DocumentBrand';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -54,16 +54,13 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
      * ومقاسُ الورقة يتبع ما اختاره التاجر لا نوعَ المستند وحده.
      *
      * `sale` وحدها تملك «مقاس الورق» (`hasPaper`): من اختار ٨٠ مم يعاين
-     * شريطًا حراريًّا، ومن اختار A4 يعاين صفحة. وسائرُ الأنواع أوراقُ A4
-     * دائمًا — لا يُطبع أمرُ شراءٍ على شريط.
+     * شريطًا حراريًّا، ومن اختار A4 أو A5 يعاين صفحةً بمقاسها. وسائرُ
+     * الأنواع أوراقُ A4 دائمًا — لا يُطبع أمرُ شراءٍ على شريط.
      *
      * ويُقرأ من `form.data` لا من القيمة المحفوظة: المعاينةُ تتبع ما على
      * الشاشة الآن، وإلّا بدّل التاجر المقاسَ فتغيّر المحتوى وبقي الإطار.
      */
     const paper = template.hasPaper ? String(form.data.paper ?? 'A4') : 'A4';
-    const medium: Medium = paper === 'A4'
-        ? { kind: 'sheet' }
-        : { kind: 'strip', widthMm: paper === '58mm' ? 58 : 80 };
 
     const [html, setHtml] = useState<string>('');
     const [drawing, setDrawing] = useState(true);
@@ -172,7 +169,7 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
                     */}
                     <PaperFrame
                         html={html}
-                        medium={medium}
+                        paper={paper}
                         title={t('معاينة الورقة')}
                         viewport="min(78svh, 1000px)"
                     />

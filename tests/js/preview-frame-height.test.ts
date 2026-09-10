@@ -74,16 +74,42 @@ describe('ورقة المعاينة', () => {
      * قالبَه على شكلٍ لا وجود له: ترويسةٌ ممدودةٌ على عرضٍ لن تُطبع عليه،
      * ولا حدَّ يقول أين تنتهي الصفحة الأولى.
      */
-    it('تُرسم بمقاس A4 الحقيقيّ ثمّ تُصغَّر', () => {
+    it('تُرسم بمقاس الورقة الحقيقيّ ثمّ تُصغَّر', () => {
         const src = frame();
-
-        /* ٢١٠ × ٢٩٧ مم — لا رقمًا بالبكسل يُكتب باليد ويُنسى مصدرُه */
-        expect(src).toContain('mm(210)');
-        expect(src).toContain('mm(297)');
 
         /* والتصغيرُ تحويلٌ بصريّ: تضييقُ الإطار يُعيد التخطيط فيكذب */
         expect(src).toContain('transform: `scale(');
         expect(src).toContain("transformOrigin: 'top left'");
+        expect(src).toContain('PX_PER_MM = 96 / 25.4');
+    });
+
+    /**
+     * ومقاساتُ الشاشة هي مقاساتُ الخادم — رقمًا رقمًا.
+     *
+     * الشاشةُ ترسم الورقة بالبكسل والخادمُ يبنيها بالمليمتر. ولو افترق
+     * الجدولان لرأى التاجر ورقةً في المعاينة وخرجت من الطابعة غيرُها —
+     * وهو العطبُ الذي وُلد منه `Document\PaperSize` أصلًا. فيُقرأ الملفّان
+     * ويُقارَن ما فيهما.
+     */
+    it('جدولُ المقاسات نسخةٌ مطابقة لسجلّ الخادم', () => {
+        const php = readFileSync('app/Support/Document/PaperSize.php', 'utf8');
+        const ts = frame();
+
+        for (const [key, w, h] of [
+            ['A4', 210, 297],
+            ['A5', 148, 210],
+            ['80mm', 80, null],
+            ['58mm', 58, null],
+        ] as const) {
+            expect(ts).toContain(`{ width: ${w}, height: ${h === null ? 'null' : h} }`);
+            expect(php).toContain(`'width' => ${w}.0`);
+
+            if (h !== null) {
+                expect(php).toContain(`'height' => ${h}.0`);
+            }
+
+            expect(php).toContain(`= '${key}'`);
+        }
     });
 
     /** ولا تُكبَّر فوق حجمها: شريطُ ٥٨ مم ممدودًا يخرج بمقاسٍ لا يُطبع */

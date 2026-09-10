@@ -48,6 +48,16 @@
 @endphp
 @include('documents.v1.partials.tokens')
 
+{{--
+    وصندوقُ الورقة — مقاسُها وحشوُها، على الشاشة وحدها.
+
+    في الـPDF لا عرضَ له ولا حشو: يرسمه المحرّكُ بهوامشه هو، والقاعدةُ
+    تحت `@media screen` فيتجاهلها. وبلا هذا الصندوق تخرج الورقةُ في
+    المعاينة وفي الرابط بلا مقاسٍ ولا هامش — تمتدّ على عرض ما تُوضع فيه،
+    فيرى التاجر شكلًا لا يُطبع. انظر `Document\PaperSize`.
+--}}
+<div class="paper">
+
 @include('documents.v1.partials.cover')
 
 <table class="head">
@@ -87,3 +97,5 @@
 @hasSection('foot')
     <div class="foot">@yield('foot')</div>
 @endif
+
+</div>

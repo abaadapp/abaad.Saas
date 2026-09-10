@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Support\Document\PaperSize;
 use App\Support\Document\Pdf\Driver;
 use App\Support\Document\Pdf\MpdfDriver;
 use Illuminate\Http\Response;
@@ -60,10 +61,24 @@ class Pdf
      *
      * و`$runningHeader` سطرٌ يتكرّر على كلّ صفحة — تستعمله المستنداتُ
      * الطويلة وحدها. والتقاريرُ لا ترسله فلا يتغيّر عندها شيء.
+     *
+     * وتبقى باسمها: اثنان وعشرون تقريرًا ينادونها، ونقلُهم إلى `sheet`
+     * تغييرٌ في اثنين وعشرين ملفًّا لا يُضيف للتاجر شيئًا.
      */
     public static function a4(string $html, string $name, bool $landscape = false, ?string $runningHeader = null): Response
     {
-        return self::driver()->a4($html, $name, $landscape, $runningHeader);
+        return self::sheet($html, $name, PaperSize::A4, $landscape, $runningHeader);
+    }
+
+    /**
+     * ورقةٌ بمقاسٍ يُختار — A4 أو A5.
+     *
+     * والمقاسُ يُحلّ هنا مرّةً إلى أرقامه، ثمّ تُبنى منه الورقةُ والقالبُ
+     * معًا. فلا يقع أن يُبنى المحرّك على ١٤٨ مم ويُرسم القالبُ على ٢١٠.
+     */
+    public static function sheet(string $html, string $name, ?string $paper = null, bool $landscape = false, ?string $runningHeader = null): Response
+    {
+        return self::driver()->sheet($html, $name, PaperSize::of($paper), $landscape, $runningHeader);
     }
 
     /** شريطُ الطابعة الحراريّة — بعرض ورقها وبطول محتواه */

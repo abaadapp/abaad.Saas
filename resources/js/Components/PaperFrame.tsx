@@ -33,18 +33,32 @@ const PX_PER_MM = 96 / 25.4;
 
 const mm = (value: number) => Math.round(value * PX_PER_MM);
 
-/** A4 قائمة: ٢١٠ × ٢٩٧ مم */
-export const A4 = { width: mm(210), page: mm(297) };
+/**
+ * مقاساتُ الورق — صورةٌ من `App\Support\Document\PaperSize`.
+ *
+ * والأرقامُ هي هي: ٢١٠×٢٩٧ وَ١٤٨×٢١٠ وَ٨٠ وَ٥٨. ولو افترقت لرأى التاجر
+ * ورقةً في المعاينة ويخرج من الطابعة غيرُها — وهو العطبُ الذي وُلد منه
+ * سجلُّ المقاسات أصلًا.
+ *
+ * ولا هوامشَ هنا: الورقةُ نفسُها تحملها في `@media screen`، فتُرسم داخل
+ * الإطار كما تُطبع تمامًا.
+ */
+export const PAPERS = {
+    A4: { width: 210, height: 297 },
+    A5: { width: 148, height: 210 },
+    '80mm': { width: 80, height: null },
+    '58mm': { width: 58, height: null },
+} as const;
 
-export type Medium =
-    /** ورقةٌ بصفحات — تُرسم بحدودها */
-    | { kind: 'sheet' }
-    /** شريطُ طابعةٍ حراريّة — بعرض ورقها وبطول محتواه، بلا صفحات */
-    | { kind: 'strip'; widthMm: number };
+export type PaperKey = keyof typeof PAPERS;
+
+/** أهذا مقاسٌ نعرفه؟ — وما لا نعرفه ورقةُ A4 لا شريط */
+const preset = (key?: string) => PAPERS[(key ?? 'A4') as PaperKey] ?? PAPERS.A4;
 
 type Props = {
     html: string;
-    medium?: Medium;
+    /** اسمُ المقاس — A4 · A5 · 80mm · 58mm */
+    paper?: string;
     /** ارتفاعُ النافذة التي تُعرض فيها الورقة — قيمةُ CSS */
     viewport?: string;
     title?: string;
@@ -53,7 +67,7 @@ type Props = {
 
 export default function PaperFrame({
     html,
-    medium = { kind: 'sheet' },
+    paper = 'A4',
     viewport = 'min(70svh, 900px)',
     title,
     className,
@@ -66,7 +80,10 @@ export default function PaperFrame({
     const [avail, setAvail] = useState(0);
     const [content, setContent] = useState(0);
 
-    const paperWidth = medium.kind === 'sheet' ? A4.width : mm(medium.widthMm);
+    const size = preset(paper);
+    const paperWidth = mm(size.width);
+    /** ارتفاعُ الصفحة الواحدة — والشريطُ بلا صفحات */
+    const pageHeight = size.height === null ? 0 : mm(size.height);
 
     /*
      * وارتفاعُ الورقة يتبع نوعَها.
@@ -76,11 +93,11 @@ export default function PaperFrame({
      * الصفحات: يطول بطول محتواه ويُقصّ.
      */
     const paperHeight =
-        medium.kind === 'sheet'
-            ? Math.max(1, Math.ceil((content || A4.page) / A4.page)) * A4.page
+        pageHeight > 0
+            ? Math.max(1, Math.ceil((content || pageHeight) / pageHeight)) * pageHeight
             : Math.max(content, mm(60));
 
-    const pages = medium.kind === 'sheet' ? Math.round(paperHeight / A4.page) : 1;
+    const pages = pageHeight > 0 ? Math.round(paperHeight / pageHeight) : 1;
 
     /*
      * والتصغيرُ لا يتجاوز الحجم الطبيعيّ.
@@ -199,7 +216,7 @@ export default function PaperFrame({
                             key={i}
                             aria-hidden="true"
                             className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[#cbd5e1]"
-                            style={{ top: (i + 1) * A4.page * scale }}
+                            style={{ top: (i + 1) * pageHeight * scale }}
                         >
                             <span className="absolute -top-[9px] left-1/2 -translate-x-1/2 bg-[#f1f1f0] px-2 text-[9px] text-[#94a3b8]">
                                 {t('صفحة')} <span dir="ltr">{i + 2}</span>

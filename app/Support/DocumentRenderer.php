@@ -155,27 +155,14 @@ class DocumentRenderer
             return self::saleSheet($businessId, $order, $values);
         }
 
-        return view(Version::views(null).'.thermal', [
-            'order' => $order,
-            'tpl' => self::legacy($businessId, $values),
-            'tokens' => Branding::tokens($businessId, self::scale((string) $values['font'])),
-            // عرضُ الشريط في المعاينة كما اختاره التاجر
-            'width' => self::stripWidth($paper),
-            /*
-             * ولا رابطَ في المعاينة: الطلبُ المعروض قد يكون مُخترعًا، ورمزٌ
-             * له يقود إلى ٤٠٤ في يد التاجر. والمحفوظُ منه لا يُفتح بابُه
-             * لمجرّد أنّ أحدًا فتح محرّر القوالب.
-             */
-            'paperUrl' => '',
-            /*
-             * ولا رمزَ فوترةٍ في المعاينة: `EInvoice` تبني رمزًا يحمل رقم
-             * المتجر الضريبي والمبلغ، ورسمُه لطلبٍ مُخترع يضع في يد التاجر
-             * صورةَ رمزٍ لا تُقابله فاتورة.
-             */
-            'qr' => null,
-            'customerTax' => null,
-            'googleReview' => null,
-        ])->render();
+        /*
+         * ولا رمزَ ولا رابطَ في المعاينة.
+         *
+         * الطلبُ المعروض قد يكون مُخترعًا، ورمزٌ له يقود إلى ٤٠٤ في يد
+         * التاجر. و`EInvoice` تبني رمزًا يحمل رقمَ المتجر الضريبيّ والمبلغ،
+         * ورسمُه لطلبٍ مُخترع يضع في يده صورةَ رمزٍ لا تُقابله فاتورة.
+         */
+        return self::saleStrip($businessId, $order, $values, self::stripWidth($paper));
     }
 
     /**
@@ -211,6 +198,36 @@ class DocumentRenderer
              */
             'qr' => $extra['qr'] ?? null,
             'paperUrl' => $extra['paperUrl'] ?? '',
+            'googleReview' => $extra['googleReview'] ?? null,
+            /* والوجهُ الثالث: الرقمُ الضريبيّ بلا مقبض — انظر رأس القالب */
+            'taxInvoice' => (bool) ($extra['taxInvoice'] ?? false),
+            'generatedAt' => $extra['generatedAt'] ?? null,
+        ])->render();
+    }
+
+    /**
+     * شريطُ الإيصال الحراريّ مرسومًا — بالقالب الذي يُطبع.
+     *
+     * ═══ ولمَ هنا لا في متحكّم الطباعة ═══
+     *
+     * الإيصالُ يُرسم من بابين: معاينةُ محرّر القوالب، وزرُّ الطباعة في
+     * الصندوق. وكان الثاني يبني القائمةَ بيده، فما يُضاف لأحدهما لا يبلغ
+     * الآخر — يُضبط شيءٌ فيُرى في المعاينة ويغيب عن الطابعة، وهو خلافٌ لا
+     * يُكتشف إلّا بعد أن يأخذ الزبون ورقته.
+     *
+     * @param  array<string,mixed>  $values  إعداداتُ القالب محلولةً
+     * @param  array<string,mixed>  $extra  ما يخصّ الطباعة لا المعاينة
+     */
+    public static function saleStrip(int $businessId, Order $order, array $values, int $width, array $extra = []): string
+    {
+        return view(Version::views($extra['version'] ?? null).'.thermal', [
+            'order' => $order,
+            'tpl' => self::legacy($businessId, $values),
+            'tokens' => Branding::tokens($businessId, self::scale((string) $values['font'])),
+            'width' => $width,
+            'qr' => $extra['qr'] ?? null,
+            'paperUrl' => $extra['paperUrl'] ?? '',
+            'customerTax' => $extra['customerTax'] ?? null,
             'googleReview' => $extra['googleReview'] ?? null,
         ])->render();
     }

@@ -480,6 +480,74 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
         $this->assertLessThan((float) $w[1], (float) $n[1], 'الشريطُ الضيّق بخطّ الشريط العريض');
     }
 
+    /* ═══════════════════ لا بابَ طباعةٍ متروك ═══════════════════ */
+
+    /**
+     * وكلُّ بابٍ يطبع مستندًا يمرّ بالقوالب الجديدة — لا واحدٌ متروك.
+     *
+     * ═══ وهذا الحارسُ وُلد من عطبٍ وقع فعلًا ═══
+     *
+     * وُصلت **معاينةُ** فاتورة البيع بالقالب الجديد ونُسي **زرُّ الطباعة**:
+     * فيرى التاجر في محرّر القوالب ورقةً، ويخرج من الطابعة غيرُها. ولا شيء
+     * يقول إنّهما افترقتا — لأنّ كليهما يعمل.
+     *
+     * فيُفحص المستودعُ نفسُه: لا نداءَ لقالبٍ في `pdf/` من متحكّمٍ يطبع
+     * مستندًا. والتقاريرُ تبقى هناك بحقّ — ورقةُ مخزونٍ ليست مستندًا يحمل
+     * هويّةَ التاجر إلى جهةٍ خارجية، وجرُّها إلى إعادة التصميم عملٌ لم
+     * يُطلَب.
+     */
+    public function test_no_printing_door_is_left_on_the_old_templates(): void
+    {
+        $documents = ['pdf.invoice', 'pdf.receipt', 'pdf.tax-invoice', 'pdf.customer-invoice', 'pdf.document'];
+
+        $guilty = [];
+
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(app_path())) as $file) {
+            if ($file->isDir() || $file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $source = file_get_contents($file->getPathname());
+
+            foreach ($documents as $view) {
+                // النداءُ لا الذِّكر: تعليقٌ يشرح تاريخَ الملفّ ليس بناءً للورقة
+                if (str_contains($source, "view('".$view."'")) {
+                    $guilty[] = basename($file->getPathname()).' → '.$view;
+                }
+            }
+        }
+
+        $this->assertSame([], $guilty, 'بابُ طباعةٍ ما زال يرسم بالقالب القديم');
+    }
+
+    /** والفاتورةُ الضريبية وجهٌ ثالثٌ للقالب نفسه — لا قالبٌ رابع */
+    public function test_the_tax_invoice_is_a_face_of_the_same_template(): void
+    {
+        $order = $this->order();
+
+        Setting::create([
+            'business_id' => $this->business->id, 'key' => 'vat_number', 'value' => 'OM1100123456',
+        ]);
+
+        $values = \App\Support\DocumentTemplates::settings($this->business->id, 'sale');
+
+        /*
+         * والرقمُ الضريبيّ يُطبع وإن أطفأ التاجر مقبضَه.
+         *
+         * ورقةٌ عنوانها «فاتورة ضريبية» بلا رقم بائعها تُردّ من أوّل جهةٍ
+         * تراجعها — ويظنّ صاحبُها نفسَه ممتثلًا حتى تُردّ.
+         */
+        $off = $values + ['show_vat_no' => false];
+
+        $plain = DocumentRenderer::saleSheet($this->business->id, $order, $off);
+        $tax = DocumentRenderer::saleSheet($this->business->id, $order, $off, ['taxInvoice' => true]);
+
+        $this->assertStringNotContainsString('OM1100123456', $plain, 'المقبضُ لا يُطفئ الرقم في الورقة العادية');
+        $this->assertStringContainsString('OM1100123456', $tax, 'الفاتورةُ الضريبية طُبعت بلا رقم بائعها');
+        $this->assertStringContainsString(__('فاتورة ضريبية'), $tax);
+        $this->assertStringContainsString(__('فاتورة ضريبية صادرة آليًا عبر نظام أبعاد'), $tax);
+    }
+
     /* ═══════════════════ صفحةُ التحقّق ═══════════════════ */
 
     /** ورقةٌ تُفتح برمزها، ولا تُفتح برمزٍ مُخمَّن */

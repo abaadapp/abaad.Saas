@@ -15,12 +15,29 @@
     $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
     $vat = trim((string) ($vatNumber ?? ''));
     $headerNote = trim((string) ($tpl['header'] ?? ''));
-    /* والرقمُ في الترويسة بمقبضه — انظر رأس الملفّ */
-    $vatNumber = $show('show_vat_no', false) ? $vat : '';
     $numberLabel = __('رقم الفاتورة');
+
+    /*
+     * ═══ ووجهُ الورقة الثالث: الفاتورة الضريبية ═══
+     *
+     * `sale` ثلاثُ أوراقٍ يحكمها قالبٌ واحد: الإيصالُ الحراريّ، وفاتورةُ
+     * A4، والفاتورةُ الضريبية. والثالثةُ تفترق عن الثانية في قاعدةٍ واحدة
+     * لا في شكل:
+     *
+     * **الرقمُ الضريبيّ فيها بلا مقبض.** ورقةٌ عنوانها «فاتورة ضريبية» بلا
+     * رقم بائعها ليست فاتورةً ضريبية — تُردّ من أوّل جهةٍ تراجعها، ويظنّ
+     * صاحبُها نفسَه ممتثلًا حتى تُردّ. فلا يُخفى بـ«إظهار الرقم الضريبي»
+     * كما يُخفى في العادية: هو سببُ وجود الورقة.
+     *
+     * وقالبان لهما ترويسةٌ وتذييلٌ وجدولٌ واحد كانا يفترقان عند أوّل
+     * تعديل — يُصلَح سطرٌ في إحداهما ويبقى معطوبًا في الأخرى، ولطلبٍ واحد
+     * تخرج ورقتان لا يجمعهما شكل.
+     */
+    $taxInvoice = (bool) ($taxInvoice ?? false);
+    $vatNumber = ($taxInvoice || $show('show_vat_no', false)) ? $vat : '';
 @endphp
 
-@section('type', $vat !== '' ? __('فاتورة ضريبية') : __('فاتورة'))
+@section('type', $taxInvoice || $vat !== '' ? __('فاتورة ضريبية') : __('فاتورة'))
 @section('number', $doc['number'])
 
 @section('parties')
@@ -80,8 +97,19 @@
     ])
 @endsection
 
-@if (trim((string) ($tpl['footer'] ?? '')) !== '')
+@if ($taxInvoice || trim((string) ($tpl['footer'] ?? '')) !== '')
     @section('foot')
+        {{--
+            وسطرٌ يقول إنّها صدرت آليًّا ومتى — تطلبه الجهاتُ التي تراجع،
+            ويميّز النسخةَ الأصلية من صورةٍ أُعيدت طباعتُها بعد شهر.
+        --}}
+        @if ($taxInvoice)
+            <div class="c xs faint" style="margin-bottom:3pt">
+                {{ __('فاتورة ضريبية صادرة آليًا عبر نظام أبعاد') }}
+                — <span class="ltr">{{ $generatedAt ?? now()->format('Y-m-d H:i') }}</span>
+                — {{ __('القيم بالريال العماني') }}
+            </div>
+        @endif
         <div class="c">
             @foreach (preg_split('/\r\n|\r|\n/', $tpl['footer']) as $l)
                 @php($clean = \App\Support\ReceiptTemplate::printableHtml($l))

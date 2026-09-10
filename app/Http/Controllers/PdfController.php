@@ -13,6 +13,8 @@ use App\Models\PosPeripheral;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\DocumentRenderer;
+use App\Support\DocumentTemplates;
 use App\Support\EInvoice;
 use App\Support\GoogleReviews;
 use App\Support\InvoiceBranding;
@@ -71,12 +73,22 @@ class PdfController extends Controller
         $onA4 = ($tpl['paper'] ?? '80mm') === 'A4';
         $width = $this->stripWidth((string) ($tpl['paper'] ?? '80mm'));
 
-        $html = view($onA4 ? 'pdf.invoice' : 'pdf.receipt', [
-            'order' => $order,
+        /*
+         * والرسمُ من `DocumentRenderer` لا من قائمةٍ تُكتب هنا.
+         *
+         * كان هذا البابُ يبني متغيّراتِ القالب بيده، ومعاينةُ محرّر القوالب
+         * تبنيها عندها — فما يُضاف لأحدهما لا يبلغ الآخر: يُضبط شيءٌ فيُرى
+         * في المعاينة ويغيب عن الطابعة. وهو خلافٌ لا يُكتشف إلّا بعد أن
+         * يأخذ الزبون ورقته.
+         *
+         * وقيمُ القالب من السجلّ (`DocumentTemplates`) لا من `ReceiptTemplate`:
+         * تلك تردّ المفاتيح القديمة المسطَّحة (`tpl_show_logo`)، وقالبُ A4
+         * الجديد يقرأ أسماءَ السجلّ. و`legacy()` تحوّلها للشريط وحده.
+         */
+        $values = DocumentTemplates::settings($bid, 'sale');
+
+        $extra = [
             'qr' => EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
-            'tpl' => $tpl,
-            // عرضُ الشريط يصل القالب: القياس يتبع الورق — انظر strip-style
-            'width' => $width,
             /*
              * ورمزُ الورقة أونلاين.
              *
@@ -96,11 +108,15 @@ class PdfController extends Controller
              * فمقبضٌ يعمل بلا معرّف يطبع مربّعًا أسود يمسحه الزبون فلا يجد.
              */
             'googleReview' => GoogleReviews::onReceipt($bid),
-        ])->render();
+        ];
 
         $name = 'receipt-'.$order->number;
 
-        return $onA4 ? Pdf::a4($html, $name) : Pdf::strip($html, $name, $width);
+        if ($onA4) {
+            return Pdf::a4(DocumentRenderer::saleSheet($bid, $order, $values, $extra), $name);
+        }
+
+        return Pdf::strip(DocumentRenderer::saleStrip($bid, $order, $values, $width, $extra), $name, $width);
     }
 
     /**
@@ -318,18 +334,24 @@ class PdfController extends Controller
         $vat = Demo::vatSettings();
         $business = Demo::business($bid);
 
-        $html = view('pdf.tax-invoice', [
-            'order' => $order,
-            'vat' => $vat,
-            'business' => $business,
-            // القالب نفسه الذي يحكم فاتورة الطلب — «الإعدادات ‹ قوالب الفواتير»
-            'tpl' => ReceiptTemplate::forBusiness($bid),
+        /*
+         * والفاتورةُ الضريبية وجهٌ ثالثٌ للقالب نفسه لا قالبٌ رابع.
+         *
+         * ثلاثتُها — الإيصالُ الحراريّ وفاتورةُ A4 والضريبيةُ — يحكمها
+         * `sale` في السجلّ. وقالبان لهما ترويسةٌ وتذييلٌ وجدولٌ واحد
+         * يفترقان عند أوّل تعديل: لطلبٍ واحد تخرج ورقتان لا يجمعهما شكل.
+         *
+         * وما يخصّها وحدها — أنّ رقمَ البائع الضريبيّ **بلا مقبض** — علمٌ
+         * يُمرَّر لا قالبٌ يُنسَخ. انظر رأس `documents/v1/sale.blade.php`.
+         */
+        $html = DocumentRenderer::saleSheet($bid, $order, DocumentTemplates::settings($bid, 'sale'), [
+            'taxInvoice' => true,
             'customerTax' => $order->customer_id ? optional(Customer::find($order->customer_id))->tax_number : null,
             'qr' => EInvoice::forOrder($order, $vat, $business),
             // ورمزُ الورقة أونلاين — كما في فاتورة البيع وإيصالها
             'paperUrl' => PublicDocument::url($order) ?? '',
             'generatedAt' => now()->format('Y-m-d H:i'),
-        ])->render();
+        ]);
 
         Activity::log('report', 'أصدر فاتورة ضريبية للطلب: '.$order->number, ['subject_id' => $order->id]);
 

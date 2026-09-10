@@ -225,10 +225,20 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
         $this->assertMatchesRegularExpression('/\.qr-block \{[^}]*page-break-inside: avoid/s', $html);
     }
 
-    /** واسمُ صنفٍ طويل لا يخرج عن الورقة — الخليّةُ تلفّ ولا تمتدّ */
+    /**
+     * واسمُ صنفٍ طويل لا يخرج عن الورقة — الخليّةُ تلفّ ولا تمتدّ.
+     *
+     * وطولُه أطولُ ما يقبله العمود لا أطولَ منه: `order_items.name` عمودٌ
+     * بـ٢٥٥ حرفًا، فاسمٌ بثلاثمئةٍ حالةٌ **لا تقع في النظام**. وSQLite لا
+     * تفرض الطولَ فيمرّ الحارس، وPostgreSQL تفرضه فيسقط — ومحرّكُ الإنتاج
+     * PostgreSQL. فحارسٌ يقيس المستحيل يكذب في المحرّكين معًا: هنا بأن
+     * يمرّ، وهناك بأن يسقط لغير ما وُضع له.
+     *
+     * وثمانيةُ تكرارٍ تبلغ ٢٥٠ حرفًا بعد لاحقة الترقيم — أطولُ اسمٍ ممكن.
+     */
     public function test_a_very_long_item_name_does_not_overflow(): void
     {
-        $long = str_repeat('باقة ورد جوري أحمر بتغليف فاخر ', 12);
+        $long = str_repeat('باقة ورد جوري أحمر بتغليف فاخر ', 8);
         $html = $this->sheet($this->order(1, $long));
 
         $this->assertStringContainsString('table.items { width: 100%;', $html);

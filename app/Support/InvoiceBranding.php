@@ -41,8 +41,14 @@ final class InvoiceBranding
     /** لغةُ الورقة المطبوعة — لا لغةُ اللوحة */
     public const LANGUAGE = 'invoice_language';
 
-    /** سطرُ الذيل: «نصنع الجمال لكل مناسبة» وما يشبهه */
-    public const FOOTER = 'invoice_footer_note';
+    /*
+     * ولا تذييلَ هنا ولا سطرَ ترويسة — هما في «قوالب الأوراق».
+     *
+     * كانا مفتاحين من عند هذا الصنف، ولأخوات الورقة الأربع مثلُهما في
+     * `DocumentTemplates`. وشيءٌ واحد بمفتاحين في شاشتين يجعل صاحبَه يكتب
+     * في أحدهما ويبحث عن أثره في الآخر. فبقي مالكٌ واحد، ولم يبقَ هنا
+     * إلّا ما لا نظيرَ له هناك: الاسمُ المعروض، ولغةُ الطبع، وملفُّ الشعار.
+     */
 
     /** العميلُ الذي تُفتح عليه شاشةُ الإنشاء */
     public const DEFAULT_CUSTOMER = 'default_customer_id';
@@ -68,13 +74,12 @@ final class InvoiceBranding
     public static function settings(int $businessId): array
     {
         $rows = Setting::where('business_id', $businessId)
-            ->whereIn('key', [self::NAME, self::LANGUAGE, self::FOOTER, self::DEFAULT_CUSTOMER])
+            ->whereIn('key', [self::NAME, self::LANGUAGE, self::DEFAULT_CUSTOMER])
             ->pluck('value', 'key');
 
         return [
             'display_name' => (string) ($rows[self::NAME] ?? ''),
             'language' => self::language($businessId),
-            'footer_note' => (string) ($rows[self::FOOTER] ?? ''),
             /*
              * وشعارُ **الشاشة** رابطٌ لا صورةٌ مضمَّنة.
              *
@@ -162,12 +167,6 @@ final class InvoiceBranding
             ->where('key', self::LANGUAGE)->value('value');
 
         return in_array($saved, self::LANGUAGES, true) ? $saved : app()->getLocale();
-    }
-
-    public static function footer(int $businessId): string
-    {
-        return trim((string) Setting::where('business_id', $businessId)
-            ->where('key', self::FOOTER)->value('value'));
     }
 
     /**
@@ -281,7 +280,7 @@ final class InvoiceBranding
      */
     public static function save(int $businessId, array $data): void
     {
-        foreach ([self::NAME => 'display_name', self::LANGUAGE => 'language', self::FOOTER => 'footer_note'] as $key => $field) {
+        foreach ([self::NAME => 'display_name', self::LANGUAGE => 'language'] as $key => $field) {
             if (! array_key_exists($field, $data)) {
                 continue;
             }

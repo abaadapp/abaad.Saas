@@ -105,7 +105,14 @@ interface Props {
 interface Branding {
     display_name: string;
     language: string;
-    footer_note: string;
+    /*
+     * وهذه الثلاثةُ من «قوالب الأوراق» لا من مفاتيحَ خاصّةٍ بالفاتورة —
+     * `DocumentTemplates` نوعُ `customer_invoice`. فمن ضبطها هنا وجدها
+     * هناك، والعكس.
+     */
+    header: string;
+    footer: string;
+    font: string;
     /** جاهزًا للعرض: `data:` أو رابطٌ مطلق — انظر `InvoiceBranding::logo` */
     logo: string | null;
     default_customer_id: number | null;
@@ -1469,7 +1476,10 @@ function BrandingDialog({
     const form = useForm({
         display_name: branding.display_name,
         language: branding.language,
-        footer_note: branding.footer_note,
+        // وهذه من سجلّ القوالب: تُكتب هنا وتُقرأ في «الإعدادات ‹ قوالب الأوراق»
+        header: branding.header,
+        footer: branding.footer,
+        font: branding.font,
         logo: null as File | null,
         remove_logo: false as boolean,
     });
@@ -1590,24 +1600,64 @@ function BrandingDialog({
                     </Field>
 
                     <Field
-                        label="سطر أسفل الفاتورة"
-                        hint="شعارٌ أو عبارةُ شكر — يُطبع في ذيل الورقة"
-                        error={form.errors.footer_note}
+                        label="سطر تحت اسم المتجر"
+                        hint="تخصّصك أو شعارُك — يُطبع في الترويسة"
+                        error={form.errors.header}
                     >
                         <Input
-                            value={form.data.footer_note}
-                            maxLength={160}
-                            onChange={(e) => form.setData('footer_note', e.target.value)}
+                            value={form.data.header}
+                            maxLength={120}
+                            onChange={(e) => form.setData('header', e.target.value)}
+                        />
+                    </Field>
+
+                    <Field
+                        label="سطر أسفل الفاتورة"
+                        hint="شعارٌ أو عبارةُ شكر — يُطبع في ذيل الورقة"
+                        error={form.errors.footer}
+                    >
+                        <Input
+                            value={form.data.footer}
+                            maxLength={500}
+                            onChange={(e) => form.setData('footer', e.target.value)}
                             placeholder={t('نصنع الجمال لكل مناسبة')}
                         />
                     </Field>
 
+                    <Field label="حجم الخط" error={form.errors.font}>
+                        <Select
+                            value={form.data.font}
+                            onChange={(e) => form.setData('font', e.target.value)}
+                            options={[
+                                { label: 'صغير', value: 'صغير' },
+                                { label: 'عادي', value: 'عادي' },
+                                { label: 'كبير', value: 'كبير' },
+                            ]}
+                        />
+                    </Field>
+
                     {/*
+                        ───────── والبابُ الآخر يُقال أين هو ─────────
+
+                        سطرُ الترويسة والتذييلُ وحجمُ الخطّ هنا **هي نفسُها**
+                        التي في «قوالب الأوراق ‹ فاتورة العميل» — لا نسخةٌ
+                        ثانية. وما لم يُعرض هنا (إظهارُ الشعار والرقم الضريبيّ
+                        والملاحظة) في المحرّر وحده، فيُقال أين يُوجد بدل أن
+                        يبحث عنه صاحبُه.
+
                         ولا عنوانَ مبنًى على ورقة العميل — يُقال ولا يُترك
                         ليُبحث عنه في قائمةٍ لا وجودَ له فيها.
                     */}
                     <p className="rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3 text-[12px] leading-relaxed text-[#6b7280]">
                         {t('عنوان المبنى لا يُطبع على فواتير العملاء. والهاتف والبريد والرقم الضريبي تُقرأ من بيانات النشاط.')}
+                        <br />
+                        {t('بقية خيارات الورقة — إظهار الشعار والرقم الضريبي والملاحظة — في')}{' '}
+                        <a
+                            href={route('admin.settings.templates.edit', 'customer_invoice')}
+                            className="font-medium text-[#6d28d9] hover:underline"
+                        >
+                            {t('الإعدادات ‹ قوالب الأوراق ‹ فاتورة العميل')}
+                        </a>
                     </p>
                 </div>
 

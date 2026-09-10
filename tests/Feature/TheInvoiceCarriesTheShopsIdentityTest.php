@@ -12,6 +12,7 @@ use App\Models\CustomerPayment;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\DocumentTemplates;
 use App\Support\InvoiceBranding;
 use App\Support\Ledger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -479,6 +480,9 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
         $bare = $this->previewHtml();
 
         $this->assertStringNotContainsString('نصنع الجمال', $bare);
+        // ولا التذييلُ الافتراضيُّ لأخواتها: «شكرًا لزيارتكم» عبارةُ إيصالٍ
+        // يُسلَّم في المحلّ، لا ورقةٍ تُطالب بها وزارةٌ بمبلغ
+        $this->assertStringNotContainsString('شكرًا لزيارتكم', $bare);
         /*
          * و`class="p-foot"` لا `p-foot`: الاسمُ مكتوبٌ في ورقة الأنماط على
          * كلّ ورقة، فالبحثُ عنه مجرَّدًا يجده دائمًا — حارسٌ يقول «سليم» أبدًا.
@@ -486,7 +490,7 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
         $this->assertStringNotContainsString('class="p-foot', $bare, 'صندوقُ الذيل يُطبع بلا نصّ');
 
         $this->actingAs($this->owner)
-            ->post(route('admin.customerInvoices.branding'), ['footer_note' => 'نصنع الجمال لكل مناسبة'])
+            ->post(route('admin.customerInvoices.branding'), ['footer' => 'نصنع الجمال لكل مناسبة'])
             ->assertSessionHasNoErrors();
 
         $written = $this->previewHtml();
@@ -525,6 +529,149 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
     public function test_a_paper_without_terms_prints_no_terms_line(): void
     {
         $this->assertStringNotContainsString('شروط الدفع:', $this->previewHtml());
+    }
+
+    /* ═══════════════════ بابان ومفتاحٌ واحد ═══════════════════ */
+
+    /**
+     * فاتورةُ العميل ورقةٌ في «قوالب الأوراق» كأخواتها.
+     *
+     * وكانت خارجه: تُطبع بترويسةٍ لا يملك التاجر منها شيئًا بينما تُضبط
+     * أخواتُها الأربع من شاشةٍ واحدة. فمن ضبط تذييلَ فاتورة البيع توقّع أن
+     * تتبعه — ولا موضعَ يقول له لماذا لم تتبعه.
+     */
+    public function test_the_customer_invoice_is_a_paper_in_the_templates_registry(): void
+    {
+        $this->assertArrayHasKey(CustomerInvoiceController::PAPER_TYPE, DocumentTemplates::TYPES);
+        $this->assertTrue(DocumentTemplates::exists(CustomerInvoiceController::PAPER_TYPE));
+
+        // وبابُ محرّرها مفتوحٌ لصاحبها كبقيّة الأوراق
+        $this->actingAs($this->owner)
+            ->get(route('admin.settings.templates.edit', CustomerInvoiceController::PAPER_TYPE))
+            ->assertOk();
+    }
+
+    /**
+     * ═══ ومفتاحٌ واحد يُقرأ من البابين ═══
+     *
+     * ما يُكتب من «تخصيص التصميم» في شاشة الفاتورة **هو عينُه** ما يقرؤه
+     * محرّرُ القوالب، ويُطبع على الورقة. ولو كانا مفتاحين لكتب صاحبُه في
+     * أحدهما وبحث عن أثره في الآخر — وهو الشقُّ الذي دفع إلى الضمّ.
+     */
+    public function test_one_key_is_read_by_both_doors(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.customerInvoices.branding'), [
+            'header' => 'أجمل الورود في مسقط',
+            'footer' => 'نصنع الجمال لكل مناسبة',
+            'font' => 'كبير',
+        ])->assertSessionHasNoErrors();
+
+        $key = DocumentTemplates::key(CustomerInvoiceController::PAPER_TYPE, 'footer');
+
+        // ١) المفتاحُ في السجلّ باسم النوع — لا مفتاحٌ من عند الفاتورة
+        $this->assertSame('tpl_customer_invoice_footer', $key);
+        $this->assertSame(
+            'نصنع الجمال لكل مناسبة',
+            DB::table('settings')->where('business_id', $this->business->id)->where('key', $key)->value('value'),
+        );
+
+        // ٢) ولا يبقى للفاتورة مفتاحٌ خاصٌّ بالتذييل
+        $this->assertSame(
+            0,
+            DB::table('settings')->where('business_id', $this->business->id)
+                ->where('key', 'invoice_footer_note')->count(),
+            'بقي مفتاحُ تذييلٍ ثانٍ للفاتورة',
+        );
+
+        // ٣) ومحرّرُ القوالب يقرأ ما كُتب من الشاشة الأخرى
+        $this->actingAs($this->owner)
+            ->get(route('admin.settings.templates.edit', CustomerInvoiceController::PAPER_TYPE))
+            ->assertInertia(fn ($p) => $p
+                ->where('template.values.footer', 'نصنع الجمال لكل مناسبة')
+                ->where('template.values.header', 'أجمل الورود في مسقط')
+                ->where('template.values.font', 'كبير')
+                ->etc());
+
+        // ٤) والورقةُ تُطبع بالثلاثة
+        $html = $this->previewHtml();
+
+        $this->assertStringContainsString('أجمل الورود في مسقط', $html);
+        $this->assertStringContainsString('نصنع الجمال لكل مناسبة', $html);
+        $this->assertStringContainsString('font-size: 11.4pt', $html, 'حجمُ الخطّ لا يُدير شيئًا');
+    }
+
+    /**
+     * وما كُتب من المحرّر يُقرأ في الشاشة الأخرى — الاتّجاه المعاكس.
+     *
+     * ومقبضٌ يعمل في اتّجاهٍ واحد أسوأ من مقبضين: يبدو موصولًا حتى يُجرَّب
+     * من الطرف الآخر.
+     */
+    public function test_what_the_editor_writes_reaches_the_invoice_screen(): void
+    {
+        $this->actingAs($this->owner)->post(
+            route('admin.settings.templates.update', CustomerInvoiceController::PAPER_TYPE),
+            ['header' => 'من المحرّر', 'footer' => 'ذيلٌ من المحرّر', 'font' => 'صغير'],
+        )->assertSessionHasNoErrors();
+
+        $this->actingAs($this->owner)->get(route('admin.customerInvoices.create'))
+            ->assertInertia(fn ($p) => $p
+                ->where('branding.header', 'من المحرّر')
+                ->where('branding.footer', 'ذيلٌ من المحرّر')
+                ->where('branding.font', 'صغير')
+                ->etc());
+
+        $this->assertStringContainsString('من المحرّر', $this->previewHtml());
+    }
+
+    /** والمقابضُ الثلاثة في المحرّر تُدير شيئًا فعلًا — لا مقبضَ يُرسم ولا يُغيّر */
+    public function test_every_flag_in_the_editor_changes_the_paper(): void
+    {
+        Storage::fake('public');
+
+        $this->actingAs($this->owner)->post(route('admin.customerInvoices.branding'), [
+            'logo' => UploadedFile::fake()->image('logo.png', 64, 64),
+        ])->assertSessionHasNoErrors();
+
+        Setting::updateOrCreate(
+            ['business_id' => $this->business->id, 'key' => 'vat_enabled'],
+            ['value' => '1'],
+        );
+        Setting::updateOrCreate(
+            ['business_id' => $this->business->id, 'key' => 'vat_number'],
+            ['value' => 'OM1100234455'],
+        );
+
+        $on = $this->previewHtml(['notes' => 'ملاحظةٌ للعميل']);
+
+        $this->assertStringContainsString('data:image/', $on);
+        $this->assertStringContainsString('OM1100234455', $on);
+        $this->assertStringContainsString('ملاحظةٌ للعميل', $on);
+
+        $this->actingAs($this->owner)->post(
+            route('admin.settings.templates.update', CustomerInvoiceController::PAPER_TYPE),
+            ['show_logo' => false, 'show_vat_no' => false, 'show_notes' => false],
+        )->assertSessionHasNoErrors();
+
+        $off = $this->previewHtml(['notes' => 'ملاحظةٌ للعميل']);
+
+        $this->assertStringNotContainsString('data:image/', $off, 'مفتاحُ الشعار لا يُطفئه');
+        $this->assertStringNotContainsString('OM1100234455', $off, 'مفتاحُ الرقم الضريبي لا يُطفئه');
+        $this->assertStringNotContainsString('ملاحظةٌ للعميل', $off, 'مفتاحُ الملاحظة لا يُطفئها');
+
+        // والشعارُ محفوظٌ رغم إطفائه: أُطفئ الرسمُ لا مُحي الملفّ
+        $this->assertNotNull(InvoiceBranding::logo($this->business->id));
+    }
+
+    /** ومعاينةُ المحرّر لا تكتب مسودّةً في دفتر التاجر */
+    public function test_the_editor_preview_writes_no_invoice(): void
+    {
+        $this->actingAs($this->owner)->post(
+            route('admin.settings.templates.preview', CustomerInvoiceController::PAPER_TYPE),
+            ['footer' => 'تجربة'],
+        )->assertOk();
+
+        $this->assertSame(0, CustomerInvoice::count());
+        $this->assertSame(0, DB::table('customer_invoice_items')->count());
     }
 
     /* ═══════════════════ المال ═══════════════════ */

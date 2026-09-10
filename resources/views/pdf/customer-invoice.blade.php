@@ -159,7 +159,13 @@
         <tr><td><strong>{{ __('الباقي') }}</strong></td><td><strong>{{ number_format($outstanding, 3) }}</strong></td></tr>
     </table>
 
-    @if ($invoice->notes)
+    {{--
+        وملاحظةُ العميل تُطبع إن أرادها صاحبُ المحلّ — من «قوالب الأوراق».
+
+        ولا تُخلط بالملاحظات الداخليّة: تلك عمودٌ آخر لا يبلغ ورقةَ العميل
+        بحال، ولا مفتاحَ يُظهرها.
+    --}}
+    @if ($invoice->notes && ($showNotes ?? true))
         <p class="small">{{ $invoice->notes }}</p>
     @endif
 

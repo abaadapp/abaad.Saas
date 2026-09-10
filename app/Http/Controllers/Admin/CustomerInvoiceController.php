@@ -16,6 +16,8 @@ use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\Customers;
 use App\Support\Demo;
+use App\Support\DocumentRenderer;
+use App\Support\DocumentTemplates;
 use App\Support\InvoiceAttachments;
 use App\Support\InvoiceBranding;
 use App\Support\Pagination;
@@ -44,6 +46,9 @@ class CustomerInvoiceController extends Controller
 {
     /** ما يُرسل من الكتالوج إلى شاشة الإنشاء — والزائدُ يُعلَن لا يُكتم */
     private const CATALOG_LIMIT = 500;
+
+    /** اسمُ ورقتها في «قوالب الأوراق» — يُكتب مرّةً لا في كلّ نداء */
+    public const PAPER_TYPE = 'customer_invoice';
 
     private function bid(): int
     {
@@ -357,7 +362,8 @@ class CustomerInvoiceController extends Controller
              * تُرسَل لتُعرض في «تخصيص التصميم» — والمعاينةُ لا تقرأ منها
              * حرفًا: هي تُرسَم في الخادم بالقالب نفسه. فلا نسختان للاسم.
              */
-            'branding' => InvoiceBranding::settings($bid),
+            'branding' => InvoiceBranding::settings($bid)
+                + DocumentTemplates::settings($bid, self::PAPER_TYPE),
         ]);
     }
 
@@ -470,13 +476,45 @@ class CustomerInvoiceController extends Controller
      *
      * وهي `static` كي يناديَها متحكّمُ الطباعة وهو ليس من هذا الصنف.
      */
+    /**
+     * @param  array<string,mixed>|null  $override  قيمُ قالبٍ لم تُحفظ بعد — لمعاينة المحرّر
+     */
     public static function paper(
         int $bid,
         CustomerInvoice $invoice,
         float $paid,
         float $outstanding,
         ?BankAccount $bank,
+        ?array $override = null,
     ): View {
+        /*
+         * وقالبُ الورقة من «قوالب الأوراق» كأخواتها الأربع.
+         *
+         * ═══ ولمَ لم يبقَ لها مفاتيحُ خاصّة ═══
+         *
+         * كان لها تذييلٌ في مفتاحٍ من عندها، ولأخواتها تذييلٌ في السجلّ.
+         * وهما شيءٌ واحد في حسّ من يضبطه: يكتب تذييلَ فاتورة البيع فيتوقّع
+         * أن تتبعه فاتورةُ العميل — ولا تتبعه، ولا موضعَ يقول لماذا. فدخلت
+         * السجلَّ نوعًا خامسًا، وصار مفتاحُ التذييل واحدًا لكلّ نوعٍ باسمه.
+         *
+         * وما بقي في `InvoiceBranding` هو ما لا نظيرَ له في السجلّ: الاسمُ
+         * المعروض على الورقة، ولغةُ طبعها، وملفُّ الشعار نفسِه.
+         */
+        $tpl = DocumentTemplates::settings($bid, self::PAPER_TYPE, $override);
+
+        $brand = InvoiceBranding::paper($bid);
+
+        /*
+         * و«إظهار الشعار» يُطفئ الرسمَ لا يمحو الملفّ.
+         *
+         * من أطفأه يريد ورقةً بلا شعارٍ اليوم، ويبقى شعارُه محفوظًا لغدٍ
+         * وللإيصال الحراريّ. وإسقاطُ المفتاح لا تفريغُه: `Paper::brand`
+         * تقرأ الوجودَ لا القيمة.
+         */
+        if (! $tpl['show_logo']) {
+            unset($brand['logo']);
+        }
+
         return view('pdf.customer-invoice', [
             'invoice' => $invoice,
             /*
@@ -487,9 +525,17 @@ class CustomerInvoiceController extends Controller
              * والثانيةُ صفُّ المتجر كما هو في لوحة المنصّة — وأوّلُ من يضيف
              * إليها `address` يجعل عنوانَ المبنى يُطبع على كلّ فاتورة.
              */
-            'business' => InvoiceBranding::paper($bid),
-            'footerNote' => InvoiceBranding::footer($bid),
-            'vatNumber' => Vat::enabled($bid) ? Paper::vatNumber($bid) : '',
+            'business' => $brand,
+            'headerNote' => $tpl['header'],
+            'footerNote' => $tpl['footer'],
+            'showNotes' => (bool) $tpl['show_notes'],
+            'scale' => DocumentRenderer::scale((string) $tpl['font']),
+            /*
+             * والرقمُ الضريبيُّ شرطان: أن يكون المتجر مسجَّلًا، وأن يريده
+             * صاحبُه على هذه الورقة. وإطفاؤه لا يُطفئ الضريبةَ نفسَها —
+             * المبلغُ يبقى في الجدول، وإنّما يُرفع رقمُ التسجيل من الترويسة.
+             */
+            'vatNumber' => Vat::enabled($bid) && $tpl['show_vat_no'] ? Paper::vatNumber($bid) : '',
             'paid' => $paid,
             'outstanding' => $outstanding,
             'bank' => $bank,
@@ -538,10 +584,16 @@ class CustomerInvoiceController extends Controller
     {
         abort_unless((bool) auth()->user()?->allows('settings'), 403);
 
-        $data = $request->validate([
+        /*
+         * وقواعدُ القالب مشتقّةٌ من السجلّ لا مكتوبةٌ هنا.
+         *
+         * `DocumentTemplates::rules` هي نفسُها التي يصادق بها محرّرُ القوالب.
+         * وقاعدةٌ تُكتب في البابين تفترق — فيقبل أحدُهما تذييلًا يردّه الآخر
+         * عن الحقل نفسِه.
+         */
+        $data = $request->validate(DocumentTemplates::rules(self::PAPER_TYPE) + [
             'display_name' => ['nullable', 'string', 'max:120'],
             'language' => ['nullable', 'string', Rule::in(InvoiceBranding::LANGUAGES)],
-            'footer_note' => ['nullable', 'string', 'max:160'],
             /*
              * و`image` لا امتدادٌ يُقرأ من الاسم: ملفٌّ اسمُه `.png` وفيه
              * سكربتٌ يُخزَّن ثمّ يُقدَّم من القرص العامّ. والقاعدةُ تفتح
@@ -554,12 +606,26 @@ class CustomerInvoiceController extends Controller
             'logo.max' => __('أقصى حجمٍ للشعار ٢ ميغابايت'),
         ], [
             'display_name' => __('اسم المتجر في الفاتورة'),
-            'footer_note' => __('سطر أسفل الفاتورة'),
+            'header' => __('سطر تحت اسم المتجر'),
+            'footer' => __('سطر أسفل الفاتورة'),
         ]);
 
         $bid = $this->bid();
 
+        /*
+         * والأعلامُ تُقرأ من الطلب لا من المصادَق — كما في `TemplateController`.
+         *
+         * `false` يصل الحفظَ سلسلةً فارغة فتُقرأ غيابًا لا إطفاءً، فيعود
+         * العلمُ إلى افتراضيّه ويُطبع ما أخفاه صاحبُه.
+         */
+        foreach (array_keys($data) as $field) {
+            if (str_starts_with($field, 'show_')) {
+                $data[$field] = $request->boolean($field);
+            }
+        }
+
         InvoiceBranding::save($bid, $data);
+        DocumentTemplates::save($bid, self::PAPER_TYPE, $data);
         InvoiceBranding::storeLogo(
             Business::findOrFail($bid),
             $request->file('logo'),

@@ -2,6 +2,10 @@
 
 namespace App\Support;
 
+use App\Http\Controllers\Admin\CustomerInvoiceController;
+use App\Models\BankAccount;
+use App\Models\Customer;
+use App\Models\CustomerInvoice;
 use App\Models\GoodsReceiptNote;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -162,7 +166,55 @@ class DocumentRenderer
             return self::sale($businessId, $override);
         }
 
+        if ($type === CustomerInvoiceController::PAPER_TYPE) {
+            return self::customerInvoice($businessId, $override);
+        }
+
         return self::generic($businessId, $type, self::latestOrSample($businessId, $type), $override);
+    }
+
+    /**
+     * معاينةُ فاتورة العميل في محرّر القوالب.
+     *
+     * ═══ وببانيها هو لا بنسخةٍ هنا ═══
+     *
+     * الورقةُ تُبنى في `CustomerInvoiceController::paper` — تقرؤها منها
+     * شاشةُ الإنشاء وزرُّ الطباعة. ولو بُنيت هنا ثالثةً لافترقت الثلاثةُ عند
+     * أوّل متغيّرٍ يُضاف: يُضبط الشعارُ فيُرى في موضعين ويغيب عن ثالث.
+     *
+     * ولا مسودّةَ تُكتب: أحدثُ فاتورةٍ إن وُجدت، وإلّا **ورقةٌ غير محفوظة**
+     * بلا صفٍّ ولا رقمٍ من التسلسل ولا قيد — انظر `CustomerInvoices::draft`.
+     * ومحرّرُ قوالبَ يترك خلفه مسودّاتٍ في دفتر التاجر عطبٌ لا ميزة.
+     *
+     * @param  array<string,mixed>|null  $override  قيمٌ لم تُحفظ بعد
+     */
+    public static function customerInvoice(int $businessId, ?array $override = null): string
+    {
+        $invoice = CustomerInvoice::where('business_id', $businessId)
+            ->with('items', 'customer')->latest('id')->first()
+            ?? CustomerInvoices::draft($businessId, Customer::where('business_id', $businessId)->first(), [
+                'issued_at' => now()->toDateString(),
+                'payment_terms_days' => 30,
+                'notes' => __('يُرجى السداد قبل تاريخ الاستحقاق.'),
+            ], [[
+                'description' => __('بند تجريبي'),
+                'quantity' => 2,
+                'unit_price' => 75,
+                'discount' => 0,
+            ]]);
+
+        return InvoiceBranding::render(
+            $businessId,
+            null,
+            fn () => CustomerInvoiceController::paper(
+                $businessId,
+                $invoice,
+                $invoice->exists ? $invoice->paidTotal() : 0.0,
+                $invoice->exists ? $invoice->outstanding() : (float) $invoice->total,
+                BankAccount::where('business_id', $businessId)->orderBy('id')->first(),
+                $override,
+            )->render(),
+        );
     }
 
     /**

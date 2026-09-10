@@ -7,12 +7,17 @@ use App\Models\Branch;
 use App\Models\GoodsReceiptNote;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderItem;
+use App\Models\Setting;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\DocumentPaper;
+use App\Support\DocumentRenderer;
 use App\Support\GoodsReceipts;
+use App\Support\InvoiceBranding;
 use App\Support\Permissions;
 use App\Support\PurchaseOrders;
 use App\Support\PurchaseOrderTotals;
@@ -340,6 +345,176 @@ class PurchaseOrderController extends Controller
      * يستطيع إرسال إجماليٍّ صفرٍ لأمرٍ بألف. والصيغةُ في `PurchaseOrderTotals`
      * موضعًا واحدًا تقرؤه الشاشةُ والخادم.
      */
+    /**
+     * الورقةُ كما ستُطبع بما على الشاشة الآن — قبل أن تُحفظ.
+     *
+     * ═══ ولماذا لا تُرسم في الشاشة ═══
+     *
+     * القاعدةُ مكتوبةٌ في `DocumentRenderer`: «المعاينةُ تُرسم بالقالب الذي
+     * يُطبع لا بنسخةٍ ثانية منه في الشاشة». وصندوقٌ يشبه أمرَ الشراء مرسومٌ
+     * في JSX يفترق عنه عند أوّل تعديل — يُضاف سطرٌ إلى الورقة ولا يظهر في
+     * الصورة، فيعتمد التاجر شكلًا لا يخرج من الطابعة ويرسل إلى مورّده ورقةً
+     * غيرَ التي رآها.
+     *
+     * فهنا `pdf.document` نفسُه بقالب `purchase` من «قوالب الأوراق» — وهو
+     * القالبُ الذي يطبع به `DocumentPrintController::purchase`.
+     *
+     * ═══ ولا شيءَ يُكتب ═══
+     *
+     * لا صفَّ أمر، ولا رقمَ يُقطع من التسلسل، ولا سطرَ في سجلّ النشاط، ولا
+     * قيد — وأمرُ الشراء لا يكتب قيدًا أصلًا. من فتح الشاشة وكتب بندًا ثمّ
+     * تركها لا يترك خلفه شيئًا.
+     *
+     * ═══ ولا حقلَ مطلوبًا ═══
+     *
+     * `store` تشترط مورّدًا وفرعًا وبندًا، وهذه لا تشترط: المعاينةُ ترافق
+     * الكتابة من أوّل حرف. ومعاينةٌ لا تظهر حتى يكتمل النموذج لا يراها أحدٌ
+     * إلّا بعد أن يفرغ من حاجته إليها.
+     */
+    public function preview(Request $request)
+    {
+        $bid = $this->bid();
+
+        $data = $request->validate([
+            'supplier_id' => ['nullable', 'integer'],
+            'ordered_at' => ['nullable', 'date'],
+            'expected_delivery_at' => ['nullable', 'date'],
+            'supplier_reference' => ['nullable', 'string', 'max:100'],
+            'supplier_discount' => ['nullable', 'numeric'],
+            'shipping_cost' => ['nullable', 'numeric'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'payment_method' => ['nullable', 'string', Rule::in(PurchaseOrders::METHODS)],
+            'payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'items' => ['nullable', 'array'],
+            'items.*.product_id' => ['nullable', 'integer'],
+            'items.*.name' => ['nullable', 'string', 'max:255'],
+            'items.*.purchase_unit' => ['nullable', 'string', 'max:40'],
+            'items.*.units_per_purchase_unit' => ['nullable', 'numeric'],
+            'items.*.cost' => ['nullable', 'numeric'],
+            'items.*.quantity' => ['nullable', 'numeric'],
+            /*
+             * ولغةُ الورقة تُرسَل لتُعاين — ولا تُحفظ من هنا.
+             *
+             * من قلّبها لينظر كيف يقرؤها مورّدُه الأجنبيّ ثمّ عاد لا يجب أن
+             * يجد أوراقَه القادمة إنجليزيّة. والحفظُ من «قوالب الأوراق».
+             */
+            'lang' => ['nullable', 'string', Rule::in(InvoiceBranding::LANGUAGES)],
+        ]);
+
+        /*
+         * والمورّدُ من متجر الطالب أو لا مورّد.
+         *
+         * `first()` لا `firstOrFail()`: رقمٌ من متجرٍ آخر يُهمَل فتُرسم ورقةٌ
+         * بلا اسم — ولا يُردّ الطلبُ بـ٤٠٤ في شاشةٍ تكتب. ولا يُقرأ صفُّ
+         * مورّدٍ ليس من المتجر بحال.
+         */
+        $supplier = ! empty($data['supplier_id'])
+            ? Supplier::where('business_id', $bid)->whereKey($data['supplier_id'])->first()
+            : null;
+
+        $lines = $this->lines($bid, array_map(
+            fn (array $r) => $r + ['name' => '', 'cost' => 0, 'quantity' => 0],
+            $data['items'] ?? [],
+        ));
+
+        $totals = PurchaseOrderTotals::compute(
+            $lines,
+            (float) ($data['supplier_discount'] ?? 0),
+            (float) ($data['shipping_cost'] ?? 0),
+            ($data['tax_rate'] ?? null) !== null && $data['tax_rate'] !== ''
+                ? (float) $data['tax_rate']
+                : PurchaseOrderTotals::taxRateFor($bid),
+        );
+
+        /*
+         * وأمرٌ **غير محفوظ** يُرسَم به.
+         *
+         * `setRelation` تجعل `$po->items` تردّ ما بُني هنا بدل أن تسأل
+         * القاعدةَ عن صفوفٍ لا وجود لها — والقالبُ يمرّ عليها كما يمرّ على
+         * بنود أمرٍ محفوظ، فهو قالبٌ واحد لا اثنان.
+         */
+        $po = new PurchaseOrder([
+            'business_id' => $bid,
+            'number' => null,
+            'supplier_id' => $supplier?->id,
+            'supplier_name' => $supplier?->name,
+            'supplier_reference' => $data['supplier_reference'] ?? null,
+            'ordered_at' => $data['ordered_at'] ?? now()->toDateString(),
+            'expected_delivery_at' => $data['expected_delivery_at'] ?? null,
+            'payment_method' => $data['payment_method'] ?? null,
+            'payment_terms_days' => $data['payment_terms_days'] ?? null,
+            'items_subtotal' => $totals['items_subtotal'],
+            'supplier_discount' => $totals['supplier_discount'],
+            'shipping_cost' => $totals['shipping_cost'],
+            'tax' => $totals['tax'],
+            'tax_rate' => $totals['tax_rate'],
+            'total' => $totals['total'],
+            'notes' => $data['notes'] ?? null,
+        ]);
+
+        $po->setRelation('items', collect($lines)->map(fn (array $l) => new PurchaseOrderItem($l)));
+
+        if ($supplier !== null) {
+            $po->setRelation('supplier', $supplier);
+        }
+
+        return response()->json([
+            'html' => InvoiceBranding::render(
+                $bid,
+                $data['lang'] ?? null,
+                fn () => DocumentRenderer::generic($bid, 'purchase', DocumentPaper::forPurchase($po)),
+            ),
+        ]);
+    }
+
+    /**
+     * المورّدُ الذي تُفتح عليه الشاشة — يُضبط أو يُرفع.
+     *
+     * ═══ ولمَ مقبضُه هنا ═══
+     *
+     * أكثرُ المحلّات تشتري من مورّدٍ واحد أكثرَ ممّا تشتري من غيره: مزرعةٌ
+     * تُورّد الورد أسبوعيًّا. واختيارُه في كلّ مرّةٍ من قائمةٍ عملٌ يُعاد بلا
+     * سبب. والمقبضُ حيث يُرى أثرُه لا في شاشةٍ يُبحث عنها.
+     *
+     * ولا يُحفظ رقمٌ لا صفَّ له: معرّفٌ من متجرٍ آخر يُردّ برسالةٍ على حقله،
+     * لا يُكتب صامتًا ثمّ يُهمَل عند القراءة فيقول التنبيهُ «حُفظ» ولا يتغيّر
+     * شيءٌ في الشاشة القادمة.
+     *
+     * ═══ وهو إعدادُ متجرٍ لا فعلَ أمرِ شراء ═══
+     *
+     * يُغيّر ما تُفتح عليه الشاشةُ لكلّ من يكتب أمرًا — فيُقاس بقسم
+     * «الإعدادات» كما يُقاس تبديلُ قوالب الأوراق.
+     */
+    public function defaultSupplier(Request $request)
+    {
+        abort_unless((bool) auth()->user()?->allows('settings'), 403);
+
+        $bid = $this->bid();
+
+        $data = $request->validate([
+            'supplier_id' => ['nullable', 'integer', Rule::exists('suppliers', 'id')->where('business_id', $bid)],
+        ], [
+            'supplier_id.exists' => __('هذا المورّد ليس من موردي متجرك.'),
+        ], ['supplier_id' => __('المورد الافتراضي')]);
+
+        Setting::updateOrCreate(
+            ['business_id' => $bid, 'key' => PurchaseOrders::DEFAULT_SUPPLIER],
+            ['value' => (string) ($data['supplier_id'] ?? '')],
+        );
+
+        Activity::log('settings', blank($data['supplier_id'] ?? null)
+            ? 'رفع المورّد الافتراضي لأوامر الشراء'
+            : 'ضبط المورّد الافتراضي لأوامر الشراء');
+
+        return back()->with('toast', [
+            'msg' => blank($data['supplier_id'] ?? null)
+                ? __('رُفع المورد الافتراضي')
+                : __('حُفظ المورد الافتراضي'),
+            'type' => 'success',
+        ]);
+    }
+
     public function store(Request $request)
     {
         $bid = $this->bid();
@@ -378,6 +553,22 @@ class PurchaseOrderController extends Controller
              */
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            /* وما لا يُطبع: عمودٌ آخر لا يبلغ ورقةَ المورّد — انظر `DocumentPaper::forPurchase` */
+            'internal_notes' => ['nullable', 'string', 'max:1000'],
+            /*
+             * ═══ وطريقةُ السداد **مطلوبة** — ونيّةٌ لا حدث ═══
+             *
+             * من يكتب الأمر يعرف كيف اتّفق مع مورّده، ومن يسدّد بعد شهرٍ لا
+             * يعرف. وكانت تُكتب في «ملاحظات» أو لا تُكتب، فتُسأل هاتفيًّا.
+             *
+             * ولا تكتب قيدًا ولا تُنقص صندوقًا ولا تُنشئ ذمّة: الذمّةُ تنشأ
+             * باعتماد سند المورّد، والمالُ يخرج بالسداد على السند. وهذا
+             * الملفُّ لا يمسّ أيًّا منهما — يحرسه
+             * `APurchaseOrderIsAnIntentionNotAnEventTest`.
+             */
+            'payment_method' => ['required', 'string', Rule::in(PurchaseOrders::METHODS)],
+            'payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'payment_reference' => ['nullable', 'string', 'max:60'],
             'draft' => ['nullable', 'boolean'],
             /*
              * ومفتاحٌ يرسله المتصفّح مرّةً واحدة لكلّ نموذج.
@@ -397,6 +588,7 @@ class PurchaseOrderController extends Controller
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ], [
             'supplier_id.required' => __('اختر المورد'),
+            'payment_method.required' => __('اختر طريقة الدفع المتّفق عليها مع المورّد'),
             'branch_id.required' => __('اختر الفرع'),
             'items.required' => __('أضف صنفًا واحدًا على الأقل'),
             'items.min' => __('أضف صنفًا واحدًا على الأقل'),
@@ -492,6 +684,18 @@ class PurchaseOrderController extends Controller
                     'tax_rate' => $totals['tax_rate'],
                     'total' => $totals['total'],
                     'notes' => $data['notes'] ?? null,
+                    'internal_notes' => $data['internal_notes'] ?? null,
+                    /*
+                     * وخطّةُ السداد تُحفظ ولا تُنفَّذ.
+                     *
+                     * لا `Ledger::post` هنا ولا في شيءٍ يناديه هذا الباب —
+                     * أمرُ الشراء نيّةٌ لا حدث. والسدادُ الفعليّ بابُه
+                     * `SupplierInvoiceController::pay`، ولا يُفتح إلّا على
+                     * سندٍ **معتمد**.
+                     */
+                    'payment_method' => $data['payment_method'],
+                    'payment_terms_days' => $data['payment_terms_days'] ?? null,
+                    'payment_reference' => $data['payment_reference'] ?? null,
                     'ordered_at' => $data['ordered_at'],
                     'expected_delivery_at' => $data['expected_delivery_at'] ?? null,
                     'attachment' => $stored,

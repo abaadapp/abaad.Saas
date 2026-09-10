@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Package, Paperclip, Plus, Send, Sparkles, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { Package, Paperclip, Plus, RefreshCw, Send, Settings2, Sparkles, Star, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import ComboBox from '@/Components/ComboBox';
@@ -57,6 +57,26 @@ interface Props {
     formToken: string;
     /** مورّدٌ أُضيف من نافذة هذه الشاشة — يُختار فور العودة */
     newSupplierId: number | null;
+    /**
+     * المورّدُ الذي تُفتح عليه الشاشة.
+     *
+     * من `PurchaseOrders::defaultSupplierId`: المضبوطُ صراحةً، وإلّا الوحيدُ
+     * إن كان للمتجر مورّدٌ واحد — وقائمةٌ ذاتُ خيارٍ واحد ليست خيارًا.
+     */
+    defaultSupplierId: number | null;
+    /**
+     * وسائلُ السداد المنويّة — **نيّةٌ لا حدث**.
+     *
+     * لا واحدةٌ منها تكتب قيدًا ولا تُنقص صندوقًا. والسدادُ الفعليّ بابُه
+     * سندُ المورّد المعتمد — انظر `PurchaseOrders::METHODS`.
+     */
+    methods: string[];
+    /** مددُ السداد المعروضة — من الخادم لا مكتوبةً هنا */
+    terms: number[];
+    /** لغةُ الورقة المحفوظة في «قوالب الأوراق» — تبدأ منها المعاينة */
+    documentLanguage: string;
+    /** أيملك من يقرأ تبديلَ قالب الورقة؟ — قسمُ «الإعدادات» */
+    mayBrand: boolean;
 }
 
 /**
@@ -91,8 +111,11 @@ const blank = (unit: string): Line => ({
  * و`lib/purchase-totals` — واختبارٌ يقابلهما رقمًا برقم.
  */
 export default function PurchaseCreate() {
-    const { suppliers, products, reorderSuggestions, branches, currentBranchId, fromReorder, today, taxRate, formToken, newSupplierId, units: knownUnits, context } =
-        usePage<PageProps<Props>>().props;
+    const {
+        suppliers, products, reorderSuggestions, branches, currentBranchId, fromReorder, today,
+        taxRate, formToken, newSupplierId, units: knownUnits, context,
+        defaultSupplierId, methods, terms, documentLanguage, mayBrand,
+    } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
@@ -156,7 +179,14 @@ export default function PurchaseCreate() {
     );
 
     const form = useForm({
-        supplier_id: '',
+        /*
+         * والمورّدُ الافتراضيُّ يُفتح عليه — ومن أضاف مورّدًا للتوّ يسبقه.
+         *
+         * وهو اختيارٌ مبدئيٌّ لهذه الزيارة لا قفل: من بدّله بدّله، ولا يُعاد
+         * فرضُه بعد أن اختار. ومضبوطٌ في `useForm` لا في `useEffect`: ضبطُه
+         * بعد أوّل رسمٍ يجعل المعاينةَ تُرسم مرّةً بلا مورّد ثمّ تُعاد.
+         */
+        supplier_id: String(newSupplierId ?? defaultSupplierId ?? ''),
         branch_id: currentBranchId ? String(currentBranchId) : '',
         ordered_at: today,
         expected_delivery_at: '',
@@ -166,6 +196,15 @@ export default function PurchaseCreate() {
         // ونسبةُ الضريبة تبدأ من نسبة المتجر ثمّ تتبع الورقة — انظر الملخّص
         tax_rate: String(taxRate),
         notes: '',
+        /* وما لا يُطبع: عمودٌ آخر لا يبلغ ورقةَ المورّد */
+        internal_notes: '',
+        /*
+         * وطريقةُ السداد **نيّةٌ لا حدث**: تُحفظ على الورقة ولا تكتب قيدًا.
+         * ورأسُ القائمة من الخادم لا قيمةٌ مكتوبةٌ هنا.
+         */
+        payment_method: methods[0] ?? '',
+        payment_terms_days: '',
+        payment_reference: '',
         attachment: null as File | null,
         form_token: formToken,
         draft: false,
@@ -183,6 +222,97 @@ export default function PurchaseCreate() {
     );
 
     const [addingSupplier, setAddingSupplier] = useState(false);
+
+    /* أهذا هو المضبوطُ افتراضيًّا؟ — يُقرأ من المحفوظ لا من أوّل قيمةٍ في النموذج */
+    const isDefaultSupplier =
+        form.data.supplier_id !== '' && form.data.supplier_id === String(defaultSupplierId ?? '');
+
+    /*
+     * ───────── الورقة كما ستخرج ─────────
+     *
+     * تُرسم في الخادم بالقالب الذي يُطبع — انظر
+     * `PurchaseOrderController::preview`.
+     */
+    const [html, setHtml] = useState('');
+    const [drawing, setDrawing] = useState(true);
+    const [lang, setLang] = useState(documentLanguage === 'en' ? 'en' : 'ar');
+
+    /*
+     * وورقةٌ واحدة تُرسم في كلّ لحظة.
+     *
+     * كلُّ ضغطة حرفٍ تطلب رسمًا، وردودُ الخادم لا تصل بالترتيب الذي أُرسلت
+     * به — فتحلّ صورةٌ قديمة محلَّ أحدث واحدة، ويرى التاجرُ بندَه الأخير وقد
+     * اختفى. والعدّاد يُسقط كلَّ ردٍّ سبقه أحدثُ منه.
+     */
+    const ticket = useRef(0);
+
+    /*
+     * وما يُرسَل للرسم هو ما يُرسَل للحفظ — لا مجموعةٌ ثانية تُختار بيدها.
+     *
+     * حقلٌ يُنسى هنا يعني ورقةً تُعاين بلا «مرجع المورّد» ثمّ تُطبع به —
+     * ومعاينةٌ تكذب أسوأ من غياب المعاينة.
+     */
+    const payload = useMemo(
+        () => ({
+            supplier_id: form.data.supplier_id,
+            ordered_at: form.data.ordered_at,
+            expected_delivery_at: form.data.expected_delivery_at,
+            supplier_reference: form.data.supplier_reference,
+            supplier_discount: form.data.supplier_discount,
+            shipping_cost: form.data.shipping_cost,
+            tax_rate: form.data.tax_rate,
+            payment_method: form.data.payment_method,
+            payment_terms_days: form.data.payment_terms_days,
+            notes: form.data.notes,
+            lang,
+            items: lines.map((l) => ({
+                product_id: l.product_id,
+                name: l.name,
+                purchase_unit: l.purchase_unit,
+                units_per_purchase_unit: l.units_per_purchase_unit,
+                cost: l.cost,
+                quantity: l.qty,
+            })),
+        }),
+        [form.data, lines, lang],
+    );
+
+    const draw = useCallback(async () => {
+        const mine = ++ticket.current;
+        setDrawing(true);
+
+        try {
+            const res = await fetch(route('admin.purchases.preview'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(payload),
+            });
+
+            const body = await res.json();
+
+            if (mine === ticket.current) {
+                setHtml(typeof body.html === 'string' ? body.html : '');
+            }
+        } catch {
+            /* شبكةٌ انقطعت: تبقى آخر صورةٍ رُسمت، ولا تُمحى الورقة أمام صاحبها */
+        } finally {
+            if (mine === ticket.current) {
+                setDrawing(false);
+            }
+        }
+    }, [payload]);
+
+    // تأخيرٌ قصير: الكتابة في البنود لا ترسل طلبًا لكلّ حرف
+    useEffect(() => {
+        const id = window.setTimeout(draw, 400);
+
+        return () => window.clearTimeout(id);
+    }, [draw]);
 
     /*
      * ومورّدٌ أُضيف من النافذة يُختار وحدَه.
@@ -256,15 +386,21 @@ export default function PurchaseCreate() {
             />
 
             <PageHeader
-                title="أمر شراء جديد"
-                subtitle={t('إنشاء أمر شراء من مورد لتجهيز الأصناف وإدارة المخزون')}
+                title="إنشاء أمر شراء جديد"
+                subtitle={t('إنشاء أمر شراء لمورد لطلب المنتجات أو الخدمات')}
             />
 
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+            {/*
+                وعمودان: ما يُكتب إلى جانب الورقة كما ستخرج.
+
+                والورقةُ ملتصقةٌ بأعلى الشاشة تمتدّ بامتداد البنود — فما
+                يُراجَع يبقى في العين بينما تُملأ الأصناف.
+            */}
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
                 {/* ═══════════ الجانب الأكبر: التفاصيل والأصناف ═══════════ */}
-                <div className="space-y-5 xl:col-span-8">
+                <div className="min-w-0 space-y-4">
                     <Card className="p-5">
-                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('تفاصيل أمر الشراء')}</h2>
+                        <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('معلومات أمر الشراء')}</h2>
 
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                             {/*
@@ -288,14 +424,56 @@ export default function PurchaseCreate() {
                                     />
                                 )}
 
-                                <button
-                                    type="button"
-                                    className="mt-1.5 flex items-center gap-1 text-[12px] font-medium text-[#6d28d9] hover:underline"
-                                    onClick={() => setAddingSupplier(true)}
-                                >
-                                    <UserPlus className="size-3.5" />
-                                    {suppliers.length === 0 ? t('لا موردين بعد — أضف الأول') : t('إضافة مورد جديد')}
-                                </button>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-1 text-[12px] font-medium text-[#6d28d9] hover:underline"
+                                        onClick={() => setAddingSupplier(true)}
+                                    >
+                                        <UserPlus className="size-3.5" />
+                                        {suppliers.length === 0 ? t('لا موردين بعد — أضف الأول') : t('إضافة مورد جديد')}
+                                    </button>
+
+                                    {/*
+                                        ───────── المورّدُ الافتراضيّ ─────────
+
+                                        أكثرُ المحلّات تشتري من مورّدٍ واحد
+                                        أكثرَ من غيره — مزرعةٌ تُورّد الورد
+                                        أسبوعيًّا. والمقبضُ حيث يُرى أثرُه: من
+                                        فتح الشاشةَ فوجد مورّدَه مختارًا يعرف
+                                        من أين يُبدَّل.
+
+                                        وهو إعدادُ متجرٍ لا فعلُ أمرٍ — فلا
+                                        يُعرض لمن لا يملك «الإعدادات».
+                                    */}
+                                    {mayBrand && form.data.supplier_id !== '' && (
+                                        <button
+                                            type="button"
+                                            className="flex items-center gap-1 text-[12px] font-medium text-[#4b4b4b] hover:underline"
+                                            onClick={() =>
+                                                router.post(
+                                                    route('admin.purchases.defaultSupplier'),
+                                                    {
+                                                        supplier_id: isDefaultSupplier
+                                                            ? ''
+                                                            : form.data.supplier_id,
+                                                    },
+                                                    { preserveScroll: true, preserveState: false },
+                                                )
+                                            }
+                                        >
+                                            <Star
+                                                className={
+                                                    'size-3.5 ' +
+                                                    (isDefaultSupplier ? 'fill-[#f59e0b] text-[#f59e0b]' : '')
+                                                }
+                                            />
+                                            {isDefaultSupplier
+                                                ? t('إلغاء المورد الافتراضي')
+                                                : t('اجعله المورد الافتراضي')}
+                                        </button>
+                                    )}
+                                </div>
                             </Field>
 
                             <Field label="الفرع" required error={err('branch_id')}>
@@ -328,6 +506,42 @@ export default function PurchaseCreate() {
                                     min={form.data.ordered_at}
                                     onChange={(e) => form.setData('expected_delivery_at', e.target.value)}
                                 />
+                            </Field>
+
+                            {/*
+                                ── شروط الدفع ──
+
+                                مدّةٌ يمنحها المورّد — «مستحق فورًا» أو «صافي
+                                ٣٠». وهي غيرُ طريقة الدفع: تلك وسيلةٌ وهذه
+                                مدّة. وحقلٌ واحد للاثنين يجعل من يختار «آجل»
+                                يفقد المدّة، ومن يكتب «٣٠ يومًا» لا يقول بأيّ
+                                وسيلة.
+                            */}
+                            <Field label="شروط الدفع" error={err('payment_terms_days')}>
+                                <Select
+                                    value={form.data.payment_terms_days}
+                                    onChange={(e) => form.setData('payment_terms_days', e.target.value)}
+                                    placeholder={t('غير محدّد')}
+                                    options={terms.map((d) => ({
+                                        value: String(d),
+                                        label: d === 0
+                                            ? t('مستحق فورًا')
+                                            : `${d} ${d <= 10 ? t('أيام') : t('يومًا')}`,
+                                    }))}
+                                />
+                            </Field>
+
+                            {/*
+                                ── رقم أمر الشراء ──
+
+                                ولا يُعرض قبل الحفظ لأنّه لا يوجد: الرقمُ
+                                يُقطع من التسلسل عند الكتابة. وصندوقٌ منقّطٌ
+                                لا قائمةٌ معطّلة — ما لا يُدار لا يُرسم مقبضًا.
+                            */}
+                            <Field label="رقم أمر الشراء">
+                                <div className="flex h-10 items-center rounded-[10px] border border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 text-[13px] text-[#9ca3af]">
+                                    {t('سيتم إنشاء الرقم عند الإصدار')}
+                                </div>
                             </Field>
 
                             <Field label="رقم مرجع المورد" error={err('supplier_reference')}>
@@ -422,6 +636,69 @@ export default function PurchaseCreate() {
                     </Card>
 
                     {/* ═══════════ الأزرار ═══════════ */}
+                    {/* ═══════════ معلومات الدفع — نيّةٌ لا حدث ═══════════ */}
+                    <Card className="p-5">
+                        <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('معلومات الدفع')}</h2>
+                        <p className="mb-4 text-[12px] leading-relaxed text-[#9ca3af]">
+                            {t('ما اتّفقت عليه مع المورّد — يُكتب على الورقة ولا يُخرج مالًا.')}
+                        </p>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label required>{t('طريقة الدفع')}</Label>
+                                {/*
+                                    والقائمةُ من الخادم لا مكتوبةً هنا —
+                                    `PurchaseOrders::METHODS`.
+                                */}
+                                <div className="space-y-2.5 pt-1">
+                                    {methods.map((value) => (
+                                        <label key={value} className="flex items-center gap-2 text-[13px]">
+                                            <input
+                                                type="radio"
+                                                name="payment_method"
+                                                className="size-4 accent-[#6d28d9]"
+                                                checked={form.data.payment_method === value}
+                                                onChange={() => form.setData('payment_method', value)}
+                                            />
+                                            {t(value)}
+                                        </label>
+                                    ))}
+                                </div>
+                                {err('payment_method') && (
+                                    <p className="text-[12px] text-[#b91c1c]">{err('payment_method')}</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="payment-reference">{t('رقم المرجع')}</Label>
+                                <Input
+                                    id="payment-reference"
+                                    value={form.data.payment_reference}
+                                    onChange={(e) => form.setData('payment_reference', e.target.value)}
+                                    placeholder={t('اختياري')}
+                                />
+                                {err('payment_reference') && (
+                                    <p className="text-[12px] text-[#b91c1c]">{err('payment_reference')}</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/*
+                            ═══ ويُقال صراحةً إنّ هذا لا يدفع ═══
+
+                            حقلٌ اسمه «طريقة الدفع» في شاشةٍ يُضغط فيها زرُّ
+                            «إصدار» يُقرأ دفعًا. ومن اختار «نقدي» ثمّ فتح
+                            الصندوقَ في المالية فوجده كما هو يظنّ النظامَ
+                            معطوبًا — والصحيحُ أنّ أمرَ الشراء لا يدفع شيئًا.
+
+                            فالدورةُ تُكتب كما هي: أمرٌ ← استلامٌ يُعتمد ←
+                            سندُ مورّدٍ يُعتمد ← سدادٌ يُقيَّد.
+                        */}
+                        <p className="mt-4 rounded-[10px] bg-[#f5f3ff] p-3 text-[12px] leading-relaxed text-[#5b21b6]">
+                            {t('لا يُقيَّد سدادٌ من هذه الشاشة. المال يخرج عند سداد سند المورّد المعتمد: أمرُ شراء ← استلامٌ يُعتمد ← سندُ مورّدٍ يُعتمد ← سداد.')}
+                        </p>
+                    </Card>
+
                     <Card className="flex flex-wrap items-center justify-end gap-2 p-4">
                         {/*
                             و«إلغاء» وجهةٌ مكتوبةٌ باسمها لا `history.back()`.
@@ -458,8 +735,93 @@ export default function PurchaseCreate() {
                     </Card>
                 </div>
 
-                {/* ═══════════ الجانب الأصغر: الملخّص والملاحظات والمرفق ═══════════ */}
-                <div className="space-y-5 xl:col-span-4">
+                {/*
+                    ═══════════ الورقةُ كما ستخرج ═══════════
+
+                    ═══ ولماذا لا تُرسم هنا ═══
+
+                    القاعدةُ مكتوبةٌ في `DocumentRenderer`: المعاينةُ تُرسم
+                    بالقالب الذي يُطبع لا بنسخةٍ ثانية منه في الشاشة. وصندوقٌ
+                    يشبه أمرَ الشراء مبنيٌّ من JSX يفترق عنه عند أوّل تعديل —
+                    يُضاف سطرٌ إلى الورقة ولا يظهر في الصورة، فيعتمد التاجرُ
+                    شكلًا لا يخرج من الطابعة ويرسل إلى مورّده ورقةً غيرَ التي
+                    رآها.
+
+                    فما في الإطار هنا هو `pdf.document` بقالب `purchase` من
+                    «قوالب الأوراق» — وهو القالبُ الذي يطبع به زرُّ الطباعة.
+                */}
+                <div className="min-w-0 space-y-2 xl:sticky xl:top-4 xl:self-start">
+                    <div className="flex flex-wrap items-center gap-2 px-1">
+                        <h2 className="me-auto text-[15px] font-bold text-[#111]">
+                            {t('معاينة أمر الشراء')}
+                            {drawing && (
+                                <RefreshCw className="ms-2 inline size-3.5 animate-spin text-[#d1d5db]" />
+                            )}
+                        </h2>
+
+                        {/*
+                            ولغةُ الورقة ليست لغةَ اللوحة: موظّفٌ يقرأ اللوحة
+                            إنجليزيّةً يُرسل إلى مزرعةٍ محليّةٍ ورقةً عربيّة.
+                            والتقليبُ هنا نظرٌ لا حفظ — المحفوظةُ في القالب.
+                        */}
+                        <div
+                            role="group"
+                            aria-label={t('لغة الورقة')}
+                            className="flex overflow-hidden rounded-[10px] border border-[var(--ui-border,#e8e8e8)]"
+                        >
+                            {(['ar', 'en'] as const).map((code) => (
+                                <button
+                                    key={code}
+                                    type="button"
+                                    aria-pressed={lang === code}
+                                    onClick={() => setLang(code)}
+                                    className={
+                                        'px-2.5 py-1 text-[12px] font-medium transition-colors ' +
+                                        (lang === code
+                                            ? 'bg-[#111] text-white'
+                                            : 'bg-white text-[#4b4b4b] hover:bg-[#fafafa]')
+                                    }
+                                >
+                                    {code === 'ar' ? t('العربية') : t('English')}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/*
+                            و«تخصيص التصميم» لا يفتح نافذةً من عنده.
+
+                            القالبُ يسكن «الإعدادات ‹ قوالب الأوراق ‹ أمر
+                            الشراء» — وهو الذي يطبع به الزرّ. ونافذةٌ ثانية
+                            هنا تعني مفاتيحَ ثانية تفترق عن مفاتيحه يومًا.
+                        */}
+                        {mayBrand && (
+                            <Button variant="outline" size="sm" asChild>
+                                <a href={route('admin.settings.templates.edit', 'purchase')}>
+                                    <Settings2 />
+                                    {t('تخصيص التصميم')}
+                                </a>
+                            </Button>
+                        )}
+                    </div>
+
+                    <div className="overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white">
+                        {/*
+                            sandbox بلا allow-scripts: الورقة نصٌّ يُطبع لا
+                            صفحةٌ تعمل، وتنفيذُ شيءٍ منها في اللوحة لا داعيَ له.
+                        */}
+                        <iframe
+                            title={t('معاينة أمر الشراء')}
+                            srcDoc={html}
+                            sandbox=""
+                            className="h-[60dvh] w-full border-0 bg-white xl:h-[calc(100dvh-13rem)]"
+                        />
+                    </div>
+
+                    <p className="px-1 text-[12px] leading-relaxed text-[#9ca3af]">
+                        {t('الملاحظات الداخلية والمرفقات لا تظهر في الورقة المطبوعة.')}
+                    </p>
+
+                    {/* ═══════════ الملخّص والملاحظات والمرفق ═══════════ */}
                     <Card className="p-5">
                         <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('ملخص أمر الشراء')}</h2>
 
@@ -566,13 +928,36 @@ export default function PurchaseCreate() {
                         </dl>
                     </Card>
 
+                    {/*
+                        ───────── الملاحظتان ─────────
+
+                        وملاحظتان لا واحدة.
+
+                        كان الحقلُ واحدًا، عنوانُه «ملاحظات على الأمر» ونصُّه
+                        الإرشاديُّ يقول «ملاحظات **داخلية**» — وهو يُطبع على
+                        الورقة التي تصل المورّد. فمن كتب لنفسه «هذا المورّد
+                        يتأخّر — لا تعتمد عليه في المواسم» كتبها حيث يقرؤها
+                        المورّد، وهو يظنّها له وحده.
+                    */}
                     <Card className="p-5">
-                        <h2 className="mb-3 text-[15px] font-bold text-[#111]">{t('ملاحظات على الأمر')}</h2>
+                        <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('ملاحظة للمورد')}</h2>
+                        <p className="mb-3 text-[12px] text-[#9ca3af]">{t('تظهر في أمر الشراء المطبوع.')}</p>
                         <Textarea
                             rows={3}
                             value={form.data.notes}
                             onChange={(e) => form.setData('notes', e.target.value)}
-                            placeholder={t('أضف أي ملاحظات داخلية حول أمر الشراء...')}
+                            placeholder={t('ستظهر هذه الملاحظة في أمر الشراء…')}
+                        />
+                    </Card>
+
+                    <Card className="p-5">
+                        <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t('ملاحظات داخلية')}</h2>
+                        <p className="mb-3 text-[12px] text-[#9ca3af]">{t('لا تظهر للمورد ولا تُطبع.')}</p>
+                        <Textarea
+                            rows={3}
+                            value={form.data.internal_notes}
+                            onChange={(e) => form.setData('internal_notes', e.target.value)}
+                            placeholder={t('لفريقك وحده…')}
                         />
                     </Card>
 

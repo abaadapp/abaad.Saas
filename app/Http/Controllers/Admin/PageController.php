@@ -16,10 +16,12 @@ use App\Models\User;
 use App\Support\Demo;
 use App\Support\DocumentTemplates;
 use App\Support\Emojis;
+use App\Support\InvoiceBranding;
 use App\Support\Mailer;
 use App\Support\MarketingSettings;
 use App\Support\Permissions;
 use App\Support\ProductImages;
+use App\Support\PurchaseOrders;
 use App\Support\PurchaseOrderTotals;
 use App\Support\PurchaseUnits;
 use App\Support\Reports;
@@ -383,6 +385,36 @@ class PageController extends Controller
             'units' => PurchaseUnits::forBusiness($bid),
             // ومورّدٌ أُضيف من هذه الشاشة نفسها — يُختار فور العودة إليها
             'newSupplierId' => $request->session()->get('new_supplier_id'),
+            /*
+             * ═══ المورّدُ الافتراضيّ ═══
+             *
+             * أكثرُ المحلّات تشتري من مورّدٍ واحد أكثرَ من غيره — مزرعةٌ
+             * تُورّد الورد أسبوعيًّا. ويُتحقّق من صفّه عند كلّ قراءة، ومحلٌّ
+             * له مورّدٌ واحد يُختار له وحدَه: قائمةٌ ذاتُ خيارٍ واحد ليست
+             * خيارًا. انظر `PurchaseOrders::defaultSupplierId`.
+             */
+            'defaultSupplierId' => PurchaseOrders::defaultSupplierId($bid),
+            /*
+             * ووسائلُ السداد المنويّة من مالكها لا مكتوبةً في الشاشة.
+             *
+             * وهي **نيّةٌ لا حدث**: لا واحدةٌ منها تكتب قيدًا. والسدادُ
+             * الفعليّ يقبل الصندوقَ أو البنك وحدهما، وبابُه سندُ المورّد
+             * المعتمد — انظر `PurchaseOrders::METHODS`.
+             */
+            'methods' => PurchaseOrders::METHODS,
+            'terms' => PurchaseOrders::TERMS,
+            /*
+             * ولغةُ الورقة من قالبها لا من لغة اللوحة: موظّفٌ يقرأ اللوحة
+             * إنجليزيّةً يُرسل إلى مزرعةٍ محليّةٍ ورقةً عربيّة.
+             */
+            'documentLanguage' => InvoiceBranding::language($bid),
+            /*
+             * وهل يملك من يقرأ تبديلَ قالب الورقة؟ — يُقاس بقسم الإعدادات.
+             *
+             * ومن لا يملكه لا يُرسَم له زرُّ «تخصيص التصميم»: بابٌ معروضٌ
+             * يردّ بـ٤٠٣ يُقرأ عطبًا في النظام لا منعًا.
+             */
+            'mayBrand' => (bool) auth()->user()?->allows('settings'),
         ]);
     }
 

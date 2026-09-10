@@ -617,6 +617,19 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/purchases/orders', [PurchaseOrderController::class, 'index'])->name('purchases.orders');
     Route::get('/purchases/create', [PageController::class, 'purchasesCreate'])->name('purchases.create');
     Route::post('/purchases', [PurchaseOrderController::class, 'store'])->name('purchases.store');
+    /*
+     * معاينةُ أمر الشراء قبل حفظه — تُرسم ولا تكتب.
+     *
+     * و`POST` لا `GET`: النموذجُ كلُّه يرحل معها — بنودٌ وأسعارُ شراءٍ
+     * وملاحظات — وشريطُ عنوانٍ يحمل أسعارَ شرائك يُسجَّل في كلّ سجلّ وصولٍ
+     * بينه وبين الخادم.
+     */
+    Route::post('/purchases/preview', [PurchaseOrderController::class, 'preview'])->name('purchases.preview');
+    /*
+     * والمورّدُ الافتراضيّ: مقبضٌ في شاشة الأمر وأثرُه إعدادُ متجر — فيُقاس
+     * بقسم «الإعدادات» داخل المتحكّم لا بقسم المشتريات.
+     */
+    Route::post('/purchases/default-supplier', [PurchaseOrderController::class, 'defaultSupplier'])->name('purchases.defaultSupplier');
     // ورفعُ وحدةِ شراءٍ من قائمة المتجر — لا من أوامره التي كُتبت بها
     Route::delete('/purchases/units', [PurchaseOrderController::class, 'hideUnit'])->name('purchases.units.destroy');
     Route::post('/purchases/{id}/receipt', [PurchaseOrderController::class, 'uploadReceipt'])->name('purchases.receipt');

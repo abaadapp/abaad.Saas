@@ -91,6 +91,7 @@ class TheTaxOnAPurchaseIsTheSuppliersNotOursTest extends TestCase
         return array_merge([
             'branch_id' => $this->branch->id,
             'supplier_id' => $this->supplier->id,
+            'payment_method' => 'نقدي',
             'ordered_at' => now()->toDateString(),
             'items' => [['name' => 'ورد جوري', 'quantity' => 10, 'cost' => 10]],
         ], $extra);

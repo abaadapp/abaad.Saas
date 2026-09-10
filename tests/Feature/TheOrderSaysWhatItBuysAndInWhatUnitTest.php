@@ -79,6 +79,7 @@ class TheOrderSaysWhatItBuysAndInWhatUnitTest extends TestCase
     {
         return $over + [
             'supplier_id' => $this->supplier->id,
+            'payment_method' => 'نقدي',
             'branch_id' => $this->branch->id,
             'ordered_at' => now()->toDateString(),
             'items' => [[
@@ -207,6 +208,7 @@ class TheOrderSaysWhatItBuysAndInWhatUnitTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.purchases.store'), $this->payload([
             'supplier_id' => $theirSupplier->id,
+            'payment_method' => 'نقدي',
         ]))->assertSessionHasErrors('supplier_id');
 
         $this->actingAs($this->owner)->post(route('admin.purchases.store'), $this->payload([

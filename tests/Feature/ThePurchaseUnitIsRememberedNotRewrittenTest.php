@@ -175,6 +175,7 @@ class ThePurchaseUnitIsRememberedNotRewrittenTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.purchases.store'), [
             'supplier_id' => $this->supplier->id,
+            'payment_method' => 'نقدي',
             'branch_id' => $this->branch->id,
             'ordered_at' => now()->toDateString(),
             'items' => [[
@@ -244,6 +245,7 @@ class ThePurchaseUnitIsRememberedNotRewrittenTest extends TestCase
     {
         $this->actingAs($this->owner)->post(route('admin.purchases.store'), [
             'supplier_id' => $this->supplier->id,
+            'payment_method' => 'نقدي',
             'branch_id' => $this->branch->id,
             'ordered_at' => now()->toDateString(),
             'items' => [[

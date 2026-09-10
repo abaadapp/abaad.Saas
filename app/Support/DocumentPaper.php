@@ -77,12 +77,75 @@ class DocumentPaper
         ];
     }
 
+    /**
+     * أمرُ شراءٍ ورقةً — وهي ما يقرؤه المورّد ليجهّز الشحنة.
+     *
+     * ═══ وما زِيد عليها ═══
+     *
+     * كانت تحمل الرقمَ والتاريخَ واسمَ المورّد وسطرَ إجماليٍّ واحد. وثلاثةٌ
+     * يسألها المورّدُ هاتفيًّا حين لا يجدها: **متى يريدها**، و**كيف يُسدَّد**،
+     * و**ممّ تكوّن الإجمالي**. فمن يجهّز الشحنة لا يعرف موعدَ الوصول
+     * المطلوب، ومن يُصدر السند لا يعرف مدّة السداد المتّفق عليها، ومن يراجع
+     * المبلغ لا يرى الخصمَ ولا الشحنَ ولا الضريبة — يرى مجموعًا لا يُطابقه
+     * بجدوله.
+     *
+     * ═══ ولا شيءَ يُطبع فارغًا ═══
+     *
+     * السطورُ تُرشَّح: أمرٌ بلا خصمٍ لا يطبع «الخصم: 0.000»، وبلا شحنٍ كذلك.
+     * وورقةٌ فيها أصفارٌ تُقرأ نموذجًا لم يُملأ.
+     *
+     * ═══ ولا ملاحظاتٍ داخليّة ═══
+     *
+     * `internal_notes` عمودٌ آخر لا يبلغ ورقةَ المورّد بحال — ولا سطرَ هنا
+     * يقرؤه. وما لا يُرسَل لا يُطبع.
+     */
     public static function forPurchase(PurchaseOrder $po): array
     {
+        $meta = array_values(array_filter([
+            [
+                'label' => __('تاريخ الاستلام المتوقع'),
+                'value' => optional($po->expected_delivery_at)->format('Y-m-d'),
+            ],
+            [
+                'label' => __('شروط الدفع'),
+                'value' => self::terms($po->payment_terms_days),
+            ],
+            [
+                'label' => __('طريقة الدفع'),
+                'value' => PurchaseOrders::methodLabel($po->payment_method),
+            ],
+            [
+                'label' => __('مرجع المورّد'),
+                'value' => (string) ($po->supplier_reference ?? ''),
+            ],
+        ], fn (array $r) => filled($r['value'])));
+
+        /*
+         * وتفصيلُ المبلغ — ما وقع منه فقط.
+         *
+         * `items_subtotal` قيمةُ الأصناف قبل الخصم والشحن والضريبة، وهي ما
+         * يُطابقه المورّدُ بجدول أسعاره. ومجموعٌ وحده لا يُطابَق بشيء.
+         */
+        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($po->items_subtotal)]];
+
+        if ((float) $po->supplier_discount > 0) {
+            $totals[] = ['label' => __('الخصم'), 'value' => self::money($po->supplier_discount)];
+        }
+        if ((float) $po->shipping_cost > 0) {
+            $totals[] = ['label' => __('الشحن'), 'value' => self::money($po->shipping_cost)];
+        }
+        if ((float) $po->tax > 0) {
+            $totals[] = ['label' => __('الضريبة'), 'value' => self::money($po->tax)];
+        }
+
+        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($po->total), 'grand' => true];
+
         return [
             'title' => __('أمر شراء'),
-            'number' => $po->number,
+            /* ورقمٌ لم يُقطع بعدُ يُقال «مسودّة» — لا سطرٌ ينتهي عند فراغ */
+            'number' => $po->number ?: __('مسودة'),
             'date' => optional($po->ordered_at)->format('Y-m-d'),
+            'meta' => $meta,
             'branch' => null,
             'employee' => null,
             'parties' => [
@@ -91,6 +154,7 @@ class DocumentPaper
                     'lines' => array_values(array_filter([
                         $po->supplier_name ?: optional($po->supplier)->name,
                         optional($po->supplier)->phone,
+                        optional($po->supplier)->email,
                     ])),
                 ],
             ],
@@ -100,11 +164,26 @@ class DocumentPaper
                 'unit' => self::money($i->cost),
                 'total' => self::money($i->cost * $i->quantity),
             ])->all(),
-            'totals' => [
-                ['label' => __('الإجمالي'), 'value' => self::money($po->total), 'grand' => true],
-            ],
+            'totals' => $totals,
             'notes' => (string) ($po->notes ?? ''),
         ];
+    }
+
+    /**
+     * شروطُ السداد نصًّا — «مستحق فورًا» أو «صافي ٣٠ يومًا».
+     *
+     * و«فورًا» تُقال صراحةً: صفرٌ مطبوعًا «0 يومًا» يُقرأ حقلًا لم يُملأ.
+     * وهي الصيغةُ نفسُها في فاتورة العميل — لا صيغتان لشيءٍ واحد.
+     */
+    private static function terms(mixed $days): string
+    {
+        if ($days === null || $days === '') {
+            return '';
+        }
+
+        return (int) $days === 0
+            ? __('مستحق فورًا')
+            : __('صافي :n يومًا', ['n' => (int) $days]);
     }
 
     public static function forGrn(GoodsReceiptNote $grn): array

@@ -256,6 +256,7 @@ class ArabicNumeralsTest extends TestCase
             ->withSession(['current_branch' => $branch->id])
             ->post(route('admin.purchases.store'), [
                 'supplier_id' => $supplier->id,
+                'payment_method' => 'نقدي',
                 'branch_id' => $branch->id,
                 'items' => [['name' => 'ورد جوري', 'cost' => '٤،٥', 'quantity' => '٢']],
             ])->assertSessionHasNoErrors();

@@ -127,6 +127,7 @@ class EveryClickInPurchasesAnswersTest extends TestCase
     {
         $this->actingAs($this->owner)->post(route('admin.purchases.store'), [
             'supplier_id' => $this->supplier->id,
+            'payment_method' => 'نقدي',
             'branch_id' => Branch::where('business_id', $this->business->id)->value('id'),
             'items' => [[
                 'product_id' => $this->product->id, 'name' => $this->product->name,

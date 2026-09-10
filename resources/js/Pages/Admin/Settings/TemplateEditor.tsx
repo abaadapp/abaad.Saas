@@ -145,7 +145,7 @@ export default function TemplateEditor({ template, templates }: Props) {
                             title={t('معاينة الورقة')}
                             srcDoc={html}
                             sandbox=""
-                            className="h-[70dvh] w-full border-0 bg-white lg:h-[calc(100dvh-14rem)]"
+                            className="h-[70svh] w-full border-0 bg-white lg:h-[calc(100svh-14rem)]"
                         />
                     </div>
                 </div>

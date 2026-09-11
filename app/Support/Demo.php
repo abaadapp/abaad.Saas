@@ -40,7 +40,6 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Support\PaymentMethods;
 
 /**
  * طبقة الوصول للبيانات لواجهات Abad POS.
@@ -3215,6 +3214,33 @@ class Demo
                     'url' => route('admin.integrations.googleBusiness'),
                 ]);
             }
+        }
+
+        /*
+         * ═══ رسائلُ واتساب لم تصل ═══
+         *
+         * وهذا أصمتُ عطبٍ في اللوحة كلِّها: البيعُ يتمّ، والإشعارُ يُطلب،
+         * وتردّه Meta، ويُكتب `failed` في جدولٍ لا تفتحه شاشة. فينتظر الزبون
+         * رسالةً لا تأتي، ويظنّ التاجر أنّها وصلت — **ولا شيء يقول العكس**.
+         *
+         * فيصل إلى الجرس: من لا يفتح شاشة واتساب يراه، ومن يقرأ اللوحة مرّةً
+         * في اليوم يعرف.
+         *
+         * والنصُّ يفرّق بين ما يُصلحه وما ننتظره نحن: «راجع أرقام زبائنك»
+         * لتاجرٍ تطبيقُنا محجوب لومٌ في غير محلّه، ويجعله يلاحق ما لا يملك.
+         */
+        $waAlert = WhatsAppHealth::alert($bid);
+
+        if ($waAlert !== null) {
+            $add('wa-delivery', [
+                'text' => $waAlert['ours']
+                    ? __('لم تصل :n رسالة واتساب إلى زبائنك — العطب عندنا ونعالجه', ['n' => $waAlert['count']])
+                    : __('لم تصل :n رسالة واتساب إلى زبائنك — راجع أرقامهم', ['n' => $waAlert['count']]),
+                'time' => __('آخر يوم'),
+                'icon' => 'message-circle',
+                'color' => 'danger',
+                'url' => route('admin.integrations.whatsapp'),
+            ]);
         }
 
         // ملخّص اليوم (بطاقة في الجرس) — يظهر فقط إذا كان مفعّلًا في الإعدادات وهناك نشاط اليوم

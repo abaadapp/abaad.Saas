@@ -147,6 +147,36 @@ class WhatsAppFeature
             ),
         ];
 
+        /*
+         * ═══ والخطوةُ الخامسة تقرأ نتيجةً لا إعدادًا ═══
+         *
+         * الأربعُ فوقها تقول «مربوط». وهذه وحدها تقول «يصل».
+         *
+         * وحين حجبت Meta التطبيق بقيت الأربعُ خضراء و«جاهز» فوقها، وكلُّ
+         * رسالةٍ تُردّ وتُكتب `failed` في جدولٍ لا تفتحه شاشة. فيبيع التاجر
+         * ولا يصل زبونَه شيء، وتطمئنه لوحتُه — ولا يعرف حتّى يسأل.
+         *
+         * ولا تُضاف إن لم تُجرَّب: متجرٌ لم يُرسل شيئًا بعد لا يُقال له «لا
+         * تصل رسائلك» — لم تُرسَل رسالةٌ لتصل.
+         */
+        $health = WhatsAppHealth::recent($business->id);
+
+        if ($health['attempts'] > 0) {
+            $alert = WhatsAppHealth::alert($business->id);
+
+            $steps[] = Integration::step(
+                'delivery',
+                'رسائلك تصل زبائنك',
+                $alert === null,
+                detail: $alert === null
+                    ? __('وصلت :n من :t في آخر يوم.', ['n' => $health['sent'], 't' => $health['attempts']])
+                    : null,
+                fix: $alert['text'] ?? null,
+                /* والعطبُ يُنسب إلى صاحبه: تطبيقٌ محجوبٌ ليس خطأ التاجر */
+                theirs: (bool) ($alert['ours'] ?? false),
+            );
+        }
+
         return [
             /*
              * و«بدأ» غير «تمّ».
@@ -161,7 +191,16 @@ class WhatsAppFeature
             'connected' => MarketingSettings::group($business->id, 'connect')['wa_setup_started'] === '1'
                 || self::blockReason($business) === null && $connected
                 || WhatsAppConnections::forBusiness($business->id) !== null,
-            'ready' => self::blockReason($business) === null && $connected,
+            /*
+             * و«جاهز» تشمل الوصول.
+             *
+             * كانت تقرأ الربط وحده، فتُكتب «تمّ الربط — رسائلك تخرج» فوق
+             * أربع علاماتٍ خضراء بينما لا يخرج شيء. ورأسٌ يقول «تمّ» أثقلُ
+             * في القراءة من سطرٍ أسفلَ يقول «لم يصل».
+             */
+            'ready' => self::blockReason($business) === null
+                && $connected
+                && WhatsAppHealth::alert($business->id) === null,
             'steps' => $steps,
         ];
     }

@@ -7,12 +7,14 @@ use App\Models\User;
 use App\Rules\PlatformEmailDomain;
 use App\Support\GoogleBilling;
 use App\Support\Mailer;
+use App\Support\WhatsAppHealth;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * فحص ما قبل الإطلاق — يقرأ الحالة الفعلية للنظام ولا يفترض شيئًا.
@@ -239,6 +241,25 @@ class Preflight extends Command
          * ولا يُنبَّه على منصّةٍ بلا مفتاح: لا شيء يُحمى، وتحذيرٌ لا يقابل
          * خطرًا يُقرأ مرّتين ثمّ يُتخطّى — ويمرّ معه الصادقُ يومًا.
          */
+        /*
+         * رسائلُ واتساب التي لم تصل — عبر المنصّة كلِّها.
+         *
+         * وهذا عطبٌ يُصيب كلَّ تاجرٍ دفعةً واحدة حين يكون سببُه عندنا: تطبيقٌ
+         * محجوب، أو رمزٌ انتهى. وكان يُكتب `failed` في جدولٍ لا يقرؤه أحد،
+         * فلا يُعرف حتّى يشكو أوّلُ تاجرٍ أنّ زبونه لم يصله شيء.
+         */
+        $wa = WhatsAppHealth::platform();
+        if ($wa['failed'] > 0) {
+            $this->check(
+                'رسائل واتساب تصل',
+                false,
+                $wa['failed'].' رسالة لم تصل في آخر يوم ('.$wa['shops'].' متجرًا'
+                .($wa['ours'] > 0 ? '، منها '.$wa['ours'].' سببُها عندنا' : '').') — '
+                .Str::limit((string) ($wa['last_error'] ?? ''), 100),
+                warnOnly: true,
+            );
+        }
+
         $billing = GoogleBilling::alert();
         if ($billing !== null) {
             $this->check(

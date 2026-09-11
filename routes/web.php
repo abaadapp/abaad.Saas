@@ -59,6 +59,7 @@ use App\Http\Controllers\Admin\TrashController;
 use App\Http\Controllers\Admin\WasteAnalyticsController;
 use App\Http\Controllers\Admin\Website\BuilderController;
 use App\Http\Controllers\Admin\Website\DesignController;
+use App\Http\Controllers\Admin\Website\DomainController;
 use App\Http\Controllers\Admin\Website\EditorController;
 use App\Http\Controllers\Admin\Website\MediaController;
 use App\Http\Controllers\Admin\Website\SettingsController;
@@ -331,6 +332,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     /* مفتاح خرائط Google — مسارُه مستقلٌّ لأنّه سرٌّ لا يمرّ مع بقيّة الإعدادات */
     Route::post('/settings/google-key', [SettingController::class, 'googleKey'])->name('settings.googleKey');
     Route::delete('/settings/google-key', [SettingController::class, 'forgetGoogleKey'])->name('settings.googleKey.forget');
+    /* وحالُ الفوترة — مسارٌ مستقلٌّ لأنّها تُحفظ وحدها بلا لمس المفتاح */
+    Route::post('/settings/google-billing', [SettingController::class, 'googleBilling'])->name('settings.googleBilling');
 
     /*
      * واتساب — الرقم المشترك وأذونات المتاجر.
@@ -770,9 +773,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
          * (سجلٌّ في لوحة مسجّله)، فيستحقّ عنوانًا يُحفظ ويُرسَل: «افتح هذا
          * الرابط وأضف السجلّ» أقصرُ من شرحٍ في رسالة.
          */
-        Route::get('/domain', [App\Http\Controllers\Admin\Website\DomainController::class, 'index'])->name('domain');
-        Route::put('/domain', [App\Http\Controllers\Admin\Website\DomainController::class, 'save'])->name('domain.save');
-        Route::post('/domain/check', [App\Http\Controllers\Admin\Website\DomainController::class, 'check'])->name('domain.check');
+        Route::get('/domain', [DomainController::class, 'index'])->name('domain');
+        Route::put('/domain', [DomainController::class, 'save'])->name('domain.save');
+        Route::post('/domain/check', [DomainController::class, 'check'])->name('domain.check');
 
         // مُنتقي المنتجات يبحث ولا يُحمَّل كاملًا — انظر EditorController::products
         Route::get('/products', [EditorController::class, 'products'])->name('products');

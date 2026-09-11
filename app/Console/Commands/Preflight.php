@@ -2,11 +2,17 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Business;
 use App\Models\User;
 use App\Rules\PlatformEmailDomain;
+use App\Support\GoogleBilling;
+use App\Support\Mailer;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * فحص ما قبل الإطلاق — يقرأ الحالة الفعلية للنظام ولا يفترض شيئًا.
@@ -36,7 +42,7 @@ class Preflight extends Command
         $this->check(
             'APP_ENV = production',
             app()->environment('production'),
-            'القيمة الحالية: ' . app()->environment() . ' — اضبط APP_ENV=production في .env'
+            'القيمة الحالية: '.app()->environment().' — اضبط APP_ENV=production في .env'
         );
         $this->check(
             'APP_DEBUG مُطفأ',
@@ -47,7 +53,7 @@ class Preflight extends Command
         $this->check(
             'APP_URL نطاق حقيقي بـhttps',
             str_starts_with((string) config('app.url'), 'https://') && ! str_contains((string) config('app.url'), 'localhost'),
-            'القيمة الحالية: ' . config('app.url') . ' — الروابط في الفواتير والبريد تُبنى منها'
+            'القيمة الحالية: '.config('app.url').' — الروابط في الفواتير والبريد تُبنى منها'
         );
         $this->check(
             'كوكي الجلسة محصور بـhttps',
@@ -74,7 +80,7 @@ class Preflight extends Command
         // كان الفحص القديم يمرّرها ثم تفشل عند المستخدم لا عند من ضبطها
         $this->check(
             'البريد يصل فعلًا (لا سجلّ ولا مُرسِل صامت)',
-            \App\Support\Mailer::configured(),
+            Mailer::configured(),
             'لا مُرسِل بريد حقيقي — لا تصل التنبيهات، ولا رابط استعادة كلمة المرور: يقول النظام «أرسلنا» ولا يُرسل'
         );
 
@@ -85,7 +91,7 @@ class Preflight extends Command
         $this->check(
             'لا حساب إداري بكلمة مرور افتراضية',
             $weak->isEmpty(),
-            'حسابات بكلمة مرور معروفة: ' . $weak->implode('، ')
+            'حسابات بكلمة مرور معروفة: '.$weak->implode('، ')
         );
         $this->check(
             'يوجد مدير منصة واحد على الأقل',
@@ -120,12 +126,12 @@ class Preflight extends Command
          * الإحصاءات وقوائم التجّار — فوجودُه لا يُفسد شيئًا. لكنّه يبقى
          * حسابًا يُدخَل إليه بكلمة مرورٍ معروفة، وذاك يُقال لا يُسكَت عنه.
          */
-        $demos = \App\Models\Business::demo()->pluck('name', 'id');
+        $demos = Business::demo()->pluck('name', 'id');
         $this->check(
             'لا متجر تجريبي في القاعدة',
             $demos->isEmpty(),
-            'متاجر تجريبيّة قائمة: ' . $demos->map(fn ($n, $id) => "{$n} (#{$id})")->join('، ')
-                . ' — تُحذف من: لوحة المنصّة ‹ الديمو',
+            'متاجر تجريبيّة قائمة: '.$demos->map(fn ($n, $id) => "{$n} (#{$id})")->join('، ')
+                .' — تُحذف من: لوحة المنصّة ‹ الديمو',
             warnOnly: true
         );
 
@@ -159,7 +165,7 @@ class Preflight extends Command
         } else {
             $this->warn2(
                 'لم أجد سطر المجدول في cron — تأكّد منه بنفسك:',
-                '* * * * * cd ' . base_path() . ' && php artisan schedule:run >> /dev/null 2>&1'
+                '* * * * * cd '.base_path().' && php artisan schedule:run >> /dev/null 2>&1'
             );
         }
 
@@ -178,7 +184,7 @@ class Preflight extends Command
          * إلى غيابٍ صامت، وهو أسوأ.
          */
         if (config('queue.default') === 'database') {
-            $stuck = \Illuminate\Support\Facades\DB::table('jobs')
+            $stuck = DB::table('jobs')
                 ->where('created_at', '<', now()->subMinutes(15)->timestamp)->count();
             $this->check(
                 'لا مهام عالقة في الطابور',
@@ -214,11 +220,31 @@ class Preflight extends Command
                 $this->check('عاملٌ دائم يسحب من الطابور', true, '');
             }
 
-            $failed = \Illuminate\Support\Facades\DB::table('failed_jobs')->count();
+            $failed = DB::table('failed_jobs')->count();
             $this->check(
                 'لا مهام فاشلة في الطابور',
                 $failed === 0,
                 $failed.' مهمة فاشلة — راجعها: php artisan queue:failed',
+                warnOnly: true,
+            );
+        }
+
+        /*
+         * فوترةُ Google — تنبيهٌ يصل مع كلّ نشر، لا في شاشةٍ تُفتح شهريًّا.
+         *
+         * ومفتاحُ المنصّة واحدٌ لكلّ التجّار: يومَ تنتهي التجربة ولا يُرفع
+         * الحساب تتوقّف الخرائط عن الجميع دفعةً واحدة — ولا يقول شيءٌ لماذا،
+         * فيرى التاجر «رفضت Google المفتاح» ويظنّ العطبَ عندنا.
+         *
+         * ولا يُنبَّه على منصّةٍ بلا مفتاح: لا شيء يُحمى، وتحذيرٌ لا يقابل
+         * خطرًا يُقرأ مرّتين ثمّ يُتخطّى — ويمرّ معه الصادقُ يومًا.
+         */
+        $billing = GoogleBilling::alert();
+        if ($billing !== null) {
+            $this->check(
+                'فوترة خرائط Google مسجَّلة وسليمة',
+                false,
+                $billing['text'].' — لوحة المنصّة ‹ الإعدادات ‹ خرائط Google',
                 warnOnly: true,
             );
         }
@@ -230,25 +256,25 @@ class Preflight extends Command
             $stamp === null
                 ? 'لم تُنشأ أي نسخة احتياطية قط — تأكّد من cron، وشغّل الآن: php artisan backup:run'
                 : (! $stamp['fresh']
-                    ? 'آخر نسخة: ' . $stamp['at'] . ' — المجدول متوقّف على الأرجح'
-                    : 'آخر تشغيل فشل في ' . count($stamp['failed']) . ' متجرًا — شغّل: php artisan backup:run'),
+                    ? 'آخر نسخة: '.$stamp['at'].' — المجدول متوقّف على الأرجح'
+                    : 'آخر تشغيل فشل في '.count($stamp['failed']).' متجرًا — شغّل: php artisan backup:run'),
         );
 
         /* ------------------------------- الخلاصة ------------------------------- */
         $this->newLine();
         if ($this->fail) {
-            $this->line('  <fg=red;options=bold>✗ غير جاهز — ' . count($this->fail) . ' مانع:</>');
+            $this->line('  <fg=red;options=bold>✗ غير جاهز — '.count($this->fail).' مانع:</>');
             foreach ($this->fail as $f) {
-                $this->line('    • ' . $f);
+                $this->line('    • '.$f);
             }
         } else {
             $this->line('  <fg=green;options=bold>✓ جاهز للإطلاق</>');
         }
         if ($this->warn) {
             $this->newLine();
-            $this->line('  <fg=yellow>تنبيهات (' . count($this->warn) . ') — لا تمنع الإطلاق:</>');
+            $this->line('  <fg=yellow>تنبيهات ('.count($this->warn).') — لا تمنع الإطلاق:</>');
             foreach ($this->warn as $w) {
-                $this->line('    • ' . $w);
+                $this->line('    • '.$w);
             }
         }
         $this->newLine();
@@ -259,7 +285,7 @@ class Preflight extends Command
     /** بصمة آخر نسخة احتياطية — يكتبها backup:run */
     private function lastBackup(): ?array
     {
-        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+        $disk = Storage::disk('local');
 
         if (! $disk->exists(BackupRun::STAMP)) {
             return null;
@@ -273,9 +299,9 @@ class Preflight extends Command
         }
 
         return [
-            'at' => \Illuminate\Support\Carbon::parse($at)->diffForHumans(),
+            'at' => Carbon::parse($at)->diffForHumans(),
             // ٤٨ لا ٢٤: تشغيلٌ واحد يتأخّر أو يفوت لا يستحق منعَ إطلاق
-            'fresh' => \Illuminate\Support\Carbon::parse($at)->gt(now()->subHours(48)),
+            'fresh' => Carbon::parse($at)->gt(now()->subHours(48)),
             'failed' => $data['failed'] ?? [],
         ];
     }

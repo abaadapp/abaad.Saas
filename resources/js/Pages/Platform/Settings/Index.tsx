@@ -96,7 +96,7 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, supportReach, googleHealth, googleKeyHint } =
+    const { settings, locale, mail, plans, whatsapp, supportReach, googleHealth, googleKeyHint, googleBilling } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
@@ -105,6 +105,13 @@ export default function PlatformSettings() {
             whatsapp?: SharedConnection | null;
             supportReach?: { reachable: number; total: number; ambiguous: number };
             googleHealth?: { configured: boolean; linkedBranches: number; branches: number };
+            /* حالُ فوترة Google — انظر App\Support\GoogleBilling */
+            googleBilling?: {
+                state: 'unknown' | 'trial' | 'paid';
+                ends_at: string | null;
+                days_left: number | null;
+                alert: { level: string; text: string } | null;
+            };
         }>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('general');
@@ -159,6 +166,17 @@ export default function PlatformSettings() {
 
     /* مفتاح الخرائط — سرٌّ كالرمز: يُرسل مرّةً ولا يعود إلى الشاشة */
     const googleForm = useForm({ google_places_key: '' });
+
+    /*
+     * وحالُ الفوترة — نموذجٌ مستقلٌّ عن المفتاح.
+     *
+     * جمعُهما يعني أنّ تصحيح تاريخٍ يمرّ بحقل مفتاحٍ فارغ، وأنّ حفظ مفتاحٍ
+     * جديدٍ يكتب تاريخًا لم يُقصد. وهما شيئان يُبدَّلان في وقتين.
+     */
+    const billingForm = useForm({
+        state: googleBilling?.state ?? 'unknown',
+        ends_at: googleBilling?.ends_at ?? '',
+    });
 
     type Key = keyof typeof form.data;
 
@@ -619,6 +637,24 @@ export default function PlatformSettings() {
                         </div>
 
                         {/*
+                            وتنبيهُ الفوترة فوق كلّ شيء — لأنّه وحده يُطفئ الميزة
+                            عن كلّ التجّار في يومٍ واحد، والباقي يُنقصها لواحد.
+                        */}
+                        {googleBilling?.alert && (
+                            <div
+                                className={
+                                    'mb-5 flex items-start gap-2 rounded-[10px] p-3 text-[13px] ' +
+                                    (googleBilling.alert.level === 'danger'
+                                        ? 'bg-[#fef2f2] text-[#b91c1c]'
+                                        : 'bg-[#fffbeb] text-[#b45309]')
+                                }
+                            >
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                                <span>{googleBilling.alert.text}</span>
+                            </div>
+                        )}
+
+                        {/*
                             وكم فرعًا رُبط فعلًا — عددٌ محسوب.
                             مفتاحٌ محفوظٌ وصفرُ فروع يعني أنّ الميزة لم تصل التجّار،
                             وهو خبرٌ يُقرأ هنا لا يُكتشف بعد شهر.
@@ -671,6 +707,61 @@ export default function PlatformSettings() {
                                 <Save />
                                 {t('حفظ المفتاح')}
                             </Button>
+                        </div>
+
+                        {/*
+                            ═══ حالُ الفوترة ═══
+
+                            وتُكتب بيد: Google لا تخبر واجهةَ Places متى تنتهي
+                            تجربةُ مشروعها، فلا سبيل لنا إلى قراءتها. وبلا كتابتها
+                            يُكتشف الانتهاءُ يومَ يشكو أوّلُ تاجرٍ من اختفاء تقييماته.
+                        */}
+                        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <h4 className="text-[15px] font-bold text-[#111]">{t('حال فوترة Google')}</h4>
+                            <p className="mt-1 mb-5 text-[13px] leading-relaxed text-[#6b7280]">
+                                {t('تجربة Google تسعون يومًا ثمّ يتوقّف المشروع ما لم ترفع الحساب بيدك — ويومها تتوقّف الخرائط عن كلّ تجّارك دفعةً واحدة. اكتب الموعد ليُنبّهك النظام قبله بأسبوعين.')}
+                            </p>
+
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <Field label={t('الحال')} error={billingForm.errors.state}>
+                                    <Select
+                                        value={billingForm.data.state}
+                                        onChange={(e) => billingForm.setData('state', e.target.value as 'unknown' | 'trial' | 'paid')}
+                                        options={[
+                                            { value: 'unknown', label: t('لم يُحدَّد') },
+                                            { value: 'trial', label: t('تجربة مجانية') },
+                                            { value: 'paid', label: t('حساب مدفوع') },
+                                        ]}
+                                    />
+                                </Field>
+
+                                {/* والموعدُ يُعرض مع التجربة وحدها: تاريخٌ تحت «مدفوع» لا يعني شيئًا */}
+                                {billingForm.data.state === 'trial' && (
+                                    <Field label={t('تنتهي التجربة في')} error={billingForm.errors.ends_at}>
+                                        <Input
+                                            type="date"
+                                            dir="ltr"
+                                            value={billingForm.data.ends_at}
+                                            onChange={(e) => billingForm.setData('ends_at', e.target.value)}
+                                        />
+                                    </Field>
+                                )}
+                            </div>
+
+                            <div className="mt-5 flex justify-end">
+                                <Button
+                                    type="button"
+                                    loading={billingForm.processing}
+                                    onClick={() =>
+                                        billingForm.post(route('super-admin.settings.googleBilling'), {
+                                            preserveScroll: true,
+                                        })
+                                    }
+                                >
+                                    <Save />
+                                    {t('حفظ حال الفوترة')}
+                                </Button>
+                            </div>
                         </div>
                     </Card>
                 )}

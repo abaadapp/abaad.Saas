@@ -4,6 +4,8 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\Branch;
+use App\Models\BranchGooglePlace;
 use App\Models\Business;
 use App\Models\Invoice;
 use App\Models\Plan;
@@ -14,12 +16,15 @@ use App\Models\WhatsAppConnection;
 use App\Support\Billing;
 use App\Support\BusinessTypes;
 use App\Support\Demo;
+use App\Support\GoogleBilling;
+use App\Support\GoogleReviews;
 use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
 use App\Support\PlatformConfig;
 use App\Support\Roles;
+use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppConnections;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -369,7 +374,7 @@ class PageController extends Controller
              * المتصفّح مهما كان `$hidden` عليه.
              */
             /* تلميحُ مفتاح الخرائط لا المفتاح — أربعةُ أحرفٍ ليُعرف أيُّه محفوظ */
-            'googleKeyHint' => \App\Support\GoogleReviews::platformKeyHint(),
+            'googleKeyHint' => GoogleReviews::platformKeyHint(),
             /*
              * حالُ خرائط Google في المنصّة — مهيَّأةٌ أو لا، وكم فرعًا رُبط.
              *
@@ -377,10 +382,17 @@ class PageController extends Controller
              * أنّ الميزة لم تصل التجّار، وذلك خبرٌ يُقرأ في سطرٍ لا يُكتشف
              * بعد شهر.
              */
+            /*
+             * حالُ فوترة Google وموعدُ انتهاء التجربة.
+             *
+             * وهو أخطرُ ما في هذه الشاشة صمتًا: يومَ تنتهي التجربة تتوقّف
+             * الخرائط عن كلّ التجّار دفعةً واحدة، ولا يقول شيءٌ لماذا.
+             */
+            'googleBilling' => GoogleBilling::view(),
             'googleHealth' => [
-                'configured' => \App\Support\GoogleReviews::platformKey() !== null,
-                'linkedBranches' => \App\Models\BranchGooglePlace::query()->linked()->count(),
-                'branches' => \App\Models\Branch::count(),
+                'configured' => GoogleReviews::platformKey() !== null,
+                'linkedBranches' => BranchGooglePlace::query()->linked()->count(),
+                'branches' => Branch::count(),
             ],
             /*
              * ومن يستطيع أن يكلّمنا على واتساب — عددٌ محسوبٌ لا وعد.
@@ -388,7 +400,7 @@ class PageController extends Controller
              * القناةُ تُشعَل ثمّ لا يصل شيء فيُظنّ العطبُ في الربط، والسببُ
              * أنّ أصحابَ المتاجر لم يكتبوا أرقامهم. فيُقال قبل أن يُسأل.
              */
-            'supportReach' => \App\Support\SupportWhatsApp::reach(),
+            'supportReach' => SupportWhatsApp::reach(),
             'whatsapp' => WhatsAppConnections::publicView(
                 WhatsAppConnection::query()->platform()->orderByDesc('id')->first(),
                 withIds: true,

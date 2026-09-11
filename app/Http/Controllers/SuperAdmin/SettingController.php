@@ -3,8 +3,14 @@
 namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Plan;
 use App\Models\Setting;
+use App\Support\Activity;
+use App\Support\GoogleBilling;
+use App\Support\GoogleReviews;
+use App\Support\PlatformConfig;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 
 class SettingController extends Controller
 {
@@ -67,24 +73,28 @@ class SettingController extends Controller
          * المتجر بلا باقة — بلا سعرٍ ولا فاتورة ولا سقف، ولا رسالةَ خطأ.
          */
         if (filled($data['default_plan'] ?? null)
-            && ! \App\Models\Plan::where('name', trim($data['default_plan']))->exists()) {
+            && ! Plan::where('name', trim($data['default_plan']))->exists()) {
             return back()->withErrors([
                 'default_plan' => __('لا باقة بهذا الاسم — اكتبه كما هو في شاشة الباقات.'),
             ]);
         }
 
         foreach ($data as $key => $value) {
-            if (is_array($value)) { $value = implode(',', $value); }
+            if (is_array($value)) {
+                $value = implode(',', $value);
+            }
             // المفاتيح المنطقية تُخزَّن '1'/'0' لا true/false: القراءة تقارن بالنص،
             // و false يُكتب سلسلة فارغة فتُقرأ لاحقًا على أنها «مفعّل».
-            if (is_bool($value)) { $value = $value ? '1' : '0'; }
+            if (is_bool($value)) {
+                $value = $value ? '1' : '0';
+            }
             Setting::updateOrCreate(
                 ['business_id' => null, 'key' => $key],
                 ['value' => $value]
             );
         }
 
-        \App\Support\Activity::log('settings', 'حدّث إعدادات المنصة');
+        Activity::log('settings', 'حدّث إعدادات المنصة');
 
         return back()->with('toast', ['msg' => __('تم حفظ إعدادات المنصة بنجاح'), 'type' => 'success']);
     }
@@ -98,7 +108,7 @@ class SettingController extends Controller
      */
     public function testEmail(Request $request)
     {
-        $status = \App\Support\PlatformConfig::mailStatus();
+        $status = PlatformConfig::mailStatus();
         if (! $status['delivers']) {
             return back()->with('toast', [
                 'msg' => __('البريد غير مفعّل على الخادم (المرسِل: :mailer) — لن تخرج أي رسالة.', ['mailer' => $status['mailer']]),
@@ -108,7 +118,7 @@ class SettingController extends Controller
 
         $to = $request->input('to', auth()->user()->email);
         try {
-            \Illuminate\Support\Facades\Mail::raw(__('هذه رسالة اختبار من نظام Abad POS. إذا وصلتك فإن إعدادات البريد تعمل بنجاح.'), function ($m) use ($to) {
+            Mail::raw(__('هذه رسالة اختبار من نظام Abad POS. إذا وصلتك فإن إعدادات البريد تعمل بنجاح.'), function ($m) use ($to) {
                 $m->to($to)->subject(__('اختبار البريد — Abad POS'));
             });
 
@@ -144,17 +154,38 @@ class SettingController extends Controller
             ]);
         }
 
-        \App\Support\GoogleReviews::storePlatformKey($key);
+        GoogleReviews::storePlatformKey($key);
         // ولا يُكتب المفتاح في السجلّ
-        \App\Support\Activity::log('updated', 'حدّث مفتاح خرائط Google للمنصّة');
+        Activity::log('updated', 'حدّث مفتاح خرائط Google للمنصّة');
 
         return back()->with('toast', ['msg' => __('حُفظ المفتاح'), 'type' => 'success']);
     }
 
+    /**
+     * حالُ فوترة Google — تُسجَّل بيد مدير المنصّة لأنّها ليست عندنا.
+     *
+     * ولا سبيل لنا إلى معرفتها: Google لا تخبر واجهةَ Places متى تنتهي
+     * تجربةُ مشروعها. فإمّا أن تُكتب هنا، وإمّا أن تُكتشف يومَ يشكو أوّلُ
+     * تاجرٍ من أنّ تقييماته اختفت.
+     */
+    public function googleBilling(Request $request)
+    {
+        $data = $request->validate([
+            'state' => ['required', 'string', 'in:'.implode(',', GoogleBilling::STATES)],
+            // والموعدُ شرطٌ في التجربة وحدها: «تجربة» بلا موعدٍ حالٌ لا تُنبّه عن شيء
+            'ends_at' => ['nullable', 'required_if:state,'.GoogleBilling::TRIAL, 'date'],
+        ]);
+
+        GoogleBilling::store($data['state'], $data['ends_at'] ?? null);
+        Activity::log('updated', 'حدّث حال فوترة خرائط Google');
+
+        return back()->with('toast', ['msg' => __('حُفظت حال الفوترة'), 'type' => 'success']);
+    }
+
     public function forgetGoogleKey()
     {
-        \App\Support\GoogleReviews::storePlatformKey(null);
-        \App\Support\Activity::log('updated', 'حذف مفتاح خرائط Google للمنصّة');
+        GoogleReviews::storePlatformKey(null);
+        Activity::log('updated', 'حذف مفتاح خرائط Google للمنصّة');
 
         return back()->with('toast', ['msg' => __('حُذف المفتاح'), 'type' => 'warning']);
     }

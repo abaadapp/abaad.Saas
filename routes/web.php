@@ -503,6 +503,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/orders/{number}/status', [OrderDetailController::class, 'status'])->name('orders.status');
     // إرسالُ الفاتورة إلى الزبون — نصٌّ يُكتب في الخادم ويُفتح على واتساب التاجر
     Route::post('/orders/{number}/send', [OrderDetailController::class, 'send'])->name('orders.send');
+    /* إبلاغُ الزبون بحالة طلبه يدويًّا — لا يمرّ بميتا، فيعمل والحظرُ قائم */
+    Route::post('/orders/{number}/status-notice', [OrderDetailController::class, 'statusNotice'])
+        ->name('orders.statusNotice');
     /* طلبُ تقييمٍ على Google — بملفّ فرع الطلب، وبعد التسليم وحده */
     Route::post('/orders/{number}/review-request', [OrderDetailController::class, 'reviewRequest'])
         ->name('orders.reviewRequest');

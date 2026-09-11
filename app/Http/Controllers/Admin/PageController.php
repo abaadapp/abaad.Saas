@@ -11,14 +11,18 @@ use App\Models\Business;
 use App\Models\CustomAlert;
 use App\Models\CustomerAddress;
 use App\Models\JobTitle;
+use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\BranchGoogle;
 use App\Support\Demo;
 use App\Support\DocumentTemplates;
 use App\Support\Emojis;
 use App\Support\InvoiceBranding;
 use App\Support\Mailer;
 use App\Support\MarketingSettings;
+use App\Support\OrderNotice;
+use App\Support\OrderStatus;
 use App\Support\Permissions;
 use App\Support\ProductImages;
 use App\Support\PurchaseOrders;
@@ -186,6 +190,17 @@ class PageController extends Controller
              * أوّلًا» بابٌ معروضٌ لا يُفتح.
              */
             'googleReview' => $this->googleReviewState($number),
+            /*
+             * إبلاغُ الزبون بحالة طلبه يدويًّا — طريقٌ لا يمرّ بميتا.
+             *
+             * ويبقى معروضًا ولو عمل المُرسِلُ الآليّ: الآليُّ يُوقَف بحظرٍ
+             * أو بقالبٍ لم يُعتمَد أو بحصّةٍ نفدت، وفي كلٍّ منها يبقى الزبون
+             * بلا خبر. واليدُ آخرُ ما يبقى حين تسقط الأتمتة.
+             */
+            'statusNotice' => OrderNotice::state(
+                Order::where('business_id', Demo::bid())
+                    ->where('is_held', false)->where('number', $number)->first()
+            ),
         ]);
     }
 
@@ -196,7 +211,7 @@ class PageController extends Controller
      */
     private function googleReviewState(string $number): array
     {
-        $order = \App\Models\Order::where('business_id', Demo::bid())
+        $order = Order::where('business_id', Demo::bid())
             ->where('is_held', false)->where('number', $number)->first();
 
         if (! $order) {
@@ -204,16 +219,16 @@ class PageController extends Controller
         }
 
         $delivered = in_array($order->status, [
-            \App\Support\OrderStatus::DELIVERED,
-            \App\Support\OrderStatus::PICKED_UP,
-            \App\Support\OrderStatus::COMPLETED,
+            OrderStatus::DELIVERED,
+            OrderStatus::PICKED_UP,
+            OrderStatus::COMPLETED,
         ], true);
 
         $branch = $order->branch_id
-            ? \App\Models\Branch::where('business_id', Demo::bid())->find($order->branch_id)
+            ? Branch::where('business_id', Demo::bid())->find($order->branch_id)
             : null;
 
-        $linked = $branch !== null && \App\Support\BranchGoogle::for($branch) !== null;
+        $linked = $branch !== null && BranchGoogle::for($branch) !== null;
 
         return [
             'show' => $delivered && $linked,

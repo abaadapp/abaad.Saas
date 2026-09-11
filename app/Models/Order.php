@@ -20,6 +20,15 @@ class Order extends Model
         'ordered_at' => 'datetime',
         'scheduled_for' => 'datetime',
         'hide_sender' => 'boolean',
+        /*
+         * وختمان يُقرآن في الشاشة — وبلا `cast` يعودان نصًّا.
+         *
+         * `optional('2026-09-11 10:00:00')->toIso8601String()` تُرجع `null`
+         * بلا خطأ: `Optional` تستدعي على الكائنات وتصمت على ما سواها. فبقي
+         * «طلب التقييم مجددًا» لا يظهر أبدًا، ولا شيء يقول لماذا.
+         */
+        'review_request_sent_at' => 'datetime',
+        'status_notice_at' => 'datetime',
     ];
 
     /**

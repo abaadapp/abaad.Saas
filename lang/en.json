@@ -5174,5 +5174,15 @@
     "— وسائل الدفع —": "— Payment Methods —",
     "✓ :name — :count تنبيه → :email": "✓ :name — :count alerts → :email",
     "✓ :name — :count منتج → :email": "✓ :name — :count products → :email",
-    "⭐ :n فأقل": "⭐ :n or below"
+    "⭐ :n فأقل": "⭐ :n or below",
+    "استلمنا طلبك رقم :number، وجارٍ تجهيزه.": "We have received your order :number and it is being prepared.",
+    "طلبك رقم :number جاهز. 🌷": "Your order :number is ready. 🌷",
+    "طلبك رقم :number في الطريق إليك. 🚗": "Your order :number is on its way to you. 🚗",
+    "تم تسليم طلبك رقم :number. شكرًا لاختيارك لنا. 🌷": "Your order :number has been delivered. Thank you for choosing us. 🌷",
+    "إشعار :event مُطفأ في إعداداتك": ":event notice is switched off in your settings",
+    "لا رقم واتساب لهذا الطلب": "No WhatsApp number for this order",
+    "لا إشعار لحالة هذا الطلب.": "There is no notice for this order status.",
+    "افتح واتساب وأرسل الإشعار": "Open WhatsApp and send the notice",
+    "أبلغ الزبون بالحالة": "Notify the customer",
+    "أبلغ الزبون مجددًا": "Notify the customer again"
 }

@@ -9,6 +9,7 @@ use App\Support\Activity;
 use App\Support\BranchGoogle;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
+use App\Support\OrderNotice;
 use App\Support\OrderStatus;
 use App\Support\OrderTransition;
 use App\Support\WhatsAppPhone;
@@ -166,6 +167,58 @@ class OrderDetailController extends Controller
             'msg' => __('افتح واتساب وأرسل طلب التقييم'),
             'type' => 'success',
             'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
+        ]);
+    }
+
+    /**
+     * إبلاغُ الزبون بحالة طلبه — بيدِ التاجر حين لا تعمل اليد الآليّة.
+     *
+     * ═══ وما يقع فعلًا ═══
+     *
+     * يُفتح واتساب التاجر بنصٍّ مكتوب، ويضغط هو «إرسال». لا مُرسِلَ آليّ ولا
+     * قالبَ ميتا ولا مفتاح — فهذا الطريق لا يمرّ بهم أصلًا، وهو يعمل والحظرُ
+     * قائم.
+     *
+     * ولا يُكتب صفٌّ في `whatsapp_messages`: ذاك سجلُّ ما مرّ بميتا، وصفٌّ
+     * فيه بلا معرّفٍ منها يكذب على شاشة التاجر وعلى `WhatsAppHealth` معًا —
+     * فتُطفَأ التحذيراتُ عن عطبٍ لم يُصلَح.
+     *
+     * ═══ والشروطُ تُقاس هنا ═══
+     *
+     * الشاشةُ تُخفي الزرَّ أو تُعطّله، لكنّها شاشة: من ينادي المسار مباشرةً
+     * لا يمرّ بها. فيُعاد قياسُ الحال هنا، ويُردّ بسببه مكتوبًا لا بصمت.
+     */
+    public function statusNotice(string $number)
+    {
+        $order = $this->find($number);
+        $state = OrderNotice::state($order);
+
+        if (! $state['show']) {
+            return back()->with('toast', [
+                'msg' => $state['reason'] ?? __('لا إشعار لحالة هذا الطلب.'),
+                'type' => 'danger',
+            ]);
+        }
+
+        $event = (string) $state['event'];
+
+        $order->forceFill([
+            'status_notice_at' => now(),
+            'status_notice_event' => $event,
+        ])->save();
+
+        Activity::log('updated', 'أعدّ إبلاغ الزبون بحالة الطلب '.$order->number, [
+            'subject_id' => $order->id, 'subject_type' => 'order',
+        ]);
+
+        return back()->with('toast', [
+            'msg' => __('افتح واتساب وأرسل الإشعار'),
+            'type' => 'success',
+            'link' => [
+                'url' => 'https://wa.me/'.OrderNotice::phone($order)
+                    .'?text='.rawurlencode(OrderNotice::text($order, $event)),
+                'label' => __('فتح واتساب'),
+            ],
         ]);
     }
 

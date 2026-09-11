@@ -6,6 +6,7 @@ import {
     FileText,
     Gift,
     MapPin,
+    MessageCircle,
     PencilLine,
     Phone,
     ReceiptText,
@@ -98,12 +99,18 @@ interface OrderDetail {
  * فمن يصحّح رقم هاتفٍ لا يُحرّك ريالًا ولا يُقدّم طلبًا في مساره.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice, googleReview } = usePage<
+    const { order, context, taxInvoice, googleReview, statusNotice } = usePage<
         PageProps<{
             order: OrderDetail;
             taxInvoice: { registered: boolean; ready: boolean };
             /** حالُ طلب التقييم — تُقاس في الخادم، والشاشةُ ترسم ما قِيس */
             googleReview: { show: boolean; reason: string | null; requestedAt: string | null };
+            statusNotice: {
+                event: string | null;
+                show: boolean;
+                reason: string | null;
+                preparedAt: string | null;
+            };
         }>
     >().props;
     const t = useTranslate();
@@ -249,6 +256,41 @@ export default function OrderShow() {
                             {t('معاينة الفاتورة')}
                         </Button>
 
+                        {/*
+                            و«أبلغ الزبون» يدويٌّ صراحةً: يُفتح واتساب التاجر
+                            بنصٍّ مكتوب، ويضغط هو «إرسال». فيعمل وميتا محجوبة
+                            — والزبون لا يبقى بلا خبرٍ لأنّ أتمتةً توقّفت.
+
+                            ولا يُعرض إلّا لحالةٍ لها إشعار: «قيد التجهيز» لا
+                            خبرَ فيها، و«ملغى» ليست بشرى.
+
+                            وحين يمنعه مانعٌ يبقى معروضًا معطَّلًا بسببه
+                            مكتوبًا: بابٌ يقول لمَ لا يُفتح خيرٌ من بابٍ يُفتح
+                            على رفض. والسببُ نفسُه يُقاس في الخادم ثانيةً —
+                            فمن نادى المسار دون الشاشة يُردّ بالجواب نفسِه.
+                        */}
+                        {statusNotice.event &&
+                            (statusNotice.show ? (
+                                <Button
+                                    variant="outline"
+                                    disabled={sending.processing}
+                                    onClick={() =>
+                                        sending.post(route('admin.orders.statusNotice', order.id), {
+                                            preserveScroll: true,
+                                        })
+                                    }
+                                >
+                                    <MessageCircle />
+                                    {statusNotice.preparedAt
+                                        ? t('أبلغ الزبون مجددًا')
+                                        : t('أبلغ الزبون بالحالة')}
+                                </Button>
+                            ) : (
+                                <Button variant="outline" disabled title={statusNotice.reason ?? undefined}>
+                                    <MessageCircle />
+                                    {statusNotice.reason}
+                                </Button>
+                            ))}
                         {/*
                             و«طلب تقييم Google» يُعرض بعد التسليم وحده، ولفرعٍ
                             مربوط — والشرطان يُقاسان في الخادم. والنصُّ والرابط

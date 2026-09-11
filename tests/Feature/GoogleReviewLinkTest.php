@@ -281,6 +281,76 @@ class GoogleReviewLinkTest extends TestCase
         $this->assertStringContainsString('اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد', $source);
     }
 
+    /* ==================== دليلُ المفتاح ==================== */
+
+    /**
+     * عنوانُ الخادم يصل الشاشة حين يكون مضبوطًا.
+     *
+     * والبطاقةُ تطلب من التاجر أن يقيّد مفتاحه بعنوان خادمنا منذ أوّل نسخة،
+     * ولم تكن تقول بأيّ عنوان. فإمّا أن يسألنا — فما عاد يُتمّها وحده —
+     * وإمّا أن يتركه بلا قيدٍ فيُنفِق غيرُه رصيدَه يومَ يُسرَّب.
+     */
+    public function test_the_guide_carries_the_server_address(): void
+    {
+        config(['services.outbound_ip' => '203.0.113.7']);
+
+        $this->get(route('admin.integrations.google'))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('serverIp', '203.0.113.7')->etc());
+    }
+
+    /**
+     * ولا يُخمَّن عنوانٌ حين لا يكون مضبوطًا.
+     *
+     * مفتاحٌ مقيَّدٌ بعنوانٍ خاطئ يُرفض عند كلّ نداء، ولا يظهر السببُ في شيء:
+     * يرى التاجر «رفضت Google المفتاح» ويظنّ العطب في مفتاحه.
+     */
+    public function test_no_address_is_invented_when_none_is_configured(): void
+    {
+        config(['services.outbound_ip' => null]);
+
+        $this->get(route('admin.integrations.google'))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('serverIp', null)->etc());
+    }
+
+    /**
+     * والعنوانُ يُقرأ من الإعداد، لا رقمًا محفورًا في الواجهة.
+     *
+     * الخادمُ يُبدَّل يومًا، ورقمٌ مكتوبٌ في شاشةٍ يبقى يُعرض بعد أن يصير
+     * خطأً — فيقيّد التاجر مفتاحه بعنوانٍ لا نناديه منه.
+     */
+    public function test_no_server_address_is_carved_into_the_screen(): void
+    {
+        $source = file_get_contents(resource_path('js/Pages/Admin/Integrations/Google.tsx'));
+
+        $this->assertSame(
+            0,
+            preg_match('/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/', $source),
+            'عنوانٌ محفورٌ في الشاشة — يبقى يُعرض بعد أن يصير خطأً',
+        );
+        $this->assertStringContainsString('serverIp', $source, 'الشاشة لا تقرأ العنوان من الخادم');
+    }
+
+    /** والدليلُ يحمل ما لا يُخمَّن: الأسماءَ كما تظهر عند Google، وتحذيرَ القديمة */
+    public function test_the_guide_names_what_google_shows_him(): void
+    {
+        $source = file_get_contents(resource_path('js/Pages/Admin/Integrations/Google.tsx'));
+
+        foreach ([
+            'console.cloud.google.com',
+            'Places API (New)',
+            'APIs and services → Credentials → Create credentials → API key',
+            'Application restrictions → IP addresses',
+            'API restrictions → Restrict key → Places API (New)',
+        ] as $needle) {
+            $this->assertStringContainsString($needle, $source, "الدليل لا يذكر: $needle");
+        }
+
+        // وتحذيرُ القديمة: أشيعُ خطأٍ يُرجع 403 بلا سببٍ يُفهم
+        $this->assertStringContainsString('وهي غير «Places API» القديمة', $source, 'لا تحذير من الواجهة القديمة');
+    }
+
     public function test_it_is_measured_by_the_marketing_section(): void
     {
         $staff = User::create([

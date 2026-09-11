@@ -103,6 +103,14 @@ class IntegrationsController extends Controller
              * ولا يُرسَل المفتاح ولا طرفٌ منه — نعم أو لا وحسب.
              */
             'platformKey' => GoogleReviews::platformKey() !== null,
+            /*
+             * عنوانُ خادمنا — ليقيّد التاجر مفتاحه به.
+             *
+             * والشاشةُ تطلب منه التقييد منذ أوّل نسخة، ولم تكن تقول بأيّ
+             * عنوان. فإمّا أن يسألنا — فينتقض أنّه يُتمّها وحده — وإمّا أن
+             * يترك مفتاحه بلا قيد، فيُنفِق غيرُه رصيده يومَ يُسرَّب.
+             */
+            'serverIp' => config('services.outbound_ip') ?: null,
             'google' => $pulled,
             // مراحلُ الربط — شكلُها شكلُ واتساب، انظر App\Support\Integration
             'readiness' => GoogleReviews::readiness($bid, $pulled),

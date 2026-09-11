@@ -79,6 +79,8 @@ interface Props {
     keyHint: string | null;
     /** أَلأبعادَ مفتاحٌ يقرأ به من لم يلصق مفتاحه — نعم أو لا، ولا طرفَ منه */
     platformKey: boolean;
+    /** عنوانُ خادمنا ليقيّد به مفتاحه — و`null` حين لا يكون مضبوطًا */
+    serverIp: string | null;
     google: Pulled;
     internal: number;
     /** مراحل الربط — شكلُها شكلُ واتساب، انظر App\Support\Integration */
@@ -131,6 +133,89 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
 }
 
 /**
+ * دليلُ المفتاح — ما كان يُطلب من التاجر ولا يُمكَّن منه.
+ *
+ * ═══ ولمَ يُكتب هنا لا يُترك للدعم ═══
+ *
+ * البطاقةُ تقول له «قيّد المفتاح بعنوان خادمنا»، وعنوانُ خادمنا لم يكن
+ * مكتوبًا في شاشةٍ واحدة. فإمّا أن يسألنا — فما عاد يُتمّها وحده — وإمّا أن
+ * يترك مفتاحه بلا قيد، فيُنفِق غيرُه رصيدَه يومَ يُسرَّب، والفاتورةُ فاتورتُه.
+ *
+ * ═══ والأسماءُ إنجليزيّةٌ عمدًا ═══
+ *
+ * `Credentials` و`API restrictions` كما تظهر على شاشته حرفًا بحرف. وترجمتُها
+ * تجعله يبحث عن كلمةٍ عربيّةٍ لا وجودَ لها عند Google.
+ */
+function KeyGuide({ serverIp, start }: { serverIp: string | null; start: boolean }) {
+    const t = useTranslate();
+    const [open, setOpen] = useState(start);
+
+    /* اسمٌ لاتينيٌّ داخل جملةٍ عربيّة: بلا `dir` ينقلب ترتيبُ كلماته */
+    const en = (text: string) => (
+        <span dir="ltr" className="inline-block font-medium text-[#111]">{text}</span>
+    );
+
+    return (
+        <div className="mt-3 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
+            <Button type="button" size="sm" variant="link" className="px-0" onClick={() => setOpen(!open)}>
+                {open ? t('إخفاء الدليل') : t('كيف أحصل على مفتاح؟')}
+            </Button>
+
+            {open && (
+                <ol className="mt-2 space-y-2.5 text-[12px] leading-relaxed text-[#6b7280]">
+                    <li>
+                        <span className="font-bold text-[#111]">١. </span>
+                        {t('أنشئ مشروعًا في')} {en('console.cloud.google.com')}
+                    </li>
+                    <li>
+                        <span className="font-bold text-[#111]">٢. </span>
+                        {t('فعّل')} {en('Places API (New)')} —{' '}
+                        {/*
+                            وهذا أشيعُ ما يُخطئ فيه: الاسمان متجاوران في القائمة،
+                            والقديمةُ تُفعَّل فتُردّ نداءاتُنا بـ403 بلا سببٍ يُفهم.
+                        */}
+                        <span className="font-medium text-[#b91c1c]">
+                            {t('وهي غير «Places API» القديمة — القديمة تُرجع رفضًا بلا سبب مفهوم.')}
+                        </span>
+                    </li>
+                    <li>
+                        <span className="font-bold text-[#111]">٣. </span>
+                        {t('اربط الفوترة. لكل واجهة ١٠٬٠٠٠ نداء شهريًّا مجانًا، ولا تُخصم بطاقتك قبل أن ترفع الحساب بيدك.')}
+                    </li>
+                    <li>
+                        <span className="font-bold text-[#111]">٤. </span>
+                        {t('أنشئ المفتاح من')} {en('APIs and services → Credentials → Create credentials → API key')}
+                    </li>
+                    <li>
+                        <span className="font-bold text-[#111]">٥. </span>
+                        {t('قيّده بعنوان خادمنا من')} {en('Application restrictions → IP addresses')}
+                        {serverIp ? (
+                            <span className="mt-1.5 flex items-center gap-2 rounded-[8px] bg-[#f3f4f6] px-2.5 py-1.5">
+                                <span className="text-[11px] text-[#6b7280]">{t('عنوان خادمنا')}</span>
+                                <span dir="ltr" className="font-mono text-[12px] font-bold text-[#111]">{serverIp}</span>
+                                <CopyButton text={serverIp} label="نسخ" />
+                            </span>
+                        ) : (
+                            /* ولا يُخمَّن عنوان: مفتاحٌ مقيَّدٌ بعنوانٍ خاطئ لا يعمل، ولا يُفهم لماذا */
+                            <span className="mt-1.5 block text-[11px] font-medium text-[#b45309]">
+                                {t('اطلب عنوان خادمنا من الدعم قبل أن تقيّد المفتاح — ولا تتركه بلا قيد.')}
+                            </span>
+                        )}
+                    </li>
+                    <li>
+                        <span className="font-bold text-[#111]">٦. </span>
+                        {t('وقيّده بالواجهة وحدها من')} {en('API restrictions → Restrict key → Places API (New)')}
+                    </li>
+                    <li className="border-t border-[var(--ui-border,#e8e8e8)] pt-2.5 text-[#9ca3af]">
+                        {t('مفتاح بلا قيد يُسرَّق فيُنفق غيرك رصيدك — والنداءات تُحسب على حسابك أنت.')}
+                    </li>
+                </ol>
+            )}
+        </div>
+    );
+}
+
+/**
  * ربط خرائط Google — وسحبُ تقييماتها.
  *
  * وكان زرًّا في شاشة التقييمات يفتح `business.google.com` في تبويبٍ خارجيّ:
@@ -142,7 +227,7 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
  * تقييماتِه ومعدّلَه من Google بمفتاح Places فتُقرأ هنا بلا مغادرة اللوحة.
  */
 export default function MarketingGoogle() {
-    const { settings, link, keyHint, platformKey, google, internal, readiness, branches, searchMin } =
+    const { settings, link, keyHint, platformKey, serverIp, google, internal, readiness, branches, searchMin } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -523,13 +608,10 @@ export default function MarketingGoogle() {
                         </form>
 
                         {/*
-                            وما يجب أن يعرفه قبل أن يلصق: النداءُ مدفوعٌ من
-                            حسابه هو، وقيدُ المفتاح مسؤوليّته. وتاجرٌ يلصق
-                            مفتاحًا بلا قيدٍ يجده يومًا يُستهلك من غيره.
+                            والدليلُ مفتوحٌ من أوّله حين لا يكون له ولا لأبعادَ مفتاح:
+                            تلك وحدها الحالُ التي لا تُقرأ فيها تقييمةٌ قبل أن يتحرّك.
                         */}
-                        <p className="mt-3 border-t border-[var(--ui-border,#e8e8e8)] pt-3 text-[12px] leading-relaxed text-[#9ca3af]">
-                            {t('فعّل «Places API (New)» في مشروعك واربط الفوترة — النداء يُحسب على حسابك. وقيّد المفتاح بعنوان خادمنا حتى لا يستعمله غيرك.')}
-                        </p>
+                        <KeyGuide serverIp={serverIp} start={!keyHint && !platformKey} />
                     </Card>
 
                     {/*

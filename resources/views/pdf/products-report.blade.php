@@ -18,7 +18,7 @@
             <td>
                 
                     <div class="lbl">{{ __('قيمة المخزون') }}</div>
-                    <div class="val">{{ number_format(array_sum(array_map(fn ($p) => (float) $p['cost'] * (int) $p['qty'], $products)), 3) }} {{ __('ر.ع') }}</div>
+                    <div class="val">{{ \App\Support\Demo::moneyBase(array_sum(array_map(fn ($p) => (float) $p['cost'] * (int) $p['qty'], $products))) }}</div>
                 </td>
         </tr>
     </table>
@@ -39,7 +39,7 @@
                 <td>{{ $p['name'] }}</td>
                 <td>{{ $p['cat'] }}</td>
                 <td>{{ $p['sku'] }}</td>
-                <td>{{ number_format((float) $p['price'], 3) }} {{ __('ر.ع') }}</td>
+                <td>{{ \App\Support\Demo::moneyBase($p['price']) }}</td>
                 <td>{{ $p['qty'] }}</td>
                 <td>{{ __($p['stock_status']) }}</td>
                 <td>{{ $p['active'] ? __('مفعّل') : __('معطّل') }}</td>

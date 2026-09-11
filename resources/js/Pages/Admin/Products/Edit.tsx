@@ -35,7 +35,7 @@ export default function ProductEdit() {
                 product={product}
                 categories={categories}
                 description={description}
-                currencyLabel={context!.currency.symbol ?? t('ر.ع')}
+                currencyLabel={context!.currency.symbol || context!.currency.code}
                 composition={composition}
                 currency={context!.currency}
                 gallery={gallery}

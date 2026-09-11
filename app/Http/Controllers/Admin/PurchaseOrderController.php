@@ -18,6 +18,7 @@ use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
 use App\Support\GoodsReceipts;
 use App\Support\InvoiceBranding;
+use App\Support\Money;
 use App\Support\Permissions;
 use App\Support\PurchaseOrders;
 use App\Support\PurchaseOrderTotals;
@@ -727,8 +728,9 @@ class PurchaseOrderController extends Controller
             throw $e;
         }
 
+        // وسطرُ السجلّ يُقرأ في شاشة «النشاط» — فالمبلغُ بعملة المتجر لا مثبَّتًا
         Activity::log('created', 'أنشأ أمر شراء '.$po->number.' لفرع '.$branch->name
-            .' بقيمة '.number_format((float) $po->total, 3).' ر.ع', ['subject_id' => $po->id]);
+            .' بقيمة '.Money::format((float) $po->total, Money::of((int) $po->business_id)), ['subject_id' => $po->id]);
 
         return redirect()->route('admin.purchases.orders', ['q' => $po->number])->with('toast', [
             'msg' => $po->status === PurchaseOrders::DRAFT

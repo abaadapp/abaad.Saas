@@ -44,6 +44,8 @@
 <style>
 {!! PaperSize::css($size) !!}
 
+@include('documents.v1.partials.webfont')
+
     * { font-family: xbriyaz, 'IBM Plex Sans Arabic', sans-serif; box-sizing: border-box; }
 
     body {

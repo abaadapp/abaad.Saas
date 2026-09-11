@@ -21,7 +21,7 @@ export default function ProductCreate() {
 
             <ProductForm
                 categories={categories}
-                currencyLabel={context!.currency.symbol ?? t('ر.ع')}
+                currencyLabel={context!.currency.symbol || context!.currency.code}
                 composition={composition}
                 currency={context!.currency}
             />

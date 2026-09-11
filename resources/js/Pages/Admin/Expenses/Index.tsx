@@ -458,7 +458,7 @@ export default function ExpensesIndex() {
                                     required
                                 />
                             </Field>
-                            <Field label={`${t('المبلغ')} (${currency.symbol ?? t('ر.ع')})`} required error={expense.errors.amount}>
+                            <Field label={`${t('المبلغ')} (${currency.symbol || currency.code})`} required error={expense.errors.amount}>
                                 <Input
                                     type="number"
                                     step="0.001"

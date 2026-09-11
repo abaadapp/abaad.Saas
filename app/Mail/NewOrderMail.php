@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Order;
+use App\Support\Money;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -35,6 +36,16 @@ class NewOrderMail extends Mailable implements ShouldQueue
 
     public function content(): Content
     {
-        return new Content(view: 'emails.new-order', with: ['order' => $this->order]);
+        /*
+         * وعملةُ صاحب الطلب تُقرأ من متجره لا من الجلسة.
+         *
+         * هذه الرسالةُ `ShouldQueue`: تُرسَم في عاملِ طابورٍ لا جلسةَ فيه ولا
+         * «متجرٌ حاليّ»، وقد يعالج متجرين بالتتابع. فـ`Demo::baseCurrency`
+         * هناك تقرأ متجرًا غيرَ صاحب الطلب — انظر `Support\Money`.
+         */
+        return new Content(view: 'emails.new-order', with: [
+            'order' => $this->order,
+            'currency' => Money::of((int) $this->order->business_id),
+        ]);
     }
 }

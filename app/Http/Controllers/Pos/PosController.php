@@ -29,6 +29,7 @@ use App\Support\Document\Snapshot;
 use App\Support\PaymentMethods;
 use App\Support\FlowerOrder;
 use App\Support\Loyalty;
+use App\Support\Money;
 use App\Support\OrderStatus;
 use App\Support\PlanFeatures;
 use App\Support\PosCashier;
@@ -849,7 +850,8 @@ class PosController extends Controller
 
         $order = $result['order'];
 
-        Activity::log('checkout', 'أتمّ بيعًا '.$order->number.' بقيمة '.number_format($order->total, 3).' ر.ع', ['subject_id' => $order->id]);
+        // وسطرُ السجلّ يُقرأ في شاشة «النشاط» — فالمبلغُ بعملة المتجر لا مثبَّتًا
+        Activity::log('checkout', 'أتمّ بيعًا '.$order->number.' بقيمة '.Money::format((float) $order->total, Money::of($this->bid())), ['subject_id' => $order->id]);
 
         // البريد خارج المعاملة: بطؤه أو فشله يجب ألّا يُبقي القفل أو يُلغي بيعًا تمّ
         $this->notifyNewOrder($order);

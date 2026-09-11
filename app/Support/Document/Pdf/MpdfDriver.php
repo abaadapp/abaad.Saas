@@ -263,6 +263,14 @@ class MpdfDriver implements Driver
      *
      * فيُقصَر الاسمُ على ما يصلح اسمَ ملفّ: حروفٌ وأرقامٌ وشرطتان ونقطة.
      * وما سواه يصير شرطة، ولا يُترك فارغًا.
+     *
+     * ═══ والعربيّةُ لا تُمحى، بل تُرمَّز ═══
+     *
+     * والتنقيةُ وحدها تُسقط كلَّ حرفٍ غير لاتينيّ: بادئةٌ مثل «فاتورة-» تصير
+     * شرطةً ثمّ تُقصّ، فينزل الملفُّ باسم `document` — سليمًا، لكنّه ليس اسمَ
+     * الورقة. فيُضاف `filename*` بترميز RFC 5987: النصُّ الأصليُّ مرمَّزًا
+     * بالنسبة المئويّة، فلا تنصيصَ فيه ولا سطرَ جديد يمكن أن يخرج منه.
+     * والمتصفّحاتُ تُفضّله على `filename`، والقديمُ يقع على المنقّى.
      */
     private static function respond(Mpdf $mpdf, string $name): Response
     {
@@ -270,8 +278,24 @@ class MpdfDriver implements Driver
 
         return response($mpdf->Output($file, 'S'), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="'.$file.'"',
+            'Content-Disposition' => 'inline; filename="'.$file.'"'
+                ."; filename*=UTF-8''".rawurlencode(self::original($name).'.pdf'),
         ]);
+    }
+
+    /**
+     * الاسمُ كما جاء — بلا ما يكسر ملفًّا أو مسارًا.
+     *
+     * ويُنقّى من فواصل المسار ومن المحارف الضابطة قبل الترميز: `rawurlencode`
+     * يُرمّزها ولا يُزيلها، وملفٌّ اسمُه `..%2Fx` في مجلّد التنزيلات ليس ما
+     * نريد أن نقترحه على المتصفّح.
+     */
+    private static function original(string $name): string
+    {
+        $clean = preg_replace('#[\\\\/]+|[\x00-\x1f\x7f]+#u', '-', $name) ?? '';
+        $clean = trim((string) $clean, '-. ');
+
+        return $clean === '' ? 'document' : mb_substr($clean, 0, 80);
     }
 
     /** اسمُ ملفٍّ آمنٌ من نصٍّ قد يحمل ما لا يصلح في ترويسة */

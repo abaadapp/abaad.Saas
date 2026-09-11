@@ -13,7 +13,7 @@
                 <tr><td style="padding:6px 0; color:#6b7280;">{{ __('العميل') }}</td><td style="padding:6px 0; text-align:left; font-weight:bold;">{{ $order->customer_name ?? __('عميل نقدي') }}</td></tr>
                 <tr><td style="padding:6px 0; color:#6b7280;">{{ __('الموظف') }}</td><td style="padding:6px 0; text-align:left;">{{ $order->employee_name ?? '—' }}</td></tr>
                 <tr><td style="padding:6px 0; color:#6b7280;">{{ __('وسيلة الدفع') }}</td><td style="padding:6px 0; text-align:left;">{{ __($order->payment_method) }}</td></tr>
-                <tr><td style="padding:6px 0; color:#6b7280;">{{ __('الإجمالي') }}</td><td style="padding:6px 0; text-align:left; font-weight:bold; color:#7c3aed;">{{ number_format((float) $order->total, 3) }} {{ __('ر.ع') }}</td></tr>
+                <tr><td style="padding:6px 0; color:#6b7280;">{{ __('الإجمالي') }}</td><td style="padding:6px 0; text-align:left; font-weight:bold; color:#7c3aed;">{{ \App\Support\Money::format((float) $order->total, $currency) }}</td></tr>
                 <tr><td style="padding:6px 0; color:#6b7280;">{{ __('الوقت') }}</td><td style="padding:6px 0; text-align:left;">{{ optional($order->ordered_at)->format('Y-m-d H:i') }}</td></tr>
             </table>
         </div>

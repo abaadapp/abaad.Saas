@@ -8,7 +8,21 @@ use Illuminate\Mail\Mailables\Envelope;
 
 class MonthlyReportMail extends Mailable
 {
-    public function __construct(public string $businessName, public string $period, public array $stats) {}
+    /**
+     * والعملةُ تصل مع التقرير لا تُقرأ من الجلسة.
+     *
+     * هذا يُرسَل من أمرٍ مجدول يمرّ على المتاجر واحدًا واحدًا — لا جلسةَ فيه
+     * ولا «متجرٌ حاليّ». فعملةُ صاحب التقرير تُمرَّر إليه. انظر `Support\Money`.
+     *
+     * @param  array<int, array<string, string>>  $stats
+     * @param  array<string, mixed>  $currency  وصفٌ من `Money::of`
+     */
+    public function __construct(
+        public string $businessName,
+        public string $period,
+        public array $stats,
+        public array $currency,
+    ) {}
 
     public function envelope(): Envelope
     {
@@ -21,6 +35,7 @@ class MonthlyReportMail extends Mailable
             'businessName' => $this->businessName,
             'period' => $this->period,
             'stats' => $this->stats,
+            'currency' => $this->currency,
         ]);
     }
 }

@@ -28,7 +28,7 @@
                     <td>{{ $p->category?->name ?? '—' }}</td>
                     <td dir="ltr">{{ $p->sku ?: '—' }}</td>
                     <td dir="ltr">{{ $p->barcode ?: '—' }}</td>
-                    <td style="text-align:left;">{{ number_format((float) $p->price, 3) }}</td>
+                    <td style="text-align:left;">{{ \App\Support\Demo::amountBase($p->price) }}</td>
                     <td style="text-align:left;">{{ (int) $p->quantity }}</td>
                 </tr>
             @empty

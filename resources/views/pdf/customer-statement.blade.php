@@ -42,5 +42,5 @@
 @endsection
 
 @section('foot')
-    <div class="c">{{ __('كشف حساب آلي عبر نظام Abad POS') }} — {{ $generatedAt }} — {{ __('القيم بالريال العماني') }}</div>
+    <div class="c">{{ __('كشف حساب آلي عبر نظام Abad POS') }} — {{ $generatedAt }} — {{ __('القيم بعملة') }} <span dir="ltr">{{ \App\Support\Demo::baseCurrency()['code'] }}</span></div>
 @endsection

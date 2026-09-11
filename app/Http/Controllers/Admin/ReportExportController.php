@@ -19,6 +19,18 @@ class ReportExportController extends Controller
     private int $row = 5;
 
     /**
+     * رأسُ عمودٍ ماليّ — باسمه ثمّ رمزِ عملة المتجر بين قوسين.
+     *
+     * وكان مكتوبًا «(ر.ع)» في عشرة رؤوس: تاجرٌ في دبي يفتح ملفَّ إكسل
+     * مصدَّرًا من نظامه فيجد عمودًا اسمُه «المبيعات (ر.ع)» وأرقامُه بالدرهم.
+     * ولا يظهر في اختبارٍ مكتوبٍ بالريال — انظر `Support\Money`.
+     */
+    private function moneyHead(string $label): string
+    {
+        return __($label).' ('.Demo::baseCurrency()['code'].')';
+    }
+
+    /**
      * الفترة التي كان التاجر ينظر إليها لحظة الضغط على «تصدير».
      *
      * كان الملفّ يخرج بفترته الخاصّة مهما اختار: من يقرأ تقرير «اليوم» ويضغط
@@ -145,7 +157,7 @@ class ReportExportController extends Controller
         // المبيعات على محور الفترة — ساعاتٍ أو أيّامًا أو أشهرًا، وبعدد الطلبات
         $series = $report['salesSeries'];
         $title(__('المبيعات').' — '.Demo::rangeLabel($range));
-        $head([__('الفترة'), __('المبيعات (ر.ع)'), __('عدد الطلبات')]);
+        $head([__('الفترة'), $this->moneyHead('المبيعات'), __('عدد الطلبات')]);
         foreach ($series['full'] as $i => $label) {
             // ما لم يأتِ بعدُ لا يُكتب: صفٌّ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة
             if (($series['data'][$i] ?? null) === null) {
@@ -162,7 +174,7 @@ class ReportExportController extends Controller
 
         // وسائل الدفع — من الطلبات كما في مخطّط الشاشة، لا من دفتر المقبوضات
         $title(__('توزيع وسائل الدفع'));
-        $head([__('الوسيلة'), __('الإجمالي (ر.ع)'), __('عدد العمليات')]);
+        $head([__('الوسيلة'), $this->moneyHead('الإجمالي'), __('عدد العمليات')]);
         foreach (Demo::paymentBreakdown($range) as $m) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $m['name']);
@@ -175,7 +187,7 @@ class ReportExportController extends Controller
 
         // أفضل المنتجات — بترتيب الإيراد كما في جدول الشاشة، لا بترتيب الكمية
         $title(__('الأكثر مبيعًا'));
-        $head([__('المنتج'), __('القسم'), __('المُباع'), __('الإيراد (ر.ع)')]);
+        $head([__('المنتج'), __('القسم'), __('المُباع'), $this->moneyHead('الإيراد')]);
         foreach ($report['topSellingProducts'] as $p) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $p['name']);
@@ -196,7 +208,7 @@ class ReportExportController extends Controller
         $spreadsheet = new Spreadsheet;
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('المنتجات'));
 
-        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الاسم'), __('القسم'), 'SKU', __('الباركود'), __('السعر (ر.ع)'), __('التكلفة (ر.ع)'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')]);
+        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الاسم'), __('القسم'), 'SKU', __('الباركود'), $this->moneyHead('السعر'), $this->moneyHead('التكلفة'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')]);
         $money = [];
         foreach (Demo::products(null, request()) as $p) {
             $r = $this->row;
@@ -230,7 +242,7 @@ class ReportExportController extends Controller
         $spreadsheet = new Spreadsheet;
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('جرد المخزون'), null, perBranch: true);
 
-        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('القيمة (ر.ع)'), __('حالة المخزون'), __('آخر تحديث')]);
+        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), $this->moneyHead('القيمة'), __('حالة المخزون'), __('آخر تحديث')]);
         $money = [];
 
         foreach (Demo::inventory() as $i) {
@@ -289,7 +301,7 @@ class ReportExportController extends Controller
 
         // المعاملات
         // و«الحالة» عمودٌ في الملفّ: الملغاة تُوسم كما تُوسم في الشاشة
-        $firstDataRow = $this->tableHead($sheet, [__('المرجع'), __('التاريخ'), __('البيان'), __('الوسيلة'), __('النوع'), __('المبلغ (ر.ع)'), __('الموظف'), __('الحالة')]);
+        $firstDataRow = $this->tableHead($sheet, [__('المرجع'), __('التاريخ'), __('البيان'), __('الوسيلة'), __('النوع'), $this->moneyHead('المبلغ'), __('الموظف'), __('الحالة')]);
         // بلا سقف: هذا هو الباب إلى الدفتر كاملًا (انظر Demo::transactions)
         foreach (Demo::transactions($range, null) as $t) {
             $r = $this->row;
@@ -338,7 +350,7 @@ class ReportExportController extends Controller
         $cancelled = array_values(array_filter($orders, fn ($o) => $o['status'] === OrderStatus::CANCELLED));
 
         $title(__('ملخّص الطلبات'));
-        $head([__('عدد الطلبات'), __('إجمالي القيمة (ر.ع)'), __('منها ملغاة')]);
+        $head([__('عدد الطلبات'), $this->moneyHead('إجمالي القيمة'), __('منها ملغاة')]);
         $sheet->setCellValue('A'.$this->row, count($orders));
         $sheet->setCellValue('B'.$this->row, round(array_sum(array_map(
             fn ($o) => $o['status'] === OrderStatus::CANCELLED ? 0.0 : (float) $o['total'],
@@ -351,7 +363,7 @@ class ReportExportController extends Controller
         // جدول الطلبات
         $firstDataRow = $this->tableHead($sheet, [
             __('رقم الطلب'), __('العميل'), __('الموظف'), __('الفرع'),
-            __('عدد الأصناف'), __('الإجمالي (ر.ع)'), __('الدفع'), __('الحالة'), __('التاريخ'),
+            __('عدد الأصناف'), $this->moneyHead('الإجمالي'), __('الدفع'), __('الحالة'), __('التاريخ'),
         ]);
         foreach ($orders as $o) {
             $r = $this->row;
@@ -379,7 +391,7 @@ class ReportExportController extends Controller
     {
         $spreadsheet = new Spreadsheet;
         [$sheet] = $this->sheet($spreadsheet, __('المصروفات'));
-        $firstDataRow = $this->tableHead($sheet, [__('التاريخ'), __('النوع'), __('الوصف'), __('المبلغ (ر.ع)'), __('الطريقة'), __('الموظف')]);
+        $firstDataRow = $this->tableHead($sheet, [__('التاريخ'), __('النوع'), __('الوصف'), $this->moneyHead('المبلغ'), __('الطريقة'), __('الموظف')]);
         $money = [];
         foreach (Demo::expenses(request()) as $e) {
             $r = $this->row;
@@ -430,6 +442,11 @@ class ReportExportController extends Controller
     {
         $spreadsheet = new Spreadsheet;
         [$sheet] = $this->sheet($spreadsheet, __('فواتير الاشتراكات'));
+        /*
+         * وهذه ورقةُ المنصّة لا ورقةُ متجر: أبعادُ بائعةٌ والمحلُّ مشترٍ،
+         * والاشتراكُ يُفوتَر بالريال العمانيّ دائمًا — لا بعملة المتجر.
+         * فالرمزُ هنا مثبَّتٌ عن قصد، كما في `pdf/platform-invoice`.
+         */
         $firstDataRow = $this->tableHead($sheet, [__('رقم الفاتورة'), __('الشركة'), __('الباقة'), __('المبلغ (ر.ع)'), __('التاريخ'), __('الحالة')]);
         $money = [];
         foreach (Demo::invoices() as $i) {

@@ -29,7 +29,7 @@
         @foreach ($payments as $m)
             <tr>
                 <td>{{ __($m['name']) }}</td>
-                <td>{{ number_format($m['total'], 3) }} {{ __('ر.ع') }}</td>
+                <td>{{ \App\Support\Demo::moneyBase($m['total']) }}</td>
                 <td>{{ $m['count'] }}</td>
             </tr>
         @endforeach
@@ -51,7 +51,7 @@
                 <td class="{{ $t['type'] === 'دخل' ? 'income' : 'expense' }}">{{ __($t['type']) }}</td>
                 <td class="{{ $t['cancelled'] ? '' : ($t['type'] === 'دخل' ? 'income' : 'expense') }}"
                     @if ($t['cancelled']) style="text-decoration:line-through;color:#9ca3af;" @endif>
-                    {{ $t['cancelled'] ? '' : ($t['type'] === 'دخل' ? '+' : '−') }}{{ number_format(abs($t['amount']), 3) }} {{ __('ر.ع') }}
+                    {{ $t['cancelled'] ? '' : ($t['type'] === 'دخل' ? '+' : '−') }}{{ \App\Support\Demo::moneyBase(abs($t['amount'])) }}
                 </td>
                 {{-- الملغاة تُوسم ولا تُحذف: خرجت من المجموع وبقيت في السجلّ --}}
                 <td>{{ $t['cancelled'] ? __('ملغاة') : '—' }}</td>
@@ -78,9 +78,9 @@
             <th>{{ __('الصافي') }}</th>
         </tr>
         <tr>
-            <td class="income">{{ number_format($totalIn, 3) }} {{ __('ر.ع') }}</td>
-            <td class="expense">{{ number_format($totalOut, 3) }} {{ __('ر.ع') }}</td>
-            <td style="font-weight:bold;">{{ number_format($totalIn - $totalOut, 3) }} {{ __('ر.ع') }}</td>
+            <td class="income">{{ \App\Support\Demo::moneyBase($totalIn) }}</td>
+            <td class="expense">{{ \App\Support\Demo::moneyBase($totalOut) }}</td>
+            <td style="font-weight:bold;">{{ \App\Support\Demo::moneyBase($totalIn - $totalOut) }}</td>
         </tr>
     </table>
 @endsection

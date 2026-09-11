@@ -6,6 +6,7 @@ use App\Mail\DailySummaryMail;
 use App\Models\Business;
 use App\Models\Setting;
 use App\Support\Demo;
+use App\Support\Money;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
@@ -42,8 +43,11 @@ class DailySummary extends Command
                 return;
             }
 
-            Mail::to($business->email)->send(new DailySummaryMail($business->name, $summary, $dateLabel));
-            $this->line('✓ ' . $business->name . ' — ' . number_format($summary['sales'], 3) . ' → ' . $business->email);
+            // وعملةُ صاحب الرسالة لا عملةُ من يشغّل الأمر — لا جلسةَ في الطابور
+            $cur = Money::of((int) $business->id);
+
+            Mail::to($business->email)->send(new DailySummaryMail($business->name, $summary, $dateLabel, $cur));
+            $this->line('✓ '.$business->name.' — '.Money::format((float) $summary['sales'], $cur).' → '.$business->email);
             $sent++;
         });
 

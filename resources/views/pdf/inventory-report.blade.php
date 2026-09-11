@@ -39,7 +39,7 @@
             <td style="width:100%;">
                 
                     <div class="lbl">{{ __('قيمة المخزون') }}</div>
-                    <div class="val">{{ number_format($stockValue, 3) }} {{ __('ر.ع') }}</div>
+                    <div class="val">{{ \App\Support\Demo::moneyBase($stockValue) }}</div>
                 </td>
         </tr>
     </table>
@@ -61,7 +61,7 @@
                 <td>{{ $i['sku'] }}</td>
                 <td>{{ $i['qty'] }}</td>
                 <td>{{ $i['min'] }}</td>
-                <td>{{ number_format((float) $i['value'], 3) }} {{ __('ر.ع') }}</td>
+                <td>{{ \App\Support\Demo::moneyBase($i['value']) }}</td>
                 <td>{{ __($i['status']) }}</td>
                 <td>{{ $i['updated'] }}</td>
             </tr>

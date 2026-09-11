@@ -227,6 +227,18 @@ class Demo
         return self::formatMoney((float) $value, self::baseCurrency());
     }
 
+    /**
+     * الرقمُ وحده بمنازل العملة الأساسية — لعمودٍ يحمل رأسُه العملةَ مرّةً.
+     *
+     * وكانت هذه الأعمدةُ تكتب `number_format($v, 3)` بيدها: كشفُ الحساب،
+     * وقائمةُ المنتجات. فمتجرٌ بالدرهم يرى «12.500» في عمودٍ رأسُه «السعر»،
+     * ومنزلةٌ ثالثةٌ لا وجودَ لها في عملته.
+     */
+    public static function amountBase($value): string
+    {
+        return Money::amount((float) $value, self::baseCurrency());
+    }
+
     public static function image(string $seed, int $w = 400, int $h = 400): string
     {
         return "https://picsum.photos/seed/{$seed}/{$w}/{$h}";

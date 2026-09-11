@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head><meta charset="utf-8"></head>
-@php $money = fn ($v) => number_format((float) $v, 3, '.', ',') . ' ' . __('ر.ع'); @endphp
+{{-- والعملةُ من عملة المتجر لا مثبَّتةً — انظر `Support\Money` --}}
+@php $money = fn ($v) => \App\Support\Money::format((float) $v, $currency); @endphp
 <body style="font-family: Tahoma, Arial, sans-serif; background:#f3f4f6; margin:0; padding:24px; color:#1f2937;">
     <div style="max-width:560px; margin:0 auto; background:#fff; border-radius:16px; overflow:hidden; border:1px solid #eee;">
         <div style="background:#111827; color:#fff; padding:20px 24px;">

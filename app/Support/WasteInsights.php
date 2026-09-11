@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Product;
+
 /**
  * ملاحظاتٌ على الهالك — قواعدُ لا نموذجُ لغة.
  *
@@ -77,12 +79,15 @@ class WasteInsights
             return null;
         }
 
+        // والمبلغُ بعملة المتجر لا مثبَّتًا — انظر `Support\Money`
+        $cur = Money::of($businessId);
+
         return [
-            'text' => __(':dir الهالك :pct% عن المدّة السابقة — :now مقابل :before ر.ع.', [
+            'text' => __(':dir الهالك :pct% عن المدّة السابقة — :now مقابل :before.', [
                 'dir' => $change > 0 ? __('ارتفع') : __('انخفض'),
                 'pct' => number_format(abs($change), 0),
-                'now' => number_format($now['value'], 3),
-                'before' => number_format($before['value'], 3),
+                'now' => Money::format((float) $now['value'], $cur),
+                'before' => Money::format((float) $before['value'], $cur),
             ]),
             'tone' => $change > 0 ? 'warning' : 'good',
         ];
@@ -104,10 +109,10 @@ class WasteInsights
         }
 
         return [
-            'text' => __(':name وحده :pct% من قيمة الهالك — :value ر.ع.', [
+            'text' => __(':name وحده :pct% من قيمة الهالك — :value.', [
                 'name' => $rows[0]['label'],
                 'pct' => number_format($share, 0),
-                'value' => number_format($rows[0]['value'], 3),
+                'value' => Money::format((float) $rows[0]['value'], Money::of($businessId)),
             ]),
             'tone' => 'warning',
         ];
@@ -176,7 +181,7 @@ class WasteInsights
             return null;
         }
 
-        $name = \App\Models\Product::withTrashed()->find($rows[0]->product_id)?->name;
+        $name = Product::withTrashed()->find($rows[0]->product_id)?->name;
 
         if (! $name) {
             return null;

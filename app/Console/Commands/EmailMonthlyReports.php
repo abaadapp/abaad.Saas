@@ -6,7 +6,9 @@ use App\Mail\MonthlyReportMail;
 use App\Models\Business;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Support\Money;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -22,7 +24,7 @@ class EmailMonthlyReports extends Command
     public function handle(): int
     {
         $ref = $this->option('month')
-            ? \Illuminate\Support\Carbon::createFromFormat('Y-m', $this->option('month'))->startOfMonth()
+            ? Carbon::createFromFormat('Y-m', $this->option('month'))->startOfMonth()
             : now()->subMonthNoOverflow()->startOfMonth();
         $start = $ref->copy()->startOfMonth();
         $end = $ref->copy()->endOfMonth();
@@ -41,7 +43,9 @@ class EmailMonthlyReports extends Command
             $topItem = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $b->id)->sold()->whereBetween('ordered_at', [$start, $end]))
                 ->selectRaw('name, SUM(quantity) as q')->groupBy('name')->orderByDesc('q')->first();
 
-            $money = fn ($v) => number_format((float) $v, 3, '.', ',') . ' ' . __('ر.ع');
+            // وعملةُ صاحب التقرير لا عملةُ من يشغّل الأمر — لا جلسةَ هنا
+            $cur = Money::of((int) $b->id);
+            $money = fn ($v) => Money::format((float) $v, $cur);
             $stats = [
                 ['label' => __('إجمالي المبيعات'), 'value' => $money($sales)],
                 ['label' => __('عدد الطلبات'), 'value' => (string) $orders],
@@ -49,7 +53,7 @@ class EmailMonthlyReports extends Command
                 ['label' => __('المنتج الأكثر مبيعًا'), 'value' => $topItem->name ?? '—'],
             ];
 
-            Mail::to($b->email)->send(new MonthlyReportMail($b->name, $period, $stats));
+            Mail::to($b->email)->send(new MonthlyReportMail($b->name, $period, $stats, $cur));
             $this->line("✓ {$b->name} → {$b->email}");
             $sent++;
         });

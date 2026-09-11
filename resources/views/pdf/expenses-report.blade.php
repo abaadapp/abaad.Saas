@@ -18,7 +18,7 @@
             <td>
                 
                     <div class="lbl">{{ __('إجمالي المصروفات') }}</div>
-                    <div class="val">{{ number_format($total, 3) }} {{ __('ر.ع') }}</div>
+                    <div class="val">{{ \App\Support\Demo::moneyBase($total) }}</div>
                 </td>
         </tr>
     </table>
@@ -38,7 +38,7 @@
                 <td>{{ $e['date'] }}</td>
                 <td>{{ __($e['type']) }}</td>
                 <td>{{ $e['description'] }}</td>
-                <td>{{ number_format((float) $e['amount'], 3) }} {{ __('ر.ع') }}</td>
+                <td>{{ \App\Support\Demo::moneyBase($e['amount']) }}</td>
                 <td>{{ __($e['method']) }}</td>
                 <td>{{ $e['employee'] }}</td>
             </tr>

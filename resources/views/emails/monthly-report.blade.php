@@ -19,7 +19,7 @@
             <p style="margin-top:20px; font-size:13px; color:#6b7280;">{{ __('للاطلاع على التفاصيل الكاملة والرسوم البيانية، سجّل الدخول إلى لوحة التحكم.') }}</p>
         </div>
         <div style="padding:16px 24px; background:#f9fafb; font-size:12px; color:#9ca3af; text-align:center;">
-            {{ __('تقرير آلي من نظام Abad POS') }} — {{ __('القيم بالريال العماني') }}
+            {{ __('تقرير آلي من نظام Abad POS') }} — {{ __('القيم بعملة') }} <span dir="ltr">{{ $currency['code'] }}</span>
         </div>
     </div>
 </body>

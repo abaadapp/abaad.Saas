@@ -57,6 +57,8 @@
         ٧pt يخرج أعرضَ من خُمس الورقة، فتتجاوز الأعمدةُ مجتمعةً حدَّها
         ويُقلّص المحرّكُ الجدولَ ليُلائمه — وهو تصغيرٌ لا يطلبه أحد.
     */
+@include('documents.v1.partials.webfont')
+
     * { font-family: xbriyaz, 'IBM Plex Sans Arabic', sans-serif; box-sizing: border-box; }
 
     body {

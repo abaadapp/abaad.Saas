@@ -16,10 +16,15 @@ use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\Customers;
 use App\Support\Demo;
+use App\Support\Document\Branding;
+use App\Support\Document\PaperSize;
+use App\Support\Document\Snapshot;
+use App\Support\Document\Version;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
 use App\Support\InvoiceAttachments;
 use App\Support\InvoiceBranding;
+use App\Support\Money;
 use App\Support\Pagination;
 use App\Support\Paper;
 use App\Support\Permissions;
@@ -29,6 +34,7 @@ use App\Support\Vat;
 use App\Support\WhatsAppPhone;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -527,7 +533,7 @@ class CustomerInvoiceController extends Controller
         }
 
         /* ولقطةُ الورقة تسبق حالَ المتجر اليوم — انظر `Document\Snapshot` */
-        $snapshot = \App\Support\Document\Snapshot::of($invoice, $bid);
+        $snapshot = Snapshot::of($invoice, $bid);
 
         /*
          * وبياناتُ البائع من اللقطة — **بمفاتيح هذه الورقة وحدها**.
@@ -544,14 +550,14 @@ class CustomerInvoiceController extends Controller
          * و`name` يبقى من `InvoiceBranding`: هو **الاسمُ المعروض** الذي
          * اختاره صاحبُ المحلّ لورقته، لا الاسمُ المسجَّل في صفّ المتجر.
          */
-        if (($stamped = \App\Support\Document\Snapshot::seller($snapshot)) !== []) {
+        if (($stamped = Snapshot::seller($snapshot)) !== []) {
             $brand = array_intersect_key(
-                array_filter(\Illuminate\Support\Arr::except($stamped, ['name', 'address'])),
+                array_filter(Arr::except($stamped, ['name', 'address'])),
                 $brand,
             ) + $brand;
         }
 
-        return view(\App\Support\Document\Version::views($options['version'] ?? null).'.customer-invoice', [
+        return view(Version::views($options['version'] ?? null).'.customer-invoice', [
             'invoice' => $invoice,
             /*
              * وعملةُ الورقة من متجرها — لا ثلاثُ منازلَ و«ر.ع» مثبَّتتان.
@@ -559,17 +565,17 @@ class CustomerInvoiceController extends Controller
              * وكان القالبُ يكتبهما بيده، فورقةُ تاجرٍ في دبي تخرج بريالٍ
              * عمانيٍّ ومنزلةٍ زائدة. انظر `Support\Money`.
              */
-            'currency' => \App\Support\Document\Snapshot::currency($snapshot) ?: \App\Support\Money::of($bid),
+            'currency' => Snapshot::currency($snapshot) ?: Money::of($bid),
             /*
              * ورموزُ التصميم وغلافُ الورقة — من `Document\Branding`.
              *
              * وبمعامل الخطّ نفسِه الذي يقرؤه `scale` أدناه: قيمتان لمعاملٍ
              * واحد تجعلان الجدولَ يكبر والترويسةَ تبقى.
              */
-            'tokens' => \App\Support\Document\Branding::tokens($bid, DocumentRenderer::scale((string) $tpl['font'])),
-            'coverImage' => \App\Support\Document\Branding::cover($bid),
+            'tokens' => Branding::tokens($bid, DocumentRenderer::scale((string) $tpl['font'])),
+            'coverImage' => Branding::cover($bid),
             /* وفاتورةُ العميل ورقةُ A4 دائمًا — لا تُطبع على شريطٍ حراريّ */
-            'paper' => \App\Support\Document\PaperSize::A4,
+            'paper' => PaperSize::A4,
             'paperUrl' => $options['paperUrl'] ?? '',
             /*
              * والترويسةُ من `InvoiceBranding` لا من `Demo::business`.
@@ -591,8 +597,8 @@ class CustomerInvoiceController extends Controller
              */
             /* والرقمُ الضريبيُّ من اللقطة: ورقةُ يناير تحمل رقمَ يناير */
             'vatNumber' => Vat::enabled($bid) && $tpl['show_vat_no']
-                ? (\App\Support\Document\Snapshot::stamped($invoice)
-                    ? \App\Support\Document\Snapshot::vat($snapshot)
+                ? (Snapshot::stamped($invoice)
+                    ? Snapshot::vat($snapshot)
                     : Paper::vatNumber($bid))
                 : '',
             'paid' => $paid,
@@ -811,6 +817,8 @@ class CustomerInvoiceController extends Controller
             'payment_date' => ['nullable', 'date'],
             /* رقمُ الحوالة أو الشيك — يُطابَق به كشفُ الحساب */
             'payment_reference' => ['nullable', 'string', 'max:60'],
+            /* وتاريخُ استحقاق الشيك — يُقبل ولا يُشترط، انظر `pay` */
+            'cheque_due_at' => ['nullable', 'date'],
             /*
              * وملكيّةُ الحساب تُسأل هنا كي يقع الخطأ على حقله.
              *
@@ -1003,6 +1011,8 @@ class CustomerInvoiceController extends Controller
                 /* وتاريخُ القبض إن كُتب — وإلّا تاريخُ الورقة كما كان */
                 'occurred_at' => $data['payment_date'] ?? $invoice->issued_at,
                 'external_reference' => $data['payment_reference'] ?? null,
+                /* ويُمرَّر ولو كانت الوسيلةُ غيرَ شيك: `record` تُهمله حينئذٍ */
+                'cheque_due_at' => $data['cheque_due_at'] ?? null,
             ],
             /* والتخصيصُ صريحٌ على هذه الورقة: التلقائيُّ قد يذهب إلى أقدمَ منها */
             [$invoice->id => $amount],
@@ -1137,6 +1147,13 @@ class CustomerInvoiceController extends Controller
             'bank_account_id' => ['nullable', 'integer', Rule::exists('bank_accounts', 'id')
                 ->where('business_id', $this->bid())],
             'occurred_at' => ['nullable', 'date'],
+            /*
+             * وتاريخُ استحقاق الشيك — يُقبل ولا يُشترط.
+             *
+             * شيكٌ بلا تاريخٍ مكتوبٍ يبقى «تحت التحصيل» بلا موعدٍ يُرتَّب به،
+             * وهو أصدقُ من موعدٍ مخترَع. ومن كتبه رأى ورقتَه.
+             */
+            'cheque_due_at' => ['nullable', 'date'],
             'external_reference' => ['nullable', 'string', 'max:80'],
             'notes' => ['nullable', 'string', 'max:500'],
             'customer_invoice_id' => ['nullable', 'integer'],

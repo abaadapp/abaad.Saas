@@ -143,6 +143,17 @@ final class CustomerPayments
                 'external_reference' => $data['external_reference'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $userId,
+                /*
+                 * والشيكُ يولد «تحت التحصيل» — لا محصَّلًا.
+                 *
+                 * هو وعدٌ بمالٍ لا مال: ورقةٌ قد تُصرَف بعد شهرين وقد ترتدّ.
+                 * وغيرُ الشيك بلا حال: النقدُ لا يُحصَّل ولا يرتدّ، ووسمُه
+                 * بحالِ شيكٍ يجعل كلَّ عدٍّ للشيكات يبتلع تحصيلات المتجر.
+                 */
+                'cheque_status' => Cheques::isCheque($method) ? Cheques::PENDING : null,
+                'cheque_due_at' => Cheques::isCheque($method) && filled($data['cheque_due_at'] ?? null)
+                    ? Carbon::parse($data['cheque_due_at'])->toDateString()
+                    : null,
             ]);
 
             self::allocate($payment, $allocations);
@@ -213,10 +224,23 @@ final class CustomerPayments
      */
     private static function post(CustomerPayment $payment, ?int $userId): void
     {
-        $side = self::sideFor((string) $payment->method);
-        $target = $side === 'bank'
-            ? (Bank::leaf((int) $payment->business_id, $payment->bank_account_id) ?? 'bank')
-            : $side;
+        /*
+         * والشيكُ لا يُرحَّل إلى البنك — بل إلى «شيكات تحت التحصيل».
+         *
+         * الذمّةُ انتقلت من العميل إلى الورقة، والورقةُ لم تصل البنك بعد.
+         * وترحيلُه بنكًا يجعل الدفتر يشهد بمالٍ لم يصل، فيقرأ التاجر رصيدًا
+         * مخترَعًا ولا يكتشفه حتّى يطابق كشف حسابه — إن طابقه.
+         *
+         * ويمرّ بـ`Cheques::clear` إلى البنك حين يُصرَف فعلًا.
+         */
+        if (Cheques::isCheque((string) $payment->method)) {
+            $target = Cheques::account((int) $payment->business_id);
+        } else {
+            $side = self::sideFor((string) $payment->method);
+            $target = $side === 'bank'
+                ? (Bank::leaf((int) $payment->business_id, $payment->bank_account_id) ?? 'bank')
+                : $side;
+        }
 
         Ledger::post(
             (int) $payment->business_id,

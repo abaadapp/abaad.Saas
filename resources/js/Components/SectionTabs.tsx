@@ -153,6 +153,8 @@ export const FINANCE_TABS: SectionTab[] = [
     /* «ما لك» و«ما عليك» تبويبان متجاوران ولا يُجمعان في واحد: رقمان
        في شاشةٍ واحدة بلا فصل يجعل التاجر لا يعرف أدائنٌ هو أم مدين */
     { label: 'الذمم المدينة', routeName: 'admin.finance.receivables', section: 'finance' },
+    /* والشيكاتُ تبويبٌ مستقلّ: ورقةٌ في اليد ليست ذمّةً على عميلٍ ولا مالًا في بنك */
+    { label: 'الشيكات', routeName: 'admin.finance.cheques', section: 'finance' },
     { label: 'المبالغ المستحقة', routeName: 'admin.finance.dues', section: 'finance' },
     { label: 'مصاريف شهرية', routeName: 'admin.expenses.index', section: 'expenses' },
     { label: 'الحسابات البنكية', routeName: 'admin.finance.index', section: 'finance' },

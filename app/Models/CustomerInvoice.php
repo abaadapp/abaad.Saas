@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Cheques;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -124,9 +125,22 @@ class CustomerInvoice extends Model
      */
     public static function paidSql(): string
     {
+        /*
+         * والشيكُ المرتجع لا يُعدّ مسدَّدًا.
+         *
+         * ورقةٌ رجعت من البنك مالٌ لم يصل: قيدُها عُكس في الدفتر، وذمّةُ
+         * العميل عادت عليه. ولو بقي تخصيصُها محسوبًا لَقالت الورقة «مدفوعة»
+         * والدفترُ يقول «عليه دَين» — رقمان يقولان الشيء نفسه ويفترقان،
+         * ولا يُعرف أيُّهما الصادق.
+         *
+         * و«تحت التحصيل» يُعدّ مسدَّدًا: الذمّةُ خرجت من العميل إلى الورقة
+         * فعلًا، وحساب «ذمم العملاء» نقص بقيده. فالورقةُ والدفتر يقولان
+         * الشيء نفسه.
+         */
         return '(SELECT COALESCE(SUM(a.amount), 0) FROM customer_payment_allocations a'
             .' JOIN customer_payments p ON p.id = a.customer_payment_id'
-            .' WHERE a.customer_invoice_id = customer_invoices.id AND p.cancelled_at IS NULL)';
+            .' WHERE a.customer_invoice_id = customer_invoices.id AND p.cancelled_at IS NULL'
+            ." AND (p.cheque_status IS NULL OR p.cheque_status <> 'مرتجع'))";
     }
 
     public static function creditedSql(): string
@@ -200,10 +214,18 @@ class CustomerInvoice extends Model
      */
     public function paidTotal(): float
     {
+        /*
+         * وبالقاعدة نفسها التي في `paidSql` حرفًا بحرف — انظرها هناك.
+         *
+         * وهما اثنان لأنّ إحداهما تُحقن في `whereRaw` والأخرى تُقرأ لصفٍّ
+         * واحد. وافتراقُهما يعني ورقةً تقول «مدفوعة» في الشاشة و«عليها باقٍ»
+         * في القائمة — فيحرسه `test_both_readings_of_paid_agree`.
+         */
         return round((float) DB::table('customer_payment_allocations as a')
             ->join('customer_payments as p', 'p.id', '=', 'a.customer_payment_id')
             ->where('a.customer_invoice_id', $this->id)
             ->whereNull('p.cancelled_at')
+            ->where(fn ($q) => $q->whereNull('p.cheque_status')->orWhere('p.cheque_status', '<>', Cheques::BOUNCED))
             ->sum('a.amount'), 3);
     }
 

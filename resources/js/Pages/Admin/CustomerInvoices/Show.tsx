@@ -6,6 +6,7 @@ import PageHeader from '@/Components/PageHeader';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { CHEQUE } from '@/lib/cheques';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -360,6 +361,7 @@ function PayForm({
         bank_account_id: accounts.length > 0 ? String(accounts[0].id) : '',
         occurred_at: '',
         external_reference: '',
+        cheque_due_at: '',
     });
 
     /*
@@ -370,6 +372,15 @@ function PayForm({
      * به مالُها.
      */
     const needsAccount = bankMethods.includes(form.data.method);
+
+    /*
+     * والشيكُ وحده يُسأل عن استحقاق.
+     *
+     * ولا تُقارن الوسيلةُ بنصٍّ مكتوبٍ هنا في موضعين: اسمُ الوسيلة يُكتب
+     * مرّةً — فلو بُدِّل يومًا بقي أحدُ الموضعين يقارن باسمٍ لم يعد يُرسَل،
+     * فيختفي الحقل بلا خبر.
+     */
+    const isCheque = form.data.method === CHEQUE;
 
     return (
         <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
@@ -423,11 +434,36 @@ function PayForm({
                 {t('التاريخ')}
                 <Input type="date" value={form.data.occurred_at} onChange={(e) => form.setData('occurred_at', e.target.value)} />
             </label>
+
+            {/*
+                واستحقاقُ الشيك — يُقبل ولا يُشترط.
+
+                شيكٌ بلا موعدٍ مكتوبٍ يبقى «تحت التحصيل» بلا ترتيب، وهو أصدقُ
+                من موعدٍ مخترَع. ومن يكتبه ينظر إلى الورقة في يده.
+            */}
+            {isCheque && (
+                <label className="text-[13px]">
+                    {t('استحقاق الشيك')}
+                    <Input
+                        type="date"
+                        value={form.data.cheque_due_at}
+                        onChange={(e) => form.setData('cheque_due_at', e.target.value)}
+                    />
+                    <span className="mt-1 block text-[11px] text-[#9ca3af]">
+                        {t('لا يدخل البنك حتى تسجّل صرفه')}
+                    </span>
+                </label>
+            )}
             <Button
                 disabled={form.processing}
                 onClick={() => {
                     // وحسابٌ اختير ثمّ رُدَّت الوسيلةُ إلى النقد لا يُرسَل
-                    form.transform((d) => ({ ...d, bank_account_id: needsAccount ? d.bank_account_id : '' }));
+                    form.transform((d) => ({
+                        ...d,
+                        bank_account_id: needsAccount ? d.bank_account_id : '',
+                        // واستحقاقٌ كُتب ثمّ رُدَّت الوسيلةُ إلى غير الشيك لا يُرسَل
+                        cheque_due_at: isCheque ? d.cheque_due_at : '',
+                    }));
                     form.post('/admin/customer-payments', { preserveScroll: true, onSuccess: onDone });
                 }}
             >

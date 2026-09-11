@@ -4,6 +4,7 @@ use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Admin\BankStatementController;
 use App\Http\Controllers\Admin\BranchController;
 use App\Http\Controllers\Admin\CatalogQuickAddController;
+use App\Http\Controllers\Admin\ChequeController;
 use App\Http\Controllers\Admin\CouponController;
 use App\Http\Controllers\Admin\CurrencyController;
 use App\Http\Controllers\Admin\CustomAlertController;
@@ -950,6 +951,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/customer-invoices/{id}/remind', [CustomerInvoiceController::class, 'remind'])->name('customerInvoices.remind');
     Route::post('/customer-payments', [CustomerInvoiceController::class, 'pay'])->name('customerPayments.store');
     Route::post('/customer-payments/{id}/cancel', [CustomerInvoiceController::class, 'cancelPayment'])->name('customerPayments.cancel');
+
+    /*
+     * الشيكات — تحت «المالية» لأنّ من يُقرّ أنّ شيكًا صُرِف يكتب في الدفتر.
+     */
+    Route::get('/finance/cheques', [ChequeController::class, 'index'])->name('finance.cheques');
+    Route::post('/finance/cheques/{id}/clear', [ChequeController::class, 'clear'])->name('finance.cheques.clear');
+    Route::post('/finance/cheques/{id}/bounce', [ChequeController::class, 'bounce'])->name('finance.cheques.bounce');
 
     Route::get('/finance/receivables', [ReceivablesController::class, 'index'])->name('finance.receivables');
     /*

@@ -77,6 +77,8 @@ interface Props {
     settings: Record<string, string>;
     link: Link;
     keyHint: string | null;
+    /** أَلأبعادَ مفتاحٌ يقرأ به من لم يلصق مفتاحه — نعم أو لا، ولا طرفَ منه */
+    platformKey: boolean;
     google: Pulled;
     internal: number;
     /** مراحل الربط — شكلُها شكلُ واتساب، انظر App\Support\Integration */
@@ -140,7 +142,7 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
  * تقييماتِه ومعدّلَه من Google بمفتاح Places فتُقرأ هنا بلا مغادرة اللوحة.
  */
 export default function MarketingGoogle() {
-    const { settings, link, keyHint, google, internal, readiness, branches, searchMin } =
+    const { settings, link, keyHint, platformKey, google, internal, readiness, branches, searchMin } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -465,10 +467,21 @@ export default function MarketingGoogle() {
                         <div className="mb-3 flex items-start gap-2.5">
                             <KeyRound className="mt-0.5 size-[18px] shrink-0 text-[#111]" />
                             <div>
-                                <h3 className="text-[14px] font-bold text-[#111]">{t('مفتاحك الخاص')}</h3>
-                                {/* اختياريٌّ الآن: لأبعاد مفتاحُها — انظر GoogleReviews::apiKey */}
+                                <h3 className="text-[14px] font-bold text-[#111]">
+                                    {platformKey ? t('مفتاحك الخاص') : t('مفتاح Google Maps')}
+                                </h3>
+                                {/*
+                                    والنصُّ يتبع الواقع لا العكس.
+
+                                    فحين يكون لأبعادَ مفتاحٌ فهذا الحقل اختياريّ حقًّا: من
+                                    لم يلصق شيئًا تُقرأ تقييماته. وحين لا يكون، فقولُ
+                                    «اختياريّ» يجعل التاجر ينتظر قراءةً لا تأتي أبدًا —
+                                    ولا يشكو، لأنّه صدَّق ما قرأ.
+                                */}
                                 <p className="mt-0.5 text-[12px] text-[#6b7280]">
-                                    {t('اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد. والصقْ مفتاحك من Google Cloud إن أردت أن تُحتسب النداءات على حسابك.')}
+                                    {platformKey
+                                        ? t('اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد. والصقْ مفتاحك من Google Cloud إن أردت أن تُحتسب النداءات على حسابك.')
+                                        : t('مطلوب — لا تُقرأ تقييماتك قبل أن تلصق مفتاحك من Google Cloud.')}
                                 </p>
                             </div>
                         </div>

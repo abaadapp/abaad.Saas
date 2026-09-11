@@ -229,6 +229,58 @@ class GoogleReviewLinkTest extends TestCase
         $this->assertStringContainsString('admin.integrations.google', $source, 'الزرّ لا يقود إلى صفحة الربط');
     }
 
+    /**
+     * لا يُقال للتاجر «بمفتاح أبعاد» ولأبعادَ لا مفتاح.
+     *
+     * وبطاقةُ المفتاح في الشاشة تقول إمّا «اختياريّ — تُقرأ تقييماتك بمفتاح
+     * أبعاد» وإمّا «مطلوب». والأولى على منصّةٍ بلا مفتاحٍ كذبٌ لا يُكتشف:
+     * التاجر يقرأ أنّ المفتاح اختياريّ فلا يلصق شيئًا، ثمّ ينتظر تقييماتٍ لا
+     * تأتي — ولا يشكو، لأنّ الشاشة طمأنته.
+     */
+    public function test_the_screen_does_not_claim_a_key_the_platform_does_not_have(): void
+    {
+        Setting::where('business_id', null)->where('key', GoogleReviews::PLATFORM_KEY)->delete();
+
+        $this->get(route('admin.integrations.google'))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('platformKey', false)->etc());
+    }
+
+    public function test_the_screen_says_the_platform_has_a_key_when_it_does(): void
+    {
+        Setting::updateOrCreate(
+            ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
+            ['value' => Crypt::encryptString('platform-key')],
+        );
+
+        $this->get(route('admin.integrations.google'))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('platformKey', true)->etc());
+    }
+
+    /** ولا يُرسَل المفتاح نفسه إلى الشاشة — ولا طرفٌ منه */
+    public function test_the_platform_key_itself_never_reaches_the_screen(): void
+    {
+        Setting::updateOrCreate(
+            ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
+            ['value' => Crypt::encryptString('AIzaSyPLATFORMSECRET')],
+        );
+
+        $this->get(route('admin.integrations.google'))
+            ->assertOk()
+            ->assertDontSee('AIzaSyPLATFORMSECRET');
+    }
+
+    /** والنصّان موجودان في الشاشة — فالحقل بلا نصَّين مقبضٌ لا يُدير شيئًا */
+    public function test_the_card_carries_both_wordings(): void
+    {
+        $source = file_get_contents(resource_path('js/Pages/Admin/Integrations/Google.tsx'));
+
+        $this->assertStringContainsString('platformKey', $source, 'الشاشة لا تقرأ حال مفتاح المنصّة');
+        $this->assertStringContainsString('مطلوب — لا تُقرأ تقييماتك قبل أن تلصق مفتاحك', $source);
+        $this->assertStringContainsString('اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد', $source);
+    }
+
     public function test_it_is_measured_by_the_marketing_section(): void
     {
         $staff = User::create([

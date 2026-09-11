@@ -92,6 +92,17 @@ class IntegrationsController extends Controller
             'settings' => $settings,
             'link' => GoogleReviews::forBusiness($bid),
             'keyHint' => GoogleReviews::keyHint($bid),
+            /*
+             * أَلأبعادَ مفتاحٌ يقرأ به كلُّ تاجرٍ لم يلصق مفتاحه؟
+             *
+             * تقرؤه الشاشةُ لتقول الصدق في بطاقة المفتاح: «اختياريّ» حين
+             * يكون لأبعادَ مفتاح، و«مطلوب» حين لا يكون. وبلا هذا الحقل كانت
+             * تقول «تُقرأ تقييماتك بمفتاح أبعاد» لمنصّةٍ بلا مفتاح — فينتظر
+             * التاجر قراءةً لا تأتي، ولا يشكو لأنّه صُدِّق.
+             *
+             * ولا يُرسَل المفتاح ولا طرفٌ منه — نعم أو لا وحسب.
+             */
+            'platformKey' => GoogleReviews::platformKey() !== null,
             'google' => $pulled,
             // مراحلُ الربط — شكلُها شكلُ واتساب، انظر App\Support\Integration
             'readiness' => GoogleReviews::readiness($bid, $pulled),

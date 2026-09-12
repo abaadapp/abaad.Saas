@@ -8,6 +8,7 @@ use App\Models\WebsiteSection;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use App\Support\Website\MerchantData;
+use App\Support\Website\Preview;
 use App\Support\Website\Publication;
 use App\Support\Website\Publisher;
 use App\Support\Website\Templates;
@@ -17,14 +18,15 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * الباب: معالجٌ لمن لا موقع له، ولوحةٌ لمن له موقع.
+ * الباب: اختيارٌ لمن لا موقع له، ولوحةٌ لمن له موقع.
  *
  * وهذا الفرق هو المهمّة كلّها. من يفتح «الموقع الإلكتروني» أوّل مرّة لا يُقدَّم
- * له عشرون حقلًا يملؤها — يُسأل سؤالين ويُبنى له موقع. ومن له موقعٌ لا يُقذف
- * في الإعدادات — يرى حاله ورابطه وأربعة أبواب.
+ * له عشرون حقلًا يملؤها ولا ثلاثُ خطواتٍ يمرّ بها — يرى متجرَه مرسومًا بثلاثة
+ * أشكال، يضغط أحدَها فيدخل المحرّر. ومن له موقعٌ لا يُقذف في الإعدادات — يرى
+ * حاله ورابطه وأربعة أبواب.
  *
  * والشاشتان في متحكّمٍ واحد لأنّهما بابٌ واحد: `‎/website‎` يعرف بنفسه أيّهما
- * يعرض. وعنوانان يعني تاجرًا يحفظ عنوان المعالج ويعود إليه بعد أن صار له
+ * يعرض. وعنوانان يعني تاجرًا يحفظ عنوان الاختيار ويعود إليه بعد أن صار له
  * موقع، أو يحفظ عنوان اللوحة قبل أن يكون له موقعٌ فيرى شاشةً فارغة.
  */
 class BuilderController extends Controller
@@ -39,20 +41,50 @@ class BuilderController extends Controller
     }
 
     /**
-     * المعالج — سؤالان وموقع.
+     * الاختيار — شكلٌ واحدٌ من ثلاثة، وزرٌّ واحد.
      *
-     * وبياناتُ التاجر تُعرض فيه لا تُطلب: اسمُه وشعارُه وعددُ منتجاته أمامه،
-     * فيعرف أنّ النظام سيستعملها ولا يُطلب منه إدخالها من جديد.
+     * ═══ ولماذا لم يبقَ معالجًا ═══
+     *
+     * كان ثلاثَ خطوات: «ماذا تريد من موقعك؟» ثمّ «اختر شكلًا» ثمّ «أكّد
+     * بياناتك». وكلُّ خطوةٍ تُضاف تُسقط ربعَ من بدأ، والخطوتان الأولى
+     * والثالثة لا تُخرجان قرارًا يملكه صاحبُ متجر: الأولى تسأله عن بنيةٍ
+     * لا يعرفها (وجهةُ الموقع)، والثالثة تعرض عليه بياناتٍ أدخلها بنفسه
+     * يوم فُتح حسابه ليضغط «التالي».
+     *
+     * فبقي القرارُ الوحيد الذي يملكه ويراه: أيُّ شكلٍ يعجبه. والوجهةُ
+     * تُستنتج — من يفتح موقعًا من نظامٍ لإدارة متجرٍ يريد متجرًا — وتبقى
+     * قابلةً للتبديل في «المتجر» بعد الإنشاء.
+     *
+     * ═══ وثلاثةُ قوالبَ يُعرض كلٌّ منها متجرًا لا مربّعَ لون ═══
+     *
+     * `Builder::proposal` تبني الموقع كما سيُبنى بالحرف — بلا أن تكتب صفًّا
+     * — و`Preview::resolve` تصله بمنتجات التاجر وأسعارها وشعاره. فما يراه
+     * في البطاقة هو ما سيدخل عليه المحرّر.
      */
     private function wizard(): Response
     {
         $bid = $this->bid();
+        $business = Business::findOrFail($bid);
+
+        /*
+         * والوجهةُ `store` ولا تُسأل.
+         *
+         * أبعادُ نظامُ إدارة متجر: من يفتح موقعه منها عنده منتجاتٌ وأسعارٌ
+         * وطلبات. و«كتالوجٌ بلا طلب» و«تعريفيّ» حالان تُبلغان من «المتجر»
+         * بعد الإنشاء (`SettingsController::saveSite`) — بلغة ما يراه
+         * الزائر لا بلغة بنية الموقع.
+         */
+        $goal = Blueprints::STORE;
 
         return Inertia::render('Admin/Website/Wizard', [
-            'goals' => Blueprints::goalOptions(),
-            'templates' => Templates::options(),
+            'goal' => $goal,
+            'templates' => collect(Templates::FEATURED)->map(fn ($key) => [
+                'key' => $key,
+                'label' => __(Templates::CATALOGUE[$key]['label']),
+                'hint' => __(Templates::CATALOGUE[$key]['hint']),
+                'document' => Preview::resolve(Builder::proposal($business, $goal, $key), $bid),
+            ])->values()->all(),
             'identity' => MerchantData::identity($bid),
-            'available' => MerchantData::available($bid),
             'counts' => [
                 'products' => \App\Models\Product::where('business_id', $bid)->where('active', true)->count(),
                 'categories' => \App\Models\Category::where('business_id', $bid)->count(),
@@ -110,16 +142,23 @@ class BuilderController extends Controller
         }
 
         $data = $request->validate([
-            'goal' => ['required', Rule::in(array_keys(Blueprints::GOALS))],
+            /*
+             * والوجهةُ تُقبل ولا تُطلب.
+             *
+             * الشاشةُ لم تعد تسأل عنها (انظر `wizard`)، فغيابُها يعني
+             * «متجر». وما وصل منها يُفحص كما كان: بابٌ يقبل ما لم تُرسله
+             * الشاشة يقبله من أيّ مرسِل.
+             */
+            'goal' => ['nullable', Rule::in(array_keys(Blueprints::GOALS))],
             'template' => ['required', Rule::in(array_keys(Templates::CATALOGUE))],
-            // ما يُصحَّح في المعالج: اسمٌ وجملةٌ — والباقي من بيانات النشاط
+            // ما يُصحَّح عند الإنشاء: اسمٌ وجملةٌ — والباقي من بيانات النشاط
             'name' => ['nullable', 'string', 'max:120'],
             'tagline' => ['nullable', 'string', 'max:255'],
         ]);
 
         $business = Business::findOrFail($this->bid());
 
-        $site = Builder::create($business, $data['goal'], $data['template'], auth()->id(), [
+        $site = Builder::create($business, $data['goal'] ?? Blueprints::STORE, $data['template'], auth()->id(), [
             'name' => $data['name'] ?? '',
             'tagline' => $data['tagline'] ?? '',
         ]);

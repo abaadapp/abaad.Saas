@@ -3,13 +3,11 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
-use App\Support\Website\Preview;
 use App\Support\Website\Templates;
 use App\Support\Website\Theme;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Inertia\Inertia;
-use Inertia\Response;
 
 /**
  * التصميم — ستّة اختيارات، لا لوحةُ مصمّم.
@@ -26,16 +24,25 @@ class DesignController extends Controller
 {
     use Concerns;
 
-    public function index(): Response
+    /**
+     * والتصميم لم يعد شاشةً — صار لوحةً في المحرّر.
+     *
+     * ═══ لماذا ═══
+     *
+     * كان بابًا مستقلًّا بمعاينته الخاصّة: من يعدّل نصَّ واجهته ثمّ يريد
+     * تجربة لونٍ يغادر المحرّر، ويفقد ما اختاره من قسم، ويعود إليه بعدها.
+     * وهما عملٌ واحد في ذهن التاجر: «أُحسّن شكل موقعي». وشاشتان لعملٍ واحد
+     * تعنيان معاينتين تُبنيان وتُرسمان، وحمولتين، وحالَين قد يفترقان.
+     *
+     * وهذا المسارُ يبقى لأنّ في العالم روابطَ محفوظةً إليه وتبويبًا يشير
+     * إليه — و404 على تاجرٍ حفظ رابط تصميمه فقدانٌ لا نقل. ومسارا الحفظ
+     * تحته (`update` و`palette`) هما هما: اللوحةُ الجديدة تناديهما.
+     */
+    public function index(): RedirectResponse
     {
-        $site = $this->siteOrFail();
+        $this->siteOrFail();
 
-        return Inertia::render('Admin/Website/Design', $this->shell($site) + [
-            'templates' => Templates::options(),
-            'theme' => $site->theme,
-            'options' => Theme::options(),
-            'document' => Preview::document($site),
-        ]);
+        return redirect()->route('admin.website.editor', ['panel' => 'design']);
     }
 
     public function update(Request $request)

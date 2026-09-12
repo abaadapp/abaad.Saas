@@ -11,6 +11,8 @@ use App\Support\Website\Content;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Preview;
 use App\Support\Website\Sections;
+use App\Support\Website\Templates;
+use App\Support\Website\Theme;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -75,6 +77,24 @@ class EditorController extends Controller
             'statuses' => collect(WebsitePage::STATUSES)->map(fn ($l, $v) => [
                 'value' => $v, 'label' => __($l),
             ])->values()->all(),
+            /*
+             * والتصميمُ يصل مع الأقسام — لوحةٌ في هذه الشاشة لا شاشةٌ أخرى.
+             *
+             * وهي ستّةُ حقولٍ ونداءان (`design.update` و`design.palette`)
+             * كلُّها قائمة: ما انتقل هو موضعُ عرضها لا منطقُها. انظر
+             * `DesignController`.
+             */
+            'templates' => Templates::options(),
+            'theme' => $site->theme,
+            'themeOptions' => Theme::options(),
+            /*
+             * وأيُّ لوحةٍ تُفتح — «الأقسام» أو «التصميم».
+             *
+             * يُقرأ من الرابط لا من حال الشاشة: من جاء من «التصميم» في
+             * القائمة أو من رابطٍ حفظه يجد لوحتَه مفتوحة، ورابطُ ما يعمل
+             * عليه يُشارَك ويُحفظ كما يُشارَك أيُّ عنوان.
+             */
+            'panel' => $request->query('panel') === 'design' ? 'design' : 'sections',
         ]);
     }
 
@@ -181,7 +201,7 @@ class EditorController extends Controller
      * إضافة قسم — مملوءًا لا فارغًا.
      *
      * القسم الذي يُضاف فارغًا يجعل الموقع أسوأ بضغطة زر، فلا يُضاف مرّةً
-     * ثانية. فيُبنى بما يعرفه النظام عن التاجر كما تُبنى أقسام المعالج.
+     * ثانية. فيُبنى بما يعرفه النظام عن التاجر كما تُبنى أقسامُ الموقع الأولى.
      */
     public function addSection(Request $request, $pageId)
     {

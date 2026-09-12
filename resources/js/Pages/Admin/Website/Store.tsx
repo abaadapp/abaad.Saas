@@ -1,11 +1,12 @@
 import { useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, Check, CreditCard, Eye, Package, Settings } from 'lucide-react';
+import { AlertTriangle, Check, CreditCard, Eye, Globe, Package, Settings } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Gate from '@/Components/Gate';
 import SectionTabs, { WEBSITE_TABS } from '@/Components/SectionTabs';
 import SmartLink from '@/Components/SmartLink';
 import Toggle from '@/Components/Toggle';
+import Field, { Select } from '@/Components/Field';
 import { PageActions, SettingsGroup, SettingsPage, SettingsSection } from '@/Components/Settings';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -20,6 +21,9 @@ interface Props extends SiteShell {
     hasCatalogue: boolean;
     payments: { label: string; on: boolean }[];
     counts: { products: number; categories: number };
+    goal: string;
+    goals: { key: string; label: string; hint: string; icon: string }[];
+    name: string;
 }
 
 /**
@@ -33,7 +37,8 @@ interface Props extends SiteShell {
  * لإعدادٍ واحد يعنيان تاجرًا يُطفئ البطاقة في أحدهما وتبقى تعمل في الآخر.
  */
 export default function Store() {
-    const { settings, sells, hasCatalogue, payments, counts } = usePage<PageProps<Props>>().props;
+    const { settings, sells, hasCatalogue, payments, counts, goal, goals, name } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const form = useForm({
@@ -46,17 +51,74 @@ export default function Store() {
         form.put(route('admin.website.shop.save'), { preserveScroll: true });
     };
 
+    /*
+     * نوعُ الموقع — القرارُ الذي كان يُوعَد به ولا بابَ له.
+     *
+     * وهو أوّلُ قسمٍ لأنّه يحكم ما تحته: من يجعل موقعه تعريفيًّا لا معنى
+     * لمقبضَي «إظهار الأسعار» و«السماح بالطلب» عنده أصلًا. ولأنّه يُبدّل ما
+     * يعرضه الموقع، يُقال أثرُه قبل أن يُحفظ لا بعده.
+     *
+     * والاسمُ يُرسل معه كما هو: `saveSite` تحفظ الاثنين في نداءٍ واحد، وهذه
+     * الشاشة لا تعرض الاسم — فيُعاد إليها ما جاء منها.
+     */
+    const type = useForm({ name, goal });
+
+    const saveType = (e: React.FormEvent) => {
+        e.preventDefault();
+        type.put(route('admin.website.settings.save'), { preserveScroll: true });
+    };
+
+    const siteType = (
+        <form onSubmit={saveType}>
+            <SettingsSection
+                title="نوع الموقع"
+                description="يحدّد ما يُبنى في موقعك: متجرٌ يستقبل الطلبات، أو عرضٌ بلا طلب، أو تعريفٌ بلا منتجات."
+                icon={Globe}
+            >
+                <Field
+                    label="ماذا تريد من موقعك؟"
+                    hint={goals.find((g) => g.key === type.data.goal)?.hint}
+                    error={type.errors.goal}
+                >
+                    <Select
+                        value={type.data.goal}
+                        options={goals.map((g) => ({ value: g.key, label: g.label }))}
+                        onChange={(e) => type.setData('goal', e.target.value)}
+                    />
+                </Field>
+
+                {type.data.goal !== goal && (
+                    <p className="mt-4 flex items-center gap-2 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] leading-6 text-[#b45309]">
+                        <AlertTriangle className="size-4 shrink-0" />
+                        {t('صفحاتك ومحتواك تبقى كما هي — ويظهر من الأقسام ما يصلح للنوع الجديد وحده.')}
+                    </p>
+                )}
+
+                <PageActions className="mt-5">
+                    <Button type="submit" variant="outline" loading={type.processing}>
+                        <Check />
+                        {t('حفظ')}
+                    </Button>
+                </PageActions>
+            </SettingsSection>
+        </form>
+    );
+
     if (!hasCatalogue) {
         return (
             <AdminLayout title="المتجر">
                 <PageHeader title="المتجر" subtitle={t('إعدادات ما يعرضه موقعك من منتجاتك')} />
                 <SectionTabs tabs={WEBSITE_TABS} current="admin.website.shop" />
 
-                <Gate
-                    icon={Package}
-                    title="موقعك تعريفيّ — لا يعرض منتجات"
-                    description="لا إعدادات متجرٍ هنا لأنّ موقعك لا يعرض متجرًا. تبدّل ذلك من إعدادات الموقع متى شئت."
-                />
+                <SettingsPage>
+                    {siteType}
+
+                    <Gate
+                        icon={Package}
+                        title="موقعك تعريفيّ — لا يعرض منتجات"
+                        description="لا إعدادات متجرٍ هنا لأنّ موقعك لا يعرض متجرًا. تبدّله من «نوع الموقع» أعلاه متى شئت."
+                    />
+                </SettingsPage>
             </AdminLayout>
         );
     }
@@ -75,6 +137,8 @@ export default function Store() {
                 بالقوّة البصريّة نفسها إلى جانب ما يُضبط فعلًا.
             */}
             <SettingsPage>
+                {siteType}
+
                 <form onSubmit={submit}>
                     <SettingsSection
                         title="ما يراه الزائر"
@@ -119,7 +183,7 @@ export default function Store() {
 
                         {!sells && (
                             <p className="mt-4 rounded-[12px] bg-[#f5f5f5] px-4 py-3 text-[13px] leading-6 text-[#6b7280]">
-                                {t('موقعك يعرض منتجاتك ولا يستقبل طلبات — يتواصل معك الزبون على واتساب. تبدّل ذلك من إعدادات الموقع.')}
+                                {t('موقعك يعرض منتجاتك ولا يستقبل طلبات — يتواصل معك الزبون على واتساب. تبدّل ذلك من «نوع الموقع» أعلاه.')}
                             </p>
                         )}
 

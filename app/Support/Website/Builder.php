@@ -9,11 +9,11 @@ use App\Models\WebsiteSection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * يبني الموقع كاملًا من جوابين — «ماذا تريد؟» و«أيّ شكلٍ يعجبك؟».
+ * يبني الموقع كاملًا من جوابٍ واحد — «أيّ شكلٍ يعجبك؟».
  *
  * لا صفحةَ بيضاء ولا زرَّ «أضف قسمًا» في الوجه. الوجهةُ تحدّد الصفحات
  * وأقسامها (`Blueprints`)، والقالبُ يحدّد الألوان (`Templates`)، وبياناتُ
- * التاجر تملأ ما في الأقسام (`MerchantData`). فيخرج من المعالج موقعٌ يصلح
+ * التاجر تملأ ما في الأقسام (`MerchantData`). فيخرج من الاختيار موقعٌ يصلح
  * للنشر كما هو، ويعدّل التاجر ما يريد على شيءٍ قائم.
  *
  * والبناء كلّه في معاملةٍ واحدة: موقعٌ بصفحتين من أربع، أو صفحةٌ بلا أقسام،
@@ -87,7 +87,11 @@ class Builder
                 'type' => $slot,
                 'position' => 0,
                 'visible' => true,
-                'data' => MerchantData::seed($slot, $identity, $website->goal),
+                'data' => Templates::apply(
+                    $website->template,
+                    $slot,
+                    MerchantData::seed($slot, $identity, $website->goal),
+                ),
             ]);
         }
     }
@@ -147,7 +151,12 @@ class Builder
                 'type' => $type,
                 'position' => ++$position,
                 'visible' => true,
-                'data' => MerchantData::seed($type, $identity, $website->goal),
+                // والقالبُ يختار هيئةَ القسم كما يختار لونَه — انظر `Templates::apply`
+                'data' => Templates::apply(
+                    $website->template,
+                    $type,
+                    MerchantData::seed($type, $identity, $website->goal),
+                ),
             ]);
         }
     }
@@ -161,6 +170,100 @@ class Builder
     public static function syncMenu(Website $website): void
     {
         Nav::sync($website);
+    }
+
+    /**
+     * موقعٌ مقترَح لم يُكتب منه صفٌّ واحد — ليراه التاجر قبل أن يختار.
+     *
+     * شاشةُ الإنشاء تعرض ثلاثة قوالب، ولا تعرضها مربّعاتِ ألوان: تعرض متجرَ
+     * التاجر نفسَه مرسومًا بكلٍّ منها — باسمه وشعاره ومنتجاته وأسعارها. وهو
+     * الفرق بين «اختر لونًا» و«اختر متجرك»: الأوّل قرارٌ لا يملك التاجر
+     * أساسًا للمفاضلة فيه، والثاني يُتّخذ في ثانيةٍ بلمحة عين.
+     *
+     * وما يُبنى هنا نسخةٌ من الحقيقة لا تقريبٌ لها: الشكلُ شكلُ العقد
+     * (`Publication::CONTRACT`)، والصفحاتُ صفحاتُ `Blueprints`، ومحتوى
+     * أقسامها من `MerchantData` وهيئتُها من `Templates` — أي ما سيُكتب في
+     * القاعدة بالحرف لو ضغط «استخدم هذا القالب». فلا يرى شيئًا ثمّ يُنشأ له
+     * غيرُه.
+     *
+     * ولا يُكتب منه شيء: من يقلّب في ثلاثة قوالب لا يترك خلفه ثلاثة مواقع.
+     *
+     * @return array<string, mixed>
+     */
+    public static function proposal(Business $business, string $goal, string $template): array
+    {
+        $goal = Blueprints::goal($goal);
+        $template = Templates::key($template);
+        $bid = (int) $business->id;
+
+        $identity = MerchantData::identity($bid);
+        $available = MerchantData::available($bid);
+        $name = $identity['name'] !== '' ? $identity['name'] : (string) $business->name;
+
+        $pages = collect(Blueprints::pages($goal));
+
+        /*
+         * وقائمةُ الترويسة تُبنى من الصفحات كما تُبنى بعد الإنشاء.
+         *
+         * `Nav::sync` تقرأ صفوفًا في القاعدة ولا صفَّ هنا، فتُبنى الروابطُ
+         * من الوصف نفسه الذي ستُبنى منه الصفحات. وترويسةٌ بلا قائمة في
+         * المعاينة تجعل القوالب الثلاثة تبدو أقربَ ممّا هي.
+         */
+        $links = $pages->map(fn ($spec) => [
+            'label' => __($spec['title']),
+            'href' => WebsitePage::normalizeSlug($spec['slug']),
+            'type' => Nav::PAGE,
+            'page_id' => 0,
+        ])->all();
+
+        $seed = fn (string $type) => Templates::apply(
+            $template,
+            $type,
+            MerchantData::seed($type, $identity, $goal),
+        );
+
+        return [
+            'schema_version' => Publication::SCHEMA,
+            'version' => Publication::SCHEMA,
+            'name' => $name,
+            'goal' => $goal,
+            'template' => $template,
+            'theme' => Templates::theme($template),
+            'tokens' => Theme::tokens(Templates::theme($template)),
+            'seo' => self::seo($identity),
+            'commerce' => Publication::commerceFor($goal, $bid),
+            'maintenance' => false,
+            'maintenance_message' => null,
+            'globals' => collect(Sections::SLOTS)->map(fn ($slot) => [
+                'slot' => $slot,
+                'type' => $slot,
+                'visible' => true,
+                'data' => array_merge($seed($slot), ['links' => $links]),
+            ])->all(),
+            'pages' => $pages->map(fn ($spec) => [
+                'key' => $spec['key'],
+                'title' => __($spec['title']),
+                'slug' => WebsitePage::normalizeSlug($spec['slug']),
+                'status' => WebsitePage::PUBLISHED,
+                'is_home' => (bool) ($spec['home'] ?? false),
+                'removable' => (bool) ($spec['removable'] ?? true),
+                'seo' => null,
+                'sections' => collect($spec['sections'])
+                    ->filter(fn ($type) => Publication::carries($type, $goal))
+                    // والقسمُ الذي لا يجد ما يعرضه يسقط هنا كما يسقط في البناء
+                    ->filter(function ($type) use ($available) {
+                        $needs = Sections::requires($type);
+
+                        return ! $needs || ($available[$needs] ?? true);
+                    })
+                    ->map(fn ($type) => [
+                        'type' => $type,
+                        'visible' => true,
+                        'source' => Sections::source($type),
+                        'data' => $seed($type),
+                    ])->values()->all(),
+            ])->values()->all(),
+        ];
     }
 
     /** سيو الموقع الأوّل — عنوانٌ ووصفٌ من بيانات النشاط لا من فراغ */

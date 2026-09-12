@@ -13,6 +13,7 @@ use App\Models\WebsiteSection;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use App\Support\Website\Publisher;
+use App\Support\Website\Templates;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use App\Support\Website\Domains;
@@ -81,14 +82,14 @@ class WebsiteBuilderTest extends TestCase
         ]);
     }
 
-    /* ================== أوّل مرّة: معالجٌ لا شاشةُ إعدادات ================== */
+    /* ================== أوّل مرّة: اختيارٌ لا شاشةُ إعدادات ================== */
 
-    public function test_a_merchant_with_no_site_meets_the_wizard(): void
+    public function test_a_merchant_with_no_site_meets_the_picker(): void
     {
         $this->assertSame('Admin/Website/Wizard', $this->screen(route('admin.website.index')));
     }
 
-    public function test_the_wizard_shows_the_merchant_his_own_data(): void
+    public function test_the_picker_shows_the_merchant_his_own_data(): void
     {
         $this->catalogue();
         Setting::create(['business_id' => $this->bid(), 'key' => 'store_headline', 'value' => 'أجمل الورود']);
@@ -99,22 +100,100 @@ class WebsiteBuilderTest extends TestCase
         $this->assertSame('أجمل الورود', $props['identity']['tagline']);
         $this->assertSame('96890000000', $props['identity']['phone']);
         $this->assertSame(1, $props['counts']['products']);
-        $this->assertCount(3, $props['goals']);
-        $this->assertNotEmpty($props['templates']);
+        // ولا يُسأل عن وجهةٍ لا يعرفها: من يفتح موقعه من نظام متاجرَ يريد متجرًا
+        $this->assertSame(Blueprints::STORE, $props['goal']);
+        $this->assertArrayNotHasKey('goals', $props);
     }
 
-    public function test_two_answers_end_in_the_editor(): void
+    /**
+     * ثلاثةُ قوالبَ لا ستّة — وكلٌّ منها متجرُ التاجر مرسومًا.
+     *
+     * وهذا هو الفرق الذي بُنيت له `Builder::proposal`: بطاقةٌ فيها مربّعا لون
+     * لا تُخرج قرارًا من صاحب متجر، وبطاقةٌ فيها متجرُه باسمه وشعاره ومنتجه
+     * وسعره تُخرجه في ثانية.
+     */
+    public function test_each_template_is_shown_as_the_merchants_own_shop(): void
     {
+        $this->catalogue();
+        Setting::create(['business_id' => $this->bid(), 'key' => 'store_headline', 'value' => 'أجمل الورود']);
+
+        $templates = $this->props(route('admin.website.index'))['templates'];
+
+        $this->assertCount(3, $templates, 'عُرض غيرُ الثلاثة المعتمدة');
+        $this->assertSame(Templates::FEATURED, array_column($templates, 'key'));
+
+        foreach ($templates as $card) {
+            $doc = $card['document'];
+
+            $this->assertNotEmpty($doc['pages'], $card['key'].' بلا صفحات');
+            $this->assertSame('ورود مسقط', $doc['name']);
+            // البضاعةُ بضاعتُه: المعاينة تقرأ الكتالوج كما يقرؤه الموقع المنشور
+            $this->assertSame('باقة ورد', $doc['data']['products'][0]['name']);
+            $this->assertSame('أجمل الورود', $doc['pages'][0]['sections'][0]['data']['title']);
+        }
+
+        // وبين الثلاثة فرقٌ يُرى: لونٌ وخطٌّ وهيئةُ أقسام — لا لونٌ وحده
+        $hero = fn (array $card) => $card['document']['pages'][0]['sections'][0]['data'];
+
+        $this->assertSame('small', $hero($templates[1])['height'], 'بسيط: واجهةٌ قصيرة');
+        $this->assertSame('large', $hero($templates[2])['height'], 'جريء: واجهةٌ بملء الشاشة');
+        $this->assertNotSame(
+            $templates[0]['document']['tokens']['primary'],
+            $templates[2]['document']['tokens']['primary'],
+        );
+    }
+
+    /** ولا يُكتب شيءٌ لمن قلّب في القوالب ولم يختر */
+    public function test_looking_at_the_templates_builds_nothing(): void
+    {
+        $this->get(route('admin.website.index'))->assertOk();
+
+        $this->assertSame(0, Website::count());
+        $this->assertSame(0, WebsiteSection::count());
+    }
+
+    public function test_one_answer_ends_in_the_editor(): void
+    {
+        // والوجهةُ لا تُرسل: الشاشةُ لا تسأل عنها، والخادمُ يعرف جوابَها
         $this->post(route('admin.website.create'), [
-            'goal' => Blueprints::STORE, 'template' => 'modern', 'name' => 'ورود مسقط',
+            'template' => 'modern', 'name' => 'ورود مسقط',
         ])->assertRedirect();
 
         $site = Website::where('business_id', $this->bid())->firstOrFail();
 
+        $this->assertSame(Blueprints::STORE, $site->goal);
         $this->assertSame(4, $site->pages()->count());
         $this->assertSame(Website::DRAFT, $site->state());
         // ولا شيء يظهر للزائر: النشر فعلٌ مستقلّ
         $this->assertNull($site->published_version_id);
+    }
+
+    /**
+     * وما رآه في البطاقة هو ما يجده في المحرّر — لا شبيهٌ له.
+     *
+     * `proposal` و`Builder::create` مصدرُهما واحد (`MerchantData::seed` ثمّ
+     * `Templates::apply`)، وهذا الاختبار يقف على أثر ذلك: هيئةُ القسم التي
+     * وعدت بها البطاقةُ هي التي كُتبت في القاعدة.
+     */
+    public function test_what_the_card_promised_is_what_gets_built(): void
+    {
+        $promised = $this->props(route('admin.website.index'))['templates'][2];
+
+        $this->assertSame('bold', $promised['key']);
+
+        $this->post(route('admin.website.create'), ['template' => 'bold'])->assertRedirect();
+
+        $site = Website::where('business_id', $this->bid())->firstOrFail();
+        $hero = $site->homePage()->sections()->where('type', 'hero')->firstOrFail();
+        $header = $site->slot('header');
+
+        $this->assertSame('large', $hero->data['height']);
+        $this->assertSame('center', $hero->data['align']);
+        $this->assertSame('centered', $header->data['preset']);
+        $this->assertSame(
+            $promised['document']['pages'][0]['sections'][0]['data']['height'],
+            $hero->data['height'],
+        );
     }
 
     public function test_a_second_site_is_refused_and_the_first_is_opened(): void
@@ -596,7 +675,9 @@ class WebsiteBuilderTest extends TestCase
 
         $this->get(route('admin.website.index'))->assertOk();
         $this->get(route('admin.website.editor'))->assertOk();
-        $this->get(route('admin.website.design'))->assertOk();
+        // والتصميمُ لوحةٌ في المحرّر لا شاشة — والرابطُ القديم يقود إليها
+        $this->get(route('admin.website.design'))
+            ->assertRedirect(route('admin.website.editor', ['panel' => 'design']));
 
         $document = $this->props(route('admin.website.editor'))['document'];
 

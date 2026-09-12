@@ -175,8 +175,23 @@ final class Publication
      */
     public static function commerce(Website $website): array
     {
-        $goal = $website->goal();
-        $marketing = MarketingSettings::group((int) $website->business_id, 'website');
+        return self::commerceFor($website->goal(), (int) $website->business_id);
+    }
+
+    /**
+     * والجوابُ نفسُه لموقعٍ لم يُكتب بعد.
+     *
+     * شاشةُ الإنشاء ترسم للتاجر متجرَه قبل أن يُنشأ (`Builder::proposal`)،
+     * وفيها سؤالُ «أيظهر السعر؟ وأيظهر زرُّ الطلب؟» قائمٌ كما هو. ولو نُسخ
+     * الجوابُ هناك لافترق عن هذا عند أوّل تعديلٍ في القاعدة — فيرى التاجر
+     * أسعارًا في المعاينة ولا يراها في موقعه.
+     *
+     * @return array{show_prices: bool, allow_orders: bool}
+     */
+    public static function commerceFor(string $goal, int $businessId): array
+    {
+        $goal = Blueprints::goal($goal);
+        $marketing = MarketingSettings::group($businessId, 'website');
 
         $showPrices = Blueprints::hasCatalogue($goal)
             && ($marketing['store_show_prices'] ?? '1') === '1';

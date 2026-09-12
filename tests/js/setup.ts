@@ -53,6 +53,23 @@ vi.mock('@inertiajs/react', async () => {
 Element.prototype.scrollIntoView = function scrollIntoView() {};
 
 /*
+ * و`ResizeObserver` ليست فيه كذلك.
+ *
+ * معاينةُ الموقع تقيس نفسها به: عرضُ الحاوية يحدّد التصغير، والتصغيرُ يحدّد
+ * ارتفاعَ الورقة وموضعَ صناديق الإمساك. وjsdom لا يرسم فلا يقيس — فيُعطى
+ * جسدًا لا يفعل شيئًا، ويبقى القياسُ الأوّل (الذي يقع عند التركيب) هو ما
+ * يُختبر. والبديلُ أن تسأل الشاشةُ عن وجوده قبل أن تستعمله — حيلةٌ في الكود
+ * لأجل مُشغّل اختبارات.
+ */
+if (!('ResizeObserver' in globalThis)) {
+    globalThis.ResizeObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    } as never;
+}
+
+/*
  * والشجرةُ تُهدَم بين اختبارٍ وآخر.
  *
  * `@testing-library` لا تنظّف وحدها إلا مع globals في بعض التهيئات، وبقاءُ

@@ -13,8 +13,25 @@ class Permissions
     public const MAP = [
         'admin' => ['*'],
         'manager' => ['*'],
-        // المحاسب يقرأ التقارير: هي عملُه لا زينةٌ فوقه
-        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses', 'employees', 'pos', 'reports'],
+        /*
+         * المحاسب يقرأ التقارير: هي عملُه لا زينةٌ فوقه.
+         *
+         * ═══ و«الموردون» و«المشتريات» أُضيفتا لأنّ غيابهما كان سهوًا ═══
+         *
+         * كان يُصدر فواتير العملاء ويحصّلها ويكتب الإشعار الدائن ويقرأ
+         * الرواتب وشجرةَ الحسابات وميزانَ المراجعة — ولا يرى **الذمم
+         * الدائنة**: فواتيرَ الموردين وسنداتِ استلامهم. فيقفل نصفَ الدفتر.
+         *
+         * والدليلُ أنّه سهوٌ لا تصميم: `ATTACHMENT_VIEW` كانت تشمله من
+         * أوّل يوم — فهو مأذونٌ أن يفتح **مرفقَ** سندٍ لا يرى السندَ نفسَه.
+         * القصدُ كان أن يقرأها، ونُسيت أفعالُ القراءة.
+         *
+         * ولا تُمنح معها كتابةٌ ولا اعتمادٌ ولا سداد: الاستلامُ عملُ من
+         * يستلم البضاعة بيده، والاعتمادُ والصرفُ لمن يملك المال. ومن يُقيّد
+         * لا يعتمد ما قيّده.
+         */
+        'accountant' => ['dashboard', 'orders', 'customers', 'finance', 'expenses',
+            'employees', 'pos', 'reports', 'suppliers', 'purchases'],
         // من يجهّز البضاعة يرى لوحة التجهيز — وهي عملُه لا زينةٌ فوقه
         'inventory' => ['dashboard', 'products', 'inventory', 'suppliers', 'purchases', 'pos', 'preparation'],
         'sales' => ['dashboard', 'orders', 'customers', 'products', 'pos', 'preparation'],
@@ -194,9 +211,14 @@ class Permissions
          * التفصيلُ يضيّق ما يُخرج المالَ ويُنشئ الذمّة، ولا يقطع عن أحدٍ
          * شاشةً يعمل عليها.
          */
-        self::RECEIPT_VIEW => ['admin', 'manager', 'inventory'],
+        /*
+         * والقراءةُ تشمل المحاسب: الذمّةُ الدائنة نصفُ الدفتر، ومن يُقفل
+         * الحسابات لا يُقفلها على نصفٍ لا يراه. والكتابةُ لا تشمله —
+         * الاستلامُ عملُ من يستلم البضاعة بيده.
+         */
+        self::RECEIPT_VIEW => ['admin', 'manager', 'accountant', 'inventory'],
         self::RECEIPT_CREATE => ['admin', 'manager', 'inventory'],
-        self::INVOICE_VIEW => ['admin', 'manager', 'inventory'],
+        self::INVOICE_VIEW => ['admin', 'manager', 'accountant', 'inventory'],
         self::INVOICE_CREATE => ['admin', 'manager', 'inventory'],
         self::ATTACHMENT_VIEW => ['admin', 'manager', 'accountant', 'inventory'],
         // والاعتمادُ والرفضُ للمالك ومدير الفرع — ومن سواهما يُمنحهما بالاسم

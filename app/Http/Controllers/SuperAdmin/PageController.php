@@ -416,7 +416,26 @@ class PageController extends Controller
      */
     private function platformSettings(): array
     {
-        $saved = Setting::whereNull('business_id')->pluck('value', 'key')->all();
+        /*
+         * ═══ ولا يُقرأ الجدول كلُّه — بل ما لهذه الشاشة وحده ═══
+         *
+         * كانت تنشر كلَّ صفوف `business_id = null` فوق الافتراضيّات. وفي
+         * الجدول ما ليس لها: `google_places_key` مفتاحُ خرائط المنصّة —
+         * معمًّى، لكنّه وصل حمولةَ الصفحة كاملًا (٢٥٦ حرفًا) فقرأه من فتح
+         * «مصدر الصفحة».
+         *
+         * وقد عرف الكودُ الخطرَ ولم يُغلقه: `SettingController::googleKey`
+         * يشرح أنّ المفتاح لا يمرّ في `KEYS` «لأنّ تلك تُقرأ في
+         * `platformSettings` فتصل المتصفّح» — ثمّ تقرأ `platformSettings`
+         * الجدولَ كلَّه لا `KEYS`. فالاستثناءُ حرسَ بابًا والتسريبُ من آخر.
+         *
+         * والقائمةُ تُشتقّ من الافتراضيّات لا تُكتب ثانية: مفتاحٌ يُضاف
+         * للشاشة يُضاف في موضعٍ واحد، وسرٌّ يُخزَّن غدًا لا يتسرّب لأنّ
+         * أحدًا نسي أن يستثنيه.
+         */
+        $saved = Setting::whereNull('business_id')
+            ->whereIn('key', array_keys(self::SETTING_DEFAULTS))
+            ->pluck('value', 'key')->all();
 
         return [...self::SETTING_DEFAULTS, ...$saved];
     }

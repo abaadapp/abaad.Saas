@@ -96,13 +96,15 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, supportReach, googleHealth, googleKeyHint, googleBilling } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, supportReach, googleHealth, googleKeyHint, googleBilling } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
             plans: SelectOption[];
             googleKeyHint?: string | null;
             whatsapp?: SharedConnection | null;
+            /* ورقمُ المبيعات وصلةٌ ثانيةٌ بالشكل نفسه وغرضٍ آخر */
+            salesWhatsapp?: SharedConnection | null;
             supportReach?: { reachable: number; total: number; ambiguous: number };
             googleHealth?: { configured: boolean; linkedBranches: number; branches: number };
             /* حالُ فوترة Google — انظر App\Support\GoogleBilling */
@@ -158,6 +160,20 @@ export default function PlatformSettings() {
      * يُعاد إرساله كلّما ضُغط «حفظ التغييرات».
      */
     const connectForm = useForm({
+        phone_number_id: '',
+        waba_id: '',
+        display_phone_number: '',
+        access_token: '',
+    });
+
+    /*
+     * ورقمُ المبيعات نموذجٌ ثانٍ مستقلّ.
+     *
+     * ولا يُعاد استعمالُ الأوّل: نموذجٌ واحدٌ لوصلتين يعني حقلًا يحمل رمزَ
+     * إحداهما ويُرسَل إلى الأخرى — ثمّ يُكتب رمزُ رقم المبيعات على رقم
+     * الإشعارات، فتتوقّف رسائلُ كلّ المتاجر.
+     */
+    const salesForm = useForm({
         phone_number_id: '',
         waba_id: '',
         display_phone_number: '',
@@ -604,6 +620,112 @@ export default function PlatformSettings() {
                                 >
                                     <Save />
                                     {t('ربط الرقم')}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/*
+                            ═══ رقمُ مبيعات أبعاد — رقمٌ ثانٍ لا مقبضٌ على الأوّل ═══
+
+                            رقمُ الإشعارات يُرسل نيابةً عن المحلّات فيردّ عليه
+                            **زبائنُهم**، ولا يُخزَّن من وارده إلّا ما طابق
+                            مستخدمًا له متجر. ورقمُ المبيعات يحتاج عكسَ ذلك:
+                            أن يُقرأ الواردُ من رقمٍ **مجهول** — فالعميلُ
+                            المحتمَل ليس مستخدمًا عندنا بعد.
+
+                            والشرطان لا يجتمعان على رقم، فلا مقبضَ يجمعهما.
+                        */}
+                        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                            <h4 className="mb-1 font-bold text-[#111]">{t('رقم مبيعات أبعاد (CRM)')}</h4>
+                            <p className="mb-4 text-[13px] leading-relaxed text-[#6b7280]">
+                                {t('رقمٌ مستقلٌّ يستقبل من يريد أن يشتري أبعاد، ووارده يُقرأ في «CRM ‹ المحادثات». ولا يكون رقمَ الإشعارات نفسَه: ذاك يردّ عليه زبائنُ المحلّات، وقراءةُ المجهول عليه تُدخل رسائلهم في دفتر مبيعاتنا.')}
+                            </p>
+
+                            {salesWhatsapp && (
+                                <p className="mb-4 text-[13px] text-[#111]">
+                                    {t('الموصول الآن')}:{' '}
+                                    <span dir="ltr">{salesWhatsapp.display_phone_number ?? salesWhatsapp.phone_number_id}</span>
+                                    {' · '}
+                                    <span className={salesWhatsapp.usable ? 'text-[#15803d]' : 'text-[#b91c1c]'}>
+                                        {salesWhatsapp.usable ? t('يعمل') : t('لا يعمل')}
+                                    </span>
+                                </p>
+                            )}
+
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <Field
+                                        label={t('معرّف الرقم (Phone Number ID)')}
+                                        error={salesForm.errors.phone_number_id}
+                                    >
+                                        <Input
+                                            dir="ltr"
+                                            value={salesForm.data.phone_number_id}
+                                            onChange={(e) => salesForm.setData('phone_number_id', e.target.value)}
+                                        />
+                                    </Field>
+                                    <Field
+                                        label={t('معرّف حساب الأعمال (WABA ID)')}
+                                        error={salesForm.errors.waba_id}
+                                    >
+                                        <Input
+                                            dir="ltr"
+                                            value={salesForm.data.waba_id}
+                                            onChange={(e) => salesForm.setData('waba_id', e.target.value)}
+                                        />
+                                    </Field>
+                                </div>
+
+                                <Field
+                                    label={t('الرقم كما يظهر للعميل')}
+                                    error={salesForm.errors.display_phone_number}
+                                >
+                                    <Input
+                                        dir="ltr"
+                                        value={salesForm.data.display_phone_number}
+                                        onChange={(e) => salesForm.setData('display_phone_number', e.target.value)}
+                                    />
+                                </Field>
+
+                                <Field
+                                    label={t('رمز الوصول الدائم')}
+                                    hint={t('يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ — احتفظ بنسخةٍ منه عندك.')}
+                                    error={salesForm.errors.access_token}
+                                >
+                                    <PasswordInput
+                                        dir="ltr"
+                                        value={salesForm.data.access_token}
+                                        onChange={(e) => salesForm.setData('access_token', e.target.value)}
+                                    />
+                                </Field>
+                            </div>
+
+                            <div className="mt-5 flex justify-end gap-2">
+                                {salesWhatsapp && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() =>
+                                            router.delete(route('super-admin.whatsapp.sales.disconnect'), {
+                                                preserveScroll: true,
+                                            })
+                                        }
+                                    >
+                                        {t('فصل رقم المبيعات')}
+                                    </Button>
+                                )}
+                                <Button
+                                    type="button"
+                                    loading={salesForm.processing}
+                                    onClick={() =>
+                                        salesForm.post(route('super-admin.whatsapp.sales.connect'), {
+                                            preserveScroll: true,
+                                            onSuccess: () => salesForm.reset('access_token'),
+                                        })
+                                    }
+                                >
+                                    <Save />
+                                    {t('ربط رقم المبيعات')}
                                 </Button>
                             </div>
                         </div>

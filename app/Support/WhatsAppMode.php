@@ -29,6 +29,31 @@ class WhatsAppMode
 
     public const OWNERS = [self::OWNER_PLATFORM, self::OWNER_BUSINESS];
 
+    /*
+     * ولمَ يخدم الرقم — و«لمن» غيرُ «لماذا».
+     *
+     * `owner_type` يقول من يملك الرقم. وهذا يقول ما يخرج منه ويدخل إليه:
+     * رقمٌ يُرسل إشعاراتِ الطلبات نيابةً عن المحلّات، ورقمٌ يستقبل من يريد
+     * أن يشتري أبعاد. والشرطان لا يجتمعان على رقم — انظر الترحيل
+     * `the_sales_number_is_not_the_notice_number`.
+     */
+
+    /** رقمُ الإشعارات — يُرسل نيابةً عن المحلّات، ويستقبل دعمَ أصحابها */
+    public const PURPOSE_NOTIFICATIONS = 'notifications';
+
+    /** رقمُ مبيعات أبعاد — يستقبل من يريد أن يشتريها، ولا يُرسل إشعارَ طلبٍ قطّ */
+    public const PURPOSE_CRM_SALES = 'crm_sales';
+
+    public const PURPOSES = [self::PURPOSE_NOTIFICATIONS, self::PURPOSE_CRM_SALES];
+
+    public static function purposeLabel(string $purpose): string
+    {
+        return match ($purpose) {
+            self::PURPOSE_CRM_SALES => __('مبيعات أبعاد'),
+            default => __('إشعارات الطلبات'),
+        };
+    }
+
     /** الوضع الافتراضي لكلّ متجرٍ جديد */
     public const DEFAULT = self::ABAAD_SHARED;
 

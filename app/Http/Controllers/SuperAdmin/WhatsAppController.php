@@ -45,10 +45,21 @@ class WhatsAppController extends Controller
          * وصلتان نشطتان تعنيان أنّ الرسائل تخرج من رقمين بلا قاعدةٍ تحكم
          * أيّهما — ويقرأ الزبون رقمًا في رسالة ورقمًا آخر في التالية.
          */
-        $existing = WhatsAppConnection::query()->platform()->orderByDesc('id')->first();
+        $existing = WhatsAppConnection::query()->platform()
+            ->where('purpose', WhatsAppMode::PURPOSE_NOTIFICATIONS)
+            ->orderByDesc('id')->first();
 
         $attributes = [
             'owner_type' => WhatsAppMode::OWNER_PLATFORM,
+            /*
+             * وغرضُه يُكتب صراحةً: هذا رقمُ الإشعارات لا رقمُ المبيعات.
+             *
+             * و«واحدةٌ لا اثنتان» أعلاه صارت «واحدةٌ لكلّ غرض»: رقمُ مبيعات
+             * أبعاد وصلةٌ ثانية مشروعة، ولولا الشرطُ لَسحبها هذا الباب
+             * وجعلها رقمَ الإشعارات — فتخرج إشعاراتُ كلّ المتاجر من رقمٍ
+             * لا يعرفه زبائنُهم.
+             */
+            'purpose' => WhatsAppMode::PURPOSE_NOTIFICATIONS,
             'business_id' => null,
             'provider' => 'meta_cloud',
             'waba_id' => $data['waba_id'] ?? null,
@@ -93,7 +104,9 @@ class WhatsAppController extends Controller
      */
     public function disconnectShared()
     {
-        $connection = WhatsAppConnection::query()->platform()->orderByDesc('id')->first();
+        $connection = WhatsAppConnection::query()->platform()
+            ->where('purpose', WhatsAppMode::PURPOSE_NOTIFICATIONS)
+            ->orderByDesc('id')->first();
 
         if ($connection) {
             $connection->update([
@@ -104,6 +117,99 @@ class WhatsAppController extends Controller
         }
 
         return back()->with('toast', ['msg' => __('فُصل الرقم المشترك'), 'type' => 'success']);
+    }
+
+    /**
+     * ربطُ رقم مبيعات أبعاد — وصلةٌ ثانيةٌ للمنصّة بغرضٍ آخر.
+     *
+     * ═══ ولمَ رقمٌ ثانٍ لا مقبضٌ على الأوّل ═══
+     *
+     * رقمُ الإشعارات يُرسل نيابةً عن المحلّات فيردّ عليه **زبائنُهم**، ولا
+     * يُخزَّن من وارده إلّا ما طابق مستخدمًا له متجر. ورقمُ المبيعات يحتاج
+     * عكسَ ذلك: أن يُقرأ الواردُ من **رقمٍ مجهول** — فالعميلُ المحتمَل ليس
+     * مستخدمًا عندنا بعد.
+     *
+     * والشرطان لا يجتمعان: مقبضٌ يفتح المجهولَ على رقم الإشعارات يجعل كلَّ
+     * زبونةِ محلِّ ورودٍ سألت عن هديّتها عميلًا محتملًا في دفتر مبيعاتنا،
+     * ونصَّ رسالتها مقروءًا في لوحة المنصّة.
+     *
+     * والوارد على هذا الرقم يُقرأ بلا مقبض: رقمٌ لا غرضَ له غيرُ هذا.
+     */
+    public function connectSales(Request $request)
+    {
+        $data = $request->validate([
+            'phone_number_id' => ['required', 'string', 'max:100'],
+            'waba_id' => ['nullable', 'string', 'max:100'],
+            'display_phone_number' => ['nullable', 'string', 'max:32'],
+            'access_token' => ['required', 'string', 'min:20', 'max:1000'],
+        ], [
+            'access_token.required' => __('الصق رمز الوصول الدائم من لوحة ميتا.'),
+        ]);
+
+        $existing = WhatsAppConnection::query()->platform()
+            ->where('purpose', WhatsAppMode::PURPOSE_CRM_SALES)
+            ->orderByDesc('id')->first();
+
+        /*
+         * ورقمُ المبيعات لا يكون رقمَ الإشعارات نفسَه.
+         *
+         * الفهرسُ الفريدُ على `phone_number_id` يردُّه أصلًا، لكنّ رسالةً
+         * تُقرأ خيرٌ من خطأِ قاعدةٍ يصير صفحةَ خمسمئة. والسببُ يُقال: رقمٌ
+         * واحدٌ لا يخدم الغرضين — لأنّه إمّا يقرأ المجهول أو لا يقرؤه.
+         */
+        $clash = WhatsAppConnection::where('phone_number_id', $data['phone_number_id'])
+            ->when($existing, fn ($q) => $q->where('id', '!=', $existing->id))->exists();
+
+        if ($clash) {
+            return back()->withErrors([
+                'phone_number_id' => __('هذا الرقم مربوطٌ بوصلةٍ أخرى — ورقمُ المبيعات لا يكون رقمَ الإشعارات نفسَه.'),
+            ]);
+        }
+
+        $attributes = [
+            'owner_type' => WhatsAppMode::OWNER_PLATFORM,
+            'purpose' => WhatsAppMode::PURPOSE_CRM_SALES,
+            'business_id' => null,
+            'provider' => 'meta_cloud',
+            'waba_id' => $data['waba_id'] ?? null,
+            'phone_number_id' => $data['phone_number_id'],
+            'display_phone_number' => $data['display_phone_number'] ?? null,
+            'access_token' => $data['access_token'],
+            /*
+             * ولا يُشعَل `supports_inbox` هنا.
+             *
+             * ذاك مقبضُ مركز المحادثات على رقم الإشعارات. والوارد على رقم
+             * المبيعات يُقرأ من غرضه لا من مقبضٍ ثانٍ — ومقبضان لبابٍ واحد
+             * يُنسى أحدهما فيُظنّ الرقمُ موصولًا ولا يصل شيء.
+             */
+            'status' => WhatsAppConnection::ACTIVE,
+            'connected_at' => now(),
+            'disconnected_at' => null,
+        ];
+
+        $existing ? $existing->update($attributes) : WhatsAppConnection::create($attributes);
+
+        Activity::log('settings', 'ربط رقم واتساب مبيعات أبعاد ('.($data['display_phone_number'] ?? $data['phone_number_id']).')');
+
+        return back()->with('toast', ['msg' => __('تم ربط رقم المبيعات'), 'type' => 'success']);
+    }
+
+    /** فصلُ رقم المبيعات — تعطيلٌ لا حذف، فالخيوطُ تبقى مقروءة */
+    public function disconnectSales()
+    {
+        $connection = WhatsAppConnection::query()->platform()
+            ->where('purpose', WhatsAppMode::PURPOSE_CRM_SALES)
+            ->orderByDesc('id')->first();
+
+        if ($connection) {
+            $connection->update([
+                'status' => WhatsAppConnection::INACTIVE,
+                'disconnected_at' => now(),
+            ]);
+            Activity::log('settings', 'فصل رقم واتساب مبيعات أبعاد');
+        }
+
+        return back()->with('toast', ['msg' => __('فُصل رقم المبيعات'), 'type' => 'success']);
     }
 
     /**
@@ -123,7 +229,10 @@ class WhatsAppController extends Controller
     {
         $data = $request->validate(['supports_inbox' => ['required', 'boolean']]);
 
-        $connection = WhatsAppConnection::query()->platform()->orderByDesc('id')->first();
+        /* ورقمُ الإشعارات وحده: بابُ المبيعات يُفتح من شاشة CRM بغرضه */
+        $connection = WhatsAppConnection::query()->platform()
+            ->where('purpose', WhatsAppMode::PURPOSE_NOTIFICATIONS)
+            ->orderByDesc('id')->first();
 
         // ولا يُفتح بابٌ على رقمٍ لا وجود له
         if (! $connection) {

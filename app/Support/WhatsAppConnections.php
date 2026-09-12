@@ -14,10 +14,21 @@ use App\Models\WhatsAppConnection;
  */
 class WhatsAppConnections
 {
-    /** وصلة أبعاد المشتركة — واحدةٌ نشطة لا غير */
+    /**
+     * وصلة أبعاد المشتركة — واحدةٌ نشطة لا غير، **وللإشعارات**.
+     *
+     * ═══ ولمَ شرطُ الغرض ═══
+     *
+     * كانت تأخذ أحدثَ وصلةِ منصّةٍ نشطة أيًّا كانت. فيومَ رُبط رقمُ مبيعاتٍ
+     * ثانٍ لأبعاد، كانت إشعاراتُ طلبات **كلّ المتاجر** ستخرج منه لأنّه
+     * الأحدث — يقرأ الزبون رقمًا لا يعرفه، ويردّ عليه فلا يصل أحدًا.
+     *
+     * وهذا هو الموضعُ الوحيد الذي يختار وصلةَ الإشعارات، فالشرطُ فيه وحده.
+     */
     public static function platform(): ?WhatsAppConnection
     {
         return WhatsAppConnection::query()->platform()
+            ->where('purpose', WhatsAppMode::PURPOSE_NOTIFICATIONS)
             ->where('status', WhatsAppConnection::ACTIVE)
             ->orderByDesc('id')->first();
     }

@@ -29,6 +29,7 @@ class CrmLead extends Model
         'last_contact_at' => 'datetime',
         'next_follow_up_at' => 'datetime',
         'converted_at' => 'datetime',
+        'whatsapp_window_at' => 'datetime',
     ];
 
     public function assignee(): BelongsTo
@@ -65,6 +66,12 @@ class CrmLead extends Model
     public function stageEvents(): HasMany
     {
         return $this->hasMany(CrmStageEvent::class, 'lead_id');
+    }
+
+    /** خيطُ واتساب — والعميلُ هو الخيط، فلا جدولَ محادثاتٍ بينهما */
+    public function messages(): HasMany
+    {
+        return $this->hasMany(CrmMessage::class, 'lead_id');
     }
 
     /** ما لم يُحسم بعد */

@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\WhatsApp;
 
 use App\Http\Controllers\Controller;
+use App\Models\CrmMessage;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessage;
+use App\Support\CrmWhatsApp;
 use App\Support\MetaWhatsAppClient;
 use App\Support\SupportWhatsApp;
+use App\Support\WhatsAppMode;
 use App\Support\WhatsAppStatus;
 use Illuminate\Http\Request;
 
@@ -107,6 +110,29 @@ class WebhookController extends Controller
          * وشرطٌ مكرَّرٌ في موضعين يُخفَّف في أحدهما يومًا.
          */
         foreach ((array) ($value['messages'] ?? []) as $message) {
+            /*
+             * والوجهةُ تُقرأ من **غرض الوصلة** لا من محتوى الرسالة.
+             *
+             * ═══ ولمَ هذا هو الفاصل ═══
+             *
+             * الرقمان يخدمان نطاقين لا يلتقيان: رقمُ الإشعارات يُرسل نيابةً
+             * عن المحلّات فيردّ عليه زبائنُهم — ولا يُخزَّن من وارده إلّا ما
+             * طابق مستخدمًا له متجر. ورقمُ المبيعات يستقبل من يريد أن يشتري
+             * أبعاد، فهو يقرأ **المجهول** بالضرورة.
+             *
+             * فلو وُزّع بالحدس — بنصّ الرسالة أو بمعرفة المُرسِل — لَصار
+             * سؤالُ زبونةٍ عن هديّتها «عميلًا محتملًا» يوم تُكتب بصيغةٍ
+             * تُشبه سؤالَ تاجر. والعمودُ لا يحدس.
+             *
+             * وكلُّ بابٍ يحرس نفسَه ثانيةً: كلتا الدالّتين تفحص الغرضَ عندها
+             * — شرطٌ في موضعٍ واحد يُخفَّف يومًا بلا أن يلحظه أحد.
+             */
+            if ($connection->purpose === WhatsAppMode::PURPOSE_CRM_SALES) {
+                CrmWhatsApp::receive($connection, (array) $message);
+
+                continue;
+            }
+
             SupportWhatsApp::receive($connection, (array) $message);
         }
     }
@@ -116,6 +142,22 @@ class WebhookController extends Controller
         $id = $status['id'] ?? null;
 
         if (blank($id)) {
+            return;
+        }
+
+        /*
+         * وحالُ رسالةِ مبيعاتٍ تُكتب في جدولها.
+         *
+         * ═══ ولمَ لا تُترك ═══
+         *
+         * الإرسالُ يكتب `sent` — وهي تعني «قبلتها ميتا» لا «وصلت». وبلا هذا
+         * السطر تبقى كلُّ رسالةٍ في دفتر المبيعات «أُرسلت» أبدًا: يقرأ موظّفُ
+         * المبيعات أنّ رسالتَه خرجت وهي راقدةٌ عند ميتا، أو فشلت بعد القبول
+         * ولا شيء يقول ذلك. وتقريرُ حالٍ كاذب أسوأ من غياب التقرير.
+         */
+        if ($connection->purpose === WhatsAppMode::PURPOSE_CRM_SALES) {
+            $this->applyCrmStatus((string) $id, $status);
+
             return;
         }
 
@@ -174,5 +216,57 @@ class WebhookController extends Controller
         }
 
         $message->forceFill($attributes)->save();
+    }
+
+    /**
+     * حالُ رسالةٍ في دفتر المبيعات — ولا ترجع إلى الوراء.
+     *
+     * ميتا لا تضمن ترتيب الإشعارات: «قُرئت» قد تصل قبل «سُلّمت». وبلا ترتيبٍ
+     * تُكتب الأحدث ثمّ تُمحى بالأقدم، فتقول الشاشة «أُرسلت» عن رسالةٍ قرأها
+     * صاحبها.
+     *
+     * و`failed` تُكتب دائمًا: فشلٌ بعد التسليم خبرٌ لا يُبتلع.
+     *
+     * @param  array<string, mixed>  $status
+     */
+    private function applyCrmStatus(string $wamid, array $status): void
+    {
+        $message = CrmMessage::where('external_message_id', $wamid)
+            ->where('direction', CrmMessage::OUT)->first();
+
+        if (! $message) {
+            return;
+        }
+
+        $state = match ($status['status'] ?? '') {
+            'sent' => 'sent',
+            'delivered' => 'delivered',
+            'read' => 'read',
+            'failed' => 'failed',
+            default => null,
+        };
+
+        if ($state === null) {
+            return;
+        }
+
+        if ($state === 'failed') {
+            $error = $status['errors'][0] ?? [];
+
+            $message->forceFill([
+                'delivery' => 'failed',
+                'delivery_error' => mb_substr(
+                    (string) ($error['title'] ?? ($error['message'] ?? __('ردّتها ميتا'))), 0, 200
+                ),
+            ])->save();
+
+            return;
+        }
+
+        $rank = ['blocked' => -1, 'failed' => -1, 'sent' => 1, 'delivered' => 2, 'read' => 3];
+
+        if (($rank[$state] ?? 0) > ($rank[$message->delivery] ?? 0)) {
+            $message->forceFill(['delivery' => $state])->save();
+        }
     }
 }

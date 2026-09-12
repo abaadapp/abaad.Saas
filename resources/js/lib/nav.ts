@@ -311,6 +311,14 @@ export const PLATFORM_NAV: NavGroup[] = [
                 route: 'super-admin.crm.leads.index',
                 covers: ['super-admin.crm.leads.show'],
             },
+            /*
+             * والمحادثاتُ هنا واتسابُ **المبيعات** لا مركزَ الدعم.
+             *
+             * البابان متجاوران في القائمة عمدًا؟ لا — «مركز المحادثات» تحت
+             * «الدعم»، وهذا تحت CRM. ومن يخلط بينهما يقرأ خيطَ تاجرٍ في
+             * دفتر البيع أو العكس.
+             */
+            { label: 'المحادثات', icon: MessagesSquare, route: 'super-admin.crm.conversations' },
             { label: 'مسار البيع', icon: GitBranch, route: 'super-admin.crm.pipeline' },
             { label: 'المهام والمتابعات', icon: ClipboardList, route: 'super-admin.crm.tasks' },
             { label: 'تقارير CRM', icon: BarChart3, route: 'super-admin.crm.reports' },

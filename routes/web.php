@@ -89,6 +89,7 @@ use App\Http\Controllers\SuperAdmin\BillingController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
 use App\Http\Controllers\SuperAdmin\ConversationController;
 use App\Http\Controllers\SuperAdmin\CrmController;
+use App\Http\Controllers\SuperAdmin\CrmConversationController;
 use App\Http\Controllers\SuperAdmin\DemoController;
 use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
@@ -355,6 +356,16 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
         Route::post('/leads/{id}/convert', [CrmController::class, 'convert'])->name('leads.convert');
         Route::post('/leads/{id}/tasks', [CrmController::class, 'storeTask'])->name('leads.tasks.store');
         Route::post('/tasks/{task}', [CrmController::class, 'updateTask'])->name('tasks.update');
+
+        /*
+         * المحادثات — واتسابُ مبيعات أبعاد.
+         *
+         * وليست مركزَ المحادثات: ذاك دفترُ الدعم مع تاجرٍ قائم، وهذا دفترُ
+         * البيع مع من يريد أن يشتري. ولا مسارَ هنا يبلغ `support_conversations`.
+         */
+        Route::get('/conversations', [CrmConversationController::class, 'index'])->name('conversations');
+        Route::post('/conversations/start', [CrmConversationController::class, 'start'])->name('conversations.start');
+        Route::post('/conversations/{id}/reply', [CrmConversationController::class, 'reply'])->name('conversations.reply');
     });
 
     Route::get('/activity', [ActivityController::class, 'superIndex'])->name('activity.index');
@@ -385,6 +396,9 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/whatsapp/shared', [WhatsAppController::class, 'connectShared'])->name('whatsapp.shared.connect');
     Route::delete('/whatsapp/shared', [WhatsAppController::class, 'disconnectShared'])->name('whatsapp.shared.disconnect');
     Route::post('/whatsapp/support-inbox', [WhatsAppController::class, 'supportInbox'])->name('whatsapp.support-inbox');
+    /* رقمُ مبيعات أبعاد — وصلةٌ ثانيةٌ للمنصّة بغرضٍ آخر، وبابُها مستقلّ */
+    Route::post('/whatsapp/sales', [WhatsAppController::class, 'connectSales'])->name('whatsapp.sales.connect');
+    Route::delete('/whatsapp/sales', [WhatsAppController::class, 'disconnectSales'])->name('whatsapp.sales.disconnect');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
 });
 

@@ -49,7 +49,15 @@ final class SupportWhatsApp
      */
     public static function line(): ?WhatsAppConnection
     {
+        /*
+         * وشرطُ الغرض معه: خطُّ الدعم على رقم الإشعارات لا على رقم المبيعات.
+         *
+         * ولو سقط هذا الشرط لَقرأ مركزُ المحادثات واردَ رقم المبيعات، فصار
+         * سؤالُ عميلٍ محتمَلٍ عن السعر «محادثةَ دعمٍ» منسوبةً إلى متجرٍ لم
+         * يكتبها أحدٌ فيه — أو أُسقطت بحقٍّ ولم يردّ عليه أحد.
+         */
         $connection = WhatsAppConnection::query()->platform()
+            ->where('purpose', WhatsAppMode::PURPOSE_NOTIFICATIONS)
             ->where('supports_inbox', true)
             ->where('status', WhatsAppConnection::ACTIVE)
             ->orderByDesc('id')->first();

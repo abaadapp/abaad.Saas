@@ -62,9 +62,10 @@ class CrmStaysOutOfTenantDataTest extends TestCase
      * سنةٍ `Customer::where(...)` في متحكّم CRM ليعرض «عملاء المتجر» يسقط
      * هنا — لا يوم يشكو تاجر.
      */
-    public function test_no_line_of_crm_source_touches_a_tenant_table(): void
+    /** @return list<string> ما يُفحص — ومصدرٌ واحد يقرؤه الحارسان */
+    private function guardedFiles(): array
     {
-        $files = [
+        return [
             base_path('app/Http/Controllers/SuperAdmin/CrmController.php'),
             base_path('app/Support/CrmLeads.php'),
             base_path('app/Support/Crm.php'),
@@ -72,7 +73,23 @@ class CrmStaysOutOfTenantDataTest extends TestCase
             base_path('app/Models/CrmNote.php'),
             base_path('app/Models/CrmTask.php'),
             base_path('app/Models/CrmStageEvent.php'),
+            /*
+             * وقناةُ واتساب معها — وهي أخطرُها.
+             *
+             * هنا يُقرأ واردٌ من رقمٍ **مجهول**، فسطرٌ يقرأ `Customer::`
+             * ليخمّن «من هذا؟» يفتح جدولَ زبائن التجّار كلِّهم على دفتر
+             * مبيعاتنا. والقائمةُ تُوسَّع مع كلّ ملفٍّ يُضاف إلى القسم —
+             * وإلّا حرست ما كان ولا تحرس ما يُكتب.
+             */
+            base_path('app/Support/CrmWhatsApp.php'),
+            base_path('app/Http/Controllers/SuperAdmin/CrmConversationController.php'),
+            base_path('app/Models/CrmMessage.php'),
         ];
+    }
+
+    public function test_no_line_of_crm_source_touches_a_tenant_table(): void
+    {
+        $files = $this->guardedFiles();
 
         /* نماذجُ التاجر وزبائنه — ما لا يُذكر اسمُه في هذا القسم */
         $forbidden = [
@@ -92,6 +109,33 @@ class CrmStaysOutOfTenantDataTest extends TestCase
                 );
             }
         }
+    }
+
+    /**
+     * ولا ملفَّ CRM يبقى خارج القائمة أعلاه.
+     *
+     * «قائمةٌ تُكتب باليد تنسى التاليَ دائمًا»: يُضاف ملفٌّ إلى القسم بعد
+     * شهرٍ فلا يُدرَج، فيمرّ فيه `Customer::` صامتًا. فيُقرأ ما في المجلّدات
+     * ويُقارَن بما يُفحص.
+     */
+    public function test_no_crm_file_escapes_the_source_guard(): void
+    {
+        $guarded = array_map('basename', $this->guardedFiles());
+        $found = [];
+
+        foreach ([app_path('Support'), app_path('Models'), app_path('Http/Controllers/SuperAdmin')] as $dir) {
+            foreach (scandir($dir) ?: [] as $name) {
+                if (str_starts_with($name, 'Crm') && str_ends_with($name, '.php')) {
+                    $found[] = $name;
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            array_values(array_diff($found, $guarded)),
+            'ملفُّ CRM خارج حارس المصدر — أضِفه إلى `guardedFiles`'
+        );
     }
 
     /**

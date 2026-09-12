@@ -26,6 +26,7 @@ use App\Support\PlatformConfig;
 use App\Support\Roles;
 use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppConnections;
+use App\Support\WhatsAppMode;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -401,8 +402,26 @@ class PageController extends Controller
              * أنّ أصحابَ المتاجر لم يكتبوا أرقامهم. فيُقال قبل أن يُسأل.
              */
             'supportReach' => SupportWhatsApp::reach(),
+            /*
+             * ورقمُ الإشعارات بغرضه صراحةً.
+             *
+             * كانت تأخذ **أحدثَ** وصلةِ منصّة أيًّا كان غرضُها. فيومَ رُبط رقمُ
+             * مبيعاتٍ ثانٍ، كانت هذه الشاشة ستعرضه على أنّه «رقم أبعاد
+             * المشترك» — ومقبضُ «استقبال رسائل الدعم» فوقه سيكتب في الصفّ
+             * الخطأ. والأسوأ أنّ «فصل الرقم» كان سيُطفئ رقمَ المبيعات
+             * والمشغّلُ يظنّه يُطفئ الإشعارات.
+             */
             'whatsapp' => WhatsAppConnections::publicView(
-                WhatsAppConnection::query()->platform()->orderByDesc('id')->first(),
+                WhatsAppConnection::query()->platform()
+                    ->where('purpose', WhatsAppMode::PURPOSE_NOTIFICATIONS)
+                    ->orderByDesc('id')->first(),
+                withIds: true,
+            ),
+            /* ورقمُ المبيعات وصلةٌ ثانيةٌ تُعرض وحدَها — نطاقان لا يختلطان */
+            'salesWhatsapp' => WhatsAppConnections::publicView(
+                WhatsAppConnection::query()->platform()
+                    ->where('purpose', WhatsAppMode::PURPOSE_CRM_SALES)
+                    ->orderByDesc('id')->first(),
                 withIds: true,
             ),
         ]);

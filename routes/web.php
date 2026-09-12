@@ -88,6 +88,7 @@ use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\BillingController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
 use App\Http\Controllers\SuperAdmin\ConversationController;
+use App\Http\Controllers\SuperAdmin\CrmController;
 use App\Http\Controllers\SuperAdmin\DemoController;
 use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
@@ -325,6 +326,36 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/conversations/{id}/priority', [ConversationController::class, 'priority'])->name('conversations.priority');
     Route::get('/conversations/{id}/files/{attachment}', SupportAttachmentController::class)
         ->name('conversations.attachment');
+
+    /*
+     * CRM — دفترُ مبيعات أبعادٍ نفسِها.
+     *
+     * داخل `role:super_admin` لا خارجه: ما يُقرأ هنا عملاءُ المنصّة المحتملون
+     * وملاحظاتُ فريقها الداخليّة، وبابٌ يحرسه إخفاءُ بندٍ في القائمة ليس بابًا.
+     *
+     * وليس دفترَ زبائنِ التجّار: لا مسارَ في هذه المجموعة يبلغ `customers`
+     * ولا `orders` ولا `whatsapp_messages` — انظر `CrmStaysOutOfTenantDataTest`.
+     */
+    Route::prefix('crm')->name('crm.')->group(function () {
+        Route::get('/', [CrmController::class, 'dashboard'])->name('dashboard');
+        Route::get('/pipeline', [CrmController::class, 'pipeline'])->name('pipeline');
+        Route::get('/tasks', [CrmController::class, 'tasks'])->name('tasks');
+        Route::get('/reports', [CrmController::class, 'reports'])->name('reports');
+
+        Route::get('/leads', [CrmController::class, 'index'])->name('leads.index');
+        Route::post('/leads', [CrmController::class, 'store'])->name('leads.store');
+        Route::get('/leads/{id}', [CrmController::class, 'show'])->name('leads.show');
+        Route::put('/leads/{id}', [CrmController::class, 'update'])->name('leads.update');
+
+        Route::post('/leads/{id}/stage', [CrmController::class, 'stage'])->name('leads.stage');
+        Route::post('/leads/{id}/lose', [CrmController::class, 'lose'])->name('leads.lose');
+        Route::post('/leads/{id}/reopen', [CrmController::class, 'reopen'])->name('leads.reopen');
+        Route::post('/leads/{id}/assign', [CrmController::class, 'assign'])->name('leads.assign');
+        Route::post('/leads/{id}/notes', [CrmController::class, 'note'])->name('leads.note');
+        Route::post('/leads/{id}/convert', [CrmController::class, 'convert'])->name('leads.convert');
+        Route::post('/leads/{id}/tasks', [CrmController::class, 'storeTask'])->name('leads.tasks.store');
+        Route::post('/tasks/{task}', [CrmController::class, 'updateTask'])->name('tasks.update');
+    });
 
     Route::get('/activity', [ActivityController::class, 'superIndex'])->name('activity.index');
     Route::get('/settings', [SuperAdminPageController::class, 'settings'])->name('settings.index');

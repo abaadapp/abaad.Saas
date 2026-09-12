@@ -16,7 +16,9 @@ import {
     Boxes,
     Building2,
     ClipboardList,
+    Contact,
     FlaskConical,
+    GitBranch,
     History,
     Layers,
     LifeBuoy,
@@ -288,6 +290,30 @@ export const PLATFORM_NAV: NavGroup[] = [
                 route: 'super-admin.conversations.index',
                 badge: 'support',
             },
+        ],
+    },
+    {
+        /*
+         * CRM — بيعُ أبعادٍ نفسِها، لا بيعُ التاجر لزبائنه.
+         *
+         * قسمٌ قائمٌ بذاته لأنّه بابُ فريق المبيعات اليوميّ: من يتابع عميلًا
+         * محتملًا لا يمرّ بـ«أخرى» ليجده.
+         *
+         * ولا يُعرض هنا بندٌ لميزةٍ لم تُبنَ: «المحادثات» و«عروض الأسعار»
+         * يُضافان يوم يعملان — بابٌ معروضٌ لا يُفتح أسوأ من بابٍ لا يُعرض.
+         */
+        heading: 'CRM',
+        items: [
+            { label: 'لوحة CRM', icon: LayoutDashboard, route: 'super-admin.crm.dashboard' },
+            {
+                label: 'العملاء المحتملون',
+                icon: Contact,
+                route: 'super-admin.crm.leads.index',
+                covers: ['super-admin.crm.leads.show'],
+            },
+            { label: 'مسار البيع', icon: GitBranch, route: 'super-admin.crm.pipeline' },
+            { label: 'المهام والمتابعات', icon: ClipboardList, route: 'super-admin.crm.tasks' },
+            { label: 'تقارير CRM', icon: BarChart3, route: 'super-admin.crm.reports' },
         ],
     },
     {

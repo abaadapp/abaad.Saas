@@ -79,6 +79,14 @@ class NormalizeNumbers
          * فيُردّ «قيمة غير صحيحة» على رقمٍ صحيح.
          */
         'supplier_discount', 'shipping_cost', 'units_per_purchase_unit', 'tax_rate',
+
+        /*
+         * والقيمةُ المتوقّعة في دفتر المبيعات.
+         *
+         * موظّفُ المبيعات يكتب «٤٥٫٥٠٠» بلوحةٍ عربيّة كما يكتب أيَّ رقمٍ
+         * آخر، فيُردّ بـ«يجب أن يكون رقمًا» على رقمٍ صحيح.
+         */
+        'expected_value',
     ];
 
     public function handle(Request $request, Closure $next)

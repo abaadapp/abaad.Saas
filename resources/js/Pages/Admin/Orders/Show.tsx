@@ -3,19 +3,23 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import {
     Calendar,
     ClipboardList,
+    Download,
     FileText,
     Gift,
+    Maximize2,
     MapPin,
     MessageCircle,
     PencilLine,
     Phone,
     ReceiptText,
+    Printer,
     Send,
     Star,
     Truck,
     User,
 } from 'lucide-react';
 import DocumentPreview from '@/Components/DocumentPreview';
+import PaperFrame from '@/Components/PaperFrame';
 import Field, { Select } from '@/Components/Field';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -99,9 +103,11 @@ interface OrderDetail {
  * فمن يصحّح رقم هاتفٍ لا يُحرّك ريالًا ولا يُقدّم طلبًا في مساره.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice, googleReview, statusNotice } = usePage<
+    const { order, context, taxInvoice, googleReview, statusNotice, paper } = usePage<
         PageProps<{
             order: OrderDetail;
+            /** ورقةُ الطلب مرسومةً — من وصفة الطباعة نفسِها. و`null` لطلبٍ لا صفَّ له */
+            paper: { html: string; size: string } | null;
             taxInvoice: { registered: boolean; ready: boolean };
             /** حالُ طلب التقييم — تُقاس في الخادم، والشاشةُ ترسم ما قِيس */
             googleReview: { show: boolean; reason: string | null; requestedAt: string | null };
@@ -122,6 +128,7 @@ export default function OrderShow() {
      * إليها. وبلا ذلك يضغط التاجر زرًّا فيتغيّر شيءٌ خارج نظره.
      */
     const sheetRef = useRef<HTMLDivElement>(null);
+
 
     /*
      * نموذج تعديل التنفيذ — يبدأ من القيم المحفوظة.
@@ -241,20 +248,20 @@ export default function OrderShow() {
                         </Button>
 
                         {/*
-                            و«معاينة» تفتح الورقةَ عند الطلب لا دائمًا.
+                            و«معاينة» على الشاشة الضيّقة وحدها.
 
-                            وكان في الشاشة زرّان — «تصدير PDF» هنا و«تحميل»
-                            بجانب الإطار — على **الرابط نفسِه تمامًا**: أحدُهما
-                            يفتح لسانًا والآخر يحفظ. فيقف من يريد الطباعة
-                            بينهما لا يعرف أيَّهما يوصله.
-
-                            فصارا فعلًا واحدًا يقود إلى نافذةٍ فيها الثلاثةُ
-                            مفرَّقةً بأسمائها: معاينةٌ وتحميلٌ وطباعة.
+                            الورقةُ على العريضة قائمةٌ إلى جانب التفاصيل
+                            وفوقها أزرارُها، فزرٌّ هنا يفعل ما يفعله زرٌّ
+                            مرئيٌّ في الوقت نفسه — فعلان بمسمّيين لشيءٍ واحد.
+                            وعلى الضيّقة تنزل الورقةُ أسفل كلّ بطاقات
+                            التفاصيل، فالمختصرُ هنا يوصل إليها.
                         */}
-                        <Button variant="outline" onClick={() => setPreviewing(true)}>
-                            <FileText />
-                            {t('معاينة الفاتورة')}
-                        </Button>
+                        {paper && (
+                            <Button variant="outline" className="xl:hidden" onClick={() => setPreviewing(true)}>
+                                <FileText />
+                                {t('معاينة الفاتورة')}
+                            </Button>
+                        )}
 
                         {/*
                             و«أبلغ الزبون» يدويٌّ صراحةً: يُفتح واتساب التاجر
@@ -378,24 +385,28 @@ export default function OrderShow() {
             />
 
             {/*
-                قسمان جنبًا إلى جنب لا تبويبان.
+                قسمان: ما يقوله النظام عن الطلب، وما ستراه الجهةُ التي تستلم
+                ورقتَه.
 
-                كان التبويب يجعل الورقةَ والبياناتِ لا يُقرآن معًا: من يراجع
-                فاتورةً أمام زبونٍ يبدّل ذهابًا وإيابًا بين ما يقوله النظام
-                وما يقوله الورق. وشاشةُ اللوحة تتّسع لهما.
+                ═══ ولمَ جنبًا إلى جنب لا في نافذةٍ تُطلب ═══
 
-                والانقسامُ من `xl` وحدها: على شاشةٍ أضيق تصير الورقةُ عمودًا
-                من ثلاثمئة بكسل — لا تُقرأ ولا تُصوَّر، وتزاحم ما ينفع.
+                من يراجع فاتورةً أمام زبونٍ — أو يقابل ما طُبع بما سُجّل —
+                يحتاج الاثنين في نظرةٍ واحدة. ونافذةٌ تُفتح وتُغلق تجعله
+                يبدّل ذهابًا وإيابًا ويحفظ الأرقامَ في رأسه بينهما.
+
+                ═══ والانقسامُ من `xl` وحدها ═══
+
+                على شاشةٍ أضيق تصير الورقةُ عمودًا من ثلاثمئة بكسل: لا تُقرأ
+                ولا تنفع، وتزاحم ما ينفع. فتنزل تحت التفاصيل بعرض الشاشة،
+                مُصغَّرةً بمقاسها الحقيقيّ كما في كلّ معاينة.
+
+                ═══ وثلاثةُ أخماسٍ إلى خمسين ═══
+
+                التفاصيلُ هي المقصودة: فيها الجدولُ الذي يُنسَخ ويُبحَث
+                ونموذجُ التعديل. والورقةُ شاهدٌ إلى جانبها لا ندٌّ لها.
             */}
-            {/*
-                عمودٌ واحد: التفاصيلُ هي المقصودة، والورقةُ تُطلب.
-
-                وكان الانقسامُ نصفين ليُقرآ معًا — وهو صحيحٌ لو كانت الورقةُ
-                تقول شيئًا لا يقوله الجدول. وهي لا تقول: الأصنافُ والمجاميعُ
-                نفسُها مكرّرةً في صورةٍ لا تُنسَخ ولا تُبحَث.
-            */}
-            <div className="grid grid-cols-1 gap-6">
-                <div className="min-w-0 space-y-6">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+                <div className="min-w-0 space-y-6 xl:col-span-3">
                     <div className="space-y-6">
                         <div>
                             <h3 className="mb-3 font-bold text-[#111]">{t('تفاصيل المنتجات')}</h3>
@@ -762,10 +773,87 @@ export default function OrderShow() {
                     </Card>
                 </div>
 
+                {/*
+                    ═══ والورقةُ HTML لا PDF ═══
+
+                    إطارُ PDF يحمل فوقه شريطَ قارئ المتصفّح — تنزيلٌ وطباعةٌ
+                    وتكبيرٌ وقائمة — فيرى التاجر واجهتين: واجهةَ أبعاد
+                    وواجهةَ القارئ. ويُشغَّل محرّكُ طباعةٍ كامل على الخادم
+                    لكلّ من فتح الصفحة ليقرأ حالةَ طلب.
+
+                    و`PaperFrame` يرسمها بعرض الورقة الحقيقيّ ثمّ يُصغّرها
+                    بصريًّا: السطرُ ينكسر حيث ينكسر على الورق، وحدودُ الصفحات
+                    تُرسم — فيُعرف أنّ فاتورةً ستمتدّ صفحتين قبل الطباعة لا
+                    بعدها.
+                */}
+                {paper && (
+                    <aside className="min-w-0 xl:col-span-2">
+                        {/*
+                            ولاصقةٌ عند الأعلى: عمودُ التفاصيل أطولُ منها
+                            بكثير، وورقةٌ تغيب عند أوّل تمريرة لا تُقابَل بشيء.
+                        */}
+                        <div className="xl:sticky xl:top-6">
+                            <Card className="overflow-hidden">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3">
+                                    <h2 className="text-[15px] font-semibold">{t('الورقة كما تُطبع')}</h2>
+
+                                    {/*
+                                        والأفعالُ مفرَّقةٌ بأسمائها: تكبيرٌ
+                                        يُري، وتحميلٌ يحفظ، وطباعةٌ تفتح
+                                        الورقةَ لتُرسَل إلى الطابعة. وكان
+                                        زرّان على الرابط نفسِه، فيقف من يريد
+                                        الطباعة بينهما لا يعرف أيَّهما يوصله.
+                                    */}
+                                    <div className="flex items-center gap-1.5">
+                                        <Button variant="outline" size="sm" onClick={() => setPreviewing(true)}>
+                                            <Maximize2 />
+                                            <span className="max-sm:sr-only">{t('تكبير')}</span>
+                                        </Button>
+                                        <Button variant="outline" size="sm" asChild>
+                                            <a href={route('admin.orders.pdf', order.id)} download={`${order.id}.pdf`}>
+                                                <Download />
+                                                <span className="max-sm:sr-only">{t('تحميل')}</span>
+                                            </a>
+                                        </Button>
+                                        <Button variant="outline" size="sm" asChild>
+                                            <a
+                                                href={route('admin.orders.pdf', order.id)}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                            >
+                                                <Printer />
+                                                <span className="max-sm:sr-only">{t('طباعة')}</span>
+                                            </a>
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/*
+                                    والنافذةُ تهبط إلى قدر الورقة، ولا تُحجَز
+                                    بعلوٍّ مكتوب.
+
+                                    علوٌّ ثابتٌ يُخرج رمادًا فارغًا أسفلَ كلّ
+                                    ورقةٍ أقصرَ منه — وإيصالُ ثمانين مليمترًا
+                                    بثلاثة أصنافٍ أقصرُ منه بكثير. و`auto`
+                                    يجعل الصندوقَ بقدر ما فيه، والحدُّ الأقصى
+                                    يمنعه أن يطول بفاتورةٍ من ثلاث صفحات —
+                                    فتُمرَّر داخله بدل أن يمتدّ العمود.
+                                */}
+                                <PaperFrame
+                                    html={paper.html}
+                                    paper={paper.size}
+                                    title={t('ورقة الطلب')}
+                                    viewport="auto"
+                                    className="max-h-[min(78svh,1000px)] rounded-none border-0"
+                                />
+                            </Card>
+                        </div>
+                    </aside>
+                )}
             </div>
 
             {/*
-                والورقةُ في نافذةٍ تُطلب — لا عمودًا دائمًا بنصف الشاشة.
+                والنافذةُ تبقى للتكبير — والورقةُ في العمود مُصغَّرة.
 
                 كان الإطارُ مفتوحًا على الدوام وفوقه شريطُ قارئ المتصفّح
                 (تنزيلٌ وطباعةٌ وتكبيرٌ وقائمة)، فيرى التاجر واجهتين ويقرأ

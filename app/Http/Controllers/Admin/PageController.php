@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Admin\Finance\ChartController;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\PdfController;
 use App\Http\Controllers\Pos\DeviceController;
 use App\Models\Branch;
 use App\Models\Business;
@@ -201,7 +202,41 @@ class PageController extends Controller
                 Order::where('business_id', Demo::bid())
                     ->where('is_held', false)->where('number', $number)->first()
             ),
+            /*
+             * والورقةُ إلى جانب التفاصيل — HTML لا PDF.
+             *
+             * الشاشةُ قسمان: ما يقوله النظام عن الطلب، وما ستراه الجهةُ التي
+             * تستلم ورقتَه. ومن يراجع فاتورةً أمام زبونٍ يحتاج الاثنين في
+             * نظرةٍ واحدة لا في تبديلٍ بين نافذتين.
+             *
+             * ورسمُها HTML لا PDF عن قصد: لا شريطَ قارئٍ من المتصفّح فوقها،
+             * ولا محرّكَ طباعةٍ يُشغَّل لمن جاء يقرأ حالةَ طلب — والرسمُ
+             * نصًّا جزءٌ يسير من ثمن توليد ملفّ.
+             *
+             * ووصفتُها من `PdfController::saleHtml` نفسِها التي تُطبع، فلا
+             * تفترق المعروضةُ عن المطبوعة.
+             */
+            'paper' => $this->orderPaper($number),
         ]);
+    }
+
+    /**
+     * ورقةُ الطلب للعرض — أو `null` لطلبٍ لا صفَّ له.
+     *
+     * @return array{html: string, size: string}|null
+     */
+    private function orderPaper(string $number): ?array
+    {
+        $order = Order::where('business_id', Demo::bid())
+            ->where('number', $number)->with('items')->first();
+
+        if (! $order) {
+            return null;
+        }
+
+        $paper = PdfController::saleHtml((int) Demo::bid(), $order);
+
+        return ['html' => $paper['html'], 'size' => $paper['paper']];
     }
 
     /**

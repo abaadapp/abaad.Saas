@@ -13,6 +13,7 @@ use App\Models\PosPeripheral;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Document\PaperSize;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
 use App\Support\EInvoice;
@@ -61,6 +62,45 @@ class PdfController extends Controller
         $bid = auth()->user()->business_id ?? Demo::bid();
         $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
+        ['html' => $html, 'paper' => $paper] = self::saleHtml($bid, $order);
+        $name = 'receipt-'.$order->number;
+
+        if (PaperSize::isStrip($paper)) {
+            return Pdf::strip($html, $name, self::stripWidth($paper));
+        }
+
+        return Pdf::sheet(
+            $html,
+            $name,
+            $paper,
+            /*
+             * وسياقُ الورقة يتكرّر في تذييل كلّ صفحة.
+             *
+             * فاتورةٌ بخمسين صنفًا تمتدّ ثلاثَ صفحات، وصفحةٌ ثانيةٌ لا تحمل
+             * إلّا رقمَها ورقةٌ لا يُعرف إلى أيّ حزمةٍ تعود إن سقطت. انظر
+             * `MpdfDriver::pageNumbers`.
+             */
+            context: self::context($order->number, $bid),
+        );
+    }
+
+    /**
+     * ورقةُ البيع مرسومةً — HTML لا PDF.
+     *
+     * ═══ ولمَ خرجت من `orderReceipt` ═══
+     *
+     * شاشةُ الطلب تعرض الورقةَ إلى جانب تفاصيله. ولو بنت متغيّراتِها بيدها
+     * لصارت نسخةً ثانية: يُضاف رمزُ تقييمٍ إلى المطبوع فلا يبلغ المعروض،
+     * أو يُقرأ رقمُ المشتري الضريبيّ في أحدهما دون الآخر. فيرى التاجر ورقةً
+     * ويستلم زبونُه غيرَها — وهو خلافٌ لا يُكتشف إلّا بعد أن تُسلَّم الورقة.
+     *
+     * فالوصفةُ واحدة، والفرقُ بين البابين آخرُ سطرٍ وحده: هذا يردّ نصًّا،
+     * وذاك يمرّره إلى المحرّك.
+     *
+     * @return array{html: string, paper: string}
+     */
+    public static function saleHtml(int $bid, Order $order): array
+    {
         $tpl = ReceiptTemplate::forBusiness($bid);
 
         /*
@@ -76,9 +116,9 @@ class PdfController extends Controller
          * `=== 'A4'` تعني أنّ كلّ مقاسٍ يُضاف — A5 مثلًا — يُقرأ شريطًا
          * حراريًّا فيخرج على ثمانين مليمترًا.
          */
-        $paper = (string) ($tpl['paper'] ?? \App\Support\Document\PaperSize::T80);
-        $onSheet = ! \App\Support\Document\PaperSize::isStrip($paper);
-        $width = $this->stripWidth($paper);
+        $paper = (string) ($tpl['paper'] ?? PaperSize::T80);
+        $onSheet = ! PaperSize::isStrip($paper);
+        $width = self::stripWidth($paper);
 
         /*
          * والرسمُ من `DocumentRenderer` لا من قائمةٍ تُكتب هنا.
@@ -117,25 +157,12 @@ class PdfController extends Controller
             'googleReview' => GoogleReviews::onReceipt($bid, $order->branch_id),
         ];
 
-        $name = 'receipt-'.$order->number;
-
-        if ($onSheet) {
-            return Pdf::sheet(
-                DocumentRenderer::saleSheet($bid, $order, $values, $extra + ['paper' => $paper]),
-                $name,
-                $paper,
-                /*
-                 * وسياقُ الورقة يتكرّر في تذييل كلّ صفحة.
-                 *
-                 * فاتورةٌ بخمسين صنفًا تمتدّ ثلاثَ صفحات، وصفحةٌ ثانيةٌ لا
-                 * تحمل إلّا رقمَها ورقةٌ لا يُعرف إلى أيّ حزمةٍ تعود إن
-                 * سقطت. انظر `MpdfDriver::pageNumbers`.
-                 */
-                context: self::context($order->number, $bid),
-            );
-        }
-
-        return Pdf::strip(DocumentRenderer::saleStrip($bid, $order, $values, $width, $extra), $name, $width);
+        return [
+            'paper' => $paper,
+            'html' => $onSheet
+                ? DocumentRenderer::saleSheet($bid, $order, $values, $extra + ['paper' => $paper])
+                : DocumentRenderer::saleStrip($bid, $order, $values, $width, $extra),
+        ];
     }
 
     /**
@@ -148,9 +175,9 @@ class PdfController extends Controller
      *
      * وA4 لا تُمسّ: من اختارها اختار فاتورةً كاملة لا شريطًا.
      */
-    private function stripWidth(string $paper): int
+    private static function stripWidth(string $paper): int
     {
-        if (! \App\Support\Document\PaperSize::isStrip($paper)) {
+        if (! PaperSize::isStrip($paper)) {
             return 0;
         }
 
@@ -365,8 +392,8 @@ class PdfController extends Controller
          */
         $values = DocumentTemplates::settings($bid, 'sale');
         /* والضريبيةُ ورقةٌ لا شريط: من اختار ٨٠ مم يأخذها على A4 */
-        $sheet = \App\Support\Document\PaperSize::isStrip((string) ($values['paper'] ?? ''))
-            ? \App\Support\Document\PaperSize::A4
+        $sheet = PaperSize::isStrip((string) ($values['paper'] ?? ''))
+            ? PaperSize::A4
             : (string) $values['paper'];
 
         $html = DocumentRenderer::saleSheet($bid, $order, $values, [

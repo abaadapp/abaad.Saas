@@ -1,9 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { FileText, PackageCheck, Paperclip, Printer, Trash2 } from 'lucide-react';
+import { FileText, PackageCheck, Paperclip, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import BackLink from '@/Components/BackLink';
+import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
+import DocumentMeta from '@/Components/DocumentMeta';
+import SmartLink from '@/Components/SmartLink';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -70,7 +73,6 @@ interface Receipt {
     quantity: number;
     lines: number;
     rejection_reason: string | null;
-    pdf: string;
 }
 
 interface Invoice {
@@ -100,6 +102,8 @@ interface Props {
     invoices: Invoice[];
     timeline: Event[];
     can: { receive: boolean; delete: boolean };
+    /** الورقةُ كما تُطبع — من الباني نفسِه الذي يُطبع منه */
+    paper: { html: string; size: string };
 }
 
 /** لونُ نقطة الحدث — الاعتمادُ أخضرُ والرفضُ أحمر، ولا يُقرأ الخطُّ بالنصّ وحده */
@@ -120,12 +124,13 @@ const DOT: Record<string, string> = {
  * يقع منه شيء. ولا مقبضَ ثالث يُرسم على ما يردّه الخادم.
  */
 export default function PurchaseOrderShow() {
-    const { order, receipts, invoices, timeline, can, context } = usePage<PageProps<Props>>().props;
+    const { order, receipts, invoices, timeline, can, paper, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
     const [receiving, setReceiving] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [previewing, setPreviewing] = useState(false);
 
     /*
      * ما يُتاح تسجيلُه من كلّ بند: المتبقّي ناقصَ ما ينتظر الاعتماد.
@@ -169,9 +174,10 @@ export default function PurchaseOrderShow() {
                 label="كل أوامر الشراء"
             />
 
+            {/* ونوعُ المستند فوق رقمه: من يفتح الورقة يريد أن يعرف ما هي قبل أن يعرف رقمها */}
             <PageHeader
                 title={order.number}
-                subtitle={`${order.supplier} — ${t(order.status)}`}
+                subtitle={`${t('أمر شراء')} — ${order.supplier}`}
                 actions={
                     <>
                         {can.receive && openable && (
@@ -180,6 +186,19 @@ export default function PurchaseOrderShow() {
                                 {t('تسجيل استلام')}
                             </Button>
                         )}
+
+                        {/*
+                            و«معاينة» على الشاشة الضيّقة وحدها.
+
+                            الورقةُ على العريضة قائمةٌ إلى جانب التفاصيل وفوقها
+                            أزرارُها — تكبيرٌ وتحميلٌ وطباعة — فزرٌّ هنا يفعل ما
+                            يفعله زرٌّ مرئيٌّ في الوقت نفسه. وعلى الضيّقة تنزل
+                            الورقةُ أسفل كلّ البطاقات، فالمختصرُ هنا يوصل إليها.
+                        */}
+                        <Button variant="outline" className="xl:hidden" onClick={() => setPreviewing(true)}>
+                            <FileText />
+                            {t('معاينة الورقة')}
+                        </Button>
 
                         {/* مرفقُ الأمر: عرضُ سعرٍ أو مستندُ طلب — لا إيصالُ دفع */}
                         {order.attachment && (
@@ -190,13 +209,6 @@ export default function PurchaseOrderShow() {
                                 </a>
                             </Button>
                         )}
-
-                        <Button variant="outline" asChild>
-                            <a href={route('admin.purchases.pdf', order.id)} target="_blank" rel="noreferrer">
-                                <Printer />
-                                {t('طباعة أمر الشراء')}
-                            </a>
-                        </Button>
 
                         {can.delete && (
                             <Button variant="outline" className="text-[#b91c1c]" onClick={() => setDeleting(true)}>
@@ -209,137 +221,148 @@ export default function PurchaseOrderShow() {
             />
 
             {/*
-                ومرفقٌ موجودٌ لا يُقرأ يُقال، لا يُكتم.
-                من لا يملك فتحَ المرفقات لا يُبنى له رابط — وصمتُ الشاشة عنه
-                يجعله يظنّ أنّ الأمر بلا مستند.
+                ═══ عمودان: ما يقوله النظام عن الأمر، وما سيقرؤه المورّد ═══
+
+                والعرضُ الواسع وحده يجمعهما: على الضيّقة تنزل الورقةُ أسفل
+                التفاصيل — ورقةُ A4 لا تُقرأ على سعة الهاتف أصلًا، فلا تُزاحم
+                ما يُقرأ. وقياسُ القسمة هو قياسُ شاشة الطلب نفسُه، فلا يتعلّم
+                من ينتقل بينهما قراءةً ثانية.
             */}
-            {order.has_attachment && !order.attachment && (
-                <Card className="mb-4 border-[#fde68a] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]">
-                    {t('لهذا الأمر مرفق — وفتحُ المرفقات صلاحيةٌ لا تملكها')}
-                </Card>
-            )}
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+                <div className="min-w-0 space-y-4 xl:col-span-3">
+                    {/*
+                        ومرفقٌ موجودٌ لا يُقرأ يُقال، لا يُكتم.
+                        من لا يملك فتحَ المرفقات لا يُبنى له رابط — وصمتُ الشاشة
+                        عنه يجعله يظنّ أنّ الأمر بلا مستند.
+                    */}
+                    {order.has_attachment && !order.attachment && (
+                        <Card className="border-[#fde68a] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]">
+                            {t('لهذا الأمر مرفق — وفتحُ المرفقات صلاحيةٌ لا تملكها')}
+                        </Card>
+                    )}
 
-            <div className="mb-4 grid gap-4 lg:grid-cols-3">
-                <Card className="space-y-2 p-4 text-[13px] lg:col-span-2">
-                    <Row label={t('المورّد')} value={order.supplier} />
-                    <Row label={t('الفرع')} value={order.branch || '—'} />
-                    <Row label={t('الحالة')} value={<Badge status={order.status}>{t(order.status)}</Badge>} />
-                    <Row label={t('تاريخ الطلب')} value={<span dir="ltr">{order.ordered_at || '—'}</span>} />
-                    <Row
-                        label={t('تاريخ الوصول المتوقّع')}
-                        value={<span dir="ltr">{order.expected_delivery_at || '—'}</span>}
+                    {/* ما يُعرَف به الأمرُ في نظرة — أعمدةً كشريط الورقة نفسِه */}
+                    <DocumentMeta
+                        cells={[
+                            {
+                                label: 'الحالة',
+                                value: <Badge status={order.status}>{t(order.status)}</Badge>,
+                            },
+                            { label: 'المورّد', value: order.supplier },
+                            { label: 'الفرع', value: order.branch || '—' },
+                            { label: 'تاريخ الطلب', value: order.ordered_at || '—', ltr: true },
+                            {
+                                label: 'الوصول المتوقّع',
+                                value: order.expected_delivery_at || '—',
+                                ltr: true,
+                            },
+                            order.received_at !== null && {
+                                label: 'تاريخ الاستلام',
+                                value: order.received_at,
+                                ltr: true,
+                            },
+                            order.supplier_reference !== null && {
+                                label: 'مرجع المورّد',
+                                value: order.supplier_reference,
+                                ltr: true,
+                            },
+                            /* وإيصالُ دفعٍ قديم: لا يُرفع من هنا بعد اليوم، ويُقرأ ما رُفع */
+                            order.receipt !== null && {
+                                label: 'إيصال الدفع',
+                                value: (
+                                    <a
+                                        href={order.receipt}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1 text-[#6d28d9] hover:underline"
+                                    >
+                                        <FileText className="size-3.5" />
+                                        {order.receipt_name || t('عرض')}
+                                    </a>
+                                ),
+                            },
+                            order.notes !== null && { label: 'ملاحظات', value: order.notes, wide: true },
+                        ]}
                     />
-                    {order.received_at && (
-                        <Row label={t('تاريخ الاستلام')} value={<span dir="ltr">{order.received_at}</span>} />
-                    )}
-                    {order.supplier_reference && (
-                        <Row label={t('مرجع المورّد')} value={order.supplier_reference} />
-                    )}
-                    {order.notes && <Row label={t('ملاحظات')} value={order.notes} />}
-                    {/* إيصالُ دفعٍ قديم: لا يُرفع من هنا بعد اليوم، ويُقرأ ما رُفع */}
-                    {order.receipt && (
-                        <Row
-                            label={t('إيصال الدفع')}
-                            value={
-                                <a
-                                    href={order.receipt}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-[#6d28d9] hover:underline"
-                                >
-                                    <FileText className="size-3.5" />
-                                    {order.receipt_name || t('عرض')}
-                                </a>
-                            }
-                        />
-                    )}
-                </Card>
 
-                <Card className="space-y-2 p-4 text-[13px]">
-                    <Row label={t('مجموع الأصناف')} value={m(order.items_subtotal)} />
-                    {order.supplier_discount > 0 && (
-                        <Row label={t('خصم المورد')} value={`− ${m(order.supplier_discount)}`} />
-                    )}
-                    {order.shipping_cost > 0 && <Row label={t('الشحن')} value={m(order.shipping_cost)} />}
-                    {order.tax > 0 && (
-                        <Row label={`${t('الضريبة')} (${number(order.tax_rate, 2)}%)`} value={m(order.tax)} />
-                    )}
-                    <Row label={t('الإجمالي')} value={m(order.total)} strong />
-                </Card>
-            </div>
+                    {/*
+                        البنودُ وإجماليّاتُها في بطاقةٍ واحدة.
 
-            <Card className="mb-4 overflow-x-auto p-4">
-                <h2 className="mb-3 font-bold text-[#111]">{t('البنود')}</h2>
-                <table className="w-full min-w-[720px] text-[13px]">
-                    <thead className="text-[12px] text-[#71717a]">
-                        <tr>
-                            <th className="p-2 text-start">{t('الصنف')}</th>
-                            <th className="p-2 text-start">{t('وحدة الشراء')}</th>
-                            <th className="p-2 text-end">{t('المطلوب')}</th>
-                            <th className="p-2 text-end">{t('المستلَم')}</th>
-                            <th className="p-2 text-end">{t('قيد الاعتماد')}</th>
-                            <th className="p-2 text-end">{t('المتبقّي')}</th>
-                            <th className="p-2 text-end">{t('تكلفة الوحدة')}</th>
-                            <th className="p-2 text-end">{t('الإجمالي')}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {order.items.map((i) => (
-                            <tr key={i.id} className="border-t border-[var(--ui-border,#e8e8e8)]">
-                                <td className="p-2 font-medium text-[#111]">{i.name}</td>
-                                <td className="p-2 text-[#6b7280]">
-                                    {i.purchase_unit || '—'}
-                                    {/*
-                                        ومحتوى الوحدة يُقال حين يزيد على واحد.
-                                        «٣ صناديق» لا تقول كم يدخل الرفّ، و«٣٦ ساقًا»
-                                        هي ما يراه من يجرد المخزون.
-                                    */}
-                                    {i.units_per_purchase_unit > 1 && (
-                                        <span className="ms-1 text-[11px] text-[#9ca3af]">
-                                            × {number(i.units_per_purchase_unit, 2)} ={' '}
-                                            {number(i.base_quantity, 2)}
-                                        </span>
-                                    )}
-                                </td>
-                                <td className="p-2 text-end tabular-nums">{number(i.quantity)}</td>
-                                <td className="p-2 text-end tabular-nums text-[#047857]">{number(i.received)}</td>
-                                <td className="p-2 text-end tabular-nums text-[#d97706]">
-                                    {i.pending > 0 ? number(i.pending, 2) : '—'}
-                                </td>
-                                <td className="p-2 text-end tabular-nums">{number(i.remaining)}</td>
-                                <td className="p-2 text-end tabular-nums">{m(i.cost)}</td>
-                                <td className="p-2 text-end font-semibold tabular-nums">{m(i.line_total)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </Card>
+                        وكانت الإجماليّاتُ بطاقةً في عمودٍ ثانٍ بعيدًا عن الجدول
+                        الذي جُمعت منه: من يراجع «الإجمالي» يعود بعينه عبر
+                        الصفحة ليجد ممّ تكوّن. وعلى الورقة تقع تحت الجدول —
+                        وكذلك هنا.
+                    */}
+                    <Card className="p-4">
+                        <h2 className="mb-3 font-bold text-[#111]">{t('البنود')}</h2>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="p-4">
-                    <h2 className="mb-3 font-bold text-[#111]">{t('الخطّ الزمنيّ')}</h2>
-                    <ol className="space-y-3">
-                        {timeline.map((e, idx) => (
-                            <li key={idx} className="flex gap-3 text-[13px]">
-                                <span
-                                    aria-hidden
-                                    className="mt-1.5 size-2 shrink-0 rounded-full"
-                                    style={{ background: DOT[e.kind] ?? '#9ca3af' }}
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[720px] text-[13px]">
+                                <thead className="text-[12px] text-[#71717a]">
+                                    <tr>
+                                        <th className="p-2 text-start">{t('الصنف')}</th>
+                                        <th className="p-2 text-start">{t('وحدة الشراء')}</th>
+                                        <th className="p-2 text-end">{t('المطلوب')}</th>
+                                        <th className="p-2 text-end">{t('المستلَم')}</th>
+                                        <th className="p-2 text-end">{t('قيد الاعتماد')}</th>
+                                        <th className="p-2 text-end">{t('المتبقّي')}</th>
+                                        <th className="p-2 text-end">{t('تكلفة الوحدة')}</th>
+                                        <th className="p-2 text-end">{t('الإجمالي')}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {order.items.map((i) => (
+                                        <tr key={i.id} className="border-t border-[var(--ui-border,#e8e8e8)]">
+                                            <td className="p-2 font-medium text-[#111]">{i.name}</td>
+                                            <td className="p-2 text-[#6b7280]">
+                                                {i.purchase_unit || '—'}
+                                                {/*
+                                                    ومحتوى الوحدة يُقال حين يزيد على واحد.
+                                                    «٣ صناديق» لا تقول كم يدخل الرفّ، و«٣٦ ساقًا»
+                                                    هي ما يراه من يجرد المخزون.
+                                                */}
+                                                {i.units_per_purchase_unit > 1 && (
+                                                    <span className="ms-1 text-[11px] text-[#9ca3af]">
+                                                        × {number(i.units_per_purchase_unit, 2)} ={' '}
+                                                        {number(i.base_quantity, 2)}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="p-2 text-end tabular-nums">{number(i.quantity)}</td>
+                                            <td className="p-2 text-end tabular-nums text-[#047857]">
+                                                {number(i.received)}
+                                            </td>
+                                            <td className="p-2 text-end tabular-nums text-[#d97706]">
+                                                {i.pending > 0 ? number(i.pending, 2) : '—'}
+                                            </td>
+                                            <td className="p-2 text-end tabular-nums">{number(i.remaining)}</td>
+                                            <td className="p-2 text-end tabular-nums">{m(i.cost)}</td>
+                                            <td className="p-2 text-end font-semibold tabular-nums">
+                                                {m(i.line_total)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* والإجماليُّ أقوى ما في الكتلة — أوّلُ ما يُبحث عنه */}
+                        <dl className="mt-4 ms-auto max-w-xs space-y-1.5 border-t border-[var(--ui-border,#e8e8e8)] pt-4 text-[13px]">
+                            <Row label={t('مجموع الأصناف')} value={m(order.items_subtotal)} />
+                            {order.supplier_discount > 0 && (
+                                <Row label={t('خصم المورد')} value={`− ${m(order.supplier_discount)}`} />
+                            )}
+                            {order.shipping_cost > 0 && <Row label={t('الشحن')} value={m(order.shipping_cost)} />}
+                            {order.tax > 0 && (
+                                <Row
+                                    label={`${t('الضريبة')} (${number(order.tax_rate, 2)}%)`}
+                                    value={m(order.tax)}
                                 />
-                                <div className="min-w-0">
-                                    <p className="font-medium text-[#111]">{e.title}</p>
-                                    <p className="text-[12px] text-[#9ca3af]">
-                                        <span dir="ltr">{e.at}</span>
-                                        {e.actor && <> — {e.actor}</>}
-                                    </p>
-                                    {e.detail && <p className="text-[12px] text-[#6b7280]">{e.detail}</p>}
-                                </div>
-                            </li>
-                        ))}
-                    </ol>
-                </Card>
+                            )}
+                            <Row label={t('الإجمالي')} value={m(order.total)} strong />
+                        </dl>
+                    </Card>
 
-                <div className="space-y-4">
                     <Card className="p-4">
                         <h2 className="mb-3 font-bold text-[#111]">{t('أوراق الاستلام')}</h2>
                         {receipts.length === 0 ? (
@@ -351,14 +374,21 @@ export default function PurchaseOrderShow() {
                                         key={r.id}
                                         className="flex flex-wrap items-center gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-2 first:border-0 first:pt-0"
                                     >
-                                        <a
-                                            href={r.pdf}
-                                            target="_blank"
-                                            rel="noreferrer"
+                                        {/*
+                                            والرقمُ يفتح ورقتَه لا ملفَّها.
+
+                                            كان يقود إلى PDF في لسانٍ آخر: يخرج
+                                            المراجعُ من اللوحة ليرى سندًا، ولا
+                                            بابَ فيه إلى ما جرى للسند بعدُ — من
+                                            اعتمده، أو لمَ رُفض.
+                                        */}
+                                        <SmartLink
+                                            routeName="admin.inventory.receipts.show"
+                                            href={route('admin.inventory.receipts.show', r.id)}
                                             className="font-mono text-[#6d28d9] hover:underline"
                                         >
                                             {r.number}
-                                        </a>
+                                        </SmartLink>
                                         <Badge
                                             variant={
                                                 r.status === 'معتمد'
@@ -422,7 +452,42 @@ export default function PurchaseOrderShow() {
                             </ul>
                         )}
                     </Card>
+
+                    <Card className="p-4">
+                        <h2 className="mb-3 font-bold text-[#111]">{t('الخطّ الزمنيّ')}</h2>
+                        <ol className="space-y-3">
+                            {timeline.map((e, idx) => (
+                                <li key={idx} className="flex gap-3 text-[13px]">
+                                    <span
+                                        aria-hidden
+                                        className="mt-1.5 size-2 shrink-0 rounded-full"
+                                        style={{ background: DOT[e.kind] ?? '#9ca3af' }}
+                                    />
+                                    <div className="min-w-0">
+                                        <p className="font-medium text-[#111]">{e.title}</p>
+                                        <p className="text-[12px] text-[#9ca3af]">
+                                            <span dir="ltr">{e.at}</span>
+                                            {e.actor && <> — {e.actor}</>}
+                                        </p>
+                                        {e.detail && <p className="text-[12px] text-[#6b7280]">{e.detail}</p>}
+                                    </div>
+                                </li>
+                            ))}
+                        </ol>
+                    </Card>
                 </div>
+
+                <DocumentAside className="xl:col-span-2">
+                    <DocumentPanel
+                        html={paper.html}
+                        size={paper.size}
+                        url={route('admin.purchases.pdf', order.id)}
+                        filename={`${order.number}.pdf`}
+                        label={`${t('أمر شراء')} ${order.number}`}
+                        open={previewing}
+                        onOpenChange={setPreviewing}
+                    />
+                </DocumentAside>
             </div>
 
             <Dialog open={receiving} onOpenChange={(v) => !v && setReceiving(false)}>
@@ -493,11 +558,12 @@ export default function PurchaseOrderShow() {
     );
 }
 
+/** سطرٌ في كتلة الإجماليّات — والوسمُ `dt`/`dd` لأنّها قائمةُ وصف */
 function Row({ label, value, strong }: { label: string; value: ReactNode; strong?: boolean }) {
     return (
         <div className="flex items-center justify-between gap-3">
-            <span className="text-[#6b7280]">{label}</span>
-            <span className={strong ? 'font-bold text-[#111]' : 'text-[#111]'}>{value}</span>
+            <dt className={strong ? 'font-bold text-[#111]' : 'text-[#6b7280]'}>{label}</dt>
+            <dd className={strong ? 'font-bold tabular-nums text-[#111]' : 'tabular-nums text-[#111]'}>{value}</dd>
         </div>
     );
 }

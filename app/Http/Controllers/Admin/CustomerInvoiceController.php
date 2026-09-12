@@ -275,6 +275,31 @@ class CustomerInvoiceController extends Controller
                     'at' => optional($n->issued_at)->format('Y-m-d'),
                 ])->all(),
             ],
+            /*
+             * والورقةُ إلى جانب تفاصيلها — كأختيها: الطلبُ وأمرُ الشراء.
+             *
+             * الشاشةُ كانت تنتهي عند رابطٍ يفتح PDF في لسانٍ آخر، ومكتوبًا
+             * بيده (`/admin/customer-invoices/${id}/pdf`) لا بـ`route()`.
+             * ومن يراجع فاتورةً قبل إرسالها إلى وزارةٍ يحتاج أن يرى ما
+             * ستراه الجهة، لا أن يخرج من اللوحة ليراه.
+             *
+             * وببانيها هو — `self::paper` نفسُها التي يطبع منها
+             * `PdfController::customerInvoice` — فلا تفترق المعروضةُ عن
+             * المطبوعة. وبلغةِ ورقتها لا بلغة من يقرأ: `InvoiceBranding::render`.
+             *
+             * ولا رمزَ تحقّقٍ هنا: الرمزُ يُبنى عند الطباعة وحدها — ورقةٌ
+             * تُرسَل تحمل طريقَها إلى السجلّ، ومعاينةٌ لا تُرسَل لا تحتاجه.
+             */
+            'paper' => [
+                'html' => InvoiceBranding::render($this->bid(), null, fn () => self::paper(
+                    $this->bid(),
+                    $invoice,
+                    $invoice->paidTotal(),
+                    $invoice->outstanding(),
+                    BankAccount::where('business_id', $this->bid())->orderBy('id')->first(),
+                )->render()),
+                'size' => PaperSize::A4,
+            ],
         ]);
     }
 

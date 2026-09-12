@@ -6,6 +6,7 @@ import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PURCHASE_TABS } from '@/Components/SectionTabs';
 import StatCard from '@/Components/StatCard';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
+import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -30,6 +31,8 @@ interface Invoice {
     supplier_id: number;
     reference: string;
     order: string | null;
+    /** مفتاحُ الأمر — به يُفتح، والرقمُ وحده لا يفتح شيئًا */
+    order_id: number | null;
     issued_at: string | null;
     due_at: string | null;
     subtotal: number;
@@ -137,7 +140,22 @@ export default function SupplierInvoices() {
             cell: (i) => (
                 <>
                     <span className="font-mono text-[12px] text-[#4b4b4b]">{i.reference}</span>
-                    {i.order && <span className="block text-[12px] text-[#9ca3af]">{i.order}</span>}
+                    {/*
+                        ورقمُ الأمر يفتح أمرَه.
+
+                        كان نصًّا رماديًّا لا يُضغط: من يراجع سندًا لا يطابق
+                        مبلغُه أمرَه يحتاج أن يفتح الأمر — فيبحث عنه بالرقم في
+                        شاشةٍ أخرى. وللأمر صفحةٌ مفردة (`admin.purchases.show`).
+                    */}
+                    {i.order && i.order_id !== null && (
+                        <SmartLink
+                            routeName="admin.purchases.show"
+                            href={route('admin.purchases.show', i.order_id)}
+                            className="block font-mono text-[12px] text-[#6b7280] hover:text-[#111] hover:underline"
+                        >
+                            {i.order}
+                        </SmartLink>
+                    )}
                 </>
             ),
         },

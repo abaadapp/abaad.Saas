@@ -21,7 +21,8 @@
     $start = $rtl ? 'right' : 'left';
     $end = $rtl ? 'left' : 'right';
 @endphp
-<table style="width:100%; border-collapse:collapse; font-family:xbriyaz; font-size:8pt;
+{{-- والخطُّ اسمُه بلا فراغ: ترويسةٌ يقرؤها المحرّكُ وحده — انظر `partials/tokens` --}}
+<table style="width:100%; border-collapse:collapse; font-family:ibmplexsansarabic; font-size:8pt;
               color:{{ $t['muted'] }}; border-bottom:0.4pt solid {{ $t['border'] }}; padding-bottom:2mm;">
     <tr>
         <td style="border:none; padding:0 0 2mm; text-align:{{ $start }};">

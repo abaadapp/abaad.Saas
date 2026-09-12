@@ -5266,5 +5266,19 @@
     "نوع الموقع": "Site type",
     "يحدّد ما يُبنى في موقعك: متجرٌ يستقبل الطلبات، أو عرضٌ بلا طلب، أو تعريفٌ بلا منتجات.": "Decides what gets built: a shop that takes orders, a catalogue without ordering, or a profile with no products.",
     "ماذا تريد من موقعك؟": "What do you want from your site?",
-    "لا إعدادات متجرٍ هنا لأنّ موقعك لا يعرض متجرًا. تبدّله من «نوع الموقع» أعلاه متى شئت.": "No shop settings here because your site shows no shop. Change it under “Site type” above whenever you like."
+    "لا إعدادات متجرٍ هنا لأنّ موقعك لا يعرض متجرًا. تبدّله من «نوع الموقع» أعلاه متى شئت.": "No shop settings here because your site shows no shop. Change it under “Site type” above whenever you like.",
+    "مع هذا السند ورقة مورّد — وفتحُ المرفقات صلاحيةٌ لا تملكها": "This receipt has a supplier document — opening attachments is a permission you do not hold",
+    "هذه قيمةُ البضاعة الداخلة — ولا تنشأ بها ذمّةٌ للمورّد قبل اعتماد سنده.": "This is the value of the goods received — no liability to the supplier arises until their invoice is approved.",
+    "لن تدخل البضاعة الرفّ — واكتب السبب ليقرأه من سجّل الورقة.": "The goods will not reach the shelf — write the reason so whoever filed the receipt can read it.",
+    "الكمية أقلّ ممّا في الشحنة": "The quantity is less than what was shipped",
+    "كل سندات الاستلام": "All goods receipts",
+    "الوصول المتوقّع": "Expected arrival",
+    "الجهة": "Entity",
+    "مرجع خارجي": "External reference",
+    "طلبات مضمومة": "Bundled orders",
+    "ملاحظات تُطبع": "Printed notes",
+    "سجّل الورقة": "Filed by",
+    "اعتُمد": "Approved",
+    "رُفض": "Rejected",
+    "فتح الملف": "Open the file"
 }

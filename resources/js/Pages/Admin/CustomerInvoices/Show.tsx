@@ -3,6 +3,8 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import { FileText, MessageCircle, Paperclip, Trash2, Undo2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import DocumentMeta from '@/Components/DocumentMeta';
+import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -68,7 +70,7 @@ interface May {
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, context } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, context } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -78,6 +80,8 @@ export default function CustomerInvoiceShow() {
                 methods: string[];
                 /** أيُّها يدخل مالُه بنكًا — من `CustomerPayments::sideFor` */
                 bank_methods: string[];
+                /** الورقةُ كما تُطبع — من بانيها الذي يُطبع منه */
+                paper: { html: string; size: string };
             }>
         >().props;
     const t = useTranslate();
@@ -87,6 +91,7 @@ export default function CustomerInvoiceShow() {
 
     const [paying, setPaying] = useState(false);
     const [crediting, setCrediting] = useState(false);
+    const [previewing, setPreviewing] = useState(false);
 
     const issue = useForm({});
 
@@ -152,11 +157,17 @@ export default function CustomerInvoiceShow() {
                                 )}
                             </>
                         )}
-                        <Button variant="outline" asChild>
-                            <a href={`/admin/customer-invoices/${invoice.id}/pdf`} target="_blank" rel="noreferrer">
-                                <FileText />
-                                {t('تصدير PDF')}
-                            </a>
+                        {/*
+                            و«معاينة» على الشاشة الضيّقة وحدها.
+
+                            كان هنا «تصدير PDF» يفتح لسانًا: فعلٌ واحد بثلاثة
+                            معانٍ — أيُريك أم يحفظ أم يطبع؟ وصارت الثلاثةُ
+                            مفرَّقةً بأسمائها فوق الورقة إلى جانب التفاصيل،
+                            وهذا مختصرٌ إليها حين تنزل أسفل الشاشة الضيّقة.
+                        */}
+                        <Button variant="outline" className="xl:hidden" onClick={() => setPreviewing(true)}>
+                            <FileText />
+                            {t('معاينة الورقة')}
                         </Button>
                     </>
                 }
@@ -179,150 +190,232 @@ export default function CustomerInvoiceShow() {
             )}
             {crediting && <CreditNoteForm invoice={invoice} onDone={() => setCrediting(false)} />}
 
-            <div className="grid gap-4 lg:grid-cols-3">
-                <Card className="p-4 lg:col-span-2">
-                    <table className="w-full text-[13px]">
-                        <thead className="text-[12px] text-[#71717a]">
-                            <tr>
-                                <th className="p-2 text-start">{t('البيان')}</th>
-                                <th className="p-2 text-start">{t('الكمية')}</th>
-                                <th className="p-2 text-start">{t('السعر')}</th>
-                                <th className="p-2 text-start">{t('الإجمالي')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {invoice.items.map((it, i) => (
-                                <tr key={i} className="border-t border-[var(--ui-border,#e8e8e8)]">
-                                    <td className="p-2">{it.description}</td>
-                                    <td className="p-2">{it.quantity}</td>
-                                    <td className="p-2">{m(it.unit_price)}</td>
-                                    <td className="p-2">{m(it.line_total)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </Card>
+            {/*
+                ═══ عمودان: ما يقوله الدفتر عن الفاتورة، وما ستقرؤه الجهة ═══
 
-                <Card className="space-y-2 p-4 text-[13px]">
-                    <Row label={t('المجموع الفرعي')} value={m(invoice.subtotal)} />
-                    {invoice.discount_total > 0 && <Row label={t('الخصم')} value={m(invoice.discount_total)} />}
-                    {invoice.tax_total > 0 && <Row label={t('الضريبة')} value={m(invoice.tax_total)} />}
-                    <Row label={t('الإجمالي')} value={m(invoice.total)} strong />
-                    <Row label={t('المسدَّد')} value={m(invoice.paid)} />
-                    <Row label={t('الباقي')} value={m(invoice.outstanding)} strong />
-                    {invoice.due_at && <Row label={t('الاستحقاق')} value={invoice.due_at} />}
-                    {invoice.po_number && <Row label={t('أمر الشراء')} value={invoice.po_number} />}
-                    {invoice.contract_number && <Row label={t('رقم العقد')} value={invoice.contract_number} />}
-                    {invoice.department && <Row label={t('القسم')} value={invoice.department} />}
-                    {invoice.attention_to && <Row label={t('عناية')} value={invoice.attention_to} />}
-                </Card>
-            </div>
+                وقياسُ القسمة هو قياسُ شاشة الطلب وأمر الشراء نفسُه، فلا
+                يتعلّم من ينتقل بينها قراءةً ثانية.
+            */}
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+                <div className="min-w-0 space-y-4 xl:col-span-3">
+                    {/* ما يُعرَف به المستند في نظرة — والمالُ وحده في كتلته */}
+                    <DocumentMeta
+                        cells={[
+                            { label: 'الحالة', value: invoice.state },
+                            { label: 'الجهة', value: invoice.customer },
+                            invoice.issued_at ? { label: 'تاريخ الإصدار', value: invoice.issued_at, ltr: true } : null,
+                            invoice.due_at ? { label: 'الاستحقاق', value: invoice.due_at, ltr: true } : null,
+                            invoice.po_number ? { label: 'أمر الشراء', value: invoice.po_number, ltr: true } : null,
+                            invoice.contract_number
+                                ? { label: 'رقم العقد', value: invoice.contract_number, ltr: true }
+                                : null,
+                            invoice.external_reference
+                                ? { label: 'مرجع خارجي', value: invoice.external_reference, ltr: true }
+                                : null,
+                            invoice.department ? { label: 'القسم', value: invoice.department } : null,
+                            invoice.cost_center ? { label: 'مركز التكلفة', value: invoice.cost_center } : null,
+                            invoice.attention_to ? { label: 'عناية', value: invoice.attention_to } : null,
+                            invoice.orders.length > 0
+                                ? { label: 'طلبات مضمومة', value: invoice.orders.join(' · '), wide: true }
+                                : null,
+                            invoice.notes ? { label: 'ملاحظات تُطبع', value: invoice.notes, wide: true } : null,
+                        ]}
+                    />
 
-            {invoice.payments.length > 0 && (
-                <Card className="mt-4 p-4">
-                    <h3 className="mb-2 text-[13px] font-bold">{t('التحصيلات')}</h3>
-                    {invoice.payments.map((p) => (
-                        <div key={p.number} className="flex justify-between border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px]">
-                            <span>{p.number} — {p.method}</span>
-                            <span dir="ltr">{p.at}</span>
-                            <span>{m(p.amount)}</span>
+                    {/*
+                        البنودُ وإجماليّاتُها في بطاقةٍ واحدة.
+
+                        وكانت الإجماليّاتُ بطاقةً في عمودٍ ثانٍ، وفيها مع المال
+                        رقمُ العقد والقسمُ و«عناية» — حقولُ تعريفٍ لا مبالغ.
+                        فمن يبحث عن «الباقي» يمرّ على أربعة حقولٍ نصّيّة قبله.
+                    */}
+                    <Card className="p-4">
+                        <h2 className="mb-3 font-bold text-[#111]">{t('البنود')}</h2>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[520px] text-[13px]">
+                                <thead className="text-[12px] text-[#71717a]">
+                                    <tr>
+                                        <th className="p-2 text-start">{t('البيان')}</th>
+                                        <th className="p-2 text-end">{t('الكمية')}</th>
+                                        <th className="p-2 text-end">{t('السعر')}</th>
+                                        <th className="p-2 text-end">{t('الإجمالي')}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {invoice.items.map((it, i) => (
+                                        <tr key={i} className="border-t border-[var(--ui-border,#e8e8e8)]">
+                                            <td className="p-2">{it.description}</td>
+                                            <td className="p-2 text-end tabular-nums">{it.quantity}</td>
+                                            <td className="p-2 text-end tabular-nums">{m(it.unit_price)}</td>
+                                            <td className="p-2 text-end font-semibold tabular-nums">
+                                                {m(it.line_total)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                    ))}
-                </Card>
-            )}
 
-            {invoice.credit_notes.length > 0 && (
-                <Card className="mt-4 p-4">
-                    <h3 className="mb-2 text-[13px] font-bold">{t('إشعارات دائن')}</h3>
-                    {invoice.credit_notes.map((n) => (
-                        <div key={n.number} className="flex justify-between border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px]">
-                            <span>{n.number} — {n.reason}</span>
-                            <span>{m(n.amount)}</span>
-                        </div>
-                    ))}
-                </Card>
-            )}
+                        {/* و«الباقي» أقوى ما في الكتلة — هو ما يُبحث عنه على فاتورةٍ صادرة */}
+                        <dl className="mt-4 ms-auto max-w-xs space-y-1.5 border-t border-[var(--ui-border,#e8e8e8)] pt-4 text-[13px]">
+                            <Row label={t('المجموع الفرعي')} value={m(invoice.subtotal)} />
+                            {invoice.discount_total > 0 && (
+                                <Row label={t('الخصم')} value={m(invoice.discount_total)} />
+                            )}
+                            {invoice.tax_total > 0 && <Row label={t('الضريبة')} value={m(invoice.tax_total)} />}
+                            <Row label={t('الإجمالي')} value={m(invoice.total)} strong />
+                            <Row label={t('المسدَّد')} value={m(invoice.paid)} />
+                            <Row label={t('الباقي')} value={m(invoice.outstanding)} strong />
+                        </dl>
+                    </Card>
 
-            {invoice.status !== 'ملغاة' && may.cancel && (
-                <Card className="mt-4 flex flex-wrap items-end gap-2 p-4">
-                    <label className="flex-1 text-[13px]">
-                        {t('سبب الإلغاء')}
-                        <Input value={cancel.data.reason} onChange={(e) => cancel.setData('reason', e.target.value)} />
-                        {cancel.errors.reason && <p className="text-[12px] text-[#b91c1c]">{cancel.errors.reason}</p>}
-                    </label>
-                    {/* والسببُ مطلوب: إلغاءٌ بلا سبب لا يُقرأ بعد شهر */}
-                    <Button
-                        variant="danger"
-                        disabled={cancel.processing}
-                        onClick={() => cancel.post(`/admin/customer-invoices/${invoice.id}/cancel`, { preserveScroll: true })}
-                    >
-                        {t('إلغاء الفاتورة')}
-                    </Button>
-                </Card>
-            )}
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                {/*
-                    ومستنداتُ الورقة: أمرُ شراء الجهة وعقدُها وطلبُها الموقَّع.
-                    على قرصٍ خاصّ تُقرأ ببابٍ يسأل عن المتجر وعن الصلاحية.
-                */}
-                <Card className="p-4">
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                        <h2 className="font-bold text-[#111]">{t('مرفقات الفاتورة')}</h2>
-                        <label className="cursor-pointer text-[13px] font-medium text-[#6d28d9] hover:underline">
-                            {t('إضافة مستند')}
-                            <input
-                                type="file"
-                                multiple
-                                className="hidden"
-                                accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
-                                onChange={(e) => attach(e.target.files)}
-                            />
-                        </label>
-                    </div>
-
-                    {invoice.attachments.length === 0 ? (
-                        <p className="text-[13px] text-[#9ca3af]">{t('لا مستندات مرفقة')}</p>
-                    ) : (
-                        <ul className="space-y-2 text-[13px]">
-                            {invoice.attachments.map((a) => (
-                                <li key={a.id} className="flex items-center gap-2">
-                                    <Paperclip className="size-3.5 shrink-0 text-[#9ca3af]" />
-                                    {/*
-                                        ومرفقٌ لا يُقرأ يُقال موجودًا ولا يُبنى
-                                        له رابط — لا يُكتم فيُظنّ غيرَ موجود.
-                                    */}
-                                    {a.url ? (
-                                        <a href={a.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-[#6d28d9] hover:underline">
-                                            {a.name}
-                                        </a>
-                                    ) : (
-                                        <span className="min-w-0 flex-1 truncate text-[#9ca3af]" title={t('فتحُ المرفقات صلاحيةٌ لا تملكها')}>
-                                            {a.name}
-                                        </span>
-                                    )}
-                                    <button
-                                        type="button"
-                                        aria-label={t('حذف المرفق')}
-                                        className="shrink-0 text-[#b91c1c]"
-                                        onClick={() => detach(a.id)}
-                                    >
-                                        <Trash2 className="size-4" />
-                                    </button>
-                                </li>
+                    {invoice.payments.length > 0 && (
+                        <Card className="p-4">
+                            <h3 className="mb-2 text-[13px] font-bold">{t('التحصيلات')}</h3>
+                            {invoice.payments.map((p) => (
+                                <div
+                                    key={p.number}
+                                    className="flex justify-between border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px]"
+                                >
+                                    <span>
+                                        {p.number} — {p.method}
+                                    </span>
+                                    <span dir="ltr">{p.at}</span>
+                                    <span className="tabular-nums">{m(p.amount)}</span>
+                                </div>
                             ))}
-                        </ul>
+                        </Card>
                     )}
-                </Card>
 
-                {/* والملاحظةُ الداخليّة لا تُطبع ولا تصل العميل */}
-                <Card className="p-4">
-                    <h2 className="mb-1 font-bold text-[#111]">{t('ملاحظات داخلية')}</h2>
-                    <p className="mb-3 text-[12px] text-[#9ca3af]">{t('لا تظهر للعميل ولا تُطبع.')}</p>
-                    <p className="whitespace-pre-line text-[13px] text-[#4b4b4b]">
-                        {invoice.internal_notes || t('لا ملاحظات داخلية')}
-                    </p>
-                </Card>
+                    {invoice.credit_notes.length > 0 && (
+                        <Card className="p-4">
+                            <h3 className="mb-2 text-[13px] font-bold">{t('إشعارات دائن')}</h3>
+                            {invoice.credit_notes.map((n) => (
+                                <div
+                                    key={n.number}
+                                    className="flex justify-between border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px]"
+                                >
+                                    <span>
+                                        {n.number} — {n.reason}
+                                    </span>
+                                    <span className="tabular-nums">{m(n.amount)}</span>
+                                </div>
+                            ))}
+                        </Card>
+                    )}
+
+                    {/*
+                        ومستنداتُ الورقة: أمرُ شراء الجهة وعقدُها وطلبُها الموقَّع.
+                        على قرصٍ خاصّ تُقرأ ببابٍ يسأل عن المتجر وعن الصلاحية.
+                    */}
+                    <Card className="p-4">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                            <h2 className="font-bold text-[#111]">{t('مرفقات الفاتورة')}</h2>
+                            <label className="cursor-pointer text-[13px] font-medium text-[#6d28d9] hover:underline">
+                                {t('إضافة مستند')}
+                                <input
+                                    type="file"
+                                    multiple
+                                    className="hidden"
+                                    accept=".jpg,.jpeg,.png,.pdf,.webp,.heic"
+                                    onChange={(e) => attach(e.target.files)}
+                                />
+                            </label>
+                        </div>
+
+                        {invoice.attachments.length === 0 ? (
+                            <p className="text-[13px] text-[#9ca3af]">{t('لا مستندات مرفقة')}</p>
+                        ) : (
+                            <ul className="space-y-2 text-[13px]">
+                                {invoice.attachments.map((a) => (
+                                    <li key={a.id} className="flex items-center gap-2">
+                                        <Paperclip className="size-3.5 shrink-0 text-[#9ca3af]" />
+                                        {/*
+                                            ومرفقٌ لا يُقرأ يُقال موجودًا ولا يُبنى
+                                            له رابط — لا يُكتم فيُظنّ غيرَ موجود.
+                                        */}
+                                        {a.url ? (
+                                            <a
+                                                href={a.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="min-w-0 flex-1 truncate text-[#6d28d9] hover:underline"
+                                            >
+                                                {a.name}
+                                            </a>
+                                        ) : (
+                                            <span
+                                                className="min-w-0 flex-1 truncate text-[#9ca3af]"
+                                                title={t('فتحُ المرفقات صلاحيةٌ لا تملكها')}
+                                            >
+                                                {a.name}
+                                            </span>
+                                        )}
+                                        <button
+                                            type="button"
+                                            aria-label={t('حذف المرفق')}
+                                            className="shrink-0 text-[#b91c1c]"
+                                            onClick={() => detach(a.id)}
+                                        >
+                                            <Trash2 className="size-4" />
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </Card>
+
+                    {/* والملاحظةُ الداخليّة لا تُطبع ولا تصل العميل */}
+                    <Card className="p-4">
+                        <h2 className="mb-1 font-bold text-[#111]">{t('ملاحظات داخلية')}</h2>
+                        <p className="mb-3 text-[12px] text-[#9ca3af]">{t('لا تظهر للعميل ولا تُطبع.')}</p>
+                        <p className="whitespace-pre-line text-[13px] text-[#4b4b4b]">
+                            {invoice.internal_notes || t('لا ملاحظات داخلية')}
+                        </p>
+                    </Card>
+
+                    {/* والإلغاءُ آخرُ ما في العمود: فعلٌ خطِرٌ لا يُزاحم ما يُقرأ */}
+                    {invoice.status !== 'ملغاة' && may.cancel && (
+                        <Card className="flex flex-wrap items-end gap-2 p-4">
+                            <label className="flex-1 text-[13px]">
+                                {t('سبب الإلغاء')}
+                                <Input
+                                    value={cancel.data.reason}
+                                    onChange={(e) => cancel.setData('reason', e.target.value)}
+                                />
+                                {cancel.errors.reason && (
+                                    <p className="text-[12px] text-[#b91c1c]">{cancel.errors.reason}</p>
+                                )}
+                            </label>
+                            {/* والسببُ مطلوب: إلغاءٌ بلا سبب لا يُقرأ بعد شهر */}
+                            <Button
+                                variant="danger"
+                                disabled={cancel.processing}
+                                onClick={() =>
+                                    cancel.post(`/admin/customer-invoices/${invoice.id}/cancel`, {
+                                        preserveScroll: true,
+                                    })
+                                }
+                            >
+                                {t('إلغاء الفاتورة')}
+                            </Button>
+                        </Card>
+                    )}
+                </div>
+
+                <DocumentAside className="xl:col-span-2">
+                    <DocumentPanel
+                        html={paper.html}
+                        size={paper.size}
+                        url={route('admin.customerInvoices.pdf', invoice.id)}
+                        // ومسودّةٌ بلا رقم تُسمّى بمعرّفها — لا «null.pdf»
+                        filename={`${invoice.number ?? `draft-${invoice.id}`}.pdf`}
+                        label={`${t('فاتورة العميل')} ${label}`}
+                        open={previewing}
+                        onOpenChange={setPreviewing}
+                    />
+                </DocumentAside>
             </div>
         </AdminLayout>
     );

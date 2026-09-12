@@ -14,6 +14,7 @@ use App\Models\PurchaseOrderItem;
 use App\Models\Setting;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Support\Document\Pdf\MpdfDriver;
 use App\Support\Pdf;
 use App\Support\PosTerminal;
 use App\Support\PublicDocument;
@@ -154,7 +155,16 @@ class PapersAreOnePressTest extends TestCase
             resource_path('views/pdf/partials/style.blade.php')
         ));
 
-        $this->assertStringContainsString('xbriyaz', $css);
+        /*
+         * والاسمُ من السائق لا مكتوبًا هنا.
+         *
+         * كان الحارسُ يقول `xbriyaz` — خطَّ ذلك اليوم. وتبدّل الخطُّ إلى
+         * «IBM Plex Sans Arabic» ليطابق ما تراه العين في المعاينة، فلو بقي
+         * الاسمُ مكتوبًا لَسقط الحارسُ على تبديلٍ صحيح، ولَمرّ غدًا على
+         * تبديلٍ خاطئ لو كُتب الاسمُ الجديد بيده. ومقصدُه واحدٌ لم يتبدّل:
+         * لا خطَّ لاتينيًّا لورقةٍ عربيّة.
+         */
+        $this->assertStringContainsString(MpdfDriver::FONT, $css);
         $this->assertStringNotContainsString('dejavusans', $css);
     }
 

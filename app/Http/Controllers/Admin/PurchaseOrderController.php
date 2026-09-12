@@ -14,6 +14,7 @@ use App\Models\SupplierInvoice;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Document\PaperSize;
 use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
 use App\Support\GoodsReceipts;
@@ -193,7 +194,7 @@ class PurchaseOrderController extends Controller
                 'quantity' => (float) $n->items->sum('quantity'),
                 'lines' => $n->items->count(),
                 'rejection_reason' => $n->rejection_reason,
-                'pdf' => route('admin.inventory.receipts.pdf', $n->id),
+                // ولا رابطَ PDF هنا: الرقمُ يفتح صفحةَ السند، وفيها ورقتُه وأزرارُها
             ])->all(),
             'invoices' => $invoices->map(fn ($v) => [
                 'id' => $v->id,
@@ -218,6 +219,24 @@ class PurchaseOrderController extends Controller
                 'receive' => (bool) $user?->may(Permissions::RECEIPT_CREATE)
                     && ! in_array($po->status, [PurchaseOrders::RECEIVED, 'ملغي'], true),
                 'delete' => $notes->isEmpty() && $invoices->isEmpty(),
+            ],
+            /*
+             * والورقةُ إلى جانب تفاصيلها — HTML لا PDF.
+             *
+             * الشاشةُ كانت تنتهي عند زرٍّ يفتح ملفًّا في لسانٍ آخر: من يراجع
+             * أمرًا قبل إرساله إلى مورّده يخرج من اللوحة ليراه، ويعود إليها
+             * ليقارن. ورسمُها هنا نصًّا يجعل الاثنين في نظرةٍ واحدة.
+             *
+             * وببانيها هو لا بنسخةٍ ثانية: `DocumentPrintController::purchase`
+             * يطبع من `DocumentPaper::forPurchase` نفسِها — فلا تفترق
+             * المعروضةُ عن المطبوعة.
+             *
+             * ولا يُشغَّل محرّكُ PDF لمن جاء يقرأ حالةَ أمر: الرسمُ نصًّا
+             * جزءٌ يسير من ثمن توليد ملفّ.
+             */
+            'paper' => [
+                'html' => DocumentRenderer::generic($bid, 'purchase', DocumentPaper::forPurchase($po)),
+                'size' => PaperSize::A4,
             ],
         ]);
     }

@@ -59,7 +59,23 @@
     */
 @include('documents.v1.partials.webfont')
 
-    * { font-family: xbriyaz, 'IBM Plex Sans Arabic', sans-serif; box-sizing: border-box; }
+    {{--
+        وخطُّ الورقة واحدٌ في المحرّكين — وطريقُه إلى كلٍّ منهما غيرُ الآخر.
+
+        هذا السطرُ للمتصفّح: `'IBM Plex Sans Arabic'` هو اسمُ الأسرة في
+        `@font-face` أعلاه. وmpdf **لا يقرأ محدّدَ `*` أصلًا** — قِسناه:
+        بُدّل الاسمُ هنا إلى خطٍّ آخر فخرج الـPDF على حاله. خطُّه يصله من
+        `default_font` في `MpdfDriver::base`.
+
+        و`ibmplexsansarabic` بلا فراغ أوّلًا احتياطًا: اسمُ الأسرة في سجلّ
+        mpdf لا يحتمل فراغًا، فلو قرأ المحدّدَ يومًا وجد ما يعرفه. والمتصفّحُ
+        يتخطّاه — ليس خطًّا عنده — إلى الاسم بعده.
+
+        والملفّان اللذان يقرؤهما المحرّك مبنيّان من مقاطع المتصفّح نفسِها —
+        `scripts/build-document-font.py` — فالحروفُ ذاتُها بالمقاسات ذاتها
+        هنا وهناك.
+    --}}
+    * { font-family: ibmplexsansarabic, 'IBM Plex Sans Arabic', sans-serif; box-sizing: border-box; }
 
     body {
         /* ولا هامشَ افتراضيًّا من المتصفّح: ٨ بكسل تُزيح الورقة عن حدّها */

@@ -610,6 +610,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * فيها أسعارُ شرائك — أثمنُ ما في متجرك عند منافسك.
      */
     Route::get('/inventory/receipts/{id}/attachment', [FinancialAttachmentController::class, 'receipt'])->name('inventory.receipts.attachment');
+    /*
+     * صفحةُ السند الواحد — بعد `/{id}/pdf` و`/{id}/attachment` لا قبلهما.
+     *
+     * المُطابِقُ يأخذ أوّلَ ما ينطبق، و`/{id}` يبتلع المقطعَ الواحد وحده
+     * فلا ينازع البابين. والقيدُ الرقميّ إعلانُ نيّةٍ كأخيه في المشتريات.
+     */
+    Route::get('/inventory/receipts/{id}', [GoodsReceiptNoteController::class, 'show'])
+        ->whereNumber('id')->name('inventory.receipts.show');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
     // المورّدون

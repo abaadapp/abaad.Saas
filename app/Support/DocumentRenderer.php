@@ -14,6 +14,7 @@ use App\Support\Document\Branding;
 use App\Support\Document\PaperSize;
 use App\Support\Document\Snapshot;
 use App\Support\Document\Version;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -91,7 +92,7 @@ class DocumentRenderer
                 ->all();
         }
 
-        return view(Version::views($version).'.'.self::template($type), [
+        return self::html(view(Version::views($version).'.'.self::template($type), [
             /* والأوراقُ العامّة على A4: أمرُ شراءٍ لا يُطبع على شريطٍ حراريّ */
             'paper' => PaperSize::A4,
             'tokens' => Branding::tokens($businessId, $scale),
@@ -115,7 +116,34 @@ class DocumentRenderer
              */
             'showPrices' => (bool) ($tpl['show_prices'] ?? true),
             'showParties' => (bool) (($tpl['show_customer'] ?? false) || ($tpl['show_supplier'] ?? false)),
-        ])->render();
+        ]));
+    }
+
+    /**
+     * مخرجُ الرسم الواحد — كلُّ ورقةٍ تخرج من هنا.
+     *
+     * ═══ ولمَ الخاناتُ تُحوَّل على الرسم لا على البيان ═══
+     *
+     * المطلوبُ قاعدةٌ واحدة: **كلُّ** رقمٍ في المستند بخاناتٍ غربيّة. وبيانُ
+     * الورقة يبلغ القالبَ من طرقٍ شتّى: مصفوفةُ `DocumentPaper`، وصفُّ الطلب
+     * نفسُه في الشريط الحراريّ، ولقطةُ الهويّة، وسطورُ `Paper::brand`،
+     * وتذييلٌ كتبه التاجر في «قوالب الأوراق». وتحويلُ كلٍّ منها في موضعه
+     * يعني خمسةَ مواضعَ تُنسى واحدةٌ منها — وهو بعينه ما نهى عنه الطلب:
+     * «بصورة مركزية بدل hacks موزعة داخل كل template».
+     *
+     * فالتحويلُ على النصّ المرسوم: لا يبلغه شيءٌ إلّا وقد مرّ به.
+     *
+     * ═══ وهو آمنٌ على الرسم ═══
+     *
+     * لا خانةَ عربيّةً في وسم HTML ولا في اسم صنفٍ من أصناف CSS ولا في
+     * `data:` — كلُّها لاتينيّةٌ بحتة. فما يُحوَّل نصُّ البشر وحدَه.
+     *
+     * ولا تُمسّ قيمةٌ محسوبة: هذا تحويلُ خاناتٍ لا صياغةُ مبالغ، والمبالغُ
+     * تخرج من `Money::format` غربيّةً أصلًا — انظر `Support\Digits`.
+     */
+    private static function html(View $view): string
+    {
+        return (string) Digits::western($view->render());
     }
 
     /**
@@ -184,7 +212,7 @@ class DocumentRenderer
         $scale = self::scale((string) $values['font']);
         $snapshot = Snapshot::of($order, $businessId);
 
-        return view(Version::views($extra['version'] ?? null).'.sale', [
+        return self::html(view(Version::views($extra['version'] ?? null).'.sale', [
             'doc' => DocumentPaper::forSale($order, ['customerTax' => $extra['customerTax'] ?? null]),
             'tpl' => $values,
             /* ومقاسُ الورقة يبلغ القالبَ ليكتب `@page` وصندوقَها — انظر PaperSize */
@@ -219,7 +247,7 @@ class DocumentRenderer
             /* والوجهُ الثالث: الرقمُ الضريبيّ بلا مقبض — انظر رأس القالب */
             'taxInvoice' => (bool) ($extra['taxInvoice'] ?? false),
             'generatedAt' => $extra['generatedAt'] ?? null,
-        ])->render();
+        ]));
     }
 
     /**
@@ -239,7 +267,7 @@ class DocumentRenderer
     {
         $snapshot = Snapshot::of($order, $businessId);
 
-        return view(Version::views($extra['version'] ?? null).'.thermal', [
+        return self::html(view(Version::views($extra['version'] ?? null).'.thermal', [
             'order' => $order,
             /* وعملةُ الورقة من لقطتها إن كانت مختومة — انظر `Document\Snapshot` */
             'currency' => Snapshot::currency($snapshot) ?: Money::of($businessId),
@@ -252,7 +280,7 @@ class DocumentRenderer
             'paperUrl' => $extra['paperUrl'] ?? '',
             'customerTax' => $extra['customerTax'] ?? null,
             'googleReview' => $extra['googleReview'] ?? null,
-        ])->render();
+        ]));
     }
 
     /** طلبٌ للمعاينة وحدها — لا يُحفظ ولا يُعدّ في بيع */

@@ -99,6 +99,8 @@ class SupplierInvoiceController extends Controller
                 'supplier_id' => $i->supplier_id,
                 'reference' => $i->supplier_ref,
                 'order' => $i->purchaseOrder?->number,
+                // ومفتاحُ الأمر معه: الرقمُ يُقرأ، والمفتاحُ يفتح صفحتَه
+                'order_id' => $i->purchase_order_id,
                 'issued_at' => optional($i->issued_at)->format('Y-m-d'),
                 'due_at' => optional($i->due_at)->format('Y-m-d'),
                 'subtotal' => (float) $i->subtotal,

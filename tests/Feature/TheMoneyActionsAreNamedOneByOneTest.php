@@ -439,7 +439,43 @@ class TheMoneyActionsAreNamedOneByOneTest extends TestCase
                     && ! collect($a)->contains(Permissions::RECEIPT_APPROVE))
                 ->where('canApprove', false)
                 ->where('canReject', false)
-                ->where('canSeeAttachment', false)
+                ->etc());
+    }
+
+    /**
+     * وورقةُ المورّد تُقال موجودةً ولا يُبنى لها رابط.
+     *
+     * ═══ ولمَ انتقل هذا الحارس ═══
+     *
+     * كان يقيس `canSeeAttachment` على **قائمة** السندات — يومَ كانت الورقةُ
+     * تُقرأ في نافذةٍ فوقها. وصار للسند صفحةٌ
+     * (`admin.inventory.receipts.show`)، وفيها تُقرأ ورقةُ المورّد. والقاعدةُ
+     * هي هي وموضعُ قياسها تبدّل: مفتاحٌ يُرسل ولا تقرؤه شاشةٌ لا يحرس شيئًا.
+     *
+     * والصيغةُ هنا أدقُّ من مقبضٍ عامّ: الرابطُ نفسُه لا يُبنى لمن لا يملك
+     * الفتح — فلا يُسرَّب مسارٌ في حمولة الصفحة أصلًا — و`has_attachment`
+     * يبقى صادقًا فتقول الشاشةُ «ثمّة ورقةٌ لا تُفتح» لا «لا ورقة».
+     */
+    public function test_the_receipt_page_names_an_attachment_it_will_not_open(): void
+    {
+        $note = $this->pendingNote();
+        $note->update(['attachment' => 'receipts/x.pdf', 'attachment_name' => 'ورقة.pdf']);
+
+        $blind = $this->staff(['inventory', Permissions::RECEIPT_VIEW]);
+
+        $this->actingAs($blind)
+            ->get(route('admin.inventory.receipts.show', $note->id))
+            ->assertInertia(fn ($p) => $p
+                ->where('note.has_attachment', true)
+                ->where('note.attachment', null)
+                ->etc());
+
+        $seeing = $this->staff(['inventory', Permissions::RECEIPT_VIEW, Permissions::ATTACHMENT_VIEW]);
+
+        $this->actingAs($seeing)
+            ->get(route('admin.inventory.receipts.show', $note->id))
+            ->assertInertia(fn ($p) => $p
+                ->where('note.attachment', route('admin.inventory.receipts.attachment', $note->id))
                 ->etc());
     }
 

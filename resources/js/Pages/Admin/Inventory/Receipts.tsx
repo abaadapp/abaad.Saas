@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import SmartLink from '@/Components/SmartLink';
-import { Check, FileText, PackagePlus, Printer, X } from 'lucide-react';
+import { Check, PackagePlus, Printer, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
@@ -16,14 +16,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/Components/ui/dialog';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -43,6 +35,8 @@ interface Note {
     number: string;
     supplier: string | null;
     order: string | null;
+    /** مفتاحُ الأمر — به يُفتح، والرقمُ وحده لا يفتح شيئًا */
+    order_id: number | null;
     branch: string | null;
     received_at: string | null;
     receiver: string | null;
@@ -75,7 +69,6 @@ interface Props {
     canApprove: boolean;
     /** والرفضُ فعلٌ غيرُ الاعتماد: نصفُ المراجعة الآمن يُمنح وحدَه */
     canReject: boolean;
-    canSeeAttachment: boolean;
 }
 
 /**
@@ -86,21 +79,17 @@ interface Props {
  * إشعارًا بلا استلامٍ يجعل الورقة تقول ما لم يقله المخزون.
  */
 export default function InventoryReceipts() {
-    const { notes, pagination, filters, sorts, pendingCount, canApprove, canReject, canSeeAttachment, context } =
+    const { notes, pagination, filters, sorts, pendingCount, canApprove, canReject, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
-    const [viewing, setViewing] = useState<Note | null>(null);
     const [rejecting, setRejecting] = useState<Note | null>(null);
     const reject = useForm({ reason: '' });
 
     const approve = (n: Note) =>
-        router.post(route('admin.purchases.receipts.approve', n.id), {}, {
-            preserveScroll: true,
-            onSuccess: () => setViewing(null),
-        });
+        router.post(route('admin.purchases.receipts.approve', n.id), {}, { preserveScroll: true });
 
     const columns: Column<Note>[] = [
         {
@@ -108,7 +97,20 @@ export default function InventoryReceipts() {
             header: 'الإشعار',
             cell: (n) => (
                 <>
-                    <span className="font-mono text-[12px] text-[#4b4b4b]">{n.number}</span>
+                    {/*
+                        والرقمُ بابُ ورقته.
+
+                        كان نصًّا لا يُفتح، و«مراجعة» تفتح نافذةً فوق القائمة:
+                        لا عنوانَ للسند يُرسَل إلى زميل، ولا رجوعَ منه إلى
+                        أمره، ولا موضعَ يقول من اعتمده. انظر `Inventory/ReceiptShow`.
+                    */}
+                    <SmartLink
+                        routeName="admin.inventory.receipts.show"
+                        href={route('admin.inventory.receipts.show', n.id)}
+                        className="font-mono text-[12px] text-[#4b4b4b] hover:text-[#111] hover:underline"
+                    >
+                        {n.number}
+                    </SmartLink>
                     <span className="block text-[12px] text-[#9ca3af]" dir="ltr">
                         {n.received_at}
                     </span>
@@ -124,15 +126,15 @@ export default function InventoryReceipts() {
                     {/*
                         رقم الأمر تحت اسم المورّد: منه تُقابَل الورقة بأمرها.
 
-                        ورابطٌ يفتح الأمر نفسه لا قائمةً فيها أربعةٌ وستّون:
-                        الرقم يصل مع الرابط ويُملأ به حقل البحث في الشاشة
-                        الأخرى. ولا شاشةَ أمرٍ مفردة في النظام، ورابطٌ يُنزلك
-                        في رأس قائمةٍ ويتركك تبحث يَعِد ولا يفي.
+                        ويفتح الأمرَ نفسَه. وكان يُنزلك في رأس القائمة بالرقم
+                        في حقل البحث — يومَ لم تكن للأمر شاشةٌ مفردة. وصارت
+                        له (`admin.purchases.show`)، فرابطٌ يتركك تبحث يَعِد
+                        ولا يفي.
                     */}
-                    {n.order && (
+                    {n.order && n.order_id !== null && (
                         <SmartLink
-                            routeName="admin.purchases.orders"
-                            href={route('admin.purchases.orders', { q: n.order })}
+                            routeName="admin.purchases.show"
+                            href={route('admin.purchases.show', n.order_id)}
                             className="block font-mono text-[12px] text-[#6b7280] hover:text-[#111] hover:underline"
                         >
                             {n.order}
@@ -174,8 +176,14 @@ export default function InventoryReceipts() {
                             <Printer />
                         </a>
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setViewing(n)}>
-                        {t('مراجعة')}
+                    {/* و«مراجعة» تفتح صفحةَ السند — لا نافذةً تقول نصفَ ما فيها */}
+                    <Button variant="ghost" size="sm" asChild>
+                        <SmartLink
+                            routeName="admin.inventory.receipts.show"
+                            href={route('admin.inventory.receipts.show', n.id)}
+                        >
+                            {t('مراجعة')}
+                        </SmartLink>
                     </Button>
                     {/*
                         وزرّا القرار لمن يملكه وحده، وعلى المعلَّق وحده:
@@ -250,191 +258,16 @@ export default function InventoryReceipts() {
             </Card>
 
             {/*
-                نافذةُ العرض — ورقةُ الاستلام كما تُقرأ عند باب المخزن.
+                ولا نافذةَ عرضٍ هنا بعد اليوم — للسند صفحتُه.
 
-                وكانت ستّةَ حقولٍ في شبكةٍ واحدة تحت عنوانٍ واحد: المورّد
-                وأمرُ الشراء والفرعُ والمستلِم والتاريخُ والقيمة — فلا تُقرأ
-                الورقةُ طرفين، ولا يُعرف من أين جاءت البضاعة ومن استلمها إلا
-                بقراءة الستّة كلِّها. وصارت طرفين: مصدرٌ ووجهة.
+                كانت «مراجعة» تفتح نافذةً فوق القائمة تعرض الأطرافَ والبنودَ
+                والمجموع. وصار للسند عنوانٌ يُفتح ويُرسَل ويُرجَع منه إلى أمره،
+                وفيه ما لم تكن النافذةُ تعرضه: من سجّل الورقة ومن اعتمدها،
+                والورقةُ نفسُها كما تُطبع. ونافذةٌ تقول نصفَ ما تقوله الصفحة
+                تجعل من يقرأ في أحدهما لا يعرف أنّ في الآخر أكثر.
 
-                والمجموعُ في ذيل الجدول لا في الشبكة فوقه: العينُ تطلب
-                المجموع تحت آخر سطرٍ لا فوق أوّله. وأُضيف إجماليّ الكميّة —
-                وهو أوّلُ ما يُعدّ عند الباب، ولم يكن في الورقة أصلًا.
+                انظر `Pages/Admin/Inventory/ReceiptShow`.
             */}
-            <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-                <DialogContent className="sm:max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle>
-                            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                <span className="flex items-center gap-2">
-                                    <PackagePlus className="size-4 text-[#047857]" />
-                                    <span className="font-mono">{viewing?.number}</span>
-                                </span>
-                                {viewing?.received_at && (
-                                    <span dir="ltr" className="text-[13px] font-normal text-[#9ca3af]">
-                                        {viewing.received_at}
-                                    </span>
-                                )}
-                            </span>
-                        </DialogTitle>
-                    </DialogHeader>
-
-                    {viewing && (
-                        /* الجسم وحده يمرّ تحت اليد: الترويسة والذيل يبقيان
-                           ظاهرين مهما طالت قائمة الأصناف */
-                        <div className="max-h-[70dvh] space-y-5 overflow-y-auto overscroll-contain px-5 pb-5">
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <div className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
-                                    <p className="mb-2 text-[12px] font-medium text-[#9ca3af]">{t('من أين جاءت')}</p>
-                                    <p className="font-medium text-[#111]">{viewing.supplier ?? t('بلا مورّد')}</p>
-                                    {/* ورقمُ الأمر رابطٌ هنا كما هو في الجدول: من يقرأ
-                                        السند يريد أن يقابله بأمره لا أن ينسخ رقمه */}
-                                    {viewing.order ? (
-                                        <SmartLink
-                                            routeName="admin.purchases.orders"
-                                            href={route('admin.purchases.orders', { q: viewing.order })}
-                                            className="mt-1 block font-mono text-[12px] text-[#6b7280] hover:text-[#111] hover:underline"
-                                        >
-                                            {viewing.order}
-                                        </SmartLink>
-                                    ) : (
-                                        <p className="mt-1 text-[12px] text-[#9ca3af]">{t('بلا أمر شراء')}</p>
-                                    )}
-                                </div>
-
-                                <div className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
-                                    <p className="mb-2 text-[12px] font-medium text-[#9ca3af]">{t('أين دخلت ومن استلمها')}</p>
-                                    <p className="font-medium text-[#111]">{viewing.branch ?? t('بلا فرع')}</p>
-                                    <p className="mt-1 text-[12px] text-[#6b7280]">
-                                        {viewing.receiver ?? t('لم يُسجَّل مستلِم')}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {viewing.items.length === 0 ? (
-                                <p className="rounded-[10px] bg-[#fafafa] p-4 text-center text-sm text-[#9ca3af]">
-                                    {t('لا أصناف على هذا الإشعار.')}
-                                </p>
-                            ) : (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow className="hover:bg-transparent">
-                                            <TableHead>{t('الصنف')}</TableHead>
-                                            {/* موضعُ السطر من أمره — ومن يعتمد رقمًا لا
-                                                يعرف نسبته إلى شيء يعتمد على غير علم */}
-                                            <TableHead className="text-end">{t('المطلوب')}</TableHead>
-                                            <TableHead className="text-end">{t('استُلم قبله')}</TableHead>
-                                            <TableHead className="text-end">{t('في هذه الورقة')}</TableHead>
-                                            <TableHead className="text-end">{t('التكلفة')}</TableHead>
-                                            <TableHead className="text-end">{t('الإجمالي')}</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {viewing.items.map((i, k) => (
-                                            <TableRow key={k}>
-                                                <TableCell className="font-medium text-[#111]">{i.name}</TableCell>
-                                                <TableCell className="text-end tabular-nums text-[#9ca3af]">
-                                                    {i.ordered === null ? '—' : number(i.ordered)}
-                                                </TableCell>
-                                                <TableCell className="text-end tabular-nums text-[#9ca3af]">
-                                                    {i.received_before === null ? '—' : number(i.received_before)}
-                                                </TableCell>
-                                                <TableCell className="text-end tabular-nums font-semibold">
-                                                    {number(i.quantity)}
-                                                </TableCell>
-                                                <TableCell className="text-end tabular-nums text-[#4b4b4b]">
-                                                    {m(i.cost)}
-                                                </TableCell>
-                                                <TableCell className="text-end tabular-nums font-medium">
-                                                    {m(i.quantity * i.cost)}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                        {/*
-                                            والمجموع يُحسب من السطور لا يُقرأ من حقلٍ
-                                            ثانٍ: رقمان لشيءٍ واحد يفترقان يومًا، فيقول
-                                            الذيلُ غير ما تقوله السطور فوقه.
-                                        */}
-                                        <TableRow className="border-t-2 border-[#111] font-semibold hover:bg-transparent">
-                                            <TableCell className="text-[#111]">
-                                                {t('الإجمالي')}
-                                                <span className="ms-2 text-[12px] font-normal text-[#9ca3af]">
-                                                    {number(viewing.items.length)} {t('صنف')}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell />
-                                            <TableCell />
-                                            <TableCell className="text-end tabular-nums">
-                                                {number(viewing.items.reduce((a, i) => a + i.quantity, 0))}
-                                            </TableCell>
-                                            <TableCell />
-                                            <TableCell className="text-end tabular-nums">
-                                                {m(viewing.items.reduce((a, i) => a + i.quantity * i.cost, 0))}
-                                            </TableCell>
-                                        </TableRow>
-                                    </TableBody>
-                                </Table>
-                            )}
-
-                            {viewing.notes && (
-                                <div className="rounded-[10px] bg-[#fafafa] p-3">
-                                    <p className="mb-1 text-[12px] text-[#9ca3af]">{t('ملاحظات')}</p>
-                                    <p className="text-sm whitespace-pre-line text-[#4b4b4b]">{viewing.notes}</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* والطباعة من داخل النافذة أيضًا: من فتح السند ليقرأه هو
-                        من يريد ورقةً يوقّعها، فلا يُغلقها ليبحث عن أيقونةٍ في صفّه */}
-                    {viewing && (
-                        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-4">
-                            {viewing.status === 'مرفوض' && viewing.rejection_reason && (
-                                <p className="me-auto text-[12px] text-[#b91c1c]">
-                                    {t('سبب الرفض')}: {viewing.rejection_reason}
-                                </p>
-                            )}
-                            {/* وورقةُ المورّد تُفتح من هنا: من يعتمد يريد أن
-                                يقابل ما في الشاشة بما في يده */}
-                            {viewing.attachment && canSeeAttachment && (
-                                <Button variant="outline" asChild>
-                                    <a
-                                        href={route('admin.inventory.receipts.attachment', viewing.id)}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                    >
-                                        <FileText />
-                                        {viewing.attachment}
-                                    </a>
-                                </Button>
-                            )}
-                            <Button variant="outline" asChild>
-                                <a
-                                    href={route('admin.inventory.receipts.pdf', viewing.id)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                >
-                                    <Printer />
-                                    {t('طباعة السند')}
-                                </a>
-                            </Button>
-                            {/* والقرارُ من حيث تُقرأ الورقة: من فتحها ليراجعها هو من يقرّر */}
-                            {viewing.status === PENDING && canReject && (
-                                <Button variant="outline" onClick={() => setRejecting(viewing)}>
-                                    <X />
-                                    {t('رفض')}
-                                </Button>
-                            )}
-                            {viewing.status === PENDING && canApprove && (
-                                <Button onClick={() => approve(viewing)}>
-                                    <Check />
-                                    {t('اعتماد الاستلام')}
-                                </Button>
-                            )}
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
 
             {/*
                 والرفضُ بسببٍ مكتوب: ورقةٌ رُفضت بلا سبب تُسأل عنها بعد شهر
@@ -475,7 +308,6 @@ export default function InventoryReceipts() {
                                     onSuccess: () => {
                                         reject.reset();
                                         setRejecting(null);
-                                        setViewing(null);
                                     },
                                 })
                             }

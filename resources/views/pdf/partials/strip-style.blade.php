@@ -14,7 +14,8 @@
     $pt = fn (float $base) => round($base * $fit * ($scale ?? 1.0), 2) . 'pt';
 @endphp
 <style>
-    * { font-family: xbriyaz, sans-serif; }
+    {{-- وبخطّ الأوراق نفسِه — انظر `pdf/partials/style` --}}
+    * { font-family: ibmplexsansarabic, sans-serif; }
 
     body {
         direction: rtl; text-align: right; color: #000;

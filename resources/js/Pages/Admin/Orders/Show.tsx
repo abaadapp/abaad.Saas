@@ -3,23 +3,19 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import {
     Calendar,
     ClipboardList,
-    Download,
     FileText,
     Gift,
-    Maximize2,
     MapPin,
     MessageCircle,
     PencilLine,
     Phone,
     ReceiptText,
-    Printer,
     Send,
     Star,
     Truck,
     User,
 } from 'lucide-react';
-import DocumentPreview from '@/Components/DocumentPreview';
-import PaperFrame from '@/Components/PaperFrame';
+import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import Field, { Select } from '@/Components/Field';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -781,96 +777,23 @@ export default function OrderShow() {
                     وواجهةَ القارئ. ويُشغَّل محرّكُ طباعةٍ كامل على الخادم
                     لكلّ من فتح الصفحة ليقرأ حالةَ طلب.
 
-                    و`PaperFrame` يرسمها بعرض الورقة الحقيقيّ ثمّ يُصغّرها
-                    بصريًّا: السطرُ ينكسر حيث ينكسر على الورق، وحدودُ الصفحات
-                    تُرسم — فيُعرف أنّ فاتورةً ستمتدّ صفحتين قبل الطباعة لا
-                    بعدها.
+                    واللوحةُ مشتركةٌ مع أمر الشراء وسند الاستلام وفاتورة
+                    العميل — انظر `Components/DocumentPanel`.
                 */}
                 {paper && (
-                    <aside className="min-w-0 xl:col-span-2">
-                        {/*
-                            ولاصقةٌ عند الأعلى: عمودُ التفاصيل أطولُ منها
-                            بكثير، وورقةٌ تغيب عند أوّل تمريرة لا تُقابَل بشيء.
-                        */}
-                        <div className="xl:sticky xl:top-6">
-                            <Card className="overflow-hidden">
-                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3">
-                                    <h2 className="text-[15px] font-semibold">{t('الورقة كما تُطبع')}</h2>
-
-                                    {/*
-                                        والأفعالُ مفرَّقةٌ بأسمائها: تكبيرٌ
-                                        يُري، وتحميلٌ يحفظ، وطباعةٌ تفتح
-                                        الورقةَ لتُرسَل إلى الطابعة. وكان
-                                        زرّان على الرابط نفسِه، فيقف من يريد
-                                        الطباعة بينهما لا يعرف أيَّهما يوصله.
-                                    */}
-                                    <div className="flex items-center gap-1.5">
-                                        <Button variant="outline" size="sm" onClick={() => setPreviewing(true)}>
-                                            <Maximize2 />
-                                            <span className="max-sm:sr-only">{t('تكبير')}</span>
-                                        </Button>
-                                        <Button variant="outline" size="sm" asChild>
-                                            <a href={route('admin.orders.pdf', order.id)} download={`${order.id}.pdf`}>
-                                                <Download />
-                                                <span className="max-sm:sr-only">{t('تحميل')}</span>
-                                            </a>
-                                        </Button>
-                                        <Button variant="outline" size="sm" asChild>
-                                            <a
-                                                href={route('admin.orders.pdf', order.id)}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                            >
-                                                <Printer />
-                                                <span className="max-sm:sr-only">{t('طباعة')}</span>
-                                            </a>
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                {/*
-                                    والنافذةُ تهبط إلى قدر الورقة، ولا تُحجَز
-                                    بعلوٍّ مكتوب.
-
-                                    علوٌّ ثابتٌ يُخرج رمادًا فارغًا أسفلَ كلّ
-                                    ورقةٍ أقصرَ منه — وإيصالُ ثمانين مليمترًا
-                                    بثلاثة أصنافٍ أقصرُ منه بكثير. و`auto`
-                                    يجعل الصندوقَ بقدر ما فيه، والحدُّ الأقصى
-                                    يمنعه أن يطول بفاتورةٍ من ثلاث صفحات —
-                                    فتُمرَّر داخله بدل أن يمتدّ العمود.
-                                */}
-                                <PaperFrame
-                                    html={paper.html}
-                                    paper={paper.size}
-                                    title={t('ورقة الطلب')}
-                                    viewport="auto"
-                                    className="max-h-[min(78svh,1000px)] rounded-none border-0"
-                                />
-                            </Card>
-                        </div>
-                    </aside>
+                    <DocumentAside className="xl:col-span-2">
+                        <DocumentPanel
+                            html={paper.html}
+                            size={paper.size}
+                            url={route('admin.orders.pdf', order.id)}
+                            filename={`${order.id}.pdf`}
+                            label={`${t('الفاتورة')} ${order.id}`}
+                            open={previewing}
+                            onOpenChange={setPreviewing}
+                        />
+                    </DocumentAside>
                 )}
             </div>
-
-            {/*
-                والنافذةُ تبقى للتكبير — والورقةُ في العمود مُصغَّرة.
-
-                كان الإطارُ مفتوحًا على الدوام وفوقه شريطُ قارئ المتصفّح
-                (تنزيلٌ وطباعةٌ وتكبيرٌ وقائمة)، فيرى التاجر واجهتين ويقرأ
-                البياناتِ مرّتين: في الجدول وفي الورقة إلى جانبه. وعلى
-                الهاتف يهبط الإطارُ بعرض الشاشة كاملًا بين المستخدم وأزراره
-                — وورقةُ A4 لا تُقرأ على تلك السعة أصلًا.
-
-                وكلُّ فتحةٍ للصفحة كانت **ترسم ملفَّ PDF على الخادم** لمن
-                جاء يقرأ حالةَ طلبٍ ولا يريد ورقة.
-            */}
-            <DocumentPreview
-                url={route('admin.orders.pdf', order.id)}
-                title={`${t('الفاتورة')} ${order.id}`}
-                filename={`${order.id}.pdf`}
-                open={previewing}
-                onOpenChange={setPreviewing}
-            />
         </AdminLayout>
     );
 }

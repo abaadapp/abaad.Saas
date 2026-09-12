@@ -668,6 +668,63 @@ danger    bg-[#fef2f2] text-[#b91c1c]      info      bg-[#eff6ff] text-[#2563eb]
 
 ---
 
+## DocumentPanel · DocumentAside · DocumentMeta
+
+**الموضع:** `resources/js/Components/DocumentPanel.tsx` · `Components/DocumentMeta.tsx`
+
+شاشةُ مستندٍ قسمان: **ما يقوله النظام** عنه، و**الورقةُ كما ستُطبع** إلى جانبه.
+ومن يراجع فاتورةً أمام زبونٍ أو أمرًا قبل إرساله إلى مورّد يحتاج الاثنين في
+نظرةٍ واحدة، لا في تبديلٍ بين لسانين.
+
+```tsx
+<div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+  <div className="min-w-0 space-y-4 xl:col-span-3">
+    <DocumentMeta cells={[
+      { label: 'الحالة', value: <Badge …/> },
+      { label: 'المورّد', value: order.supplier },
+      { label: 'تاريخ الطلب', value: order.ordered_at, ltr: true },
+      order.notes !== null && { label: 'ملاحظات', value: order.notes, wide: true },
+    ]} />
+    {/* البنودُ وإجماليّاتُها، ثمّ ما تعلّق بالمستند */}
+  </div>
+
+  <DocumentAside className="xl:col-span-2">
+    <DocumentPanel html={paper.html} size={paper.size}
+                   url={route('admin.purchases.pdf', order.id)}
+                   filename={`${order.number}.pdf`}
+                   label={`أمر شراء ${order.number}`}
+                   open={previewing} onOpenChange={setPreviewing} />
+  </DocumentAside>
+</div>
+```
+
+**`DocumentPanel`:** `html` · `size?` · `url` · `filename` · `label` · `heading?` ·
+`note?` · `open?` / `onOpenChange?` (لفتح النافذة من الترويسة على الشاشة الضيّقة).
+
+والأفعالُ الثلاثة مفرَّقةٌ بأسمائها: **تكبير** يُري · **تحميل** يحفظ ·
+**طباعة** تفتح. وكان في الشاشات زرّان على الرابط نفسِه — «تصدير PDF» و«تحميل»
+— فيقف من يريد الطباعة بينهما لا يعرف أيَّهما يوصله.
+
+والورقةُ **HTML** لا PDF — في العمود وفي نافذة التكبير معًا (`PaperFrame`):
+أرضٌ محايدة، وظلٌّ خفيف، ومقاسُ A4 حقيقيّ، وخطٌّ متقطّعٌ عند كلّ حدّ صفحة. ولا
+شريطَ قارئٍ من المتصفّح فوقها، ولا محرّكَ طباعةٍ يُشغَّل على الخادم لمن جاء
+يقرأ حالةَ مستند. والـPDF يبقى لما **يُطبع ويُحفظ** — فهوامشُه وحدودُ صفحاته
+من المحرّك نفسِه.
+
+**`DocumentMeta`:** `cells` — كلُّ خليّة `{ label, value, ltr?, wide? }`، وما كان
+`null`/`false` يسقط. أعمدةٌ لا قائمةُ «عنوان … قيمة»: ثمانيةُ حقولٍ قصيرة في
+ثمانية أسطرٍ نصفُ كلٍّ منها خالٍ لا تلتقطها العين دفعة. وهو شكلُ شريط التعريف
+على الورقة نفسِها (`documents/v1/partials/meta`) — فلا يُعاد تعلّمُ القراءة بين
+الشاشة والورق.
+
+**`DocumentAside`** يلصق اللوحة عند الأعلى على `xl` وحدها: عمودُ التفاصيل أطولُ
+منها، وورقةٌ تغيب عند أوّل تمريرة لا تُقابَل بشيء. وعلى الضيّقة تنزل تحت
+التفاصيل بلا لصق — ورقةُ A4 لا تُقرأ على سعة الهاتف، فلا تُزاحم ما يُقرأ.
+
+**الشاشاتُ التي تحملها:** الطلب · أمر الشراء · سند الاستلام · فاتورة العميل.
+
+---
+
 ## Sidebar · Topbar · AdminLayout · PlatformLayout
 
 انظر [`DESIGN_SYSTEM.md § ٢`](./DESIGN_SYSTEM.md).

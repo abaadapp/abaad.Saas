@@ -46,7 +46,8 @@
 
 @include('documents.v1.partials.webfont')
 
-    * { font-family: xbriyaz, 'IBM Plex Sans Arabic', sans-serif; box-sizing: border-box; }
+    {{-- والاسمُ مرّتين: للمحرّك بلا فراغ، وللمتصفّح كما في `@font-face` — انظر `partials/tokens` --}}
+    * { font-family: ibmplexsansarabic, 'IBM Plex Sans Arabic', sans-serif; box-sizing: border-box; }
 
     body {
         /* ولا هامشَ افتراضيًّا من المتصفّح — انظر tokens */

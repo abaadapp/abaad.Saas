@@ -3,6 +3,8 @@
 namespace App\Support\Document\Pdf;
 
 use Illuminate\Http\Response;
+use Mpdf\Config\ConfigVariables;
+use Mpdf\Config\FontVariables;
 use Mpdf\Mpdf;
 
 /**
@@ -14,11 +16,11 @@ use Mpdf\Mpdf;
  * وحده يضبط الخطّ. فتخرج من النظام الواحد أوراقٌ لا يجمعها شكل — والتاجر
  * يرسلها كلَّها باسمه هو.
  *
- * والخطّ يُسمّى هنا صراحةً: `xbriyaz` خطٌّ عربيّ يأتي مع mpdf بأربع وزنات.
- * وكانت القوالب تكتب `font-family: 'dejavusans'` — وهو خطٌّ **بلا حرفٍ
- * عربيّ واحد**، فيسقط الرسمُ إلى بديلٍ يختاره المحرّك بنفسه. يعمل، لكن
- * لا أحد يعرف أيّ خطٍّ خرج على الورقة، ولا يبقى واحدًا بين نسختين من
- * المكتبة.
+ * والخطّ يُسمّى هنا صراحةً: «IBM Plex Sans Arabic» — نفسُه الذي تُرسم به
+ * المعاينةُ في المتصفّح، مبنيًّا من مقاطعها هي. وكانت القوالب تكتب
+ * `font-family: 'dejavusans'` — وهو خطٌّ **بلا حرفٍ عربيّ واحد** — ثمّ صارت
+ * تكتب `xbriyaz`، وهو عربيٌّ يعمل لكنّه غيرُ ما تراه العين في المعاينة.
+ * انظر `fonts()`.
  */
 class MpdfDriver implements Driver
 {
@@ -178,7 +180,7 @@ class MpdfDriver implements Driver
             : '';
 
         $mpdf->SetHTMLFooter(
-            '<table style="width:100%; border-collapse:collapse; font-family:xbriyaz; font-size:8pt; '
+            '<table style="width:100%; border-collapse:collapse; font-family:'.self::FONT.'; font-size:8pt; '
             .'color:#9ca3af; border-top:0.4pt solid #e5e7eb;"><tr>'
             .'<td style="border:none; padding:2mm 0 0; width:35%;">'.$left.'</td>'
             .'<td style="border:none; padding:2mm 0 0; width:30%; text-align:center;">'
@@ -188,6 +190,65 @@ class MpdfDriver implements Driver
         );
     }
 
+    /** اسمُ الأسرة في mpdf — حروفٌ صغيرة بلا فراغ، كما يطلب السجلّ */
+    public const FONT = 'ibmplexsansarabic';
+
+    /**
+     * خطُّ الورقة — نفسُه في المحرّك وفي المتصفّح.
+     *
+     * ═══ العطبُ الذي وُلد منه هذا السجلّ ═══
+     *
+     * كان `default_font => 'xbriyaz'` — خطٌّ عربيٌّ يأتي مع mpdf. والمعاينةُ
+     * في المتصفّح تُرسم بـ«IBM Plex Sans Arabic» من `public/fonts`. خطّان
+     * مختلفان: مقاساتُ حروفهما تختلف، فينكسر السطرُ الطويل عند كلمةٍ على
+     * الشاشة وعند أخرى على الورق — فيضبط التاجر عرضَ عمودٍ على ورقةٍ ويطبع
+     * غيرَها، ولا يرى الفرقَ حتى تخرج من الطابعة.
+     *
+     * ═══ والملفّان مبنيّان من مقاطع المتصفّح نفسِها ═══
+     *
+     * `scripts/build-document-font.py` يدمج `public/fonts/ibmpsa-*.woff2` في
+     * TTF لكلّ وزن. فالحروفُ ذاتُها بالمقاسات ذاتها في المحرّكين — لا خطّان
+     * متقاربان. ونسخةٌ ثانية تُنزَّل من مكانٍ آخر لا تبلغ ذلك: قد تكون
+     * إصدارًا آخر بمقاساتٍ أخرى.
+     *
+     * ═══ و`useOTL` شرطُ اتّصال الحروف ═══
+     *
+     * بدونه لا يُشغّل mpdf جداولَ `init/medi/fina`، فتخرج الكلمةُ العربيّة
+     * حروفًا منفصلة: «س ل ا م» بدل «سلام». و`0xFF` يعني «كلَّ الجداول» —
+     * وهو ما تكتبه أسرُ mpdf العربيّة كلُّها.
+     *
+     * @return array<string, mixed>
+     */
+    private static function fonts(): array
+    {
+        /*
+         * ═══ ويُضاف إلى سجلّ المكتبة، لا يحلّ محلّه ═══
+         *
+         * `Mpdf::initFontConfig` تكتب `$config + $defaults` — والجمعُ في PHP
+         * يُبقي مفتاحَ اليسار كاملًا. فمصفوفةُ `fontdata` التي نمرّرها تمحو
+         * سجلَّ المكتبة كلَّه: لا `dejavusans` ولا `xbriyaz` ولا غيرُهما.
+         *
+         * ووقع هذا فعلًا وأنا أقيس: طلبتُ `xbriyaz` صراحةً فخرج الـPDF
+         * بـ«IBM Plex» — لأنّه الخطُّ الوحيدُ الباقي في السجلّ. يعمل، لكنّه
+         * يعمل بالصدفة: أيُّ ورقةٍ تسمّي خطًّا آخر تسقط إليه صامتةً بدل أن
+         * تجده. والدمجُ هنا يُبقي البابَ مفتوحًا لخطٍّ ثانٍ يومًا.
+         */
+        $fonts = (new FontVariables)->getDefaults();
+        $dirs = (new ConfigVariables)->getDefaults();
+
+        return [
+            'fontDir' => array_merge($dirs['fontDir'], [resource_path('fonts')]),
+            'fontdata' => $fonts['fontdata'] + [
+                self::FONT => [
+                    'R' => 'IBMPlexSansArabic-Regular.ttf',
+                    'B' => 'IBMPlexSansArabic-Bold.ttf',
+                    'useOTL' => 0xFF,
+                    'useKashida' => 75,
+                ],
+            ],
+        ];
+    }
+
     /**
      * ما يشترك فيه كلُّ ورقة.
      *
@@ -195,16 +256,27 @@ class MpdfDriver implements Driver
      * نسخة المكتبة — فورقةٌ تُطبع اليوم بخطٍّ وبعد ترقيةٍ بخطٍّ آخر، ولا
      * سطرَ في المستودع يقول لماذا.
      *
+     * وهو الذي يحكم خطَّ الورقة وحده: mpdf **لا يقرأ محدّدَ `*`** في
+     * أنماط القالب — قِسناه، فبُدّل الاسمُ هناك وخرج الـPDF على حاله.
+     *
      * @return array<string, mixed>
      */
     private static function base(): array
     {
-        return [
+        return self::fonts() + [
             'mode' => 'utf-8',
             'directionality' => 'rtl',
-            'default_font' => 'xbriyaz',
+            'default_font' => self::FONT,
             'autoScriptToLang' => true,
-            'autoLangToFont' => true,
+            /*
+             * ولا تبديلَ خطٍّ باللغة: الأسرةُ الواحدة تحمل العربيَّ
+             * واللاتينيَّ معًا.
+             *
+             * `autoLangToFont` يُبدّل الأسرةَ حين يرى نصًّا بلغةٍ أخرى —
+             * فسطرٌ إنجليزيٌّ داخل ورقةٍ عربيّة كان يخرج بخطٍّ ثالث يختاره
+             * المحرّك. والورقةُ الواحدة بخطّين ليست ورقةً مصمَّمة.
+             */
+            'autoLangToFont' => false,
             /*
              * وصورةٌ لا تُقرأ لا تُسقط الورقة.
              *

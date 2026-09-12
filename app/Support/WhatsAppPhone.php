@@ -16,11 +16,6 @@ namespace App\Support;
  */
 class WhatsAppPhone
 {
-    /** أرقام المشرق العربية والفارسية — تُقرأ من لوحاتٍ عربية كثيرة */
-    private const EASTERN = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩', '۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
-
-    private const WESTERN = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-
     /**
      * الرقم بصيغة واتساب، أو لا شيء إن لم يكن رقمًا يصلح.
      *
@@ -33,7 +28,8 @@ class WhatsAppPhone
         }
 
         $default = $default ?: (string) config('whatsapp.default_country_code', '968');
-        $digits = preg_replace('/\D+/', '', str_replace(self::EASTERN, self::WESTERN, $raw)) ?? '';
+        // وجدولُ الخانات في `Digits` — يقرؤه الورقُ والهاتفُ معًا، ونسختان منه تفترقان
+        $digits = preg_replace('/\D+/', '', (string) Digits::western($raw)) ?? '';
 
         if ($digits === '') {
             return null;

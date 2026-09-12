@@ -226,6 +226,17 @@ final class InvoiceBranding
      * ورسمٌ يرمي كان يترك الجلسةَ كلَّها بلغةٍ لم يخترها صاحبُها — فيرى
      * اللوحةَ إنجليزيّةً بعد أن ضغط «معاينة».
      *
+     * ═══ وبخاناتٍ غربيّة، بلغةٍ كانت أو بأخرى ═══
+     *
+     * ورقةُ العميل تُبنى في `CustomerInvoiceController::paper` وتُرسم من
+     * أربعة أبواب، كلُّها تمرّ من هنا. فتحويلُ الخانات هنا يبلغها جميعًا،
+     * ولا يُنسى في بابٍ رابعٍ يُضاف غدًا. وأخواتُها الأربع لها مخرجُها
+     * الواحد — `DocumentRenderer::html`.
+     *
+     * ويقع على النصّ المرسوم لا على البيان: لا خانةَ عربيّةً في وسمٍ ولا في
+     * `data:`، فما يُحوَّل نصُّ البشر وحدَه. وما ليس نصًّا يمرّ كما هو —
+     * فهذا البابُ يردّ ما يُعطاه أيًّا كان نوعُه. انظر `Support\Digits`.
+     *
      * @template T
      *
      * @param  callable():T  $draw
@@ -241,7 +252,9 @@ final class InvoiceBranding
         app()->setLocale($lang);
 
         try {
-            return $draw();
+            $drawn = $draw();
+
+            return is_string($drawn) ? Digits::western($drawn) : $drawn;
         } finally {
             app()->setLocale($was);
         }

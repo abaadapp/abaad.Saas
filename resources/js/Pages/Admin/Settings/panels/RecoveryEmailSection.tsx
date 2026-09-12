@@ -38,6 +38,31 @@ export default function RecoveryEmailSection({ recovery }: { recovery: Recovery 
     const start = useForm({ recovery_email: recovery.email ?? '', current_password: '' });
     const confirm = useForm({ code: '' });
 
+    /*
+     * ولا بريدَ على الخادم فلا قسم — سطرٌ واحدٌ مكانه.
+     *
+     * كان القسم يُعرض كاملًا بتحذيرٍ أصفرَ فوقه: حقلٌ يُكتب فيه، وكلمةُ مرورٍ
+     * تُطلب، وزرٌّ يُضغط. ثمّ يردّ الخادم 404 — لأنّ `RecoveryEmailController::start`
+     * يرفض حين لا بريد. فيظنّ التاجر العطبَ في كتابته ويعيد المحاولة.
+     *
+     * وهذه القاعدةُ مطبَّقةٌ في شاشة الدخول منذ زمن: يختفي «نسيت كلمة المرور؟»
+     * ويحلّ محلّه «راجع مدير النظام». ونُسيت هنا وحدَها.
+     *
+     * ولا يُترك المكانُ فارغًا: من نسي كلمته يحتاج جوابًا لا غيابَ سؤال.
+     *
+     * ويعود القسم وحدَه يوم يُضبط مُرسِلُ بريدٍ حقيقيّ — لا سطرَ يُعدَّل.
+     */
+    if (! recovery.mail_ready) {
+        return (
+            <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                <h3 className="mb-1 font-bold text-[#111]">{t('استعادة كلمة المرور')}</h3>
+                <p className="text-[13px] text-[#6b7280]">
+                    {t('نسيت كلمة المرور؟ راجع إدارة أبعاد — الاستعادة الذاتية بالبريد غير مفعّلة بعد.')}
+                </p>
+            </div>
+        );
+    }
+
     const badge = recovery.verified ? (
         <span className="inline-flex items-center gap-1.5 rounded-[8px] bg-[#f0fdf4] px-2.5 py-1 text-[12px] font-medium text-[#166534]">
             <ShieldCheck className="size-3.5" />
@@ -74,12 +99,6 @@ export default function RecoveryEmailSection({ recovery }: { recovery: Recovery 
                     {recovery.verified_at && (
                         <span className="ms-2 text-[12px] text-[#9ca3af]">· {recovery.verified_at}</span>
                     )}
-                </p>
-            )}
-
-            {!recovery.mail_ready && (
-                <p className="mb-5 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#b45309]">
-                    {t('البريد غير مفعّل على الخادم — لا يمكن إرسال رمز التحقق الآن.')}
                 </p>
             )}
 
@@ -120,7 +139,6 @@ export default function RecoveryEmailSection({ recovery }: { recovery: Recovery 
 
                     <Button
                         type="button"
-                        disabled={!recovery.mail_ready}
                         loading={start.processing}
                         onClick={() =>
                             start.post(route('admin.settings.recovery.start'), {

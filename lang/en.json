@@ -5184,5 +5184,7 @@
     "لا إشعار لحالة هذا الطلب.": "There is no notice for this order status.",
     "افتح واتساب وأرسل الإشعار": "Open WhatsApp and send the notice",
     "أبلغ الزبون بالحالة": "Notify the customer",
-    "أبلغ الزبون مجددًا": "Notify the customer again"
+    "أبلغ الزبون مجددًا": "Notify the customer again",
+    "استعادة كلمة المرور": "Password recovery",
+    "نسيت كلمة المرور؟ راجع إدارة أبعاد — الاستعادة الذاتية بالبريد غير مفعّلة بعد.": "Forgot your password? Contact Abaad support — self-service recovery by email is not enabled yet."
 }

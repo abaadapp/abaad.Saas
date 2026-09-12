@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\RecoveryEmailChangedMail;
 use App\Mail\RecoveryOtpMail;
 use App\Models\Branch;
 use App\Models\Business;
@@ -160,7 +161,7 @@ class RecoveryEmailSettingsTest extends TestCase
         ])->assertRedirect();
 
         $this->assertSame('new@gmail.com', $this->owner->fresh()->recovery_email);
-        Mail::assertSent(\App\Mail\RecoveryEmailChangedMail::class, fn ($m) => $m->hasTo('old@gmail.com'));
+        Mail::assertSent(RecoveryEmailChangedMail::class, fn ($m) => $m->hasTo('old@gmail.com'));
     }
 
     /* ------------------------------ العزل ------------------------------ */
@@ -250,6 +251,83 @@ class RecoveryEmailSettingsTest extends TestCase
      * ويبقى فحصُ البريد: بريدُ الاستعادة لا يحمل كلمةً عن رمزٍ ولا رقمًا
      * يُشبهه — فرعٌ لو عاد الرمزُ يومًا لَحَرَسه من هذا الباب.
      */
+    /* ------------------ ولا مُرسِلَ بريدٍ على الخادم ------------------ */
+
+    /**
+     * الخادم يردّ 404 — فالطريق مغلقٌ فعلًا لا في الشاشة وحدها.
+     *
+     * وهو ما يجعل عرضَ النموذج كذبًا: يكتب التاجر عنوانه وكلمةَ مروره ويضغط،
+     * فيُردّ بلا سببٍ مفهوم، فيظنّ العطبَ في كتابته ويعيد المحاولة.
+     */
+    public function test_setting_a_recovery_email_is_refused_when_no_mailer_is_configured(): void
+    {
+        config(['mail.default' => 'log']);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.settings.recovery.start'), [
+                'recovery_email' => 'owner@gmail.com',
+                'current_password' => 'my-password',
+            ])
+            ->assertNotFound();
+
+        $this->assertNull($this->owner->fresh()->recovery_email);
+    }
+
+    /** والشاشة تُخبَر بالحال صدقًا — لا تُخمّنها */
+    public function test_the_screen_is_told_the_mailer_is_missing(): void
+    {
+        config(['mail.default' => 'log']);
+
+        $this->actingAs($this->owner)->get(route('admin.settings.index'))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('recovery.mail_ready', false));
+    }
+
+    /** وحين يُضبط مُرسِلٌ حقيقيّ تقول الشاشة ذلك */
+    public function test_the_screen_is_told_when_a_mailer_exists(): void
+    {
+        $this->actingAs($this->owner)->get(route('admin.settings.index'))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('recovery.mail_ready', true));
+    }
+
+    /**
+     * والقسمُ لا يُرسم أصلًا حين لا بريد.
+     *
+     * ═══ ولمَ يُقاس في المصدر ═══
+     *
+     * الخادم يمنع، لكنّ المنعَ بعد الضغط. ومقبضٌ يُعرض ثمّ يُردّ أسوأ من
+     * غياب المقبض — وهذه القاعدةُ مطبَّقةٌ في شاشة الدخول (يختفي «نسيت كلمة
+     * المرور؟» ويحلّ محلّه «راجع مدير النظام») ونُسيت في الإعدادات وحدها.
+     *
+     * والخروجُ المبكّر يسبق النموذجَ في الملفّ: لو نُقل بعده لَرُسم الحقلُ
+     * ثمّ اختفى، ولو حُذف لَعاد الباب المسدود.
+     */
+    public function test_the_section_is_not_drawn_at_all_without_a_mailer(): void
+    {
+        $source = file_get_contents(
+            resource_path('js/Pages/Admin/Settings/panels/RecoveryEmailSection.tsx')
+        );
+
+        $guard = mb_strpos($source, 'if (! recovery.mail_ready) {');
+        $form = mb_strpos($source, "route('admin.settings.recovery.start')");
+
+        $this->assertNotFalse($guard, 'القسم يُرسم ولو لم يكن على الخادم مُرسِلُ بريد');
+        $this->assertNotFalse($form, 'لم يعد النموذج في مكانه — أُعيدت قراءةُ الحارس على غير موضعه');
+        $this->assertLessThan($form, $guard, 'الحارس بعد النموذج — يُرسم الحقل ثمّ يختفي');
+    }
+
+    /** ويُقال لصاحبه ماذا يفعل بدلًا منه — لا يُترك بلا جواب */
+    public function test_the_merchant_is_told_what_to_do_instead(): void
+    {
+        $source = file_get_contents(
+            resource_path('js/Pages/Admin/Settings/panels/RecoveryEmailSection.tsx')
+        );
+
+        $this->assertStringContainsString('راجع إدارة أبعاد', $source,
+            'اختفى القسم ولم يحلّ محلّه جواب — من نسي كلمته يحتاج جوابًا لا غيابَ سؤال');
+    }
+
     public function test_no_cashier_pin_exists_to_be_mailed_or_exposed(): void
     {
         $this->assertFalse(

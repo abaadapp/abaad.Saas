@@ -3,7 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import { ToolMark } from '@/Components/BrandMarks';
-import { Badge } from '@/Components/ui/badge';
+import StatusPill, { type SetupState } from '@/Components/StatusPill';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
@@ -36,12 +36,19 @@ interface Props {
  * يعرف أحدٌ لماذا هي فيه. انظر `Components/BrandMarks`.
  */
 
-/** حالُ الأداة → لونُ شارتها. وما لا يُعرف رماديّ لا أخضر */
-const TONE: Record<string, 'success' | 'warning' | 'neutral' | 'outline'> = {
-    ready: 'success',
-    partial: 'warning',
-    off: 'neutral',
-    unbuilt: 'outline',
+/**
+ * حالُ الأداة كما يرسله الخادم → حالٌ من `StatusPill`.
+ *
+ * والاسمُ يبقى من الخادم: `Integrations::state` يكتبه بجانب المفتاح عمدًا
+ * «فلا تخمّن الشاشة اسمًا من مفتاح». والمشترَكُ هنا ما دونه — الأيقونةُ
+ * والنغمةُ وأنّ الشارة تقول نصًّا لا لونًا وحده، فتُقرأ البطاقةُ هنا
+ * وشارةُ شاشةِ الأداة بعد النقرة على هيئةٍ واحدة.
+ */
+const TONE: Record<string, SetupState> = {
+    ready: 'ready',
+    partial: 'progress',
+    off: 'idle',
+    unbuilt: 'off',
 };
 
 function AppCard({ app }: { app: App }) {
@@ -89,9 +96,9 @@ function AppCard({ app }: { app: App }) {
                  * مربوطة» — فيذهب صاحبها يربطها ويُردّ.
                  */}
                 {app.licensed ? (
-                    <Badge variant={TONE[app.status.state] ?? 'neutral'}>{app.status.label}</Badge>
+                    <StatusPill state={TONE[app.status.state] ?? 'idle'} label={app.status.label} connected />
                 ) : (
-                    <Badge variant="outline">{t('خارج باقتك')}</Badge>
+                    <StatusPill state="off" label="خارج باقتك" />
                 )}
             </div>
         </Card>

@@ -1,19 +1,35 @@
 import * as React from 'react';
+import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+    /**
+     * تُلبَس البطاقةُ عنصرًا آخر بدل `div`.
+     *
+     * الأسطحُ في لوحة الإعدادات أقسامٌ لها عناوين، و`<section>` تقولها
+     * للقارئ الآليّ بينما `div` صندوقٌ بلا معنى. والشكلُ واحدٌ في الحالين —
+     * الصنف هو هو، والفرقُ في الوسم وحده.
+     */
+    asChild?: boolean;
+}
+
 /** بطاقة السطح — تطابق .ui-card في نظام التصميم الحالي */
-const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-    ({ className, ...props }, ref) => (
-        <div
-            ref={ref}
-            className={cn(
-                'rounded-[var(--ui-radius,16px)] border border-[var(--ui-border,#e8e8e8)] bg-white',
-                'shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
-                className,
-            )}
-            {...props}
-        />
-    ),
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+    ({ className, asChild, ...props }, ref) => {
+        const Tag = asChild ? Slot : 'div';
+
+        return (
+            <Tag
+                ref={ref}
+                className={cn(
+                    'rounded-[var(--ui-radius,16px)] border border-[var(--ui-border,#e8e8e8)] bg-white',
+                    'shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
+                    className,
+                )}
+                {...props}
+            />
+        );
+    },
 );
 Card.displayName = 'Card';
 

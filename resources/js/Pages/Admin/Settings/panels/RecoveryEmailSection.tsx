@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { router, useForm } from '@inertiajs/react';
-import { AlertTriangle, KeyRound, ShieldCheck } from 'lucide-react';
+import { KeyRound, ShieldCheck } from 'lucide-react';
 import Field from '@/Components/Field';
+import StatusPill from '@/Components/StatusPill';
+import { SettingsSection } from '@/Components/Settings';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
@@ -54,45 +56,48 @@ export default function RecoveryEmailSection({ recovery }: { recovery: Recovery 
      */
     if (! recovery.mail_ready) {
         return (
-            <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                <h3 className="mb-1 font-bold text-[#111]">{t('استعادة كلمة المرور')}</h3>
-                <p className="text-[13px] text-[#6b7280]">
-                    {t('نسيت كلمة المرور؟ راجع إدارة أبعاد — الاستعادة الذاتية بالبريد غير مفعّلة بعد.')}
-                </p>
-            </div>
+            <SettingsSection
+                title="استعادة كلمة المرور"
+                description="نسيت كلمة المرور؟ راجع إدارة أبعاد — الاستعادة الذاتية بالبريد غير مفعّلة بعد."
+                icon={KeyRound}
+                status={<StatusPill state="off" label="غير مفعّلة" />}
+            />
         );
     }
 
+    /*
+        والشارةُ من مفردات الحال الموحّدة لا شارةٌ تخصّ هذا القسم.
+
+        كانت ثلاثَ شاراتٍ مكتوبةً بيدها بنصف قطرٍ ٨ بكسل، وبقيّةُ شارات
+        الإعدادات دائريّة — فتُقرأ الواحدةُ منها شيئًا آخر غير أخواتها.
+        والأسماءُ تبقى أسماءَها: «موثّق» أدقُّ من «جاهز» في بريدٍ يُتحقَّق منه.
+    */
     const badge = recovery.verified ? (
-        <span className="inline-flex items-center gap-1.5 rounded-[8px] bg-[#f0fdf4] px-2.5 py-1 text-[12px] font-medium text-[#166534]">
-            <ShieldCheck className="size-3.5" />
-            {t('موثّق')}
-        </span>
+        <StatusPill state="ready" label="موثّق" />
     ) : recovery.email ? (
-        <span className="inline-flex items-center gap-1.5 rounded-[8px] bg-[#fffbeb] px-2.5 py-1 text-[12px] font-medium text-[#b45309]">
-            <AlertTriangle className="size-3.5" />
-            {t('بانتظار التحقق')}
-        </span>
+        <StatusPill state="progress" label="بانتظار التحقق" />
     ) : (
-        <span className="inline-flex items-center gap-1.5 rounded-[8px] bg-[#fef2f2] px-2.5 py-1 text-[12px] font-medium text-[#b91c1c]">
-            <AlertTriangle className="size-3.5" />
-            {t('غير مضبوط')}
-        </span>
+        <StatusPill state="action" label="غير مضبوط" />
     );
 
+    /*
+        قسمٌ قائمٌ بذاته لا كتلةٌ يفصلها خطّ.
+
+        كان يعيش داخل بطاقة «بيانات النشاط» تحت خطٍّ أفقيّ، وهو موضوعٌ آخر:
+        الاسمُ والهاتفُ يُطبعان على الفاتورة، وهذا يُستعاد به الحسابُ يوم
+        تُنسى كلمة المرور. فصار له سطحُه كما لبقيّة المواضيع.
+    */
     return (
-        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-            <div className="mb-1 flex flex-wrap items-center gap-3">
-                <h3 className="font-bold text-[#111]">{t('بريد الاستعادة')}</h3>
-                {badge}
-            </div>
-
-            <p className="mb-5 text-[13px] text-[#6b7280]">
-                {recovery.verified
+        <SettingsSection
+            title="بريد الاستعادة"
+            description={
+                recovery.verified
                     ? t('إليه وحده يُرسَل رمز استعادة كلمة المرور — ولا يُقبل غيره.')
-                    : t('اضبطه الآن لتستعيد حسابك بنفسك يوم تنسى كلمة المرور. وبدونه ستحتاج إلى إدارة أبعاد.')}
-            </p>
-
+                    : t('اضبطه الآن لتستعيد حسابك بنفسك يوم تنسى كلمة المرور. وبدونه ستحتاج إلى إدارة أبعاد.')
+            }
+            icon={KeyRound}
+            status={badge}
+        >
             {recovery.email && (
                 <p className="mb-5 text-[13px] text-[#111]" dir="ltr">
                     {recovery.email}
@@ -199,6 +204,6 @@ export default function RecoveryEmailSection({ recovery }: { recovery: Recovery 
                     </div>
                 </div>
             )}
-        </div>
+        </SettingsSection>
     );
 }

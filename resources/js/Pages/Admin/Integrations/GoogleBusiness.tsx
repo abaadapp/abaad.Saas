@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, CheckCircle2, Link2Off, MessageSquare, RefreshCw, Star, Store } from 'lucide-react';
+import { Bell, Link2Off, MapPin, MessageSquare, RefreshCw, Star, Store } from 'lucide-react';
+import { GoogleMapsMark } from '@/Components/BrandMarks';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import Gate from '@/Components/Gate';
+import StatusPill from '@/Components/StatusPill';
+import { PageActions, SettingsPage, SettingsSection } from '@/Components/Settings';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { Button } from '@/Components/ui/button';
-import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { useTranslate } from '@/lib/i18n';
 import { csrfHeaders } from '@/lib/csrf';
@@ -75,6 +79,8 @@ export default function GoogleBusinessPage() {
     const { configured, connected, account, branches, reviews, alerts } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
 
     const [replying, setReplying] = useState<ReviewRow | null>(null);
     const [picking, setPicking] = useState<BranchRow | null>(null);
@@ -94,59 +100,86 @@ export default function GoogleBusinessPage() {
     if (! configured) {
         return (
             <AdminLayout title={t('تقييمات Google')}>
-                <PageHeader title={t('تقييمات Google')} />
-                <Card className="p-6">
-                    <div className="flex items-start gap-2 rounded-[10px] bg-[#fffbeb] p-4 text-[13px] text-[#92400e]">
-                        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                        <span>
-                            {t('إدارة تقييمات Google غير مهيّأة في أبعاد بعد — راجعنا لتفعيلها.')}
-                        </span>
-                    </div>
-                    <p className="mt-4 text-[13px] leading-relaxed text-[#6b7280]">
-                        {t('وهي غير «ربط خرائط Google»: تلك تقرأ المعدّل وعدد التقييمات، وهذه تفتح ملفّ متجرك لتقرأ تقييماته كلّها وتردّ عليها باسمك.')}
-                    </p>
-                </Card>
+                <PageHeader
+                    title={t('تقييمات Google')}
+                    subtitle={t('اقرأ تقييماتك كلّها وردّ عليها باسم متجرك')}
+                    actions={<StatusPill state="progress" label="عند أبعاد" />}
+                />
+                <Gate
+                    mark={<GoogleMapsMark size={80} />}
+                    title="إدارة تقييمات Google غير مهيّأة في أبعاد بعد"
+                    /*
+                        والفرقُ بينها وبين «ربط خرائط Google» يُقال هنا: اسمان
+                        متقاربان، ومن ظنّهما واحدًا يعود يبحث عمّا ربطه.
+                    */
+                    description="وهي غير «ربط خرائط Google»: تلك تقرأ المعدّل وعدد التقييمات، وهذه تفتح ملفّ متجرك لتقرأ تقييماته كلّها وتردّ عليها باسمك."
+                    note={t('راجعنا لتفعيلها — ولا شيء عليك أن تفعله حتى ذلك.')}
+                />
+            </AdminLayout>
+        );
+    }
+
+    /*
+        بابٌ قبل الشاشة — لمن لم يربط حسابه.
+
+        وكان بانرًا أحمرَ فوق بطاقةٍ فيها زرُّ ربط، وتحتها فراغ: لا فروعَ
+        ولا تنبيهاتٍ ولا تقييمات. فيقرأ التاجر «لا تُقرأ تقييمة» ثمّ يمرّ
+        بصفحةٍ خاويةٍ ليتأكّد.
+    */
+    if (! connected) {
+        return (
+            <AdminLayout title={t('تقييمات Google')}>
+                <PageHeader
+                    title={t('تقييمات Google')}
+                    subtitle={t('اقرأ تقييماتك كلّها وردّ عليها باسم متجرك')}
+                    actions={<StatusPill state="idle" label="غير مربوط" />}
+                />
+                <Gate
+                    mark={<GoogleMapsMark size={80} />}
+                    title="لم يُربط حساب Google بعد"
+                    description="ولا تُقرأ تقييمة واحدة قبله — الربط بإذنك على حسابك، ويُلغى متى شئت."
+                    action={
+                        <Button asChild size="lg">
+                            <a href={route('admin.integrations.googleBusiness.connect')}>
+                                {t('ربط حساب Google Business')}
+                            </a>
+                        </Button>
+                    }
+                    /* وخطأُ Google الأخير يُقال بنصّه: «لم تُسحب» لا تقول ما يُصلَح */
+                    note={account?.error}
+                />
             </AdminLayout>
         );
     }
 
     return (
         <AdminLayout title={t('تقييمات Google')}>
-            <PageHeader title={t('تقييمات Google')} />
+            <PageHeader
+                title={t('تقييمات Google')}
+                subtitle={t('اقرأ تقييماتك كلّها وردّ عليها باسم متجرك')}
+                actions={<StatusPill state={account?.error ? 'error' : 'ready'} connected />}
+            />
 
-            {/* ═══════════ حال الربط ═══════════ */}
-            <Card className="p-6">
-                <div
-                    className={cn(
-                        'mb-5 flex items-start gap-2 rounded-[10px] p-3 text-[13px]',
-                        connected ? 'bg-[#f0fdf4] text-[#166534]' : 'bg-[#fef2f2] text-[#b91c1c]',
-                    )}
-                >
-                    {connected ? (
-                        <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-                    ) : (
-                        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                    )}
-                    <span>
-                        {connected
-                            ? `${t('حساب Google مربوط')}${account?.email ? ` — ${account.email}` : ''}`
-                            : t('لم يُربط حساب Google بعد — ولا تُقرأ تقييمة واحدة قبله.')}
-                    </span>
-                </div>
-
-                {/* وخطأُ Google الأخير يُقال بنصّه: «لم تُسحب» لا تقول ما يُصلَح */}
-                {account?.error && (
-                    <p className="mb-5 rounded-[10px] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">
-                        {account.error}
-                    </p>
-                )}
-
-                <div className="flex flex-wrap items-center gap-2">
-                    {connected ? (
+            <SettingsPage width="wide">
+                {/* ═══════════ حال الربط ═══════════ */}
+                <SettingsSection
+                    title="حساب Google المربوط"
+                    description="منه تُقرأ التقييمات، وباسمه تُنشر الردود."
+                    icon={Star}
+                    status={<StatusPill state={account?.error ? 'error' : 'ready'} connected />}
+                    action={
                         <Button
+                            size="sm"
                             variant="outline"
-                            onClick={() => {
-                                if (! window.confirm(t('إلغاء ربط حساب Google؟ ستتوقف قراءة التقييمات والرد عليها.'))) return;
+                            onClick={async () => {
+                                const go = await ask({
+                                    message: 'إلغاء ربط حساب Google؟ ستتوقف قراءة التقييمات والرد عليها.',
+                                    danger: true,
+                                    action: 'إلغاء الربط',
+                                });
+
+                                if (! go) return;
+
                                 router.delete(route('admin.integrations.googleBusiness.disconnect'), {
                                     preserveScroll: true,
                                 });
@@ -155,25 +188,41 @@ export default function GoogleBusinessPage() {
                             <Link2Off />
                             {t('إلغاء الربط')}
                         </Button>
-                    ) : (
-                        <Button asChild>
-                            <a href={route('admin.integrations.googleBusiness.connect')}>
-                                {t('ربط حساب Google Business')}
-                            </a>
-                        </Button>
-                    )}
-                </div>
-            </Card>
+                    }
+                >
+                    <dl className="space-y-2 rounded-[12px] bg-[#fafafa] p-4 text-[13px]">
+                        <div className="flex flex-wrap justify-between gap-3">
+                            <dt className="text-[#6b7280]">{t('الحساب')}</dt>
+                            <dd dir="ltr" className="font-medium text-[#111]">{account?.email ?? '—'}</dd>
+                        </div>
+                        {account?.syncedAt && (
+                            <div className="flex flex-wrap justify-between gap-3">
+                                <dt className="text-[#6b7280]">{t('آخر سحب')}</dt>
+                                <dd className="text-[#111]">{account.syncedAt}</dd>
+                            </div>
+                        )}
+                    </dl>
 
-            {connected && (
+                    {/* وخطأُ Google الأخير يُقال بنصّه: «لم تُسحب» لا تقول ما يُصلَح */}
+                    {account?.error && (
+                        <p className="mt-3 rounded-[10px] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">
+                            {account.error}
+                        </p>
+                    )}
+                </SettingsSection>
+
                 <>
                     {/* ═══════════ الفروع ومواقعها ═══════════ */}
-                    <Card className="mt-4 p-6">
-                        <h3 className="mb-1 font-bold text-[#111]">{t('الفروع ومواقعها')}</h3>
-                        <p className="mb-4 text-[13px] text-[#6b7280]">
-                            {t('لكلّ فرعٍ موقعٌ في ملفّ أعمالك — وتقييماته تُسحب إليه وحده.')}
-                        </p>
-
+                    <SettingsSection
+                        title="الفروع ومواقعها"
+                        description="لكلّ فرعٍ موقعٌ في ملفّ أعمالك — وتقييماته تُسحب إليه وحده."
+                        icon={MapPin}
+                        status={
+                            <span className="text-[13px] font-medium tabular-nums text-[#6b7280]" dir="ltr">
+                                {branches.filter((b) => b.linked).length} / {branches.length}
+                            </span>
+                        }
+                    >
                         <ul className="space-y-3">
                             {branches.map((b) => (
                                 <li
@@ -220,12 +269,19 @@ export default function GoogleBusinessPage() {
                                 </li>
                             ))}
                         </ul>
-                    </Card>
+                    </SettingsSection>
 
                     {/* ═══════════ التنبيهات ═══════════ */}
-                    <Card className="mt-4 p-6">
-                        <h3 className="mb-4 font-bold text-[#111]">{t('تنبيه عند تقييم منخفض')}</h3>
-
+                    <SettingsSection
+                        title="تنبيه عند تقييم منخفض"
+                        description="تقييمٌ منخفض يُترك يومين يقرؤه كلّ من يفتح ملفّ محلّك — والردّ في ساعته يقلب أثره."
+                        icon={Bell}
+                        status={
+                            alerts.enabled
+                                ? <StatusPill state="ready" label="مفعّل" />
+                                : <StatusPill state="off" />
+                        }
+                    >
                         <label className="flex cursor-pointer items-start gap-2.5">
                             <input
                                 type="checkbox"
@@ -235,9 +291,6 @@ export default function GoogleBusinessPage() {
                             />
                             <span className="text-sm text-[#111]">
                                 {t('نبّهني في الجرس بالتقييمات الجديدة')}
-                                <span className="mt-0.5 block text-[12px] text-[#6b7280]">
-                                    {t('تقييمٌ منخفض يُترك يومين يقرؤه كلّ من يفتح ملفّ محلّك — والردّ في ساعته يقلب أثره.')}
-                                </span>
                             </span>
                         </label>
 
@@ -260,7 +313,7 @@ export default function GoogleBusinessPage() {
                             ))}
                         </div>
 
-                        <div className="mt-5">
+                        <PageActions className="mt-5">
                             <Button
                                 loading={alertForm.processing}
                                 onClick={() =>
@@ -271,13 +324,20 @@ export default function GoogleBusinessPage() {
                             >
                                 {t('حفظ')}
                             </Button>
-                        </div>
-                    </Card>
+                        </PageActions>
+                    </SettingsSection>
 
                     {/* ═══════════ التقييمات ═══════════ */}
-                    <Card className="mt-4 p-6">
-                        <h3 className="mb-4 font-bold text-[#111]">{t('تقييمات Google')}</h3>
-
+                    <SettingsSection
+                        title="تقييمات Google"
+                        description="ما سُحب من ملفّ أعمالك — والردُّ عليه يُنشر باسم متجرك."
+                        icon={MessageSquare}
+                        status={
+                            <span className="text-[13px] font-medium tabular-nums text-[#6b7280]" dir="ltr">
+                                {reviews.length}
+                            </span>
+                        }
+                    >
                         {reviews.length === 0 ? (
                             <p className="rounded-[12px] bg-[#fafafa] p-4 text-[13px] text-[#6b7280]">
                                 {t('لا تقييمات مسحوبة بعد — اربط موقع الفرع ثم اضغط «سحب التقييمات».')}
@@ -344,12 +404,13 @@ export default function GoogleBusinessPage() {
                                 ))}
                             </ul>
                         )}
-                    </Card>
+                    </SettingsSection>
                 </>
-            )}
+            </SettingsPage>
 
             {replying && <ReplyDialog review={replying} onClose={() => setReplying(null)} />}
             {picking && <LocationDialog branch={picking} onClose={() => setPicking(null)} />}
+            {confirmDialog}
         </AdminLayout>
     );
 }

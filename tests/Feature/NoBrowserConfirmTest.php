@@ -41,9 +41,20 @@ class NoBrowserConfirmTest extends TestCase
              * والبحث عن النداء لا عن الكلمة: `useConfirm` و«نافذة تأكيد»
              * تحملان الحروف نفسها، ومطابقةُ الكلمة وحدها تصطاد اسم الخطّاف
              * الذي وُضع ليحلّ محلّها.
+             *
+             * ═══ والنقطةُ ثغرةٌ سدَّها هذا السطر ═══
+             *
+             * `(?<!\.)` وُضع ليمرّ `form.confirm` و`useConfirm.confirm`، فمرّ
+             * معه **`window.confirm(`** — وهو النداءُ نفسُه الذي جاء الحارس
+             * ليمنعه. ونجا تحته موضعان: فكُّ ربط فرعٍ في «خرائط Google»، وفكُّ
+             * حساب في «تقييمات Google». فصار `window.` يُستثنى من الاستثناء.
              */
             foreach (['confirm(', 'alert(', 'prompt('] as $call) {
-                if (preg_match('/(?<![A-Za-z_.])'.preg_quote($call, '/').'/', $code)) {
+                $quoted = preg_quote($call, '/');
+
+                if (preg_match('/(?<![A-Za-z_.])'.$quoted.'/', $code)
+                    || preg_match('/\bwindow\.'.$quoted.'/', $code)
+                ) {
                     $found[] = $relative.' → '.$call;
                 }
             }

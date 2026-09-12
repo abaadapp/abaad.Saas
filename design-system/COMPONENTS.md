@@ -583,6 +583,91 @@ danger    bg-[#fef2f2] text-[#b91c1c]      info      bg-[#eff6ff] text-[#2563eb]
 
 ---
 
+## SettingsPage · SettingsSection · SettingsGroup · Advanced · PageActions · SetupProgress
+
+**الموضع:** `resources/js/Components/Settings.tsx`
+
+هيكلُ **صفحات الإعدادات والتهيئة والربط** — وهي وحدها. صفحةُ الإدارة (جدولٌ وصفوف)
+ولوحةُ العرض تبقيان على عرض اللوحة وأنماطها.
+
+```tsx
+<PageHeader title="…" subtitle="…" actions={<StatusPill state="ready" connected />} />
+
+<SettingsPage>                                  {/* عمودٌ مركزيّ + space-y-6 */}
+  <ConnectSteps … />                            {/* الحال والتقدّم — عند الحاجة */}
+
+  <form onSubmit={submit}>
+    <SettingsSection title="…" description="…" icon={MapPin} status={…} divided>
+      <SettingsGroup title="…">…</SettingsGroup>
+      <SettingsGroup title="…">…</SettingsGroup>
+      <SettingsGroup><PageActions><Button type="submit">حفظ</Button></PageActions></SettingsGroup>
+    </SettingsSection>
+  </form>
+
+  <SettingsSection title="…">…</SettingsSection>  {/* ما يُقرأ بعد المهمّة */}
+  <Advanced title="…" description="…" status={…}>…</Advanced>   {/* المتقدّم — مطويًّا */}
+</SettingsPage>
+```
+
+| المكوّن | الغرض | خصائص |
+|---|---|---|
+| `SettingsPage` | العمود المركزيّ | `width`: `form` (`max-w-3xl`، افتراضيّ) · `wide` (`max-w-5xl`) · `full` |
+| `SettingsSection` | سطحُ القسم — **البطاقة الوحيدة المسموحة** | `title` · `description` · `icon` · `status` · `action` · `divided` · `id` |
+| `SettingsGroup` | مجموعةٌ داخله يفصلها خطّ | `title` · `description` · `action` — تُستعمل داخل `divided` |
+| `Advanced` | قسمٌ مطويّ | `title` · `description` · `icon` · `status` · `defaultOpen` · `forceOpen` |
+| `PageActions` | قدمُ النموذج | `note` (سببُ التعطيل أو ما سيقع بالحفظ) · `className` |
+| `SetupProgress` | شريطُ تقدّم | `at` · `total` · `done` · `label` |
+
+**قواعد:**
+- `SettingsSection` تترجم `title` و`description` بنفسها (كما `Field` و`PageHeader`) — مرّرها عربيّةً خامًا.
+- **لا `Card` داخل `SettingsSection`**: الهرميّة من العنوان والفراغ لا من حدٍّ ثانٍ وظلٍّ ثانٍ.
+- **العمود الجانبيّ لسببٍ لا لملء مساحة**: معاينةٌ حيّة أو سياقٌ يُقرأ أثناء العمل. وما عداه يهبط تحت المهمّة.
+- `Advanced` مبنيٌّ على `<details>/<summary>`: التركيز و`Enter` و`Space` وإعلانُ الحالة من المتصفّح. و`forceOpen` يفتحه حين يصل خطأُ تحقّقٍ في حقلٍ بالداخل.
+- عناوينُ الأقسام `h2` والمجموعاتِ `h3` — تحت `h1` في `PageHeader`.
+
+---
+
+## StatusPill
+
+**الموضع:** `resources/js/Components/StatusPill.tsx`
+
+مفرداتٌ **مغلقة** لحال ميزةٍ تُهيَّأ أو أداةٍ تُربط — تقولها اللوحةُ وشاشةُ الأداة بالكلمة نفسها.
+
+| `state` | النصّ | الأيقونة | النغمة |
+|---|---|---|---|
+| `idle` | غير مهيّأ | `CircleDashed` | محايد |
+| `progress` | قيد الإعداد | `Clock` | أزرق |
+| `ready` | جاهز — أو **متّصل** مع `connected` | `Check` / `Plug` | أخضر |
+| `action` | يحتاج إجراء | `AlertTriangle` | كهرمانيّ |
+| `error` | يوجد خطأ | `XCircle` | أحمر |
+| `off` | مُطفأ | `PowerOff` | محايد |
+
+**Props:** `state` · `label?` (نصٌّ أدقّ يحلّ محلّ القياسيّ) · `connected?` · `className?`
+`readinessState(readiness)` تشتقّ الحال من `Readiness` — فلا تحسبه كلُّ شاشةٍ بطريقتها.
+
+> **لا لونَ وحده.** لكلّ حالٍ أيقونةٌ ونصّ: من لا يفرّق الأخضر من الأحمر يقرأ شارةً بلا خبر.
+
+---
+
+## Gate
+
+**الموضع:** `resources/js/Components/Gate.tsx`
+
+بابٌ قبل الشاشة حين لا يعمل شيءٌ ممّا وراءه: علامةٌ واسمٌ وسطرٌ و**فعلٌ واحد**.
+
+```tsx
+{/* أداةٌ لها شعار — الشعارُ نفسه الذي في اللوحة */}
+<Gate mark={<WhatsAppBusinessMark size={80} />} title="واتساب غير مربوط بعد" description="…"
+      action={<Button size="lg" asChild><Link …/></Button>} note={…} />
+
+{/* وما ليس أداةً — أيقونةٌ في إطارٍ محايد */}
+<Gate icon={Package} title="موقعك تعريفيّ — لا يعرض منتجات" description="…" />
+```
+**Props:** `mark?` (يُقدَّم على `icon`) · `icon?` · `title` · `description?` · `action?` · `note?`
+و`ConnectGate` في `Connect.tsx` هي هذه مع `ToolMark` وزرِّ «ربط مع أبعاد» — فلا تُرسم بابًا بيدك.
+
+---
+
 ## Sidebar · Topbar · AdminLayout · PlatformLayout
 
 انظر [`DESIGN_SYSTEM.md § ٢`](./DESIGN_SYSTEM.md).

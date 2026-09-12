@@ -3,9 +3,11 @@ import { AlertTriangle, MessageCircle, Save } from 'lucide-react';
 import { WhatsAppBusinessMark } from '@/Components/BrandMarks';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import Gate from '@/Components/Gate';
+import StatusPill, { readinessState } from '@/Components/StatusPill';
 import Toggle from '@/Components/Toggle';
+import { PageActions, SettingsPage, SettingsSection } from '@/Components/Settings';
 import { Button } from '@/Components/ui/button';
-import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
 import type { Readiness } from '@/Components/Connect';
 import type { PageProps } from '@/types';
@@ -65,19 +67,17 @@ export default function Whatsapp() {
                     title="إشعارات واتساب"
                     subtitle={t('رسائل تُرسَل للعميل عند تغيّر حال طلبه')}
                 />
-                <Card className="mx-auto flex max-w-xl flex-col items-center px-6 py-16 text-center">
-                    {/* الشعارُ نفسه الذي في اللوحة وفي باب الأداة — لا ثالثَ له */}
-                    <WhatsAppBusinessMark size={80} />
-
-                    <h2 className="mt-6 text-[20px] font-bold text-[#111]">{t('واتساب غير مربوط بعد')}</h2>
-                    <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-[#6b7280]">
-                        {t('اختيارُ الأحداث يأتي بعد الربط — فلا معنى لإشعالِ رسالةٍ لا قناةَ تخرج منها.')}
-                    </p>
-
-                    <Button asChild size="lg" className="mt-8">
-                        <Link href={route('admin.integrations.whatsapp')}>{t('اذهب إلى ربط واتساب')}</Link>
-                    </Button>
-                </Card>
+                <Gate
+                    /* الشعارُ نفسه الذي في اللوحة وفي باب الأداة — لا ثالثَ له */
+                    mark={<WhatsAppBusinessMark size={80} />}
+                    title="واتساب غير مربوط بعد"
+                    description="اختيارُ الأحداث يأتي بعد الربط — فلا معنى لإشعالِ رسالةٍ لا قناةَ تخرج منها."
+                    action={
+                        <Button asChild size="lg">
+                            <Link href={route('admin.integrations.whatsapp')}>{t('اذهب إلى ربط واتساب')}</Link>
+                        </Button>
+                    }
+                />
             </AdminLayout>
         );
     }
@@ -88,62 +88,66 @@ export default function Whatsapp() {
                 title="إشعارات واتساب"
                 subtitle={t('رسائل تُرسَل للعميل عند تغيّر حال طلبه')}
                 actions={
-                    <Button asChild variant="outline">
-                        <Link href={route('admin.integrations.whatsapp')}>
-                            <MessageCircle />
-                            {t('الوصلة وإعدادات الربط')}
-                        </Link>
-                    </Button>
+                    <>
+                        <StatusPill state={readinessState(automation.readiness)} connected />
+                        <Button asChild variant="outline">
+                            <Link href={route('admin.integrations.whatsapp')}>
+                                <MessageCircle />
+                                {t('الوصلة وإعدادات الربط')}
+                            </Link>
+                        </Button>
+                    </>
                 }
             />
 
-            <form
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    form.post(route('admin.marketing.whatsapp.save'), { preserveScroll: true });
-                }}
-                className="max-w-3xl space-y-6"
-            >
-                <Card className="p-6">
-                    <h3 className="mb-1 font-bold text-[#111]">{t('متى تُرسَل الرسالة')}</h3>
-                    <p className="mb-5 text-[13px] text-[#6b7280]">
-                        {t('نصّ الرسالة قالبٌ معتمَدٌ لدى واتساب ولا يُكتب هنا — وهذه الأحداث قرارُك.')}
-                    </p>
+            <SettingsPage>
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        form.post(route('admin.marketing.whatsapp.save'), { preserveScroll: true });
+                    }}
+                    className="space-y-6"
+                >
+                    <SettingsSection
+                        title="متى تُرسَل الرسالة"
+                        description="نصّ الرسالة قالبٌ معتمَدٌ لدى واتساب ولا يُكتب هنا — وهذه الأحداث قرارُك."
+                    >
+                        {/*
+                            والمقابض تبقى تُحفظ وإن لم يكتمل الربط — قرارُ التاجر
+                            يُحفظ ليعمل يوم يكتمل. وإنّما يُقال إنّها لا تُرسل
+                            اليوم، لئلّا يُشعلها ويمضي ينتظر.
+                        */}
+                        {! automation.readiness.ready && (
+                            <div className="mb-5 flex items-start gap-2 rounded-[10px] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]">
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                                <span>
+                                    {t('اختيارُك هنا يُحفظ، ولا تخرج رسالةٌ حتى تكتمل مراحلُ الربط.')}
+                                </span>
+                            </div>
+                        )}
 
-                    {/*
-                        والمقابض تبقى تُحفظ وإن لم يكتمل الربط — قرارُ التاجر
-                        يُحفظ ليعمل يوم يكتمل. وإنّما يُقال إنّها لا تُرسل
-                        اليوم، لئلّا يُشعلها ويمضي ينتظر.
-                    */}
-                    {! automation.readiness.ready && (
-                        <div className="mb-5 flex items-start gap-2 rounded-[10px] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]">
-                            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                            <span>
-                                {t('اختيارُك هنا يُحفظ، ولا تخرج رسالةٌ حتى تكتمل مراحلُ الربط.')}
-                            </span>
+                        {/* من مصدرٍ واحد: WhatsAppEvent — حدثٌ يُضاف يظهر هنا بلا سطر */}
+                        <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                            {automation.events.map((e) => (
+                                <div key={e.key} className="py-2 first:pt-0 last:pb-0">
+                                    <Toggle
+                                        label={e.label}
+                                        on={form.data[e.setting]}
+                                        onChange={(v) => form.setData(e.setting, v)}
+                                    />
+                                </div>
+                            ))}
                         </div>
-                    )}
+                    </SettingsSection>
 
-                    {/* من مصدرٍ واحد: WhatsAppEvent — حدثٌ يُضاف يظهر هنا بلا سطر */}
-                    <div className="space-y-5">
-                        {automation.events.map((e) => (
-                            <Toggle
-                                key={e.key}
-                                label={e.label}
-                                on={form.data[e.setting]}
-                                onChange={(v) => form.setData(e.setting, v)}
-                            />
-                        ))}
-                    </div>
-                </Card>
-
-                <div className="flex justify-end">
-                    <Button type="submit" loading={form.processing}>
-                        <Save />
-                        {t('حفظ')}
-                    </Button>
-                </div>
-            </form>
+                    <PageActions>
+                        <Button type="submit" loading={form.processing}>
+                            <Save />
+                            {t('حفظ')}
+                        </Button>
+                    </PageActions>
+                </form>
+            </SettingsPage>
         </AdminLayout>
     );
 }

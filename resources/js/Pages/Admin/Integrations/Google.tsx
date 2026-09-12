@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useRef } from 'react';
-import { Check, ExternalLink, KeyRound, Link2Off, MapPin, QrCode, RefreshCw, Search, Star, Store, Trash2 } from 'lucide-react';
+import { Check, ExternalLink, Info, KeyRound, Link2Off, MapPin, QrCode, RefreshCw, Search, Star, Store, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import CopyButton from '@/Components/CopyButton';
+import Field from '@/Components/Field';
+import StatusPill, { readinessState } from '@/Components/StatusPill';
+import { Advanced, PageActions, SettingsGroup, SettingsPage, SettingsSection } from '@/Components/Settings';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { Button } from '@/Components/ui/button';
-import { Card } from '@/Components/ui/card';
 import SmartLink from '@/Components/SmartLink';
 import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
@@ -216,6 +219,85 @@ function KeyGuide({ serverIp, start }: { serverIp: string | null; start: boolean
 }
 
 /**
+ * نموذجُ المفتاح — جسدٌ واحد، وموضعان.
+ *
+ * وموضعُه يتبع دورَه لا شكلَه: حين يكون لأبعادَ مفتاحٌ فهذا اختياريٌّ يُطوى
+ * آخرَ الصفحة، وحين لا يكون فهو **الشرط** الذي لا تُقرأ قبله تقييمة — فيعلو
+ * فوق كلّ ما لا يعمل بدونه. وطيُّ الشرطِ يجعل صاحبَه ينتظر قراءةً لا تأتي.
+ */
+function KeyForm({
+    keyHint,
+    serverIp,
+    platformKey,
+}: {
+    keyHint: string | null;
+    serverIp: string | null;
+    platformKey: boolean;
+}) {
+    const t = useTranslate();
+    const keyForm = useForm({ google_api_key: '' });
+
+    return (
+        <>
+            {keyHint && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[10px] bg-[#f0fdf4] px-3 py-2">
+                    <span className="flex items-center gap-1.5 text-[12px] text-[#047857]">
+                        <Check className="size-3.5" />
+                        {t('محفوظ')}
+                    </span>
+                    <span dir="ltr" className="text-[12px] text-[#6b7280]">{keyHint}</span>
+                </div>
+            )}
+
+            <form
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    keyForm.post(route('admin.integrations.google.key'), {
+                        preserveScroll: true,
+                        // المفتاح لا يبقى في الحقل بعد حفظه — لا يُعرض ولا يُعاد إرساله
+                        onSuccess: () => keyForm.reset('google_api_key'),
+                    });
+                }}
+            >
+                <Field error={keyForm.errors.google_api_key}>
+                    <PasswordInput
+                        dir="ltr"
+                        autoComplete="off"
+                        value={keyForm.data.google_api_key}
+                        onChange={(e) => keyForm.setData('google_api_key', e.target.value)}
+                        placeholder={keyHint ? t('الصق مفتاحًا جديدًا لتبديله') : 'AIza…'}
+                        aria-label={t('مفتاح Places API')}
+                    />
+                </Field>
+
+                <PageActions className="mt-4">
+                    {keyHint && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => router.delete(route('admin.integrations.google.key.forget'), { preserveScroll: true })}
+                        >
+                            <Trash2 />
+                            {t('حذف المفتاح')}
+                        </Button>
+                    )}
+                    <Button type="submit" size="sm" loading={keyForm.processing}>
+                        {t('حفظ المفتاح')}
+                    </Button>
+                </PageActions>
+            </form>
+
+            {/*
+                والدليلُ مفتوحٌ من أوّله حين لا يكون له ولا لأبعادَ مفتاح:
+                تلك وحدها الحالُ التي لا تُقرأ فيها تقييمةٌ قبل أن يتحرّك.
+            */}
+            <KeyGuide serverIp={serverIp} start={!keyHint && !platformKey} />
+        </>
+    );
+}
+
+/**
  * ربط خرائط Google — وسحبُ تقييماتها.
  *
  * وكان زرًّا في شاشة التقييمات يفتح `business.google.com` في تبويبٍ خارجيّ:
@@ -236,21 +318,11 @@ export default function MarketingGoogle() {
         google_show_on_site: (settings.google_show_on_site ?? '0') === '1',
     });
 
-    const keyForm = useForm({ google_api_key: '' });
     const [refreshing, setRefreshing] = useState(false);
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         form.post(route('admin.integrations.google.save'), { preserveScroll: true });
-    };
-
-    const saveKey = (e: React.FormEvent) => {
-        e.preventDefault();
-        keyForm.post(route('admin.integrations.google.key'), {
-            preserveScroll: true,
-            // المفتاح لا يبقى في الحقل بعد حفظه — لا يُعرض ولا يُعاد إرساله
-            onSuccess: () => keyForm.reset('google_api_key'),
-        });
     };
 
     const refresh = () => {
@@ -261,12 +333,9 @@ export default function MarketingGoogle() {
         });
     };
 
-    const forgetKey = () => {
-        router.delete(route('admin.integrations.google.key.forget'), { preserveScroll: true });
-    };
-
     const linked = !! link.place_id;
     const place = google.place;
+    const linkedBranches = branches.filter((b) => b.linked).length;
 
     /*
         بابٌ قبل الشاشة — لمن لم يربط بعد.
@@ -297,70 +366,105 @@ export default function MarketingGoogle() {
             <PageHeader
                 title="ربط خرائط Google"
                 subtitle={t('اربط محلّك بملفّه على الخرائط: رابطٌ لطلب التقييم، وتقييماتُ Google تُقرأ هنا')}
+                actions={<StatusPill state={readinessState(readiness)} connected />}
             />
 
-            <ConnectSteps
-                readiness={readiness}
-                title={t('مراحل الربط')}
-                done={t('تمّ الربط — تُقرأ تقييماتك أدناه، ورابطُ التقييم جاهز.')}
-                waiting={t('لا تُقرأ تقييمةٌ واحدة قبل أن تكتمل هذه المراحل.')}
-            />
+            <SettingsPage>
+                <ConnectSteps
+                    readiness={readiness}
+                    title={t('مراحل الربط')}
+                    done={t('تمّ الربط — تُقرأ تقييماتك أدناه، ورابطُ التقييم جاهز.')}
+                    waiting={t('لا تُقرأ تقييمةٌ واحدة قبل أن تكتمل هذه المراحل.')}
+                />
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div className="space-y-6 lg:col-span-2">
-                    {/* ---------------------- فروعك على الخرائط ---------------------- */}
-                    <Card className="p-6">
-                        <div className="mb-5 flex items-start gap-3">
-                            <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#f3f4f6] text-[#111]">
-                                <MapPin className="size-[18px]" />
-                            </span>
-                            <div>
-                                <h3 className="font-bold text-[#111]">{t('موقع المتجر على خرائط Google')}</h3>
-                                <p className="mt-0.5 text-[13px] text-[#6b7280]">
-                                    {/*
-                                        ولمَ لكلّ فرعٍ ربطُه — يُقال هنا لا يُترك للاكتشاف:
-                                        رمزٌ على إيصال فرعٍ يفتح ملفَّ فرعٍ آخر عطبٌ لا يراه صاحبه.
-                                    */}
-                                    {t('لكلّ فرعٍ ملفُّه على Google بتقييماته. اربط كلّ فرعٍ بملفّه ليصل تقييم الزبون إلى الفرع الذي اشترى منه.')}
-                                </p>
-                            </div>
-                        </div>
+                {/*
+                    والمفتاحُ حين يكون شرطًا يعلو، وحين يكون اختيارًا يُطوى آخرَها.
 
+                    كان في العمود الضيّق بجوار الخطوة الأولى بالقوّة البصريّة
+                    نفسها في الحالين — فمن كان اختياريًّا عنده ظنّه شرطًا فوقف
+                    عنده، ومن كان شرطًا عنده ظنّه اختيارًا فمضى ينتظر قراءةً
+                    لا تأتي.
+                */}
+                {! platformKey && (
+                    <SettingsSection
+                        title="مفتاح Google Maps"
+                        description="مطلوب — لا تُقرأ تقييماتك قبل أن تلصق مفتاحك من Google Cloud."
+                        icon={KeyRound}
+                        status={
+                            keyHint
+                                ? <StatusPill state="ready" label="محفوظ" />
+                                : <StatusPill state="action" label="ينقصه المفتاح" />
+                        }
+                    >
+                        <KeyForm keyHint={keyHint} serverIp={serverIp} platformKey={platformKey} />
+                    </SettingsSection>
+                )}
+
+                {/* ---------------------- فروعك على الخرائط ---------------------- */}
+                <SettingsSection
+                    title="موقع المتجر على خرائط Google"
+                    /*
+                        ولمَ لكلّ فرعٍ ربطُه — يُقال هنا لا يُترك للاكتشاف:
+                        رمزٌ على إيصال فرعٍ يفتح ملفَّ فرعٍ آخر عطبٌ لا يراه صاحبه.
+                    */
+                    description="لكلّ فرعٍ ملفُّه على Google بتقييماته. اربط كلّ فرعٍ بملفّه ليصل تقييم الزبون إلى الفرع الذي اشترى منه."
+                    icon={MapPin}
+                    status={
+                        <span className="text-[13px] font-medium tabular-nums text-[#6b7280]" dir="ltr">
+                            {linkedBranches} / {branches.length}
+                        </span>
+                    }
+                    divided
+                >
+                    <SettingsGroup>
                         <ul className="space-y-3">
                             {branches.map((b) => (
                                 <BranchRow key={b.id} branch={b} min={searchMin} />
                             ))}
                         </ul>
-                    </Card>
+                    </SettingsGroup>
 
                     {/*
-                        وبابُ الإدارة الكاملة — بابٌ آخرُ غيرُ هذا.
-
-                        هذه الشاشةُ تقرأ الملفَّ العامّ: معدّلٌ وعددٌ وخمسةُ نصوصٍ
-                        تختارها Google. وقراءةُ التقييمات كلِّها والردُّ عليها
-                        باسم المتجر تحتاج إذنَ صاحبه — فتُذكر ولا تُخلط بهذه.
+                        الرابطان ثمرةُ الربط لا بابٌ مستقلّ — فموضعهما تحته
+                        مباشرةً: من ربط يريد أن يرى ما صار إليه، لا أن يبحث
+                        عنه في عمودٍ آخر.
                     */}
-                    <Card className="p-6">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0">
-                                <h3 className="font-bold text-[#111]">{t('الرد على التقييمات')}</h3>
-                                <p className="mt-0.5 text-[13px] leading-relaxed text-[#6b7280]">
-                                    {t('اقرأ تقييماتك كلّها وردّ عليها باسم متجرك — يحتاج ربط حساب Google بإذنك.')}
-                                </p>
+                    {linked ? (
+                        <SettingsGroup
+                            title="رابطاك بعد الربط"
+                            description="أرسل الأوّل لزبونك، وافتح الثاني لتتأكّد أنّه محلّك."
+                        >
+                            <div className="space-y-3">
+                                <CopyRow
+                                    label="رابط طلب التقييم"
+                                    url={link.review_url!}
+                                    hint="أرسله للعميل أو اطبعه — يفتح نافذة «اكتب تقييمًا» على محلّك."
+                                />
+                                <CopyRow
+                                    label="ملفّك على الخرائط"
+                                    url={link.place_url!}
+                                    hint="افتحه وتأكّد أنّه محلّك — معرّفٌ خاطئ يرسل زبائنك إلى محلٍّ آخر."
+                                />
                             </div>
-                            <SmartLink
-                                routeName="admin.integrations.googleBusiness"
-                                href={route('admin.integrations.googleBusiness')}
-                                className="shrink-0 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-3 py-1.5 text-[13px] text-[#111] hover:bg-[#fafafa]"
-                            >
-                                {t('إدارة التقييمات')}
-                            </SmartLink>
-                        </div>
-                    </Card>
+                        </SettingsGroup>
+                    ) : (
+                        <SettingsGroup>
+                            <p className="rounded-[12px] bg-[#fafafa] px-4 py-3 text-[13px] leading-relaxed text-[#6b7280]">
+                                {t('اربط فرعًا بملفّه ليظهر رابط طلب التقييم هنا.')}
+                            </p>
+                        </SettingsGroup>
+                    )}
+                </SettingsSection>
 
-                    {/* ------------------------- رمز الإيصال ------------------------- */}
-                    <form onSubmit={submit}>
-                        <Card className="p-6">
+                {/* ------------------------- ما يُطبع وما يُعرض ------------------------- */}
+                <form onSubmit={submit}>
+                    <SettingsSection
+                        title="أين يظهر تقييمك"
+                        description="مقبضان: رمزٌ على الورقة يمسحه الزبون، ومعدّلٌ يُعرض في موقعك."
+                        icon={QrCode}
+                        divided
+                    >
+                        <SettingsGroup title="رمز التقييم على الإيصال">
                             <label className="flex cursor-pointer items-start gap-2.5">
                                 <input
                                     type="checkbox"
@@ -385,8 +489,10 @@ export default function MarketingGoogle() {
                                     </span>
                                 </span>
                             </label>
+                        </SettingsGroup>
 
-                            <label className="mt-5 flex cursor-pointer items-start gap-2.5 border-t border-[var(--ui-border,#e8e8e8)] pt-5">
+                        <SettingsGroup title="تقييم Google في موقعك">
+                            <label className="flex cursor-pointer items-start gap-2.5">
                                 <input
                                     type="checkbox"
                                     checked={form.data.google_show_on_site}
@@ -407,229 +513,173 @@ export default function MarketingGoogle() {
                                     </span>
                                 </span>
                             </label>
+                        </SettingsGroup>
 
-                            <div className="mt-6 flex items-center gap-3">
+                        <SettingsGroup>
+                            <PageActions
+                                note={
+                                    linked && (
+                                        <span className="flex items-center gap-1.5 text-[13px] text-[#047857]">
+                                            <Check className="size-4" />
+                                            {t('مرتبط')}
+                                        </span>
+                                    )
+                                }
+                            >
                                 <Button type="submit" loading={form.processing}>
                                     {t('حفظ')}
                                 </Button>
-                                {linked && (
-                                    <span className="flex items-center gap-1.5 text-[13px] text-[#047857]">
-                                        <Check className="size-4" />
-                                        {t('مرتبط')}
-                                    </span>
-                                )}
-                            </div>
-                        </Card>
-                    </form>
+                            </PageActions>
+                        </SettingsGroup>
+                    </SettingsSection>
+                </form>
 
-                    {/* ------------------------- تقييمات Google ------------------------- */}
-                    <Card className="p-6">
-                        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                                <h3 className="font-bold text-[#111]">{t('تقييمات Google')}</h3>
-                                <p className="mt-0.5 text-[13px] text-[#6b7280]">
-                                    {t('تُسحب حيّةً من ملفّ محلّك — ولا تُخزَّن في النظام.')}
-                                </p>
-                            </div>
-                            {google.state === 'ok' && (
-                                <Button type="button" size="sm" variant="outline" loading={refreshing} onClick={refresh}>
-                                    <RefreshCw />
-                                    {t('حدِّث الآن')}
-                                </Button>
-                            )}
-                        </div>
-
-                        {google.state === 'unlinked' && (
-                            <p className="rounded-[12px] bg-[#fafafa] p-4 text-[13px] text-[#6b7280]">
-                                {t('احفظ معرّف المكان أوّلًا — بلا معرّفٍ لا يُعرف أيُّ محلٍّ تُسحب تقييماته.')}
-                            </p>
-                        )}
-
-                        {google.state === 'nokey' && (
-                            <p className="rounded-[12px] bg-[#fffbeb] p-4 text-[13px] text-[#92400e]">
-                                {t('مفتاح الخرائط غير مهيّأ في أبعاد بعد — راجعنا، أو الصق مفتاحك الخاص في البطاقة المجاورة.')}
-                            </p>
-                        )}
-
-                        {google.state === 'error' && (
-                            <p className="rounded-[12px] bg-[#fef2f2] p-4 text-[13px] text-[#b91c1c]">{google.error}</p>
-                        )}
-
-                        {google.state === 'ok' && place && (
-                            <>
-                                <div className="flex flex-wrap items-center gap-4 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-4">
-                                    <div>
-                                        <p className="text-[13px] font-medium text-[#111]">{place.name || t('محلّك')}</p>
-                                        <div className="mt-1 flex items-center gap-2">
-                                            <Stars value={place.rating ?? 0} size={16} />
-                                            <span className="text-[15px] font-bold text-[#111]">
-                                                {place.rating ?? '—'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="ms-auto text-end">
-                                        <p className="text-[20px] font-bold text-[#111]">{place.count}</p>
-                                        <p className="text-[12px] text-[#9ca3af]">{t('تقييمًا على Google')}</p>
-                                    </div>
-                                </div>
-
-                                {place.reviews.length === 0 ? (
-                                    <p className="mt-4 text-[13px] text-[#9ca3af]">
-                                        {t('لم تُعِد Google نصوص تقييمات لهذا المكان بعد.')}
-                                    </p>
-                                ) : (
-                                    <ul className="mt-4 space-y-3">
-                                        {place.reviews.map((review) => (
-                                            <li
-                                                key={review.id}
-                                                className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4"
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    {review.photo && (
-                                                        <img
-                                                            src={review.photo}
-                                                            alt=""
-                                                            className="size-7 rounded-full object-cover"
-                                                        />
-                                                    )}
-                                                    <span className="text-[13px] font-medium text-[#111]">
-                                                        {review.author}
-                                                    </span>
-                                                    <Stars value={review.rating} />
-                                                    <span className="ms-auto text-[12px] text-[#9ca3af]">
-                                                        {review.when}
-                                                    </span>
-                                                </div>
-                                                {review.text && (
-                                                    <p className="mt-2 whitespace-pre-line text-[13px] leading-relaxed text-[#374151]">
-                                                        {review.text}
-                                                    </p>
-                                                )}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-
-                                {/*
-                                    الحدُّ يُقال ولا يُترك للاستنتاج: تاجرٌ عنده مئةُ
-                                    تقييمٍ يرى خمسةً فيظنّ أنّ الباقي ضاع أو أنّ
-                                    الربط ناقص — والخمسة حدُّ Google لا حدُّنا.
-                                */}
-                                <p className="mt-4 text-[12px] text-[#9ca3af]">
-                                    {t('تُعيد Google خمسة تقييماتٍ بنصوصها كحدٍّ أقصى وتختارها هي — والعدد والمعدّل أعلاه كاملان. وتُحدَّث تلقائيًّا كلّ ٦ ساعات.')}
-                                </p>
-                            </>
-                        )}
-                    </Card>
-                </div>
-
-                <div className="space-y-4">
-                    {linked ? (
-                        <>
-                            <CopyRow
-                                label="رابط طلب التقييم"
-                                url={link.review_url!}
-                                hint="أرسله للعميل أو اطبعه — يفتح نافذة «اكتب تقييمًا» على محلّك."
-                            />
-                            <CopyRow
-                                label="ملفّك على الخرائط"
-                                url={link.place_url!}
-                                hint="افتحه وتأكّد أنّه محلّك — معرّفٌ خاطئ يرسل زبائنك إلى محلٍّ آخر."
-                            />
-                        </>
-                    ) : (
-                        <Card className="p-5 text-center">
-                            <Star className="mx-auto size-6 text-[#9ca3af]" />
-                            <p className="mt-2 text-[13px] font-medium text-[#111]">{t('لم يُربط بعد')}</p>
-                            <p className="mt-1 text-[12px] text-[#9ca3af]">
-                                {t('احفظ معرّف المكان ليظهر رابط طلب التقييم هنا.')}
-                            </p>
-                        </Card>
+                {/* ------------------------- تقييمات Google ------------------------- */}
+                <SettingsSection
+                    title="تقييمات Google"
+                    description="تُسحب حيّةً من ملفّ محلّك — ولا تُخزَّن في النظام."
+                    icon={Star}
+                    action={
+                        google.state === 'ok' && (
+                            <Button type="button" size="sm" variant="outline" loading={refreshing} onClick={refresh}>
+                                <RefreshCw />
+                                {t('حدِّث الآن')}
+                            </Button>
+                        )
+                    }
+                >
+                    {google.state === 'unlinked' && (
+                        <p className="rounded-[12px] bg-[#fafafa] p-4 text-[13px] text-[#6b7280]">
+                            {t('اربط فرعًا بملفّه أوّلًا — بلا ملفٍّ لا يُعرف أيُّ محلٍّ تُسحب تقييماته.')}
+                        </p>
                     )}
 
-                    {/* --------------------------- مفتاح Places --------------------------- */}
-                    <Card className="p-5">
-                        <div className="mb-3 flex items-start gap-2.5">
-                            <KeyRound className="mt-0.5 size-[18px] shrink-0 text-[#111]" />
-                            <div>
-                                <h3 className="text-[14px] font-bold text-[#111]">
-                                    {platformKey ? t('مفتاحك الخاص') : t('مفتاح Google Maps')}
-                                </h3>
-                                {/*
-                                    والنصُّ يتبع الواقع لا العكس.
+                    {google.state === 'nokey' && (
+                        <p className="rounded-[12px] bg-[#fffbeb] p-4 text-[13px] text-[#92400e]">
+                            {t('مفتاح الخرائط غير مهيّأ في أبعاد بعد — راجعنا، أو الصق مفتاحك الخاص في قسم المفتاح.')}
+                        </p>
+                    )}
 
-                                    فحين يكون لأبعادَ مفتاحٌ فهذا الحقل اختياريّ حقًّا: من
-                                    لم يلصق شيئًا تُقرأ تقييماته. وحين لا يكون، فقولُ
-                                    «اختياريّ» يجعل التاجر ينتظر قراءةً لا تأتي أبدًا —
-                                    ولا يشكو، لأنّه صدَّق ما قرأ.
-                                */}
-                                <p className="mt-0.5 text-[12px] text-[#6b7280]">
-                                    {platformKey
-                                        ? t('اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد. والصقْ مفتاحك من Google Cloud إن أردت أن تُحتسب النداءات على حسابك.')
-                                        : t('مطلوب — لا تُقرأ تقييماتك قبل أن تلصق مفتاحك من Google Cloud.')}
+                    {google.state === 'error' && (
+                        <p className="rounded-[12px] bg-[#fef2f2] p-4 text-[13px] text-[#b91c1c]">{google.error}</p>
+                    )}
+
+                    {google.state === 'ok' && place && (
+                        <>
+                            <div className="flex flex-wrap items-center gap-4 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-4">
+                                <div>
+                                    <p className="text-[13px] font-medium text-[#111]">{place.name || t('محلّك')}</p>
+                                    <div className="mt-1 flex items-center gap-2">
+                                        <Stars value={place.rating ?? 0} size={16} />
+                                        <span className="text-[15px] font-bold text-[#111]">
+                                            {place.rating ?? '—'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="ms-auto text-end">
+                                    <p className="text-[20px] font-bold text-[#111]">{place.count}</p>
+                                    <p className="text-[12px] text-[#9ca3af]">{t('تقييمًا على Google')}</p>
+                                </div>
+                            </div>
+
+                            {place.reviews.length === 0 ? (
+                                <p className="mt-4 text-[13px] text-[#9ca3af]">
+                                    {t('لم تُعِد Google نصوص تقييمات لهذا المكان بعد.')}
                                 </p>
-                            </div>
-                        </div>
-
-                        {keyHint && (
-                            <div className="mb-3 flex items-center justify-between gap-2 rounded-[10px] bg-[#f0fdf4] px-3 py-2">
-                                <span className="flex items-center gap-1.5 text-[12px] text-[#047857]">
-                                    <Check className="size-3.5" />
-                                    {t('محفوظ')}
-                                </span>
-                                <span dir="ltr" className="text-[12px] text-[#6b7280]">{keyHint}</span>
-                            </div>
-                        )}
-
-                        <form onSubmit={saveKey}>
-                            <PasswordInput
-                                dir="ltr"
-                                autoComplete="off"
-                                value={keyForm.data.google_api_key}
-                                onChange={(e) => keyForm.setData('google_api_key', e.target.value)}
-                                placeholder={keyHint ? t('الصق مفتاحًا جديدًا لتبديله') : 'AIza…'}
-                                aria-label={t('مفتاح Places API')}
-                            />
-                            {keyForm.errors.google_api_key && (
-                                <p className="mt-2 text-[12px] text-[#b91c1c]">{keyForm.errors.google_api_key}</p>
+                            ) : (
+                                <ul className="mt-4 space-y-3">
+                                    {place.reviews.map((review) => (
+                                        <li
+                                            key={review.id}
+                                            className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4"
+                                        >
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {review.photo && (
+                                                    <img
+                                                        src={review.photo}
+                                                        alt=""
+                                                        className="size-7 rounded-full object-cover"
+                                                    />
+                                                )}
+                                                <span className="text-[13px] font-medium text-[#111]">
+                                                    {review.author}
+                                                </span>
+                                                <Stars value={review.rating} />
+                                                <span className="ms-auto text-[12px] text-[#9ca3af]">
+                                                    {review.when}
+                                                </span>
+                                            </div>
+                                            {review.text && (
+                                                <p className="mt-2 whitespace-pre-line text-[13px] leading-relaxed text-[#374151]">
+                                                    {review.text}
+                                                </p>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
                             )}
 
-                            <div className="mt-3 flex items-center gap-2">
-                                <Button type="submit" size="sm" loading={keyForm.processing}>
-                                    {t('حفظ المفتاح')}
-                                </Button>
-                                {keyHint && (
-                                    <Button type="button" size="sm" variant="danger" onClick={forgetKey}>
-                                        <Trash2 />
-                                        {t('حذف المفتاح')}
-                                    </Button>
-                                )}
-                            </div>
-                        </form>
+                            {/*
+                                الحدُّ يُقال ولا يُترك للاستنتاج: تاجرٌ عنده مئةُ
+                                تقييمٍ يرى خمسةً فيظنّ أنّ الباقي ضاع أو أنّ
+                                الربط ناقص — والخمسة حدُّ Google لا حدُّنا.
+                            */}
+                            <p className="mt-4 text-[12px] leading-relaxed text-[#9ca3af]">
+                                {t('تُعيد Google خمسة تقييماتٍ بنصوصها كحدٍّ أقصى وتختارها هي — والعدد والمعدّل أعلاه كاملان. وتُحدَّث تلقائيًّا كلّ ٦ ساعات.')}
+                            </p>
+                        </>
+                    )}
+                </SettingsSection>
 
-                        {/*
-                            والدليلُ مفتوحٌ من أوّله حين لا يكون له ولا لأبعادَ مفتاح:
-                            تلك وحدها الحالُ التي لا تُقرأ فيها تقييمةٌ قبل أن يتحرّك.
-                        */}
-                        <KeyGuide serverIp={serverIp} start={!keyHint && !platformKey} />
-                    </Card>
+                {/*
+                    وبابُ الإدارة الكاملة — بابٌ آخرُ غيرُ هذا.
 
-                    {/*
-                        الفرق بين التقييمين يُقال صراحةً: تقييمات النظام تُكتب
-                        داخله وتُنشر بإذنه، وتقييمات Google تُكتب هناك — تُقرأ
-                        هنا ولا تُخزَّن، ولا يُردّ عليها من هذه الشاشة.
-                    */}
-                    <Card className="p-4 text-[12px] leading-relaxed text-[#6b7280]">
-                        <p className="mb-1 text-[13px] font-medium text-[#111]">{t('ما يفعله هذا الربط وما لا يفعله')}</p>
-                        <p>
-                            {t('يصنع رابطًا يفتح تقييم محلّك على Google، ويقرأ تقييماتِه ومعدّلَه. ولا يُخزّنها في النظام ولا يردّ عليها — الردّ يحتاج موافقة Google على النشاط نفسه في Business Profile.')}
-                        </p>
-                        <p className="mt-2">
-                            {t('وتقييمات النظام — :n — تبقى مستقلّةً عنها.', { n: internal })}
-                        </p>
-                    </Card>
-                </div>
-            </div>
+                    هذه الشاشةُ تقرأ الملفَّ العامّ: معدّلٌ وعددٌ وخمسةُ نصوصٍ
+                    تختارها Google. وقراءةُ التقييمات كلِّها والردُّ عليها
+                    باسم المتجر تحتاج إذنَ صاحبه — فتُذكر ولا تُخلط بهذه.
+                */}
+                <SettingsSection
+                    title="الرد على التقييمات"
+                    description="اقرأ تقييماتك كلّها وردّ عليها باسم متجرك — يحتاج ربط حساب Google بإذنك."
+                    icon={Star}
+                    action={
+                        <Button asChild variant="outline" size="sm">
+                            <SmartLink
+                                routeName="admin.integrations.googleBusiness"
+                                href={route('admin.integrations.googleBusiness')}
+                            >
+                                {t('إدارة التقييمات')}
+                            </SmartLink>
+                        </Button>
+                    }
+                />
+
+                {/* والمفتاحُ الاختياريّ مطويٌّ آخرَ الصفحة — لا يزاحم ما قبله */}
+                {platformKey && (
+                    <Advanced
+                        title="مفتاحك الخاص لـ Places"
+                        description="اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد. والصقْ مفتاحك من Google Cloud إن أردت أن تُحتسب النداءات على حسابك."
+                        icon={KeyRound}
+                        status={keyHint ? <StatusPill state="ready" label="محفوظ" /> : undefined}
+                    >
+                        <KeyForm keyHint={keyHint} serverIp={serverIp} platformKey={platformKey} />
+                    </Advanced>
+                )}
+
+                {/*
+                    الفرق بين التقييمين يُقال صراحةً: تقييمات النظام تُكتب
+                    داخله وتُنشر بإذنه، وتقييمات Google تُكتب هناك — تُقرأ
+                    هنا ولا تُخزَّن، ولا يُردّ عليها من هذه الشاشة.
+                */}
+                <Advanced title="ما يفعله هذا الربط وما لا يفعله" icon={Info}>
+                    <p className="text-[13px] leading-relaxed text-[#6b7280]">
+                        {t('يصنع رابطًا يفتح تقييم محلّك على Google، ويقرأ تقييماتِه ومعدّلَه. ولا يُخزّنها في النظام ولا يردّ عليها — الردّ يحتاج موافقة Google على النشاط نفسه في Business Profile.')}
+                    </p>
+                    <p className="mt-2 text-[13px] leading-relaxed text-[#6b7280]">
+                        {t('وتقييمات النظام — :n — تبقى مستقلّةً عنها.', { n: internal })}
+                    </p>
+                </Advanced>
+            </SettingsPage>
         </AdminLayout>
     );
 }
@@ -638,6 +688,8 @@ export default function MarketingGoogle() {
 
 function BranchRow({ branch, min }: { branch: BranchLink; min: number }) {
     const t = useTranslate();
+    // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
+    const [ask, confirmDialog] = useConfirm();
     const [searching, setSearching] = useState(false);
     const [busy, setBusy] = useState(false);
 
@@ -727,9 +779,16 @@ function BranchRow({ branch, min }: { branch: BranchLink; min: number }) {
                             size="sm"
                             variant="outline"
                             disabled={busy}
-                            onClick={() => {
+                            onClick={async () => {
                                 /* الفكُّ يُؤكَّد: ضغطةٌ واحدةٌ تُطفئ رمزَ الإيصال في الفرع كلِّه */
-                                if (! window.confirm(t('إلغاء ربط هذا الفرع بخرائط Google؟'))) return;
+                                const go = await ask({
+                                    message: 'إلغاء ربط هذا الفرع بخرائط Google؟',
+                                    danger: true,
+                                    action: 'إلغاء الربط',
+                                });
+
+                                if (! go) return;
+
                                 act(() =>
                                     router.delete(route('admin.integrations.google.branch.unlink', branch.id), {
                                         preserveScroll: true,
@@ -751,6 +810,8 @@ function BranchRow({ branch, min }: { branch: BranchLink; min: number }) {
                 branch={branch}
                 min={min}
             />
+
+            {confirmDialog}
         </li>
     );
 }

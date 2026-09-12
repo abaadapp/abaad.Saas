@@ -172,9 +172,21 @@ class ExportController extends Controller
         return response()->streamDownload(function () use ($headers, $rows) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF"); // BOM لدعم العربية في Excel
-            fputcsv($out, $headers);
+            /*
+             * و`escape` يُمرَّر فارغًا صراحةً — لا يُترك لافتراضِ PHP.
+             *
+             * الافتراضيُّ شرطةٌ مائلة، وليس من CSV في شيء: حقلٌ فيه شرطةٌ
+             * قبل علامة اقتباس — كمقاس «5 بوصة» يُكتب بعلامةٍ بعد شرطة —
+             * يُكتب فيقرؤه إكسل ومَن سواه محرَّفًا. القيمةُ تتبدّل بصمتٍ
+             * ولا شيء يقول إنّها تبدّلت. والقياسيُّ (RFC 4180) لا escape
+             * فيه: الاقتباسُ يُضاعَف.
+             *
+             * وPHP 8.4 تُحذّر من تركه، وPHP 9 تجعل الفارغَ افتراضًا —
+             * فتمريرُه اليوم يُصلح التلفَ ويُثبّت السلوك قبل أن يتبدّل.
+             */
+            fputcsv($out, $headers, escape: '');
             foreach ($rows as $row) {
-                fputcsv($out, $row);
+                fputcsv($out, $row, escape: '');
             }
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);

@@ -340,7 +340,7 @@ class ReportDownloadController extends Controller
             // BOM: بلا هذه تفتح إكسل العربيةَ رموزًا
             fwrite($out, "\xEF\xBB\xBF");
             foreach ($lines as $line) {
-                fputcsv($out, $line);
+                fputcsv($out, $line, escape: '');
             }
             fclose($out);
         }, $this->filename($report, $filters).'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);

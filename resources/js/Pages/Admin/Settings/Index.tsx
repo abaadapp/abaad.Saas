@@ -13,7 +13,10 @@ import {
     Languages,
     RefreshCw,
     Save,
+    Percent,
     Search,
+    ShieldCheck,
+    Store,
     Trash2,
     TriangleAlert,
     Upload,
@@ -21,9 +24,16 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
+import StatusPill from '@/Components/StatusPill';
 import Toggle from '@/Components/Toggle';
+import {
+    PageActions,
+    SettingsGroup,
+    SettingsPage,
+    SettingsSection,
+    type SettingsWidth,
+} from '@/Components/Settings';
 import { Button } from '@/Components/ui/button';
-import { Card } from '@/Components/ui/card';
 import { Input, Textarea } from '@/Components/ui/input';
 import CustomAlerts, {
     type AlertMetric,
@@ -122,6 +132,32 @@ interface Props {
 const NAV = SETTINGS_NAV;
 
 type TabKey = (typeof NAV)[number]['items'][number]['key'];
+
+/**
+ * عرضُ كلِّ قسمٍ بحسب ما فيه — لا سقفٌ واحد للجميع.
+ *
+ * ═══ لماذا ═══
+ *
+ * كان القسم المفتوح يأخذ عرض اللوحة كلَّه (١٦٠٠ بكسل): نموذجٌ حقلاه حقلان
+ * يمتدّ حتى تقع التسمية في طرفٍ وقيمتُها في الطرف الآخر، والعينُ تقطع
+ * الشاشة عرضًا لتقرأ سطرًا. وكُتب حينها أنّ سقفًا للإعدادات وحدها «يجعلها
+ * أضيق من كلّ ما جاورها» — وهو صحيحٌ لو كان السقف على الصفحة. والسقفُ هنا
+ * على **النموذج** لا على الصفحة: الجداولُ والشجرةُ والسجلّ تبقى على عرض
+ * اللوحة كما كانت، لأنّ فيها ما يحتاجه.
+ *
+ * وما ليس في الخريطة يبقى بلا سقف — القاعدة الافتراضية هي القديمة.
+ */
+const SECTION_WIDTH: Partial<Record<TabKey, SettingsWidth>> = {
+    business: 'form',
+    finance: 'form',
+    permissions: 'form',
+    templates: 'form',
+    notifications: 'form',
+    'notifications-log': 'form',
+    backup: 'form',
+    // الموقع أوسع: فيه معاينةٌ بإطارٍ وقائمةُ أصناف لا تُقرآن في عمودٍ ضيّق
+    website: 'wide',
+};
 
 /**
  * أقسام «النظام» — بياناتها تُحسب على الخادم، فتُطلب في الرابط
@@ -493,13 +529,20 @@ export default function SettingsIndex() {
         });
     };
 
+    /*
+        قدمُ النموذج — وموضعُها تحت ما تحفظه لا في آخر الصفحة.
+
+        كانت واحدةً في ذيل البطاقة الكبرى مهما كان القسم، فيقف زرُّ «حفظ
+        التغييرات» تحت «لغة النظام» ولزرِّها حفظُه الخاص — زرّان متجاوران
+        يحفظ كلٌّ منهما غير ما يحفظ الآخر، ولا شيء يقول ذلك.
+    */
     const saveBar = (
-        <div className="mt-6 flex justify-end">
+        <PageActions className="mt-6">
             <Button type="submit" loading={form.processing}>
                 <Save />
                 {t('حفظ التغييرات')}
             </Button>
-        </div>
+        </PageActions>
     );
 
     return (
@@ -546,13 +589,12 @@ export default function SettingsIndex() {
                     ))}
                 </div>
             ) : (
-                /* قسمٌ مفتوح — بعرض اللوحة نفسها، فلا ينكمش المحتوى تحت اليد
-                   لحظة الفتح. وطولُ السطر يُضبط بعدد الأعمدة في كل نموذج لا
-                   بسقفٍ على الصفحة. min-w-0: يمنع جدولًا عريضًا من دفع
-                   الحاوية فتتجاوز الشاشة. */
+                /* قسمٌ مفتوح — عرضُه من وظيفته: انظر SECTION_WIDTH.
+                   min-w-0: يمنع جدولًا عريضًا من دفع الحاوية فتتجاوز الشاشة. */
                 <div className="min-w-0 scroll-mt-4">
                     {/* زرٌّ لا رابط: القسم يتبدّل هنا في مكانه بلا تنقّل */}
                     <BackToSettings as="button" onClick={goHub} />
+                    <SettingsPage width={SECTION_WIDTH[tab] ?? 'full'}>
             {tab === 'chart' ? (
                 <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
             ) : tab === 'website' ? (
@@ -586,23 +628,31 @@ export default function SettingsIndex() {
                 {showStoreCard && (
                 <>
                 {/*
-                    إنشاء المتجر — أربع خطواتٍ في بطاقةٍ واحدة.
+                    إنشاء المتجر — أربعُ مجموعاتٍ في قسمٍ واحد، ثمّ ما يُحفظ وحده.
 
                     و«أسهل طريقة ممكنة» تعني ألّا يُطلب من صاحب المحلّ ما لا
                     يملكه: لا نطاقًا يشتريه، ولا استضافةً يضبطها، ولا صورًا
                     يرفعها من جديد. عنوانٌ يكتبه، ولونٌ يختاره، وسطرٌ يعرّف به
                     — ومنتجاتُه التي في النظام أصلًا تصير صفحةً يفتحها زبونه.
+
+                    وكانت البطاقة الواحدة تحمل ستّة أشياء: العنوانَ والشكلَ
+                    والدفعَ والنشرَ وقائمةَ الأصناف والمعاينة — وثلاثةُ
+                    الأخيرة لا يحفظها زرُّ «حفظ ونشر»: الأصنافُ تُحفظ بالضغطة،
+                    والمعاينةُ لا تُحفظ أصلًا. فزرُّ حفظٍ واحدٌ في ذيل صندوقٍ
+                    فيه ما لا يحفظه يَعِد بما لا يفعل.
                 */}
                 <form onSubmit={saveStore}>
-                    <Card className="p-6">
-                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                                <h3 className="font-bold text-[#111]">{t('متجرك الإلكتروني')}</h3>
-                                <p className="mt-1 text-[13px] text-[#6b7280]">
-                                    {t('صفحةٌ يستضيفها أبعاد: منتجاتك بصورها وأسعارها، ويطلب منها الزبون عبر واتساب.')}
-                                </p>
-                            </div>
-                            {store.slug && storeForm.data.store_on && (
+                    <SettingsSection
+                        title="متجرك الإلكتروني"
+                        description="صفحةٌ يستضيفها أبعاد: منتجاتك بصورها وأسعارها، ويطلب منها الزبون عبر واتساب."
+                        icon={Globe}
+                        status={
+                            storeForm.data.store_on
+                                ? <StatusPill state="ready" label="منشور" />
+                                : <StatusPill state="off" label="غير منشور" />
+                        }
+                        action={
+                            store.slug && storeForm.data.store_on && (
                                 <Button variant="outline" size="sm" asChild>
                                     <a
                                         href={`https://${store.slug}.${store.domain}`}
@@ -613,9 +663,11 @@ export default function SettingsIndex() {
                                         {t('افتح متجري')}
                                     </a>
                                 </Button>
-                            )}
-                        </div>
-
+                            )
+                        }
+                        divided
+                    >
+                        <SettingsGroup title="عنوان متجرك">
                         {/* ١ — العنوان */}
                         <Field
                             label="عنوان متجرك"
@@ -642,8 +694,11 @@ export default function SettingsIndex() {
                             </p>
                         )}
 
+                        </SettingsGroup>
+
                         {/* ٢ — الشكل */}
-                        <div className="mt-6">
+                        <SettingsGroup title="شكل الصفحة">
+                        <div>
                             <p className="mb-2 text-sm font-medium text-[#111]">{t('اللون')}</p>
                             {/*
                                 ثيماتٌ معدودة لا منتقي ألوانٍ حرّ: صاحبُ محلٍّ
@@ -690,10 +745,10 @@ export default function SettingsIndex() {
                             </Field>
                         </div>
 
-                        {/* ٣ — الطلب والدفع */}
-                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                            <h4 className="mb-3 font-bold text-[#111]">{t('الطلب والدفع')}</h4>
+                        </SettingsGroup>
 
+                        {/* ٣ — الطلب والدفع */}
+                        <SettingsGroup title="الطلب والدفع">
                             <Field
                                 label="رقم واتساب للطلبات"
                                 hint="يصله الطلب مكتوبًا — ورقم متجرك إن تركته فارغًا"
@@ -742,10 +797,10 @@ export default function SettingsIndex() {
                                     </Field>
                                 </div>
                             )}
-                        </div>
+                        </SettingsGroup>
 
                         {/* ٤ — النشر */}
-                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                        <SettingsGroup title="النشر">
                             <Toggle
                                 on={storeForm.data.store_on}
                                 onChange={(v) => storeForm.setData('store_on', v)}
@@ -762,37 +817,53 @@ export default function SettingsIndex() {
                                     {t('لا صنف معروضًا في متجرك — ستُفتح الصفحة خالية. اعرض صنفًا قبل نشرها.')}
                                 </p>
                             )}
-                        </div>
+                        </SettingsGroup>
 
-                        {/*
-                            ٥ — ما يُعرض.
+                        <SettingsGroup>
+                            <PageActions>
+                                <Button type="submit" loading={storeForm.processing}>
+                                    <Save />
+                                    {t('حفظ ونشر')}
+                                </Button>
+                            </PageActions>
+                        </SettingsGroup>
+                    </SettingsSection>
+                </form>
 
-                            وكانت الصفحة تعرض كلّ صنفٍ فعّال بلا استثناء: أوراقُ
-                            التغليف ومكوّناتُ الباقات وأسعارُ الجملة تصل زبائن
-                            التاجر، ولا يملك منعَ صنفٍ إلّا بإيقاف بيعه عند
-                            الطاولة أيضًا — أي أن يُوقف بيعه ليُخفيه.
-                        */}
-                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                            <div className="mb-3 flex flex-wrap items-center gap-3">
-                                <div>
-                                    <p className="text-sm font-medium text-[#111]">{t('ما يظهر في متجرك')}</p>
-                                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">
-                                        {t(':n صنفًا معروضًا من :all', {
-                                            n: store.productCount,
-                                            all: store.products.filter((p) => p.active).length,
-                                        })}
-                                    </p>
-                                </div>
-                                <div className="ms-auto flex flex-wrap gap-2">
-                                    <Button type="button" variant="outline" size="sm" onClick={() => setShown(true, null)}>
-                                        {t('اعرض الكل')}
-                                    </Button>
-                                    <Button type="button" variant="outline" size="sm" onClick={() => setShown(false, null)}>
-                                        {t('أخفِ الكل')}
-                                    </Button>
-                                </div>
-                            </div>
+                {/*
+                    ٥ — ما يُعرض. قسمٌ قائمٌ بذاته لأنّه يُحفظ بذاته.
 
+                    وكانت الصفحة تعرض كلّ صنفٍ فعّال بلا استثناء: أوراقُ
+                    التغليف ومكوّناتُ الباقات وأسعارُ الجملة تصل زبائن
+                    التاجر، ولا يملك منعَ صنفٍ إلّا بإيقاف بيعه عند
+                    الطاولة أيضًا — أي أن يُوقف بيعه ليُخفيه.
+
+                    والضغطةُ هنا تصل الخادم فورًا (`setShown`) ولا تنتظر «حفظ
+                    ونشر» — فكونُها داخل نموذجٍ له زرُّ حفظٍ كان يَعِد بغير ما
+                    يقع: من أخفى صنفًا ثمّ غادر بلا حفظٍ ظنّه لم يُخفَ.
+                */}
+                <SettingsSection
+                    title="ما يظهر في متجرك"
+                    description="تُحفظ الضغطة فورًا — لا تنتظر «حفظ ونشر»."
+                    status={
+                        <span className="text-[12px] text-[#9ca3af]">
+                            {t(':n صنفًا معروضًا من :all', {
+                                n: store.productCount,
+                                all: store.products.filter((p) => p.active).length,
+                            })}
+                        </span>
+                    }
+                    action={
+                        <>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setShown(true, null)}>
+                                {t('اعرض الكل')}
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setShown(false, null)}>
+                                {t('أخفِ الكل')}
+                            </Button>
+                        </>
+                    }
+                >
                             {store.products.length > 8 && (
                                 <Input
                                     value={pickQuery}
@@ -836,42 +907,34 @@ export default function SettingsIndex() {
                                         </li>
                                     ))}
                             </ul>
-                        </div>
+                </SettingsSection>
 
-                        {/* ٦ — المعاينة: المتجر نفسه في إطار، لا رسمًا يشبهه */}
-                        <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                            <div className="mb-3 flex items-center gap-2">
-                                <p className="text-sm font-medium text-[#111]">{t('معاينة')}</p>
-                                <p className="text-[12px] text-[#9ca3af]">
-                                    {t('هكذا يراه زبونك — ولا يفتحها أحد سواك')}
-                                </p>
-                                <button
-                                    type="button"
-                                    onClick={reloadPreview}
-                                    aria-label={t('تحديث المعاينة')}
-                                    className="ms-auto rounded-lg p-2 text-[#9ca3af] hover:text-[#111]"
-                                >
-                                    <RefreshCw className="size-4" />
-                                </button>
-                            </div>
-                            <div className="overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-2">
-                                <iframe
-                                    key={previewKey}
-                                    src={route('admin.store.preview')}
-                                    title={t('معاينة المتجر')}
-                                    className="h-[560px] w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="mt-6 flex justify-end">
-                            <Button type="submit" loading={storeForm.processing}>
-                                <Save />
-                                {t('حفظ ونشر')}
-                            </Button>
-                        </div>
-                    </Card>
-                </form>
+                {/* ٦ — المعاينة: المتجر نفسه في إطار، لا رسمًا يشبهه */}
+                <SettingsSection
+                    title="معاينة"
+                    description="هكذا يراه زبونك — ولا يفتحها أحد سواك."
+                    action={
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={reloadPreview}
+                            aria-label={t('تحديث المعاينة')}
+                        >
+                            <RefreshCw />
+                            {t('تحديث المعاينة')}
+                        </Button>
+                    }
+                >
+                    <div className="overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-2">
+                        <iframe
+                            key={previewKey}
+                            src={route('admin.store.preview')}
+                            title={t('معاينة المتجر')}
+                            className="h-[560px] w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white"
+                        />
+                    </div>
+                </SettingsSection>
                 </>
                 )}
 
@@ -893,15 +956,19 @@ export default function SettingsIndex() {
                     الفاتورة، ولا علاقة له بموقعٍ خارج النظام.
                 */}
                 <form onSubmit={saveSite}>
-                    <Card className="p-6">
-                        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                                <h3 className="font-bold text-[#111]">{t('الموقع الإلكتروني')}</h3>
-                                <p className="mt-1 text-[13px] text-[#6b7280]">
-                                    {t('موقعك أو صفحتك خارج النظام — «أبعاد» لا يستضيفه، بل يربط إليه ويفحص ظهوره في البحث.')}
-                                </p>
-                            </div>
-                            {siteForm.data.site_on && siteForm.data.site_domain && (
+                    <SettingsSection
+                        title="الموقع الإلكتروني"
+                        description="موقعك أو صفحتك خارج النظام — «أبعاد» لا يستضيفه، بل يربط إليه ويفحص ظهوره في البحث."
+                        icon={Globe}
+                        status={
+                            ! siteForm.data.site_on
+                                ? <StatusPill state="off" />
+                                : siteForm.data.site_domain.trim()
+                                  ? <StatusPill state="ready" />
+                                  : <StatusPill state="action" label="مفعَّل بلا نطاق" />
+                        }
+                        action={
+                            siteForm.data.site_on && siteForm.data.site_domain && (
                                 <Button variant="outline" size="sm" asChild>
                                     <a
                                         href={`https://${siteForm.data.site_domain}`}
@@ -912,9 +979,9 @@ export default function SettingsIndex() {
                                         {t('فتح الموقع')}
                                     </a>
                                 </Button>
-                            )}
-                        </div>
-
+                            )
+                        }
+                    >
                         <Toggle
                             on={siteForm.data.site_on}
                             onChange={(v) => siteForm.setData('site_on', v)}
@@ -959,13 +1026,13 @@ export default function SettingsIndex() {
                             </p>
                         )}
 
-                        <div className="mt-6 flex justify-end">
+                        <PageActions className="mt-6">
                             <Button type="submit" loading={siteForm.processing}>
                                 <Save />
                                 {t('حفظ التغييرات')}
                             </Button>
-                        </div>
-                    </Card>
+                        </PageActions>
+                    </SettingsSection>
                 </form>
                 </>
                 )}
@@ -979,39 +1046,37 @@ export default function SettingsIndex() {
                     sections={alertSections ?? {}}
                 />
             ) : tab === 'notifications-log' ? (
-                <Card className="p-6">
-                    <div className="mb-6 flex items-start justify-between gap-3">
-                        <div>
-                            <h3 className="font-bold text-[#111]">{t('التنبيهات المرسلة')}</h3>
-                            <p className="mt-1 text-[13px] text-[#6b7280]">
-                                {t('جميع التنبيهات التي أُرسلت إليك — مخزون منخفض وطلبات بانتظار التجهيز.')}
-                            </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f3f4f6] px-3 py-1.5 text-sm font-medium text-[#374151]">
-                                <BellRing className="size-4" />
-                                {notifs.length} {t('تنبيه')}
-                            </span>
-                            {notifs.length > 0 && (
-                                <Button
-                                    type="button"
-                                    variant="danger"
-                                    onClick={async () => {
-                                        if (! await ask({ message: 'حذف جميع التنبيهات المرسلة؟', danger: true, action: 'حذف' })) return;
-                                        router.post(
-                                            route('admin.notifications.clear'),
-                                            {},
-                                            { preserveScroll: true, onSuccess: () => setNotifs([]) },
-                                        );
-                                    }}
-                                >
-                                    <Trash2 />
-                                    {t('حذف الكل')}
-                                </Button>
-                            )}
-                        </div>
-                    </div>
-
+                <SettingsSection
+                    title="التنبيهات المرسلة"
+                    description="جميع التنبيهات التي أُرسلت إليك — مخزون منخفض وطلبات بانتظار التجهيز."
+                    icon={BellRing}
+                    status={
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f3f4f6] px-3 py-1 text-[12px] font-medium text-[#374151]">
+                            <BellRing className="size-3.5" />
+                            {notifs.length} {t('تنبيه')}
+                        </span>
+                    }
+                    action={
+                        notifs.length > 0 && (
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="danger"
+                                onClick={async () => {
+                                    if (! await ask({ message: 'حذف جميع التنبيهات المرسلة؟', danger: true, action: 'حذف' })) return;
+                                    router.post(
+                                        route('admin.notifications.clear'),
+                                        {},
+                                        { preserveScroll: true, onSuccess: () => setNotifs([]) },
+                                    );
+                                }}
+                            >
+                                <Trash2 />
+                                {t('حذف الكل')}
+                            </Button>
+                        )
+                    }
+                >
                     {notifs.length === 0 ? (
                         <div className="py-12 text-center">
                             <BellOff className="mx-auto mb-3 size-8 text-[#d1d5db]" />
@@ -1064,7 +1129,7 @@ export default function SettingsIndex() {
                             ))}
                         </div>
                     )}
-                </Card>
+                </SettingsSection>
             ) : tab === 'branches' ? (
                 /* بياناته تصل مع الرابط؛ وغيابها يعني فتحًا بلا `?section` */
                 <BranchesPanel branches={branches ?? []} />
@@ -1097,22 +1162,27 @@ export default function SettingsIndex() {
                     windowDays={windowDays ?? 0}
                 />
             ) : tab === 'backup' ? (
-                <div className="grid grid-cols-1 gap-6">
-                    <Card className="p-6">
-                        <h3 className="mb-2 font-bold text-[#111]">{t('تنزيل نسخة احتياطية')}</h3>
-                        <p className="mb-4 text-[13px] text-[#6b7280]">
-                            {t('يشمل الملف كامل بيانات متجرك: المنتجات، الأقسام، العملاء، الطلبات، المصروفات وغيرها.')}
-                        </p>
-                        <Button asChild>
-                            <a href={route('admin.backup.download')}>
-                                <Download />
-                                {t('تنزيل النسخة الآن')}
-                            </a>
-                        </Button>
-                    </Card>
+                <div className="space-y-6">
+                    <SettingsSection
+                        title="تنزيل نسخة احتياطية"
+                        description="يشمل الملف كامل بيانات متجرك: المنتجات، الأقسام، العملاء، الطلبات، المصروفات وغيرها."
+                        icon={Download}
+                    >
+                        <PageActions>
+                            <Button asChild>
+                                <a href={route('admin.backup.download')}>
+                                    <Download />
+                                    {t('تنزيل النسخة الآن')}
+                                </a>
+                            </Button>
+                        </PageActions>
+                    </SettingsSection>
 
-                    <Card className="p-6">
-                        <h3 className="mb-2 font-bold text-[#111]">{t('استعادة من نسخة احتياطية')}</h3>
+                    <SettingsSection
+                        title="استعادة من نسخة احتياطية"
+                        description="ما في الملفّ يحلّ محلّ ما في متجرك — فاقرأ التحذير قبل أن تختار."
+                        icon={Upload}
+                    >
                         <p className="mb-4 flex items-start gap-2 rounded-[12px] bg-[#fef2f2] px-3 py-2.5 text-[12px] text-[#b91c1c]">
                             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                             {t('تحذير: ستحل بيانات النسخة محل بيانات متجرك الحالية.')}
@@ -1136,19 +1206,33 @@ export default function SettingsIndex() {
                                     className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
                                 />
                             </Field>
-                            <Button type="submit" variant="danger" className="mt-4" disabled={!backupFile}>
-                                <Upload />
-                                {t('استعادة البيانات')}
-                            </Button>
+                            <PageActions className="mt-4">
+                                <Button type="submit" variant="danger" disabled={!backupFile}>
+                                    <Upload />
+                                    {t('استعادة البيانات')}
+                                </Button>
+                            </PageActions>
                         </form>
-                    </Card>
+                    </SettingsSection>
                 </div>
             ) : (
-                <form onSubmit={submit}>
-                    <Card className="p-6">
+                /*
+                    نموذجٌ واحد وأقسامٌ عدّة — لا بطاقةٌ كبرى واحدة.
+
+                    كانت البطاقة الواحدة تحمل القسم كلَّه وتفصل ما فيه بخطوطٍ
+                    أفقيّة: بياناتُ النشاط ثمّ الشعار ثمّ بريد الاستعادة ثمّ
+                    اللغة — أربعةُ مواضيعَ في صندوقٍ واحد لا يُرى أوّلُه من
+                    آخره على شاشةٍ صغيرة. والحقولُ هي هي، والحفظُ هو هو —
+                    وإنّما صار لكلّ موضوعٍ سطحُه.
+                */
+                <form onSubmit={submit} className="space-y-6">
                         {tab === 'business' && (
                             <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('بيانات النشاط')}</h3>
+                                <SettingsSection
+                                    title="بيانات النشاط"
+                                    description="ما يُطبع في رأس فواتيرك وإيصالاتك — واسمُ متجرك أوّلُه."
+                                    icon={Store}
+                                >
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                     <Field label="اسم المتجر" required error={form.errors.shop_name}>
                                         <Input value={form.data.shop_name} onChange={(e) => form.setData('shop_name', e.target.value)} required />
@@ -1164,6 +1248,9 @@ export default function SettingsIndex() {
                                     </Field>
                                 </div>
 
+                                {saveBar}
+                                </SettingsSection>
+
                                 {/*
                                     الشعار هنا لا في «الموقع الإلكتروني».
 
@@ -1173,12 +1260,11 @@ export default function SettingsIndex() {
                                     والإيصال. فعاد إلى بيانات النشاط، مع الاسم
                                     والهاتف والعنوان التي تُطبع معه.
                                 */}
-                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                                    <h3 className="mb-1 font-bold text-[#111]">{t('الشعار')}</h3>
-                                    <p className="mb-4 text-[13px] text-[#6b7280]">
-                                        {t('يظهر في الفواتير والإيصالات — وقالب فاتورة البيع يُظهره أو يُخفيه.')}
-                                    </p>
-
+                                <SettingsSection
+                                    title="الشعار"
+                                    description="يظهر في الفواتير والإيصالات — وقالب فاتورة البيع يُظهره أو يُخفيه."
+                                    icon={ImageIcon}
+                                >
                                     <div className="flex flex-wrap items-center gap-5">
                                         <span className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa]">
                                             {logoPreview || business.logo ? (
@@ -1229,7 +1315,7 @@ export default function SettingsIndex() {
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                </SettingsSection>
 
                                 {/*
                                     بريد الاستعادة — من جنس ما فوقه: بيانٌ
@@ -1251,8 +1337,11 @@ export default function SettingsIndex() {
                                     في قالب الجذر فتلزم إعادة تحميلٍ بعده — وجمعُهما
                                     في زرٍّ واحد يعيد تحميل الصفحة على كل حفظ اسم.
                                 */}
-                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                                    <h3 className="mb-4 font-bold text-[#111]">{t('لغة النظام')}</h3>
+                                <SettingsSection
+                                    title="لغة النظام"
+                                    description="اتجاهُ الواجهة يتبع اللغة — ويُحفظ بزرّه وحده، لأنّ الصفحة تُعاد بعده."
+                                    icon={Languages}
+                                >
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         {[
                                             { code: 'ar', label: 'العربية', hint: 'من اليمين إلى اليسار (RTL)' },
@@ -1281,7 +1370,7 @@ export default function SettingsIndex() {
                                             </label>
                                         ))}
                                     </div>
-                                    <div className="mt-4 flex justify-end">
+                                    <PageActions className="mt-4">
                                         <Button
                                             type="button"
                                             variant="outline"
@@ -1297,8 +1386,8 @@ export default function SettingsIndex() {
                                             <Languages />
                                             {t('حفظ اللغة')}
                                         </Button>
-                                    </div>
-                                </div>
+                                    </PageActions>
+                                </SettingsSection>
                             </>
                         )}
 
@@ -1313,7 +1402,13 @@ export default function SettingsIndex() {
                         */}
                         {tab === 'finance' && (
                             <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('الضرائب')}</h3>
+                                <SettingsSection
+                                    title="الضرائب والعملة والدفع"
+                                    description="ثلاثةٌ تُضبط في جلسةٍ واحدة عند تجهيز المتجر — وحفظةٌ واحدة تكتبها كلَّها."
+                                    icon={Percent}
+                                    divided
+                                >
+                                <SettingsGroup title="الضرائب">
                                 <Toggle
                                     on={form.data.vat_enabled}
                                     onChange={(v) => form.setData('vat_enabled', v)}
@@ -1351,8 +1446,9 @@ export default function SettingsIndex() {
                                     </Field>
                                 </div>
 
-                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                                    <h3 className="mb-4 font-bold text-[#111]">{t('العملة')}</h3>
+                                </SettingsGroup>
+
+                                <SettingsGroup title="العملة">
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         <Field label="العملة" error={form.errors.currency}>
                                             <Input dir="ltr" value={form.data.currency} onChange={(e) => form.setData('currency', e.target.value)} />
@@ -1375,30 +1471,35 @@ export default function SettingsIndex() {
                                             />
                                         </Field>
                                     </div>
-                                </div>
+                                </SettingsGroup>
 
-                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                                    <h3 className="mb-4 font-bold text-[#111]">{t('طرق الدفع')}</h3>
-                                    {PAYMENT_METHODS.map((m) => (
-                                        <Toggle
-                                            key={m.key}
-                                            on={form.data[m.key]}
-                                            onChange={(v) => form.setData(m.key, v)}
-                                            label={m.label}
-                                            hint={m.hint}
-                                        />
-                                    ))}
-                                </div>
+                                <SettingsGroup title="طرق الدفع">
+                                    <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                        {PAYMENT_METHODS.map((m) => (
+                                            <div key={m.key} className="py-2 first:pt-0 last:pb-0">
+                                                <Toggle
+                                                    on={form.data[m.key]}
+                                                    onChange={(v) => form.setData(m.key, v)}
+                                                    label={m.label}
+                                                    hint={m.hint}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </SettingsGroup>
+                                </SettingsSection>
+
+                                {saveBar}
                             </>
                         )}
 
                         {tab === 'permissions' && (
                             <>
-                                <h3 className="mb-2 font-bold text-[#111]">{t('صلاحيات الموظفين')}</h3>
-                                <p className="mb-5 text-[13px] text-[#6b7280]">
-                                    {t('الصلاحية تُحدَّد لكل موظف على حدة من ملفه — ولا قسم يُفتح ما لم يُمنح.')}
-                                </p>
-
+                                <SettingsSection
+                                    title="صلاحيات الموظفين"
+                                    description="الصلاحية تُحدَّد لكل موظف على حدة من ملفه — ولا قسم يُفتح ما لم يُمنح."
+                                    icon={ShieldCheck}
+                                >
                                 {/*
                                     ما يراه الموظّف عن نفسه — لا ما يفتحه من أقسام.
                                     وموضعُه هنا لأنّ صاحبه واحد: من يضبط صلاحيات
@@ -1446,6 +1547,9 @@ export default function SettingsIndex() {
                                         ))}
                                     </ul>
                                 )}
+
+                                {saveBar}
+                                </SettingsSection>
                             </>
                         )}
 
@@ -1464,11 +1568,11 @@ export default function SettingsIndex() {
                                     صندوقٌ بعرض مئتي بكسل بجانب عشرين حقلًا لا
                                     يُرى فيه شكل ورقة.
                                 */}
-                                <h3 className="mb-1 font-bold text-[#111]">{t('قوالب الأوراق')}</h3>
-                                <p className="mb-5 text-[13px] text-[#6b7280]">
-                                    {t('لكل ورقةٍ في النظام قالبٌ يُحرَّر وحده — اختر ورقةً لتفتح محرّرها ومعاينتها.')}
-                                </p>
-
+                                <SettingsSection
+                                    title="قوالب الأوراق"
+                                    description="لكل ورقةٍ في النظام قالبٌ يُحرَّر وحده — اختر ورقةً لتفتح محرّرها ومعاينتها."
+                                    icon={FileText}
+                                >
                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     {(templates ?? []).map((x) => (
                                         <Link
@@ -1493,8 +1597,12 @@ export default function SettingsIndex() {
                                     ووضعُهما في محرّر ورقةٍ واحدة يجعل تعديلَهما
                                     من ورقةٍ يغيّر ما تطبعه أخرى بلا أن يقول.
                                 */}
-                                <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                                    <h3 className="mb-4 font-bold text-[#111]">{t('ترقيم الفواتير')}</h3>
+                                </SettingsSection>
+
+                                <SettingsSection
+                                    title="ترقيم الفواتير"
+                                    description="بادئةُ الرقم وأوّلُه ليسا شكلَ ورقةٍ بعينها بل ترقيمُ الفواتير كلّها."
+                                >
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         <Field label="بادئة رقم الفاتورة" error={form.errors.inv_prefix}>
                                             <Input dir="ltr" value={form.data.inv_prefix} onChange={(e) => form.setData('inv_prefix', e.target.value)} />
@@ -1510,13 +1618,19 @@ export default function SettingsIndex() {
                                     <p className="mt-3 text-[11px] leading-relaxed text-[#9ca3af]">
                                         {t('الطباعة التلقائية بعد البيع تُضبط لكل طابعة من «الأجهزة» — لأن الصندوق الذي فيه طابعة يطبع، وغيره لا.')}
                                     </p>
-                                </div>
+
+                                    {saveBar}
+                                </SettingsSection>
                             </>
                         )}
 
                         {tab === 'notifications' && (
                             <>
-                                <h3 className="mb-4 font-bold text-[#111]">{t('الإشعارات')}</h3>
+                                <SettingsSection
+                                    title="الإشعارات"
+                                    description="ما يصلك على بريدك — والمقبضُ قرارُك، ووصولُ البريد شرطٌ يُقال أعلاه إن تعذّر."
+                                    icon={BellRing}
+                                >
                                 {/*
                                     والحقيقةُ فوق المفاتيح لا بعد شهرٍ من صمتها.
 
@@ -1549,13 +1663,15 @@ export default function SettingsIndex() {
                                     label="ملخّص الأداء اليومي"
                                     hint="يصل آخر اليوم بمبيعات اليوم وأبرز أرقامه."
                                 />
+
+                                {saveBar}
+                                </SettingsSection>
                             </>
                         )}
 
-                        {saveBar}
-                    </Card>
                 </form>
             )}
+                    </SettingsPage>
                 </div>
             )}
 

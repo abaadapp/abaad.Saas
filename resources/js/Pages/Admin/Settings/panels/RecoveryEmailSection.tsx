@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { router, useForm } from '@inertiajs/react';
 import { AlertTriangle, KeyRound, ShieldCheck } from 'lucide-react';
 import Field from '@/Components/Field';
+import { SettingsSection } from '@/Components/Settings';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
@@ -55,19 +56,24 @@ export default function RecoveryEmailSection({ recovery }: { recovery: Recovery 
         </span>
     );
 
+    /*
+        قسمٌ قائمٌ بذاته لا كتلةٌ يفصلها خطّ.
+
+        كان يعيش داخل بطاقة «بيانات النشاط» تحت خطٍّ أفقيّ، وهو موضوعٌ آخر:
+        الاسمُ والهاتفُ يُطبعان على الفاتورة، وهذا يُستعاد به الحسابُ يوم
+        تُنسى كلمة المرور. فصار له سطحُه كما لبقيّة المواضيع.
+    */
     return (
-        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-            <div className="mb-1 flex flex-wrap items-center gap-3">
-                <h3 className="font-bold text-[#111]">{t('بريد الاستعادة')}</h3>
-                {badge}
-            </div>
-
-            <p className="mb-5 text-[13px] text-[#6b7280]">
-                {recovery.verified
+        <SettingsSection
+            title="بريد الاستعادة"
+            description={
+                recovery.verified
                     ? t('إليه وحده يُرسَل رمز استعادة كلمة المرور — ولا يُقبل غيره.')
-                    : t('اضبطه الآن لتستعيد حسابك بنفسك يوم تنسى كلمة المرور. وبدونه ستحتاج إلى إدارة أبعاد.')}
-            </p>
-
+                    : t('اضبطه الآن لتستعيد حسابك بنفسك يوم تنسى كلمة المرور. وبدونه ستحتاج إلى إدارة أبعاد.')
+            }
+            icon={KeyRound}
+            status={badge}
+        >
             {recovery.email && (
                 <p className="mb-5 text-[13px] text-[#111]" dir="ltr">
                     {recovery.email}
@@ -181,6 +187,6 @@ export default function RecoveryEmailSection({ recovery }: { recovery: Recovery 
                     </div>
                 </div>
             )}
-        </div>
+        </SettingsSection>
     );
 }

@@ -3,18 +3,22 @@
 namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Models\CrmAiFeedback;
 use App\Models\CrmLead;
 use App\Models\CrmMessage;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Crm;
+use App\Support\CrmAssistant;
 use App\Support\CrmLeads;
+use App\Support\CrmSignals;
 use App\Support\CrmWhatsApp;
 use App\Support\Pagination;
 use App\Support\Search;
 use App\Support\WhatsAppPhone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -95,6 +99,18 @@ class CrmConversationController extends Controller
                 ->map(fn (User $u) => ['value' => (string) $u->id, 'label' => $u->name])->all(),
             'active' => $open ? $this->detail($open) : null,
             'messages' => $open ? $this->thread($open) : [],
+            /*
+             * ما قرأناه من المحادثة — مقيسًا، ومعه الجملةُ التي دلّت عليه.
+             *
+             * ولا يُعرض إلّا لمحادثةٍ مفتوحة: حسابُه لعشرين صفًّا في القائمة
+             * يقرأ رسائلَها كلَّها في كلّ فتحةِ شاشة.
+             */
+            'signals' => $open ? $this->signals($open) : null,
+            /* وحالُ المساعد: متاحٌ أو لا — ولمَ لا، فالفراغُ يُفسَّر عطبًا */
+            'assistant' => [
+                'available' => CrmAssistant::available(),
+                'reason' => CrmAssistant::unavailableReason(),
+            ],
             /* وحالُ الخطّ يُقال: شاشةٌ صامتةٌ عن رقمٍ غير موصول تُفسَّر عطبًا */
             'line' => [
                 'connected' => CrmWhatsApp::connected(),
@@ -112,9 +128,31 @@ class CrmConversationController extends Controller
     public function reply(Request $request, int $id): RedirectResponse
     {
         $lead = CrmLead::findOrFail($id);
-        $data = $request->validate(['body' => ['required', 'string', 'max:4000']]);
+
+        $data = $request->validate([
+            'body' => ['required', 'string', 'max:4000'],
+            /*
+             * ومن اقترحها يُقيَّد — إن اقترحها أحد.
+             *
+             * رسالةٌ خرجت إلى عميل لا يُعرف بعد شهرٍ أكتبها إنسانٌ أم نموذج.
+             * وإن وعدت بشيء، فالفرقُ بين الحالين هو الفرقُ بين خطأِ موظّفٍ
+             * وخطأِ نظام.
+             *
+             * والقيمةُ تأتي من الشاشة، وهي غيرُ موثوقةٍ بطبعها — لكنّها
+             * تُقيَّد ولا يُبنى عليها إذن: لا بابَ يُفتح بها ولا حدَّ يُرفع.
+             */
+            'ai_model' => ['nullable', 'string', 'max:60'],
+            'ai_edited' => ['nullable', 'boolean'],
+        ]);
 
         $message = CrmWhatsApp::send($lead, $request->user(), $data['body']);
+
+        if (filled($data['ai_model'] ?? null)) {
+            $message->forceFill([
+                'ai_model' => $data['ai_model'],
+                'ai_edited' => (bool) ($data['ai_edited'] ?? false),
+            ])->save();
+        }
 
         Activity::log('updated', 'ردّ على العميل المحتمل '.$lead->displayName().' عبر واتساب');
 
@@ -154,7 +192,91 @@ class CrmConversationController extends Controller
             ]);
     }
 
+    /* ═══════════════════ المساعد ═══════════════════ */
+
+    /**
+     * اقتراحُ ردٍّ — يُعاد إلى الشاشة، ولا يخرج إلى أحد.
+     *
+     * ولا سطرَ هنا ينادي `CrmWhatsApp::send`: الاقتراحُ نصٌّ يُعرض، والإرسالُ
+     * فعلٌ يقرّره إنسان. ودمجُ البابين يجعل ضغطةً واحدةً ترسل ما لم يُقرأ.
+     */
+    public function suggest(Request $request, int $id): RedirectResponse
+    {
+        $lead = CrmLead::findOrFail($id);
+        $data = $request->validate(['steer' => ['nullable', 'string', 'max:300']]);
+
+        $reply = CrmAssistant::suggest($lead, $data['steer'] ?? null);
+
+        if (! $reply->ok) {
+            return back()->with('toast', ['msg' => (string) $reply->error, 'type' => 'error']);
+        }
+
+        Activity::log('updated', 'طلب اقتراح ردٍّ للعميل المحتمل '.$lead->displayName());
+
+        /*
+         * والاقتراحُ يعود في الجلسة لا في القاعدة.
+         *
+         * صفٌّ لكلّ اقتراحٍ يُولَّد ثمّ يُهمَل يملأ جدولًا بما لم يُقرأ. وما
+         * يُحفظ هو ما أُرسل — ومعه من ولّده، انظر `reply`.
+         */
+        return back()->with('suggestion', ['text' => $reply->text, 'model' => $reply->model]);
+    }
+
+    /**
+     * حكمُ الموظّف على اقتراح — ويُقرأ لتحسين التعليمات لا لتدريب نموذج.
+     *
+     * ولا يُقال في أيّ شاشةٍ إنّ النموذج «يتعلّم»: لا تدريبَ يجري، وادّعاؤه
+     * يجعل من يضغط الزرَّ يظنّ أنّه علّم شيئًا.
+     */
+    public function feedback(Request $request, int $id): RedirectResponse
+    {
+        $lead = CrmLead::findOrFail($id);
+
+        $data = $request->validate([
+            'verdict' => ['required', Rule::in(['up', 'down'])],
+            'reason' => ['nullable', Rule::in([
+                'wrong_info', 'wrong_tone', 'too_long', 'too_formal',
+                'wrong_price', 'missed_intent', 'other',
+            ])],
+            'suggestion' => ['required', 'string', 'max:8000'],
+            'model' => ['nullable', 'string', 'max:60'],
+        ]);
+
+        CrmAiFeedback::create([
+            'lead_id' => $lead->id,
+            'user_id' => $request->user()->id,
+            'user_name' => $request->user()->name,
+            'verdict' => $data['verdict'],
+            'reason' => $data['reason'] ?? null,
+            'suggestion' => $data['suggestion'],
+            'model' => $data['model'] ?? null,
+        ]);
+
+        return back()->with('toast', ['msg' => __('سُجّل رأيُك'), 'type' => 'success']);
+    }
+
     /* ═══════════════════ الأدوات ═══════════════════ */
+
+    /**
+     * ما يُعرض في لوحة التحليل — إشاراتٌ مقيسةٌ لا تقديرُ نموذج.
+     *
+     * ولكلّ إشارةٍ اقتباسُها: «سأل عن السعر» بلا الجملة ادّعاءٌ يُصدَّق ولا
+     * يُراجَع، ومعها يقرأ الموظّفُ ما قاله صاحبُه ويحكم.
+     *
+     * @return array<string, mixed>
+     */
+    private function signals(CrmLead $lead): array
+    {
+        $read = CrmSignals::read($lead);
+        $score = CrmSignals::score($lead, $read);
+
+        return [
+            ...$read,
+            'score' => $score['score'],
+            'scoreReasons' => $score['reasons'],
+            'nextAction' => CrmSignals::nextAction($lead, $read),
+        ];
+    }
 
     private function filter($q, array $filters, User $user): void
     {

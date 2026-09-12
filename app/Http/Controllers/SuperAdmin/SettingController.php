@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Plan;
 use App\Models\Setting;
 use App\Support\Activity;
+use App\Support\CrmAssistant;
 use App\Support\GoogleBilling;
 use App\Support\GoogleReviews;
 use App\Support\PlatformConfig;
@@ -55,6 +56,15 @@ class SettingController extends Controller
         'whatsapp_enabled' => ['nullable', 'boolean'],
         'whatsapp_shared_enabled' => ['nullable', 'boolean'],
         'whatsapp_shared_default_monthly_limit' => ['nullable', 'integer', 'min:-1', 'max:1000000'],
+
+        /*
+         * وضعُ المساعد الذكيّ في CRM.
+         *
+         * والقائمةُ المقبولة `CrmAssistant::MODES` — وفيها اليوم اثنان لا
+         * خمسة: «متوقّف» و«اقتراحُ الردّ فقط». وقيمةٌ تُقبل هنا لوضعٍ لم
+         * يُبنَ تعني مشغّلًا يظنّ العملاءَ يُردّ عليهم تلقائيًّا ولا يردّ أحد.
+         */
+        'crm_ai_mode' => ['nullable', 'in:'.CrmAssistant::OFF.','.CrmAssistant::SUGGEST],
     ];
 
     public function update(Request $request)

@@ -84,6 +84,17 @@ class CrmStaysOutOfTenantDataTest extends TestCase
             base_path('app/Support/CrmWhatsApp.php'),
             base_path('app/Http/Controllers/SuperAdmin/CrmConversationController.php'),
             base_path('app/Models/CrmMessage.php'),
+            /*
+             * والمساعدُ الذكيّ ومعرفتُه وإشاراتُه.
+             *
+             * وأخطرُها `CrmKnowledge`: ما فيها يُرسَل إلى مزوّدٍ خارجيّ. فسطرٌ
+             * يقرأ `Customer::` ليُخبر النموذجَ «عن عملائنا» يُخرج أسماءَ
+             * زبائنِ التجّار من الخادم إلى شركةٍ أخرى.
+             */
+            base_path('app/Support/CrmAssistant.php'),
+            base_path('app/Support/CrmKnowledge.php'),
+            base_path('app/Support/CrmSignals.php'),
+            base_path('app/Models/CrmAiFeedback.php'),
         ];
     }
 

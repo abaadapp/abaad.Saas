@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\WhatsAppConnection;
 use App\Support\Billing;
 use App\Support\BusinessTypes;
+use App\Support\CrmAssistant;
 use App\Support\Demo;
 use App\Support\GoogleBilling;
 use App\Support\GoogleReviews;
@@ -417,6 +418,17 @@ class PageController extends Controller
                     ->orderByDesc('id')->first(),
                 withIds: true,
             ),
+            /*
+             * وحالُ مزوّد الذكاء الاصطناعيّ — اسمُه وهل هو صالحٌ للنداء.
+             *
+             * ولا يخرج المفتاحُ ولا طرفٌ منه: `ready` سؤالٌ عن وجوده لا عن
+             * قيمته. ومقبضٌ يُعرض فوق مزوّدٍ غائبٍ لا يُدير شيئًا — فيُقال
+             * حالُه قبل المقبض.
+             */
+            'aiProvider' => [
+                'ready' => CrmAssistant::provider()->ready(),
+                'name' => CrmAssistant::provider()->name(),
+            ],
             /* ورقمُ المبيعات وصلةٌ ثانيةٌ تُعرض وحدَها — نطاقان لا يختلطان */
             'salesWhatsapp' => WhatsAppConnections::publicView(
                 WhatsAppConnection::query()->platform()
@@ -513,6 +525,17 @@ class PageController extends Controller
          * وتصير كلّ صفحةٍ خمسمئة. والقيمتان تبقيان متطابقتين باختبارٍ يقارنهما.
          */
         'whatsapp_shared_default_monthly_limit' => '100',
+        /*
+         * والمساعدُ الذكيّ «اقتراحُ الردّ فقط» افتراضًا لا «متوقّف».
+         *
+         * ولمَ لا يُطفأ افتراضًا: لأنّه مطفأٌ فعلًا بلا مفتاحٍ في البيئة —
+         * `CrmAssistant::available()` تسأل عن المزوّد أيضًا. فمقبضٌ مطفأٌ
+         * فوق مزوّدٍ غائبٍ مقبضان لبابٍ واحد: يُضبط أحدُهما ولا يُفتح الباب،
+         * فيُظنّ المفتاحُ خاطئًا.
+         *
+         * والوضعُ هنا يقول ما نسمح به؛ والمفتاحُ يقول ما نستطيعه.
+         */
+        'crm_ai_mode' => CrmAssistant::SUGGEST,
     ];
 
     /* ------------------------------ مشتركات ------------------------------ */

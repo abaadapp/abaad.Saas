@@ -11,6 +11,7 @@ import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 type Settings = Record<string, string>;
@@ -82,6 +83,8 @@ const FIELD_TAB: Record<string, string> = {
     whatsapp_enabled: 'whatsapp',
     whatsapp_shared_enabled: 'whatsapp',
     whatsapp_shared_default_monthly_limit: 'whatsapp',
+
+    crm_ai_mode: 'ai',
 };
 
 const TABS = [
@@ -93,10 +96,11 @@ const TABS = [
     { key: 'mail', label: 'البريد' },
     { key: 'whatsapp', label: 'واتساب' },
     { key: 'google', label: 'خرائط Google' },
+    { key: 'ai', label: 'المساعد الذكي' },
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, supportReach, googleHealth, googleKeyHint, googleBilling } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, aiProvider, supportReach, googleHealth, googleKeyHint, googleBilling } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
@@ -105,6 +109,8 @@ export default function PlatformSettings() {
             whatsapp?: SharedConnection | null;
             /* ورقمُ المبيعات وصلةٌ ثانيةٌ بالشكل نفسه وغرضٍ آخر */
             salesWhatsapp?: SharedConnection | null;
+            /* وحالُ مزوّد الذكاء — وجودُه لا قيمتُه */
+            aiProvider?: { ready: boolean; name: string } | null;
             supportReach?: { reachable: number; total: number; ambiguous: number };
             googleHealth?: { configured: boolean; linkedBranches: number; branches: number };
             /* حالُ فوترة Google — انظر App\Support\GoogleBilling */
@@ -151,6 +157,7 @@ export default function PlatformSettings() {
         whatsapp_enabled: on('whatsapp_enabled'),
         whatsapp_shared_enabled: on('whatsapp_shared_enabled'),
         whatsapp_shared_default_monthly_limit: get('whatsapp_shared_default_monthly_limit'),
+        crm_ai_mode: get('crm_ai_mode'),
     });
 
     /*
@@ -729,6 +736,63 @@ export default function PlatformSettings() {
                                 </Button>
                             </div>
                         </div>
+                    </Card>
+                )}
+
+                {tab === 'ai' && (
+                    <Card className="p-6">
+                        <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('مساعد أبعاد الذكي')}</h3>
+                        <p className="mb-6 text-[13px] leading-relaxed text-[#6b7280]">
+                            {t('يقرأ محادثة العميل المحتمل ويقترح ردًّا يكتبه موظّف المبيعات ويرسله بنفسه. لا يُرسل شيئًا من نفسه.')}
+                        </p>
+
+                        {/* حالُ المزوّد أوّلُ ما يُقرأ: مقبضٌ فوق مزوّدٍ غائبٍ لا يُدير شيئًا */}
+                        <div
+                            className={cn(
+                                'mb-6 rounded-[12px] border p-4 text-[13px]',
+                                aiProvider?.ready
+                                    ? 'border-[#bbf7d0] bg-[#f0fdf4] text-[#166534]'
+                                    : 'border-[#fde68a] bg-[#fffbeb] text-[#92400e]',
+                            )}
+                        >
+                            {aiProvider?.ready
+                                ? t('المزوّد مضبوط: :name', { name: aiProvider.name })
+                                : t('لا مزوّد مضبوط على الخادم — يُضاف ANTHROPIC_API_KEY و AI_PROVIDER=anthropic في ملفّ البيئة، ثم يُعاد تحميل php-fpm. وحتى ذلك لا يُعرض زرّ الاقتراح أصلًا.')}
+                        </div>
+
+                        <Field
+                            label={t('وضع الذكاء الاصطناعي')}
+                            hint={t('الافتراضي «اقتراح الرد فقط» — والرد التلقائي غير مبنيّ في هذه النسخة، فلا يُعرض خيارًا.')}
+                        >
+                            {/*
+                                ولا يُعرض ما لم يُبنَ.
+                                خيارٌ اسمُه «ردٌّ تلقائيّ للمبيعات» يُختار ويُحفظ
+                                ولا يفعل شيئًا أسوأُ من غيابه: يظنّ المشغّلُ أنّ
+                                العملاء يُردّ عليهم، ولا يردّ أحد.
+                            */}
+                            <Select
+                                value={form.data.crm_ai_mode || 'suggestions_only'}
+                                onChange={(e) => form.setData('crm_ai_mode', e.target.value)}
+                                options={[
+                                    { value: 'suggestions_only', label: t('اقتراح الرد فقط') },
+                                    { value: 'disabled', label: t('متوقف') },
+                                ]}
+                                aria-label={t('وضع الذكاء الاصطناعي')}
+                            />
+                        </Field>
+
+                        <div className="mt-6 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4 text-[12px] leading-relaxed text-[#6b7280]">
+                            <p className="mb-2 font-medium text-[#111]">{t('ما لا يفعله المساعد')}</p>
+                            <ul className="list-inside list-disc space-y-1">
+                                <li>{t('لا يرسل رسالةً إلى أحد — يكتب اقتراحًا في الشاشة فقط.')}</li>
+                                <li>{t('لا يذكر سعرًا إلا كما هو في شاشة الباقات الآن.')}</li>
+                                <li>{t('لا يَعِد بميزة غير موجودة ولا بميزة قادمة.')}</li>
+                                <li>{t('لا تصله ملاحظاتكم الداخلية ولا بيانات عميل آخر.')}</li>
+                                <li>{t('يُحوّل إلى إنسان إذا طلب العميل ذلك أو شكا أو طلب استردادًا.')}</li>
+                            </ul>
+                        </div>
+
+                        {saveBar}
                     </Card>
                 )}
 

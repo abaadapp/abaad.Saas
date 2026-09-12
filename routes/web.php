@@ -366,6 +366,14 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
         Route::get('/conversations', [CrmConversationController::class, 'index'])->name('conversations');
         Route::post('/conversations/start', [CrmConversationController::class, 'start'])->name('conversations.start');
         Route::post('/conversations/{id}/reply', [CrmConversationController::class, 'reply'])->name('conversations.reply');
+        /*
+         * المساعدُ يقترح — ولا يُرسل.
+         *
+         * بابان لا باب: `suggest` يُولّد نصًّا يعود إلى الشاشة، و`reply`
+         * يُخرجه. ودمجُهما يجعل ضغطةً واحدةً ترسل ما لم يقرأه أحد.
+         */
+        Route::post('/conversations/{id}/suggest', [CrmConversationController::class, 'suggest'])->name('conversations.suggest');
+        Route::post('/conversations/{id}/feedback', [CrmConversationController::class, 'feedback'])->name('conversations.feedback');
     });
 
     Route::get('/activity', [ActivityController::class, 'superIndex'])->name('activity.index');

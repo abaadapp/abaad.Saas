@@ -15,6 +15,7 @@ use App\Support\Pagination;
 use App\Support\PlanLimits;
 use App\Support\ProductImages;
 use App\Support\Sort;
+use App\Support\StockLedger;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -229,6 +230,17 @@ class ProductController extends Controller
         $product = Product::create($data);
         // إسناد الكمية الافتتاحية إلى الفرع الحالي/الأول ليبقى مجموع الفروع = كمية المنتج
         BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) ($data['quantity'] ?? 0));
+        /*
+         * والرصيدُ الافتتاحيّ يُقيَّد حركةً.
+         *
+         * وبلا هذا السطر يبدأ الصنفُ برقمٍ لا يقول أحدٌ من أين جاء: تُجمع
+         * حركاتُه كلُّها فلا تُساوي رصيدَه، ويبقى الفرقُ بلا تفسير. وكان
+         * ذلك واقعًا في الإنتاج — سبعةُ أصناف.
+         */
+        StockLedger::note(
+            $this->bid(), $this->defaultBranchId(), $product,
+            (int) ($data['quantity'] ?? 0), StockLedger::OPENING, auth()->user()->name,
+        );
         Activity::log('created', 'أضاف منتجًا: '.$data['name']);
 
         // المقاسات والوصفة والإضافات التي كُتبت في نفس الشاشة — بعد أن صار
@@ -311,6 +323,11 @@ class ProductController extends Controller
             $locked->update($data);
             // مزامنة رصيد الفرع بفارق الكمية إن عُدّلت يدويًا من نموذج المنتج
             BranchStock::adjust($this->bid(), $this->defaultBranchId(), $locked->id, (int) $locked->quantity - $oldQty);
+            /* وما غُيّر بيدٍ يُقرأ في حركات المخزون — لا يتغيّر الرصيدُ صامتًا */
+            StockLedger::note(
+                $this->bid(), $this->defaultBranchId(), $locked,
+                (int) $locked->quantity - $oldQty, StockLedger::MANUAL, auth()->user()->name,
+            );
             $product->setRawAttributes($locked->getAttributes());
         });
         Activity::log('updated', 'عدّل المنتج: '.$product->name, ['subject_id' => $product->id]);
@@ -436,6 +453,11 @@ class ProductController extends Controller
                 BranchStock::ensureAllocated($this->bid(), $locked->id, $old);
                 $locked->quantity = (int) $data['quantity'];
                 BranchStock::adjust($this->bid(), $this->defaultBranchId(), $locked->id, (int) $data['quantity'] - $old);
+                /* والتعديلُ السريع تعديلٌ — سرعتُه لا تُسقط أثرَه */
+                StockLedger::note(
+                    $this->bid(), $this->defaultBranchId(), $locked,
+                    (int) $data['quantity'] - $old, StockLedger::MANUAL, auth()->user()->name,
+                );
             }
 
             $locked->save();

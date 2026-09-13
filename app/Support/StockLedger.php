@@ -87,7 +87,7 @@ class StockLedger
      * ليس بيعَ وردة، وحسابُ الاستهلاك من كميّة الباقات يخلط وحداتٍ لا
      * تُخلط. وهذا المقام هو المقارن الصحيح لمقدار الهالك.
      *
-     * @return array<int, float>  [معرّف المنتج => الكمية المستهلَكة]
+     * @return array<int, float> [معرّف المنتج => الكمية المستهلَكة]
      */
     public static function consumedBetween(int $businessId, ?int $branchId, string $from, string $to): array
     {
@@ -99,6 +99,58 @@ class StockLedger
             ->groupBy('product_id')
             ->map(fn ($rows) => round($rows->sum(fn ($r) => abs((float) $r->quantity)), 3))
             ->all();
+    }
+
+    /** رصيدٌ كُتب مع إنشاء الصنف — لا شحنةَ وردٍ دخلت، بل رقمٌ بدأ به صاحبُه */
+    public const OPENING = 'رصيد افتتاحي';
+
+    /** كميةٌ غُيّرت بيدٍ من شاشة المنتج — لا بيعٌ ولا جردٌ ولا شحنة */
+    public const MANUAL = 'تعديل يدوي';
+
+    /**
+     * تقييدُ حركةٍ وقعت بيدِ مُنادٍ حرّك الرصيدَ بنفسه.
+     *
+     * ═══ ولمَ بابٌ ثانٍ إلى جانب `move` ═══
+     *
+     * `move` تفعل الرقصةَ كاملةً: توزّع، وتزيد الإجماليّ، وتُعدّل رصيدَ
+     * الفرع، ثمّ تُقيّد. وشاشةُ المنتج تكتب **كميةً مطلقة** لا فرقًا، وتقفل
+     * الصفَّ بنفسها لتحسب الفرق. فلو نادت `move` لَزِيد الرصيدُ مرّتين.
+     *
+     * فهذه تُقيّد وحدَها — ولا تمسّ رصيدًا. ومن يناديها قد حرّكه قبلها.
+     *
+     * ═══ والعطبُ الذي فتحه غيابُها ═══
+     *
+     * كانت شاشةُ المنتج تُغيّر الكمية في ثلاثة مواضع بلا سطرٍ في
+     * `inventory_movements`: عند الإنشاء، وعند التعديل، وفي التعديل السريع.
+     * فيرى التاجرُ رصيدَه تغيّر ولا يجد في «حركات المخزون» ما يقول متى ولا
+     * بيدِ من. ومخزونٌ يتغيّر بلا أثرٍ يُقرأ بابٌ مفتوحٌ على سرقةٍ لا تُكتشف.
+     */
+    public static function note(
+        int $businessId,
+        ?int $branchId,
+        Product $product,
+        int $delta,
+        string $type,
+        ?string $employeeName = null,
+        ?string $note = null,
+    ): void {
+        // وصفرٌ ليس حركة: من حفظ الشاشة بلا تغيير لا يُقيَّد له شيء
+        if ($delta === 0) {
+            return;
+        }
+
+        InventoryMovement::create([
+            'business_id' => $businessId,
+            'branch_id' => $branchId,
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+            'sku' => $product->sku,
+            'type' => $type,
+            /* والإشارةُ تُكتب كما في كلّ حركةٍ هنا — انظر `move` */
+            'quantity' => ($delta > 0 ? '+' : '').$delta,
+            'employee_name' => $employeeName,
+            'note' => $note,
+        ]);
     }
 
     /** نوع الحركة حين تُستهلك مكوّناتٌ لصنع باقة */

@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
+use App\Models\WebsiteSection;
 use App\Support\MarketingSettings;
-use App\Support\PaymentMethods;
 use App\Support\Website\Blueprints;
+use App\Support\Website\Commerce;
+use App\Support\Website\Readiness;
+use App\Support\Website\Templates;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -27,6 +30,63 @@ use Inertia\Response;
 class SettingsController extends Controller
 {
     use Concerns;
+
+    /**
+     * «الإعدادات ‹ الموقع الإلكتروني ‹ عام» — حالُ الموقع وما يُفعل به.
+     *
+     * ═══ ولماذا انتقلت من الشريط الجانبيّ ═══
+     *
+     * كانت لوحةَ القسم: أوّلُ ما يفتحه من يضغط «الموقع الإلكتروني». وفيها
+     * النشرُ والصيانةُ والنسخُ السابقة وأبوابُ التصميم والصفحات — وكلُّها
+     * يُفعل مرّةً ثمّ يُترك. والموظّفُ الذي يفتح القسم كلَّ صباح لا يريد شيئًا
+     * منها؛ يريد أن يعرف أنّ الموقع يعمل وأنّ منتجاته ظاهرة.
+     *
+     * فصار الشريطُ يفتح لوحةَ التشغيل (`HubController`)، وصارت هذه أوّلَ
+     * أقسام إعدادات الموقع — تليها التصميمُ والصفحاتُ والمتجرُ والنطاقُ
+     * والظهورُ في البحث، كلُّها بمساراتها التي لم تتبدّل.
+     *
+     * ═══ واسمُها `general` لا `site` ═══
+     *
+     * `Concerns::site()` موجودةٌ في هذا الصنف بالوراثة وتردّ **موقعَ النشاط**.
+     * وفعلٌ عامٌّ باسمها يحجبها، فتصير `siteOrFail()` تنادي الشاشةَ التي
+     * تناديها — ذهابًا وإيابًا حتّى تنفد الذاكرة. ولا يقوله المترجم: التوقيعان
+     * مختلفان والوراثةُ من سمة، فالحجبُ مسموح.
+     */
+    public function general(): Response
+    {
+        $site = $this->siteOrFail();
+        $pages = $site->pages()->withCount('sections')->get();
+
+        return Inertia::render('Admin/Website/Site', $this->shell($site) + [
+            'pages' => $pages->map(fn ($p) => [
+                'id' => $p->id,
+                'title' => $p->title,
+                'slug' => $p->slug,
+                'status' => $p->status,
+                'is_home' => $p->is_home,
+                'sections' => $p->sections_count,
+            ])->all(),
+            'summary' => [
+                'pages' => $pages->count(),
+                'sections' => WebsiteSection::where('website_id', $site->id)->whereNotNull('page_id')->count(),
+                'hidden' => WebsiteSection::where('website_id', $site->id)->where('visible', false)->count(),
+                'versions' => $site->versions()->count(),
+            ],
+            'domain' => $this->domainState(),
+            // وجاهزيةُ المتجر حقائقُ تُقاس — انظر `Readiness`
+            'readiness' => Readiness::check($site),
+            'template_label' => __(Templates::CATALOGUE[$site->template]['label'] ?? ''),
+            'versions' => $site->versions()->with('creator:id,name')->limit(5)->get()
+                ->map(fn ($v) => [
+                    'id' => $v->id,
+                    'number' => $v->number,
+                    'at' => optional($v->published_at)->format('Y-m-d H:i'),
+                    'by' => $v->creator?->name,
+                    'note' => $v->note,
+                    'current' => $v->id === $site->published_version_id,
+                ])->all(),
+        ]);
+    }
 
     /** المتجر: ما يراه الزائر وما يستطيع فعله */
     public function store(): Response
@@ -59,13 +119,21 @@ class SettingsController extends Controller
             'goals' => Blueprints::goalOptions(),
             'name' => $site->name,
             /*
-             * طرق الدفع تُقرأ ولا تُضبط هنا.
+             * ═══ طرقُ الدفع كما هي **على الموقع** — لا كما هي على المنضدة ═══
              *
-             * مصدرها «الضرائب والعملة والدفع»، وضبطُها في موضعين يعني تاجرًا
-             * يُطفئ البطاقة في أحدهما وتبقى تعمل في الآخر — ولا يعرف أيّهما
-             * يقرأ الموقع.
+             * كانت تُقرأ من `PaymentMethods::state` فتقول «البطاقة مفعّلة».
+             * وذاك جوابٌ عن سؤالٍ آخر: تلك تصف ما يأخذه الكاشير من يد الزبون
+             * في المحلّ. وبينه وبين «البطاقة تُقبض على الإنترنت» بوّابةُ دفعٍ
+             * مربوطةٌ ومتحقَّق منها — ولا بوّابةَ في أبعاد بعد.
+             *
+             * فكانت الشاشة تَعِد صاحبَ المتجر بما لا يقع: ينشر موقعه ويوزّع
+             * رابطه ثمّ يعلم من زبونه أنّ لا شيء يُدفع. انظر `Commerce`.
              */
-            'payments' => $this->payments($bid),
+            'payments' => Commerce::payments($bid),
+            // وما يفعله زرُّ الطلب فعلًا: محادثةُ واتساب، أو لا شيء
+            'channel' => Commerce::channel($bid),
+            // وجاهزيةُ المتجر قبل النشر لا بعده — حقائقُ تُقاس لا أمنيات
+            'readiness' => Readiness::check($site),
             'counts' => [
                 'products' => \App\Models\Product::where('business_id', $bid)->where('active', true)->count(),
                 'categories' => \App\Models\Category::where('business_id', $bid)->count(),
@@ -194,16 +262,4 @@ class SettingsController extends Controller
         return back()->with('toast', ['msg' => __('حُفظت إعدادات الموقع'), 'type' => 'success']);
     }
 
-    /**
-     * طرق الدفع المفعّلة في النظام — تُعرض ولا تُضبط.
-     *
-     * وتُقرأ من `PaymentMethods` — المكتبة التي تقرأ منها نقطةُ البيع نفسها
-     * — لا بشرطٍ مكتوبٍ هنا ولا بنداء متحكّمها:
-     * «الغياب يعني مفعّل» و«من أطفأ الثلاث يبقى له النقد» قاعدتان لو نُسختا
-     * لافترقتا، فيعرض الموقعُ وسيلةً لا تقبلها نقطة البيع.
-     */
-    private function payments(int $bid): array
-    {
-        return PaymentMethods::state($bid);
-    }
 }

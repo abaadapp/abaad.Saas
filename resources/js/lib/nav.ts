@@ -204,12 +204,23 @@ export const NAV: NavGroup[] = [
     },
     {
         items: [
+            /*
+             * الموقع الإلكتروني — بابُ التشغيل اليوميّ لا بابُ الإعدادات.
+             *
+             * وكان يُضيء لستّ شاشاتٍ من تبويباته (`covers(WEBSITE_TABS)`):
+             * التصميمُ والصفحاتُ والنطاقُ والسيو. وكلُّها انتقلت إلى
+             * «الإعدادات ‹ الموقع الإلكتروني» لأنّها تُضبط مرّةً ثمّ تُترك —
+             * فلم يعد يضيء لها، ويُضيء لها قسمُها الجديد.
+             *
+             * والمحرّرُ يبقى معه: هو تحرير محتوى لا ضبطُ بنية، ويُفتح من
+             * اللوحتين معًا.
+             */
             {
                 label: 'الموقع الإلكتروني',
                 icon: AppWindow,
                 route: 'admin.website.index',
                 section: 'website',
-                covers: covers(WEBSITE_TABS),
+                covers: ['admin.website.editor'],
             },
         ],
     },
@@ -253,7 +264,14 @@ export const NAV: NavGroup[] = [
                 covers: ['admin.help.show'],
                 badge: 'support',
             },
-            { label: 'الإعدادات', icon: Settings, route: 'admin.settings.index', section: 'settings' },
+            {
+                label: 'الإعدادات',
+                icon: Settings,
+                route: 'admin.settings.index',
+                section: 'settings',
+                // وإعداداتُ الموقع منها — فيُضيء قسمُها حين تُفتح إحداها
+                covers: covers(WEBSITE_TABS),
+            },
         ],
     },
 ];

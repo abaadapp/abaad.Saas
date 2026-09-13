@@ -101,6 +101,7 @@ use App\Http\Controllers\SuperAdmin\UserController;
 use App\Http\Controllers\SuperAdmin\WhatsAppController;
 use App\Http\Controllers\SupportAttachmentController;
 use App\Http\Controllers\WhatsApp\WebhookController;
+use App\Support\Permissions;
 use App\Support\Storefront;
 use Illuminate\Support\Facades\Route;
 
@@ -805,53 +806,81 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * «انشر»: تبديلُ لونٍ لا يصل زائرًا قبل أن يرضى عنه صاحبُه.
      */
     Route::prefix('website')->name('website.')->group(function () {
+        /*
+         * ═══ التشغيلُ اليوميّ — وهو ما يفتحه الموظّف ═══
+         *
+         * لوحةُ تشغيل الموقع: أمنشورٌ هو، وكم صنفًا يراه الزبون، وأيُّها نفد.
+         * ولا ضبطَ فيها — وقسمُ `website` وحده يكفي لفتحها.
+         */
         Route::get('/', [BuilderController::class, 'index'])->name('index');
-        Route::post('/', [BuilderController::class, 'store'])->name('create');
-        Route::post('/publish', [BuilderController::class, 'publish'])->name('publish');
-        Route::post('/versions/{id}/restore', [BuilderController::class, 'restore'])->name('restore');
-        Route::post('/maintenance', [BuilderController::class, 'maintenance'])->name('maintenance');
-
-        Route::get('/pages', [App\Http\Controllers\Admin\Website\PageController::class, 'index'])->name('pages');
-        Route::post('/pages', [App\Http\Controllers\Admin\Website\PageController::class, 'store'])->name('pages.store');
-        Route::post('/pages/reorder', [App\Http\Controllers\Admin\Website\PageController::class, 'reorder'])->name('pages.reorder');
-        Route::put('/pages/{id}', [App\Http\Controllers\Admin\Website\PageController::class, 'update'])->name('pages.update');
-        Route::delete('/pages/{id}', [App\Http\Controllers\Admin\Website\PageController::class, 'destroy'])->name('pages.destroy');
-
-        // المحرّر يفتح على صفحةٍ بعينها — وبلا رقمٍ يفتح على الرئيسية
-        Route::get('/editor/{id?}', [EditorController::class, 'show'])->name('editor');
-        Route::post('/editor/{id}/sections', [EditorController::class, 'addSection'])->name('sections.add');
-        Route::post('/editor/{id}/reorder', [EditorController::class, 'reorderSections'])->name('sections.reorder');
-        Route::put('/sections/{id}', [EditorController::class, 'updateSection'])->name('sections.update');
-        Route::post('/sections/{id}/toggle', [EditorController::class, 'toggleSection'])->name('sections.toggle');
-        Route::post('/sections/{id}/duplicate', [EditorController::class, 'duplicateSection'])->name('sections.duplicate');
-        Route::delete('/sections/{id}', [EditorController::class, 'destroySection'])->name('sections.destroy');
-
-        // رفعُ صورةٍ يردّ رابطًا — وحقل الصورة يحمل رابطًا أيًّا كان مصدره
-        Route::post('/media', [MediaController::class, 'upload'])->name('media');
-
-        Route::get('/design', [DesignController::class, 'index'])->name('design');
-        Route::put('/design', [DesignController::class, 'update'])->name('design.update');
-        Route::put('/design/palette', [DesignController::class, 'palette'])->name('design.palette');
-
-        Route::get('/shop', [SettingsController::class, 'store'])->name('shop');
-        Route::put('/shop', [SettingsController::class, 'saveStore'])->name('shop.save');
-        Route::get('/seo', [SettingsController::class, 'seo'])->name('seo');
-        Route::put('/seo', [SettingsController::class, 'saveSeo'])->name('seo.save');
-        Route::put('/settings', [SettingsController::class, 'saveSite'])->name('settings.save');
 
         /*
-         * الدومين — بابٌ قائمٌ بذاته لا حقلٌ في شاشة السيو.
+         * ═══ والضبطُ خلف فعله ═══
          *
-         * وهو الشاشةُ الوحيدة التي قد يُطلب فيها من التاجر عملٌ خارج أبعاد
-         * (سجلٌّ في لوحة مسجّله)، فيستحقّ عنوانًا يُحفظ ويُرسَل: «افتح هذا
-         * الرابط وأضف السجلّ» أقصرُ من شرحٍ في رسالة.
+         * ما تحت هذا الحارس يُضبط مرّةً ثمّ يُترك: التصميمُ والصفحاتُ والنطاقُ
+         * والنشر. ومن مُنح «الموقع» ليتفقّد منتجاتِه كلَّ صباح لم يُمنح تحويلَ
+         * نطاق متجره — انظر `Permissions::WEBSITE_CONFIGURE`.
+         *
+         * والحراسةُ على المجموعة لا في أوّل كلّ دالّة: مسارٌ يُضاف غدًا يرثها
+         * بلا أن يتذكّر كاتبُه سطرًا.
          */
-        Route::get('/domain', [DomainController::class, 'index'])->name('domain');
-        Route::put('/domain', [DomainController::class, 'save'])->name('domain.save');
-        Route::post('/domain/check', [DomainController::class, 'check'])->name('domain.check');
+        Route::middleware('may:'.Permissions::WEBSITE_CONFIGURE)->group(function () {
+            Route::post('/', [BuilderController::class, 'store'])->name('create');
+            Route::post('/publish', [BuilderController::class, 'publish'])->name('publish');
+            Route::post('/versions/{id}/restore', [BuilderController::class, 'restore'])->name('restore');
+            Route::post('/maintenance', [BuilderController::class, 'maintenance'])->name('maintenance');
 
-        // مُنتقي المنتجات يبحث ولا يُحمَّل كاملًا — انظر EditorController::products
-        Route::get('/products', [EditorController::class, 'products'])->name('products');
+            /*
+             * وبابُ الضبط الواحد: «الإعدادات ‹ الموقع الإلكتروني».
+             *
+             * ستُّ شاشاتٍ كانت عائلةً في الشريط الجانبيّ، وهي إعداداتٌ لا تشغيل.
+             * فصار لها مدخلٌ واحد بقائمةٍ جانبية، وبقيت مساراتُها كما هي — روابطُ
+             * محفوظةٌ وإشاراتٌ مرجعية إليها، و404 عليها فقدانٌ لا نقل.
+             */
+            Route::get('/settings', [SettingsController::class, 'general'])->name('site');
+
+            Route::get('/pages', [App\Http\Controllers\Admin\Website\PageController::class, 'index'])->name('pages');
+            Route::post('/pages', [App\Http\Controllers\Admin\Website\PageController::class, 'store'])->name('pages.store');
+            Route::post('/pages/reorder', [App\Http\Controllers\Admin\Website\PageController::class, 'reorder'])->name('pages.reorder');
+            Route::put('/pages/{id}', [App\Http\Controllers\Admin\Website\PageController::class, 'update'])->name('pages.update');
+            Route::delete('/pages/{id}', [App\Http\Controllers\Admin\Website\PageController::class, 'destroy'])->name('pages.destroy');
+
+            // المحرّر يفتح على صفحةٍ بعينها — وبلا رقمٍ يفتح على الرئيسية
+            Route::get('/editor/{id?}', [EditorController::class, 'show'])->name('editor');
+            Route::post('/editor/{id}/sections', [EditorController::class, 'addSection'])->name('sections.add');
+            Route::post('/editor/{id}/reorder', [EditorController::class, 'reorderSections'])->name('sections.reorder');
+            Route::put('/sections/{id}', [EditorController::class, 'updateSection'])->name('sections.update');
+            Route::post('/sections/{id}/toggle', [EditorController::class, 'toggleSection'])->name('sections.toggle');
+            Route::post('/sections/{id}/duplicate', [EditorController::class, 'duplicateSection'])->name('sections.duplicate');
+            Route::delete('/sections/{id}', [EditorController::class, 'destroySection'])->name('sections.destroy');
+
+            // رفعُ صورةٍ يردّ رابطًا — وحقل الصورة يحمل رابطًا أيًّا كان مصدره
+            Route::post('/media', [MediaController::class, 'upload'])->name('media');
+
+            Route::get('/design', [DesignController::class, 'index'])->name('design');
+            Route::put('/design', [DesignController::class, 'update'])->name('design.update');
+            Route::put('/design/palette', [DesignController::class, 'palette'])->name('design.palette');
+
+            Route::get('/shop', [SettingsController::class, 'store'])->name('shop');
+            Route::put('/shop', [SettingsController::class, 'saveStore'])->name('shop.save');
+            Route::get('/seo', [SettingsController::class, 'seo'])->name('seo');
+            Route::put('/seo', [SettingsController::class, 'saveSeo'])->name('seo.save');
+            Route::put('/settings', [SettingsController::class, 'saveSite'])->name('settings.save');
+
+            /*
+             * الدومين — بابٌ قائمٌ بذاته لا حقلٌ في شاشة السيو.
+             *
+             * وهو الشاشةُ الوحيدة التي قد يُطلب فيها من التاجر عملٌ خارج أبعاد
+             * (سجلٌّ في لوحة مسجّله)، فيستحقّ عنوانًا يُحفظ ويُرسَل: «افتح هذا
+             * الرابط وأضف السجلّ» أقصرُ من شرحٍ في رسالة.
+             */
+            Route::get('/domain', [DomainController::class, 'index'])->name('domain');
+            Route::put('/domain', [DomainController::class, 'save'])->name('domain.save');
+            Route::post('/domain/check', [DomainController::class, 'check'])->name('domain.check');
+
+            // مُنتقي المنتجات يبحث ولا يُحمَّل كاملًا — انظر EditorController::products
+            Route::get('/products', [EditorController::class, 'products'])->name('products');
+        });
     });
 
     /*

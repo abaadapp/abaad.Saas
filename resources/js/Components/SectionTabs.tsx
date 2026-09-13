@@ -171,13 +171,24 @@ export const FINANCE_TABS: SectionTab[] = [
  * فيه، وظهوره في البحث. وجمعُها في شاشةٍ واحدة يجعل من يبدّل لونًا يمرّ على
  * حقول السيو في طريقه.
  */
+/**
+ * إعداداتُ الموقع — ستُّ شاشاتٍ تُضبط مرّةً ثمّ تُترك.
+ *
+ * ولم تعد عائلةَ الشريط الجانبيّ: الشريطُ يفتح لوحةَ التشغيل اليوميّة، وهذه
+ * تُفتح من «الإعدادات ‹ الموقع الإلكتروني». والترتيبُ ترتيبُ العمل: ما هو
+ * الموقع، ثمّ كيف يبدو، ثمّ ماذا فيه، ثمّ ماذا يبيع، ثمّ أين عنوانه، ثمّ كيف
+ * يُوجَد.
+ *
+ * ومساراتُها لم تتبدّل: روابطُ محفوظةٌ وإشاراتٌ مرجعيةٌ إليها، و404 عليها
+ * فقدانٌ لا نقل.
+ */
 export const WEBSITE_TABS: SectionTab[] = [
-    { label: 'الموقع', routeName: 'admin.website.index', section: 'website' },
-    { label: 'الصفحات', routeName: 'admin.website.pages', section: 'website' },
+    { label: 'عام', routeName: 'admin.website.site', section: 'website' },
     { label: 'التصميم', routeName: 'admin.website.design', section: 'website' },
-    { label: 'المتجر', routeName: 'admin.website.shop', section: 'website' },
-    { label: 'الظهور في البحث', routeName: 'admin.website.seo', section: 'website' },
+    { label: 'الصفحات', routeName: 'admin.website.pages', section: 'website' },
+    { label: 'المتجر والطلبات', routeName: 'admin.website.shop', section: 'website' },
     { label: 'الدومين', routeName: 'admin.website.domain', section: 'website' },
+    { label: 'الظهور في البحث', routeName: 'admin.website.seo', section: 'website' },
 ];
 
 /*

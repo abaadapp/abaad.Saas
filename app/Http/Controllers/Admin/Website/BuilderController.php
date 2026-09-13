@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
-use App\Models\WebsiteSection;
+use App\Models\Category;
+use App\Models\Product;
+use App\Models\Review;
+use App\Support\Activity;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use App\Support\Website\MerchantData;
@@ -33,11 +36,32 @@ class BuilderController extends Controller
 {
     use Concerns;
 
+    /**
+     * البابُ الواحد — ومن خلفه شاشتان لا ثالثةَ لهما.
+     *
+     * من لا موقع له يرى الاختيار، ومن له موقعٌ يرى **لوحةَ تشغيله** لا
+     * إعداداته: الشريطُ الجانبيّ للعمل اليوميّ، والضبطُ في «الإعدادات ‹
+     * الموقع الإلكتروني». انظر `HubController`.
+     *
+     * والنداءُ مباشرٌ لا تحويل: تحويلةٌ في أوّل كلّ فتحةٍ تُكلّف رحلةً كاملة
+     * إلى الخادم، ورابطُ `‎/website‎` يبقى هو العنوان الذي يُحفظ ويُشارَك.
+     */
     public function index(): Response
     {
-        $site = $this->site();
+        if (! $this->site()) {
+            /*
+             * ومن لا يملك ضبطَ الموقع لا يُعرض عليه إنشاؤه.
+             *
+             * شاشةُ الاختيار تنتهي بزرٍّ يكتب موقعًا في القاعدة — وهو فعلُ
+             * صاحب المتجر. وعرضُها على موظّفٍ لا يملكه بابٌ يُفتح ليُغلق في
+             * وجهه عند الضغط.
+             */
+            $this->mayConfigure();
 
-        return $site ? $this->dashboard() : $this->wizard();
+            return $this->wizard();
+        }
+
+        return app(HubController::class)->index();
     }
 
     /**
@@ -86,51 +110,11 @@ class BuilderController extends Controller
             ])->values()->all(),
             'identity' => MerchantData::identity($bid),
             'counts' => [
-                'products' => \App\Models\Product::where('business_id', $bid)->where('active', true)->count(),
-                'categories' => \App\Models\Category::where('business_id', $bid)->count(),
-                'reviews' => \App\Models\Review::where('business_id', $bid)->where('status', 'منشور')->count(),
+                'products' => Product::where('business_id', $bid)->where('active', true)->count(),
+                'categories' => Category::where('business_id', $bid)->count(),
+                'reviews' => Review::where('business_id', $bid)->where('status', 'منشور')->count(),
             ],
             'domain' => $this->domainState(),
-        ]);
-    }
-
-    /**
-     * اللوحة — حال الموقع في سطر، وأربعة أبواب.
-     *
-     * ولا إعداداتٍ فيها: من يفتح موقعه يريد أن يعرف أهو منشور، وأين رابطه،
-     * وماذا يفعل الآن. والإعدادات خلف بابها لمن قصدها.
-     */
-    private function dashboard(): Response
-    {
-        $site = $this->siteOrFail();
-        $pages = $site->pages()->withCount('sections')->get();
-
-        return Inertia::render('Admin/Website/Dashboard', $this->shell($site) + [
-            'pages' => $pages->map(fn ($p) => [
-                'id' => $p->id,
-                'title' => $p->title,
-                'slug' => $p->slug,
-                'status' => $p->status,
-                'is_home' => $p->is_home,
-                'sections' => $p->sections_count,
-            ])->all(),
-            'summary' => [
-                'pages' => $pages->count(),
-                'sections' => WebsiteSection::where('website_id', $site->id)->whereNotNull('page_id')->count(),
-                'hidden' => WebsiteSection::where('website_id', $site->id)->where('visible', false)->count(),
-                'versions' => $site->versions()->count(),
-            ],
-            'domain' => $this->domainState(),
-            'template_label' => __(Templates::CATALOGUE[$site->template]['label'] ?? ''),
-            'versions' => $site->versions()->with('creator:id,name')->limit(5)->get()
-                ->map(fn ($v) => [
-                    'id' => $v->id,
-                    'number' => $v->number,
-                    'at' => optional($v->published_at)->format('Y-m-d H:i'),
-                    'by' => $v->creator?->name,
-                    'note' => $v->note,
-                    'current' => $v->id === $site->published_version_id,
-                ])->all(),
         ]);
     }
 
@@ -163,7 +147,7 @@ class BuilderController extends Controller
             'tagline' => $data['tagline'] ?? '',
         ]);
 
-        \App\Support\Activity::log('created', 'أنشأ الموقع الإلكتروني: '.$site->name);
+        Activity::log('created', 'أنشأ الموقع الإلكتروني: '.$site->name);
 
         return redirect()->route('admin.website.editor', $site->homePage()?->id)
             ->with('toast', ['msg' => __('جاهز — هذا موقعك، عدّل ما تشاء ثمّ انشره'), 'type' => 'success']);
@@ -195,7 +179,7 @@ class BuilderController extends Controller
         $note = $request->input('note');
         $version = Publisher::publish($site, auth()->id(), is_string($note) ? $note : null);
 
-        \App\Support\Activity::log('updated', 'نشر الموقع — نشرة رقم '.$version->number);
+        Activity::log('updated', 'نشر الموقع — نشرة رقم '.$version->number);
 
         return back()->with('toast', ['msg' => __('نُشر موقعك'), 'type' => 'success']);
     }
@@ -208,7 +192,7 @@ class BuilderController extends Controller
 
         Publisher::restore($site, $version);
 
-        \App\Support\Activity::log('updated', 'استعاد نشرة الموقع رقم '.$version->number);
+        Activity::log('updated', 'استعاد نشرة الموقع رقم '.$version->number);
 
         return back()->with('toast', [
             'msg' => __('استُعيدت النسخة في المسوّدة — عاينها ثمّ انشرها'),

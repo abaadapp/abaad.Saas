@@ -152,7 +152,7 @@ class TheShopIsEditedWhereItIsSeenTest extends TestCase
         $category = Category::create(['business_id' => $this->business->id, 'name' => 'باقات']);
         $product = Product::create([
             'business_id' => $this->business->id, 'category_id' => $category->id,
-            'name' => 'باقة ورد', 'price' => 12.5, 'active' => true,
+            'name' => 'باقة ورد', 'price' => 12.5, 'active' => true, 'quantity' => 5,
         ]);
 
         $site = $this->build();
@@ -220,7 +220,8 @@ class TheShopIsEditedWhereItIsSeenTest extends TestCase
 
             /* وبضاعةٌ في كلٍّ منها: القسمُ الذي لا يجد ما يعرضه لا يُبنى أصلًا */
             Product::create([
-                'business_id' => $business->id, 'name' => 'صنف', 'price' => 1, 'active' => true,
+                'business_id' => $business->id, 'name' => 'صنف', 'price' => 1,
+                'active' => true, 'quantity' => 3,
             ]);
 
             $site = Builder::create($business, Blueprints::STORE, $template);

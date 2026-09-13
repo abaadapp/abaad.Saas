@@ -1,5 +1,5 @@
 import { useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, Check, CreditCard, Eye, Globe, Package, Settings } from 'lucide-react';
+import { AlertTriangle, Check, CreditCard, Eye, Globe, Minus, Package, Settings } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Gate from '@/Components/Gate';
@@ -11,6 +11,7 @@ import { PageActions, SettingsGroup, SettingsPage, SettingsSection } from '@/Com
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { number } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { SiteShell } from './shell';
@@ -19,7 +20,15 @@ interface Props extends SiteShell {
     settings: { show_prices: boolean; allow_orders: boolean };
     sells: boolean;
     hasCatalogue: boolean;
-    payments: { label: string; on: boolean }[];
+    /*
+     * وسائلُ الدفع كما هي **على الموقع** لا كما هي على المنضدة.
+     *
+     * `pos` أنّ نقطة البيع تقبلها، و`online` أنّ الموقع يقبضها فعلًا —
+     * وبينهما بوّابةُ دفعٍ مربوطة. انظر `App\Support\Website\Commerce`.
+     */
+    payments: { label: string; pos: boolean; online: boolean; note: string }[];
+    channel: string;
+    readiness: { key: string; label: string; ok: boolean; optional: boolean; detail: string }[];
     counts: { products: number; categories: number };
     goal: string;
     goals: { key: string; label: string; hint: string; icon: string }[];
@@ -37,7 +46,7 @@ interface Props extends SiteShell {
  * لإعدادٍ واحد يعنيان تاجرًا يُطفئ البطاقة في أحدهما وتبقى تعمل في الآخر.
  */
 export default function Store() {
-    const { settings, sells, hasCatalogue, payments, counts, goal, goals, name } =
+    const { settings, sells, hasCatalogue, payments, counts, goal, goals, name, channel, readiness } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -164,15 +173,31 @@ export default function Store() {
 
                             {sells && (
                                 <div className="py-2 last:pb-0">
+                                    {/*
+                                        واسمُ المفتاح يقول ما يفعله.
+
+                                        كان «السماح بالطلب من الموقع» — وهي
+                                        جملةٌ تَعِد بسلّةٍ ودفعٍ وطلبٍ يصل
+                                        لوحةَ المبيعات. ولا شيء من ذلك يقع:
+                                        الزرُّ يفتح محادثةَ واتساب، والطلبُ
+                                        يكتبه الزبون بيده ويقرؤه التاجر بيده.
+                                    */}
                                     <Toggle
                                         on={form.data.allow_orders}
-                                        label="السماح بالطلب من الموقع"
-                                        hint="يظهر على كلّ منتج زرُّ طلبٍ يفتح محادثة واتساب باسمه وسعره"
+                                        label="السماح بالطلب عبر واتساب"
+                                        hint="يظهر على كل منتج زرٌّ يفتح محادثة واتساب باسمه وسعره — لا سلّة ولا دفع إلكتروني"
                                         onChange={(v) => form.setData('allow_orders', v)}
                                     />
                                 </div>
                             )}
                         </div>
+
+                        {form.data.allow_orders && channel === 'none' && (
+                            <p className="mt-4 flex items-center gap-2 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] leading-6 text-[#b45309]">
+                                <AlertTriangle className="size-4 shrink-0" />
+                                {t('لا رقم واتساب في بيانات متجرك — فلا يظهر زرّ الطلب أصلًا.')}
+                            </p>
+                        )}
 
                         {!form.data.show_prices && (
                             <p className="mt-4 flex items-center gap-2 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] leading-6 text-[#b45309]">
@@ -195,6 +220,54 @@ export default function Store() {
                         </PageActions>
                     </SettingsSection>
                 </form>
+
+                {/*
+                    جاهزيةُ المتجر — حقائقُ تُقاس قبل النشر لا بعده.
+
+                    صاحبُ المتجر يضغط «انشر» ثمّ يوزّع الرابط، وما يكتشفه بعد
+                    ذلك يكتشفه من زبونٍ خذلَه: سعرٌ نسي إظهاره، أو رقمُ واتساب
+                    لم يُكتب فلا زرَّ طلب، أو كلُّ صنفٍ نفد فالصفحةُ فارغة.
+                    وكلُّها معلومةٌ عندنا قبل أن يضغط.
+
+                    ولا تمنع النشر ولا تُسمّي شيئًا خطأً: «اختياريّ» يُقال
+                    اختياريًّا — نطاقٌ خاصٌّ ليس نقصًا، ولأبعادَ عنوانٌ يعمل.
+                */}
+                <SettingsSection
+                    title="جاهزية متجرك"
+                    description="ما يعمل فعلًا اليوم — لا ما ينقصك أن تفعله."
+                    icon={Check}
+                >
+                    <ul className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                        {readiness.map((f) => (
+                            <li key={f.key} className="flex items-start gap-3 py-2.5 text-[13px] first:pt-0 last:pb-0">
+                                <span
+                                    className={cn(
+                                        'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full',
+                                        f.ok
+                                            ? 'bg-[#dcfce7] text-[#15803d]'
+                                            : f.optional
+                                              ? 'bg-[#f3f4f6] text-[#9ca3af]'
+                                              : 'bg-[#fef3c7] text-[#b45309]',
+                                    )}
+                                    aria-hidden
+                                >
+                                    {f.ok ? <Check className="size-3" /> : <Minus className="size-3" />}
+                                </span>
+                                <span className="min-w-0">
+                                    <span className="flex flex-wrap items-center gap-1.5 font-medium text-[#111]">
+                                        {f.label}
+                                        {! f.ok && f.optional && (
+                                            <Badge variant="neutral">{t('اختياري')}</Badge>
+                                        )}
+                                    </span>
+                                    <span className="mt-0.5 block text-[12px] leading-6 text-[#6b7280]">
+                                        {f.detail}
+                                    </span>
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </SettingsSection>
 
                 {/*
                     ما يُقرأ ولا يُضبط هنا — ومصدرُ كلٍّ منهما مكتوبٌ تحته.
@@ -245,13 +318,18 @@ export default function Store() {
                     >
                         <ul className="divide-y divide-[var(--ui-border,#e8e8e8)]">
                             {payments.map((p) => (
-                                <li key={p.label} className="flex items-center justify-between gap-2 py-2.5 text-[13px] first:pt-0 last:pb-0">
-                                    <span className="flex items-center gap-2 text-[#374151]">
-                                        <CreditCard className="size-4 shrink-0 text-[#9ca3af]" />
-                                        {p.label}
+                                <li key={p.label} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-[13px] first:pt-0 last:pb-0">
+                                    <span className="min-w-0">
+                                        <span className="flex items-center gap-2 text-[#374151]">
+                                            <CreditCard className="size-4 shrink-0 text-[#9ca3af]" />
+                                            {p.label}
+                                        </span>
+                                        <span className="mt-0.5 block ps-6 text-[12px] leading-6 text-[#9ca3af]">
+                                            {p.note}
+                                        </span>
                                     </span>
-                                    <Badge variant={p.on ? 'success' : 'neutral'}>
-                                        {t(p.on ? 'مفعّل' : 'مطفأ')}
+                                    <Badge variant={p.online ? 'success' : p.pos ? 'neutral' : 'warning'}>
+                                        {t(p.online ? 'على الموقع' : p.pos ? 'نقطة البيع' : 'مطفأة')}
                                     </Badge>
                                 </li>
                             ))}

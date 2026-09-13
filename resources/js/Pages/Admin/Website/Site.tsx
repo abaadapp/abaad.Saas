@@ -47,7 +47,17 @@ interface Props extends SiteShell {
 }
 
 /**
- * لوحة الموقع — حالُه في سطر، وأربعة أبواب.
+ * «الإعدادات ‹ الموقع الإلكتروني ‹ عام» — حالُ الموقع وما يُفعل به.
+ *
+ * وكانت لوحةَ القسم في الشريط الجانبيّ. ثمّ تبيّن أنّ كلَّ ما فيها يُفعل
+ * مرّةً ثمّ يُترك: النشرُ والصيانةُ والنسخُ السابقة وأبوابُ التصميم والصفحات.
+ * والموظّفُ الذي يفتح «الموقع» كلَّ صباح لا يريد منها شيئًا — يريد أن يعرف
+ * أنّ الموقع يعمل وأنّ منتجاته ظاهرة. فصار الشريطُ يفتح لوحةَ التشغيل
+ * (`Hub`)، وصارت هذه أوّلَ أقسام إعدادات الموقع.
+ *
+ * ═══ ما كانت تقوله اللوحة القديمة ═══
+ *
+ * حالُه في سطر، وأربعة أبواب.
  *
  * ومن يفتح موقعه لا يُقذف في الإعدادات: يريد أن يعرف أمنشورٌ هو، وأين رابطه،
  * وهل بقي فيه ما لم يُنشر. ثمّ يذهب إلى ما جاء له.
@@ -55,7 +65,7 @@ interface Props extends SiteShell {
  * والزرّ الأساسيّ واحدٌ ظاهر: «تعديل الموقع». وشاشةٌ بخمسة أزرارٍ متساوية
  * شاشةٌ بلا زرٍّ أساسيّ، فيقف من يفتحها لا يدري بأيّها يبدأ.
  */
-export default function Dashboard() {
+export default function Site() {
     const { site, pages, summary, domain, template_label, versions } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
@@ -153,7 +163,7 @@ export default function Dashboard() {
                 }
             />
 
-            <SectionTabs tabs={WEBSITE_TABS} current="admin.website.index" />
+            <SectionTabs tabs={WEBSITE_TABS} current="admin.website.site" />
 
             {/* ===== الحال ===== */}
             <Card className="mb-6 p-5">
@@ -174,7 +184,7 @@ export default function Dashboard() {
                                 <span className="inline-flex flex-wrap items-center gap-2">
                                     {t('لا نطاق لموقعك بعد — الزوّار لا يصلون إليه')}
                                     <Button variant="link" size="sm" asChild>
-                                        <Link href={route('admin.settings.index', { section: 'website' })}>
+                                        <Link href={route('admin.website.domain')}>
                                             <Globe />
                                             {t('اضبط النطاق')}
                                         </Link>

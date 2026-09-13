@@ -78,7 +78,7 @@ class WebsiteBuilderTest extends TestCase
         $category = Category::create(['business_id' => $this->bid(), 'name' => 'باقات']);
         Product::create([
             'business_id' => $this->bid(), 'category_id' => $category->id,
-            'name' => 'باقة ورد', 'price' => 12.5, 'active' => true,
+            'name' => 'باقة ورد', 'price' => 12.5, 'active' => true, 'quantity' => 5,
         ]);
     }
 
@@ -217,14 +217,26 @@ class WebsiteBuilderTest extends TestCase
 
     /* ================== بعد الإنشاء: لوحةٌ لا إعدادات ================== */
 
-    public function test_a_merchant_with_a_site_meets_the_dashboard(): void
+    /**
+     * ومن له موقعٌ يرى **لوحةَ تشغيله** لا إعداداته.
+     *
+     * الشريطُ الجانبيّ للعمل اليوميّ: أمنشورٌ الموقع، وكم صنفًا يراه الزبون،
+     * وأيُّها نفد. والتصميمُ والصفحاتُ والنطاقُ تُضبط مرّةً ثمّ تُترك — فمكانُها
+     * «الإعدادات ‹ الموقع الإلكتروني».
+     */
+    public function test_a_merchant_with_a_site_meets_the_operations_hub(): void
     {
         $this->build();
 
-        $this->assertSame('Admin/Website/Dashboard', $this->screen(route('admin.website.index')));
+        $this->assertSame('Admin/Website/Hub', $this->screen(route('admin.website.index')));
+        $this->assertSame('Admin/Website/Site', $this->screen(route('admin.website.site')));
     }
 
-    public function test_the_dashboard_says_where_the_site_stands(): void
+    /**
+     * وحالُ الموقع تُقال في اللوحتين: التشغيليّة تقولها للموظّف، والإعداداتُ
+     * تقول معها ما يُفعل بها — النشرُ والصيانةُ والنسخُ السابقة.
+     */
+    public function test_the_panel_says_where_the_site_stands(): void
     {
         $site = $this->build();
         $props = $this->props(route('admin.website.index'));
@@ -232,7 +244,7 @@ class WebsiteBuilderTest extends TestCase
         $this->assertSame(Website::DRAFT, $props['site']['state']);
         $this->assertTrue($props['site']['changes']);
         $this->assertNull($props['site']['url']);
-        $this->assertSame(4, $props['summary']['pages']);
+        $this->assertSame(4, $this->props(route('admin.website.site'))['summary']['pages']);
 
         Publisher::publish($site, $this->owner->id);
 

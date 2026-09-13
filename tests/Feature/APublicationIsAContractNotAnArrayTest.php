@@ -73,7 +73,7 @@ class APublicationIsAContractNotAnArrayTest extends TestCase
 
         return Product::create([
             'business_id' => $this->bid(), 'category_id' => $category->id,
-            'name' => 'باقة ورد', 'price' => 12.5, 'active' => true,
+            'name' => 'باقة ورد', 'price' => 12.5, 'active' => true, 'quantity' => 5,
         ]);
     }
 

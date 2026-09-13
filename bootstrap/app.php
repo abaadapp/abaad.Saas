@@ -8,6 +8,7 @@ use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EntersPanel;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\NormalizeNumbers;
+use App\Http\Middleware\RequireAction;
 use App\Http\Middleware\RequiresBusiness;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
@@ -27,6 +28,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => CheckRole::class,
             'ability' => CheckAbility::class,
+            // وحارسُ فعلٍ بعينه داخل قسمٍ يُمنح كاملًا — انظر RequireAction
+            'may' => RequireAction::class,
             // قدرات الباقة — أخو 'ability' وليس هو: ذاك يسأل عن الموظّف وهذا عن المشترَك
             'plan' => CheckPlanFeature::class,
             'panel' => EntersPanel::class,

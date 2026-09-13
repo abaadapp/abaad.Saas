@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin\Website;
 use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
+use App\Support\Permissions;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Domains;
 use App\Support\Website\MerchantData;
@@ -41,6 +42,26 @@ trait Concerns
         abort_if($bid <= 0, 403, __('حسابك غير مرتبطٍ بنشاط — راجع مدير النظام'));
 
         return $bid;
+    }
+
+    /**
+     * ضبطُ الموقع فعلٌ على حدة — لا يرثه كلُّ من فتح القسم.
+     *
+     * قسمُ `website` يُمنح للموظّف ليتفقّد منتجات موقعه كلّ صباح (انظر
+     * `HubController`). وتبديلُ القالب وحذفُ صفحةٍ وتحويلُ النطاق ليست من
+     * عمله: نطاقٌ يُحوَّل خطأً يُطفئ المتجر على زبائنه كلِّهم، وصفحةٌ تُحذف
+     * تُسقط روابطَ وُزّعت.
+     *
+     * ويُنادى في أوّل كلّ شاشةِ ضبطٍ وفعلِها — لا في الشريط الجانبيّ وحده:
+     * إخفاءُ زرٍّ ليس حراسة، والمسارُ يُكتب في شريط العنوان.
+     */
+    protected function mayConfigure(): void
+    {
+        abort_unless(
+            (bool) auth()->user()?->may(Permissions::WEBSITE_CONFIGURE),
+            403,
+            __('ضبط الموقع لصاحب المتجر — راجعه إن احتجت تغييرًا هنا'),
+        );
     }
 
     /** موقع هذا النشاط — أو null إن لم يُنشأ بعد */

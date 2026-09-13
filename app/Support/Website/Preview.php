@@ -328,12 +328,49 @@ class Preview
             ->filter()->take($limit)->values()->all();
     }
 
+    /**
+     * أصنافُ الموقع — وثلاثةُ شروطٍ لا شرطٌ واحد.
+     *
+     * ═══ `active` وحدها كانت الشرط، وهي لا تعني ما يُظنّ ═══
+     *
+     * `active` تعني «يُباع في نقطة البيع». و`published` هي «يراه زبونُ
+     * الإنترنت» — عمودٌ أضافه التاجر ليُخفي أوراقَ التغليف ومكوّناتِ الباقات
+     * وأصنافَ الجملة. وكانت الصفحةُ البسيطة تقرؤه (`Storefront::catalogue`)
+     * والموقعُ المبنيُّ لا يقرؤه: فمن أخفى صنفًا رآه في موقعه، ولا يفهم لماذا
+     * لم يُطعه المقبض.
+     *
+     * ═══ وما نفد لا يُعرض ═══
+     *
+     * تحت كلّ بطاقةٍ زرُّ «اطلب عبر واتساب» — وهو **ادّعاءُ توفّر**. وصنفٌ
+     * نفد يُعرض بزرِّه يجعل الزبون يكتب رسالةً فيُجاب «انتهى»، وذلك خذلانٌ
+     * يقع **بعد** أن قرّر الشراء. فما ليس على الرفّ لا يُعرض — انظر `Shelf`
+     * للشروط الثلاثة، وهي شروطُ نقطة البيع نفسُها لا قاعدةٌ تُخترع هنا.
+     *
+     * وصاحبُ المتجر لا يُترك يحزر أين ذهبت أصنافُه: لوحةُ تشغيل الموقع تقول
+     * كم صنفًا نفد وأيُّها — انظر `Admin\Website\HubController`.
+     */
     private static function products(int $businessId, int $limit): array
     {
-        return Product::where('business_id', $businessId)->where('active', true)
+        $rows = Product::where('business_id', $businessId)
+            ->where('active', true)->where('published', true)
             ->orderByDesc('id')->limit(max($limit, self::MAX))
-            ->get(['id', 'name', 'description', 'price', 'discount', 'image', 'category_id'])
-            ->map(fn ($p) => self::product($p))->all();
+            ->get(['id', 'name', 'description', 'price', 'discount', 'image', 'category_id']);
+
+        return self::onShelf($businessId, $rows);
+    }
+
+    /**
+     * يُسقط ما نفد ويُحوّل الباقي إلى بطاقات.
+     *
+     * @param  \Illuminate\Support\Collection<int, Product>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private static function onShelf(int $businessId, $rows): array
+    {
+        $have = Shelf::availability($businessId, $rows->pluck('id')->all());
+
+        return $rows->filter(fn ($p) => $have[(int) $p->id] ?? false)
+            ->map(fn ($p) => self::product($p))->values()->all();
     }
 
     /**
@@ -365,12 +402,14 @@ class Preview
             return [];
         }
 
-        $products = Product::where('business_id', $businessId)->where('active', true)
-            ->whereIn('id', $ids)->get(['id', 'name', 'description', 'price', 'discount', 'image', 'category_id'])
+        // والشروطُ الثلاثة هنا أيضًا: صنفٌ باع أمس ونفد اليوم لا يُعرض اليوم
+        $products = collect(self::onShelf($businessId, Product::where('business_id', $businessId)
+            ->where('active', true)->where('published', true)
+            ->whereIn('id', $ids)->get(['id', 'name', 'description', 'price', 'discount', 'image', 'category_id'])))
             ->keyBy('id');
 
         // ترتيبُ المبيعات لا ترتيبُ المعرّفات: `whereIn` لا تحفظ ترتيب القائمة
-        return $ids->map(fn ($id) => isset($products[$id]) ? self::product($products[$id]) : null)
+        return $ids->map(fn ($id) => $products[$id] ?? null)
             ->filter()->values()->all();
     }
 

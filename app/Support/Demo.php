@@ -2391,8 +2391,21 @@ class Demo
         $total = Customer::where('business_id', $bid)->count();
         $newThisMonth = Customer::where('business_id', $bid)
             ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->count();
+        /*
+         * ومشترياتُ من هم في القائمة — لا من حُذف منها.
+         *
+         * `whereNotNull('customer_id')` كانت تجمع طلباتِ العملاء المحذوفين
+         * أيضًا، والعدّادُ فوقها لا يعدّهم (الحذفُ ناعم). فبطاقتان على شاشةٍ
+         * واحدة تقرآن جدولين مختلفين: حذفتُ عميلًا أنفق ألفًا من متجرٍ
+         * أنفق فيه الاثنان ألفًا ومئتين — فبقيت البطاقة تقول «١٢٠٠» وصار
+         * مجموعُ عمود الإنفاق تحتها «٢٠٠»، و**قفز «متوسط الإنفاق» إلى ١٢٠٠**:
+         * متوسّطٌ للفرد أكبرُ ممّا أنفقه كلُّ من تعرضهم الشاشة مجتمعين.
+         *
+         * و`whereHas` تمرّ على العلاقة، فيسري عليها حذفُ العميل الناعم —
+         * فيُقرأ الجدولان من عالمٍ واحد.
+         */
         $totalPurchases = (float) Order::where('business_id', $bid)->sold()
-            ->whereNotNull('customer_id')->sum('total');
+            ->whereHas('customer')->sum('total');
 
         return [
             'total' => $total,

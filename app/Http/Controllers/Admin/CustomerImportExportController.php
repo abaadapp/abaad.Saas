@@ -341,10 +341,11 @@ class CustomerImportExportController extends Controller
                 ];
 
                 if ($r['status'] === 'new') {
-                    Customer::create(array_merge($fields, [
+                    $customer = Customer::create(array_merge($fields, [
                         'business_id' => $bid,
                         'branch_id' => $r['branchId'] ?: null,
                     ]));
+                    $this->notePoints($customer, 0, (int) $fields['points'], $payload['file']);
                     $added++;
                 } elseif ($r['status'] === 'update' && $r['targetId']) {
                     $customer = Customer::where('business_id', $bid)->find($r['targetId']);
@@ -359,7 +360,13 @@ class CustomerImportExportController extends Controller
                                 unset($fields[$field]);
                             }
                         }
+                        $before = (int) $customer->points;
                         $customer->update($fields);
+                        $this->notePoints(
+                            $customer, $before,
+                            array_key_exists('points', $fields) ? (int) $fields['points'] : $before,
+                            $payload['file'],
+                        );
                         $updated++;
                     }
                 }
@@ -382,6 +389,47 @@ class CustomerImportExportController extends Controller
     }
 
     /* ============================== أدوات ============================== */
+
+    /**
+     * رصيدُ نقاطٍ تغيّر يقول من غيّره.
+     *
+     * ═══ ما كان ═══
+     *
+     * الاستيراد كان يكتب `points` في الصفّ مباشرةً — إنشاءً وتحديثًا — بلا
+     * حركةٍ في `point_transactions`. والنقطةُ مالٌ (مئةُ نقطةٍ ريال)، وكلُّ
+     * بابٍ آخر يمسّها يكتب حركتَها: البيع، والاستبدال اليدويّ، وإلغاءُ
+     * الفاتورة، وتصحيحُها (`OrderCorrection`). فكان الاستيرادُ وحدَه يُغيّر
+     * أرصدةَ مئتَي عميلٍ بلا سطرٍ يقول متى ولا من أين.
+     *
+     * وشاشةُ برنامج الولاء تعرض الثلاثةَ جنبًا إلى جنب: «مجموع النقاط»
+     * و«المكتسبة» و«المستبدَلة». جرّبتُ ملفًّا يرفع الأرصدة إلى ثمانية آلافٍ
+     * والدفترُ يعرف مئةً — ثلاثةُ أرقامٍ على شاشةٍ واحدة لا يمكن أن تصدُق
+     * معًا، ولا سطرَ يشرح الفارق.
+     *
+     * ═══ ولا يُمنع الاستيراد ═══
+     *
+     * من ينقل قاعدةَ عملائه من نظامٍ سابق ينقل أرصدتهم معها — وهذا حقُّه.
+     * فيُكتب الفارقُ حركةً مسمّاةً باسم الملفّ: الرصيدُ يبقى كما أراد،
+     * ويبقى مفسَّرًا.
+     */
+    private function notePoints(Customer $customer, int $before, int $after, string $file): void
+    {
+        $delta = $after - $before;
+
+        if ($delta === 0) {
+            return;
+        }
+
+        \App\Models\PointTransaction::record(
+            $customer,
+            $delta > 0 ? 'earn' : 'redeem',
+            abs($delta),
+            $after,
+            null,
+            'استيراد ملف: '.$file,
+        );
+    }
+
     private function normPhone(string $phone): string
     {
         return preg_replace('/\D+/', '', $phone) ?? '';

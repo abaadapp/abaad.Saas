@@ -5642,5 +5642,6 @@
     "لهذا السند قيدٌ في الدفتر — لا يُمحى، ويبقى مقروءًا بتاريخه": "This bill has a ledger entry — it is not erased; it stays readable under its date",
     "لهذا المورّد :o أمر شراء و:i سند — لا يُحذف، وإلّا بقيت أوراقُه بلا من أصدرها.": "This supplier has :o purchase order(s) and :i bill(s) — it cannot be deleted, or its papers would be left with no one who issued them.",
     "لهذا المورّد :o أمر شراء — لا يُحذف، وإلّا بقيت أوامرُه بلا من ورّدها.": "This supplier has :o purchase order(s) — it cannot be deleted, or its orders would be left with no one who supplied them.",
-    "لهذا المورّد :i سند — لا يُحذف، وإلّا بقيت سنداتُه بلا من أصدرها.": "This supplier has :i bill(s) — it cannot be deleted, or its bills would be left with no one who issued them."
+    "لهذا المورّد :i سند — لا يُحذف، وإلّا بقيت سنداتُه بلا من أصدرها.": "This supplier has :i bill(s) — it cannot be deleted, or its bills would be left with no one who issued them.",
+    "هذا رقم العميل «:name» مكتوبًا بشكلٍ آخر (:phone) — نقاط الولاء تتبع الرقم.": "This is customer :name's number written differently (:phone) — loyalty points follow the number."
 }

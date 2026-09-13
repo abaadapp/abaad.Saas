@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -69,10 +69,21 @@ export default function CustomerInvoicesIndex({
             header: 'رقم الفاتورة',
             cell: (i) => (
                 <>
-                    <Link href={`/admin/customer-invoices/${i.id}`} className="font-medium text-[#1d4ed8]">
+                    {/*
+                        والمسارُ من سجلّ المسارات لا مكتوبًا بالحرف.
+
+                        `/admin/customer-invoices/${id}` عنوانٌ مكتوبٌ باليد:
+                        يوم يتغيّر المسارُ في `routes/web.php` يبقى هذا كما هو
+                        ويقود إلى ٤٠٤ — ولا اختبارَ يمسكه، لأنّه نصٌّ لا نداء.
+                    */}
+                    <SmartLink
+                        routeName="admin.customerInvoices.show"
+                        href={route('admin.customerInvoices.show', i.id)}
+                        className="font-medium text-[#1d4ed8]"
+                    >
                         {/* ومسودّةٌ بلا رقم تُعرف بمعرّفها — لا بفراغ */}
                         {i.number ?? `${t('مسودة')} #${i.id}`}
-                    </Link>
+                    </SmartLink>
                     {i.po_number && <div className="text-[11px] text-[#9ca3af]">{i.po_number}</div>}
                 </>
             ),

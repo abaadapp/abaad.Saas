@@ -7,8 +7,12 @@ use App\Models\JournalEntry;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
+use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Document\PaperSize;
+use App\Support\DocumentPaper;
+use App\Support\DocumentRenderer;
 use App\Support\Ledger;
 use App\Support\Pagination;
 use App\Support\Permissions;
@@ -157,6 +161,126 @@ class SupplierInvoiceController extends Controller
             'canCreate' => (bool) auth()->user()?->may(Permissions::INVOICE_CREATE),
             'canPay' => (bool) auth()->user()?->may(Permissions::INVOICE_PAY),
             'canSeeAttachment' => (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW),
+        ]);
+    }
+
+    /**
+     * صفحةُ السند — ما فيه، وما جرى له، وورقتُه.
+     *
+     * ═══ ولمَ لم تكن موجودة ═══
+     *
+     * كان السندُ صفًّا في جدولٍ لا يُفتح: رقمُ المورّد نصٌّ رماديّ، وكلُّ
+     * ما يُعرف عنه يُقرأ من الأعمدة الخمسة الظاهرة. ومن أراد أن يعرف من
+     * اعتمده أو لماذا رُفض أو متى سُدّد منه شيء — لا موضعَ يقوله.
+     *
+     * ═══ وورقةُ هذا السند ليست من صنعنا ═══
+     *
+     * السندُ **ورقةُ المورّد** يسجّلها التاجر عنده: رقمُها رقمُه، وشكلُها
+     * شكلُه. فلا تُولَّد لها ورقةٌ بهويّة أبعاد — ذاك إصدارُ مستندٍ باسم
+     * غيرِنا. والمرفقُ هو ورقتُها، ويُفتح كما رُفع.
+     *
+     * والورقةُ التي **هي لنا** أمرُ الشراء المرتبط به: هو ما أصدرناه نحن
+     * إلى هذا المورّد بهذه البضاعة. فتُعرض إلى جانب التفاصيل حين يوجد
+     * ارتباط، ويُقال صراحةً إنّها ورقةُ الأمر لا ورقةُ السند.
+     */
+    public function show(int|string $id): Response
+    {
+        if (! auth()->user()?->may(Permissions::INVOICE_VIEW)) {
+            abort(403);
+        }
+
+        $bid = $this->bid();
+
+        $invoice = SupplierInvoice::where('business_id', $bid)
+            ->with(['supplier', 'purchaseOrder.items', 'purchaseOrder.supplier'])
+            ->findOrFail($id);
+
+        $mayAttachment = (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW);
+
+        /* وأسماءُ من وقّعوا تُقرأ دفعةً واحدة — لا استعلامًا لكلّ اسم */
+        $actors = User::whereIn('id', array_filter([
+            $invoice->submitted_by, $invoice->approved_by, $invoice->rejected_by,
+        ]))->pluck('name', 'id');
+
+        /*
+         * والسداداتُ تُقرأ من الدفتر لا من عمود «المدفوع».
+         *
+         * العمودُ يقول كم دُفع، والدفترُ يقول **متى ومن أين**. وهو ما
+         * يُسأل عنه عند المراجعة: سُدّد ٣٠ من ١٠٠ — في أيّ يومٍ ومن الصندوق
+         * أم من البنك؟
+         */
+        $payments = JournalEntry::where('business_id', $bid)
+            ->where('sourceable_type', SupplierInvoice::class)
+            ->where('sourceable_id', $invoice->id)
+            ->where('source', 'سداد مورّد')
+            ->with('lines')
+            ->orderBy('entry_date')->orderBy('id')
+            ->get()
+            ->map(fn ($e) => [
+                'number' => $e->number,
+                'at' => optional($e->entry_date)->format('Y-m-d'),
+                'amount' => round((float) $e->lines->sum('debit'), 3),
+            ])->all();
+
+        $po = $invoice->purchaseOrder;
+
+        return Inertia::render('Admin/Purchases/InvoiceShow', [
+            'invoice' => [
+                'id' => $invoice->id,
+                'reference' => $invoice->supplier_ref,
+                'supplier' => $invoice->supplier?->name,
+                'supplier_id' => $invoice->supplier_id,
+                'issued_at' => optional($invoice->issued_at)->format('Y-m-d'),
+                'due_at' => optional($invoice->due_at)->format('Y-m-d'),
+                'subtotal' => (float) $invoice->subtotal,
+                'tax' => (float) $invoice->tax,
+                'total' => (float) $invoice->total,
+                'paid' => (float) $invoice->paid,
+                'outstanding' => $invoice->outstanding(),
+                'status' => $invoice->status,
+                'approval_status' => $invoice->approval_status,
+                'match_status' => $invoice->match_status,
+                'match_notes' => array_values(array_filter(explode("\n", (string) $invoice->match_notes))),
+                'override_reason' => $invoice->override_reason,
+                'rejection_reason' => $invoice->rejection_reason,
+                'overdue' => $invoice->isOverdue(),
+                'notes' => $invoice->notes,
+                'submitted_by' => $actors[$invoice->submitted_by] ?? null,
+                'approved_at' => optional($invoice->approved_at)->format('Y-m-d'),
+                'approved_by' => $actors[$invoice->approved_by] ?? null,
+                'rejected_at' => optional($invoice->rejected_at)->format('Y-m-d'),
+                'rejected_by' => $actors[$invoice->rejected_by] ?? null,
+                /*
+                 * ووجودُ المرفق سؤالٌ غيرُ «هل تقرؤه؟».
+                 *
+                 * من لا يملك فتحَ المرفقات لا يُبنى له رابط — وتقول له
+                 * الشاشة إنّ ثمّة ورقةً لا تُفتح، لا إنّه لا ورقة.
+                 */
+                'has_attachment' => $invoice->attachment !== null,
+                'attachment' => $invoice->attachment && $mayAttachment
+                    ? route('admin.purchases.invoices.attachment', $invoice->id) : null,
+                'attachment_name' => $invoice->attachment
+                    ? ($invoice->attachment_name ?: __('فاتورة المورّد')) : null,
+            ],
+            'payments' => $payments,
+            'order' => $po ? [
+                'id' => $po->id,
+                'number' => $po->number,
+                'total' => (float) $po->total,
+                'received_value' => SupplierInvoices::receivedValue((int) $po->id),
+            ] : null,
+            /* وورقةُ الأمر — لا ورقةٌ تُولَّد للسند، انظر الشرحَ أعلاه */
+            'paper' => $po ? [
+                'html' => DocumentRenderer::generic($bid, 'purchase', DocumentPaper::forPurchase($po)),
+                'size' => PaperSize::A4,
+                'url' => route('admin.purchases.pdf', $po->id),
+            ] : null,
+            'can' => [
+                'approve' => (bool) auth()->user()?->may(Permissions::INVOICE_APPROVE),
+                'reject' => (bool) auth()->user()?->may(Permissions::INVOICE_REJECT),
+                'pay' => (bool) auth()->user()?->may(Permissions::INVOICE_PAY),
+            ],
+            'today' => now()->format('Y-m-d'),
         ]);
     }
 

@@ -109,10 +109,21 @@ class DocumentTemplates
                 'show_prices' => false, 'show_notes' => true, 'show_signature' => true,
             ],
         ],
+        /*
+         * وتذييلُ أوراق المشتريات فارغٌ افتراضًا.
+         *
+         * «شكرًا لزيارتكم — نتشرف بخدمتكم دائمًا» عبارةُ إيصالٍ يُسلَّم
+         * لزبونٍ في المحلّ. وأمرُ الشراء يمضي **إلى المورّد** يطلب منه
+         * بضاعة، وسندُ الاستلام يُوقَّع عند باب المخزن — فلا زائرَ في
+         * أيّهما يُشكر. وكانت تُطبع عليهما حتى ينتبه صاحبُهما ويمحوها.
+         *
+         * والفراغُ افتراضٌ لا محو: من كتب تذييلَه يبقى كما كتبه.
+         */
         'purchase' => [
             'label' => 'أمر شراء',
             'desc' => 'يُرسل إلى المورّد بما يُطلب منه وكميّاته',
             'section' => 'المشتريات',
+            'footer' => '',
             'fields' => [
                 'show_logo' => true, 'show_supplier' => true, 'show_branch' => false,
                 'show_datetime' => true, 'show_items_count' => true, 'show_prices' => true,
@@ -123,6 +134,7 @@ class DocumentTemplates
             'label' => 'سند استلام بضاعة',
             'desc' => 'يُوقَّع عند باب المخزن حين تصل الشحنة',
             'section' => 'المشتريات',
+            'footer' => '',
             'fields' => [
                 'show_logo' => true, 'show_supplier' => true, 'show_branch' => true,
                 'show_employee' => true, 'show_datetime' => true, 'show_items_count' => true,

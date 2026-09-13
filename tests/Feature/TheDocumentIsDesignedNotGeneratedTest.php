@@ -762,4 +762,197 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
         $page->assertDontSee('وزارة الثقافة', false);
         $page->assertDontSee('تنسيق قاعة', false);
     }
+
+    /* ═══════════════════ هيكلُ الورقة البصريّ ═══════════════════ */
+
+    /**
+     * الورقةُ تُفتتح بمسطرةٍ بلون التاجر، وتحمل لوحةَ مستندٍ لا سطرين.
+     *
+     * ═══ وما كانت عليه ═══
+     *
+     * عنوانٌ أسودُ في ركن، ورقمٌ رماديٌّ تحته، ولا شيءَ يفصل رأسَ الورقة عن
+     * حافّة الصفحة. تُطبع فتُقرأ «مستندًا خرج من قاعدة بيانات».
+     */
+    public function test_the_paper_opens_with_a_brand_rule_and_an_identity_panel(): void
+    {
+        $html = $this->sheet($this->order());
+
+        $this->assertStringContainsString('class="brandrule"', $html, 'الورقةُ بلا مسطرةٍ تفتتحها');
+        $this->assertStringContainsString('class="idpanel"', $html, 'نوعُ المستند ورقمُه بلا لوحة');
+        $this->assertStringContainsString('class="doctype"', $html);
+        $this->assertStringContainsString('class="docnum"', $html);
+
+        /* والمسطرةُ بلون التاجر لا برماديٍّ محايد */
+        $this->assertMatchesRegularExpression(
+            '/\.brandrule \{[^}]*background: var\(--document-primary\)/s',
+            $html,
+            'المسطرةُ لا تحمل لونَ التاجر',
+        );
+    }
+
+    /**
+     * ورأسُ جدول الأصناف مصمتٌ بلون التاجر ونصُّه معكوس.
+     *
+     * ═══ ولمَ لا يكفي الرماديُّ الفاتح ═══
+     *
+     * رأسٌ بأرضيّةٍ فاتحةٍ ونصٍّ داكن لا يفصل نفسَه عن الصفوف: يُقرأ صفًّا
+     * أوّلَ فيه كلماتٌ بدل أرقام. والمصمتُ يعطي الورقةَ مركزَها البصريَّ حيث
+     * ينبغي — عند البضاعة.
+     *
+     * و`on_primary` محسوبٌ في `Theme` لا مكتوبٌ أبيضَ هنا: تاجرٌ يختار لونًا
+     * فاتحًا يخرج نصُّه أسودَ عليه لا أبيضَ يذوب فيه.
+     */
+    public function test_the_items_header_is_solid_brand_with_reversed_text(): void
+    {
+        $html = $this->sheet($this->order());
+
+        $this->assertMatchesRegularExpression(
+            '/table\.items th \{[^}]*color: var\(--document-on-primary\)[^}]*background: var\(--document-primary\)/s',
+            $html,
+            'رأسُ الجدول لا يحمل لونَ التاجر مصمتًا',
+        );
+    }
+
+    /**
+     * و«الإجمالي» كتلةٌ مصمتة — وأرضيّتُها على الصفّ لا على خليّتيه وحدهما.
+     *
+     * ═══ وهذا قِيس في الـPDF، لا فُرض ═══
+     *
+     * خليّتان متجاورتان بأرضيّةٍ واحدةٍ وحافّةٍ مُدوَّرة يرسمهما mpdf مفصولتين
+     * بخيطٍ أبيضَ رفيع، فينشقّ صندوقُ الإجمالي نصفين: «الإجمالي» في كتلةٍ
+     * و«٤٩٫٨٧٥» في أخرى. وأرضيّةٌ على الصفّ تملأ ما بينهما.
+     */
+    public function test_the_grand_total_is_one_block_not_two(): void
+    {
+        $html = $this->sheet($this->order());
+
+        $this->assertMatchesRegularExpression(
+            '/table\.totals tr\.grand \{[^}]*background: var\(--document-primary\)/s',
+            $html,
+            'أرضيّةُ الإجمالي على الخلايا وحدها — فينشقّ في الـPDF',
+        );
+        $this->assertMatchesRegularExpression(
+            '/table\.totals tr\.grand td \{[^}]*color: var\(--document-on-primary\)/s',
+            $html,
+            'نصُّ الإجمالي غيرُ معكوسٍ على أرضيّته',
+        );
+    }
+
+    /**
+     * وأرضيّاتُ الكتل على **الخلايا** لا على كتلٍ داخلها.
+     *
+     * ═══ العطبُ الذي وُلد منه هذا الحارس ═══
+     *
+     * mpdf يمدّ كتلةَ `div` عبر الورقة حين تقع في مجرى الجسد، ويُقلّصها إلى
+     * عرض نصِّها حين تقع **داخل خليّة جدول** — ولو صُرّح لها `width: 100%`.
+     * فبطاقةُ الطرف تخرج ملتصقةً باسم المورّد بعرض ثلاثة سنتيمترات، ولوحةُ
+     * المستند بعرض كلمتين، وخانةُ التوقيع صندوقًا بحجم كلمة «توقيع».
+     *
+     * والمتصفّحُ يمدّها جميعًا — فالورقةُ تُرى سليمةً في المعاينة وتخرج
+     * مشوّهةً من الطابعة. وهو بعينه ما تحذّر منه المواصفة: «لا تفترض أن
+     * نجاح HTML يعني نجاح PDF».
+     *
+     * فيُحرَس المحدِّدُ نفسُه: `td.party` لا `.party`.
+     */
+    public function test_card_backgrounds_sit_on_the_cell_not_on_a_block_inside_it(): void
+    {
+        $html = $this->sheet($this->order());
+
+        foreach (['table.parties td.party', '.head td.idpanel'] as $selector) {
+            $this->assertStringContainsString(
+                $selector.' {',
+                $html,
+                "الأرضيّةُ على كتلةٍ داخل الخليّة لا على الخليّة: {$selector}",
+            );
+        }
+
+        /* ولا تعريفَ للبطاقة بلا خليّة: `.party {` وحده يعود بالعطب */
+        $this->assertDoesNotMatchRegularExpression(
+            '/(?<![a-z.])\.party \{/',
+            $html,
+            'بقي تعريفٌ للبطاقة ككتلةٍ مستقلّة — يُقلَّص في الـPDF',
+        );
+    }
+
+    /**
+     * وتناوبُ أرضيّة الصفوف يُحسب في القالب لا بـ`nth-child`.
+     *
+     * mpdf لا يُعوَّل عليه في المحدّدات البنيويّة: يخرج الجدولُ في المتصفّح
+     * مخطّطًا وفي الـPDF مسطّحًا — اختلافُ شكلٍ بين المحرّكين.
+     */
+    public function test_the_zebra_is_computed_not_selected(): void
+    {
+        $html = $this->sheet($this->order(4));
+
+        $this->assertStringContainsString('table.items tr.alt td', $html, 'لا تناوبَ في أرضيّة الصفوف');
+        /* والمحدِّقُ في المحدِّد نفسِه: شرحُ القاعدة يذكر الاسمَ ولا يستعمله */
+        $this->assertStringNotContainsString(':nth-child(', $html, 'التناوبُ بمحدّدٍ لا يقرؤه mpdf');
+
+        /* وصفٌّ واحدٌ من كلّ اثنين يحمله — لا كلُّها ولا ولا واحد */
+        $this->assertSame(2, substr_count($html, '<tr class="alt">'), 'التناوبُ لا يقع على أربعة صفوف');
+    }
+
+    /**
+     * والحالةُ خَتمٌ على الورقة — ولا تُختم حالٌ ليست في النموذج.
+     *
+     * ورقةُ أمرٍ ملغيٍّ تُطبع وتُرسل إلى المورّد فيجهّز شحنةً لا أحدَ
+     * ينتظرها. و«مكتمل» في المقابل هي الحالُ الطبيعيّ لكلّ فاتورةٍ في الدرج:
+     * ختمُها على كلّ ورقةٍ ضجيجٌ لا خبر.
+     */
+    public function test_the_status_is_stamped_only_when_the_model_carries_one(): void
+    {
+        $order = $this->order();
+
+        $this->assertStringNotContainsString('class="stamp"', $this->sheet($order), 'ورقةٌ مكتملةٌ تُختم بلا خبر');
+
+        $order->update(['status' => 'ملغي']);
+
+        $this->assertStringContainsString(
+            'class="stamp"',
+            $this->sheet($order->fresh()->load('items')),
+            'فاتورةٌ ملغاةٌ تخرج بلا ما يقول إنّها أُلغيت',
+        );
+    }
+
+    /**
+     * وتذييلُ الورقة يحمل ما لا تحمله الترويسة — لا نسخةً منها.
+     *
+     * الرقمُ الضريبيُّ يُطلب في التدقيق ولا يُقرأ في السطر الأوّل، فمكانُه
+     * أسفلُ الورقة. واسمُ المتجر قالته الترويسةُ مرّةً بمقاسٍ يُرى — وتكرارُه
+     * في الحاشية حبرٌ لا خبر، ويحرسه `ThePaperIsReadBeforeItIsFiledTest`.
+     */
+    public function test_the_footer_carries_the_legal_line_not_a_second_name(): void
+    {
+        Setting::create([
+            'business_id' => $this->business->id, 'key' => 'vat_number', 'value' => 'OM1100234567',
+        ]);
+
+        /* و«إظهار الرقم الضريبي» مُطفأٌ افتراضًا في ورقة البيع — فيُشعَل هنا */
+        $html = DocumentRenderer::saleSheet(
+            $this->business->id,
+            $this->order(),
+            ['show_vat_no' => true] + \App\Support\DocumentTemplates::settings($this->business->id, 'sale'),
+        );
+
+        $this->assertStringContainsString('class="docfoot"', $html, 'الورقةُ بلا تذييلِ هويّة');
+        $this->assertSame(1, substr_count($html, 'ورد الخوير'), 'اسمُ المتجر مكرَّرٌ في التذييل');
+
+        $foot = substr($html, strpos($html, '<table class="docfoot"') ?: 0);
+        $this->assertStringContainsString('OM1100234567', $foot, 'الرقمُ الضريبيُّ ليس في التذييل');
+    }
+
+    /**
+     * وورقةٌ بلا رقمٍ ضريبيٍّ لا تُطبع تذييلًا فارغًا فوق خطّ.
+     *
+     * متجرٌ لم يسجّل بعدُ في الضريبة لا يجب أن تكون ورقتُه أسوأ — يجب أن
+     * تكون أبسط. وهو المبدأ نفسُه الذي يمنع شريطَ الغلاف عمّن لم يختر لونًا.
+     */
+    public function test_a_paper_with_nothing_legal_to_say_prints_no_footer_band(): void
+    {
+        $this->assertStringNotContainsString(
+            'class="docfoot"',
+            $this->sheet($this->order()),
+            'شريطٌ يُطبع بلا شيءٍ فيه',
+        );
+    }
 }

@@ -73,8 +73,9 @@
     @if ($show('show_signature', false))
         <table class="sign sm">
             <tr>
-                <td><div class="rule">{{ __('اعتماد الطلب') }}</div></td>
-                <td><div class="rule">{{ __('إقرار المورّد') }}</div></td>
+                <td class="box">{{ __('اعتماد الطلب') }}</td>
+                <td class="gap"></td>
+                <td class="box">{{ __('إقرار المورّد') }}</td>
             </tr>
         </table>
     @endif

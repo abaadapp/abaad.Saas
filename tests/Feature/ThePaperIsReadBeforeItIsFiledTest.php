@@ -138,8 +138,12 @@ class ThePaperIsReadBeforeItIsFiledTest extends TestCase
     {
         $html = $this->sheet($this->order(['Premium Gift Box']));
 
+        /*
+         * و`bidi` أوّلُ أصنافِ الخليّة لا وحدَها: يجاورها `item` الذي يُثقل
+         * اسمَ الصنف. والمحروسُ اقترانُ الصنف بالسمة لا نصُّ السطر حرفًا حرفًا.
+         */
         $this->assertMatchesRegularExpression(
-            '/<td class="bidi" dir="ltr">/',
+            '/<td class="bidi[^"]*" dir="ltr">/',
             $html,
             'خليّةُ الاسم لا تفصل المحاذاةَ عن الاتّجاه',
         );
@@ -189,7 +193,8 @@ class ThePaperIsReadBeforeItIsFiledTest extends TestCase
         $this->assertStringContainsString('table.metastrip', $html);
         $this->assertStringNotContainsString('class="meta"', $html, 'بقيت قائمةُ العمودين القديمة');
 
-        preg_match_all('/<td style="width:([0-9.]+)%">\s*<div class="eyebrow"/', $html, $m);
+        /* وعنوانُ الخليّة `metalabel` لا `eyebrow`: ذاك لعناوين الكتل الكبرى */
+        preg_match_all('/<td class="[^"]*" style="width:([0-9.]+)%">\s*<div class="metalabel"/', $html, $m);
 
         $this->assertNotEmpty($m[1], 'الشريطُ لا يعلن عرضَ خلاياه');
 

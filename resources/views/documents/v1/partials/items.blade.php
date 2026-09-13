@@ -31,7 +31,15 @@
                 <th style="width:13%" class="num">{{ __('المطلوبة') }}</th>
                 <th style="width:13%" class="num">{{ __('المستلمة') }}</th>
             @else
-                <th style="width:13%" class="num">{{ __('الكمية') }}</th>
+                {{--
+                    وعمودُ الكميّة يتّسع حين لا أسعارَ على الورقة.
+
+                    ثلاثةُ أعمدةٍ في ورقةٍ بعرض A4 تترك بين اسم الصنف
+                    والكميّة فراغًا بعرض راحة اليد: العينُ تقطعه فتقرأ
+                    الرقمَ في غير سطره. والسعرُ حين يُطفأ يُترك عرضُه
+                    للكميّة بدل أن يُترك بياضًا.
+                --}}
+                <th style="width:{{ $prices ? 13 : 26 }}%" class="num">{{ __('الكمية') }}</th>
             @endif
             @if ($prices)
                 <th style="width:19%" class="amt">{{ __('سعر الوحدة') }}</th>
@@ -41,7 +49,14 @@
     </thead>
     <tbody>
         @forelse ($items as $i => $item)
-            <tr>
+            {{--
+                وتناوبُ الأرضيّة يُحسب هنا لا بـ`nth-child`.
+
+                mpdf لا يُعوَّل عليه في المحدّدات البنيويّة: يخرج الجدولُ في
+                المتصفّح مخطّطًا وفي الـPDF مسطّحًا — وهو بالضبط اختلافُ
+                الشكل بين المحرّكين الذي تمنعه المواصفة.
+            --}}
+            <tr class="{{ $i % 2 === 1 ? 'alt' : '' }}">
                 <td class="num faint">{{ $i + 1 }}</td>
                 {{--
                     والاتّجاهُ محسوبٌ لاسم الصنف: تاجرٌ عربيٌّ يبيع أصنافًا
@@ -49,7 +64,7 @@
                     قويٍّ فيه ولا تنقلب نقطتُه إلى أوّله. و`dir="auto"` لا
                     يكفي: mpdf لا يعرفه — انظر `Paper::dirOf`.
                 --}}
-                <td class="bidi" dir="{{ \App\Support\Paper::dirOf($item['name']) }}">
+                <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($item['name']) }}">
                     {{ $item['name'] }}
                     @if (filled($item['note'] ?? null))
                         <div dir="{{ \App\Support\Paper::dirOf($item['note']) }}" class="sm muted bidi">{{ $item['note'] }}</div>
@@ -69,7 +84,7 @@
                         السمة. فيُلَفّ المبلغُ ليُقرأ كما كُتب: رقمٌ ثمّ عملة.
                     --}}
                     <td class="amt muted"><span dir="ltr">{{ $item['unit'] ?? '—' }}</span></td>
-                    <td class="amt b"><span dir="ltr">{{ $item['total'] ?? '—' }}</span></td>
+                    <td class="amt line"><span dir="ltr">{{ $item['total'] ?? '—' }}</span></td>
                 @endif
             </tr>
         @empty

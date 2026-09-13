@@ -707,6 +707,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/purchases/invoices/{id}/cancel', [SupplierInvoiceController::class, 'cancel'])->name('purchases.invoices.cancel');
     Route::post('/purchases/invoices/{id}/pay', [SupplierInvoiceController::class, 'pay'])->name('purchases.invoices.pay');
     Route::delete('/purchases/invoices/{id}', [SupplierInvoiceController::class, 'destroy'])->name('purchases.invoices.destroy');
+    /*
+     * وصفحةُ السند بعد أفعاله جميعًا — فلا يبتلع `{id}` مسارًا ثابتًا.
+     *
+     * و`whereNumber` تحرسها: بدونها يلتقط هذا المسارُ كلَّ ما يأتي بعد
+     * `/purchases/invoices/` من كلماتٍ لا أرقام.
+     */
+    Route::get('/purchases/invoices/{id}', [SupplierInvoiceController::class, 'show'])
+        ->whereNumber('id')->name('purchases.invoices.show');
     Route::get('/purchases/orders', [PurchaseOrderController::class, 'index'])->name('purchases.orders');
     Route::get('/purchases/create', [PageController::class, 'purchasesCreate'])->name('purchases.create');
     Route::post('/purchases', [PurchaseOrderController::class, 'store'])->name('purchases.store');

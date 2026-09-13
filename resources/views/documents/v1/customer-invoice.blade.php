@@ -75,6 +75,21 @@
     $totals[] = ['label' => __('الإجمالي'), 'value' => $money($invoice->total), 'grand' => true];
     $totals[] = ['label' => __('المسدَّد'), 'value' => $amount($paid)];
     $totals[] = ['label' => __('الباقي'), 'value' => $money($outstanding), 'due' => true];
+
+    /*
+        وهذه الورقةُ تُرسَم من الصفّ لا من `DocumentPaper` كأخواتها.
+
+        فيُبنى لها `$doc` بما تقرؤه الجزئيّاتُ المشتركة: الخَتمُ يقرأ
+        `status` والتذييلُ يقرأ `number`. وبدونه تخرج فاتورةٌ ملغاةٌ بلا
+        شيءٍ عليها يقول ذلك — والإلغاءُ أهمُّ ما يُقرأ على مطالبةٍ بمبلغ.
+
+        و«صادرة» لا تُختم: هي الحالُ الطبيعيّ لكلّ فاتورةٍ في يد جهةٍ
+        تُطالَب، وختمُها على كلّ ورقةٍ ضجيجٌ لا خبر.
+    */
+    $doc = [
+        'number' => $invoice->number ?: __('مسودة'),
+        'status' => $invoice->status === \App\Models\CustomerInvoice::ISSUED ? '' : (string) $invoice->status,
+    ];
 @endphp
 
 @section('type', $invoice->tax_total > 0 && $vat !== '' ? __('فاتورة ضريبية') : __('فاتورة'))
@@ -115,14 +130,16 @@
         </thead>
         <tbody>
             @forelse ($invoice->items as $i => $item)
-                <tr>
+                {{-- وتناوبُ الأرضيّة من القالب لا من `nth-child` — انظر `partials/items` --}}
+                <tr class="{{ $i % 2 === 1 ? 'alt' : '' }}">
                     <td class="num faint">{{ $i + 1 }}</td>
-                    <td>{{ $item->description }}</td>
+                    {{-- والبيانُ يحمل اتّجاهَه: بندٌ إنجليزيٌّ في فاتورةٍ عربيّة لا تنقلب نقطتُه --}}
+                    <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($item->description) }}">{{ $item->description }}</td>
                     <td class="num">{{ rtrim(rtrim(number_format((float) $item->quantity, 3, '.', ''), '0'), '.') }}</td>
                     {{-- والمبالغُ معزولةٌ عن اتّجاه السطر: انظر `partials/items` --}}
                     <td class="amt muted"><span dir="ltr">{{ $amount($item->unit_price) }}</span></td>
                     <td class="amt muted"><span dir="ltr">{{ $amount($item->tax_amount) }}</span></td>
-                    <td class="amt b"><span dir="ltr">{{ $amount($item->line_total) }}</span></td>
+                    <td class="amt line"><span dir="ltr">{{ $amount($item->line_total) }}</span></td>
                 </tr>
             @empty
                 <tr><td class="empty" colspan="6">{{ __('لا بنود على هذه الفاتورة') }}</td></tr>

@@ -139,7 +139,20 @@ export default function SupplierInvoices() {
             header: 'رقم السند',
             cell: (i) => (
                 <>
-                    <span className="font-mono text-[12px] text-[#4b4b4b]">{i.reference}</span>
+                    {/*
+                        ومرجعُ السند يفتح صفحتَه.
+
+                        كان نصًّا لا يُضغط: كلُّ ما يُعرف عن السند هو الأعمدةُ
+                        الخمسةُ الظاهرة، وما عداها — من اعتمده، ولمَ رُفض، وما
+                        سُدّد منه ومتى — لا موضعَ يقوله. وللسند صفحةٌ الآن.
+                    */}
+                    <SmartLink
+                        routeName="admin.purchases.invoices.show"
+                        href={route('admin.purchases.invoices.show', i.id)}
+                        className="font-mono text-[12px] font-semibold text-[#4b4b4b] hover:text-[#6d28d9] hover:underline"
+                    >
+                        {i.reference}
+                    </SmartLink>
                     {/*
                         ورقمُ الأمر يفتح أمرَه.
 

@@ -48,6 +48,15 @@ class PurchaseRegisterController extends Controller
             ->orderByDesc('ordered_at')->get()
             ->map(fn ($o) => [
                 'key' => 'po-'.$o->id,
+                /*
+                 * ومفتاحُ الصفّ ونوعُه معه — به يُفتح مستندُه.
+                 *
+                 * كان `key` سلسلةً للرسم وحدها (`po-7`)، فيبقى الصفُّ نصًّا
+                 * لا يُضغط: سجلُّ المشتريات يقول «اشتُري بـ٦٣ ريالًا من فلان»
+                 * ولا طريقَ منه إلى ما اشتُري.
+                 */
+                'id' => $o->id,
+                'type' => 'order',
                 'date' => optional($o->ordered_at)->format('Y-m-d'),
                 'reference' => $o->number,
                 'supplier' => $o->supplier?->name ?? $o->supplier_name ?? '—',
@@ -65,6 +74,8 @@ class PurchaseRegisterController extends Controller
             ->orderByDesc('issued_at')->get()
             ->map(fn ($i) => [
                 'key' => 'si-'.$i->id,
+                'id' => $i->id,
+                'type' => 'invoice',
                 'date' => optional($i->issued_at)->format('Y-m-d'),
                 'reference' => $i->supplier_ref,
                 'supplier' => $i->supplier?->name ?? '—',

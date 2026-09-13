@@ -5486,5 +5486,21 @@
     "وضع الذكاء الاصطناعي": "AI mode",
     "يقرأ محادثة العميل المحتمل ويقترح ردًّا يكتبه موظّف المبيعات ويرسله بنفسه. لا يُرسل شيئًا من نفسه.": "It reads the lead's conversation and suggests a reply that the salesperson sends themselves. It sends nothing on its own.",
     "يُحوّل إلى إنسان إذا طلب العميل ذلك أو شكا أو طلب استردادًا.": "It hands off to a person if the customer asks, complains, or requests a refund.",
-    "المساعد الذكيّ غير مفعَّل — لا مزوّد مضبوط على الخادم.": "The AI assistant is not enabled — no provider is configured on the server."
+    "المساعد الذكيّ غير مفعَّل — لا مزوّد مضبوط على الخادم.": "The AI assistant is not enabled — no provider is configured on the server.",
+    "مع هذا السند فاتورة مورّد — وفتحُ المرفقات صلاحيةٌ لا تملكها": "This voucher has a supplier invoice attached — opening attachments is a permission you do not hold",
+    "مطابقة السند": "Voucher matching",
+    "المبالغ": "Amounts",
+    "قيمة ما استُلم على أمره": "Value received against its order",
+    "إجمالي الأمر": "Order total",
+    "السدادات": "Payments",
+    "رقم القيد": "Entry no.",
+    "هذه ورقةُ أمر الشراء الذي جاء هذا السند مقابله — وفاتورةُ المورّد نفسُها مرفقٌ يُفتح من الأعلى.": "This is the purchase order this voucher was raised against — the supplier’s own invoice is an attachment, opened from the top.",
+    "رفض السند": "Reject voucher",
+    "السببُ يُقرأ في سجلّ السند بعد اليوم — اكتبه كما تقوله للمورّد.": "The reason stays in this voucher’s record — write it as you would say it to the supplier.",
+    "تاريخ السداد": "Payment date",
+    "كل سندات الموردين": "All supplier vouchers",
+    "حالة الاعتماد": "Approval status",
+    "حالة السداد": "Payment status",
+    "سجّل السند": "Recorded by",
+    "عدد القطع": "Pieces"
 }

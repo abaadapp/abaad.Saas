@@ -105,7 +105,7 @@ export default function Receivables({ totals, aging, invoices, reconciliation }:
                             {invoices.map((i) => (
                                 <tr key={i.id} className="border-t border-[var(--ui-border,#e8e8e8)]">
                                     <td className="p-3">
-                                        <Link href={`/admin/customer-invoices/${i.id}`} className="text-[#1d4ed8]">{i.number}</Link>
+                                        <Link href={route('admin.customerInvoices.show', i.id)} className="text-[#1d4ed8]">{i.number}</Link>
                                         <div className="text-[11px] text-[#9ca3af]">{i.customer}</div>
                                     </td>
                                     <td className="p-3" dir="ltr">{i.due_at ?? '—'}</td>

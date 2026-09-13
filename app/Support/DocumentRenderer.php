@@ -404,8 +404,16 @@ class DocumentRenderer
      * وكان يبني mpdf بيده بهوامش تخصّه: ١٢ مم هنا و١٤ هناك و١٥ في ثالث،
      * وستّةُ مواضع في النظام تفعل مثله. انظر App\Support\Pdf.
      */
-    public static function pdf(string $html, string $name)
+    /**
+     * @param  string|null  $context  سياقُ المستند في تذييل **كلّ** صفحة
+     *
+     * وصفحةٌ ثانيةٌ لا تحمل إلّا «٢ / ٣» ورقةٌ لا يُعرف إلى أيّ حزمةٍ تعود
+     * إن سقطت من ملفّ. والتذييلُ في `MpdfDriver::frame` يقبل هذا السياق
+     * ويطبعه إلى جانب رقم الصفحة — وكان يُترك فارغًا في أوراق المستندات
+     * كلِّها، فتخرج صفحاتُها الثانيةُ عارية.
+     */
+    public static function pdf(string $html, string $name, ?string $context = null)
     {
-        return Pdf::a4($html, $name);
+        return Pdf::sheet($html, $name, PaperSize::A4, false, null, $context);
     }
 }

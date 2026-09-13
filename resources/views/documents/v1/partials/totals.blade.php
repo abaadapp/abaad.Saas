@@ -22,7 +22,17 @@
                     <div class="sm muted">{{ $aside }}</div>
                 @endif
             </td>
-            <td style="width:46%">
+            {{--
+                والمجاميعُ داخل بطاقةٍ مؤطّرة.
+
+                أرقامٌ عائمةٌ في بياض الورقة تُقرأ متفرّقة: «الضريبة»
+                يجاورها سطرُ ملاحظاتٍ فيبدوان قائمةً واحدة. والإطارُ يجمع
+                المفرداتِ والإجماليَّ في شيءٍ يُقرأ دفعةً.
+
+                والإطارُ على الخليّة لا على كتلةٍ داخلها: mpdf يُقلّص كتلَ
+                الـ`div` إلى نصّها داخل الخلايا — انظر `partials/parties`.
+            --}}
+            <td class="totalcard" style="width:46%">
                 <table class="totals">
                     @foreach ($rows as $row)
                         <tr class="{{ ($row['grand'] ?? false) ? 'grand' : (($row['due'] ?? false) ? 'due' : '') }}">

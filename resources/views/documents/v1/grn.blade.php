@@ -74,8 +74,9 @@
     @if ($show('show_signature'))
         <table class="sign sm">
             <tr>
-                <td><div class="rule">{{ __('توقيع المورّد / الناقل') }}</div></td>
-                <td><div class="rule">{{ __('توقيع المستلِم') }}</div></td>
+                <td class="box">{{ __('توقيع المورّد / الناقل') }}</td>
+                <td class="gap"></td>
+                <td class="box">{{ __('توقيع المستلِم') }}</td>
             </tr>
         </table>
     @endif

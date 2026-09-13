@@ -16,6 +16,8 @@ import type { PageProps } from '@/types';
 
 interface Row {
     key: string;
+    id: number;
+    type: 'order' | 'invoice';
     date: string | null;
     reference: string;
     supplier: string;
@@ -61,7 +63,30 @@ export default function PurchaseRegister() {
         {
             key: 'reference',
             header: 'المرجع',
-            cell: (r) => <span className="font-mono text-[12px] text-[#4b4b4b]">{r.reference}</span>,
+            /*
+                والمرجعُ يفتح مستندَه — أمرًا كان أو سندًا.
+
+                كان نصًّا رماديًّا لا يُضغط، فيقف السجلُّ عند «اشتُري بكذا
+                من فلان» ولا طريقَ منه إلى ما اشتُري ولا إلى ورقته. وهذه
+                القائمةُ تجمع نوعين، فيُقرأ النوعُ من الصفّ ويُقاد كلٌّ إلى
+                صفحته: `admin.purchases.show` للأمر و`…invoices.show` للسند.
+            */
+            cell: (r) => {
+                const to =
+                    r.type === 'order'
+                        ? { name: 'admin.purchases.show', href: route('admin.purchases.show', r.id) }
+                        : { name: 'admin.purchases.invoices.show', href: route('admin.purchases.invoices.show', r.id) };
+
+                return (
+                    <SmartLink
+                        routeName={to.name}
+                        href={to.href}
+                        className="font-mono text-[12px] font-semibold text-[#4b4b4b] hover:text-[#6d28d9] hover:underline"
+                    >
+                        {r.reference}
+                    </SmartLink>
+                );
+            },
         },
         { key: 'supplier', header: 'المورّد', cell: (r) => r.supplier, value: (r) => r.supplier },
         {

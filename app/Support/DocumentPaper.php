@@ -139,6 +139,14 @@ class DocumentPaper
         return [
             'title' => $extra['title'] ?? __('فاتورة'),
             'number' => $order->number,
+            /*
+             * والحالةُ تُختم على الورقة — و«مكتمل» وحدها لا تُختم.
+             *
+             * فاتورةٌ ملغاةٌ تخرج من الدرج بعد شهرٍ فلا شيءَ عليها يقول
+             * إنّها أُلغيت. و«مكتمل» هي الحالُ الطبيعيّ لكلّ فاتورةٍ في
+             * الدرج: ختمُها على كلّ ورقةٍ ضجيجٌ لا خبر.
+             */
+            'status' => in_array((string) $order->status, ['مكتمل', ''], true) ? '' : (string) $order->status,
             'date' => optional($order->ordered_at)->format('Y-m-d H:i'),
             'branch' => $order->branch,
             'employee' => $order->employee_name,
@@ -327,6 +335,15 @@ class DocumentPaper
             'title' => __('أمر شراء'),
             /* ورقمٌ لم يُقطع بعدُ يُقال «مسودّة» — لا سطرٌ ينتهي عند فراغ */
             'number' => $po->number ?: __('مسودة'),
+            /*
+             * والحالةُ من حقل الجدول نفسِه لا من اشتقاقٍ في القالب.
+             *
+             * ورقةُ أمرٍ ملغيٍّ تُطبع وتُرسل إلى المورّد فيجهّز شحنةً لا
+             * أحدَ ينتظرها. فتُختم الورقةُ بحالتها — انظر `partials/stamp`.
+             * والقيمةُ نصُّ `status` كما هو في النموذج: «مسودة» أو «مُرسل»
+             * أو «مستلم» — لا قائمةٌ ثانيةٌ هنا تفترق عنها.
+             */
+            'status' => (string) $po->status,
             'date' => optional($po->ordered_at)->format('Y-m-d'),
             'meta' => $meta,
             'branch' => null,
@@ -376,6 +393,8 @@ class DocumentPaper
         return [
             'title' => __('سند استلام بضاعة'),
             'number' => $grn->number,
+            /* وحالةُ السند تُختم عليه: «بانتظار الاعتماد» ورقةٌ لا تُصرف بها بضاعة */
+            'status' => (string) $grn->status,
             'date' => optional($grn->received_at)->format('Y-m-d'),
             'branch' => optional($grn->branch)->name,
             'employee' => $grn->receiver,
@@ -450,9 +469,16 @@ class DocumentPaper
             default => [['cap' => __('المستلِم'), 'lines' => [__('زبون تجريبي'), '91234567', __('مسقط — الخوير')]]],
         };
 
+        $stamps = [
+            'purchase' => 'مُرسل',
+            'grn' => 'معتمد',
+        ];
+
         return [
             'title' => __($titles[$type] ?? 'مستند'),
             'number' => strtoupper(substr($type, 0, 2)).'-000123',
+            /* وخَتمٌ في المعاينة: التاجر يضبط قالبَه على ما سيخرج فعلًا */
+            'status' => __($stamps[$type] ?? ''),
             'date' => now()->format('Y-m-d H:i'),
             'branch' => __('الفرع الرئيسي'),
             'employee' => __('موظف المبيعات'),

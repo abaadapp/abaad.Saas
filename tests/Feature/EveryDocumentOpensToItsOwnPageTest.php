@@ -13,6 +13,7 @@ use App\Models\GoodsReceiptNoteItem;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Supplier;
+use App\Models\SupplierInvoice;
 use App\Models\User;
 use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -170,6 +171,47 @@ class EveryDocumentOpensToItsOwnPageTest extends TestCase
             ->get(route('admin.purchases.show', $po->id))->assertNotFound();
         $this->actingAs($stranger)
             ->get(route('admin.customerInvoices.show', $invoice->id))->assertNotFound();
+        $this->actingAs($stranger)
+            ->get(route('admin.purchases.invoices.show', $this->supplierInvoice()->id))->assertNotFound();
+    }
+
+    /**
+     * وقراءةُ سند المورّد فعلٌ يُمنح.
+     *
+     * هي تقول ما على المتجر لمورّديه وبكم اشترى — ولا تُمنح لمن يعدّ الرفوف.
+     */
+    public function test_reading_a_supplier_invoice_is_an_action_that_is_granted(): void
+    {
+        $si = $this->supplierInvoice();
+
+        /* والقسمُ وحده لا يكفي: «المشتريات» تُفتح، وقراءةُ السندات فعلٌ فيها */
+        $this->actingAs($this->staff(['purchases']))
+            ->get(route('admin.purchases.invoices.show', $si->id))->assertForbidden();
+
+        $this->actingAs($this->staff(['purchases', Permissions::INVOICE_VIEW]))
+            ->get(route('admin.purchases.invoices.show', $si->id))->assertOk();
+    }
+
+    /**
+     * ومرفقُ السند لا يُبنى رابطُه لمن لا يفتح المرفقات.
+     *
+     * ووجودُه يُقال: «معه ورقةٌ لا تملك فتحَها» خبرٌ، و«لا ورقة» كذبٌ.
+     */
+    public function test_the_supplier_invoice_names_an_attachment_it_will_not_open(): void
+    {
+        $si = $this->supplierInvoice();
+        $si->update(['attachment' => 'attachments/si-77.pdf']);
+
+        $this->actingAs($this->staff(['purchases', Permissions::INVOICE_VIEW]))
+            ->get(route('admin.purchases.invoices.show', $si->id))
+            ->assertInertia(fn ($p) => $p
+                ->where('invoice.has_attachment', true)
+                ->where('invoice.attachment', null));
+
+        $this->actingAs($this->staff(['purchases', Permissions::INVOICE_VIEW, Permissions::ATTACHMENT_VIEW]))
+            ->get(route('admin.purchases.invoices.show', $si->id))
+            ->assertInertia(fn ($p) => $p
+                ->where('invoice.attachment', route('admin.purchases.invoices.attachment', $si->id)));
     }
 
     /**
@@ -268,6 +310,73 @@ class EveryDocumentOpensToItsOwnPageTest extends TestCase
         ]);
 
         return $note->load('items', 'purchaseOrder');
+    }
+
+    /* ————————————————— سندُ المورّد ————————————————— */
+
+    /**
+     * سندُ المورّد يُفتح — وكان آخرَ صفٍّ لا يُفتح في المشتريات.
+     *
+     * وعليه تنشأ الذمّة: هو أكثرُها حاجةً إلى صفحةٍ تقول من اعتمده ولمَ
+     * رُفض وما سُدّد منه — ولم يكن له إلّا خمسةُ أعمدةٍ في جدول.
+     */
+    public function test_the_supplier_invoice_has_a_page_of_its_own(): void
+    {
+        $si = $this->supplierInvoice();
+
+        $this->actingAs($this->owner)
+            ->get(route('admin.purchases.invoices.show', $si->id))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p
+                ->component('Admin/Purchases/InvoiceShow')
+                ->where('invoice.reference', 'SI-77/2026')
+                ->where('invoice.approval_status', 'بانتظار الاعتماد')
+                ->where('order.number', 'PO-000001'));
+    }
+
+    /**
+     * وورقتُه ورقةُ أمره — لا ورقةٌ تُولَّد باسم المورّد.
+     *
+     * السندُ ورقةُ المورّد يسجّلها التاجر عنده. وتوليدُ ورقةٍ بهويّة أبعاد
+     * تحمل رقمَ المورّد إصدارُ مستندٍ باسم غيرِنا. فما يُعرض أمرُ الشراء.
+     */
+    public function test_the_supplier_invoice_shows_the_order_paper_not_an_invented_one(): void
+    {
+        $si = $this->supplierInvoice();
+
+        $this->actingAs($this->owner)
+            ->get(route('admin.purchases.invoices.show', $si->id))
+            ->assertInertia(fn ($p) => $p
+                ->where('paper.url', route('admin.purchases.pdf', $si->purchase_order_id))
+                ->where('paper.html', fn (string $html) => str_contains($html, 'PO-000001')
+                    && ! str_contains($html, 'SI-77/2026')));
+    }
+
+    /** وسندٌ سُجّل بلا أمرٍ لا يُعرض له صندوقٌ خاوٍ عنوانُه «الورقة» */
+    public function test_a_standalone_supplier_invoice_is_offered_no_empty_paper(): void
+    {
+        $si = $this->supplierInvoice();
+        $si->update(['purchase_order_id' => null]);
+
+        $this->actingAs($this->owner)
+            ->get(route('admin.purchases.invoices.show', $si->id))
+            ->assertInertia(fn ($p) => $p->where('paper', null)->where('order', null));
+    }
+
+    private function supplierInvoice(): SupplierInvoice
+    {
+        $po = $this->purchaseOrder();
+
+        return SupplierInvoice::create([
+            'business_id' => $this->business->id,
+            'supplier_id' => $po->supplier_id,
+            'purchase_order_id' => $po->id,
+            'supplier_ref' => 'SI-77/2026',
+            'issued_at' => now()->toDateString(),
+            'due_at' => now()->addDays(30)->toDateString(),
+            'subtotal' => 12.0, 'tax' => 0, 'total' => 12.0, 'paid' => 0,
+            'status' => 'غير مدفوع',
+        ]);
     }
 
     private function invoice(): CustomerInvoice

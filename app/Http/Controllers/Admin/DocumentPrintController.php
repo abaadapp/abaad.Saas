@@ -46,6 +46,7 @@ class DocumentPrintController extends Controller
         return DocumentRenderer::pdf(
             DocumentRenderer::generic($bid, 'delivery', DocumentPaper::forDelivery($order), null, $order),
             'delivery-'.$order->number,
+            __('سند تسليم').' '.$order->number,
         );
     }
 
@@ -60,6 +61,7 @@ class DocumentPrintController extends Controller
         return DocumentRenderer::pdf(
             DocumentRenderer::generic($bid, 'purchase', DocumentPaper::forPurchase($po)),
             'purchase-'.$po->number,
+            __('أمر شراء').' '.$po->number,
         );
     }
 
@@ -74,6 +76,7 @@ class DocumentPrintController extends Controller
         return DocumentRenderer::pdf(
             DocumentRenderer::generic($bid, 'grn', DocumentPaper::forGrn($note)),
             'grn-'.$note->number,
+            __('سند استلام بضاعة').' '.$note->number,
         );
     }
 }

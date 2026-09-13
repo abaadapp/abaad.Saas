@@ -111,7 +111,21 @@ export default function SuppliersIndex() {
             // كان يقرأ اسمًا لا يعرفه ولا يعرف أنّه هو
             cell: (s) => (
                 <span>
-                    <span className="text-[#111]">{s.label ?? s.name}</span>
+                    {/*
+                        واسمُ المورّد يفتح حركتَه.
+
+                        كان نصًّا لا يُضغط: من يقرأ «مشتل الربيع» في القائمة
+                        ويريد أن يعرف ماذا اشترينا منه يفتح شاشةً أخرى ويبحث
+                        بالاسم. وسجلُّ المشتريات يُرشَّح بالمورّد أصلًا
+                        (`?supplier=`) — فيُقاد إليه بدل صفحةٍ ثانيةٍ تُبنى.
+                    */}
+                    <SmartLink
+                        routeName="admin.purchases.index"
+                        href={route('admin.purchases.index', { supplier: s.id, month: 'all' })}
+                        className="text-[#111] hover:text-[#6d28d9] hover:underline"
+                    >
+                        {s.label ?? s.name}
+                    </SmartLink>
                     {s.name_en && (s.label ?? s.name) !== s.name_en && (
                         <span className="block text-[12px] text-[#9ca3af]" dir="ltr">
                             {s.name_en}

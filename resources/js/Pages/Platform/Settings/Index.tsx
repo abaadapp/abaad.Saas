@@ -85,6 +85,7 @@ const FIELD_TAB: Record<string, string> = {
     whatsapp_shared_default_monthly_limit: 'whatsapp',
 
     crm_ai_mode: 'ai',
+    crm_whatsapp_shared: 'whatsapp',
 };
 
 const TABS = [
@@ -100,7 +101,7 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, aiProvider, supportReach, googleHealth, googleKeyHint, googleBilling } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, crmLine, aiProvider, supportReach, googleHealth, googleKeyHint, googleBilling } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
@@ -109,6 +110,7 @@ export default function PlatformSettings() {
             whatsapp?: SharedConnection | null;
             /* ورقمُ المبيعات وصلةٌ ثانيةٌ بالشكل نفسه وغرضٍ آخر */
             salesWhatsapp?: SharedConnection | null;
+            crmLine?: { shared: boolean; onNoticeLine: boolean; connected: boolean };
             /* وحالُ مزوّد الذكاء — وجودُه لا قيمتُه */
             aiProvider?: { ready: boolean; name: string } | null;
             supportReach?: { reachable: number; total: number; ambiguous: number };
@@ -158,6 +160,7 @@ export default function PlatformSettings() {
         whatsapp_shared_enabled: on('whatsapp_shared_enabled'),
         whatsapp_shared_default_monthly_limit: get('whatsapp_shared_default_monthly_limit'),
         crm_ai_mode: get('crm_ai_mode'),
+        crm_whatsapp_shared: on('crm_whatsapp_shared'),
     });
 
     /*
@@ -647,6 +650,45 @@ export default function PlatformSettings() {
                             <p className="mb-4 text-[13px] leading-relaxed text-[#6b7280]">
                                 {t('رقمٌ مستقلٌّ يستقبل من يريد أن يشتري أبعاد، ووارده يُقرأ في «CRM ‹ المحادثات». ولا يكون رقمَ الإشعارات نفسَه: ذاك يردّ عليه زبائنُ المحلّات، وقراءةُ المجهول عليه تُدخل رسائلهم في دفتر مبيعاتنا.')}
                             </p>
+
+                            {/*
+                                ═══ ومقبضُ الرقم الواحد — يُعرض ثمنُه قبل إدارته ═══
+
+                                مقبضٌ يفتح بابًا لا يُغلق أثرُه: رسائلُ من
+                                راسلونا تُكتب في الدفتر وتبقى. فالثمنُ مكتوبٌ
+                                هنا لا في وثيقةٍ لا تُقرأ.
+                            */}
+                            <div className="mb-5 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
+                                <Toggle
+                                    on={form.data.crm_whatsapp_shared}
+                                    onChange={(v) => form.setData('crm_whatsapp_shared', v)}
+                                    label="استعمال رقم الإشعارات نفسه للمبيعات"
+                                    hint="يُغني عن رقمٍ ثانٍ. ويُقرأ على رقم الإشعارات كلُّ من راسلنا ولم نُرسل إليه شيئًا قطّ — ويُكتب عميلًا محتمَلًا."
+                                />
+
+                                {form.data.crm_whatsapp_shared && (
+                                    <div className="mt-4 rounded-[10px] bg-[#fffbeb] px-4 py-3 text-[13px] leading-relaxed text-[#92400e]">
+                                        <p className="mb-2 font-bold">{t('ما يجري في هذا الوضع')}</p>
+                                        <ul className="list-disc space-y-1 pr-4">
+                                            <li>{t('من أرسلنا إليه إشعارَ طلبٍ يومًا لا يُكتب عميلًا — يُعرف من دفتر إرسالنا لا بالحدس.')}</li>
+                                            <li>{t('ورقمُ تاجرٍ مسجَّلٍ عندنا يذهب إلى الدعم كما كان.')}</li>
+                                            <li>
+                                                {t('ويبقى خطرٌ يُقال: زبونُ محلٍّ أعطاه صاحبُه الرقمَ يدًا بيد ولم نُرسل إليه قطّ — يُكتب عميلًا محتمَلًا، ويُقرأ نصُّه هنا.')}
+                                            </li>
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {crmLine?.shared && !crmLine?.connected && (
+                                    <p className="mt-3 text-[13px] text-[#b91c1c]">
+                                        {t('المقبض مُدارٌ ولا خطَّ يعمل — رقمُ الإشعارات غيرُ موصولٍ أو لا يعمل، فلا يصل شيء.')}
+                                    </p>
+                                )}
+
+                                {crmLine?.onNoticeLine && crmLine?.connected && (
+                                    <p className="mt-3 text-[13px] text-[#15803d]">{t('المبيعات تعمل الآن على رقم الإشعارات.')}</p>
+                                )}
+                            </div>
 
                             {salesWhatsapp && (
                                 <p className="mb-4 text-[13px] text-[#111]">

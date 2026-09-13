@@ -112,6 +112,25 @@ class CrmStaysOutOfTenantDataTest extends TestCase
         foreach ($files as $path) {
             $source = file_get_contents($path);
 
+            /*
+             * ═══ واستثناءٌ واحدٌ مكتوبٌ بنصّه — لا فئةٌ مفتوحة ═══
+             *
+             * حين صار رقمُ الإشعارات يحمل دفترَ المبيعات معه (بإذن)، احتاج
+             * `CrmWhatsApp` أن يعرف: **أأرسلنا إلى هذا الرقم إشعارَ طلبٍ
+             * يومًا؟** فمن أرسلنا إليه زبونُ محلٍّ يردّ على إشعاره، ولا يُكتب
+             * في دفترنا.
+             *
+             * وهذه القراءةُ عكسُ ما يحرسه هذا الاختبار: لا تُدخل بيانَ تاجرٍ
+             * إلى CRM، بل تمنع دخولَ زبونه. ولا تقرأ نصًّا ولا طلبًا ولا
+             * اسمًا — عمودَ هاتفٍ واحدًا، وتردُّ `true`/`false`.
+             *
+             * فيُسمح بهذا السطر **بحرفه** لا بالنموذج كلِّه: أيُّ استعمالٍ
+             * آخر لـ`WhatsAppMessage` في ملفّات CRM يسقط هنا كما كان. ويحرس
+             * `test_the_send_log_exception_stays_a_single_read` أن يبقى
+             * واحدًا.
+             */
+            $source = str_replace(self::SEND_LOG_READ, '', $source);
+
             foreach ($forbidden as $needle) {
                 $this->assertStringNotContainsString(
                     $needle,
@@ -120,6 +139,40 @@ class CrmStaysOutOfTenantDataTest extends TestCase
                 );
             }
         }
+    }
+
+    /**
+     * القراءةُ الوحيدةُ المسموحة في دفتر الإرسال — بحرفها.
+     *
+     * وتُكتب هنا لا في الملفّ: نسختان تفترقان يومًا، فتتّسع إحداهما ويبقى
+     * الحارسُ يحرس الأخرى.
+     */
+    private const SEND_LOG_READ = "WhatsAppMessage::where('recipient_phone', \$phone)->exists()";
+
+    /**
+     * والاستثناءُ يبقى قراءةً واحدةً — لا بابًا يتّسع.
+     *
+     * «بابٌ يُفتح شبرًا يُفتح ذراعًا»: من يكتب بعد سنةٍ قراءةً ثانيةً في
+     * `whatsapp_messages` — «آخرُ طلبٍ له»، «كم اشترى» — يُدخل دفترَ تاجرٍ
+     * إلى دفتر مبيعاتنا. فيُعدّ العددُ ويُقارن.
+     */
+    public function test_the_send_log_exception_stays_a_single_read(): void
+    {
+        $path = base_path('app/Support/CrmWhatsApp.php');
+        $source = file_get_contents($path);
+
+        $this->assertSame(
+            1,
+            substr_count($source, self::SEND_LOG_READ),
+            'القراءةُ المسموحةُ في دفتر الإرسال تغيّرت أو تكرّرت — راجع الاستثناء'
+        );
+
+        /* ولا ذكرَ آخرَ للنموذج: الاستيرادُ وهذه القراءةُ وحدَهما */
+        $this->assertSame(
+            1,
+            substr_count(str_replace('use App\Models\WhatsAppMessage;', 'IMPORT', $source), 'WhatsAppMessage'),
+            'ذُكر `WhatsAppMessage` في CRM أكثرَ من القراءةِ المأذونة'
+        );
     }
 
     /**

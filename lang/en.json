@@ -5630,5 +5630,13 @@
     "مقاس الفاتورة": "Invoice paper size",
     "الورقة التي تُرسَل وتُحفظ — A4 ما لم تختر غيرها": "The sheet that is sent and filed — A4 unless you choose otherwise",
     "عرض ورق الطابعة الحرارية": "Thermal printer paper width",
-    "للإيصال الذي يخرج من الصندوق — وطابعةُ الصندوق الموصولة تغلبه": "For the receipt the till prints — a connected till printer overrides it"
+    "للإيصال الذي يخرج من الصندوق — وطابعةُ الصندوق الموصولة تغلبه": "For the receipt the till prints — a connected till printer overrides it",
+    "استعمال رقم الإشعارات نفسه للمبيعات": "Use the same notifications number for sales",
+    "يُغني عن رقمٍ ثانٍ. ويُقرأ على رقم الإشعارات كلُّ من راسلنا ولم نُرسل إليه شيئًا قطّ — ويُكتب عميلًا محتمَلًا.": "Saves you a second number. On the notifications line, anyone who writes to us and whom we have never messaged is read — and recorded as a lead.",
+    "ما يجري في هذا الوضع": "What happens in this mode",
+    "من أرسلنا إليه إشعارَ طلبٍ يومًا لا يُكتب عميلًا — يُعرف من دفتر إرسالنا لا بالحدس.": "Anyone we ever sent an order notification to is never recorded as a lead — known from our own send log, not guessed.",
+    "ورقمُ تاجرٍ مسجَّلٍ عندنا يذهب إلى الدعم كما كان.": "A registered merchant's number still goes to support, as before.",
+    "ويبقى خطرٌ يُقال: زبونُ محلٍّ أعطاه صاحبُه الرقمَ يدًا بيد ولم نُرسل إليه قطّ — يُكتب عميلًا محتمَلًا، ويُقرأ نصُّه هنا.": "One risk remains, and it is stated: a shop customer handed the number directly by the owner, whom we never messaged, is recorded as a lead — and their text is readable here.",
+    "المقبض مُدارٌ ولا خطَّ يعمل — رقمُ الإشعارات غيرُ موصولٍ أو لا يعمل، فلا يصل شيء.": "The switch is on but no line is working — the notifications number is not connected or not usable, so nothing arrives.",
+    "المبيعات تعمل الآن على رقم الإشعارات.": "Sales is now running on the notifications number."
 }

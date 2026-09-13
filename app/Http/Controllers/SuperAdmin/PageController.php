@@ -16,6 +16,7 @@ use App\Models\WhatsAppConnection;
 use App\Support\Billing;
 use App\Support\BusinessTypes;
 use App\Support\CrmAssistant;
+use App\Support\CrmWhatsApp;
 use App\Support\Demo;
 use App\Support\GoogleBilling;
 use App\Support\GoogleReviews;
@@ -436,6 +437,17 @@ class PageController extends Controller
                     ->orderByDesc('id')->first(),
                 withIds: true,
             ),
+            /*
+             * وأيُّ خطٍّ يحمل دفترَ المبيعات فعلًا — لا أيُّهما ضُبط.
+             *
+             * مقبضٌ مُدارٌ وخطٌّ يعمل شيئان: يُفتح الإذن ولا رقمَ إشعاراتٍ
+             * موصولًا فلا يصل شيء. والشاشةُ تقول ما يجري لا ما نويناه.
+             */
+            'crmLine' => [
+                'shared' => CrmWhatsApp::shared(),
+                'onNoticeLine' => CrmWhatsApp::sharingNoticeLine(),
+                'connected' => CrmWhatsApp::connected(),
+            ],
         ]);
     }
 
@@ -536,6 +548,9 @@ class PageController extends Controller
          * والوضعُ هنا يقول ما نسمح به؛ والمفتاحُ يقول ما نستطيعه.
          */
         'crm_ai_mode' => CrmAssistant::SUGGEST,
+
+        /* ورقمٌ واحدٌ للغرضين لا يُفتح إلّا بإدارةٍ — انظر `CrmWhatsApp::shared` */
+        'crm_whatsapp_shared' => '0',
     ];
 
     /* ------------------------------ مشتركات ------------------------------ */

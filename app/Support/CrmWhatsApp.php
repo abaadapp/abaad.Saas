@@ -5,8 +5,10 @@ namespace App\Support;
 use App\Models\CrmLead;
 use App\Models\CrmMessage;
 use App\Models\CrmStageEvent;
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\WhatsAppConnection;
+use App\Models\WhatsAppMessage;
 
 /**
  * قناةُ واتساب في دفتر المبيعات — الموضعُ الوحيد الذي يعرفها.
@@ -53,7 +55,52 @@ final class CrmWhatsApp
             ->where('status', WhatsAppConnection::ACTIVE)
             ->orderByDesc('id')->first();
 
-        return $connection && $connection->isUsable() ? $connection : null;
+        if ($connection && $connection->isUsable()) {
+            return $connection;
+        }
+
+        /*
+         * ولا خطَّ مبيعاتٍ مستقلًّا: يُشارَك رقمُ الإشعارات إن أُذن بذلك.
+         *
+         * والإذنُ مقبضٌ يُدار في الإعدادات، لا حالةٌ تُستنتج: رقمٌ واحدٌ يخدم
+         * الغرضين قرارُ مالكِ المنصّة وحدَه، وثمنُه مكتوبٌ في `SHARED_COST`.
+         */
+        if (! self::shared()) {
+            return null;
+        }
+
+        $notices = WhatsAppConnections::platform();
+
+        return $notices && $notices->isUsable() ? $notices : null;
+    }
+
+    /**
+     * أمأذونٌ لرقم الإشعارات أن يحمل دفترَ المبيعات معه؟
+     *
+     * ═══ وما يُشترى بهذا الإذن وما يُدفع ثمنًا ═══
+     *
+     * يُشترى: رقمٌ واحدٌ يكفي، ولا رقمَ ثانيًا يُشترى ويُوثَّق عند ميتا.
+     *
+     * ويُدفع: رقمُ الإشعارات يُرسل نيابةً عن المحلّات، فيردّ عليه زبائنُهم.
+     * ومن ردَّ عليه ولم نكن أرسلنا إليه شيئًا يصير — في هذا الوضع — عميلًا
+     * محتمَلًا في دفترنا، ويُقرأ نصُّه في لوحة المنصّة.
+     *
+     * ولذلك لا يُفتح البابُ للجميع: `strangerOnSharedLine` تردُّ كلَّ رقمٍ
+     * أرسلنا إليه إشعارَ طلبٍ يومًا، وكلَّ رقمٍ يخصّ مستخدمًا له متجر. ويبقى
+     * الباقي — وهو من راسلنا ولم نراسله قطّ.
+     */
+    public static function shared(): bool
+    {
+        return (string) Setting::whereNull('business_id')
+            ->where('key', 'crm_whatsapp_shared')->value('value') === '1';
+    }
+
+    /** أعلى رقمِ الإشعارات يجري هذا — أم على خطٍّ مستقلّ؟ */
+    public static function sharingNoticeLine(): bool
+    {
+        $line = self::line();
+
+        return $line !== null && $line->purpose === WhatsAppMode::PURPOSE_NOTIFICATIONS;
     }
 
     public static function connected(): bool
@@ -77,7 +124,25 @@ final class CrmWhatsApp
          * هذه الدالّة يومًا من موضعٍ آخر لا يفتح بابَ المجهول على رقم
          * الإشعارات بسهو.
          */
-        if ($connection->purpose !== WhatsAppMode::PURPOSE_CRM_SALES || ! $connection->isUsable()) {
+        if (! $connection->isUsable()) {
+            return;
+        }
+
+        $sales = $connection->purpose === WhatsAppMode::PURPOSE_CRM_SALES;
+
+        /*
+         * ورقمُ الإشعارات لا يُقرأ هنا إلّا إن كان **هو خطَّ المبيعات فعلًا**.
+         *
+         * ═══ ولمَ يُسأل `line()` لا تُعاد شروطُه ═══
+         *
+         * أوّلُ كتابةٍ لهذا الشرط أعادت الشروطَ هنا: «غرضُه إشعارات، والإذنُ
+         * مُدار». فقُبلت **وصلةُ متجرٍ** ربط رقمَه الخاصّ — غرضُها إشعاراتٌ
+         * أيضًا — فصار وارد رقمِ محلٍّ يُكتب في دفتر مبيعات أبعاد.
+         *
+         * و`line()` تحمل الشروطَ كلَّها في موضعٍ واحد: وصلةُ منصّةٍ، نشطةٌ،
+         * صالحة، وبإذن. فتُسأل ولا تُنسخ — ونسختان تفترقان يومًا.
+         */
+        if (! $sales && self::line()?->id !== $connection->id) {
             return;
         }
 
@@ -98,6 +163,17 @@ final class CrmWhatsApp
             return;
         }
 
+        /*
+         * وعلى الرقم المشترَك: لا يُقرأ إلّا **غريبٌ لم نراسله قطّ**.
+         *
+         * والشرطُ يُقاس ولا يُحدس: دفترُ إرسالنا نفسُه يقول من أرسلنا إليه
+         * إشعارَ طلب. فمن كان فيه فهو زبونُ محلٍّ يردّ على إشعاره، لا تاجرٌ
+         * يريد أن يشتري أبعاد.
+         */
+        if (! $sales && ! self::strangerOnSharedLine($from)) {
+            return;
+        }
+
         [$body, $mediaType] = self::inboundBody($message);
 
         /*
@@ -109,6 +185,61 @@ final class CrmWhatsApp
         $profileName = self::profileName($message);
 
         Contention::attempt(fn () => self::store($from, $profileName, $body, $mediaType, $wamid));
+    }
+
+    /**
+     * أغريبٌ هو — على الرقم الذي يخدم الغرضين؟
+     *
+     * ═══ ولمَ دفترُ الإرسال لا الحدس ═══
+     *
+     * رقمُ الإشعارات يُرسل نيابةً عن المحلّات، فأكثرُ وارده ردودُ زبائنَ على
+     * إشعاراتِ طلباتهم. ولو وُزّع الواردُ بنصّ الرسالة أو بطولها لَصار سؤالُ
+     * زبونةٍ عن هديّتها «عميلًا محتمَلًا» يومَ يُشبه سؤالَ تاجر.
+     *
+     * فالفاصلُ حقيقةٌ عندنا مكتوبةٌ في صفوفنا: `whatsapp_messages` تحفظ رقمَ
+     * كلّ من أرسلنا إليه. فمن كان فيه ليس غريبًا، ومن لم يكن فيه لم نراسله
+     * قطّ — فهو من بدأ هو بالكتابة إلينا.
+     *
+     * ويُردّ كذلك كلُّ رقمٍ يخصّ مستخدمًا له متجر: ذاك تاجرٌ يطلب دعمًا،
+     * وبابُه `SupportWhatsApp` لا دفترُ المبيعات.
+     *
+     * ═══ وما يبقى من خطرٍ يُقال ═══
+     *
+     * زبونُ محلٍّ لم نُرسل إليه شيئًا قطّ — أعطاه صاحبُ المحلّ الرقمَ يدًا
+     * بيد — يُكتب عميلًا محتمَلًا. وهذا حدُّ هذا الوضع، ولذلك الرقمُ الثاني
+     * أسلم. انظر `shared()`.
+     */
+    public static function strangerOnSharedLine(string $from): bool
+    {
+        $phone = WhatsAppPhone::normalize($from);
+
+        if ($phone === null) {
+            return false;
+        }
+
+        /* أرسلنا إليه إشعارًا يومًا: زبونُ محلٍّ يردّ، لا عميلٌ محتمَل */
+        if (WhatsAppMessage::where('recipient_phone', $phone)->exists()) {
+            return false;
+        }
+
+        /*
+         * ورقمُ تاجرٍ عندنا: بابُه الدعم لا المبيعات.
+         *
+         * ويُطبَّع كلُّ رقمٍ قبل المقارنة — الأرقامُ تُكتب في الحسابات بصيغٍ
+         * شتّى: بمفتاحٍ وبلا مفتاح، بمسافاتٍ وبشَرطات. ومقارنةُ نصٍّ بنصٍّ
+         * تُخطئ فتفتح دفترَ المبيعات على تاجر.
+         *
+         * وأيُّ مطابقةٍ تكفي للردّ — ولو تعدّدت. `SupportWhatsApp::sender`
+         * تردُّ المكرَّر `null` لأنّها تحتاج صاحبًا واحدًا بعينه؛ وهنا يكفي
+         * أن يكون الرقمُ لتاجرٍ ما.
+         */
+        foreach (User::query()->whereNotNull('business_id')->whereNotNull('phone')->cursor() as $user) {
+            if (WhatsAppPhone::normalize($user->phone) === $phone) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

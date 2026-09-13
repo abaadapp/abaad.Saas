@@ -65,6 +65,15 @@ class SettingController extends Controller
          * يُبنَ تعني مشغّلًا يظنّ العملاءَ يُردّ عليهم تلقائيًّا ولا يردّ أحد.
          */
         'crm_ai_mode' => ['nullable', 'in:'.CrmAssistant::OFF.','.CrmAssistant::SUGGEST],
+
+        /*
+         * أيحمل رقمُ الإشعارات دفترَ المبيعات معه؟
+         *
+         * والثمنُ مكتوبٌ في `CrmWhatsApp::shared` ومعروضٌ في الشاشة قبل
+         * الإدارة: من راسلنا على هذا الرقم ولم نراسله قطّ يصير عميلًا
+         * محتمَلًا، ويُقرأ نصُّه في لوحة المنصّة.
+         */
+        'crm_whatsapp_shared' => ['nullable', 'boolean'],
     ];
 
     public function update(Request $request)

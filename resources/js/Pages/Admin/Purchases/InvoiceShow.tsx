@@ -57,7 +57,7 @@ interface Props {
     invoice: Invoice;
     payments: Payment[];
     order: { id: number; number: string; total: number; received_value: number | null } | null;
-    paper: { html: string; size: string; url: string } | null;
+    paper: { html: string; size: string; url: string };
     can: { approve: boolean; reject: boolean; pay: boolean };
     today: string;
 }
@@ -143,12 +143,10 @@ export default function SupplierInvoiceShow() {
                         )}
 
                         {/* و«معاينة» على الشاشة الضيّقة وحدها — الورقةُ هناك أسفل البطاقات */}
-                        {paper && (
-                            <Button variant="outline" className="xl:hidden" onClick={() => setPreviewing(true)}>
-                                <FileText />
-                                {t('معاينة أمر الشراء')}
-                            </Button>
-                        )}
+                        <Button variant="outline" className="xl:hidden" onClick={() => setPreviewing(true)}>
+                            <FileText />
+                            {t('معاينة الورقة')}
+                        </Button>
 
                         {/* وفاتورةُ المورّد نفسُها — الورقةُ التي رُفعت، لا ورقةٌ تُولَّد */}
                         {invoice.attachment && (
@@ -164,7 +162,7 @@ export default function SupplierInvoiceShow() {
             />
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-                <div className={`min-w-0 space-y-4 ${paper ? 'xl:col-span-3' : 'xl:col-span-5'}`}>
+                <div className="min-w-0 space-y-4 xl:col-span-3">
                     {/* ومرفقٌ موجودٌ لا يُقرأ يُقال، لا يُكتم */}
                     {invoice.has_attachment && !invoice.attachment && (
                         <Card className="border-[#fde68a] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]">
@@ -366,26 +364,24 @@ export default function SupplierInvoiceShow() {
                 </div>
 
                 {/*
-                    وورقةُ الأمر إلى جانبه — مسمّاةً باسمها.
+                    وورقةُ السند نفسِه إلى جانبه.
 
-                    ولا تُعرض حين لا أمرَ مرتبط: سندٌ سُجّل مباشرةً بلا أمرٍ
-                    لا ورقةَ لنا فيه، وصندوقٌ خاوٍ عنوانُه «الورقة» يُقرأ عطبًا.
+                    وكانت ورقةَ أمر الشراء: قاربت الغرضَ ولم تكن هي، وتغيب
+                    حين يُسجَّل سندٌ بلا أمر — فيبقى نصفُ السندات بلا ورقة.
+                    وأمرُ الشراء على بُعد نقرةٍ من بطاقة «أمر الشراء» أعلاه.
                 */}
-                {paper && (
-                    <DocumentAside className="xl:col-span-2">
-                        <DocumentPanel
-                            html={paper.html}
-                            size={paper.size}
-                            url={paper.url}
-                            filename={`${order?.number ?? invoice.reference}.pdf`}
-                            label={`${t('أمر شراء')} ${order?.number ?? ''}`}
-                            heading="ورقة أمر الشراء"
-                            note={t('هذه ورقةُ أمر الشراء الذي جاء هذا السند مقابله — وفاتورةُ المورّد نفسُها مرفقٌ يُفتح من الأعلى.')}
-                            open={previewing}
-                            onOpenChange={setPreviewing}
-                        />
-                    </DocumentAside>
-                )}
+                <DocumentAside className="xl:col-span-2">
+                    <DocumentPanel
+                        html={paper.html}
+                        size={paper.size}
+                        url={paper.url}
+                        filename={`${invoice.reference}.pdf`}
+                        label={`${t('فاتورة مورّد')} ${invoice.reference}`}
+                        note={t('سندُ ما على المتجر لهذا المورّد — وورقةُ المورّد نفسُها مرفقٌ يُفتح من الأعلى.')}
+                        open={previewing}
+                        onOpenChange={setPreviewing}
+                    />
+                </DocumentAside>
             </div>
 
             <Dialog open={rejecting} onOpenChange={(v) => !v && setRejecting(false)}>

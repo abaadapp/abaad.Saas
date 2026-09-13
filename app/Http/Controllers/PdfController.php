@@ -24,7 +24,6 @@ use App\Support\Paper;
 use App\Support\Pdf;
 use App\Support\PosTerminal;
 use App\Support\PublicDocument;
-use App\Support\ReceiptTemplate;
 use App\Support\Receivables;
 use App\Support\Reports;
 use App\Support\ShopIdentity;
@@ -57,21 +56,30 @@ class PdfController extends Controller
         return $this->pdf($html, 'sales-report-'.$range.'-'.now()->format('Y-m-d'));
     }
 
+    /**
+     * فاتورةُ البيع — ورقةٌ مقصوصة، وهي المستندُ الأساسيّ للبيعة.
+     *
+     * ═══ وكانت تخرج شريطًا حراريًّا، فلم تكن فاتورة ═══
+     *
+     * بابٌ واحدٌ كان يقرأ `paper` ويُخرج ما يقوله: من ضبط صندوقَه على ٨٠مم
+     * — وهو الافتراضيّ — لم يكن يملك فاتورةَ A4 إطلاقًا. لا في المعاينة ولا
+     * في الطباعة ولا في ملفٍّ يُرسله إلى شركةٍ تطلب فاتورةً بمشترياتها.
+     * والوجهُ الوحيدُ على A4 كان الفاتورةَ الضريبية — وتلك تشترط تسجيلًا
+     * ضريبيًّا، فغيرُ المسجَّل لا ورقةَ له أصلًا.
+     *
+     * فصار البابان اثنين: هذا يُخرج الفاتورة، و`orderThermal` يُخرج إيصالَ
+     * الصندوق. ولا شرطَ على أيّهما.
+     */
     public function orderReceipt($number)
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
         $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
         ['html' => $html, 'paper' => $paper] = self::saleHtml($bid, $order);
-        $name = 'receipt-'.$order->number;
-
-        if (PaperSize::isStrip($paper)) {
-            return Pdf::strip($html, $name, self::stripWidth($paper));
-        }
 
         return Pdf::sheet(
             $html,
-            $name,
+            'invoice-'.$order->number,
             $paper,
             /*
              * وسياقُ الورقة يتكرّر في تذييل كلّ صفحة.
@@ -82,6 +90,22 @@ class PdfController extends Controller
              */
             context: self::context($order->number, $bid),
         );
+    }
+
+    /**
+     * إيصالُ الصندوق — شريطٌ حراريّ، ومخرجٌ ثانٍ لا مستندٌ أوّل.
+     *
+     * وعرضُه من `strip` في القالب، وتغلبه طابعةُ الصندوق الموصولة إن قالت
+     * عرضَها — انظر `stripWidth`.
+     */
+    public function orderThermal($number)
+    {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
+
+        ['html' => $html, 'paper' => $paper] = self::saleHtml($bid, $order, thermal: true);
+
+        return Pdf::strip($html, 'receipt-'.$order->number, self::stripWidth($paper));
     }
 
     /**
@@ -97,28 +121,28 @@ class PdfController extends Controller
      * فالوصفةُ واحدة، والفرقُ بين البابين آخرُ سطرٍ وحده: هذا يردّ نصًّا،
      * وذاك يمرّره إلى المحرّك.
      *
+     * @param  bool  $thermal  إيصالُ الصندوق بدل الفاتورة المقصوصة
      * @return array{html: string, paper: string}
      */
-    public static function saleHtml(int $bid, Order $order): array
+    public static function saleHtml(int $bid, Order $order, bool $thermal = false): array
     {
-        $tpl = ReceiptTemplate::forBusiness($bid);
+        /*
+         * والوجهُ يختاره البابُ لا الإعداد.
+         *
+         * A4 ورقةٌ أخرى لا شريطٌ مُمدَّد: قالبٌ واحدٌ يحكمهما فلا تفترق
+         * ورقتان لطلبٍ واحد، لكنّ التخطيط يختلف — الشريطُ عمودٌ ضيّق
+         * والصفحةُ جدولٌ بأعمدة.
+         *
+         * وكان `paper` يختار أيَّهما يخرج، فيُلغي أحدُهما الآخر. والطلبُ
+         * الواحد له الاثنان معًا: فاتورةٌ تُرسَل وإيصالٌ يُسلَّم.
+         */
+        $values = DocumentTemplates::settings($bid, 'sale');
 
-        /*
-         * A4 ورقةٌ أخرى لا شريطٌ مُمدَّد.
-         *
-         * كانت تُرسم بقالب الإيصال نفسه، فتخرج بمحتوًى منكمشٍ في أعلى الصفحة
-         * وثلثيها بياض — وهي الورقة التي تُرسَل إلى شركةٍ تطلب فاتورة ضريبية.
-         * والقالب واحدٌ يحكم الاثنين، فلا تفترق ورقتان لطلبٍ واحد.
-         */
-        /*
-         * والاختيارُ بين الشريط والصفحة من سجلّ المقاسات لا بمقارنةٍ نصّية.
-         *
-         * `=== 'A4'` تعني أنّ كلّ مقاسٍ يُضاف — A5 مثلًا — يُقرأ شريطًا
-         * حراريًّا فيخرج على ثمانين مليمترًا.
-         */
-        $paper = (string) ($tpl['paper'] ?? PaperSize::T80);
-        $onSheet = ! PaperSize::isStrip($paper);
-        $width = self::stripWidth($paper);
+        $paper = $thermal
+            ? (string) ($values['strip'] ?? PaperSize::T80)
+            : (string) ($values['paper'] ?? PaperSize::A4);
+
+        $width = $thermal ? self::stripWidth($paper) : 0;
 
         /*
          * والرسمُ من `DocumentRenderer` لا من قائمةٍ تُكتب هنا.
@@ -132,8 +156,6 @@ class PdfController extends Controller
          * تلك تردّ المفاتيح القديمة المسطَّحة (`tpl_show_logo`)، وقالبُ A4
          * الجديد يقرأ أسماءَ السجلّ. و`legacy()` تحوّلها للشريط وحده.
          */
-        $values = DocumentTemplates::settings($bid, 'sale');
-
         $extra = [
             'qr' => EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
             /*
@@ -158,10 +180,10 @@ class PdfController extends Controller
         ];
 
         return [
-            'paper' => $paper,
-            'html' => $onSheet
-                ? DocumentRenderer::saleSheet($bid, $order, $values, $extra + ['paper' => $paper])
-                : DocumentRenderer::saleStrip($bid, $order, $values, $width, $extra),
+            'paper' => $thermal ? ($width <= 60 ? PaperSize::T58 : PaperSize::T80) : $paper,
+            'html' => $thermal
+                ? DocumentRenderer::saleStrip($bid, $order, $values, $width, $extra)
+                : DocumentRenderer::saleSheet($bid, $order, $values, $extra + ['paper' => $paper]),
         ];
     }
 
@@ -173,14 +195,10 @@ class PdfController extends Controller
      * يطبع من صندوقٍ يطبع بمقاس ورقه هو، وورقٌ لا يطابق الطابعة يخرج
      * مقصوصًا من الحافة، ويُكتشف بعد أن يأخذه الزبون.
      *
-     * وA4 لا تُمسّ: من اختارها اختار فاتورةً كاملة لا شريطًا.
+     * ولا تُسأل إلّا عن شريط: الفاتورةُ المقصوصة بابٌ آخر.
      */
     private static function stripWidth(string $paper): int
     {
-        if (! PaperSize::isStrip($paper)) {
-            return 0;
-        }
-
         $terminal = PosTerminal::current()
             ?->peripherals()->where('active', true)
             ->where('type', PosPeripheral::PRINTER)

@@ -227,11 +227,34 @@ class DocumentTemplatesTest extends TestCase
     public function test_the_sale_preview_draws_the_real_receipt(): void
     {
         $html = $this->postJson(route('admin.settings.templates.preview', 'sale'), [
-            'paper' => '80mm', 'show_employee' => true,
+            'strip' => '80mm', 'thermal' => true, 'show_employee' => true,
         ])->assertOk()->json('html');
 
         $this->assertStringContainsString('INV-000001', $html);
         $this->assertStringContainsString('ورد الخوير', $html);
+    }
+
+    /**
+     * ولورقة البيع وجهان يُعاينان كلاهما — لا وجهٌ يُلغي الآخر.
+     *
+     * وكان مقاسٌ واحدٌ يختار أيَّهما يُرسم: من ضبط صندوقَه على ٨٠مم لم يرَ
+     * فاتورتَه قطّ — لا في المعاينة ولا من الطابعة.
+     */
+    public function test_both_faces_of_the_sale_are_previewable(): void
+    {
+        $sheet = $this->postJson(route('admin.settings.templates.preview', 'sale'), [
+            'strip' => '80mm',
+        ])->assertOk();
+
+        $strip = $this->postJson(route('admin.settings.templates.preview', 'sale'), [
+            'strip' => '80mm', 'thermal' => true,
+        ])->assertOk();
+
+        $this->assertSame('A4', $sheet->json('size'));
+        $this->assertSame('80mm', $strip->json('size'));
+
+        $this->assertStringContainsString('table.items', $sheet->json('html'));
+        $this->assertStringNotContainsString('table.items', $strip->json('html'));
     }
 
     /* ------------------------------ الورق يخرج ------------------------------ */

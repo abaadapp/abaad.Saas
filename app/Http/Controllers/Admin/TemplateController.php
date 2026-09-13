@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
 use App\Support\Document\Branding;
+use App\Support\Document\PaperSize;
 use App\Support\Demo;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
@@ -141,8 +142,23 @@ class TemplateController extends Controller
             }
         }
 
+        /*
+         * والوجهُ يُطلب صراحةً — ولا يُشتقّ من المقاس.
+         *
+         * ورقةُ البيع وجهان يُطبعان معًا: فاتورةٌ مقصوصة وإيصالُ صندوق. وكان
+         * المقاسُ الواحدُ يختار أيَّهما يُعاين، فمن أراد أن يرى إيصالَه فقد
+         * فاتورتَه. والمعاينةُ تتبع الزرَّ الذي ضغطه صاحبُها.
+         */
+        $thermal = $request->boolean('thermal');
+        $strips = DocumentTemplates::strips();
+
+        $size = $thermal
+            ? (string) ($data['strip'] ?? DocumentTemplates::settings($this->bid(), $type)['strip'] ?? $strips[0])
+            : (string) ($data['paper'] ?? PaperSize::A4);
+
         return response()->json([
-            'html' => DocumentRenderer::preview($this->bid(), $type, $data),
+            'html' => DocumentRenderer::preview($this->bid(), $type, $data, $thermal),
+            'size' => $size,
         ]);
     }
 }

@@ -269,12 +269,21 @@ class SupplierInvoiceController extends Controller
                 'total' => (float) $po->total,
                 'received_value' => SupplierInvoices::receivedValue((int) $po->id),
             ] : null,
-            /* وورقةُ الأمر — لا ورقةٌ تُولَّد للسند، انظر الشرحَ أعلاه */
-            'paper' => $po ? [
-                'html' => DocumentRenderer::generic($bid, 'purchase', DocumentPaper::forPurchase($po)),
+            /*
+             * وورقةُ السند نفسِه — وكانت ورقةَ أمر الشراء.
+             *
+             * السندُ لم يكن له مستند، فوُضعت ورقةُ الأمر مكانها: قاربت
+             * الغرضَ ولم تكن هي. ومن يراجع سندًا بمئتين كان يرى أمامه
+             * أصنافَ أمرٍ إجماليُّه غيرُ إجماليّه — وهو الخلافُ الذي تقيسه
+             * المطابقةُ أصلًا.
+             *
+             * وورقةُ الأمر تبقى على بُعد نقرة: `order.id` يفتح صفحتَه.
+             */
+            'paper' => [
+                'html' => DocumentRenderer::generic($bid, 'supplier_invoice', DocumentPaper::forSupplierInvoice($invoice)),
                 'size' => PaperSize::A4,
-                'url' => route('admin.purchases.pdf', $po->id),
-            ] : null,
+                'url' => route('admin.purchases.invoices.pdf', $invoice->id),
+            ],
             'can' => [
                 'approve' => (bool) auth()->user()?->may(Permissions::INVOICE_APPROVE),
                 'reject' => (bool) auth()->user()?->may(Permissions::INVOICE_REJECT),

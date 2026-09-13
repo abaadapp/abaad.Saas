@@ -5,11 +5,14 @@ namespace App\Support;
 use App\Http\Controllers\Admin\CustomerInvoiceController;
 use App\Models\BankAccount;
 use App\Models\Customer;
+use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerPayment;
 use App\Models\GoodsReceiptNote;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\PurchaseOrder;
+use App\Models\SupplierInvoice;
 use App\Support\Document\Branding;
 use App\Support\Document\PaperSize;
 use App\Support\Document\Snapshot;
@@ -161,6 +164,9 @@ class DocumentRenderer
             'delivery' => 'delivery',
             'purchase' => 'purchase',
             'grn' => 'grn',
+            'supplier_invoice' => 'supplier-invoice',
+            'credit_note' => 'credit-note',
+            'customer_receipt' => 'customer-receipt',
             default => 'sale',
         };
     }
@@ -172,10 +178,9 @@ class DocumentRenderer
      * وأسماءُ أصنافه وأطوالُ سطوره تُظهر له الورقة كما ستخرج. فإن لم يبِع
      * بعدُ رُسمت بمثال.
      */
-    public static function sale(int $businessId, ?array $override = null): string
+    public static function sale(int $businessId, ?array $override = null, bool $thermal = false): string
     {
         $values = DocumentTemplates::settings($businessId, 'sale', $override);
-        $paper = (string) ($values['paper'] ?? '80mm');
 
         $order = Order::where('business_id', $businessId)
             ->where('is_held', false)
@@ -183,9 +188,13 @@ class DocumentRenderer
             ->latest('id')
             ->first() ?? self::sampleOrder($businessId);
 
-        if (! PaperSize::isStrip($paper)) {
-            return self::saleSheet($businessId, $order, $values, ['paper' => $paper]);
+        if (! $thermal) {
+            return self::saleSheet($businessId, $order, $values, [
+                'paper' => (string) ($values['paper'] ?? PaperSize::A4),
+            ]);
         }
+
+        $paper = (string) ($values['strip'] ?? PaperSize::T80);
 
         /*
          * ولا رمزَ ولا رابطَ في المعاينة.
@@ -306,11 +315,16 @@ class DocumentRenderer
         return $order;
     }
 
-    /** الورقة كما تُعاين في المحرّر — أيًّا كان نوعها */
-    public static function preview(int $businessId, string $type, ?array $override = null): string
+    /**
+     * الورقة كما تُعاين في المحرّر — أيًّا كان نوعها.
+     *
+     * و`$thermal` لورقة البيع وحدها: لها وجهان يُطبعان معًا — فاتورةٌ
+     * مقصوصة وإيصالُ صندوق — فلا يُعاين أحدُهما بإلغاء الآخر.
+     */
+    public static function preview(int $businessId, string $type, ?array $override = null, bool $thermal = false): string
     {
         if ($type === 'sale') {
-            return self::sale($businessId, $override);
+            return self::sale($businessId, $override, $thermal);
         }
 
         if ($type === CustomerInvoiceController::PAPER_TYPE) {
@@ -378,6 +392,12 @@ class DocumentRenderer
                 ->with('items', 'supplier')->latest('id')->first(),
             'grn' => GoodsReceiptNote::where('business_id', $businessId)
                 ->with('items', 'supplier', 'branch', 'purchaseOrder')->latest('id')->first(),
+            'supplier_invoice' => SupplierInvoice::where('business_id', $businessId)
+                ->with('supplier', 'purchaseOrder')->latest('id')->first(),
+            'credit_note' => CustomerCreditNote::where('business_id', $businessId)
+                ->with('invoice')->latest('id')->first(),
+            'customer_receipt' => CustomerPayment::where('business_id', $businessId)
+                ->with('customer', 'bankAccount', 'allocations.invoice')->latest('id')->first(),
             default => null,
         };
 
@@ -389,6 +409,9 @@ class DocumentRenderer
             'delivery' => DocumentPaper::forDelivery($record),
             'purchase' => DocumentPaper::forPurchase($record),
             'grn' => DocumentPaper::forGrn($record),
+            'supplier_invoice' => DocumentPaper::forSupplierInvoice($record),
+            'credit_note' => DocumentPaper::forCreditNote($record),
+            'customer_receipt' => DocumentPaper::forCustomerReceipt($record),
         };
     }
 

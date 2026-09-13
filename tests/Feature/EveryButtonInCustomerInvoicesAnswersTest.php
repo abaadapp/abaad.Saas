@@ -91,8 +91,18 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
             $this->owner->id,
         );
 
+        /*
+         * وإشعارُ دائنٍ حقيقيّ ليُربط به `{note}`.
+         *
+         * ومفتاحُه غيرُ مفتاح الفاتورة عمدًا: مسارٌ باسم `{id}` تحت هذا
+         * البادئة يُقرأ فاتورةً، فيُفتح بمعرّفٍ لا يخصّه ويُردّ ٤٠٤ —
+         * ولا يقول أحدٌ إنّ العطبَ في الاسم.
+         */
+        $note = CustomerInvoices::creditNote($invoice, 10.0, 0.0, 'ردّ صنف', $this->owner->id);
+
         $bindings = [
             'id' => $invoice->id,
+            'note' => $note->id,
             'customer' => $this->customer->id,
             'attachment' => $attachment->id,
         ];

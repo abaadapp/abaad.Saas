@@ -5,6 +5,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import DocumentMeta from '@/Components/DocumentMeta';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
+import SmartLink from '@/Components/SmartLink';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -44,8 +45,8 @@ interface Invoice {
     orders: string[];
     cancellation_reason: string | null;
     items: { description: string; quantity: number; unit_price: number; discount: number; tax_rate: number; line_total: number }[];
-    payments: { number: string; amount: number; method: string; at: string | null }[];
-    credit_notes: { number: string; amount: number; reason: string | null; at: string | null }[];
+    payments: { id: number; number: string; amount: number; method: string; at: string | null }[];
+    credit_notes: { id: number; number: string; amount: number; reason: string | null; at: string | null }[];
 }
 
 /**
@@ -270,20 +271,29 @@ export default function CustomerInvoiceShow() {
                         </dl>
                     </Card>
 
+                    {/*
+                        والسطرُ يفتح سندَه.
+
+                        كان رقمُ التحصيل نصًّا لا يُفتح: مستندٌ ماليٌّ له ورقةٌ
+                        تُطبع وتُسلَّم لمن دفع، ولا طريقَ إليه من الشاشة التي
+                        تسمّيه. وكذلك إشعارُ الدائن.
+                    */}
                     {invoice.payments.length > 0 && (
                         <Card className="p-4">
                             <h3 className="mb-2 text-[13px] font-bold">{t('التحصيلات')}</h3>
                             {invoice.payments.map((p) => (
-                                <div
-                                    key={p.number}
-                                    className="flex justify-between border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px]"
+                                <SmartLink
+                                    key={p.id}
+                                    routeName="admin.customerPayments.show"
+                                    href={route('admin.customerPayments.show', p.id)}
+                                    className="flex justify-between gap-3 border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px] hover:bg-[#fafafa]"
                                 >
-                                    <span>
-                                        {p.number} — {p.method}
+                                    <span className="min-w-0 truncate text-[#6d28d9]">
+                                        {p.number} — {t(p.method)}
                                     </span>
                                     <span dir="ltr">{p.at}</span>
                                     <span className="tabular-nums">{m(p.amount)}</span>
-                                </div>
+                                </SmartLink>
                             ))}
                         </Card>
                     )}
@@ -292,15 +302,18 @@ export default function CustomerInvoiceShow() {
                         <Card className="p-4">
                             <h3 className="mb-2 text-[13px] font-bold">{t('إشعارات دائن')}</h3>
                             {invoice.credit_notes.map((n) => (
-                                <div
-                                    key={n.number}
-                                    className="flex justify-between border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px]"
+                                <SmartLink
+                                    key={n.id}
+                                    routeName="admin.customerInvoices.creditNotes.show"
+                                    href={route('admin.customerInvoices.creditNotes.show', n.id)}
+                                    className="flex justify-between gap-3 border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px] hover:bg-[#fafafa]"
                                 >
-                                    <span>
-                                        {n.number} — {n.reason}
+                                    <span className="min-w-0 truncate text-[#6d28d9]">
+                                        {n.number}
+                                        {n.reason ? ` — ${n.reason}` : ''}
                                     </span>
                                     <span className="tabular-nums">{m(n.amount)}</span>
-                                </div>
+                                </SmartLink>
                             ))}
                         </Card>
                     )}

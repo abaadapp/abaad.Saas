@@ -9,6 +9,7 @@ import {
     MessageCircle,
     PencilLine,
     Phone,
+    Printer,
     ReceiptText,
     Send,
     Star,
@@ -353,6 +354,21 @@ export default function OrderShow() {
                                     </a>
                                 </Button>
                             ))}
+                        {/*
+                            وإيصالُ الصندوق مخرجٌ ثانٍ لا بديلٌ عن الفاتورة.
+
+                            كان مقاسُ القالب يختار أيَّهما يخرج من زرٍّ واحد:
+                            من ضبط صندوقَه على ٨٠مم لم تكن له فاتورةُ A4
+                            أصلًا. والطلبُ الواحد له الاثنان — ورقةٌ تُرسَل
+                            وشريطٌ يُسلَّم — فزرّان لا زرٌّ يُبدَّل.
+                        */}
+                        <Button variant="outline" asChild>
+                            <a href={route('admin.orders.receipt', order.id)} target="_blank" rel="noreferrer">
+                                <Printer />
+                                {t('إيصال حراري')}
+                            </a>
+                        </Button>
+
                         {/*
                             وسندُ التسليم ورقةٌ أخرى لا نسخةٌ من الفاتورة:
                             يحملها السائق، ويوقّعها المستلم، وقالبُها يُخفي

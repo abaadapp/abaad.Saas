@@ -335,32 +335,84 @@ class EveryDocumentOpensToItsOwnPageTest extends TestCase
     }
 
     /**
-     * وورقتُه ورقةُ أمره — لا ورقةٌ تُولَّد باسم المورّد.
+     * وورقتُه ورقتُه — وكانت ورقةَ أمره.
      *
-     * السندُ ورقةُ المورّد يسجّلها التاجر عنده. وتوليدُ ورقةٍ بهويّة أبعاد
-     * تحمل رقمَ المورّد إصدارُ مستندٍ باسم غيرِنا. فما يُعرض أمرُ الشراء.
+     * ═══ ولمَ كانت ورقةَ الأمر ═══
+     *
+     * السندُ فاتورةُ المورّد يسجّلها التاجر عنده، فخُشي أن تكون ورقةٌ بهويّة
+     * المتجر تحمل رقمَ المورّد **إصدارَ مستندٍ باسم غيرِنا**. فوُضعت ورقةُ
+     * أمر الشراء مكانها.
+     *
+     * ═══ وكان ذلك يقول غيرَ الصدق ═══
+     *
+     * إجماليُّ السند قد يخالف إجماليَّ الأمر — وقياسُ ذلك الخلاف سببُ وجود
+     * `SupplierInvoices::match` أصلًا. فمن يراجع سندًا بمئتين كان يرى أمامه
+     * أصنافَ أمرٍ بمئةٍ وثمانين. وسندٌ سُجّل بلا أمرٍ لم تكن له ورقةٌ إطلاقًا.
+     *
+     * ═══ والورقةُ اليوم تقول لمن هي ═══
+     *
+     * عنوانُها «فاتورة مورّد»، وكتلةُ هويّتها «المشتري» لا «البائع»، وسطرٌ
+     * فيها يقول إنّها سجلُّ المتجر لا أصلَ المورّد. وأصلُه يبقى مرفقًا يُفتح
+     * من الشاشة.
      */
-    public function test_the_supplier_invoice_shows_the_order_paper_not_an_invented_one(): void
+    public function test_the_supplier_invoice_carries_a_paper_of_its_own(): void
     {
         $si = $this->supplierInvoice();
 
         $this->actingAs($this->owner)
             ->get(route('admin.purchases.invoices.show', $si->id))
             ->assertInertia(fn ($p) => $p
-                ->where('paper.url', route('admin.purchases.pdf', $si->purchase_order_id))
-                ->where('paper.html', fn (string $html) => str_contains($html, 'PO-000001')
-                    && ! str_contains($html, 'SI-77/2026')));
+                ->where('paper.url', route('admin.purchases.invoices.pdf', $si->id))
+                ->where('paper.html', fn (string $html) => str_contains($html, 'SI-77/2026')
+                    && str_contains($html, 'فاتورة مورّد')
+                    && str_contains($html, 'سجلُّ المتجر لهذه الفاتورة')));
     }
 
-    /** وسندٌ سُجّل بلا أمرٍ لا يُعرض له صندوقٌ خاوٍ عنوانُه «الورقة» */
-    public function test_a_standalone_supplier_invoice_is_offered_no_empty_paper(): void
+    /**
+     * وكتلةُ هويّتنا على سند المورّد تقول «المشتري».
+     *
+     * الجزئيّةُ المشتركة تسمّي صاحبَ الورقة «البائع» افتراضًا — وهو صحيحٌ في
+     * فاتورةٍ نُصدرها. وعلى سندِ مورّدٍ يقلب الطرفين: يقرأ المراجعُ اسمَ
+     * متجره فوق كلمة «البائع» في ورقةٍ اشترى بها.
+     *
+     * ولا تظهر الكتلةُ لمتجرٍ بلا عنوانٍ ولا هاتف: بطاقةٌ فيها عنوانٌ بلا
+     * سطرٍ تحته حقلٌ نُسي — انظر `partials/parties`.
+     */
+    public function test_our_side_of_a_supplier_invoice_is_the_buyer(): void
+    {
+        $this->business->update(['phone' => '95000000', 'address' => 'مسقط — الخوير']);
+
+        $si = $this->supplierInvoice();
+
+        $this->actingAs($this->owner)
+            ->get(route('admin.purchases.invoices.show', $si->id))
+            ->assertInertia(fn ($p) => $p
+                ->where('paper.html', fn (string $html) => str_contains($html, 'المشتري')
+                    && ! str_contains($html, '>البائع<')));
+    }
+
+    /** وبابُ الطباعة يفتح الورقة نفسَها لا ورقةَ أمرها */
+    public function test_the_supplier_invoice_prints_what_the_page_shows(): void
+    {
+        $si = $this->supplierInvoice();
+
+        $printed = $this->actingAs($this->owner)->get(route('admin.purchases.invoices.pdf', $si->id));
+
+        $printed->assertOk();
+        $this->assertSame('application/pdf', $printed->headers->get('content-type'));
+    }
+
+    /** وسندٌ سُجّل بلا أمرٍ له ورقتُه كأخيه — وكان يُترك بلا شيء */
+    public function test_a_standalone_supplier_invoice_still_has_a_paper(): void
     {
         $si = $this->supplierInvoice();
         $si->update(['purchase_order_id' => null]);
 
         $this->actingAs($this->owner)
             ->get(route('admin.purchases.invoices.show', $si->id))
-            ->assertInertia(fn ($p) => $p->where('paper', null)->where('order', null));
+            ->assertInertia(fn ($p) => $p
+                ->where('order', null)
+                ->where('paper.html', fn (string $html) => str_contains($html, 'SI-77/2026')));
     }
 
     private function supplierInvoice(): SupplierInvoice

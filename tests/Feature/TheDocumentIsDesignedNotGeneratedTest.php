@@ -530,14 +530,33 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
         $this->assertStringContainsString("'CSSselectMedia' => 'mpdf'", $engine, 'المحرّكُ ما زال يقرأ `print`');
     }
 
-    /** وكلُّ مقاسٍ في السجلّ مقبولٌ في الحفظ ومعروضٌ في الشاشة */
+    /**
+     * وكلُّ مقاسٍ في السجلّ مقبولٌ في الحفظ — كلٌّ في حقله.
+     *
+     * والحقلان اثنان لأنّهما سؤالان: «على أيّ ورقةٍ تُطبع فاتورتي؟» جوابُه
+     * ورقٌ مقصوص، و«ما عرضُ ورق طابعة الصندوق؟» جوابُه شريط. وقائمةٌ واحدة
+     * تخلطهما تجعل الجوابَ عن أحدهما إلغاءً للآخر.
+     */
     public function test_the_registry_is_the_only_list_of_papers(): void
     {
-        $this->assertSame(PaperSize::keys(), \App\Support\DocumentTemplates::papers());
+        $this->assertSame(PaperSize::sheets(), \App\Support\DocumentTemplates::papers());
+        $this->assertSame(PaperSize::strips(), \App\Support\DocumentTemplates::strips());
 
-        foreach (PaperSize::keys() as $paper) {
+        /* ولا مقاسَ في السجلّ خارجَ القائمتين: يُضاف فلا يقبله حقلٌ ولا يعرضه */
+        $this->assertSame(
+            PaperSize::keys(),
+            array_merge(PaperSize::sheets(), PaperSize::strips()),
+        );
+
+        foreach (PaperSize::sheets() as $paper) {
             $this->actingAs($this->owner)
                 ->post(route('admin.settings.templates.update', 'sale'), ['paper' => $paper])
+                ->assertSessionHasNoErrors();
+        }
+
+        foreach (PaperSize::strips() as $strip) {
+            $this->actingAs($this->owner)
+                ->post(route('admin.settings.templates.update', 'sale'), ['strip' => $strip])
                 ->assertSessionHasNoErrors();
         }
     }
@@ -611,7 +630,7 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
     {
         $this->order();
 
-        $strip = DocumentRenderer::preview($this->business->id, 'sale', ['paper' => '80mm']);
+        $strip = DocumentRenderer::preview($this->business->id, 'sale', ['strip' => '80mm'], thermal: true);
         $sheet = DocumentRenderer::preview($this->business->id, 'sale', ['paper' => 'A4']);
 
         // الشريطُ بلا غلافٍ ولا حوافَّ مُدوَّرة: الطابعةُ الحرارية لا ترسمها
@@ -628,8 +647,8 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
     {
         $this->order();
 
-        $wide = DocumentRenderer::preview($this->business->id, 'sale', ['paper' => '80mm']);
-        $narrow = DocumentRenderer::preview($this->business->id, 'sale', ['paper' => '58mm']);
+        $wide = DocumentRenderer::preview($this->business->id, 'sale', ['strip' => '80mm'], thermal: true);
+        $narrow = DocumentRenderer::preview($this->business->id, 'sale', ['strip' => '58mm'], thermal: true);
 
         preg_match('/font-size: ([\d.]+)pt;\s*line-height: 1\.35/', $wide, $w);
         preg_match('/font-size: ([\d.]+)pt;\s*line-height: 1\.35/', $narrow, $n);

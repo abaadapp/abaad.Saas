@@ -214,11 +214,12 @@ class PapersAreOnePressTest extends TestCase
             'paper_width' => 58, 'active' => true,
         ]);
 
-        $wide = $this->actingAs($this->owner)->get(route('admin.orders.pdf', $order->number));
+        /* وبابُ الشريط لا بابُ الفاتورة: تلك على A4 ولا تعرف طابعاتِ الصناديق */
+        $wide = $this->actingAs($this->owner)->get(route('admin.orders.receipt', $order->number));
         $wide->assertOk();
 
         $narrow = $this->withCookie(PosTerminal::COOKIE, $device->id.'|'.$raw)
-            ->actingAs($this->owner)->get(route('admin.orders.pdf', $order->number));
+            ->actingAs($this->owner)->get(route('admin.orders.receipt', $order->number));
         $narrow->assertOk();
 
         $this->assertSame(80.0, $this->pageWidth($wide->getContent()));

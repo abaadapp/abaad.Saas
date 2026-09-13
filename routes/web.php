@@ -579,7 +579,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     /* طلبُ تقييمٍ على Google — بملفّ فرع الطلب، وبعد التسليم وحده */
     Route::post('/orders/{number}/review-request', [OrderDetailController::class, 'reviewRequest'])
         ->name('orders.reviewRequest');
+    /*
+     * ورقتا البيع — فاتورةٌ مقصوصة وإيصالُ صندوق.
+     *
+     * و`pdf` هي الفاتورة: المستندُ الأساسيّ للبيعة، على A4 بلا شرط. وكانت
+     * تُخرج ما يقوله مقاسُ القالب، فمن ضبط صندوقَه على ٨٠مم لم تكن له
+     * فاتورةٌ أصلًا — انظر `PdfController::orderReceipt`.
+     */
     Route::get('/orders/{number}/pdf', [PdfController::class, 'orderReceipt'])->name('orders.pdf');
+    Route::get('/orders/{number}/receipt', [PdfController::class, 'orderThermal'])->name('orders.receipt');
     Route::get('/orders/{number}/delivery-note', [DocumentPrintController::class, 'delivery'])->name('orders.deliveryNote');
 
     // العملات وأسعار الصرف
@@ -718,6 +726,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * والسدادُ بعدهما: مالٌ يخرج مقابل دَينٍ نشأ، لا مقابل ورقةٍ وصلت.
      */
     Route::get('/purchases/invoices/{id}/attachment', [FinancialAttachmentController::class, 'supplierInvoice'])->name('purchases.invoices.attachment');
+    // وورقةُ السند نفسِه — غيرُ مرفق المورّد: ذاك ما وصل، وهذه ما سجّلناه
+    Route::get('/purchases/invoices/{id}/pdf', [DocumentPrintController::class, 'supplierInvoice'])->name('purchases.invoices.pdf');
     Route::post('/purchases/invoices/{id}/approve', [SupplierInvoiceController::class, 'approve'])->name('purchases.invoices.approve');
     Route::post('/purchases/invoices/{id}/reject', [SupplierInvoiceController::class, 'reject'])->name('purchases.invoices.reject');
     // والمعتمَدُ يُلغى بعكس قيده لا يُحذف — مستندٌ ماليٌّ صدر يبقى مقروءًا
@@ -1047,6 +1057,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::post('/customer-invoices/branding', [CustomerInvoiceController::class, 'branding'])->name('customerInvoices.branding');
     Route::post('/customer-invoices/default-customer', [CustomerInvoiceController::class, 'defaultCustomer'])->name('customerInvoices.defaultCustomer');
+    /*
+     * إشعاراتُ الدائن — وصفحةٌ لكلٍّ منها.
+     *
+     * وتسبق `/{id}`: بلا ذلك يُقرأ «credit-notes» رقمَ فاتورة. والذي يحرسها
+     * فعلًا `Route::pattern('id', '[0-9]+')` في أعلى الملفّ، والترتيبُ
+     * احتياطٌ ثانٍ — كما في «create».
+     */
+    Route::get('/customer-invoices/credit-notes/{note}', [CustomerInvoiceController::class, 'creditNoteShow'])
+        ->whereNumber('note')->name('customerInvoices.creditNotes.show');
+    Route::get('/customer-invoices/credit-notes/{note}/pdf', [DocumentPrintController::class, 'creditNote'])
+        ->whereNumber('note')->name('customerInvoices.creditNotes.pdf');
     Route::get('/customer-invoices/{id}', [CustomerInvoiceController::class, 'show'])->name('customerInvoices.show');
     Route::post('/customer-invoices', [CustomerInvoiceController::class, 'store'])->name('customerInvoices.store');
     Route::post('/customer-invoices/{id}/issue', [CustomerInvoiceController::class, 'issue'])->name('customerInvoices.issue');
@@ -1068,6 +1089,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/customer-invoices/{id}/remind', [CustomerInvoiceController::class, 'remind'])->name('customerInvoices.remind');
     Route::post('/customer-payments', [CustomerInvoiceController::class, 'pay'])->name('customerPayments.store');
     Route::post('/customer-payments/{id}/cancel', [CustomerInvoiceController::class, 'cancelPayment'])->name('customerPayments.cancel');
+    /*
+     * سندُ القبض — صفحةٌ وورقة.
+     *
+     * والسندُ كان سطرًا في كلّ فاتورةٍ سُدِّدت منه ولا يُفتح: من دفع بمئةٍ
+     * وُزّعت على ثلاثٍ يُقرأ ثلاثَ مرّاتٍ ولا يُقرأ مرّةً كاملًا.
+     */
+    Route::get('/customer-payments/{id}', [CustomerInvoiceController::class, 'paymentShow'])
+        ->whereNumber('id')->name('customerPayments.show');
+    Route::get('/customer-payments/{id}/pdf', [DocumentPrintController::class, 'customerReceipt'])
+        ->whereNumber('id')->name('customerPayments.pdf');
 
     /*
      * الشيكات — تحت «المالية» لأنّ من يُقرّ أنّ شيكًا صُرِف يكتب في الدفتر.
@@ -1363,7 +1394,13 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
     Route::get('/receipts/search', [PosController::class, 'searchReceipts'])->name('receipts.search');
     // تفصيل فاتورة واحدة — تُطلب عند النقر، فلا تُرسَل مبالغ الثلاثين دفعةً
     Route::get('/receipts/{number}', [PosController::class, 'showReceipt'])->name('receipts.show');
-    Route::get('/receipt/{number}/pdf', [PdfController::class, 'orderReceipt'])->name('receipt.pdf');
+    /*
+     * وصندوقُ البيع يطبع شريطَه — لا فاتورةَ A4 على طابعةٍ حراريّة.
+     *
+     * والفاتورةُ بابُها شاشةُ الطلب (`admin.orders.pdf`): من أراد ورقةً
+     * تُرسَل إلى شركةٍ لا يطلبها من درج النقد.
+     */
+    Route::get('/receipt/{number}/pdf', [PdfController::class, 'orderThermal'])->name('receipt.pdf');
     Route::get('/customers', [App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
     // مناسبةٌ جديدة تُضاف من نافذة الدفع نفسها — تُحفظ للمتجر وتظهر في قائمته

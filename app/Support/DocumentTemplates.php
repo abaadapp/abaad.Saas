@@ -61,6 +61,7 @@ class DocumentTemplates
             'section' => 'المبيعات',
             'legacy' => true,
             'paper' => true,
+            'strip' => true,
             'fields' => [
                 'show_logo' => false, 'show_branch' => true, 'show_employee' => true,
                 'show_customer' => true, 'show_datetime' => true, 'show_items_count' => true,
@@ -141,6 +142,56 @@ class DocumentTemplates
                 'show_prices' => false, 'show_notes' => true, 'show_signature' => true,
             ],
         ],
+        /*
+         * فاتورةُ المورّد — سندُ ما على المتجر لمورّده.
+         *
+         * ولها صفحتُها في النظام منذ أن صار الدَّينُ يُعتمد بتوقيع، ولم يكن
+         * لها ورقة: يُراجَع سندٌ بمئتين على الشاشة ولا يخرج منه شيءٌ يُرفق
+         * بحوالةٍ أو يُوقَّع عليه بالسداد.
+         *
+         * ولا تذييلَ افتراضيًّا: «شكرًا لزيارتكم» عبارةُ إيصالٍ لزبون.
+         */
+        'supplier_invoice' => [
+            'label' => 'فاتورة المورّد',
+            'desc' => 'سندُ ما على المتجر لمورّده — مرجعُه وتواريخه ومبالغه',
+            'section' => 'المشتريات',
+            'footer' => '',
+            'fields' => [
+                'show_logo' => true, 'show_supplier' => true, 'show_datetime' => true,
+                'show_vat_no' => true, 'show_notes' => true,
+            ],
+        ],
+        /*
+         * إشعارٌ دائن — ورقةُ ما رُدّ من فاتورةٍ صدرت.
+         *
+         * ولا «اسم العميل» في مقابضه: إشعارٌ بلا جهةٍ لا يُنقص ذمّةَ أحد.
+         * ولا «الأسعار»: إشعارٌ بلا مبلغ ليس إشعارًا.
+         */
+        'credit_note' => [
+            'label' => 'إشعار دائن',
+            'desc' => 'يُنقص ذمّةَ العميل عمّا رُدّ أو خُصم من فاتورةٍ صدرت',
+            'section' => 'المبيعات',
+            'footer' => '',
+            'fields' => [
+                'show_logo' => true, 'show_vat_no' => true, 'show_notes' => true,
+            ],
+        ],
+        /*
+         * سندُ قبض — إقرارُ المتجر بأنّه استلم مالًا.
+         *
+         * وخانةُ التوقيع فيه افتراضًا: هو ورقةٌ تُسلَّم لمن دفع، وسندُ قبضٍ
+         * بلا توقيعٍ لا يُثبت أنّ أحدًا استلم شيئًا.
+         */
+        'customer_receipt' => [
+            'label' => 'سند قبض',
+            'desc' => 'إقرارٌ بقبض مبلغٍ من عميل — وما سُدِّد به من فواتير',
+            'section' => 'المبيعات',
+            'footer' => '',
+            'fields' => [
+                'show_logo' => true, 'show_datetime' => true, 'show_vat_no' => true,
+                'show_notes' => true, 'show_signature' => true,
+            ],
+        ],
     ];
 
     /** أحجام الخطّ المتاحة — والورقة تُرسم بها لا بعددٍ حرّ يُخرج سطرًا لا يُقرأ */
@@ -154,7 +205,19 @@ class DocumentTemplates
      */
     public static function papers(): array
     {
-        return \App\Support\Document\PaperSize::keys();
+        return \App\Support\Document\PaperSize::sheets();
+    }
+
+    /**
+     * عروضُ الشريط الحراريّ — مقاسُ الإيصال لا مقاسُ الفاتورة.
+     *
+     * وهما قائمتان لأنّهما سؤالان: «على أيّ ورقةٍ تُطبع فاتورتي؟» و«ما عرضُ
+     * ورق طابعة الصندوق؟». وقائمةٌ واحدةٌ تخلطهما تجعل الجوابَ عن أحدهما
+     * إلغاءً للآخر — وهو ما كان: من اختار «٨٠مم» لم تعد له فاتورة A4.
+     */
+    public static function strips(): array
+    {
+        return \App\Support\Document\PaperSize::strips();
     }
 
     /** التذييل حين لا يكتب التاجر شيئًا — واحدٌ للأوراق الثلاث لا اثنان */
@@ -204,8 +267,28 @@ class DocumentTemplates
         $out['footer'] = $spec['footer'] ?? self::DEFAULT_FOOTER;
         $out['font'] = 'عادي';
 
+        /*
+         * وورقةُ البيع A4 — والشريطُ مخرجٌ ثانٍ لا بديلٌ عنها.
+         *
+         * ═══ وكان ٨٠مم هو الافتراضيّ، فلم تكن ثمّة فاتورة ═══
+         *
+         * `paper` كان مفتاحًا واحدًا يحكم **ماذا يخرج** من باب الطباعة: من
+         * اختار الشريطَ الحراريَّ لصندوقه فقد فاتورةَ A4 كلَّها — لا معاينةً
+         * ولا طباعةً ولا ملفًّا. وهو الافتراضيّ، فأكثرُ المتاجر لم تكن تملك
+         * فاتورةً تُرسلها إلى شركةٍ أصلًا، ولا سطرَ يقول لها لماذا.
+         *
+         * والوجهُ الآخر أنّ الفاتورةَ الضريبية كانت المخرجَ الوحيد على A4 —
+         * وهي تشترط تسجيلًا ضريبيًّا. فغيرُ المسجَّل لا ورقةَ له.
+         *
+         * فصارا حقلين: `paper` مقاسُ الفاتورة (A4 · A5)، و`strip` عرضُ ورق
+         * الطابعة الحراريّة (٨٠ · ٥٨). ولكلٍّ بابُه.
+         */
         if (($spec['paper'] ?? false) === true) {
-            $out['paper'] = '80mm';
+            $out['paper'] = \App\Support\Document\PaperSize::DEFAULT;
+        }
+
+        if (($spec['strip'] ?? false) === true) {
+            $out['strip'] = \App\Support\Document\PaperSize::T80;
         }
 
         return $out;
@@ -227,6 +310,28 @@ class DocumentTemplates
         $saved = Setting::where('business_id', $businessId)
             ->whereIn('key', array_map(fn ($f) => self::key($type, $f), array_keys($defaults)))
             ->pluck('value', 'key');
+
+        /*
+         * وعرضُ الطابعة القديم يُورَّث، لا يُمحى.
+         *
+         * متجرٌ ضبط `paper = 58mm` قال شيئًا واحدًا: «ورقُ صندوقي ٥٨». وبعد
+         * أن انقسم الحقلان صار ذلك الصفُّ مرفوضًا في `paper` (ليس مقاسَ
+         * ورقةٍ مقصوصة) — ولو تُرك لسقط إلى ٨٠ الافتراضيّ، فيخرج إيصالُه
+         * مقصوصًا من الحافّة، ولا شيءَ يقول له إنّ إعدادَه تبدّل.
+         *
+         * فيُقرأ من موضعه القديم ما دام موضعُه الجديد فارغًا. وهجرةٌ في
+         * القراءة لا في القاعدة: لا صفَّ يُكتب لمن لم يفتح شاشةَ القوالب،
+         * وأوّلُ حفظٍ يثبّت الجواب في مفتاحه.
+         */
+        $stripKey = self::key($type, 'strip');
+
+        if (array_key_exists('strip', $defaults) && ! $saved->has($stripKey)) {
+            $legacy = (string) ($saved[self::key($type, 'paper')] ?? '');
+
+            if (in_array($legacy, self::strips(), true)) {
+                $saved[$stripKey] = $legacy;
+            }
+        }
 
         $out = [];
 
@@ -268,6 +373,10 @@ class DocumentTemplates
             return $default;
         }
 
+        if ($field === 'strip' && ! in_array($value, self::strips(), true)) {
+            return $default;
+        }
+
         return $value;
     }
 
@@ -285,6 +394,7 @@ class DocumentTemplates
                 str_starts_with($field, 'show_') => ['sometimes', 'boolean'],
                 $field === 'font' => ['sometimes', 'in:'.implode(',', self::FONTS)],
                 $field === 'paper' => ['sometimes', 'in:'.implode(',', self::papers())],
+                $field === 'strip' => ['sometimes', 'in:'.implode(',', self::strips())],
                 $field === 'header' => ['sometimes', 'nullable', 'string', 'max:120'],
                 default => ['sometimes', 'nullable', 'string', 'max:500'],
             };
@@ -353,9 +463,11 @@ class DocumentTemplates
             'desc' => __($spec['desc']),
             'section' => __($spec['section']),
             'hasPaper' => ($spec['paper'] ?? false) === true,
+            'hasStrip' => ($spec['strip'] ?? false) === true,
             'fields' => $fields,
             'fonts' => self::FONTS,
             'papers' => self::papers(),
+            'strips' => self::strips(),
             'values' => self::settings($businessId, $type),
         ];
     }

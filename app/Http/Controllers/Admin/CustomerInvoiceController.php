@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BankAccount;
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceAttachment;
 use App\Models\CustomerPayment;
@@ -20,6 +21,7 @@ use App\Support\Document\Branding;
 use App\Support\Document\PaperSize;
 use App\Support\Document\Snapshot;
 use App\Support\Document\Version;
+use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
 use App\Support\InvoiceAttachments;
@@ -247,6 +249,8 @@ class CustomerInvoiceController extends Controller
                 'payments' => $invoice->allocations()->with('payment')->get()
                     ->filter(fn ($a) => $a->payment && $a->payment->cancelled_at === null)
                     ->map(fn ($a) => [
+                        /* والمعرّفُ معه: سطرٌ يُقرأ ولا يُفتح سطرٌ ناقص */
+                        'id' => $a->payment->id,
                         'number' => $a->payment->number,
                         'amount' => (float) $a->amount,
                         'method' => $a->payment->method,
@@ -269,6 +273,7 @@ class CustomerInvoiceController extends Controller
                         : null,
                 ])->all(),
                 'credit_notes' => $invoice->creditNotes->map(fn ($n) => [
+                    'id' => $n->id,
                     'number' => $n->number,
                     'amount' => (float) $n->amount,
                     'reason' => $n->reason,
@@ -310,6 +315,98 @@ class CustomerInvoiceController extends Controller
      * وبنودٌ لكلٍّ ضريبتُه، وشروطُ سدادٍ تُحسب منها مدّةُ الاستحقاق. وحشرُ
      * ذلك في لوحةٍ فوق الجدول كان يجعل نصفَه مخفيًّا خلف زرّ.
      */
+    /**
+     * صفحةُ إشعارٍ دائن واحد — وورقتُه إلى جانبها.
+     *
+     * ═══ ولمَ صفحةٌ مستقلّة ═══
+     *
+     * الإشعارُ كان سطرًا في قائمةٍ داخل الفاتورة: رقمٌ ومبلغٌ وسبب، لا
+     * يُفتح ولا يُطبع. وهو مستندٌ ماليٌّ يُنقص ذمّةً — يُراجَع في تدقيقٍ،
+     * ويُطلب من التاجر أن يُخرج نسخةً منه، وتُرفَق صورتُه بمطالبةٍ تُخصَم
+     * منها. فسطرٌ لا يخرج منه شيءٌ يجعل الجوابَ لقطةَ شاشة.
+     */
+    public function creditNoteShow(int|string $note): Response
+    {
+        $bid = $this->bid();
+
+        $note = CustomerCreditNote::where('business_id', $bid)->whereKey($note)
+            ->with('invoice')->firstOrFail();
+
+        return Inertia::render('Admin/CustomerInvoices/CreditNoteShow', [
+            'note' => [
+                'id' => $note->id,
+                'number' => $note->number,
+                'amount' => (float) $note->amount,
+                'tax_amount' => (float) $note->tax_amount,
+                'net' => round((float) $note->amount - (float) $note->tax_amount, 3),
+                'reason' => $note->reason,
+                'issued_at' => optional($note->issued_at)->format('Y-m-d'),
+            ],
+            /* والفاتورةُ التي نشأ عنها: طريقٌ يعود إليها لا رقمٌ يُقرأ ولا يُفتح */
+            'invoice' => $note->invoice ? [
+                'id' => $note->invoice->id,
+                'number' => $note->invoice->number,
+                'customer' => $note->invoice->customer_name,
+                'total' => (float) $note->invoice->total,
+            ] : null,
+            'currency' => Money::of($bid),
+            'paper' => [
+                'html' => DocumentRenderer::generic($bid, 'credit_note', DocumentPaper::forCreditNote($note)),
+                'size' => PaperSize::A4,
+                'url' => route('admin.customerInvoices.creditNotes.pdf', $note->id),
+            ],
+        ]);
+    }
+
+    /**
+     * صفحةُ سند قبضٍ واحد — وما سُدِّد به من فواتير.
+     *
+     * والسندُ كان سطرًا في كلّ فاتورةٍ سُدِّدت منه: يُقرأ ثلاثَ مرّاتٍ في
+     * ثلاث شاشاتٍ ولا يُقرأ مرّةً كاملًا. ومن دفع بمئةٍ وُزّعت على ثلاثٍ
+     * يريد ورقةً واحدةً تقول ما دفع وأين ذهب.
+     */
+    public function paymentShow(int|string $id): Response
+    {
+        $bid = $this->bid();
+
+        $payment = CustomerPayment::where('business_id', $bid)->whereKey($id)
+            ->with('customer', 'bankAccount', 'allocations.invoice')->firstOrFail();
+
+        return Inertia::render('Admin/CustomerInvoices/ReceiptShow', [
+            'receipt' => [
+                'id' => $payment->id,
+                'number' => $payment->number,
+                'amount' => (float) $payment->amount,
+                'allocated' => $payment->allocatedTotal(),
+                'unallocated' => $payment->unallocated(),
+                'method' => $payment->method,
+                'bank' => optional($payment->bankAccount)->name,
+                'reference' => $payment->external_reference,
+                'occurred_at' => optional($payment->occurred_at)->format('Y-m-d'),
+                'notes' => $payment->notes,
+                'customer' => optional($payment->customer)->name,
+                'customer_id' => $payment->customer_id,
+                'cheque_status' => $payment->cheque_status,
+                'cheque_due_at' => $payment->cheque_due_at ? (string) $payment->cheque_due_at : null,
+                /* والملغى يُقال ملغى: سندٌ أُلغي ويُقرأ ساريًا سندٌ يُصدَّق */
+                'cancelled_at' => optional($payment->cancelled_at)->format('Y-m-d'),
+                'cancellation_reason' => $payment->cancellation_reason,
+                'allocations' => $payment->allocations->map(fn ($a) => [
+                    'id' => $a->id,
+                    'amount' => (float) $a->amount,
+                    'invoice_id' => $a->customer_invoice_id,
+                    'invoice' => optional($a->invoice)->number,
+                ])->all(),
+            ],
+            'currency' => Money::of($bid),
+            'paper' => [
+                'html' => DocumentRenderer::generic($bid, 'customer_receipt', DocumentPaper::forCustomerReceipt($payment)),
+                'size' => PaperSize::A4,
+                'url' => route('admin.customerPayments.pdf', $payment->id),
+            ],
+        ]);
+    }
+
     public function create(Request $request): Response
     {
         $bid = $this->bid();

@@ -22,9 +22,11 @@ type Template = {
     desc: string;
     section: string;
     hasPaper: boolean;
+    hasStrip: boolean;
     fields: FieldRow[];
     fonts: string[];
     papers: string[];
+    strips: string[];
     values: Record<string, string | boolean>;
 };
 
@@ -51,18 +53,19 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
     const form = useForm<Record<string, string | boolean>>({ ...template.values });
 
     /*
-     * ومقاسُ الورقة يتبع ما اختاره التاجر لا نوعَ المستند وحده.
+     * وورقةُ البيع وجهان يُطبعان معًا — فاتورةٌ وإيصالُ صندوق.
      *
-     * `sale` وحدها تملك «مقاس الورق» (`hasPaper`): من اختار ٨٠ مم يعاين
-     * شريطًا حراريًّا، ومن اختار A4 أو A5 يعاين صفحةً بمقاسها. وسائرُ
-     * الأنواع أوراقُ A4 دائمًا — لا يُطبع أمرُ شراءٍ على شريط.
+     * وكان مقاسٌ واحدٌ يختار أيَّهما يُعاين **وأيَّهما يُطبع**: من ضبط
+     * صندوقَه على ٨٠مم فقد فاتورةَ A4 كلَّها. فصارا سؤالين — «على أيّ ورقةٍ
+     * تُطبع فاتورتي؟» و«ما عرضُ ورق الطابعة؟» — ولكلٍّ بابُه في الخادم.
      *
-     * ويُقرأ من `form.data` لا من القيمة المحفوظة: المعاينةُ تتبع ما على
-     * الشاشة الآن، وإلّا بدّل التاجر المقاسَ فتغيّر المحتوى وبقي الإطار.
+     * والمعاينةُ تتبع الزرَّ الذي ضغطه صاحبُها، ومقاسُها يأتي مع الرسم من
+     * الخادم: لا تُشتقّ هنا ثانيةً فتفترق عمّا رُسم.
      */
-    const paper = template.hasPaper ? String(form.data.paper ?? 'A4') : 'A4';
+    const [thermal, setThermal] = useState(false);
 
     const [html, setHtml] = useState<string>('');
+    const [paper, setPaper] = useState<string>('A4');
     const [drawing, setDrawing] = useState(true);
     /*
      * ورقةٌ واحدة تُرسم في كلّ لحظة.
@@ -95,13 +98,14 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify(form.data),
+                body: JSON.stringify({ ...form.data, thermal }),
             });
 
             const body = await res.json();
 
             if (mine === ticket.current) {
                 setHtml(typeof body.html === 'string' ? body.html : '');
+                setPaper(typeof body.size === 'string' ? body.size : 'A4');
             }
         } catch {
             /* شبكةٌ انقطعت: تبقى آخر صورةٍ رُسمت، ولا تُمحى الورقة أمام صاحبها */
@@ -110,7 +114,7 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
                 setDrawing(false);
             }
         }
-    }, [form.data, template.key, brandStamp]);
+    }, [form.data, template.key, brandStamp, thermal]);
 
     // تأخيرٌ قصير: الكتابة في التذييل لا ترسل طلبًا لكل حرف
     useEffect(() => {
@@ -153,11 +157,44 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
             */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[7fr_3fr]">
                 <div className="min-w-0">
-                    <div className="mb-2 flex items-center justify-between">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <p className="text-[12px] text-[#9ca3af]">
                             {t('المعاينة — بالقالب الذي يُطبع فعلًا')}
                         </p>
-                        {drawing && <RefreshCw className="size-3.5 animate-spin text-[#d1d5db]" />}
+
+                        <div className="flex items-center gap-2">
+                            {/*
+                                ووجها ورقة البيع يُعاينان من هنا.
+
+                                ولا يُعرضان لنوعٍ له وجهٌ واحد: مقبضٌ يبدّل
+                                بين شيءٍ وشيءٍ ليس له مقبضٌ لا يُدير شيئًا.
+                            */}
+                            {template.hasStrip && (
+                                <div className="flex rounded-[10px] border border-[var(--ui-border,#e8e8e8)] p-0.5">
+                                    {[
+                                        { on: false, label: 'الفاتورة' },
+                                        { on: true, label: 'الإيصال الحراري' },
+                                    ].map((face) => (
+                                        <button
+                                            key={face.label}
+                                            type="button"
+                                            aria-pressed={thermal === face.on}
+                                            onClick={() => setThermal(face.on)}
+                                            className={cn(
+                                                'rounded-[8px] px-2.5 py-1 text-[12px]',
+                                                thermal === face.on
+                                                    ? 'bg-[#111] text-white'
+                                                    : 'text-[#6b7280] hover:bg-[#fafafa]',
+                                            )}
+                                        >
+                                            {t(face.label)}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {drawing && <RefreshCw className="size-3.5 animate-spin text-[#d1d5db]" />}
+                        </div>
                     </div>
 
                     {/*
@@ -217,14 +254,28 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
 
                             {template.hasPaper && (
                                 <Field
-                                    label="مقاس الورق"
-                                    hint="الإيصال الحراري 80 أو 58 ملم، والفاتورة على A4"
+                                    label="مقاس الفاتورة"
+                                    hint="الورقة التي تُرسَل وتُحفظ — A4 ما لم تختر غيرها"
                                     error={form.errors.paper}
                                 >
                                     <Select
-                                        value={(form.data.paper as string) ?? '80mm'}
+                                        value={(form.data.paper as string) ?? 'A4'}
                                         onChange={(e) => form.setData('paper', e.target.value)}
                                         options={template.papers.map((p) => ({ label: p, value: p }))}
+                                    />
+                                </Field>
+                            )}
+
+                            {template.hasStrip && (
+                                <Field
+                                    label="عرض ورق الطابعة الحرارية"
+                                    hint="للإيصال الذي يخرج من الصندوق — وطابعةُ الصندوق الموصولة تغلبه"
+                                    error={form.errors.strip}
+                                >
+                                    <Select
+                                        value={(form.data.strip as string) ?? '80mm'}
+                                        onChange={(e) => form.setData('strip', e.target.value)}
+                                        options={template.strips.map((p) => ({ label: p, value: p }))}
                                     />
                                 </Field>
                             )}

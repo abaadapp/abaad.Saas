@@ -118,6 +118,37 @@ final class PaperSize
     }
 
     /**
+     * مقاساتُ الورق المقصوص — A4 وA5.
+     *
+     * وهي وحدها ما يُعرض في «مقاس الورقة»: الفاتورةُ مستندٌ يُرسَل ويُحفظ،
+     * والشريطُ الحراريُّ مخرجٌ ثانٍ لطابعةِ الصندوق — لا مقاسٌ ثالثٌ لها.
+     * وقائمةٌ تخلط الاثنين تجعل من يختار «٨٠مم» يفقد فاتورتَه بلا أن يقول
+     * له أحد.
+     *
+     * @return list<string>
+     */
+    public static function sheets(): array
+    {
+        return array_values(array_keys(array_filter(
+            self::PRESETS,
+            static fn (array $p): bool => $p['kind'] === 'sheet',
+        )));
+    }
+
+    /**
+     * عروضُ الشريط الحراريّ — ٥٨ و٨٠.
+     *
+     * @return list<string>
+     */
+    public static function strips(): array
+    {
+        return array_values(array_keys(array_filter(
+            self::PRESETS,
+            static fn (array $p): bool => $p['kind'] === 'strip',
+        )));
+    }
+
+    /**
      * أنماطُ الصفحة — `@page` للطبع، وصندوقُ الورقة للشاشة.
      *
      * وتُكتب من الأرقام نفسِها التي يُبنى بها المحرّك، فلا يفترق ما يُرى

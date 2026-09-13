@@ -116,12 +116,39 @@ class TheOrderScreenShowsItsPaperTest extends TestCase
         $this->assertSame($printed, $shown, 'المعروضةُ تفترق عن المطبوعة');
     }
 
-    /** وشريطُ الطابعة الحراريّة يصل بمقاسه — لا يُقرأ ورقةَ A4 */
-    public function test_a_thermal_shop_gets_its_strip(): void
+    /**
+     * وشاشةُ الطلب تعرض الفاتورة — ولو كان صندوقُه حراريًّا.
+     *
+     * ═══ وكانت تعرض الشريط ═══
+     *
+     * `paper = 80mm` كان يعني «لا فاتورةَ لهذا المتجر»: يُعاين شريطًا،
+     * ويُطبع شريطًا، ولا بابَ ثالثًا. فمن طلبت منه شركةٌ فاتورةً بمشترياتها
+     * لم يكن عنده ما يرسله.
+     *
+     * فصار المقاسُ سؤالين: `paper` ورقةُ الفاتورة و`strip` عرضُ الطابعة.
+     * والشاشةُ تعرض الأولى، و`admin.orders.receipt` يُخرج الثانية.
+     */
+    public function test_a_thermal_shop_still_sees_its_invoice(): void
     {
         Setting::where('business_id', $this->business->id)
             ->where('key', 'paper')->update(['value' => '80mm']);
 
-        $this->screen()->where('paper.size', '80mm');
+        $this->screen()->where('paper.size', 'A4');
+    }
+
+    /** وشريطُ الطابعة الحراريّة يصل بمقاسه من بابه — لا يُقرأ ورقةَ A4 */
+    public function test_the_till_door_still_yields_the_strip(): void
+    {
+        Setting::where('business_id', $this->business->id)
+            ->where('key', 'paper')->update(['value' => '80mm']);
+
+        $printed = PdfController::saleHtml(
+            (int) $this->business->id,
+            $this->order->fresh()->load('items'),
+            thermal: true,
+        );
+
+        $this->assertSame('80mm', $printed['paper']);
+        $this->assertStringNotContainsString('table.items', $printed['html']);
     }
 }

@@ -3,11 +3,14 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerPayment;
 use App\Models\GoodsReceiptNote;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Models\SupplierInvoice;
 use App\Support\Demo;
 use App\Support\Document\Snapshot;
 use Illuminate\Database\Eloquent\Model;
@@ -432,6 +435,196 @@ class DocumentPaper
      * وبأسماء أصنافه لا بـ«صنف ١» و«صنف ٢»: التاجر يحكم على الورقة بما يراه
      * فيها، وسطرٌ باسمٍ حقيقيّ يُظهر له طولَ السطر واصطفافَ العمود كما سيكون.
      */
+    /**
+     * فاتورةُ المورّد — سندُ التزامٍ لا ورقةُ بضاعة.
+     *
+     * ═══ ولمَ لا جدولَ أصنافٍ فيها ═══
+     *
+     * `supplier_invoices` صفٌّ بلا بنود: مبلغٌ وضريبةٌ ومرجعُ المورّد وتاريخٌ
+     * واستحقاق. والبضاعةُ نفسُها في أمر الشراء وسندات الاستلام، ولكلٍّ ورقتُه.
+     *
+     * وجرّ بنودِ أمر الشراء إلى هنا يخرج ورقةً كاذبة: المطابقةُ قد تقول إنّ
+     * الإجماليّين مختلفان — وهو سببُ وجود `SupplierInvoices::match` أصلًا —
+     * فتُطبع أصنافٌ بمجموعٍ لا يساوي إجماليَّ الورقة التي هي عليها.
+     *
+     * فما تحمله هذه الورقة ما في الصفّ: الطرفان، والتواريخ، والمرجع، وأمرُ
+     * الشراء الذي تقابله، والمبالغ.
+     */
+    public static function forSupplierInvoice(SupplierInvoice $invoice): array
+    {
+        $cur = self::currency($invoice->business_id, $invoice);
+        $outstanding = $invoice->outstanding();
+
+        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($invoice->subtotal, $cur)]];
+
+        if ((float) $invoice->tax > 0) {
+            $totals[] = ['label' => __('الضريبة'), 'value' => self::money($invoice->tax, $cur)];
+        }
+
+        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($invoice->total, $cur), 'grand' => true];
+
+        if ((float) $invoice->paid > 0 || $outstanding > 0) {
+            $totals[] = ['label' => __('المسدَّد'), 'value' => self::money($invoice->paid, $cur)];
+            $totals[] = ['label' => __('الباقي'), 'value' => self::money($outstanding, $cur), 'due' => true];
+        }
+
+        return [
+            'title' => __('فاتورة مورّد'),
+            'number' => (string) $invoice->supplier_ref,
+            /* والختمُ حالُ الاعتماد: هي دورةُ حياة المستند. والسدادُ في المجاميع */
+            'status' => (string) ($invoice->approval_status ?: ''),
+            'date' => optional($invoice->issued_at)->format('Y-m-d'),
+            'branch' => null,
+            'employee' => null,
+            'meta' => array_values(array_filter([
+                ['label' => __('تاريخ الإصدار'), 'value' => optional($invoice->issued_at)->format('Y-m-d')],
+                ['label' => __('تاريخ الاستحقاق'), 'value' => optional($invoice->due_at)->format('Y-m-d')],
+                ['label' => __('أمر الشراء'), 'value' => (string) (optional($invoice->purchaseOrder)->number ?? '')],
+                ['label' => __('حالة السداد'), 'value' => (string) ($invoice->status ?: '')],
+            ], fn (array $r) => filled($r['value']))),
+            'parties' => [[
+                'cap' => __('المورّد'),
+                'lines' => array_values(array_filter([
+                    optional($invoice->supplier)->name,
+                    optional($invoice->supplier)->phone,
+                    optional($invoice->supplier)->email,
+                ])),
+            ]],
+            'items' => [],
+            'totals' => $totals,
+            'notes' => (string) ($invoice->notes ?? ''),
+        ];
+    }
+
+    /**
+     * إشعارٌ دائن — يُنقص ذمّةَ العميل ولا يُعيد كتابة الفاتورة.
+     *
+     * و`amount` مبلغٌ شاملٌ للضريبة و`tax_amount` نصيبُها منه — انظر
+     * `CustomerInvoices::creditNote`. فالصافي فرقُهما، ولا يُعاد حسابُ شيء
+     * هنا: الورقةُ تعرض ما في الصفّ.
+     *
+     * وبياناتُ العميل من الفاتورة الأصليّة: الإشعارُ لا يحملها، وهو معلَّقٌ
+     * بها دائمًا (`customer_invoice_id` غيرُ قابلٍ للفراغ).
+     */
+    public static function forCreditNote(CustomerCreditNote $note): array
+    {
+        $invoice = $note->invoice;
+        $cur = self::currency($note->business_id, $note);
+
+        $net = round((float) $note->amount - (float) $note->tax_amount, 3);
+
+        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($net, $cur)]];
+
+        if ((float) $note->tax_amount > 0) {
+            $totals[] = ['label' => __('ضريبة القيمة المضافة'), 'value' => self::money($note->tax_amount, $cur)];
+        }
+
+        $totals[] = ['label' => __('إجمالي الإشعار'), 'value' => self::money($note->amount, $cur), 'grand' => true];
+
+        return [
+            'title' => __('إشعار دائن'),
+            'number' => (string) $note->number,
+            'status' => '',
+            'date' => optional($note->issued_at)->format('Y-m-d'),
+            'branch' => null,
+            'employee' => null,
+            /*
+             * والسببُ ليس في الشريط.
+             *
+             * خلايا الشريط سطرٌ واحدٌ قصير — تاريخٌ أو رقم. وسببُ الإشعار
+             * جملةٌ يكتبها بشر («رُدّت ثلاثُ باقاتٍ لتلفها عند التسليم»)،
+             * فتُقصّ في خليّةٍ بعرض خمسة سنتيمترات أو تُقرأ مرّتين: هنا وفي
+             * لوحة الملاحظات تحتها. ومكانُها اللوحة.
+             */
+            'meta' => array_values(array_filter([
+                ['label' => __('الفاتورة الأصلية'), 'value' => (string) (optional($invoice)->number ?? '')],
+                ['label' => __('تاريخ الإشعار'), 'value' => optional($note->issued_at)->format('Y-m-d')],
+            ], fn (array $r) => filled($r['value']))),
+            'parties' => [[
+                'cap' => __('إلى'),
+                'lines' => array_values(array_filter([
+                    optional($invoice)->customer_name,
+                    filled(optional($invoice)->customer_tax_number)
+                        ? __('الرقم الضريبي').': '.$invoice->customer_tax_number
+                        : null,
+                    optional($invoice)->customer_address,
+                ])),
+            ]],
+            'items' => [],
+            'totals' => $totals,
+            'notes' => (string) ($note->reason ?? ''),
+        ];
+    }
+
+    /**
+     * سندُ قبض — إقرارُ المتجر بأنّه استلم مالًا من عميل.
+     *
+     * وبنودُه **توزيعُ المبلغ على الفواتير** لا أصناف: من دفع بمئةٍ تُسدَّد
+     * بها ثلاثُ فواتيرَ يريد أن يعرف أيُّها سُدِّدت وبكم. وما لم يُوزَّع
+     * يُقال صراحةً — رصيدٌ عند المتجر لا مبلغٌ ضاع.
+     */
+    public static function forCustomerReceipt(CustomerPayment $payment): array
+    {
+        $cur = self::currency($payment->business_id, $payment);
+
+        $allocated = $payment->allocatedTotal();
+        $spare = $payment->unallocated();
+
+        $totals = [
+            ['label' => __('المبلغ المستلم'), 'value' => self::money($payment->amount, $cur), 'grand' => true],
+        ];
+
+        if ($allocated > 0 && $spare > 0) {
+            $totals[] = ['label' => __('المسدَّد من الفواتير'), 'value' => self::money($allocated, $cur)];
+        }
+
+        if ($spare > 0) {
+            $totals[] = ['label' => __('رصيد لم يُخصَّص بعد'), 'value' => self::money($spare, $cur), 'due' => true];
+        }
+
+        return [
+            'title' => __('سند قبض'),
+            'number' => (string) $payment->number,
+            /* والملغى يُختم ملغى: سندٌ أُلغي ويُطبع بلا خبرٍ يقول ذلك سندٌ يُصدَّق */
+            'status' => $payment->cancelled_at !== null ? __('ملغى') : '',
+            'date' => optional($payment->occurred_at)->format('Y-m-d'),
+            'branch' => null,
+            'employee' => null,
+            'meta' => array_values(array_filter([
+                ['label' => __('تاريخ القبض'), 'value' => optional($payment->occurred_at)->format('Y-m-d')],
+                ['label' => __('وسيلة الدفع'), 'value' => __((string) ($payment->method ?: 'نقدي'))],
+                ['label' => __('الحساب البنكي'), 'value' => (string) (optional($payment->bankAccount)->name ?? '')],
+                ['label' => __('المرجع'), 'value' => (string) ($payment->external_reference ?? '')],
+                ['label' => __('حال الشيك'), 'value' => (string) ($payment->cheque_status ?? '')],
+                [
+                    'label' => __('استحقاق الشيك'),
+                    'value' => $payment->cheque_due_at ? (string) $payment->cheque_due_at : '',
+                ],
+            ], fn (array $r) => filled($r['value']))),
+            'parties' => [[
+                'cap' => __('الدافع'),
+                'lines' => array_values(array_filter([
+                    optional($payment->customer)->name,
+                    optional($payment->customer)->phone,
+                    optional($payment->customer)->tax_number
+                        ? __('الرقم الضريبي').': '.$payment->customer->tax_number
+                        : null,
+                ])),
+            ]],
+            'items' => $payment->allocations->map(fn ($a) => [
+                'name' => __('فاتورة').' '.(optional($a->invoice)->number ?? '—'),
+                'note' => optional($a->invoice)->issued_at
+                    ? __('صدرت في').' '.$a->invoice->issued_at->format('Y-m-d')
+                    : null,
+                'qty' => '1',
+                'unit' => self::money($a->amount, $cur),
+                'total' => self::money($a->amount, $cur),
+            ])->all(),
+            'totals' => $totals,
+            'notes' => (string) ($payment->notes ?? ''),
+        ];
+    }
+
     public static function sample(int $businessId, string $type): array
     {
         $cur = self::currency($businessId);
@@ -462,17 +655,42 @@ class DocumentPaper
             'delivery' => 'سند تسليم',
             'purchase' => 'أمر شراء',
             'grn' => 'سند استلام بضاعة',
+            'supplier_invoice' => 'فاتورة مورّد',
+            'credit_note' => 'إشعار دائن',
+            'customer_receipt' => 'سند قبض',
         ];
 
         $parties = match ($type) {
-            'purchase', 'grn' => [['cap' => __('المورّد'), 'lines' => [__('مورّد الورود'), '91234567']]],
+            'purchase', 'grn', 'supplier_invoice' => [['cap' => __('المورّد'), 'lines' => [__('مورّد الورود'), '91234567']]],
+            'credit_note' => [['cap' => __('إلى'), 'lines' => [__('زبون تجريبي'), __('مسقط — الخوير')]]],
+            'customer_receipt' => [['cap' => __('الدافع'), 'lines' => [__('زبون تجريبي'), '91234567']]],
             default => [['cap' => __('المستلِم'), 'lines' => [__('زبون تجريبي'), '91234567', __('مسقط — الخوير')]]],
         };
 
         $stamps = [
             'purchase' => 'مُرسل',
             'grn' => 'معتمد',
+            'supplier_invoice' => 'معتمد',
         ];
+
+        /*
+         * وورقتان بلا بنود — ومثالٌ يخترع لهما أصنافًا يُري التاجرَ ما لن يراه.
+         *
+         * فاتورةُ المورّد وإشعارُ الدائن صفّان بمبلغٍ لا بجدول — انظر
+         * `forSupplierInvoice`. وسندُ القبض بنودُه فواتيرُ سُدِّدت لا أصناف.
+         */
+        if (in_array($type, ['supplier_invoice', 'credit_note'], true)) {
+            $items = [];
+        }
+
+        if ($type === 'customer_receipt') {
+            $items = [[
+                'name' => __('فاتورة').' INV-000101',
+                'qty' => '1',
+                'unit' => self::money($total, $cur),
+                'total' => self::money($total, $cur),
+            ]];
+        }
 
         return [
             'title' => __($titles[$type] ?? 'مستند'),

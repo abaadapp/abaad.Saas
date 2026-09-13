@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\StockLedger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Support\Pdf;
@@ -334,6 +335,8 @@ class ProductImportExportController extends Controller
         $bid = $this->bid();
         $branchId = $payload['branch_id'];
         $analysis = $this->analyze($payload);
+        // اسمُ الملفّ يرافق كلّ حركةٍ يكتبها هذا الاستيراد — انظر `noteImport`
+        $file = (string) ($payload['file'] ?? $analysis['file'] ?? '');
 
         /*
          * الاستيراد يخضع لسقف الباقة كالإضافة اليدوية.
@@ -362,7 +365,7 @@ class ProductImportExportController extends Controller
 
         // ملف بمئة صنف يجب أن يدخل كاملًا أو لا يدخل: نصفُ كتالوجٍ مستورَد
         // أسوأ من لا شيء، لأن التاجر لا يعرف أين توقّف.
-        DB::transaction(function () use ($analysis, $bid, $branchId, &$added, &$updated, &$undo) {
+        DB::transaction(function () use ($analysis, $bid, $branchId, $file, &$added, &$updated, &$undo) {
             $categoryId = [];
 
             foreach ($analysis['rows'] as $r) {
@@ -404,6 +407,8 @@ class ProductImportExportController extends Controller
                     ]);
                     foreach ($this->allocation($r, $branchId) as $branch => $qty) {
                         BranchStock::adjust($bid, $branch, $product->id, $qty);
+                        // ورصيدٌ دخل الرفَّ يقول من أين جاء — انظر `noteImport`
+                        $this->noteImport($bid, $branch, $product, $qty, StockLedger::OPENING, $file);
                         $undo['created_branch'][] = ['product_id' => $product->id, 'branch_id' => $branch, 'qty' => $qty];
                     }
                     $undo['created'][] = $product->id;
@@ -456,6 +461,7 @@ class ProductImportExportController extends Controller
                             : $r['quantity'] - $oldQty;
                         if ($delta !== 0) {
                             BranchStock::adjust($bid, $branch, $product->id, $delta);
+                            $this->noteImport($bid, $branch, $product, $delta, StockLedger::MANUAL, $file);
                             $deltas[$branch] = $delta;
                         }
                     }
@@ -518,6 +524,9 @@ class ProductImportExportController extends Controller
                 $product->update($u['before']);
                 foreach ($u['deltas'] ?? [] as $branch => $delta) {
                     BranchStock::adjust($bid, (int) $branch, $product->id, -$delta);
+                    // والتراجعُ حركةٌ كما كان الاستيراد حركة — لا محوٌ لما جرى
+                    $this->noteImport($bid, (int) $branch, $product, -$delta, StockLedger::MANUAL,
+                        (string) ($payload['file'] ?? ''), true);
                 }
                 $restored++;
             }
@@ -767,6 +776,31 @@ class ProductImportExportController extends Controller
     }
 
     /** توزيع كمية صفٍّ على الفروع: أعمدة الفروع إن وُجدت، وإلا الفرع المختار */
+    /**
+     * حركةُ مخزونٍ لكلّ رصيدٍ يحرّكه الاستيراد.
+     *
+     * ═══ العطب ═══
+     *
+     * الاستيراد كان يكتب `products.quantity` و`branch_stocks` ولا يكتب سطرًا
+     * في `inventory_movements`. جرّبتُه: ملفٌّ يرفع صنفًا من عشرةٍ إلى تسعين
+     * ويُنشئ ثانيًا بأربعين — **ثمانون قطعةً ظهرت على الرفّ وصفرُ حركات**.
+     * فيفتح التاجرُ «حركات المخزون» فلا يجد ما يقول متى تغيّر رصيدُه ولا
+     * بيدِ من، ومخزونٌ يتغيّر بلا أثرٍ يُقرأ بابٌ مفتوحٌ على سرقةٍ لا تُكتشف.
+     *
+     * وهو العطبُ نفسُه الذي أُصلح في شاشة المنتج — ولها `StockLedger::note`
+     * بُنيت أصلًا — وبقي هذا البابُ وحدَه، وهو أوسعُهما أثرًا: ملفٌّ واحد
+     * يمسّ مئتَي صنفٍ في ضغطة.
+     *
+     * والنوعُ من المفردات القائمة لا نوعٌ ثالث يُخترع: «رصيد افتتاحي» لصنفٍ
+     * وُلد من الملفّ، و«تعديل يدوي» لرصيدٍ غُيّر — والملاحظةُ تحمل اسم الملفّ.
+     */
+    private function noteImport(
+        int $bid, int $branchId, Product $product, int $delta, string $type, string $file, bool $undo = false,
+    ): void {
+        StockLedger::note($bid, $branchId, $product, $delta, $type, auth()->user()?->name,
+            trim(($undo ? __('تراجع عن استيراد') : __('استيراد ملف')).($file !== '' ? ': '.$file : '')));
+    }
+
     private function allocation(array $row, ?int $branchId): array
     {
         if (! empty($row['branchQty'])) {

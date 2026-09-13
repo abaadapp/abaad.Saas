@@ -171,18 +171,6 @@ class StockAdjustmentController extends Controller
          */
         $delta = (int) Waste::normalizeDelta($data['reason'], (int) $data['quantity_delta']);
 
-        /*
-         * الكمية لا تنزل تحت الصفر.
-         *
-         * رصيدٌ سالب يُفسد كلّ ما يُبنى عليه: قيمة المخزون تصير سالبة،
-         * و«المنخفض» يمتلئ بأصنافٍ لا وجود لها، ونقطة البيع تبيع ما ليس عندها.
-         */
-        if ($delta < 0 && abs($delta) > (float) $product->quantity) {
-            return back()->withInput()->withErrors([
-                'quantity_delta' => __('المتوفّر :n فقط', ['n' => (int) $product->quantity]),
-            ]);
-        }
-
         $cost = round((float) $product->cost, 3);
         $value = round(abs($delta) * $cost, 3);
 
@@ -215,6 +203,33 @@ class StockAdjustmentController extends Controller
                  * وهو الترتيب نفسه في الاستلام والبيع وإشعار التسليم.
                  */
                 BranchStock::ensureAllocated($bid, $product->id, (int) $product->quantity);
+
+                /*
+                 * ═══ ولا يُتلَف في فرعٍ ما ليس فيه ═══
+                 *
+                 * الكمية لا تنزل تحت الصفر — رصيدٌ سالب يُفسد كلّ ما يُبنى
+                 * عليه: قيمةُ المخزون تصير سالبة، و«المنخفض» يمتلئ بأصنافٍ
+                 * لا وجود لها، ونقطة البيع تبيع ما ليس عندها.
+                 *
+                 * وكان الحارسُ يقيس **إجماليّ الشركة** والكتابةُ تقع على
+                 * **فرعٍ بعينه**. جرّبتُها: عشرٌ في مسقط وصفرٌ في صلالة، ثمّ
+                 * «تلف ٨» على صلالة — فمرّت بلا رسالة، وصار رصيدُ صلالة
+                 * **ناقصَ ثمانية**: بضاعةٌ تلفت في فرعٍ لم تدخله قطّ.
+                 *
+                 * والبابُ الشقيق — حركةُ المخزون اليدويّة — يقيس دفترَ الفرع
+                 * منذ إصلاحه، بهذه الرسالة بحروفها. وبابان يحرسان الحدث نفسه
+                 * بقاعدتين يفترقان يومًا — وقد افترقا.
+                 *
+                 * والقراءةُ داخل المعاملة بعد التوزيع: منتجٌ لم يُوزَّع بعدُ
+                 * رصيدُه كلُّه في الفرع الأوّل، وهي قاعدةُ `books` نفسُها.
+                 */
+                $book = BranchStock::bookOf($bid, $product->id, $branch->id);
+
+                if ($delta < 0 && $book + $delta < 0) {
+                    throw new RuntimeException(__('رصيد :branch من هذا الصنف :n فقط — لا يمكن صرف أكثر منه.', [
+                        'branch' => $branch->name, 'n' => $book,
+                    ]));
+                }
 
                 $product->increment('quantity', $delta);
 

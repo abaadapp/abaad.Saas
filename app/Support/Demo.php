@@ -466,13 +466,17 @@ class Demo
 
         // اتجاهات حقيقية = نمو التسجيلات (هذا الشهر مقابل الشهر السابق)
         $bizNew = Business::real()->where('starts_at', '>=', $mStart)->count();
-        $bizNewLast = Business::real()->whereBetween('starts_at', [$lmStart, $mStart])->count();
+        $bizNewLast = Business::real()->where('starts_at', '>=', $lmStart)
+            ->where('starts_at', '<', $mStart)->count();
         $activeNew = Business::real()->where('status', 'نشط')->where('starts_at', '>=', $mStart)->count();
-        $activeNewLast = Business::real()->where('status', 'نشط')->whereBetween('starts_at', [$lmStart, $mStart])->count();
+        $activeNewLast = Business::real()->where('status', 'نشط')
+            ->where('starts_at', '>=', $lmStart)->where('starts_at', '<', $mStart)->count();
         $usersNew = $realUsers()->where('created_at', '>=', $mStart)->count();
-        $usersNewLast = $realUsers()->whereBetween('created_at', [$lmStart, $mStart])->count();
+        $usersNewLast = $realUsers()->where('created_at', '>=', $lmStart)
+            ->where('created_at', '<', $mStart)->count();
         $subsNew = Business::subscribed()->where('starts_at', '>=', $mStart)->count();
-        $subsNewLast = Business::subscribed()->whereBetween('starts_at', [$lmStart, $mStart])->count();
+        $subsNewLast = Business::subscribed()->where('starts_at', '>=', $lmStart)
+            ->where('starts_at', '<', $mStart)->count();
 
         /*
          * الإيراد الشهري المتكرّر: الاشتراكات السارية منسوبةً إلى الشهر.
@@ -535,7 +539,9 @@ class Demo
         // الإيرادات: الشهر مقابل السابق، والسنة مقابل السابقة (فواتير مدفوعة فعليًا)
         $paid = fn () => Invoice::where('status', 'مدفوعة');
         $monthly = (float) $paid()->where('issued_at', '>=', $mStart)->sum('amount');
-        $monthlyLast = (float) $paid()->whereBetween('issued_at', [$lmStart, $mStart])->sum('amount');
+        // والحدُّ الأعلى مفتوح كما في لوحة التاجر — `issued_at` تاريخٌ بلا ساعة
+        $monthlyLast = (float) $paid()->where('issued_at', '>=', $lmStart)
+            ->where('issued_at', '<', $mStart)->sum('amount');
         $yearly = (float) $paid()->where('issued_at', '>=', $yStart)->sum('amount');
         $yearlyLast = (float) $paid()->whereBetween('issued_at', [$lyStart, $yStart])->sum('amount');
 
@@ -796,12 +802,31 @@ class Demo
         $salesToday = (float) $orders()->whereDate('ordered_at', today())->sum('total');
         $salesYesterday = (float) $orders()->whereDate('ordered_at', today()->subDay())->sum('total');
         $salesMonth = (float) $orders()->where('ordered_at', '>=', $mStart)->sum('total');
-        $salesLastMonth = (float) $orders()->whereBetween('ordered_at', [$lmStart, $mStart])->sum('total');
+
+        /*
+         * ═══ وحدُّ الشهرين لا يقع في الشهرين ═══
+         *
+         * كان الشهرُ الماضي `whereBetween([$lmStart, $mStart])` — و`between`
+         * تشمل الطرفين — بينما الشهرُ الجاري `>= $mStart`. فما وقع على الحدّ
+         * نفسِه يُحسب في الاثنين.
+         *
+         * وأثرُه في المصروفات ظاهرٌ لا نادر: `spent_at` عمودُ تاريخٍ بلا ساعة،
+         * فمصروفُ اليوم الأوّل من الشهر — وهو يومُ الإيجار والرواتب
+         * والاشتراكات — يقع على الحدّ بالضبط. جرّبتُه: إيجارٌ بثلاثمئة يُقرأ
+         * ثلاثمئةً هذا الشهر **وثلاثمئةً الشهر الماضي**، فتقول البطاقة عن
+         * مصروفٍ جديدٍ كلَّه «لا تغيّر». ويُنفخ به «صافي أرباح» الشهر الماضي
+         * فيكذب الاتجاهُ في بطاقتين.
+         *
+         * فالحدُّ الأعلى مفتوحٌ دائمًا: `>= البداية` و`< بداية التالي`.
+         */
+        $salesLastMonth = (float) $orders()->where('ordered_at', '>=', $lmStart)
+            ->where('ordered_at', '<', $mStart)->sum('total');
 
         // الطلبات: الإجمالي (القيمة) + نمو الشهر (الاتجاه)
         $ordersTotal = $orders()->count();
         $ordersMonth = $orders()->where('ordered_at', '>=', $mStart)->count();
-        $ordersLastMonth = $orders()->whereBetween('ordered_at', [$lmStart, $mStart])->count();
+        $ordersLastMonth = $orders()->where('ordered_at', '>=', $lmStart)
+            ->where('ordered_at', '<', $mStart)->count();
 
         // متوسط قيمة الطلب: هذا الشهر مقابل السابق
         $avg = $ordersMonth ? $salesMonth / $ordersMonth : 0;
@@ -810,13 +835,34 @@ class Demo
         // العملاء: الإجمالي (القيمة) + الجدد هذا الشهر مقابل السابق (الاتجاه)
         $customersTotal = Customer::where('business_id', $bid)->count();
         $customersMonth = Customer::where('business_id', $bid)->where('created_at', '>=', $mStart)->count();
-        $customersLastMonth = Customer::where('business_id', $bid)->whereBetween('created_at', [$lmStart, $mStart])->count();
+        $customersLastMonth = Customer::where('business_id', $bid)
+            ->where('created_at', '>=', $lmStart)->where('created_at', '<', $mStart)->count();
 
-        $lowStock = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')->count();
+        /*
+         * ═══ والمنخفضُ منخفضٌ في الفرع الذي تنظر إليه ═══
+         *
+         * كانت البطاقة تقيس `products.quantity` — إجماليَّ الشركة — مهما كان
+         * الفرعُ المختار، وبقيّةُ البطاقات كلُّها تتبعه. وشاشةُ المخزون تحكم
+         * برصيد الفرع (`Demo::inventory` عبر `Product::statusFor`).
+         *
+         * جرّبتُها: خمسون في مسقط وواحدةٌ في صلالة وحدُّ التنبيه عشرة، والفرعُ
+         * المختار صلالة ⇦ **شاشةُ المخزون تقول «منخفض» واللوحةُ تقول «٠»**.
+         * سؤالٌ واحد وجوابان على شاشتين يقرؤهما التاجرُ معًا — فلا يصدّق
+         * أيًّا منهما.
+         *
+         * والقاعدةُ من `BranchStock::books` لا من استعلامٍ ثانٍ يُعيد كتابتها:
+         * منتجٌ لم يُوزَّع بعدُ رصيدُه كلُّه في الفرع الأوّل.
+         *
+         * و«كل الفروع» يبقى على الإجماليّ — هو عرضُ الشركة لا موضعُ بيع.
+         */
+        $lowStock = self::currentBranchId()
+            ? self::lowStockInBranch($bid, (int) self::currentBranchId())
+            : Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')->count();
 
         // المصروفات وصافي الأرباح: هذا الشهر مقابل السابق
         $expMonth = (float) Expense::where('business_id', $bid)->paid()->where('spent_at', '>=', $mStart)->sum('amount');
-        $expLastMonth = (float) Expense::where('business_id', $bid)->paid()->whereBetween('spent_at', [$lmStart, $mStart])->sum('amount');
+        $expLastMonth = (float) Expense::where('business_id', $bid)->paid()
+            ->where('spent_at', '>=', $lmStart)->where('spent_at', '<', $mStart)->sum('amount');
 
         /*
          * ═══ «صافي الأرباح» ربحٌ لا فرقُ طرحٍ بين رقمين ═══
@@ -841,7 +887,8 @@ class Demo
          */
         $branch = self::currentBranchId();
         $taxMonth = (float) $orders()->where('ordered_at', '>=', $mStart)->sum('tax');
-        $taxLastMonth = (float) $orders()->whereBetween('ordered_at', [$lmStart, $mStart])->sum('tax');
+        $taxLastMonth = (float) $orders()->where('ordered_at', '>=', $lmStart)
+            ->where('ordered_at', '<', $mStart)->sum('tax');
         $cogsMonth = self::cogsFor($bid, $mStart, null, $branch);
         $cogsLastMonth = self::cogsFor($bid, $lmStart, $mStart, $branch);
 
@@ -860,8 +907,33 @@ class Demo
             array_merge(['label' => __('عدد العملاء'), 'value' => (string) $customersTotal, 'icon' => 'users', 'color' => 'primary'], self::trend($customersMonth, $customersLastMonth)),
             ['label' => __('منتجات منخفضة المخزون'), 'value' => (string) $lowStock, 'icon' => 'alert-triangle', 'trend' => __('تنبيه'), 'up' => false, 'color' => 'warning'],
             array_merge(['label' => __('المصروفات'), 'value' => self::money($expMonth), 'icon' => 'arrow-down-circle', 'color' => 'danger'], $expTrend),
-            array_merge(['label' => __('صافي الأرباح'), 'value' => self::money($net), 'icon' => 'piggy-bank', 'color' => 'success'], self::trend($net, $netLast)),
+            /*
+             * وخسارةٌ لا تُرسم خضراء.
+             *
+             * كان اللونُ `success` مثبَّتًا مهما كان الرقم: خسارةُ خمسِمئةٍ
+             * تُعرض في بطاقةٍ خضراء. واللونُ أوّلُ ما تقرؤه العينُ على لوحةٍ
+             * فيها ثماني بطاقات — قبل الرقم وقبل عنوانه.
+             */
+            array_merge([
+                'label' => __('صافي الأرباح'), 'value' => self::money($net), 'icon' => 'piggy-bank',
+                'color' => $net < 0 ? 'danger' : 'success',
+            ], self::trend($net, $netLast)),
         ];
+    }
+
+    /**
+     * كم صنفًا تحت حدّ تنبيهه في فرعٍ بعينه.
+     *
+     * والقاعدةُ هي قاعدةُ `Product::statusFor` نفسُها — «أقلُّ من الحدّ» —
+     * مطبَّقةً على رصيد الفرع. ولا تُعاد كتابتُها هنا استعلامًا ثالثًا.
+     */
+    private static function lowStockInBranch(int $businessId, int $branchId): int
+    {
+        $books = BranchStock::books($businessId);
+
+        return Product::where('business_id', $businessId)->get(['id', 'alert_qty'])
+            ->filter(fn ($p) => (int) ($books[$p->id][$branchId] ?? 0) < (int) $p->alert_qty)
+            ->count();
     }
 
     /**
@@ -1949,10 +2021,26 @@ class Demo
     /** نسبة اتجاه حقيقية مقارنةً بالفترة السابقة */
     private static function trend(float $curr, float $prev): array
     {
+        /*
+         * ═══ ولا نسبةَ من أساسٍ غير موجب — والاتّجاهُ لا يكذب ═══
+         *
+         * كان كلُّ ما ليس موجبًا في الشهر الماضي يُقرأ سهمًا أخضر: `$curr > 0`
+         * فـ«+100%»، وإلّا «0%» **صاعدًا**. وذاك يصدُق حين يكون الأساسُ صفرًا،
+         * ويكذب حين يكون خسارة.
+         *
+         * جرّبتُها: خسارةُ مئتين الشهرَ الماضي وخمسِمئة هذا الشهر ⇦ بطاقةُ
+         * «صافي الأرباح» تقول **«0%» بسهمٍ أخضر** على خسارةٍ تضاعفت. وهي أوّلُ
+         * شاشةٍ يفتحها صاحبُ المحلّ كلَّ صباح. وطمأنينةٌ كاذبة أسوأ من تحذيرٍ
+         * كاذب.
+         *
+         * والنسبةُ المئويّة تبقى نسبةً في نصّها — حارسُ بطاقات المنصّة يقرأ
+         * «٪» في كلّ اتجاه — لكنّ السهمَ يتبع الفرقَ نفسَه لا إشارةَ الرقم.
+         */
         if ($prev <= 0.0) {
-            return $curr > 0.0
-                ? ['trend' => '+100%', 'up' => true]
-                : ['trend' => '0%', 'up' => true];
+            return [
+                'trend' => $curr > $prev ? '+100%' : ($curr < $prev ? '−100%' : '0%'),
+                'up' => $curr >= $prev,
+            ];
         }
         $pct = ($curr - $prev) / $prev * 100;
         $up = $pct >= 0;

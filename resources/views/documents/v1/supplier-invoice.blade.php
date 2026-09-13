@@ -52,14 +52,10 @@
     @include('documents.v1.partials.totals', [
         'totals' => $doc['totals'],
         'aside' => __('سجلُّ المتجر لهذه الفاتورة، لا أصلَها عند المورّد — وبضاعتُها في أمر الشراء وسندات الاستلام.'),
+        'panels' => [
+            $show('show_notes') ? ['cap' => __('ملاحظات'), 'text' => $doc['notes']] : [],
+        ],
     ])
-
-    @if ($show('show_notes') && trim((string) $doc['notes']) !== '')
-        <div class="panel sm">
-            <div class="eyebrow">{{ __('ملاحظات') }}</div>
-            {{ $doc['notes'] }}
-        </div>
-    @endif
 @endsection
 
 @if (trim((string) ($tpl['footer'] ?? '')) !== '')

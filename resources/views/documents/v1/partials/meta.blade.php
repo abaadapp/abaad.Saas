@@ -35,7 +35,7 @@
     <table class="metastrip">
         @foreach ($rows as $row)
             <tr>
-                @foreach ($row as $i => $cell)
+                @foreach ($row as $cell)
                     {{--
                         والعرضُ من عدد خلايا **السطر الأوّل** لا من سطره هو.
 
@@ -43,7 +43,7 @@
                         عرضَ سطره لامتدّ عبر الورقة كلِّها، فيخرج «الموظف»
                         وحده بعرض ٢١ سنتيمترًا تحت أربعةِ أعمدةٍ ضيّقة.
                     --}}
-                    <td class="metacell{{ $i === 0 ? ' first' : '' }}" style="width:{{ round(100 / max(1, count($rows[0])), 3) }}%">
+                    <td class="metacell" style="width:{{ round(100 / max(1, count($rows[0])), 3) }}%">
                         <div class="metalabel">{{ $cell['label'] }}</div>
                         <div dir="{{ \App\Support\Paper::dirOf($cell['value']) }}" class="sm b bidi">{{ $cell['value'] }}</div>
                     </td>

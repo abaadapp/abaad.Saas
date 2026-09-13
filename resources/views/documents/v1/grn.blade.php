@@ -22,6 +22,16 @@
     $headerNote = trim((string) ($tpl['header'] ?? ''));
     $vatNumber = $show('show_vat_no', false) ? ($vatNumber ?? '') : '';
     $numberLabel = __('رقم السند');
+    /*
+        وكتلتُنا عنوانُها «المشتري» لا «البائع».
+
+        الورقةُ تمضي إلى المورّد، والبائعُ فيها **هو** لا نحن. و«البائع»
+        فوق عنوان المتجر ورقمِه الضريبيّ يقلب طرفَي الصفقة على من يقرأ —
+        وهو خطأٌ يُرى في أوّل نظرة إلى ورقةٍ تُرسَل خارج المتجر.
+
+        وهي القاعدةُ نفسُها في فاتورة المورّد: انظر `supplier-invoice`.
+    */
+    $sellerCap = __('المشتري');
     /* والعمودُ يظهر إن حمل صنفٌ واحدٌ كميّةً مطلوبة — لا إن كان النوع grn */
     $hasOrdered = collect($doc['items'])->contains(fn ($i) => filled($i['ordered'] ?? null));
 @endphp
@@ -52,27 +62,22 @@
         'itemsLabel' => __('الصنف'),
     ])
 
-    @if ($show('show_items_count'))
-        <div class="sm muted" style="margin-bottom:8pt">
-            {{ __('عدد الأصناف') }}: <span class="ltr">{{ count($doc['items']) }}</span>
-        </div>
-    @endif
-
-    @if ($showPrices)
-        @include('documents.v1.partials.totals', ['totals' => $doc['totals']])
-    @endif
-
-    @if ($show('show_notes') && trim((string) $doc['notes']) !== '')
-        <div class="panel sm">
-            <div class="eyebrow">{{ __('ملاحظات الاستلام') }}</div>
-            {{ $doc['notes'] }}
-        </div>
-    @endif
-
     {{-- ولا رمزَ: يمضي إلى المورّد وفيه تكلفةُ البضاعة — كأمر الشراء --}}
+    @include('documents.v1.partials.totals', [
+        'totals' => $showPrices ? $doc['totals'] : [],
+        'aside' => $show('show_items_count')
+            ? __('عدد الأصناف').': '.count($doc['items'])
+            : null,
+        'panels' => [
+            $show('show_notes') ? ['cap' => __('ملاحظات الاستلام'), 'text' => $doc['notes']] : [],
+        ],
+    ])
 
     @if ($show('show_signature'))
         <table class="sign sm">
+            <tr>
+                <td class="space" colspan="3"></td>
+            </tr>
             <tr>
                 <td class="box">{{ __('توقيع المورّد / الناقل') }}</td>
                 <td class="gap"></td>

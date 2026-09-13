@@ -60,8 +60,8 @@
             </thead>
             <tbody>
                 @foreach ($doc['items'] as $i => $item)
-                    {{-- والتناوبُ محسوبٌ في القالب: `nth-child` يُسطَّح في mpdf --}}
-                    <tr class="{{ $i % 2 === 1 ? 'alt' : '' }}">
+                    {{-- ولا زِبرةَ: شعرةٌ فاصلةٌ تكفي — انظر `partials/items` --}}
+                    <tr>
                         <td class="num faint">{{ $i + 1 }}</td>
                         <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($item['name']) }}">
                             {{ $item['name'] }}
@@ -82,17 +82,16 @@
         'aside' => count($doc['items']) === 0
             ? __('لم يُخصَّص هذا المبلغُ لفاتورةٍ بعد — وهو رصيدٌ للجهة عند المتجر.')
             : null,
+        'panels' => [
+            $show('show_notes') ? ['cap' => __('ملاحظات'), 'text' => $doc['notes']] : [],
+        ],
     ])
-
-    @if ($show('show_notes') && trim((string) $doc['notes']) !== '')
-        <div class="panel sm">
-            <div class="eyebrow">{{ __('ملاحظات') }}</div>
-            {{ $doc['notes'] }}
-        </div>
-    @endif
 
     @if ($show('show_signature'))
         <table class="sign sm">
+            <tr>
+                <td class="space" colspan="3"></td>
+            </tr>
             <tr>
                 <td class="box">{{ __('توقيع الدافع') }}</td>
                 <td class="gap"></td>

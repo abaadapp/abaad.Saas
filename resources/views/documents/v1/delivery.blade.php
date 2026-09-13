@@ -47,25 +47,22 @@
         'itemsLabel' => __('الصنف المُسلَّم'),
     ])
 
-    @if ($show('show_items_count'))
-        <div class="sm muted" style="margin-bottom:8pt">
-            {{ __('عدد الأصناف') }}: <span class="ltr">{{ count($doc['items']) }}</span>
-        </div>
-    @endif
-
-    @if ($showPrices)
-        @include('documents.v1.partials.totals', ['totals' => $doc['totals']])
-    @endif
-
-    @if ($show('show_notes') && trim((string) $doc['notes']) !== '')
-        <div class="panel sm">
-            <div class="eyebrow">{{ __('ملاحظات التسليم') }}</div>
-            {{ $doc['notes'] }}
-        </div>
-    @endif
+    @include('documents.v1.partials.totals', [
+        'totals' => $showPrices ? $doc['totals'] : [],
+        'aside' => $show('show_items_count')
+            ? __('عدد الأصناف').': '.count($doc['items'])
+            : null,
+        'panels' => [
+            $show('show_notes') ? ['cap' => __('ملاحظات التسليم'), 'text' => $doc['notes']] : [],
+        ],
+        'paperUrl' => $paperUrl ?? '',
+    ])
 
     @if ($show('show_signature'))
         <table class="sign sm">
+            <tr>
+                <td class="space" colspan="3"></td>
+            </tr>
             <tr>
                 <td class="box">{{ __('توقيع المسلِّم') }}</td>
                 <td class="gap"></td>
@@ -73,13 +70,6 @@
             </tr>
         </table>
     @endif
-
-    @include('documents.v1.partials.qr', [
-        'eInvoice' => '',
-        'paperUrl' => $paperUrl ?? '',
-        'googleReview' => '',
-        'size' => 1.0,
-    ])
 @endsection
 
 @if (trim((string) ($tpl['footer'] ?? '')) !== '')

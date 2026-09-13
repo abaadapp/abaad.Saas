@@ -33,13 +33,21 @@
         ($googleReview ?? '') !== '' ? ['code' => $googleReview, 'cap' => __('امسح الرمز لتقييمنا على Google')] : null,
     ]));
     $size = $size ?? 0.9;
+    /*
+        وموضعُه على السطر: وسطًا على الشريط، ومع الملاحظات على الورقة.
+
+        الشريطُ الحراريُّ عمودٌ واحدٌ فالوسطُ وسطُه. وعلى A4 يقع الرمزُ في
+        عمود الملاحظات — انظر `partials/totals` — فمحاذاتُه محاذاتُها، ولو
+        تُرك وسطًا لطفا وحده في منتصف نصفِ الورقة.
+    */
+    $align = $align ?? 'center';
 @endphp
 
 @if (count($codes) > 0)
     @if ($compact ?? false)
         <div class="qr-block">
             @foreach ($codes as $q)
-                <div class="c" style="margin-bottom:3pt;">
+                <div style="text-align:{{ $align }}; margin-bottom:3pt;">
                     <barcode code="{{ $q['code'] }}" type="QR" size="{{ $size }}" error="M" />
                     <div class="qr-cap">{{ $q['cap'] }}</div>
                 </div>

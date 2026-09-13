@@ -130,8 +130,8 @@
         </thead>
         <tbody>
             @forelse ($invoice->items as $i => $item)
-                {{-- وتناوبُ الأرضيّة من القالب لا من `nth-child` — انظر `partials/items` --}}
-                <tr class="{{ $i % 2 === 1 ? 'alt' : '' }}">
+                {{-- ولا زِبرةَ: شعرةٌ فاصلةٌ تكفي — انظر `partials/items` --}}
+                <tr>
                     <td class="num faint">{{ $i + 1 }}</td>
                     {{-- والبيانُ يحمل اتّجاهَه: بندٌ إنجليزيٌّ في فاتورةٍ عربيّة لا تنقلب نقطتُه --}}
                     <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($item->description) }}">{{ $item->description }}</td>
@@ -147,45 +147,28 @@
         </tbody>
     </table>
 
-    @include('documents.v1.partials.totals', ['totals' => $totals])
-
     {{--
         وملاحظةُ العميل تُطبع إن أرادها صاحبُ المحلّ — من «قوالب الأوراق».
         ولا تُخلط بالملاحظات الداخليّة: تلك عمودٌ آخر لا يبلغ ورقةَ العميل
         بحال، ولا مفتاحَ يُظهرها.
+
+        وتعليماتُ السداد كتلةٌ ثانيةٌ في العمود نفسِه: هي ما يُقرأ مقابل
+        المبلغ المطلوب — «ادفع هذا، إلى هنا» — فمكانُها بإزائه لا أسفلَه.
     --}}
-    @if ($invoice->notes && ($showNotes ?? true))
-        <div class="panel sm">
-            <div class="eyebrow">{{ __('ملاحظات') }}</div>
-            {{ $invoice->notes }}
-        </div>
-    @endif
-
-    @if ($bank)
-        <div class="panel sm">
-            <div class="eyebrow">{{ __('تعليمات السداد') }}</div>
-            <table style="width:100%">
-                @if ($bank->bank_name)
-                    <tr><td class="k faint" style="width:34%; border:none; padding:1pt 0">{{ __('البنك') }}</td>
-                        <td style="border:none; padding:1pt 0">{{ $bank->bank_name }}</td></tr>
-                @endif
-                @if ($bank->account_name)
-                    <tr><td class="k faint" style="border:none; padding:1pt 0">{{ __('اسم الحساب') }}</td>
-                        <td style="border:none; padding:1pt 0">{{ $bank->account_name }}</td></tr>
-                @endif
-                @if ($bank->iban)
-                    <tr><td class="k faint" style="border:none; padding:1pt 0">{{ __('الآيبان') }}</td>
-                        <td style="border:none; padding:1pt 0"><span class="ltr b">{{ $bank->iban }}</span></td></tr>
-                @endif
-            </table>
-        </div>
-    @endif
-
-    @include('documents.v1.partials.qr', [
-        'eInvoice' => '',
+    @include('documents.v1.partials.totals', [
+        'totals' => $totals,
+        'panels' => [
+            ($invoice->notes && ($showNotes ?? true)) ? ['cap' => __('ملاحظات'), 'text' => $invoice->notes] : [],
+            $bank ? [
+                'cap' => __('تعليمات السداد'),
+                'rows' => [
+                    $bank->bank_name ? ['label' => __('البنك'), 'value' => $bank->bank_name] : [],
+                    $bank->account_name ? ['label' => __('اسم الحساب'), 'value' => $bank->account_name] : [],
+                    $bank->iban ? ['label' => __('الآيبان'), 'value' => $bank->iban, 'ltr' => true] : [],
+                ],
+            ] : [],
+        ],
         'paperUrl' => $paperUrl ?? '',
-        'googleReview' => '',
-        'size' => 1.0,
         /* وهذه وحدها تفتح صفحةَ تحقّقٍ لا نسخةً كاملة — انظر `public/verify` */
         'verify' => true,
     ])

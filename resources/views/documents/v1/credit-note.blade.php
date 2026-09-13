@@ -43,14 +43,10 @@
     @include('documents.v1.partials.totals', [
         'totals' => $doc['totals'],
         'aside' => __('يُنقص هذا المبلغُ ما على الجهة من الفاتورة المذكورة أعلاه.'),
+        'panels' => [
+            $show('show_notes') ? ['cap' => __('سبب الإشعار'), 'text' => $doc['notes']] : [],
+        ],
     ])
-
-    @if ($show('show_notes') && trim((string) $doc['notes']) !== '')
-        <div class="panel sm">
-            <div class="eyebrow">{{ __('سبب الإشعار') }}</div>
-            {{ $doc['notes'] }}
-        </div>
-    @endif
 @endsection
 
 @if (trim((string) ($tpl['footer'] ?? '')) !== '')

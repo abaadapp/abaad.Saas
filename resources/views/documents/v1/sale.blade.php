@@ -75,20 +75,13 @@
         'aside' => $show('show_items_count')
             ? __('عدد الأصناف').': '.count($doc['items'])
             : null,
-    ])
-
-    @if ($show('show_notes', false) && trim((string) $doc['notes']) !== '')
-        <div class="panel sm">
-            <div class="eyebrow">{{ __('ملاحظات') }}</div>
-            <div class="bidi" dir="{{ \App\Support\Paper::dirOf($doc['notes']) }}">{{ $doc['notes'] }}</div>
-        </div>
-    @endif
-
-    @include('documents.v1.partials.qr', [
+        'panels' => [
+            $show('show_notes', false) ? ['cap' => __('ملاحظات'), 'text' => $doc['notes']] : [],
+        ],
         'eInvoice' => $show('show_qr') ? ($qr ?? '') : '',
         'paperUrl' => $paperUrl ?? '',
         'googleReview' => $googleReview ?? '',
-        'size' => 1.0,
+        'qrSize' => 0.85,
     ])
 @endsection
 

@@ -1,10 +1,9 @@
 import { type FormEvent } from 'react';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { Languages, Lock, TriangleAlert } from 'lucide-react';
-import Logo from '@/Components/Logo';
+import { useForm, usePage } from '@inertiajs/react';
+import { Lock, TriangleAlert } from 'lucide-react';
+import AuthLayout from '@/Layouts/AuthLayout';
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
-import { Card } from '@/Components/ui/card';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -23,13 +22,8 @@ interface Props {
  * واحد لا في شكل.
  */
 export default function ResetRecoveredPassword() {
-    const { challenge, year, locale, errors } = usePage<PageProps<Props>>().props;
+    const { challenge, year, errors } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
-
-    const switchLocale = () => {
-        const next = locale === 'en' ? 'ar' : 'en';
-        router.post(route('language.guest'), { locale: next }, { onSuccess: () => window.location.reload() });
-    };
 
     const form = useForm({ challenge, password: '', password_confirmation: '' });
 
@@ -43,90 +37,62 @@ export default function ResetRecoveredPassword() {
     const failure = errors.password ?? errors.challenge;
 
     return (
-        <div className="flex min-h-dvh flex-col bg-[#f7f8f9] px-4 py-8">
-            <Head title={t('كلمة مرور جديدة')} />
+        <AuthLayout title={t('كلمة مرور جديدة')} year={year}>
+            <h1 className="text-[26px] font-bold leading-tight text-[#111]">{t('كلمة مرور جديدة')}</h1>
+            <p className="mt-1.5 text-[14px] leading-relaxed text-[#6b7280]">
+                {t('اختر كلمة مرور جديدة لحسابك')}
+            </p>
 
-            <div className="flex flex-1 items-center justify-center">
-                <div className="w-full max-w-[400px]">
-                    <div className="mb-8 flex -translate-y-6 justify-center">
-                        <Logo className="h-14 w-auto text-[#111]" />
-                    </div>
-
-                    <Card className="p-7">
-                        <h1 className="text-[17px] font-bold text-[#111]">{t('كلمة مرور جديدة')}</h1>
-                        <p className="mt-1 text-[13px] text-[#9ca3af]">
-                            {t('اختر كلمة مرور جديدة لحسابك')}
-                        </p>
-
-                        {failure && (
-                            <div
-                                role="alert"
-                                className="mt-5 flex items-start gap-2 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]"
-                            >
-                                <TriangleAlert className="mt-px size-4 shrink-0" />
-                                <span>{failure}</span>
-                            </div>
-                        )}
-
-                        {/* «اذهب» على مفتاح الآيباد تُرسل هنا: حقلان وزرٌّ واحد،
-                            ومنعُ الإرسال إزعاجٌ لا حماية — انظر lib/enter-key */}
-                        <form onSubmit={submit} data-enter-submits className="mt-5 space-y-4">
-                            <Field label="كلمة المرور الجديدة" required htmlFor="password" hint="٨ أحرف على الأقل">
-                                <PasswordInput
-                                    id="password"
-                                    name="password"
-                                    autoComplete="new-password"
-                                    autoFocus
-                                    required
-                                    placeholder="••••••••"
-                                    className="px-10 text-start"
-                                    leading={
-                                        <Lock className="pointer-events-none absolute start-3 top-3 z-10 size-4 text-[#9ca3af]" />
-                                    }
-                                    value={form.data.password}
-                                    onChange={(e) => form.setData('password', e.target.value)}
-                                />
-                            </Field>
-
-                            <Field label="تأكيد كلمة المرور" required htmlFor="password_confirmation">
-                                <PasswordInput
-                                    id="password_confirmation"
-                                    name="password_confirmation"
-                                    autoComplete="new-password"
-                                    required
-                                    placeholder="••••••••"
-                                    className="px-10 text-start"
-                                    leading={
-                                        <Lock className="pointer-events-none absolute start-3 top-3 z-10 size-4 text-[#9ca3af]" />
-                                    }
-                                    value={form.data.password_confirmation}
-                                    onChange={(e) => form.setData('password_confirmation', e.target.value)}
-                                />
-                            </Field>
-
-                            <Button type="submit" size="lg" className="w-full" loading={form.processing}>
-                                {t('حفظ كلمة المرور')}
-                            </Button>
-                        </form>
-                    </Card>
-                </div>
-            </div>
-
-            <div className="flex shrink-0 flex-col items-center gap-2">
-                <button
-                    type="button"
-                    onClick={switchLocale}
-                    lang={locale === 'en' ? 'ar' : 'en'}
-                    className="flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[13px] font-medium text-[#6b7280] transition-colors hover:bg-white hover:text-[#111]"
+            {failure && (
+                <div
+                    role="alert"
+                    className="mt-5 flex items-start gap-2 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]"
                 >
-                    <Languages className="size-4" />
-                    {locale === 'en' ? 'العربية' : 'English'}
-                </button>
+                    <TriangleAlert className="mt-px size-4 shrink-0" />
+                    <span>{failure}</span>
+                </div>
+            )}
 
-                <p className="text-[12px] text-[#9ca3af]">
-                    © {year} Abaad — {t('جميع الحقوق محفوظة')}
-                </p>
-            </div>
-        </div>
+            {/* «اذهب» على مفتاح الآيباد تُرسل هنا: حقلان وزرٌّ واحد،
+                ومنعُ الإرسال إزعاجٌ لا حماية — انظر lib/enter-key */}
+            <form onSubmit={submit} data-enter-submits className="mt-5 space-y-4">
+                <Field label="كلمة المرور الجديدة" required htmlFor="password" hint="٨ أحرف على الأقل">
+                    <PasswordInput
+                        id="password"
+                        name="password"
+                        autoComplete="new-password"
+                        autoFocus
+                        required
+                        placeholder="••••••••"
+                        className="px-10 text-start"
+                        leading={
+                            <Lock className="pointer-events-none absolute start-3 top-3 z-10 size-4 text-[#9ca3af]" />
+                        }
+                        value={form.data.password}
+                        onChange={(e) => form.setData('password', e.target.value)}
+                    />
+                </Field>
+
+                <Field label="تأكيد كلمة المرور" required htmlFor="password_confirmation">
+                    <PasswordInput
+                        id="password_confirmation"
+                        name="password_confirmation"
+                        autoComplete="new-password"
+                        required
+                        placeholder="••••••••"
+                        className="px-10 text-start"
+                        leading={
+                            <Lock className="pointer-events-none absolute start-3 top-3 z-10 size-4 text-[#9ca3af]" />
+                        }
+                        value={form.data.password_confirmation}
+                        onChange={(e) => form.setData('password_confirmation', e.target.value)}
+                    />
+                </Field>
+
+                <Button type="submit" size="lg" className="w-full" loading={form.processing}>
+                    {t('حفظ كلمة المرور')}
+                </Button>
+            </form>
+        </AuthLayout>
     );
 }

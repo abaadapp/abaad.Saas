@@ -67,6 +67,7 @@ use App\Http\Controllers\Admin\Website\SettingsController;
 use App\Http\Controllers\Auth\AccountRecoveryController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BackupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
@@ -128,6 +129,21 @@ Route::pattern('addressId', '[0-9]+');
 Route::get('/', [LoginController::class, 'showLogin'])->name('login');
 Route::get('/login', [LoginController::class, 'showLogin'])->name('login.form');
 Route::post('/login', [LoginController::class, 'attempt'])->name('login.attempt');
+
+/*
+ * فتحُ متجرٍ جديد — تسجيلٌ ذاتيّ.
+ *
+ * و`guest` عليهما: من دخل بحسابه لا يفتح معالجَ تسجيلٍ ثانٍ فيخرج بمتجرٍ
+ * ثانٍ لا يقصده. والخنقُ في المتحكّم لا هنا: مفتاحُه العنوانُ وحده، وهو
+ * ما لا يبلغه `throttle` بصيغته الافتراضيّة على الجلسة.
+ *
+ * والبابُ يُقفل من إعدادات المنصّة (`self_signup = 0`) فيردّ 404 —
+ * انظر Support\Signup::open.
+ */
+Route::middleware('guest')->group(function () {
+    Route::get('/register', [RegisterController::class, 'show'])->name('register');
+    Route::post('/register', [RegisterController::class, 'store'])->name('register.store');
+});
 
 /*
  * نسيان الجهاز — المخرج من شاشةٍ صارت مقفلة على متجرٍ واحد.

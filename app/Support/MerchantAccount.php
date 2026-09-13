@@ -104,6 +104,24 @@ class MerchantAccount
      */
     public static function create(Business $business, string $username, string $password): User
     {
+        return self::provision($business, self::email($username), $password);
+    }
+
+    /**
+     * مالكُ المتجر ببريدٍ كامل — لا باسم مستخدمٍ على النطاق.
+     *
+     * ═══ ولمَ بابان لا باب ═══
+     *
+     * المنصّةُ حين تُنشئ متجرًا تكتب اسمَ مستخدمٍ قصيرًا فيصير
+     * `name@abaadapp.om`: التاجرُ لا يملك بريدًا بعدُ، والمشغّلُ يسلّمه
+     * الاسمَ شفاهًا. أمّا من يسجّل بنفسه فيملك بريدَه — وبه وحده تُستعاد
+     * كلمتُه، إذ لا أحدَ يقرأ بريدًا على نطاقٍ لا صندوقَ له.
+     *
+     * والإنشاءُ واحدٌ في الحالين: مُسمّى «مدير» يُبذَر مرّةً، والمالكُ يُكتب
+     * بالحقول نفسِها. ونسختان تفترقان عند أوّل حقلٍ يُضاف إلى المستخدم.
+     */
+    public static function provision(Business $business, string $email, string $password, ?string $name = null): User
+    {
         JobTitle::firstOrCreate(
             ['business_id' => $business->id, 'name' => 'مدير'],
             ['role' => 'admin'],
@@ -111,8 +129,8 @@ class MerchantAccount
 
         return User::create([
             'business_id' => $business->id,
-            'name' => $business->owner_name ?: $business->name,
-            'email' => self::email($username),
+            'name' => $name ?: ($business->owner_name ?: $business->name),
+            'email' => mb_strtolower(trim($email)),
             'phone' => $business->phone,
             'role' => 'admin',
             'job_title' => 'مدير',

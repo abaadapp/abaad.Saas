@@ -39,6 +39,14 @@ vi.mock('@inertiajs/react', async () => {
         ...actual,
         usePage: () => ({ props: pageProps, url: '/', component: 'Test' }),
         router: { get: vi.fn(), post: vi.fn(), delete: vi.fn(), put: vi.fn(), on: vi.fn() },
+        /*
+         * و`Head` جسدٌ فارغ.
+         *
+         * تقرأ مديرَ الرأس من سياقٍ لا يُنشئه إلّا `createInertiaApp` — وهو
+         * لا يعمل في jsdom. فصفحةٌ تضع عنوانَ لسانها تسقط عند أوّل تركيب،
+         * لا لعطبٍ فيها بل لغياب المضيف. وعنوانُ اللسان ليس ممّا يُختبر هنا.
+         */
+        Head: () => null,
     };
 });
 

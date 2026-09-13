@@ -200,16 +200,29 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertNotNull($fresh->delivered_at);
     }
 
-    /** والإشعار المكرّر لا يُحدث شيئًا جديدًا */
+    /**
+     * والإشعار المكرّر لا يُحدث شيئًا جديدًا.
+     *
+     * والإعادةُ هنا **بختمٍ متأخّر** عمدًا: ميتا تُعيد حتّى تتلقّى `200`،
+     * والختمُ الثاني كان يُكتب فوق الأول فيصير «سُلّمت» لحظةَ الإعادة لا
+     * لحظةَ التسليم. وكان الحارسُ يمرّ لأنّ الإعادة تقع في الثانية نفسها —
+     * فلا يسقط إلّا على حدود الثواني، وهناك سقط في CI. فصار الفارقُ مكتوبًا
+     * في الاختبار لا متروكًا للساعة.
+     */
     public function test_a_duplicate_webhook_is_harmless(): void
     {
         $this->hook($this->statusPayload('delivered'))->assertOk();
         $first = $this->message->fresh()->delivered_at;
 
-        $this->hook($this->statusPayload('delivered'))->assertOk();
+        $late = $this->statusPayload('delivered');
+        $late['entry'][0]['changes'][0]['value']['statuses'][0]['timestamp']
+            = (string) now()->addMinutes(5)->timestamp;
+
+        $this->hook($late)->assertOk();
 
         $this->assertSame(WhatsAppStatus::DELIVERED, $this->message->fresh()->status);
-        $this->assertEquals($first, $this->message->fresh()->delivered_at);
+        $this->assertEquals($first, $this->message->fresh()->delivered_at,
+            'إشعارٌ مُعادٌ أزاح لحظةَ التسليم إلى لحظة إعادته');
     }
 
     /* -------------------------- حال الرسالة ≠ حال الطلب -------------------------- */

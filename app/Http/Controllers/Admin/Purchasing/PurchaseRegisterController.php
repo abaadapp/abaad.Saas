@@ -99,10 +99,17 @@ class PurchaseRegisterController extends Controller
                  * وهو تفصيلُ العدد لا اتجاهُه، تقول به البطاقة «ارتفع» ولا شيء
                  * قُورن بشيء. ويُقرأ التفصيل نفسُه من مرشّح النوع في الجدول.
                  */
-                // ما على المتجر لموردّيه كلّهم — لا يخصّ الشهر المعروض
+                /*
+                 * ما على المتجر لموردّيه كلّهم — لا يخصّ الشهر المعروض.
+                 *
+                 * ومن السنداتِ المعتمَدة وحدها: كان يجمع كلَّ صفٍّ في الجدول
+                 * أيًّا كانت حالُه، فسندٌ رُفض لأنّه مكرَّر أو أُلغي وعُكس قيدُه
+                 * يبقى دَينًا على الشاشة — وحسابُ الموردين في الدفتر لا يعرفه.
+                 * والتعريفُ في `SupplierInvoice::scopeOwed`.
+                 */
                 'outstanding' => round(
-                    (float) SupplierInvoice::where('business_id', $bid)->sum('total')
-                    - (float) SupplierInvoice::where('business_id', $bid)->sum('paid'),
+                    (float) SupplierInvoice::where('business_id', $bid)->owed()->sum('total')
+                    - (float) SupplierInvoice::where('business_id', $bid)->owed()->sum('paid'),
                     3
                 ),
             ],

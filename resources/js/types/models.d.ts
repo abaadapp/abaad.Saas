@@ -91,6 +91,8 @@ export interface Supplier {
     contact: string;
     notes: string | null;
     orders_count: number;
+    /** ما يقبله `SupplierController::destroy` — من اشتُري منه مرّةً يبقى */
+    can_delete?: boolean;
 }
 
 export interface InventoryItem {

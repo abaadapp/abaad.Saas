@@ -13,9 +13,15 @@ class Supplier extends Model
 
     public function invoices(): HasMany { return $this->hasMany(SupplierInvoice::class); }
 
-    /** ما له علينا الآن — مجموع ما لم يُسدَّد من سنداته */
+    /**
+     * ما له علينا الآن — من سنداته **المعتمَدة** وحدها.
+     *
+     * والمرفوضُ والملغى والمعلَّق ليست دَينًا: التعريفُ واحدٌ في
+     * `SupplierInvoice::scopeOwed`، ولا يُعاد كتابتُه هنا فيفترق عنه.
+     */
     public function outstanding(): float
     {
-        return round((float) $this->invoices()->sum('total') - (float) $this->invoices()->sum('paid'), 3);
+        return round((float) $this->invoices()->owed()->sum('total')
+            - (float) $this->invoices()->owed()->sum('paid'), 3);
     }
 }

@@ -96,6 +96,17 @@ class SupplierInvoiceController extends Controller
 
         $all = SupplierInvoice::where('business_id', $bid)->get();
 
+        /*
+         * ومن بلغ الدفترَ منها يُعرف باستعلامٍ واحد لا باستعلامٍ لكلّ صفّ.
+         *
+         * ويُقرأ لتُرسم المقابض على ما يقبله الخادم: زرُّ حذفٍ على سندٍ أُلغي
+         * — وقيدُه وعكسُه في الدفتر — يفتح حوارَ تأكيدٍ ثمّ يردّه الخادم.
+         */
+        $posted = JournalEntry::where('business_id', $bid)
+            ->where('sourceable_type', SupplierInvoice::class)
+            ->whereIn('sourceable_id', collect($invoices->items())->pluck('id'))
+            ->pluck('sourceable_id')->unique()->flip();
+
         return Inertia::render('Admin/Purchases/Invoices', [
             'invoices' => collect($invoices->items())->map(fn ($i) => [
                 'id' => $i->id,
@@ -126,6 +137,10 @@ class SupplierInvoiceController extends Controller
                 'order_total' => $i->purchaseOrder ? (float) $i->purchaseOrder->total : null,
                 'overdue' => $i->isOverdue(),
                 'notes' => $i->notes,
+                // ما يقبله `destroy` بحروفه — لا قاعدةً ثانيةً في الشاشة تفترق عنه
+                'can_delete' => $i->approval_status !== SupplierInvoices::APPROVED
+                    && (float) $i->paid <= 0
+                    && ! $posted->has($i->id),
             ])->all(),
             'pagination' => Pagination::meta($invoices),
             'filters' => $request->only('q', 'status', 'supplier', 'approval')
@@ -145,9 +160,19 @@ class SupplierInvoiceController extends Controller
                     'supplier_id' => $o->supplier_id,
                     'total' => (float) $o->total,
                 ])->all(),
+            /*
+             * والبطاقةُ تقول ما على المتجر — من المعتمَد وحده.
+             *
+             * كانت تجمع كلَّ سندٍ في الجدول أيًّا كانت حالُه: المرفوضُ لا قيدَ
+             * له، والملغى عُكس قيدُه، والمعلَّقُ لم يوقّعه أحدٌ ولا يُسدَّد —
+             * وثلاثتُها كانت تُقرأ دَينًا. والتعريفُ في `SupplierInvoice::scopeOwed`.
+             *
+             * وما ينتظر التوقيع يُقال بعدده في شريطٍ فوق الجدول، لا يُخلط
+             * بالدَّين في رقمٍ واحد.
+             */
             'summary' => [
                 'count' => $all->count(),
-                'outstanding' => round($all->sum(fn ($i) => $i->outstanding()), 3),
+                'outstanding' => round($all->filter(fn ($i) => $i->owed())->sum(fn ($i) => $i->outstanding()), 3),
                 'overdue' => $all->filter(fn ($i) => $i->isOverdue())->count(),
                 'overdue_value' => round($all->filter(fn ($i) => $i->isOverdue())->sum(fn ($i) => $i->outstanding()), 3),
             ],
@@ -587,12 +612,31 @@ class SupplierInvoiceController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($invoice) {
-            // القيد يتبع سنده: قيدٌ يتيم يُبقي الدَّين في الدفتر بلا مستند
-            JournalEntry::where('sourceable_type', SupplierInvoice::class)
-                ->where('sourceable_id', $invoice->id)->delete();
-            $invoice->delete();
-        });
+        /*
+         * ═══ وما بلغ الدفترَ مرّةً لا يُمحى منه ═══
+         *
+         * الحارسُ أعلاه يقرأ **الحالة**، وهي لا تكفي: سندٌ اعتُمد ثمّ أُلغي
+         * حالُه «ملغاة» لا «معتمد» — فكان يمرّ من هنا، وتحذف هذه المعاملةُ
+         * قيدَه الأصلَ وقيدَ عكسِه معًا. فيختفي من الدفتر أنّ ذمّةً نشأت يومًا
+         * وأنّها عُكست، وهو الأثرُ الذي بُني `cancel` كلُّه ليُبقيَه: «القيدُ
+         * الأصلُ يبقى مقروءًا بتاريخه، وقيدٌ ثانٍ يُلغيه». والميزانُ يبقى
+         * متّزنًا بعدها — ولذلك لا يشكو أحد.
+         *
+         * والسؤالُ عن **الواقعة** لا عن الاسم: أثمّة قيدٌ يشير إلى هذا السند؟
+         * فيحرس كذلك سنداتٍ قديمةً رُحّلت يوم كانت الكتابةُ ترحّل.
+         */
+        $posted = JournalEntry::where('business_id', $bid)
+            ->where('sourceable_type', SupplierInvoice::class)
+            ->where('sourceable_id', $invoice->id)->exists();
+
+        if ($posted) {
+            return back()->with('toast', [
+                'msg' => __('لهذا السند قيدٌ في الدفتر — لا يُمحى، ويبقى مقروءًا بتاريخه'),
+                'type' => 'warning',
+            ]);
+        }
+
+        $invoice->delete();
 
         Activity::log('deleted', 'حذف السند: '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
 

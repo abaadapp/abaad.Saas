@@ -170,7 +170,18 @@ export default function SuppliersIndex() {
             align: 'end',
             cell: (s) => (
                 <RowActions
-                    destroy={{ url: route('admin.suppliers.destroy', s.id), message: 'حذف المورّد؟' }}
+                    /*
+                        ولا يُرسم الحذفُ على مورّدٍ اشتُري منه.
+                        سنداتُه مقيّدةٌ عليه في القاعدة فيردّ الخادمُ الحذف،
+                        وأوامرُه تُفرَّغ مراجعُها صامتةً. والقاعدةُ تُقرأ من
+                        الخادم (`can_delete`) لا تُشتقّ هنا من عدد الأوامر:
+                        سندٌ بلا أمرٍ يمنع كذلك.
+                    */
+                    destroy={
+                        s.can_delete === false
+                            ? undefined
+                            : { url: route('admin.suppliers.destroy', s.id), message: 'حذف المورّد؟' }
+                    }
                     extra={[
                         ...(s.phone
                             ? [{ label: 'اتصال', icon: <Phone className="size-4" />, href: `tel:${s.phone}` }]

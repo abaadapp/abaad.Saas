@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\SupplierInvoices;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -32,6 +34,31 @@ class SupplierInvoice extends Model
 
     public function purchaseOrder(): BelongsTo { return $this->belongsTo(PurchaseOrder::class); }
 
+    /**
+     * السنداتُ التي صارت دَينًا فعلًا — المعتمَدةُ وحدها.
+     *
+     * ═══ ولمَ لا تُجمع كلُّها ═══
+     *
+     * الذمّةُ تنشأ بالاعتماد وحده: المعتمَدُ له قيدٌ في الدفتر، والمرفوضُ لا
+     * قيدَ له، والملغى عُكس قيدُه، والمعلَّقُ ورقةٌ وصلت ولم يوقّعها أحد —
+     * ولا يُسدَّد شيءٌ منها (انظر `SupplierInvoiceController::pay`).
+     *
+     * فجمعُ الكلّ يجعل بطاقةَ «مستحقّ للموردين» تقول ما لا يقوله حساب
+     * الموردين في الدفتر: سندٌ رُفض لأنّه مكرَّر يبقى دَينًا على الشاشة إلى
+     * الأبد. وتقريرُ الإقرار الضريبيّ أُصلح من هذا العطب نفسِه قبلها — انظر
+     * `ReportData::vat`.
+     */
+    public function scopeOwed(Builder $q): Builder
+    {
+        return $q->where('approval_status', SupplierInvoices::APPROVED);
+    }
+
+    /** أهذا السندُ دَينٌ في الدفتر؟ — الحكمُ نفسُه الذي تقيسه `scopeOwed` */
+    public function owed(): bool
+    {
+        return $this->approval_status === SupplierInvoices::APPROVED;
+    }
+
     public function outstanding(): float
     {
         return round(max(0, (float) $this->total - (float) $this->paid), 3);
@@ -46,8 +73,15 @@ class SupplierInvoice extends Model
         ]);
     }
 
+    /**
+     * متأخّرٌ عن استحقاقه — ولا يتأخّر إلّا دَين.
+     *
+     * وسندٌ مرفوضٌ مضى موعدُه كان يُرسم أحمرَ يقول «متأخّر»: مطالبةٌ لا
+     * وجودَ لها، على ورقةٍ قيل عنها «لا تُدفع».
+     */
     public function isOverdue(): bool
     {
-        return $this->due_at !== null && $this->outstanding() > 0 && $this->due_at->isPast();
+        return $this->owed() && $this->due_at !== null
+            && $this->outstanding() > 0 && $this->due_at->isPast();
     }
 }

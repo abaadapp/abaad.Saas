@@ -13,7 +13,13 @@ import { InvoiceRowActions } from '@/Pages/Admin/Purchases/Invoices';
 
 const ALL = { approve: true, reject: true, create: true, pay: true };
 
-// ‏سندٌ بأقلّ ما يلزم لرسم أزراره — والباقي لا تقرؤه هذه الخانة
+/*
+ * ‏سندٌ بأقلّ ما يلزم لرسم أزراره — والباقي لا تقرؤه هذه الخانة.
+ *
+ * و`can_delete` يقولها الخادمُ لا تُشتقّ هنا: هو من يعرف أثمّة قيدٌ في
+ * الدفتر يشير إلى هذا السند. فتُكتب في كلّ حالةٍ كما يكتبها
+ * `SupplierInvoiceController::index`.
+ */
 const invoice = (over: Record<string, unknown> = {}) =>
     ({
         id: 4,
@@ -21,6 +27,7 @@ const invoice = (over: Record<string, unknown> = {}) =>
         approval_status: 'بانتظار الاعتماد',
         paid: 0,
         outstanding: 900,
+        can_delete: true,
         ...over,
     }) as never;
 
@@ -62,7 +69,7 @@ describe('سندٌ ينتظر الاعتماد', () => {
 });
 
 describe('سندٌ معتمَد لم يُدفع منه شيء', () => {
-    const approved = { approval_status: 'معتمد', paid: 0, outstanding: 900 };
+    const approved = { approval_status: 'معتمد', paid: 0, outstanding: 900, can_delete: false };
 
     /* وهذا هو المقبضُ الذي كان غائبًا: المسارُ قائمٌ ولا زرَّ له */
     it('يُسدَّد ويُلغى', () => {
@@ -105,16 +112,29 @@ describe('سندٌ خرج مقابله مال', () => {
      * وجود له. و`SupplierInvoices::cancel` ترفضه — فلا يُعرض بابُه.
      */
     it('لا يُلغى ولو كان معتمَدًا', () => {
-        draw({ approval_status: 'معتمد', paid: 500, outstanding: 400 });
+        draw({ approval_status: 'معتمد', paid: 500, outstanding: 400, can_delete: false });
 
         expect(screen.queryByRole('button', { name: 'إلغاء' })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'سداد' })).toBeInTheDocument();
     });
 
     it('ولا يُحذف ولو لم يُعتمد', () => {
-        draw({ approval_status: 'بانتظار الاعتماد', paid: 500, outstanding: 400 });
+        draw({ approval_status: 'بانتظار الاعتماد', paid: 500, outstanding: 400, can_delete: false });
 
         expect(screen.queryByRole('button', { name: 'حذف' })).not.toBeInTheDocument();
+    });
+});
+
+describe('سندٌ أُلغي بعد اعتماده', () => {
+    /*
+     * قيدُه الأصلُ وقيدُ عكسِه في الدفتر — والخادمُ يردّ حذفَه بـ«لهذا السند
+     * قيدٌ في الدفتر». وكان الزرُّ يُرسم: حالُه ليست «معتمد» ولا سُدّد منه
+     * شيء، فمرّ الشرطان. وضغطةٌ واحدة كانت تمحو أنّ ذمّةً نشأت يومًا وعُكست.
+     */
+    it('لا يُحذف ولا يُلغى مرّتين', () => {
+        draw({ approval_status: 'ملغاة', paid: 0, outstanding: 900, can_delete: false });
+
+        expect(screen.queryAllByRole('button')).toEqual([]);
     });
 });
 
@@ -128,7 +148,7 @@ describe('سندٌ سُدّد كاملًا', () => {
 
 describe('سندٌ مرفوض', () => {
     it('يُحذف ولا يُلغى: الإلغاءُ نقضٌ لتوقيعٍ لم يقع', () => {
-        draw({ approval_status: 'مرفوض', paid: 0, outstanding: 0 });
+        draw({ approval_status: 'مرفوض', paid: 0, outstanding: 0, can_delete: true });
 
         expect(drawn()).toEqual(['حذف']);
     });
@@ -141,7 +161,8 @@ describe('الإلغاءُ والحذفُ لا يجتمعان', () => {
             for (const paid of [0, 500]) {
                 const { unmount } = render(
                     <InvoiceRowActions
-                        invoice={invoice({ approval_status: status, paid, outstanding: 900 - paid })}
+                        // و`can_delete` مفتوحةٌ هنا عمدًا: المنعُ يجب أن يبقى بنيويًّا
+                        invoice={invoice({ approval_status: status, paid, outstanding: 900 - paid, can_delete: true })}
                         may={ALL}
                         onReview={vi.fn()}
                         onPay={vi.fn()}

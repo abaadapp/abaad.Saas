@@ -5638,5 +5638,9 @@
     "ورقمُ تاجرٍ مسجَّلٍ عندنا يذهب إلى الدعم كما كان.": "A registered merchant's number still goes to support, as before.",
     "ويبقى خطرٌ يُقال: زبونُ محلٍّ أعطاه صاحبُه الرقمَ يدًا بيد ولم نُرسل إليه قطّ — يُكتب عميلًا محتمَلًا، ويُقرأ نصُّه هنا.": "One risk remains, and it is stated: a shop customer handed the number directly by the owner, whom we never messaged, is recorded as a lead — and their text is readable here.",
     "المقبض مُدارٌ ولا خطَّ يعمل — رقمُ الإشعارات غيرُ موصولٍ أو لا يعمل، فلا يصل شيء.": "The switch is on but no line is working — the notifications number is not connected or not usable, so nothing arrives.",
-    "المبيعات تعمل الآن على رقم الإشعارات.": "Sales is now running on the notifications number."
+    "المبيعات تعمل الآن على رقم الإشعارات.": "Sales is now running on the notifications number.",
+    "لهذا السند قيدٌ في الدفتر — لا يُمحى، ويبقى مقروءًا بتاريخه": "This bill has a ledger entry — it is not erased; it stays readable under its date",
+    "لهذا المورّد :o أمر شراء و:i سند — لا يُحذف، وإلّا بقيت أوراقُه بلا من أصدرها.": "This supplier has :o purchase order(s) and :i bill(s) — it cannot be deleted, or its papers would be left with no one who issued them.",
+    "لهذا المورّد :o أمر شراء — لا يُحذف، وإلّا بقيت أوامرُه بلا من ورّدها.": "This supplier has :o purchase order(s) — it cannot be deleted, or its orders would be left with no one who supplied them.",
+    "لهذا المورّد :i سند — لا يُحذف، وإلّا بقيت سنداتُه بلا من أصدرها.": "This supplier has :i bill(s) — it cannot be deleted, or its bills would be left with no one who issued them."
 }

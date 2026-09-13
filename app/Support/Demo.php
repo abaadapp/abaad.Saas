@@ -1392,7 +1392,8 @@ class Demo
 
     public static function suppliers(): array
     {
-        return Supplier::where('business_id', self::bid())->withCount('purchaseOrders')->orderBy('name')->get()->map(fn ($s) => [
+        return Supplier::where('business_id', self::bid())
+            ->withCount(['purchaseOrders', 'invoices'])->orderBy('name')->get()->map(fn ($s) => [
             'id' => $s->id,
             'name' => $s->name,
             'name_en' => $s->name_en,
@@ -1403,6 +1404,13 @@ class Demo
             'contact' => $s->contact_person,
             'notes' => $s->notes,
             'orders_count' => $s->purchase_orders_count,
+            /*
+             * ومن اشتُري منه مرّةً لا يُحذف — والزرُّ لا يُرسم عليه.
+             *
+             * القاعدةُ نفسُها التي يقرؤها `SupplierController::destroy`: هناك
+             * تُردّ المحاولة برسالة، وهنا لا تُعرض أصلًا.
+             */
+            'can_delete' => $s->purchase_orders_count === 0 && $s->invoices_count === 0,
         ])->all();
     }
 

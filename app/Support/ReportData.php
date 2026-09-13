@@ -243,7 +243,7 @@ class ReportData
     public static function staff(int $bid, array $filters): array
     {
         $range = Demo::range($filters['range'] ?? 'month');
-        $rows = collect(Demo::staffPerformance($range));
+        $rows = collect(Demo::staffPerformance($range, $bid));
         $total = (float) $rows->sum('sales');
 
         /*
@@ -273,7 +273,7 @@ class ReportData
 
         // سقفٌ يُقال على الشاشة لا يُخفى: قائمةُ «الأكثر إنفاقًا» مبتورةٌ عمدًا
         $limit = 50;
-        $rows = collect(Demo::topCustomers($limit, $range))
+        $rows = collect(Demo::topCustomers($limit, $range, $bid))
             ->map(fn ($c, $i) => ['id' => $i + 1] + $c);
 
         $total = (float) $rows->sum('total');

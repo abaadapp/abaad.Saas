@@ -1347,9 +1347,10 @@ class Demo
      * والصفوف تُرتَّب بالمبيعات لا بالمعرّف: تقريرُ أداءٍ أوّلُ سطرٍ فيه
      * أقدمُ موظفٍ لا أعلاهم بيعًا لا يُقرأ بنظرة.
      */
-    public static function staffPerformance(string $range = 'month'): array
+    /** أداءُ الموظّفين — في متجرٍ يُسمّى لا يُستنتَج، انظر `topCustomers` */
+    public static function staffPerformance(string $range = 'month', ?int $businessId = null): array
     {
-        $bid = self::bid();
+        $bid = $businessId ?? self::bid();
         $start = self::rangeStart(self::range($range));
 
         $sold = Order::where('business_id', $bid)->sold()
@@ -2833,11 +2834,19 @@ class Demo
     }
 
     /** أفضل العملاء إنفاقًا */
-    public static function topCustomers(int $limit = 7, string $range = 'month'): array
+    /**
+     * أكثرُ الزبائن إنفاقًا — في متجرٍ يُسمّى لا يُستنتَج.
+     *
+     * والمتجرُ صار معطًى: كان يُقرأ من `self::bid()` وحدَه، فدالّةٌ في
+     * `ReportData` تأخذ `$bid` ولا تمرّره كانت تقرأ متجرَ من هو داخلٌ الآن
+     * مهما طُلب. ومعطًى يُؤخذ ولا يُستعمل يكذب على من يقرأ التوقيع — ويومَ
+     * يُنادى من طابورٍ أو تقريرٍ للمنصّة يردّ صفوفَ متجرٍ آخر أو لا شيء.
+     */
+    public static function topCustomers(int $limit = 7, string $range = 'month', ?int $bid = null): array
     {
         $start = self::rangeStart(self::range($range));
 
-        return Order::where('business_id', self::bid())->sold()->whereNotNull('customer_name')
+        return Order::where('business_id', $bid ?? self::bid())->sold()->whereNotNull('customer_name')
             ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->selectRaw('customer_name, SUM(total) as t, COUNT(*) as c')
             ->groupBy('customer_name')->orderByDesc('t')->limit($limit)->get()

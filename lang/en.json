@@ -5715,5 +5715,11 @@
     "أُرسلت رسالةٌ لهذا الحدث من قبل — ولا تُرسَل مرّتين.": "A message for this event was already sent — it is not sent twice.",
     "نفدت حصّةُ رسائل الشهر — تتجدّد أوّل الشهر القادم.": "This month's message quota is exhausted — it renews at the start of next month.",
     "متجرك في وضع «رقم المتجر» بلا صلاحيةٍ لذلك — راجِع أبعاد.": "Your shop is set to “shop's own number” without the entitlement — contact Abaad.",
-    "باقتُك لا تشمل إشعارات واتساب — راجِع أبعاد للترقية.": "Your plan does not include WhatsApp notifications — contact Abaad to upgrade."
+    "باقتُك لا تشمل إشعارات واتساب — راجِع أبعاد للترقية.": "Your plan does not include WhatsApp notifications — contact Abaad to upgrade.",
+    "لا معرّف حساب أعمال على هذه الوصلة.": "This connection has no business account ID.",
+    "تقبلها واتساب، فتخرج الرسالة.": "WhatsApp accepts them, so the message goes out.",
+    "واتساب لم يعتمد قوالبك بعد — تُراجَع من حساب أعمالك، ولا تخرج رسالةٌ قبل اعتمادها.": "WhatsApp has not approved your templates yet — review them in your business account; no message goes out until they are approved.",
+    "قوالب أبعاد قيد المراجعة لدى واتساب — لا تخرج رسالةٌ قبل اعتمادها، ونحن نتابعها.": "Abaad's templates are under review at WhatsApp — no message goes out until they are approved, and we are tracking it.",
+    "لم نقرأ حال القوالب من واتساب بعد — تُقرأ تلقائيًّا كلّ ساعة.": "We have not read the template status from WhatsApp yet — it is read automatically every hour.",
+    "قوالب رسائلك معتمَدةٌ لدى واتساب": "Your message templates are approved by WhatsApp"
 }

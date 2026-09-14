@@ -7,12 +7,14 @@ use App\Models\JobTitle;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WhatsAppConnection;
+use App\Models\WhatsAppTemplateMapping;
 use App\Models\WhatsAppMessage;
 use App\Support\Demo;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppHealth;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppQuota;
+use App\Support\WhatsAppTemplates;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -62,6 +64,17 @@ class ASilentFailureIsWorseThanALoudOneTest extends TestCase
             'status' => WhatsAppConnection::ACTIVE,
             'connected_at' => now(),
         ]);
+
+        /*
+         * والقوالبُ معتمَدةٌ عند ميتا — وهي الحلقةُ الأخيرة قبل الإرسال.
+         *
+         * وبدونها يقف الحارسُ حيث وقف أوّلَ مرّة: «جاهز» تكون `false` قبل
+         * الفشل وبعده، فلا يُقاس تبدُّلها. وحالُ القوالب نفسُه محروسٌ في
+         * `ATemplateIsNotOursToCallApprovedTest`.
+         */
+        WhatsAppTemplates::seedPlatformDefaults('ar');
+        WhatsAppTemplateMapping::query()
+            ->update(['meta_status' => WhatsAppTemplates::APPROVED, 'meta_synced_at' => now()]);
 
         $this->business = Business::create([
             'name' => 'زهور مسقط', 'type' => 'عام', 'status' => 'نشط', 'whatsapp_enabled' => true,

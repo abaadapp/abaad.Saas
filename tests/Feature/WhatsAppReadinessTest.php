@@ -8,7 +8,9 @@ use App\Models\Plan;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WhatsAppConnection;
+use App\Models\WhatsAppTemplateMapping;
 use App\Support\WhatsAppConnections;
+use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppQuota;
@@ -52,6 +54,7 @@ class WhatsAppReadinessTest extends TestCase
             'connected_at' => now(),
         ]);
         WhatsAppTemplates::seedPlatformDefaults('ar');
+        $this->approved();
 
         $this->business = Business::create([
             'name' => 'محل ورد', 'type' => 'محل ورود', 'status' => 'نشط',
@@ -65,6 +68,35 @@ class WhatsAppReadinessTest extends TestCase
         ]);
 
         $this->actingAs($this->owner);
+    }
+
+    /**
+     * قوالبُ ميتا معتمَدة — شرطٌ لكلّ ما تحرسه هذه الملفّات.
+     *
+     * وحالُ القوالب نفسُه محروسٌ في `ATemplateIsNotOursToCallApprovedTest`.
+     * وهنا يُثبَّت معتمَدًا لتُقاس الخطواتُ الأخرى وحدَها — وإلّا سقط كلُّ
+     * حارسٍ هنا لسببٍ لا يقصده.
+     */
+    private function approved(): void
+    {
+        WhatsAppTemplateMapping::query()
+            ->update(['meta_status' => WhatsAppTemplates::APPROVED, 'meta_synced_at' => now()]);
+    }
+
+    /** وصلةُ رقمٍ للمحلّ — بقوالبها معتمَدةً، كما يفعل بابُ الربط */
+    private function ownConnection(string $status = WhatsAppConnection::ACTIVE): void
+    {
+        WhatsAppConnection::create([
+            'owner_type' => WhatsAppMode::OWNER_BUSINESS,
+            'business_id' => $this->business->id,
+            'phone_number_id' => 'SHOP-PN',
+            'access_token' => 'shop-token-value-0123456789',
+            'status' => $status,
+            'connected_at' => now(),
+        ]);
+
+        WhatsAppTemplates::seedBusinessDefaults($this->business->id, 'ar');
+        $this->approved();
     }
 
     private function readiness(): array
@@ -142,8 +174,18 @@ class WhatsAppReadinessTest extends TestCase
     {
         $business = $this->business->fresh();
 
+        /*
+         * والمُرسِلُ ثلاثةُ أسئلةٍ لا اثنان: أمأذونٌ هذا المتجر، وأثمّ وصلةٌ
+         * تعمل، **وأثمّ قالبٌ يُنادى به**. وإسقاطُ الثالث هو ما جعل الشاشة
+         * تقول «جاهز» وكلُّ قالبٍ عند ميتا ينتظر المراجعة.
+         */
         $senderAccepts = WhatsAppFeature::blockReason($business) === null
-            && WhatsAppConnections::resolve($business) !== null;
+            && WhatsAppConnections::resolve($business) !== null
+            && WhatsAppTemplates::resolve(
+                $business,
+                WhatsAppEvent::ORDER_READY,
+                WhatsAppFeature::effectiveMode($business),
+            ) !== null;
 
         $this->assertSame(
             $senderAccepts,
@@ -218,14 +260,7 @@ class WhatsAppReadinessTest extends TestCase
             'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN,
         ]);
 
-        WhatsAppConnection::create([
-            'owner_type' => WhatsAppMode::OWNER_BUSINESS,
-            'business_id' => $this->business->id,
-            'phone_number_id' => 'SHOP-PN',
-            'access_token' => 'shop-token-value-0123456789',
-            'status' => WhatsAppConnection::ACTIVE,
-            'connected_at' => now(),
-        ]);
+        $this->ownConnection();
 
         $this->assertTrue($this->step('own')['done']);
         $this->assertTrue($this->readiness()['ready']);
@@ -243,13 +278,7 @@ class WhatsAppReadinessTest extends TestCase
             'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN,
         ]);
 
-        WhatsAppConnection::create([
-            'owner_type' => WhatsAppMode::OWNER_BUSINESS,
-            'business_id' => $this->business->id,
-            'phone_number_id' => 'SHOP-PN',
-            'access_token' => 'shop-token-value-0123456789',
-            'status' => WhatsAppConnection::REVOKED,
-        ]);
+        $this->ownConnection(WhatsAppConnection::REVOKED);
 
         $this->assertFalse($this->step('own')['done']);
         $this->assertFalse($this->readiness()['ready']);
@@ -270,14 +299,7 @@ class WhatsAppReadinessTest extends TestCase
             'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN,
         ]);
 
-        WhatsAppConnection::create([
-            'owner_type' => WhatsAppMode::OWNER_BUSINESS,
-            'business_id' => $this->business->id,
-            'phone_number_id' => 'SHOP-PN',
-            'access_token' => 'shop-token-value-0123456789',
-            'status' => WhatsAppConnection::ACTIVE,
-            'connected_at' => now(),
-        ]);
+        $this->ownConnection();
 
         $this->assertTrue($this->readiness()['ready']);
 
@@ -325,7 +347,7 @@ class WhatsAppReadinessTest extends TestCase
         // المنصّة ثمّ الحساب ثمّ الباقة ثمّ الرقم — ولا يُقرأ ترتيبٌ غيره
         $keys = array_column($this->readiness()['steps'], 'key');
 
-        $this->assertSame(['platform', 'account', 'plan', 'shared'], $keys);
+        $this->assertSame(['platform', 'account', 'plan', 'shared', 'templates'], $keys);
     }
 
     /* =========================== الشاشة =========================== */
@@ -337,7 +359,7 @@ class WhatsAppReadinessTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Admin/Marketing/Whatsapp')
                 ->where('automation.readiness.ready', true)
-                ->has('automation.readiness.steps', 4));
+                ->has('automation.readiness.steps', 5));
     }
 
     public function test_the_screen_never_leaks_a_token(): void

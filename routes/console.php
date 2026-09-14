@@ -36,6 +36,16 @@ Schedule::command('subscriptions:notify')->dailyAt('07:30')->withoutOverlapping(
  */
 Schedule::command('invoices:remind')->dailyAt('09:00')->withoutOverlapping();
 
+/*
+ * حالُ القوالب عند ميتا — كلّ ساعة.
+ *
+ * الاعتمادُ يتبدّل مرّةً في عمر القالب، لكنّ **متى** يتبدّل لا نعرفه: ميتا
+ * تراجع متى شاءت. وقالبٌ اعتُمد قبل ساعةٍ وشاشتُنا تقول «قيد المراجعة» يجعل
+ * التاجر ينتظر ما تمّ؛ وقالبٌ أُوقف وشاشتُنا تقول «معتمَد» يجعله يظنّ رسائله
+ * تخرج وهي تُردّ. فساعةٌ أضيقُ ما يُحتمل بلا أن يُثقل على ميتا.
+ */
+Schedule::command('whatsapp:sync-templates')->hourly()->withoutOverlapping();
+
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 

@@ -102,6 +102,59 @@ class MetaWhatsAppClient
      *
      * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}
      */
+    /**
+     * حالُ قوالب هذا الحساب عند ميتا — كما قالتها هي.
+     *
+     * ═══ ولمَ تُسأل أصلًا ═══
+     *
+     * `enabled` في جدولنا مقبضُنا نحن، ولا يعني أنّ ميتا اعتمدت القالب.
+     * وقالبٌ `PENDING` يُنادى به فيُردّ — فتُبنى رسالةٌ وتُحجز حصّةٌ ويُقيَّد
+     * فشل، وينتظر الزبون رسالةً لا تأتي.
+     *
+     * وبلا `waba_id` لا سؤال: الوصلةُ تعرف رقمَها ولا تعرف حسابَ الأعمال
+     * الذي تحته القوالب — وقائمةُ القوالب تُقرأ من الحساب لا من الرقم.
+     *
+     * @return array{ok:bool, templates:array<string, string>, message:?string}
+     *                                                                          الاسم ← الحال، بحروف ميتا (APPROVED · PENDING · …)
+     */
+    public static function templates(WhatsAppConnection $connection): array
+    {
+        if (blank($connection->waba_id)) {
+            return ['ok' => false, 'templates' => [], 'message' => __('لا معرّف حساب أعمال على هذه الوصلة.')];
+        }
+
+        $url = rtrim((string) config('whatsapp.graph_url'), '/')
+            .'/'.config('whatsapp.api_version')
+            .'/'.$connection->waba_id.'/message_templates';
+
+        try {
+            $response = Http::withToken($connection->access_token)
+                ->timeout((int) config('whatsapp.timeout', 15))
+                ->acceptJson()
+                ->get($url, ['fields' => 'name,status,language', 'limit' => 200]);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'templates' => [], 'message' => $e->getMessage()];
+        }
+
+        if (! $response->successful()) {
+            return [
+                'ok' => false,
+                'templates' => [],
+                'message' => (string) ($response->json('error.message') ?? $response->body()),
+            ];
+        }
+
+        $out = [];
+
+        foreach ((array) $response->json('data', []) as $row) {
+            if (filled($row['name'] ?? null)) {
+                $out[(string) $row['name']] = (string) ($row['status'] ?? '');
+            }
+        }
+
+        return ['ok' => true, 'templates' => $out, 'message' => null];
+    }
+
     public static function sendText(WhatsAppConnection $connection, string $to, string $body): array
     {
         $url = rtrim((string) config('whatsapp.graph_url'), '/')

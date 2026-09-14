@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\CustomerInvoice;
 use App\Models\Order;
+use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppTemplateMapping;
 
 /**
@@ -26,6 +27,12 @@ use App\Models\WhatsAppTemplateMapping;
  */
 class WhatsAppTemplates
 {
+    /** الحالُ الوحيدة التي تسمح بالنداء — بحروف ميتا */
+    public const APPROVED = 'APPROVED';
+
+    /** سألنا ميتا فلم تعرف هذا الاسم — غيرُ «لم نسأل» */
+    public const MISSING = 'MISSING';
+
     /**
      * القالب المناسب لهذا المتجر وهذا الحدث.
      *
@@ -35,14 +42,104 @@ class WhatsAppTemplates
      */
     public static function resolve(Business $business, string $event, string $mode): ?WhatsAppTemplateMapping
     {
-        if ($mode === WhatsAppMode::BUSINESS_OWN) {
-            return WhatsAppTemplateMapping::where('scope_type', WhatsAppMode::OWNER_BUSINESS)
+        $mapping = $mode === WhatsAppMode::BUSINESS_OWN
+            ? WhatsAppTemplateMapping::where('scope_type', WhatsAppMode::OWNER_BUSINESS)
                 ->where('business_id', $business->id)
+                ->where('event_type', $event)->where('enabled', true)->first()
+            : WhatsAppTemplateMapping::query()->platform()
                 ->where('event_type', $event)->where('enabled', true)->first();
+
+        /*
+         * وقالبٌ لم تعتمده ميتا لا يُنادى به.
+         *
+         * ═══ ولمَ يُمنع هنا لا يُترك لميتا تردّه ═══
+         *
+         * تركُه يعني: يُبنى الصفّ، وتُحجز الحصّة، ويُنادى ميتا، فتردُّ —
+         * وتُقيَّد `failed` بنصٍّ إنجليزيّ عن قالبٍ لا يعرفه التاجر، ويحمرّ
+         * جرسُ لوحته بعطبٍ لا يملك إصلاحه. والمنعُ هنا يكتب `skipped`
+         * بسببٍ يُقرأ، ولا يُحاسَب أحدٌ على رسالةٍ لم تخرج.
+         *
+         * ═══ وفارغٌ ليس رفضًا ═══
+         *
+         * `meta_status` الفارغ يعني «لم نسأل ميتا بعد» لا «مرفوض». ولو
+         * قُرئ رفضًا لَأطفأ إشعاراتِ كلّ متجرٍ لحظةَ الترحيل — قبل أن يجري
+         * أوّلُ مزامنة. فالمنعُ على ما **عُلم** أنّه غير معتمَد وحدَه،
+         * والمجهولُ يُقال في الشاشة ولا يُغلق به باب.
+         */
+        if ($mapping !== null && filled($mapping->meta_status)
+            && $mapping->meta_status !== self::APPROVED) {
+            return null;
         }
 
-        return WhatsAppTemplateMapping::query()->platform()
-            ->where('event_type', $event)->where('enabled', true)->first();
+        return $mapping;
+    }
+
+    /**
+     * أسألُ ميتا عن قوالب هذا الحساب وأكتب ما قالته.
+     *
+     * والحالُ يُكتب بحروف ميتا نفسِها لا بترجمةٍ لها: `APPROVED`، `PENDING`،
+     * `REJECTED`، `PAUSED`. وترجمتُه إلى قاموسٍ عندنا تعني أنّ حالًا جديدةً
+     * تُصدرها ميتا غدًا تسقط في «غير معروف» فتُقرأ معتمَدةً أو مرفوضة بلا
+     * أن يقول أحدٌ أيَّهما.
+     *
+     * ولا يُكتب شيءٌ إن تعذّر السؤال: انقطاعُ شبكةٍ لا يعني أنّ القوالب
+     * صارت غيرَ معتمَدة — والحالُ القديم أصدقُ من حالٍ مخترَعٍ من فشلِ نداء.
+     *
+     * @return array{ok:bool, checked:int, approved:int, message:?string}
+     */
+    public static function sync(WhatsAppConnection $connection, string $scope, ?int $businessId = null): array
+    {
+        $result = MetaWhatsAppClient::templates($connection);
+
+        if (! $result['ok']) {
+            return ['ok' => false, 'checked' => 0, 'approved' => 0, 'message' => $result['message']];
+        }
+
+        $rows = WhatsAppTemplateMapping::where('scope_type', $scope)
+            ->when($businessId === null, fn ($q) => $q->whereNull('business_id'))
+            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
+            ->get();
+
+        $approved = 0;
+
+        foreach ($rows as $row) {
+            /*
+             * وقالبٌ لا تعرفه ميتا يُكتب `MISSING` لا يُترك فارغًا.
+             *
+             * الفارغُ يعني «لم نسأل»، وهذا سُئل ولم يُوجد — وهما حالان:
+             * الأوّل يُنتظر، والثاني يُنشأ عند ميتا أو يُصحَّح اسمُه.
+             */
+            $status = $result['templates'][$row->template_name] ?? self::MISSING;
+
+            $row->forceFill(['meta_status' => $status, 'meta_synced_at' => now()])->save();
+
+            if ($status === self::APPROVED) {
+                $approved++;
+            }
+        }
+
+        return ['ok' => true, 'checked' => $rows->count(), 'approved' => $approved, 'message' => null];
+    }
+
+    /**
+     * أكلُّ قوالب هذا النطاق معتمَدةٌ عند ميتا؟
+     *
+     * و`null` تعني «لم يُسأل بعد» — وهي غير `false`: تلك تقول «سألنا فلا»،
+     * وهذه تقول «لا نعرف». وخلطُهما يجعل الشاشة تُنذر بما لم يُقَس.
+     */
+    public static function approvalState(string $scope, ?int $businessId = null): ?bool
+    {
+        $rows = WhatsAppTemplateMapping::where('scope_type', $scope)
+            ->when($businessId === null, fn ($q) => $q->whereNull('business_id'))
+            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
+            ->where('enabled', true)
+            ->get(['meta_status']);
+
+        if ($rows->isEmpty() || $rows->every(fn ($r) => blank($r->meta_status))) {
+            return null;
+        }
+
+        return $rows->every(fn ($r) => $r->meta_status === self::APPROVED);
     }
 
     /**

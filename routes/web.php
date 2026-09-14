@@ -566,11 +566,24 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     /*
      * تعديل بيانات التنفيذ ونقل الحالة — قسمُهما «المبيعات» يُشتقّ من الاسم.
      *
-     * ومنفصلان عن تصحيح الفاتورة (Pos\OrderEditController): ذاك يُحرّك
-     * المخزون والمال ويشترط سببًا، وهذا يُصحّح رقم هاتفٍ أو موعدًا.
+     * وبابُهما غيرُ باب تصحيح الفاتورة تحته: ذاك يُحرّك المخزون والمال
+     * ويشترط سببًا وصلاحيةً باسمها، وهذا يُصحّح رقم هاتفٍ أو موعدًا.
      */
     Route::put('/orders/{number}/details', [OrderDetailController::class, 'update'])->name('orders.details.update');
     Route::post('/orders/{number}/status', [OrderDetailController::class, 'status'])->name('orders.status');
+    /*
+     * تصحيح الفاتورة من شاشة المبيعات — الكتابةُ نفسُها التي يُصحّح بها الكاشير.
+     *
+     * وبابٌ ثانٍ لا فعلٌ ثانٍ: `OrderEditController` هو هو، و`OrderCorrection`
+     * تحته. وإنّما افترق المسار لأنّ الإذن يُقرأ من اسمه: `pos.*` يتبع صلاحية
+     * نقطة البيع، وهذا يتبع «المبيعات» — فالمحاسبُ يُصحّح فاتورةً من شاشته
+     * ولا يُطالَب بصلاحية صندوقٍ لا يقف عليه. وصلاحيةُ `order.edit` فوقهما
+     * كليهما: الفتحُ من الشاشة، والحكمُ في الخادم.
+     */
+    Route::put('/orders/{number}/items/{item}', [OrderEditController::class, 'update'])->name('orders.items.update');
+    Route::put('/orders/{number}/items/{item}/addons/{addon}', [OrderEditController::class, 'addon'])
+        ->name('orders.items.addons.update');
+    Route::put('/orders/{number}/payment', [OrderEditController::class, 'payment'])->name('orders.payment.update');
     // إرسالُ الفاتورة إلى الزبون — نصٌّ يُكتب في الخادم ويُفتح على واتساب التاجر
     Route::post('/orders/{number}/send', [OrderDetailController::class, 'send'])->name('orders.send');
     /* إبلاغُ الزبون بحالة طلبه يدويًّا — لا يمرّ بميتا، فيعمل والحظرُ قائم */

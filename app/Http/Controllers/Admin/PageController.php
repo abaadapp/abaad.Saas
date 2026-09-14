@@ -33,6 +33,7 @@ use App\Support\Reports;
 use App\Support\Roles;
 use App\Support\ShopIdentity;
 use App\Support\Storefront;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -217,7 +218,46 @@ class PageController extends Controller
              * تفترق المعروضةُ عن المطبوعة.
              */
             'paper' => $this->orderPaper($number),
+            /*
+             * أيُصحَّح **متنُ** الفاتورة من هنا — وإن لم يُصحَّح فلمَ.
+             *
+             * وشرطاه اللذان يقيسهما الخادم عند الكتابة نفسِهما: صلاحيةٌ باسمها
+             * (`order.edit`)، ويومُ البيع لم ينتهِ (`OrderCorrection::assertSameDay`).
+             * فما تقوله الشاشة قبل الضغط هو ما سيقوله الردُّ بعده.
+             *
+             * ويفترق جوابُ المانعين: من لا يملك الصلاحية لا يُعرض له الزرّ —
+             * بابٌ لا يُعرض خيرٌ من بابٍ يُعرض ثمّ يُقال لصاحبه «ليست لك». ومن
+             * يملكها وانتهى يومُ فاتورته يراه معطَّلًا بسببه مكتوبًا عليه: هذا
+             * حدٌّ زمنيّ يعرفه غدًا ويُقدّر له، لا رفضٌ لشخصه.
+             */
+            'invoiceEdit' => $this->invoiceEditState($number),
         ]);
+    }
+
+    /**
+     * حالُ تصحيح الفاتورة لهذا الطلب.
+     *
+     * @return array{can: bool, reason: ?string}
+     */
+    private function invoiceEditState(string $number): array
+    {
+        if (! auth()->user()?->may('order.edit')) {
+            return ['can' => false, 'reason' => null];
+        }
+
+        $order = Order::where('business_id', Demo::bid())
+            ->where('is_held', false)->where('number', $number)->first();
+
+        $soldOn = $order?->ordered_at ?? $order?->created_at;
+
+        // فاتورةٌ بلا تاريخٍ أصلًا لا يُقاس عليها يوم — ولا يُعرض لها زرّ
+        if (! $soldOn) {
+            return ['can' => false, 'reason' => null];
+        }
+
+        return Carbon::parse($soldOn)->isSameDay(now())
+            ? ['can' => true, 'reason' => null]
+            : ['can' => false, 'reason' => __('تعديل الفاتورة — انتهى يومها')];
     }
 
     /**

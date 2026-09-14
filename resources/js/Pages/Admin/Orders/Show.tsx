@@ -17,6 +17,12 @@ import {
     User,
 } from 'lucide-react';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
+import {
+    CorrectItemDialog,
+    CorrectPaymentDialog,
+    type CorrectableItem,
+    type OrderEditRecord,
+} from '@/Components/InvoiceCorrection';
 import Field, { Select } from '@/Components/Field';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -66,21 +72,12 @@ interface OrderDetail {
     tax: number;
     delivery: number;
     total: number;
-    items: { name: string; qty: number; price: number; total: number }[];
+    /** والمعرّف يُقرأ لا يُعرض: به يُنادى مسارُ التصحيح على البند بعينه */
+    items: { id: number; name: string; qty: number; price: number; total: number }[];
+    /** ما أذن به التاجر وحده — لا تُصحَّح وسيلةُ الدفع إلى وسيلةٍ مُطفأة */
+    payment_methods: string[];
     /** تصحيحات وقعت على الفاتورة بعد بيعها — انظر App\Support\OrderCorrection */
-    edits: {
-        kind: string;
-        subject: string;
-        qty_before: number | null;
-        qty_after: number | null;
-        value_before: string | null;
-        value_after: string | null;
-        total_before: number;
-        total_after: number;
-        reason: string;
-        by: string;
-        at: string;
-    }[];
+    edits: OrderEditRecord[];
 }
 
 /**
@@ -95,14 +92,21 @@ interface OrderDetail {
  * التفاصيل** — الورقة التي تُنفَّذ منها: إلى من تصل، ومتى، وإلى أين، وبأي
  * بطاقة. وتُعدَّل من مكانها.
  *
- * والتعديل لا يمسّ مالًا ولا حالة: `OrderDetailController::update` يكتب حقول
- * التنفيذ وحدها ولا يعيد حسبة إجمالي، والحالة بابها الآخر في تبويب البيانات.
- * فمن يصحّح رقم هاتفٍ لا يُحرّك ريالًا ولا يُقدّم طلبًا في مساره.
+ * وتعديلُ الورقة لا يمسّ مالًا ولا حالة: `OrderDetailController::update` يكتب
+ * حقول التنفيذ وحدها ولا يعيد حسبة إجمالي، والحالة بابها الآخر في تبويب
+ * البيانات. فمن يصحّح رقم هاتفٍ لا يُحرّك ريالًا ولا يُقدّم طلبًا في مساره.
+ *
+ * وتصحيحُ **متن الفاتورة** بابٌ ثالث: `Pos\OrderEditController` نفسُه الذي
+ * يُصحّح به الكاشير — يمسّ الكميّة ووسيلة الدفع، ويُحرّك معهما المخزونَ
+ * والضريبةَ والنقاطَ والمعاملةَ المالية، ويترك أثرًا باسم من صحّح. وشرطاه
+ * صلاحيةُ `order.edit` ويومُ البيع، يقيسهما الخادم قبل الرسم وعند الكتابة.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice, googleReview, statusNotice, paper } = usePage<
+    const { order, context, taxInvoice, googleReview, statusNotice, paper, invoiceEdit } = usePage<
         PageProps<{
             order: OrderDetail;
+            /** أيُصحَّح متنُ الفاتورة الآن — وإن لم يُصحَّح فلمَ. يُقاس في الخادم */
+            invoiceEdit: { can: boolean; reason: string | null };
             /** ورقةُ الطلب مرسومةً — من وصفة الطباعة نفسِها. و`null` لطلبٍ لا صفَّ له */
             paper: { html: string; size: string } | null;
             taxInvoice: { registered: boolean; ready: boolean };
@@ -121,10 +125,22 @@ export default function OrderShow() {
     const m = (v: number) => money(v, currency);
 
     /*
-     * ومرجعٌ إلى ورقة التفاصيل: زرُّ «تعديل» فوق الفاتورة يفتحها ويمضي
-     * إليها. وبلا ذلك يضغط التاجر زرًّا فيتغيّر شيءٌ خارج نظره.
+     * ═══ زرّان فوق الصفحة لا زرٌّ واحد ═══
+     *
+     * «تعديل» كان واحدًا يفتح **ورقة التفاصيل**: من ضغطه باحثًا عن كميّةٍ
+     * أدخلها خطأً — وهو أكثرُ من يضغط زرًّا بهذا الاسم فوق فاتورة — وجد
+     * حقولَ اسم المستلم وموعد التسليم ونصّ البطاقة، ولا شيء فيها يمسّ
+     * الرقم الذي فتح الصفحة من أجله. فرجع يظنّ أن الفاتورة لا تُصحَّح.
+     *
+     * فصارا بابين باسمين: **تعديل الفاتورة** يمسّ ما بيع وبكم — ويُحرّك
+     * المخزون والضريبة والنقاط ويترك أثرًا باسم من صحّح. و**ورقة التفاصيل**
+     * تمسّ التنفيذ وحده ولا تلمس ريالًا.
+     *
+     * ولكلٍّ مرجعٌ يمضي إليه: زرٌّ يُضغط فيتغيّر شيءٌ خارج نظر من ضغطه
+     * مقبضٌ لا يُدير شيئًا.
      */
     const sheetRef = useRef<HTMLDivElement>(null);
+    const invoiceRef = useRef<HTMLDivElement>(null);
 
 
     /*
@@ -136,6 +152,15 @@ export default function OrderShow() {
      */
     const [editing, setEditing] = useState(false);
     const [previewing, setPreviewing] = useState(false);
+    /*
+     * وضعُ تصحيح الفاتورة — يُفتح بالزرّ ولا يبدأ مفتوحًا.
+     *
+     * أقلامٌ مرسومةٌ دائمًا على جدول فاتورةٍ صدرت تجعل تغييرَ ما بيع أقربَ
+     * إلى اليد من قراءته، وأكثرُ من يفتح هذه الصفحة إنّما جاء يقرأ.
+     */
+    const [correcting, setCorrecting] = useState(false);
+    const [correctingItem, setCorrectingItem] = useState<CorrectableItem | null>(null);
+    const [fixingPayment, setFixingPayment] = useState(false);
     const form = useForm({
         fulfillment_type: order.fulfillment_type ?? '',
         recipient_name: order.recipient_name ?? '',
@@ -381,7 +406,38 @@ export default function OrderShow() {
                             </a>
                         </Button>
 
-                        {/* و«تعديل» يفتح ورقةَ التفاصيل ويمضي إليها — لا يغيّر شيئًا خارج نظر من ضغطه */}
+                        {/*
+                            و«تعديل الفاتورة» يفتح أقلامَ الجدول ويمضي إليه:
+                            الكميّة وما بيع ووسيلة الدفع — لا اسمُ المستلم.
+
+                            ومن لا يملك `order.edit` لا يراه أصلًا. ومن يملكها
+                            وانتهى يومُ فاتورته يراه معطَّلًا بسببه مكتوبًا:
+                            حدٌّ زمنيّ يُقدَّر، لا رفضٌ لشخصه. والشرطان يُقاسان
+                            في الخادم ثانيةً عند الكتابة.
+                        */}
+                        {invoiceEdit.can && (
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setCorrecting(true);
+                                    invoiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }}
+                            >
+                                <PencilLine />
+                                {t('تعديل الفاتورة')}
+                            </Button>
+                        )}
+                        {!invoiceEdit.can && invoiceEdit.reason && (
+                            <Button variant="outline" disabled title={invoiceEdit.reason}>
+                                <PencilLine />
+                                {invoiceEdit.reason}
+                            </Button>
+                        )}
+
+                        {/*
+                            وورقةُ التفاصيل بابُها زرُّها: ضغطةٌ منفصلة باسمٍ
+                            يقول إلى أين تمضي — لا «تعديل» يُفهم منه المال.
+                        */}
                         <Button
                             variant="outline"
                             onClick={() => {
@@ -389,8 +445,8 @@ export default function OrderShow() {
                                 sheetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                             }}
                         >
-                            <PencilLine />
-                            {t('تعديل')}
+                            <ClipboardList />
+                            {t('ورقة التفاصيل')}
                         </Button>
                     </>
                 }
@@ -420,8 +476,26 @@ export default function OrderShow() {
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
                 <div className="min-w-0 space-y-6 xl:col-span-3">
                     <div className="space-y-6">
-                        <div>
-                            <h3 className="mb-3 font-bold text-[#111]">{t('تفاصيل المنتجات')}</h3>
+                        <div ref={invoiceRef}>
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <h3 className="font-bold text-[#111]">{t('تفاصيل المنتجات')}</h3>
+                                {/* ومخرجٌ من الوضع بالوضوح الذي دخل به — لا بضغط «رجوع» */}
+                                {correcting && (
+                                    <Button variant="ghost" size="sm" onClick={() => setCorrecting(false)}>
+                                        {t('إنهاء التعديل')}
+                                    </Button>
+                                )}
+                            </div>
+                            {/*
+                                والحدُّ يُقال داخل الوضع لا قبل الدخول إليه: من
+                                فتح الأقلام يعرف قبل أن يضغط أحدَها أنّ ما يفعله
+                                يمسّ الرفَّ والدفتر معًا ويبقى باسمه.
+                            */}
+                            {correcting && (
+                                <p className="mb-3 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]">
+                                    {t('التصحيح يُعيد المخزون ويُحتسب الضريبة والنقاط من جديد، ويبقى مقيَّدًا باسمك في سجلّ الفاتورة.')}
+                                </p>
+                            )}
                             <Card className="overflow-hidden">
                                 <Table>
                                     <TableHeader>
@@ -430,6 +504,7 @@ export default function OrderShow() {
                                             <TableHead className="text-end">{t('الكمية')}</TableHead>
                                             <TableHead className="text-end">{t('السعر')}</TableHead>
                                             <TableHead className="text-end">{t('الإجمالي')}</TableHead>
+                                            {correcting && <TableHead className="text-end">{t('تصحيح')}</TableHead>}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -445,6 +520,18 @@ export default function OrderShow() {
                                                 <TableCell className="text-end tabular-nums font-medium">
                                                     {m(line.total)}
                                                 </TableCell>
+                                                {correcting && (
+                                                    <TableCell className="text-end">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            aria-label={t('تصحيح البند')}
+                                                            onClick={() => setCorrectingItem(line)}
+                                                        >
+                                                            <PencilLine />
+                                                        </Button>
+                                                    </TableCell>
+                                                )}
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -499,11 +586,28 @@ export default function OrderShow() {
 
                         <Card className="p-6">
                             <h3 className="mb-4 font-bold text-[#111]">{t('حالة الدفع')}</h3>
-                            <div className="mb-3 flex items-center justify-between">
+                            {/*
+                                ووسيلةُ الدفع تُصحَّح كما تُصحَّح الكميّة: «نقدي»
+                                على دفعةٍ بالبطاقة يجعل الإقفال يطلب مالًا لم
+                                يدخل الدرج، ولا يظهر السبب في أيّ شاشة.
+                            */}
+                            <div className="mb-3 flex items-center justify-between gap-2">
                                 <span className="text-sm text-[#6b7280]">{t('وسيلة الدفع')}</span>
-                                <Badge status={order.payment}>
-                                    {t(order.payment === 'بطاقة' ? 'فيزا' : order.payment)}
-                                </Badge>
+                                <span className="flex items-center gap-1">
+                                    <Badge status={order.payment}>
+                                        {t(order.payment === 'بطاقة' ? 'فيزا' : order.payment)}
+                                    </Badge>
+                                    {correcting && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            aria-label={t('تصحيح وسيلة الدفع')}
+                                            onClick={() => setFixingPayment(true)}
+                                        >
+                                            <PencilLine />
+                                        </Button>
+                                    )}
+                                </span>
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-[#6b7280]">{t('حالة الدفع')}</span>
@@ -810,6 +914,27 @@ export default function OrderShow() {
                     </DocumentAside>
                 )}
             </div>
+
+            {/*
+                ونافذتا التصحيح من `Components/InvoiceCorrection` — هما اللتان
+                يُصحّح بهما الكاشير حرفًا بحرف. ونسختان تفترقان يومًا.
+            */}
+            {correctingItem && (
+                <CorrectItemDialog
+                    url={route('admin.orders.items.update', [order.id, correctingItem.id])}
+                    item={correctingItem}
+                    onClose={() => setCorrectingItem(null)}
+                />
+            )}
+
+            {fixingPayment && (
+                <CorrectPaymentDialog
+                    url={route('admin.orders.payment.update', order.id)}
+                    current={order.payment}
+                    methods={order.payment_methods}
+                    onClose={() => setFixingPayment(false)}
+                />
+            )}
         </AdminLayout>
     );
 }

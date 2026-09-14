@@ -5645,5 +5645,9 @@
     "لهذا المورّد :i سند — لا يُحذف، وإلّا بقيت سنداتُه بلا من أصدرها.": "This supplier has :i bill(s) — it cannot be deleted, or its bills would be left with no one who issued them.",
     "هذا رقم العميل «:name» مكتوبًا بشكلٍ آخر (:phone) — نقاط الولاء تتبع الرقم.": "This is customer :name's number written differently (:phone) — loyalty points follow the number.",
     "استيراد ملف": "File import",
-    "تراجع عن استيراد": "Import undone"
+    "تراجع عن استيراد": "Import undone",
+    "تعديل الفاتورة": "Edit invoice",
+    "إنهاء التعديل": "Done editing",
+    "التصحيح يُعيد المخزون ويُحتسب الضريبة والنقاط من جديد، ويبقى مقيَّدًا باسمك في سجلّ الفاتورة.": "A correction returns the stock and recalculates tax and points, and stays recorded in your name in the invoice log.",
+    "تعديل الفاتورة — انتهى يومها": "Edit invoice — its day has ended"
 }

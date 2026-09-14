@@ -9,7 +9,14 @@
  * @see abaad.Saas/app/Support/Website/Preview.php
  */
 
-/** رموز التصميم — ستّةٌ يختارها التاجر وخمسةٌ يشتقّها النظام */
+/**
+ * رموز التصميم — لونٌ وخطٌّ، ومعهما بنيةُ الصفحة.
+ *
+ * حقيبةٌ واحدة لا حقيبتان: الألوان الستّة وما يُشتقّ منها، ورموزُ التخطيط
+ * التي تصف كيف تُبنى الصفحة لا بأيّ لونٍ تُصبغ (انظر `layout.ts`). وكلُّها
+ * اختياريّةٌ من ناحية العقد: لقطةٌ نُشرت قبل طبقة التخطيط تصل بلا رموزها
+ * فتأخذ افتراضيّاتها — وهي رسمُ الأمس حرفيًّا.
+ */
 export interface Tokens {
     primary: string;
     background: string;
@@ -22,6 +29,20 @@ export interface Tokens {
     border: string;
     muted: string;
     radius_px: number;
+    /* ------ بنيةُ الصفحة — يحكمها `layout.ts` ويقرؤها العارض منه ------ */
+    width?: string;
+    density?: string;
+    scale?: string;
+    heading?: string;
+    header?: string;
+    hero?: string;
+    card?: string;
+    grid?: string;
+    ratio?: string;
+    categories?: string;
+    footer?: string;
+    surface_style?: string;
+    heading_font?: string;
 }
 
 export interface Currency {
@@ -102,6 +123,22 @@ export interface DocPage {
     sections: DocSection[];
 }
 
+/**
+ * ما يراه الزائر وما يستطيع فعله — مُجمَّدٌ مع التصميم لا مقروءٌ حيًّا.
+ *
+ * «أخفِ الأسعار» قرارُ عرضٍ كتبديل لونٍ أو إخفاء قسم، فيتبع النشر كما يتبعه
+ * سائرُ التصميم. ولذلك يسكن العقد ولا يُحقن عند القراءة.
+ *
+ * ويغيب في مستندٍ نُشر قبل النسخة الثانية من العقد — و`Publication::upgrade`
+ * تملؤه بما كان يراه زائرُ تلك النشرة، لا بالافتراضيّ الجديد.
+ */
+export interface DocCommerce {
+    /** أيُعرض ثمنُ المنتج؟ */
+    show_prices: boolean;
+    /** أيظهر زرُّ الطلب؟ — والطلبُ محادثةُ واتساب، لا سلّة */
+    allow_orders: boolean;
+}
+
 export interface DocSeo {
     title?: string;
     description?: string;
@@ -110,6 +147,9 @@ export interface DocSeo {
 }
 
 export interface SiteDocument {
+    /** نسخةُ العقد — يقرؤها المُرقّي في أبعاد قبل أن يصل المستندُ هنا */
+    schema_version?: number;
+    /** الاسمُ القديم لنسخة العقد — يُكتب بالقيمة نفسها، ومهجور */
     version: number;
     name: string;
     goal: string;
@@ -117,6 +157,7 @@ export interface SiteDocument {
     theme: Record<string, string>;
     tokens: Tokens;
     seo: DocSeo | null;
+    commerce?: DocCommerce;
     maintenance: boolean;
     maintenance_message: string | null;
     globals: DocSection[];

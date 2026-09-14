@@ -81,6 +81,15 @@ class Publisher
                 'goal' => Blueprints::goal($payload['goal'] ?? null),
                 'template' => Templates::key($payload['template'] ?? null),
                 'theme' => Theme::normalize($payload['theme'] ?? []),
+                /*
+                 * ولقطةٌ نُشرت قبل طبقة التخطيط لا `layout` فيها — فتُستعاد
+                 * على رموز قالبها، وهي للقوالب القديمة رموزُ الرسم القديم
+                 * نفسها. فالاستعادةُ تعيد ما كان لا ما استجدّ.
+                 */
+                'layout' => Layout::normalize(
+                    $payload['layout'] ?? [],
+                    Templates::layout(Templates::key($payload['template'] ?? null)),
+                ),
                 'seo' => $payload['seo'] ?? $website->seo,
             ]);
 
@@ -151,6 +160,8 @@ class Publisher
             'goal' => $website->goal,
             'template' => $website->template,
             'theme' => $website->theme,
+            'layout' => $website->layout,
+            // والرموزُ لونٌ وبنيةٌ في حقيبةٍ واحدة — هي ما يقرؤه العارض
             'tokens' => $website->tokens(),
             'seo' => $website->seo,
             'maintenance' => $website->maintenance,

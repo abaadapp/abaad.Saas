@@ -53,6 +53,8 @@ class Builder
                 'goal' => $goal,
                 'template' => $template,
                 'theme' => Templates::theme($template),
+                // ورموزُ بنيته معها: القالب بنيةٌ لا لوحةُ ألوان. انظر `Layout`
+                'layout' => Templates::layout($template),
                 'seo' => self::seo($identity),
                 'created_by' => $userId,
                 'draft_saved_at' => now(),
@@ -64,6 +66,96 @@ class Builder
 
             return $website->fresh(['pages.sections']);
         });
+    }
+
+    /**
+     * الموقع كما سيُبنى — بلا أن يُبنى.
+     *
+     * شاشةُ اختيار القالب كانت تعرض ثلاث بقعِ لون، وكان ذلك كافيًا حين كان
+     * القالب لونًا. ولمّا صار بنيةً لم يعد يكفي: لا يُرى الفرقُ بين ترويسةٍ
+     * تجاريةٍ وترويسةٍ تحريرية، ولا بين شبكةٍ كثيفةٍ وصورٍ كبيرة، في بقعتين
+     * وخطّ. فتعرض الشاشةُ **الموقعَ نفسَه** بأربعة قوالب — بمنتجات التاجر
+     * وشعاره وهاتفه.
+     *
+     * ولا يُحفظ منه شيء: لقطةٌ تُبنى في الذاكرة بالبنية نفسها التي يبنيها
+     * `create`، فما يراه قبل الضغط هو ما يجده بعده. ولو بُنيت اللقطة بقواعدَ
+     * أخرى لصارت الشاشةُ وعدًا لا يُوفى.
+     *
+     * @param  array<string, mixed>  $overrides  ما صحّحه التاجر في المعالج
+     * @return array<string, mixed>  لقطةٌ بصيغة `Publisher::snapshot`
+     */
+    public static function blueprint(int $businessId, string $goal, string $template, array $overrides = []): array
+    {
+        $goal = Blueprints::goal($goal);
+        $template = Templates::key($template);
+
+        $identity = array_merge(MerchantData::identity($businessId), array_filter(
+            $overrides,
+            fn ($v) => is_string($v) && trim($v) !== '',
+        ));
+
+        $available = MerchantData::available($businessId);
+        $specs = Blueprints::pages($goal);
+        $links = collect($specs)->map(fn ($p) => ['label' => __($p['title']), 'href' => $p['slug']])->all();
+
+        $globals = [];
+
+        foreach (Sections::SLOTS as $slot) {
+            $globals[] = [
+                'slot' => $slot,
+                'type' => $slot,
+                'visible' => true,
+                'data' => ['links' => $links] + MerchantData::seed($slot, $identity, $goal),
+            ];
+        }
+
+        $pages = [];
+
+        foreach ($specs as $spec) {
+            $sections = [];
+
+            foreach ($spec['sections'] as $type) {
+                if (! Sections::exists($type) || Sections::isSlot($type) || ! Blueprints::sectionFits($type, $goal)) {
+                    continue;
+                }
+                if (($source = Sections::source($type)) && ! ($available[$source] ?? true)) {
+                    continue;
+                }
+
+                $sections[] = [
+                    'type' => $type,
+                    'visible' => true,
+                    'source' => $source,
+                    'data' => MerchantData::seed($type, $identity, $goal),
+                ];
+            }
+
+            $pages[] = [
+                'key' => $spec['key'],
+                'title' => __($spec['title']),
+                'slug' => WebsitePage::normalizeSlug($spec['slug']),
+                'status' => WebsitePage::PUBLISHED,
+                'is_home' => (bool) ($spec['home'] ?? false),
+                'removable' => (bool) ($spec['removable'] ?? true),
+                'seo' => null,
+                'sections' => $sections,
+            ];
+        }
+
+        return [
+            'version' => 1,
+            'name' => $identity['name'] !== '' ? $identity['name'] : __('متجري'),
+            'goal' => $goal,
+            'template' => $template,
+            'theme' => Templates::theme($template),
+            'layout' => Templates::layout($template),
+            'tokens' => Theme::tokens(Templates::theme($template)) + Templates::layout($template),
+            'seo' => self::seo($identity),
+            'maintenance' => false,
+            'maintenance_message' => null,
+            'globals' => $globals,
+            'pages' => $pages,
+        ];
     }
 
     /** الترويسة والتذييل — قسمان عامّان يُبنيان مرّةً مع الموقع */
@@ -181,7 +273,7 @@ class Builder
     }
 
     /** سيو الموقع الأوّل — عنوانٌ ووصفٌ من بيانات النشاط لا من فراغ */
-    private static function seo(array $identity): array
+    public static function seo(array $identity): array
     {
         $name = $identity['name'] !== '' ? $identity['name'] : __('متجري');
 

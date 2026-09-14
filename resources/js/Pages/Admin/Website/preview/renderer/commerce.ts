@@ -1,4 +1,4 @@
-import type { DocBrand, DocProduct, Currency } from './types';
+import type { DocBrand, DocProduct, Currency, SiteDocument } from './types';
 import { money } from './money';
 
 /**
@@ -48,4 +48,27 @@ export function orderUrl(
 /** هل يبيع هذا الموقع أصلًا؟ — الهدف يقول */
 export function sells(goal: string): boolean {
     return goal === 'store' || goal === 'catalog';
+}
+
+/**
+ * أيُعرض الثمن؟ — ما قاله صاحبُ المتجر في «المتجر ‹ ما يراه الزائر».
+ *
+ * وكان المفتاح يُحفظ ولا يُقرأ: التاجر يُطفئ الأسعار ويرى «حُفظ»، ويبقى
+ * السعر في موقعه. فصار في العقد (`commerce`)، ويُقرأ هنا.
+ *
+ * والغيابُ إذنٌ: مستندٌ نُشر قبل النسخة الثانية لا تختفي أسعارُه لأنّ
+ * مفتاحًا أُضيف بعده.
+ */
+export function showPrices(doc: SiteDocument): boolean {
+    return doc.commerce?.show_prices ?? sells(doc.goal);
+}
+
+/**
+ * أيظهر زرُّ الطلب؟
+ *
+ * ولا سلّةَ خلفه: الطلبُ محادثةُ واتساب تُفتح باسم المنتج وسعره. فالمفتاح
+ * يقول أيظهر الزرُّ أم لا — لا أكثر ولا يَعِد بأكثر.
+ */
+export function allowOrders(doc: SiteDocument): boolean {
+    return (doc.commerce?.allow_orders ?? sells(doc.goal)) && showPrices(doc);
 }

@@ -57,8 +57,16 @@ class Blueprints
             ['key' => 'home', 'title' => 'الرئيسية', 'slug' => '/', 'home' => true, 'removable' => false, 'sections' => [
                 'hero', 'categories', 'featured_products', 'promo', 'best_sellers', 'benefits', 'testimonials',
             ]],
+            /*
+             * وصفحةُ المتجر قسمٌ واحد لا قسمان.
+             *
+             * كانت «التصنيفات» ثمّ «أحدث المنتجات»: شريطُ أقسامٍ لا يُنقر،
+             * وثمانيةُ منتجاتٍ من مئتين. ومن فتح صفحةً اسمُها «المتجر» يريد
+             * البضاعة كلَّها ومعها ما يصل بها إليه — وهو ما يحمله
+             * `product_catalog` وحده: كتالوجٌ وبحثٌ وأقسامٌ تُنقر وترتيب.
+             */
             ['key' => 'shop', 'title' => 'المتجر', 'slug' => '/shop', 'removable' => false, 'sections' => [
-                'categories', 'latest_products',
+                'product_catalog',
             ]],
             ['key' => 'about', 'title' => 'من نحن', 'slug' => '/about', 'sections' => [
                 'image_text', 'stats',
@@ -72,7 +80,7 @@ class Blueprints
                 'hero', 'categories', 'featured_products', 'benefits', 'testimonials',
             ]],
             ['key' => 'shop', 'title' => 'المنتجات', 'slug' => '/shop', 'removable' => false, 'sections' => [
-                'categories', 'latest_products',
+                'product_catalog',
             ]],
             ['key' => 'about', 'title' => 'من نحن', 'slug' => '/about', 'sections' => [
                 'image_text',

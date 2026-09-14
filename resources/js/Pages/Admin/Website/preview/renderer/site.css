@@ -8,16 +8,34 @@
  *
  * وكلُّ ما هنا داخل `.w-site` وحدها: العارض يرسم موقع تاجرٍ في صفحةٍ قد
  * يكون فيها غيرُه (المعاينة داخل لوحة أبعاد) — فلا يخرج نمطٌ إلى ما حوله.
+ *
+ * ═══ الكثافةُ والسلّم ═══
+ *
+ * كان القياس واحدًا لكلّ موقع، فكانت القوالبُ كلُّها بفراغٍ واحد وعناوينَ
+ * بحجمٍ واحد — تختلف ألوانُها ولا يختلف إيقاعُها. فصار لكلٍّ منها `density`
+ * و`scale` يخرجان سمتين على جذر الموقع (`data-density` و`data-scale`)،
+ * ويُعاد حسابُهما في كلّ مقاسٍ من الثلاثة. فالقالبُ الفسيح فسيحٌ على
+ * الحاسوب ومعقولٌ على الهاتف — لا فسيحٌ في الاثنين فيصير على الهاتف فراغًا.
  */
 
 .w-site {
+    /* المتوازن هو ما كان قبل طبقة التخطيط — فمن لم يختر يبقى على ما كان */
     --w-pad: 40px 18px;
     --w-pad-tight: 22px 18px;
+    --w-gap: 18px;
     --w-h1: 28px;
     --w-h2: 21px;
+    --w-h3: 15px;
+    --w-lead: 16px;
+    --w-track: 0;
     --w-hero-small: 240px;
     --w-hero-medium: 300px;
     --w-hero-large: 420px;
+    --w-content: 1120px;
+    --w-ratio: 1 / 1;
+    --w-heading-font: var(--w-font);
+    --w-card-border: var(--w-border);
+    --w-card-shadow: none;
 
     background: var(--w-bg);
     color: var(--w-text);
@@ -25,6 +43,38 @@
     -webkit-font-smoothing: antialiased;
     /* رابطٌ طويل بلا مسافات كان يمدّ الصفحة عرضًا فتُمرَّر أفقيًّا */
     overflow-wrap: break-word;
+}
+
+/* ------------------------------ الكثافة ------------------------------ */
+
+.w-site[data-density='compact'] {
+    --w-pad: 28px 16px;
+    --w-pad-tight: 18px 16px;
+    --w-gap: 12px;
+}
+
+.w-site[data-density='spacious'] {
+    --w-pad: 52px 20px;
+    --w-pad-tight: 26px 20px;
+    --w-gap: 24px;
+}
+
+/* ------------------------------ السلّم ------------------------------ */
+
+.w-site[data-scale='compact'] {
+    --w-h1: 26px;
+    --w-h2: 19px;
+    --w-h3: 14px;
+    --w-lead: 15px;
+}
+
+.w-site[data-scale='editorial'] {
+    --w-h1: 32px;
+    --w-h2: 23px;
+    --w-h3: 16px;
+    --w-lead: 17px;
+    /* والتحريريُّ يتنفّس بين حروفه أيضًا — لا بحجمه وحده */
+    --w-track: -0.015em;
 }
 
 @media (min-width: 640px) {
@@ -37,6 +87,27 @@
         --w-hero-medium: 360px;
         --w-hero-large: 520px;
     }
+
+    .w-site[data-density='compact'] {
+        --w-pad: 36px 20px;
+        --w-pad-tight: 20px 20px;
+    }
+
+    .w-site[data-density='spacious'] {
+        --w-pad: 68px 28px;
+        --w-pad-tight: 32px 28px;
+        --w-gap: 28px;
+    }
+
+    .w-site[data-scale='compact'] {
+        --w-h1: 30px;
+        --w-h2: 22px;
+    }
+
+    .w-site[data-scale='editorial'] {
+        --w-h1: 42px;
+        --w-h2: 28px;
+    }
 }
 
 @media (min-width: 960px) {
@@ -46,7 +117,47 @@
         --w-h1: 42px;
         --w-h2: 27px;
     }
+
+    .w-site[data-density='compact'] {
+        --w-pad: 44px 28px;
+        --w-pad-tight: 22px 28px;
+    }
+
+    .w-site[data-density='spacious'] {
+        --w-pad: 96px 40px;
+        --w-pad-tight: 40px 40px;
+        --w-gap: 34px;
+    }
+
+    .w-site[data-scale='compact'] {
+        --w-h1: 34px;
+        --w-h2: 24px;
+    }
+
+    .w-site[data-scale='editorial'] {
+        --w-h1: 58px;
+        --w-h2: 36px;
+    }
 }
+
+/* ------------------------------ العناوين ------------------------------ */
+
+/*
+ * خطُّ العناوين قد يخالف خطّ النصّ — وهو أظهر ما يفرّق قالبًا عن قالب.
+ *
+ * والقاعدة هنا لا في كلّ عنوان: `Heading` واحدةٌ يقرؤها عشرون قسمًا، لكنّ
+ * الواجهةَ وعنوانَ الصفحة وعناوينَ البطاقات تُكتب في مواضعها — ولو تُرك
+ * الخطُّ لكلٍّ منها لنُسي في ثالثها.
+ */
+.w-site h1,
+.w-site h2,
+.w-site h3,
+.w-site .w-display {
+    font-family: var(--w-heading-font);
+    letter-spacing: var(--w-track);
+}
+
+/* ------------------------------ الحارس ------------------------------ */
 
 /* صورةٌ أعرض من حاويتها تمدّ الصفحة — والحارس أرخص من تتبّع كلّ صورة */
 .w-site img,
@@ -66,6 +177,113 @@
 .w-site a {
     color: inherit;
 }
+
+/* ------------------------------ البطاقات ------------------------------ */
+
+/*
+ * حركةٌ واحدة في الموقع كلِّه: الصورة تكبر قليلًا تحت المؤشّر.
+ *
+ * ولا مكتبةَ حركة ولا ظلٌّ يقفز ولا بطاقةٌ ترتفع: زينةٌ في كلّ بطاقةٍ تجعل
+ * شبكةً من عشرين منتجًا تهتزّ كلّما مرّ المؤشّر. والتكبيرُ داخل إطارٍ
+ * `overflow: hidden` لا يُزيح شيئًا حوله، فلا تتحرّك الصفحة تحت الإصبع.
+ */
+.w-shot {
+    overflow: hidden;
+}
+
+.w-shot img {
+    transition: transform 0.5s cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+
+@media (hover: hover) {
+    .w-card:hover .w-shot img {
+        transform: scale(1.04);
+    }
+}
+
+/* ------------------------------ الشبكات ------------------------------ */
+
+.w-grid {
+    display: grid;
+    gap: var(--w-gap);
+}
+
+/*
+ * الشبكةُ التحريرية: أوّلُ بطاقةٍ ضعفُ ما بعدها.
+ *
+ * وهي على الهاتف شبكةٌ عادية: بطاقةٌ بعرض الشاشة وضعفِ ارتفاعها تملأ
+ * الشاشةَ وحدها فلا يُرى بعدها شيء.
+ */
+@media (min-width: 760px) {
+    .w-grid-editorial > *:first-child {
+        grid-column: span 2;
+        grid-row: span 2;
+    }
+}
+
+/*
+ * الواجهةُ المشطورة: عمودان غيرُ متساويين على الحاسوب، واحدٌ على الهاتف.
+ *
+ * والتفاوتُ هو المقصود — عمودان متساويان يُقرآن جدولًا لا تركيبًا. و`flip`
+ * تقلب النسبة حين تسبق الصورةُ النصّ، فيبقى الأوسعُ للصورة في الحالين.
+ */
+.w-hero-split {
+    display: grid;
+    gap: clamp(22px, 4vw, 46px);
+    align-items: center;
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 900px) {
+    .w-hero-split {
+        grid-template-columns: 0.85fr 1.15fr;
+    }
+
+    .w-hero-split[data-flip='1'] {
+        grid-template-columns: 1.15fr 0.85fr;
+    }
+}
+
+/*
+ * التذييل المشطور: كتلةُ العلامة أوسعُ من عمود الروابط.
+ *
+ * وهو الفرق بينه وبين تذييل الأعمدة: ذاك أربعةٌ متساوية يُقرأ دليلًا، وهذا
+ * كتلةٌ تقول من أنت وإلى جانبها ما يُبحث عنه.
+ */
+.w-footer-split {
+    display: grid;
+    gap: clamp(24px, 4vw, 56px);
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 760px) {
+    .w-footer-split {
+        grid-template-columns: 1.25fr 1fr;
+    }
+}
+
+/* شريطٌ يُمرَّر بالإصبع — للتصنيفات على الهاتف */
+.w-rail {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* والحشوُ يسمح لأوّل عنصرٍ وآخرِه أن يبتعدا عن الحافّة */
+    padding-bottom: 4px;
+}
+
+.w-rail::-webkit-scrollbar {
+    display: none;
+}
+
+.w-rail > * {
+    scroll-snap-align: start;
+    flex: none;
+}
+
+/* ------------------------------ الأسئلة ------------------------------ */
 
 /* الأسئلة الشائعة `details` — بلا سطرٍ من JavaScript */
 .w-faq summary {
@@ -96,6 +314,8 @@
     content: '−';
 }
 
+/* ------------------------------ التنقّل ------------------------------ */
+
 /* قائمة الجوال تُفتح، وقائمة الحاسوب ظاهرةٌ دائمًا */
 .w-nav-desktop {
     display: none;
@@ -103,6 +323,11 @@
 
 .w-nav-toggle {
     display: inline-flex;
+}
+
+/* ما لا يُرسم إلّا على الحاسوب — شريطُ البحث في الترويسة التجارية */
+.w-desk {
+    display: none;
 }
 
 @media (min-width: 860px) {
@@ -117,7 +342,17 @@
     .w-nav-sheet {
         display: none !important;
     }
+
+    .w-desk {
+        display: flex;
+    }
+
+    .w-mob {
+        display: none !important;
+    }
 }
+
+/* ------------------------------ الحركة ------------------------------ */
 
 /* من طلب تقليل الحركة لا تُعرض عليه حركة */
 @media (prefers-reduced-motion: reduce) {

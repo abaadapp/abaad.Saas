@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslate } from '@/lib/i18n';
 import { Site } from './renderer/Site';
+import { fontHrefs } from './renderer/tokens';
 import { DEVICE_WIDTH, type Device, type SiteDocument } from './types';
 
 /**
@@ -29,9 +30,11 @@ interface Props {
     activeIndex?: number | null;
     onSelect?: (index: number) => void;
     className?: string;
+    /** سقفُ ارتفاع الإطار — لبطاقةٍ تعرض أعلى الموقع لا الموقعَ كلَّه */
+    maxHeight?: number;
 }
 
-export default function SitePreview({ doc, pageKey, device, activeIndex, onSelect, className }: Props) {
+export default function SitePreview({ doc, pageKey, device, activeIndex, onSelect, className, maxHeight }: Props) {
     const t = useTranslate();
     const frame = useRef<HTMLDivElement>(null);
     const inner = useRef<HTMLDivElement>(null);
@@ -39,6 +42,31 @@ export default function SitePreview({ doc, pageKey, device, activeIndex, onSelec
     const [height, setHeight] = useState(0);
 
     const width = DEVICE_WIDTH[device];
+
+    /*
+     * وخطُّ الموقع يُطلب هنا — وإلّا لم تكن المعاينة معاينة.
+     *
+     * الموقعُ المنشور يطلب خطَّه في غلافه (`Storefront/app/layout.tsx`)،
+     * ولوحةُ أبعاد لا تعرف خطَّ تاجرٍ بعينه. فكان التاجر يختار «أميري» ويرى
+     * موقعَه بخطّ اللوحة، فيظنّ أنّ الاختيار لم يُحفظ — أو أسوأ: ينشر وهو
+     * يظنّ أنّه رأى ما سيراه زبونه.
+     *
+     * والوسمُ يبقى بعد الخروج عمدًا: إزالتُه تُعيد الطلب عند كلّ تبديل،
+     * وملفُّ خطٍّ محفوظٌ في المتصفّح لا يُثقل شيئًا.
+     */
+    useEffect(() => {
+        if (typeof globalThis.document === 'undefined') return;
+
+        for (const href of fontHrefs(doc)) {
+            if (globalThis.document.querySelector(`link[href="${href}"]`)) continue;
+
+            const link = globalThis.document.createElement('link');
+
+            link.rel = 'stylesheet';
+            link.href = href;
+            globalThis.document.head.appendChild(link);
+        }
+    }, [doc]);
 
     /*
      * التصغير يتبع عرض الحاوية لا رقمًا ثابتًا.
@@ -63,7 +91,7 @@ export default function SitePreview({ doc, pageKey, device, activeIndex, onSelec
             const next = Math.min(1, el.clientWidth / width);
 
             setScale(next);
-            setHeight(content.scrollHeight * next);
+            setHeight(Math.min(content.scrollHeight * next, maxHeight ?? Infinity));
         };
 
         fit();
@@ -74,7 +102,7 @@ export default function SitePreview({ doc, pageKey, device, activeIndex, onSelec
         observer.observe(content);
 
         return () => observer.disconnect();
-    }, [width, doc]);
+    }, [width, doc, maxHeight]);
 
     /** إبرازُ القسم المفتوح، والمخفيُّ باهتًا — زينةُ محرّرٍ لا زينةُ موقع */
     const wrap = useMemo(

@@ -6,6 +6,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import Toggle from '@/Components/Toggle';
+import LayoutPicker, { type Family } from './LayoutPicker';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +16,8 @@ export interface FieldSpec {
     type: string;
     hint: string | null;
     advanced: boolean;
+    /** لحقول التخطيط: أيَّ شيءٍ يرسم المُنتقي — ترويسةً أم واجهةً أم شبكة */
+    family?: string | null;
     options: { value: string; label: string }[] | null;
     min: number | null;
     max: number | null;
@@ -140,6 +143,25 @@ function Row({
                         value={String(value ?? '')}
                         onChange={(e) => set(spec.key, e.target.value)}
                         options={spec.options ?? []}
+                    />
+                </Field>
+            );
+
+        /*
+         * والتخطيط يُختار بالنظر لا من قائمةٍ نصّية.
+         *
+         * «متفاوتة» و«كثيفة» أسماءٌ لا تعني شيئًا قبل أن تُرى، وصاحبُ المتجر
+         * لا يفتح قائمةً ليجرّب خمسًا واحدةً واحدة. فالرسمُ المصغَّر يقول ما
+         * يفعله الخيار قبل أن يُضغط. انظر `LayoutPicker`.
+         */
+        case 'layout':
+            return (
+                <Field label={spec.label} hint={spec.hint ?? undefined}>
+                    <LayoutPicker
+                        value={String(value ?? 'auto')}
+                        options={spec.options ?? []}
+                        family={(spec.family ?? 'grid') as Family}
+                        onChange={(v) => set(spec.key, v)}
                     />
                 </Field>
             );

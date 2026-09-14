@@ -9,6 +9,7 @@ use App\Models\WebsiteSection;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use App\Support\Website\MerchantData;
+use App\Support\Website\Preview;
 use App\Support\Website\Publisher;
 use App\Support\Website\Templates;
 use Illuminate\Http\Request;
@@ -43,14 +44,24 @@ class BuilderController extends Controller
      *
      * وبياناتُ التاجر تُعرض فيه لا تُطلب: اسمُه وشعارُه وعددُ منتجاته أمامه،
      * فيعرف أنّ النظام سيستعملها ولا يُطلب منه إدخالها من جديد.
+     *
+     * ومعه **معاينةٌ حقيقية**: الموقع كما سيُبنى، بمنتجاته وشعاره، في أربعة
+     * قوالب. ولقطةٌ لكلّ وجهة لا لكلّ قالب — البنيةُ تتبع الوجهة والرموزُ
+     * تتبع القالب، فتُبدَّل الرموزُ في الشاشة وحدها بلا طلبٍ ثانٍ.
      */
     private function wizard(): Response
     {
         $bid = $this->bid();
 
+        $previews = collect(array_keys(Blueprints::GOALS))
+            ->mapWithKeys(fn ($goal) => [
+                $goal => Preview::resolve(Builder::blueprint($bid, $goal, Templates::DEFAULT), $bid),
+            ])->all();
+
         return Inertia::render('Admin/Website/Wizard', [
             'goals' => Blueprints::goalOptions(),
             'templates' => Templates::options(),
+            'previews' => $previews,
             'identity' => MerchantData::identity($bid),
             'available' => MerchantData::available($bid),
             'counts' => [

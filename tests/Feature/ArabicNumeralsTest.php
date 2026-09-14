@@ -199,8 +199,21 @@ class ArabicNumeralsTest extends TestCase
                  * `type="color"` يرسمه المتصفّح مربّعًا يُنقر فيُفتح منتقي
                  * ألوان — لا موضعَ فيه لرقمٍ عربيّ ولا لاتينيّ. وإلزامُه
                  * بحارس الأرقام يعني لفَّه بمكوّن نصٍّ لا يناسبه.
+                 *
+                 * وحقلُ البحث ثالثُهما — لسببٍ آخر.
+                 *
+                 * الحارس يمنع أن **يُحفظ** رقمٌ عربيّ في موضعٍ لا يقرؤه:
+                 * حقلُ `number` يُفرغه المتصفّح، وحقلُ سعرٍ يُخزَّن خطأ. أمّا
+                 * صندوق البحث فلا يُحفظ منه شيء — يُطابَق به، والمطابقةُ
+                 * تُسوّي الرقم عندها (انظر `norm` في `Catalog.tsx`). فمن
+                 * كتب «باقة ٥» يجد «باقة 5».
+                 *
+                 * وصناديقُ البحث في طبقة الرسم المشتركة لا تستطيع تركيب
+                 * الحارس أصلًا: تلك الطبقة بلا تبعيّات — لا تستورد من أبعاد
+                 * شيئًا — ويحرس ذلك `RendererParityTest`. فإلزامُها به يعني
+                 * كسرَ حارسٍ لإرضاء حارس.
                  */
-                $isTyped = preg_match('/type=(["\'])(checkbox|radio|file|color)\1/', $element);
+                $isTyped = preg_match('/type=(["\'])(checkbox|radio|file|color|search)\1/', $element);
 
                 if ($isTyped || str_contains($element, 'useAsciiDigits') || str_contains($element, 'ref={attach}')
                     || str_contains($element, 'ref={searchRef}')) {

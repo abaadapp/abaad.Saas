@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
 import {
     Building2,
     Check,
     ChevronLeft,
     ChevronRight,
+    Expand,
     Image as ImageIcon,
     LayoutGrid,
+    Monitor,
     Rocket,
     ShoppingBag,
+    Smartphone,
     Sparkles,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -17,11 +20,14 @@ import Field from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { Dialog, DialogContent, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import SitePreview from './preview/SitePreview';
+import type { Device, SiteDocument, Tokens } from './preview/types';
 
 interface Goal {
     key: string;
@@ -34,13 +40,23 @@ interface Template {
     key: string;
     label: string;
     hint: string;
+    legacy: boolean;
     swatch: string[];
-    theme: Record<string, string | number>;
+    theme: Record<string, string>;
+    /** رموزُ المستند كما يقرؤها العارض — لونًا وبنية */
+    tokens: Tokens;
 }
 
 interface Props {
     goals: Goal[];
     templates: Template[];
+    /**
+     * الموقع كما سيُبنى لكلّ وجهة — بمنتجات التاجر وشعاره.
+     *
+     * ولقطةٌ لكلّ وجهة لا لكلّ قالب: البنيةُ تتبع الوجهة والرموزُ تتبع
+     * القالب، فتُبدَّل الرموزُ هنا بلا طلبٍ ثانٍ. انظر `Builder::blueprint`.
+     */
+    previews: Record<string, SiteDocument>;
     identity: {
         name: string;
         logo: string;
@@ -63,7 +79,7 @@ const GOAL_ICONS: Record<string, typeof ShoppingBag> = {
     'building-2': Building2,
 };
 
-const STEPS = ['ماذا تريد من موقعك؟', 'اختر شكلًا يعجبك', 'تأكيد بياناتك'];
+const STEPS = ['ماذا تريد من موقعك؟', 'اختر تصميم متجرك', 'تأكيد بياناتك'];
 
 /**
  * إنشاء الموقع — سؤالان وتأكيد.
@@ -76,10 +92,12 @@ const STEPS = ['ماذا تريد من موقعك؟', 'اختر شكلًا يع�
  * هنا يُعدَّل بعد أن يرى التاجر موقعه — وهو حينئذٍ يعرف ما يريد تغييره.
  */
 export default function Wizard() {
-    const { goals, templates, identity, counts, domain } = usePage<PageProps<Props>>().props;
+    const { goals, templates, previews, identity, counts, domain } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const [step, setStep] = useState(0);
+    const [zoom, setZoom] = useState<string | null>(null);
+    const [device, setDevice] = useState<Device>('desktop');
 
     const form = useForm({
         goal: '',
@@ -90,6 +108,23 @@ export default function Wizard() {
 
     const chosen = templates.find((x) => x.key === form.data.template) ?? null;
     const canNext = step === 0 ? !!form.data.goal : step === 1 ? !!form.data.template : true;
+
+    /*
+     * المعاينة مستندٌ واحد ورموزٌ متبدّلة.
+     *
+     * القالب لم يعد لونًا يُرى في ثلاث بقع — صار ترويسةً وواجهةً وشبكةً
+     * وتذييلًا. فالشاشةُ تعرض الموقعَ نفسَه أربع مرّات برموزٍ أربعة، وهو
+     * الفرق بين «اختر لونًا» و«اختر تصميمًا».
+     */
+    const base = previews[form.data.goal] ?? previews.store;
+
+    const docs = useMemo(
+        () =>
+            Object.fromEntries(
+                templates.map((x) => [x.key, { ...base, theme: x.theme, tokens: x.tokens } satisfies SiteDocument]),
+            ),
+        [base, templates],
+    );
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -172,51 +207,138 @@ export default function Wizard() {
 
                 {/* ===== ٢ · القالب ===== */}
                 {step === 1 && (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {templates.map((x) => {
-                            const on = form.data.template === x.key;
+                    <>
+                        <p className="mb-5 text-[13.5px] leading-7 text-[#6b7280]">
+                            {t('هذه معاينةٌ حقيقية لموقعك ببياناتك ومنتجاتك. ابدأ بتصميمٍ جاهز — ويمكنك تعديل كلّ شيء بعده.')}
+                        </p>
 
-                            return (
-                                <button
-                                    key={x.key}
-                                    type="button"
-                                    onClick={() => form.setData('template', x.key)}
-                                    className={cn(
-                                        'overflow-hidden rounded-[14px] border text-start transition-all',
-                                        on
-                                            ? 'border-[#111] ring-1 ring-[#111]'
-                                            : 'border-[var(--ui-border,#e8e8e8)] hover:border-[#c9c9c9]',
-                                    )}
-                                >
-                                    {/*
-                                        لوحةُ ألوانه لا صورةُ معاينة: الصورة تكذب
-                                        بعد أوّل تعديل، واللوحة هي القالب نفسه.
-                                    */}
-                                    <span
-                                        className="flex h-24 items-center justify-center gap-3"
-                                        style={{ background: x.swatch[1] }}
+                        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                            {templates.map((x) => {
+                                const on = form.data.template === x.key;
+
+                                return (
+                                    <Card
+                                        key={x.key}
+                                        className={cn(
+                                            'overflow-hidden p-0 transition-all',
+                                            on ? 'border-[#111] ring-1 ring-[#111]' : 'border-[var(--ui-border,#e8e8e8)]',
+                                        )}
                                     >
-                                        <span
-                                            className="h-8 w-20 rounded-md"
-                                            style={{ background: x.swatch[0] }}
-                                            aria-hidden
-                                        />
-                                        <span className="flex flex-col gap-1.5" aria-hidden>
-                                            <span className="block h-1.5 w-16 rounded-full" style={{ background: x.swatch[2], opacity: 0.85 }} />
-                                            <span className="block h-1.5 w-10 rounded-full" style={{ background: x.swatch[2], opacity: 0.4 }} />
-                                        </span>
-                                    </span>
-                                    <span className="block p-4">
-                                        <span className="flex items-center gap-2">
-                                            <h3 className="font-bold text-[#111]">{x.label}</h3>
-                                            {on && <Badge variant="success">{t('مختار')}</Badge>}
-                                        </span>
-                                        <p className="mt-1 text-[13px] leading-6 text-[#6b7280]">{x.hint}</p>
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
+                                        <div className="flex items-start gap-3 p-4">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="font-bold text-[#111]">{x.label}</h3>
+                                                    {on && <Badge variant="success">{t('مختار')}</Badge>}
+                                                </div>
+                                                <p className="mt-1 text-[12.5px] leading-6 text-[#6b7280]">{x.hint}</p>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setZoom(x.key)}
+                                                className="flex shrink-0 items-center gap-1.5 rounded-[9px] border border-[var(--ui-border,#e8e8e8)] px-2.5 py-2 text-[12px] font-semibold text-[#6b7280] transition-colors hover:border-[#c9c9c9] hover:text-[#111]"
+                                            >
+                                                <Expand className="size-3.5" />
+                                                {t('معاينة')}
+                                            </button>
+                                        </div>
+
+                                        {/*
+                                            والمعاينة تُقصّ ولا تُصغَّر إلى لا شيء: تُرسم
+                                            بعرض حاسوبٍ كامل ثمّ تُصغَّر بعرض البطاقة،
+                                            فيُرى التركيبُ كلُّه — ترويسةٌ وواجهةٌ وشبكة —
+                                            ويُقرأ الفرقُ بين قالبٍ وقالب بالنظر لا بالاسم.
+                                        */}
+                                        <button
+                                            type="button"
+                                            onClick={() => form.setData('template', x.key)}
+                                            aria-pressed={on}
+                                            aria-label={`${t('استخدم تصميم')} ${x.label}`}
+                                            className="relative block w-full cursor-pointer border-t border-[var(--ui-border,#e8e8e8)] bg-[#f5f5f5] text-start"
+                                        >
+                                            <SitePreview doc={docs[x.key]} device="desktop" maxHeight={340} />
+                                            <span
+                                                aria-hidden
+                                                className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white/95 to-transparent"
+                                            />
+                                        </button>
+
+                                        <div className="border-t border-[var(--ui-border,#e8e8e8)] p-3">
+                                            <Button
+                                                type="button"
+                                                variant={on ? 'primary' : 'outline'}
+                                                className="w-full"
+                                                onClick={() => form.setData('template', x.key)}
+                                            >
+                                                {on ? <Check /> : null}
+                                                {t(on ? 'هذا تصميمي' : 'استخدم هذا التصميم')}
+                                            </Button>
+                                        </div>
+                                    </Card>
+                                );
+                            })}
+                        </div>
+
+                        {/* ومعاينةٌ أكبر لمن أراد أن يقرأ لا أن يقارن */}
+                        <Dialog open={zoom !== null} onOpenChange={(open) => !open && setZoom(null)}>
+                            <DialogContent className="max-w-[min(1180px,95vw)] p-0">
+                                {zoom && (
+                                    <>
+                                        <div className="flex items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] p-4">
+                                            <DialogTitle>
+                                                {templates.find((x) => x.key === zoom)?.label}
+                                            </DialogTitle>
+
+                                            <div className="ms-auto flex items-center gap-1">
+                                                {([
+                                                    ['desktop', Monitor, 'كمبيوتر'],
+                                                    ['mobile', Smartphone, 'جوال'],
+                                                ] as const).map(([key, Icon, label]) => (
+                                                    <button
+                                                        key={key}
+                                                        type="button"
+                                                        aria-label={t(label)}
+                                                        aria-pressed={device === key}
+                                                        onClick={() => setDevice(key)}
+                                                        className={cn(
+                                                            'rounded-[8px] p-2 transition-colors',
+                                                            device === key
+                                                                ? 'bg-[#111] text-white'
+                                                                : 'text-[#9ca3af] hover:text-[#111]',
+                                                        )}
+                                                    >
+                                                        <Icon className="size-4" />
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            <Button
+                                                type="button"
+                                                className="ms-2"
+                                                onClick={() => {
+                                                    form.setData('template', zoom);
+                                                    setZoom(null);
+                                                }}
+                                            >
+                                                {t('استخدم هذا التصميم')}
+                                            </Button>
+                                        </div>
+
+                                        <div className="max-h-[70dvh] overflow-y-auto bg-[#f5f5f5] p-4">
+                                            <SitePreview
+                                                doc={docs[zoom]}
+                                                device={device}
+                                                className={cn(
+                                                    'mx-auto border border-[var(--ui-border,#e8e8e8)] bg-white',
+                                                    device === 'mobile' ? 'max-w-[390px] rounded-[20px]' : 'rounded-[10px]',
+                                                )}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                            </DialogContent>
+                        </Dialog>
+                    </>
                 )}
 
                 {/* ===== ٣ · بياناتك ===== */}

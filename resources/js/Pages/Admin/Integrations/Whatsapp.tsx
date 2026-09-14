@@ -1,5 +1,5 @@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
-import { Gauge, Save, Smartphone, SlidersHorizontal } from 'lucide-react';
+import { Gauge, Save, ScrollText, Smartphone, SlidersHorizontal } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field from '@/Components/Field';
@@ -109,7 +109,18 @@ export default function IntegrationsWhatsapp() {
             <PageHeader
                 title="واتساب بزنس"
                 subtitle={t('الوصلة ووضعُ الإرسال — وأيُّ رسالةٍ تخرج قرارٌ في «إشعارات واتساب»')}
-                actions={<StatusPill state={readinessState(automation.readiness)} connected />}
+                actions={
+                    <>
+                        <StatusPill state={readinessState(automation.readiness)} connected />
+                        {/* والحصّةُ تقول «كم خرج»؛ والدفترُ يقول «ماذا جرى لها» — وهما سؤالان */}
+                        <Button asChild variant="outline">
+                            <Link href={route('admin.marketing.whatsapp.log')}>
+                                <ScrollText />
+                                {t('سجلّ الرسائل')}
+                            </Link>
+                        </Button>
+                    </>
+                }
             />
 
             <SettingsPage>

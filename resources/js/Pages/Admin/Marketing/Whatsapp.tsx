@@ -1,5 +1,5 @@
 import { Link, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, MessageCircle, Save } from 'lucide-react';
+import { AlertTriangle, MessageCircle, Save, ScrollText } from 'lucide-react';
 import { WhatsAppBusinessMark } from '@/Components/BrandMarks';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -90,6 +90,16 @@ export default function Whatsapp() {
                 actions={
                     <>
                         <StatusPill state={readinessState(automation.readiness)} connected />
+                        {/*
+                            ومقابضُ «متى تُرسَل» بلا بابٍ إلى «وماذا جرى» تترك
+                            التاجر يُشعل ويُطفئ ولا يرى أثرَ ذلك في شيء.
+                        */}
+                        <Button asChild variant="outline">
+                            <Link href={route('admin.marketing.whatsapp.log')}>
+                                <ScrollText />
+                                {t('سجلّ الرسائل')}
+                            </Link>
+                        </Button>
                         <Button asChild variant="outline">
                             <Link href={route('admin.integrations.whatsapp')}>
                                 <MessageCircle />

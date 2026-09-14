@@ -1016,6 +1016,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/marketing/coupons', [MarketingController::class, 'coupons'])->name('marketing.coupons');
     Route::get('/marketing/whatsapp', [MarketingController::class, 'whatsapp'])->name('marketing.whatsapp');
     Route::post('/marketing/whatsapp', [MarketingController::class, 'saveWhatsapp'])->name('marketing.whatsapp.save');
+    /*
+     * سجلُّ ما خرج فعلًا — الجدولُ الذي لم تكن تفتحه شاشة.
+     *
+     * وهو قراءةٌ محضة: لا إعادةَ إرسالٍ ولا حذف. وصفوفُه صفوفُ المتجر وحدَه،
+     * ومعرّفُه يُقرأ من الجلسة في المتحكّم لا من العنوان.
+     */
+    Route::get('/marketing/whatsapp/log', [App\Http\Controllers\Admin\WhatsAppController::class, 'log'])->name('marketing.whatsapp.log');
 
     Route::post('/coupons', [CouponController::class, 'store'])->name('coupons.store');
     Route::post('/coupons/{id}/toggle', [CouponController::class, 'toggle'])->name('coupons.toggle');

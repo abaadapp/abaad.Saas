@@ -7,14 +7,20 @@ use App\Models\Business;
 use App\Models\WhatsAppConnection;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Pagination;
+use App\Support\Search;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppFeature;
+use App\Support\WhatsAppLog;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppQuota;
+use App\Support\WhatsAppStatus;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
 
 /**
  * ما يملكه صاحب المحلّ — ولا شيء غيره.
@@ -72,6 +78,51 @@ class WhatsAppController extends Controller
                 WhatsAppEvent::ALL,
             ),
         ];
+    }
+
+    /**
+     * سجلُّ رسائل المحلّ — الجدولُ الذي لم تكن تفتحه شاشة.
+     *
+     * ═══ ولمَ هو شاشةٌ لا سطرٌ في شاشةِ الربط ═══
+     *
+     * شاشةُ الربط تُفتح مرّةً ثمّ لا تُفتح، وهذا يُفتح يومَ يسأل زبونٌ «لم
+     * تصلني رسالة». وجمعُهما يعني أن يمرّ من يبحث عن رسالةٍ واحدة على رمز
+     * تفعيلٍ من ميتا لا شأن له به.
+     *
+     * ومعرّفُ المتجر من الجلسة لا من الطلب: لو قُرئ ممّا يصل لَقرأ تاجرٌ
+     * دفترَ متجرٍ آخر بتبديل رقمٍ في العنوان — وفيه أرقامُ زبائنه.
+     */
+    public function log(Request $request): Response
+    {
+        $business = $this->business();
+
+        /*
+         * والمرشِّحُ يُقاس بقائمة الحِزَم لا يُصدَّق كما وصل.
+         *
+         * `?filter=<script>` لا يصل إلى استعلام، و`?filter=nonsense` لا
+         * يُرجع صفحةً فارغةً تُقرأ «لا رسائل لك» — يُعاد إلى «الكلّ».
+         */
+        $filter = (string) $request->query('filter', 'all');
+
+        if (! array_key_exists($filter, WhatsAppStatus::BUCKETS)) {
+            $filter = 'all';
+        }
+
+        /* و`%` تُنزع من نصّ البحث: من كتبها وحدها رأى كلَّ شيءٍ — انظر `Search::term` */
+        $q = Search::term($request);
+
+        $page = WhatsAppLog::page($business->id, $filter === 'all' ? null : $filter, $q);
+
+        return Inertia::render('Admin/Marketing/WhatsappLog', [
+            /* حالُ الربط أوّلًا: دفترٌ فارغٌ لمن لم يربط ليس عطبًا، وقولُه يمنع البحث عن عطب */
+            'readiness' => WhatsAppFeature::readiness($business),
+            'rows' => $page->items(),
+            'pagination' => Pagination::meta($page),
+            'summary' => WhatsAppLog::summary($business->id),
+            'summaryDays' => WhatsAppLog::SUMMARY_DAYS,
+            'buckets' => WhatsAppLog::filters(),
+            'params' => ['filter' => $filter, 'q' => $q],
+        ]);
     }
 
     /**

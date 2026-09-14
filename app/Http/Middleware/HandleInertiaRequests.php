@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\CrmWhatsApp;
 use App\Support\Demo;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
@@ -202,6 +203,20 @@ class HandleInertiaRequests extends Middleware
                 ? ($user->isSuperAdmin()
                     ? Support::platformBadge($user)
                     : Support::businessBadge($user))
+                : 0,
+
+            /*
+             * وشارةُ المبيعات — أخو شارة الدعم لا هي.
+             *
+             * تاجرٌ يكتب إلينا كان يُضيء الشريط، وعميلٌ محتمَلٌ يكتب إلى
+             * الرقم نفسِه لا يُضيء شيئًا: تُكتب رسالتُه وتنتظر حتّى يفتح
+             * أحدُهم الشاشةَ بالصدفة. ومن جاء ليشتري وانتظر يومًا يذهب
+             * إلى غيرنا.
+             *
+             * ولمدير المنصّة وحدَه: لا تاجرَ يقرأ دفترَ مبيعاتنا.
+             */
+            'crmBadge' => fn () => $user && $user->isSuperAdmin()
+                ? CrmWhatsApp::badge($user)
                 : 0,
 
             // رسائل الجلسة — الواجهة تعرضها كـtoast

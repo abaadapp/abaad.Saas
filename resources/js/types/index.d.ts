@@ -130,6 +130,8 @@ export interface SharedProps {
     } | null;
     /** عددُ محادثات الدعم التي تنتظر هذا المستخدم — محسوبٌ في كلّ طلب */
     supportBadge: number;
+    /** وعددُ محادثات المبيعات التي تنتظر ردًّا — لمدير المنصّة وحدَه */
+    crmBadge: number;
     flash: {
         toast: Toast | null;
         status: string | null;

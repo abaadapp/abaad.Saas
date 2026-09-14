@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\CrmLead;
 use App\Models\CrmMessage;
+use App\Models\CrmRead;
 use App\Models\CrmStageEvent;
 use App\Models\Setting;
 use App\Models\User;
@@ -106,6 +107,101 @@ final class CrmWhatsApp
     public static function connected(): bool
     {
         return self::line() !== null;
+    }
+
+    /* ═══════════════════ ما لم يُقرأ ═══════════════════ */
+
+    /**
+     * كم رسالةَ عميلٍ لم يقرأها هذا الموظّف في هذه المحادثة.
+     *
+     * والوارد وحدَه يُعدّ: ردُّنا نحن ليس شيئًا يُقرأ، وعدُّه يُبقي الشارةَ
+     * مضيئةً بعد أن يردّ الموظّف بنفسه.
+     */
+    public static function unreadFor(CrmLead $lead, User $user): int
+    {
+        $since = (int) CrmRead::where('lead_id', $lead->id)
+            ->where('user_id', $user->id)->value('last_read_message_id');
+
+        return CrmMessage::where('lead_id', $lead->id)
+            ->where('id', '>', $since)
+            ->where('direction', CrmMessage::IN)
+            ->count();
+    }
+
+    /**
+     * ما لم يُقرأ لكلّ محادثةٍ في الصفحة — باستعلامٍ واحد.
+     *
+     * ولا `unreadFor` في حلقة: عشرون صفًّا تعني أربعين استعلامًا في كلّ
+     * فتحةِ شاشة.
+     *
+     * @param  list<int>  $leadIds
+     * @return array<int, int>
+     */
+    public static function unreadMap(array $leadIds, User $user): array
+    {
+        if ($leadIds === []) {
+            return [];
+        }
+
+        $read = CrmRead::whereIn('lead_id', $leadIds)
+            ->where('user_id', $user->id)
+            ->pluck('last_read_message_id', 'lead_id');
+
+        $rows = CrmMessage::whereIn('lead_id', $leadIds)
+            ->where('direction', CrmMessage::IN)
+            ->selectRaw('lead_id, id')
+            ->get();
+
+        $out = array_fill_keys($leadIds, 0);
+
+        foreach ($rows as $row) {
+            if ($row->id > (int) ($read[$row->lead_id] ?? 0)) {
+                $out[$row->lead_id]++;
+            }
+        }
+
+        return $out;
+    }
+
+    /** يُعلَّم المقروءُ عند فتح المحادثة — لهذا القارئ وحدَه */
+    public static function markRead(CrmLead $lead, User $user): void
+    {
+        $last = (int) CrmMessage::where('lead_id', $lead->id)->max('id');
+
+        CrmRead::updateOrCreate(
+            ['lead_id' => $lead->id, 'user_id' => $user->id],
+            ['last_read_message_id' => $last],
+        );
+    }
+
+    /**
+     * شارةُ الشريط الجانبيّ — كم محادثةً تنتظر ردَّ هذا الموظّف.
+     *
+     * ═══ ولمَ عددُ المحادثات لا عددُ الرسائل ═══
+     *
+     * عميلٌ كتب ثلاثةَ أسطرٍ في دقيقة ليس ثلاثةَ أشياء تنتظر — هو واحد.
+     * ورقمٌ يقفز إلى «٢٣» لأنّ ثلاثةً أسهبوا يُقرأ ضجيجًا فيُهمَل.
+     *
+     * والمنتهون لا يُعدّون: من رُبح أو خُسر أُغلق بابُه، ورسالةٌ متأخّرةٌ
+     * منه لا تُعيد فتحَ الشارة على من لا يُنتظر منه قرار.
+     */
+    public static function badge(User $user): int
+    {
+        if (! $user->isSuperAdmin()) {
+            return 0;
+        }
+
+        return CrmLead::where('status', Crm::ACTIVE)
+            ->whereExists(fn ($q) => $q->selectRaw(1)
+                ->from('crm_messages')
+                ->whereColumn('crm_messages.lead_id', 'crm_leads.id')
+                ->where('crm_messages.direction', CrmMessage::IN)
+                ->whereRaw(
+                    'crm_messages.id > coalesce((select last_read_message_id from crm_reads
+                        where crm_reads.lead_id = crm_leads.id and crm_reads.user_id = ?), 0)',
+                    [$user->id],
+                ))
+            ->count();
     }
 
     /* ═══════════════════ الوارد ═══════════════════ */

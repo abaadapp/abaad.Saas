@@ -38,6 +38,8 @@ interface Row {
     preview: string;
     at: string | null;
     windowOpen: boolean;
+    /** كم رسالةَ عميلٍ لم يقرأها هذا الموظّف — صفرٌ لا يُرسم */
+    unread: number;
 }
 
 interface Message {
@@ -276,10 +278,35 @@ export default function CrmConversations() {
                                         )}
                                     >
                                         <div className="flex items-center justify-between gap-2">
-                                            <span className="truncate text-[13px] font-medium text-[#111]">{c.name}</span>
-                                            <span className="shrink-0 text-[11px] text-[#9ca3af]">{c.at}</span>
+                                            <span
+                                                className={cn(
+                                                    'truncate text-[13px] text-[#111]',
+                                                    c.unread > 0 ? 'font-bold' : 'font-medium',
+                                                )}
+                                            >
+                                                {c.name}
+                                            </span>
+                                            <div className="flex shrink-0 items-center gap-1.5">
+                                                {/*
+                                                    وصفرٌ لا يُرسم: شارةٌ بصفرٍ تشغل موضعَ شارةٍ
+                                                    تعني شيئًا، فتُدرَّب العينُ على تجاهل الموضع.
+                                                */}
+                                                {c.unread > 0 && (
+                                                    <span className="flex min-w-[18px] items-center justify-center rounded-full bg-[#dc2626] px-1 text-[10px] font-bold tabular-nums text-white">
+                                                        {c.unread}
+                                                    </span>
+                                                )}
+                                                <span className="text-[11px] text-[#9ca3af]">{c.at}</span>
+                                            </div>
                                         </div>
-                                        <p className="mt-0.5 truncate text-[12px] text-[#6b7280]">{c.preview}</p>
+                                        <p
+                                            className={cn(
+                                                'mt-0.5 truncate text-[12px]',
+                                                c.unread > 0 ? 'text-[#111]' : 'text-[#6b7280]',
+                                            )}
+                                        >
+                                            {c.preview}
+                                        </p>
                                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                                             <span className={cn('rounded-full px-2 py-0.5 text-[11px]', TONE[c.stageTone] ?? TONE.gray)}>
                                                 {c.stageLabel}

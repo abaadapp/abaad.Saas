@@ -73,7 +73,7 @@ export interface NavItem {
      * في القائمة يقول الشيءَ نفسه أبدًا. فالحقلُ يقول «لهذا العنصر شارة»
      * والقيمةُ تأتي من الخادم في كلّ طلب.
      */
-    badge?: 'support';
+    badge?: 'support' | 'crm';
     /**
      * قائمةٌ منسدلة تحت العنصر — لا وجهةَ له هو.
      *
@@ -344,7 +344,8 @@ export const PLATFORM_NAV: NavGroup[] = [
              * «الدعم»، وهذا تحت CRM. ومن يخلط بينهما يقرأ خيطَ تاجرٍ في
              * دفتر البيع أو العكس.
              */
-            { label: 'المحادثات', icon: MessagesSquare, route: 'super-admin.crm.conversations' },
+            /* وشارةٌ عليها: من كتب إلينا يُرى ولا يُعثر عليه بالصدفة */
+            { label: 'المحادثات', icon: MessagesSquare, route: 'super-admin.crm.conversations', badge: 'crm' },
             { label: 'مسار البيع', icon: GitBranch, route: 'super-admin.crm.pipeline' },
             { label: 'المهام والمتابعات', icon: ClipboardList, route: 'super-admin.crm.tasks' },
             { label: 'تقارير CRM', icon: BarChart3, route: 'super-admin.crm.reports' },

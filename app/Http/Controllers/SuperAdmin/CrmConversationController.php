@@ -70,11 +70,26 @@ class CrmConversationController extends Controller
 
         $rows = collect($leads->items());
         $digest = $this->digest($rows->pluck('id')->all());
+        /* وما لم يُقرأ لكلّ صفّ — باستعلامٍ واحد لا استعلامٍ لكلّ سطر */
+        $unread = CrmWhatsApp::unreadMap($rows->pluck('id')->all(), $request->user());
 
         $selected = $request->query('lead');
         $open = $selected
             ? CrmLead::with(['assignee:id,name', 'plan:id,name', 'business:id,name'])->find($selected)
             : null;
+
+        /*
+         * وما فُتح صار مقروءًا — لهذا القارئ وحدَه.
+         *
+         * وبلا هذا السطر تبقى الشارةُ مضيئةً بعد أن يُقرأ ويُردّ، فتُقرأ
+         * ضجيجًا ثمّ تُهمَل — وشارةٌ لا تُطفأ تصير جزءًا من الأثاث.
+         *
+         * ولكلِّ موظّفٍ صفُّه: فتحُ زميلٍ للمحادثة لا يُطفئ الشارةَ عن
+         * الجميع، فتُنسى الرسالةُ لأنّ أحدَهم مرّ عليها ولم يردّ.
+         */
+        if ($open !== null) {
+            CrmWhatsApp::markRead($open, $request->user());
+        }
 
         return Inertia::render('Platform/Crm/Conversations', [
             'conversations' => $rows->map(fn (CrmLead $l) => [
@@ -90,6 +105,8 @@ class CrmConversationController extends Controller
                 'at' => optional($l->last_contact_at)->format('Y-m-d H:i'),
                 /* ونافذةُ ميتا تُقرأ في القائمة: من ضاق وقتُه يُردّ عليه أوّلًا */
                 'windowOpen' => CrmWhatsApp::windowOpen($l),
+                /* وكم ينتظر منه ردًّا — لهذا القارئ وحدَه */
+                'unread' => $unread[$l->id] ?? 0,
             ])->all(),
             'pagination' => Pagination::meta($leads),
             'filters' => $filters,

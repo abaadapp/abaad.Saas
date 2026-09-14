@@ -84,6 +84,7 @@ class CrmStaysOutOfTenantDataTest extends TestCase
             base_path('app/Support/CrmWhatsApp.php'),
             base_path('app/Http/Controllers/SuperAdmin/CrmConversationController.php'),
             base_path('app/Models/CrmMessage.php'),
+            base_path('app/Models/CrmRead.php'),
             /*
              * والمساعدُ الذكيّ ومعرفتُه وإشاراتُه.
              *

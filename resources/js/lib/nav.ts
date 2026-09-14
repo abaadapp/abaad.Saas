@@ -23,6 +23,7 @@ import {
     Layers,
     LifeBuoy,
     LayoutDashboard,
+    ScrollText,
     Search,
     Megaphone,
     MessageCircle,
@@ -198,6 +199,13 @@ export const NAV: NavGroup[] = [
                     { label: 'الظهور في البحث', icon: Search, route: 'admin.marketing.seo', section: 'marketing' },
                     { label: 'الكوبونات والعروض', icon: TicketPercent, route: 'admin.marketing.coupons', section: 'marketing' },
                     { label: 'إشعارات واتساب', icon: MessageCircle, route: 'admin.marketing.whatsapp', section: 'marketing', feature: 'whatsapp' },
+                    /*
+                        وسجلُّ ما خرج فعلًا بابٌ في القائمة لا زرٌّ في شاشةٍ أخرى.
+
+                        من يسأل «لماذا لم تصل رسالةُ زبوني؟» لا يبدأ من شاشة
+                        المقابض ليجد زرًّا فيها — يفتح القائمة ويبحث عن سجلّ.
+                    */
+                    { label: 'سجلّ رسائل واتساب', icon: ScrollText, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp' },
                 ],
             },
         ],

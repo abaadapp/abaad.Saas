@@ -67,6 +67,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
+    {{--
+        وسمُ Google Analytics — إن ربطه صاحبُ المتجر.
+
+        ويخرج هنا لا من اللقطة المنشورة: اللقطة تُجمَّد يوم النشر، ومعرّفٌ
+        يُلصق بعدها لا يصل صفحةً حتى يُعاد النشر — فيُطالَب التاجر بنشرةٍ لا
+        شأنَ لها بما بدّله. انظر `Seo::tagFor`.
+    --}}
+    @if (! empty($analytics))
+        {!! $analytics !!}
+    @endif
+
     @vite(['resources/js/site.tsx'])
 </head>
 <body>

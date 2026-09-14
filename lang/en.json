@@ -5653,5 +5653,13 @@
     "هذا الطلب من فرع «:branch» — يُقرأ من هنا، ولا يُتصرَّف فيه إلا من فرعه.": "This order belongs to the :branch branch — you can read it here, but it is managed from its own branch.",
     "انتقل إلى :branch": "Switch to :branch",
     "تفتح ما لا تفتحه": "opens what you cannot",
-    "لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.": "You do not hold this permission — and you cannot grant what you do not hold."
+    "لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.": "You do not hold this permission — and you cannot grant what you do not hold.",
+    "الوسم :id يُركّب في صفحتك تلقائيًّا — ورأيتُه فيها.": "The :id tag is installed on your page automatically — and I found it there.",
+    "الوسم يخرج في صفحتك من تلقائه — اضغط «افحص الآن» ليُقرأ من جديد.": "The tag goes out on your page by itself — press “Check now” to read it again.",
+    "افتح «الموقع الإلكتروني ‹ الظهور في البحث» وارفع «اسمح لمحرّكات البحث»، ثمّ انشر.": "Open Website ‹ Search visibility, switch on “Allow search engines”, then publish.",
+    "اكتبه في «الموقع الإلكتروني ‹ الظهور في البحث» — هو السطر الأزرق في نتيجة البحث.": "Write it in Website ‹ Search visibility — it is the blue line in the search result.",
+    "اختصره من «الموقع الإلكتروني ‹ الظهور في البحث» إلى نحو ٦٠ حرفًا — Google تقطع ما زاد.": "Shorten it in Website ‹ Search visibility to about 60 characters — Google cuts the rest.",
+    "اكتبه في «الموقع الإلكتروني ‹ الظهور في البحث» في ١٢٠–١٦٠ حرفًا — هو السطر الرمادي تحت العنوان.": "Write it in Website ‹ Search visibility in 120–160 characters — it is the grey line under the title.",
+    "اختصره من «الموقع الإلكتروني ‹ الظهور في البحث» إلى نحو ١٦٠ حرفًا.": "Shorten it in Website ‹ Search visibility to about 160 characters.",
+    "من «المشرف ← تدفّقات البيانات» في Google Analytics — يبدأ بـG-. والوسم يُركَّب في صفحات موقعك تلقائيًّا.": "From Admin → Data streams in Google Analytics — it starts with G-. The tag is installed on your site pages automatically."
 }

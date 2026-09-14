@@ -25,7 +25,8 @@ import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface Link_ {
-    domain: string;
+    /** أنخدم صفحته نحن؟ — فالوسمُ يُركَّب فيها، ولا يُطلب منه لصقُ شيء */
+    hosted: boolean;
     site_url: string | null;
     measurement_id: string | null;
     snippet: string | null;
@@ -173,7 +174,16 @@ export default function MarketingSeo() {
                     <form onSubmit={submit}>
                         <SettingsSection
                             title="معرّف القياس"
-                            description="من «المشرف ← تدفّقات البيانات» في Google Analytics — يبدأ بـG-"
+                            /*
+                                ومن كان موقعُه عندنا يُقال له أين يذهب الوسم.
+                                بلا ذلك يحفظ المعرّف ثمّ يبحث عن بطاقة «ما
+                                تلصقه» فلا يجدها — فيظنّ أنّ الربط لم يتمّ.
+                            */
+                            description={
+                                link.hosted
+                                    ? 'من «المشرف ← تدفّقات البيانات» في Google Analytics — يبدأ بـG-. والوسم يُركَّب في صفحات موقعك تلقائيًّا.'
+                                    : 'من «المشرف ← تدفّقات البيانات» في Google Analytics — يبدأ بـG-'
+                            }
                             icon={BarChart3}
                             status={<StatusPill state={state} connected />}
                         >

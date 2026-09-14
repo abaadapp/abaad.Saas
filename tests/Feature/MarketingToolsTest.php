@@ -8,6 +8,7 @@ use App\Models\Review;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\MarketingSettings;
+use App\Support\WhatsAppEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -177,8 +178,19 @@ class MarketingToolsTest extends TestCase
 
         $saved = MarketingSettings::group($this->bid(), 'whatsapp');
 
-        $this->assertSame(['wa_on_order', 'wa_on_ready', 'wa_on_out_for_delivery', 'wa_on_delivered'], array_keys($saved));
-        $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => 'wa_number']);
+        /*
+         * والقائمةُ تُشتقّ من الأحداث لا تُكتب هنا بيد.
+         *
+         * كانت أربعةَ أسماءٍ مكتوبة، فلمّا أُضيف حدثان صار الحارسُ يسقط على
+         * إصلاحٍ صحيح: يقول «عاد مفتاحٌ ميّت» عن مفتاحٍ يقرؤه المُرسِل. وحارسٌ
+         * يسقط على الصواب يُحذف بعد مرّتين أو ثلاث — فيسقط معه ما كان يحرس.
+         */
+        $this->assertSame(array_values(WhatsAppEvent::SETTING_KEYS), array_keys($saved));
+
+        // والميّتُ يبقى ميّتًا: لا رقمَ ولا نصَّ رسالةٍ ولا مفتاحَ تفعيلٍ ثانٍ
+        foreach (['wa_number', 'wa_enabled', 'wa_template_order'] as $dead) {
+            $this->assertDatabaseMissing('settings', ['business_id' => $this->bid(), 'key' => $dead]);
+        }
     }
 
     public function test_saving_one_group_does_not_touch_another(): void

@@ -13,7 +13,6 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\Loyalty;
 use App\Support\MarketingSettings;
-use App\Support\WhatsAppEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -98,23 +97,15 @@ class MarketingKeepsItsPromisesTest extends TestCase
         );
     }
 
-    public function test_every_whatsapp_setting_still_offered_is_one_the_sender_reads(): void
-    {
-        $read = array_values(WhatsAppEvent::SETTING_KEYS);
-
-        foreach (array_keys(MarketingSettings::GROUPS['whatsapp']) as $key) {
-            $this->assertContains($key, $read, "«{$key}» يُحفظ ولا يقرؤه مُرسِل الرسائل");
-        }
-    }
-
-    public function test_turning_an_event_off_is_a_decision_the_sender_obeys(): void
-    {
-        $this->actingAs($this->owner)->post(route('admin.marketing.whatsapp.save'), [
-            'wa_on_ready' => false,
-        ])->assertRedirect();
-
-        $this->assertSame('0', MarketingSettings::group($this->business->id, 'whatsapp')['wa_on_ready']);
-    }
+    /*
+     * وتطابقُ القائمتين — المقابضُ المعروضة وما يقرؤه المُرسِل — يُقاس في
+     * `EveryMarketingLeverReachesItsReaderTest`، وفي **الاتّجاهين** معًا.
+     *
+     * وكان هنا فحصٌ باتّجاهٍ واحد: «كلُّ مفتاحٍ معروضٍ يقرؤه المُرسِل». وهو
+     * صادقٌ ولا يرى العطب — النقصُ كان في الاتّجاه الآخر: حدثان يقرؤهما
+     * المُرسِل ولا مفتاحَ لهما يُعرض. ونُقل مع أخيه إلى موضعٍ واحد: فحصان
+     * لسؤالٍ واحد في ملفّين يفترقان يوم يُبدَّل أحدهما.
+     */
 
     /* ==================== الكوبون: كودٌ واحد لا كودان ==================== */
 

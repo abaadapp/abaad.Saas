@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use App\Support\Seo;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
 use App\Support\Website\Published;
@@ -66,7 +67,10 @@ class StorefrontController extends Controller
         abort_if(! Storefront::published($business), 404);
 
         return response()
-            ->view('store.show', Storefront::page($business))
+            ->view('store.show', Storefront::page($business) + [
+                // والوسمُ نفسُه في صفحة المتجر البسيطة — الطريقان عنوانٌ واحد
+                'analytics' => Seo::tagFor((int) $business->id),
+            ])
             /*
              * ولا تُخزَّن في وسيطٍ مشترك.
              *
@@ -179,6 +183,15 @@ class StorefrontController extends Controller
                     Storefront::canonical($business->site_slug, (int) $business->id),
                     $page,
                 ),
+                /*
+                 * ووسمُ القياس يخرج من هنا — لا يُطلب من التاجر لصقُه.
+                 *
+                 * صفحتُه صفحتُنا: `<head>` نكتبه، فلا بابَ له إليه. وكانت
+                 * شاشةُ «الظهور في البحث» تحفظ معرّفه وتعطيه وسمًا يلصقه في
+                 * موقعٍ لا يملكه — فلا يخرج الوسمُ في صفحةٍ واحدة قطّ،
+                 * وينتظر أرقامًا لا تأتي. انظر `Seo::hostedUrl`.
+                 */
+                'analytics' => Seo::tagFor((int) $business->id),
             ])
             ->header('Cache-Control', 'public, max-age=120');
     }

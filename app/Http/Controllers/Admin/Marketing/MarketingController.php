@@ -16,6 +16,7 @@ use App\Support\MarketingSettings;
 use App\Support\Seo;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
+use App\Support\WhatsAppEvent;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -428,18 +429,25 @@ class MarketingController extends Controller
     public function saveWhatsapp(Request $request)
     {
         /*
-         * أربعةُ مقابضَ وحدها — انظر MarketingSettings::GROUPS.
+         * مقابضُ الأحداث وحدها — ولا رقمَ ولا نصَّ رسالةٍ ولا مفتاحَ تفعيلٍ
+         * ثانٍ: كانت تُقبل وتُحفظ ولا يقرؤها مُرسِل الرسائل. والتفعيل من
+         * بطاقة الوصلة، والرقم رقمُها، والنصّ قالبٌ معتمَدٌ عند ميتا.
          *
-         * ولا رقمَ ولا نصَّ رسالةٍ ولا مفتاحَ تفعيلٍ ثانٍ: كانت تُقبل وتُحفظ
-         * ولا يقرؤها مُرسِل الرسائل. والتفعيل من بطاقة الوصلة، والرقم رقمُها،
-         * والنصّ قالبٌ معتمَدٌ عند ميتا.
+         * ═══ والقائمةُ تُشتقّ من الأحداث لا تُكتب بجانبها ═══
+         *
+         * كانت أربعةَ أسطرٍ مكتوبةٍ بيد، والأحداثُ ستّة. فحدثان أُضيفا
+         * (تذكيرُ الفاتورة قبل الاستحقاق وبعده) رسمت لهما الشاشةُ مقبضين —
+         * لأنّها تقرأ `WhatsAppEvent::ALL` — ويسقطان هنا بلا خبر: التاجر
+         * يُشعل التذكير ويحفظ ويرى «حُفظت إعداداتك»، ولا صفَّ يُكتب.
+         *
+         * وقائمةٌ تُكتب باليد بجانب قائمةٍ تُقرأ تنسى التاليَ دائمًا.
          */
-        $data = $request->validate([
-            'wa_on_order' => ['nullable', 'boolean'],
-            'wa_on_ready' => ['nullable', 'boolean'],
-            'wa_on_out_for_delivery' => ['nullable', 'boolean'],
-            'wa_on_delivered' => ['nullable', 'boolean'],
-        ]);
+        $data = $request->validate(
+            array_fill_keys(
+                array_values(WhatsAppEvent::SETTING_KEYS),
+                ['nullable', 'boolean'],
+            ),
+        );
 
         MarketingSettings::save($this->bid(), 'whatsapp', $data);
         Activity::log('updated', 'حدّث إشعارات واتساب');

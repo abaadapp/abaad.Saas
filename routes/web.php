@@ -342,6 +342,13 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/conversations/{id}/assign', [ConversationController::class, 'assign'])->name('conversations.assign');
     Route::post('/conversations/{id}/status', [ConversationController::class, 'status'])->name('conversations.status');
     Route::post('/conversations/{id}/priority', [ConversationController::class, 'priority'])->name('conversations.priority');
+    /*
+     * ونقلُ خيطٍ إلى دفتر المبيعات — تصحيحُ إنسانٍ لا قاعدةٌ في الموزِّع.
+     *
+     * الموزِّعُ يقرأ من كتب لا ما كتب، وهو الفاصلُ الذي يمنع أن تصير زبونةُ
+     * محلٍّ صفًّا في دفترنا. وهو لا يقرأ النيّة — فتُصحَّح الحالةُ النادرة بيد.
+     */
+    Route::post('/conversations/{id}/to-crm', [ConversationController::class, 'toCrm'])->name('conversations.toCrm');
     Route::get('/conversations/{id}/files/{attachment}', SupportAttachmentController::class)
         ->name('conversations.attachment');
 

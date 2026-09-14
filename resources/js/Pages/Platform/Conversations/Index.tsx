@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
     ArrowLeft,
+    ArrowLeftRight,
     Building2,
     CheckCircle2,
     ExternalLink,
@@ -954,6 +955,42 @@ function Details({
                         {active.status === 'closed' ? t('إعادة فتح') : t('إغلاق المحادثة')}
                     </Button>
                 </div>
+
+                {/*
+                    ═══ ونقلُ خيطٍ طرق البابَ الخطأ ═══
+
+                    الواردُ يُوزَّع بـ«من كتب» لا بـ«ما كتب» — وهو الفاصلُ
+                    الذي يمنع أن تصير زبونةُ محلِّ ورودٍ صفًّا في دفتر
+                    مبيعاتنا. وهو لا يقرأ النيّة: تاجرٌ مسجَّلٌ عندنا يسأل عن
+                    سعر الباقة الأكبر يصل إلى هنا.
+
+                    فالموزِّعُ يبقى كما هو، والحالةُ النادرة تُصحَّح بضغطة.
+
+                    ولا يُعرض الزرُّ على خيطٍ فُتح من داخل اللوحة: لا رقمَ
+                    له ولا نافذةَ ردّ، ونقلُه يفتح عميلًا لا نملك أن نكتب
+                    إليه حرفًا — وزرٌّ يُعرض ولا يُدير شيئًا أسوأ من غيابه.
+                */}
+                {active.channel === 'whatsapp' && (
+                    <div className="mt-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => {
+                                if (
+                                    confirm(
+                                        t('تُنقل هذه المحادثة إلى دفتر المبيعات (CRM) ويُقفل خيطُ الدعم. أتريد ذلك؟'),
+                                    )
+                                ) {
+                                    post('super-admin.conversations.toCrm', {});
+                                }
+                            }}
+                        >
+                            <ArrowLeftRight />
+                            {t('ليست دعمًا — انقلها إلى المبيعات')}
+                        </Button>
+                    </div>
+                )}
             </div>
         </>
     );

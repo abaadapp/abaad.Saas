@@ -7,6 +7,7 @@ use App\Models\SupportConversation;
 use App\Models\SupportMessage;
 use App\Models\User;
 use App\Support\Activity;
+use App\Support\ConversationHandover;
 use App\Support\Support;
 use App\Support\SupportWhatsApp;
 use Illuminate\Http\RedirectResponse;
@@ -268,6 +269,35 @@ class ConversationController extends Controller
             .Support::statusLabel($was).' ← '.Support::statusLabel($data['status']));
 
         return back();
+    }
+
+    /**
+     * هذا الخيطُ ليس دعمًا — انقله إلى دفتر المبيعات.
+     *
+     * ═══ ولمَ زرٌّ لا قاعدةٌ في الموزِّع ═══
+     *
+     * الموزِّعُ يقرأ **من كتب** لا **ما كتب**، وهو الفاصلُ الذي يمنع أن تصير
+     * زبونةُ محلِّ ورودٍ صفًّا في دفتر مبيعاتنا. وهو لا يقرأ النيّة: تاجرٌ
+     * مسجَّلٌ عندنا يسأل عن سعر الباقة الأكبر يذهب إلى الدعم.
+     *
+     * فالموزِّعُ يبقى كما هو — والحالةُ النادرة يُصحّحها إنسانٌ بضغطة.
+     */
+    public function toCrm(Request $request, int $id): RedirectResponse
+    {
+        $conversation = SupportConversation::findOrFail($id);
+
+        $result = ConversationHandover::toSales($conversation);
+
+        if (! $result['ok']) {
+            return back()->with('toast', ['msg' => $result['reason'], 'type' => 'error']);
+        }
+
+        return redirect()
+            ->route('super-admin.crm.leads.show', $result['lead']->id)
+            ->with('toast', [
+                'msg' => __('نُقلت المحادثة إلى المبيعات — :n رسالة.', ['n' => $result['moved']]),
+                'type' => 'success',
+            ]);
     }
 
     /** الأولويّة — شأنُ المنصّة، ولا تُعرض للتاجر ولا تُشعره */

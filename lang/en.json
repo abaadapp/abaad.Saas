@@ -5727,5 +5727,11 @@
     "واتساب يقرأ نصَّ كلِّ قالبٍ قبل أن يسمح بإرساله. ولا تخرج رسالةُ إشعارٍ واحدة قبل اعتماده — يُقرأ الحال تلقائيًّا كلّ ساعة.": "WhatsApp reads the text of every template before allowing it to be sent. No notification goes out before approval — the status is read automatically every hour.",
     "لم يُسأل": "Not checked",
     "آخر قراءةٍ من واتساب": "Last read from WhatsApp",
-    "لم تُقرأ الحال من واتساب بعد.": "The status has not been read from WhatsApp yet."
+    "لم تُقرأ الحال من واتساب بعد.": "The status has not been read from WhatsApp yet.",
+    "ليست دعمًا — انقلها إلى المبيعات": "Not support — move to sales",
+    "تُنقل هذه المحادثة إلى دفتر المبيعات (CRM) ويُقفل خيطُ الدعم. أتريد ذلك؟": "This conversation will be moved to the sales book (CRM) and the support thread closed. Proceed?",
+    "نُقلت المحادثة إلى المبيعات — :n رسالة.": "Conversation moved to sales — :n messages.",
+    "لا يُنقل إلّا خيطُ واتساب — تذكرةُ اللوحة لا رقمَ لها ولا نافذةَ ردّ.": "Only a WhatsApp thread can be moved — an in-app ticket has no number and no reply window.",
+    "لا رقمَ صالحًا على هذا الخيط — فلا عميلَ يُفتح به.": "This thread has no usable number — no lead can be opened from it.",
+    "نُقلت المحادثة إلى دفتر المبيعات (CRM).": "The conversation was moved to the sales book (CRM)."
 }

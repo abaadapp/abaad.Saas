@@ -22,7 +22,9 @@
     الشحنة في يد سائق، وورقةٌ تُظهر له تكلفةَ ما يحمل عطبٌ لا سهو.
 
     المتغيّرات: `$items` قائمةُ `['name','qty','unit','total','note']` ·
-    `$showPrices` · `$showOrdered` عمودُ الكميّة المطلوبة لسند الاستلام.
+    `$showPrices` · `$showOrdered` عمودا المطلوب والمستلَم لسند الاستلام ·
+    `$itemsLabel` تسميةُ عمود الصنف · `$qtyLabel` تسميةُ عمود الكميّة —
+    فـ«الكمية» على أمرٍ لم يُشحن بعدُ «الكمية المطلوبة».
 --}}
 @php
     $items = $items ?? [];
@@ -54,7 +56,7 @@
                     غير سطره. والسعرُ حين يُطفأ يُترك عرضُه للكميّة بدل
                     أن يُترك بياضًا.
                 --}}
-                <th style="width:{{ $prices ? 12 : 26 }}%" class="num">{!! $head('الكمية') !!}</th>
+                <th style="width:{{ $prices ? 16 : 26 }}%" class="num">{!! $head($qtyLabel ?? 'الكمية') !!}</th>
             @endif
             @if ($prices)
                 <th style="width:18%" class="amt">{!! $head('السعر') !!}</th>

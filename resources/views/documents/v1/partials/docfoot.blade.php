@@ -22,8 +22,18 @@
     $name = trim((string) $brand['name']);
 @endphp
 
+{{--
+    وغلافٌ حول الجدول ليُخفى في الـPDF.
+
+    التذييلُ في الـPDF يرسمه `MpdfDriver::pageNumbers` كاملًا على كلّ
+    صفحة — اسمًا وصفحةً ورقمَ مستند. وهذه الكتلةُ للشاشة وحدها: المعاينةُ
+    والرابطُ العامُّ لا محرّكَ فيهما. و`display: none` لا يحترمه mpdf على
+    `<table>` ويحترمه على `<div>` — قِيس. انظر `partials/tokens`.
+--}}
 @if ($name !== '')
-    <table class="docfoot">
-        <tr><td>{{ $name }}</td></tr>
-    </table>
+    <div class="docfoot">
+        <table class="docfoot">
+            <tr><td>{{ $name }}</td></tr>
+        </table>
+    </div>
 @endif

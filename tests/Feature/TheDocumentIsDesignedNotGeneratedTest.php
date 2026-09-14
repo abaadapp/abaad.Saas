@@ -849,6 +849,138 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
     /* ═══════════════════ هيكلُ الورقة البصريّ ═══════════════════ */
 
     /**
+     * اسمُ المتجر مرّةً واحدةً في أسفل الورقة، لا مرّتين.
+     *
+     * ═══ والعطبُ الذي وُلد منه هذا الحارس ═══
+     *
+     * التذييلُ كان في موضعين: كتلةٌ في مجرى الورقة تحمل اسمَ المتجر
+     * وسطًا، وتذييلُ المحرّك الذي يرسم على **كلّ** صفحة اسمَه في طرفٍ
+     * و«Page 1 of 1 - INV-…» في الآخر. فيُطبع الاسمُ مرّتين بفارق
+     * سنتيمتر.
+     *
+     * وأسوأُ من التكرار أثرُه: كتلةٌ في آخر المجرى لا يتّسع لها ما بقي
+     * من الصفحة تفتح صفحةً جديدة. فاتورةٌ بثلاثين صنفًا كانت تخرج ثلاثَ
+     * صفحات، ثالثتُها بيضاءُ إلّا من اسم المتجر — وهي تُطبع وتُرسل
+     * وتُحفظ.
+     *
+     * والكتلةُ باقيةٌ للشاشة: الرابطُ العامُّ والمعاينةُ لا محرّكَ فيهما
+     * ولا تذييلَ صفحة.
+     */
+    public function test_the_shop_name_closes_the_paper_once(): void
+    {
+        $html = $this->sheet($this->order());
+
+        /* وهي في الرسم — للمعاينة والرابط */
+        $this->assertStringContainsString('class="docfoot"', $html, 'ذهب تذييلُ الشاشة');
+        $this->assertStringContainsString('div.docfoot { display: none; }', $html, 'كتلةُ التذييل تُطبع في الـPDF');
+        $this->assertStringContainsString('div.docfoot { display: block; }', $html, 'كتلةُ التذييل لا تُرى على الشاشة');
+
+        /*
+         * و`display: none` على `<table>` يتجاهله mpdf ويحترمه على `<div>`
+         * — قِيس. فالغلافُ كتلةٌ لا جدول، وإلّا عاد الاسمُ مرّتين صامتًا.
+         */
+        $this->assertMatchesRegularExpression(
+            '#<div class="docfoot">\s*<table#u',
+            $html,
+            'جدولُ التذييل بلا غلافِ كتلةٍ يُخفيه المحرّك',
+        );
+    }
+
+    /**
+     * الرقمُ الأهمّ يُسمّى «الرصيد المستحق» حين يبقى، و«الإجمالي» حين سُدِّد.
+     *
+     * ═══ ولمَ لا تُؤخذ التسميةُ من سطر المجاميع ═══
+     *
+     * سطرُ المجاميع اسمُه «الباقي» — وهو صحيحٌ في سلّمٍ يسبقه إجماليٌّ
+     * ومسدَّد. لكنّه وحدَه في صدر الورقة بمقاس العنوان، بلا ما قبله،
+     * يُقرأ «باقي ماذا». فيُسمّى بما هو: «الرصيد المستحق / Total due» —
+     * وهي تسميةُ المرجع نفسُها.
+     *
+     * وفاتورةٌ سُدِّدت كاملةً باقيها صفر. وصفرٌ بمقاس العنوان في صدر
+     * الورقة يُقرأ خبرًا وليس بخبر — فيعود الرقمُ الأهمّ إجماليَّها،
+     * ويبقى الصفرُ في سلّم المجاميع حيث يُقرأ إقرارًا بالسداد.
+     */
+    public function test_the_headline_figure_is_named_by_what_it_is(): void
+    {
+        $paper = fn (array $totals): string => DocumentRenderer::generic(
+            $this->business->id,
+            'supplier_invoice',
+            [
+                'title' => 'فاتورة مورّد', 'number' => 'SU-1', 'status' => '',
+                'date' => '2026-09-14', 'branch' => null, 'employee' => null, 'meta' => [],
+                'parties' => [], 'items' => [], 'totals' => $totals, 'notes' => '',
+            ],
+        );
+
+        /*
+            وتُقرأ كتلةُ الرقم وحدَها لا الرسمُ كلُّه: شرحُ `partials/tokens`
+            يذكر «الرصيد المستحق» مثالًا، فحارسٌ يفحص الرسمَ كلَّه يقع على
+            تعليقٍ ويقول «سليم».
+        */
+        $figure = function (string $html): string {
+            preg_match('#<table class="fields fieldsend figwrap">(.*?)</table>#su', $html, $m);
+
+            return $m[1] ?? '';
+        };
+
+        /* وعليها باقٍ: الرصيدُ المستحقّ هو الخبر */
+        $owing = $figure($paper([
+            ['label' => 'الإجمالي', 'value' => '30.000', 'grand' => true],
+            ['label' => 'المسدَّد', 'value' => '10.000'],
+            ['label' => 'الباقي', 'value' => '20.000', 'due' => true],
+        ]));
+        $this->assertStringContainsString('الرصيد المستحق', $owing, 'الورقةُ لا تسمّي رصيدَها المستحقّ');
+        $this->assertStringContainsString('Total due', $owing, 'التسميةُ بلغةٍ واحدة');
+        $this->assertStringContainsString('>20.000', $owing, 'الرقمُ الأهمّ ليس الباقي');
+
+        /* وقد سُدِّدت: الإجماليُّ هو الخبر، ولا صفرَ بمقاس العنوان */
+        $settled = $figure($paper([
+            ['label' => 'الإجمالي', 'value' => '30.000', 'grand' => true],
+            ['label' => 'المسدَّد', 'value' => '30.000'],
+            ['label' => 'الباقي', 'value' => '0.000', 'due' => false],
+        ]));
+        $this->assertStringNotContainsString('الرصيد المستحق', $settled, 'فاتورةٌ مسدَّدةٌ تعلن رصيدًا مستحقًّا');
+        $this->assertStringContainsString('>30.000', $settled, 'الرقمُ الأهمّ على فاتورةٍ سُدِّدت ليس إجماليَّها');
+    }
+
+    /**
+     * حقولُ المستند تُقسَم عمودين حين تزيد على أربعة.
+     *
+     * للمرجع المعتمد أربعةُ حقول. ولفاتورةِ بيعٍ آجلةٍ هنا سبعة: رقمٌ
+     * وتاريخٌ ووسيلةُ دفعٍ وشروطُه وتاريخُ استحقاقٍ وفرعٌ وموظّف. وسبعةٌ
+     * في عمودٍ واحدٍ بُرجٌ يبلغ ثلثَ الورقة ويترك ثلثَي عرضِ الترويسة
+     * بياضًا إلى جانبه — ثمّ يدفع الملاحظاتِ والتذييلَ إلى صفحةٍ ثانية.
+     */
+    public function test_many_document_fields_become_two_columns(): void
+    {
+        /* أربعةٌ فأقلّ: عمودٌ واحد */
+        $lean = DocumentRenderer::generic($this->business->id, 'purchase', [
+            'title' => 'أمر شراء', 'number' => 'PU-1', 'status' => '', 'date' => '2026-09-14',
+            'branch' => null, 'employee' => null, 'meta' => [],
+            'parties' => [], 'items' => [], 'totals' => [], 'notes' => '',
+        ]);
+        $this->assertStringNotContainsString('class="metasplit"', $lean, 'حقلان قُسما عمودين');
+
+        /* وخمسةٌ فأكثر: عمودان */
+        $full = DocumentRenderer::generic($this->business->id, 'purchase', [
+            'title' => 'أمر شراء', 'number' => 'PU-2', 'status' => '', 'date' => '2026-09-14',
+            'branch' => null, 'employee' => null,
+            'meta' => [
+                ['label' => 'تاريخ الاستلام المتوقع', 'value' => '2026-09-21'],
+                ['label' => 'شروط الدفع', 'value' => 'صافي 30 يومًا'],
+                ['label' => 'طريقة الدفع', 'value' => 'تحويل بنكي'],
+                ['label' => 'مرجع المورّد', 'value' => 'REF-9'],
+                ['label' => 'الحالة', 'value' => 'مُرسل'],
+            ],
+            'parties' => [], 'items' => [], 'totals' => [], 'notes' => '',
+        ]);
+        $this->assertStringContainsString('class="metasplit"', $full, 'سبعةُ حقولٍ بقيت برجًا في عمود');
+
+        /* والجدولُ مقيَّدُ التخطيط: بدونه يتداخل العمودان عند mpdf */
+        $this->assertStringContainsString('table.metasplit { width: 100%; table-layout: fixed;', $full);
+    }
+
+    /**
      * الترويسةُ ثلاثةُ أعمدةٍ بلا صندوقٍ واحد، وعنوانٌ في لغتين.
      *
      * ═══ وثلاثةُ أطوارٍ مرّت بها ═══
@@ -872,8 +1004,17 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
         /* ولا لوحةَ مستندٍ ولا صندوقَ في الترويسة */
         $this->assertStringNotContainsString('idpanel', $html, 'عادت لوحةُ المستند إلى الترويسة');
 
-        /* والعنوانُ أكبرُ ما على الورقة — وبمقاس المرجع */
-        $this->assertSame(21.4, Theme::GEOMETRY['text_display']);
+        /*
+            والعنوانُ أكبرُ ما على الورقة — وبمقاس المرجع بلا معامل.
+
+            قِيس في مجرى محتوى المرجع: `Tf` يقول ٢٨٫٨ نقطة على ورقةٍ
+            مقاسُها ٥٩٥٫٩×٨٤١٫٩. وكان مكتوبًا هنا ٢١٫٤ — وهي ٢٨٫٨ مضروبةً
+            في ٠٫٧٤١٧٦، معاملٌ قُرئ من مصفوفة التحويل وضُرب في مقاسات
+            الخطّ وحدَها دون الهندسة. فخرجت ورقةٌ خطُّها عند ثلاثة أرباعه
+            وفراغُها عند تمامه — وهو ما يجعلها تُقرأ مصغَّرةً على A4.
+        */
+        $this->assertSame(28.8, Theme::GEOMETRY['text_display']);
+        $this->assertSame(12.0, Theme::GEOMETRY['text_base']);
         $this->assertStringContainsString(
             'font-size: '.round(Theme::GEOMETRY['text_display'], 2).'pt',
             $html,

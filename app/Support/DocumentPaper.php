@@ -312,6 +312,18 @@ class DocumentPaper
                 'label' => 'مرجع المورّد',
                 'value' => (string) ($po->supplier_reference ?? ''),
             ],
+            /*
+             * وحالُ الأمر حقلٌ مسمّى لا كلمةٌ عائمة.
+             *
+             * المورّدُ الذي يفتح الورقة يحتاج أن يعرف: أهي مسوّدةٌ أُرسلت
+             * سهوًا، أم أمرٌ قائم، أم أمرٌ استُلمت بضاعتُه؟ وكلمةٌ ملوّنةٌ
+             * تحت المبلغ بلا تسمية تُقرأ زينة. فتُكتب باسمها في عمود
+             * الحقول حيث يبحث عنها — انظر المواصفة §أمر الشراء.
+             */
+            [
+                'label' => 'الحالة',
+                'value' => (string) $po->status,
+            ],
         ], fn (array $r) => filled($r['value'])));
 
         /*
@@ -361,8 +373,18 @@ class DocumentPaper
                     ])),
                 ],
             ],
+            /*
+             * ووحدةُ الشراء سطرُ وصفٍ تحت اسم الصنف.
+             *
+             * «باقة همس الربيع» وحدَها تقول ما يُطلب ولا تقول **كيف**
+             * يُشحن. و`purchase_unit` و`units_per_purchase_unit` في صفّ
+             * البند أصلًا — يكتبهما التاجرُ عند إنشاء الأمر ولا يراهما
+             * المورّدُ على الورقة التي تصله. فيُطبعان حيث يُقرآن:
+             * «كرتون × 12» تحت الاسم، بحبرٍ أخفّ.
+             */
             'items' => $po->items->map(fn ($i) => [
                 'name' => $i->name,
+                'note' => self::packing($i->purchase_unit, $i->units_per_purchase_unit),
                 'qty' => self::qty($i->quantity),
                 'unit' => self::money($i->cost, $cur),
                 'total' => self::money($i->cost * $i->quantity, $cur),
@@ -370,6 +392,24 @@ class DocumentPaper
             'totals' => $totals,
             'notes' => (string) ($po->notes ?? ''),
         ];
+    }
+
+    /**
+     * وحدةُ الشراء نصًّا — «كرتون» أو «كرتون × ١٢».
+     *
+     * ولا تُطبع «× ١» : معاملٌ واحدٌ يعني أنّ الوحدة هي الحبّة، والضربُ
+     * فيه سطرٌ يشغل مكانًا ولا يقول شيئًا.
+     */
+    private static function packing(?string $unit, mixed $per): string
+    {
+        $unit = trim((string) $unit);
+        $per = (float) $per;
+
+        if ($unit === '') {
+            return '';
+        }
+
+        return $per > 1 ? $unit.' × '.self::qty($per) : $unit;
     }
 
     /**
@@ -465,7 +505,14 @@ class DocumentPaper
 
         if ((float) $invoice->paid > 0 || $outstanding > 0) {
             $totals[] = ['label' => 'المسدَّد', 'value' => self::money($invoice->paid, $cur)];
-            $totals[] = ['label' => 'الباقي', 'value' => self::money($outstanding, $cur), 'due' => true];
+            /*
+             * و«الباقي» يُطبع دائمًا، ولا يكون **الرقمَ الأهمّ** إلّا إن بقي.
+             *
+             * فاتورةٌ سُدِّدت كاملةً باقيها صفر — وصفرٌ بمقاس العنوان في صدر
+             * الورقة يُقرأ خبرًا، وليس بخبر. فيعود الرقمُ الأهمّ إجماليَّها،
+             * ويبقى الصفرُ في سلّم المجاميع حيث يُقرأ إقرارًا بالسداد.
+             */
+            $totals[] = ['label' => 'الباقي', 'value' => self::money($outstanding, $cur), 'due' => $outstanding > 0];
         }
 
         return [
@@ -692,6 +739,79 @@ class DocumentPaper
             ]];
         }
 
+        /*
+         * ═══ ومثالٌ ناقصٌ يُري التاجرَ ورقةً لن تخرج ═══
+         *
+         * كان المثالُ بندًا أو ثلاثةً وسطرَ إجماليٍّ واحدًا، بلا حقولِ
+         * مستندٍ البتّة: لا تاريخَ استحقاقٍ ولا مرجعَ ولا حالةَ سداد. فيرى
+         * التاجرُ في «قوالب الأوراق» ورقةً نصفُها خالٍ، ويضبط عليها
+         * مقاسَ خطّه وتذييلَه — ثمّ تخرج الورقةُ الحقيقيّةُ غيرَها.
+         *
+         * وحقولُ المثال هي حقولُ الباني الحقيقيّ لكلّ نوع بأسمائها — انظر
+         * `forSale` و`forPurchase` و`forSupplierInvoice` — فما يُضبط على
+         * المعاينة يقع على الورقة.
+         *
+         * ولا حسابَ هنا يخصّ متجرًا: أرقامُ المثال مثالٌ، وضريبتُه خمسةٌ
+         * في المئة عرضًا لا احتسابًا. والحسابُ الحقيقيُّ في `Support\Vat`
+         * وحدَه.
+         */
+        $day = fn (int $plus) => now()->addDays($plus)->format('Y-m-d');
+
+        $meta = match ($type) {
+            'purchase' => [
+                ['label' => 'تاريخ الاستلام المتوقع', 'value' => $day(7)],
+                ['label' => 'شروط الدفع', 'value' => self::terms(30)],
+                ['label' => 'الحالة', 'value' => __('مُرسل')],
+            ],
+            /* ولا تاريخَ استلامٍ هنا: القالبُ يضعه من `date` — فيُطبع مرّتين */
+            'grn' => [
+                ['label' => 'أمر الشراء', 'value' => 'PU-000123'],
+            ],
+            'supplier_invoice' => [
+                ['label' => 'تاريخ الإصدار', 'value' => $day(0)],
+                ['label' => 'تاريخ الاستحقاق', 'value' => $day(30)],
+                ['label' => 'أمر الشراء', 'value' => 'PU-000123'],
+                ['label' => 'حالة السداد', 'value' => __('غير مدفوع')],
+            ],
+            'credit_note' => [
+                ['label' => 'الفاتورة الأصلية', 'value' => 'INV-000101'],
+                ['label' => 'تاريخ الإشعار', 'value' => $day(0)],
+            ],
+            'customer_receipt' => [
+                ['label' => 'تاريخ القبض', 'value' => $day(0)],
+                ['label' => 'وسيلة الدفع', 'value' => __('تحويل بنكي')],
+            ],
+            default => [
+                ['label' => 'وسيلة الدفع', 'value' => __('نقدي')],
+            ],
+        };
+
+        /* وسلّمُ المجاميع كسلّم الورقة الحقيقيّة: فرعيٌّ ثمّ ضريبةٌ ثمّ إجمالي */
+        $tax = round($total * 0.05, 3);
+
+        $totals = match (true) {
+            $type === 'customer_receipt' => [
+                ['label' => 'المبلغ المستلم', 'value' => self::money($total, $cur), 'grand' => true],
+            ],
+            $type === 'credit_note' => [
+                ['label' => 'المجموع الفرعي', 'value' => self::money($total, $cur)],
+                ['label' => 'ضريبة القيمة المضافة', 'hint' => '(5%)', 'value' => self::money($tax, $cur)],
+                ['label' => 'إجمالي الإشعار', 'value' => self::money($total + $tax, $cur), 'grand' => true],
+            ],
+            $type === 'supplier_invoice' => [
+                ['label' => 'المجموع الفرعي', 'value' => self::money($total, $cur)],
+                ['label' => 'الضريبة', 'value' => self::money($tax, $cur)],
+                ['label' => 'الإجمالي', 'value' => self::money($total + $tax, $cur), 'grand' => true],
+                ['label' => 'المسدَّد', 'value' => self::money(0, $cur)],
+                ['label' => 'الباقي', 'value' => self::money($total + $tax, $cur), 'due' => true],
+            ],
+            default => [
+                ['label' => 'المجموع الفرعي', 'value' => self::money($total, $cur)],
+                ['label' => 'ضريبة القيمة المضافة', 'hint' => '(5%)', 'value' => self::money($tax, $cur)],
+                ['label' => 'الإجمالي', 'value' => self::money($total + $tax, $cur), 'grand' => true],
+            ],
+        };
+
         return [
             'title' => __($titles[$type] ?? 'مستند'),
             'number' => strtoupper(substr($type, 0, 2)).'-000123',
@@ -700,11 +820,10 @@ class DocumentPaper
             'date' => now()->format('Y-m-d H:i'),
             'branch' => __('الفرع الرئيسي'),
             'employee' => __('موظف المبيعات'),
+            'meta' => $meta,
             'parties' => $parties,
             'items' => $items,
-            'totals' => $total === null ? [] : [
-                ['label' => 'الإجمالي', 'value' => self::money($total, $cur), 'grand' => true],
-            ],
+            'totals' => $totals,
             'notes' => __('ملاحظة تجريبية تظهر هنا إن كانت على المستند.'),
         ];
     }

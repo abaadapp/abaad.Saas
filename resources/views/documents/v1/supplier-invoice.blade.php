@@ -52,10 +52,11 @@
 
 @section('figure')
     {{-- وما يُبحث عنه في فاتورة مورّد: كم بقي عليها، فإن سُدِّدت فإجماليُّها --}}
-    @php($figure = collect($doc['totals'])->firstWhere('due', true) ?: collect($doc['totals'])->firstWhere('grand', true))
+    @php($due = collect($doc['totals'])->firstWhere('due', true))
+    @php($grand = collect($doc['totals'])->firstWhere('grand', true))
     @include('documents.v1.partials.figure', [
-        'label' => $figure['label'] ?? 'الإجمالي',
-        'value' => $figure['value'] ?? '',
+        'label' => $due ? 'الرصيد المستحق' : ($grand['label'] ?? 'الإجمالي'),
+        'value' => ($due ?: $grand)['value'] ?? '',
         'status' => $doc['status'] ?? '',
     ])
 @endsection

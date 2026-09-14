@@ -25,8 +25,9 @@
       • حبرُ النصّ `#354058` — كحليٌّ داكن لا أسود.
       • حبرُ السطر الثاني `#8898b3` — لتسمية اللغة الأخرى.
       • الخطُّ الفاصل `#cbd5e1` بسُمك `0.74pt`، **واحدٌ في كلّ موضع**.
-      • عنوانُ المستند `21.4pt`، والجسدُ `8.9pt`، والتذييلُ `7.4pt`.
-      • خطوةُ السطر داخل الحقل `13.4pt`، وبين حقلٍ وآخر `20.7pt`.
+      • عنوانُ المستند `28.8pt`، والجسدُ `12pt`، والعملةُ `14pt`،
+        والتذييلُ `10pt` — وهي مقاساتُ `Tf` في المرجع بلا معامل.
+      • خطوةُ السطر داخل الحقل `14.6pt`، وبين حقلٍ وآخر `21.6pt`.
       • ارتفاعُ صفّ الجدول `21.5pt`.
 
     ولا أرضيّةَ في المرجع كلِّه — ولا واحدة. لا لرأس جدول، ولا لبطاقة طرف،
@@ -189,7 +190,8 @@
         width: 100%;
         height: {{ $fx(1) }};
         background: var(--document-primary); background: {{ $t['primary'] }};
-        margin-bottom: {{ $fx(18) }};
+        /* والفراغُ تحته هو فراغُ الأقسام نفسُه — رقمٌ واحدٌ يحكم إيقاعَ الورقة */
+        margin-bottom: {{ $fx(Theme::GEOMETRY['section_gap']) }};
         font-size: 0;
         line-height: 0;
     }
@@ -229,10 +231,21 @@
         color: var(--document-second); color: {{ $t['second'] }};
     }
 
+    /*
+        ═══ واسمُ المتجر أكبرُ من جسد الورقة ═══
+
+        في المرجع تُثبّت هويّةَ المُصدِر صورتُه: شعارٌ بارتفاعٍ يقارب ثلاثةَ
+        أضعاف سطرِ النصّ، والاسمُ تحته. وتاجرٌ لم يرفع شعارًا — وهم أكثرُ
+        مستعملي النظام — تبقى هويّتُه سطرًا بمقاس بقيّة السطور، فتُقرأ
+        الورقةُ بلا صاحب.
+
+        فيأخذ الاسمُ درجةً واحدةً فوق الجسد. لا صندوقَ حوله ولا أرضيّةَ
+        ولا لون — مقاسُه وحدَه يقول إنّه اسمُ من أصدر الورقة.
+    */
     .shop {
-        font-size: {{ $s(Theme::GEOMETRY['text_base']) }};
+        font-size: {{ $s(Theme::GEOMETRY['text_currency']) }};
         font-weight: bold;
-        line-height: 1.45;
+        line-height: 1.3;
     }
 
     /*
@@ -265,8 +278,19 @@
     --}}
     table.fieldsend td { text-align: {{ $end }}; }
 
+    /*
+        ═══ وحقولُ المستند عمودان حين تكثر ═══
+
+        `table-layout: fixed` شرطٌ لا زينة: جدولٌ بعرض ١٠٠٪ داخل خليّةٍ
+        ضيّقةٍ يُفسد حسابَ العرض الأدنى عند mpdf فيخرج العمودان متداخلين —
+        وهي القاعدةُ نفسُها التي تحكم `table.head`.
+    */
+    table.metasplit { width: 100%; table-layout: fixed; border-collapse: collapse; }
+    table.metasplit td { border: none; padding: 0; vertical-align: top; }
+    table.metasplit td.gap { width: {{ $fx(14) }}; padding: 0; font-size: 0; line-height: 0; }
+
     /* وفراغٌ تحت عنوان المستند يفصله عن الطرف الذي يليه */
-    table.fields td.f-title { padding-bottom: {{ $fx(26) }}; }
+    table.fields td.f-title { padding-bottom: {{ $fx(18) }}; }
 
     /*
         ═══ الرقمُ الأهمّ على الورقة ═══
@@ -280,7 +304,7 @@
         الرقمُ هو الخبر، والعملةُ وحدةُ قياسه.
     */
     /* وفراغُه حولَه هامشٌ: كتلةٌ في مجرى الورقة، والهوامشُ هنا تُحترم */
-    table.figwrap { margin-top: {{ $fx(18) }}; margin-bottom: {{ $fx(16) }}; page-break-inside: avoid; }
+    table.figwrap { margin-top: {{ $fx(13) }}; margin-bottom: {{ $fx(11) }}; page-break-inside: avoid; }
     .fig {
         font-size: {{ $s(Theme::GEOMETRY['text_display']) }};
         font-weight: bold;
@@ -326,7 +350,7 @@
         وارتفاعُ الصفّ ٢١٫٥ نقطة مقيسًا: يكفي ليتنفّس السطرُ ولا يجعل
         عشرةَ أصنافٍ تمتدّ صفحتين.
     */
-    table.items { width: 100%; border-collapse: collapse; margin-bottom: {{ $fx(10) }}; }
+    table.items { width: 100%; border-collapse: collapse; margin-bottom: {{ $fx(8) }}; }
     table.items th {
         text-align: {{ $start }};
         vertical-align: bottom;
@@ -338,7 +362,7 @@
     table.items th.num { text-align: center; }
     table.items th.amt { text-align: {{ $end }}; }
     table.items td {
-        padding: {{ $fx(6) }} {{ $fx(6) }} {{ $fx(6) }};
+        padding: {{ $fx(4) }} {{ $fx(6) }} {{ $fx(4) }};
         font-size: {{ $s(Theme::GEOMETRY['text_base']) }};
         border-bottom: {{ $hair }};
         vertical-align: top;
@@ -386,7 +410,7 @@
     table.totals { width: 100%; border-collapse: collapse; page-break-inside: avoid; }
     table.totals td {
         border: none;
-        padding: {{ $fx(4) }} {{ $fx(6) }};
+        padding: {{ $fx(3) }} {{ $fx(6) }};
         font-size: {{ $s(Theme::GEOMETRY['text_base']) }};
         vertical-align: top;
         text-align: {{ $start }};
@@ -413,7 +437,7 @@
         أسفلها. انظر `partials/close`: هي التي تبني العمودين لتسع أوراق.
     */
     table.stack { width: 100%; border-collapse: collapse; }
-    table.stack td { border: none; padding: 0 0 {{ $fx(9) }} 0; vertical-align: top; text-align: {{ $start }}; }
+    table.stack td { border: none; padding: 0 0 {{ $fx(7) }} 0; vertical-align: top; text-align: {{ $start }}; }
     table.stack tr:last-child td { padding-bottom: 0; }
     table.stack td.cap { padding-bottom: {{ $fx(2) }}; }
 
@@ -443,8 +467,8 @@
     }
 
     .foot {
-        margin-top: {{ $fx(10) }};
-        padding-top: {{ $fx(5) }};
+        margin-top: {{ $fx(8) }};
+        padding-top: {{ $fx(4) }};
         border-top: {{ $hair }};
         color: var(--document-second); color: {{ $t['second'] }};
         font-size: {{ $s(Theme::GEOMETRY['text_sm']) }};
@@ -452,26 +476,48 @@
     }
 
     /*
-        ═══ تذييلُ الورقة: هادئٌ ولا ينافس ═══
+        ═══ تذييلُ الورقة: هادئٌ ولا ينافس — وللشاشة وحدها ═══
 
-        في المرجع سطرٌ واحدٌ صغيرٌ في أسفل الصفحة: اسمُ المُصدِر في الوسط،
-        و«Page 1 of 1 - Server» في الطرف. لا خطَّ فوقه ولا وزن.
+        في المرجع سطرٌ واحدٌ صغيرٌ في أسفل الصفحة: اسمُ المُصدِر في طرف،
+        و«Page 1 of 1 - Server» في الآخر. لا خطَّ فوقه ولا وزن.
 
-        ورقمُ الصفحة ليس هنا — يرسمه `MpdfDriver::pageNumbers` في تذييل
-        **كلّ** صفحة، ومعه رقمُ المستند. وهذا يحمل الاسمَ وحده.
+        وفي الـPDF يرسم هذا السطرَ **كاملًا** `MpdfDriver::pageNumbers` في
+        تذييل كلّ صفحة: الاسمُ في طرفٍ والصفحةُ ورقمُ المستند في الآخر.
+        فكتلةٌ في مجرى الورقة تحمل الاسمَ كانت تطبعه مرّتين — واحدةً
+        فوق الأخرى بفارق سنتيمتر.
+
+        وأسوأُ من التكرار أثرُه على الصفحات: كتلةٌ في آخر المجرى لا يتّسع
+        لها ما بقي من الصفحة **تفتح صفحةً جديدة** — فاتورةٌ بثلاثين صنفًا
+        كانت تخرج ثلاثَ صفحات، ثالثتُها بيضاءُ إلّا من اسم المتجر.
+
+        والرابطُ العامُّ والمعاينةُ لا محرّكَ فيهما ولا تذييلَ صفحة، فتبقى
+        الكتلةُ لهما وحدهما — بالطريق نفسِه الذي يُرسَم به صندوقُ الورقة:
+        mpdf يقرأ `print` ويتجاهل `screen` كاملًا. انظر `PaperSize`.
     */
-    table.docfoot {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: {{ $fx(4) }};
-        page-break-inside: avoid;
-    }
-    table.docfoot td {
-        border: none;
-        padding: 0;
-        font-size: {{ $s(Theme::GEOMETRY['text_xs']) }};
-        color: var(--document-second); color: {{ $t['second'] }};
-        text-align: center;
-        line-height: 1.4;
+    /*
+        والإخفاءُ على كتلةٍ لا على جدول — قِيس في mpdf.
+
+        `display: none` على `<table>` يتجاهله المحرّكُ صامتًا فيُطبع
+        الجدولُ كما هو، ويحترمه على `<div>`. فالكتلةُ غلافٌ يُخفى،
+        والجدولُ في جوفها كما هو.
+    */
+    div.docfoot { display: none; }
+
+    @media screen {
+        div.docfoot { display: block; }
+
+        table.docfoot {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: {{ $fx(4) }};
+        }
+        table.docfoot td {
+            border: none;
+            padding: 0;
+            font-size: {{ $s(Theme::GEOMETRY['text_xs']) }};
+            color: var(--document-second); color: {{ $t['second'] }};
+            text-align: center;
+            line-height: 1.4;
+        }
     }
 </style>

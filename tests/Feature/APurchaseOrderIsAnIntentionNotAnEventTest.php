@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderItem;
 use App\Models\Setting;
 use App\Models\Supplier;
 use App\Models\User;
@@ -285,6 +286,67 @@ class APurchaseOrderIsAnIntentionNotAnEventTest extends TestCase
             'سرٌّ لا يُطبع',
             $this->previewHtml(['notes' => 'ملاحظةٌ للمورّد', 'internal_notes' => 'سرٌّ لا يُطبع']),
         );
+    }
+
+    /**
+     * وورقةُ المورّد تقول حالَ الأمر ووحدةَ الشحن — بأسمائهما.
+     *
+     * ═══ وما كان ينقصها ═══
+     *
+     * **الحال**: كانت كلمةً ملوّنةً تحت المبلغ بلا تسمية — «مُرسل» عائمةً
+     * تُقرأ زينةً لا خبرًا. والمورّدُ الذي يفتح الورقة يحتاج أن يعرف: أهي
+     * مسوّدةٌ أُرسلت سهوًا، أم أمرٌ قائم؟ فصارت حقلًا مسمّى في عمود الحقول.
+     *
+     * **وحدةُ الشراء**: `purchase_unit` و`units_per_purchase_unit` في صفّ
+     * البند يكتبهما التاجرُ عند إنشاء الأمر، ولم يكن المورّدُ يراهما على
+     * الورقة التي تصله — فيجهّز حبّاتٍ حيث طُلبت كراتين.
+     *
+     * **وتسميةُ الكميّة**: «الكمية» على أمرٍ لم يُشحن بعدُ «المطلوبة» —
+     * وهي تسميةُ سند الاستلام نفسُها، فيقرأ المورّدُ الورقتين بلغةٍ واحدة.
+     */
+    public function test_the_suppliers_paper_names_the_state_and_the_packing(): void
+    {
+        $po = PurchaseOrder::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'supplier_id' => $this->supplier->id,
+            'number' => 'PU-000777',
+            'status' => 'مُرسل',
+            'ordered_at' => '2026-09-10',
+            'expected_delivery_at' => '2026-09-24',
+            'items_subtotal' => 50, 'total' => 50,
+        ]);
+
+        PurchaseOrderItem::create([
+            'purchase_order_id' => $po->id,
+            'name' => 'وردة حمراء',
+            'purchase_unit' => 'كرتون',
+            'units_per_purchase_unit' => 12,
+            'cost' => 5, 'quantity' => 10, 'line_total' => 50,
+        ]);
+
+        $paper = DocumentPaper::forPurchase($po->fresh('items'));
+
+        /* والحالُ حقلٌ مسمّى، لا خَتمٌ عائم */
+        $this->assertContains(
+            ['label' => 'الحالة', 'value' => 'مُرسل'],
+            $paper['meta'],
+            'حالُ الأمر ليست حقلًا في عمود الحقول',
+        );
+
+        /* ووحدةُ الشحن سطرُ وصفٍ تحت اسم الصنف */
+        $this->assertSame('كرتون × 12', $paper['items'][0]['note'] ?? '', 'وحدةُ الشراء لا تبلغ الورقة');
+
+        $printed = DocumentRenderer::generic($this->business->id, 'purchase', $paper);
+
+        $this->assertStringContainsString('كرتون × 12', $printed);
+        $this->assertStringContainsString('المطلوبة', $printed, 'عمودُ الكميّة لم يُسمَّ بما هو');
+
+        /*
+         * ولا تُطبع الحالُ مرّتين: كلمةٌ واحدةٌ في موضعين على ورقةٍ واحدة
+         * تُقرأ سهوًا لا تأكيدًا. والخَتمُ تحت الرقم أُطفئ لهذا النوع.
+         */
+        $this->assertSame(1, substr_count($printed, 'مُرسل'), 'حالُ الأمر تُطبع مرّتين');
     }
 
     /* ═══════════════ المورّدُ الافتراضيّ ═══════════════ */

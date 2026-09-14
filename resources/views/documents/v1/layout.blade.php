@@ -82,7 +82,7 @@
 <table class="head">
     <tr>
         {{-- جهةُ البداية: ما هي الورقة، ولمن --}}
-        <td style="width:32%">
+        <td style="width:27%">
             {{-- وصفٌّ لكلّ سطر: هوامشُ الكتل تسقط داخل الخلايا — انظر `partials/fields` --}}
             <table class="fields">
                 <tr><td class="doctitle">{{ $titleFirst }}</td></tr>
@@ -91,16 +91,16 @@
 
             @yield('parties')
         </td>
-        <td class="gap" style="width:4%"></td>
+        <td class="gap" style="width:3%"></td>
 
         {{-- الوسط: رقمُ المستند وتواريخُه ومراجعُه --}}
-        <td style="width:28%">
+        <td style="width:40%">
             @include('documents.v1.partials.meta', ['cells' => $metaCells ?? []])
         </td>
-        <td class="gap" style="width:4%"></td>
+        <td class="gap" style="width:3%"></td>
 
         {{-- الطرفُ المقابل: الشعارُ وهويّةُ المُصدِر --}}
-        <td style="width:32%">
+        <td style="width:27%">
             @include('documents.v1.partials.identity')
         </td>
     </tr>

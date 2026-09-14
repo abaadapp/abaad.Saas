@@ -165,11 +165,24 @@ final class Published
      * @param  array<string,mixed>  $site  اللقطة كما يردّها `Preview::resolve`
      * @return list<string>
      */
-    public static function outline(array $site): array
+    public static function outline(array $site, ?array $only = null): array
     {
         $out = [];
 
-        foreach (self::pagesOf($site) as $page) {
+        /*
+         * ═══ ونصُّ الصفحة المطلوبة وحدَها ═══
+         *
+         * كانت تمشي الصفحات كلَّها وتصبّ نصَّها في جسد **العنوان الواحد**
+         * الذي كان يُخدَم — فيقرأ الزاحف «من نحن» و«تواصل معنا» في صفحة
+         * المتجر الرئيسية، ويقرأ الموقعَ كلَّه صفحةً واحدة. ولمّا صار لكلّ
+         * صفحةٍ عنوانُها صار لكلٍّ نصُّها.
+         *
+         * و`null` تبقى تمشي الجميع: من ينادي الدالّة ليسأل «أفي اللقطة نصٌّ
+         * أصلًا؟» يسأل عن الموقع لا عن صفحة.
+         */
+        $pages = $only !== null ? [$only] : self::pagesOf($site);
+
+        foreach ($pages as $page) {
             /*
              * ═══ والمسوّدةُ لا تخرج من هنا ═══
              *
@@ -225,9 +238,146 @@ final class Published
      *
      * @return array{title:string, description:string, image:?string, robots:string}
      */
-    public static function head(array $site): array
+    /**
+     * روابطُ المستند الداخليّة مبنيّةً على قاعدة هذا الطلب.
+     *
+     * ═══ ولمَ يلزم أصلًا ═══
+     *
+     * روابطُ القائمة مكتوبةٌ من الجذر: «/» و«/shop» و«/about» — يكتبها
+     * النظام نفسُه من صفحات الموقع (`Website\Nav`). وهي صحيحةٌ على النطاق
+     * الفرعيّ وعلى نطاق التاجر، لأنّ جذر المضيف هناك جذرُ المتجر.
+     *
+     * أمّا على المسار البديل (`app.abaadapp.om/s/متجري`) فالجذرُ جذرُ أبعاد:
+     * «/shop» تخرج إلى `app.abaadapp.om/shop` — ٤٠٤ — و«الرئيسية» تُخرج
+     * الزبونَ إلى **صفحة دخول أبعاد**. فكلُّ رابطٍ في قائمة كلِّ موقعٍ منشور
+     * كان يخرج من المتجر.
+     *
+     * ═══ ولمَ هنا لا في طبقة الرسم ═══
+     *
+     * طبقةُ الرسم مستورَدةٌ من مستودع `Storefront` وتُنسخ إلى هنا بأمرٍ واحد
+     * (انظر `RendererParityTest`): تعديلُها في هذا المستودع يُمحى عند أوّل
+     * مزامنة، فيعود العطبُ إلى الإنتاج صامتًا. فتُحلّ الروابطُ قبل أن تصلها.
+     *
+     * ═══ والمشيُ عامٌّ لا قائمةُ حقولٍ تُكتب ═══
+     *
+     * الروابطُ في مواضع كثيرة: قائمةُ الترويسة، وقائمةُ التذييل، ووجهةُ كلّ
+     * زرٍّ في كلّ قسم (`cta_href`). وقائمةٌ تُكتب باليد تنسى التاليَ دائمًا —
+     * فيُمشى المستندُ كلُّه ويُحلّ كلُّ مفتاحٍ اسمُه `href` أو ينتهي بـ`_href`.
+     *
+     * ولا يُمسّ إلّا المسارُ الداخليّ من الجذر: العناوينُ الكاملة و`//` و`#`
+     * و`mailto:` و`tel:` تخرج كما كُتبت، والنسبيُّ بلا شرطةٍ أولى كذلك.
+     *
+     * @param  array<string,mixed>  $site
+     * @return array<string,mixed>
+     */
+    public static function rebase(array $site, string $base): array
+    {
+        if ($base === '') {
+            return $site;
+        }
+
+        $walk = function ($node) use (&$walk, $base) {
+            if (! is_array($node)) {
+                return $node;
+            }
+
+            foreach ($node as $key => $value) {
+                if (is_string($value) && is_string($key)
+                    && ($key === 'href' || str_ends_with($key, '_href'))) {
+                    $node[$key] = self::rebased($value, $base);
+
+                    continue;
+                }
+
+                $node[$key] = $walk($value);
+            }
+
+            return $node;
+        };
+
+        return $walk($site);
+    }
+
+    /** رابطٌ واحد مبنيًّا على القاعدة — والخارجيُّ يبقى كما هو */
+    private static function rebased(string $href, string $base): string
+    {
+        if ($href === '' || ! str_starts_with($href, '/') || str_starts_with($href, '//')) {
+            return $href;
+        }
+
+        // و«/» وحدها تصير القاعدةَ نفسها لا القاعدةَ وشرطةً معلّقة
+        return $href === '/' ? $base : $base.$href;
+    }
+
+    /**
+     * الصفحةُ التي يطلبها هذا المسار — أو `null` إن لم تكن.
+     *
+     * و`null` في `$path` تعني الرئيسية: هي ما يُخدَم على جذر الموقع.
+     *
+     * والمسوّدةُ لا تُخدَم — و**لا يُعاد فحصُها هنا**: `visible` تُسقط صفحات
+     * المسوّدة من المستند قبل أن يصل، وهي الموضعُ الواحد الذي يقرّر ما يراه
+     * زائر. وفحصٌ ثانٍ يقول الشيء نفسه يفترق عنه يوم يُبدَّل أحدهما — وكان
+     * مكتوبًا هنا فنجَت منه طفرةٌ تُلغيه: لأنّه لا يحرس شيئًا.
+     *
+     * @param  array<string,mixed>  $site
+     * @return array<string,mixed>|null
+     */
+    public static function pageAt(array $site, ?string $path): ?array
+    {
+        $pages = array_values(self::pagesOf($site));
+
+        if ($path === null || $path === '' || $path === '/') {
+            return collect($pages)->first(fn ($p) => ($p['is_home'] ?? false) === true)
+                ?? ($pages[0] ?? null);
+        }
+
+        $wanted = '/'.trim($path, '/');
+
+        return collect($pages)->first(
+            fn ($p) => '/'.trim((string) ($p['slug'] ?? ''), '/') === $wanted
+        );
+    }
+
+    /**
+     * عنوانُ هذه الصفحة الأصليّ — جذرُ الموقع وعليه مسارُها.
+     *
+     * والرئيسيةُ تبقى على الجذر عاريًا: `https://…/s/متجري/` و`…/s/متجري`
+     * عنوانان لصفحةٍ واحدة، وإشارةُ `canonical` إلى أحدهما تجمع ما تفرّق.
+     */
+    public static function canonicalFor(?string $root, ?array $page): ?string
+    {
+        if ($root === null) {
+            return null;
+        }
+
+        $slug = '/'.trim((string) ($page['slug'] ?? '/'), '/');
+
+        return $slug === '/' ? $root : rtrim($root, '/').$slug;
+    }
+
+    public static function head(array $site, ?array $page = null): array
     {
         $seo = is_array($site['seo'] ?? null) ? $site['seo'] : [];
+
+        /*
+         * وسيوُ الصفحة يعلو سيوَ الموقع — حقلًا حقلًا لا كتلةً.
+         *
+         * صفحةٌ كُتب لها عنوانٌ ولم يُكتب لها وصف تأخذ عنوانَها ووصفَ الموقع:
+         * ودمجُ الكتلتين كتلةً واحدة كان سيُفرّغ الوصف لأنّ الصفحة لم تذكره.
+         * والفارغُ لا يعلو المكتوب: حقلٌ تُرك فارغًا ليس اختيارًا لفراغه.
+         */
+        $pageSeo = is_array($page['seo'] ?? null) ? $page['seo'] : [];
+
+        foreach (['title', 'description', 'image'] as $field) {
+            if (trim((string) ($pageSeo[$field] ?? '')) !== '') {
+                $seo[$field] = $pageSeo[$field];
+            }
+        }
+
+        if (array_key_exists('index', $pageSeo)) {
+            $seo['index'] = $pageSeo['index'];
+        }
+
         $name = trim((string) ($site['name'] ?? ''));
         $image = trim((string) ($seo['image'] ?? ''));
 

@@ -69,7 +69,8 @@ class AMerchantSiteOpensTest extends TestCase
 
         $this->get('/s/wrood')
             ->assertOk()
-            ->assertSee('<div id="site">', false)
+            // والوسمُ يحمل الصفحةَ المطلوبة معه — انظر `StorefrontController::built`
+            ->assertSee('<div id="site" data-page="/">', false)
             ->assertSee('id="site-doc"', false);
     }
 
@@ -269,7 +270,7 @@ class AMerchantSiteOpensTest extends TestCase
         $this->publish();
 
         $html = $this->get('/s/wrood')->assertOk()->getContent();
-        $body = $this->between($html, '<div id="site">', '</div>');
+        $body = $this->between($html, '<div id="site" data-page="/">', '</div>');
 
         $this->assertSame(1, substr_count($body, '<h1>'), 'أكثر من عنوانٍ أوّل');
     }

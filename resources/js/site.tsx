@@ -49,7 +49,14 @@ if (mount && source?.textContent) {
             document.head.appendChild(link);
         }
 
-        createRoot(mount).render(<Site doc={doc} mode="live" />);
+        /*
+         * والصفحةُ من الوسم لا من العنوان.
+         *
+         * قراءتُها من `location.pathname` كانت ستحتاج معرفةَ قاعدة الروابط
+         * في المتصفّح — وهي تختلف بين `/s/متجري/shop` و`متجري.abaadapp.om/shop`
+         * ونطاقِ التاجر. والخادمُ يعرفها أصلًا لأنّه طابق المسار، فيقولها.
+         */
+        createRoot(mount).render(<Site doc={doc} mode="live" page={mount.dataset.page || undefined} />);
     } catch (error) {
         console.error('تعذّرت قراءة لقطة الموقع', error);
     }

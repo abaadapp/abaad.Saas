@@ -36,7 +36,7 @@ use Illuminate\Http\Response;
  */
 class StorefrontController extends Controller
 {
-    public function show(string $slug): Response
+    public function show(string $slug, ?string $path = null): Response
     {
         $clean = Storefront::slug($slug);
         $business = $clean ? Storefront::open($clean) : null;
@@ -46,8 +46,21 @@ class StorefrontController extends Controller
         $site = Published::forBusiness((int) $business->id);
 
         if ($site['state'] !== Published::NOT_PUBLISHED) {
-            return $this->built($site, $business);
+            /*
+             * وقاعدةُ الروابط تُقال للرسم.
+             *
+             * روابطُ القائمة في المستند مكتوبةٌ من الجذر (`/shop`) — وهي
+             * كذلك على النطاق الفرعيّ وعلى نطاق التاجر. أمّا على المسار
+             * البديل (`/s/{slug}`) فجذرُ المضيف ليس جذرَ المتجر: `/shop`
+             * يخرج إلى `app.abaadapp.om/shop`، و«الرئيسية» تُخرج الزبون
+             * إلى صفحة دخول أبعاد. فتُمرَّر القاعدةُ ويُبنى عليها كلُّ
+             * رابطٍ داخليّ — انظر `Published::rebase`.
+             */
+            return $this->built($site, $business, $path, $this->base($slug));
         }
+
+        // وصفحةُ المتجر البسيطة صفحةٌ واحدة — ولا مسارَ داخليًّا لها
+        abort_if($path !== null, 404);
 
         // ولمن لم يبنِ موقعًا: صفحةُ المتجر البسيطة إن نشرها
         abort_if(! Storefront::published($business), 404);
@@ -75,7 +88,7 @@ class StorefrontController extends Controller
      * والبانِي وحده هنا: صفحةُ المتجر البسيطة عنوانُها `‎/s/{slug}‎` وما
      * زالت تعمل عليه. ونطاقٌ خاصٌّ يُربط اليوم يُربط بموقعٍ بُني.
      */
-    public function byHost(string $host): Response
+    public function byHost(string $host, ?string $path = null): Response
     {
         /*
          * والعلَمُ يُقرأ هنا لا عند تسجيل المسار.
@@ -98,7 +111,22 @@ class StorefrontController extends Controller
 
         abort_if($site['state'] === Published::NOT_PUBLISHED, 404);
 
-        return $this->built($site, $business);
+        // ونطاقُ التاجر جذرُه جذرُ متجره — فلا قاعدةَ تُضاف
+        return $this->built($site, $business, $path, '');
+    }
+
+    /**
+     * قاعدةُ روابط المتجر على هذا الطلب — و'' حين يكون الجذرُ جذرَه.
+     *
+     * والقياسُ على المضيف لا على العَلَم: من فتح `/s/متجري` يبقى فيه ولو
+     * كانت النطاقاتُ الفرعية مُشغَّلة — والعكس. وما يُبنى يتبع البابَ الذي
+     * دخل منه الزائر، لا البابَ الذي نتمنّاه له.
+     */
+    private function base(string $slug): string
+    {
+        return str_starts_with((string) request()->route()?->getName(), 'store.show')
+            ? '/s/'.$slug
+            : '';
     }
 
     /**
@@ -109,7 +137,7 @@ class StorefrontController extends Controller
      * التاجر في معاينته غير ما يرى زبونُه. وهو العطبُ الذي وُضع له
      * `RendererParityTest` أصلًا.
      */
-    private function built(array $site, Business $business): Response
+    private function built(array $site, Business $business, ?string $path = null, string $base = ''): Response
     {
         if ($site['state'] === Published::MAINTENANCE) {
             /*
@@ -126,12 +154,31 @@ class StorefrontController extends Controller
                 ->header('Retry-After', '3600');
         }
 
+        $doc = $site['site'];
+        $page = Published::pageAt($doc, $path);
+
+        /*
+         * ومسارٌ لا صفحةَ له ٤٠٤ — لا الرئيسيةُ مكانَه.
+         *
+         * صفحةٌ تُردّ بـ٢٠٠ عن عنوانٍ لا وجود له تُفهرَس مرّتين تحت عنوانين،
+         * ويبقى الزائرُ الذي تبع رابطًا قديمًا يظنّ أنّه وصل.
+         */
+        abort_if($page === null, 404);
+
+        // وروابطُه الداخليّة تُبنى على قاعدة هذا الطلب — انظر `Published::rebase`
+        $doc = Published::rebase($doc, $base);
+
         return response()
             ->view('site.show', [
-                'doc' => $site['site'],
-                'head' => Published::head($site['site']),
-                'outline' => Published::outline($site['site']),
-                'canonical' => Storefront::canonical($business->site_slug, (int) $business->id),
+                'doc' => $doc,
+                'page' => $page['slug'] ?? '/',
+                'head' => Published::head($doc, $page),
+                // ونصُّ هذه الصفحة وحدها: لكلّ عنوانٍ محتواه لا محتوى الموقع كلِّه
+                'outline' => Published::outline($doc, $page),
+                'canonical' => Published::canonicalFor(
+                    Storefront::canonical($business->site_slug, (int) $business->id),
+                    $page,
+                ),
             ])
             ->header('Cache-Control', 'public, max-age=120');
     }

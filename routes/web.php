@@ -1460,9 +1460,26 @@ Route::domain('{slug}.'.config('storefront.domain'))
         Route::get('/', [StorefrontController::class, 'show'])
             ->where('slug', Storefront::pattern())
             ->name('store.home');
+
+        /*
+         * وصفحاتُ الموقع الداخليّة — «المتجر» و«من نحن» و«تواصل معنا».
+         *
+         * كان المسارُ الأوّلُ وحدَه: يبني النظامُ للتاجر موقعًا بأربع صفحات،
+         * ويكتب في ترويسته وتذييله قائمةً تُشير إليها كلِّها (`Nav`)، ثمّ
+         * لا يخدم منها إلّا الرئيسية. فكلُّ رابطٍ في قائمة الموقع يردّ ٤٠٤،
+         * و«الرئيسية» على المسار البديل تُخرج الزبونَ إلى صفحة دخول أبعاد.
+         * وطبقةُ الرسم تقبل الصفحةَ منذ بُنيت (`Site` لها خاصّية `page`) —
+         * الناقصُ كان العنوانَ وحده.
+         */
+        Route::get('/{path}', [StorefrontController::class, 'show'])
+            ->where('slug', Storefront::pattern())
+            ->where('path', Storefront::PATH)
+            ->name('store.page');
     });
 
 Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
+Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
+    ->where('path', Storefront::PATH)->name('store.show.page');
 
 /*
  * ونطاقُ التاجر نفسه — `myshop.om` يفتح موقعه.
@@ -1491,6 +1508,12 @@ Route::domain('{host}')
         Route::get('/', [StorefrontController::class, 'byHost'])
             ->where('host', '(?!.*'.preg_quote(config('storefront.domain'), '/').'$)[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}')
             ->name('store.custom');
+
+        // وصفحاتُه الداخليّة معه — القائمةُ واحدةٌ على الطرق الثلاث
+        Route::get('/{path}', [StorefrontController::class, 'byHost'])
+            ->where('host', '(?!.*'.preg_quote(config('storefront.domain'), '/').'$)[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}')
+            ->where('path', Storefront::PATH)
+            ->name('store.custom.page');
     });
 
 /*

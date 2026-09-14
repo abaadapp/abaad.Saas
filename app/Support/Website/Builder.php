@@ -53,6 +53,8 @@ class Builder
                 'goal' => $goal,
                 'template' => $template,
                 'theme' => Templates::theme($template),
+                // ورموزُ بنيته معها: القالب بنيةٌ لا لوحةُ ألوان. انظر `Layout`
+                'layout' => Templates::layout($template),
                 'seo' => self::seo($identity),
                 'created_by' => $userId,
                 'draft_saved_at' => now(),
@@ -229,7 +231,8 @@ class Builder
             'goal' => $goal,
             'template' => $template,
             'theme' => Templates::theme($template),
-            'tokens' => Theme::tokens(Templates::theme($template)),
+            'layout' => Templates::layout($template),
+            'tokens' => Theme::tokens(Templates::theme($template)) + Templates::layout($template),
             'seo' => self::seo($identity),
             'commerce' => Publication::commerceFor($goal, $bid),
             'maintenance' => false,

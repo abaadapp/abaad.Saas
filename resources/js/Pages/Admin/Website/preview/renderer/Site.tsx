@@ -5,7 +5,7 @@ import { Footer } from './Footer';
 import { Header } from './Header';
 import { TextProvider } from './i18n';
 import './site.css';
-import { cssVars } from './tokens';
+import { cssVars, layoutAttrs } from './tokens';
 import type { DocPage, DocSection, Mode, SiteDocument } from './types';
 
 /**
@@ -83,6 +83,7 @@ export function Site({ doc, mode, page, wrap, emptyText, style, className, child
                 dir={doc.dir ?? 'rtl'}
                 lang={doc.locale ?? 'ar'}
                 className={['w-site', className].filter(Boolean).join(' ')}
+                {...layoutAttrs(doc)}
                 style={{ ...cssVars(doc), minHeight: mode === 'edit' ? 420 : undefined, ...style }}
             >
                 {header && shows(header, mode, doc) && <Header section={header} doc={doc} mode={mode} />}

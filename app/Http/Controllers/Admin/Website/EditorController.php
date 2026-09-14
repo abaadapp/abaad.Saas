@@ -8,6 +8,7 @@ use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Content;
+use App\Support\Website\Layout;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Preview;
 use App\Support\Website\Sections;
@@ -87,6 +88,14 @@ class EditorController extends Controller
             'templates' => Templates::options(),
             'theme' => $site->theme,
             'themeOptions' => Theme::options(),
+            /*
+             * ورموزُ البنية معها: القالب بنيةٌ قبل أن يكون لونًا.
+             *
+             * وثلاثةٌ منها تُعرض في اللوحة والباقي تحت «خيارات إضافية» —
+             * القسمةُ في `Layout::PRIMARY` لا في الشاشة، فتُقرأ مرّةً واحدة.
+             */
+            'layout' => Layout::normalize($site->layout ?? [], Templates::layout($site->template)),
+            'layoutOptions' => Layout::options(),
             /*
              * وأيُّ لوحةٍ تُفتح — «الأقسام» أو «التصميم».
              *

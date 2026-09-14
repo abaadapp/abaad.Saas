@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslate } from '@/lib/i18n';
 import { Site } from './renderer/Site';
+import { fontHrefs } from './renderer/tokens';
 import { DEVICE_WIDTH, type Device, type SiteDocument } from './types';
 
 /**
@@ -96,6 +97,31 @@ export default function SitePreview({
     const [hover, setHover] = useState<string | null>(null);
 
     const width = DEVICE_WIDTH[device];
+
+    /*
+     * وخطُّ الموقع يُطلب هنا — وإلّا لم تكن المعاينة معاينة.
+     *
+     * الموقعُ المنشور يطلب خطَّه في غلافه، ولوحةُ أبعاد لا تعرف خطَّ تاجرٍ
+     * بعينه. فكان التاجر يختار «أميري» ويرى موقعَه بخطّ اللوحة، فيظنّ أنّ
+     * الاختيار لم يُحفظ — أو أسوأ: ينشر وهو يظنّ أنّه رأى ما سيراه زبونه.
+     *
+     * وخطّان لا واحد: القالبُ التحريريّ يكتب عناوينه بخطٍّ غير خطّ نصّه.
+     * والوسمُ يبقى بعد الخروج عمدًا — ملفُّ خطٍّ محفوظٌ في المتصفّح لا يُثقل
+     * شيئًا، وإزالتُه تُعيد الطلب عند كلّ تبديل.
+     */
+    useEffect(() => {
+        if (typeof globalThis.document === 'undefined') return;
+
+        for (const href of fontHrefs(doc)) {
+            if (globalThis.document.querySelector(`link[href="${href}"]`)) continue;
+
+            const link = globalThis.document.createElement('link');
+
+            link.rel = 'stylesheet';
+            link.href = href;
+            globalThis.document.head.appendChild(link);
+        }
+    }, [doc]);
     const grab = !!onPick;
 
     /*

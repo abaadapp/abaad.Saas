@@ -29,6 +29,17 @@ class Preview
     public const MAX = 24;
 
     /**
+     * وصفحةُ المتجر وحدها تتجاوزه.
+     *
+     * «منتجات مختارة» تعرض ثمانيةً فلا تحتاج أكثر، أمّا «كلّ المنتجات» فهي
+     * الكتالوج نفسه: يُرشَّح ويُرتَّب في المتصفّح (انظر `Catalog.tsx`)، فما
+     * لم يصل لا يُبحث فيه. ومئتان حدٌّ لا سقفُ طموح: مستندٌ بألفِ منتجٍ يثقل
+     * على هاتفٍ في شبكةٍ ضعيفة، ويومَ يكبر كتالوجُ تاجرٍ عن هذا يصير الترشيح
+     * في الخادم — ولا يتغيّر شكلُ الصفحة.
+     */
+    public const CATALOG_MAX = 200;
+
+    /**
      * الموقع كما يُعرض — لقطةً ومحتوى.
      *
      * @return array<string, mixed>
@@ -265,9 +276,10 @@ class Preview
                     continue;
                 }
 
-                $limit = min(self::MAX, max(1, (int) ($section['data']['limit'] ?? 8)));
+                $limit = self::limitOf($section);
 
                 match ($section['type']) {
+                    'product_catalog' => $needs['products'] = max($needs['products'], $limit),
                     'featured_products', 'latest_products' => $needs['products'] = max($needs['products'], $limit + count($section['data']['product_ids'] ?? [])),
                     'best_sellers' => [
                         $needs['best'] = max($needs['best'], $limit),
@@ -292,9 +304,10 @@ class Preview
      */
     private static function items(array $section, array $bag): ?array
     {
-        $limit = min(self::MAX, max(1, (int) ($section['data']['limit'] ?? 8)));
+        $limit = self::limitOf($section);
 
         return match ($section['type']) {
+            'product_catalog' => array_slice($bag['products'], 0, $limit),
             /*
              * «منتجات مختارة» بلا اختيار تعرض الأحدث.
              *
@@ -313,6 +326,18 @@ class Preview
             )), 0, $limit),
             default => null,
         };
+    }
+
+    /**
+     * كم يعرض هذا القسم — وسقفُه سقفُ نوعه.
+     *
+     * @param  array<string, mixed>  $section
+     */
+    private static function limitOf(array $section): int
+    {
+        $cap = ($section['type'] ?? '') === 'product_catalog' ? self::CATALOG_MAX : self::MAX;
+
+        return min($cap, max(1, (int) ($section['data']['limit'] ?? 8)));
     }
 
     /** @param array<int, array<string, mixed>> $products */

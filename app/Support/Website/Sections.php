@@ -63,12 +63,33 @@ class Sections
             'group' => 'محتوى',
             'slot' => true,
             'fields' => [
-                'preset' => ['label' => 'الشكل', 'type' => 'select', 'default' => 'simple', 'options' => [
-                    'simple' => 'بسيط — شعار وقائمة',
+                /*
+                 * و«كما في القالب» أوّل الخيارات لا آخرَها.
+                 *
+                 * من لم يفتح هذا الحقل يتبع قالبه، فإن بدّله تبدّلت ترويسته
+                 * معه — وهو ما يقصده حين يبدّل قالبًا. ومن اختار شكلًا
+                 * صراحةً بقي عليه.
+                 *
+                 * و«موسّع» القديمة تسقط هنا ولا تُترجَم: كانت تَعِد ببحثٍ
+                 * وسلّة ولم يكن لهما رسم، واسمُها اليوم «متجر» ورسمُه موجود.
+                 * فما حُفظ بها يتبع قالبه — انظر `ALIASES` في `layout.ts`.
+                 */
+                'preset' => ['label' => 'شكل الترويسة', 'type' => 'layout', 'family' => 'header', 'default' => 'auto', 'options' => [
+                    'auto' => 'كما في القالب',
+                    'minimal' => 'بسيط — شعار وقائمة',
                     'centered' => 'الشعار في الوسط',
-                    'full' => 'موسّع — بحثٌ وحساب وسلّة',
+                    'commerce' => 'متجر — بحثٌ وشريط أقسام',
+                    'editorial' => 'واسع وهادئ',
                 ]],
-                'show_search' => ['label' => 'إظهار البحث', 'type' => 'toggle', 'default' => false],
+                /*
+                 * والبحثُ صار يعمل: يُرسل إلى صفحة المتجر فترشّح قائمتَها به.
+                 *
+                 * كان مفتاحًا يُحفظ ولا يقرؤه شيء — ولا شيءَ أسوأ من صندوق
+                 * بحثٍ لا يبحث، إلّا مفتاحًا يَعِد بصندوقٍ لا يُرسم. ولا
+                 * مسارَ بحثٍ ولا فهرس: الكتالوج يصل مع المستند والترشيح في
+                 * المتصفّح. انظر `Catalog.tsx`.
+                 */
+                'show_search' => ['label' => 'إظهار البحث', 'type' => 'toggle', 'default' => false, 'goals' => ['store', 'catalog']],
                 'show_cart' => ['label' => 'إظهار السلّة', 'type' => 'toggle', 'default' => true, 'goals' => ['store']],
                 'show_whatsapp' => ['label' => 'زر واتساب', 'type' => 'toggle', 'default' => true],
                 'sticky' => ['label' => 'تثبيتها عند التمرير', 'type' => 'toggle', 'default' => true, 'advanced' => true],
@@ -172,6 +193,14 @@ class Sections
             'group' => 'محتوى',
             'unique' => true,
             'fields' => [
+                'layout' => ['label' => 'التخطيط', 'type' => 'layout', 'family' => 'hero', 'default' => 'auto', 'options' => [
+                    'auto' => 'كما في القالب',
+                    'classic' => 'صورة خلفية',
+                    'centered' => 'نصّ في الوسط',
+                    'split' => 'نصّ وصورة',
+                    'editorial' => 'صورة ملء العرض',
+                    'showcase' => 'لوحة عرض',
+                ]],
                 'title' => ['label' => 'العنوان', 'type' => 'text', 'default' => '', 'max' => 120],
                 'subtitle' => ['label' => 'الجملة تحته', 'type' => 'textarea', 'default' => '', 'max' => 300],
                 'image' => ['label' => 'صورة الخلفية', 'type' => 'image', 'default' => ''],
@@ -311,6 +340,13 @@ class Sections
             'source' => 'products',
             'fields' => [
                 'title' => ['label' => 'العنوان', 'type' => 'text', 'default' => 'منتجات مختارة', 'max' => 120],
+                'layout' => ['label' => 'شكل الشبكة', 'type' => 'layout', 'family' => 'grid', 'default' => 'auto', 'options' => [
+                    'auto' => 'كما في القالب',
+                    'classic' => 'عادية',
+                    'dense' => 'كثيفة',
+                    'large' => 'بطاقات كبيرة',
+                    'editorial' => 'متفاوتة',
+                ]],
                 'product_ids' => [
                     'label' => 'المنتجات', 'type' => 'products', 'default' => [],
                     'hint' => 'اتركها فارغة ليعرض أحدث منتجاتك تلقائيًّا',
@@ -329,6 +365,13 @@ class Sections
             'source' => 'products',
             'fields' => [
                 'title' => ['label' => 'العنوان', 'type' => 'text', 'default' => 'وصل حديثًا', 'max' => 120],
+                'layout' => ['label' => 'شكل الشبكة', 'type' => 'layout', 'family' => 'grid', 'default' => 'auto', 'options' => [
+                    'auto' => 'كما في القالب',
+                    'classic' => 'عادية',
+                    'dense' => 'كثيفة',
+                    'large' => 'بطاقات كبيرة',
+                    'editorial' => 'متفاوتة',
+                ]],
                 'limit' => ['label' => 'كم منتجًا يظهر', 'type' => 'number', 'default' => 8, 'min' => 2, 'max' => 24],
                 'columns' => ['label' => 'عدد الأعمدة', 'type' => 'select', 'default' => '4', 'advanced' => true, 'options' => [
                     '2' => 'اثنان', '3' => 'ثلاثة', '4' => 'أربعة',
@@ -352,8 +395,48 @@ class Sections
             'requires' => 'sales',
             'fields' => [
                 'title' => ['label' => 'العنوان', 'type' => 'text', 'default' => 'الأكثر مبيعًا', 'max' => 120],
+                'layout' => ['label' => 'شكل الشبكة', 'type' => 'layout', 'family' => 'grid', 'default' => 'auto', 'options' => [
+                    'auto' => 'كما في القالب',
+                    'classic' => 'عادية',
+                    'dense' => 'كثيفة',
+                    'large' => 'بطاقات كبيرة',
+                    'editorial' => 'متفاوتة',
+                ]],
                 'limit' => ['label' => 'كم منتجًا يظهر', 'type' => 'number', 'default' => 8, 'min' => 2, 'max' => 24],
                 'days' => ['label' => 'خلال كم يومًا', 'type' => 'number', 'default' => 90, 'min' => 7, 'max' => 365, 'advanced' => true],
+            ],
+        ],
+        /*
+         * صفحةُ المتجر قسمٌ واحد لا ثلاثة.
+         *
+         * «أحدث المنتجات» يعرض ثمانيةً من مئتين، وهذا يكفي في الواجهة ولا
+         * يكفي في صفحةٍ اسمُها «المتجر»: من فتحها يريد البضاعة كلَّها ومعها
+         * ما يصل بها إلى ما يريد. فهذا القسم يحمل الكتالوج ويرسم معه بحثًا
+         * وأقسامًا تُنقر وترتيبًا — والترشيح في المتصفّح بلا طلبٍ ثانٍ.
+         *
+         * ولا مرشّحاتِ لونٍ ولا مقاسٍ ولا علامةٍ تجارية: ليست في المنتج، ولا
+         * يُرسم مقبضٌ لا بيانات تحته.
+         */
+        'product_catalog' => [
+            'label' => 'كلّ المنتجات',
+            'hint' => 'صفحةُ متجرك: الكتالوج كلُّه، ومعه بحثٌ وأقسامٌ وترتيب',
+            'group' => 'التجارة',
+            'goals' => ['store', 'catalog'],
+            'source' => 'products',
+            'unique' => true,
+            'fields' => [
+                'title' => ['label' => 'عنوان الصفحة', 'type' => 'text', 'default' => 'كلّ المنتجات', 'max' => 120],
+                'layout' => ['label' => 'شكل الشبكة', 'type' => 'layout', 'family' => 'grid', 'default' => 'auto', 'options' => [
+                    'auto' => 'كما في القالب',
+                    'classic' => 'عادية',
+                    'dense' => 'كثيفة',
+                    'large' => 'بطاقات كبيرة',
+                    'editorial' => 'متفاوتة',
+                ]],
+                'limit' => ['label' => 'أكثر ما يُعرض', 'type' => 'number', 'default' => 60, 'min' => 12, 'max' => 200, 'advanced' => true],
+                'columns' => ['label' => 'عدد الأعمدة', 'type' => 'select', 'default' => '4', 'advanced' => true, 'options' => [
+                    '2' => 'اثنان', '3' => 'ثلاثة', '4' => 'أربعة',
+                ]],
             ],
         ],
         'categories' => [
@@ -365,8 +448,13 @@ class Sections
             'fields' => [
                 'title' => ['label' => 'العنوان', 'type' => 'text', 'default' => 'تسوّق حسب القسم', 'max' => 120],
                 'limit' => ['label' => 'كم تصنيفًا يظهر', 'type' => 'number', 'default' => 8, 'min' => 2, 'max' => 24],
-                'style' => ['label' => 'الشكل', 'type' => 'select', 'default' => 'cards', 'advanced' => true, 'options' => [
-                    'cards' => 'بطاقات', 'pills' => 'أزرار', 'grid' => 'شبكة صور',
+                'style' => ['label' => 'الشكل', 'type' => 'layout', 'family' => 'categories', 'default' => 'auto', 'options' => [
+                    'auto' => 'كما في القالب',
+                    'cards' => 'بطاقات',
+                    'pills' => 'أزرار',
+                    'covers' => 'أغلفة',
+                    'tiles' => 'بلاطات كبيرة',
+                    'list' => 'قائمة',
                 ]],
             ],
         ],
@@ -568,6 +656,8 @@ class Sections
                 'type' => $field['type'],
                 'hint' => isset($field['hint']) ? __($field['hint']) : null,
                 'advanced' => (bool) ($field['advanced'] ?? false),
+                // أيَّ شيءٍ يرسم مُنتقي التخطيط: ترويسةً أم واجهةً أم شبكة
+                'family' => $field['family'] ?? null,
                 'options' => isset($field['options'])
                     ? collect($field['options'])->map(fn ($l, $v) => ['value' => (string) $v, 'label' => __($l)])->values()->all()
                     : null,

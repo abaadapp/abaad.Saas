@@ -9,7 +9,14 @@
  * @see abaad.Saas/app/Support/Website/Preview.php
  */
 
-/** رموز التصميم — ستّةٌ يختارها التاجر وخمسةٌ يشتقّها النظام */
+/**
+ * رموز التصميم — لونٌ وخطٌّ، ومعهما بنيةُ الصفحة.
+ *
+ * حقيبةٌ واحدة لا حقيبتان: الألوان الستّة وما يُشتقّ منها، ورموزُ التخطيط
+ * التي تصف كيف تُبنى الصفحة لا بأيّ لونٍ تُصبغ (انظر `layout.ts`). وكلُّها
+ * اختياريّةٌ من ناحية العقد: لقطةٌ نُشرت قبل طبقة التخطيط تصل بلا رموزها
+ * فتأخذ افتراضيّاتها — وهي رسمُ الأمس حرفيًّا.
+ */
 export interface Tokens {
     primary: string;
     background: string;
@@ -22,6 +29,20 @@ export interface Tokens {
     border: string;
     muted: string;
     radius_px: number;
+    /* ------ بنيةُ الصفحة — يحكمها `layout.ts` ويقرؤها العارض منه ------ */
+    width?: string;
+    density?: string;
+    scale?: string;
+    heading?: string;
+    header?: string;
+    hero?: string;
+    card?: string;
+    grid?: string;
+    ratio?: string;
+    categories?: string;
+    footer?: string;
+    surface_style?: string;
+    heading_font?: string;
 }
 
 export interface Currency {

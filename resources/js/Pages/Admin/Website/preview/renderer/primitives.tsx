@@ -1,13 +1,17 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { ShoppingBag, Star } from './icons';
 import { useText } from './i18n';
-import type { Mode } from './types';
+import type { LayoutTokens } from './layout';
+import { money } from './money';
+import type { Currency, DocProduct, Mode } from './types';
 
 /**
- * اللبنات المشتركة — إطارٌ وعنوانٌ وزرٌّ وصورةٌ وشبكة.
+ * اللبنات المشتركة — إطارٌ وعنوانٌ وزرٌّ وصورةٌ وشبكةٌ وسعر.
  *
  * لولا هذه لتكرّر الحشوُ والعرضُ الأقصى في عشرين قسمًا، فتفاوت الموقعُ من
- * قسمٍ لآخر بمقدار ما نُسي في أحدها.
+ * قسمٍ لآخر بمقدار ما نُسي في أحدها. وهي أيضًا موضعُ اختلاف القوالب: تبدّلُ
+ * رمزٍ هنا يتبدّل به عشرون قسمًا دفعةً واحدة، وهو الفرق بين قالبٍ إعدادًا
+ * وقالبٍ نسخةً من الموقع.
  */
 
 /* ------------------------------ الإطار ------------------------------ */
@@ -17,11 +21,14 @@ export function Band({
     tone,
     tight,
     id,
+    /** قسمٌ يملأ الشاشة عرضًا — الواجهةُ والصورُ الكبيرة */
+    bleed,
 }: {
     children: ReactNode;
     tone?: 'surface' | 'primary';
     tight?: boolean;
     id?: string;
+    bleed?: boolean;
 }) {
     return (
         <section
@@ -33,24 +40,83 @@ export function Band({
                 padding: tight ? 'var(--w-pad-tight)' : 'var(--w-pad)',
             }}
         >
-            <div style={{ maxWidth: 1120, margin: '0 auto' }}>{children}</div>
+            <div style={{ maxWidth: bleed ? undefined : 'var(--w-content)', margin: '0 auto' }}>{children}</div>
         </section>
     );
 }
 
 /**
- * عنوان القسم.
+ * عنوان القسم — ثلاثةُ أشكالٍ لا شكلٌ واحد.
+ *
+ * عنوانٌ في الوسط في كلّ قسمٍ من كلّ قالب هو أوّل ما يجعل المواقعَ تتشابه:
+ * إيقاعُ الصفحة يُقرأ من موضع عناوينها قبل أن يُقرأ من ألوانها. فالتحريريُّ
+ * يبدأ من الحافّة بخطٍّ فوقه، والتجاريُّ يبدأ من الحافّة ومعه رابطٌ إلى
+ * الكلّ، والبسيطُ يبقى في الوسط.
  *
  * و`h2` دائمًا: `h1` واحدةٌ في الصفحة وهي في الواجهة الرئيسية أو في عنوان
  * الصفحة. وترتيبُ العناوين ليس زينةً — قارئ الشاشة يتنقّل به.
  */
-export function Heading({ title, sub }: { title?: string; sub?: string }) {
+export function Heading({
+    title,
+    sub,
+    variant = 'center',
+    action,
+}: {
+    title?: string;
+    sub?: string;
+    variant?: LayoutTokens['heading'];
+    /** رابطٌ بجانب العنوان — «كلّ المنتجات» في القوالب التجارية */
+    action?: ReactNode;
+}) {
     if (!title && !sub) return null;
 
+    const centered = variant === 'center';
+
     return (
-        <div style={{ marginBottom: 28, textAlign: 'center' }}>
-            {title && <h2 style={{ fontSize: 'var(--w-h2)', fontWeight: 800, margin: 0, lineHeight: 1.35 }}>{title}</h2>}
-            {sub && <p style={{ color: 'var(--w-muted)', marginTop: 8, fontSize: 15, lineHeight: 1.8 }}>{sub}</p>}
+        <div
+            style={{
+                marginBottom: centered ? 28 : 22,
+                textAlign: centered ? 'center' : 'start',
+                display: 'flex',
+                flexDirection: centered ? 'column' : 'row',
+                alignItems: centered ? 'stretch' : 'flex-end',
+                justifyContent: 'space-between',
+                gap: 14,
+                flexWrap: 'wrap',
+            }}
+        >
+            <div style={{ minWidth: 0 }}>
+                {/* والخطُّ فوق العنوان علامةُ القالب التحريريّ — لا زينةٌ في كلّ قالب */}
+                {variant === 'editorial' && (
+                    <span
+                        aria-hidden
+                        style={{
+                            display: 'block',
+                            width: 46,
+                            height: 1,
+                            background: 'var(--w-primary)',
+                            marginBottom: 18,
+                            opacity: 0.8,
+                        }}
+                    />
+                )}
+                {title && (
+                    <h2
+                        style={{
+                            fontSize: 'var(--w-h2)',
+                            fontWeight: variant === 'editorial' ? 500 : 800,
+                            margin: 0,
+                            lineHeight: 1.35,
+                        }}
+                    >
+                        {title}
+                    </h2>
+                )}
+                {sub && (
+                    <p style={{ color: 'var(--w-muted)', margin: '8px 0 0', fontSize: 15, lineHeight: 1.8 }}>{sub}</p>
+                )}
+            </div>
+            {action}
         </div>
     );
 }
@@ -71,6 +137,7 @@ export function Link({
     style,
     ariaLabel,
     external,
+    className,
 }: {
     href: string;
     mode: Mode;
@@ -78,6 +145,7 @@ export function Link({
     style?: CSSProperties;
     ariaLabel?: string;
     external?: boolean;
+    className?: string;
 }) {
     const dead = mode === 'edit';
 
@@ -88,6 +156,7 @@ export function Link({
             aria-disabled={dead || undefined}
             rel={external ? 'noopener noreferrer' : undefined}
             target={external ? '_blank' : undefined}
+            className={className}
             style={{ color: 'inherit', textDecoration: 'none', ...style }}
         >
             {children}
@@ -102,17 +171,22 @@ export function Cta({
     mode,
     ghost,
     external,
+    block,
 }: {
     label: string;
     href?: string;
     mode: Mode;
     ghost?: boolean;
     external?: boolean;
+    /** زرٌّ بعرض ما يحويه — في بطاقة المنتج وفي الهاتف */
+    block?: boolean;
 }) {
     if (!label) return null;
 
     const box: CSSProperties = {
-        display: 'inline-block',
+        display: block ? 'flex' : 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         padding: '12px 26px',
         borderRadius: 'var(--w-radius)',
         fontWeight: 700,
@@ -123,6 +197,7 @@ export function Cta({
         // زرٌّ أصغر من ٤٤ بكسل لا يُصاب بالإبهام
         minHeight: 44,
         lineHeight: '20px',
+        textAlign: 'center',
     };
 
     if (!href) {
@@ -144,27 +219,35 @@ export function Cta({
  * والنسبةُ محجوزةٌ قبل أن تصل الصورة: بلا ذلك يقفز ما تحتها حين تُحمَّل،
  * فيضغط الزائر على رابطٍ غير الذي قصده. والغائبةُ تُرسم مكانًا محايدًا لا
  * فراغًا — الموقع لا يُرى ناقصًا لأنّ التاجر لم يرفع صورة بعد.
+ *
+ * وحدُّها من رمز القالب لا مكتوبًا: القالبُ التحريريّ بلا حدودٍ حول صوره —
+ * الصورةُ فيه هي البطل، والإطارُ حولها يصغّرها.
  */
 export function Media({
     src,
     alt,
     ratio = '4 / 3',
     eager,
+    /** حوافُّ حادّة — الصورةُ الملاصقةُ لحافّة القسم لا تُدوَّر */
+    square,
+    className,
 }: {
     src?: string | null;
     alt?: string;
     ratio?: string;
     /** أوّلُ صورةٍ في الصفحة تُحمَّل فورًا — تأجيلُها يؤخّر أكبر عنصرٍ يُرسم */
     eager?: boolean;
+    square?: boolean;
+    className?: string;
 }) {
     return (
         <div
+            className={['w-shot', className].filter(Boolean).join(' ')}
             style={{
                 aspectRatio: ratio,
-                borderRadius: 'var(--w-radius)',
-                overflow: 'hidden',
+                borderRadius: square ? 0 : 'var(--w-radius)',
                 background: 'var(--w-surface)',
-                border: '1px solid var(--w-border)',
+                border: '1px solid var(--w-card-border)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -193,22 +276,108 @@ export function Media({
  * عددُ الأعمدة الذي يختاره التاجر هو أقصى ما يُعرض على الشاشة الواسعة، وما
  * دونها يُحسب من `auto-fit`. ورقمٌ ثابت يعني أربعة أعمدةٍ في هاتفٍ عرضُه
  * ٣٢٠ بكسل — بطاقاتٌ بعرض إصبع.
+ *
+ * والفجوةُ من كثافة القالب لا رقمًا هنا: الفسيحُ يتنفّس بين بطاقاته كما
+ * يتنفّس بين أقسامه.
  */
-export function Grid({ columns, min = 190, children }: { columns: number; min?: number; children: ReactNode }) {
+export function Grid({
+    columns,
+    min = 190,
+    children,
+    className,
+    center = true,
+}: {
+    columns: number;
+    min?: number;
+    children: ReactNode;
+    className?: string;
+    /** شبكةٌ أضيقُ من قسمها تُوسَّط — إلّا حين يكون محاذاةُ القسم للحافّة */
+    center?: boolean;
+}) {
     const max = Math.max(1, Math.min(columns, 6));
 
     return (
         <div
+            className={['w-grid', className].filter(Boolean).join(' ')}
             style={{
-                display: 'grid',
-                gap: 18,
                 gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}px, 100%), 1fr))`,
-                maxWidth: max * (min + 60),
-                marginInline: 'auto',
+                maxWidth: center ? max * (min + 60) : undefined,
+                marginInline: center ? 'auto' : undefined,
             }}
         >
             {children}
         </div>
+    );
+}
+
+/* ------------------------------ السعر ------------------------------ */
+
+/**
+ * السعر — رقمٌ واحدٌ أو رقمان.
+ *
+ * وموضعُه واحدٌ في الموقع كلِّه: البطاقةُ وصفحةُ المنتج والقائمةُ تكتبه
+ * بالقاعدة نفسها. وسعرٌ قبل الخصم يُشطب ويصغر ويخفت — ثلاثتُها معًا، لأنّ
+ * الشطبَ وحده يُقرأ في عجلةٍ رقمًا ثانيًا لا رقمًا ملغى.
+ */
+export function Price({
+    product,
+    currency,
+    size = 14,
+    tone = 'primary',
+}: {
+    product: Pick<DocProduct, 'final' | 'was'>;
+    currency: Currency | undefined;
+    size?: number;
+    /** في القالب البسيط السعرُ بلون النصّ لا بلون العلامة */
+    tone?: 'primary' | 'text';
+}) {
+    return (
+        <p
+            style={{
+                margin: 0,
+                fontSize: size,
+                fontWeight: 700,
+                color: tone === 'primary' ? 'var(--w-primary)' : 'inherit',
+            }}
+        >
+            {money(product.final, currency)}
+            {product.was !== null && (
+                <span
+                    style={{
+                        marginInlineStart: 8,
+                        color: 'var(--w-muted)',
+                        textDecoration: 'line-through',
+                        fontWeight: 400,
+                        fontSize: size - 2,
+                    }}
+                >
+                    {money(product.was, currency)}
+                </span>
+            )}
+        </p>
+    );
+}
+
+/** شارةٌ فوق الصورة — «خصم ٢٠٪» وما يشبهها */
+export function Tag({ children, tone = 'primary' }: { children: ReactNode; tone?: 'primary' | 'dark' }) {
+    return (
+        <span
+            style={{
+                position: 'absolute',
+                insetInlineStart: 10,
+                top: 10,
+                zIndex: 1,
+                background: tone === 'primary' ? 'var(--w-primary)' : 'rgba(0,0,0,.78)',
+                color: tone === 'primary' ? 'var(--w-on-primary)' : '#fff',
+                borderRadius: 'var(--w-radius)',
+                padding: '4px 9px',
+                fontSize: 11.5,
+                fontWeight: 800,
+                lineHeight: 1.6,
+            }}
+        >
+            {children}
+        </span>
     );
 }
 

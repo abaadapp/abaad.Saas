@@ -65,7 +65,14 @@ class Content
             'textarea' => self::text($value, $field['max'] ?? 2000),
             'link', 'image' => self::url($value),
             'number' => self::number($value, $field),
-            'select' => self::choice($value, $field),
+            /*
+             * و`layout` اختيارٌ كـ`select` — يفترقان في المحرّر لا هنا.
+             *
+             * الفرقُ أنّ المحرّر يرسمه صورًا مصغَّرة لا قائمةً نصّية: صاحبُ
+             * المتجر يفهم «نصّ وصورة» بالنظر لا باسم الخيار. أمّا التنظيف
+             * فواحد: قيمةٌ من قائمتها، وما سواها يعود إلى الافتراضيّ.
+             */
+            'select', 'layout' => self::choice($value, $field),
             'toggle' => (bool) filter_var($value, FILTER_VALIDATE_BOOLEAN),
             'date' => self::date($value),
             'list' => self::list($value, $field['item'] ?? []),

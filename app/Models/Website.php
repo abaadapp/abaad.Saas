@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Website\Blueprints;
+use App\Support\Website\Layout;
 use App\Support\Website\Sections;
 use App\Support\Website\Templates;
 use App\Support\Website\Theme;
@@ -23,6 +24,7 @@ class Website extends Model
 
     protected $casts = [
         'theme' => 'array',
+        'layout' => 'array',
         'seo' => 'array',
         'maintenance' => 'boolean',
         'published_at' => 'datetime',
@@ -110,9 +112,20 @@ class Website extends Model
     }
 
     /** رموز التصميم كاملةً — المختارُ وما اشتُقّ منه */
+    /**
+     * رموز التصميم كاملةً — المختارُ وما اشتُقّ منه، لونًا وبنية.
+     *
+     * وحقيبةٌ واحدة لا حقيبتان: اللقطة المنشورة تحمل `tokens`، والعارض يقرأ
+     * منها الألوانَ والبنية معًا (`renderer/layout.ts`). فلا مفتاحَ جديد
+     * يتعلّمه القارئ ولا نسخةَ ثانية من العقد.
+     *
+     * وموقعٌ بلا رموز بنية — وهو كلُّ موقعٍ بُني قبل هذه الطبقة — يأخذ رموزَ
+     * قالبه، ورموزُ القوالب القديمة هي الافتراضيّة التي هي رسمُ الأمس.
+     */
     public function tokens(): array
     {
-        return Theme::tokens($this->theme ?? Templates::theme($this->template));
+        return Theme::tokens($this->theme ?? Templates::theme($this->template))
+            + Layout::normalize($this->layout ?? [], Templates::layout($this->template));
     }
 
     /** قسمٌ عامٌّ بعينه — الترويسة أو التذييل */

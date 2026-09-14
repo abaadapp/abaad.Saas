@@ -42,12 +42,13 @@ final class Publication
      *
      * ١ — الشكل الأوّل: بلا `commerce` وبلا `schema_version`.
      * ٢ — أُضيف `commerce` (عرضُ الأسعار وقبولُ الطلب) و`schema_version`.
+     * ٣ — أُضيف `layout` (رموزُ البنية)، ودخلت رموزُها في `tokens` معها.
      */
-    public const SCHEMA = 2;
+    public const SCHEMA = 3;
 
     /** ما يضمنه العقد لقارئه — كلُّها موجودةٌ في كلّ مستند */
     public const CONTRACT = [
-        'schema_version', 'name', 'goal', 'template', 'theme', 'tokens',
+        'schema_version', 'name', 'goal', 'template', 'theme', 'layout', 'tokens',
         'seo', 'commerce', 'maintenance', 'maintenance_message', 'globals', 'pages',
     ];
 
@@ -78,6 +79,14 @@ final class Publication
             'goal' => $goal,
             'template' => Templates::key($website->template),
             'theme' => $website->theme,
+            /*
+             * ورموزُ البنية تُجمَّد كما يُجمَّد اللون.
+             *
+             * وهي في `tokens` أيضًا — يقرؤها العارضُ من هناك ولا يعرف هذا
+             * المفتاح. وإنّما يُكتب ليعرف **المُستعيد** ما اختاره التاجر:
+             * `tokens` مشتقّةٌ لا مصدر، والاستعادةُ تكتب المصدر.
+             */
+            'layout' => $website->layout,
             'tokens' => $website->tokens(),
             'seo' => self::seo($website),
             'commerce' => self::commerce($website),
@@ -291,7 +300,16 @@ final class Publication
         $doc['name'] = (string) ($doc['name'] ?? '');
         $doc['template'] = Templates::key(is_string($doc['template'] ?? null) ? $doc['template'] : null);
         $doc['theme'] = is_array($doc['theme'] ?? null) ? $doc['theme'] : [];
-        $doc['tokens'] = is_array($doc['tokens'] ?? null) ? $doc['tokens'] : Theme::tokens($doc['theme']);
+        /*
+         * ونشرةٌ من النسخة الثانية لا `layout` فيها — فتأخذ رموزَ قالبها،
+         * وهي للقوالب القديمة الافتراضيّةُ التي هي رسمُ يوم نُشرت.
+         */
+        $doc['layout'] = Layout::normalize(
+            is_array($doc['layout'] ?? null) ? $doc['layout'] : [],
+            Templates::layout(Templates::key($doc['template'] ?? null)),
+        );
+        $doc['tokens'] = (is_array($doc['tokens'] ?? null) ? $doc['tokens'] : Theme::tokens($doc['theme']))
+            + $doc['layout'];
         $doc['seo'] = is_array($doc['seo'] ?? null) ? $doc['seo'] : [];
         $doc['seo'] += ['title' => '', 'description' => '', 'image' => '', 'index' => true];
         $doc['commerce'] = is_array($doc['commerce'] ?? null) ? $doc['commerce'] : [];

@@ -122,6 +122,11 @@ class Publisher
                 'goal' => Blueprints::goal($payload['goal'] ?? null),
                 'template' => Templates::key($payload['template'] ?? null),
                 'theme' => Theme::normalize($payload['theme'] ?? []),
+                // و`upgrade` ملأتها قبل أن تصل هنا، فنشرةُ الأمس تُستعاد بشكلها
+                'layout' => Layout::normalize(
+                    (array) ($payload['layout'] ?? []),
+                    Templates::layout(Templates::key($payload['template'] ?? null)),
+                ),
                 'seo' => $payload['seo'],
             ]);
 

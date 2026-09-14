@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
+use App\Support\Website\Layout;
 use App\Support\Website\Templates;
 use App\Support\Website\Theme;
 use Illuminate\Http\RedirectResponse;
@@ -69,11 +70,23 @@ class DesignController extends Controller
             'adopt' => ['nullable', 'boolean'],
         ]);
 
-        $theme = ($data['adopt'] ?? false) || $data['template'] !== $site->template
+        $adopt = ($data['adopt'] ?? false) || $data['template'] !== $site->template;
+
+        $theme = $adopt
             ? Templates::theme($data['template'])
             : Theme::normalize($data['theme'] ?? [], $site->theme ?? []);
 
-        $site->update(['template' => $data['template'], 'theme' => $theme]);
+        /*
+         * وبنيةُ القالب تُؤخذ معه — أو لا يكون تبديلَ قالب.
+         *
+         * من اختار «سوق» يريد ترويستَه التجارية وشبكتَه الكثيفة، لا ألوانَه
+         * على بنيةٍ تحريرية اختارها أمس. والقالب صار بنيةً قبل أن يكون لونًا.
+         */
+        $layout = $adopt
+            ? Templates::layout($data['template'])
+            : Layout::normalize($site->layout ?? [], Templates::layout($site->template));
+
+        $site->update(['template' => $data['template'], 'theme' => $theme, 'layout' => $layout]);
         $site->touchDraft();
 
         return back()->with('toast', ['msg' => __('حُفظ التصميم'), 'type' => 'success']);
@@ -92,6 +105,28 @@ class DesignController extends Controller
 
         $site->update([
             'theme' => Theme::normalize((array) $request->input('theme', []), $site->theme ?? []),
+        ]);
+        $site->touchDraft();
+
+        return back(303);
+    }
+
+    /**
+     * ضبط رمزٍ من رموز البنية — بلا تبديل قالب.
+     *
+     * ومسارٌ ثالثٌ لا فرعٌ في الثاني: اللون يُحفظ عند كلّ تحريكةِ منتقٍ
+     * والبنيةُ عند كلّ ضغطة، وخلطُهما في طلبٍ واحد يجعل كلَّ حفظِ لونٍ يُعيد
+     * كتابة البنية وبالعكس — فيسبق أحدُهما الآخر ويُضيّعه.
+     */
+    public function structure(Request $request)
+    {
+        $site = $this->siteOrFail();
+
+        $site->update([
+            'layout' => Layout::normalize(
+                (array) $request->input('layout', []),
+                $site->layout ?? Templates::layout($site->template),
+            ),
         ]);
         $site->touchDraft();
 

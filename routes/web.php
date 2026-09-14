@@ -899,6 +899,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
             Route::get('/design', [DesignController::class, 'index'])->name('design');
             Route::put('/design', [DesignController::class, 'update'])->name('design.update');
             Route::put('/design/palette', [DesignController::class, 'palette'])->name('design.palette');
+        Route::put('/design/layout', [DesignController::class, 'structure'])->name('design.layout');
 
             Route::get('/shop', [SettingsController::class, 'store'])->name('shop');
             Route::put('/shop', [SettingsController::class, 'saveStore'])->name('shop.save');

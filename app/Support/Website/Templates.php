@@ -36,7 +36,7 @@ namespace App\Support\Website;
  */
 class Templates
 {
-    public const DEFAULT = 'modern';
+    public const DEFAULT = 'mono';
 
     /**
      * ما يُعرض على من لا موقع له — ثلاثةٌ لا ستّة.
@@ -48,7 +48,28 @@ class Templates
      * والثلاثةُ الباقية لا تُحذف: مواقعُ تعمل اليوم مبنيّةٌ عليها، وتُعرض في
      * «التصميم» لمن صار له موقعٌ وعرف ما يريد.
      */
-    public const FEATURED = ['modern', 'minimal', 'bold'];
+    public const FEATURED = ['atelier', 'souq', 'bloom', 'mono'];
+
+    /**
+     * ═══ و`layout`: لماذا لم تكفِ `presets` ═══
+     *
+     * `presets` تختار للقالب **بدايةَ مقابضَ قائمة** — ارتفاعُ الواجهة وعددُ
+     * الأعمدة وشكلُ التصنيفات. وهي خطوةٌ صحيحة، وحدُّها أنّ المقابض نفسها
+     * كانت قليلة: الترويسةُ رسمٌ واحد، والواجهةُ رسمٌ واحد، وبطاقةُ المنتج
+     * رسمٌ واحد. فقالبان يختلفان في ارتفاع واجهةٍ وعددِ عمود يبقيان صفحةً
+     * واحدة — والتاجر يرى ذلك.
+     *
+     * فأُضيفت `layout`: رموزُ **بنيةٍ** يقرؤها العارض فيرسم بناءً آخر لا
+     * قيمةً أخرى — أربعةُ أشكالٍ للترويسة وخمسةٌ للواجهة وأربعٌ للبطاقة
+     * وأربعٌ للشبكة وخمسٌ للتصنيفات وأربعٌ للتذييل. انظر `Layout`.
+     *
+     * والاثنتان تعملان معًا لا إحداهما بدل الأخرى: `presets` تزرع المحتوى
+     * عند الإنشاء وتبقى ملكَ التاجر بعدها، و`layout` تحكم الرسم ويملكها
+     * القالبُ حتى يخالفه التاجر في قسمٍ بعينه.
+     *
+     * والقوالبُ القديمة بلا `layout`: افتراضيُّ `Layout` هو رسمُ ما قبل هذه
+     * الطبقة حرفيًّا، فموقعٌ عليها يُفتح اليوم كما فُتح أمس.
+     */
 
     /**
      * `goals` الوجهات التي يليق بها — يُرشَّح بها في شاشة الاختيار.
@@ -59,7 +80,97 @@ class Templates
      * يسقط في `apply`، فلا يُكتب في القاعدة مفتاحٌ لا يقرؤه أحد.
      */
     public const CATALOGUE = [
+        /* ═══════════════════ الجيل الثاني ═══════════════════ */
+
+        'atelier' => [
+            'label' => 'أناقة',
+            'hint' => 'صورٌ كبيرة وبياضٌ واسع وخطٌّ نسخيّ — للورد والعطور والهدايا الفاخرة',
+            'theme' => [
+                'primary' => '#8a6a4a', 'background' => '#faf7f2', 'text' => '#1c1714',
+                'font' => 'ibm-plex-arabic', 'radius' => 'none', 'button' => 'outline',
+            ],
+            'layout' => [
+                'width' => 'wide', 'density' => 'spacious', 'scale' => 'editorial', 'heading' => 'editorial',
+                'header' => 'editorial', 'hero' => 'editorial', 'card' => 'editorial', 'grid' => 'large',
+                'ratio' => 'portrait', 'categories' => 'tiles', 'footer' => 'brand', 'surface_style' => 'flat',
+                'heading_font' => 'amiri',
+            ],
+            'presets' => [
+                Sections::HEADER => ['show_search' => false],
+                // واجهةٌ سينمائية: الصورةُ تملأ العرض والكلمةُ في أسفلها
+                'hero' => ['align' => 'start', 'height' => 'large', 'overlay' => 'medium'],
+                'featured_products' => ['columns' => '3'],
+                'latest_products' => ['columns' => '3'],
+            ],
+        ],
+        'souq' => [
+            'label' => 'سوق',
+            'hint' => 'بحثٌ وأقسامٌ وشبكةٌ كثيفة — لمن عنده منتجاتٌ كثيرة وعروضٌ تتبدّل',
+            'theme' => [
+                'primary' => '#b4123b', 'background' => '#ffffff', 'text' => '#111827',
+                'font' => 'cairo', 'radius' => 'medium', 'button' => 'solid',
+            ],
+            'layout' => [
+                'width' => 'wide', 'density' => 'compact', 'scale' => 'compact', 'heading' => 'start',
+                'header' => 'commerce', 'hero' => 'showcase', 'card' => 'commerce', 'grid' => 'dense',
+                'ratio' => 'square', 'categories' => 'pills', 'footer' => 'columns', 'surface_style' => 'bordered',
+            ],
+            'presets' => [
+                // والبحثُ يعمل في هذا القالب: يُرسل إلى صفحة المتجر فترشّح قائمتَها
+                Sections::HEADER => ['show_search' => true],
+                'hero' => ['align' => 'start', 'height' => 'medium', 'overlay' => 'medium'],
+                'featured_products' => ['columns' => '4'],
+                'latest_products' => ['columns' => '4'],
+            ],
+        ],
+        'bloom' => [
+            'label' => 'إبداع',
+            'hint' => 'واجهةٌ مشطورة وبطاقاتٌ متفاوتة — للبوكيهات والمناسبات والهدايا',
+            'theme' => [
+                'primary' => '#db2777', 'background' => '#fff8fa', 'text' => '#1f1220',
+                'font' => 'rubik', 'radius' => 'large', 'button' => 'soft',
+            ],
+            'layout' => [
+                'width' => 'normal', 'density' => 'balanced', 'scale' => 'editorial', 'heading' => 'start',
+                'header' => 'centered', 'hero' => 'split', 'card' => 'soft', 'grid' => 'editorial',
+                'ratio' => 'landscape', 'categories' => 'covers', 'footer' => 'split', 'surface_style' => 'raised',
+            ],
+            'presets' => [
+                Sections::HEADER => ['show_search' => false],
+                'hero' => ['align' => 'start', 'height' => 'medium', 'overlay' => 'light'],
+                'featured_products' => ['columns' => '3'],
+                'latest_products' => ['columns' => '3'],
+            ],
+        ],
+        'mono' => [
+            'label' => 'صافي',
+            'hint' => 'أبيضُ وأسود وصورٌ كبيرة بلا زينة — للعلامات التي تترك المنتج يتكلّم',
+            'theme' => [
+                'primary' => '#111111', 'background' => '#ffffff', 'text' => '#111111',
+                'font' => 'ibm-plex-arabic', 'radius' => 'none', 'button' => 'solid',
+            ],
+            'layout' => [
+                'width' => 'narrow', 'density' => 'spacious', 'scale' => 'balanced', 'heading' => 'start',
+                'header' => 'minimal', 'hero' => 'centered', 'card' => 'plain', 'grid' => 'classic',
+                'ratio' => 'portrait', 'categories' => 'list', 'footer' => 'minimal', 'surface_style' => 'flat',
+            ],
+            'presets' => [
+                Sections::HEADER => ['show_search' => false],
+                'hero' => ['align' => 'center', 'height' => 'small', 'overlay' => 'light'],
+                'featured_products' => ['columns' => '2'],
+                'latest_products' => ['columns' => '2'],
+            ],
+        ],
+
+        /* ═══════════════════ الجيل الأوّل ═══════════════════ */
+
+        /*
+         * ولا `layout` لأيٍّ منها: افتراضيُّ `Layout` هو رسمُ ما قبل طبقة
+         * البنية بالضبط. فموقعٌ على «فاخر» منذ سنة يُفتح اليوم كما فُتح
+         * أمس — وهذا هو معنى ألّا تُكسر المواقع القائمة.
+         */
         'minimal' => [
+            'legacy' => true,
             'label' => 'بسيط',
             'hint' => 'أبيضُ وأسود، وحوافُّ حادّة — والمنتج هو البطل',
             'theme' => [
@@ -77,6 +188,7 @@ class Templates
             ],
         ],
         'modern' => [
+            'legacy' => true,
             'label' => 'عصري',
             'hint' => 'أزرقُ هادئ وحوافُّ مستديرة — يصلح لأكثر المتاجر',
             'theme' => [
@@ -93,6 +205,7 @@ class Templates
             ],
         ],
         'bold' => [
+            'legacy' => true,
             'label' => 'جريء',
             'hint' => 'خلفيةٌ داكنة وواجهةٌ بملء الشاشة — للعلامات الشابّة',
             'theme' => [
@@ -110,6 +223,7 @@ class Templates
             ],
         ],
         'luxury' => [
+            'legacy' => true,
             'label' => 'فاخر',
             'hint' => 'ذهبيٌّ على فحميّ — للعطور والهدايا والمجوهرات',
             'theme' => [
@@ -125,6 +239,7 @@ class Templates
             ],
         ],
         'fashion' => [
+            'legacy' => true,
             'label' => 'أزياء',
             'hint' => 'ورديٌّ ناعم ومساحاتٌ للصور — للملابس والتجميل',
             'theme' => [
@@ -140,6 +255,7 @@ class Templates
             ],
         ],
         'food' => [
+            'legacy' => true,
             'label' => 'مطاعم وأطعمة',
             'hint' => 'أخضرُ دافئ وقائمةٌ تُقرأ بسرعة — للمطاعم والحلويات',
             'theme' => [
@@ -166,10 +282,22 @@ class Templates
         return $key !== null && self::exists($key) ? $key : self::DEFAULT;
     }
 
-    /** رموز تصميم القالب — مضمونةَ القراءة كغيرها */
+    /** أهو من الجيل الأوّل؟ — يُرسم ولا يُقترح على من يختار اليوم */
+    public static function isLegacy(string $key): bool
+    {
+        return (bool) (self::CATALOGUE[self::key($key)]['legacy'] ?? false);
+    }
+
+    /** رموز ألوان القالب — مضمونةَ القراءة كغيرها */
     public static function theme(string $key): array
     {
         return Theme::normalize(self::CATALOGUE[self::key($key)]['theme']);
+    }
+
+    /** رموز بنية القالب — وما لم يُذكر منها يأخذ افتراضيَّه (وهو رسمُ الأمس) */
+    public static function layout(string $key): array
+    {
+        return Layout::normalize(self::CATALOGUE[self::key($key)]['layout'] ?? []);
     }
 
     /**
@@ -214,7 +342,10 @@ class Templates
                 'label' => __($spec['label']),
                 'hint' => __($spec['hint']),
                 'theme' => $theme,
-                // ثلاثةُ ألوانٍ تكفي لتُقرأ الهويّة قبل الاختيار
+                // رموزُ المستند كما يقرؤها العارض — لونًا وبنية
+                'tokens' => $theme + self::layout($key),
+                'legacy' => (bool) ($spec['legacy'] ?? false),
+                // ثلاثةُ ألوانٍ تكفي لتُقرأ الهويّة في بطاقةٍ لا تتّسع لمعاينة
                 'swatch' => [$theme['primary'], $theme['background'], $theme['text']],
                 /*
                  * وأيُّها معتمد — تقرؤه اللوحةُ فتعرض الثلاثة وتطوي الباقي.

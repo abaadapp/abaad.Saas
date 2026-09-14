@@ -24,6 +24,7 @@ export function hasContent(section: DocSection, doc: SiteDocument): boolean {
         case 'featured_products':
         case 'latest_products':
         case 'best_sellers':
+        case 'product_catalog':
         case 'categories':
         case 'testimonials':
             return items.length > 0;

@@ -106,7 +106,7 @@ class WebsiteBuilderTest extends TestCase
     }
 
     /**
-     * ثلاثةُ قوالبَ لا ستّة — وكلٌّ منها متجرُ التاجر مرسومًا.
+     * أربعةُ قوالبَ لا عشرة — وكلٌّ منها متجرُ التاجر مرسومًا.
      *
      * وهذا هو الفرق الذي بُنيت له `Builder::proposal`: بطاقةٌ فيها مربّعا لون
      * لا تُخرج قرارًا من صاحب متجر، وبطاقةٌ فيها متجرُه باسمه وشعاره ومنتجه
@@ -119,7 +119,7 @@ class WebsiteBuilderTest extends TestCase
 
         $templates = $this->props(route('admin.website.index'))['templates'];
 
-        $this->assertCount(3, $templates, 'عُرض غيرُ الثلاثة المعتمدة');
+        $this->assertCount(4, $templates, 'عُرض غيرُ الأربعة المعتمدة');
         $this->assertSame(Templates::FEATURED, array_column($templates, 'key'));
 
         foreach ($templates as $card) {
@@ -132,15 +132,25 @@ class WebsiteBuilderTest extends TestCase
             $this->assertSame('أجمل الورود', $doc['pages'][0]['sections'][0]['data']['title']);
         }
 
-        // وبين الثلاثة فرقٌ يُرى: لونٌ وخطٌّ وهيئةُ أقسام — لا لونٌ وحده
-        $hero = fn (array $card) => $card['document']['pages'][0]['sections'][0]['data'];
+        /*
+         * وبين الأربعة فرقٌ **بنيويّ** لا لونٌ وحده.
+         *
+         * وهذا ما يحرسه هذا الاختبار: لو عاد القالبُ يومًا لوحةَ ألوانٍ
+         * وهيئةَ أقسامٍ صغيرة لتشابهت هذه الرموز وسقط هنا — لا في شكوى
+         * تاجرٍ يقول إنّ القوالب الأربعة موقعٌ واحد.
+         */
+        $tokens = array_column(array_column($templates, 'document'), 'tokens');
 
-        $this->assertSame('small', $hero($templates[1])['height'], 'بسيط: واجهةٌ قصيرة');
-        $this->assertSame('large', $hero($templates[2])['height'], 'جريء: واجهةٌ بملء الشاشة');
-        $this->assertNotSame(
-            $templates[0]['document']['tokens']['primary'],
-            $templates[2]['document']['tokens']['primary'],
-        );
+        foreach (['header', 'hero', 'card', 'grid', 'footer', 'categories'] as $token) {
+            $this->assertCount(
+                4,
+                array_unique(array_column($tokens, $token)),
+                "الرمز «{$token}» يتشابه في قالبين",
+            );
+        }
+
+        // واللونُ يختلف أيضًا — وهو أقلُّ ما يُنتظر لا أكثرُه
+        $this->assertCount(4, array_unique(array_column($tokens, 'primary')));
     }
 
     /** ولا يُكتب شيءٌ لمن قلّب في القوالب ولم يختر */
@@ -177,19 +187,25 @@ class WebsiteBuilderTest extends TestCase
      */
     public function test_what_the_card_promised_is_what_gets_built(): void
     {
-        $promised = $this->props(route('admin.website.index'))['templates'][2];
+        $promised = $this->props(route('admin.website.index'))['templates'][0];
 
-        $this->assertSame('bold', $promised['key']);
+        $this->assertSame('atelier', $promised['key']);
 
-        $this->post(route('admin.website.create'), ['template' => 'bold'])->assertRedirect();
+        $this->post(route('admin.website.create'), ['template' => 'atelier'])->assertRedirect();
 
         $site = Website::where('business_id', $this->bid())->firstOrFail();
         $hero = $site->homePage()->sections()->where('type', 'hero')->firstOrFail();
-        $header = $site->slot('header');
 
         $this->assertSame('large', $hero->data['height']);
-        $this->assertSame('center', $hero->data['align']);
-        $this->assertSame('centered', $header->data['preset']);
+        $this->assertSame('start', $hero->data['align']);
+        /*
+         * وشكلُ الترويسة لا يُزرع في المحتوى: القالب يحكمه برمزه.
+         *
+         * `presets` تزرع ما يملكه التاجر بعد الإنشاء — ارتفاعُ واجهةٍ ونصُّها
+         * — و**بنيةُ** الرسم تبقى للقالب، فتبدّلُها بتبديله. ولو زُرعت في
+         * القسم لبقيت ترويسةُ القالب الأوّل على موقعٍ بدّل قالبه.
+         */
+        $this->assertSame('auto', $site->slot('header')->data['preset']);
         $this->assertSame(
             $promised['document']['pages'][0]['sections'][0]['data']['height'],
             $hero->data['height'],

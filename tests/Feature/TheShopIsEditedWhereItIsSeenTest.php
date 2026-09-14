@@ -159,7 +159,7 @@ class TheShopIsEditedWhereItIsSeenTest extends TestCase
         $section = $site->homePage()->sections()->where('type', 'featured_products')->firstOrFail();
 
         // وصفُ عرضٍ لا بضاعة: لا اسمَ ولا سعرَ ولا صورةً في المحفوظ
-        $this->assertSame(['title', 'product_ids', 'limit', 'columns'], array_keys($section->data));
+        $this->assertSame(['title', 'layout', 'product_ids', 'limit', 'columns'], array_keys($section->data));
         $this->assertSame('products', Sections::source('featured_products'));
 
         $before = $this->props(route('admin.website.editor'))['document'];
@@ -206,12 +206,17 @@ class TheShopIsEditedWhereItIsSeenTest extends TestCase
     /* ================== ٥ · القالبُ هيئةٌ لا لونٌ وحده ================== */
 
     /**
-     * وثلاثةُ قوالبَ لا يفرّقها اللون وحده.
+     * وأربعةُ قوالبَ لا يفرّقها اللون وحده.
      *
      * قالبان لونُهما مختلفٌ وكلُّ ما عداهما واحد يُقرآن قالبًا واحدًا بلونين،
-     * ومن يُعرض عليه ثلاثةٌ منها يظنّ أنّه يختار لونًا فيختار أيَّها كان.
+     * ومن يُعرض عليه أربعةٌ منها يظنّ أنّه يختار لونًا فيختار أيَّها كان.
+     *
+     * وهذا يقيس ما يُزرع في **المحتوى** (`presets`): ارتفاعُ الواجهة
+     * ومحاذاتُها وعددُ الأعمدة. أمّا بنيةُ الرسم — ترويسةٌ وواجهةٌ وبطاقةٌ
+     * وشبكة — فرموزٌ يحكمها القالب ويقيسها
+     * `ATemplateIsAStructureNotAPaletteTest`.
      */
-    public function test_the_three_templates_differ_in_shape_not_only_in_colour(): void
+    public function test_the_four_templates_differ_in_shape_not_only_in_colour(): void
     {
         $shape = function (string $template): array {
             $business = Business::create([
@@ -228,7 +233,6 @@ class TheShopIsEditedWhereItIsSeenTest extends TestCase
             $hero = $site->homePage()->sections()->where('type', 'hero')->firstOrFail();
 
             return [
-                'header' => $site->slot('header')->data['preset'],
                 'height' => $hero->data['height'],
                 'align' => $hero->data['align'],
                 'columns' => $site->homePage()->sections()
@@ -238,10 +242,24 @@ class TheShopIsEditedWhereItIsSeenTest extends TestCase
 
         $shapes = array_map($shape, array_combine(Templates::FEATURED, Templates::FEATURED));
 
-        $this->assertCount(3, array_unique(array_map('json_encode', $shapes)), 'قالبان بهيئةٍ واحدة');
-        $this->assertSame('full', $shapes['modern']['header']);
-        $this->assertSame('simple', $shapes['minimal']['header']);
-        $this->assertSame('centered', $shapes['bold']['header']);
+        $this->assertCount(4, array_unique(array_map('json_encode', $shapes)), 'قالبان بهيئةٍ واحدة');
+        $this->assertSame('large', $shapes['atelier']['height']);
+        $this->assertSame('small', $shapes['mono']['height']);
+        $this->assertSame('2', $shapes['mono']['columns']);
+        $this->assertSame('4', $shapes['souq']['columns']);
+
+        /*
+         * وشكلُ الترويسة لا يُزرع في المحتوى بعد اليوم: القالب يحكمه برمزه.
+         *
+         * ولو زُرع لبقيت ترويسةُ القالب الأوّل على موقعٍ بدّل قالبه — وهو
+         * أوّلُ ما يُنتظر أن يتبدّل حين يُبدَّل القالب.
+         */
+        foreach (Templates::FEATURED as $key) {
+            $business = Business::create(['name' => 'ترويسة '.$key, 'type' => 'عام', 'status' => 'نشط']);
+            $site = Builder::create($business, Blueprints::STORE, $key);
+
+            $this->assertSame('auto', $site->slot('header')->data['preset'], $key);
+        }
     }
 
     /**

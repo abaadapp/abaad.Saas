@@ -25,7 +25,7 @@ import SectionForm, { type PickerProduct } from './fields/SectionForm';
 import SitePreview from './preview/SitePreview';
 import type { Device, SiteDocument } from './preview/types';
 import AddSection, { type LibraryItem } from './editor/AddSection';
-import DesignPanel, { type TemplateCard, type ThemeOptions } from './editor/DesignPanel';
+import DesignPanel, { type LayoutOptions, type TemplateCard, type ThemeOptions } from './editor/DesignPanel';
 import SectionList from './editor/SectionList';
 import { type EditorSection, keyOf } from './editor/types';
 import { type SiteShell } from './shell';
@@ -52,6 +52,8 @@ interface Props extends SiteShell {
     templates: TemplateCard[];
     theme: Record<string, string>;
     themeOptions: ThemeOptions;
+    layout: Record<string, string>;
+    layoutOptions: LayoutOptions;
     panel: 'sections' | 'design';
 }
 
@@ -101,6 +103,8 @@ export default function Editor() {
         templates,
         theme,
         themeOptions,
+        layout,
+        layoutOptions,
         panel: initialPanel,
     } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
@@ -410,6 +414,8 @@ export default function Editor() {
             templates={templates}
             theme={theme}
             options={themeOptions}
+            layout={layout}
+            layoutOptions={layoutOptions}
         />
     ) : (
         <SectionList

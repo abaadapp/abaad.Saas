@@ -4,6 +4,7 @@ import { Check, ChevronDown } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import LayoutPicker, { type Family } from '../fields/LayoutPicker';
 
 export interface TemplateCard {
     key: string;
@@ -19,11 +20,35 @@ export interface ThemeOptions {
     buttons: { value: string; label: string }[];
 }
 
+/** رمزُ بنيةٍ واحد كما يصفه `Layout::options` */
+export interface LayoutChoice {
+    key: string;
+    label: string;
+    options: { value: string; label: string }[];
+}
+
+export interface LayoutOptions {
+    primary: LayoutChoice[];
+    advanced: LayoutChoice[];
+}
+
+/** الرموز التي تُختار بالنظر — وما سواها صفُّ أزرارٍ أو قائمة */
+const PICKERS: Record<string, Family> = {
+    header: 'header',
+    hero: 'hero',
+    grid: 'grid',
+    categories: 'categories',
+    card: 'card',
+    footer: 'footer',
+};
+
 interface Props {
     template: string;
     templates: TemplateCard[];
     theme: Record<string, string>;
     options: ThemeOptions;
+    layout: Record<string, string>;
+    layoutOptions: LayoutOptions;
 }
 
 /**
@@ -41,7 +66,7 @@ interface Props {
  *
  * ولا محرّرَ أنماطٍ هنا ولا مقاسٌ بالبكسل: من يريد ذلك ليس من نبني له.
  */
-export default function DesignPanel({ template, templates, theme, options }: Props) {
+export default function DesignPanel({ template, templates, theme, options, layout, layoutOptions }: Props) {
     const t = useTranslate();
 
     /*
@@ -51,7 +76,9 @@ export default function DesignPanel({ template, templates, theme, options }: Pro
      * إلى موضعه القديم بين الإرسال والردّ.
      */
     const [local, setLocal] = useState(theme);
+    const [shape, setShape] = useState(layout);
     const [more, setMore] = useState(false);
+    const [advanced, setAdvanced] = useState(false);
 
     const save = (next: Record<string, string>) => {
         setLocal(next);
@@ -60,6 +87,78 @@ export default function DesignPanel({ template, templates, theme, options }: Pro
             { theme: next },
             // المعاينةُ وحدها تُعاد: الحمولة كلّها في كلّ تحريكةِ لونٍ ثقيلة
             { preserveScroll: true, preserveState: true, only: ['document', 'theme', 'site'] },
+        );
+    };
+
+    /*
+     * والبنيةُ تُحفظ في مسارها لا مع اللون.
+     *
+     * اللون يُحفظ عند كلّ تحريكةِ منتقٍ والبنيةُ عند كلّ ضغطة، وخلطُهما في
+     * طلبٍ واحد يجعل كلَّ حفظِ لونٍ يُعيد كتابة البنية وبالعكس — فيسبق
+     * أحدُهما الآخر ويُضيّعه.
+     */
+    const shift = (key: string, value: string) => {
+        const next = { ...shape, [key]: value };
+
+        setShape(next);
+        router.put(
+            route('admin.website.design.layout'),
+            { layout: next },
+            { preserveScroll: true, preserveState: true, only: ['document', 'layout', 'site'] },
+        );
+    };
+
+    /** رمزُ بنيةٍ واحد — مُنتقًى بالنظر، أو صفَّ أزرارٍ حين تقلّ خياراتُه */
+    const choice = (c: LayoutChoice) => {
+        const family = PICKERS[c.key];
+
+        if (family) {
+            return (
+                <Field key={c.key} label={c.label}>
+                    <LayoutPicker
+                        value={shape[c.key] ?? ''}
+                        options={c.options}
+                        family={family}
+                        onChange={(v) => shift(c.key, v)}
+                        columns={2}
+                    />
+                </Field>
+            );
+        }
+
+        if (c.options.length <= 3) {
+            return (
+                <Field key={c.key} label={c.label}>
+                    <div className="flex gap-1.5">
+                        {c.options.map((o) => (
+                            <button
+                                key={o.value}
+                                type="button"
+                                onClick={() => shift(c.key, o.value)}
+                                aria-pressed={shape[c.key] === o.value}
+                                className={cn(
+                                    'flex-1 rounded-[9px] border px-2 py-1.5 text-[12px] font-semibold transition-all',
+                                    shape[c.key] === o.value
+                                        ? 'border-[#111] bg-[#111] text-white'
+                                        : 'border-[var(--ui-border,#e8e8e8)] text-[#6b7280] hover:border-[#c9c9c9]',
+                                )}
+                            >
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
+                </Field>
+            );
+        }
+
+        return (
+            <Field key={c.key} label={c.label}>
+                <Select
+                    value={shape[c.key] ?? ''}
+                    options={c.options}
+                    onChange={(e) => shift(c.key, e.target.value)}
+                />
+            </Field>
         );
     };
 
@@ -154,7 +253,7 @@ export default function DesignPanel({ template, templates, theme, options }: Pro
                 )}
 
                 <p className="mt-2 px-1 text-[12px] leading-6 text-[#9ca3af]">
-                    {t('تبديل القالب يغيّر الألوان والخط — ولا يمسّ صفحاتك ولا محتواك.')}
+                    {t('تبديل القالب يغيّر الألوان والتخطيط — ولا يمسّ صفحاتك ولا محتواك.')}
                 </p>
             </section>
 
@@ -209,6 +308,34 @@ export default function DesignPanel({ template, templates, theme, options }: Pro
                         onChange={(e) => save({ ...local, button: e.target.value })}
                     />
                 </Field>
+            </section>
+
+            {/*
+                وثلاثةُ مقابضَ في الوجه وتسعةٌ تحت زرّ.
+                لوحةٌ فيها اثنا عشر مقبضًا تُقرأ استمارةَ إعدادات فيُغلقها من
+                فتحها. والقالب يحدّدها كلَّها، فمن لم يفتح «خيارات إضافية»
+                أبدًا لا ينقصه شيء.
+            */}
+            <section className="space-y-3.5">
+                <h3 className="px-1 text-[11px] font-semibold tracking-wide text-[#9ca3af]">
+                    {t('التخطيط')}
+                </h3>
+
+                {layoutOptions.primary.map(choice)}
+
+                <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-3">
+                    <button
+                        type="button"
+                        onClick={() => setAdvanced((v) => !v)}
+                        aria-expanded={advanced}
+                        className="flex w-full items-center gap-1.5 px-1 py-1 text-[12px] text-[#6b7280] hover:text-[#111]"
+                    >
+                        {t('خيارات إضافية')}
+                        <ChevronDown className={cn('size-3.5 transition-transform', advanced && 'rotate-180')} />
+                    </button>
+
+                    {advanced && <div className="mt-3 space-y-3.5">{layoutOptions.advanced.map(choice)}</div>}
+                </div>
             </section>
         </div>
     );

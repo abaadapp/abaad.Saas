@@ -13,7 +13,17 @@ class WhatsAppTemplateMapping extends Model
 
     protected $guarded = [];
 
-    protected $casts = ['enabled' => 'boolean', 'variable_mapping' => 'array'];
+    /*
+     * و`meta_synced_at` تاريخٌ لا نصّ.
+     *
+     * بلا التحويل يعود سلسلةً من القاعدة، فـ`->format()` عليها تكسر — وهو
+     * ما وقع أوّلَ مرّةٍ قُرئ فيها العمود.
+     */
+    protected $casts = [
+        'enabled' => 'boolean',
+        'variable_mapping' => 'array',
+        'meta_synced_at' => 'datetime',
+    ];
 
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
 

@@ -29,6 +29,7 @@ use App\Support\Roles;
 use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppTemplates;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -419,6 +420,19 @@ class PageController extends Controller
                     ->orderByDesc('id')->first(),
                 withIds: true,
             ),
+            /*
+             * وحالُ القوالب عند ميتا — آخرُ حلقةٍ قبل أن تخرج الرسالة.
+             *
+             * ═══ ولمَ تُعرض هنا لمالك المنصّة ═══
+             *
+             * التاجرُ يرى سطرًا واحدًا: «قوالب أبعاد قيد المراجعة». وهذا
+             * كلُّ ما يعنيه — هو لا يملك منها شيئًا. أمّا مالكُ المنصّة فهو
+             * من يُنشئها ومن ينتظر ردَّ ميتا، وكان لا سبيل له إلى معرفة
+             * أيُّها اعتُمد إلّا أن يفتح لوحة ميتا أو يسأل.
+             *
+             * وسطرٌ يُقرأ هنا أرخصُ من سؤالٍ يُطرح كلَّ يوم.
+             */
+            'whatsappTemplates' => WhatsAppTemplates::platformStatus(),
             /*
              * وحالُ مزوّد الذكاء الاصطناعيّ — اسمُه وهل هو صالحٌ للنداء.
              *

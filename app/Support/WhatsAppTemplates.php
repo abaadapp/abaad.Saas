@@ -175,6 +175,34 @@ class WhatsAppTemplates
         ];
     }
 
+    /**
+     * حالُ قوالب أبعاد كما تُقرأ في لوحة المنصّة.
+     *
+     * والحدثُ يُسمّى بالعربية والقالبُ باسمه عند ميتا: مالكُ المنصّة يقارن
+     * ما يراه هنا بما في لوحة ميتا، فالاسمُ الإنجليزيّ هو الجسر بينهما.
+     *
+     * و`synced_at` يُعرض: قائمةٌ بلا وقتٍ لا يُعرف أهي حالُ الساعة أم حالُ
+     * الأسبوع الماضي — وقارئُها يبني عليها قرارًا.
+     *
+     * @return array{synced_at:?string, approved:int, total:int,
+     *               rows:list<array{event:string, name:string, status:?string}>}
+     */
+    public static function platformStatus(): array
+    {
+        $rows = WhatsAppTemplateMapping::query()->platform()->orderBy('id')->get();
+
+        return [
+            'synced_at' => optional($rows->max('meta_synced_at'))->format('Y-m-d H:i'),
+            'approved' => $rows->where('meta_status', self::APPROVED)->count(),
+            'total' => $rows->count(),
+            'rows' => $rows->map(fn (WhatsAppTemplateMapping $m) => [
+                'event' => WhatsAppEvent::label($m->event_type),
+                'name' => $m->template_name,
+                'status' => $m->meta_status,
+            ])->all(),
+        ];
+    }
+
     /** قوالب أبعاد الأربعة — تُهيَّأ عند ربط الرقم المشترك */
     public static function seedPlatformDefaults(?string $language = null): void
     {

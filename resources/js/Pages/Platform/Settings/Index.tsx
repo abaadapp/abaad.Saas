@@ -101,7 +101,7 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, crmLine, aiProvider, supportReach, googleHealth, googleKeyHint, googleBilling } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, googleKeyHint, googleBilling } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
@@ -110,6 +110,13 @@ export default function PlatformSettings() {
             whatsapp?: SharedConnection | null;
             /* ورقمُ المبيعات وصلةٌ ثانيةٌ بالشكل نفسه وغرضٍ آخر */
             salesWhatsapp?: SharedConnection | null;
+            /** حالُ قوالب أبعاد عند ميتا — انظر WhatsAppTemplates::platformStatus */
+            whatsappTemplates?: {
+                synced_at: string | null;
+                approved: number;
+                total: number;
+                rows: { event: string; name: string; status: string | null }[];
+            };
             crmLine?: { shared: boolean; onNoticeLine: boolean; connected: boolean };
             /* وحالُ مزوّد الذكاء — وجودُه لا قيمتُه */
             aiProvider?: { ready: boolean; name: string } | null;
@@ -633,6 +640,74 @@ export default function PlatformSettings() {
                                 </Button>
                             </div>
                         </div>
+
+                        {/*
+                            ═══ حالُ القوالب عند ميتا — آخرُ حلقةٍ قبل الإرسال ═══
+
+                            الرقمُ موصولٌ والرمزُ صالحٌ والحصّةُ باقية، ولا
+                            رسالةَ تخرج ما لم تعتمد ميتا القالبَ باسمه. وكان
+                            ذلك لا يُقرأ إلّا في لوحة ميتا — فيسأل مالكُ
+                            المنصّة كلَّ يوم: هل اعتُمدت؟
+                        */}
+                        {whatsappTemplates && whatsappTemplates.total > 0 && (
+                            <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
+                                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                                    <h4 className="font-bold text-[#111]">{t('قوالب الرسائل لدى واتساب')}</h4>
+                                    <span
+                                        className={cn(
+                                            'rounded-full px-2.5 py-0.5 text-[12px] font-bold',
+                                            whatsappTemplates.approved === whatsappTemplates.total
+                                                ? 'bg-[#dcfce7] text-[#166534]'
+                                                : 'bg-[#fef3c7] text-[#92400e]',
+                                        )}
+                                    >
+                                        {whatsappTemplates.approved} / {whatsappTemplates.total} {t('معتمَد')}
+                                    </span>
+                                </div>
+
+                                <p className="mb-4 text-[13px] leading-relaxed text-[#6b7280]">
+                                    {t('واتساب يقرأ نصَّ كلِّ قالبٍ قبل أن يسمح بإرساله. ولا تخرج رسالةُ إشعارٍ واحدة قبل اعتماده — يُقرأ الحال تلقائيًّا كلّ ساعة.')}
+                                </p>
+
+                                <div className="overflow-hidden rounded-[12px] border border-[var(--ui-border,#e8e8e8)]">
+                                    {whatsappTemplates.rows.map((r) => (
+                                        <div
+                                            key={r.name}
+                                            className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-4 py-2.5 last:border-b-0"
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="text-[13px] text-[#111]">{r.event}</p>
+                                                <p className="truncate text-[11px] text-[#9ca3af]" dir="ltr">
+                                                    {r.name}
+                                                </p>
+                                            </div>
+                                            <span
+                                                className={cn(
+                                                    'shrink-0 rounded-full px-2.5 py-0.5 text-[12px] font-bold',
+                                                    r.status === 'APPROVED'
+                                                        ? 'bg-[#dcfce7] text-[#166534]'
+                                                        : r.status === 'PENDING'
+                                                          ? 'bg-[#fef3c7] text-[#92400e]'
+                                                          : r.status === null
+                                                            ? 'bg-[#f3f4f6] text-[#6b7280]'
+                                                            : 'bg-[#fee2e2] text-[#b91c1c]',
+                                                )}
+                                                dir="ltr"
+                                            >
+                                                {r.status ?? t('لم يُسأل')}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* والوقتُ يُقال: قائمةٌ بلا وقتٍ لا يُعرف أهي حالُ الساعة أم حالُ الأسبوع */}
+                                <p className="mt-3 text-[12px] text-[#9ca3af]">
+                                    {whatsappTemplates.synced_at
+                                        ? `${t('آخر قراءةٍ من واتساب')}: ${whatsappTemplates.synced_at}`
+                                        : t('لم تُقرأ الحال من واتساب بعد.')}
+                                </p>
+                            </div>
+                        )}
 
                         {/*
                             ═══ رقمُ مبيعات أبعاد — رقمٌ ثانٍ لا مقبضٌ على الأوّل ═══

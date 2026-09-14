@@ -305,6 +305,44 @@ class ATemplateIsNotOursToCallApprovedTest extends TestCase
         );
     }
 
+    /* ═════════════ ومالكُ المنصّة يقرأ الحال بلا أن يسأل أحدًا ═════════════ */
+
+    /**
+     * لوحةُ المنصّة تعرض حالَ كلّ قالبٍ باسمه.
+     *
+     * والتاجرُ يرى سطرًا واحدًا — هو لا يملك منها شيئًا. أمّا من يُنشئها
+     * وينتظر ردّ ميتا فكان لا سبيل له إلى معرفة أيُّها اعتُمد إلّا أن يفتح
+     * لوحة ميتا أو يسأل.
+     */
+    public function test_the_platform_owner_reads_every_templates_verdict(): void
+    {
+        WhatsAppTemplateMapping::query()->platform()
+            ->where('event_type', WhatsAppEvent::ORDER_READY)
+            ->update(['meta_status' => WhatsAppTemplates::APPROVED, 'meta_synced_at' => now()]);
+
+        $view = WhatsAppTemplates::platformStatus();
+
+        $this->assertSame(count(WhatsAppEvent::ALL), $view['total']);
+        $this->assertSame(1, $view['approved']);
+        $this->assertNotNull($view['synced_at'], 'قائمةٌ بلا وقتٍ لا يُعرف أهي حالُ الساعة أم حالُ الأسبوع');
+
+        $row = collect($view['rows'])->firstWhere('name', 'abaad_order_ready');
+
+        $this->assertSame(WhatsAppTemplates::APPROVED, $row['status']);
+        /* والحدثُ بالعربية والاسمُ بحروف ميتا — به يُقارَن بلوحتها */
+        $this->assertSame(WhatsAppEvent::label(WhatsAppEvent::ORDER_READY), $row['event']);
+    }
+
+    /** و«لم يُسأل» تصل الشاشة فارغةً لا تُلبَس حالًا لم تقلها ميتا */
+    public function test_an_unasked_template_reaches_the_screen_as_unknown(): void
+    {
+        $view = WhatsAppTemplates::platformStatus();
+
+        $this->assertNull($view['synced_at']);
+        $this->assertSame(0, $view['approved']);
+        $this->assertNull($view['rows'][0]['status']);
+    }
+
     /** @return array<string, mixed> */
     private function step(array $readiness, string $key): array
     {

@@ -1502,17 +1502,17 @@ Route::domain('{host}')
      * وردّها «غير موجود» — وهو عطبٌ وقع مرّةً في هذا الملفّ ولا يُترك بابُه.
      *
      * و«لاحقةٌ من حرفين فأكثر» تُخرج `localhost` وعناوينَ الأرقام وفحوصَ
-     * الصحّة من المطابقة أصلًا.
+     * الصحّة من المطابقة أصلًا. والنمطُ في `Storefront::foreignHost` — وفيه
+     * لمَ يُكتب الحدُّ «شرطةٌ أو نهاية» لا «نهاية» وحدها.
      */
     ->group(function () {
         Route::get('/', [StorefrontController::class, 'byHost'])
-            ->where('host', '(?!.*'.preg_quote(config('storefront.domain'), '/').'$)[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}')
+            ->where('host', Storefront::foreignHost())
             ->name('store.custom');
 
         // وصفحاتُه الداخليّة معه — القائمةُ واحدةٌ على الطرق الثلاث
         Route::get('/{path}', [StorefrontController::class, 'byHost'])
-            ->where('host', '(?!.*'.preg_quote(config('storefront.domain'), '/').'$)[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}')
-            ->where('path', Storefront::PATH)
+            ->where(['host' => Storefront::foreignHost(), 'path' => Storefront::PATH])
             ->name('store.custom.page');
     });
 

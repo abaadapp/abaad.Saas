@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Business;
 use App\Models\User;
 use App\Models\Website;
+use App\Support\Storefront;
 use App\Support\Website\Builder;
 use App\Support\Website\Published;
 use App\Support\Website\Publisher;
@@ -289,5 +290,57 @@ class EveryPageOfTheSiteHasAnAddressTest extends TestCase
         $aboutLine = 'ورود مسقط نشاطٌ يخدم زبائنه';
         $this->assertStringContainsString($aboutLine, $about);
         $this->assertStringNotContainsString($aboutLine, $home);
+    }
+
+    /* ══════════════ ٤ · ولا يبتلع مسارُ المتاجر عناوينَ أبعاد ══════════════ */
+
+    /**
+     * نمطُ «مضيفٍ ليس لنا» يستثني مضيفات أبعاد — **في القراءتين**.
+     *
+     * ═══ وهذا الحارسُ مكتوبٌ بدمٍ ═══
+     *
+     * الاستثناء كان `(?!.*abaadapp\.om$)`. وبلا `route:cache` يُطابَق نمطُ
+     * المضيف على المضيف وحدَه، فـ`$` نهايتُه و`app.abaadapp.om` يُستثنى.
+     * ومع التخزين يدمج المُطابِقُ المُصرَّف المضيفَ والمسارَ في سلسلةٍ واحدة
+     * بفاصلٍ **نقطة** — `app.abaadapp.om./login` — فتصير `$` نهايةَ الاثنين:
+     * والسلسلةُ تنتهي بـ`/login` لا بـ`abaadapp.om`، فيمرّ الاستثناء ويلتقط
+     * المسارُ الجامعُ كلَّ عنوانٍ في النظام.
+     *
+     * ووقع على الإنتاج: `/login` و`/health` و`/s/{slug}` كلُّها ٤٠٤. ولم
+     * تره السويتةُ كلُّها لأنّ الاختبارات لا تُخزّن المسارات ولا تُنادى على
+     * مضيف الإنتاج — فيُقاس هنا الشكلان اللذان يُطابَق عليهما فعلًا.
+     */
+    public function test_the_foreign_host_pattern_excludes_abaad_in_both_readings(): void
+    {
+        $regex = '#^(?:'.Storefront::foreignHost().')$#Diu';
+        $merged = '#^(?:'.Storefront::foreignHost().')\.#Diu';
+
+        // القراءةُ الأولى: المضيفُ وحدَه (بلا تخزين المسارات)
+        foreach (['app.abaadapp.om', 'abaadapp.om', 'wrood.abaadapp.om'] as $ours) {
+            $this->assertDoesNotMatchRegularExpression($regex, $ours, "مضيفُ أبعاد «{$ours}» لم يُستثنَ");
+        }
+
+        // والقراءةُ الثانية: المضيفُ والمسارُ مدموجين بنقطة (مع التخزين)
+        foreach (['app.abaadapp.om./login', 'app.abaadapp.om./health', 'app.abaadapp.om./s/saad'] as $subject) {
+            $this->assertDoesNotMatchRegularExpression($merged, $subject, "«{$subject}» التقطه مسارُ المتاجر");
+        }
+
+        // ونطاقُ تاجرٍ حقيقيّ يُلتقط — الحدُّ يستثني ولا يُقفل
+        $this->assertMatchesRegularExpression($regex, 'wrood.om');
+        $this->assertMatchesRegularExpression($merged, 'wrood.om./about');
+    }
+
+    /**
+     * ونمطُ النطاق الفرعيّ يحمل الحدَّ نفسَه — وهو الذي نجا لأنّه يحمله.
+     *
+     * `Storefront::pattern` تستثني المحجوز بـ`(?:\.|$)` منذ بُنيت، وتعليقُها
+     * يقول لمَ. وهذا يمنع سقوطَه يوم يُبدَّل.
+     */
+    public function test_the_subdomain_pattern_keeps_the_same_boundary(): void
+    {
+        $merged = '#^(?:'.Storefront::pattern().')\.abaadapp\.om\.#Diu';
+
+        $this->assertDoesNotMatchRegularExpression($merged, 'app.abaadapp.om./login');
+        $this->assertMatchesRegularExpression($merged, 'wrood.abaadapp.om./about');
     }
 }

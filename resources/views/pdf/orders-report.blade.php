@@ -35,6 +35,7 @@
             <th>{{ __('الدفع') }}</th>
             <th>{{ __('الحالة') }}</th>
             <th>{{ __('التاريخ') }}</th>
+            <th>{{ __('موعد التسليم') }}</th>
         </tr>
         @foreach ($orders as $o)
             <tr>
@@ -47,6 +48,7 @@
                 <td>{{ __($o['payment']) }}</td>
                 <td>{{ __($o['status']) }}</td>
                 <td>{{ $o['date'] }}</td>
+                <td>{{ $o['scheduled'] }}</td>
             </tr>
         @endforeach
     </table>

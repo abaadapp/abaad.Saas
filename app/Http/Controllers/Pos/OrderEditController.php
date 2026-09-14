@@ -42,6 +42,30 @@ class OrderEditController extends Controller
     }
 
     /**
+     * الفاتورة داخل متجر المستخدم **وفرعه** — لا `Order::where(number)` عاريةً.
+     *
+     * كان الفرع ساقطًا من هنا وحده: شاشةُ المبيعات تُرشِّح بالفرع، و`OrderDetailController::find`
+     * يُرشِّح به — فمن يقف على مسقط يفتح طلبَ صلالة بعنوانٍ يُكتب، فيُردّ عن
+     * نقل الحالة وعن الإرسال وعن ورقة التفاصيل، **ويُقبل منه تصحيحُ الفاتورة**:
+     * كميّةٌ تُكتب من جديد، ورصيدُ صلالة يتحرّك، ومعاملةٌ ماليّة تُصحَّح — من
+     * فرعٍ لا يراه ولا يظهر له في قائمته. وأخطرُ الأبواب كان أوسعَها.
+     *
+     * والقاعدة هي قاعدةُ أخيه حرفًا بحرف: «من يعمل على فرعٍ بعينه لا يُحرّك
+     * طلبات فرعٍ لا يراه». و«كل الفروع» يبقى على المتجر كلِّه.
+     *
+     * وفي نقطة البيع الفرعُ فرعُ الجهاز (`BindPosBranch`) لا اختيارَ فيه —
+     * فيصير الحدُّ هنا: لا تُصحَّح على هذا الصندوق فاتورةُ صندوقٍ آخر.
+     */
+    private function find(string $number): Order
+    {
+        return Order::where('business_id', $this->bid())
+            ->where('is_held', false)
+            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()))
+            ->where('number', $number)
+            ->firstOrFail();
+    }
+
+    /**
      * الردّ الواحد لمن لا يملكها — نصٌّ يقول ماذا يفعل لا «ممنوع».
      *
      * ومفتاحُه `permission` لا `reason`: خلطُه بخطأ حقلٍ يجعل رسالة المنع
@@ -71,10 +95,7 @@ class OrderEditController extends Controller
             'reason.min' => __('السبب قصير جدًّا — اكتب ما يفهمه من يقرأ الفاتورة لاحقًا.'),
         ]);
 
-        $order = Order::where('business_id', $this->bid())
-            ->where('is_held', false)
-            ->where('number', $number)
-            ->firstOrFail();
+        $order = $this->find($number);
 
         $item = OrderItem::where('order_id', $order->id)->findOrFail($itemId);
 
@@ -110,10 +131,7 @@ class OrderEditController extends Controller
             'reason.min' => __('السبب قصير جدًّا — اكتب ما يفهمه من يقرأ الفاتورة لاحقًا.'),
         ]);
 
-        $order = Order::where('business_id', $this->bid())
-            ->where('is_held', false)
-            ->where('number', $number)
-            ->firstOrFail();
+        $order = $this->find($number);
 
         // البند من هذه الفاتورة، والإضافة من ذلك البند — سلسلةٌ تُفحص حلقةً
         // حلقة، وإلّا صحّح متجرٌ إضافةً في فاتورة متجرٍ آخر بمعرّفٍ مُخمَّن
@@ -152,10 +170,7 @@ class OrderEditController extends Controller
             'reason.min' => __('السبب قصير جدًّا — اكتب ما يفهمه من يقرأ الفاتورة لاحقًا.'),
         ]);
 
-        $order = Order::where('business_id', $this->bid())
-            ->where('is_held', false)
-            ->where('number', $number)
-            ->firstOrFail();
+        $order = $this->find($number);
 
         if (! $this->mayEdit()) {
             return $this->refuse();

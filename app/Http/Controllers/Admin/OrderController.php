@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Support\Demo;
+use App\Support\FlowerOrder;
 use Illuminate\Http\Request;
 
 class OrderController extends Controller
@@ -49,14 +50,25 @@ class OrderController extends Controller
         \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('ordered_at'));
 
         $orders = $q->paginate(10)->withQueryString()->through(fn ($o) => [
-            'id' => $o->number, 'customer' => \App\Support\Demo::customerLabel($o->customer_name),
+            'id' => $o->number,
+            // والاسمُ بلغته كما يقرؤه كلُّ قارئٍ آخر: صفحةُ الطلب والورقة
+            // والتصدير تمرّ كلُّها بالاسمين، وهذه وحدها كانت تمرّ بالعربيّ
+            'customer' => \App\Support\Demo::customerLabel($o->customer_name, $o->customer_name_en),
             'employee' => $o->employee_name ?? '—', 'branch' => $o->branch,
             'items_count' => $o->items_count, 'total' => (float) $o->total,
             'payment' => $o->payment_method, 'status' => $o->status,
             'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
-            // الموعد يُرسل ليُقرأ في العمود، و'—' لبيعة المنضدة التي لا موعد لها
+            // الموعد يُقرأ في العمود، و'—' لبيعة المنضدة التي لا موعد لها
             'scheduled' => optional($o->scheduled_for)->format('Y-m-d H:i') ?? '—',
-            'fulfillment' => $o->fulfillment_type,
+            /*
+             * والتأخّر يُقاس في الخادم لا في الشاشة.
+             *
+             * `Order::isLate` هي قاعدةُ مُرشِّح «متأخّر» نفسُها — فلا يقع
+             * صفٌّ في ترشيحٍ ولا يُوسَم بوسمه، ولا يُوسَم صفٌّ لا يقع فيه.
+             */
+            'late' => $o->isLate(),
+            // ونوعُ التنفيذ باسمه لا برمزه: 'delivery' ليست كلمةً تُقرأ
+            'fulfillment' => $o->fulfillment_type ? FlowerOrder::fulfillmentLabel($o->fulfillment_type) : null,
         ]);
 
         return \Inertia\Inertia::render('Admin/Orders/Index', [

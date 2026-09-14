@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
+    Building2,
     Calendar,
     ClipboardList,
     FileText,
@@ -102,11 +103,13 @@ interface OrderDetail {
  * صلاحيةُ `order.edit` ويومُ البيع، يقيسهما الخادم قبل الرسم وعند الكتابة.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice, googleReview, statusNotice, paper, invoiceEdit } = usePage<
+    const { order, context, taxInvoice, googleReview, statusNotice, paper, invoiceEdit, otherBranch } = usePage<
         PageProps<{
             order: OrderDetail;
             /** أيُصحَّح متنُ الفاتورة الآن — وإن لم يُصحَّح فلمَ. يُقاس في الخادم */
             invoiceEdit: { can: boolean; reason: string | null };
+            /** فرعُ الطلب حين لا يكون الفرعَ المختار — و`null` حين يكون */
+            otherBranch: { id: number; name: string } | null;
             /** ورقةُ الطلب مرسومةً — من وصفة الطباعة نفسِها. و`null` لطلبٍ لا صفَّ له */
             paper: { html: string; size: string } | null;
             taxInvoice: { registered: boolean; ready: boolean };
@@ -141,6 +144,21 @@ export default function OrderShow() {
      */
     const sheetRef = useRef<HTMLDivElement>(null);
     const invoiceRef = useRef<HTMLDivElement>(null);
+
+    /*
+     * ═══ طلبُ فرعٍ آخر: يُقرأ ولا يُتصرَّف فيه ═══
+     *
+     * الصفحة تُفتح لطلبات المتجر كلِّها — يصلها التاجر من البحث العامّ ومن
+     * التنبيهات ومن صفحة العميل، ولا واحدةٌ منها تُرشِّح بالفرع. والأفعالُ
+     * تتبع الفرع في الخادم. فكانت الصفحة تُرسم بأزرارها كاملةً على طلبِ فرعٍ
+     * آخر، ويضغط التاجر «جاهز» أو «إرسال» فتُردّ صفحةُ ٤٠٤ بلا كلمة: لا هو
+     * يعرف أنّ الطلب من فرعٍ غير فرعه، ولا أنّ بدّالة الفروع هي الحلّ.
+     *
+     * فتُخفى الأفعال ويُقال السبب مرّةً واحدة في لافتةٍ فوق الصفحة، ومعها
+     * البابُ الذي يفتحها. والقراءةُ تبقى كلُّها: الفاتورة والإيصال وسند
+     * التسليم وسجلّ التصحيحات — لا حاجة لتبديل فرعٍ لقراءة ورقة.
+     */
+    const actionable = !otherBranch;
 
 
     /*
@@ -259,15 +277,17 @@ export default function OrderShow() {
                             و**تعديل** آخرًا: فعلٌ يخصّ حالاتٍ بعينها، وموضعُه
                             حيث لا يُضغَط سهوًا.
                         */}
-                        <Button
-                            disabled={sending.processing}
-                            onClick={() =>
-                                sending.post(route('admin.orders.send', order.id), { preserveScroll: true })
-                            }
-                        >
-                            <Send />
-                            {t('إرسال')}
-                        </Button>
+                        {actionable && (
+                            <Button
+                                disabled={sending.processing}
+                                onClick={() =>
+                                    sending.post(route('admin.orders.send', order.id), { preserveScroll: true })
+                                }
+                            >
+                                <Send />
+                                {t('إرسال')}
+                            </Button>
+                        )}
 
                         {/*
                             و«معاينة» على الشاشة الضيّقة وحدها.
@@ -298,7 +318,8 @@ export default function OrderShow() {
                             على رفض. والسببُ نفسُه يُقاس في الخادم ثانيةً —
                             فمن نادى المسار دون الشاشة يُردّ بالجواب نفسِه.
                         */}
-                        {statusNotice.event &&
+                        {actionable &&
+                            statusNotice.event &&
                             (statusNotice.show ? (
                                 <Button
                                     variant="outline"
@@ -327,7 +348,7 @@ export default function OrderShow() {
                             التاجر ليضغط هو «إرسال»: لا مُرسِلَ آليّ ولا قالبَ
                             ميتا معتمَد لطلب تقييم.
                         */}
-                        {googleReview.show && (
+                        {actionable && googleReview.show && (
                             <Button
                                 variant="outline"
                                 disabled={sending.processing}
@@ -438,19 +459,44 @@ export default function OrderShow() {
                             وورقةُ التفاصيل بابُها زرُّها: ضغطةٌ منفصلة باسمٍ
                             يقول إلى أين تمضي — لا «تعديل» يُفهم منه المال.
                         */}
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                setEditing(true);
-                                sheetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }}
-                        >
-                            <ClipboardList />
-                            {t('ورقة التفاصيل')}
-                        </Button>
+                        {actionable && (
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setEditing(true);
+                                    sheetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }}
+                            >
+                                <ClipboardList />
+                                {t('ورقة التفاصيل')}
+                            </Button>
+                        )}
                     </>
                 }
             />
+
+            {/*
+                ولافتةٌ واحدة تقول السبب والباب معًا.
+
+                والبابُ فيها لا خارجَها: من قرأ «هذا الطلب من فرع صلالة» ولم
+                يجد كيف يذهب إليه يبحث عن بدّالة الفروع في الترويسة — إن عرف
+                أنّها موجودة. فالتبديلُ ضغطةٌ في مكان الخبر.
+            */}
+            {otherBranch && (
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[#fde68a] bg-[#fffbeb] px-4 py-3">
+                    <p className="text-sm text-[#92400e]">
+                        {t('هذا الطلب من فرع «:branch» — يُقرأ من هنا، ولا يُتصرَّف فيه إلا من فرعه.', {
+                            branch: otherBranch.name,
+                        })}
+                    </p>
+                    <Button variant="outline" size="sm" asChild>
+                        <a href={route('admin.branch.switch', otherBranch.id)}>
+                            <Building2 />
+                            {t('انتقل إلى :branch', { branch: otherBranch.name })}
+                        </a>
+                    </Button>
+                </div>
+            )}
 
             {/*
                 قسمان: ما يقوله النظام عن الطلب، وما ستراه الجهةُ التي تستلم
@@ -628,7 +674,7 @@ export default function OrderShow() {
                                 <span className="text-sm text-[#6b7280]">{t('الحالة')}</span>
                                 <Badge status={order.status}>{t(order.status)}</Badge>
                             </div>
-                            {order.next_statuses.length > 0 && (
+                            {actionable && order.next_statuses.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                     {order.next_statuses.map((s) => (
                                         <Button
@@ -711,10 +757,12 @@ export default function OrderShow() {
                             </div>
                             <div className="flex items-center gap-2">
                                 <Badge status={order.status}>{t(order.status)}</Badge>
-                                <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>
-                                    <PencilLine />
-                                    {t(editing ? 'إلغاء' : 'تعديل')}
-                                </Button>
+                                {actionable && (
+                                    <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>
+                                        <PencilLine />
+                                        {t(editing ? 'إلغاء' : 'تعديل')}
+                                    </Button>
+                                )}
                             </div>
                         </div>
 
@@ -880,10 +928,12 @@ export default function OrderShow() {
                             <div className="py-10 text-center">
                                 <ClipboardList className="mx-auto mb-3 size-8 text-[#d1d5db]" />
                                 <p className="text-sm text-[#6b7280]">{t('لا تفاصيل تنفيذ لهذا الطلب بعد')}</p>
-                                <Button className="mt-4" variant="outline" onClick={() => setEditing(true)}>
-                                    <PencilLine />
-                                    {t('أضِف التفاصيل')}
-                                </Button>
+                                {actionable && (
+                                    <Button className="mt-4" variant="outline" onClick={() => setEditing(true)}>
+                                        <PencilLine />
+                                        {t('أضِف التفاصيل')}
+                                    </Button>
+                                )}
                             </div>
                         )}
                     </Card>

@@ -401,4 +401,22 @@ class FlowerOrder
             ['value' => self::DELIVERY, 'label' => __('توصيل')],
         ];
     }
+
+    /**
+     * اسمُ نوع التنفيذ كما يُقرأ — من القائمة نفسِها لا من قائمةٍ ثانية.
+     *
+     * والقيمة المخزّنة رمزٌ إنجليزيّ (`delivery`/`pickup`): تُرشَّح به
+     * وتُقارن، ولا تُعرض. وشاشةٌ تعرضه خامًا تكتب كلمةً لا يقرؤها صاحبُ
+     * المحلّ في صفٍّ عربيّ.
+     */
+    public static function fulfillmentLabel(?string $value): ?string
+    {
+        foreach (self::fulfillmentOptions() as $option) {
+            if ($option['value'] === $value) {
+                return $option['label'];
+            }
+        }
+
+        return null;
+    }
 }

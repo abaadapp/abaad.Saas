@@ -99,6 +99,21 @@ class Order extends Model
     }
 
     /**
+     * أفات موعدُ هذا الطلب وهو حيّ؟
+     *
+     * والقاعدة هي قاعدةُ مُرشِّح «متأخّر» في `ListFilters::orders` نفسِها:
+     * موعدٌ مضى، وحالةٌ لم تُغلق. وهما موضعان يقولان الشيء نفسه — أحدهما
+     * يرشّح صفوفًا والآخر يسم الصفَّ المعروض — فيُحرَس اتّفاقُهما باختبارٍ
+     * يقارن المجموعتين، لا بالثقة. (انظر `TheSalesListShowsWhatItFiltersBy`)
+     */
+    public function isLate(): bool
+    {
+        return $this->scheduled_for !== null
+            && ! in_array($this->status, OrderStatus::CLOSED, true)
+            && $this->scheduled_for->isPast();
+    }
+
+    /**
      * ما ينتظر التجهيز: طلبٌ حيّ له موعد.
      *
      * المغلق يخرج (سُلّم أو استُلم أو اكتمل أو أُلغي)، والمعلَّق يخرج لأنّه

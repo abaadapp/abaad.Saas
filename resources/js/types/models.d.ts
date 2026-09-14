@@ -254,6 +254,12 @@ export interface Order {
     payment: string;
     status: string;
     date: string;
+    /** موعد التسليم كما يُعرض، و'—' لبيعة المنضدة التي لا موعد لها */
+    scheduled?: string;
+    /** أفات موعدُه وهو حيّ؟ — يُقاس في الخادم بقاعدة مُرشِّح «متأخّر» نفسِها */
+    late?: boolean;
+    /** نوع التنفيذ باسمه المقروء — لا برمزه المخزَّن */
+    fulfillment?: string | null;
 }
 
 export interface Expense {

@@ -61,6 +61,36 @@ export default function OrdersIndex() {
         },
         { key: 'date', header: 'التاريخ', cell: (o) => <span className="text-[#6b7280]">{o.date}</span> },
         {
+            /*
+             * ═══ موعدُ التسليم — العمودُ الذي كان يُرشَّح به ولا يُعرض ═══
+             *
+             * كان الموعدُ يُرسَل إلى الشاشة، ويُعرض له مفتاحُ فرزٍ، وله ثلاثةُ
+             * مُرشِّحات («متأخّر» و«اليوم» و«غدًا» و«قادم») — ولا عمودَ له.
+             * فيُرشِّح صاحبُ المحلّ «متأخّر» صباحًا فيرى صفوفًا لا يُفرّقها عن
+             * صفوف أمس شيء: لا متى كان يجب أن تخرج، ولا كم تأخّرت، ولا أيُّها
+             * أقدم. والفرزُ بالموعد كان مفتاحًا ميتًا: `DataTable` لا ترتّب إلّا
+             * أعمدةً تعرضها.
+             *
+             * والوسمُ من الخادم لا من مقارنةِ نصٍّ في المتصفّح: `Order::isLate`
+             * هي قاعدةُ المُرشِّح نفسُها، فلا يفترق ما يُرشَّح عمّا يُوسَم.
+             */
+            key: 'scheduled',
+            header: 'موعد التسليم',
+            cell: (o) =>
+                o.scheduled && o.scheduled !== '—' ? (
+                    <span className="flex flex-col">
+                        <span className={o.late ? 'font-medium text-[#b91c1c]' : 'text-[#4b4b4b]'}>
+                            {o.scheduled}
+                        </span>
+                        <span className="text-[11px] text-[#9ca3af]">
+                            {o.late ? t('متأخّر') : o.fulfillment ? t(o.fulfillment) : ''}
+                        </span>
+                    </span>
+                ) : (
+                    <span className="text-[#9ca3af]">—</span>
+                ),
+        },
+        {
             key: 'actions',
             header: 'إجراءات',
             align: 'end',

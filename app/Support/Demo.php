@@ -1132,6 +1132,16 @@ class Demo
             'payment' => $o->payment_method,
             'status' => $o->status,
             'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
+            /*
+             * وموعدُ التسليم في الملفّ كما هو في الشاشة.
+             *
+             * ثلاثةُ مُرشِّحاتٍ في قائمة المبيعات تقوم على هذا العمود
+             * («متأخّر» و«اليوم» و«غدًا» و«قادم»)، والملفُّ يتبع المُرشِّح —
+             * فمن رشّح «متأخّر» وصدّر ليُسلّم الورقةَ لسائقه كان يفتح ملفًّا
+             * لا يقول متى كان يجب أن يصل أيٌّ منها.
+             */
+            'scheduled' => optional($o->scheduled_for)->format('Y-m-d H:i') ?? '—',
+            'fulfillment' => FlowerOrder::fulfillmentLabel($o->fulfillment_type) ?? '—',
         ])->all();
     }
 

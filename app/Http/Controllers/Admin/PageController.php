@@ -231,7 +231,46 @@ class PageController extends Controller
              * حدٌّ زمنيّ يعرفه غدًا ويُقدّر له، لا رفضٌ لشخصه.
              */
             'invoiceEdit' => $this->invoiceEditState($number),
+            /*
+             * أهذا الطلب من الفرع الذي تقف عليه — وإن لم يكن، فمن أيّ فرع.
+             *
+             * الصفحةُ تُفتح لطلبات المتجر كلِّها عمدًا: يصلها التاجرُ من
+             * البحث العامّ، ومن التنبيهات، ومن صفحة العميل — وكلُّها لا
+             * تُرشِّح بالفرع. فإغلاقُها كان سيقطع تلك الطرق الأربعة.
+             *
+             * لكنّ **الأفعال** تتبع الفرع (`OrderDetailController::find`):
+             * فكانت الصفحة تُفتح كاملةً بأزرارها، ويضغط التاجرُ «جاهز» أو
+             * «إرسال» فتُردّ صفحةُ ٤٠٤ بلا كلمة. وهذا ما تقيسه الشاشةُ الآن
+             * لتقوله قبل الضغط بدل أن تُظهره بعده.
+             */
+            'otherBranch' => $this->orderOtherBranch($number),
         ]);
+    }
+
+    /**
+     * فرعُ الطلب حين لا يكون فرعَك — و`null` حين يكون.
+     *
+     * @return array{id: int, name: string}|null
+     */
+    private function orderOtherBranch(string $number): ?array
+    {
+        $here = Demo::currentBranchId();
+
+        if (! $here) {
+            // «كل الفروع» يرى المتجر كلَّه ويتصرّف فيه — لا قفل
+            return null;
+        }
+
+        $order = Order::where('business_id', Demo::bid())
+            ->where('is_held', false)->where('number', $number)->first();
+
+        if (! $order || (int) $order->branch_id === (int) $here || ! $order->branch_id) {
+            return null;
+        }
+
+        $branch = Branch::where('business_id', Demo::bid())->find($order->branch_id);
+
+        return $branch ? ['id' => (int) $branch->id, 'name' => (string) $branch->name] : null;
     }
 
     /**
@@ -245,8 +284,15 @@ class PageController extends Controller
             return ['can' => false, 'reason' => null];
         }
 
+        /*
+         * وبالفرع كما يقرؤه `OrderEditController::find`: طلبُ فرعٍ آخر لا
+         * يُصحَّح، فلا يُعرض له قلم. وسببُ المنع هنا ليس «انتهى اليوم» —
+         * هو الفرع، وتقوله لافتةُ الصفحة كلِّها لا هذا الزرّ وحده.
+         */
         $order = Order::where('business_id', Demo::bid())
-            ->where('is_held', false)->where('number', $number)->first();
+            ->where('is_held', false)
+            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()))
+            ->where('number', $number)->first();
 
         $soldOn = $order?->ordered_at ?? $order?->created_at;
 

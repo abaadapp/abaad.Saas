@@ -364,6 +364,7 @@ class ReportExportController extends Controller
         $firstDataRow = $this->tableHead($sheet, [
             __('رقم الطلب'), __('العميل'), __('الموظف'), __('الفرع'),
             __('عدد الأصناف'), $this->moneyHead('الإجمالي'), __('الدفع'), __('الحالة'), __('التاريخ'),
+            __('موعد التسليم'), __('نوع التنفيذ'),
         ]);
         foreach ($orders as $o) {
             $r = $this->row;
@@ -376,6 +377,9 @@ class ReportExportController extends Controller
             $sheet->setCellValue("G{$r}", $o['payment']);
             $sheet->setCellValue("H{$r}", $o['status']);
             $sheet->setCellValue("I{$r}", $o['date']);
+            // والموعدُ ونوعُ التنفيذ: عليهما تقوم مُرشِّحاتُ الشاشة، والملفّ يتبعها
+            $sheet->setCellValue("J{$r}", $o['scheduled']);
+            $sheet->setCellValue("K{$r}", $o['fulfillment']);
             $money[] = "F{$r}";
             $this->row++;
         }

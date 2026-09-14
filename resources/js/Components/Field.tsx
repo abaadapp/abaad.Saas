@@ -54,6 +54,14 @@ export default function Field({
 export interface SelectOption {
     label: string;
     value: string | number;
+    /**
+     * خيارٌ يُعرض ولا يُختار.
+     *
+     * ويُعرض ولا يُرفع: قائمةٌ تحذف ما لا يُختار تجعل القارئ يظنّ أنّه غير
+     * موجود، فيبحث عنه أو يُنشئه من جديد. والسببُ يُكتب في `label` نفسِه —
+     * فالخيارُ المعطَّل لا يحمل تلميحًا يُقرأ بالمرور عليه.
+     */
+    disabled?: boolean;
 }
 
 /**
@@ -109,7 +117,7 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
                 <SelectContent>
                     {placeholder !== undefined && <SelectItem value={EMPTY}>{t(placeholder)}</SelectItem>}
                     {options.map((o) => (
-                        <SelectItem key={o.value} value={String(o.value)}>
+                        <SelectItem key={o.value} value={String(o.value)} disabled={o.disabled}>
                             {t(o.label)}
                         </SelectItem>
                     ))}

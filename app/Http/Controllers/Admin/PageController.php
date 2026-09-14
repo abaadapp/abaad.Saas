@@ -430,9 +430,36 @@ class PageController extends Controller
             'currentBranchName' => Demo::currentBranchName(),
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),
+            /*
+             * وما يملك الفاعلُ منحَه — تُعطَّل سواه ولا تُرفع من الشاشة.
+             *
+             * إخفاؤها كان سيجعل بطاقةَ موظّفٍ قائم تُخفي صلاحيةً يملكها
+             * بالفعل؛ وعرضُها بلا تمييزٍ كان يَعِد بما يُردّ عند الحفظ
+             * بصفحة ٤٠٣ تمحو النموذج. فتُعرض معطَّلةً بسببها مكتوبًا.
+             */
+            'grantable' => Permissions::grantable(auth()->user()),
+            'blockedTitles' => self::blockedJobTitles(),
             // ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر EmployeeController
             'may_read_payroll' => (bool) auth()->user()?->may(Permissions::PAYROLL_VIEW),
         ]);
+    }
+
+    /**
+     * وظائفُ لا يُسندها هذا الفاعل — دورُها يحمل ما لا يملكه.
+     *
+     * والقائمةُ كانت تعرضها كلَّها: يختار المحاسبُ «بائعًا» ويملأ النموذج
+     * ويحفظ، فتُردّ صفحةُ ٤٠٣ — لأنّ دور البائع يفتح «المنتجات» و«لوحة
+     * التجهيز» وهو لا يملكهما. ولا شيء في الشاشة كان يقول ذلك قبل الضغط.
+     *
+     * @return list<string>
+     */
+    private static function blockedJobTitles(): array
+    {
+        $actor = auth()->user();
+
+        return JobTitle::where('business_id', Demo::bid())->orderBy('name')->get()
+            ->reject(fn ($t) => Permissions::mayAssignRole($actor, $t->role))
+            ->pluck('name')->values()->all();
     }
 
     public function employeesShow(string $id): Response

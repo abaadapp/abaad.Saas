@@ -49,8 +49,15 @@ class DashboardController extends Controller
              */
             'recentOrders' => Demo::orders(null, 6),
             'topProducts' => Demo::topSellingProducts(5, 'month', Demo::currentBranchId()),
-            // والترتيبُ بما حقّقه هذا الشهر — وعددُ الموظّفين محدودٌ بالباقة
-            'topEmployees' => collect(Demo::employees())
+            /*
+             * والترتيبُ بما حقّقه هذا الشهر — **في الفرع المختار**.
+             *
+             * كانت تقرأ المتجر كلَّه بينما بطاقةُ «مبيعات الشهر» فوقها تقرأ
+             * الفرع، و«أفضل المنتجات» بجانبها تُنادى بالفرع صراحةً. فتقول
+             * الشاشةُ الواحدة رقمين لشهرٍ واحد — ولا شيء فيها يقول أيُّهما
+             * على أيّ نطاق.
+             */
+            'topEmployees' => collect(Demo::employees(Demo::currentBranchId()))
                 ->sortByDesc('achieved')->take(5)->values()->all(),
         ]);
     }

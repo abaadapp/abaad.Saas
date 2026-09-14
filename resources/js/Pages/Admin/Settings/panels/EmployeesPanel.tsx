@@ -191,18 +191,48 @@ export default function EmployeesPanel({ employees, jobTitles }: { employees: Em
             key: 'actions',
             header: '',
             align: 'end',
+            /*
+             * ═══ ولا يُرسم فعلٌ يردّه الخادم ═══
+             *
+             * «تعديل» و«تعطيل الحساب» كانا يُرسمان على كلّ صفّ. والخادمُ يردّ
+             * من يمسّ حسابًا يفوقه (`Permissions::mayTouch`): فالمحاسبُ يجد
+             * القلمَ على صفّ المالك ويضغطه فتُردّ صفحةُ ٤٠٣ بلا كلمة — وبطاقةُ
+             * الموظّف نفسُها تُخفي الزرّين في هذه الحالة. شاشتان تجيبان جوابين.
+             *
+             * و«تعطيل الحساب» على صفّ نفسك فعلٌ لا يقع أبدًا: الخادمُ يردّه
+             * برسالة «لا يمكنك تعطيل حسابك الخاص». ومقبضٌ لا يُدير شيئًا.
+             *
+             * و«عرض» تبقى للجميع: البطاقةُ تُقرأ ولا تُكتب.
+             */
             cell: (e) => (
                 <RowActions
                     show={{ href: route('admin.employees.show', e.id), routeName: 'admin.employees.show' }}
-                    edit={{ href: route('admin.employees.edit', e.id), routeName: 'admin.employees.edit' }}
-                    extra={[
-                        {
-                            label: e.status === 'نشط' ? 'تعطيل الحساب' : 'تفعيل الحساب',
-                            icon: e.status === 'نشط' ? <Lock className="size-4" /> : <LockOpen className="size-4" />,
-                            onSelect: () =>
-                                router.post(route('admin.employees.toggle', e.id), {}, { preserveScroll: true }),
-                        },
-                    ]}
+                    edit={
+                        e.may_touch === false
+                            ? undefined
+                            : { href: route('admin.employees.edit', e.id), routeName: 'admin.employees.edit' }
+                    }
+                    extra={
+                        e.may_touch === false || e.is_me
+                            ? []
+                            : [
+                                  {
+                                      label: e.status === 'نشط' ? 'تعطيل الحساب' : 'تفعيل الحساب',
+                                      icon:
+                                          e.status === 'نشط' ? (
+                                              <Lock className="size-4" />
+                                          ) : (
+                                              <LockOpen className="size-4" />
+                                          ),
+                                      onSelect: () =>
+                                          router.post(
+                                              route('admin.employees.toggle', e.id),
+                                              {},
+                                              { preserveScroll: true },
+                                          ),
+                                  },
+                              ]
+                    }
                 />
             ),
         },

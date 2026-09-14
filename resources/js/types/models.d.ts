@@ -78,6 +78,10 @@ export interface Employee {
     target: number;
     /** نسبة تحقيق الهدف، أو `null` لمن لا هدف له — انظر `Demo::employees` */
     target_pct: number | null;
+    /** أيُمسّ حسابُه من يدِ من يقرأ القائمة؟ — يُقاس بـ`Permissions::mayTouch` */
+    may_touch?: boolean;
+    /** أهو صفُّ القارئ نفسِه؟ — ولا يُعطّل أحدٌ حسابَ نفسِه */
+    is_me?: boolean;
 }
 
 export interface Supplier {

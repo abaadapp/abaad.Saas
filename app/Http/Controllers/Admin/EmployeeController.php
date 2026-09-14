@@ -236,23 +236,28 @@ class EmployeeController extends Controller
             return;
         }
 
-        $granted = $manual !== null
-            ? $manual
-            : [
-                ...array_filter(Permissions::sections(), fn ($s) => Permissions::allows($title->role, $s)),
-                ...array_filter(Permissions::actions(), fn ($a) => Permissions::allowsAction($title->role, $a)),
-            ];
-
         /*
-         * والفعلُ يُسأل عنه بـ`may` لا بـ`allows`.
+         * ═══ ودورُ الوظيفة يُقاس دائمًا — لا حين تغيب الصلاحياتُ المخصّصة ═══
          *
-         * `allows` تقرأ الأقسام، واسمُ الفعل ليس منها فتردّ «لا» دائمًا —
-         * فيُمنع من يملك التصحيح من منحه لموظّفه.
+         * كان يُقاس **إمّا** القائمةَ المخصّصة **وإمّا** دورَ الوظيفة. والنموذج
+         * يرسل `manual_permissions` دائمًا — فالطريقُ الذي يسلكه كلُّ حفظٍ من
+         * الشاشة كان يقيس القائمةَ وحدها ولا ينظر إلى الدور إطلاقًا.
+         *
+         * وثمنُه أنّ الدور يبقى مكتوبًا في الصفّ سلطةً كامنة: `Permissions::beyond`
+         * تقرؤه، و`PANEL_ROLES` تقرؤه، وتقرؤه `MAP` كاملةً يومَ تُنزع القائمةُ
+         * المخصّصة. فكان المحاسبُ — وهو يملك «الموظفين» — ينشئ حسابًا بوظيفةٍ
+         * دورُها `admin` ويؤشّر لها ما يملكه هو وحده، فيُقبل: صفٌّ دورُه «صاحب
+         * النشاط» بكلمة مرورٍ يعرفها. يدخل به، فيمسّ **كلَّ** حسابٍ في المتجر —
+         * لأنّ `beyond` تعفي `role === 'admin'` — ويعيد تعيين كلمة مرور المالك
+         * ويقرؤها على الشاشة. ثلاثُ خطواتٍ بصلاحياتٍ يملكها كلَّها بحقّ.
+         *
+         * فيُجمع الاثنان: ما تحمله الوظيفةُ بدورها، وما أُشّر في القائمة. ومن
+         * لا يملك ما يحمله الدورُ لا يُسنده إلى أحد.
          */
-        $beyond = array_values(array_filter(
-            $granted,
-            fn ($s) => Permissions::isAction($s) ? ! $actor->may($s) : ! $actor->allows($s),
-        ));
+        $granted = array_unique([...Permissions::roleGrants($title->role), ...($manual ?? [])]);
+
+        // والمقارنةُ بما تقرؤه الشاشةُ نفسُها — فلا يُعرض مربّعٌ يُردّ عند الحفظ
+        $beyond = array_values(array_diff($granted, Permissions::grantable($actor)));
 
         if ($beyond) {
             abort(403, __('لا تملك صلاحية منح: :sections', [
@@ -443,6 +448,11 @@ class EmployeeController extends Controller
             ],
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),
+            // وما يملك الفاعلُ منحَه — سواه يُعطَّل بسببه مكتوبًا لا يُرفع
+            'grantable' => Permissions::grantable(auth()->user()),
+            'blockedTitles' => JobTitle::where('business_id', Demo::bid())->orderBy('name')->get()
+                ->reject(fn ($t) => Permissions::mayAssignRole(auth()->user(), $t->role))
+                ->pluck('name')->values()->all(),
             // ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر `readsPayroll`
             'may_read_payroll' => $this->readsPayroll(),
             'branches' => Demo::branches(),

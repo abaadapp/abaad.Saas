@@ -5651,5 +5651,7 @@
     "التصحيح يُعيد المخزون ويُحتسب الضريبة والنقاط من جديد، ويبقى مقيَّدًا باسمك في سجلّ الفاتورة.": "A correction returns the stock and recalculates tax and points, and stays recorded in your name in the invoice log.",
     "تعديل الفاتورة — انتهى يومها": "Edit invoice — its day has ended",
     "هذا الطلب من فرع «:branch» — يُقرأ من هنا، ولا يُتصرَّف فيه إلا من فرعه.": "This order belongs to the :branch branch — you can read it here, but it is managed from its own branch.",
-    "انتقل إلى :branch": "Switch to :branch"
+    "انتقل إلى :branch": "Switch to :branch",
+    "تفتح ما لا تفتحه": "opens what you cannot",
+    "لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.": "You do not hold this permission — and you cannot grant what you do not hold."
 }

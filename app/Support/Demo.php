@@ -1342,14 +1342,33 @@ class Demo
             ])->all();
     }
 
-    public static function employees(): array
+    /**
+     * @param  int|null  $branchId  فرعٌ تُحصر فيه مبيعاتُهم — و`null` للمتجر كلِّه
+     */
+    public static function employees(?int $branchId = null): array
     {
         $bid = self::bid();
 
+        /*
+         * ═══ وحدُّ الفرع يُطلب ولا يُفترض ═══
+         *
+         * صفُّ الموظّف نفسُه لا يتبع فرعًا: قسمُ «الموظفين» يعرض من في
+         * المتجر كلِّهم، ومبيعاتُهم فيه مبيعاتُهم كلُّها. أمّا **اللوحة**
+         * فكلُّ بطاقةٍ فيها تتبع الفرع المختار — حتى «أفضل المنتجات» تُنادى
+         * به صراحةً — وكانت «أداء الموظفين» وحدها تقرأ المتجر كلَّه.
+         *
+         * فيقرأ التاجرُ واقفًا على صلالة: «مبيعات الشهر ٧٠٠» وتحتها مباشرةً
+         * «نورة ١٠٠٠». شاشةٌ واحدة وشهرٌ واحد ورقمان. ولا يعرف أيَّهما يصدّق.
+         *
+         * فصار الحدُّ يُمرَّر: اللوحةُ تُمرّره كما تُمرّره لأفضل المنتجات،
+         * وقسمُ الموظفين لا يُمرّره — وكلٌّ منهما متّسقٌ مع جيرانه.
+         */
+        $scope = fn ($q) => $branchId ? $q->where('branch_id', $branchId) : $q;
+
         // مبيعات كل موظف خلال الشهر الحالي (من الطلبات المرتبطة به)
-        $monthly = Order::where('business_id', $bid)->sold()
+        $monthly = $scope(Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [now()->startOfMonth(), now()->endOfMonth()])
-            ->whereNotNull('user_id')
+            ->whereNotNull('user_id'))
             ->selectRaw('user_id, SUM(total) as s')->groupBy('user_id')->pluck('s', 'user_id');
 
         /*
@@ -1367,8 +1386,8 @@ class Demo
          * فصارت تُحسب من الطلبات كما تُحسب مبيعاتُ الشهر — بالتعريف نفسه
          * (`sold`) وفي المسحة نفسها من الجدول.
          */
-        $lifetime = Order::where('business_id', $bid)->sold()
-            ->whereNotNull('user_id')
+        $lifetime = $scope(Order::where('business_id', $bid)->sold()
+            ->whereNotNull('user_id'))
             ->selectRaw('user_id, SUM(total) as s')->groupBy('user_id')->pluck('s', 'user_id');
 
         return User::where('business_id', $bid)->where('role', '!=', 'super_admin')
@@ -1415,6 +1434,23 @@ class Demo
                      * يُقرأ تقصيرًا ولا مئةً تُقرأ إنجازًا.
                      */
                     'target_pct' => $target > 0 ? round($achieved / $target * 100, 1) : null,
+                    /*
+                     * ═══ أيُمسّ حسابُ هذا الموظّف من يدِ من يقرأ القائمة؟ ═══
+                     *
+                     * بطاقةُ الموظّف تسأل هذا السؤال وتُخفي أزرارَها إن كان
+                     * الجواب لا — والقائمةُ كانت ترسم «تعديل» و«تعطيل الحساب»
+                     * على كلّ صفّ بلا سؤال. فالمحاسبُ يفتح قائمة موظفيه فيجد
+                     * القلمَ على صفّ المالك وعلى صفّ كلّ من يفوقه، ويضغطه
+                     * فتُردّ صفحةُ ٤٠٣ — ويجد «تعطيل الحساب» على صفّ نفسِه
+                     * وهو فعلٌ لا يقع أبدًا.
+                     *
+                     * وشاشتان تسألان سؤالًا واحدًا وتجيبان جوابين: إحداهما
+                     * تكذب. والسؤالُ يُسأل هنا بالدالّة التي يسأل بها الحارسُ
+                     * نفسُه — `Permissions::beyond`.
+                     */
+                    'may_touch' => Permissions::mayTouch(auth()->user(), $u),
+                    // ولا يُعطّل أحدٌ حسابَ نفسِه — الخادمُ يردّها برسالة، فلا تُرسم
+                    'is_me' => $u->id === auth()->id(),
                 ];
             })->all();
     }
@@ -2409,15 +2445,32 @@ class Demo
     public static function employeeSalesSeries($id): array
     {
         $bid = self::bid();
-        $name = User::where('business_id', $bid)->whereKey($id)->value('name');
+
+        /*
+         * ═══ والمطابقةُ بالمعرّف لا بالاسم ═══
+         *
+         * كان المخطّط يجمع الطلبات التي `employee_name` فيها يساوي اسمَ
+         * الموظّف اليوم — و`employee_name` **لقطةٌ تُكتب لحظة البيع ولا
+         * تتغيّر بعدها**. فتصحيحُ اسمٍ («نورة» ← «نورة العامري») يقطع الصلة
+         * بكلّ ما باعته قبله: المخطّط يهبط إلى صفرٍ في الاثني عشر شهرًا
+         * كلِّها، و«إجمالي المبيعات» فوقه في البطاقة نفسِها يبقى على رقمه —
+         * لأنّه يُجمع بـ`user_id`.
+         *
+         * رقمان على بطاقةٍ واحدة يجيبان سؤالًا واحدًا بجوابين، وأحدُهما صفر.
+         * ولا رسالةَ عطبٍ فيه: مخطّطٌ مسطّحٌ على الصفر يُقرأ «لم يبع شيئًا».
+         *
+         * فصار يُجمع بما تُجمع به بقيّةُ أرقامه: `user_id` — مرجعٌ لا يتغيّر
+         * بتغيّر ما يُكتب في خانة الاسم.
+         */
+        $exists = User::where('business_id', $bid)->whereKey($id)->exists();
 
         $labels = [];
         $data = [];
         foreach (self::yearMonths() as $m) {
             $labels[] = self::monthLabel($m);
-            $data[] = $name === null ? 0 : round((float) Order::where('business_id', $bid)
+            $data[] = ! $exists ? 0 : round((float) Order::where('business_id', $bid)
                 ->sold()
-                ->where('employee_name', $name)
+                ->where('user_id', $id)
                 ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)
                 ->sum('total'), 3);
         }

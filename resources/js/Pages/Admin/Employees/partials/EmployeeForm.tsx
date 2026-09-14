@@ -57,6 +57,17 @@ interface Props {
     sections?: Record<string, string>;
     /** أفعالٌ تُمنح بأسمائها — لا أقسامٌ تُفتح. انظر Permissions::ACTIONS */
     actions?: Record<string, string>;
+    /**
+     * ما يملك الفاعلُ منحَه — وسواه يُعطَّل بسببه مكتوبًا.
+     *
+     * والخادمُ يردّ من يمنح ما لا يملك بـ٤٠٣ كاملة (`refuseGrantingMoreThanIHave`)
+     * — صفحةُ خطأٍ تمحو النموذج كلَّه ولا تقول أيُّ مربّعٍ سبّبها. فيُقال
+     * قبل الضغط. ويُقرأ من `Permissions::grantable` نفسِها التي يقيس بها
+     * الحارس، فلا تفترق الشاشةُ عن الباب.
+     */
+    grantable?: string[];
+    /** وظائفُ لا يُسندها الفاعل: دورُها يحمل ما لا يملكه — `mayAssignRole` */
+    blockedTitles?: string[];
     /** لا يُعدّل المدير صلاحيات حسابه */
     canEditPermissions?: boolean;
     /*
@@ -116,6 +127,8 @@ export default function EmployeeForm({
     defaultBranch,
     sections,
     actions,
+    grantable,
+    blockedTitles,
     canEditPermissions = true,
     mayReadPayroll = true,
 }: Props) {
@@ -162,6 +175,16 @@ export default function EmployeeForm({
         manual_permissions: true,
         permissions: employee?.permissions ?? employee?.role_permissions ?? [],
     });
+
+    /*
+     * ما لا يُمنح يُعطَّل — ولا يُرفع.
+     *
+     * رفعُه كان سيُخفي عن بطاقةِ موظّفٍ قائمٍ صلاحيةً يملكها بالفعل، فيظنّ
+     * القارئُ أنّها نُزعت. و`grantable` غائبةٌ تعني «لا حدّ» — شاشاتٌ لا
+     * ترسل هذه الخاصّية تبقى كما كانت.
+     */
+    const mayGrant = (key: string) => !grantable || grantable.includes(key);
+    const titleBlocked = (name: string) => (blockedTitles ?? []).includes(name);
 
     const togglePermission = (key: string) =>
         form.setData(
@@ -257,7 +280,17 @@ export default function EmployeeForm({
                                 <Select
                                     value={form.data.job_title}
                                     onChange={(e) => form.setData('job_title', e.target.value)}
-                                    options={titles.map((j) => ({ label: j, value: j }))}
+                                    /*
+                                        والوظيفةُ التي لا يُسندها الفاعلُ تبقى
+                                        معروضةً معطَّلةً بسببها: دورُها يفتح ما
+                                        لا يفتحه هو، ومن أسند دورًا أسند ما
+                                        يحمله — انظر `Permissions::mayAssignRole`.
+                                    */
+                                    options={titles.map((j) => ({
+                                        label: titleBlocked(j) ? `${j} — ${t('تفتح ما لا تفتحه')}` : j,
+                                        value: j,
+                                        disabled: titleBlocked(j),
+                                    }))}
                                     placeholder="اختر الوظيفة…"
                                 />
                             </div>
@@ -523,16 +556,19 @@ export default function EmployeeForm({
                                 {Object.entries(sections).map(([key, label]) => (
                                     <label
                                         key={key}
+                                        title={mayGrant(key) ? undefined : t('لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.')}
                                         className={cn(
                                             'flex items-center gap-2.5',
-                                            canCustomize ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
+                                            canCustomize && mayGrant(key)
+                                                ? 'cursor-pointer'
+                                                : 'cursor-not-allowed opacity-60',
                                         )}
                                     >
                                         <input
                                             type="checkbox"
                                             checked={form.data.permissions.includes(key)}
                                             onChange={() => togglePermission(key)}
-                                            disabled={! canCustomize}
+                                            disabled={! canCustomize || ! mayGrant(key)}
                                             className="size-4 rounded border-[#d1d5db] accent-[#111]"
                                         />
                                         <span className="text-sm text-[#374151]">{label}</span>
@@ -557,16 +593,19 @@ export default function EmployeeForm({
                                     {Object.entries(actions).map(([key, label]) => (
                                         <label
                                             key={key}
+                                            title={mayGrant(key) ? undefined : t('لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.')}
                                             className={cn(
                                                 'flex items-center gap-2.5',
-                                                canCustomize ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
+                                                canCustomize && mayGrant(key)
+                                                    ? 'cursor-pointer'
+                                                    : 'cursor-not-allowed opacity-60',
                                             )}
                                         >
                                             <input
                                                 type="checkbox"
                                                 checked={form.data.permissions.includes(key)}
                                                 onChange={() => togglePermission(key)}
-                                                disabled={! canCustomize}
+                                                disabled={! canCustomize || ! mayGrant(key)}
                                                 className="size-4 rounded border-[#d1d5db] accent-[#111]"
                                             />
                                             <span className="text-sm text-[#374151]">{label}</span>

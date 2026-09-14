@@ -251,14 +251,24 @@ class NoOneSeizesAnAccountAboveHisOwnTest extends TestCase
         $this->assertEqualsWithDelta(50.0, (float) $fresh->allowances, 0.001);
     }
 
-    /** ولا يُكتب راتبٌ في موظّفٍ جديدٍ بيد من لا يقرؤه */
+    /**
+     * ولا يُكتب راتبٌ في موظّفٍ جديدٍ بيد من لا يقرؤه.
+     *
+     * والفاعلُ مشرفٌ يملك ما تحمله وظيفةُ الكاشير (اللوحة ونقطة البيع) لا
+     * الكاتبَ: من لا يملك `pos` لا يُسند دورَ كاشير — وإلّا صنع حسابًا
+     * بكلمة مرورٍ يعرفها ودخل به إلى صندوقٍ لا يفتحه. وهذا يُردّ عند
+     * `refuseGrantingMoreThanIHave` قبل أن يبلغ الراتبَ أصلًا، فيمرّ
+     * الاختبارُ لغير سببه — وهو ما وقع لأخيه أعلاه مرّةً.
+     */
     public function test_a_clerk_cannot_write_a_salary_on_a_new_employee(): void
     {
-        $this->actingAs($this->clerk)->post(route('admin.employees.store'), [
+        $supervisor = $this->staff('مشرف الرواتب', 'sup2', 'sales', ['employees', 'dashboard', 'pos']);
+
+        $this->actingAs($supervisor)->post(route('admin.employees.store'), [
             'name' => 'موظف جديد', 'login_username' => 'newone', 'job_title' => 'كاشير',
             'basic_salary' => 5000, 'allowances' => 500,
             'manual_permissions' => true, 'permissions' => ['employees'],
-        ])->assertSessionHasNoErrors();
+        ])->assertRedirect()->assertSessionHasNoErrors();
 
         $made = User::where('name', 'موظف جديد')->firstOrFail();
 

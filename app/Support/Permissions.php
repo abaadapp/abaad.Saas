@@ -351,8 +351,21 @@ class Permissions
             return ['*'];
         }
 
-        // صاحبُ النشاط يمسّ الجميع، ونفسُه ليست فوقه
-        if ($actor->role === 'admin' || $actor->id === $employee->id) {
+        /*
+         * صاحبُ النشاط يمسّ الجميع، ونفسُه ليست فوقه.
+         *
+         * و**بشرطِ أن يكون دورُه هو سلطتَه**: صفٌّ دورُه `admin` وصلاحياتُه
+         * مخصّصةٌ ليس صاحبَ النشاط — هو حسابٌ ضُيّق عمدًا، و`allows`/`may`
+         * تقرآن قائمتَه لا دورَه. فإعفاؤه هنا بالدور كان يعطيه على **الحسابات**
+         * ما نُزع عنه في **الشاشات**: يمسّ كلَّ موظّفٍ في المتجر — ويعيد تعيين
+         * كلمة مرور المالك — وهو لا يفتح نصف أقسامه.
+         *
+         * وحارسُ المنح يمنع إنشاء مثله (انظر `EmployeeController::refuseGrantingMoreThanIHave`)،
+         * وهذا حارسٌ ثانٍ: صفٌّ كهذا قد يكون مكتوبًا من قبلُ، أو من هجرة، أو
+         * بيدِ المالك نفسِه وهو يضيّق شريكًا. ويبقى المالكُ الحقيقيّ — دورُه
+         * `admin` بلا تخصيص — على ما كان: يمسّ الجميع بلا قياس.
+         */
+        if (($actor->role === 'admin' && ! $actor->hasManualPermissions()) || $actor->id === $employee->id) {
             return [];
         }
 
@@ -366,6 +379,50 @@ class Permissions
                 fn ($a) => $employee->may($a) && ! $actor->may($a),
             ),
         ];
+    }
+
+    /**
+     * ما يملك هذا الفاعلُ أن **يمنحه** — أقسامًا وأفعالًا.
+     *
+     * ويقرؤها الحارسُ والشاشةُ معًا: الحارسُ ليردّ، والنموذجُ ليُعطّل ما لا
+     * يُمنح. ولو حُسبت في موضعين لافترقا يومًا — فيُعرض مربّعٌ يُؤشَّر ثمّ
+     * تُصفع به صفحةُ ٤٠٣ عند الحفظ، ويضيع النموذجُ كلُّه.
+     *
+     * @return list<string>
+     */
+    public static function grantable(?User $actor): array
+    {
+        if (! $actor) {
+            return [];
+        }
+
+        return [
+            ...array_values(array_filter(self::SECTIONS, fn ($s) => $actor->allows($s))),
+            ...array_values(array_filter(self::actions(), fn ($a) => $actor->may($a))),
+        ];
+    }
+
+    /**
+     * ما تحمله وظيفةٌ بدورها — أقسامًا وأفعالًا.
+     *
+     * وهي سلطةٌ كامنةٌ تبقى في الصفّ ولو ضُيّقت بقائمةٍ مخصّصة: `beyond`
+     * تقرأ الدور، و`PANEL_ROLES` تقرؤه، وتقرؤه `MAP` كاملةً يومَ تُنزع
+     * القائمة. فمن أسند دورًا أسند ما يحمله.
+     *
+     * @return list<string>
+     */
+    public static function roleGrants(string $role): array
+    {
+        return [
+            ...array_values(array_filter(self::SECTIONS, fn ($s) => self::allows($role, $s))),
+            ...array_values(array_filter(self::actions(), fn ($a) => self::allowsAction($role, $a))),
+        ];
+    }
+
+    /** أيُسند هذا الفاعلُ وظيفةً بهذا الدور؟ */
+    public static function mayAssignRole(?User $actor, string $role): bool
+    {
+        return array_diff(self::roleGrants($role), self::grantable($actor)) === [];
     }
 
     /** هل يمسّ هذا الفاعلُ حسابَ هذا الموظّف؟ */

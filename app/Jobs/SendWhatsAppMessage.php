@@ -111,10 +111,33 @@ class SendWhatsAppMessage implements ShouldQueue
             $message->quota_consumed = true;
         }
 
+        /*
+         * ولكلِّ رسالةٍ مصدرُ متغيّراتها — ولا يُرسَل فراغٌ أبدًا.
+         *
+         * كان ما ليس طلبًا يُرسَل بـ`[اسم المحلّ, '']`، وميتا ترفض متغيّرًا
+         * بلا قيمة — فتذكيرُ السداد يُردّ قبل أن يصل أحدًا ويُقيَّد `failed`.
+         * والفاتورةُ تُقرأ من عمودها في الصفّ: انظر `WhatsAppAutomation`.
+         */
         $order = $message->order;
-        $variables = $order
-            ? WhatsAppTemplates::variables($business, $order)
-            : [(string) $business->name, ''];
+        $invoice = $message->customerInvoice;
+
+        $variables = match (true) {
+            $order !== null => WhatsAppTemplates::variables($business, $order),
+            $invoice !== null => WhatsAppTemplates::invoiceVariables($business, $invoice),
+            /*
+             * ولا مصدرَ لها: لا تُرسَل نصفَ مملوءة.
+             *
+             * رسالةٌ بمتغيّرٍ فارغ تُردّ من ميتا وتستهلك محاولةً وحصّة، ثمّ
+             * يقرأ التاجر «فشل» بلا سبب. والوقوفُ هنا يُسمّي السبب.
+             */
+            default => null,
+        };
+
+        if ($variables === null) {
+            $this->stop($message, WhatsAppStatus::SKIPPED, WhatsAppStatus::SKIP_NO_SUBJECT);
+
+            return;
+        }
 
         $result = MetaWhatsAppClient::sendTemplate(
             $connection,

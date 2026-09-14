@@ -169,6 +169,13 @@ class WhatsAppAutomation
         $base = [
             'business_id' => $business->id,
             'order_id' => null,
+            /*
+             * والورقةُ تُسمَّى في الصفّ لا تُستخرج من مفتاح التكرار.
+             *
+             * القالبُ نصُّه «رقم الفاتورة: {{2}}»، والمُرسِل يقرأ هذا العمود
+             * ليملأه. وكان يُرسل فراغًا — وميتا ترفض متغيّرًا بلا قيمة.
+             */
+            'customer_invoice_id' => $invoice->id,
             'customer_id' => $invoice->customer_id,
             'whatsapp_connection_id' => $connection?->id,
             'source_mode' => $mode,

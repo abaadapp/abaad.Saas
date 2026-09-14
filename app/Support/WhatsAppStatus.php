@@ -52,6 +52,9 @@ class WhatsAppStatus
 
     public const SKIP_NO_TEMPLATE = 'no_template';
 
+    /** لا طلبَ ولا فاتورةَ تتحدّث عنها الرسالة — فلا قيمةَ لمتغيّراتها */
+    public const SKIP_NO_SUBJECT = 'no_subject';
+
     public const SKIP_DUPLICATE = 'duplicate';
 
     public const SKIP_QUOTA = 'quota_exceeded';

@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Models\CustomerInvoice;
 use App\Models\Order;
 use App\Models\WhatsAppTemplateMapping;
 
@@ -57,6 +58,23 @@ class WhatsAppTemplates
         return [
             (string) ($business->name ?: __('متجر')),
             (string) $order->number,
+        ];
+    }
+
+    /**
+     * قيمُ متغيّرات رسائل الفواتير — ولا فراغَ فيها.
+     *
+     * وميتا ترفض متغيّرًا بلا قيمة (`132000`)، فكان تذكيرُ السداد يُبنى
+     * بـ`['اسم المحلّ', '']` ويُردّ قبل أن يصل أحدًا. والقالبُ يقول «رقم
+     * الفاتورة: {{2}}» — فيُملأ برقمها.
+     *
+     * @return array<int, string>
+     */
+    public static function invoiceVariables(Business $business, CustomerInvoice $invoice): array
+    {
+        return [
+            (string) ($business->name ?: __('متجر')),
+            (string) $invoice->number,
         ];
     }
 

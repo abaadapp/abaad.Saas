@@ -35,6 +35,9 @@ class WhatsAppMessage extends Model
 
     public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
 
+    /** الفاتورةُ التي تتحدّث عنها الرسالة — فارغةٌ في رسائل الطلبات */
+    public function customerInvoice(): BelongsTo { return $this->belongsTo(CustomerInvoice::class); }
+
     public function connection(): BelongsTo
     {
         return $this->belongsTo(WhatsAppConnection::class, 'whatsapp_connection_id');

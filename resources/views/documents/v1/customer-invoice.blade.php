@@ -38,7 +38,8 @@
     $amount = fn ($v) => \App\Support\Money::amount((float) $v, $currency);
     $money = fn ($v) => \App\Support\Money::format((float) $v, $currency);
     $vat = trim((string) ($vatNumber ?? ''));
-    $numberLabel = __('رقم الفاتورة');
+    /* والمتجرُ هو البائع على هذه الورقة — انظر §٨ في المواصفة */
+    $issuerCap = 'البائع';
 
     /*
         وحقولُ الجهة تُرشَّح قبل أن تُرسم.
@@ -49,12 +50,12 @@
         لم يُذكر — ولا قسمَ لها أصلًا.
     */
     $orgFields = array_values(array_filter([
-        ['label' => __('رقم أمر الشراء (PO)'), 'value' => $invoice->po_number],
-        ['label' => __('رقم العقد'), 'value' => $invoice->contract_number],
-        ['label' => __('رقم المرجع'), 'value' => $invoice->external_reference],
-        ['label' => __('القسم / الإدارة'), 'value' => $invoice->department],
-        ['label' => __('مركز التكلفة'), 'value' => $invoice->cost_center],
-        ['label' => __('موجه إلى / عناية'), 'value' => $invoice->attention_to],
+        ['label' => 'رقم أمر الشراء (PO)', 'value' => $invoice->po_number],
+        ['label' => 'رقم العقد', 'value' => $invoice->contract_number],
+        ['label' => 'رقم المرجع', 'value' => $invoice->external_reference],
+        ['label' => 'القسم / الإدارة', 'value' => $invoice->department],
+        ['label' => 'مركز التكلفة', 'value' => $invoice->cost_center],
+        ['label' => 'موجه إلى / عناية', 'value' => $invoice->attention_to],
     ], fn ($f) => filled($f['value'])));
 
     $terms = $invoice->payment_terms_days === null ? null
@@ -62,19 +63,19 @@
             ? __('مستحق فورًا')
             : __('صافي :n يومًا', ['n' => (int) $invoice->payment_terms_days]));
 
-    $totals = [['label' => __('المجموع الفرعي'), 'value' => $amount($invoice->subtotal)]];
+    $totals = [['label' => 'المجموع الفرعي', 'value' => $amount($invoice->subtotal)]];
 
     if ((float) $invoice->discount_total > 0) {
-        $totals[] = ['label' => __('الخصم'), 'value' => '− '.$amount($invoice->discount_total)];
+        $totals[] = ['label' => 'الخصم', 'value' => '− '.$amount($invoice->discount_total)];
     }
 
     if ((float) $invoice->tax_total > 0) {
-        $totals[] = ['label' => __('ضريبة القيمة المضافة'), 'value' => $amount($invoice->tax_total)];
+        $totals[] = ['label' => 'ضريبة القيمة المضافة', 'value' => $amount($invoice->tax_total)];
     }
 
-    $totals[] = ['label' => __('الإجمالي'), 'value' => $money($invoice->total), 'grand' => true];
-    $totals[] = ['label' => __('المسدَّد'), 'value' => $amount($paid)];
-    $totals[] = ['label' => __('الباقي'), 'value' => $money($outstanding), 'due' => true];
+    $totals[] = ['label' => 'الإجمالي', 'value' => $money($invoice->total), 'grand' => true];
+    $totals[] = ['label' => 'المسدَّد', 'value' => $amount($paid)];
+    $totals[] = ['label' => 'الباقي', 'value' => $money($outstanding), 'due' => true];
 
     /*
         وهذه الورقةُ تُرسَم من الصفّ لا من `DocumentPaper` كأخواتها.
@@ -92,13 +93,13 @@
     ];
 @endphp
 
-@section('type', $invoice->tax_total > 0 && $vat !== '' ? __('فاتورة ضريبية') : __('فاتورة'))
+@section('type', $invoice->tax_total > 0 && $vat !== '' ? 'فاتورة ضريبية' : 'فاتورة')
 {{-- ورقمٌ لم يُقطع بعدُ يُقال «مسودّة» — لا سطرٌ ينتهي عند فراغ --}}
 @section('number', $invoice->number ?: __('مسودة'))
 
 @section('parties')
     @include('documents.v1.partials.parties', ['parties' => [[
-        'cap' => __('فاتورة إلى'),
+        'cap' => 'العميل',
         'lines' => array_values(array_filter([
             $invoice->customer_name ?: null,
             filled($invoice->customer_tax_number) ? __('الرقم الضريبي').': '.$invoice->customer_tax_number : null,
@@ -109,40 +110,53 @@
 
 @php
     $metaCells = array_merge(
-        [['label' => __('تاريخ الإصدار'), 'value' => optional($invoice->issued_at)->format('Y-m-d')]],
-        $invoice->due_at ? [['label' => __('تاريخ الاستحقاق'), 'value' => $invoice->due_at->format('Y-m-d')]] : [],
-        $terms !== null ? [['label' => __('شروط الدفع'), 'value' => $terms]] : [],
+        [['label' => 'رقم الفاتورة', 'value' => $invoice->number ?: __('مسودة')]],
+        [['label' => 'تاريخ الإصدار', 'value' => optional($invoice->issued_at)->format('Y-m-d')]],
+        $invoice->due_at ? [['label' => 'تاريخ الاستحقاق', 'value' => $invoice->due_at->format('Y-m-d')]] : [],
+        $terms !== null ? [['label' => 'شروط الدفع', 'value' => $terms]] : [],
         $orgFields,
     );
 @endphp
 
+@section('figure')
+    {{-- وما يُبحث عنه في مطالبةٍ بمبلغ: كم بقي — انظر §٧ في المواصفة --}}
+    @include('documents.v1.partials.figure', [
+        'label' => (float) $outstanding > 0 ? 'الرصيد المستحق' : 'الإجمالي',
+        'value' => (float) $outstanding > 0 ? $money($outstanding) : $money($invoice->total),
+        'status' => $doc['status'],
+    ])
+@endsection
+
 @section('body')
+    @php($h = function (string $k) {
+        [$a, $b] = \App\Support\Paper::pair($k);
+
+        return '<span class="lbl">'.e($a).'</span>'.($b !== '' ? '<br><span class="lbl2">'.e($b).'</span>' : '');
+    })
     <table class="items">
         <thead>
             <tr>
-                <th style="width:6%" class="num">#</th>
-                <th>{{ __('البيان') }}</th>
-                <th style="width:11%" class="num">{{ __('الكمية') }}</th>
-                <th style="width:17%" class="amt">{{ __('سعر الوحدة') }}</th>
-                <th style="width:15%" class="amt">{{ __('الضريبة') }}</th>
-                <th style="width:19%" class="amt">{{ __('الإجمالي') }}</th>
+                <th>{!! $h('البيان') !!}</th>
+                <th style="width:11%" class="num">{!! $h('الكمية') !!}</th>
+                <th style="width:17%" class="amt">{!! $h('سعر الوحدة') !!}</th>
+                <th style="width:15%" class="amt">{!! $h('الضريبة') !!}</th>
+                <th style="width:21%" class="amt">{!! $h('المبلغ') !!}</th>
             </tr>
         </thead>
         <tbody>
             @forelse ($invoice->items as $i => $item)
                 {{-- ولا زِبرةَ: شعرةٌ فاصلةٌ تكفي — انظر `partials/items` --}}
                 <tr>
-                    <td class="num faint">{{ $i + 1 }}</td>
                     {{-- والبيانُ يحمل اتّجاهَه: بندٌ إنجليزيٌّ في فاتورةٍ عربيّة لا تنقلب نقطتُه --}}
                     <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($item->description) }}">{{ $item->description }}</td>
                     <td class="num">{{ rtrim(rtrim(number_format((float) $item->quantity, 3, '.', ''), '0'), '.') }}</td>
                     {{-- والمبالغُ معزولةٌ عن اتّجاه السطر: انظر `partials/items` --}}
-                    <td class="amt muted"><span dir="ltr">{{ $amount($item->unit_price) }}</span></td>
-                    <td class="amt muted"><span dir="ltr">{{ $amount($item->tax_amount) }}</span></td>
-                    <td class="amt line"><span dir="ltr">{{ $amount($item->line_total) }}</span></td>
+                    <td class="amt"><span dir="ltr">{{ $amount($item->unit_price) }}</span></td>
+                    <td class="amt"><span dir="ltr">{{ $amount($item->tax_amount) }}</span></td>
+                    <td class="amt"><span dir="ltr">{{ $amount($item->line_total) }}</span></td>
                 </tr>
             @empty
-                <tr><td class="empty" colspan="6">{{ __('لا بنود على هذه الفاتورة') }}</td></tr>
+                <tr><td class="empty" colspan="5">{{ __('لا بنود على هذه الفاتورة') }}</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -155,12 +169,13 @@
         وتعليماتُ السداد كتلةٌ ثانيةٌ في العمود نفسِه: هي ما يُقرأ مقابل
         المبلغ المطلوب — «ادفع هذا، إلى هنا» — فمكانُها بإزائه لا أسفلَه.
     --}}
-    @include('documents.v1.partials.totals', [
-        'totals' => $totals,
+    @include('documents.v1.partials.totals', ['totals' => $totals])
+
+    @include('documents.v1.partials.close', [
         'panels' => [
-            ($invoice->notes && ($showNotes ?? true)) ? ['cap' => __('ملاحظات'), 'text' => $invoice->notes] : [],
+            ($invoice->notes && ($showNotes ?? true)) ? ['cap' => 'ملاحظات', 'text' => $invoice->notes] : [],
             $bank ? [
-                'cap' => __('تعليمات السداد'),
+                'cap' => 'تعليمات السداد',
                 'rows' => [
                     $bank->bank_name ? ['label' => __('البنك'), 'value' => $bank->bank_name] : [],
                     $bank->account_name ? ['label' => __('اسم الحساب'), 'value' => $bank->account_name] : [],

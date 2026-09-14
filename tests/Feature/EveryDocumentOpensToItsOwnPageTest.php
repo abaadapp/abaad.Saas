@@ -364,7 +364,7 @@ class EveryDocumentOpensToItsOwnPageTest extends TestCase
             ->assertInertia(fn ($p) => $p
                 ->where('paper.url', route('admin.purchases.invoices.pdf', $si->id))
                 ->where('paper.html', fn (string $html) => str_contains($html, 'SI-77/2026')
-                    && str_contains($html, 'فاتورة مورّد')
+                    && str_contains($html, 'فاتورة المورّد')
                     && str_contains($html, 'سجلُّ المتجر لهذه الفاتورة')));
     }
 

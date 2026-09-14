@@ -107,10 +107,10 @@ class DocumentPaper
         $vatBase = (float) $order->subtotal - (float) $order->discount;
         $vatRate = $vatBase > 0 ? round((float) $order->tax / $vatBase * 100, 2) : 0.0;
 
-        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($order->subtotal, $cur)]];
+        $totals = [['label' => 'المجموع الفرعي', 'value' => self::money($order->subtotal, $cur)]];
 
         if ((float) $order->discount > 0) {
-            $totals[] = ['label' => __('الخصم'), 'value' => '− '.self::money($order->discount, $cur)];
+            $totals[] = ['label' => 'الخصم', 'value' => '− '.self::money($order->discount, $cur)];
         }
 
         /*
@@ -121,22 +121,22 @@ class DocumentPaper
          */
         if ((float) $order->tax > 0) {
             $totals[] = [
-                'label' => __('ضريبة القيمة المضافة'),
+                'label' => 'ضريبة القيمة المضافة',
                 'hint' => $vatRate > 0 ? '('.rtrim(rtrim(number_format($vatRate, 2, '.', ''), '0'), '.').'%)' : null,
                 'value' => self::money($order->tax, $cur),
             ];
         }
 
         if ((float) $order->delivery_fee > 0) {
-            $totals[] = ['label' => __('رسوم التوصيل'), 'value' => self::money($order->delivery_fee, $cur)];
+            $totals[] = ['label' => 'رسوم التوصيل', 'value' => self::money($order->delivery_fee, $cur)];
         }
 
-        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($order->total, $cur), 'grand' => true];
+        $totals[] = ['label' => 'الإجمالي', 'value' => self::money($order->total, $cur), 'grand' => true];
 
         /* ولا سطرَ سدادٍ على بيعةٍ دُفعت كاملةً عند الصندوق: صفرٌ لا يُطبع */
         if ($pay['partial']) {
-            $totals[] = ['label' => __('المسدَّد'), 'value' => self::money($pay['paid'], $cur)];
-            $totals[] = ['label' => __('الباقي'), 'value' => self::money($pay['outstanding'], $cur), 'due' => true];
+            $totals[] = ['label' => 'المسدَّد', 'value' => self::money($pay['paid'], $cur)];
+            $totals[] = ['label' => 'الباقي', 'value' => self::money($pay['outstanding'], $cur), 'due' => true];
         }
 
         return [
@@ -154,12 +154,12 @@ class DocumentPaper
             'branch' => $order->branch,
             'employee' => $order->employee_name,
             'meta' => array_values(array_filter([
-                ['label' => __('وسيلة الدفع'), 'value' => __((string) ($order->payment_method ?: 'نقدي'))],
-                ['label' => __('شروط الدفع'), 'value' => $pay['terms']],
-                ['label' => __('تاريخ الاستحقاق'), 'value' => $pay['due_at']],
+                ['label' => 'وسيلة الدفع', 'value' => __((string) ($order->payment_method ?: 'نقدي'))],
+                ['label' => 'شروط الدفع', 'value' => $pay['terms']],
+                ['label' => 'تاريخ الاستحقاق', 'value' => $pay['due_at']],
             ], fn (array $r) => filled($r['value']))),
             'parties' => [[
-                'cap' => __('فاتورة إلى'),
+                'cap' => 'العميل',
                 'lines' => array_values(array_filter([
                     Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي'),
                     filled($extra['customerTax'] ?? null)
@@ -247,7 +247,7 @@ class DocumentPaper
              */
             'parties' => [
                 [
-                    'cap' => __('المستلِم'),
+                    'cap' => 'المستلِم',
                     'lines' => array_values(array_filter([
                         $order->recipient_name ?: ($order->customer_name ?: __('عميل نقدي')),
                         $order->recipient_phone ?: null,
@@ -263,7 +263,7 @@ class DocumentPaper
                 'total' => self::money($i->total ?: $i->price * $i->quantity, $cur),
             ])->all(),
             'totals' => [
-                ['label' => __('الإجمالي'), 'value' => self::money($order->total, $cur), 'grand' => true],
+                ['label' => 'الإجمالي', 'value' => self::money($order->total, $cur), 'grand' => true],
             ],
             'notes' => (string) ($order->delivery_notes ?: $order->notes ?: ''),
         ];
@@ -297,19 +297,19 @@ class DocumentPaper
 
         $meta = array_values(array_filter([
             [
-                'label' => __('تاريخ الاستلام المتوقع'),
+                'label' => 'تاريخ الاستلام المتوقع',
                 'value' => optional($po->expected_delivery_at)->format('Y-m-d'),
             ],
             [
-                'label' => __('شروط الدفع'),
+                'label' => 'شروط الدفع',
                 'value' => self::terms($po->payment_terms_days),
             ],
             [
-                'label' => __('طريقة الدفع'),
+                'label' => 'طريقة الدفع',
                 'value' => PurchaseOrders::methodLabel($po->payment_method),
             ],
             [
-                'label' => __('مرجع المورّد'),
+                'label' => 'مرجع المورّد',
                 'value' => (string) ($po->supplier_reference ?? ''),
             ],
         ], fn (array $r) => filled($r['value'])));
@@ -320,19 +320,19 @@ class DocumentPaper
          * `items_subtotal` قيمةُ الأصناف قبل الخصم والشحن والضريبة، وهي ما
          * يُطابقه المورّدُ بجدول أسعاره. ومجموعٌ وحده لا يُطابَق بشيء.
          */
-        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($po->items_subtotal, $cur)]];
+        $totals = [['label' => 'المجموع الفرعي', 'value' => self::money($po->items_subtotal, $cur)]];
 
         if ((float) $po->supplier_discount > 0) {
-            $totals[] = ['label' => __('الخصم'), 'value' => self::money($po->supplier_discount, $cur)];
+            $totals[] = ['label' => 'الخصم', 'value' => self::money($po->supplier_discount, $cur)];
         }
         if ((float) $po->shipping_cost > 0) {
-            $totals[] = ['label' => __('الشحن'), 'value' => self::money($po->shipping_cost, $cur)];
+            $totals[] = ['label' => 'الشحن', 'value' => self::money($po->shipping_cost, $cur)];
         }
         if ((float) $po->tax > 0) {
-            $totals[] = ['label' => __('الضريبة'), 'value' => self::money($po->tax, $cur)];
+            $totals[] = ['label' => 'الضريبة', 'value' => self::money($po->tax, $cur)];
         }
 
-        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($po->total, $cur), 'grand' => true];
+        $totals[] = ['label' => 'الإجمالي', 'value' => self::money($po->total, $cur), 'grand' => true];
 
         return [
             'title' => __('أمر شراء'),
@@ -353,7 +353,7 @@ class DocumentPaper
             'employee' => null,
             'parties' => [
                 [
-                    'cap' => __('المورّد'),
+                    'cap' => 'المورّد',
                     'lines' => array_values(array_filter([
                         $po->supplier_name ?: optional($po->supplier)->name,
                         optional($po->supplier)->phone,
@@ -403,7 +403,7 @@ class DocumentPaper
             'employee' => $grn->receiver,
             'parties' => [
                 [
-                    'cap' => __('المورّد'),
+                    'cap' => 'المورّد',
                     'lines' => array_values(array_filter([
                         optional($grn->supplier)->name,
                         optional($grn->purchaseOrder)->number
@@ -420,7 +420,7 @@ class DocumentPaper
             ])->all(),
             'totals' => [
                 [
-                    'label' => __('الإجمالي'),
+                    'label' => 'الإجمالي',
                     'value' => self::money($grn->items->sum(fn ($i) => $i->cost * $i->quantity), $cur),
                     'grand' => true,
                 ],
@@ -455,17 +455,17 @@ class DocumentPaper
         $cur = self::currency($invoice->business_id, $invoice);
         $outstanding = $invoice->outstanding();
 
-        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($invoice->subtotal, $cur)]];
+        $totals = [['label' => 'المجموع الفرعي', 'value' => self::money($invoice->subtotal, $cur)]];
 
         if ((float) $invoice->tax > 0) {
-            $totals[] = ['label' => __('الضريبة'), 'value' => self::money($invoice->tax, $cur)];
+            $totals[] = ['label' => 'الضريبة', 'value' => self::money($invoice->tax, $cur)];
         }
 
-        $totals[] = ['label' => __('الإجمالي'), 'value' => self::money($invoice->total, $cur), 'grand' => true];
+        $totals[] = ['label' => 'الإجمالي', 'value' => self::money($invoice->total, $cur), 'grand' => true];
 
         if ((float) $invoice->paid > 0 || $outstanding > 0) {
-            $totals[] = ['label' => __('المسدَّد'), 'value' => self::money($invoice->paid, $cur)];
-            $totals[] = ['label' => __('الباقي'), 'value' => self::money($outstanding, $cur), 'due' => true];
+            $totals[] = ['label' => 'المسدَّد', 'value' => self::money($invoice->paid, $cur)];
+            $totals[] = ['label' => 'الباقي', 'value' => self::money($outstanding, $cur), 'due' => true];
         }
 
         return [
@@ -477,13 +477,13 @@ class DocumentPaper
             'branch' => null,
             'employee' => null,
             'meta' => array_values(array_filter([
-                ['label' => __('تاريخ الإصدار'), 'value' => optional($invoice->issued_at)->format('Y-m-d')],
-                ['label' => __('تاريخ الاستحقاق'), 'value' => optional($invoice->due_at)->format('Y-m-d')],
-                ['label' => __('أمر الشراء'), 'value' => (string) (optional($invoice->purchaseOrder)->number ?? '')],
-                ['label' => __('حالة السداد'), 'value' => (string) ($invoice->status ?: '')],
+                ['label' => 'تاريخ الإصدار', 'value' => optional($invoice->issued_at)->format('Y-m-d')],
+                ['label' => 'تاريخ الاستحقاق', 'value' => optional($invoice->due_at)->format('Y-m-d')],
+                ['label' => 'أمر الشراء', 'value' => (string) (optional($invoice->purchaseOrder)->number ?? '')],
+                ['label' => 'حالة السداد', 'value' => (string) ($invoice->status ?: '')],
             ], fn (array $r) => filled($r['value']))),
             'parties' => [[
-                'cap' => __('المورّد'),
+                'cap' => 'المورّد',
                 'lines' => array_values(array_filter([
                     optional($invoice->supplier)->name,
                     optional($invoice->supplier)->phone,
@@ -513,13 +513,13 @@ class DocumentPaper
 
         $net = round((float) $note->amount - (float) $note->tax_amount, 3);
 
-        $totals = [['label' => __('المجموع الفرعي'), 'value' => self::money($net, $cur)]];
+        $totals = [['label' => 'المجموع الفرعي', 'value' => self::money($net, $cur)]];
 
         if ((float) $note->tax_amount > 0) {
-            $totals[] = ['label' => __('ضريبة القيمة المضافة'), 'value' => self::money($note->tax_amount, $cur)];
+            $totals[] = ['label' => 'ضريبة القيمة المضافة', 'value' => self::money($note->tax_amount, $cur)];
         }
 
-        $totals[] = ['label' => __('إجمالي الإشعار'), 'value' => self::money($note->amount, $cur), 'grand' => true];
+        $totals[] = ['label' => 'إجمالي الإشعار', 'value' => self::money($note->amount, $cur), 'grand' => true];
 
         return [
             'title' => __('إشعار دائن'),
@@ -537,11 +537,11 @@ class DocumentPaper
              * لوحة الملاحظات تحتها. ومكانُها اللوحة.
              */
             'meta' => array_values(array_filter([
-                ['label' => __('الفاتورة الأصلية'), 'value' => (string) (optional($invoice)->number ?? '')],
-                ['label' => __('تاريخ الإشعار'), 'value' => optional($note->issued_at)->format('Y-m-d')],
+                ['label' => 'الفاتورة الأصلية', 'value' => (string) (optional($invoice)->number ?? '')],
+                ['label' => 'تاريخ الإشعار', 'value' => optional($note->issued_at)->format('Y-m-d')],
             ], fn (array $r) => filled($r['value']))),
             'parties' => [[
-                'cap' => __('إلى'),
+                'cap' => 'العميل',
                 'lines' => array_values(array_filter([
                     optional($invoice)->customer_name,
                     filled(optional($invoice)->customer_tax_number)
@@ -571,15 +571,15 @@ class DocumentPaper
         $spare = $payment->unallocated();
 
         $totals = [
-            ['label' => __('المبلغ المستلم'), 'value' => self::money($payment->amount, $cur), 'grand' => true],
+            ['label' => 'المبلغ المستلم', 'value' => self::money($payment->amount, $cur), 'grand' => true],
         ];
 
         if ($allocated > 0 && $spare > 0) {
-            $totals[] = ['label' => __('المسدَّد من الفواتير'), 'value' => self::money($allocated, $cur)];
+            $totals[] = ['label' => 'المسدَّد من الفواتير', 'value' => self::money($allocated, $cur)];
         }
 
         if ($spare > 0) {
-            $totals[] = ['label' => __('رصيد لم يُخصَّص بعد'), 'value' => self::money($spare, $cur), 'due' => true];
+            $totals[] = ['label' => 'رصيد لم يُخصَّص بعد', 'value' => self::money($spare, $cur), 'due' => true];
         }
 
         return [
@@ -591,18 +591,18 @@ class DocumentPaper
             'branch' => null,
             'employee' => null,
             'meta' => array_values(array_filter([
-                ['label' => __('تاريخ القبض'), 'value' => optional($payment->occurred_at)->format('Y-m-d')],
-                ['label' => __('وسيلة الدفع'), 'value' => __((string) ($payment->method ?: 'نقدي'))],
-                ['label' => __('الحساب البنكي'), 'value' => (string) (optional($payment->bankAccount)->name ?? '')],
-                ['label' => __('المرجع'), 'value' => (string) ($payment->external_reference ?? '')],
-                ['label' => __('حال الشيك'), 'value' => (string) ($payment->cheque_status ?? '')],
+                ['label' => 'تاريخ القبض', 'value' => optional($payment->occurred_at)->format('Y-m-d')],
+                ['label' => 'وسيلة الدفع', 'value' => __((string) ($payment->method ?: 'نقدي'))],
+                ['label' => 'الحساب البنكي', 'value' => (string) (optional($payment->bankAccount)->name ?? '')],
+                ['label' => 'المرجع', 'value' => (string) ($payment->external_reference ?? '')],
+                ['label' => 'حال الشيك', 'value' => (string) ($payment->cheque_status ?? '')],
                 [
-                    'label' => __('استحقاق الشيك'),
+                    'label' => 'استحقاق الشيك',
                     'value' => $payment->cheque_due_at ? (string) $payment->cheque_due_at : '',
                 ],
             ], fn (array $r) => filled($r['value']))),
             'parties' => [[
-                'cap' => __('الدافع'),
+                'cap' => 'الدافع',
                 'lines' => array_values(array_filter([
                     optional($payment->customer)->name,
                     optional($payment->customer)->phone,
@@ -661,10 +661,10 @@ class DocumentPaper
         ];
 
         $parties = match ($type) {
-            'purchase', 'grn', 'supplier_invoice' => [['cap' => __('المورّد'), 'lines' => [__('مورّد الورود'), '91234567']]],
-            'credit_note' => [['cap' => __('إلى'), 'lines' => [__('زبون تجريبي'), __('مسقط — الخوير')]]],
-            'customer_receipt' => [['cap' => __('الدافع'), 'lines' => [__('زبون تجريبي'), '91234567']]],
-            default => [['cap' => __('المستلِم'), 'lines' => [__('زبون تجريبي'), '91234567', __('مسقط — الخوير')]]],
+            'purchase', 'grn', 'supplier_invoice' => [['cap' => 'المورّد', 'lines' => [__('مورّد الورود'), '91234567']]],
+            'credit_note' => [['cap' => 'العميل', 'lines' => [__('زبون تجريبي'), __('مسقط — الخوير')]]],
+            'customer_receipt' => [['cap' => 'الدافع', 'lines' => [__('زبون تجريبي'), '91234567']]],
+            default => [['cap' => 'المستلِم', 'lines' => [__('زبون تجريبي'), '91234567', __('مسقط — الخوير')]]],
         };
 
         $stamps = [
@@ -703,7 +703,7 @@ class DocumentPaper
             'parties' => $parties,
             'items' => $items,
             'totals' => $total === null ? [] : [
-                ['label' => __('الإجمالي'), 'value' => self::money($total, $cur), 'grand' => true],
+                ['label' => 'الإجمالي', 'value' => self::money($total, $cur), 'grand' => true],
             ],
             'notes' => __('ملاحظة تجريبية تظهر هنا إن كانت على المستند.'),
         ];

@@ -27,12 +27,11 @@
     $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
     $headerNote = trim((string) ($tpl['header'] ?? ''));
     $vatNumber = $show('show_vat_no') ? ($vatNumber ?? '') : '';
-    $numberLabel = __('رقم فاتورة المورّد');
     /* والمتجرُ هنا مشترٍ لا بائع: ورقةٌ تقول «البائع» فوق اسمنا تقلب الطرفين */
-    $sellerCap = __('المشتري');
+    $issuerCap = 'المشتري';
 @endphp
 
-@section('type', __('فاتورة مورّد'))
+@section('type', 'فاتورة المورّد')
 @section('number', $doc['number'])
 
 @section('parties')
@@ -42,18 +41,32 @@
 @endsection
 
 @php
-    $metaCells = $show('show_datetime') ? ($doc['meta'] ?? []) : array_values(array_filter(
-        $doc['meta'] ?? [],
-        fn ($c) => ! in_array($c['label'] ?? '', [__('تاريخ الإصدار'), __('تاريخ الاستحقاق')], true),
-    ));
+    $metaCells = array_merge(
+        [['label' => 'رقم فاتورة المورّد', 'value' => $doc['number']]],
+        $show('show_datetime') ? ($doc['meta'] ?? []) : array_values(array_filter(
+            $doc['meta'] ?? [],
+            fn ($c) => ! in_array($c['label'] ?? '', ['تاريخ الإصدار', 'تاريخ الاستحقاق'], true),
+        )),
+    );
 @endphp
 
+@section('figure')
+    {{-- وما يُبحث عنه في فاتورة مورّد: كم بقي عليها، فإن سُدِّدت فإجماليُّها --}}
+    @php($figure = collect($doc['totals'])->firstWhere('due', true) ?: collect($doc['totals'])->firstWhere('grand', true))
+    @include('documents.v1.partials.figure', [
+        'label' => $figure['label'] ?? 'الإجمالي',
+        'value' => $figure['value'] ?? '',
+        'status' => $doc['status'] ?? '',
+    ])
+@endsection
+
 @section('body')
-    @include('documents.v1.partials.totals', [
-        'totals' => $doc['totals'],
-        'aside' => __('سجلُّ المتجر لهذه الفاتورة، لا أصلَها عند المورّد — وبضاعتُها في أمر الشراء وسندات الاستلام.'),
+    @include('documents.v1.partials.totals', ['totals' => $doc['totals']])
+
+    @include('documents.v1.partials.close', [
         'panels' => [
-            $show('show_notes') ? ['cap' => __('ملاحظات'), 'text' => $doc['notes']] : [],
+            ['cap' => 'عن هذه الورقة', 'text' => __('سجلُّ المتجر لهذه الفاتورة، لا أصلَها عند المورّد — وبضاعتُها في أمر الشراء وسندات الاستلام.')],
+            $show('show_notes') ? ['cap' => 'ملاحظات', 'text' => $doc['notes']] : [],
         ],
     ])
 @endsection

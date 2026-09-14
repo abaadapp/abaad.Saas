@@ -385,23 +385,32 @@ class TheInvoiceCarriesTheShopsIdentityTest extends TestCase
          * وصار المسمّى في عمودٍ والقيمةُ في عمود، فالنقطتان زينةٌ تُكرّر ما
          * يقوله التخطيط. والمحروسُ هو **المسمّى بلغته** لا ترقيمُه.
          */
-        foreach (['رقم الفاتورة', 'تاريخ الإصدار', 'فاتورة إلى', 'البيان', 'الكمية', 'الإجمالي', 'المجموع الفرعي'] as $label) {
+        foreach (['رقم الفاتورة', 'تاريخ الإصدار', 'العميل', 'البيان', 'الكمية', 'الإجمالي', 'المجموع الفرعي'] as $label) {
             $this->assertStringContainsString($label, $html, "«{$label}» ليست في الورقة العربية");
         }
     }
 
-    /** والإنجليزيةُ إنجليزيّةٌ كلُّها — لا نصفُ ورقةٍ بلغةٍ ونصفُها بأخرى */
-    public function test_the_english_paper_carries_english_labels_and_no_arabic_ones(): void
+    /**
+     * والإنجليزيةُ تتصدّر ورقتَها — والعربيّةُ سطرٌ تحتها لا غياب.
+     *
+     * الورقةُ ثنائيّةُ اللغة بتصميمها: تسميةٌ بلغة الورقة داكنةٌ ثقيلة،
+     * وأخرى تحتها أفتحُ وأخفّ. وما يُحرَس هو **الترتيب**: لغةُ الورقة
+     * أوّلًا. انظر `Paper::pair` و§١٥ في المواصفة.
+     */
+    public function test_the_english_paper_leads_in_english(): void
     {
         $html = $this->previewHtml(['lang' => 'en']);
 
-        foreach (['Invoice no.', 'Issued on', 'Bill to', 'Description', 'Quantity', 'Total', 'Subtotal'] as $label) {
+        foreach (['Invoice no.', 'Issued on', 'Customer', 'Description', 'Quantity', 'Total', 'Subtotal'] as $label) {
             $this->assertStringContainsString($label, $html, "«{$label}» ليست في الورقة الإنجليزية");
         }
 
-        foreach (['رقم الفاتورة', 'المجموع الفرعي', 'البيان', 'فاتورة إلى'] as $label) {
-            $this->assertStringNotContainsString($label, $html, "«{$label}» عربيّةٌ في ورقةٍ إنجليزية");
-        }
+        /* والعربيّةُ تحتها — لا فوقها */
+        $this->assertLessThan(
+            (int) strpos($html, 'رقم الفاتورة'),
+            (int) strpos($html, 'Invoice no.'),
+            'العربيّةُ تتصدّر ورقةً إنجليزية',
+        );
 
         /*
          * والاتّجاهُ يتبع اللغة: نصٌّ لاتينيٌّ يبدأ من اليمين يُقرأ عربيّةً

@@ -19,10 +19,11 @@
     $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
     $headerNote = trim((string) ($tpl['header'] ?? ''));
     $vatNumber = $show('show_vat_no', false) ? ($vatNumber ?? '') : '';
-    $numberLabel = __('رقم السند');
+    /* والمتجرُ هو المُرسِل على سند التسليم — انظر §٨ في المواصفة */
+    $issuerCap = 'المُرسِل';
 @endphp
 
-@section('type', __('سند تسليم'))
+@section('type', 'سند تسليم')
 @section('number', $doc['number'])
 
 @section('parties')
@@ -33,27 +34,43 @@
 
 @php
     $metaCells = array_merge(
-        $show('show_datetime') && filled($doc['date']) ? [['label' => __('تاريخ التسليم'), 'value' => $doc['date']]] : [],
+        [['label' => 'رقم السند', 'value' => $doc['number']]],
+        $show('show_datetime') && filled($doc['date']) ? [['label' => 'تاريخ التسليم', 'value' => $doc['date']]] : [],
         $doc['meta'] ?? [],
-        $show('show_branch') && filled($doc['branch']) ? [['label' => __('الفرع'), 'value' => $doc['branch']]] : [],
-        $show('show_employee') && filled($doc['employee']) ? [['label' => __('المسؤول'), 'value' => $doc['employee']]] : [],
+        $show('show_branch') && filled($doc['branch']) ? [['label' => 'الفرع', 'value' => $doc['branch']]] : [],
+        $show('show_employee') && filled($doc['employee']) ? [['label' => 'المسؤول', 'value' => $doc['employee']]] : [],
     );
 @endphp
+
+@section('figure')
+    {{--
+        وسندُ التسليم بلا رقمٍ كبيرٍ حين لا أسعارَ عليه.
+
+        ورقةٌ يحملها سائقٌ لا مبلغَ فيها أصلًا — والمواصفة: «لا تخترع
+        بيانات مالية فقط لمطابقة Invoice». فإن كانت الأسعارُ عليه ظاهرةً
+        فقيمتُه ما يُسلَّم، وإلّا فلا شيء.
+    --}}
+    @if ($showPrices)
+        @include('documents.v1.partials.figure', [
+            'label' => 'الإجمالي',
+            'value' => collect($doc['totals'])->firstWhere('grand', true)['value'] ?? '',
+            'status' => $doc['status'] ?? '',
+        ])
+    @endif
+@endsection
 
 @section('body')
     @include('documents.v1.partials.items', [
         'items' => $doc['items'],
         'showPrices' => $showPrices,
-        'itemsLabel' => __('الصنف المُسلَّم'),
+        'itemsLabel' => 'الصنف المُسلَّم',
     ])
 
-    @include('documents.v1.partials.totals', [
-        'totals' => $showPrices ? $doc['totals'] : [],
-        'aside' => $show('show_items_count')
-            ? __('عدد الأصناف').': '.count($doc['items'])
-            : null,
+    @include('documents.v1.partials.totals', ['totals' => $showPrices ? $doc['totals'] : []])
+
+    @include('documents.v1.partials.close', [
         'panels' => [
-            $show('show_notes') ? ['cap' => __('ملاحظات التسليم'), 'text' => $doc['notes']] : [],
+            $show('show_notes') ? ['cap' => 'ملاحظات التسليم', 'text' => $doc['notes']] : [],
         ],
         'paperUrl' => $paperUrl ?? '',
     ])

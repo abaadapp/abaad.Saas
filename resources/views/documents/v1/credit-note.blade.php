@@ -24,11 +24,11 @@
     $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
     $headerNote = trim((string) ($tpl['header'] ?? ''));
     $vatNumber = $show('show_vat_no') ? ($vatNumber ?? '') : '';
-    $numberLabel = __('رقم الإشعار');
-    $sellerCap = __('من');
+    /* والمتجرُ هو مُصدِرُ الإشعار — انظر §٨ في المواصفة */
+    $issuerCap = 'المُصدِر';
 @endphp
 
-@section('type', __('إشعار دائن'))
+@section('type', 'إشعار دائن')
 @section('number', $doc['number'])
 
 @section('parties')
@@ -36,15 +36,25 @@
 @endsection
 
 @php
-    $metaCells = $doc['meta'] ?? [];
+    $metaCells = array_merge([['label' => 'رقم الإشعار', 'value' => $doc['number']]], $doc['meta'] ?? []);
 @endphp
 
+@section('figure')
+    {{-- ورقمُ الإشعار الأهمّ: كم يُنقَص من ذمّة العميل — انظر §٢٥ في المواصفة --}}
+    @include('documents.v1.partials.figure', [
+        'label' => 'إجمالي الإشعار',
+        'value' => collect($doc['totals'])->firstWhere('grand', true)['value'] ?? '',
+        'status' => $doc['status'] ?? '',
+    ])
+@endsection
+
 @section('body')
-    @include('documents.v1.partials.totals', [
-        'totals' => $doc['totals'],
-        'aside' => __('يُنقص هذا المبلغُ ما على الجهة من الفاتورة المذكورة أعلاه.'),
+    @include('documents.v1.partials.totals', ['totals' => $doc['totals']])
+
+    @include('documents.v1.partials.close', [
         'panels' => [
-            $show('show_notes') ? ['cap' => __('سبب الإشعار'), 'text' => $doc['notes']] : [],
+            ['cap' => 'عن هذه الورقة', 'text' => __('يُنقص هذا المبلغُ ما على الجهة من الفاتورة المذكورة أعلاه.')],
+            $show('show_notes') ? ['cap' => 'سبب الإشعار', 'text' => $doc['notes']] : [],
         ],
     ])
 @endsection

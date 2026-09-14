@@ -17,20 +17,17 @@
     $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
     $headerNote = trim((string) ($tpl['header'] ?? ''));
     $vatNumber = $show('show_vat_no') ? ($vatNumber ?? '') : '';
-    $numberLabel = __('رقم الأمر');
     /*
         وكتلتُنا عنوانُها «المشتري» لا «البائع».
 
         الورقةُ تمضي إلى المورّد، والبائعُ فيها **هو** لا نحن. و«البائع»
         فوق عنوان المتجر ورقمِه الضريبيّ يقلب طرفَي الصفقة على من يقرأ —
         وهو خطأٌ يُرى في أوّل نظرة إلى ورقةٍ تُرسَل خارج المتجر.
-
-        وهي القاعدةُ نفسُها في فاتورة المورّد: انظر `supplier-invoice`.
     */
-    $sellerCap = __('المشتري');
+    $issuerCap = 'المشتري';
 @endphp
 
-@section('type', __('أمر شراء'))
+@section('type', 'أمر شراء')
 @section('number', $doc['number'])
 
 @section('parties')
@@ -41,17 +38,29 @@
 
 @php
     $metaCells = array_merge(
-        $show('show_datetime') && filled($doc['date']) ? [['label' => __('تاريخ الأمر'), 'value' => $doc['date']]] : [],
+        [['label' => 'رقم الأمر', 'value' => $doc['number']]],
+        $show('show_datetime') && filled($doc['date']) ? [['label' => 'تاريخ الأمر', 'value' => $doc['date']]] : [],
         $doc['meta'] ?? [],
-        $show('show_branch', false) && filled($doc['branch']) ? [['label' => __('يُشحن إلى'), 'value' => $doc['branch']]] : [],
+        $show('show_branch', false) && filled($doc['branch']) ? [['label' => 'يُشحن إلى', 'value' => $doc['branch']]] : [],
     );
 @endphp
+
+@section('figure')
+    {{-- ورقمُ أمر الشراء الأهمّ قيمتُه — وهو ما يعتمده المشتري ويُلزم به --}}
+    @if ($showPrices)
+        @include('documents.v1.partials.figure', [
+            'label' => 'إجمالي الأمر',
+            'value' => collect($doc['totals'])->firstWhere('grand', true)['value'] ?? '',
+            'status' => $doc['status'] ?? '',
+        ])
+    @endif
+@endsection
 
 @section('body')
     @include('documents.v1.partials.items', [
         'items' => $doc['items'],
         'showPrices' => $showPrices,
-        'itemsLabel' => __('الصنف المطلوب'),
+        'itemsLabel' => 'الصنف المطلوب',
     ])
 
     {{--
@@ -62,13 +71,11 @@
         تُصوَّر بهاتف. فالرمزُ لأوراق الزبون وحدها — انظر
         `App\Support\PublicDocument`، وهو لا يُبنى لهذا النوع أصلًا.
     --}}
-    @include('documents.v1.partials.totals', [
-        'totals' => $showPrices ? $doc['totals'] : [],
-        'aside' => $show('show_items_count')
-            ? __('عدد الأصناف').': '.count($doc['items'])
-            : null,
+    @include('documents.v1.partials.totals', ['totals' => $showPrices ? $doc['totals'] : []])
+
+    @include('documents.v1.partials.close', [
         'panels' => [
-            $show('show_notes') ? ['cap' => __('ملاحظات وشروط'), 'text' => $doc['notes']] : [],
+            $show('show_notes') ? ['cap' => 'ملاحظات وشروط', 'text' => $doc['notes']] : [],
         ],
     ])
 

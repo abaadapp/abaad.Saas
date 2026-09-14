@@ -33,11 +33,15 @@
      * تعديل — يُصلَح سطرٌ في إحداهما ويبقى معطوبًا في الأخرى، ولطلبٍ واحد
      * تخرج ورقتان لا يجمعهما شكل.
      */
+    /* والمتجرُ هو البائع على ورقة البيع — انظر §٨ في المواصفة */
+    $issuerCap = 'البائع';
+
     $taxInvoice = (bool) ($taxInvoice ?? false);
     $vatNumber = ($taxInvoice || $show('show_vat_no', false)) ? $vat : '';
 @endphp
 
-@section('type', $taxInvoice || $vat !== '' ? __('فاتورة ضريبية') : __('فاتورة'))
+{{-- والعنوانُ **مفتاحٌ** لا ترجمة: القالبُ يطبعه في لغتين — انظر `Paper::pair` --}}
+@section('type', $taxInvoice || $vat !== '' ? 'فاتورة ضريبية' : 'فاتورة')
 @section('number', $doc['number'])
 
 @section('parties')
@@ -49,39 +53,49 @@
 @php
     /* شريطُ التعريف — أعمدةٌ لا قائمة. انظر `partials/meta` */
     $metaCells = array_merge(
-        $show('show_datetime') && filled($doc['date']) ? [['label' => __('التاريخ'), 'value' => $doc['date']]] : [],
+        [['label' => 'رقم الفاتورة', 'value' => $doc['number']]],
+        $show('show_datetime') && filled($doc['date']) ? [['label' => 'التاريخ', 'value' => $doc['date']]] : [],
         $doc['meta'] ?? [],
-        $show('show_branch') && filled($doc['branch']) ? [['label' => __('الفرع'), 'value' => $doc['branch']]] : [],
-        $show('show_employee') && filled($doc['employee']) ? [['label' => __('الموظف'), 'value' => $doc['employee']]] : [],
+        $show('show_branch') && filled($doc['branch']) ? [['label' => 'الفرع', 'value' => $doc['branch']]] : [],
+        $show('show_employee') && filled($doc['employee']) ? [['label' => 'الموظف', 'value' => $doc['employee']]] : [],
     );
+
+    /*
+        ═══ والرقمُ الأهمّ: ما بقي، لا ما بيع ═══
+
+        فاتورةٌ سُدِّدت كاملةً رقمُها الأهمّ إجماليُّها، وفاتورةٌ عليها باقٍ
+        رقمُها الأهمّ **الباقي** — هو ما يُبحث عنه ويُدفَع ويُطالَب به.
+        و`due` علامةٌ يضعها `DocumentPaper` على سطر الباقي حين يكون.
+    */
+    $due = collect($doc['totals'])->firstWhere('due', true);
+    $grand = collect($doc['totals'])->firstWhere('grand', true);
+    $figure = $due ?: $grand;
 @endphp
+
+@section('figure')
+    @include('documents.v1.partials.figure', [
+        'label' => $figure['label'] ?? 'الإجمالي',
+        'value' => $figure['value'] ?? '',
+        'status' => $doc['status'] ?? '',
+    ])
+@endsection
 
 @section('body')
     @include('documents.v1.partials.items', [
         'items' => $doc['items'],
         'showPrices' => true,
-        'itemsLabel' => __('الصنف'),
+        'itemsLabel' => 'البيان',
     ])
 
-    {{--
-        وعددُ الأصناف يقع بجانب الإجماليّات لا فوقها.
+    @include('documents.v1.partials.totals', ['totals' => $doc['totals']])
 
-        وكان سطرًا يطفو وحده بين الجدول والمجاميع، في شريطٍ خالٍ بعرض
-        الورقة كلِّها. والإجماليّاتُ تشغل طرفًا واحدًا وتترك الطرفَ المقابل
-        فارغًا — فهو مكانُه: يملأ الفراغَ ويُقرأ مع ما يخصّه.
-    --}}
-    @include('documents.v1.partials.totals', [
-        'totals' => $doc['totals'],
-        'aside' => $show('show_items_count')
-            ? __('عدد الأصناف').': '.count($doc['items'])
-            : null,
+    @include('documents.v1.partials.close', [
         'panels' => [
-            $show('show_notes', false) ? ['cap' => __('ملاحظات'), 'text' => $doc['notes']] : [],
+            $show('show_notes', false) ? ['cap' => 'ملاحظات', 'text' => $doc['notes']] : [],
         ],
         'eInvoice' => $show('show_qr') ? ($qr ?? '') : '',
         'paperUrl' => $paperUrl ?? '',
         'googleReview' => $googleReview ?? '',
-        'qrSize' => 0.85,
     ])
 @endsection
 

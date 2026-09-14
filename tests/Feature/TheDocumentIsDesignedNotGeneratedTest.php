@@ -107,7 +107,7 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
 
         $this->assertStringContainsString('--document-primary: #7c3aed', $html, 'المتغيّرُ لا يبلغ المتصفّح');
         $this->assertStringContainsString(
-            'color: var(--document-text); color: #0f172a',
+            'color: var(--document-text); color: '.Theme::tokens()['text'],
             $html,
             'القيمةُ الحرفيّة لا تتبع المتغيّر — وmpdf لا يقرأ إلّا الحرفيّة',
         );
@@ -164,12 +164,23 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
         $this->assertStringNotContainsString('class="cover-plain"', $html, 'شريطٌ يُطبع لمن لم يختر لونًا');
     }
 
-    /** ومن اختار لونًا وحده يناله شريطًا رفيعًا — هويّةٌ بلا صورة */
-    public function test_choosing_a_colour_alone_earns_a_slim_band(): void
+    /**
+     * ولونُ التاجر يبلغ الورقةَ في خيطٍ واحدٍ أعلاها — لا في شريطٍ ثانٍ.
+     *
+     * ═══ وما ذهب ═══
+     *
+     * كان شريطٌ بلونه يُرسم لمن اختار لونًا ولم يرفع غلافًا. وصار الخيطُ
+     * أعلى الورقة يقول ذلك لكلّ متجر، فالشريطُ الثاني تكرارٌ يجعل اللونَ
+     * مساحةً بعد أن أردناه لمسة — والمرجعُ المعتمد لا لونَ فيه إلّا في
+     * الشعار.
+     */
+    public function test_the_brand_reaches_the_paper_as_one_hairline(): void
     {
         Branding::save($this->business->id, ['primary' => '#7c3aed']);
+        $html = $this->sheet($this->order());
 
-        $this->assertStringContainsString('class="cover-plain"', $this->sheet($this->order()));
+        $this->assertStringNotContainsString('class="cover-plain"', $html, 'عاد الشريطُ الثاني بلون التاجر');
+        $this->assertStringContainsString('class="brandrule"', $html, 'الورقةُ بلا أثرٍ من لون التاجر');
     }
 
     /** ومن رفع غلافًا يُرسم بعرض الورقة — ومضمَّنًا لا برابط */
@@ -221,26 +232,25 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
     {
         $html = $this->sheet($this->order(40));
 
-        $this->assertMatchesRegularExpression('/\.totals-wrap \{[^}]*page-break-inside: avoid/s', $html);
-        $this->assertStringContainsString('.qr-block { margin-top:', $html);
+        $this->assertMatchesRegularExpression('/table\.totals \{[^}]*page-break-inside: avoid/s', $html);
         $this->assertMatchesRegularExpression('/\.qr-block \{[^}]*page-break-inside: avoid/s', $html);
+        /* والرقمُ الأهمّ كتلةٌ واحدة: تسميتُه في صفحةٍ ورقمُه في أخرى خبرٌ مبتور */
+        $this->assertMatchesRegularExpression('/table\.figwrap \{[^}]*page-break-inside: avoid/s', $html);
     }
 
     /**
-     * وخاتمةُ الورقة عمودان: ما يُقال في جهة، وما يُدفع في الجهة المقابلة.
+     * وخاتمةُ الورقة تتبع المال: المجاميعُ، ثمّ ما يُقال، ثمّ الرمز.
      *
-     * ═══ العطبُ الذي وُلد منه هذا الحارس ═══
+     * ═══ وما تغيّر في الترتيب ═══
      *
-     * كانت المجاميعُ تشغل طرفًا وتترك خمسةً وخمسين بالمئة من عرض الورقة
-     * بياضًا إلى جانبها، والملاحظاتُ شريطًا بعرض الورقة **أسفلها**،
-     * والرمزُ شريطًا ثالثًا أسفلَ ذاك. فتنتهي كلُّ ورقةٍ بثلاثة شرائطَ
-     * متراكمةٍ ونصفِ صفحةٍ خالية.
+     * كانت الملاحظاتُ في الجهة المقابلة للمجاميع — عمودان. وفي المرجع
+     * المعتمد تقع المجاميعُ أسطرًا تتبع الجدول بأعمدته، وما بعدها يأتي
+     * تحتها لا بإزائها: «اعرضها بعد المنطقة الرئيسية» و«QR تحت المحتوى
+     * المالي/الملاحظات».
      *
-     * والمرجعُ المعتمد: «Notes في الجهة المقابلة للإجماليات» و«QR أسفل
-     * notes». فيُحرَس الترتيبُ لا الشكل: الملاحظاتُ والرمزُ **داخل** جدول
-     * الخاتمة وقبل لوحة المجاميع في مجرى المستند.
+     * فيُحرَس الترتيبُ لا الشكل: المجاميعُ أوّلًا، فالملاحظات، فالرمز.
      */
-    public function test_the_notes_face_the_totals_and_the_code_sits_below_them(): void
+    public function test_the_close_follows_the_money_then_the_words_then_the_code(): void
     {
         $order = $this->order();
         $order->update(['notes' => 'يُرجى مراجعة الشحنة عند الاستلام.']);
@@ -252,39 +262,32 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
             ['paperUrl' => \App\Support\PublicDocument::url($order)],
         );
 
-        $close = (int) strpos($html, '<table class="totals-wrap">');
-        $this->assertGreaterThan(0, $close, 'لا جدولَ خاتمةٍ على الورقة');
+        $totals = strpos($html, '<table class="totals">');
+        $notes = strpos($html, 'يُرجى مراجعة الشحنة عند الاستلام.');
+        $code = strpos($html, '<div class="qr-block">');
 
-        $notes = strpos($html, 'يُرجى مراجعة الشحنة عند الاستلام.', $close);
-        $code = strpos($html, '<div class="qr-block">', $close);
-        $card = strpos($html, 'class="totalcard"', $close);
-        $end = strpos($html, '</table>', $card ?: $close);
+        $this->assertNotFalse($totals, 'لا مجاميعَ على الورقة');
+        $this->assertNotFalse($notes, 'الملاحظاتُ لا تبلغ الورقة');
+        $this->assertNotFalse($code, 'الرمزُ لا يبلغ الورقة');
 
-        $this->assertNotFalse($notes, 'الملاحظاتُ خارج جدول الخاتمة');
-        $this->assertNotFalse($code, 'الرمزُ خارج جدول الخاتمة');
-        $this->assertNotFalse($card, 'لا لوحةَ مجاميعَ في الخاتمة');
-
+        $this->assertLessThan($notes, $totals, 'الملاحظاتُ قبل المجاميع');
         $this->assertLessThan($code, $notes, 'الرمزُ فوق الملاحظات لا أسفلها');
-        $this->assertLessThan($card, $code, 'الرمزُ خارج عمود الملاحظات');
-        $this->assertLessThan($end, $card, 'لوحةُ المجاميع خارج جدول الخاتمة');
     }
 
     /**
      * وورقةٌ بلا أسعار تبقى لها خاتمة.
      *
      * سندُ تسليمٍ أُطفئت أسعارُه لا مجاميعَ له، وملاحظاتُ التسليم عليه هي
-     * كلُّ ما يُقرأ في أسفله. وجدولٌ يُرسم «إن كانت فيه أرقام» يبتلعها معه.
+     * كلُّ ما يُقرأ في أسفله. وجزئيّةٌ تُرسم «إن كانت فيها أرقام» تبتلعها.
      */
     public function test_a_paper_without_prices_still_prints_what_it_has_to_say(): void
     {
-        $html = view('documents.v1.partials.totals', [
+        $html = view('documents.v1.partials.close', [
             'tokens' => Theme::tokens(),
-            'totals' => [],
             'panels' => [['cap' => 'ملاحظات التسليم', 'text' => 'تُسلَّم الشحنةُ صباحًا.']],
         ])->render();
 
         $this->assertStringContainsString('تُسلَّم الشحنةُ صباحًا.', $html, 'ملاحظاتُ ورقةٍ بلا أسعارٍ لا تُطبع');
-        $this->assertStringNotContainsString('class="totalcard"', $html, 'لوحةُ مجاميعَ خاويةٌ على ورقةٍ بلا أسعار');
     }
 
     /**
@@ -846,47 +849,31 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
     /* ═══════════════════ هيكلُ الورقة البصريّ ═══════════════════ */
 
     /**
-     * الورقةُ تُفتتح بمسطرةٍ بلون التاجر، وترويسةٌ بلا صندوقٍ واحد.
+     * الترويسةُ ثلاثةُ أعمدةٍ بلا صندوقٍ واحد، وعنوانٌ في لغتين.
      *
-     * ═══ وما كانت عليه ═══
+     * ═══ وثلاثةُ أطوارٍ مرّت بها ═══
      *
-     * أوّلًا: عنوانٌ أسودُ في ركن ورقمٌ رماديٌّ تحته، ولا شيءَ يفصل رأسَ
-     * الورقة عن حافّة الصفحة — تُقرأ «مستندًا خرج من قاعدة بيانات».
+     * عنوانٌ أسودُ في ركنٍ ورقمٌ رماديٌّ تحته؛ ثمّ لوحةٌ مصمتةٌ بلون التاجر
+     * تجمع النوعَ والرقمَ والحالة؛ ثمّ عنوانٌ كبيرٌ بحبر التاجر بلا صندوق.
      *
-     * ثمّ لوحةٌ مصمتةٌ بلون التاجر تجمع النوعَ والرقمَ والحالة. وهي حلٌّ
-     * أفسد ما أصلح: صندوقٌ ملوّنٌ أوّلَ ما تقع عليه العين، بمقاسٍ يوازي
-     * اسمَ المتجر في العمود المقابل — فتبدأ الورقةُ بكتلتين تتنازعان.
-     *
-     * والمرجعُ المعتمد: «Header نظيف بدون صناديق» و«Document title كبير
-     * وواضح». فالفصلُ الآن بالمقاس والبياض: ثمانٍ وعشرون نقطةً للعنوان،
-     * ولا أرضيّةَ حوله ولا حدّ.
+     * وهذا الطورُ الرابعُ مقيسٌ من المرجع: العنوانُ في جهة البداية سطرين —
+     * بلغة الورقة داكنًا ثقيلًا، وباللغة الأخرى تحته أفتحَ وأخفّ — وحقولُ
+     * المستند في الوسط، والهويّةُ مع الشعار في الطرف المقابل. ولا أرضيّةَ
+     * في الترويسة كلِّها.
      */
-    public function test_the_header_carries_a_brand_rule_and_no_box(): void
+    public function test_the_header_is_three_columns_and_a_bilingual_title(): void
     {
         $html = $this->sheet($this->order());
 
-        $this->assertStringContainsString('class="brandrule"', $html, 'الورقةُ بلا مسطرةٍ تفتتحها');
-        $this->assertStringContainsString('class="doctype"', $html);
-        $this->assertStringContainsString('class="docnum"', $html);
+        $this->assertStringContainsString('class="brandrule"', $html, 'الورقةُ بلا خيطٍ يحمل لونَ التاجر');
+        $this->assertStringContainsString('class="doctitle"', $html, 'الورقةُ بلا عنوان');
+        $this->assertStringContainsString('doctitle2', $html, 'العنوانُ بلغةٍ واحدة');
 
-        /* والمسطرةُ بلون التاجر لا برماديٍّ محايد */
-        $this->assertMatchesRegularExpression(
-            '/\.brandrule \{[^}]*background: var\(--document-primary\)/s',
-            $html,
-            'المسطرةُ لا تحمل لونَ التاجر',
-        );
+        /* ولا لوحةَ مستندٍ ولا صندوقَ في الترويسة */
+        $this->assertStringNotContainsString('idpanel', $html, 'عادت لوحةُ المستند إلى الترويسة');
 
-        /* ولا أرضيّةَ في عمود المستند ولا حدَّ: صندوقٌ في الترويسة عاد */
-        $this->assertSame(1, preg_match('/\.head td\.idpanel \{([^}]*)\}/s', $html, $m));
-        $this->assertStringNotContainsString('background', $m[1], 'عاد الصندوقُ الملوّن إلى الترويسة');
-        $this->assertStringNotContainsString('border', $m[1], 'عاد الإطارُ إلى الترويسة');
-
-        /* والعنوانُ أكبرُ ما على الورقة — أكبرُ من اسم المتجر نفسِه */
-        $this->assertGreaterThan(
-            Theme::GEOMETRY['text_lg'],
-            Theme::GEOMETRY['text_display'],
-            'عنوانُ المستند لا يسبق اسمَ المتجر في المقاس',
-        );
+        /* والعنوانُ أكبرُ ما على الورقة — وبمقاس المرجع */
+        $this->assertSame(21.4, Theme::GEOMETRY['text_display']);
         $this->assertStringContainsString(
             'font-size: '.round(Theme::GEOMETRY['text_display'], 2).'pt',
             $html,
@@ -895,153 +882,129 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
     }
 
     /**
-     * ورأسُ جدول الأصناف خطٌّ بحبر التاجر — لا شريطٌ مصمتٌ بلونه.
+     * ورأسُ جدول الأصناف خطٌّ واحدٌ أسفله — لا أرضيّةَ ولا لون.
      *
-     * ═══ وما جُرّب قبله ═══
+     * ═══ وثلاثةٌ جُرّبت قبله ═══
      *
-     * رأسٌ رماديٌّ باهتٌ بنصٍّ داكن: لا يفصل نفسَه عن الصفوف، يُقرأ صفًّا
-     * أوّلَ فيه كلماتٌ بدل أرقام. فصار شريطًا مصمتًا بلون التاجر — ففصل،
-     * وصار أثقلَ ما على الورقة: مساحةُ لونٍ بعرض الصفحة تجعل الجدولَ يُقرأ
-     * جدولَ بيانات، وتشرب حبرَ الطابعة.
+     * رأسٌ رماديٌّ باهت — لا يفصل نفسَه عن الصفوف. ثمّ شريطٌ مصمتٌ بلون
+     * التاجر — ففصل، وصار أثقلَ ما على الورقة. ثمّ خطٌّ بحبر التاجر —
+     * وهو لونٌ رابعٌ على ورقةٍ أردنا بياضَها.
      *
-     * والمرجعُ المعتمد يقطع في الأمرين: «Items table بخطوط minimal» و«لا
-     * خلفيات ثقيلة». فبقي الفصلُ وذهب الصبغ: خطٌّ واحدٌ أسفل الرأس بحبر
-     * التاجر — أثقلُ خطٍّ في الجدول — وعناوينُ أعمدةٍ باهتةٌ صغيرة.
+     * وفي المرجع المعتمد خطٌّ واحدٌ بلون خطوط الورقة كلِّها (`#cbd5e1`)
+     * بسُمك `0.74pt`، وتسمياتٌ بمقاس الصفوف نفسِه يفصلها الوزنُ لا الصبغ.
      */
-    public function test_the_items_header_is_a_rule_not_a_fill(): void
+    public function test_the_items_header_is_one_hairline(): void
     {
         $html = $this->sheet($this->order());
 
-        $this->assertSame(1, preg_match('/table\.items th \{([^}]*)\}/s', $html, $m));
+        $this->assertSame(1, preg_match('/table\\.items th \\{([^}]*)\\}/s', $html, $m));
 
-        $this->assertStringNotContainsString('background', $m[1], 'عادت الأرضيّةُ المصمتة إلى رأس الجدول');
-        $this->assertMatchesRegularExpression(
-            '/border-bottom: [0-9.]+pt solid '.preg_quote(Theme::ink('#111827'), '/').'/',
-            $m[1],
-            'رأسُ الجدول بلا خطٍّ يفصله عن الصفوف',
-        );
-    }
-
-    /**
-     * و«الإجمالي» أقوى ما على الورقة — بالمقاس والخطّ لا بكتلةٍ داكنة.
-     *
-     * ═══ وما ذهب، ولمَ ═══
-     *
-     * كان صندوقًا مصمتًا بلون التاجر ونصًّا معكوسًا عليه: رقعةٌ داكنةٌ في
-     * أسفل الورقة تشرب حبرَ الطابعة وتخرج من الاقتصاديّة لطخةً. والمرجعُ
-     * المعتمد صريح: «إزالة أي dark total card بالشكل الحالي».
-     *
-     * وبقي أقوى بثلاثةٍ لا تحتاج صبغًا: خطٌّ بحبر التاجر يفصله عمّا فوقه،
-     * ومقاسٌ أكبر من كلّ رقمٍ حوله، وحبرُ التاجر على الرقم نفسِه.
-     */
-    public function test_the_grand_total_is_the_loudest_line_without_a_dark_block(): void
-    {
-        $html = $this->sheet($this->order());
-
-        $this->assertSame(1, preg_match('/table\.totals tr\.grand td \{([^}]*)\}/s', $html, $m));
-
-        $this->assertStringNotContainsString('background', $m[1], 'عادت الكتلةُ الداكنة إلى الإجمالي');
-        $this->assertStringContainsString('color: var(--document-primary-ink)', $m[1], 'الإجماليُّ بلا حبر التاجر');
+        $this->assertStringNotContainsString('background', $m[1], 'عادت الأرضيّةُ إلى رأس الجدول');
         $this->assertStringContainsString(
-            'font-size: '.round(Theme::GEOMETRY['text_lg'], 2).'pt',
+            'border-bottom: '.round(Theme::HAIRLINE, 2).'pt solid '.Theme::tokens()['rule'],
             $m[1],
-            'الإجماليُّ بمقاس ما حوله',
-        );
-
-        /*
-         * وخطُّه صفٌّ بخليّةٍ واحدة لا حدٌّ على خليّتَي صفّه.
-         *
-         * قِيس في الـPDF: خليّتان متجاورتان بحدٍّ علويٍّ واحدٍ يرسمهما mpdf
-         * مفصولتين بشعرةٍ بيضاء عند ملتقاهما، فينقطع الخطُّ في وسطه —
-         * وخليّةٌ واحدةٌ بـ`colspan` تُرسم مرّةً فلا ملتقى.
-         */
-        $this->assertStringNotContainsString('border-top', $m[1], 'الخطُّ على خليّتَي الصفّ — فينقطع في وسطه');
-        $this->assertStringContainsString('<tr class="sep"><td colspan="2" class="strong">', $html, 'الإجماليُّ بلا خطٍّ يفصله');
-        $this->assertMatchesRegularExpression(
-            '/table\.totals tr\.sep td\.strong \{[^}]*border-top-color: '.preg_quote(Theme::ink('#111827'), '/').'/s',
-            $html,
-            'خطُّ الإجمالي لا يحمل حبرَ التاجر',
-        );
-
-        /* ولا صفَّ له أرضيّةٌ أصلًا: القاعدةُ نفسُها ذهبت لا خفتت */
-        $this->assertDoesNotMatchRegularExpression(
-            '/table\.totals tr\.grand \{/',
-            $html,
-            'بقيت قاعدةٌ تصبغ صفَّ الإجمالي',
+            'رأسُ الجدول بلا خطِّ الورقة الواحد',
         );
     }
 
     /**
-     * ولونُ التاجر لمسةٌ لا مساحة — أرضيّتان فاتحتان وحدهما على الورقة.
+     * و«الإجمالي» سطرٌ أثقلُ وزنًا — لا كتلةٌ ولا لونٌ ولا خطٌّ فوقه.
      *
-     * ═══ وهذا هو الشرطُ الذي يجمع كلَّ ما سبق ═══
+     * ═══ وأين صار الرقمُ الأهمّ ═══
      *
-     * «المحافظة على Merchant branding color كـaccent فقط، وليس كخلفيات
-     * ثقيلة». وكان اللونُ المصمتُ يملأ أربعةَ أسطح: رأسَ الجدول، ولوحةَ
-     * المستند، وصندوقَ الإجمالي، وبطاقتَي الطرفين.
+     * لم يعد أسفلَ الورقة أصلًا: الرقمُ الذي يُبحث عنه أوّلًا انتقل إلى
+     * **أعلاها** بمقاس العنوان — انظر `partials/figure`. وما بقي في
+     * المجاميع أسطرٌ تتبع الجدول بأعمدته، أثقلُها الإجماليّ.
      *
-     * فلا يبقى له أرضيّةٌ إلّا حيث يكون **خطًّا**: مسطرةُ الورقة وشريطُ
-     * الغلاف — وكلاهما بارتفاعٍ لا يتجاوز أربعَ نقاط.
+     * فلا كتلةَ داكنةً ولا أرضيّةَ فاتحةً ولا إطار: «Typography + spacing
+     * + alignment» وحدها.
      */
-    public function test_the_brand_colour_fills_nothing_taller_than_a_rule(): void
+    public function test_the_grand_total_is_a_heavier_line_not_a_block(): void
+    {
+        $html = $this->sheet($this->order());
+
+        $this->assertSame(1, preg_match('/table\\.totals tr\\.grand td \\{([^}]*)\\}/s', $html, $m));
+        $this->assertStringNotContainsString('background', $m[1], 'عادت الكتلةُ إلى الإجمالي');
+        $this->assertStringNotContainsString('border', $m[1], 'عاد الإطارُ إلى الإجمالي');
+        $this->assertStringContainsString('font-weight: bold', $m[1], 'الإجماليُّ بوزن ما حوله');
+
+        /* ولا لوحةَ مجاميعَ أصلًا */
+        $this->assertStringNotContainsString('totalcard', $html, 'عادت لوحةُ المجاميع');
+    }
+
+    /**
+     * ولونُ التاجر لا يملأ شيئًا — خيطٌ واحدٌ وحبرُ حالٍ، لا غير.
+     *
+     * ═══ وهذا الشرطُ الذي يجمع التصميمَ كلَّه ═══
+     *
+     * «Merchant Primary Color = ACCENT ONLY … White يجب أن يبقى اللون
+     * المسيطر». والمرجعُ المعتمد لا لونَ فيه إلّا في الشعار: ورقةٌ بيضاء
+     * وحبرٌ كحليٌّ وخطوطٌ رماديّة.
+     *
+     * فلا يبقى للون سطحٌ إلّا حيث يكون **خطًّا**: `.brandrule` بنقطةٍ
+     * واحدةٍ أعلى الورقة. وسطرُ الحال يحمله حبرًا لا أرضيّة.
+     */
+    public function test_the_brand_colour_fills_nothing_but_one_hairline(): void
     {
         Branding::save($this->business->id, ['primary' => '#7c3aed']);
         $html = $this->sheet($this->order());
 
         $style = substr($html, (int) strpos($html, '<style>'), (int) strpos($html, '</style>') - (int) strpos($html, '<style>'));
 
-        preg_match_all('/\.([a-z-]+) \{([^}]*background: #7c3aed[^}]*)\}/s', $style, $hits, PREG_SET_ORDER);
+        preg_match_all('/\\.([a-z-]+) \\{([^}]*background: #7c3aed[^}]*)\\}/s', $style, $hits, PREG_SET_ORDER);
 
         $filled = array_map(fn ($h) => $h[1], $hits);
         sort($filled);
 
-        $this->assertSame(
-            ['brandrule', 'cover-plain'],
-            $filled,
-            'لونُ التاجر يملأ سطحًا ليس خطًّا: '.implode('، ', $filled),
-        );
+        $this->assertSame(['brandrule'], $filled, 'لونُ التاجر يملأ سطحًا ليس خطًّا: '.implode('، ', $filled));
 
-        foreach ($hits as $hit) {
-            $this->assertSame(1, preg_match('/height: ([0-9.]+)pt/', $hit[2], $h), $hit[1].' بلا ارتفاعٍ معلَن');
-            $this->assertLessThanOrEqual(4.0, (float) $h[1], $hit[1].' أعرضُ من أن يكون خطًّا');
-        }
+        $this->assertSame(1, preg_match('/height: ([0-9.]+)pt/', $hits[0][2], $h), 'الخيطُ بلا ارتفاعٍ معلَن');
+        $this->assertLessThanOrEqual(1.0, (float) $h[1], 'الخيطُ أعرضُ من أن يكون خطًّا');
     }
 
     /**
-     * وأرضيّاتُ الكتل على **الخلايا** لا على كتلٍ داخلها.
+     * وما يُزيَّن يقع على **الخليّة** لا على كتلةٍ داخلها.
      *
      * ═══ العطبُ الذي وُلد منه هذا الحارس ═══
      *
      * mpdf يمدّ كتلةَ `div` عبر الورقة حين تقع في مجرى الجسد، ويُقلّصها إلى
      * عرض نصِّها حين تقع **داخل خليّة جدول** — ولو صُرّح لها `width: 100%`.
-     * فبطاقةُ الطرف تخرج ملتصقةً باسم المورّد بعرض ثلاثة سنتيمترات، ولوحةُ
-     * المستند بعرض كلمتين، وخانةُ التوقيع صندوقًا بحجم كلمة «توقيع».
+     * ويُسقط هوامشَها وحشوَها هناك أيضًا.
      *
-     * والمتصفّحُ يمدّها جميعًا — فالورقةُ تُرى سليمةً في المعاينة وتخرج
+     * والمتصفّحُ يعمل في الحالين — فالورقةُ تُرى سليمةً في المعاينة وتخرج
      * مشوّهةً من الطابعة. وهو بعينه ما تحذّر منه المواصفة: «لا تفترض أن
      * نجاح HTML يعني نجاح PDF».
      *
-     * فيُحرَس المحدِّدُ نفسُه: `td.totalcard` لا `.totalcard`. وما بقي من
-     * أسطحٍ بعد نزع البطاقات اثنان: لوحةُ المجاميع — أرضيّةٌ — وفاصلُ
-     * الطرفين — حدّ. وكلاهما على خليّة.
+     * ولم يبق على هذه الورقة أرضيّةٌ واحدة، فما يُحرَس هو الخطوط: خطُّ
+     * الجدول وخطُّ خانة التوقيع — كلاهما على خليّة.
      */
-    public function test_card_backgrounds_sit_on_the_cell_not_on_a_block_inside_it(): void
+    public function test_rules_sit_on_the_cell_not_on_a_block_inside_it(): void
     {
         $html = $this->sheet($this->order());
 
-        foreach (['.totals-wrap td.totalcard', 'table.parties td.divide'] as $selector) {
+        foreach (['table.items th', 'table.items td', 'table.sign td.box'] as $selector) {
             $this->assertStringContainsString(
                 $selector.' {',
                 $html,
-                "الأرضيّةُ على كتلةٍ داخل الخليّة لا على الخليّة: {$selector}",
+                "الخطُّ على كتلةٍ داخل الخليّة لا على الخليّة: {$selector}",
             );
         }
 
-        /* ولا تعريفَ للبطاقة بلا خليّة: `.party {` وحده يعود بالعطب */
-        $this->assertDoesNotMatchRegularExpression(
-            '/(?<![a-z.])\.party \{/',
-            $html,
-            'بقي تعريفٌ للبطاقة ككتلةٍ مستقلّة — يُقلَّص في الـPDF',
+        /* ولا أرضيّةَ على الورقة أصلًا — لا لبطاقةٍ ولا لرأسٍ ولا لإجمالي */
+        $style = substr($html, (int) strpos($html, '<style>'), (int) strpos($html, '</style>') - (int) strpos($html, '<style>'));
+        preg_match_all('/background: (#[0-9a-f]{3,8})/i', $style, $bg);
+
+        /* والأبيضُ ليس أرضيّة: هو الورقةُ نفسُها */
+        $white = ['#fff', '#ffffff'];
+        $surfaces = array_values(array_unique(array_diff(
+            array_map('strtolower', $bg[1] ?? []),
+            $white,
+        )));
+
+        $this->assertSame(
+            [strtolower(Theme::tokens()['primary'])],
+            $surfaces,
+            'أرضيّةٌ عادت إلى الورقة: '.implode('، ', $surfaces),
         );
     }
 
@@ -1097,13 +1060,19 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
     }
 
     /**
-     * وتذييلُ الورقة يحمل ما لا تحمله الترويسة — لا نسخةً منها.
+     * وتذييلُ الورقة اسمُ المتجر وحدَه — هادئًا في الوسط.
      *
-     * الرقمُ الضريبيُّ يُطلب في التدقيق ولا يُقرأ في السطر الأوّل، فمكانُه
-     * أسفلُ الورقة. واسمُ المتجر قالته الترويسةُ مرّةً بمقاسٍ يُرى — وتكرارُه
-     * في الحاشية حبرٌ لا خبر، ويحرسه `ThePaperIsReadBeforeItIsFiledTest`.
+     * ═══ وأين صار الرقمُ الضريبيّ ═══
+     *
+     * كان في التذييل حيث «يُطلب في التدقيق». وصار **حقلًا مسمّى** في كتلة
+     * الهويّة أعلى الورقة — «الرقم الضريبي / Tax number» — فمن يراجع يجده
+     * باسمه في لغتين لا سطرًا رماديًّا في حاشية. وهو المرجعُ المعتمد.
+     *
+     * وما بقي في الأسفل ما يفعله المرجع: اسمُ المُصدِر صغيرًا. ورقمُ
+     * الصفحة ورقمُ المستند في تذييل المحرّك على **كلّ** صفحة — انظر
+     * `MpdfDriver::pageNumbers`.
      */
-    public function test_the_footer_carries_the_legal_line_not_a_second_name(): void
+    public function test_the_footer_is_the_shop_name_and_the_tax_number_is_a_named_field(): void
     {
         Setting::create([
             'business_id' => $this->business->id, 'key' => 'vat_number', 'value' => 'OM1100234567',
@@ -1116,25 +1085,40 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
             ['show_vat_no' => true] + \App\Support\DocumentTemplates::settings($this->business->id, 'sale'),
         );
 
-        $this->assertStringContainsString('class="docfoot"', $html, 'الورقةُ بلا تذييلِ هويّة');
-        $this->assertSame(1, substr_count($html, 'ورد الخوير'), 'اسمُ المتجر مكرَّرٌ في التذييل');
+        $this->assertStringContainsString('class="docfoot"', $html, 'الورقةُ بلا تذييل');
 
-        $foot = substr($html, strpos($html, '<table class="docfoot"') ?: 0);
-        $this->assertStringContainsString('OM1100234567', $foot, 'الرقمُ الضريبيُّ ليس في التذييل');
+        $foot = substr($html, (int) strpos($html, '<table class="docfoot"'));
+        $this->assertStringContainsString('ورد الخوير', $foot, 'التذييلُ بلا اسم المتجر');
+        $this->assertStringNotContainsString('OM1100234567', $foot, 'الرقمُ الضريبيُّ عاد إلى الحاشية');
+
+        /* وهو أعلى الورقة حقلًا له تسميتان */
+        $head = substr($html, 0, (int) strpos($html, '<table class="items"'));
+        $this->assertStringContainsString('OM1100234567', $head, 'الرقمُ الضريبيُّ ليس في كتلة الهويّة');
+        $this->assertStringContainsString(__('الرقم الضريبي'), $head, 'الرقمُ الضريبيُّ بلا تسمية');
     }
 
     /**
-     * وورقةٌ بلا رقمٍ ضريبيٍّ لا تُطبع تذييلًا فارغًا فوق خطّ.
+     * وتذييلُ الورقة هادئٌ لا ينافس ما فوقه.
      *
-     * متجرٌ لم يسجّل بعدُ في الضريبة لا يجب أن تكون ورقتُه أسوأ — يجب أن
-     * تكون أبسط. وهو المبدأ نفسُه الذي يمنع شريطَ الغلاف عمّن لم يختر لونًا.
+     * ولا يخلو من اسمٍ أبدًا: `Paper::brand` تردّ اسمًا دائمًا — متجرٌ لم
+     * يُسمِّ نفسَه يُسمّى باسم النظام. فما يُحرَس هنا **وزنُه** لا وجودُه:
+     * مقاسٌ أصغرُ من الجسد وحبرٌ ثانويٌّ، بلا خطٍّ فوقه ولا وزن.
      */
-    public function test_a_paper_with_nothing_legal_to_say_prints_no_footer_band(): void
+    public function test_the_footer_is_quiet(): void
     {
-        $this->assertStringNotContainsString(
-            'class="docfoot"',
-            $this->sheet($this->order()),
-            'شريطٌ يُطبع بلا شيءٍ فيه',
+        $html = $this->sheet($this->order());
+
+        $this->assertSame(1, preg_match('/table\\.docfoot td \\{([^}]*)\\}/s', $html, $m));
+
+        $this->assertStringContainsString(
+            'font-size: '.round(Theme::GEOMETRY['text_xs'], 2).'pt',
+            $m[1],
+            'التذييلُ بمقاس الجسد',
         );
+        $this->assertStringContainsString('color: var(--document-second)', $m[1], 'التذييلُ بحبر الجسد');
+
+        /* ولا خطَّ فوقه: المرجعُ يتركه يطفو في بياض أسفل الصفحة */
+        $this->assertSame(1, preg_match('/table\\.docfoot \\{([^}]*)\\}/s', $html, $t));
+        $this->assertStringNotContainsString('border-top', $t[1], 'عاد الخطُّ فوق التذييل');
     }
 }

@@ -21,11 +21,11 @@
     $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
     $headerNote = trim((string) ($tpl['header'] ?? ''));
     $vatNumber = $show('show_vat_no') ? ($vatNumber ?? '') : '';
-    $numberLabel = __('رقم السند');
-    $sellerCap = __('المستلِم');
+    /* والمتجرُ هو المستلِمُ للمبلغ — انظر §٨ في المواصفة */
+    $issuerCap = 'المستلِم';
 @endphp
 
-@section('type', __('سند قبض'))
+@section('type', 'سند قبض')
 @section('number', $doc['number'])
 
 @section('parties')
@@ -33,11 +33,23 @@
 @endsection
 
 @php
-    $metaCells = $show('show_datetime') ? ($doc['meta'] ?? []) : array_values(array_filter(
-        $doc['meta'] ?? [],
-        fn ($c) => ($c['label'] ?? '') !== __('تاريخ القبض'),
-    ));
+    $metaCells = array_merge(
+        [['label' => 'رقم السند', 'value' => $doc['number']]],
+        $show('show_datetime') ? ($doc['meta'] ?? []) : array_values(array_filter(
+            $doc['meta'] ?? [],
+            fn ($c) => ($c['label'] ?? '') !== 'تاريخ القبض',
+        )),
+    );
 @endphp
+
+@section('figure')
+    {{-- والمبلغُ المستلَم هو الخبرُ كلُّه على سند القبض — انظر §٢٤ في المواصفة --}}
+    @include('documents.v1.partials.figure', [
+        'label' => 'المبلغ المستلم',
+        'value' => collect($doc['totals'])->firstWhere('grand', true)['value'] ?? '',
+        'status' => $doc['status'] ?? '',
+    ])
+@endsection
 
 @section('body')
     {{--
@@ -52,38 +64,42 @@
     @if (count($doc['items']) > 0)
         <table class="items">
             <thead>
+                @php($h = function (string $k) {
+                    [$a, $b] = \App\Support\Paper::pair($k);
+
+                    return '<span class="lbl">'.e($a).'</span>'.($b !== '' ? '<br><span class="lbl2">'.e($b).'</span>' : '');
+                })
                 <tr>
-                    <th style="width:6%" class="num">#</th>
-                    <th>{{ __('سُدِّد من') }}</th>
-                    <th style="width:30%" class="amt">{{ __('المبلغ') }}</th>
+                    <th>{!! $h('سُدِّد من') !!}</th>
+                    <th style="width:30%" class="amt">{!! $h('المبلغ') !!}</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach ($doc['items'] as $i => $item)
                     {{-- ولا زِبرةَ: شعرةٌ فاصلةٌ تكفي — انظر `partials/items` --}}
                     <tr>
-                        <td class="num faint">{{ $i + 1 }}</td>
                         <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($item['name']) }}">
                             {{ $item['name'] }}
                             @if (filled($item['note'] ?? null))
-                                <div class="sm muted bidi">{{ $item['note'] }}</div>
+                                <div class="bidi lbl2">{{ $item['note'] }}</div>
                             @endif
                         </td>
                         {{-- والمبلغُ معزولٌ عن اتّجاه السطر: انظر `partials/items` --}}
-                        <td class="amt line"><span dir="ltr">{{ $item['total'] }}</span></td>
+                        <td class="amt"><span dir="ltr">{{ $item['total'] }}</span></td>
                     </tr>
                 @endforeach
             </tbody>
         </table>
     @endif
 
-    @include('documents.v1.partials.totals', [
-        'totals' => $doc['totals'],
-        'aside' => count($doc['items']) === 0
-            ? __('لم يُخصَّص هذا المبلغُ لفاتورةٍ بعد — وهو رصيدٌ للجهة عند المتجر.')
-            : null,
+    @include('documents.v1.partials.totals', ['totals' => $doc['totals']])
+
+    @include('documents.v1.partials.close', [
         'panels' => [
-            $show('show_notes') ? ['cap' => __('ملاحظات'), 'text' => $doc['notes']] : [],
+            count($doc['items']) === 0
+                ? ['cap' => 'عن هذه الورقة', 'text' => __('لم يُخصَّص هذا المبلغُ لفاتورةٍ بعد — وهو رصيدٌ للجهة عند المتجر.')]
+                : [],
+            $show('show_notes') ? ['cap' => 'ملاحظات', 'text' => $doc['notes']] : [],
         ],
     ])
 

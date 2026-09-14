@@ -2,6 +2,7 @@
 
 namespace App\Support\Document\Pdf;
 
+use App\Support\Paper;
 use Illuminate\Http\Response;
 use Mpdf\Config\ConfigVariables;
 use Mpdf\Config\FontVariables;
@@ -175,17 +176,59 @@ class MpdfDriver implements Driver
          *
          * ولا يُطبع فارغًا: تقريرُ مخزونٍ لا سياقَ له، فيبقى على رقمه وحده.
          */
-        $left = $context !== null && trim($context) !== ''
-            ? '<span>'.htmlspecialchars(trim($context), ENT_QUOTES, 'UTF-8').'</span>'
-            : '';
+        $ctx = trim((string) $context);
+
+        /*
+         * ═══ وتقريرٌ بلا سياقٍ يبقى على رقمه وحده ═══
+         *
+         * التقاريرُ تمرّ من هذا الباب نفسِه ولا سياقَ لها — فتذييلُها كما
+         * كان: «٢ / ٣» في الوسط. والمستنداتُ وحدها تحمل السياق.
+         */
+        if ($ctx === '') {
+            $mpdf->SetHTMLFooter(
+                '<table style="width:100%; border-collapse:collapse; font-family:'.self::FONT.'; font-size:8pt; '
+                .'color:#9ca3af; border-top:0.4pt solid #e5e7eb;"><tr>'
+                .'<td style="border:none; padding:2mm 0 0; text-align:center;">'
+                .'<span dir="ltr">{PAGENO} / {nbpg}</span></td>'
+                .'</tr></table>'
+            );
+
+            return;
+        }
+
+        /*
+         * ═══ وتذييلُ المستند سطرٌ هادئ: الاسمُ في طرف، والصفحةُ والرقمُ في الآخر ═══
+         *
+         * «Ward Store … Page 1 of 1 - INV-1024» — وهو نصُّ المواصفة. ورقمُ
+         * الصفحة ورقمُ المستند يُقرآن معًا: صفحةٌ تسقط من حزمةٍ في مكتب
+         * محاسبةٍ تقول من أيّ مستندٍ هي وأيَّ جزءٍ منه.
+         *
+         * والسياقُ يصل «رقمًا · اسمًا» من `PdfController::context` — يبنيه
+         * موضعٌ واحد ويقرؤه هذا. فيُقسَم هنا ليقع كلٌّ في طرفه، وما جاء
+         * بلا فاصلٍ يُحمل كلُّه على أنّه رقمُ المستند.
+         */
+        [$number, $name] = array_pad(array_map('trim', explode(' · ', $ctx, 2)), 2, '');
+
+        /*
+         * وسطرُ الصفحة إنجليزيٌّ في اللغتين — وهو ما يفعله المرجع.
+         *
+         * «Page 1 of 1» اصطلاحُ طباعةٍ يُقرأ كما تُقرأ الخانةُ الغربيّة،
+         * وترجمتُه تُخرج «صفحة ١ من ١» فينقلب ترتيبُه حول الأرقام. وهو
+         * سطرٌ تقنيٌّ في حاشية الورقة لا خبرٌ يُقرأ.
+         */
+        $tail = htmlspecialchars(
+            trim('Page {PAGENO} of {nbpg}'.($number !== '' ? ' - '.$number : '')),
+            ENT_QUOTES,
+            'UTF-8'
+        );
 
         $mpdf->SetHTMLFooter(
-            '<table style="width:100%; border-collapse:collapse; font-family:'.self::FONT.'; font-size:8pt; '
-            .'color:#9ca3af; border-top:0.4pt solid #e5e7eb;"><tr>'
-            .'<td style="border:none; padding:2mm 0 0; width:35%;">'.$left.'</td>'
-            .'<td style="border:none; padding:2mm 0 0; width:30%; text-align:center;">'
-            .'<span dir="ltr">{PAGENO} / {nbpg}</span></td>'
-            .'<td style="border:none; padding:2mm 0 0; width:35%;"></td>'
+            '<table style="width:100%; border-collapse:collapse; font-family:'.self::FONT.'; font-size:7.5pt; '
+            .'color:#8898b3;"><tr>'
+            .'<td style="border:none; padding:2mm 0 0; width:50%;">'
+            .htmlspecialchars($name, ENT_QUOTES, 'UTF-8').'</td>'
+            .'<td style="border:none; padding:2mm 0 0; width:50%; text-align:'.(Paper::rtl() ? 'left' : 'right').';">'
+            .'<span dir="ltr">'.$tail.'</span></td>'
             .'</tr></table>'
         );
     }

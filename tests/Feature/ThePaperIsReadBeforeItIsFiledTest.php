@@ -96,12 +96,18 @@ class ThePaperIsReadBeforeItIsFiledTest extends TestCase
         $html = $this->sheet(null, ['show_vat_no' => true]);
 
         $this->assertStringContainsString(__('البائع'), $html, 'الورقةُ لا تعرّف بائعَها');
-        $this->assertStringContainsString(__('فاتورة إلى'), $html, 'الورقةُ لا تعرّف مشتريَها');
+        $this->assertStringContainsString(__('العميل'), $html, 'الورقةُ لا تعرّف مشتريَها');
         $this->assertStringContainsString('شارع السلطان قابوس', $html);
         $this->assertStringContainsString('OM1100234567', $html);
 
-        /* والاسمُ لا يتكرّر: الترويسةُ قالته مرّةً */
-        $this->assertSame(1, substr_count($html, 'زهور الخليج'), 'اسمُ المتجر مكرَّرٌ على الورقة');
+        /*
+         * والاسمُ مرّتان: مرّةً في كتلة الهويّة ومرّةً في تذييل الصفحة.
+         *
+         * وكان مرّةً واحدة حين لم يكن للورقة تذييلٌ يحمله. والمرجعُ
+         * المعتمد يضع اسمَ المُصدِر في أسفل كلّ صفحةٍ صغيرًا هادئًا: صفحةٌ
+         * تسقط من حزمةٍ تقول لمن هي. فليست تكرارًا — هي وظيفةٌ ثانية.
+         */
+        $this->assertSame(2, substr_count($html, 'زهور الخليج'), 'اسمُ المتجر في غير موضعيه');
     }
 
     /* ═══════════ نصُّ البشر يُقرأ كما كُتب ═══════════ */
@@ -186,21 +192,28 @@ class ThePaperIsReadBeforeItIsFiledTest extends TestCase
      * وأربعةٌ في السطر لا أكثر: ستّةٌ تجعل كلَّ عمودٍ بعرض ثلاثة سنتيمترات
      * فينكسر «وسيلة الدفع» سطرين ويلتصق بجاره.
      */
-    public function test_the_meta_strip_is_columns_not_a_list(): void
+    public function test_the_meta_is_a_column_of_named_fields(): void
     {
         $html = $this->sheet();
 
-        $this->assertStringContainsString('table.metastrip', $html);
+        /*
+         * ═══ وصارت عمودًا بعد أن كانت شريطًا ═══
+         *
+         * كانت أربعةَ حقولٍ في شريطٍ رماديٍّ بعرض الورقة تحت الأطراف. وفي
+         * المرجع المعتمد عمودٌ في الترويسة نفسِها، بلا أرضيّةٍ ولا خطوط:
+         * كلُّ حقلٍ ثلاثةُ أسطرٍ — تسميةٌ فوق تسميةٍ فوق قيمة — والفراغُ
+         * بينها هو ما يقسمها.
+         */
+        $this->assertStringNotContainsString('table.metastrip', $html, 'عاد شريطُ التعريف ذو الأرضيّة');
         $this->assertStringNotContainsString('class="meta"', $html, 'بقيت قائمةُ العمودين القديمة');
+        $this->assertStringContainsString('table.fields', $html, 'الحقولُ بلا بنيةٍ مشتركة');
 
-        /* وعنوانُ الخليّة `metalabel` لا `eyebrow`: ذاك لعناوين الكتل الكبرى */
-        preg_match_all('/<td class="[^"]*" style="width:([0-9.]+)%">\s*<div class="metalabel"/', $html, $m);
-
-        $this->assertNotEmpty($m[1], 'الشريطُ لا يعلن عرضَ خلاياه');
-
-        foreach ($m[1] as $w) {
-            $this->assertGreaterThanOrEqual(25.0, (float) $w, 'عمودٌ أضيقُ من ربع السطر — أكثرُ من أربعةٍ في السطر');
-        }
+        /* وكلُّ حقلٍ ثلاثةُ أسطر: تسميةٌ، فتسميةٌ باللغة الأخرى، فقيمة */
+        $this->assertMatchesRegularExpression(
+            '#<tr><td class="lbl"[^>]*>[^<]+</td></tr>\s*<tr><td class="lbl2"[^>]*>[^<]+</td></tr>#',
+            $html,
+            'التسميةُ بلغةٍ واحدة — والتسميتان شرطُ التصميم',
+        );
     }
 
     /* ═══════════ والصفحةُ الثانية تُعرَف إن سقطت ═══════════ */

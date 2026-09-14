@@ -104,7 +104,7 @@
         @endif
         {{-- ووسيلةُ الدفع وشروطُه واستحقاقُه من البيان — وهي تُطفأ حيث لا معنى لها --}}
         @foreach ($paper['meta'] as $m)
-            <div class="row"><span class="muted sm">{{ $m['label'] }}</span><span>{{ $m['value'] }}</span></div>
+            <div class="row"><span class="muted sm">{{ __($m['label']) }}</span><span>{{ $m['value'] }}</span></div>
         @endforeach
     </div>
 
@@ -143,7 +143,7 @@
         @foreach ($paper['totals'] as $t)
             <div class="row @if (! empty($t['grand'])) grand @endif">
                 <span class="@if (empty($t['grand'])) muted sm @endif">
-                    {{ $t['label'] }}@if (! empty($t['hint'])) <span class="faint xs ltr">{{ $t['hint'] }}</span>@endif
+                    {{ __($t['label']) }}@if (! empty($t['hint'])) <span class="faint xs ltr">{{ $t['hint'] }}</span>@endif
                 </span>
                 <span class="ltr">{{ $t['value'] }}</span>
             </div>

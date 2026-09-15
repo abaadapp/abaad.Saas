@@ -7,11 +7,19 @@
     تبني خاتمتَها بيدها لافترقت التسعُ عند أوّل تعديل — ورقةٌ رمزُها فوق
     ملاحظاتها وأخرى تحتها.
 
-    ═══ والرمزُ هادئٌ لا يسيطر ═══
+    ═══ والرمزُ هادئٌ لا يسيطر — ومكانُه أسفلُ الورقة لا أسفلُ المجاميع ═══
 
-    المواصفة: «لا تجعله العنصر البصري المسيطر». فيقع أسفلَ الملاحظات
-    بمقاسٍ صغير، وتحته سطرٌ يقول ما يجده الماسح. وحمولتُه وتوليدُه لا
-    يُمسّان — انظر `App\Support\PublicDocument` و`EInvoice`.
+    المواصفة: «لا تجعله العنصر البصري المسيطر»، و«يجب أن يبدو جزءًا من
+    نهاية المستند، وليس جزءًا من جدول الحسابات».
+
+    وكان يقع في ذيل هذا الجدول مباشرةً بعد الملاحظات. ففاتورةٌ بصنفٍ واحد
+    تنتهي عند ثلثَي الورقة ويقع رمزُها هناك، ثمّ يبقى تحته شبرٌ من البياض
+    إلى التذييل — فيُقرأ الرمزُ ملحقًا بالمجاميع لا خاتمةً للورقة.
+
+    فيُدفع إلى `closezone` في `layout`: منطقةٌ تُثبَّت أسفلَ الصفحة الأخيرة
+    فوق تذييل المحرّك. و`@push` لأنّ القالبَ يُرسم قبلها — انظر `layout`.
+
+    وحمولتُه وتوليدُه لا يُمسّان — انظر `App\Support\PublicDocument` و`EInvoice`.
 
     ولا تُترك مساحةٌ خاويةٌ حين لا شيءَ يُقال: الجدولُ لا يُرسم أصلًا.
 
@@ -27,7 +35,17 @@
     $hasCode = ($eInvoice ?? '') !== '' || ($paperUrl ?? '') !== '' || ($googleReview ?? '') !== '';
 @endphp
 
-@if (count($panels) > 0 || $hasCode)
+@if ($hasCode)
+    @push('closezone')
+        @include('documents.v1.partials.qr', [
+            'compact' => true,
+            'align' => \App\Support\Paper::rtl() ? 'right' : 'left',
+            'size' => $qrSize ?? 0.6,
+        ])
+    @endpush
+@endif
+
+@if (count($panels) > 0)
     <table class="stack" style="margin-top:{{ round(12, 2) }}pt">
         @foreach ($panels as $panel)
             @php([$first, $second] = \App\Support\Paper::pair($panel['cap']))
@@ -57,15 +75,5 @@
                 @endif
             </td></tr>
         @endforeach
-
-        @if ($hasCode)
-            <tr><td>
-                @include('documents.v1.partials.qr', [
-                    'compact' => true,
-                    'align' => \App\Support\Paper::rtl() ? 'right' : 'left',
-                    'size' => $qrSize ?? 0.6,
-                ])
-            </td></tr>
-        @endif
     </table>
 @endif

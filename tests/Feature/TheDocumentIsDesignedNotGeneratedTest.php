@@ -849,6 +849,147 @@ class TheDocumentIsDesignedNotGeneratedTest extends TestCase
     /* ═══════════════════ هيكلُ الورقة البصريّ ═══════════════════ */
 
     /**
+     * خاتمةُ الورقة تقف في أسفل الصفحة، لا حيث انتهى الجدول.
+     *
+     * ═══ ما يحرسه ═══
+     *
+     * فاتورةٌ بصنفٍ واحد تنتهي مجاميعُها عند ثلثَي الورقة. وكان رمزُها
+     * وسطرُ شكرها يقعان هناك ثمّ يبقى تحتهما شبرٌ من البياض إلى التذييل —
+     * فتُقرأ الورقةُ محتوًى تجمّع في أعلاها لا تكوينًا على A4.
+     *
+     * ═══ ويُقاس على الملفّ المطبوع، لا على الرسم ═══
+     *
+     * الإزاحةُ يحسبها `MpdfDriver::writeAnchored` عند الرسم — لا أثرَ لها
+     * في HTML. فيُفكّ مجرى محتوى الصفحة وتُقرأ مواضعُ السطور: مصفوفةُ
+     * النصّ `1 0 0 -1 x y Tm`، و`y` يزيد نزولًا.
+     *
+     * وورقةُ A4 ‏٨٤١٫٩ نقطة، وهامشُها السفليّ ٢٠ مم ≈ ٥٧ نقطة. فآخرُ سطرٍ
+     * في الخاتمة يجب أن يقع تحت ثلثَي الورقة — وبلا التثبيت يقع عند ثلثها.
+     */
+    public function test_the_close_stands_at_the_foot_of_the_page(): void
+    {
+        $html = DocumentRenderer::saleSheet(
+            $this->business->id,
+            $this->order(1),
+            \App\Support\DocumentTemplates::settings($this->business->id, 'sale'),
+            ['paperUrl' => 'https://app.abaadapp.om/d/testcode'],
+        );
+
+        $this->assertStringContainsString('<!--abaad:close-->', $html, 'الرسمُ بلا علامةِ خاتمة');
+        $this->assertStringContainsString('class="closezone"', $html, 'الورقةُ بلا منطقةِ خاتمة');
+
+        /* والرمزُ خرج من كتلة الملاحظات إلى الخاتمة */
+        $this->assertGreaterThan(
+            strpos($html, '<!--abaad:close-->'),
+            strpos($html, '<barcode'),
+            'الرمزُ ما زال في مجرى المحتوى قبل الخاتمة',
+        );
+
+        $pdf = fn (string $h): string => \App\Support\Pdf::sheet($h, 'p', 'A4', false, null, 'INV · متجر')->getContent();
+
+        $anchored = $this->lastInk($pdf($html));
+
+        /*
+         * وبلا العلامة يُرسم المجرى دفعةً واحدة — وهو حالُ الورقة قبل
+         * التثبيت. فيُقاس الفرقُ لا الرقمُ وحدَه: حارسٌ يثبّت رقمًا واحدًا
+         * يسقط عند أوّل سطرٍ يُضاف إلى الترويسة.
+         */
+        $loose = $this->lastInk($pdf(str_replace('<!--abaad:close-->', '', $html)));
+
+        /* والورقةُ ٨٤١٫٩ نقطة، وحدُّ المحتوى ٥٧ — فأسفلُ الثلث دون ٢٥٠ */
+        $this->assertLessThan(250.0, $anchored, 'خاتمةُ الورقة لا تقف في أسفل الصفحة');
+        $this->assertGreaterThan($anchored + 100.0, $loose, 'التثبيتُ لم يُزِح الخاتمة عمّا كانت عليه');
+    }
+
+    /**
+     * والخاتمةُ مرّةً واحدة في المستند، لا على كلّ صفحة.
+     *
+     * المواصفة: «QR لا يتكرر في كل صفحة»، و«Closing لا يتكرر». وهو سببُ
+     * رفض `position: fixed` طريقًا للتثبيت: mpdf يعيد رسم الكتلة المثبَّتة
+     * على كلّ صفحة — فتخرج فاتورةٌ بثلاث صفحات بثلاثة رموز.
+     *
+     * والذي يتكرّر تذييلُ المحرّك وحدَه: اسمُ المتجر ورقمُ الصفحة ورقمُ
+     * المستند — وهو المطلوب.
+     */
+    public function test_the_close_is_written_once_in_a_long_document(): void
+    {
+        $html = DocumentRenderer::saleSheet(
+            $this->business->id,
+            $this->order(40, 'باقة ورد', 'INV-000040'),
+            \App\Support\DocumentTemplates::settings($this->business->id, 'sale'),
+            ['paperUrl' => 'https://app.abaadapp.om/d/testcode'],
+        );
+
+        $pdf = \App\Support\Pdf::sheet($html, 'p', 'A4', false, null, 'INV · متجر')->getContent();
+        $pages = substr_count($pdf, '/Type /Page') - substr_count($pdf, '/Type /Pages');
+
+        $this->assertGreaterThan(1, $pages, 'أربعون صنفًا لم تتجاوز صفحةً واحدة، فلا يُختبر التكرار');
+        $this->assertSame(1, substr_count($html, 'class="closezone"'), 'الخاتمةُ مرسومةٌ أكثر من مرّة');
+        $this->assertSame(1, substr_count($html, '<barcode'), 'الرمزُ مرسومٌ أكثر من مرّة');
+
+        /*
+         * والشريطُ الحراريّ خارجَ هذا كلِّه.
+         *
+         * المواصفة: «لا تطبق full-page A4 anchoring على 58mm و80mm».
+         * وورقٌ يخرج بطول محتواه لا أسفلَ له يُثبَّت إليه — فلو حملت
+         * علامةَ الخاتمة لقاس المحرّكُ فراغًا على ورقةٍ لا تنتهي.
+         */
+        $strip = DocumentRenderer::saleStrip(
+            $this->business->id,
+            $this->order(2, 'باقة ورد', 'INV-000002'),
+            \App\Support\DocumentTemplates::settings($this->business->id, 'sale'),
+            80,
+        );
+
+        $this->assertStringNotContainsString('<!--abaad:close-->', $strip, 'علامةُ التثبيت بلغت الشريط الحراريّ');
+        $this->assertStringNotContainsString('closezone', $strip, 'خاتمةُ A4 بلغت الشريط الحراريّ');
+    }
+
+    /**
+     * موضعُ آخرِ حبرٍ على الورقة بالنقطة — من مجرى المحتوى نفسِه.
+     *
+     * وإحداثيّاتُ PDF تبدأ من أسفل الصفحة وتزيد صعودًا: فأدنى `y` أوطأُ
+     * سطرٍ. وmpdf يكتب `BT x y Td` لا مصفوفةَ نصّ.
+     *
+     * وتذييلُ المحرّك خارجَ القياس: يُرسم في الهامش السفليّ (دون ٥٧ نقطة)
+     * على كلّ صفحة، فلو حُسب لقالت كلُّ ورقةٍ إنّ حبرَها يبلغ أسفلَها.
+     */
+    private function lastInk(string $pdf): float
+    {
+        $lowest = 841.89;
+
+        foreach (self::streams($pdf) as $stream) {
+            preg_match_all('/BT\s+([\d.-]+)\s+([\d.-]+)\s+Td/', $stream, $hits);
+
+            foreach ($hits[2] as $y) {
+                $y = (float) $y;
+
+                if ($y >= 57.0) {
+                    $lowest = min($lowest, $y);
+                }
+            }
+        }
+
+        return $lowest;
+    }
+
+    /**
+     * مجارِي المحتوى — مفكوكةَ الضغط، أو كما هي إن لم تُضغط.
+     *
+     * وضغطُ المجارى إعدادٌ في المحرّك قد يتبدّل، فحارسٌ يفترض الضغطَ يقرأ
+     * لا شيء ويقول «سليم» على ورقةٍ معطوبة.
+     */
+    private static function streams(string $pdf): array
+    {
+        preg_match_all('/stream\r?\n(.*?)endstream/s', $pdf, $raw);
+
+        return array_map(
+            fn (string $s): string => (string) (@gzuncompress($s) ?: $s),
+            $raw[1],
+        );
+    }
+
+    /**
      * اسمُ المتجر مرّةً واحدةً في أسفل الورقة، لا مرّتين.
      *
      * ═══ والعطبُ الذي وُلد منه هذا الحارس ═══

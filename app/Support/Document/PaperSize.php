@@ -190,7 +190,27 @@ final class PaperSize
         $lines[] = '        html, body { margin: 0; padding: 0; }';
         $lines[] = '';
         $lines[] = '        /* والحشوُ في `@page` لا في الصندوق: لئلّا يُحسب مرّتين */';
-        $lines[] = '        .paper { width: auto; min-height: 0; padding: 0; }';
+        $lines[] = '        .paper { width: auto; padding: 0; }';
+
+        /*
+         * وصندوقُ الطبع بارتفاع منطقة المحتوى — ليقف أسفلُ الورقة أسفلَها.
+         *
+         * `@page` يحجز الهوامش، فما بقي للمحتوى هو الارتفاعُ ناقصَ العلويّ
+         * والسفليّ. وبه يتمدّد `.pagespacer` فتقع الخاتمةُ في أسفل الصفحة —
+         * كما تقع في الـPDF الخارج من المحرّك وفي المعاينة على الشاشة.
+         *
+         * ولا يُكتب لورقٍ بلا ارتفاع: الشريطُ الحراريّ يخرج بطول محتواه،
+         * وصندوقٌ بارتفاعٍ مفروض يقصّه أو يمدّه.
+         */
+        if ($p['height'] !== null) {
+            $lines[] = '';
+            $lines[] = '        .paper {';
+            $lines[] = '            display: flex;';
+            $lines[] = '            flex-direction: column;';
+            $lines[] = '            min-height: '.$n($p['height'] - $p['top'] - $p['bottom']).';';
+            $lines[] = '        }';
+        }
+
         $lines[] = '    }';
         $lines[] = '';
         $lines[] = '    /*';

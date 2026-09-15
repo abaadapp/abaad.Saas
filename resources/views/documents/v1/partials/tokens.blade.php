@@ -456,6 +456,34 @@
         vertical-align: top;
     }
 
+    /*
+        ═══ خاتمةُ الورقة: فاصلٌ يتمدّد، ثمّ كتلةٌ تقف في الأسفل ═══
+
+        `.pagespacer` لا ارتفاعَ له في الـPDF — هو **علامة**: عندها يشقّ
+        `MpdfDriver::sheet` الرسمَ شطرين ويكتب الفراغَ محسوبًا. وعلى
+        الشاشة يتمدّد بـflexbox لأنّ صندوقَ الورقة بمقاس A4 فعليًّا.
+
+        والخاتمةُ لا تنكسر بين صفحتين: رمزٌ في أسفل صفحةٍ وسطرُ شكرٍ في
+        أعلى التالية خاتمةٌ مقطوعة.
+    */
+    /*
+        و`flex` خارجَ الوسائط: يقرؤه المتصفّحُ على الشاشة **وعند الطبع**.
+
+        كان داخل `@media screen` وحدَها، فطبعُ الورقة من المتصفّح يُخرجها
+        بخاتمةٍ ملتصقةٍ بالمجاميع — قِيس بـChrome. وصندوقُ الورقة عمودٌ
+        مرن في الموضعين: `display: flex` هنا للشاشة، وفي كتلة `print`
+        بارتفاع منطقة المحتوى — انظر `PaperSize::css`.
+
+        وmpdf يتجاهل `flex` كلَّه: موضعُ الخاتمة عنده بالحساب لا بالتخطيط.
+    */
+    .pagespacer { flex: 1 1 auto; font-size: 0; line-height: 0; }
+    .closezone { page-break-inside: avoid; }
+
+    @media screen {
+        .paper { display: flex; flex-direction: column; }
+        .pagespacer { min-height: {{ $fx(18) }}; }
+    }
+
     /* والرمزُ لا يركب على الجدول: كتلةٌ محجوزةٌ كاملةً */
     .qr-block { page-break-inside: avoid; margin-top: {{ $fx(4) }}; }
     .qr-block .c { text-align: center; }

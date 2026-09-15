@@ -41,6 +41,18 @@ class MpdfDriver implements Driver
     private const MIN_STRIP = 60;
 
     /**
+     * علامةُ خاتمة الورقة — عندها يُشقّ الرسمُ شطرين.
+     *
+     * يكتبها `documents/v1/layout` بين المحتوى والخاتمة. وما قبلها يُرسم
+     * كما هو، وما بعدها يُثبَّت أسفلَ الصفحة الأخيرة. ورسمٌ بلا علامة —
+     * تقريرٌ أو ورقةُ نسخةٍ قديمة — يُرسم دفعةً واحدة كما كان.
+     */
+    private const CLOSE_MARK = '<!--abaad:close-->';
+
+    /** أقلُّ فراغٍ يُكتب — أصغرُ منه لا يُرى، وكتابتُه تخاطر بصفحةٍ زائدة */
+    private const MIN_GAP = 2.0;
+
+    /**
      * ارتفاعُ الترويسة المتكرّرة — يُحجَز في الهامش العلويّ.
      *
      * mpdf يرسم ترويسةَ الصفحة **داخل** الهامش العلويّ، فهامشٌ بقدر النصّ
@@ -95,9 +107,127 @@ class MpdfDriver implements Driver
         if ($preset['footer'] > 0) {
             self::pageNumbers($mpdf, $context);
         }
-        $mpdf->WriteHTML($html);
+
+        self::writeAnchored($mpdf, $html, $preset);
 
         return self::respond($mpdf, $name);
+    }
+
+    /**
+     * الرسمُ مع تثبيت الخاتمة أسفلَ الصفحة الأخيرة.
+     *
+     * ═══ المشكلة ═══
+     *
+     * فاتورةٌ بصنفٍ واحد تنتهي مجاميعُها عند ثلثَي الورقة. فيقع رمزُها
+     * وسطرُ شكرها هناك، ويبقى تحتهما شبرٌ من البياض إلى تذييل الصفحة —
+     * فتُقرأ الورقةُ محتوًى تجمّع في أعلاها لا تكوينًا على A4.
+     *
+     * ═══ ولمَ لا تُحلّ بـCSS ═══
+     *
+     * flexbox لا يعرفه mpdf. و`position: fixed` يكرّر الكتلةَ على **كلّ**
+     * صفحة — والمواصفة: «QR لا يتكرر في كل صفحة». و`margin-top: auto`
+     * لا معنى له في مجرًى بلا ارتفاعٍ محدَّد. فلا يبقى إلّا أن يُحسب
+     * الفراغُ عند الرسم، حيث يُعرف موضعُ القلم فعلًا.
+     *
+     * ═══ والقياسُ لا التخمين ═══
+     *
+     * ثلاث خطوات: يُرسم ما قبل العلامة، ثمّ يُقاس ارتفاعُ الخاتمة على
+     * ورقةٍ لا تنتهي (كما يُقاس الشريطُ الحراريّ — انظر `stripHeight`)،
+     * ثمّ يُكتب فراغٌ بقدر ما بقي ناقصَ ارتفاعِها.
+     *
+     * وإن لم يتّسع ما بقي لها بُدئت صفحةٌ جديدة وثُبّتت في أسفلها: خاتمةٌ
+     * نصفُها هنا ونصفُها هناك أسوأُ من صفحةٍ لها وحدها.
+     *
+     * وخاتمةٌ خاوية — ورقةٌ بلا رمزٍ ولا تذييلِ تاجر — تُقاس صفرًا فلا
+     * يُكتب فراغٌ ولا تُزاح صفحة.
+     *
+     * @param  array<string, float>  $preset  مقاسُ الورقة وهوامشُها
+     */
+    private static function writeAnchored(Mpdf $mpdf, string $html, array $preset): void
+    {
+        $parts = explode(self::CLOSE_MARK, $html, 2);
+
+        $mpdf->WriteHTML($parts[0]);
+
+        if (! isset($parts[1])) {
+            return;
+        }
+
+        $close = $parts[1];
+        $height = self::blockHeight($html, $close, $preset);
+
+        /*
+         * ومساحةُ الصفحة الباقية: من موضع القلم إلى حدّ المحتوى.
+         *
+         * `bMargin` هامشُ الأسفل، وتذييلُ الصفحة يُرسم **داخله** — فحدُّ
+         * المحتوى فوقه، ولا تركب الخاتمةُ على رقم الصفحة.
+         */
+        $room = $mpdf->h - $mpdf->bMargin - $mpdf->y;
+
+        if ($height > 0.0 && $height > $room) {
+            $mpdf->AddPage();
+            $room = $mpdf->h - $mpdf->bMargin - $mpdf->y;
+        }
+
+        $gap = $room - $height;
+
+        /* ولا يُكتب فراغٌ لخاتمةٍ لم تُقَس، ولا فراغٌ يتجاوز الصفحة */
+        if ($height > 0.0 && $gap > self::MIN_GAP && $gap < $room) {
+            $mpdf->WriteHTML(
+                '<div style="height:'.round($gap, 2).'mm; font-size:0; line-height:0"></div>'
+            );
+        }
+
+        $mpdf->WriteHTML($close);
+    }
+
+    /**
+     * ارتفاعُ كتلةٍ من الرسم بالمليمتر — تُقاس على ورقةٍ لا تنتهي.
+     *
+     * وتُقاس بأنماط المستند نفسِها: الكتلةُ وحدَها بلا `<style>` تخرج
+     * بخطٍّ افتراضيٍّ ومقاسٍ آخر، فيُقاس غيرُ ما يُرسم. فيُقتطع سجلُّ
+     * الأنماط من رأس الرسم ويُقدَّم عليها.
+     *
+     * وعرضُ ورقة القياس عرضُ الورقة بهوامشها نفسِها: كتلةٌ تُقاس على عرضٍ
+     * أوسع تُلفّ في أسطرَ أقلّ فتخرج أقصرَ ممّا ستكون.
+     *
+     * @param  array<string, float>  $preset  مقاسُ الورقة وهوامشُها
+     */
+    private static function blockHeight(string $html, string $block, array $preset): float
+    {
+        if (trim(strip_tags($block)) === '' && ! str_contains($block, '<barcode')) {
+            return 0.0;
+        }
+
+        preg_match('#<style[^>]*>.*?</style>#si', $html, $css);
+
+        try {
+            $probe = new Mpdf(self::base() + [
+                'format' => [$preset['width'], self::PROBE],
+                'margin_left' => $preset['side'],
+                'margin_right' => $preset['side'],
+                'margin_top' => 0,
+                'margin_bottom' => 0,
+                'margin_header' => 0,
+                'margin_footer' => 0,
+            ]);
+
+            $probe->WriteHTML(($css[0] ?? '').$block);
+
+            /* وصفحةٌ ثانيةٌ على ورقةٍ بطول مترين تعني قياسًا انفلت */
+            $height = $probe->page > 1 ? 0.0 : (float) $probe->y;
+        } catch (\Throwable) {
+            /*
+             * وقياسٌ يفشل لا يُسقط الفاتورة.
+             *
+             * الخاتمةُ تُرسم في مجراها كما كانت، والورقةُ تخرج — أسوأُ ما
+             * فيها فراغٌ في أسفلها. وورقةٌ لا تخرج أسوأُ من ورقةٍ لم تُثبَّت
+             * خاتمتُها.
+             */
+            return 0.0;
+        }
+
+        return $height > 0.0 && $height < $preset['height'] ? $height : 0.0;
     }
 
     /**

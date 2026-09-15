@@ -420,7 +420,8 @@ class AbaadAnswersOnWhatsAppTest extends TestCase
 
         /* ويُقال في اللحظة نفسِها — صمتٌ بعد الضغط يُقرأ نجاحًا */
         $toast = session('toast');
-        $this->assertSame('error', $toast['type'] ?? null, 'مضى الردُّ بلا خبرٍ عن أنّه لم يخرج');
+        /* و`danger` هي ما ترسمه الواجهة أحمرَ — انظر `Toast` في `types/index.d.ts` */
+        $this->assertSame('danger', $toast['type'] ?? null, 'مضى الردُّ بلا خبرٍ عن أنّه لم يخرج');
         $this->assertStringContainsString((string) $reply->delivery_error, (string) ($toast['msg'] ?? ''));
     }
 

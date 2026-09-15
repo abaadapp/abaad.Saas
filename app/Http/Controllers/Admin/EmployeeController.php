@@ -640,7 +640,7 @@ class EmployeeController extends Controller
         $employee = $this->findEmployee($id);
         $this->refuseTouchingSomeoneAboveMe($employee);
         if ($employee->id === auth()->id()) {
-            return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'danger']);
         }
         $employee->status = $employee->status === 'نشط' ? 'معطل' : 'نشط';
         $employee->save();

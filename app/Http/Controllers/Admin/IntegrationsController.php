@@ -196,7 +196,7 @@ class IntegrationsController extends Controller
 
         return back()->with('toast', BranchGoogle::sync($place, force: true)
             ? ['msg' => __('حُدِّثت التقييمات'), 'type' => 'success']
-            : ['msg' => __('تعذر الاتصال بـ Google حاليًا. حاول مرة أخرى.'), 'type' => 'error']);
+            : ['msg' => __('تعذر الاتصال بـ Google حاليًا. حاول مرة أخرى.'), 'type' => 'danger']);
     }
 
     /**
@@ -257,7 +257,7 @@ class IntegrationsController extends Controller
 
         return back()->with('toast', $result['state'] === 'ok'
             ? ['msg' => __('حُدِّثت التقييمات'), 'type' => 'success']
-            : ['msg' => $result['error'] ?? __('لم تُسحب التقييمات'), 'type' => 'error']);
+            : ['msg' => $result['error'] ?? __('لم تُسحب التقييمات'), 'type' => 'danger']);
     }
 
     /**

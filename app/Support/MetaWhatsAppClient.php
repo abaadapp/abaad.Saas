@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\WhatsAppConnection;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -64,31 +65,7 @@ class MetaWhatsAppClient
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
 
-        $body = $response->json() ?? [];
-
-        if ($response->successful()) {
-            $id = $body['messages'][0]['id'] ?? null;
-
-            return $id
-                ? ['ok' => true, 'id' => $id, 'code' => null, 'message' => null, 'retryable' => false]
-                // ردٌّ ناجحٌ بلا معرّف: لا تُعدّ مقبولةً — لا شيء يُتابَع به
-                : self::failure('no_message_id', __('لم يُعِد المزوّد معرّفًا للرسالة.'), retryable: false);
-        }
-
-        $error = $body['error'] ?? [];
-
-        return self::failure(
-            (string) ($error['code'] ?? $response->status()),
-            (string) ($error['message'] ?? __('تعذّر الإرسال.')),
-            /*
-             * ما يُعاد وما لا يُعاد.
-             *
-             * 429 حدُّ معدّل، و5xx عطلٌ عندهم — كلاهما يزول بالانتظار.
-             * ورقمٌ خاطئ أو قالبٌ غير معتمَد أو رمزٌ مسحوب لا يُصلحه تكرار:
-             * إعادةُ المحاولة عليه استهلاكٌ للطابور ولحدّ المعدّل معًا.
-             */
-            retryable: $response->status() === 429 || $response->serverError(),
-        );
+        return self::interpret($response);
     }
 
     /**
@@ -182,6 +159,80 @@ class MetaWhatsAppClient
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
 
+        return self::interpret($response);
+    }
+
+    /**
+     * إرسالُ ملفٍّ رُفع سلفًا — صورةً أو مستندًا بمعرّفه عند ميتا.
+     *
+     * والمعرّفُ يُرفع أوّلًا بـ`WhatsAppMedia::upload`؛ ولا يُرسَل رابطٌ
+     * بدلًا منه: الرابطُ يعني أن تفتح ميتا خادمَنا من الخارج، ومرفقُ الدعم
+     * على قرصٍ خاصٍّ لا بابَ له إلّا متحكّمٌ يسأل عن صاحب الجلسة.
+     *
+     * @param  'image'|'document'  $kind
+     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}
+     */
+    public static function sendMedia(
+        WhatsAppConnection $connection,
+        string $to,
+        string $kind,
+        string $mediaId,
+        ?string $caption = null,
+        ?string $filename = null,
+    ): array {
+        if (! in_array($kind, ['image', 'document'], true)) {
+            return self::failure('unsupported_kind', __('نوعٌ لا يُرسَل.'), retryable: false);
+        }
+
+        $media = ['id' => $mediaId];
+
+        /*
+         * والتعليقُ يُقصّ عند ألفٍ وأربعةٍ وعشرين حرفًا.
+         *
+         * وهو حدُّ ميتا للتعليق على الوسائط. ونصٌّ أطولُ منه يُردّ كلُّه —
+         * فتُقيَّد الرسالةُ «فشلت» وقد كان يكفي أن يُقصَّ سطر.
+         */
+        if (filled($caption)) {
+            $media['caption'] = mb_substr((string) $caption, 0, 1024);
+        }
+
+        // واسمُ المستند يُرسَل: بدونه يصل التاجرَ ملفٌّ اسمُه رقمٌ لا يُفهم
+        if ($kind === 'document' && filled($filename)) {
+            $media['filename'] = mb_substr((string) $filename, 0, 240);
+        }
+
+        $url = rtrim((string) config('whatsapp.graph_url'), '/')
+            .'/'.config('whatsapp.api_version')
+            .'/'.$connection->phone_number_id.'/messages';
+
+        try {
+            $response = Http::withToken($connection->access_token)
+                ->timeout((int) config('whatsapp.timeout', 15))
+                ->acceptJson()
+                ->post($url, [
+                    'messaging_product' => 'whatsapp',
+                    'recipient_type' => 'individual',
+                    'to' => $to,
+                    'type' => $kind,
+                    $kind => $media,
+                ]);
+        } catch (\Throwable $e) {
+            return self::failure('network_error', $e->getMessage(), retryable: true);
+        }
+
+        return self::interpret($response);
+    }
+
+    /**
+     * قراءةُ ردِّ ميتا على رسالةٍ — نجاحًا أو فشلًا.
+     *
+     * وثلاثةُ نداءاتٍ تقرأ الردَّ نفسَه: قالبٌ ونصٌّ وملفّ. «فحصان لسؤالٍ
+     * واحد يفترقان يوم يُبدَّل أحدهما» — فتُقرأ هنا مرّةً واحدة.
+     *
+     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}
+     */
+    private static function interpret(Response $response): array
+    {
         $payload = $response->json() ?? [];
 
         if ($response->successful()) {
@@ -189,6 +240,7 @@ class MetaWhatsAppClient
 
             return $id
                 ? ['ok' => true, 'id' => $id, 'code' => null, 'message' => null, 'retryable' => false]
+                // ردٌّ ناجحٌ بلا معرّف: لا تُعدّ مقبولةً — لا شيء يُتابَع به
                 : self::failure('no_message_id', __('لم يُعِد المزوّد معرّفًا للرسالة.'), retryable: false);
         }
 
@@ -197,6 +249,13 @@ class MetaWhatsAppClient
         return self::failure(
             (string) ($error['code'] ?? $response->status()),
             (string) ($error['message'] ?? __('تعذّر الإرسال.')),
+            /*
+             * ما يُعاد وما لا يُعاد.
+             *
+             * 429 حدُّ معدّل، و5xx عطلٌ عندهم — كلاهما يزول بالانتظار.
+             * ورقمٌ خاطئ أو قالبٌ غير معتمَد أو رمزٌ مسحوب لا يُصلحه تكرار:
+             * إعادةُ المحاولة عليه استهلاكٌ للطابور ولحدّ المعدّل معًا.
+             */
             retryable: $response->status() === 429 || $response->serverError(),
         );
     }

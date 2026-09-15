@@ -131,7 +131,7 @@ class SettingController extends Controller
         if (! $status['delivers']) {
             return back()->with('toast', [
                 'msg' => __('البريد غير مفعّل على الخادم (المرسِل: :mailer) — لن تخرج أي رسالة.', ['mailer' => $status['mailer']]),
-                'type' => 'error',
+                'type' => 'danger',
             ]);
         }
 
@@ -145,7 +145,7 @@ class SettingController extends Controller
         } catch (\Throwable $e) {
             report($e);
 
-            return back()->with('toast', ['msg' => __('تعذّر إرسال البريد التجريبي'), 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('تعذّر إرسال البريد التجريبي'), 'type' => 'danger']);
         }
     }
 

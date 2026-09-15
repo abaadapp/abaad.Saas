@@ -19,6 +19,7 @@ import PlatformLayout from '@/Layouts/PlatformLayout';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
+import { fileSize } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -53,7 +54,7 @@ interface Message {
     sender: string;
     at: string | null;
     /* حالُ الخروج إلى واتساب — وفارغةٌ في المحادثات التي لا تخرج أصلًا */
-    delivery: 'sent' | 'failed' | 'blocked' | null;
+    delivery: 'sent' | 'partial' | 'failed' | 'blocked' | null;
     deliveryLabel: string | null;
     deliveryError: string | null;
     files: { id: number; name: string; size: number; isImage: boolean; url: string }[];
@@ -136,7 +137,6 @@ const ago = (iso: string | null, t: (k: string, r?: Record<string, string | numb
     return new Date(iso).toLocaleDateString();
 };
 
-const kb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 /** لونُ حبّةِ الحالة — والمعنى قبل اللون: النصّ مكتوبٌ فيها دائمًا */
 const statusTone = (status: string) =>
@@ -562,7 +562,7 @@ function Bubble({ m }: { m: Message }) {
                     >
                         <FileText className="size-4 shrink-0 text-[#6d28d9]" />
                         <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                        <span className="shrink-0 text-[11px] text-[#9ca3af]">{kb(f.size)}</span>
+                        <span className="shrink-0 text-[11px] text-[#9ca3af]">{fileSize(f.size)}</span>
                     </a>
                 ))}
 
@@ -585,7 +585,12 @@ function Bubble({ m }: { m: Message }) {
                     <p
                         className={cn(
                             'mt-1 flex items-start gap-1 text-[10px]',
-                            m.delivery === 'sent' ? 'text-[#15803d]' : 'text-[#b91c1c]',
+                            m.delivery === 'sent'
+                                ? 'text-[#15803d]'
+                                /* وبعضُها خرج: لا أخضرَ يقول «وصل كلُّه» ولا أحمرَ يقول «لم يصل شيء» */
+                                : m.delivery === 'partial'
+                                  ? 'text-[#b45309]'
+                                  : 'text-[#b91c1c]',
                         )}
                     >
                         {m.delivery === 'sent' ? (

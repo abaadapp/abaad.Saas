@@ -80,7 +80,7 @@ class BankStatementController extends Controller
             ->getActiveSheet()->toArray(null, true, true, false);
 
         if (count($rows) < 2) {
-            return back()->with('toast', ['msg' => __('الملف فارغ أو لا يحتوي بيانات.'), 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('الملف فارغ أو لا يحتوي بيانات.'), 'type' => 'danger']);
         }
 
         $cols = $this->detectColumns($rows[0]);
@@ -88,7 +88,7 @@ class BankStatementController extends Controller
         if ($cols['date'] === null || ! $hasAmount) {
             return back()->with('toast', [
                 'msg' => __('تعذّر التعرّف على الأعمدة. يجب أن يحتوي الملف على عمود «التاريخ» وعمود «المبلغ» أو عمودَي «مدين» و«دائن».'),
-                'type' => 'error',
+                'type' => 'danger',
             ]);
         }
 

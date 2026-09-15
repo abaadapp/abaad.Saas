@@ -27,11 +27,15 @@ use App\Models\WhatsAppConnection;
  * ويُكتب في الرسالة `blocked` — لا «فشل» فيُظنَّ عطلًا يزول بالتكرار، ولا
  * صمتٌ فيُظنَّ الردُّ قد وصل.
  *
- * ═══ وحدُّ هذه المرحلة يُقال ═══
+ * ═══ وما يعبر وما لا يعبر ═══
  *
- * نصٌّ يخرج ونصٌّ يدخل. والمرفقاتُ لا ترفع ولا تنزل عبر واتساب في هذه
- * النسخة — ولا يُصمت عن ذلك: الوارد غيرُ النصّيّ يُكتب بما هو، والصادرُ
- * ذو المرفق يحمل سطرًا يقول أين يُفتح.
+ * نصٌّ وصورةٌ وملفُّ PDF — في الاتّجاهين. والصادرُ ذو المرفق يخرج رسائلَ
+ * عدّةً عند ميتا: نصُّه أوّلًا ثمّ ملفّاته، فواتساب لا يحمل ملفَّين في
+ * رسالة — انظر `WhatsAppMedia::deliver`.
+ *
+ * وما سوى ذلك (صوتٌ وفيديو وملصقٌ وموقع) لا يُنزَّل ولا يُخزَّن، ولا يُصمت
+ * عنه: يُكتب في الخيط سطرٌ يقول نوعَه، فتاجرٌ أرسل ولم يُجَب أسوأُ من سطرٍ
+ * يقول «أرسل مقطعًا لا يُعرض هنا».
  */
 final class SupportWhatsApp
 {
@@ -182,7 +186,15 @@ final class SupportWhatsApp
         }
 
         $phone = WhatsAppPhone::normalize($message['from'] ?? null);
-        $body = self::inboundBody($message);
+
+        /*
+         * والتنزيلُ **قبل** الكتابة لا داخلها.
+         *
+         * `Contention::attempt` تفتح نقطةَ حفظٍ وتقفل صفَّ المحادثة؛ ونداءٌ
+         * إلى ميتا يسحب عشرةَ ميجابايت داخلها يُبقي القفلَ حتّى يردّ خادمٌ
+         * في بلدٍ آخر. فتُسحب البايتاتُ أوّلًا، ثمّ يُكتب كلُّ شيءٍ دفعةً.
+         */
+        [$body, $file] = self::inbound($connection, $message);
 
         /*
          * وإشعارٌ توأمٌ يصل في اللحظة نفسِها يموت وحدَه.
@@ -199,7 +211,7 @@ final class SupportWhatsApp
          * النجاحُ والاصطدامُ سواءٌ هنا، كلاهما يعني أنّ الرسالة مكتوبةٌ
          * مرّةً واحدة.
          */
-        Contention::attempt(fn () => self::store($user, $phone, $body, $wamid));
+        Contention::attempt(fn () => self::store($user, $phone, $body, $file, $wamid));
     }
 
     /**
@@ -207,8 +219,13 @@ final class SupportWhatsApp
      *
      * @param  non-empty-string  $wamid
      */
-    private static function store(User $user, ?string $phone, string $body, string $wamid): void
-    {
+    private static function store(
+        User $user,
+        ?string $phone,
+        string $body,
+        ?array $file,
+        string $wamid,
+    ): void {
         /*
          * خيطُ واتساب لهذا المتجر — حيًّا، أو حديثًا لم تمضِ عليه النافذة.
          *
@@ -224,7 +241,7 @@ final class SupportWhatsApp
             ->first();
 
         if ($conversation) {
-            Support::businessReplied($conversation, $user, $body, $wamid);
+            $written = Support::businessReplied($conversation, $user, $body, $wamid);
         } else {
             $conversation = Support::open(
                 $user,
@@ -235,6 +252,13 @@ final class SupportWhatsApp
                 $phone,
                 $wamid,
             );
+
+            $written = $conversation->messages()->orderByDesc('id')->first();
+        }
+
+        /* وما نزل يُعلَّق على رسالته — لا على المحادثة ولا على رسالةٍ أخرى */
+        if ($file !== null && $written !== null) {
+            Support::attachBytes($written, $file['contents'], $file['mime'], $file['name']);
         }
 
         /*
@@ -250,15 +274,21 @@ final class SupportWhatsApp
     }
 
     /**
-     * نصُّ الوارد — أو وصفٌ صادقٌ لما لا يُقرأ.
+     * قراءةُ الوارد — نصُّه، وملفُّه إن كان ممّا نحمله.
      *
-     * صورةٌ أو صوتٌ أو موقعٌ لا يُنزَّل في هذه النسخة. وإسقاطُ الرسالة يعني
-     * تاجرًا أرسل ولم يردّ عليه أحد؛ وكتابةُ نصٍّ فارغٍ تعني سطرًا أبيضَ لا
-     * يُفهم. فيُكتب نوعُها.
+     * ═══ وثلاثةُ طرقٍ لا اثنان ═══
+     *
+     * نصٌّ يُقرأ كما كُتب. وصورةٌ أو ملفٌّ يُنزَّل ويُعلَّق على الرسالة،
+     * وتعليقُه — إن كتبه صاحبُه — هو نصُّها. وما سوى ذلك يُكتب بنوعه.
+     *
+     * وإخفاقُ التنزيل ليس صمتًا: يُكتب أنّ شيئًا وصل ولم يُسحب، ويُذكر
+     * السبب. «طمأنينةٌ كاذبة أسوأ من تحذيرٍ كاذب» — والدعمُ حين يقرأ «أرسل
+     * صورةً تعذّر تنزيلُها» يطلبها من جديد، وحين لا يقرأ شيئًا لا يطلب.
      *
      * @param  array<string, mixed>  $message
+     * @return array{0: string, 1: ?array{contents:string, mime:string, name:string}}
      */
-    private static function inboundBody(array $message): string
+    private static function inbound(WhatsAppConnection $connection, array $message): array
     {
         $type = (string) ($message['type'] ?? '');
 
@@ -266,7 +296,7 @@ final class SupportWhatsApp
             $body = trim((string) ($message['text']['body'] ?? ''));
 
             if ($body !== '') {
-                return mb_substr($body, 0, 5000);
+                return [mb_substr($body, 0, 5000), null];
             }
         }
 
@@ -279,9 +309,76 @@ final class SupportWhatsApp
         });
 
         if ($pressed !== '') {
-            return mb_substr($pressed, 0, 5000);
+            return [mb_substr($pressed, 0, 5000), null];
         }
 
+        $part = (array) ($message[$type] ?? []);
+        $mediaId = (string) ($part['id'] ?? '');
+        $mime = (string) ($part['mime_type'] ?? '');
+        $caption = trim((string) ($part['caption'] ?? ''));
+
+        /*
+         * والفاصلُ الوحيد: أثمّةَ ملفٌّ عند ميتا، ومن نوعٍ تعرضه شاشتُنا؟
+         *
+         * ═══ ولمَ سؤالٌ واحدٌ لا سؤالان ═══
+         *
+         * أوّلُ كتابةٍ لهذا سألت مرّتين: أنوعُ الرسالة `image` أو `document`؟
+         * ثمّ: أمِن الـmime ما نحمله؟ وأسقطت الطفرةُ كلًّا منهما وحدَه فلم
+         * يتغيّر شيء — لأنّ الثاني يكفي. «فحصان لسؤالٍ واحد يفترقان يوم
+         * يُبدَّل أحدهما»، وحارسٌ لا تقتله طفرةٌ لا يحرس.
+         *
+         * والباقي يُقاس هنا وحدَه: واتساب يُرسل ملفَّ صوتٍ باسم `document`
+         * أيضًا، ورسالةَ موقعٍ بلا معرّفِ ملفٍّ أصلًا. فالـmime هو ما يفصل،
+         * لا الاسمُ الذي تكتبه ميتا على الرسالة.
+         */
+        if ($mediaId !== '' && WhatsAppMedia::kind($mime) !== null) {
+            return self::inboundFile($connection, $type, $mediaId, $mime, $caption, $part);
+        }
+
+        return [$caption !== '' ? mb_substr($caption, 0, 5000) : self::describe($type), null];
+    }
+
+    /**
+     * ملفٌّ ثبت أنّه ممّا نحمله — يُسحب من ميتا ويُسمّى.
+     *
+     * @param  array<string, mixed>  $part
+     * @return array{0: string, 1: ?array{contents:string, mime:string, name:string}}
+     */
+    private static function inboundFile(
+        WhatsAppConnection $connection,
+        string $type,
+        string $mediaId,
+        string $mime,
+        string $caption,
+        array $part,
+    ): array {
+        $download = WhatsAppMedia::download($connection, $mediaId);
+
+        if (! $download['ok']) {
+            return [
+                __('[وصل :type عبر واتساب ولم يُنزَّل — :why. اطلب إعادةَ إرساله.]', [
+                    'type' => $type === 'image' ? __('صورة') : __('ملفّ'),
+                    'why' => mb_substr((string) $download['message'], 0, 120),
+                ]),
+                null,
+            ];
+        }
+
+        $name = trim((string) ($part['filename'] ?? ''));
+
+        if ($name === '') {
+            $name = 'whatsapp-'.now()->format('Ymd-His').'.'.WhatsAppMedia::suffix($mime);
+        }
+
+        return [
+            $caption !== '' ? mb_substr($caption, 0, 5000) : ($type === 'image' ? __('[صورة]') : __('[ملفّ]')),
+            ['contents' => (string) $download['contents'], 'mime' => $mime, 'name' => $name],
+        ];
+    }
+
+    /** وصفُ ما لا يُحمل — سطرٌ يُقرأ بدل صفٍّ يُسقَط أو سطرٍ أبيض */
+    private static function describe(string $type): string
+    {
         return __('[أرسل التاجر :type عبر واتساب — لا يُعرض هنا. اطلب منه رفعه من داخل أبعاد.]', [
             'type' => match ($type) {
                 'image' => __('صورة'),
@@ -369,37 +466,43 @@ final class SupportWhatsApp
             return;
         }
 
-        $result = MetaWhatsAppClient::sendText($line, $to, self::outboundBody($message));
+        $out = WhatsAppMedia::deliver($line, $to, (string) $message->body, self::outboundFiles($message));
 
-        if ($result['ok']) {
-            $message->forceFill([
-                'delivery' => 'sent',
-                'delivery_error' => null,
-                'external_message_id' => $result['id'],
-            ])->save();
+        $message->forceFill([
+            'delivery' => $out['state'],
+            'delivery_error' => $out['message'] === null ? null : mb_substr((string) $out['message'], 0, 200),
+        ])->save();
 
-            return;
+        /*
+         * والمعرّفُ يُكتب إن خرج شيءٌ فعلًا — ولو خرج بعضُه.
+         *
+         * `partial` تعني أنّ النصَّ عند التاجر والمرفقَ لم يصل؛ ومعرّفُ ما
+         * خرج هو ما تُعلّق عليه ميتا إشعاراتِ «سُلّمت» و«قُرئت». وتركُه
+         * فارغًا يعني رسالةً خرجت ولا نعرف عنها شيئًا بعدها.
+         */
+        if (filled($out['id'])) {
+            $message->forceFill(['external_message_id' => $out['id']])->save();
         }
-
-        self::stamp($message, 'failed', mb_substr((string) $result['message'], 0, 200));
     }
 
     /**
-     * نصُّ الصادر — كما كُتب، ومعه ما لا يستطيع واتساب حملَه.
+     * مرفقاتُ الردّ كما تُسلَّم للقناة — بترتيب رفعها.
      *
-     * مرفقٌ لا يخرج في هذه النسخة. وإخراجُ النصّ وحده صمتًا يعني تاجرًا
-     * يقرأ «أرفقتُ لك الصورة» ولا صورةَ عنده.
+     * والترتيبُ ليس زينة: من أرفق «قبل» و«بعد» يريدهما بهذا الترتيب عند
+     * من يقرأ.
+     *
+     * @return list<array{disk:string, path:string, mime:string, name:string}>
      */
-    private static function outboundBody(SupportMessage $message): string
+    private static function outboundFiles(SupportMessage $message): array
     {
-        $body = (string) $message->body;
-        $files = $message->attachments()->count();
-
-        if ($files > 0) {
-            $body .= "\n\n".__('(أُرفق :n ملفًّا — يُفتح من صفحة الدعم داخل أبعاد.)', ['n' => $files]);
-        }
-
-        return $body;
+        return $message->attachments()->orderBy('id')->get()
+            ->map(fn ($a) => [
+                'disk' => (string) $a->disk,
+                'path' => (string) $a->path,
+                'mime' => (string) $a->mime,
+                'name' => (string) $a->name,
+            ])
+            ->values()->all();
     }
 
     private static function stamp(SupportMessage $message, string $state, string $reason): void
@@ -412,6 +515,8 @@ final class SupportWhatsApp
     {
         return match ($state) {
             'sent' => __('أُرسلت عبر واتساب'),
+            /* وهذه لا تُدّعى نجاحًا ولا فشلًا — انظر `WhatsAppMedia::deliver` */
+            'partial' => __('خرج النصّ ولم يخرج المرفق'),
             'failed' => __('لم تُرسل'),
             'blocked' => __('لم تخرج — النافذة مغلقة'),
             default => null,

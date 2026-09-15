@@ -9,6 +9,8 @@ use App\Models\SupportRead;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * مركزُ المحادثات — القواعدُ في موضعٍ واحد.
@@ -77,14 +79,21 @@ final class Support
 
     /* ═══════════════════ المرفقات ═══════════════════ */
 
-    /** ما يُقبل رفعُه — والقائمةُ مصدرٌ واحد يقرأ منه التحقّق والشاشة */
-    public const EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
+    /*
+     * ما يُقبل رفعُه — ومصدرُه واحدٌ في `WhatsAppMedia`.
+     *
+     * ═══ ولمَ هناك لا هنا ═══
+     *
+     * مرفقُ الدعم لم يعد يقف داخل أبعاد: محادثةُ واتساب تُخرجه إلى هاتف
+     * التاجر. فما نقبل رفعَه يجب أن يكون ما يحمله واتساب — وقائمتان،
+     * واحدةٌ عندنا وأخرى عند القناة، تعنيان ملفًّا يُرفع ويُقبل ثمّ تردُّه
+     * ميتا بعد أن قال له المركزُ «أُرسل».
+     */
+    public const EXTENSIONS = WhatsAppMedia::EXTENSIONS;
 
-    /** بالكيلوبايت — عشرةُ ميجابايت كأخواتها في المالية */
-    public const MAX_KB = 10240;
+    public const MAX_KB = WhatsAppMedia::MAX_KB;
 
-    /** وثلاثةٌ تكفي صورةَ شاشةٍ وسجلًّا وورقة */
-    public const MAX_FILES = 3;
+    public const MAX_FILES = WhatsAppMedia::MAX_FILES;
 
     /* ═══════════════════ الترجمة ═══════════════════ */
 
@@ -421,10 +430,7 @@ final class Support
     /** @return array<string, mixed> قواعدُ التحقّق لحقلٍ اسمه $field */
     public static function fileRules(string $field): array
     {
-        return [
-            $field => ['nullable', 'array', 'max:'.self::MAX_FILES],
-            $field.'.*' => ['file', 'max:'.self::MAX_KB, 'extensions:'.implode(',', self::EXTENSIONS)],
-        ];
+        return WhatsAppMedia::rules($field);
     }
 
     /**
@@ -445,6 +451,34 @@ final class Support
             'name' => $file->getClientOriginalName(),
             'mime' => $file->getClientMimeType(),
             'size' => $file->getSize(),
+        ]);
+    }
+
+    /**
+     * حفظُ ملفٍّ وصل بايتاتٍ لا نموذجَ رفع — كالنازل من واتساب.
+     *
+     * والاسمُ المخزَّن عشوائيٌّ هنا أيضًا: اسمُ ملفٍّ يختاره من في الطرف
+     * الآخر يُكتب في مسارٍ فيخرج به من المجلّد. والمعروضُ ما سمّاه صاحبُه
+     * — عمودًا يُقرأ، لا جزءًا من طريق.
+     */
+    public static function attachBytes(
+        SupportMessage $message,
+        string $contents,
+        string $mime,
+        string $name,
+    ): SupportAttachment {
+        $path = 'support/'.$message->conversation_id.'/'
+            .Str::random(40).'.'.WhatsAppMedia::suffix($mime);
+
+        Storage::disk('local')->put($path, $contents);
+
+        return SupportAttachment::create([
+            'message_id' => $message->id,
+            'disk' => 'local',
+            'path' => $path,
+            'name' => mb_substr($name, 0, 240),
+            'mime' => $mime,
+            'size' => strlen($contents),
         ]);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\CrmAiFeedback;
+use App\Models\CrmAttachment;
 use App\Models\CrmLead;
 use App\Models\CrmMessage;
 use App\Models\User;
@@ -15,6 +16,7 @@ use App\Support\CrmSignals;
 use App\Support\CrmWhatsApp;
 use App\Support\Pagination;
 use App\Support\Search;
+use App\Support\WhatsAppMedia;
 use App\Support\WhatsAppPhone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -133,6 +135,10 @@ class CrmConversationController extends Controller
                 'connected' => CrmWhatsApp::connected(),
                 'number' => optional(CrmWhatsApp::line())->display_phone_number,
             ],
+            /* وحدودُ الرفع من مصدرها الواحد — لا مكتوبةً في الشاشة بيدٍ ثانية */
+            'maxFiles' => WhatsAppMedia::MAX_FILES,
+            'maxKb' => WhatsAppMedia::MAX_KB,
+            'extensions' => WhatsAppMedia::EXTENSIONS,
         ]);
     }
 
@@ -160,9 +166,14 @@ class CrmConversationController extends Controller
              */
             'ai_model' => ['nullable', 'string', 'max:60'],
             'ai_edited' => ['nullable', 'boolean'],
-        ]);
+        ] + WhatsAppMedia::rules('files'));
 
-        $message = CrmWhatsApp::send($lead, $request->user(), $data['body']);
+        $message = CrmWhatsApp::send(
+            $lead,
+            $request->user(),
+            $data['body'],
+            array_values($request->file('files', [])),
+        );
 
         if (filled($data['ai_model'] ?? null)) {
             $message->forceFill([
@@ -173,9 +184,15 @@ class CrmConversationController extends Controller
 
         Activity::log('updated', 'ردّ على العميل المحتمل '.$lead->displayName().' عبر واتساب');
 
-        return back()->with('toast', $message->delivery === 'sent'
-            ? ['msg' => __('أُرسلت'), 'type' => 'success']
-            : ['msg' => (string) $message->delivery_error, 'type' => 'error']);
+        return back()->with('toast', match ($message->delivery) {
+            'sent' => ['msg' => __('أُرسلت'), 'type' => 'success'],
+            /* وخروجُ النصّ دون المرفق يُقال بحرفه — لا أخضرَ ولا أحمر */
+            'partial' => [
+                'msg' => __('خرج النصّ ولم يخرج المرفق — :why', ['why' => (string) $message->delivery_error]),
+                'type' => 'warning',
+            ],
+            default => ['msg' => (string) $message->delivery_error, 'type' => 'danger'],
+        });
     }
 
     /**
@@ -225,7 +242,7 @@ class CrmConversationController extends Controller
         $reply = CrmAssistant::suggest($lead, $data['steer'] ?? null);
 
         if (! $reply->ok) {
-            return back()->with('toast', ['msg' => (string) $reply->error, 'type' => 'error']);
+            return back()->with('toast', ['msg' => (string) $reply->error, 'type' => 'danger']);
         }
 
         Activity::log('updated', 'طلب اقتراح ردٍّ للعميل المحتمل '.$lead->displayName());
@@ -413,6 +430,7 @@ class CrmConversationController extends Controller
     private function thread(CrmLead $lead): array
     {
         return CrmMessage::where('lead_id', $lead->id)
+            ->with('attachments')
             ->orderByDesc('id')->limit(self::THREAD_LIMIT)->get()
             ->reverse()->values()
             ->map(fn (CrmMessage $m) => [
@@ -425,6 +443,14 @@ class CrmConversationController extends Controller
                 'deliveryLabel' => CrmWhatsApp::deliveryLabel($m->delivery),
                 'deliveryError' => $m->delivery_error,
                 'mediaType' => $m->media_type,
+                /* والمرفقُ رابطٌ يمرّ بمتحكّمٍ يسأل عن الجلسة — لا مسارَ قرصٍ خام */
+                'files' => $m->attachments->map(fn (CrmAttachment $a) => [
+                    'id' => $a->id,
+                    'name' => $a->name,
+                    'size' => $a->size,
+                    'image' => WhatsAppMedia::kind($a->mime) === 'image',
+                    'url' => route('super-admin.crm.conversations.attachment', [$lead->id, $a->id]),
+                ])->all(),
             ])->all();
     }
 }

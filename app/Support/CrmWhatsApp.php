@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\CrmAttachment;
 use App\Models\CrmLead;
 use App\Models\CrmMessage;
 use App\Models\CrmRead;
@@ -10,6 +11,9 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessage;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * قناةُ واتساب في دفتر المبيعات — الموضعُ الوحيد الذي يعرفها.
@@ -31,10 +35,10 @@ use App\Models\WhatsAppMessage;
  * وتُكتب الرسالة `blocked` — لا «فشل» فيُظنَّ عطلًا يزول بالتكرار، ولا صمتٌ
  * فيُظنَّ الردُّ قد وصل.
  *
- * ═══ وحدُّ هذه المرحلة يُقال ═══
+ * ═══ وما يعبر وما لا يعبر ═══
  *
- * نصٌّ يخرج ونصٌّ يدخل. ولا مرفقاتٍ ولا قوالبَ مُعتمَدة في هذه النسخة —
- * فخارج النافذة لا يخرج شيء، ويُقال ذلك في الشاشة لا يُصمت عنه.
+ * نصٌّ وصورةٌ وملفُّ PDF — في الاتّجاهين. ولا قوالبَ معتمَدةً في هذه
+ * النسخة، فخارج النافذة لا يخرج شيء، ويُقال ذلك في الشاشة لا يُصمت عنه.
  */
 final class CrmWhatsApp
 {
@@ -270,7 +274,11 @@ final class CrmWhatsApp
             return;
         }
 
-        [$body, $mediaType] = self::inboundBody($message);
+        /*
+         * والتنزيلُ **قبل** الكتابة لا داخلها: نداءُ شبكةٍ داخل نقطةِ حفظٍ
+         * يُبقي القفلَ على الصفوف حتّى يردّ خادمٌ في بلدٍ آخر.
+         */
+        [$body, $mediaType, $file] = self::inbound($connection, $message);
 
         /*
          * واسمُ الملفّ الشخصيّ يُؤخذ إن أرسلته ميتا — ولا يُخترع.
@@ -280,7 +288,7 @@ final class CrmWhatsApp
          */
         $profileName = self::profileName($message);
 
-        Contention::attempt(fn () => self::store($from, $profileName, $body, $mediaType, $wamid));
+        Contention::attempt(fn () => self::store($from, $profileName, $body, $mediaType, $file, $wamid));
     }
 
     /**
@@ -348,18 +356,24 @@ final class CrmWhatsApp
         ?string $profileName,
         string $body,
         ?string $mediaType,
+        ?array $file,
         string $wamid,
     ): void {
         $result = CrmLeads::findOrCreateByPhone($from, Crm::SOURCE_WHATSAPP, $profileName);
         $lead = $result['lead'];
 
-        CrmMessage::create([
+        $message = CrmMessage::create([
             'lead_id' => $lead->id,
             'direction' => CrmMessage::IN,
             'body' => $body,
             'media_type' => $mediaType,
             'external_message_id' => $wamid,
         ]);
+
+        /* وما نزل يُعلَّق على رسالته — لا على العميل ولا على رسالةٍ أخرى */
+        if ($file !== null) {
+            self::keep($message, $file['contents'], $file['mime'], $file['name']);
+        }
 
         /*
          * وختمُ النافذة يُكتب هنا وحدَه.
@@ -403,15 +417,17 @@ final class CrmWhatsApp
     }
 
     /**
-     * نصُّ الوارد — أو وصفٌ صادقٌ لما لا يُقرأ.
+     * قراءةُ الوارد — نصُّه، ونوعُه، وملفُّه إن كان ممّا نحمله.
      *
-     * صورةٌ أو صوتٌ لا يُنزَّل في هذه النسخة. وإسقاطُ الرسالة يعني عميلًا
-     * أرسل ولم يردّ عليه أحد؛ وكتابةُ نصٍّ فارغٍ تعني سطرًا أبيضَ لا يُفهم.
+     * ═══ ولمَ `media_type` يبقى مكتوبًا ولو نزل الملفّ ═══
+     *
+     * العمودُ يقول «بمَ جاءت هذه الرسالة»، والمرفقُ يقول «وأين هي». وصفٌّ
+     * فيه مرفقٌ ولا نوعَ عليه يُقرأ نصًّا في كلّ تقريرٍ يُكتب بعد سنة.
      *
      * @param  array<string, mixed>  $message
-     * @return array{0: string, 1: ?string}
+     * @return array{0: string, 1: ?string, 2: ?array{contents:string, mime:string, name:string}}
      */
-    private static function inboundBody(array $message): array
+    private static function inbound(WhatsAppConnection $connection, array $message): array
     {
         $type = (string) ($message['type'] ?? '');
 
@@ -419,7 +435,7 @@ final class CrmWhatsApp
             $body = trim((string) ($message['text']['body'] ?? ''));
 
             if ($body !== '') {
-                return [mb_substr($body, 0, 5000), null];
+                return [mb_substr($body, 0, 5000), null, null];
             }
         }
 
@@ -431,24 +447,115 @@ final class CrmWhatsApp
         });
 
         if ($pressed !== '') {
-            return [mb_substr($pressed, 0, 5000), null];
+            return [mb_substr($pressed, 0, 5000), null, null];
+        }
+
+        $part = (array) ($message[$type] ?? []);
+        $mediaId = (string) ($part['id'] ?? '');
+        $mime = (string) ($part['mime_type'] ?? '');
+        $caption = trim((string) ($part['caption'] ?? ''));
+
+        /* والفاصلُ سؤالٌ واحد — انظر `SupportWhatsApp::inbound` لعلّته */
+        if ($mediaId !== '' && WhatsAppMedia::kind($mime) !== null) {
+            return self::inboundFile($connection, $type, $mediaId, $mime, $caption, $part);
         }
 
         return [
-            __('[أرسل :type — لا يُعرض هنا في هذه النسخة.]', [
-                'type' => match ($type) {
-                    'image' => __('صورة'),
-                    'document' => __('ملفًّا'),
-                    'audio', 'voice' => __('رسالة صوتية'),
-                    'video' => __('مقطعًا'),
-                    'sticker' => __('ملصقًا'),
-                    'location' => __('موقعًا'),
-                    'contacts' => __('جهة اتصال'),
-                    default => __('رسالة'),
-                },
-            ]),
+            $caption !== '' ? mb_substr($caption, 0, 5000) : self::describe($type),
             $type !== '' ? mb_substr($type, 0, 20) : 'unknown',
+            null,
         ];
+    }
+
+    /**
+     * ملفٌّ ثبت أنّه ممّا نحمله — يُسحب من ميتا ويُسمّى.
+     *
+     * @param  array<string, mixed>  $part
+     * @return array{0: string, 1: ?string, 2: ?array{contents:string, mime:string, name:string}}
+     */
+    private static function inboundFile(
+        WhatsAppConnection $connection,
+        string $type,
+        string $mediaId,
+        string $mime,
+        string $caption,
+        array $part,
+    ): array {
+        $download = WhatsAppMedia::download($connection, $mediaId);
+
+        if (! $download['ok']) {
+            /*
+             * وإخفاقُ التنزيل يُقال ولا يُسكت عنه.
+             *
+             * عميلٌ محتمَلٌ أرسل صورةَ ما يريد شراءَه، فإن لم يقرأ الموظّفُ
+             * شيئًا ظنَّ أنّ الرسالةَ فارغةٌ فلم يسأل — وذهب العميل.
+             */
+            return [
+                __('[وصل :type ولم يُنزَّل — :why. اطلب إعادةَ إرساله.]', [
+                    'type' => $type === 'image' ? __('صورة') : __('ملفّ'),
+                    'why' => mb_substr((string) $download['message'], 0, 120),
+                ]),
+                mb_substr($type, 0, 20),
+                null,
+            ];
+        }
+
+        $name = trim((string) ($part['filename'] ?? ''));
+
+        if ($name === '') {
+            $name = 'whatsapp-'.now()->format('Ymd-His').'.'.WhatsAppMedia::suffix($mime);
+        }
+
+        return [
+            $caption !== '' ? mb_substr($caption, 0, 5000) : ($type === 'image' ? __('[صورة]') : __('[ملفّ]')),
+            mb_substr($type, 0, 20),
+            ['contents' => (string) $download['contents'], 'mime' => $mime, 'name' => $name],
+        ];
+    }
+
+    /** وصفُ ما لا يُحمل — سطرٌ يُقرأ بدل صفٍّ يُسقَط أو سطرٍ أبيض */
+    private static function describe(string $type): string
+    {
+        return __('[أرسل :type — لا يُعرض هنا في هذه النسخة.]', [
+            'type' => match ($type) {
+                'image' => __('صورة'),
+                'document' => __('ملفًّا'),
+                'audio', 'voice' => __('رسالة صوتية'),
+                'video' => __('مقطعًا'),
+                'sticker' => __('ملصقًا'),
+                'location' => __('موقعًا'),
+                'contacts' => __('جهة اتصال'),
+                default => __('رسالة'),
+            },
+        ]);
+    }
+
+    /**
+     * حفظُ ملفٍّ على رسالة — بايتاتٍ من واتساب أو نموذجَ رفعٍ من الشاشة.
+     *
+     * والاسمُ المخزَّن عشوائيٌّ: اسمُ ملفٍّ يختاره من في الطرف الآخر يُكتب
+     * في مسارٍ فيخرج به من المجلّد. والمعروضُ ما سمّاه صاحبُه — عمودًا
+     * يُقرأ لا جزءًا من طريق.
+     */
+    public static function keep(
+        CrmMessage $message,
+        string $contents,
+        string $mime,
+        string $name,
+    ): CrmAttachment {
+        $path = 'crm/'.$message->lead_id.'/'
+            .Str::random(40).'.'.WhatsAppMedia::suffix($mime);
+
+        Storage::disk('local')->put($path, $contents);
+
+        return CrmAttachment::create([
+            'message_id' => $message->id,
+            'disk' => 'local',
+            'path' => $path,
+            'name' => mb_substr($name, 0, 240),
+            'mime' => $mime,
+            'size' => strlen($contents),
+        ]);
     }
 
     /** @param array<string, mixed> $message */
@@ -511,7 +618,10 @@ final class CrmWhatsApp
      * و`blocked` تعني أنّنا منعناها قبل النداء، و`failed` تعني أنّ ميتا
      * ردّتها. وثلاثتُها تُقرأ في الشاشة.
      */
-    public static function send(CrmLead $lead, User $sender, string $body): CrmMessage
+    /**
+     * @param  list<UploadedFile>  $files  مرفقاتُ الردّ — بترتيب اختيارها
+     */
+    public static function send(CrmLead $lead, User $sender, string $body, array $files = []): CrmMessage
     {
         $message = CrmMessage::create([
             'lead_id' => $lead->id,
@@ -520,6 +630,22 @@ final class CrmWhatsApp
             'sender_id' => $sender->id,
             'sender_name' => $sender->name,
         ]);
+
+        /*
+         * والمرفقُ يُحفظ **قبل** أن يُحكم على النافذة.
+         *
+         * ردٌّ مُنع لأنّ النافذةَ أُغلقت يبقى في الخيط نصًّا ومرفقًا: من فتحه
+         * غدًا رآه كما كُتب. وحفظُه بعد النجاح وحدَه يعني أنّ ما مُنع يضيع
+         * ملفُّه، فيُعاد رفعُه من جديد.
+         */
+        foreach ($files as $file) {
+            self::keep(
+                $message,
+                (string) file_get_contents($file->getRealPath()),
+                (string) $file->getClientMimeType(),
+                (string) $file->getClientOriginalName(),
+            );
+        }
 
         $reason = self::blockedReason($lead);
 
@@ -535,21 +661,40 @@ final class CrmWhatsApp
          * نداءُ شبكةٍ داخل معاملةٍ مفتوحة يُبقي القفلَ على الصفوف حتّى يردّ
          * خادمٌ في بلدٍ آخر أو تنتهي المهلة.
          */
-        $result = MetaWhatsAppClient::sendText($line, $lead->phone, (string) $message->body);
+        $out = WhatsAppMedia::deliver($line, (string) $lead->phone, (string) $message->body, self::outboundFiles($message));
 
-        if ($result['ok']) {
-            $message->forceFill([
-                'delivery' => 'sent',
-                'delivery_error' => null,
-                'external_message_id' => $result['id'],
-            ])->save();
+        $message->forceFill([
+            'delivery' => $out['state'],
+            'delivery_error' => $out['message'] === null ? null : mb_substr((string) $out['message'], 0, 200),
+        ])->save();
 
-            $lead->forceFill(['last_contact_at' => now()])->save();
-
-            return $message;
+        if (filled($out['id'])) {
+            $message->forceFill(['external_message_id' => $out['id']])->save();
         }
 
-        return self::stamp($message, 'failed', mb_substr((string) $result['message'], 0, 200));
+        /* وآخرُ اتّصالٍ يتحرّك بما خرج فعلًا — لا بما كُتب ومُنع */
+        if ($out['sent'] > 0) {
+            $lead->forceFill(['last_contact_at' => now()])->save();
+        }
+
+        return $message;
+    }
+
+    /**
+     * مرفقاتُ الردّ كما تُسلَّم للقناة — بترتيب حفظها.
+     *
+     * @return list<array{disk:string, path:string, mime:string, name:string}>
+     */
+    private static function outboundFiles(CrmMessage $message): array
+    {
+        return $message->attachments()->orderBy('id')->get()
+            ->map(fn ($a) => [
+                'disk' => (string) $a->disk,
+                'path' => (string) $a->path,
+                'mime' => (string) $a->mime,
+                'name' => (string) $a->name,
+            ])
+            ->values()->all();
     }
 
     private static function stamp(CrmMessage $message, string $state, string $reason): CrmMessage
@@ -564,6 +709,8 @@ final class CrmWhatsApp
     {
         return match ($state) {
             'sent' => __('أُرسلت'),
+            /* وهذه لا تُدّعى نجاحًا ولا فشلًا — انظر `WhatsAppMedia::deliver` */
+            'partial' => __('خرج النصّ ولم يخرج المرفق'),
             /* وهذه من ميتا لا منّا — انظر `WebhookController::applyCrmStatus` */
             'delivered' => __('سُلّمت'),
             'read' => __('قُرئت'),

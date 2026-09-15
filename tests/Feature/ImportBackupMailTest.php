@@ -228,7 +228,7 @@ class ImportBackupMailTest extends TestCase
 
         $this->actingAs($this->super)
             ->post(route('super-admin.settings.testEmail'), ['to' => 'check@abaad.om'])
-            ->assertSessionHas('toast.type', 'error');
+            ->assertSessionHas('toast.type', 'danger');
     }
 
     public function test_a_merchant_cannot_send_platform_test_email(): void

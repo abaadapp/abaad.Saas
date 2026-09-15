@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
@@ -6,13 +6,16 @@ import {
     Building2,
     Clock,
     Inbox,
+    FileText,
     Lock,
     MessageCircle,
+    Paperclip,
     Search,
     Send,
     Sparkles,
     ThumbsDown,
     ThumbsUp,
+    X,
 } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import SmartLink from '@/Components/SmartLink';
@@ -20,6 +23,7 @@ import type { SelectOption } from '@/Components/Field';
 import type { ServerPagination } from '@/Components/DataTable';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
+import { fileSize } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -49,10 +53,12 @@ interface Message {
     sender: string | null;
     at: string | null;
     /* حالُ التسليم كما قالتها ميتا — لا كما أردناها */
-    delivery: 'sent' | 'delivered' | 'read' | 'failed' | 'blocked' | null;
+    delivery: 'sent' | 'delivered' | 'read' | 'failed' | 'blocked' | 'partial' | null;
     deliveryLabel: string | null;
     deliveryError: string | null;
     mediaType: string | null;
+    /* ما نزل من واتساب أو رُفع من هنا — رابطُه يمرّ بمتحكّمٍ يسأل عن الجلسة */
+    files: { id: number; name: string; size: number; image: boolean; url: string }[];
 }
 
 interface Active {
@@ -115,6 +121,9 @@ interface Props {
     signals: Signals | null;
     assistant: { available: boolean; reason: string | null };
     line: { connected: boolean; number: string | null };
+    maxFiles: number;
+    maxKb: number;
+    extensions: string[];
 }
 
 const TONE: Record<string, string> = {
@@ -141,13 +150,19 @@ function Row({ label, value }: { label: string; value: string | null | undefined
 }
 
 export default function CrmConversations() {
-    const { conversations, filters, counts, active, messages, signals, assistant, line } =
+    const { conversations, filters, counts, active, messages, signals, assistant, line, maxFiles, maxKb, extensions } =
         usePage<PageProps<Props>>().props;
     const { props: pageProps } = usePage<PageProps<Props> & { suggestion?: { text: string; model: string | null } }>();
     const t = useTranslate();
     const [query, setQuery] = useState(filters.q ?? '');
 
-    const form = useForm({ body: '', ai_model: '', ai_edited: false as boolean });
+    const form = useForm<{ body: string; ai_model: string; ai_edited: boolean; files: File[] }>({
+        body: '',
+        ai_model: '',
+        ai_edited: false,
+        files: [],
+    });
+    const picker = useRef<HTMLInputElement>(null);
     const suggestForm = useForm({ steer: '' });
 
     /*
@@ -165,6 +180,7 @@ export default function CrmConversations() {
     const useSuggestion = () => {
         if (! suggestion) return;
         form.setData({
+            ...form.data,
             body: suggestion.text,
             ai_model: suggestion.model ?? '',
             ai_edited: false,
@@ -192,7 +208,12 @@ export default function CrmConversations() {
         if (! active) return;
         form.post(route('super-admin.crm.conversations.reply', active.id), {
             preserveScroll: true,
-            onSuccess: () => form.reset(),
+            /*
+                والمرفقاتُ تُمسح مع النصّ.
+                ملفٌّ يبقى في المُحرِّر بعد إرساله يخرج مرّةً ثانيةً مع
+                الردّ التالي — ويصل العميلَ مرّتين.
+            */
+            onSuccess: () => form.reset('body', 'files'),
         });
     };
 
@@ -394,6 +415,26 @@ export default function CrmConversations() {
                                             >
                                                 <p className="whitespace-pre-wrap text-[13px]">{m.body}</p>
 
+                                                {/*
+                                                    والمرفقُ يُعرض رابطًا يُفتح لا اسمًا يُقرأ.
+                                                    «بابٌ معروضٌ لا يُفتح أسوأ من بابٍ لا يُعرض»
+                                                    — وصورةٌ يقرأ الموظّفُ اسمَها ولا يراها
+                                                    كأنّها لم تصل.
+                                                */}
+                                                {m.files.map((f) => (
+                                                    <a
+                                                        key={f.id}
+                                                        href={f.url}
+                                                        className="mt-2 flex items-center gap-2 rounded-[10px] border border-[#e8e8e8] bg-white p-2 text-[12px] hover:bg-[#fafafa]"
+                                                    >
+                                                        <FileText className="size-4 shrink-0 text-[#6d28d9]" />
+                                                        <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                                                        <span className="shrink-0 text-[11px] text-[#9ca3af]">
+                                                            {fileSize(f.size)}
+                                                        </span>
+                                                    </a>
+                                                ))}
+
                                                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[#9ca3af]">
                                                     <span>{m.at}</span>
                                                     {m.sender && <span>· {m.sender}</span>}
@@ -407,7 +448,10 @@ export default function CrmConversations() {
                                                             className={cn(
                                                                 m.delivery === 'failed' || m.delivery === 'blocked'
                                                                     ? 'font-medium text-[#b91c1c]'
-                                                                    : 'text-[#9ca3af]',
+                                                                    /* وبعضُها خرج: لا أحمرَ يقول «ضاع» ولا رماديٌّ يقول «تمّ» */
+                                                                    : m.delivery === 'partial'
+                                                                      ? 'font-medium text-[#b45309]'
+                                                                      : 'text-[#9ca3af]',
                                                             )}
                                                         >
                                                             · {m.deliveryLabel}
@@ -466,7 +510,63 @@ export default function CrmConversations() {
                                                 className="w-full resize-none border-0 bg-transparent p-1.5 text-[13px] outline-none placeholder:text-[#9ca3af]"
                                             />
 
+                                            {form.data.files.length > 0 && (
+                                                <ul className="mb-2 space-y-1">
+                                                    {form.data.files.map((f, i) => (
+                                                        <li
+                                                            key={i}
+                                                            className="flex items-center gap-2 rounded-[8px] bg-[#fafafa] p-1.5 text-[12px]"
+                                                        >
+                                                            <Paperclip className="size-3.5 shrink-0 text-[#9ca3af]" />
+                                                            <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                                                            <button
+                                                                type="button"
+                                                                aria-label={t('إزالة')}
+                                                                onClick={() =>
+                                                                    form.setData(
+                                                                        'files',
+                                                                        form.data.files.filter((_, j) => j !== i),
+                                                                    )
+                                                                }
+                                                            >
+                                                                <X className="size-3.5 text-[#9ca3af] hover:text-[#b91c1c]" />
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+
                                             <div className="flex items-center justify-between gap-2">
+                                                <input
+                                                    ref={picker}
+                                                    type="file"
+                                                    multiple
+                                                    className="hidden"
+                                                    accept={extensions.map((e) => `.${e}`).join(',')}
+                                                    onChange={(e) =>
+                                                        form.setData(
+                                                            'files',
+                                                            [
+                                                                ...form.data.files,
+                                                                ...Array.from(e.target.files ?? []),
+                                                            ].slice(0, maxFiles),
+                                                        )
+                                                    }
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => picker.current?.click()}
+                                                    disabled={form.data.files.length >= maxFiles}
+                                                    title={t('حتى :n ملفات، :kb ميغابايت للملف', {
+                                                        n: maxFiles,
+                                                        kb: Math.round(maxKb / 1024),
+                                                    })}
+                                                >
+                                                    <Paperclip className="size-4" />
+                                                </Button>
+
                                                 {active.windowEndsAt && (
                                                     <span className="text-[11px] text-[#9ca3af]">
                                                         {t('النافذة مفتوحة')}
@@ -485,6 +585,9 @@ export default function CrmConversations() {
                                         </div>
                                         {form.errors.body && (
                                             <p className="mt-1 text-[12px] text-[#b91c1c]">{form.errors.body}</p>
+                                        )}
+                                        {form.errors.files && (
+                                            <p className="mt-1 text-[12px] text-[#b91c1c]">{form.errors.files}</p>
                                         )}
                                     </form>
                                 )}

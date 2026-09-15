@@ -305,7 +305,7 @@ class MarketingController extends Controller
 
         return back()->with('toast', $result['state'] === 'ok'
             ? ['msg' => __('اكتمل الفحص'), 'type' => 'success']
-            : ['msg' => $result['error'] ?? __('تعذّر فحص الموقع'), 'type' => 'error']);
+            : ['msg' => $result['error'] ?? __('تعذّر فحص الموقع'), 'type' => 'danger']);
     }
 
     /* ----------------------------- برنامج الولاء ----------------------------- */

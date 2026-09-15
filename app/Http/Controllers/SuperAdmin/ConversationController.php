@@ -175,9 +175,20 @@ class ConversationController extends Controller
     {
         return match ($message->delivery) {
             'sent' => back()->with('toast', ['msg' => __('أُرسل الردّ عبر واتساب'), 'type' => 'success']),
+            /*
+             * وخروجُ النصّ دون المرفق يُقال بحرفه.
+             *
+             * توستٌ أخضرُ هنا يعني موظّفًا يغلق الشاشةَ وهو يظنّ أنّ الصورةَ
+             * عند التاجر؛ وأحمرُ يعني أنّه يُعيد الردَّ كلَّه فيصل النصُّ
+             * مرّتين. فصفراءُ تقول ما جرى تحديدًا.
+             */
+            'partial' => back()->with('toast', [
+                'msg' => __('خرج نصُّ الردّ ولم يخرج المرفق — :why', ['why' => (string) $message->delivery_error]),
+                'type' => 'warning',
+            ]),
             'blocked', 'failed' => back()->with('toast', [
                 'msg' => __('حُفظ الردّ ولم يخرج إلى واتساب — :why', ['why' => (string) $message->delivery_error]),
-                'type' => 'error',
+                'type' => 'danger',
             ]),
             default => back(),
         };
@@ -289,7 +300,7 @@ class ConversationController extends Controller
         $result = ConversationHandover::toSales($conversation);
 
         if (! $result['ok']) {
-            return back()->with('toast', ['msg' => $result['reason'], 'type' => 'error']);
+            return back()->with('toast', ['msg' => $result['reason'], 'type' => 'danger']);
         }
 
         return redirect()

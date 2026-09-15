@@ -43,7 +43,7 @@ class BackupController extends Controller
         $data = json_decode(file_get_contents($request->file('backup')->getRealPath()), true);
 
         if (! is_array($data) || (($data['meta']['app'] ?? null) !== 'AbadPOS')) {
-            return back()->with('toast', ['msg' => __('ملف النسخة الاحتياطية غير صالح'), 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('ملف النسخة الاحتياطية غير صالح'), 'type' => 'danger']);
         }
 
         /*
@@ -57,7 +57,7 @@ class BackupController extends Controller
         if ((int) ($data['meta']['version'] ?? 0) < BackupService::VERSION) {
             return back()->with('toast', [
                 'msg' => __('هذه نسخةٌ بصيغةٍ قديمة لا تحمل كلّ جداول المتجر — استعادتُها تمحو ما لا تُعيد. خُذ نسخةً جديدة واستعِد منها.'),
-                'type' => 'error',
+                'type' => 'danger',
             ]);
         }
 

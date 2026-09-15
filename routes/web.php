@@ -89,6 +89,7 @@ use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\BillingController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
 use App\Http\Controllers\SuperAdmin\ConversationController;
+use App\Http\Controllers\SuperAdmin\CrmAttachmentController;
 use App\Http\Controllers\SuperAdmin\CrmController;
 use App\Http\Controllers\SuperAdmin\CrmConversationController;
 use App\Http\Controllers\SuperAdmin\DemoController;
@@ -390,6 +391,14 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
         Route::get('/conversations', [CrmConversationController::class, 'index'])->name('conversations');
         Route::post('/conversations/start', [CrmConversationController::class, 'start'])->name('conversations.start');
         Route::post('/conversations/{id}/reply', [CrmConversationController::class, 'reply'])->name('conversations.reply');
+        /*
+         * وبابُ المرفق قبل `/{id}` المفتوحة — وإلّا التقطتها هي.
+         *
+         * ولا يُقرأ إلّا من فريق أبعاد: المسارُ تحت `role:super_admin`،
+         * والمتحكّمُ يسأل ثانيةً — انظر `CrmAttachmentController`.
+         */
+        Route::get('/conversations/{id}/files/{attachment}', CrmAttachmentController::class)
+            ->name('conversations.attachment');
         /*
          * المساعدُ يقترح — ولا يُرسل.
          *

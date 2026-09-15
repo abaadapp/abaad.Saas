@@ -285,7 +285,7 @@ class UserController extends Controller
         $user = User::findOrFail($id);
 
         if ($user->id === auth()->id()) {
-            return back()->with('toast', ['msg' => __('لا يمكنك حذف حسابك الخاص'), 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('لا يمكنك حذف حسابك الخاص'), 'type' => 'danger']);
         }
 
         /*
@@ -295,7 +295,7 @@ class UserController extends Controller
          * ضغطةٌ لا رجعة عنها إلا من قاعدة البيانات.
          */
         if (self::lastWayIntoThePanel($user)) {
-            return back()->with('toast', ['msg' => __('لا يمكن حذف آخر مدير منصة'), 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('لا يمكن حذف آخر مدير منصة'), 'type' => 'danger']);
         }
 
         $user->delete();
@@ -319,11 +319,11 @@ class UserController extends Controller
     {
         $user = User::findOrFail($id);
         if ($user->id === auth()->id()) {
-            return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'danger']);
         }
         // وإيقافُ آخر مدير منصّة يُغلق اللوحة كما يُغلقها حذفُه
         if ($user->status === 'نشط' && self::lastWayIntoThePanel($user)) {
-            return back()->with('toast', ['msg' => __('لا يمكن إيقاف آخر مدير منصة'), 'type' => 'error']);
+            return back()->with('toast', ['msg' => __('لا يمكن إيقاف آخر مدير منصة'), 'type' => 'danger']);
         }
 
         $user->status = $user->status === 'نشط' ? 'موقوف' : 'نشط';

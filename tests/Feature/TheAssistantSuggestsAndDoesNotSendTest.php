@@ -459,7 +459,7 @@ class TheAssistantSuggestsAndDoesNotSendTest extends TestCase
 
         $this->post(route('super-admin.crm.conversations.suggest', $this->lead->id))
             ->assertRedirect()
-            ->assertSessionHas('toast', fn ($toast) => $toast['type'] === 'error');
+            ->assertSessionHas('toast', fn ($toast) => $toast['type'] === 'danger');
     }
 
     /* ═══════════════════ الإشاراتُ المقيسة ═══════════════════ */

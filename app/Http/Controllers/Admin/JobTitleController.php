@@ -100,7 +100,7 @@ class JobTitleController extends Controller
         if ($used > 0) {
             return back()->with('toast', [
                 'msg' => __('لا يمكن حذف «:name» لأنها مستخدمة لدى :count موظف. غيّر وظيفتهم أولًا.', ['name' => $title->name, 'count' => $used]),
-                'type' => 'error',
+                'type' => 'danger',
             ]);
         }
 

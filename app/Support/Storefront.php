@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\Category;
 use App\Models\Product;
+use App\Support\Website\Shelf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 
@@ -353,7 +354,25 @@ class Storefront
         $site = MarketingSettings::group($bid, 'website');
         $theme = self::theme($site['store_theme'] ?? null);
         $showPrices = ($site['store_show_prices'] ?? '1') === '1';
-        $whatsapp = self::orderNumber($business, $site);
+
+        /*
+         * ═══ و«قبولُ الطلبات» مفتاحٌ يُقرأ هنا كما يُقرأ هناك ═══
+         *
+         * كان الموقعُ المبنيُّ يقرؤه وهذه الصفحةُ لا تقرؤه. فمن أطفأ استقبالَ
+         * الطلبات — مسافرًا، أو مراجعًا لأسعاره — أُطفئ في أحد موقعيه وبقي
+         * في الآخر. ومفتاحٌ يُدير بابًا ولا يُدير أخاه أسوأ من غيابه.
+         *
+         * ═══ ولا يُقيَّد بإظهار الأسعار هنا ═══
+         *
+         * `Publication::commerceFor` تشترط السعرَ للطلب — «يُطلب ما لا يُعرف
+         * ثمنه». وهذه الصفحةُ لا تشترطه عمدًا، ولها حارسٌ باسمه
+         * (`test_prices_can_be_withheld_while_the_order_button_still_works`):
+         * بائعُ الجملة يُخفي أسعاره **ليُسأل عنها**، وزرُّ واتساب هو السؤال.
+         * وشرطُ البنّاء يُفرَض عنده عند الحفظ لا هنا.
+         */
+        $allowOrders = ($site['store_allow_orders'] ?? '1') === '1';
+
+        $whatsapp = $allowOrders ? self::orderNumber($business, $site) : null;
         $currency = self::currency($business);
 
         return [
@@ -527,12 +546,36 @@ class Storefront
      */
     private static function products(int $bid, bool $showPrices, ?string $whatsapp, array $currency): array
     {
-        return self::shown($bid)
-            ->orderByDesc('quantity')->orderBy('name')
+        $rows = self::shown($bid)
+            ->orderBy('name')
             // المقاسات معه: سعرُ ذي المقاسات لا يُقرأ من عموده — انظر price()
             ->with(['variants' => fn ($q) => $q->where('active', true)])
-            ->get()
-            ->map(function ($p) use ($showPrices, $whatsapp, $currency) {
+            ->get();
+
+        /*
+         * ═══ وما على الرفّ يُسأل عنه `Shelf` لا عمودُ الكمّية ═══
+         *
+         * كان السطرُ هنا `quantity > 0` مكتوبًا بيد. وهو **يكذب في حالين**
+         * يعرفهما النظام:
+         *
+         * ١) ذو الوصفة (`Recipe`) مخزونُه مكوّناتُه، وكمّيتُه هو صفرٌ أبدًا.
+         *    فباقاتُ محلّ الورود كلُّها كانت تخرج «غير متوفّر حاليًا» —
+         *    وهي بضاعتُه.
+         *
+         * ٢) ومتجرٌ أذِن بالبيع تحت الصفر (`allow_negative_stock`) لا نفادَ
+         *    عنده: من أذن لكاشيره بذلك لا يريد أن يُخفي موقعُه صنفًا.
+         *
+         * والموقعُ المبنيُّ يسأل `Shelf` منذ كُتبت، وهذه الصفحةُ لا تسأله —
+         * فيقول أحدُهما «نفد» ويقول الآخر «متوفّر» عن الصنف نفسِه.
+         *
+         * والترتيبُ يتبعه: كان `orderByDesc('quantity')` يدفع كلَّ ذي وصفةٍ
+         * إلى ذيل الصفحة مع ما نفد حقًّا.
+         */
+        $have = Shelf::availability($bid, $rows->pluck('id')->all());
+
+        return $rows
+            ->sortByDesc(fn ($p) => ($have[(int) $p->id] ?? false) ? 1 : 0)
+            ->map(function ($p) use ($showPrices, $whatsapp, $currency, $have) {
                 [$price, $from] = self::price($p);
                 $price = $showPrices ? $price : null;
 
@@ -547,7 +590,7 @@ class Storefront
                     'price' => $price,
                     // «من ١٨٫٠٠٠» حين تختلف أسعار المقاسات — انظر price()
                     'from' => $from,
-                    'available' => (int) $p->quantity > 0,
+                    'available' => $have[(int) $p->id] ?? false,
                     'order_url' => self::orderLink($whatsapp, $p->name, $price, $currency),
                 ];
             })->values()->all();

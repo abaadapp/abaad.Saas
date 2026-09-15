@@ -14,6 +14,8 @@ use App\Models\WebsiteSection;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use App\Support\Website\Content;
+use App\Support\Website\Preview;
+use App\Support\Website\Published;
 use App\Support\Website\Publisher;
 use App\Support\Website\Sections;
 use App\Support\Website\Templates;
@@ -446,5 +448,101 @@ class WebsiteEngineTest extends TestCase
 
         $this->assertFalse($profile->contains('best_sellers'));
         $this->assertTrue($profile->contains('gallery'));
+    }
+
+    /* ============ مفاتيحُ المتجر حالُ النشاط الآن لا تصميمٌ يُجمَّد ============ */
+
+    /**
+     * «قبولُ الطلبات» يُطفأ فيُطفأ على الموقع — بلا إعادة نشر.
+     *
+     * ═══ العطبُ الذي وُضع له هذا الحارس ═══
+     *
+     * كان `commerce` يُجمَّد في اللقطة وحدَه بين جيرانه (الشعارُ والعملةُ
+     * واللغة تُقرأ حيّة عمدًا). فيُطفئ التاجر استقبالَ الطلبات — لأنّه
+     * مسافر، أو نفدت بضاعتُه، أو يراجع أسعاره — ويقرأ «حُفظت إعدادات
+     * المتجر» خضراءَ، وموقعُه يبقى يستقبل الطلبات.
+     *
+     * وقِيس الفرق: `المعاينة = false` و`المنشور = true`.
+     */
+    public function test_closing_orders_closes_them_on_the_live_site(): void
+    {
+        $this->catalogue();
+        $site = $this->build();
+        Publisher::publish($site, $this->owner->id);
+
+        $live = fn () => Published::forBusiness($this->bid())['site']['commerce'];
+
+        $this->assertTrue($live()['allow_orders'], 'لم يكن يستقبل الطلبات أصلًا — فالحالةُ لا تقيس شيئًا');
+
+        $this->setting('store_allow_orders', '0');
+
+        $this->assertFalse(
+            $live()['allow_orders'],
+            'أُطفئ استقبالُ الطلبات وبقي الموقع يستقبلها حتى يُعاد النشر',
+        );
+    }
+
+    /** وإخفاءُ الأسعار مثلُه — ولا يُنتظر به نشر */
+    public function test_hiding_prices_hides_them_on_the_live_site(): void
+    {
+        $this->catalogue();
+        $site = $this->build();
+        Publisher::publish($site, $this->owner->id);
+
+        $this->setting('store_show_prices', '0');
+
+        $commerce = Published::forBusiness($this->bid())['site']['commerce'];
+
+        $this->assertFalse($commerce['show_prices'], 'بقيت الأسعارُ ظاهرةً بعد إخفائها');
+        // ولا يُطلب ما لا يُعرف ثمنه — الشرطُ نفسُه الذي في `Publication::commerceFor`
+        $this->assertFalse($commerce['allow_orders']);
+    }
+
+    /**
+     * ولا تفترق المعاينةُ عن المنشور.
+     *
+     * وهذا أخطرُ وجوه العطب: التاجر يُطفئ الزرَّ، ثمّ يفتح معاينته فلا يراه،
+     * فيطمئنّ — وزبونُه يراه ويطلب. «فيرى التاجر في معاينته غير ما يرى
+     * زبونُه» هو العطبُ الذي وُضع له `RendererParityTest` أصلًا.
+     */
+    public function test_the_preview_and_the_live_site_answer_alike(): void
+    {
+        $this->catalogue();
+        $site = $this->build();
+        Publisher::publish($site, $this->owner->id);
+
+        foreach ([['1', '1'], ['1', '0'], ['0', '0'], ['0', '1']] as [$prices, $orders]) {
+            $this->setting('store_show_prices', $prices);
+            $this->setting('store_allow_orders', $orders);
+
+            $preview = Preview::document($site->fresh())['commerce'];
+            $live = Published::forBusiness($this->bid())['site']['commerce'];
+
+            $this->assertSame(
+                $preview, $live,
+                "افترقت المعاينةُ عن المنشور عند (أسعار={$prices}, طلبات={$orders})",
+            );
+        }
+    }
+
+    /**
+     * والوجهةُ تُقرأ من اللقطة لا من المسوّدة.
+     *
+     * من بدّل وجهةَ موقعه إلى «تعريفيّ» ولم ينشر، موقعُه المنشور ما زال
+     * متجرًا — فمفاتيحُه تُقاس بوجهته المنشورة لا بما في مسوّدته.
+     */
+    public function test_the_live_switches_follow_the_published_goal(): void
+    {
+        $this->catalogue();
+        $site = $this->build();
+        Publisher::publish($site, $this->owner->id);
+
+        // المسوّدةُ تصير تعريفيّة، والمنشورُ ما زال متجرًا
+        $site->update(['goal' => Blueprints::PROFILE]);
+
+        $this->assertTrue(
+            Published::forBusiness($this->bid())['site']['commerce']['show_prices'],
+            'قرأ الموقعُ المنشورُ وجهةَ مسوّدةٍ لم تُنشر',
+        );
     }
 }

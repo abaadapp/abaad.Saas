@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\Demo;
 use App\Support\MarketingSettings;
@@ -291,5 +292,113 @@ class StorefrontTest extends TestCase
         $this->actingAs($this->owner);
 
         $this->assertSame('https://old-site.om', Demo::websiteUrl());
+    }
+
+    /* ==================== ما على الرفّ — من مصدرٍ واحد ==================== */
+
+    /**
+     * والباقةُ ذاتُ الوصفة بضاعةٌ لا صنفٌ نافد.
+     *
+     * ═══ العطبُ الذي وُضع له هذا الحارس ═══
+     *
+     * كانت الصفحةُ تحكم بـ`quantity > 0` مكتوبًا بيدها. ومخزونُ ذي الوصفة
+     * مكوّناتُه (انظر `Recipe`)، وكمّيتُه هو **صفرٌ أبدًا** — فباقاتُ محلّ
+     * الورود كلُّها كانت تخرج «غير متوفّر حاليًا»، وهي بضاعتُه.
+     *
+     * والموقعُ المبنيُّ يسأل `Shelf` منذ كُتبت، وهذه لا تسأله: فيقول أحدُهما
+     * «نفد» ويقول الآخر «متوفّر» عن الصنف نفسِه.
+     */
+    public function test_a_recipe_product_is_on_the_shelf_though_its_quantity_is_zero(): void
+    {
+        $bouquet = Product::create([
+            'business_id' => $this->business->id, 'name' => 'باقة الأعراس',
+            'price' => 25, 'cost' => 9, 'quantity' => 0, 'alert_qty' => 0, 'active' => true,
+        ]);
+        $rose = Product::create([
+            'business_id' => $this->business->id, 'name' => 'وردة مفردة',
+            'price' => 1, 'cost' => 0.3, 'quantity' => 500, 'alert_qty' => 10, 'active' => true,
+        ]);
+        $bouquet->recipeItems()->create([
+            'business_id' => $this->business->id,
+            'component_product_id' => $rose->id,
+            'quantity' => 12,
+        ]);
+
+        $this->publish();
+
+        $shown = collect(Storefront::page($this->business->fresh())['products'])->keyBy('name');
+
+        $this->assertTrue(
+            $shown['باقة الأعراس']['available'],
+            'خرجت باقةٌ ذاتُ وصفةٍ «غير متوفّرة» وهي بضاعةُ المحلّ',
+        );
+        $this->assertNotNull($shown['باقة الأعراس']['order_url'], 'وحُجب زرُّ طلبها');
+    }
+
+    /** ومتجرٌ يأذن بالبيع تحت الصفر لا نفادَ عنده — كما في نقطة بيعه */
+    public function test_a_shop_that_sells_below_zero_shows_everything(): void
+    {
+        Setting::updateOrCreate(
+            ['business_id' => $this->business->id, 'key' => 'allow_negative_stock'],
+            ['value' => '1'],
+        );
+        Product::create([
+            'business_id' => $this->business->id, 'name' => 'صنفٌ نفد',
+            'price' => 4, 'cost' => 1, 'quantity' => 0, 'alert_qty' => 1, 'active' => true,
+        ]);
+
+        $this->publish();
+
+        $shown = collect(Storefront::page($this->business->fresh())['products'])->keyBy('name');
+
+        $this->assertTrue($shown['صنفٌ نفد']['available']);
+    }
+
+    /**
+     * وما نفد حقًّا يبقى معروضًا موسومًا — ويتأخّر عمّا على الرفّ.
+     *
+     * واسمُه يسبق أبجديًّا عمدًا: بلا ذلك يتأخّر بترتيب الاسم وحده، فتمرّ
+     * الحالةُ ولو أُسقط الترتيبُ بالتوفّر كلُّه — وقد نجت عليها طفرةٌ فعلًا.
+     */
+    public function test_what_is_truly_out_is_marked_and_falls_behind(): void
+    {
+        Product::create([
+            // «ا» تسبق «ب» في «بوكيه ورد» — فترتيبُ الاسم وحده يضعه أوّلًا
+            'business_id' => $this->business->id, 'name' => 'الصنف الذي نفد',
+            'price' => 4, 'cost' => 1, 'quantity' => 0, 'alert_qty' => 1, 'active' => true,
+        ]);
+
+        $this->publish();
+
+        $names = collect(Storefront::page($this->business->fresh())['products'])->pluck('name')->all();
+        $shown = collect(Storefront::page($this->business->fresh())['products'])->keyBy('name');
+
+        $this->assertFalse($shown['الصنف الذي نفد']['available']);
+        $this->assertTrue($shown['بوكيه ورد']['available']);
+        // والمتوفّر يتقدّمه — لا يُدفن ما يُباع تحت ما لا يُباع
+        $this->assertSame(['بوكيه ورد', 'الصنف الذي نفد'], $names, 'تقدّم ما نفد على ما هو على الرفّ');
+    }
+
+    /* ================== و«قبولُ الطلبات» يُدير البابين ================== */
+
+    /**
+     * يُطفئ استقبالَ الطلبات فيُطفأ هنا أيضًا.
+     *
+     * كان الموقعُ المبنيُّ يقرأ المفتاح وهذه الصفحةُ لا تقرؤه. فمن أطفأه —
+     * مسافرًا، أو مراجعًا لأسعاره — أُطفئ في أحد موقعيه وبقي في الآخر.
+     */
+    public function test_closing_orders_removes_the_button_here_too(): void
+    {
+        $this->publish(['store_allow_orders' => '0']);
+
+        $page = Storefront::page($this->business->fresh());
+
+        $this->assertNull($page['whatsapp'], 'بقي رقمُ الطلب معروضًا بعد إطفاء الاستقبال');
+        $this->assertNull(
+            collect($page['products'])->first()['order_url'],
+            'بقي زرُّ الطلب بعد إطفاء الاستقبال',
+        );
+
+        $this->open()->assertOk()->assertDontSee('اطلب عبر واتساب');
     }
 }

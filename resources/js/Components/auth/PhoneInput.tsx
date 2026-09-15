@@ -90,6 +90,9 @@ export default function PhoneInput({
                 id={id}
                 name="phone"
                 type="tel"
+                /* «تم» لا «اذهب»: معالجُ التسجيل خطواتٌ، وEnter تُنهي الكتابة
+                   لا تُرسل — وهذا حقلٌ خام لا يقرأ افتراضَ `Input` */
+                enterKeyHint="done"
                 inputMode="tel"
                 autoComplete="tel"
                 autoFocus={autoFocus}

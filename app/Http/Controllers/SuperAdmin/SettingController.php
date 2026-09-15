@@ -74,6 +74,24 @@ class SettingController extends Controller
          * محتمَلًا، ويُقرأ نصُّه في لوحة المنصّة.
          */
         'crm_whatsapp_shared' => ['nullable', 'boolean'],
+
+        /*
+         * ═══ أرشفةُ البيانات — ستّةُ مقابض تحكم المنصّة كلَّها ═══
+         *
+         * ولا اعتمادَ فيها ولا مفتاح: `archive_remote_disk` يحمل **اسمَ قرصٍ**
+         * مُعرَّفٍ في `config/filesystems.php`، ومفاتيحُه في `.env` عند
+         * المشغّل. فمن قرأ هذا الجدول لم يقرأ سرًّا.
+         *
+         * و`archive_max_mb` صفرُه «بلا سقف» كصفرِ مدّة الاحتفاظ — انظر
+         * `Archive\Policy`. وسقفُ ٢٠ جيجابايت على المُدخَل يمنع رقمًا يُكتب
+         * سهوًا فيُفرغ القرص قبل أن يُكتشف.
+         */
+        'archive_enabled' => ['nullable', 'boolean'],
+        'archive_manual_enabled' => ['nullable', 'boolean'],
+        'archive_retention_months' => ['nullable', 'integer', 'min:0', 'max:120'],
+        'archive_max_mb' => ['nullable', 'integer', 'min:0', 'max:20000'],
+        'archive_remote_disk' => ['nullable', 'string', 'max:40'],
+        'backup_remote_enabled' => ['nullable', 'boolean'],
     ];
 
     public function update(Request $request)

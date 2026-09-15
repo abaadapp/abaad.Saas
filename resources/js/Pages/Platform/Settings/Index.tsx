@@ -86,6 +86,13 @@ const FIELD_TAB: Record<string, string> = {
 
     crm_ai_mode: 'ai',
     crm_whatsapp_shared: 'whatsapp',
+
+    archive_enabled: 'archive',
+    archive_manual_enabled: 'archive',
+    archive_retention_months: 'archive',
+    archive_max_mb: 'archive',
+    archive_remote_disk: 'archive',
+    backup_remote_enabled: 'archive',
 };
 
 const TABS = [
@@ -98,6 +105,7 @@ const TABS = [
     { key: 'whatsapp', label: 'واتساب' },
     { key: 'google', label: 'خرائط Google' },
     { key: 'ai', label: 'المساعد الذكي' },
+    { key: 'archive', label: 'أرشفة البيانات' },
 ];
 
 export default function PlatformSettings() {
@@ -138,6 +146,20 @@ export default function PlatformSettings() {
     const on = (k: string) => (settings[k] ?? '0') !== '0';
 
     /**
+     * مفتاحٌ افتراضُه «مفتوح» — لا كأخواته.
+     *
+     * `on()` تفترض المُطفأ عند الغياب، وهو الصحيح لأكثر المفاتيح: ميزةٌ لم
+     * تُشعَل بعد. ومفاتيحُ الأرشيف عكسُها — `Archive\Policy` تفتح ما لم
+     * يُملأ إعدادُه، كما تفعل `PlanFeatures` و`PlanLimits`: من أُغلق دونه
+     * ما اشتراه يتوقّف عملُه اليوم ويظنّ العطبَ في النظام.
+     *
+     * فلولا هذه لَعرضت الشاشةُ «مُطفأ» عن ميزةٍ تعمل — وتقريرُ حالٍ كاذب
+     * أسوأ من غياب التقرير. ومن رآها مُطفأةً فأشعلها لم يُغيّر شيئًا، ومن
+     * أرادها مُطفأةً ظنَّها كذلك وهي تعمل.
+     */
+    const onByDefault = (k: string) => (settings[k] ?? '1') !== '0';
+
+    /**
      * القيم مبدوءة بما هو محفوظ فعلًا في جدول الإعدادات.
      * القالب القديم كان يطبع الافتراضيات في value= ولا يقرأ المحفوظ إلا
      * لمربّعات الاختيار، فكل حقل نصّي يعود لقيمته الأولى بعد الحفظ.
@@ -168,6 +190,15 @@ export default function PlatformSettings() {
         whatsapp_shared_default_monthly_limit: get('whatsapp_shared_default_monthly_limit'),
         crm_ai_mode: get('crm_ai_mode'),
         crm_whatsapp_shared: on('crm_whatsapp_shared'),
+
+        /* والأرشيفُ افتراضُه مفتوح — انظر `onByDefault` و`Archive\Policy` */
+        archive_enabled: onByDefault('archive_enabled'),
+        archive_manual_enabled: onByDefault('archive_manual_enabled'),
+        archive_retention_months: get('archive_retention_months'),
+        archive_max_mb: get('archive_max_mb'),
+        archive_remote_disk: get('archive_remote_disk'),
+        /* والنسخُ البعيد افتراضُه مُطفأ: لا قرصَ مضبوطًا فلا يُدَّعى نسخ */
+        backup_remote_enabled: on('backup_remote_enabled'),
     });
 
     /*
@@ -395,6 +426,73 @@ export default function PlatformSettings() {
                                 { label: 'مضافة على السعر', value: 'exclusive' },
                             ])}
                         </div>
+                        {saveBar}
+                    </Card>
+                )}
+
+                {tab === 'archive' && (
+                    <Card className="p-6">
+                        <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('إعدادات أرشفة البيانات')}</h3>
+                        <p className="mb-6 text-[13px] text-[#6b7280]">
+                            {t('الأرشيف الشهري نسخة مقروءة يحتفظ بها التاجر. وهو غير النسخة الاحتياطية التقنية التي تُستعاد بها القاعدة.')}
+                        </p>
+
+                        <div className="space-y-5">
+                            <Toggle
+                                on={form.data.archive_enabled}
+                                onChange={(v) => form.setData('archive_enabled', v)}
+                                label="تفعيل الأرشيف الشهري"
+                                hint="يُطلب أول كل شهر لكل متجر — وإطفاؤه يوقف الجدولة والزرّ معًا"
+                            />
+                            <Toggle
+                                on={form.data.archive_manual_enabled}
+                                onChange={(v) => form.setData('archive_manual_enabled', v)}
+                                label="السماح بالإنشاء اليدوي"
+                                hint="زرّ «إنشاء أرشيف الآن» في شاشة التاجر — والجدولة تبقى تعمل بدونه"
+                            />
+                            {text('archive_retention_months', 'مدة الاحتفاظ بالأرشيف (شهرًا)', {
+                                type: 'number',
+                                ltr: true,
+                                hint: 'صفر = بلا حدّ. وهي غير مدة الاحتفاظ بالنسخة التقنية (١٤ يومًا) ولا علاقة بينهما',
+                            })}
+                            {text('archive_max_mb', 'أقصى حجم للأرشيف الواحد (ميجابايت)', {
+                                type: 'number',
+                                ltr: true,
+                                hint: 'صفر = بلا حدّ. وما تجاوزه يسقط برسالة تُقرأ، ولا يُسلَّم ملفٌّ ناقص',
+                            })}
+                        </div>
+
+                        {/*
+                            ═══ والقرصُ البعيد باسمه لا باعتماده ═══
+
+                            ما يُكتب هنا اسمُ قرصٍ مُعرَّفٍ في
+                            `config/filesystems.php`، ومفاتيحُه في `.env` على
+                            الخادم. ولا يُطلب مفتاحٌ في هذه الشاشة ولا يُخزَّن
+                            في القاعدة — وإلّا خرج مع كلّ نسخةٍ احتياطيّة.
+
+                            وهو نصُّ السبب الذي كُتب في تبويب البريد نفسِه.
+                        */}
+                        <div className="mt-8 border-t border-[#ececec] pt-6">
+                            <h4 className="mb-1 text-[15px] font-bold text-[#111]">
+                                {t('النسخة الاحتياطية على قرص بعيد')}
+                            </h4>
+                            <p className="mb-5 text-[13px] text-[#6b7280]">
+                                {t('كل النسخ اليوم على قرص الخادم نفسه الذي تعيش عليه القاعدة — وعطب قرص واحد يأخذ الاثنين. عرّف قرصًا في config/filesystems.php واكتب اسمه هنا؛ ومفاتيحه تبقى في .env ولا تُخزَّن في القاعدة.')}
+                            </p>
+                            <div className="space-y-5">
+                                {text('archive_remote_disk', 'اسم القرص البعيد', {
+                                    ltr: true,
+                                    hint: 'اسم القرص كما هو في config/filesystems.php — مثل s3. واتركه فارغًا لإيقافه',
+                                })}
+                                <Toggle
+                                    on={form.data.backup_remote_enabled}
+                                    onChange={(v) => form.setData('backup_remote_enabled', v)}
+                                    label="نسخ الاحتياطي التقني إلى القرص البعيد"
+                                    hint="لا يعمل إلا مع قرص معرَّف فعلًا. وفشل النسخ البعيد لا يُسقط النسخة المحلية"
+                                />
+                            </div>
+                        </div>
+
                         {saveBar}
                     </Card>
                 )}

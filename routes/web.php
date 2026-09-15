@@ -3,6 +3,7 @@
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Admin\BankStatementController;
 use App\Http\Controllers\Admin\BranchController;
+use App\Http\Controllers\Admin\BusinessArchiveController;
 use App\Http\Controllers\Admin\CatalogQuickAddController;
 use App\Http\Controllers\Admin\ChequeController;
 use App\Http\Controllers\Admin\CouponController;
@@ -1250,6 +1251,27 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // النسخ الاحتياطي والاستعادة
     Route::get('/backup/download', [BackupController::class, 'download'])->name('backup.download');
     Route::post('/backup/restore', [BackupController::class, 'restore'])->name('backup.restore');
+
+    /*
+     * الأرشيفُ الشهريّ — خلف فعلٍ يُمنح بالاسم لا خلف قسم «الإعدادات».
+     *
+     * ملفٌّ واحد فيه مبيعاتُ الشهر وأسعارُ الشراء وأسماءُ العملاء والميزان،
+     * يخرج إلى جهازٍ لا سلطانَ لنا عليه. ومن مُنح الإعدادات ليضبط ضريبةً لم
+     * يُمنح ذلك.
+     *
+     * والحراسةُ على المسار لا في أوّل كلّ دالّة: دالّةٌ تُضاف غدًا وينسى
+     * كاتبُها سطرَ الفحص تفتح البابَ كلَّه ولا شيء يكشفه.
+     *
+     * و«إنشاء الآن» محدودُ المعدّل فوق ذلك: البناءُ يقرأ الشهرَ كلَّه ويرسم
+     * كلَّ فاتورةٍ فيه، ومن يضغط الزرَّ عشرين مرّةً يُغرق الطابور — وإن كان
+     * الفهرسُ الفريد يمنع التكرار، فالعملُ المكرَّر يُنفَّذ قبل أن يُردّ.
+     */
+    Route::middleware('may:'.Permissions::BUSINESS_EXPORT)->group(function () {
+        Route::post('/archives', [BusinessArchiveController::class, 'store'])
+            ->middleware('throttle:10,1')->name('archives.store');
+        Route::get('/archives/{archive}/download', [BusinessArchiveController::class, 'download'])
+            ->whereNumber('archive')->name('archives.download');
+    });
 
     // تصدير CSV
     Route::get('/export/reports', [ExportController::class, 'reports'])->name('export.reports');

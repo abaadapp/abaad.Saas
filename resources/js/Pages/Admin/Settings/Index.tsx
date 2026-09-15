@@ -54,6 +54,7 @@ import DevicesPanel, { type DevicesData } from './panels/DevicesPanel';
 import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
+import ArchivePanel, { type ArchiveData } from './panels/ArchivePanel';
 import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
@@ -124,6 +125,8 @@ interface Props {
     accounts?: ChartData['accounts'];
     trial?: ChartData['trial'];
     types?: ChartData['types'];
+    /** قائمةُ الأرشيف الشهريّ — تصل مع `?section=backup` وحدها */
+    archive?: ArchiveData;
 }
 
 /**
@@ -179,7 +182,14 @@ const EMPTY_PAGINATION: ActivityData['pagination'] = {
     next_page_url: null,
 };
 
-const SERVER_TABS = ['branches', 'employees', 'devices', 'activity', 'trash', 'chart'] as const;
+/*
+ * و`backup` صارت منها: قائمةُ الأرشيف تُقرأ من القاعدة.
+ *
+ * وكان التبويبُ ساكنًا (زرُّ تنزيلٍ ونموذجُ رفع) فلم يحتج الخادم. وأربعةٌ
+ * وعشرون صفًّا واستعلامان لا يُرسَلان مع كلّ فتحةٍ للإعدادات — انظر
+ * `settingsSection`.
+ */
+const SERVER_TABS = ['branches', 'employees', 'devices', 'activity', 'trash', 'chart', 'backup'] as const;
 
 /** مفاتيح كل الأقسام التي تُفتح داخل هذه الصفحة — وهي اليوم كلّها. */
 const TAB_KEYS = NAV.flatMap((g) => g.items.map((i) => i.key)) as readonly TabKey[];
@@ -223,7 +233,7 @@ const NOTIF_COLORS: Record<string, string> = {
 export default function SettingsIndex() {
     const { settings, settingsFields, business, recovery, mail, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
-        accounts, trial, types } =
+        accounts, trial, types, archive } =
         usePage<PageProps<Props>>().props;
     const { auth } = usePage<PageProps>().props;
     const t = useTranslate();
@@ -1260,6 +1270,15 @@ export default function SettingsIndex() {
                             </Button>
                         </PageActions>
                     </SettingsSection>
+
+                    {/*
+                        والأرشيفُ بين التنزيل والاستعادة — لا فوقهما ولا بعدهما.
+
+                        فوقَهما يُزيح ما كان يفتحه التاجرُ هنا منذ شهور. وبعد
+                        الاستعادة يجعل أخطرَ فعلٍ في الشاشة يتوسّطها. والترتيبُ
+                        الآن: خُذ نسخةً، ثمّ خُذ أرشيفَ شهر، ثمّ — بحذر — أعِد.
+                    */}
+                    {archive && <ArchivePanel archive={archive} />}
 
                     <SettingsSection
                         title="استعادة من نسخة احتياطية"

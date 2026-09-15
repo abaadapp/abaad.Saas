@@ -9,6 +9,7 @@ use App\Models\BankStatementLine;
 use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Business;
+use App\Models\BusinessArchive;
 use App\Models\Category;
 use App\Models\Coupon;
 use App\Models\Currency;
@@ -3458,6 +3459,61 @@ class Demo
                     'time' => __('ملخّص اليوم'),
                     'icon' => 'bar-chart-3', 'color' => 'success',
                     'url' => route('admin.dashboard'),
+                ]);
+            }
+        }
+
+        /*
+         * ═══ أرشيفُ شهرٍ صار جاهزًا — والإشعارُ مشتقٌّ لا مخزَّن ═══
+         *
+         * ولا جدولَ إشعاراتٍ في هذا النظام: الجرسُ يُحسب من البيانات الحيّة
+         * في كلّ استطلاع. فبناءُ نظام إشعاراتٍ ثانٍ لأجل الأرشيف يعني موضعين
+         * يقولان «ما الجديد؟» ويفترقان.
+         *
+         * وصفُّ الأرشيف نفسُه هو الإشعار: صار «جاهزًا» فظهر، ومضت مدّتُه أو
+         * أخفاه صاحبُه فاختفى. ولا شيءَ يحتاج أن يُمحى بعد أن يُقرأ.
+         *
+         * ولمن يملك تنزيله وحده: من لا يقدر على الفعل لا يُنبَّه به — وإلّا
+         * قاد الجرسُ موظّفًا إلى بابٍ يردّه بـ٤٠٣.
+         *
+         * والفاشلُ يُقال كذلك: تقريرُ حالٍ كاذب أسوأ من غياب التقرير، وصمتٌ
+         * عن أرشيفٍ سقط يجعل التاجر يظنّه في الطريق شهرًا كاملًا.
+         */
+        if ($u && $u->may(Permissions::BUSINESS_EXPORT)) {
+            $archives = BusinessArchive::where('business_id', $bid)
+                ->whereIn('status', [
+                    BusinessArchive::READY,
+                    BusinessArchive::FAILED,
+                ])
+                ->orderByDesc('completed_at')
+                ->limit(3)->get();
+
+            foreach ($archives as $archive) {
+                $ready = $archive->status === BusinessArchive::READY;
+
+                /* والجاهزُ المنتهي لا يُنبَّه به: بابُه مغلقٌ فلا يُدعى إليه */
+                if ($ready && ! $archive->downloadable()) {
+                    continue;
+                }
+
+                $add('archive-'.$archive->id.'-'.$archive->status, [
+                    'text' => $ready
+                        ? __('تم تجهيز أرشيف بيانات :period — يمكنك تحميله من «البيانات والنسخ الاحتياطية».', [
+                            'period' => $archive->periodStart()->translatedFormat('F Y'),
+                        ])
+                        : __('تعذّر تجهيز أرشيف بيانات :period.', [
+                            'period' => $archive->periodStart()->translatedFormat('F Y'),
+                        ]),
+                    'time' => optional($archive->completed_at)->diffForHumans() ?? '—',
+                    'icon' => $ready ? 'archive' : 'triangle-alert',
+                    'color' => $ready ? 'success' : 'warning',
+                    /*
+                     * والرابطُ يقود إلى قسمه لا إلى الإعدادات.
+                     *
+                     * `?section=backup` هو ما يقرؤه الخادمُ ليبني القائمة —
+                     * ومرساةٌ وحدها لا تصله، فتُفتح الإعدادات بلا أرشيف.
+                     */
+                    'url' => route('admin.settings.index', ['section' => 'backup']),
                 ]);
             }
         }

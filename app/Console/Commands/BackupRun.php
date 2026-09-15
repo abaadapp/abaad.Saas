@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Business;
 use App\Models\Order;
+use App\Support\Archive\Policy as ArchivePolicy;
 use App\Support\BackupService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
@@ -25,6 +26,17 @@ use Illuminate\Support\Facades\Storage;
  *
  * ٣) لا أثر لآخر تشغيل: مجدولٌ يعمل منذ شهور، ولا سبيل لمعرفة أنه توقّف إلا
  *    بالبحث في القرص. فصار يكتب بصمةً تقرؤها abaad:preflight.
+ *
+ * ═══ ورابعٌ: النسخةُ على القرص الذي تنسخه ═══
+ *
+ * كلُّ ما سبق يكتب في `storage/app/private` — وهو القرصُ نفسُه الذي تعيش
+ * عليه قاعدةُ البيانات. فعطبُ قرصٍ واحد يأخذ الأصلَ ونسختَه معًا، و«نسخةٌ
+ * احتياطيّة» على الوسيط الذي تحمي منه ليست نسخةً احتياطيّة.
+ *
+ * فصار يُنسخ إلى قرصٍ ثانٍ **إن كان مضبوطًا**. والشرطُ مقصود: لا مزوّدَ
+ * يُثبَّت هنا، ولا مفتاحَ يُخترع. المشغّلُ يُعرّف القرصَ في
+ * `config/filesystems.php` ويكتب اسمَه في إعدادات المنصّة — وما لم يفعل،
+ * يبقى النسخُ المحلّيُّ يعمل كما كان بلا حرفٍ يتغيّر.
  */
 class BackupRun extends Command
 {
@@ -54,6 +66,7 @@ class BackupRun extends Command
         $disk = Storage::disk('local');
         $dir = 'backups/'.now()->format('Y-m-d');
         $done = 0;
+        $offsite = 0;
         $failed = [];
 
         foreach ($businesses as $business) {
@@ -62,8 +75,10 @@ class BackupRun extends Command
             try {
                 $disk->put($path, BackupService::json($business->id));
                 $this->verify($disk, $path, $business->id);
-                $this->line("  ✓ {$business->name} → {$path}");
+                $copied = $this->copyOffsite($disk, $path);
+                $this->line("  ✓ {$business->name} → {$path}".($copied ? ' ⇄' : ''));
                 $done++;
+                $offsite += $copied ? 1 : 0;
             } catch (\Throwable $e) {
                 /*
                  * الملف المعطوب يُحذف لا يُترك.
@@ -85,6 +100,16 @@ class BackupRun extends Command
             'written' => $done,
             'failed' => $failed,
             'pruned_days' => $pruned,
+            /*
+             * والبصمةُ تقول أنُسخ بعيدًا أم لا — ويقرؤها `preflight`.
+             *
+             * وهو السؤالُ الذي لا جواب له اليوم: النسخُ يعمل منذ شهور، ولا
+             * موضعَ يقول إنّه كلَّه على القرص الذي يحميه.
+             */
+            'offsite_disk' => ArchivePolicy::backupRemoteEnabled()
+                ? ArchivePolicy::remoteDisk()
+                : null,
+            'offsite_copied' => $offsite,
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
         $this->newLine();
@@ -143,6 +168,53 @@ class BackupRun extends Command
             throw new \RuntimeException(__('عدد الطلبات ناقص: :actual من :expected.', [
                 'actual' => $actual, 'expected' => $expected,
             ]));
+        }
+    }
+
+    /**
+     * ينسخ الملفَّ إلى القرص البعيد إن كان مضبوطًا — ويردّ أنُسخ أم لا.
+     *
+     * ═══ ولمَ لا يُسقط فشلُه النسخةَ المحلّيّة ═══
+     *
+     * المحلّيّةُ كُتبت وتُحقّق منها قبل هذا السطر. ورميُ استثناءٍ هنا يجعل
+     * الملتقِطَ يحذفها — فينتهي المتجر **بلا نسخةٍ أصلًا** لأنّ مزوّدًا
+     * بعيدًا لم يُجب. وهو أن تُفقد نسخةٌ موجودة لأجل نسخةٍ إضافيّة.
+     *
+     * فالفشلُ يُقيَّد في السجلّ ويُردّ `false`، والعدُّ في البصمة يقول كم
+     * نُسخ بعيدًا فعلًا — فيُرى الانقطاعُ ولا يُخفى.
+     *
+     * والمفاتيحُ لا تُلمس هنا ولا تُطبع: القرصُ باسمه، وما خلفه في `.env`
+     * عند المشغّل.
+     */
+    private function copyOffsite($disk, string $path): bool
+    {
+        if (! ArchivePolicy::backupRemoteEnabled()) {
+            return false;
+        }
+
+        $remote = ArchivePolicy::remoteDisk();
+
+        try {
+            $stream = $disk->readStream($path);
+
+            if ($stream === null || $stream === false) {
+                return false;
+            }
+
+            try {
+                $ok = Storage::disk($remote)->put($path, $stream);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
+
+            return $ok !== false;
+        } catch (\Throwable $e) {
+            report($e);
+            $this->line('  <fg=yellow>!</> '.__('تعذّر النسخ إلى القرص البعيد — والنسخة المحلّية سليمة.'));
+
+            return false;
         }
     }
 

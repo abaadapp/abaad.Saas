@@ -910,6 +910,14 @@ class PageController extends Controller
             'activity' => ActivityController::adminData($request),
             'trash' => TrashController::panelData(),
             /*
+             * والأرشيفُ يُطلب بقسمه لا يُرسَل مع كلّ فتحةٍ للإعدادات.
+             *
+             * أربعةٌ وعشرون صفًّا واستعلامان لشاشةٍ لا يفتحها أكثرُ التجّار
+             * في الشهر مرّة — والقاعدةُ هنا قاعدةُ `activity` و`trash`
+             * نفسُها: ما يُقرأ من القاعدة يُطلب بقسمه.
+             */
+            'backup' => ['archive' => BusinessArchiveController::panel(Demo::bid(), $request->user())],
+            /*
              * الشجرة صلاحيتها «المالية» لا «الإعدادات».
              *
              * المسار هنا `admin.settings.index`، و`CheckAbility` يشتقّ القسم

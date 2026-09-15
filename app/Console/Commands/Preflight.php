@@ -3,8 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\Business;
+use App\Models\BusinessArchive;
 use App\Models\User;
 use App\Rules\PlatformEmailDomain;
+use App\Support\Archive\Policy as ArchivePolicy;
 use App\Support\GoogleBilling;
 use App\Support\Mailer;
 use App\Support\WhatsAppHealth;
@@ -13,6 +15,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -280,6 +283,48 @@ class Preflight extends Command
                     ? 'آخر نسخة: '.$stamp['at'].' — المجدول متوقّف على الأرجح'
                     : 'آخر تشغيل فشل في '.count($stamp['failed']).' متجرًا — شغّل: php artisan backup:run'),
         );
+
+        /*
+         * ═══ النسخةُ على القرص الذي تحميه منه ═══
+         *
+         * فحصُ «٤٨ ساعة» فوق يسأل: أعملَ المجدولُ؟ ولا يسأل: **أين النسخة؟**
+         * وكلُّها اليوم في `storage/app/private` — على القرص نفسِه الذي تعيش
+         * عليه القاعدة. فعطبُ قرصٍ واحد يأخذ الأصلَ ونسختَه معًا.
+         *
+         * وتنبيهٌ لا مانع: النسخُ المحلّيّ يعمل، والقرصُ البعيد قرارُ مشغّلٍ
+         * له كلفة. لكنّه يُقال في كلّ تشغيل — ولا يُترك ليُكتشف يوم العطب.
+         */
+        $remote = ArchivePolicy::backupRemoteEnabled();
+        $this->check(
+            'نسخة احتياطية على قرصٍ بعيد',
+            $remote,
+            'REMOTE DISASTER BACKUP NOT CONFIGURED — كل النسخ على قرص الخادم نفسه.'
+                .' عرِّف قرصًا في config/filesystems.php ثم اكتب اسمه في:'
+                .' لوحة المنصّة ‹ الإعدادات ‹ أرشفة البيانات',
+            warnOnly: true,
+        );
+
+        /*
+         * وحالُ الأرشيف الشهريّ — يقرؤه مديرُ المنصّة ولا يفتح بيانات متجر.
+         *
+         * أعدادٌ وحدها: كم جاهزًا، وكم سقط، وكم مساحةً يشغل. ولا اسمَ متجرٍ
+         * ولا مسارَ ملفّ — تلك بيانات التاجر، وشاشةُ الإطلاق لا تحتاجها.
+         */
+        if (Schema::hasTable('business_archives')) {
+            $failed = BusinessArchive::where('status', BusinessArchive::FAILED)->count();
+            $ready = BusinessArchive::where('status', BusinessArchive::READY)->count();
+            $bytes = (int) BusinessArchive::where('status', BusinessArchive::READY)->sum('file_size');
+
+            $this->line('  <fg=gray>الأرشيف الشهري: '.$ready.' جاهز · '
+                .$failed.' فاشل · '.round($bytes / 1048576, 1).' ميجابايت</>');
+
+            $this->check(
+                'لا أرشيف شهري فاشل',
+                $failed === 0,
+                $failed.' أرشيفًا فشل إنشاؤه — راجع سببَ كلٍّ في شاشة المتجر',
+                warnOnly: true,
+            );
+        }
 
         /* ------------------------------- الخلاصة ------------------------------- */
         $this->newLine();

@@ -160,6 +160,7 @@ class ImportBackupMailTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.backup.restore'), [
             'backup' => new UploadedFile($path, 'backup.json', 'application/json', null, true),
+            'confirm' => true,
         ])->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('products', [
@@ -177,6 +178,7 @@ class ImportBackupMailTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.backup.restore'), [
             'backup' => new UploadedFile($path, 'backup.json', 'application/json', null, true),
+            'confirm' => true,
         ]);
 
         // الحساب الذي أجرى الاستعادة يجب أن يبقى قائمًا وإلا أُقفلت اللوحة

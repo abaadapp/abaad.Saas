@@ -336,7 +336,7 @@ class ARestoreReturnsTheShopTest extends TestCase
      */
     private function restore(User $actor, UploadedFile $file): void
     {
-        $this->actingAs($actor)->post(route('admin.backup.restore'), ['backup' => $file])
+        $this->actingAs($actor)->post(route('admin.backup.restore'), ['backup' => $file, 'confirm' => true])
             ->assertRedirect()
             ->assertSessionHasNoErrors();
     }

@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\Category;
 use App\Models\Product;
+use App\Support\Website\Published;
 use App\Support\Website\Shelf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
@@ -310,6 +311,42 @@ class Storefront
     {
         return $business->site_slug !== null
             && (MarketingSettings::group((int) $business->id, 'website')['store_on'] ?? '0') === '1';
+    }
+
+    /** ما يُخدم على عنوان المتجر: موقعٌ مبنيّ، أو الصفحة البسيطة، أو لا شيء */
+    public const SERVES_BUILT = 'built';
+
+    public const SERVES_SIMPLE = 'simple';
+
+    public const SERVES_NONE = 'none';
+
+    /**
+     * أيَّ صفحةٍ يرى الزائرُ على هذا العنوان الآن؟ — وجوابٌ واحد لسائليه.
+     *
+     * ═══ ولمَ صار مصدرًا ═══
+     *
+     * الأسبقيّة كانت مكتوبةً في `StorefrontController::show` وحدها: المبنيُّ
+     * يتقدّم، فإن لم يكن فالبسيطةُ إن نُشرت. وشاشةُ الإعدادات تسأل السؤال
+     * نفسه ولا تعرف الجواب، فكانت تقرأ `store_on` وحده — مفتاحَ البسيطة.
+     *
+     * فمن بنى موقعه ونشره ثمّ أطفأ «نشر المتجر» من الإعدادات يقرأ شارةً
+     * تقول «غير منشور» ويختفي زرُّ «افتح متجري» — **ومتجره مفتوحٌ لزبائنه
+     * على العنوان نفسه**. وطمأنينةٌ كاذبة بأنّ البابَ مغلق أسوأ من غياب
+     * الشارة كلِّها: صاحبُه يسافر وهو يحسبه مغلقًا، والطلباتُ تصل.
+     *
+     * والسؤالُ يُجاب هنا بلا بناء اللقطة — انظر `Published::hasPublished`.
+     */
+    public static function serves(Business $business): string
+    {
+        if (! self::serving($business)) {
+            return self::SERVES_NONE;
+        }
+
+        if (Published::hasPublished((int) $business->id)) {
+            return self::SERVES_BUILT;
+        }
+
+        return self::published($business) ? self::SERVES_SIMPLE : self::SERVES_NONE;
     }
 
     /* ------------------------------ الثيمات ------------------------------ */

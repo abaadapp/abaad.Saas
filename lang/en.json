@@ -5805,5 +5805,11 @@
     "حُذف الردّ": "Reply deleted",
     "حُفظ الردّ — ولن يقرأه أحد: التقييم نجومٌ بلا كلام، ولا يُعرض في قسم الآراء إلا ما فيه تعليق.": "Reply saved — but nobody will read it: this review is stars without words, and only reviews with a comment appear in the reviews section.",
     "التقييم مرفوضٌ ومحجوب — ولن يُقرأ ردُّك معه حتى تنشره.": "This review is rejected and hidden — your reply will not be read until you publish it.",
-    "هذا التقييم نجومٌ بلا كلام، ولا يظهر في قسم الآراء — فلن يظهر ردُّك معه.": "This review is stars without words and does not appear in the reviews section — so your reply will not appear either."
+    "هذا التقييم نجومٌ بلا كلام، ولا يظهر في قسم الآراء — فلن يظهر ردُّك معه.": "This review is stars without words and does not appear in the reviews section — so your reply will not appear either.",
+    "زبونك يفتح موقعك المبنيّ على هذا العنوان — وهذا المفتاح للصفحة البسيطة وحدها، فلا يُغلق شيئًا ما دام المبنيّ منشورًا. وكذلك لونُ هذه البطاقة وطرقُ دفعها.": "Your visitors open your built site at this address — this switch is for the simple page only, and closes nothing while the built site is published. The same goes for this card's colour and payment methods.",
+    "إعدادات موقعك المبنيّ": "Your built site's settings",
+    "منشور — موقعك المبنيّ": "Published — your built site",
+    "لم يُحفظ شيء — :why والحقلُ في قسم «:section».": "Nothing was saved — :why The field is in the “:section” section.",
+    "الاستعادة تمحو بيانات متجرك كلَّها ولا رجعة بعدها — أكِّدها لتمضي.": "Restoring wipes all your shop's data and cannot be undone — confirm it to proceed.",
+    "ستحلّ بيانات الملفّ محلّ بيانات متجرك كلِّها — المنتجات والطلبات والعملاء والدفتر. ولا رجعة بعدها. أتمضي؟": "The file's data will replace all your shop's data — products, orders, customers and the ledger. This cannot be undone. Proceed?"
 }

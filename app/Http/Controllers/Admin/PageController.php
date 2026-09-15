@@ -714,6 +714,14 @@ class PageController extends Controller
 
         return Inertia::render('Admin/Settings/Index', [
             'settings' => Demo::businessSettings(),
+            /*
+             * وأيُّ حقلٍ يخصّ أيَّ قسم — من مصدرها لا مكتوبةً في الشاشة.
+             *
+             * الشاشة ترسل حقولَ القسم المفتوح وحدها، فقائمةٌ ثانية هنا تنسى
+             * المفتاحَ التالي — فيُرسَل مع كلّ حفظٍ كما كان، أو لا يُرسل أبدًا
+             * فلا يُحفظ. انظر `SettingController::fieldsBySection`.
+             */
+            'settingsFields' => SettingController::fieldsBySection(),
             'business' => [
                 'name' => $b?->name ?? '',
                 'phone' => $b?->phone,
@@ -791,6 +799,15 @@ class PageController extends Controller
                  */
                 'path' => $b ? Storefront::path($b) : '',
                 'pricing' => Storefront::pricing(),
+                /*
+                 * وما يراه الزائرُ على العنوان الآن — لا ما يقوله مفتاحُ البسيطة.
+                 *
+                 * البطاقةُ هنا تضبط الصفحة البسيطة، والعنوانُ واحدٌ للطريقين:
+                 * من بنى موقعه ونشره صار هو ما يُفتح. فكانت الشارةُ تقرأ
+                 * `store_on` فتقول «غير منشور» ومتجرُه مفتوح، ويختفي زرُّ
+                 * «افتح متجري» عن متجرٍ يعمل. انظر `Storefront::serves`.
+                 */
+                'serves' => $b ? Storefront::serves($b) : Storefront::SERVES_NONE,
             ],
             /*
              * بطاقاتُ القوالب — من السجلّ لا مكتوبةً في الشاشة.

@@ -302,6 +302,7 @@ class TrashRestoreTest extends TestCase
             'backup' => \Illuminate\Http\UploadedFile::fake()->createWithContent(
                 'b.json', json_encode($payload, JSON_UNESCAPED_UNICODE),
             ),
+            'confirm' => true,
         ]);
 
         /*

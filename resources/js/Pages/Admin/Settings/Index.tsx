@@ -73,6 +73,8 @@ interface NotificationRow {
 
 interface Props {
     settings: Settings;
+    /** حقولُ كل قسم — من `SettingController::fieldsBySection` لا مكتوبةً هنا */
+    settingsFields: Record<string, string[]>;
     business: { name: string; phone: string | null; email: string | null; address: string | null; logo: string | null };
     recovery: Recovery;
     /** أيصل البريد فعلًا — وسببُ التعذّر إن لم يصل (انظر App\Support\Mailer) */
@@ -92,6 +94,8 @@ interface Props {
         /** الطريق المختار إلى العنوان — '' يعني أنّ التاجر لم يُسأل بعد */
         path: DomainPath;
         pricing: DomainPricing;
+        /** ما يراه الزائر على العنوان الآن — لا ما يقوله مفتاح الصفحة البسيطة */
+        serves: 'built' | 'simple' | 'none';
     };
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
@@ -216,7 +220,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, business, recovery, mail, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, settingsFields, business, recovery, mail, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types } =
         usePage<PageProps<Props>>().props;
@@ -384,9 +388,31 @@ export default function SettingsIndex() {
          */
     });
 
+    /*
+     * ويُرسَل ما في القسم المفتوح وحده — لا الحقولُ كلُّها.
+     *
+     * النموذج واحدٌ لخمسة أقسام، فكان حفظُ اسم المتجر يُعيد معه نسبةَ
+     * الضريبة وبادئةَ الفاتورة كما قرأتهما الشاشةُ عند فتحها. ومن ترك
+     * الإعدادات مفتوحةً ثمّ عدّل المالية من نافذةٍ أخرى، ثمّ حفظ اسمَه هنا،
+     * نسخ القديمَ فوق الجديد بلا خطأ ولا رسالة. والقواعدُ في الخادم كلُّها
+     * `sometimes` — فالجزءُ مقبولٌ من أوّل يوم.
+     *
+     * وثمرةٌ ثانية: قيمةٌ قديمة في حقلٍ من قسمٍ آخر لا تردّ حفظًا لا يمسّها.
+     */
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        form.post(route('admin.settings.update'), { preserveScroll: true });
+
+        const mine = new Set(settingsFields[tab ?? ''] ?? []);
+
+        form.transform((data) =>
+            Object.fromEntries(Object.entries(data).filter(([k]) => mine.has(k))),
+        );
+
+        form.post(route('admin.settings.update'), {
+            preserveScroll: true,
+            // ولا يبقى التحويل معلّقًا على النموذج بعد إرساله
+            onFinish: () => form.transform((data) => data),
+        });
     };
 
     /*
@@ -647,12 +673,19 @@ export default function SettingsIndex() {
                         description="صفحةٌ يستضيفها أبعاد: منتجاتك بصورها وأسعارها، ويطلب منها الزبون عبر واتساب."
                         icon={Globe}
                         status={
-                            storeForm.data.store_on
-                                ? <StatusPill state="ready" label="منشور" />
-                                : <StatusPill state="off" label="غير منشور" />
+                            /*
+                                الشارةُ تقول ما يُفتح على العنوان — لا ما يقوله
+                                مفتاحُ هذه البطاقة. من نشر موقعه المبنيّ صار هو
+                                ما يراه زبونُه، ومفتاحُ البسيطة لا يُغلقه.
+                            */
+                            store.serves === 'built'
+                                ? <StatusPill state="ready" label="منشور — موقعك المبنيّ" />
+                                : storeForm.data.store_on
+                                  ? <StatusPill state="ready" label="منشور" />
+                                  : <StatusPill state="off" label="غير منشور" />
                         }
                         action={
-                            store.slug && storeForm.data.store_on && (
+                            store.slug && (store.serves !== 'none' || storeForm.data.store_on) && (
                                 <Button variant="outline" size="sm" asChild>
                                     <a
                                         href={`https://${store.slug}.${store.domain}`}
@@ -807,6 +840,24 @@ export default function SettingsIndex() {
                                 label="نشر المتجر"
                                 hint="حتى يُنشر لا يفتحه أحد — والعنوان يردّ «غير موجود» لا صفحةً فارغة"
                             />
+
+                            {/*
+                                ومفتاحٌ لا يُغلق شيئًا يُقال عنه ذلك.
+
+                                العنوانُ واحد للطريقين، والمبنيُّ يتقدّم. فمن
+                                نشره ثمّ أطفأ هذا المفتاح لا يُغلق متجره —
+                                ويظنّه مغلقًا. وهذه البطاقةُ كلُّها للصفحة
+                                البسيطة: لونُها ودفعُها لا يُريان ما دام
+                                المبنيُّ منشورًا.
+                            */}
+                            {store.serves === 'built' && (
+                                <p className="mt-3 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[12px] leading-relaxed text-[#1d4ed8]">
+                                    {t('زبونك يفتح موقعك المبنيّ على هذا العنوان — وهذا المفتاح للصفحة البسيطة وحدها، فلا يُغلق شيئًا ما دام المبنيّ منشورًا. وكذلك لونُ هذه البطاقة وطرقُ دفعها.')}{' '}
+                                    <Link href={route('admin.website.site')} className="font-medium underline">
+                                        {t('إعدادات موقعك المبنيّ')}
+                                    </Link>
+                                </p>
+                            )}
 
                             {/*
                                 ولا يُنشر متجرٌ بلا بضاعة: صفحةٌ فارغة تُفقد
@@ -1187,13 +1238,31 @@ export default function SettingsIndex() {
                             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                             {t('تحذير: ستحل بيانات النسخة محل بيانات متجرك الحالية.')}
                         </p>
+                        {/*
+                            ويُسأل قبلها — وهي أخطرُ ما في الشاشة.
+
+                            «حذف جميع التنبيهات المرسلة؟» يُسأل عنه، والاستعادةُ
+                            تمحو المنتجات والطلبات والدفتر كلَّه ثمّ تكتب مكانها
+                            ما في الملفّ، ولا رجعةَ بعدها. فكان الأخفُّ يُستوقَف
+                            والأثقلُ يمضي بضغطةٍ واحدة.
+                        */}
                         <form
-                            onSubmit={(e) => {
+                            onSubmit={async (e) => {
                                 e.preventDefault();
                                 if (!backupFile) return;
+                                if (
+                                    !(await ask({
+                                        message:
+                                            'ستحلّ بيانات الملفّ محلّ بيانات متجرك كلِّها — المنتجات والطلبات والعملاء والدفتر. ولا رجعة بعدها. أتمضي؟',
+                                        danger: true,
+                                        action: 'استعادة',
+                                    }))
+                                )
+                                    return;
                                 router.post(
                                     route('admin.backup.restore'),
-                                    { backup: backupFile },
+                                    // والتأكيدُ يُرسَل: الخادمُ يشترطه لأنّ الشاشة تُتخطّى
+                                    { backup: backupFile, confirm: true },
                                     { forceFormData: true },
                                 );
                             }}

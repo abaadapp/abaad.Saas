@@ -44,7 +44,16 @@ class StorefrontController extends Controller
 
         abort_if($business === null, 404);
 
-        $site = Published::forBusiness((int) $business->id);
+        /*
+         * والأسبقيّةُ تُقرأ من مصدرها لا تُكتب هنا — انظر `Storefront::serves`.
+         *
+         * شاشةُ الإعدادات تسأل السؤالَ نفسه («أيّ صفحةٍ تُخدم؟») وكانت تجيبه
+         * بمفتاح الصفحة البسيطة وحده، فتقول «غير منشور» عن متجرٍ مفتوح.
+         * وفحصان لسؤالٍ واحد يفترقان يوم يُبدَّل أحدهما.
+         */
+        $site = Storefront::serves($business) === Storefront::SERVES_BUILT
+            ? Published::forBusiness((int) $business->id)
+            : ['state' => Published::NOT_PUBLISHED];
 
         if ($site['state'] !== Published::NOT_PUBLISHED) {
             /*

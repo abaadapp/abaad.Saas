@@ -484,4 +484,52 @@ class ASettingThatRefusesSaysWhereTest extends TestCase
             'النموذج يرسل حقولَه كلَّها من أيّ قسم — فيُعيد ما لم يُعدَّل',
         );
     }
+
+    /* ═════ ٦ — بطاقةٌ لا تُعلن بابًا لا تفتحه ═════ */
+
+    public function test_no_settings_card_declares_a_door_the_hub_never_opens(): void
+    {
+        $nav = file_get_contents(resource_path('js/Pages/Admin/Settings/partials/SettingsNav.tsx'));
+
+        // ما بعد نهاية التعليقات: الإعلانُ نفسه لا ذِكرُه في شرحٍ
+        $code = preg_replace('#/\*.*?\*/#su', '', $nav);
+
+        $this->assertStringNotContainsString(
+            'route:',
+            (string) $code,
+            'بطاقةٌ تُعلن وجهةً لا يقرؤها شيء — لوحةُ الإعدادات تفتح كلَّ بطاقةٍ في مكانها',
+        );
+    }
+
+    public function test_the_website_section_opens_the_builder_screens(): void
+    {
+        $tsx = file_get_contents(resource_path('js/Pages/Admin/Settings/Index.tsx'));
+
+        $from = strpos($tsx, "tab === 'website'");
+        $to = strpos($tsx, "tab === 'custom-alerts'");
+
+        $this->assertNotFalse($from);
+        $this->assertNotFalse($to);
+
+        $section = substr($tsx, $from, $to - $from);
+
+        // والوصفُ يَعِد بالتصميم والصفحات، وهما في شاشات الموقع لا هنا
+        $this->assertStringContainsString(
+            "route('admin.website.site')",
+            $section,
+            'قسمُ الموقع يَعِد بتصميمٍ وصفحاتٍ ولا يفتح بابَهما',
+        );
+        $this->assertStringContainsString('افتح شاشات موقعك', $section);
+    }
+
+    public function test_that_door_leads_to_a_real_screen(): void
+    {
+        // ومن لا موقعَ له يُردّ إلى بابِ إنشائه لا إلى «غير موجود»
+        $this->get(route('admin.website.site'))->assertRedirect(route('admin.website.index'));
+
+        $this->shop();
+        $this->publishBuilt();
+
+        $this->get(route('admin.website.site'))->assertOk();
+    }
 }

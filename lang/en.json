@@ -5811,5 +5811,9 @@
     "منشور — موقعك المبنيّ": "Published — your built site",
     "لم يُحفظ شيء — :why والحقلُ في قسم «:section».": "Nothing was saved — :why The field is in the “:section” section.",
     "الاستعادة تمحو بيانات متجرك كلَّها ولا رجعة بعدها — أكِّدها لتمضي.": "Restoring wipes all your shop's data and cannot be undone — confirm it to proceed.",
-    "ستحلّ بيانات الملفّ محلّ بيانات متجرك كلِّها — المنتجات والطلبات والعملاء والدفتر. ولا رجعة بعدها. أتمضي؟": "The file's data will replace all your shop's data — products, orders, customers and the ledger. This cannot be undone. Proceed?"
+    "ستحلّ بيانات الملفّ محلّ بيانات متجرك كلِّها — المنتجات والطلبات والعملاء والدفتر. ولا رجعة بعدها. أتمضي؟": "The file's data will replace all your shop's data — products, orders, customers and the ledger. This cannot be undone. Proceed?",
+    "افتح شاشات موقعك": "Open your site's screens",
+    "شاشات موقعك": "Your site's screens",
+    "التصميمُ والصفحاتُ والأقسام والظهور في البحث — وحالُ موقعك وما لم يُنشر منه.": "Design, pages, sections and search visibility — plus your site's state and what is not yet published.",
+    "وهذا القسمُ يضبط عنوانَ متجرك ونطاقَه وصفحتَه البسيطة — وما تراه أدناه يخصّها.": "This section sets your shop's address, its domain and its simple page — everything below belongs to them."
 }

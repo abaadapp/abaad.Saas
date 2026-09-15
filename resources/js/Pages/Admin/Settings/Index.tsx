@@ -11,6 +11,7 @@ import {
     Globe,
     Image as ImageIcon,
     Languages,
+    LayoutTemplate,
     RefreshCw,
     Save,
     Percent,
@@ -625,6 +626,37 @@ export default function SettingsIndex() {
                 <ChartPanel accounts={accounts ?? []} trial={trial ?? { total_debit: 0, total_credit: 0, balanced: true }} types={types ?? []} />
             ) : tab === 'website' ? (
                 <div className="space-y-6">
+                {/*
+                    بابُ شاشات الموقع — يُفتح من هنا لا يُوعَد به.
+
+                    وصفُ البطاقة يَعِد بخمسة: الحالُ والتصميمُ والصفحاتُ
+                    والمتجرُ والنطاق. وثلاثةٌ منها ليست في هذا اللوح: التصميمُ
+                    والصفحاتُ والظهور في البحث تُضبط في شاشات الموقع. وكان
+                    الحلُّ المكتوب في القائمة أن تقفز البطاقةُ إلى هناك
+                    (`route`) — ولم يُنفَّذ، ولو نُفِّذ لَضاعت مقابضُ هذا اللوح
+                    التي لا مالكَ لها سواه: العنوانُ والنبذةُ وواتساب والدفع.
+
+                    فالبابُ يُفتح ولا يُنقل: كلُّ لوحٍ يقول ما يملك، ومن أراد
+                    ما ليس هنا وجده في سطرٍ واحد لا في بحثٍ عنه.
+                */}
+                <SettingsSection
+                    title="شاشات موقعك"
+                    description="التصميمُ والصفحاتُ والأقسام والظهور في البحث — وحالُ موقعك وما لم يُنشر منه."
+                    icon={LayoutTemplate}
+                    action={
+                        <Button variant="outline" size="sm" asChild>
+                            <Link href={route('admin.website.site')}>
+                                {t('افتح شاشات موقعك')}
+                                <ChevronLeft />
+                            </Link>
+                        </Button>
+                    }
+                >
+                    <p className="text-[13px] leading-relaxed text-[#6b7280]">
+                        {t('وهذا القسمُ يضبط عنوانَ متجرك ونطاقَه وصفحتَه البسيطة — وما تراه أدناه يخصّها.')}
+                    </p>
+                </SettingsSection>
+
                 {choosing ? (
                     <DomainChooser
                         pricing={store.pricing}

@@ -5778,5 +5778,22 @@
     "اختصره إلى نحو :max حرفًا.": "Shorten it to about :max characters.",
     "وسّعه إلى :min–:max حرفًا تقول ما تبيع ولمن.": "Expand it to :min–:max characters saying what you sell and to whom.",
     "التحليلات وفحص الظهور": "Analytics & visibility check",
-    "حُفظ الردّ — ولن يقرأه أحد: التقييم مرفوضٌ ومحجوب. انشره ليظهرا معًا.": "The reply was saved — but nobody will read it: the review is rejected and hidden. Publish it so both appear."
+    "حُفظ الردّ — ولن يقرأه أحد: التقييم مرفوضٌ ومحجوب. انشره ليظهرا معًا.": "The reply was saved — but nobody will read it: the review is rejected and hidden. Publish it so both appear.",
+    "جهّز طلب Google مجددًا": "Prepare the Google request again",
+    "اطلب تقييم Google بواتسابك": "Ask for a Google review via your WhatsApp",
+    "اطلب رأيه لموقعك بواتسابك": "Ask for a review for your site via your WhatsApp",
+    "يُطلب الرأي بعد تسليم الطلب.": "A review is asked for after the order is delivered.",
+    "كتب صاحبُ هذا الطلب رأيَه — تجده في تقييمات العملاء.": "This order's customer has already written a review — find it in customer reviews.",
+    "يسعدنا أن نعرف رأيك — دقيقةٌ واحدة:": "We would love to hear what you think — one minute:",
+    "وصل رأيه — في تقييمات العملاء": "Review received — in customer reviews",
+    "قيّم تجربتك": "Rate your experience",
+    "وصلنا رأيك — شكرًا لك": "We received your review — thank you",
+    "يقرؤه صاحبُ المحلّ، ويختار ما يُعرض منه على موقعه.": "The shop owner reads it and chooses what appears on their site.",
+    "كيف كانت تجربتك؟": "How was your experience?",
+    "عن طلبك رقم": "About your order no.",
+    "التقييم :n من 5": "Rating :n out of 5",
+    "واكتب كلمةً إن أحببت — وهي ما قد يُعرض على الموقع": "Add a word if you like — that is what may appear on the site",
+    "ما الذي أعجبك؟ وما الذي كان يمكن أن يكون أفضل؟": "What did you like? And what could have been better?",
+    "أرسِل رأيي": "Send my review",
+    "لا يظهر رأيك على الموقع إلا بإذن صاحب المحلّ.": "Your review appears on the site only with the shop owner's approval."
 }

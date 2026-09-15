@@ -549,13 +549,30 @@ class Preview
         return $out;
     }
 
+    /**
+     * آراءُ الزبائن كما تخرج على الموقع.
+     *
+     * ═══ والاسمُ هو الاسمُ الذي أذِن بنشره ═══
+     *
+     * كان يُقرأ `author_name` الخام وحدَه، ويُكتب «عميل» حين يكون فارغًا.
+     * وهو فارغٌ لكلّ تقييمٍ لعميلٍ **مسجَّل** — والشاشةُ تعرض اسمَه من صفّه
+     * (`Review::displayName`). فيقرأ التاجر «أحمد» ويضغط «انشر»، ثمّ يفتح
+     * موقعَه فيجد «عميل».
+     *
+     * وصفحةٌ كلُّ شهاداتها موقّعةٌ بـ«عميل» تُقرأ كما تُقرأ الشهادةُ
+     * المخترعة — وهي حقيقيّةٌ كتبها أصحابُها. فما يُعرض هو ما رآه صاحبُ
+     * المحلّ حين أذِن، لا صورةٌ أخرى منه.
+     *
+     * ويُحمَّل العميلُ مع الصفّ: بدونه استعلامٌ لكلّ رأيٍ يُعرض.
+     */
     private static function reviews(int $businessId, int $limit): array
     {
         return Review::where('business_id', $businessId)->showable()
+            ->with('customer:id,name')
             ->orderByDesc('id')
-            ->limit(max($limit, self::MAX))->get(['author_name', 'rating', 'comment'])
+            ->limit(max($limit, self::MAX))->get(['id', 'customer_id', 'author_name', 'rating', 'comment'])
             ->map(fn ($r) => [
-                'author' => $r->author_name ?: 'عميل',
+                'author' => $r->displayName(),
                 'rating' => (int) $r->rating,
                 'comment' => mb_substr((string) $r->comment, 0, 300),
             ])->all();

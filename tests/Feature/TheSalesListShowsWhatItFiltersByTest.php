@@ -329,11 +329,12 @@ class TheSalesListShowsWhatItFiltersByTest extends TestCase
         $this->assertStringContainsString('const actionable = !otherBranch;', $screen);
 
         /*
-         * وسبعةُ مواضعَ تكتب: الإرسال، وإبلاغ الحالة، وطلب التقييم، وزرُّ
-         * ورقة التفاصيل، وقلمُها داخل بطاقتها، و«أضِف التفاصيل» لطلبٍ بلا
-         * ورقة، وأزرارُ نقل الحالة. وقلمُ الفاتورة ثامنٌ يُقاس في الخادم
-         * (`invoiceEdit.can`) لا بهذا الحكم.
+         * وثمانيةُ مواضعَ تكتب: الإرسال، وإبلاغ الحالة، وطلبُ تقييم Google،
+         * ودعوةُ الرأي لموقع المتجر، وزرُّ ورقة التفاصيل، وقلمُها داخل
+         * بطاقتها، و«أضِف التفاصيل» لطلبٍ بلا ورقة، وأزرارُ نقل الحالة.
+         * وقلمُ الفاتورة تاسعٌ يُقاس في الخادم (`invoiceEdit.can`) لا بهذا
+         * الحكم.
          */
-        $this->assertSame(7, substr_count($screen, '{actionable &&'));
+        $this->assertSame(8, substr_count($screen, '{actionable &&'));
     }
 }

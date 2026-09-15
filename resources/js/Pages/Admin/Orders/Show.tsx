@@ -8,6 +8,7 @@ import {
     Gift,
     MapPin,
     MessageCircle,
+    MessageSquareQuote,
     PencilLine,
     Phone,
     Printer,
@@ -103,7 +104,8 @@ interface OrderDetail {
  * صلاحيةُ `order.edit` ويومُ البيع، يقيسهما الخادم قبل الرسم وعند الكتابة.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice, googleReview, statusNotice, paper, invoiceEdit, otherBranch } = usePage<
+    const { order, context, taxInvoice, googleReview, storeReview, statusNotice, paper, invoiceEdit, otherBranch } =
+        usePage<
         PageProps<{
             order: OrderDetail;
             /** أيُصحَّح متنُ الفاتورة الآن — وإن لم يُصحَّح فلمَ. يُقاس في الخادم */
@@ -113,8 +115,15 @@ export default function OrderShow() {
             /** ورقةُ الطلب مرسومةً — من وصفة الطباعة نفسِها. و`null` لطلبٍ لا صفَّ له */
             paper: { html: string; size: string } | null;
             taxInvoice: { registered: boolean; ready: boolean };
-            /** حالُ طلب التقييم — تُقاس في الخادم، والشاشةُ ترسم ما قِيس */
+            /** حالُ طلب تقييم Google — تُقاس في الخادم، والشاشةُ ترسم ما قِيس */
             googleReview: { show: boolean; reason: string | null; requestedAt: string | null };
+            /**
+             * حالُ دعوةِ الرأي لموقع المتجر — بابٌ آخر غير Google.
+             *
+             * و`written` تُقرأ من التقييم نفسِه لا من ختمِ «طُلب»: ما يعود
+             * إلينا يُعرف وصولُه، فيُقال «وصل رأيه» لا «جُهِّزت الدعوة».
+             */
+            storeReview: { show: boolean; reason: string | null; written: boolean };
             statusNotice: {
                 event: string | null;
                 show: boolean;
@@ -375,11 +384,46 @@ export default function OrderShow() {
                                 }
                             >
                                 <Star />
+                                {/*
+                                    و«Google» في الاسم لا في التلميح وحده.
+
+                                    زرّان متجاوران يطلبان رأيًا: هذا يُخرج
+                                    الزبون إلى ملفٍّ عامّ لا يملك التاجر ما
+                                    يُكتب فيه، والذي تحته يُدخل الرأي إلى
+                                    شاشته ليأذن بنشره. واسمان متشابهان يعنيان
+                                    تاجرًا يضغط ما لم يقصده.
+                                */}
                                 {googleReview.requestedAt
-                                    ? t('جهّز الطلب مجددًا')
-                                    : t('اطلب التقييم بواتسابك')}
+                                    ? t('جهّز طلب Google مجددًا')
+                                    : t('اطلب تقييم Google بواتسابك')}
                             </Button>
                         )}
+                        {/*
+                            ورأيُ الزبون لموقع المتجر — يصل معلَّقًا إلى شاشة
+                            «تقييمات العملاء»، فيقرؤه صاحبُ المحلّ ويُنشره أو
+                            يرفضه. والرابطُ في الرسالة رمزُ **هذا الطلب**: لا
+                            يكتب فيه إلا من اشترى، ولا يُكتب فيه إلا رأيٌ واحد.
+                        */}
+                        {actionable &&
+                            (storeReview.show ? (
+                                <Button
+                                    variant="outline"
+                                    disabled={sending.processing}
+                                    onClick={() =>
+                                        sending.post(route('admin.orders.reviewInvite', order.id), {
+                                            preserveScroll: true,
+                                        })
+                                    }
+                                >
+                                    <MessageSquareQuote />
+                                    {t('اطلب رأيه لموقعك بواتسابك')}
+                                </Button>
+                            ) : storeReview.reason ? (
+                                <Button variant="outline" disabled title={storeReview.reason}>
+                                    <MessageSquareQuote />
+                                    {storeReview.reason}
+                                </Button>
+                            ) : null)}
                         {/*
                             الفاتورة الضريبيّة — ولا تُعرض لمن لا فاتورةَ ضريبيّةَ
                             له.

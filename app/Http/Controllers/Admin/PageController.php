@@ -30,6 +30,7 @@ use App\Support\PurchaseOrders;
 use App\Support\PurchaseOrderTotals;
 use App\Support\PurchaseUnits;
 use App\Support\Reports;
+use App\Support\ReviewInvite;
 use App\Support\Roles;
 use App\Support\ShopIdentity;
 use App\Support\Storefront;
@@ -193,6 +194,14 @@ class PageController extends Controller
              */
             'googleReview' => $this->googleReviewState($number),
             /*
+             * ورأيُ الزبون لموقع المتجر — بابٌ آخر غير Google.
+             *
+             * ذاك يُخرج الزبونَ إلى ملفٍّ عامٍّ لا يملك التاجر ما يُكتب فيه،
+             * وهذا يُدخل الرأيَ إلى شاشته معلَّقًا ليقرأه ويأذن. فيُعرضان
+             * معًا وباسمين مختلفين — انظر `OrderDetailController::reviewInvite`.
+             */
+            'storeReview' => $this->reviewInviteState($number),
+            /*
              * إبلاغُ الزبون بحالة طلبه يدويًّا — طريقٌ لا يمرّ بميتا.
              *
              * ويبقى معروضًا ولو عمل المُرسِلُ الآليّ: الآليُّ يُوقَف بحظرٍ
@@ -339,11 +348,7 @@ class PageController extends Controller
             return ['show' => false, 'reason' => null, 'requestedAt' => null];
         }
 
-        $delivered = in_array($order->status, [
-            OrderStatus::DELIVERED,
-            OrderStatus::PICKED_UP,
-            OrderStatus::COMPLETED,
-        ], true);
+        $delivered = OrderStatus::fulfilled($order->status);
 
         $branch = $order->branch_id
             ? Branch::where('business_id', Demo::bid())->find($order->branch_id)
@@ -356,6 +361,30 @@ class PageController extends Controller
             /* ولا يُقال «غير مربوط» قبل التسليم: سببٌ واحدٌ يكفي، وهو الأقرب */
             'reason' => $delivered && ! $linked ? __('اربط فرع هذا الطلب بخرائط Google أوّلًا.') : null,
             'requestedAt' => optional($order->review_request_sent_at)->toIso8601String(),
+        ];
+    }
+
+    /**
+     * حالُ دعوةِ الرأي لهذا الطلب — و«كُتب» تُقرأ من التقييم لا من ختمٍ.
+     *
+     * ولا ختمَ «طُلب» هنا خلافًا لطلب Google: ذاك يخرج إلى ملفٍّ لا نراه،
+     * فلا نعرف عنه إلا أنّ التاجر أعدّ رسالته. وهذا يعود إلينا — فالخبرُ
+     * الصادق أنّ الرأي **وصل**، لا أنّ الدعوة جُهِّزت.
+     *
+     * @return array{show:bool, reason:?string, written:bool}
+     */
+    private function reviewInviteState(string $number): array
+    {
+        $order = Order::where('business_id', Demo::bid())
+            ->where('is_held', false)->where('number', $number)->first();
+
+        $written = ReviewInvite::written($order);
+
+        return [
+            'show' => ReviewInvite::eligible($order) && ! $written,
+            /* وقبل التسليم لا يُقال شيء: لا زرَّ ولا سبب — السؤالُ لم يحِن */
+            'reason' => $written ? __('وصل رأيه — في تقييمات العملاء') : null,
+            'written' => $written,
         ];
     }
 

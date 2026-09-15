@@ -83,6 +83,7 @@ use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicDocumentController;
 use App\Http\Controllers\PublishedSiteController;
+use App\Http\Controllers\ReviewInviteController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
@@ -608,6 +609,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     /* طلبُ تقييمٍ على Google — بملفّ فرع الطلب، وبعد التسليم وحده */
     Route::post('/orders/{number}/review-request', [OrderDetailController::class, 'reviewRequest'])
         ->name('orders.reviewRequest');
+
+    /* ورأيُ الزبون لموقع المتجر — بابٌ آخر غير Google، انظر `reviewInvite` */
+    Route::post('/orders/{number}/review-invite', [OrderDetailController::class, 'reviewInvite'])
+        ->name('orders.reviewInvite');
     /*
      * ورقتا البيع — فاتورةٌ مقصوصة وإيصالُ صندوق.
      *
@@ -1552,6 +1557,31 @@ Route::domain('{host}')
 Route::get('/i/{token}', [PublicDocumentController::class, 'show'])
     ->where('token', '[A-Za-z0-9]{22}')
     ->name('paper.show');
+
+/*
+ * بابُ الرأي — ما يكتب فيه الزبونُ تقييمَه بيده.
+ *
+ * وكان لتقييمات العملاء طريقُ دخولٍ واحد: أن يكتبها التاجرُ عن زبائنه. فشاشةٌ
+ * تُنشَر منها التقييماتُ وتُرفض ويُردّ عليها، ولا بابَ يصل منه تقييم.
+ *
+ * وبلا حارسٍ من النظام: الواقف أمامه زبونٌ لا حساب له. وحارسُه رمزُ طلبه —
+ * اثنان وعشرون حرفًا لا تُخمَّن، تقول «هذا اشترى» — انظر `ReviewInvite`.
+ *
+ * والعنوانُ حرفٌ واحد: يُرسَل في رسالةٍ ويُقرأ على شاشةِ هاتف، وكلُّ حرفٍ
+ * زائدٍ فيه يُطيل ما يُنسخ ويُلصق.
+ *
+ * والحدُّ على الكتابة أضيقُ من الحدّ على الفتح: الفتحُ قراءةٌ تتكرّر حين
+ * تتعثّر الشبكة، والكتابةُ صفٌّ في القاعدة.
+ */
+Route::get('/r/{token}', [ReviewInviteController::class, 'show'])
+    ->where('token', '[A-Za-z0-9]{22}')
+    ->middleware('throttle:60,1')
+    ->name('review.write');
+
+Route::post('/r/{token}', [ReviewInviteController::class, 'store'])
+    ->where('token', '[A-Za-z0-9]{22}')
+    ->middleware('throttle:10,1')
+    ->name('review.submit');
 
 /*
  * إشعارات ميتا — بابٌ عامّ بلا جلسة، وحارسه توقيعٌ لا كلمة سرّ.

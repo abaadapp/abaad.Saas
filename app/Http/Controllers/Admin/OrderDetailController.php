@@ -12,6 +12,7 @@ use App\Support\FlowerOrder;
 use App\Support\OrderNotice;
 use App\Support\OrderStatus;
 use App\Support\OrderTransition;
+use App\Support\ReviewInvite;
 use App\Support\WhatsAppPhone;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -135,7 +136,7 @@ class OrderDetailController extends Controller
         $order = $this->find($number);
 
         /* بعد التسليم أو الاستلام أو الإتمام — وما دون ذلك سؤالٌ عمّا لم يقع */
-        if (! in_array($order->status, [OrderStatus::DELIVERED, OrderStatus::PICKED_UP, OrderStatus::COMPLETED], true)) {
+        if (! OrderStatus::fulfilled($order->status)) {
             return back()->with('toast', [
                 'msg' => __('يُطلب التقييم بعد تسليم الطلب.'), 'type' => 'danger',
             ]);
@@ -174,6 +175,69 @@ class OrderDetailController extends Controller
 
         return back()->with('toast', [
             'msg' => __('جُهِّز الطلب — افتح واتساب واضغط «إرسال» فيه.'),
+            'type' => 'info',
+            'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
+        ]);
+    }
+
+    /**
+     * طلبُ رأيِ الزبون لموقع المتجر — لا لملفّه على Google.
+     *
+     * ═══ والبابان ليسا واحدًا ═══
+     *
+     * `reviewRequest` يُخرج الزبونَ إلى **Google**: ما يكتبه هناك عامٌّ من
+     * لحظته، ولا يملك التاجر حذفَه ولا حجبَه. وهذا يُدخله إلى **شاشة
+     * تقييمات العملاء**: يصل معلَّقًا، ويقرؤه صاحبُ المحلّ، فيُنشر على موقعه
+     * أو يُرفض.
+     *
+     * ولذلك لا يُغني أحدُهما عن الآخر، ولذلك يختلف اسماهما على الشاشة: زرّان
+     * بلافتةٍ واحدة يعني تاجرًا يضغط ما لم يقصده.
+     *
+     * ═══ وما يقع فعلًا ═══
+     *
+     * يُفتح واتساب التاجر بنصٍّ فيه رابطُ الدعوة، ويضغط هو «إرسال». لا
+     * مُرسِلَ آليّ — ولذلك لا يُقال «أُرسل».
+     */
+    public function reviewInvite(string $number)
+    {
+        $order = $this->find($number);
+
+        /* والشرطُ يُقاس هنا: الشاشةُ تُخفي الزرّ، ومن ينادي المسار لا يمرّ بها */
+        if (! ReviewInvite::eligible($order)) {
+            return back()->with('toast', [
+                'msg' => __('يُطلب الرأي بعد تسليم الطلب.'), 'type' => 'danger',
+            ]);
+        }
+
+        /* وقد كتب: لا يُدعى مرّتين — القيدُ في القاعدة سيردّه، والقولُ أوضح من الردّ */
+        if (ReviewInvite::written($order)) {
+            return back()->with('toast', [
+                'msg' => __('كتب صاحبُ هذا الطلب رأيَه — تجده في تقييمات العملاء.'), 'type' => 'info',
+            ]);
+        }
+
+        $phone = WhatsAppPhone::normalize($order->customer?->phone ?: $order->recipient_phone);
+
+        if (! $phone) {
+            return back()->with('toast', [
+                'msg' => __('لا رقم واتساب لهذا الطلب — أضِفه في صفحة العميل.'), 'type' => 'danger',
+            ]);
+        }
+
+        $url = ReviewInvite::url($order);
+
+        /* والنصُّ ثلاثةُ مفاتيحَ لا مفتاحٌ فيه أسطر: مفتاحٌ بسطرٍ جديدٍ لا يُترجَم */
+        $text = __('شكرًا لطلبك من :shop 🌷', ['shop' => Demo::businessName()])
+            ."\n".__('يسعدنا أن نعرف رأيك — دقيقةٌ واحدة:')
+            ."\n".$url;
+
+        Activity::log('updated', 'أعدّ طلب رأي الزبون عن الطلب '.$order->number, [
+            'subject_id' => $order->id, 'subject_type' => 'order',
+        ]);
+
+        return back()->with('toast', [
+            'msg' => __('جُهِّز الطلب — افتح واتساب واضغط «إرسال» فيه.'),
+            /* ولا أخضر: لم يخرج حرفٌ بعد — انظر `send` أعلاه */
             'type' => 'info',
             'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
         ]);

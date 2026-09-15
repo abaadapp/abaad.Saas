@@ -34,8 +34,24 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class Snapshot
 {
-    /** رقمُ شكلِ اللقطة — يتغيّر إن تغيّر ما فيها، فتُقرأ القديمةُ بقواعدها */
-    public const VERSION = 1;
+    /**
+     * رقمُ شكلِ اللقطة — يتغيّر إن تغيّر ما فيها، وتُقرأ القديمةُ بقواعدها.
+     *
+     * ═══ وكان الوعدُ في التعليق ولا سطرَ يفي به ═══
+     *
+     * كانت `of` تقبل `v === VERSION` وحدها وتردّ ما سواه إلى `capture` —
+     * أي إلى **حال المتجر اليوم**. فأوّلُ رفعٍ للرقم كان يمحو تاريخَ كلّ
+     * ورقةٍ مختومةٍ في النظام دفعةً واحدة: تعود فواتيرُ يناير تحمل اسمَ
+     * المتجر ورقمَه الضريبيَّ كما صارا اليوم — وهو العطبُ نفسُه الذي
+     * وُجدت هذه اللقطةُ لتمنعه، يعود من الباب الذي بُني لصدّه.
+     *
+     * فصارت تُقبل كلُّ نسخةٍ معروفة، وكلُّ قارئٍ يحتمل غيابَ مفتاحٍ لم
+     * يكن في زمنه (`??`). ولقطةُ الأمس تبقى لقطةَ الأمس.
+     */
+    public const VERSION = 2;
+
+    /** أوّلُ شكلٍ عُرف — وما بينه وبين `VERSION` يُقرأ ولا يُطرح */
+    private const OLDEST = 1;
 
     /** العمودُ الذي يحملها */
     public const COLUMN = 'document_snapshot';
@@ -68,6 +84,7 @@ final class Snapshot
              */
             'seller' => [
                 'name' => $get('name'),
+                'name_en' => $get('name_en'),
                 'type' => $get('type'),
                 'city' => $get('city'),
                 'address' => $get('address'),
@@ -75,6 +92,8 @@ final class Snapshot
                 'email' => $get('email'),
             ],
             'vat' => Paper::vatNumber($businessId),
+            /* والسجلُّ التجاريُّ معه: كلاهما تسجيلٌ لدى جهةٍ يُقرأ في الورق */
+            'cr' => Paper::crNumber($businessId),
             /* ووصفُ العملة كاملًا: رمزٌ ومنازلُ وموضعُ رمز — انظر `Support\Money` */
             'currency' => Demo::currencyFor($businessId),
             /* وأيُّ قالبٍ رسمها — فتُعرف بعد سنةٍ بأيّ نسخةٍ صدرت */
@@ -95,9 +114,7 @@ final class Snapshot
             $raw = json_decode($raw, true);
         }
 
-        return is_array($raw) && ($raw['v'] ?? null) === self::VERSION
-            ? $raw
-            : self::capture($businessId);
+        return self::known($raw) ? $raw : self::capture($businessId);
     }
 
     /** أللورقة لقطةٌ محفوظة؟ — للتقارير وللاختبار، لا لمنطق الرسم */
@@ -109,7 +126,19 @@ final class Snapshot
             $raw = json_decode($raw, true);
         }
 
-        return is_array($raw) && ($raw['v'] ?? null) === self::VERSION;
+        return self::known($raw);
+    }
+
+    /** أهذه لقطةٌ بشكلٍ نعرف قراءتَه؟ — وموضعٌ واحد يجيب */
+    private static function known(mixed $raw): bool
+    {
+        if (! is_array($raw)) {
+            return false;
+        }
+
+        $v = $raw['v'] ?? null;
+
+        return is_int($v) && $v >= self::OLDEST && $v <= self::VERSION;
     }
 
     /**
@@ -142,6 +171,18 @@ final class Snapshot
     public static function vat(array $snapshot): string
     {
         return trim((string) ($snapshot['vat'] ?? ''));
+    }
+
+    /**
+     * سجلُّ البائع التجاريُّ يومَ صدرت — وفارغٌ لورقةٍ سبقت الحقل.
+     *
+     * ولا يُقرأ من المتجر حيًّا سدًّا للفراغ: ورقةٌ خُتمت قبل أن يُدخل
+     * التاجرُ سجلَّه لم تحمله يومَها، وطبعُه عليها اليوم ادّعاءُ حالٍ لم
+     * تكن. والفراغُ صادقٌ والامتلاءُ كاذب.
+     */
+    public static function cr(array $snapshot): string
+    {
+        return trim((string) ($snapshot['cr'] ?? ''));
     }
 
     /**

@@ -724,6 +724,7 @@ class PageController extends Controller
             'settingsFields' => SettingController::fieldsBySection(),
             'business' => [
                 'name' => $b?->name ?? '',
+                'name_en' => $b?->name_en,
                 'phone' => $b?->phone,
                 'email' => $b?->email,
                 'address' => $b?->address,

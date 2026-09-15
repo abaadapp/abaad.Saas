@@ -25,6 +25,7 @@ class SettingController extends Controller
      */
     private const PROFILE = [
         'shop_name' => 'name',
+        'shop_name_en' => 'name_en',
         'phone' => 'phone',
         'email' => 'email',
         'address' => 'address',
@@ -55,6 +56,30 @@ class SettingController extends Controller
         // بيانات النشاط — البريد وسيلةُ تواصلٍ تُعرض للناس فتُصحَّح عند الإدخال
         'shop_name' => ['section' => 'business', 'label' => 'اسم المتجر',
             'rules' => ['sometimes', 'required', 'string', 'max:120']],
+        /*
+         * والاسمُ الإنجليزيُّ اختياريّ ولا يُشتقّ.
+         *
+         * يُطبع على ورقٍ لغتُه إنجليزيّة (انظر `Paper::brand`)، ويُقرأ في
+         * شهادة السجلّ التجاريّ حرفًا حرفًا. وترجمةُ اسمٍ قانونيّ تلقائيًّا
+         * تضع على فاتورةٍ ضريبيّة اسمًا لا تعرفه الجهة.
+         */
+        'shop_name_en' => ['section' => 'business', 'label' => 'اسم المتجر بالإنجليزية',
+            'rules' => ['sometimes', 'nullable', 'string', 'max:120']],
+        /*
+         * ورقمُ السجلّ التجاريّ في «بيانات النشاط» لا مع الرقم الضريبيّ.
+         *
+         * القُربُ في الورقة لا يعني القُربَ في الشاشة: الرقمان يقعان سطرين
+         * متجاورين في كتلة الهويّة (انظر `partials/identity`)، لكنّ الضريبيَّ
+         * يسكن قسمَ «الضرائب» لأنّه معلّقٌ بمقبض التسجيل ونسبتِه — والسجلُّ
+         * لا يعلّقه شيء: كلُّ نشاطٍ مرخَّصٍ يحمله مسجَّلًا كان أو غيرَ
+         * مسجَّل.
+         *
+         * ووصفُ هذا القسم يقول ما يكفي: «ما يُطبع في رأس فواتيرك
+         * وإيصالاتك». ومن يبحث عن سجلّه التجاريّ يفتح بيانات نشاطه لا
+         * إعداداتِ ضريبته.
+         */
+        'cr_number' => ['section' => 'business', 'label' => 'رقم السجل التجاري',
+            'rules' => ['sometimes', 'nullable', 'string', 'max:30']],
         'email' => ['section' => 'business', 'label' => 'البريد الإلكتروني',
             'rules' => ['sometimes', 'nullable', 'email', 'max:120']],
         'phone' => ['section' => 'business', 'label' => 'رقم الهاتف',

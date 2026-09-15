@@ -34,7 +34,7 @@ class Business extends Model
      * فيُنسخ حقلٌ ولا يُستعاد.
      */
     public const BACKUP_FIELDS = [
-        'name', 'type', 'owner_name', 'phone', 'email',
+        'name', 'name_en', 'type', 'owner_name', 'phone', 'email',
         'country', 'city', 'address', 'logo',
         // والإقرارُ بالهويّة معها: استعادةُ متجرٍ مكتملٍ لا تُعيد سؤاله عن اسمه
         'identity_confirmed_at',

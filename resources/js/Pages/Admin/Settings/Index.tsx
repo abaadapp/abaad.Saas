@@ -77,7 +77,7 @@ interface Props {
     settings: Settings;
     /** حقولُ كل قسم — من `SettingController::fieldsBySection` لا مكتوبةً هنا */
     settingsFields: Record<string, string[]>;
-    business: { name: string; phone: string | null; email: string | null; address: string | null; logo: string | null };
+    business: { name: string; name_en: string | null; phone: string | null; email: string | null; address: string | null; logo: string | null };
     recovery: Recovery;
     /** أيصل البريد فعلًا — وسببُ التعذّر إن لم يصل (انظر App\Support\Mailer) */
     mail: { deliverable: boolean; reason: string | null };
@@ -341,6 +341,7 @@ export default function SettingsIndex() {
 
     const form = useForm({
         shop_name: business.name ?? '',
+        shop_name_en: business.name_en ?? '',
         phone: business.phone ?? '',
         email: business.email ?? '',
         address: business.address ?? '',
@@ -348,6 +349,7 @@ export default function SettingsIndex() {
         vat_enabled: on('vat_enabled'),
         vat_rate: get('vat_rate', '5'),
         vat_number: get('vat_number'),
+        cr_number: get('cr_number'),
         vat_filed_through: get('vat_filed_through'),
         tax_mode: get('tax_mode', 'exclusive'),
 
@@ -1356,6 +1358,25 @@ export default function SettingsIndex() {
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                     <Field label="اسم المتجر" required error={form.errors.shop_name}>
                                         <Input value={form.data.shop_name} onChange={(e) => form.setData('shop_name', e.target.value)} required />
+                                    </Field>
+                                    {/*
+                                        والاسمُ الإنجليزيُّ اختياريٌّ ولا يُشتقّ من العربيّ:
+                                        يُطبع على ورقٍ لغتُه إنجليزيّة، ويُقرأ في شهادة السجلّ
+                                        حرفًا حرفًا. انظر `Paper::brand`.
+                                    */}
+                                    <Field
+                                        label="اسم المتجر بالإنجليزية"
+                                        hint="يظهر على الأوراق الإنجليزية — اكتبه كما في شهادة السجل التجاري"
+                                        error={form.errors.shop_name_en}
+                                    >
+                                        <Input dir="ltr" value={form.data.shop_name_en} onChange={(e) => form.setData('shop_name_en', e.target.value)} />
+                                    </Field>
+                                    <Field
+                                        label="رقم السجل التجاري"
+                                        hint="يُطبع في ترويسة فواتيرك تحت الرقم الضريبي"
+                                        error={form.errors.cr_number}
+                                    >
+                                        <Input dir="ltr" value={form.data.cr_number} onChange={(e) => form.setData('cr_number', e.target.value)} />
                                     </Field>
                                     <Field label="رقم الهاتف" error={form.errors.phone}>
                                         <Input dir="ltr" value={form.data.phone} onChange={(e) => form.setData('phone', e.target.value)} />

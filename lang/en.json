@@ -5889,5 +5889,9 @@
     "أقصى حجم للأرشيف الواحد (ميجابايت)": "Maximum archive size (MB)",
     "صفر = بلا حدّ. وما تجاوزه يسقط برسالة تُقرأ، ولا يُسلَّم ملفٌّ ناقص": "Zero = unlimited. Anything over it fails with a readable reason — no truncated file is ever delivered.",
     "اسم القرص البعيد": "Remote disk name",
-    "اسم القرص كما هو في config/filesystems.php — مثل s3. واتركه فارغًا لإيقافه": "The disk name exactly as in config/filesystems.php — e.g. s3. Leave empty to disable."
+    "اسم القرص كما هو في config/filesystems.php — مثل s3. واتركه فارغًا لإيقافه": "The disk name exactly as in config/filesystems.php — e.g. s3. Leave empty to disable.",
+    "رقم السجل التجاري": "Commercial registration number",
+    "اسم المتجر بالإنجليزية": "Shop name in English",
+    "يظهر على الأوراق الإنجليزية — اكتبه كما في شهادة السجل التجاري": "Shown on English documents — write it as it appears on the commercial registration certificate",
+    "يُطبع في ترويسة فواتيرك تحت الرقم الضريبي": "Printed in your invoice header below the tax number"
 }

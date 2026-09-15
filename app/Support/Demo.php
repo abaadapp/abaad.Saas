@@ -611,6 +611,7 @@ class Demo
         return [
             'id' => $b->id,
             'name' => $b->name,
+            'name_en' => $b->name_en,
             'type' => $b->type,
             'owner' => $b->owner_name,
             'phone' => $b->phone,

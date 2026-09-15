@@ -747,6 +747,15 @@ class CustomerInvoiceController extends Controller
                     ? Snapshot::vat($snapshot)
                     : Paper::vatNumber($bid))
                 : '',
+            /*
+             * والسجلُّ التجاريُّ بلا شرطِ تسجيلٍ ولا مقبضِ إظهار.
+             *
+             * الضريبةُ حالان صحيحان: مسجَّلٌ وغيرُ مسجَّل. والسجلُّ واحد —
+             * كلُّ نشاطٍ مرخَّصٍ يحمله. فشرطُه أنّه أُدخل لا أنّه أُذن له.
+             */
+            'crNumber' => Snapshot::stamped($invoice)
+                ? Snapshot::cr($snapshot)
+                : Paper::crNumber($bid),
             'paid' => $paid,
             'outstanding' => $outstanding,
             'bank' => $bank,

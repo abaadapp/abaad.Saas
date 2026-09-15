@@ -106,6 +106,7 @@ class DocumentRenderer
             'headerNote' => trim((string) ($tpl['header'] ?? '')),
             'scale' => $scale,
             'vatNumber' => Paper::vatNumber($businessId),
+            'crNumber' => Paper::crNumber($businessId),
             /*
              * ورمزُ الورقة لسند التسليم وحده — انظر PublicDocument.
              *
@@ -242,6 +243,8 @@ class DocumentRenderer
             'headerNote' => trim((string) ($values['header'] ?? '')),
             'scale' => $scale,
             'vatNumber' => Snapshot::stamped($order) ? Snapshot::vat($snapshot) : Paper::vatNumber($businessId),
+            /* والسجلُّ من اللقطة كذلك — وورقةٌ سبقت الحقلَ تخلو منه صادقةً */
+            'crNumber' => Snapshot::stamped($order) ? Snapshot::cr($snapshot) : Paper::crNumber($businessId),
             /*
              * ولا رمزَ ولا رابطَ في المعاينة.
              *

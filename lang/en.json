@@ -5751,5 +5751,8 @@
     "[ملفّ]": "[file]",
     "خرج النصّ ولم يخرج المرفق": "Text sent, attachment not sent",
     "خرج النصّ ولم يخرج المرفق — :why": "Text sent, attachment not sent — :why",
-    "خرج نصُّ الردّ ولم يخرج المرفق — :why": "The reply text was sent but the attachment was not — :why"
+    "خرج نصُّ الردّ ولم يخرج المرفق — :why": "The reply text was sent but the attachment was not — :why",
+    "الفروعُ :n كلُّها مربوطة.": "All :n branches are linked.",
+    "بلا ربط: :names — وإيصالُ فرعٍ غير مربوطٍ يخرج بلا رمز تقييم.": "Not linked: :names — a receipt from an unlinked branch carries no review code.",
+    "لا فروعَ في متجرك بعد — أضِف فرعًا من «الإعدادات ‹ الفروع» ثمّ اربطه.": "Your shop has no branches yet — add one under Settings › Branches, then link it."
 }

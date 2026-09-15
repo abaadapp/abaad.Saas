@@ -194,9 +194,18 @@ class IntegrationsController extends Controller
             return back()->withErrors(['branch' => __('هذا الفرع غير مربوط.')]);
         }
 
-        return back()->with('toast', BranchGoogle::sync($place, force: true)
+        $out = BranchGoogle::sync($place, force: true);
+
+        /*
+         * وسببُ Google يُقال بنصّه.
+         *
+         * «تعذّر الاتّصال» تجعل التاجر يُعيد الضغط عشرًا على رفضٍ لا يزول
+         * بالتكرار — والرسالةُ الحقيقيّة تقول له: فعِّل الواجهة، أو اربط
+         * الفوترة، أو وسِّع قيدَ المفتاح.
+         */
+        return back()->with('toast', $out['ok']
             ? ['msg' => __('حُدِّثت التقييمات'), 'type' => 'success']
-            : ['msg' => __('تعذر الاتصال بـ Google حاليًا. حاول مرة أخرى.'), 'type' => 'danger']);
+            : ['msg' => (string) $out['error'], 'type' => 'danger']);
     }
 
     /**

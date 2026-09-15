@@ -183,35 +183,68 @@ final class BranchGoogle
      * ولا يُمحى المحفوظُ عند الفشل: عطلٌ عابرٌ عند Google لا يجعل معدّلَ
      * الفرع مجهولًا في الشاشة — يبقى آخرُ ما عُرف، ويقول تاريخُ المزامنة متى
      * عُرف.
+     *
+     * ═══ ولمَ ثلاثةُ حقولٍ لا `bool` ═══
+     *
+     * كانت تردُّ `false` عن ثلاثةِ مواقفَ مختلفة: «حديثٌ فلم يُزامَن»، و«لا
+     * مفتاح»، و«رفضت Google». فكان زرُّ «حدِّث الآن» يقول عن ثلاثتها «تعذّر
+     * الاتّصال بـ Google» — وهي في اثنتين منها كذبة، وفي الثالثة تُخفي
+     * الرسالةَ التي تقول ما يُفعل: «فعِّل Places API»، «اربط الفوترة».
+     *
+     * فيُفصل ما جرى عمّا كُتب، ويُحمل معه سببُه.
+     *
+     * @return array{ok:bool, wrote:bool, error:?string}
      */
-    public static function sync(BranchGooglePlace $place, bool $force = false): bool
+    public static function sync(BranchGooglePlace $place, bool $force = false): array
     {
         if (! $force && ! self::isStale($place)) {
-            return false;
+            return ['ok' => true, 'wrote' => false, 'error' => null];
         }
 
         $branch = $place->branch;
         $key = $branch ? GoogleReviews::apiKey($branch->business_id) : null;
 
         if ($key === null) {
-            return false;
+            return ['ok' => false, 'wrote' => false, 'error' => __('خدمة Google Maps غير مفعلة حاليًا.')];
         }
 
         $result = GooglePlaces::details($place->place_id, $key);
 
         if (! $result['ok']) {
-            return false;
+            // ونصُّ Google بحرفه: «رفضت Google المفتاح» تقول ما يُصلَح، و«تعذّر الاتّصال» لا تقول
+            return ['ok' => false, 'wrote' => false, 'error' => (string) $result['error']];
         }
 
+        self::stamp($place, $result['place']);
+
+        return ['ok' => true, 'wrote' => true, 'error' => null];
+    }
+
+    /**
+     * كتابةُ ما ردّته Google على صفّ الفرع — الموضعُ الوحيد الذي يكتبه.
+     *
+     * ═══ ولمَ يُنادى من `GoogleReviews::pull` أيضًا ═══
+     *
+     * شاشةُ الخرائط تعرض معدّلَ المحلّ مرّتين: في بطاقة التقييمات من
+     * `pull` (ذاكرةٌ ستُّ ساعات)، وفي صفّ الفرع من العمود (يُزامَن كلَّ
+     * اثنتي عشرة). ومصدران لرقمٍ واحدٍ بساعتين مختلفتين يفترقان حتمًا —
+     * فيقرأ التاجر ٤٫٣ فوق و٤٫١ تحت عن المحلّ نفسِه في اللحظة نفسِها.
+     *
+     * والردُّ الذي يسحبه `pull` هو الردُّ الذي تسحبه `sync` حرفًا بحرف. فما
+     * دام قد دُفع ثمنُه مرّةً، يُكتب مرّةً — فيتّحد الرقمان، ويسقط النداءُ
+     * الثاني من تلقائه لأنّ `synced_at` صارت حديثة.
+     *
+     * @param  array<string, mixed>  $shaped  ردُّ `GooglePlaces::details` مُشكَّلًا
+     */
+    public static function stamp(BranchGooglePlace $place, array $shaped): void
+    {
         $place->forceFill([
-            'place_name' => $result['place']['name'] ?: $place->place_name,
-            'maps_url' => $result['place']['maps_url'] ?? $place->maps_url,
-            'rating' => $result['place']['rating'],
-            'review_count' => $result['place']['count'],
+            'place_name' => $shaped['name'] ?: $place->place_name,
+            'maps_url' => $shaped['maps_url'] ?? $place->maps_url,
+            'rating' => $shaped['rating'],
+            'review_count' => $shaped['count'],
             'synced_at' => now(),
         ])->save();
-
-        return true;
     }
 
     /* ═══════════════════ العرض ═══════════════════ */

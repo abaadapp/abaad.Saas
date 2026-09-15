@@ -497,7 +497,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
         $this->fakeDetails(rating: 4.9, count: 200);
 
         $this->assertFalse(BranchGoogle::isStale($place));
-        $this->assertFalse(BranchGoogle::sync($place), 'زوُمن ربطٌ حديث');
+        $this->assertFalse(BranchGoogle::sync($place)['wrote'], 'زوُمن ربطٌ حديث');
 
         Http::assertNothingSent();
         $this->assertSame(4.0, BranchGoogle::for($this->khoud)->rating);
@@ -512,14 +512,14 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
         $this->fakeDetails(name: 'ورد أبعاد — الخوض', rating: 4.9, count: 200);
 
-        $this->assertTrue(BranchGoogle::sync($place->fresh()), 'لم يُزامَن ربطٌ قديم');
+        $this->assertTrue(BranchGoogle::sync($place->fresh())['wrote'], 'لم يُزامَن ربطٌ قديم');
         $after = $this->calls();
 
         $this->assertSame(4.9, BranchGoogle::for($this->khoud)->rating);
         $this->assertSame(200, BranchGoogle::for($this->khoud)->review_count);
 
         // وصار حديثًا: نداءٌ ثانٍ لا يقع
-        $this->assertFalse(BranchGoogle::sync(BranchGoogle::for($this->khoud)));
+        $this->assertFalse(BranchGoogle::sync(BranchGoogle::for($this->khoud))['wrote']);
         $this->assertSame($after, $this->calls());
     }
 

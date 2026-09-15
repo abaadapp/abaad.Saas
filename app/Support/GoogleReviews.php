@@ -135,13 +135,44 @@ class GoogleReviews
             return null;
         }
 
-        $branch = $branchId === null ? null : Branch::where('business_id', $businessId)->find($branchId);
+        /*
+         * ورقةٌ بلا فرعٍ أصلًا — متجرٌ بفرعٍ واحد، أو طلبٌ سبق الفروع.
+         *
+         * وهذه وحدَها تُقرأ من الفرع الأوّل: لا فرعَ للورقة يُنسب إليه
+         * التقييم، فالمتجرُ كلُّه هو الفرع.
+         */
+        if ($branchId === null) {
+            return self::reviewUrl(BranchGoogle::primaryFor($businessId)?->place_id);
+        }
 
-        $url = $branch
-            ? BranchGoogle::reviewUrl(BranchGoogle::for($branch))
-            : self::reviewUrl(BranchGoogle::primaryFor($businessId)?->place_id);
+        /*
+         * والفرعُ يُقرأ ولو أُغلق.
+         *
+         * إيصالٌ يُعاد طبعُه لطلبٍ من فرعٍ سُحب من الخدمة يحمل رمزَ **ذلك
+         * الفرع** — فهو موضعُ البيع، وملفُّه على الخرائط قائم. ولولا
+         * `withTrashed` لَسقط إلى الفرع الأوّل، وهو ما يمنعه السطرُ التالي.
+         */
+        $branch = Branch::withTrashed()->where('business_id', $businessId)->find($branchId);
 
-        return $url;
+        /*
+         * ═══ ولا احتياطَ حين لا يُقرأ الفرع ═══
+         *
+         * كان السطرُ واحدًا: «فرعٌ أو الفرعُ الأوّل». فبدا صحيحًا لأنّ الفرعَ
+         * يُقرأ دائمًا — حتّى يُحذف فرعٌ ويبقى رقمُه في طلباته القديمة، أو
+         * يصل رقمٌ لا يخصّ هذا المتجر. عندها يسقط إلى الفرع الأوّل **صامتًا**،
+         * فيُطبع على إيصال المعبيلة رمزُ الخوض.
+         *
+         * وهو بعينه العطبُ الذي وُجد الربطُ بالفرع ليمنعه — ولا يراه صاحبُه
+         * أبدًا: لا يمسح إيصالاته بنفسه، والتقييمُ يُحسب لفرعٍ لم يبِع شيئًا.
+         *
+         * فلا رمزَ. وورقةٌ بلا رمزٍ خسارةُ تقييمٍ واحد؛ ورمزٌ خاطئٌ يفسد عدّ
+         * فرعين معًا ولا يُكتشف.
+         */
+        if ($branch === null) {
+            return null;
+        }
+
+        return BranchGoogle::reviewUrl(BranchGoogle::for($branch));
     }
 
     /* ------------------------------ سحب التقييمات ----------------------------- */
@@ -217,6 +248,22 @@ class GoogleReviews
         $placeId = self::forBusiness($businessId)['place_id'];
         $own = self::keyHint($businessId) !== null;
 
+        /*
+         * وفروعُ المتجر تُعدّ — لا يُكتفى بواحدٍ منها.
+         *
+         * ═══ ولمَ تبدّل هذا ═══
+         *
+         * كانت الخطوةُ تقول «فروعك مربوطة» وتكتمل بربط **فرعٍ واحد**. فمتجرٌ
+         * بثلاثة فروعٍ يربط أوّلَها فيرى علامةَ تمامٍ خضراء، ويُغلق الشاشة.
+         * وإيصالُ الفرعين الآخرين يخرج بلا رمز — لا شيءَ يقول له لماذا، ولا
+         * يشكو أحد: الرمزُ الغائب لا يُفتقَد.
+         *
+         * «تقريرُ حالٍ كاذب أسوأ من غياب التقرير» — فتُعدّ وتُسمّى.
+         */
+        $branches = Branch::where('business_id', $businessId)->orderBy('id')->get(['id', 'name']);
+        $unlinked = $branches->filter(fn (Branch $b) => BranchGoogle::for($b) === null);
+        $allLinked = $branches->isNotEmpty() && $unlinked->isEmpty();
+
         /* بدأ: ضغط الزرّ، أو حدّد محلَّه قبل أن يوجد الزرّ */
         return Integration::payload(
             $started === '1' || $placeId !== null,
@@ -239,8 +286,21 @@ class GoogleReviews
                 Integration::step(
                     'place',
                     'فروعك مربوطة على الخرائط',
-                    $placeId !== null,
-                    fix: 'ابحث عن فرعك بالاسم أو رقم الهاتف واختره من القائمة أدناه.',
+                    $allLinked,
+                    detail: $branches->count() > 1
+                        ? __('الفروعُ :n كلُّها مربوطة.', ['n' => $branches->count()])
+                        : null,
+                    /*
+                     * والسببُ يُسمّي الفروعَ بأسمائها.
+                     *
+                     * «ابحث عن فرعك» لا تقول لمن له ثلاثةٌ أيُّها الناقص —
+                     * فيفتح القائمة ويقرؤها صفًّا صفًّا، أو يتركها.
+                     */
+                    fix: $branches->isEmpty()
+                        ? 'لا فروعَ في متجرك بعد — أضِف فرعًا من «الإعدادات ‹ الفروع» ثمّ اربطه.'
+                        : __('بلا ربط: :names — وإيصالُ فرعٍ غير مربوطٍ يخرج بلا رمز تقييم.', [
+                            'names' => $unlinked->pluck('name')->implode('، '),
+                        ]),
                 ),
                 Integration::step(
                     'reviews',
@@ -359,7 +419,8 @@ class GoogleReviews
      */
     public static function pull(int $businessId, bool $refresh = false): array
     {
-        $placeId = self::forBusiness($businessId)['place_id'];
+        $place = BranchGoogle::primaryFor($businessId);
+        $placeId = $place?->place_id;
 
         if ($placeId === null) {
             return self::state('unlinked');
@@ -394,6 +455,15 @@ class GoogleReviews
              */
             return self::state('error', error: $result['error']);
         }
+
+        /*
+         * وما رُدّ يُكتب على صفّ الفرع — رقمٌ واحدٌ في الشاشتين.
+         *
+         * النصوصُ لا تُكتب (شروط Google تمنع حفظ محتوى الأماكن)؛ والمعدّلُ
+         * والعددُ والاسمُ حقائقُ عن المحلّ لا محتوًى، وهي أعمدةٌ قائمةٌ منذ
+         * الربط. انظر `BranchGoogle::stamp`.
+         */
+        BranchGoogle::stamp($place, $result['place']);
 
         $payload = self::state('ok', place: $result['place'], fetchedAt: now()->toIso8601String());
 

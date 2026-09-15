@@ -94,6 +94,8 @@ export default function VerifyRecoveryCode() {
                     <span className="relative block" dir="ltr">
                         <KeyRound className="pointer-events-none absolute start-3 top-3 size-4 text-[#9ca3af]" />
                         <Input
+                            /* «اذهب» لا «تم»: هذا النموذج يُرسَل بالمفتاح — انظر lib/enter-key */
+                            enterKeyHint="go"
                             id="code"
                             name="code"
                             // لوحة الأرقام على الهاتف: ستّة أرقامٍ تُكتب بإبهامٍ واحد

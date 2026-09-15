@@ -115,6 +115,8 @@ export default function Login() {
                     <span className="relative block" dir="ltr">
                         <Mail className="pointer-events-none absolute start-3 top-3 size-4 text-[#9ca3af]" />
                         <Input
+                            /* «اذهب» لا «تم»: هذا النموذج يُرسَل بالمفتاح — انظر lib/enter-key */
+                            enterKeyHint="go"
                             id="email"
                             name="email"
                             type="email"
@@ -132,6 +134,8 @@ export default function Login() {
                 <Field label="كلمة المرور" required htmlFor="password">
                     {/* نفس السبب، وليبقى القفل في جهة أيقونة البريد لا مقابلها */}
                     <PasswordInput
+                        /* «اذهب» لا «تم»: هذا النموذج يُرسَل بالمفتاح — انظر lib/enter-key */
+                        enterKeyHint="go"
                         id="password"
                         name="password"
                         autoComplete="current-password"

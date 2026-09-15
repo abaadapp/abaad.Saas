@@ -28,8 +28,25 @@ export default function QuickCell({ id, field, value, display, className }: Prop
     // الأرقام تُكتب إنجليزيّة هنا كما في بقيّة الحقول — والحارس من مصدره الواحد
     const attach = useAsciiDigits<HTMLInputElement>(input);
 
+    /*
+     * والحفظُ مرّةً واحدة مهما تعدّدت أبوابُه.
+     *
+     * الخليّة تحفظ بـEnter وبمغادرة الحقل. وصارت Enter على الأجهزة اللمسية
+     * تُنهي التركيز أيضًا لتُغلق لوحةَ المفاتيح (انظر `lib/enter-key`) —
+     * فتمرّ الضغطةُ الواحدة بالبابين: `onKeyDown` ثمّ `onBlur`. وقِيس ذلك
+     * فخرج **طلبان** على مسار الحفظ السريع: سطران في سجلّ النشاط عن تعديلٍ
+     * واحد، وتسابقٌ على الكميّة نفسها.
+     *
+     * ومنعُ الافتراضيّ في `onKeyDown` كان يحلّها ويُبقي اللوحةَ مفتوحة — وهو
+     * ما جئنا نُصلحه. فالقفلُ على الحفظ نفسه: جلسةُ تحريرٍ واحدة، إرسالٌ
+     * واحد، ويُفتح القفل حين تُفتح الخليّة من جديد.
+     */
+    const sent = useRef(false);
+
+
     useEffect(() => {
         if (editing) {
+            sent.current = false;
             input.current?.focus();
             input.current?.select();
         }
@@ -41,6 +58,11 @@ export default function QuickCell({ id, field, value, display, className }: Prop
     }, [value, editing]);
 
     const commit = () => {
+        if (sent.current) {
+            return;
+        }
+
+        sent.current = true;
         setEditing(false);
         const next = Number(draft);
 

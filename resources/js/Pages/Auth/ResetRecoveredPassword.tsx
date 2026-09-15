@@ -58,6 +58,8 @@ export default function ResetRecoveredPassword() {
             <form onSubmit={submit} data-enter-submits className="mt-5 space-y-4">
                 <Field label="كلمة المرور الجديدة" required htmlFor="password" hint="٨ أحرف على الأقل">
                     <PasswordInput
+                        /* «اذهب» لا «تم»: هذا النموذج يُرسَل بالمفتاح — انظر lib/enter-key */
+                        enterKeyHint="go"
                         id="password"
                         name="password"
                         autoComplete="new-password"
@@ -75,6 +77,8 @@ export default function ResetRecoveredPassword() {
 
                 <Field label="تأكيد كلمة المرور" required htmlFor="password_confirmation">
                     <PasswordInput
+                        /* «اذهب» لا «تم»: هذا النموذج يُرسَل بالمفتاح — انظر lib/enter-key */
+                        enterKeyHint="go"
                         id="password_confirmation"
                         name="password_confirmation"
                         autoComplete="new-password"

@@ -23,7 +23,7 @@ function fractional(step: React.InputHTMLAttributes<HTMLInputElement>['step']): 
 }
 
 const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-    ({ className, type, dir, ...props }, ref) => {
+    ({ className, type, dir, enterKeyHint, ...props }, ref) => {
         const attach = useAsciiDigits<HTMLInputElement>(ref);
 
         /*
@@ -49,8 +49,21 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
          */
         const isDateTime = type !== undefined && DATETIME_TYPES.includes(type);
 
+        /*
+         * وما يُكتب على مفتاح الإدخال: «تم».
+         *
+         * تختار لوحةُ iOS الكلمةَ بنفسها حين لا نقول: «اذهب» لحقلٍ وحيدٍ في
+         * نموذج، و«التالي» حين بعده حقل. وكلتاهما تَعِد بما لا يقع — الضغطةُ
+         * تُنهي الكتابة وتُغلق اللوحة لا غير (انظر `lib/enter-key`). فيقرأ
+         * التاجر «اذهب» ويظنّ أنّه حفظ، أو «التالي» وينتظر قفزةً لا تأتي.
+         *
+         * والكلمةُ تُقال هنا مرّةً لأنّ الحقول ثلاثمئةٍ وأربعون، وكتابتُها في
+         * كلٍّ منها قائمةٌ باليد تنسى التاليَ. ومن له مفتاحٌ آخر يقوله صراحةً
+         * فيُقدَّم عليها — بحثُ نقطة البيع «بحث»، ونماذجُ الدخول «اذهب».
+         */
         return (
             <input
+                enterKeyHint={enterKeyHint ?? 'done'}
                 type={decimal ? 'text' : type}
                 inputMode={props.inputMode ?? (decimal ? 'decimal' : undefined)}
                 ref={attach}

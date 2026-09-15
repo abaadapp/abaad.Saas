@@ -192,6 +192,25 @@ export default function Conversations({
         });
     };
 
+    /*
+     * والبحثُ يُرسَل مرّةً عن الكلمة الواحدة.
+     *
+     * الحقل يبحث بـEnter وبمغادرته. وصارت Enter على الأجهزة اللمسية تُنهي
+     * التركيز لتُغلق لوحةَ المفاتيح (انظر `lib/enter-key`)، فتمرّ الضغطةُ
+     * بالبابين. وحارسُ المغادرة `term !== filters.q` لا يمنع: `filters` تأتي
+     * من الخادم ولم تكن قد وصلت بعد — فيُرسَل طلبان عن بحثٍ واحد.
+     */
+    const asked = useRef<string | null>(null);
+
+    const search = (q: string) => {
+        if (asked.current === q) {
+            return;
+        }
+
+        asked.current = q;
+        go({ q });
+    };
+
     const openThread = (id: number) => {
         setPane('thread');
         go({ conversation: id });
@@ -233,8 +252,8 @@ export default function Conversations({
                             <Input
                                 value={term}
                                 onChange={(e) => setTerm(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && go({ q: term })}
-                                onBlur={() => term !== filters.q && go({ q: term })}
+                                onKeyDown={(e) => e.key === 'Enter' && search(term)}
+                                onBlur={() => term !== filters.q && search(term)}
                                 placeholder={t('بحث في المحادثات...')}
                                 className="ps-9"
                                 aria-label={t('بحث في المحادثات')}

@@ -11,7 +11,6 @@ use App\Models\CustomerInvoiceItem;
 use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\Product;
-use App\Models\Setting;
 use App\Support\Document\Snapshot;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -160,10 +159,20 @@ final class CustomerInvoices
          *
          * `Demo::vatSettings()` تقرأ متجرَ الجلسة — فلو أُنشئت فاتورةٌ لمتجرٍ
          * آخر (أمرُ صيانة، أو لوحةُ المنصّة) لحُسبت بنسبة متجرٍ غيره.
+         *
+         * ═══ ومن `Vat::rate` لا بقراءةٍ تُكتب هنا ═══
+         *
+         * كانت مكتوبةً بيدها: صفُّ المتجر، وإلّا خمسة. و`Vat::rate` تهبط
+         * إلى **افتراضيّ المنصّة** قبل الخمسة — وهي التي تقرؤها نقطةُ البيع.
+         * فمتجرٌ لم يضبط نسبتَه ونسبةُ المنصّة عشرة: الكاشيرُ يجبي عشرة
+         * وفاتورةُ العميل تطلب خمسة، في المتجر نفسه واليوم نفسه. وقُيس.
+         *
+         * والإطفاءُ داخلها: `rate()` تردّ صفرًا للمتجر المطفأ.
          */
-        $rate = $taxRate ?? (Vat::enabled($businessId)
-            ? (float) (Setting::where('business_id', $businessId)->where('key', 'vat_rate')->value('value') ?? 5)
-            : 0.0);
+        $rate = $taxRate ?? Vat::rate($businessId);
+
+        /* ويُقرأ مرّةً لا لكلّ بند: استعلامٌ في حلقةٍ على فاتورةٍ بأربعين بندًا */
+        $inclusive = Vat::inclusive($businessId);
 
         $items = [];
         $subtotal = 0.0;
@@ -202,7 +211,22 @@ final class CustomerInvoices
             $net = round($gross - $lineDiscount, 3);
             // بندٌ معفًى يُكتب بنسبة صفر — والإعفاء لقطةٌ في السطر لا قاعدةٌ عامّة
             $lineRate = array_key_exists('tax_rate', $line) ? (float) $line['tax_rate'] : $rate;
-            $lineTax = round($net * $lineRate / 100, 3);
+            /*
+             * ═══ و«مشمولة في السعر» تُستخرَج من المبلغ لا تُضاف فوقه ═══
+             *
+             * المفتاح في «الإعدادات ‹ الضرائب» يحكم المتجرَ كلَّه، وتقرؤه
+             * نقطةُ البيع (`PosController`) وتصحيحُ الطلب (`OrderCorrection`)
+             * بالصيغة نفسِها. وكانت هذه الدالّةُ وحدَها تُضيف دائمًا.
+             *
+             * فتاجرٌ يسعّر شاملًا — وهو حالُ أكثر المحلّات في عُمان — يكتب
+             * ١٠٥ فتخرج ورقتُه بـ١١٠٫٢٥: يُطالَب عميلُه بضريبةٍ مرّتين، ويُقرّ
+             * هو بضريبةٍ لم يقبضها. وقُيس قبل الإصلاح.
+             *
+             * والصيغةُ صيغةُ الموضعين الآخرين حرفًا بحرف: `net × r ÷ (100+r)`.
+             */
+            $lineTax = $inclusive
+                ? round($net * $lineRate / (100 + $lineRate), 3)
+                : round($net * $lineRate / 100, 3);
 
             $subtotal = round($subtotal + $gross, 3);
             $discount = round($discount + $lineDiscount, 3);
@@ -217,10 +241,27 @@ final class CustomerInvoices
                 'discount' => $lineDiscount,
                 'tax_rate' => $lineRate,
                 'tax_amount' => $lineTax,
-                'line_total' => round($net + $lineTax, 3),
+                /*
+                 * والمبلغُ ما يدفعه العميل عن هذا البند.
+                 *
+                 * في «غير الشامل» هو الصافي والضريبةُ فوقه؛ وفي «الشامل»
+                 * الصافي **هو** المبلغ، وضريبتُه مستخرَجةٌ منه. وإضافتُها
+                 * ثانيةً تجعل مجموعَ البنود أكبرَ من إجمالي الورقة — وهي
+                 * الخاصّيّةُ التي يُراجَع بها ورقٌ رسميّ.
+                 */
+                'line_total' => $inclusive ? $net : round($net + $lineTax, 3),
                 'sort_order' => $sort++,
             ];
         }
+
+        /*
+         * والمجموعُ الفرعيُّ صافٍ من الضريبة حين تكون مشمولة.
+         *
+         * وهي صيغةُ `OrderCorrection` نفسُها: `gross − tax`. فيبقى
+         * `subtotal − discount + tax` مساويًا لمجموع البنود في الحالين —
+         * وهي القاعدةُ التي تُراجَع بها الورقة سطرًا سطرًا.
+         */
+        $subtotal = $inclusive ? round($subtotal - $tax, 3) : $subtotal;
 
         return [
             'items' => $items,

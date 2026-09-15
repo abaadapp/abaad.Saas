@@ -441,9 +441,25 @@ class CustomerInvoiceController extends Controller
              * بهذا الاسم» — وهو أسوأ من قائمةٍ تعتذر.
              */
             'catalog_truncated' => Product::where('business_id', $bid)->count() > self::CATALOG_LIMIT,
-            'tax_rate' => Vat::enabled($bid)
-                ? (float) (Setting::where('business_id', $bid)->where('key', 'vat_rate')->value('value') ?? 5)
-                : 0.0,
+            /*
+             * ونسبةُ الضريبة من `Vat::rate` لا بقراءةٍ تُكتب هنا.
+             *
+             * كانت مكتوبةً بيدها فتسقط إلى خمسة، و`Vat::rate` تهبط إلى
+             * **افتراضيّ المنصّة** قبلها — وهي التي تقرؤها نقطةُ البيع وتحتسب
+             * بها `CustomerInvoices::compute`. وثلاثُ قراءاتٍ لنسبةٍ واحدة
+             * تفترق: الشاشةُ تُظهر ٥٪ والخادمُ يحتسب ١٠٪.
+             *
+             * والإطفاءُ داخلها: تردّ صفرًا للمتجر المطفأ.
+             */
+            'tax_rate' => Vat::rate($bid),
+            /*
+             * وطريقةُ الاحتساب تصل الشاشةَ كذلك.
+             *
+             * ملخّصُ الفاتورة يُحسب في المتصفّح ليتحرّك مع الكتابة، وبلا هذا
+             * المفتاح يحسبه بقاعدةٍ واحدة بينما يحسب الخادمُ بقاعدتين —
+             * فيقرأ تاجرٌ يسعّر شاملًا رقمًا ويُحفظ غيرُه.
+             */
+            'tax_inclusive' => Vat::inclusive($bid),
             'today' => now()->toDateString(),
             'may' => $this->may(),
             /*
@@ -540,7 +556,15 @@ class CustomerInvoiceController extends Controller
             'items.*.description' => ['nullable', 'string', 'max:255'],
             'items.*.quantity' => ['nullable', 'numeric'],
             'items.*.unit_price' => ['nullable', 'numeric'],
-            'items.*.discount' => ['nullable', 'numeric'],
+            /*
+             * والقيودُ الماليّة هي قيودُ الحفظ نفسُها — لا أرخى منها.
+             *
+             * قواعدُ المعاينة أرخى عمدًا: الورقةُ تُرسم وهي تُكتب، فحقولٌ لم
+             * تُملأ بعد لا تُردّ. لكنّ **السالب ليس نقصًا**: `store` ترفضه
+             * بـ`min:0` وكانت هذه تقبله، فتُعاين ورقةٌ لا تُحفظ — ويُعاد
+             * الحفظُ بخطأٍ على حقلٍ رآه التاجر مرسومًا في المعاينة.
+             */
+            'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'bank_account_id' => ['nullable', 'integer'],
             /*

@@ -19,6 +19,7 @@ import {
 import { Input, Textarea } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { money } from '@/lib/format';
+import { invoiceTotals } from '@/lib/invoice-totals';
 import { fold } from '@/lib/pages';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -82,6 +83,8 @@ interface Props {
     /** هل في الكتالوج ما لم يُرسَل؟ — انظر CATALOG_LIMIT في المتحكّم */
     catalog_truncated: boolean;
     tax_rate: number;
+    /** أسعارُ المتجر شاملةٌ للضريبة؟ — من `Vat::inclusive`، لا تُخمَّن هنا */
+    tax_inclusive: boolean;
     today: string;
     may: May;
     /** «آجل» ثمّ وسائلُ التحصيل — من `CustomerInvoices::methods` لا مكتوبةً هنا */
@@ -224,6 +227,7 @@ export default function CustomerInvoiceCreate({
     products,
     catalog_truncated,
     tax_rate,
+    tax_inclusive,
     today,
     may,
     methods,
@@ -325,22 +329,14 @@ export default function CustomerInvoiceCreate({
     const setLine = (i: number, key: keyof Line, value: string) =>
         setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, [key]: value } : l)));
 
-    const totals = useMemo(() => {
-        let subtotal = 0;
-        let discount = 0;
-        let tax = 0;
-
-        for (const l of lines) {
-            const gross = NUMBER(l.quantity) * NUMBER(l.unit_price);
-            const off = NUMBER(l.discount);
-            const net = Math.max(0, gross - off);
-            subtotal += gross;
-            discount += off;
-            tax += (net * NUMBER(l.tax_rate)) / 100;
-        }
-
-        return { subtotal, discount, tax, total: subtotal - discount + tax };
-    }, [lines]);
+    /*
+     * ملخّصٌ يُحسب في المتصفّح — وبقاعدة الخادم لا بقاعدةٍ تشبهها.
+     *
+     * والصيغةُ في `lib/invoice-totals` لا هنا: هي نسخةُ
+     * `CustomerInvoices::compute`، ويقابلهما اختبارٌ حسابًا برقم فلا
+     * تفترقان. وكانت مكتوبةً هنا فافترقت في ثلاثة — انظر الملفّ.
+     */
+    const totals = useMemo(() => invoiceTotals(lines, tax_inclusive), [lines, tax_inclusive]);
 
     /* ومدّةُ السداد تُحرّك تاريخ الاستحقاق — والتاريخُ يبقى قابلًا للكتابة */
     const setTerms = (value: string) => {

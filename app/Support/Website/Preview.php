@@ -551,8 +551,8 @@ class Preview
 
     private static function reviews(int $businessId, int $limit): array
     {
-        return Review::where('business_id', $businessId)->where('status', 'منشور')
-            ->whereNotNull('comment')->orderByDesc('id')
+        return Review::where('business_id', $businessId)->showable()
+            ->orderByDesc('id')
             ->limit(max($limit, self::MAX))->get(['author_name', 'rating', 'comment'])
             ->map(fn ($r) => [
                 'author' => $r->author_name ?: 'عميل',

@@ -27,9 +27,21 @@ use Inertia\Response;
  */
 class ReviewController extends Controller
 {
-    /** ما يُرتَّب في تقييمات العملاء */
+    /**
+     * ما يُرتَّب في تقييمات العملاء.
+     *
+     * ═══ و«المُقيِّم» يُرتَّب كما يُقرأ ═══
+     *
+     * الشاشةُ تعرض `displayName()`: اسمَ العميل المسجَّل إن كان، وإلّا ما
+     * كتبه الزائر. وكان الترتيبُ على `author_name` وحدَه — وهو **فارغٌ**
+     * لكلّ تقييمٍ لعميلٍ مسجَّل. فيضغط التاجر رأسَ العمود فتتحرّك الصفوف
+     * ترتيبًا لا يطابق ما يقرؤه: أسماءٌ ظاهرةٌ مرتَّبةٌ بفراغات.
+     *
+     * فيُرتَّب على العمود المحسوب `display_author` — وهو التعبيرُ نفسُه
+     * الذي تعرضه الشاشة.
+     */
     private const SORTS = [
-        'author' => 'author_name',
+        'author' => 'display_author',
         'rating' => 'rating',
         'status' => 'status',
     ];
@@ -43,24 +55,38 @@ class ReviewController extends Controller
     {
         $bid = $this->bid();
 
-        $q = Review::where('business_id', $bid)->with(['customer', 'product']);
+        /*
+         * والوصلةُ يسارًا لا داخليّة: تقييمُ زائرٍ بلا عميلٍ مسجَّل يبقى في
+         * القائمة. و`deleted_at` في شرط الوصل لا بعده — عميلٌ محذوفٌ لا
+         * يُقرأ اسمُه في الترتيب وقد سقط من الشاشة (`belongsTo` يردّ
+         * فارغًا للمحذوف)، فيفترق المعروضُ عن المرتَّب من جديد.
+         */
+        $q = Review::where('reviews.business_id', $bid)->with(['customer', 'product'])
+            ->leftJoin('customers', function ($join) {
+                $join->on('customers.id', '=', 'reviews.customer_id')
+                    ->whereNull('customers.deleted_at');
+            })
+            ->select('reviews.*')
+            ->selectRaw('coalesce(customers.name, reviews.author_name) as display_author');
 
         if ($s = Search::term($request)) {
             // `like` على PostgreSQL يفرّق بين حالتَي الحرف، وأسماءُ المقيّمين
             // وتعليقاتُهم تُكتب باللاتينية كثيرًا — فالبحث كان أعمى في الإنتاج
             // ويعمل في الاختبار (SQLite متساهل). انظر Support\Search
             $like = Search::like();
-            $q->where(fn ($w) => $w->where('comment', $like, "%{$s}%")
-                ->orWhere('author_name', $like, "%{$s}%"));
+            $q->where(fn ($w) => $w->where('reviews.comment', $like, "%{$s}%")
+                ->orWhere('reviews.author_name', $like, "%{$s}%")
+                /* واسمُ العميل المسجَّل يُبحث فيه أيضًا — هو ما يراه الباحث في العمود */
+                ->orWhere('customers.name', $like, "%{$s}%"));
         }
         if ($status = $request->query('status')) {
-            $q->where('status', $status);
+            $q->where('reviews.status', $status);
         }
         if ($rating = $request->query('rating')) {
-            $q->where('rating', (int) $rating);
+            $q->where('reviews.rating', (int) $rating);
         }
 
-        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
+        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('reviews.id'));
 
         $reviews = $q->paginate(Pagination::perPage($request, 20))->withQueryString();
 
@@ -190,10 +216,17 @@ class ReviewController extends Controller
             'reply' => ['required', 'string', 'max:2000'],
         ]);
 
+        $hidden = $review->status === 'مرفوض';
+
         $review->update([
             'reply' => $data['reply'],
             'replied_at' => now(),
-            // الردّ إذنٌ بالنشر ضمنًا: لا يُردّ إلا على ما يُعرض
+            /*
+             * الردّ إذنٌ بالنشر ضمنًا — للمعلَّق وحده.
+             *
+             * والمرفوضُ لا يُنشر بردّ: رفضُه قرارٌ اتّخذه صاحبُه بيده، وقلبُه
+             * من طرفٍ خفيٍّ يُخرج إلى واجهة المتجر كلامًا حُجب عمدًا.
+             */
             'status' => $review->status === 'معلّق' ? 'منشور' : $review->status,
         ]);
 
@@ -203,7 +236,21 @@ class ReviewController extends Controller
             'subject_type' => 'review',
         ]);
 
-        return back()->with('toast', ['msg' => __('نُشر الردّ'), 'type' => 'success']);
+        /*
+         * ═══ و«نُشر الردّ» عن تقييمٍ مرفوضٍ كذبة ═══
+         *
+         * المرفوضُ محجوبٌ عن الموقع، وردُّه محجوبٌ معه — لا يقرؤه أحد. وكانت
+         * الشاشة تقول «نُشر الردّ» خضراءَ فيطمئنّ صاحبُ المحلّ إلى أنّه
+         * أجاب زبونًا غاضبًا، والزبون لم يرَ حرفًا.
+         *
+         * فالردُّ يُحفظ (لئلّا يُكتب مرّتين)، ويُقال ما جرى بحرفه.
+         */
+        return back()->with('toast', $hidden
+            ? [
+                'msg' => __('حُفظ الردّ — ولن يقرأه أحد: التقييم مرفوضٌ ومحجوب. انشره ليظهرا معًا.'),
+                'type' => 'warning',
+            ]
+            : ['msg' => __('نُشر الردّ'), 'type' => 'success']);
     }
 
     public function destroy($id)

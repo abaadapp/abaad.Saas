@@ -68,7 +68,8 @@ class MerchantData
         return [
             'products' => Product::where('business_id', $businessId)->where('active', true)->exists(),
             'categories' => Category::where('business_id', $businessId)->exists(),
-            'reviews' => Review::where('business_id', $businessId)->where('status', 'منشور')->exists(),
+            /* وما يُعرض لا ما يُنشر — انظر `Review::scopeShowable` */
+            'reviews' => Review::where('business_id', $businessId)->showable()->exists(),
             /*
              * وهل باع أصلًا؟
              *

@@ -5777,5 +5777,6 @@
     "أضف <meta name=\"description\"> في :min–:max حرفًا — هو السطر الرمادي تحت العنوان.": "Add a <meta name=\"description\"> of :min–:max characters — it is the grey line under the title.",
     "اختصره إلى نحو :max حرفًا.": "Shorten it to about :max characters.",
     "وسّعه إلى :min–:max حرفًا تقول ما تبيع ولمن.": "Expand it to :min–:max characters saying what you sell and to whom.",
-    "التحليلات وفحص الظهور": "Analytics & visibility check"
+    "التحليلات وفحص الظهور": "Analytics & visibility check",
+    "حُفظ الردّ — ولن يقرأه أحد: التقييم مرفوضٌ ومحجوب. انشره ليظهرا معًا.": "The reply was saved — but nobody will read it: the review is rejected and hidden. Publish it so both appear."
 }

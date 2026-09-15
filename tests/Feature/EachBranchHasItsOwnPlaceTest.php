@@ -609,7 +609,8 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
         $toast = session('toast');
 
-        $this->assertSame('success', $toast['type']);
+        /* و`info` لا `success` — التجهيزُ ليس إرسالًا */
+        $this->assertSame('info', $toast['type']);
         $this->assertStringContainsString('wa.me/96890000001', $toast['link']['url']);
         $this->assertStringContainsString(rawurlencode(self::A), $toast['link']['url']);
         $this->assertNotNull($order->fresh()->review_request_sent_at);

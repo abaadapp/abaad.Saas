@@ -105,7 +105,14 @@ class AHandSendsWhatMetaWillNotTest extends TestCase
         $this->notify($order)->assertRedirect();
 
         $toast = session('toast');
-        $this->assertSame('success', $toast['type']);
+
+        /*
+         * و`info` لا `success`: لم يخرج شيءٌ بعد.
+         *
+         * الأخضرُ يعني «تمّ»، والذي تمَّ هو التجهيز وحده — ومن قرأ أخضرَ
+         * أغلق الشاشةَ ولم يضغط «إرسال» في واتساب.
+         */
+        $this->assertSame('info', $toast['type']);
         $this->assertStringContainsString('wa.me/96891234567', $toast['link']['url']);
     }
 
@@ -276,7 +283,7 @@ class AHandSendsWhatMetaWillNotTest extends TestCase
 
         $this->notify($order)->assertRedirect();
 
-        $this->assertSame('success', session('toast')['type']);
+        $this->assertSame('info', session('toast')['type']);
         $this->assertNotNull($order->fresh()->status_notice_at);
     }
 
@@ -338,5 +345,81 @@ class AHandSendsWhatMetaWillNotTest extends TestCase
         $order->forceFill(['review_request_sent_at' => now()])->save();
 
         $this->assertNotNull(optional($order->fresh()->review_request_sent_at)->toIso8601String());
+    }
+
+    /* ══════════════ التجهيزُ ليس إرسالًا ══════════════ */
+
+    /**
+     * وزرُّ «إرسال» في الطلب يجهّز ولا يُرسل — ويُقال ذلك بلونه.
+     *
+     * ═══ وكيف وُجد هذا ═══
+     *
+     * ضغط صاحبُ المنصّة الزرَّ ثمّ قال: «أرسلتُ فاتورةً للزبون ولم تصلني».
+     * ولم يكن عطبًا في الإرسال: **لم يُرسَل شيءٌ أصلًا ولم يكن ليُرسَل**.
+     * الزرُّ يفتح واتساب التاجر بنصٍّ مكتوب ليضغط هو، وكان يقول «إرسال»
+     * ويردُّ توستًا أخضر — فيُقرأ «تمّ».
+     *
+     * والأخضرُ يعني «تمّ»، والتمامُ هنا تجهيزٌ لا إرسال.
+     */
+    public function test_the_invoice_button_prepares_and_says_so(): void
+    {
+        $order = $this->order(OrderStatus::READY);
+
+        $this->post(route('admin.orders.send', $order->number))->assertRedirect();
+
+        $toast = session('toast');
+
+        $this->assertSame('info', $toast['type'], 'زرُّ التجهيز ردَّ أخضرَ كأنّ شيئًا أُرسل');
+        $this->assertStringContainsString('wa.me/96891234567', $toast['link']['url']);
+        $this->assertSame(0, DB::table('whatsapp_messages')->count(), 'كُتب صفٌّ في سجلّ ميتا عن يدٍ لم تمرّ بها');
+    }
+
+    /**
+     * ولا توستَ أخضرَ على أيّ بابٍ يفتح واتساب التاجر — في المصدر كلِّه.
+     *
+     * ═══ ولمَ يُفحص المصدر ═══
+     *
+     * الحالاتُ أعلاه تشهد على أربعة أبوابٍ قائمة. وهذا يشهد على الخامس
+     * الذي يُكتب بعد سنة: من نسخ بابًا منها ووضع `'type' => 'success'`
+     * يسقط هنا — لا يوم يقول تاجرٌ «أرسلتُ ولم تصل».
+     *
+     * والعلامةُ `wa.me`: لا يحملها إلّا توستٌ يطلب من التاجر أن يُرسل بيده.
+     */
+    public function test_no_hand_send_toast_is_painted_green(): void
+    {
+        $bad = [];
+
+        foreach ($this->sourceFiles(app_path()) as $file) {
+            $source = (string) file_get_contents($file);
+
+            if (! str_contains($source, 'wa.me/')) {
+                continue;
+            }
+
+            /* كلُّ جملةِ توستٍ في الملفّ — ويُقرأ لونُها ورابطُها معًا */
+            preg_match_all("/with\('toast', \[(.+?)\]\)/s", $source, $matches);
+
+            foreach ($matches[1] as $block) {
+                if (str_contains($block, 'wa.me/') && str_contains($block, "'type' => 'success'")) {
+                    $bad[] = basename($file);
+                }
+            }
+        }
+
+        $this->assertSame([], $bad, 'توستٌ أخضر على بابٍ يطلب من التاجر أن يُرسل بيده');
+    }
+
+    /** @return list<string> */
+    private function sourceFiles(string $dir): array
+    {
+        $out = [];
+
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir)) as $file) {
+            if ($file->isFile() && $file->getExtension() === 'php') {
+                $out[] = $file->getPathname();
+            }
+        }
+
+        return $out;
     }
 }

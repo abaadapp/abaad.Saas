@@ -1371,8 +1371,8 @@ class CustomerInvoiceController extends Controller
         ]);
 
         return back()->with('toast', [
-            'msg' => __('افتح واتساب وأرسل التذكير'),
-            'type' => 'success',
+            'msg' => __('جُهِّز التذكير — افتح واتساب واضغط «إرسال» فيه.'),
+            'type' => 'info',
             'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
         ]);
     }

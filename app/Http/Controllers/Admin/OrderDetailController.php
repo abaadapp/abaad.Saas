@@ -92,8 +92,17 @@ class OrderDetailController extends Controller
         ]);
 
         return back()->with('toast', [
-            'msg' => __('افتح واتساب وأرسل الفاتورة'),
-            'type' => 'success',
+            'msg' => __('جُهِّزت الرسالة — افتح واتساب واضغط «إرسال» فيه.'),
+            /*
+             * ═══ ولمَ ليست خضراء ═══
+             *
+             * الأخضرُ يعني «تمّ». ولم يتمّ شيء: النصُّ جاهزٌ ولم يخرج حرفٌ
+             * إلى أحد. وتاجرٌ رأى أخضرَ يُغلق الشاشةَ وهو يظنّ أنّ الفاتورة
+             * عند زبونه — فلا يرسلها، ولا يعرف أنّه لم يرسلها.
+             *
+             * «طمأنينةٌ كاذبة أسوأ من تحذيرٍ كاذب».
+             */
+            'type' => 'info',
             'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
         ]);
     }
@@ -164,8 +173,8 @@ class OrderDetailController extends Controller
         ]);
 
         return back()->with('toast', [
-            'msg' => __('افتح واتساب وأرسل طلب التقييم'),
-            'type' => 'success',
+            'msg' => __('جُهِّز الطلب — افتح واتساب واضغط «إرسال» فيه.'),
+            'type' => 'info',
             'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
         ]);
     }
@@ -212,8 +221,8 @@ class OrderDetailController extends Controller
         ]);
 
         return back()->with('toast', [
-            'msg' => __('افتح واتساب وأرسل الإشعار'),
-            'type' => 'success',
+            'msg' => __('جُهِّز الإشعار — افتح واتساب واضغط «إرسال» فيه.'),
+            'type' => 'info',
             'link' => [
                 'url' => 'https://wa.me/'.OrderNotice::phone($order)
                     .'?text='.rawurlencode(OrderNotice::text($order, $event)),

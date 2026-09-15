@@ -5754,5 +5754,15 @@
     "خرج نصُّ الردّ ولم يخرج المرفق — :why": "The reply text was sent but the attachment was not — :why",
     "الفروعُ :n كلُّها مربوطة.": "All :n branches are linked.",
     "بلا ربط: :names — وإيصالُ فرعٍ غير مربوطٍ يخرج بلا رمز تقييم.": "Not linked: :names — a receipt from an unlinked branch carries no review code.",
-    "لا فروعَ في متجرك بعد — أضِف فرعًا من «الإعدادات ‹ الفروع» ثمّ اربطه.": "Your shop has no branches yet — add one under Settings › Branches, then link it."
+    "لا فروعَ في متجرك بعد — أضِف فرعًا من «الإعدادات ‹ الفروع» ثمّ اربطه.": "Your shop has no branches yet — add one under Settings › Branches, then link it.",
+    "ذكّره بواتسابك": "Remind via your WhatsApp",
+    "إرسال بواتسابك": "Send via your WhatsApp",
+    "جهّز الإشعار مجددًا": "Prepare the notice again",
+    "أبلغ الزبون بواتسابك": "Notify via your WhatsApp",
+    "جهّز الطلب مجددًا": "Prepare the request again",
+    "اطلب التقييم بواتسابك": "Ask for a review via your WhatsApp",
+    "جُهِّزت الرسالة — افتح واتساب واضغط «إرسال» فيه.": "The message is ready — open WhatsApp and press Send there.",
+    "جُهِّز الطلب — افتح واتساب واضغط «إرسال» فيه.": "The request is ready — open WhatsApp and press Send there.",
+    "جُهِّز الإشعار — افتح واتساب واضغط «إرسال» فيه.": "The notice is ready — open WhatsApp and press Send there.",
+    "جُهِّز التذكير — افتح واتساب واضغط «إرسال» فيه.": "The reminder is ready — open WhatsApp and press Send there."
 }

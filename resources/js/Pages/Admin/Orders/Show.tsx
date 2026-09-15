@@ -285,7 +285,15 @@ export default function OrderShow() {
                                 }
                             >
                                 <Send />
-                                {t('إرسال')}
+                                {/*
+                                    و«إرسال» وحدَها كذبة.
+
+                                    الزرُّ يفتح واتساب التاجر بنصٍّ مكتوب، ويضغط
+                                    هو «إرسال» هناك. ومن قرأ «إرسال» ظنّ أنّ
+                                    الفاتورة خرجت، فأغلق الشاشة ولم يرسلها —
+                                    ولا يعرف أنّه لم يرسلها.
+                                */}
+                                {t('إرسال بواتسابك')}
                             </Button>
                         )}
 
@@ -331,9 +339,17 @@ export default function OrderShow() {
                                     }
                                 >
                                     <MessageCircle />
+                                    {/*
+                                        و«مجددًا» تشهد بأنّ الأولى وصلت.
+
+                                        ولم تصل: `preparedAt` تقول إنّ النصَّ
+                                        جُهِّز، لا إنّه خرج — ولا يعرف النظامُ
+                                        أنّ التاجر ضغط «إرسال» في واتساب.
+                                        فيُقال «جهّزه» لا «أبلغه».
+                                    */}
                                     {statusNotice.preparedAt
-                                        ? t('أبلغ الزبون مجددًا')
-                                        : t('أبلغ الزبون بالحالة')}
+                                        ? t('جهّز الإشعار مجددًا')
+                                        : t('أبلغ الزبون بواتسابك')}
                                 </Button>
                             ) : (
                                 <Button variant="outline" disabled title={statusNotice.reason ?? undefined}>
@@ -359,7 +375,9 @@ export default function OrderShow() {
                                 }
                             >
                                 <Star />
-                                {googleReview.requestedAt ? t('طلب التقييم مجددًا') : t('طلب تقييم Google')}
+                                {googleReview.requestedAt
+                                    ? t('جهّز الطلب مجددًا')
+                                    : t('اطلب التقييم بواتسابك')}
                             </Button>
                         )}
                         {/*

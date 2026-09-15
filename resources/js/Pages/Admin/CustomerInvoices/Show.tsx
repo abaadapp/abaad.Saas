@@ -140,7 +140,8 @@ export default function CustomerInvoiceShow() {
                                         onClick={() => remind.post(`/admin/customer-invoices/${invoice.id}/remind`, { preserveScroll: true })}
                                     >
                                         <MessageCircle />
-                                        {t('تذكير بالسداد')}
+                                        {/* وهو يفتح واتساب التاجر ليضغط هو — لا مُرسِلَ آليّ */}
+                                        {t('ذكّره بواتسابك')}
                                     </Button>
                                 )}
                                 {/*

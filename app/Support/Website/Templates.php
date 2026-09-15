@@ -131,7 +131,7 @@ class Templates
                 'font' => 'rubik', 'radius' => 'large', 'button' => 'soft',
             ],
             'layout' => [
-                'width' => 'normal', 'density' => 'balanced', 'scale' => 'editorial', 'heading' => 'start',
+                'width' => 'normal', 'density' => 'balanced', 'scale' => 'display', 'heading' => 'start',
                 'header' => 'centered', 'hero' => 'split', 'card' => 'soft', 'grid' => 'editorial',
                 'ratio' => 'landscape', 'categories' => 'covers', 'footer' => 'split', 'surface_style' => 'raised',
             ],
@@ -150,8 +150,8 @@ class Templates
                 'font' => 'ibm-plex-arabic', 'radius' => 'none', 'button' => 'solid',
             ],
             'layout' => [
-                'width' => 'narrow', 'density' => 'spacious', 'scale' => 'balanced', 'heading' => 'start',
-                'header' => 'minimal', 'hero' => 'centered', 'card' => 'plain', 'grid' => 'classic',
+                'width' => 'narrow', 'density' => 'spacious', 'scale' => 'precise', 'heading' => 'start',
+                'header' => 'minimal', 'hero' => 'centered', 'card' => 'bare', 'grid' => 'classic',
                 'ratio' => 'portrait', 'categories' => 'list', 'footer' => 'minimal', 'surface_style' => 'flat',
             ],
             'presets' => [

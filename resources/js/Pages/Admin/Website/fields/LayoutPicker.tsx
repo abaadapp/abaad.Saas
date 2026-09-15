@@ -327,6 +327,19 @@ function Sketch({ family, shape }: { family: Family; shape: string }) {
                 </Frame>
             );
 
+        case 'card:bare':
+            return (
+                <Frame className="flex-row gap-[6px]">
+                    {[0, 1].map((i) => (
+                        <span key={i} className="flex flex-1 flex-col gap-[3px]">
+                            <span className={cn(ghost, 'w-full flex-1')} />
+                            <Line w={62} />
+                            <span className={cn(bar, 'h-px w-[30%]')} />
+                        </span>
+                    ))}
+                </Frame>
+            );
+
         /* ---------------------------- التصنيفات ---------------------------- */
 
         case 'categories:cards':
@@ -375,7 +388,11 @@ function Sketch({ family, shape }: { family: Family; shape: string }) {
                 <Frame>
                     <span className="grid flex-1 grid-cols-3 gap-[3px]">
                         {Array.from({ length: 3 }).map((_, i) => (
-                            <span key={i} className={cn(solid, 'flex items-end p-[3px]')}>
+                            <span
+                                key={i}
+                                className={cn(solid, 'flex items-end p-[3px]')}
+                                style={i === 0 ? { gridColumn: 'span 2' } : undefined}
+                            >
                                 <span className="h-[2px] w-full rounded-[2px] bg-white/80" />
                             </span>
                         ))}

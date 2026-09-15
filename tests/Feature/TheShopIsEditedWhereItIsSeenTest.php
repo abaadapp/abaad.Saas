@@ -159,7 +159,7 @@ class TheShopIsEditedWhereItIsSeenTest extends TestCase
         $section = $site->homePage()->sections()->where('type', 'featured_products')->firstOrFail();
 
         // وصفُ عرضٍ لا بضاعة: لا اسمَ ولا سعرَ ولا صورةً في المحفوظ
-        $this->assertSame(['title', 'layout', 'product_ids', 'limit', 'columns'], array_keys($section->data));
+        $this->assertSame(['title', 'layout', 'eyebrow', 'product_ids', 'limit', 'columns'], array_keys($section->data));
         $this->assertSame('products', Sections::source('featured_products'));
 
         $before = $this->props(route('admin.website.editor'))['document'];

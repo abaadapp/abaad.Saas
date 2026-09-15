@@ -201,6 +201,17 @@ class Sections
                     'editorial' => 'صورة ملء العرض',
                     'showcase' => 'لوحة عرض',
                 ]],
+                /*
+                 * وسطرٌ فوق العنوان — يكتبه التاجر أو لا يُرسم.
+                 *
+                 * «مجموعة الأعياد» فوق «باقاتٌ تُقال بلا كلام» تصنع تراتبًا
+                 * لا يصنعه حجمُ خطٍّ وحده. ولا يُملأ من عندنا: جملةٌ يكتبها
+                 * النظامُ في واجهة تاجرٍ وعدٌ يقطعه باسمه وهو لا يعلم.
+                 */
+                'eyebrow' => [
+                    'label' => 'سطر فوق العنوان', 'type' => 'text', 'default' => '', 'max' => 40,
+                    'hint' => 'كلمتان تسمّيان المناسبة أو المجموعة — اتركه فارغًا إن لم تحتجه',
+                ],
                 'title' => ['label' => 'العنوان', 'type' => 'text', 'default' => '', 'max' => 120],
                 'subtitle' => ['label' => 'الجملة تحته', 'type' => 'textarea', 'default' => '', 'max' => 300],
                 'image' => ['label' => 'صورة الخلفية', 'type' => 'image', 'default' => ''],
@@ -347,6 +358,9 @@ class Sections
                     'large' => 'بطاقات كبيرة',
                     'editorial' => 'متفاوتة',
                 ]],
+                'eyebrow' => [
+                    'label' => 'سطر فوق العنوان', 'type' => 'text', 'default' => '', 'max' => 40, 'advanced' => true,
+                ],
                 'product_ids' => [
                     'label' => 'المنتجات', 'type' => 'products', 'default' => [],
                     'hint' => 'اتركها فارغة ليعرض أحدث منتجاتك تلقائيًّا',
@@ -372,6 +386,9 @@ class Sections
                     'large' => 'بطاقات كبيرة',
                     'editorial' => 'متفاوتة',
                 ]],
+                'eyebrow' => [
+                    'label' => 'سطر فوق العنوان', 'type' => 'text', 'default' => '', 'max' => 40, 'advanced' => true,
+                ],
                 'limit' => ['label' => 'كم منتجًا يظهر', 'type' => 'number', 'default' => 8, 'min' => 2, 'max' => 24],
                 'columns' => ['label' => 'عدد الأعمدة', 'type' => 'select', 'default' => '4', 'advanced' => true, 'options' => [
                     '2' => 'اثنان', '3' => 'ثلاثة', '4' => 'أربعة',
@@ -402,6 +419,9 @@ class Sections
                     'large' => 'بطاقات كبيرة',
                     'editorial' => 'متفاوتة',
                 ]],
+                'eyebrow' => [
+                    'label' => 'سطر فوق العنوان', 'type' => 'text', 'default' => '', 'max' => 40, 'advanced' => true,
+                ],
                 'limit' => ['label' => 'كم منتجًا يظهر', 'type' => 'number', 'default' => 8, 'min' => 2, 'max' => 24],
                 'days' => ['label' => 'خلال كم يومًا', 'type' => 'number', 'default' => 90, 'min' => 7, 'max' => 365, 'advanced' => true],
             ],

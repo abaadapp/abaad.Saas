@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { ShoppingBag, Star } from './icons';
+import { Star } from './icons';
 import { useText } from './i18n';
 import type { LayoutTokens } from './layout';
 import { money } from './money';
@@ -20,6 +20,7 @@ export function Band({
     children,
     tone,
     tight,
+    loose,
     id,
     /** قسمٌ يملأ الشاشة عرضًا — الواجهةُ والصورُ الكبيرة */
     bleed,
@@ -27,6 +28,16 @@ export function Band({
     children: ReactNode;
     tone?: 'surface' | 'primary';
     tight?: boolean;
+    /**
+     * قسمٌ يتنفّس أكثر ممّا حوله.
+     *
+     * صفحةٌ كلُّ أقسامها بحشوٍ واحد تُقرأ قائمةً لا صفحة: العينُ تنزل بإيقاعٍ
+     * واحد فلا تعرف أين ينتهي فصلٌ ويبدأ آخر. فما يقول «قِف» — العرضُ
+     * والدعوةُ وصفُّ الآراء — يأخذ فراغًا أوسع، والشريطُ الملاصقُ للواجهة
+     * يأخذ أضيق. والثلاثةُ من متغيّرٍ واحدٍ يتبع كثافةَ القالب، لا أرقامًا
+     * مكتوبةً في عشرين قسمًا.
+     */
+    loose?: boolean;
     id?: string;
     bleed?: boolean;
 }) {
@@ -37,7 +48,7 @@ export function Band({
                 background:
                     tone === 'primary' ? 'var(--w-primary)' : tone === 'surface' ? 'var(--w-surface)' : 'transparent',
                 color: tone === 'primary' ? 'var(--w-on-primary)' : 'inherit',
-                padding: tight ? 'var(--w-pad-tight)' : 'var(--w-pad)',
+                padding: tight ? 'var(--w-pad-tight)' : loose ? 'var(--w-pad-loose)' : 'var(--w-pad)',
             }}
         >
             <div style={{ maxWidth: bleed ? undefined : 'var(--w-content)', margin: '0 auto' }}>{children}</div>
@@ -61,12 +72,15 @@ export function Heading({
     sub,
     variant = 'center',
     action,
+    eyebrow,
 }: {
     title?: string;
     sub?: string;
     variant?: LayoutTokens['heading'];
     /** رابطٌ بجانب العنوان — «كلّ المنتجات» في القوالب التجارية */
     action?: ReactNode;
+    /** كلمةٌ صغيرةٌ فوق العنوان تسمّي نوعَ القسم — في القوالب التحريرية */
+    eyebrow?: string;
 }) {
     if (!title && !sub) return null;
 
@@ -87,7 +101,7 @@ export function Heading({
         >
             <div style={{ minWidth: 0 }}>
                 {/* والخطُّ فوق العنوان علامةُ القالب التحريريّ — لا زينةٌ في كلّ قالب */}
-                {variant === 'editorial' && (
+                {variant === 'editorial' && !eyebrow && (
                     <span
                         aria-hidden
                         style={{
@@ -100,11 +114,16 @@ export function Heading({
                         }}
                     />
                 )}
+                {eyebrow && (
+                    <span className="w-eyebrow" style={{ color: 'var(--w-primary)', marginBottom: 12 }}>
+                        {eyebrow}
+                    </span>
+                )}
                 {title && (
                     <h2
                         style={{
                             fontSize: 'var(--w-h2)',
-                            fontWeight: variant === 'editorial' ? 500 : 800,
+                            fontWeight: variant === 'editorial' ? 'var(--w-h2-weight)' : 800,
                             margin: 0,
                             lineHeight: 1.35,
                         }}
@@ -113,7 +132,18 @@ export function Heading({
                     </h2>
                 )}
                 {sub && (
-                    <p style={{ color: 'var(--w-muted)', margin: '8px 0 0', fontSize: 15, lineHeight: 1.8 }}>{sub}</p>
+                    <p
+                        style={{
+                            color: 'var(--w-muted)',
+                            margin: '10px 0 0',
+                            fontSize: 15,
+                            lineHeight: 1.8,
+                            maxWidth: 'var(--w-lead-measure)',
+                            marginInline: centered ? 'auto' : undefined,
+                        }}
+                    >
+                        {sub}
+                    </p>
                 )}
             </div>
             {action}
@@ -242,18 +272,17 @@ export function Media({
 }) {
     return (
         <div
-            className={['w-shot', className].filter(Boolean).join(' ')}
+            className={['w-shot', src ? null : 'w-wash', className].filter(Boolean).join(' ')}
             style={{
                 aspectRatio: ratio,
                 borderRadius: square ? 0 : 'var(--w-radius)',
-                background: 'var(--w-surface)',
                 border: '1px solid var(--w-card-border)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
             }}
         >
-            {src ? (
+            {src && (
                 <img
                     src={src}
                     alt={alt ?? ''}
@@ -261,8 +290,6 @@ export function Media({
                     decoding="async"
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
-            ) : (
-                <ShoppingBag size={28} style={{ color: 'var(--w-muted)' }} />
             )}
         </div>
     );
@@ -324,13 +351,46 @@ export function Price({
     currency,
     size = 14,
     tone = 'primary',
+    stacked,
 }: {
     product: Pick<DocProduct, 'final' | 'was'>;
     currency: Currency | undefined;
     size?: number;
     /** في القالب البسيط السعرُ بلون النصّ لا بلون العلامة */
     tone?: 'primary' | 'text';
+    /**
+     * الملغى فوق والساري تحته — في البطاقة التجارية.
+     *
+     * رقمان في سطرٍ واحد يُقرآن في عجلةٍ رقمًا واحدًا طويلًا. وفصلُهما سطرين
+     * يجعل الكبيرَ تحت الصغير هو الذي تقع عليه العين — وهو الذي يُدفع.
+     */
+    stacked?: boolean;
 }) {
+    const was = product.was !== null && (
+        <span
+            style={{
+                color: 'var(--w-muted)',
+                textDecoration: 'line-through',
+                fontWeight: 400,
+                fontSize: size - (stacked ? 4 : 2),
+                marginInlineStart: stacked ? 0 : 8,
+            }}
+        >
+            {money(product.was, currency)}
+        </span>
+    );
+
+    if (stacked) {
+        return (
+            <p style={{ margin: 0, display: 'grid', gap: 1, lineHeight: 1.45 }}>
+                {was}
+                <span style={{ fontSize: size, fontWeight: 800, color: tone === 'primary' ? 'var(--w-primary)' : 'inherit' }}>
+                    {money(product.final, currency)}
+                </span>
+            </p>
+        );
+    }
+
     return (
         <p
             style={{
@@ -341,36 +401,33 @@ export function Price({
             }}
         >
             {money(product.final, currency)}
-            {product.was !== null && (
-                <span
-                    style={{
-                        marginInlineStart: 8,
-                        color: 'var(--w-muted)',
-                        textDecoration: 'line-through',
-                        fontWeight: 400,
-                        fontSize: size - 2,
-                    }}
-                >
-                    {money(product.was, currency)}
-                </span>
-            )}
+            {was}
         </p>
     );
 }
 
 /** شارةٌ فوق الصورة — «خصم ٢٠٪» وما يشبهها */
-export function Tag({ children, tone = 'primary' }: { children: ReactNode; tone?: 'primary' | 'dark' }) {
+export function Tag({
+    children,
+    tone = 'primary',
+    pill,
+}: {
+    children: ReactNode;
+    tone?: 'primary' | 'dark';
+    /** حبّةٌ مستديرة — في القالب الناعم حيث كلُّ شيءٍ مستدير */
+    pill?: boolean;
+}) {
     return (
         <span
             style={{
                 position: 'absolute',
-                insetInlineStart: 10,
-                top: 10,
+                insetInlineStart: pill ? 16 : 10,
+                top: pill ? 16 : 10,
                 zIndex: 1,
                 background: tone === 'primary' ? 'var(--w-primary)' : 'rgba(0,0,0,.78)',
                 color: tone === 'primary' ? 'var(--w-on-primary)' : '#fff',
-                borderRadius: 'var(--w-radius)',
-                padding: '4px 9px',
+                borderRadius: pill ? 999 : 'var(--w-radius)',
+                padding: pill ? '5px 12px' : '4px 9px',
                 fontSize: 11.5,
                 fontWeight: 800,
                 lineHeight: 1.6,

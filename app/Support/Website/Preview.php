@@ -476,14 +476,77 @@ class Preview
 
     private static function categories(int $businessId, int $limit): array
     {
-        return Category::where('business_id', $businessId)->orderBy('name')
-            ->limit(max($limit, self::MAX))->get(['id', 'name', 'icon', 'color'])
-            ->map(fn ($c) => [
-                'id' => $c->id,
-                'name' => $c->name,
-                'icon' => $c->icon,
-                'color' => $c->color,
-            ])->all();
+        $rows = Category::where('business_id', $businessId)->orderBy('name')
+            ->limit(max($limit, self::MAX))->get(['id', 'name', 'icon', 'color']);
+
+        $covers = self::covers($businessId, $rows->pluck('id')->all());
+
+        return $rows->map(fn ($c) => [
+            'id' => $c->id,
+            'name' => $c->name,
+            'icon' => $c->icon,
+            'color' => $c->color,
+            'image' => $covers[(int) $c->id] ?? null,
+        ])->all();
+    }
+
+    /**
+     * غلافُ كلّ تصنيف — صورةُ أحدث صنفٍ منشورٍ مصوَّرٍ فيه.
+     *
+     * ═══ ولماذا يُقرأ ولا يُسأل عنه ═══
+     *
+     * التصنيف في أبعاد اسمٌ ولونٌ وأيقونة، ولا صورةَ له — وهو تصنيفُ نقطة
+     * البيع أصلًا لا تصنيفُ موقع. وقسمُ «تسوّق حسب القسم» كان بلاطاتٍ ملوّنةً
+     * فيها أيقونةُ كيس: أضعفُ ما في الصفحة، وهو في متجر ورودٍ أهمُّ ما فيها.
+     *
+     * وأمامنا بابان: أن نسأل التاجر صورةً لكلّ تصنيف — عملٌ يُطلب منه قبل أن
+     * يرى موقعه فلا يفعله، فتبقى البلاطاتُ رماديّةً كما كانت. أو أن نقرأها
+     * ممّا عنده: أحدثُ صنفٍ مصوَّرٍ في التصنيف هو بالضبط ما يمثّله. فالغلافُ
+     * صورةُ التاجر نفسِه، لا صورةٌ تُجلب من الإنترنت ولا لونٌ يقوم مقامها.
+     *
+     * واستعلامٌ واحد لكلّ التصنيفات لا استعلامٌ لكلّ تصنيف. والحدُّ ٣٠٠ صفًّا
+     * سقفٌ لا يُبلغ في متجرٍ واقعيّ، وهو يمنع قراءة كتالوجٍ كامل لأجل أغلفة.
+     *
+     * @param  array<int, int>  $ids
+     * @return array<int, string>
+     */
+    private static function covers(int $businessId, array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $out = [];
+
+        $rows = Product::where('business_id', $businessId)
+            ->whereIn('category_id', $ids)
+            ->where('active', true)->where('published', true)
+            ->whereNotNull('image')->where('image', '!=', '')
+            ->orderByDesc('id')->limit(300)
+            ->get(['id', 'category_id', 'image']);
+
+        foreach ($rows as $product) {
+            $key = (int) $product->category_id;
+
+            if (isset($out[$key])) {
+                continue;
+            }
+
+            /*
+             * وصورةُ الديمو ليست غلافًا.
+             *
+             * `self::image` تُسقط صور `picsum.photos` التي يزرعها البذر —
+             * ولو أُخذت لصار غلافُ «باقات» صورةً عشوائية من الإنترنت. والغياب
+             * هنا لا يعني التوقّف: يُجرَّب الصنفُ الذي يليه.
+             */
+            $url = self::image($product);
+
+            if ($url !== null) {
+                $out[$key] = $url;
+            }
+        }
+
+        return $out;
     }
 
     private static function reviews(int $businessId, int $limit): array

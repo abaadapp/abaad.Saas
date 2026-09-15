@@ -1,7 +1,7 @@
 import Catalog from './Catalog';
 import { whatsappUrl } from './commerce';
 import { mapEmbed, videoEmbed } from './embed';
-import { AtSign, Mail, MapPin, Phone, Play, ShoppingBag, Star, BENEFIT_ICONS } from './icons';
+import { AtSign, Mail, MapPin, Phone, Play, Star, BENEFIT_ICONS } from './icons';
 import { layoutOf, RATIO, variant } from './layout';
 import { gridOf, ProductCard } from './ProductCard';
 import { Band, Cta, Empty, Grid, Heading, Link, Media, Stars } from './primitives';
@@ -32,18 +32,81 @@ export interface BlockProps {
 
 /* ------------------------------ الواجهة ------------------------------ */
 
+/**
+ * ارتفاعُ الواجهات الجديدة — أوسعُ ممّا كان، ومقيَّدٌ بالشاشة.
+ *
+ * `--w-hero-*` أرقامٌ ثابتة وُضعت للواجهة الكلاسيكية وتبقى لها كما هي —
+ * موقعٌ قائمٌ عليها لا يطول تحته. أمّا الأشكالُ الأربعة الأخرى فواجهاتٌ
+ * تُتأمَّل لا لافتاتٌ تُقرأ: تأخذ نسبةً من ارتفاع الشاشة بحدَّين، فتملأ
+ * حاسوبًا واسعًا ولا تبتلع هاتفًا.
+ */
+const TALL: Record<string, string> = {
+    small: 'clamp(360px, 52vh, 500px)',
+    medium: 'clamp(440px, 66vh, 620px)',
+    large: 'clamp(520px, 80vh, 760px)',
+};
+
+/** لونُ العلامة ممزوجًا بخلفيّتها — لسطحٍ يُسند صورةً أو يقوم مقامها */
+const TINT = 'color-mix(in srgb, var(--w-primary) 14%, var(--w-bg))';
+
 /** ما يقرؤه كلُّ شكلٍ من أشكال الواجهة — مقروءًا مرّةً لا خمسًا */
 function heroText(s: DocSection, doc: SiteDocument) {
+    const height = str(s, 'height', 'medium');
+
     return {
         title: str(s, 'title', doc.brand?.name || doc.name),
         subtitle: str(s, 'subtitle'),
+        /** سطرٌ صغير فوق العنوان — وما لم يكتبه التاجر لا يُخترع له */
+        eyebrow: str(s, 'eyebrow'),
         image: str(s, 'image'),
         ctaLabel: str(s, 'cta_label'),
         ctaHref: str(s, 'cta_href', '/'),
         align: str(s, 'align', 'center'),
-        height: `var(--w-hero-${str(s, 'height', 'medium')}, var(--w-hero-medium))`,
+        height: `var(--w-hero-${height}, var(--w-hero-medium))`,
+        tall: TALL[height] ?? TALL.medium,
         overlay: { none: 0, light: 0.25, medium: 0.45, strong: 0.65 }[str(s, 'overlay', 'medium')] ?? 0.45,
     };
+}
+
+/**
+ * العنوانُ الكبير — حجمُه ووزنُه وارتفاعُ سطره وعرضُه من سلّم القالب.
+ *
+ * والتوسيطُ ليس هنا: حاويتُه شبكةٌ تُوسّط ما فيها (`justify-items`)، وعرضُ
+ * السطر `max-width` يُوسَّط معها. ولو كُتب هنا `margin-inline: auto` لأبطلته
+ * `margin: 0` بعده — وهو ما كان.
+ */
+function HeroTitle({ text }: { text: string }) {
+    return (
+        <h1
+            className="w-display"
+            style={{
+                fontSize: 'var(--w-h1)',
+                fontWeight: 'var(--w-h1-weight)' as unknown as number,
+                lineHeight: 'var(--w-h1-lh)',
+                maxWidth: 'var(--w-h1-measure)',
+                margin: 0,
+            }}
+        >
+            {text}
+        </h1>
+    );
+}
+
+function HeroLead({ text, muted = true }: { text: string; muted?: boolean }) {
+    return (
+        <p
+            style={{
+                color: muted ? 'var(--w-muted)' : 'inherit',
+                fontSize: 'var(--w-lead)',
+                lineHeight: 'var(--w-lead-lh)',
+                maxWidth: 'var(--w-lead-measure)',
+                margin: 0,
+                opacity: muted ? 1 : 0.92,
+            }}
+        >
+            {text}
+        </p>
+    );
 }
 
 /**
@@ -54,13 +117,21 @@ function heroText(s: DocSection, doc: SiteDocument) {
  * منها بعينه. فصارت خمسًا:
  *
  * `classic` صورةٌ خلفيةٌ وتعتيمٌ ونصٌّ فوقها — وهو ما كان، ولمن لم يختر.
- * `centered` نصٌّ في الوسط بلا صورةٍ تحته، ثمّ شريطُ صورةٍ عريض. هدوءٌ
- *   يناسب القالب البسيط: الكلمةُ أوّلًا والصورةُ تصديقٌ لها.
- * `split` نصٌّ وصورةٌ متجاوران بعرضين غير متساويين — الحديثُ العصريّ.
- * `editorial` صورةٌ تملأ العرض ونصٌّ في أسفلها بخطّ العناوين وتدرّجٍ لا
- *   تعتيمٍ مسطّح — غلافُ مجلّةٍ لا لافتةٌ فوق صورة.
- * `showcase` لوحةٌ ملوّنة إلى جانب صورةٍ داخل إطارٍ واحد — لافتةُ عرضٍ في
- *   متجرٍ كبير، تقول «هذا العرض» لا «هذا نحن».
+ * `centered` كلمةٌ هادئة في بياضٍ واسع، ثمّ شريطُ صورةٍ بعرض الشاشة تحتها.
+ *   الكلمةُ أوّلًا والصورةُ تصديقٌ لها — للقالب الذي يترك المنتج يتكلّم.
+ * `split` نصٌّ وصورةٌ متجاوران بعرضين غير متساويين، وخلف الصورة كتلةُ لونٍ
+ *   مزاحة تسندها — تركيبٌ يُقرأ مصنوعًا لا مصفوفًا.
+ * `editorial` صورةٌ تملأ العرض وتطول مع الشاشة، ونصٌّ في أسفلها بخطّ
+ *   العناوين وتدرّجٍ لا تعتيمٍ مسطّح — غلافُ مجلّةٍ لا لافتةٌ فوق صورة.
+ * `showcase` لوحةُ عرضٍ وصورةٌ كبيرة في إطارٍ واحد بعرض الشاشة — واجهةُ
+ *   حملةٍ في متجرٍ كبير: تقول «هذا العرض» لا «هذا نحن».
+ *
+ * ═══ ولا أيقونةَ مكانَ صورةٍ غائبة ═══
+ *
+ * كانت الواجهةُ بلا صورةٍ مستطيلًا رماديًّا فيه أيقونةُ كيس. والتاجر الذي
+ * يختار قالبَه قبل أن يرفع صورَه يرى ذلك أوّلَ ما يرى، فيحكم على القالب.
+ * فصار البديلُ سطحًا مقصودًا من لون علامته (`.w-wash`) والكلمةُ عليه — واجهةٌ
+ * تامّةٌ بلا صورة، لا واجهةٌ تنتظرها.
  */
 function Hero(props: BlockProps) {
     const { section: s, doc, mode } = props;
@@ -69,18 +140,35 @@ function Hero(props: BlockProps) {
 
     const cta = x.ctaLabel ? <Cta label={x.ctaLabel} href={x.ctaHref} mode={mode} /> : null;
 
+    /*
+     * ولونُ العلامة لا يُكتب فوق صورةٍ معتّمة.
+     *
+     * بنّيُّ القالب التحريريّ على تدرّجٍ أسودَ سطرٌ لا يكاد يُقرأ — واللونُ
+     * هنا زينةٌ لا معنى. ففوق الصورة يأخذ لونَ ما حوله (أبيض)، وعلى السطح
+     * الفاتح يأخذ لون العلامة.
+     */
+    const brow = (onImage?: boolean) =>
+        x.eyebrow ? (
+            <span className="w-eyebrow" style={{ color: onImage ? 'inherit' : 'var(--w-primary)' }}>
+                {x.eyebrow}
+            </span>
+        ) : null;
+
+    const eyebrow = brow();
+
     /* ------------------------------ تحريريّة ------------------------------ */
 
     if (shape === 'editorial') {
         return (
             <section
+                className={x.image ? undefined : 'w-wash'}
                 style={{
                     position: 'relative',
-                    minHeight: str(s, 'height', '') === '' ? 'var(--w-hero-large)' : x.height,
+                    minHeight: x.tall,
                     display: 'flex',
                     alignItems: 'flex-end',
                     padding: 'var(--w-pad)',
-                    background: x.image ? `url(${x.image}) center/cover` : 'var(--w-surface)',
+                    background: x.image ? `url(${x.image}) center/cover` : undefined,
                 }}
             >
                 {/*
@@ -94,7 +182,7 @@ function Hero(props: BlockProps) {
                         style={{
                             position: 'absolute',
                             inset: 0,
-                            background: `linear-gradient(to top, rgba(0,0,0,${Math.min(x.overlay + 0.25, 0.9)}) 0%, rgba(0,0,0,${x.overlay * 0.45}) 45%, rgba(0,0,0,0) 80%)`,
+                            background: `linear-gradient(to top, rgba(0,0,0,${Math.min(x.overlay + 0.3, 0.92)}) 0%, rgba(0,0,0,${x.overlay * 0.4}) 48%, rgba(0,0,0,0) 82%)`,
                         }}
                     />
                 )}
@@ -105,35 +193,20 @@ function Hero(props: BlockProps) {
                         maxWidth: 'var(--w-content)',
                         margin: '0 auto',
                         color: x.image ? '#fff' : 'inherit',
+                        display: 'grid',
+                        gap: 18,
+                        justifyItems: 'start',
                     }}
                 >
-                    <span
-                        aria-hidden
-                        style={{
-                            display: 'block',
-                            width: 46,
-                            height: 1,
-                            background: 'currentColor',
-                            marginBottom: 20,
-                            opacity: 0.7,
-                        }}
-                    />
-                    <h1
-                        className="w-display"
-                        style={{ fontSize: 'var(--w-h1)', fontWeight: 500, margin: 0, lineHeight: 1.2, maxWidth: '18ch' }}
-                    >
-                        {x.title}
-                    </h1>
-                    {x.subtitle && (
-                        <p style={{ fontSize: 'var(--w-lead)', marginTop: 16, opacity: 0.92, lineHeight: 1.9, maxWidth: '46ch' }}>
-                            {x.subtitle}
-                        </p>
+                    {brow(!!x.image) ?? (
+                        <span
+                            aria-hidden
+                            style={{ display: 'block', width: 52, height: 1, background: 'currentColor', opacity: 0.7 }}
+                        />
                     )}
-                    {x.ctaLabel && (
-                        <div style={{ marginTop: 24 }}>
-                            <Cta label={x.ctaLabel} href={x.ctaHref} mode={mode} ghost={!!x.image} />
-                        </div>
-                    )}
+                    <HeroTitle text={x.title} />
+                    {x.subtitle && <HeroLead text={x.subtitle} muted={!x.image} />}
+                    {x.ctaLabel && <Cta label={x.ctaLabel} href={x.ctaHref} mode={mode} ghost={!!x.image} />}
                 </div>
             </section>
         );
@@ -142,21 +215,44 @@ function Hero(props: BlockProps) {
     /* ------------------------------ مشطورة ------------------------------ */
 
     if (shape === 'split') {
-        const media = <Media src={x.image || null} alt={x.title} ratio="4 / 5" eager />;
+        /*
+         * كتلةُ لونٍ مزاحةٌ خلف الصورة.
+         *
+         * صورةٌ في مستطيلٍ وسط بياضٍ تُقرأ ملفًّا مرفوعًا؛ وكتلةٌ تطلّ من
+         * خلفها تُقرأ تركيبًا مقصودًا. وهي بالمنطق لا بالجهة: `inline-end`
+         * تنقلب مع اتّجاه الصفحة، فلا يخرج التركيبُ من إطاره في الإنجليزية.
+         */
+        const media = (
+            <div style={{ position: 'relative', paddingInlineEnd: 18, paddingBottom: 18 }}>
+                <span
+                    aria-hidden
+                    style={{
+                        position: 'absolute',
+                        insetInlineEnd: 0,
+                        bottom: 0,
+                        width: '76%',
+                        height: '76%',
+                        background: TINT,
+                        borderRadius: 'var(--w-radius)',
+                    }}
+                />
+                <div style={{ position: 'relative' }}>
+                    <Media src={x.image || null} alt={x.title} ratio="4 / 5" eager />
+                </div>
+            </div>
+        );
+
         const text = (
-            <div style={{ display: 'grid', gap: 16, alignContent: 'center' }}>
-                <h1 style={{ fontSize: 'var(--w-h1)', fontWeight: 800, margin: 0, lineHeight: 1.22 }}>{x.title}</h1>
-                {x.subtitle && (
-                    <p style={{ color: 'var(--w-muted)', fontSize: 'var(--w-lead)', margin: 0, lineHeight: 1.95 }}>
-                        {x.subtitle}
-                    </p>
-                )}
-                {cta && <div>{cta}</div>}
+            <div style={{ display: 'grid', gap: 18, alignContent: 'center', justifyItems: 'start' }}>
+                {eyebrow}
+                <HeroTitle text={x.title} />
+                {x.subtitle && <HeroLead text={x.subtitle} />}
+                {cta}
             </div>
         );
 
         return (
-            <section style={{ padding: 'var(--w-pad)' }}>
+            <section style={{ padding: 'var(--w-pad-loose)' }}>
                 <div
                     className="w-hero-split"
                     data-flip={x.align === 'end' ? '1' : undefined}
@@ -175,11 +271,10 @@ function Hero(props: BlockProps) {
         return (
             <section style={{ padding: 'var(--w-pad-tight)' }}>
                 <div
+                    className="w-hero-promo"
                     style={{
                         maxWidth: 'var(--w-content)',
                         margin: '0 auto',
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(min(290px, 100%), 1fr))',
                         borderRadius: 'var(--w-radius)',
                         overflow: 'hidden',
                         border: '1px solid var(--w-card-border)',
@@ -187,37 +282,49 @@ function Hero(props: BlockProps) {
                     }}
                 >
                     <div
+                        className="w-wash"
                         style={{
-                            background: 'var(--w-surface)',
-                            padding: 'clamp(24px, 4vw, 46px)',
+                            padding: 'clamp(26px, 4.5vw, 54px)',
                             display: 'grid',
-                            gap: 14,
+                            gap: 16,
                             alignContent: 'center',
+                            justifyItems: 'start',
                         }}
                     >
-                        <h1 style={{ fontSize: 'var(--w-h1)', fontWeight: 800, margin: 0, lineHeight: 1.25 }}>
-                            {x.title}
-                        </h1>
-                        {x.subtitle && (
-                            <p style={{ color: 'var(--w-muted)', fontSize: 'var(--w-lead)', margin: 0, lineHeight: 1.9 }}>
-                                {x.subtitle}
-                            </p>
-                        )}
-                        {cta && <div>{cta}</div>}
+                        {eyebrow}
+                        <HeroTitle text={x.title} />
+                        {x.subtitle && <HeroLead text={x.subtitle} />}
+                        {cta}
                     </div>
 
+                    {/*
+                     * والصورةُ تملأ خانتها لا نسبةً محجوزة.
+                     *
+                     * اللوحةُ إلى جانبها قد تطول بسطرٍ زائد في العنوان، فصورةٌ
+                     * بنسبةٍ ثابتة تترك تحتها شريطًا فارغًا داخل الإطار نفسه.
+                     * و`cover` يقصّ الصورة ولا يترك فراغًا — وهو ما تفعله
+                     * واجهاتُ المتاجر كلُّها.
+                     */}
                     <div
-                        aria-hidden={!x.image}
-                        style={{
-                            minHeight: x.height,
-                            background: x.image ? `url(${x.image}) center/cover` : 'var(--w-surface)',
-                            display: x.image ? undefined : 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'var(--w-muted)',
-                        }}
+                        className={x.image ? 'w-shot' : 'w-shot w-wash'}
+                        style={{ minHeight: 'clamp(220px, 38vh, 420px)', borderRadius: 0 }}
                     >
-                        {!x.image && <ShoppingBag size={30} />}
+                        {x.image && (
+                            <img
+                                src={x.image}
+                                alt={x.title}
+                                loading="eager"
+                                decoding="async"
+                                style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                }}
+                            />
+                        )}
                     </div>
                 </div>
             </section>
@@ -229,24 +336,12 @@ function Hero(props: BlockProps) {
     if (shape === 'centered') {
         return (
             <section>
-                <div style={{ padding: 'var(--w-pad)', textAlign: 'center' }}>
-                    <div style={{ maxWidth: 720, margin: '0 auto' }}>
-                        <h1 style={{ fontSize: 'var(--w-h1)', fontWeight: 800, margin: 0, lineHeight: 1.25 }}>
-                            {x.title}
-                        </h1>
-                        {x.subtitle && (
-                            <p
-                                style={{
-                                    color: 'var(--w-muted)',
-                                    fontSize: 'var(--w-lead)',
-                                    marginTop: 14,
-                                    lineHeight: 1.95,
-                                }}
-                            >
-                                {x.subtitle}
-                            </p>
-                        )}
-                        {cta && <div style={{ marginTop: 22 }}>{cta}</div>}
+                <div style={{ padding: 'var(--w-pad-loose)', textAlign: 'center' }}>
+                    <div style={{ maxWidth: 780, margin: '0 auto', display: 'grid', gap: 18, justifyItems: 'center' }}>
+                        {eyebrow}
+                        <HeroTitle text={x.title} />
+                        {x.subtitle && <HeroLead text={x.subtitle} />}
+                        {cta}
                     </div>
                 </div>
 
@@ -255,7 +350,7 @@ function Hero(props: BlockProps) {
                     <div
                         role="img"
                         aria-label={x.title}
-                        style={{ minHeight: x.height, background: `url(${x.image}) center/cover` }}
+                        style={{ minHeight: x.tall, background: `url(${x.image}) center/cover` }}
                     />
                 )}
             </section>
@@ -264,8 +359,17 @@ function Hero(props: BlockProps) {
 
     /* ------------------------------ كلاسيكية ------------------------------ */
 
+    /*
+     * وهذه لا تتبدّل.
+     *
+     * `classic` هي افتراضيُّ `Layout` — أي ما يُرسم به كلُّ موقعٍ بُني قبل
+     * طبقة البنية. فتبديلُ تركيبها أو ارتفاعها يوقظ تاجرًا على واجهةٍ غير
+     * التي نام عليها، وهو ما لا يجوز لأجل صنعةٍ أحسن. والذي تحسّن فيها ما
+     * لا يُرى فرقًا: الصورةُ الغائبة صارت سطحًا من لون علامته لا رمادًا.
+     */
     return (
         <section
+            className={x.image ? undefined : 'w-wash'}
             style={{
                 minHeight: x.height,
                 display: 'flex',
@@ -273,7 +377,7 @@ function Hero(props: BlockProps) {
                 justifyContent: x.align === 'center' ? 'center' : x.align === 'end' ? 'flex-end' : 'flex-start',
                 padding: 'var(--w-pad)',
                 position: 'relative',
-                background: x.image ? `url(${x.image}) center/cover` : 'var(--w-surface)',
+                background: x.image ? `url(${x.image}) center/cover` : undefined,
                 textAlign: x.align === 'center' ? 'center' : 'start',
             }}
         >
@@ -281,6 +385,8 @@ function Hero(props: BlockProps) {
                 <span aria-hidden style={{ position: 'absolute', inset: 0, background: `rgba(0,0,0,${x.overlay})` }} />
             )}
             <div style={{ position: 'relative', maxWidth: 640, color: x.image ? '#fff' : 'inherit' }}>
+                {/* والسطرُ الفوقيّ يُرسم هنا أيضًا: من كتبه أراده، ومن لم يكتبه لا يتبدّل موقعُه */}
+                {brow(!!x.image) && <div style={{ marginBottom: 12 }}>{brow(!!x.image)}</div>}
                 <h1 style={{ fontSize: 'var(--w-h1)', fontWeight: 800, margin: 0, lineHeight: 1.3 }}>{x.title}</h1>
                 {x.subtitle && (
                     <p style={{ fontSize: 17, marginTop: 14, opacity: 0.92, lineHeight: 1.85 }}>{x.subtitle}</p>
@@ -620,20 +726,6 @@ function Testimonials({ section: s, doc, mode }: BlockProps) {
 
 /* ------------------------------ التجارة ------------------------------ */
 
-/**
- * لونُ التصنيف — إن كان لونًا.
- *
- * `category.color` في أبعاد اسمٌ من قائمةٍ («primary») لا `#rrggbb`، وهو
- * يعني شيئًا في اللوحة ولا يعني شيئًا في CSS: `background: primary` لونٌ
- * غيرُ صالح يسقط صامتًا فتخرج بلاطةٌ شفّافة. فما ليس لونًا يصير مزيجًا من
- * لون العلامة وخلفيتها — تلوينٌ يتبع قالب التاجر بدل لونٍ لا يُقرأ.
- */
-function tint(c: DocCategory): string {
-    return /^#[0-9a-f]{3,8}$/i.test(c.color ?? '')
-        ? c.color
-        : 'color-mix(in srgb, var(--w-primary) 12%, var(--w-bg))';
-}
-
 /** صفحةُ المتجر إن كانت في الموقع — رابطُ «عرض الكلّ» لا يُخترع اختراعًا */
 function shopHref(doc: SiteDocument): string | null {
     const page = doc.pages?.find((p) => p.slug === '/shop' || p.key === 'shop');
@@ -676,9 +768,21 @@ function Products({ section: s, doc, mode, first }: BlockProps) {
             </Link>
         ) : null;
 
+    /*
+     * وإيقاعُ القسم من شبكته.
+     *
+     * قسمُ ثمانيةٍ في شبكةٍ كثيفة يريد أن يُمسَح بالعين سريعًا، فحشوٌ واسع
+     * فوقه وتحته يقطع المسح. وقسمُ ثلاثةٍ في بطاقاتٍ كبيرة يريد أن يُتأمَّل،
+     * فيأخذ فراغَه. وهو ما يجعل صفحتين بالأقسام نفسها تُقرآن مختلفتين.
+     */
     return (
-        <Band>
-            <Heading title={str(s, 'title')} variant={layout.heading} action={action} />
+        <Band loose={shape === 'large' || shape === 'editorial'}>
+            <Heading
+                title={str(s, 'title')}
+                variant={layout.heading}
+                action={action}
+                eyebrow={str(s, 'eyebrow') || undefined}
+            />
             {items.length === 0 ? (
                 <Empty
                     text={
@@ -732,18 +836,36 @@ function ProductCatalog({ section: s, doc, mode }: BlockProps) {
 }
 
 /**
- * التصنيفات — خمسةُ أشكال.
+ * التصنيفات — خمسةُ أشكال، وغلافٌ حقيقيّ لا بلاطةُ لون.
  *
- * والتصنيف لا يُنقر: لا مسارَ لصفحة تصنيفٍ في هذا العارض بعد. فهي أسماءٌ
- * تُقرأ — وزرٌّ يبدو قابلًا للضغط ولا يفتح شيئًا يُغضب أكثر ممّا يفيد.
- * (وفي صفحة المتجر تُنقر فعلًا لأنّ الترشيح هناك في المتصفّح — انظر
- * `Catalog`.)
+ * كان القسم شريطًا من الأسماء على مربّعاتٍ ملوّنة: «تسوّق حسب القسم» وتحته
+ * أربعةُ مستطيلاتٍ فيها أيقونةُ كيس. وهو أضعفُ ما في الصفحة، وهو في متاجر
+ * الورد والهدايا أهمُّ ما فيها — الزبون يدخل باحثًا عن «مناسبات» لا عن صنفٍ
+ * بعينه.
+ *
+ * فصار للتصنيف **غلافٌ من صورة صنفٍ فيه** (`DocCategory.image` — يقرؤه
+ * الخادم من أوّل صنفٍ منشورٍ مصوَّر). ولا اختراعَ فيه: هي صورةُ التاجر نفسها،
+ * وما لا صنفَ مصوَّرَ فيه يأخذ سطحَ `.w-wash` واسمَه بخطّ العناوين — بلاطةٌ
+ * حرفيّةٌ تُقرأ تصميمًا لا نقصًا.
+ *
+ * ── الخمسة ──
+ *
+ * `tiles` بلاطاتٌ كبيرة أولاها أعرضُ من جاراتها — عرضُ مجلّة.
+ * `covers` بطاقاتُ أغلفةٍ متساوية بحوافَّ دائرية — واجهةٌ عصريّة.
+ * `pills` أزرارٌ مستديرة فيها ثمبنيلٌ دائريّ — شريطٌ يُمرَّر في متجرٍ كثيف.
+ * `list` فهرسٌ نحيف بخطوطٍ رفيعة وثمبنيلٍ في آخر السطر — أقلُّ ما يكفي.
+ * `cards` بطاقاتٌ بأسماءٍ موسّطة — وهو ما كان، ومعه غلافُه الآن.
+ *
+ * والتصنيف لا يُنقر من الصفحة الرئيسية إلّا إلى صفحة المتجر: لا مسارَ
+ * لصفحة تصنيفٍ في هذا العارض. فالرابطُ يذهب إلى `/shop` ويُرشَّح هناك في
+ * المتصفّح (انظر `Catalog`) — ورابطٌ يفتح ما وُعد به، لا زرٌّ لا يفعل شيئًا.
  */
 function Categories({ section: s, doc, mode }: BlockProps) {
     const items = (s.items ?? []) as DocCategory[];
     const layout = layoutOf(doc);
     const shape = variant(s, 'categories', layout.categories, 'style');
     const heading = layout.heading;
+    const shop = shopHref(doc);
 
     if (items.length === 0) {
         return (
@@ -754,6 +876,106 @@ function Categories({ section: s, doc, mode }: BlockProps) {
         );
     }
 
+    /*
+     * ورابطُ التصنيف يذهب إلى صفحة المتجر مرشَّحًا باسمه.
+     *
+     * و`Catalog` يقرأ `?q=` ويرشّح به الاسمَ والتصنيف، فالتصنيفُ يصل
+     * مفتوحًا على أصنافه. وما لا صفحةَ متجرٍ في موقعه يبقى نصًّا لا رابطًا:
+     * زرٌّ يبدو قابلًا للضغط ولا يفتح شيئًا أسوأُ من اسمٍ مكتوب.
+     */
+    const wrap = (c: DocCategory, children: React.ReactNode, className?: string, style?: React.CSSProperties) =>
+        shop ? (
+            <Link
+                key={c.id}
+                href={`${shop}?q=${encodeURIComponent(c.name)}`}
+                mode={mode}
+                className={className}
+                style={style}
+                ariaLabel={`تصفّح ${c.name}`}
+            >
+                {children}
+            </Link>
+        ) : (
+            <div key={c.id} className={className} style={style}>
+                {children}
+            </div>
+        );
+
+    /** غلافُ التصنيف — صورتُه أو سطحٌ من لون العلامة، واسمُه فوق الاثنين */
+    const cover = (c: DocCategory, ratio: string, size: number) => (
+        <div
+            className={c.image ? 'w-shot' : 'w-shot w-wash'}
+            style={{ aspectRatio: ratio, borderRadius: 'var(--w-radius)', display: 'flex', alignItems: 'flex-end' }}
+        >
+            {c.image && (
+                <>
+                    <img
+                        src={c.image}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            display: 'block',
+                        }}
+                    />
+                    {/* وتدرّجٌ من الأسفل ليُقرأ الاسم فوق أيّ صورة — لا طبقةٌ تُطفئها كلَّها */}
+                    <span
+                        aria-hidden
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'linear-gradient(to top, rgba(0,0,0,.72) 0%, rgba(0,0,0,.18) 46%, rgba(0,0,0,0) 78%)',
+                        }}
+                    />
+                </>
+            )}
+            <span
+                className="w-display"
+                style={{
+                    position: 'relative',
+                    padding: 'clamp(14px, 2vw, 22px)',
+                    fontSize: size,
+                    fontWeight: c.image ? 700 : 600,
+                    color: c.image ? '#fff' : 'inherit',
+                    lineHeight: 1.4,
+                }}
+            >
+                {c.name}
+            </span>
+        </div>
+    );
+
+    /** ثمبنيلٌ صغير — دائريٌّ في الأزرار، مربّعٌ في الفهرس */
+    const thumb = (c: DocCategory, size: number, round: boolean) => (
+        <span
+            className={c.image ? undefined : 'w-wash'}
+            style={{
+                width: size,
+                height: size,
+                flex: 'none',
+                borderRadius: round ? 999 : 'var(--w-radius)',
+                overflow: 'hidden',
+                display: 'block',
+                background: c.image ? 'var(--w-surface)' : undefined,
+            }}
+        >
+            {c.image && (
+                <img
+                    src={c.image}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+            )}
+        </span>
+    );
+
     /* ------------------------------ أزرار ------------------------------ */
 
     if (shape === 'pills') {
@@ -762,22 +984,37 @@ function Categories({ section: s, doc, mode }: BlockProps) {
                 <Heading title={str(s, 'title')} variant={heading} />
                 <ul
                     className="w-rail"
-                    style={{ listStyle: 'none', margin: 0, padding: 0, justifyContent: heading === 'center' ? 'center' : undefined }}
+                    style={{
+                        listStyle: 'none',
+                        margin: 0,
+                        padding: 0,
+                        justifyContent: heading === 'center' ? 'center' : undefined,
+                    }}
                 >
                     {items.map((c) => (
-                        <li
-                            key={c.id}
-                            style={{
-                                border: '1px solid var(--w-border)',
-                                borderRadius: 999,
-                                padding: '10px 18px',
-                                background: 'var(--w-bg)',
-                                fontSize: 14,
-                                fontWeight: 700,
-                                whiteSpace: 'nowrap',
-                            }}
-                        >
-                            {c.name}
+                        <li key={c.id}>
+                            {wrap(
+                                c,
+                                <>
+                                    {thumb(c, 34, true)}
+                                    {c.name}
+                                </>,
+                                'w-cover',
+                                {
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 10,
+                                    border: '1px solid var(--w-border)',
+                                    borderRadius: 999,
+                                    paddingBlock: 6,
+                                    paddingInline: '6px 18px',
+                                    background: 'var(--w-bg)',
+                                    fontSize: 14,
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap',
+                                    minHeight: 46,
+                                },
+                            )}
                         </li>
                     ))}
                 </ul>
@@ -785,11 +1022,11 @@ function Categories({ section: s, doc, mode }: BlockProps) {
         );
     }
 
-    /* ------------------------------ قائمة ------------------------------ */
+    /* ------------------------------ فهرس ------------------------------ */
 
     if (shape === 'list') {
         return (
-            <Band tight>
+            <Band>
                 <Heading title={str(s, 'title')} variant={heading} />
                 <ul
                     style={{
@@ -798,28 +1035,36 @@ function Categories({ section: s, doc, mode }: BlockProps) {
                         padding: 0,
                         display: 'grid',
                         gap: 0,
-                        maxWidth: 620,
+                        maxWidth: 720,
                         marginInline: heading === 'center' ? 'auto' : undefined,
+                        borderTop: '1px solid var(--w-border)',
                     }}
                 >
-                    {items.map((c, i) => (
-                        <li
-                            key={c.id}
-                            style={{
-                                borderTop: i === 0 ? 0 : '1px solid var(--w-border)',
-                                padding: '14px 2px',
-                                fontSize: 15,
-                                fontWeight: 600,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: 12,
-                            }}
-                        >
-                            <span>{c.name}</span>
-                            <span aria-hidden style={{ color: 'var(--w-muted)', fontSize: 13 }}>
-                                ↖
-                            </span>
+                    {items.map((c) => (
+                        <li key={c.id} style={{ borderBottom: '1px solid var(--w-border)' }}>
+                            {wrap(
+                                c,
+                                <>
+                                    {thumb(c, 46, false)}
+                                    <span
+                                        className="w-display"
+                                        style={{ flex: 1, fontSize: 17, fontWeight: 600, lineHeight: 1.5 }}
+                                    >
+                                        {c.name}
+                                    </span>
+                                    <span aria-hidden style={{ color: 'var(--w-muted)', fontSize: 13 }}>
+                                        ↖
+                                    </span>
+                                </>,
+                                'w-cover',
+                                {
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 16,
+                                    padding: '14px 2px',
+                                    minHeight: 60,
+                                },
+                            )}
                         </li>
                     ))}
                 </ul>
@@ -831,108 +1076,141 @@ function Categories({ section: s, doc, mode }: BlockProps) {
 
     if (shape === 'tiles') {
         return (
+            <Band loose>
+                <Heading title={str(s, 'title')} variant={heading} eyebrow={heading === 'editorial' ? 'المجموعات' : undefined} />
+                <div className="w-cat-tiles">
+                    {items.map((c) => wrap(c, cover(c, '4 / 5', 21), 'w-cover'))}
+                </div>
+            </Band>
+        );
+    }
+
+    /* ------------------------------ أغلفة ------------------------------ */
+
+    if (shape === 'covers') {
+        return (
             <Band>
                 <Heading title={str(s, 'title')} variant={heading} />
-                <Grid columns={Math.min(3, items.length)} min={230} center={false}>
-                    {items.map((c) => (
-                        <div
-                            key={c.id}
-                            style={{
-                                position: 'relative',
-                                aspectRatio: '3 / 4',
-                                borderRadius: 'var(--w-radius)',
-                                overflow: 'hidden',
-                                background: tint(c),
-                                display: 'flex',
-                                alignItems: 'flex-end',
-                                padding: 18,
-                            }}
-                        >
-                            <ShoppingBag
-                                size={72}
-                                style={{
-                                    position: 'absolute',
-                                    insetInlineEnd: -8,
-                                    top: 14,
-                                    opacity: 0.14,
-                                    color: 'var(--w-primary)',
-                                }}
-                            />
-                            <span className="w-display" style={{ position: 'relative', fontSize: 19, fontWeight: 600 }}>
-                                {c.name}
-                            </span>
-                        </div>
-                    ))}
+                <Grid columns={Math.min(4, items.length)} min={200} center={heading === 'center'}>
+                    {items.map((c) => wrap(c, cover(c, '4 / 3', 17), 'w-cover'))}
                 </Grid>
             </Band>
         );
     }
 
-    /* --------------------------- أغلفةٌ وبطاقات --------------------------- */
+    /* ------------------------------ بطاقات ------------------------------ */
 
-    const covers = shape === 'covers';
-
+    /*
+     * وهذه افتراضيُّ `Layout` — شكلُ كلّ موقعٍ بُني قبل طبقة البنية.
+     *
+     * فبقي تركيبُها: بطاقةٌ بحدٍّ واسمٌ موسَّط تحتها. وما تحسّن فيها ما لا
+     * يُقرأ تبديلًا: الصورةُ الملوّنة صارت غلافًا حقيقيًّا حين يكون للتصنيف
+     * صنفٌ مصوَّر — وهي صورةُ التاجر نفسه لا لونًا يقوم مقامها.
+     */
     return (
         <Band tone="surface">
             <Heading title={str(s, 'title')} variant={heading} />
             <Grid columns={Math.min(4, items.length)} min={160} center={heading === 'center'}>
-                {items.map((c) => (
-                    <div
-                        key={c.id}
-                        style={{
+                {items.map((c) =>
+                    wrap(
+                        c,
+                        <>
+                            <div
+                                className={c.image ? 'w-shot' : 'w-shot w-wash'}
+                                style={{ aspectRatio: '4 / 3', borderRadius: 0 }}
+                            >
+                                {c.image && (
+                                    <img
+                                        src={c.image}
+                                        alt=""
+                                        loading="lazy"
+                                        decoding="async"
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            objectFit: 'cover',
+                                            display: 'block',
+                                        }}
+                                    />
+                                )}
+                            </div>
+                            <span style={{ display: 'block', padding: '14px 10px' }}>{c.name}</span>
+                        </>,
+                        'w-cover',
+                        {
                             background: 'var(--w-bg)',
                             border: '1px solid var(--w-card-border)',
                             borderRadius: 'var(--w-radius)',
-                            padding: covers ? 0 : '22px 14px',
                             overflow: 'hidden',
                             textAlign: 'center',
                             fontWeight: 700,
                             fontSize: 14,
                             boxShadow: 'var(--w-card-shadow)',
-                        }}
-                    >
-                        {covers && (
-                            <div
-                                aria-hidden
-                                style={{
-                                    aspectRatio: '4 / 3',
-                                    background: tint(c),
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: 'var(--w-muted)',
-                                }}
-                            >
-                                <ShoppingBag size={26} />
-                            </div>
-                        )}
-                        <span style={{ display: 'block', padding: covers ? '14px 10px' : 0 }}>{c.name}</span>
-                    </div>
-                ))}
+                        },
+                    ),
+                )}
             </Grid>
         </Band>
     );
 }
 
-function Promo({ section: s, mode }: BlockProps) {
+/**
+ * العرض الخاصّ — ولا يُصبغ بلون العلامة في كلّ قالب.
+ *
+ * كان قسمًا مملوءًا بلون العلامة من حافّة إلى حافّة أيًّا كان القالب. وهو
+ * يصلح لقالبٍ تجاريّ يصيح بعروضه، ويُفسد قالبًا بُني على البياض: شريطٌ بنّيٌّ
+ * أو ورديٌّ ملء الشاشة وسط صفحةٍ هادئة يُقرأ لافتةً أُلصقت على الصفحة، لا
+ * فصلًا منها.
+ *
+ * فصار يتبع رمزَ الأسطح: القالبُ الذي يحدّ بطاقاته أو يرفعها (التجاريّ
+ * والناعم) يملأ، والقالبُ المسطَّح (التحريريّ والبسيط) يأخذ سطحَ `.w-wash`
+ * ويترك اللونَ لزرِّه وحده. وهو أيضًا ما يحفظ الافتراضيَّ كما كان: رمزُ
+ * الأسطح قبل طبقة البنية `bordered`.
+ */
+function Promo({ section: s, doc, mode }: BlockProps) {
+    const filledBand = layoutOf(doc).surface_style !== 'flat';
+
     return (
-        <Band tone="primary">
+        <Band tone={filledBand ? 'primary' : undefined} loose>
             <div
+                className={filledBand ? undefined : 'w-wash'}
                 style={{
                     display: 'grid',
                     gap: 26,
                     gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))',
                     alignItems: 'center',
+                    ...(filledBand
+                        ? {}
+                        : {
+                              padding: 'clamp(24px, 4vw, 48px)',
+                              borderRadius: 'var(--w-radius)',
+                              border: '1px solid var(--w-border)',
+                          }),
                 }}
             >
                 <div>
-                    <h2 style={{ fontSize: 'var(--w-h2)', fontWeight: 800, margin: 0, lineHeight: 1.4 }}>
+                    <h2 style={{ fontSize: 'var(--w-h2)', fontWeight: 'var(--w-h2-weight)' as unknown as number, margin: 0, lineHeight: 1.4 }}>
                         {str(s, 'title')}
                     </h2>
-                    <p style={{ marginTop: 10, opacity: 0.93, lineHeight: 1.9 }}>{str(s, 'text')}</p>
+                    <p
+                        style={{
+                            marginTop: 10,
+                            opacity: filledBand ? 0.93 : 1,
+                            color: filledBand ? undefined : 'var(--w-muted)',
+                            lineHeight: 'var(--w-lead-lh)',
+                            maxWidth: 'var(--w-lead-measure)',
+                        }}
+                    >
+                        {str(s, 'text')}
+                    </p>
                     {str(s, 'cta_label') && (
                         <div style={{ marginTop: 18 }}>
-                            <Cta label={str(s, 'cta_label')} href={str(s, 'cta_href', '/')} mode={mode} ghost />
+                            <Cta
+                                label={str(s, 'cta_label')}
+                                href={str(s, 'cta_href', '/')}
+                                mode={mode}
+                                ghost={filledBand}
+                            />
                         </div>
                     )}
                 </div>

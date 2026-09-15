@@ -40,11 +40,11 @@ class Layout
     public const ALLOWED = [
         'width' => ['normal', 'narrow', 'wide', 'full'],
         'density' => ['balanced', 'compact', 'spacious'],
-        'scale' => ['balanced', 'compact', 'editorial'],
+        'scale' => ['balanced', 'compact', 'editorial', 'display', 'precise'],
         'heading' => ['center', 'start', 'editorial'],
         'header' => ['minimal', 'centered', 'commerce', 'editorial'],
         'hero' => ['classic', 'centered', 'split', 'editorial', 'showcase'],
-        'card' => ['plain', 'soft', 'commerce', 'editorial'],
+        'card' => ['plain', 'soft', 'commerce', 'editorial', 'bare'],
         'grid' => ['classic', 'dense', 'large', 'editorial'],
         'ratio' => ['square', 'portrait', 'landscape'],
         'categories' => ['cards', 'pills', 'covers', 'tiles', 'list'],
@@ -62,9 +62,20 @@ class Layout
             'label' => 'شكل الموقع',
             'options' => ['balanced' => 'متوازن', 'compact' => 'متراصّ', 'spacious' => 'فسيح'],
         ],
+        /*
+         * والسلّم ليس حجمًا وحده.
+         *
+         * كان ثلاثةً تبدّل حجم العنوان لا غير، فكان القالبان يختلفان في
+         * رقمٍ ويتشابهان في كلّ ما عداه. وصار كلُّ سلّمٍ يحمل معه وزنَ
+         * العنوان وارتفاعَ سطره وعرضَ سطره — وهي التي تُقرأ شخصيّةً. ولذلك
+         * صارت أسماؤها أصواتًا لا مقاسات: «فخم» و«جريء» و«دقيق».
+         */
         'scale' => [
-            'label' => 'حجم العناوين',
-            'options' => ['balanced' => 'متوازن', 'compact' => 'عمليّ', 'editorial' => 'كبير'],
+            'label' => 'شخصية العناوين',
+            'options' => [
+                'balanced' => 'متوازن', 'compact' => 'عمليّ', 'editorial' => 'فخم — خفيفٌ وكبير',
+                'display' => 'جريء — ثقيلٌ ومضموم', 'precise' => 'دقيق — صغيرٌ ونظيف',
+            ],
         ],
         'heading' => [
             'label' => 'عناوين الأقسام',
@@ -86,7 +97,10 @@ class Layout
         ],
         'card' => [
             'label' => 'شكل المنتجات',
-            'options' => ['plain' => 'بسيط', 'soft' => 'بطاقات ناعمة', 'commerce' => 'بطاقات متجر', 'editorial' => 'صور كبيرة'],
+            'options' => [
+                'plain' => 'بسيط', 'soft' => 'بطاقات ناعمة', 'commerce' => 'بطاقات متجر',
+                'editorial' => 'صور كبيرة', 'bare' => 'بلا إطار',
+            ],
         ],
         'grid' => [
             'label' => 'شبكة المنتجات',

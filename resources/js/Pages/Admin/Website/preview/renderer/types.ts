@@ -72,6 +72,14 @@ export interface DocCategory {
     name: string;
     icon: string;
     color: string;
+    /**
+     * غلافُ التصنيف — صورةُ صنفٍ حقيقيّ فيه.
+     *
+     * ولا حقلَ جديد يُسأل عنه التاجر: التصنيف في أبعاد اسمٌ ولونٌ وأيقونة،
+     * ولا صورةَ له. فيُقرأ غلافُه من أوّل صنفٍ منشورٍ فيه له صورة — بيانٌ
+     * قائمٌ لا مخترَع. و`null` لمن لا صنفَ مصوَّرٌ فيه.
+     */
+    image?: string | null;
 }
 
 export interface DocReview {

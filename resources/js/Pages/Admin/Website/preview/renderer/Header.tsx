@@ -16,10 +16,12 @@ import type { DocSection, Mode, SiteDocument } from './types';
  *
  * ── الأربعة ──
  *
- * `minimal` شعارٌ وقائمةٌ في سطرٍ واحد — وهو ما كان.
- * `centered` الشعارُ في الوسط وتحته قائمتُه.
- * `commerce` سطران: شعارٌ وبحثٌ وأزرار، ثمّ شريطُ أقسامٍ تحته.
- * `editorial` سطرٌ عالٍ متباعدُ الحروف بلا خلفية — للقوالب التحريرية.
+ * `minimal` شعارٌ وقائمةٌ في سطرٍ واحد نحيف — وهو ما كان، ولمن لم يختر.
+ * `centered` الشعارُ في الوسط يمتدّ من جانبيه خطّان، وتحته قائمتُه.
+ * `commerce` ثلاثةُ صفوف: شريطُ خدمةٍ رفيع بلون العلامة، ثمّ شعارٌ وبحثٌ
+ *   وأزرار، ثمّ شريطُ أقسام. متجرٌ يُتصفّح لا صفحةٌ تُقرأ.
+ * `editorial` سطرٌ عالٍ: القائمةُ على جانب، والشعارُ في الوسط، والأزرارُ على
+ *   الجانب الآخر — تركيبٌ لا حجمٌ آخرُ للتركيب نفسه.
  *
  * ── ما لا يُرسم ──
  *
@@ -72,10 +74,14 @@ export function Header({
             ) : (
                 <strong
                     className="w-display"
+                    /*
+                     * ولا تباعدَ حروفٍ في اسمٍ عربيّ مهما بدا «تحريريًّا».
+                     * الخطُّ العربيّ متّصل، والمسافةُ المقحمة تمزّق الكلمة —
+                     * فالتحريريُّ يكبر ويخفّ ويأخذ خطّ العناوين، ولا يتباعد.
+                     */
                     style={{
-                        fontSize: editorial ? 22 : 18,
+                        fontSize: editorial ? 25 : 18,
                         fontWeight: editorial ? 500 : 800,
-                        letterSpacing: editorial ? '0.14em' : undefined,
                     }}
                 >
                     {name}
@@ -84,7 +90,7 @@ export function Header({
         </Link>
     );
 
-    const nav = (extra?: React.CSSProperties) =>
+    const nav = () =>
         links.length > 0 && (
             <nav
                 className="w-nav-desktop"
@@ -94,7 +100,6 @@ export function Header({
                     flexWrap: 'wrap',
                     fontSize: editorial ? 13.5 : 15,
                     alignItems: 'center',
-                    ...extra,
                 }}
             >
                 {links.map((l, i) => (
@@ -105,7 +110,6 @@ export function Header({
                         style={{
                             color: 'var(--w-muted)',
                             fontWeight: editorial ? 500 : 600,
-                            letterSpacing: editorial ? '0.1em' : undefined,
                         }}
                     >
                         {l.label}
@@ -165,8 +169,48 @@ export function Header({
     /* ---------------------------- تجاريّة ---------------------------- */
 
     if (shape === 'commerce') {
+        /*
+         * شريطُ خدمةٍ رفيع فوق الترويسة — وما فيه بيانُ التاجر لا شعارات.
+         *
+         * كلُّ متجرٍ كبير يضع فوق ترويسته سطرًا يقول شيئًا عن الخدمة. وما
+         * يُكتب فيه هنا مقروءٌ من هويّة النشاط: شعارُه الذي كتبه وهاتفُه
+         * الذي أدخله. ولا وعدَ يُخترع — «توصيل مجّانيّ» ليس عندنا ما يثبته،
+         * وسطرٌ كهذا يكتبه النظامُ من عنده وعدٌ يقطعه على التاجر بلا علمه.
+         */
+        const tagline = brand?.tagline ?? '';
+        const utility = (tagline !== '' || (brand?.phone ?? '') !== '') && (
+            <div style={{ background: 'var(--w-primary)', color: 'var(--w-on-primary)' }}>
+                {shell(
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 14,
+                            fontSize: 12.5,
+                            minHeight: 34,
+                            flexWrap: 'wrap',
+                        }}
+                    >
+                        {tagline !== '' && <span style={{ opacity: 0.94 }}>{tagline}</span>}
+                        {(brand?.phone ?? '') !== '' && (
+                            <span
+                                dir="auto"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: 0.94 }}
+                            >
+                                <Phone size={13} />
+                                {brand?.phone}
+                            </span>
+                        )}
+                    </div>,
+                    '0 18px',
+                )}
+            </div>
+        );
+
         return bar(
             <>
+                {utility}
                 {shell(
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                         {logo}
@@ -233,7 +277,20 @@ export function Header({
         return bar(
             shell(
                 <div style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>
-                    {logo}
+                    {/* وخطّان من جانبيه: شعارٌ موسَّطٌ في بياضٍ وحدَه يبدو منسيًّا لا مقصودًا */}
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: '1fr auto 1fr',
+                            alignItems: 'center',
+                            gap: 20,
+                            width: '100%',
+                        }}
+                    >
+                        <span aria-hidden className="w-rule" />
+                        {logo}
+                        <span aria-hidden className="w-rule" />
+                    </div>
                     {search && <div style={{ width: '100%', maxWidth: 460 }}>{<SearchBox mode={mode} />}</div>}
                     {/*
                      * والشعارُ في الوسط تحته قائمتُه — لا زرٌّ يفتحها.
@@ -275,8 +332,43 @@ export function Header({
         );
     }
 
-    /* -------------------- تحريريّة وبسيطة -------------------- */
+    /* ---------------------------- تحريريّة ---------------------------- */
 
+    /*
+     * الشعارُ في الوسط بين عمودين — والترتيبُ هنا للهاتف، وتعيدُه الشبكة.
+     *
+     * انظر `.w-head-editorial`: على الهاتف سطرٌ فيه الشعارُ وزرُّ القائمة،
+     * وعلى الحاسوب ثلاثةُ أعمدةٍ الشعارُ أوسطُها.
+     */
+    if (editorial) {
+        return bar(
+            shell(
+                <div className="w-head-editorial">
+                    {logo}
+                    {nav() || <span />}
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {search && (
+                            <div className="w-desk" style={{ width: 190 }}>
+                                <SearchBox mode={mode} />
+                            </div>
+                        )}
+                        {phone}
+                        <MobileNav links={links} mode={mode} />
+                    </div>
+                </div>,
+                '28px 18px',
+            ),
+            { borderBottomColor: 'var(--w-card-border)' },
+        );
+    }
+
+    /* ---------------------------- بسيطة ---------------------------- */
+
+    /*
+     * وهذه افتراضيُّ `Layout` — ترويسةُ كلّ موقعٍ بُني قبل طبقة البنية.
+     * فتركيبُها لا يتبدّل: شعارٌ في أوّل السطر وقائمةٌ وأزرارٌ في آخره.
+     */
     return bar(
         shell(
             <div
@@ -289,7 +381,7 @@ export function Header({
                 }}
             >
                 {logo}
-                {nav(editorial ? { marginInline: 'auto' } : undefined)}
+                {nav()}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {search && (
@@ -301,9 +393,8 @@ export function Header({
                     <MobileNav links={links} mode={mode} />
                 </div>
             </div>,
-            editorial ? '26px 18px' : '14px 18px',
+            '14px 18px',
         ),
-        editorial ? { borderBottomColor: 'var(--w-card-border)' } : undefined,
     );
 }
 

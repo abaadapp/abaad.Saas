@@ -32,13 +32,13 @@ export interface LayoutTokens {
     width: 'narrow' | 'normal' | 'wide' | 'full';
     /** كثافةُ الفراغ بين الأقسام وداخلها */
     density: 'compact' | 'balanced' | 'spacious';
-    /** سلّمُ الخطّ — كم يكبر العنوان عن النصّ */
-    scale: 'compact' | 'balanced' | 'editorial';
+    /** سلّمُ الخطّ وصوتُه — حجمًا ووزنًا وتباعدًا وعرضَ سطر */
+    scale: 'compact' | 'balanced' | 'editorial' | 'display' | 'precise';
     /** موضعُ عنوان القسم وزينتُه */
     heading: 'center' | 'start' | 'editorial';
     header: 'minimal' | 'centered' | 'commerce' | 'editorial';
     hero: 'classic' | 'centered' | 'split' | 'editorial' | 'showcase';
-    card: 'plain' | 'soft' | 'commerce' | 'editorial';
+    card: 'plain' | 'soft' | 'commerce' | 'editorial' | 'bare';
     grid: 'classic' | 'dense' | 'large' | 'editorial';
     /** نسبةُ صورة المنتج */
     ratio: 'square' | 'portrait' | 'landscape';
@@ -71,11 +71,11 @@ export const LAYOUT_DEFAULTS: LayoutTokens = {
 const ALLOWED: Record<Exclude<keyof LayoutTokens, 'heading_font'>, readonly string[]> = {
     width: ['narrow', 'normal', 'wide', 'full'],
     density: ['compact', 'balanced', 'spacious'],
-    scale: ['compact', 'balanced', 'editorial'],
+    scale: ['compact', 'balanced', 'editorial', 'display', 'precise'],
     heading: ['center', 'start', 'editorial'],
     header: ['minimal', 'centered', 'commerce', 'editorial'],
     hero: ['classic', 'centered', 'split', 'editorial', 'showcase'],
-    card: ['plain', 'soft', 'commerce', 'editorial'],
+    card: ['plain', 'soft', 'commerce', 'editorial', 'bare'],
     grid: ['classic', 'dense', 'large', 'editorial'],
     ratio: ['square', 'portrait', 'landscape'],
     categories: ['cards', 'pills', 'covers', 'tiles', 'list'],

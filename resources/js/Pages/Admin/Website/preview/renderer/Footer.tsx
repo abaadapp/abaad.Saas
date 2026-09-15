@@ -93,7 +93,7 @@ export function Footer({
             style={{
                 borderTop: '1px solid var(--w-border)',
                 background: shape === 'columns' ? 'var(--w-surface)' : 'var(--w-bg)',
-                padding: shape === 'minimal' ? '22px 18px' : '40px 18px 24px',
+                padding: shape === 'minimal' ? 'var(--w-pad-tight)' : 'var(--w-pad)',
                 marginTop: 24,
             }}
         >
@@ -180,10 +180,14 @@ export function Footer({
                         display: 'grid',
                         justifyItems: 'center',
                         textAlign: 'center',
-                        gap: 14,
+                        gap: 16,
                     }}
                 >
-                    {wordmark(40)}
+                    <span
+                        aria-hidden
+                        style={{ display: 'block', width: 52, height: 1, background: 'var(--w-primary)', opacity: 0.7 }}
+                    />
+                    {wordmark(48)}
                     {about && (
                         <p style={{ color: 'var(--w-muted)', fontSize: 14, margin: 0, lineHeight: 2 }}>{about}</p>
                     )}
@@ -272,14 +276,18 @@ export function Footer({
                     >
                         {links.length > 0 && (
                             <nav aria-label={t.links}>
-                                <h2 style={{ fontSize: 13, fontWeight: 800, margin: '0 0 10px' }}>{t.links}</h2>
+                                <h2 className="w-eyebrow" style={{ color: 'var(--w-primary)', margin: '0 0 12px' }}>
+                                    {t.links}
+                                </h2>
                                 {linkList}
                             </nav>
                         )}
 
                         {contact.length > 0 && (
                             <div>
-                                <h2 style={{ fontSize: 13, fontWeight: 800, margin: '0 0 10px' }}>{t.contact}</h2>
+                                <h2 className="w-eyebrow" style={{ color: 'var(--w-primary)', margin: '0 0 12px' }}>
+                                    {t.contact}
+                                </h2>
                                 <ul
                                     style={{
                                         listStyle: 'none',
@@ -338,14 +346,18 @@ export function Footer({
 
                 {links.length > 0 && (
                     <nav aria-label={t.links}>
-                        <h2 style={{ fontSize: 14, fontWeight: 800, margin: '0 0 10px' }}>{t.links}</h2>
+                        <h2 className="w-eyebrow" style={{ color: 'var(--w-primary)', margin: '0 0 12px' }}>
+                                    {t.links}
+                                </h2>
                         {linkList}
                     </nav>
                 )}
 
                 {contact.length > 0 && (
                     <div>
-                        <h2 style={{ fontSize: 14, fontWeight: 800, margin: '0 0 10px' }}>{t.contact}</h2>
+                        <h2 className="w-eyebrow" style={{ color: 'var(--w-primary)', margin: '0 0 12px' }}>
+                                    {t.contact}
+                                </h2>
                         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8, fontSize: 13.5 }}>
                             {contact.map(({ icon: Icon, value, href }, i) => (
                                 <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -369,7 +381,9 @@ export function Footer({
                     <div style={{ display: 'grid', gap: 18, alignContent: 'start' }}>
                         {social.length > 0 && (
                             <div>
-                                <h2 style={{ fontSize: 14, fontWeight: 800, margin: '0 0 10px' }}>{t.social}</h2>
+                                <h2 className="w-eyebrow" style={{ color: 'var(--w-primary)', margin: '0 0 12px' }}>
+                                    {t.social}
+                                </h2>
                                 <SocialRow list={social} mode={mode} />
                             </div>
                         )}
@@ -422,7 +436,9 @@ function PaymentsRow({ list, label, center }: { list: string[]; label: string; c
 
     return (
         <div style={{ marginTop: center ? 26 : 0, textAlign: center ? 'center' : 'start' }}>
-            <h2 style={{ fontSize: 14, fontWeight: 800, margin: '0 0 10px' }}>{label}</h2>
+            <h2 className="w-eyebrow" style={{ color: 'var(--w-primary)', margin: '0 0 12px' }}>
+                                    {label}
+                                </h2>
             <ul
                 style={{
                     listStyle: 'none',

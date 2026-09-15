@@ -6,8 +6,10 @@ use App\Models\ActivityLog;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\Order;
 use App\Models\Review;
 use App\Models\User;
+use App\Support\OrderStatus;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Preview;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -351,6 +353,234 @@ class TheReviewsScreenCountsAndSignsTest extends TestCase
         ]);
 
         $this->assertCount(1, $this->rows(['q' => 'سميرة']));
+    }
+
+    /* ------------------- ردٌّ لا يقرؤه أحد يُقال ما هو ------------------- */
+
+    /**
+     * ونجومٌ بلا كلامٍ تحجب الردَّ كما يحجبه الرفض.
+     *
+     * عولج المرفوضُ وبقي هذا: قسمُ الآراء لا يعرض إلّا ما فيه تعليق، فردٌّ
+     * على تقييمٍ بلا تعليقٍ لا يقرؤه أحدٌ أبدًا — والشاشةُ كانت تقول «نُشر
+     * الردّ» خضراءَ. فيطمئنّ صاحبُ المحلّ إلى أنّه أجاب زبونًا ولم يُجب.
+     */
+    public function test_a_reply_on_a_wordless_review_is_not_called_published(): void
+    {
+        $review = Review::create([
+            'business_id' => $this->business->id, 'author_name' => 'أحمد',
+            'rating' => 5, 'comment' => null, 'status' => 'معلّق',
+        ]);
+
+        $toast = $this->post(route('admin.marketing.reviews.reply', $review->id), ['reply' => 'شكرًا لك'])
+            ->getSession()->get('toast');
+
+        $this->assertSame('warning', $toast['type'], 'صُبغ أخضرَ ردٌّ لا يقرؤه أحد');
+        $this->assertStringContainsString('نجومٌ بلا كلام', $toast['msg'], 'لم يُقل السببُ بحرفه');
+        $this->assertSame(0, $this->shown(), 'خرجت شهادةٌ بلا نصّ');
+    }
+
+    /** وردٌّ على تقييمٍ منشورٍ فيه كلام: أخضرُ — وهو الحقّ */
+    public function test_a_reply_that_will_be_read_is_called_published(): void
+    {
+        $review = Review::create([
+            'business_id' => $this->business->id, 'author_name' => 'أحمد',
+            'rating' => 5, 'comment' => 'خدمة ممتازة', 'status' => 'منشور',
+        ]);
+
+        $toast = $this->post(route('admin.marketing.reviews.reply', $review->id), ['reply' => 'شكرًا لك'])
+            ->getSession()->get('toast');
+
+        $this->assertSame('success', $toast['type']);
+        $this->assertSame('نُشر الردّ', $toast['msg']);
+    }
+
+    /**
+     * و«أيقرأ أحدٌ هذا الردّ؟» يُسأل من الشرط الذي يرسم به الموقعُ صفحتَه.
+     *
+     * كان مكتوبًا بيدٍ: `$review->status === 'مرفوض'`. فلمّا صار للحجب سببٌ
+     * ثانٍ — نجومٌ بلا كلام — عرفه الموقعُ ولم يعرفه هذا. وفحصان لسؤالٍ
+     * واحد يفترقان يوم يُبدَّل أحدُهما.
+     */
+    public function test_the_reply_toast_reads_the_showable_rule(): void
+    {
+        $source = (string) file_get_contents(
+            base_path('app/Http/Controllers/Admin/Marketing/ReviewController.php')
+        );
+
+        $this->assertStringContainsString('showable()', $source, 'لا يقرأ من المصدر الواحد');
+        $this->assertStringNotContainsString(
+            "\$hidden = \$review->status === 'مرفوض'",
+            $source,
+            'أُعيدت كتابةُ شرط العرض بيده',
+        );
+    }
+
+    /* ---------------------------- محوُ الردّ ---------------------------- */
+
+    /**
+     * ونصٌّ موقَّعٌ باسم المحلّ على واجهته يجب أن يُمحى.
+     *
+     * كان `reply` مطلوبًا، فلا سبيل إلى إزالته إلّا بكتابة نصٍّ آخر مكانه.
+     * وهو كلامٌ يقرؤه كلّ زائر، يُكتب في لحظة غضبٍ أو قبل تمامه أو بخطأ في
+     * اسم — وصاحبُه لا يملك سحبَه.
+     */
+    public function test_a_reply_can_be_taken_back(): void
+    {
+        $review = Review::create([
+            'business_id' => $this->business->id, 'author_name' => 'أحمد',
+            'rating' => 2, 'comment' => 'تأخّر الطلب', 'status' => 'منشور',
+            'reply' => 'ردٌّ كُتب بالغلط', 'replied_at' => now(),
+        ]);
+
+        $toast = $this->post(route('admin.marketing.reviews.reply', $review->id), ['reply' => ''])
+            ->getSession()->get('toast');
+
+        $review->refresh();
+
+        $this->assertNull($review->reply, 'بقي الردُّ بعد محوه');
+        $this->assertNull($review->replied_at, 'بقي ختمُ الردّ بلا ردّ');
+        $this->assertSame('warning', $toast['type']);
+        $this->assertSame('حُذف الردّ', $toast['msg']);
+    }
+
+    /**
+     * والمحوُ لا يسحب التقييمَ من الموقع.
+     *
+     * الردُّ إذنٌ بالنشر ضمنًا، وسحبُه ليس سحبًا للإذن. وتقييمٌ يختفي لأنّ
+     * صاحبَ المحلّ محا تعليقَه عليه يُخفي كلامَ زبونٍ بفعلٍ لم يقصده.
+     */
+    public function test_taking_back_a_reply_does_not_unpublish_the_review(): void
+    {
+        $review = Review::create([
+            'business_id' => $this->business->id, 'author_name' => 'أحمد',
+            'rating' => 2, 'comment' => 'تأخّر الطلب', 'status' => 'منشور',
+            'reply' => 'نعتذر', 'replied_at' => now(),
+        ]);
+
+        $this->post(route('admin.marketing.reviews.reply', $review->id), ['reply' => '   ']);
+
+        $this->assertSame('منشور', $review->fresh()->status);
+        $this->assertSame(1, $this->shown(), 'سُحب تقييمٌ من الموقع بمحو ردٍّ عليه');
+    }
+
+    /** ومحوٌ يُقيَّد: نصٌّ عامٌّ يُرفع عن واجهة المتجر يُعرف رافعُه */
+    public function test_taking_back_a_reply_is_logged(): void
+    {
+        $review = Review::create([
+            'business_id' => $this->business->id, 'author_name' => 'أحمد',
+            'rating' => 3, 'comment' => 'جيد', 'status' => 'منشور', 'reply' => 'شكرًا',
+        ]);
+
+        $this->post(route('admin.marketing.reviews.reply', $review->id), ['reply' => '']);
+
+        $this->assertDatabaseHas('activity_logs', [
+            'subject_type' => 'review', 'subject_id' => $review->id,
+            'description' => 'حذف ردَّه على تقييم',
+        ]);
+    }
+
+    /* --------------------- ونشرُ نجومٍ بلا كلامٍ يُقال --------------------- */
+
+    public function test_publishing_a_wordless_review_says_where_it_goes(): void
+    {
+        $review = Review::create([
+            'business_id' => $this->business->id, 'author_name' => 'أحمد',
+            'rating' => 5, 'comment' => '', 'status' => 'معلّق',
+        ]);
+
+        $toast = $this->post(route('admin.marketing.reviews.status', $review->id), ['status' => 'منشور'])
+            ->getSession()->get('toast');
+
+        $this->assertStringContainsString('لا تعليق فيه', $toast['msg'], 'نُشرت نجومٌ بلا خبرٍ عن مصيرها');
+
+        // ونشرُ ما فيه كلامٍ يبقى كما كان
+        $spoken = Review::create([
+            'business_id' => $this->business->id, 'author_name' => 'سالم',
+            'rating' => 5, 'comment' => 'ممتاز', 'status' => 'معلّق',
+        ]);
+
+        $this->assertSame(
+            'صار التقييم منشور',
+            $this->post(route('admin.marketing.reviews.status', $spoken->id), ['status' => 'منشور'])
+                ->getSession()->get('toast')['msg'],
+        );
+    }
+
+    /* ------------------ ومن كتب التقييم يُقرأ في الشاشة ------------------ */
+
+    /**
+     * شهادةُ زبونٍ كتبها بيده ليست كشهادةٍ كتبها صاحبُ المحلّ عن نفسه.
+     *
+     * وصارتا تقعان معًا منذ فُتح بابُ الرأي (`ReviewInvite`)، والشاشةُ كانت
+     * تعرضهما سواءً — فيضيع الفرقُ الذي هو كلُّ قيمة الباب.
+     */
+    public function test_the_screen_tells_who_wrote_the_review(): void
+    {
+        $order = Order::create([
+            'business_id' => $this->business->id,
+            'branch_id' => Branch::where('business_id', $this->business->id)->value('id'),
+            'number' => 'INV-000900', 'status' => OrderStatus::DELIVERED,
+            'is_held' => false, 'payment_method' => 'نقدي', 'payment_status' => 'مدفوع',
+            'subtotal' => 5, 'total' => 5, 'ordered_at' => now(),
+        ]);
+
+        Review::create([
+            'business_id' => $this->business->id, 'order_id' => $order->id,
+            'author_name' => 'زبون', 'rating' => 5, 'comment' => 'ممتاز', 'status' => 'منشور',
+        ]);
+        Review::create([
+            'business_id' => $this->business->id,
+            'author_name' => 'سجّله التاجر', 'rating' => 5, 'comment' => 'جيد', 'status' => 'منشور',
+        ]);
+
+        $rows = collect($this->rows([]))->keyBy('author');
+
+        $this->assertTrue($rows['زبون']['byCustomer'], 'لم يُوسَم ما كتبه الزبون بيده');
+        $this->assertFalse($rows['سجّله التاجر']['byCustomer'], 'وُسم ما سجّله التاجر كأنّه من زبون');
+    }
+
+    /* ------------------- وقائمةُ العملاء لا تُبتر صامتة ------------------- */
+
+    /**
+     * `limit(500)` كانت تُسقط ما بعدها بلا كلمة.
+     *
+     * فيبحث التاجر عن عميلٍ يعرف أنّه مسجَّلٌ عنده فلا يجده في القائمة،
+     * ويظنّها كلَّ ما لديه. وهو العطبُ نفسُه الذي دُفع ثمنُه في شاشة فواتير
+     * العملاء مرّة.
+     */
+    public function test_a_truncated_customer_list_says_so(): void
+    {
+        $props = $this->get(route('admin.marketing.reviews'))->viewData('page')['props'];
+
+        $this->assertFalse($props['customersCapped'], 'قيل إنّ القائمة بُترت ولم تُبتر');
+
+        for ($i = 1; $i <= 501; $i++) {
+            Customer::create([
+                'business_id' => $this->business->id,
+                'name' => 'عميل '.str_pad((string) $i, 4, '0', STR_PAD_LEFT),
+                'phone' => '9'.str_pad((string) $i, 7, '0', STR_PAD_LEFT),
+            ]);
+        }
+
+        $props = $this->get(route('admin.marketing.reviews'))->viewData('page')['props'];
+
+        $this->assertTrue($props['customersCapped'], 'بُترت القائمةُ صامتة');
+        $this->assertCount(500, $props['customers'], 'خرج السقفُ عن حدّه');
+    }
+
+    /** والشاشةُ تقول السببين قبل الكتابة — لا يُقرآن بعد الحفظ وحده */
+    public function test_the_screen_warns_before_the_reply_is_written(): void
+    {
+        /*
+         * حارسٌ يقرأ مصدرًا — ضعيفٌ، وهو ما يمكن هنا: الملاحظةُ تُرسم داخل
+         * نافذةٍ لا تُركَّب في jsdom إلّا بـ`AdminLayout` كلِّه. وما تحته —
+         * أنّ الخادم يردّ السببين مكتوبَين — محروسٌ بما فوقه.
+         */
+        $screen = (string) file_get_contents(resource_path('js/Pages/Admin/Marketing/Reviews.tsx'));
+
+        $this->assertStringContainsString('التقييم مرفوضٌ ومحجوب', $screen);
+        $this->assertStringContainsString('نجومٌ بلا كلام', $screen);
+        $this->assertStringContainsString("t('حذف الردّ')", $screen, 'لا مقبضَ يمحو ردًّا');
     }
 
     /** @return list<array<string, mixed>> */

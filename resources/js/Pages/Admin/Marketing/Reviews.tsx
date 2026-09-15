@@ -27,6 +27,8 @@ interface Review {
     reply: string | null;
     replied_at: string | null;
     at: string | null;
+    /** كتبه الزبونُ بيده من رابط الدعوة — لا سجّله المتجر عنه */
+    byCustomer: boolean;
 }
 
 interface Props {
@@ -37,6 +39,8 @@ interface Props {
     sorts: string[];
     products: { value: number; label: string }[];
     customers: { value: number; label: string }[];
+    /** أسقطت القائمةُ عملاءَ بعد سقفها — فيُقال ذلك ولا تُبتر صامتة */
+    customersCapped: boolean;
     summary: { count: number; pending: number; published: number; average: number };
 }
 
@@ -61,7 +65,8 @@ function Stars({ value }: { value: number }) {
 }
 
 export default function Reviews() {
-    const { reviews, pagination, filters, sorts, products, customers, summary } = usePage<PageProps<Props>>().props;
+    const { reviews, pagination, filters, sorts, products, customers, customersCapped, summary } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
@@ -79,6 +84,23 @@ export default function Reviews() {
 
     const replyForm = useForm({ reply: '' });
 
+    /**
+     * ما يُقال تحت خانة الردّ — قبل أن يُكتب.
+     *
+     * والسببان اللذان يحجبان الردَّ هما اللذان يحجبان تقييمَه: أن يكون
+     * مرفوضًا، أو أن يكون نجومًا بلا كلام — فقسمُ الآراء لا يعرض إلا ما فيه
+     * تعليق. وهما الجوابان اللذان يردّهما الخادمُ بعد الحفظ، مقولَين قبله.
+     */
+    const replyNote: { text: string; warn: boolean } | null = !replying
+        ? null
+        : replying.status === 'مرفوض'
+          ? { text: 'التقييم مرفوضٌ ومحجوب — ولن يُقرأ ردُّك معه حتى تنشره.', warn: true }
+          : !replying.comment?.trim()
+            ? { text: 'هذا التقييم نجومٌ بلا كلام، ولا يظهر في قسم الآراء — فلن يظهر ردُّك معه.', warn: true }
+            : replying.status === 'معلّق'
+              ? { text: 'الردّ يُنشر مع تقييمه — فحفظُه ينشر التقييم أيضًا.', warn: false }
+              : null;
+
     const setStatus = (review: Review, status: string) =>
         router.post(
             route('admin.marketing.reviews.status', review.id),
@@ -93,6 +115,17 @@ export default function Reviews() {
             cell: (r) => (
                 <>
                     <span className="font-medium text-[#111]">{r.author}</span>
+                    {/*
+                        وشهادةٌ كتبها الزبونُ بيده ليست كشهادةٍ كتبها صاحبُ
+                        المحلّ عن نفسه — والشاشةُ كانت تعرضهما سواءً. وتُوسَم
+                        الأولى وحدها: هي الاستثناءُ الذي يزيد، والصمتُ عن
+                        الثانية هو حالُها المعتاد.
+                    */}
+                    {r.byCustomer && (
+                        <span className="mt-0.5 block text-[11px] font-medium text-[#047857]">
+                            {t('كتبه الزبون بنفسه')}
+                        </span>
+                    )}
                     <span className="block text-[12px] text-[#9ca3af]" dir="ltr">
                         {r.at}
                     </span>
@@ -233,7 +266,7 @@ export default function Reviews() {
                     rows={reviews}
                     columns={columns}
                     rowKey={(r) => r.id}
-                    searchPlaceholder="ابحث في التعليقات…"
+                    searchPlaceholder="ابحث في التعليقات وأسماء المقيّمين…"
                     searchable={() => ''}
                     filters={tableFilters}
                     empty="لا تقييمات بعد"
@@ -262,7 +295,12 @@ export default function Reviews() {
                         className="space-y-4 px-5 pb-5"
                     >
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Field label="العميل" error={form.errors.customer_id}>
+                            <Field
+                                label="العميل"
+                                /* وبُترت القائمة؟ يُقال — والخانةُ تحتها هي المخرج */
+                                hint={customersCapped ? t('أوّلُ 500 اسمٍ أبجديًّا — ومن ليس فيها يُكتب اسمه تحت') : undefined}
+                                error={form.errors.customer_id}
+                            >
                                 <Select
                                     placeholder="بلا عميل"
                                     value={form.data.customer_id}
@@ -362,19 +400,71 @@ export default function Reviews() {
                             />
                         </Field>
 
-                        {replying?.status === 'معلّق' && (
-                            <p className="text-[12px] text-[#9ca3af]">
-                                {t('الردّ يُنشر مع تقييمه — فحفظُه ينشر التقييم أيضًا.')}
+                        {/*
+                            ═══ ويُقال قبل الكتابة لا بعدها ═══
+
+                            ردٌّ محجوبٌ لا يقرؤه أحد. وكان صاحبُ المحلّ يعرف
+                            ذلك **بعد** أن يكتب اعتذارَه ويضغط «نشر» — فيقرأ
+                            تحذيرًا على كلامٍ فرغ منه. فيُقال هنا، والسببُ
+                            بحرفه لا بعبارةٍ عامّة.
+                        */}
+                        {replyNote && (
+                            <p
+                                className={cn(
+                                    'text-[12px]',
+                                    replyNote.warn ? 'text-[#b45309]' : 'text-[#9ca3af]',
+                                )}
+                            >
+                                {t(replyNote.text)}
                             </p>
                         )}
 
                         <div className="flex justify-end gap-2">
+                            {/*
+                                ونصٌّ موقَّعٌ باسم المحلّ على واجهته يجب أن
+                                يُمحى: يُكتب في لحظة غضبٍ أو قبل تمامه أو
+                                بخطأٍ في اسم. وكان لا يُمحى إلا بكتابة غيره.
+                            */}
+                            {replying?.reply && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="me-auto text-[#b91c1c]"
+                                    onClick={async () => {
+                                        if (!replying) return;
+                                        if (
+                                            !(await ask({
+                                                message: 'حذف ردّك؟ يبقى التقييم كما هو.',
+                                                danger: true,
+                                                action: 'حذف الردّ',
+                                            }))
+                                        )
+                                            return;
+                                        router.post(
+                                            route('admin.marketing.reviews.reply', replying.id),
+                                            { reply: '' },
+                                            { preserveScroll: true, onSuccess: () => setReplying(null) },
+                                        );
+                                    }}
+                                >
+                                    <Trash2 />
+                                    {t('حذف الردّ')}
+                                </Button>
+                            )}
                             <Button type="button" variant="ghost" onClick={() => setReplying(null)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" loading={replyForm.processing}>
+                            {/*
+                                ولا يُرسَل فارغًا من هنا: المحوُ فعلٌ يُقصَد
+                                بزرّه ويُؤكَّد، لا نتيجةَ حقلٍ مُسح سهوًا.
+                            */}
+                            <Button
+                                type="submit"
+                                loading={replyForm.processing}
+                                disabled={replyForm.data.reply.trim() === ''}
+                            >
                                 <MessageSquare />
-                                {t('نشر الردّ')}
+                                {t(replying?.reply ? 'حفظ الردّ' : 'نشر الردّ')}
                             </Button>
                         </div>
                     </form>

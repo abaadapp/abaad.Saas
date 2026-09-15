@@ -46,6 +46,9 @@ class ReviewController extends Controller
         'status' => 'status',
     ];
 
+    /** كم عميلًا تحمل قائمةُ «تسجيل تقييم» — وما بعدها يُقال لا يُسقَط صامتًا */
+    private const CUSTOMER_OPTIONS = 500;
+
     private function bid(): int
     {
         return auth()->user()->business_id ?? Demo::bid();
@@ -90,6 +93,10 @@ class ReviewController extends Controller
 
         $reviews = $q->paginate(Pagination::perPage($request, 20))->withQueryString();
 
+        /* وواحدٌ زائدٌ على السقف — به وحده يُعرف أنّ ثمّةَ ما بعده */
+        $customers = Customer::where('business_id', $bid)->orderBy('name')
+            ->limit(self::CUSTOMER_OPTIONS + 1)->get(['id', 'name']);
+
         return Inertia::render('Admin/Marketing/Reviews', [
             'reviews' => collect($reviews->items())->map(fn ($r) => [
                 'id' => $r->id,
@@ -101,6 +108,17 @@ class ReviewController extends Controller
                 'reply' => $r->reply,
                 'replied_at' => optional($r->replied_at)->format('Y-m-d'),
                 'at' => optional($r->created_at)->format('Y-m-d'),
+                /*
+                 * أكتبه الزبونُ بنفسه، أم سجّله المتجر عنه؟
+                 *
+                 * صارا يقعان معًا منذ فُتح بابُ الرأي، والشاشةُ لا تفرّق —
+                 * فتُقرأ شهادةُ زبونٍ كتبها بيده وشهادةٌ كتبها صاحبُ المحلّ
+                 * عن نفسه سواءً. وهذا الفرقُ هو كلُّ قيمة الباب.
+                 *
+                 * و`order_id` هو العلامة: لا يكتبه إلّا بابُ الدعوة —
+                 * `store()` لا يقبله أصلًا.
+                 */
+                'byCustomer' => $r->order_id !== null,
             ])->all(),
             'pagination' => Pagination::meta($reviews),
             'filters' => $request->only('q', 'status', 'rating')
@@ -108,8 +126,19 @@ class ReviewController extends Controller
             'sorts' => Sort::keys(self::SORTS),
             'products' => Product::where('business_id', $bid)->orderBy('name')
                 ->get(['id', 'name'])->map(fn ($p) => ['value' => $p->id, 'label' => $p->name])->all(),
-            'customers' => Customer::where('business_id', $bid)->orderBy('name')->limit(500)
-                ->get(['id', 'name'])->map(fn ($c) => ['value' => $c->id, 'label' => $c->name])->all(),
+            'customers' => $customers->take(self::CUSTOMER_OPTIONS)
+                ->map(fn ($c) => ['value' => $c->id, 'label' => $c->name])->all(),
+            /*
+             * وبُترت القائمة؟ — يُقال، ولا تُبتر صامتة.
+             *
+             * `limit(500)` كانت تُسقط ما بعدها بلا كلمة: لا رسالة، ولا رقمٌ
+             * يقول «٥٠٠ من ٦٢٠». فيبحث التاجر عن عميلٍ يعرف أنّه مسجَّلٌ
+             * عنده فلا يجده، ويظنّ القائمةَ كلَّ ما لديه. وهو العطبُ نفسُه
+             * الذي دفعنا ثمنَه في `CustomerInvoiceController` مرّةً.
+             *
+             * وخانةُ «الاسم» تحتها هي المخرج — فتُقال معها لا بعدها.
+             */
+            'customersCapped' => $customers->count() > self::CUSTOMER_OPTIONS,
             'summary' => $this->summary($bid),
         ]);
     }
@@ -196,30 +225,70 @@ class ReviewController extends Controller
             'subject_type' => 'review',
         ]);
 
+        /*
+         * ونشرُ نجومٍ بلا كلامٍ يُقال ما هو.
+         *
+         * قسمُ الآراء لا يعرض إلا ما فيه تعليق (`scopeShowable`). فتاجرٌ
+         * ينشر خمسةَ تقييماتٍ بخمس نجومٍ بلا كلام يرى «منشور ٥» ثمّ يفتح
+         * موقعَه فلا يجد شيئًا — ولا يعرف لماذا. والنشرُ صحيحٌ: النجومُ
+         * تُحتسب في المعدّل. الناقصُ أن يُقال له أين تذهب.
+         */
+        $silent = $data['status'] === 'منشور' && trim((string) $review->comment) === '';
+
         return back()->with('toast', [
-            'msg' => __('صار التقييم :status', ['status' => $data['status']]),
+            'msg' => $silent
+                ? __('نُشر — ونجومُه تُحتسب في المعدّل. ولا يظهر في قسم الآراء: لا تعليق فيه.')
+                : __('صار التقييم :status', ['status' => $data['status']]),
             'type' => $data['status'] === 'مرفوض' ? 'warning' : 'success',
         ]);
     }
 
     /**
-     * الردّ على التقييم.
+     * الردّ على التقييم — وحذفُه.
      *
      * ردٌّ على تقييمٍ معلَّق لا يراه أحد: الردّ يُنشر مع تقييمه، فالنشر يسبقه
      * أو يصحبه — وإلا كتب التاجر ردًّا يظنّه معروضًا وهو محجوب.
+     *
+     * ═══ وردٌّ يُكتب يجب أن يُمحى ═══
+     *
+     * كان `reply` مطلوبًا، فلا سبيلَ إلى إزالة ردٍّ إلّا بكتابة ردٍّ آخر
+     * مكانه. وهو نصٌّ **موقَّعٌ باسم المحلّ على واجهته** يقرؤه كلّ زائر —
+     * يُكتب في لحظة غضبٍ أو يُرسَل قبل تمامه أو يُخطئ في اسم. وصاحبُه لا
+     * يملك محوَه. و«بابٌ لا يُعرض» هنا أسوأ من بابٍ يُعرض ولا يُفتح: لا
+     * يعرف أنّه معدوم حتى يحتاجه.
+     *
+     * فصار الحقلُ يقبل الفراغ، والفراغُ محوٌ صريح — ولا يُنشر تقييمٌ بمحو.
      */
     public function reply(Request $request, $id)
     {
         $review = Review::where('business_id', $this->bid())->findOrFail($id);
 
         $data = $request->validate([
-            'reply' => ['required', 'string', 'max:2000'],
+            'reply' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $hidden = $review->status === 'مرفوض';
+        $text = trim((string) ($data['reply'] ?? ''));
+
+        if ($text === '') {
+            /*
+             * والمحوُ لا يُغيّر حالَ التقييم.
+             *
+             * الردُّ إذنٌ بالنشر ضمنًا؛ وسحبُ الردّ ليس سحبًا للإذن. وتقييمٌ
+             * نُشر ثمّ يختفي من الموقع لأنّ صاحبَ المحلّ محا تعليقَه عليه
+             * يُخفي كلامَ زبونٍ بفعلٍ لا يقصده.
+             */
+            $review->update(['reply' => null, 'replied_at' => null]);
+
+            Activity::log('updated', 'حذف ردَّه على تقييم', [
+                'subject_id' => $review->id,
+                'subject_type' => 'review',
+            ]);
+
+            return back()->with('toast', ['msg' => __('حُذف الردّ'), 'type' => 'warning']);
+        }
 
         $review->update([
-            'reply' => $data['reply'],
+            'reply' => $text,
             'replied_at' => now(),
             /*
              * الردّ إذنٌ بالنشر ضمنًا — للمعلَّق وحده.
@@ -237,20 +306,31 @@ class ReviewController extends Controller
         ]);
 
         /*
-         * ═══ و«نُشر الردّ» عن تقييمٍ مرفوضٍ كذبة ═══
+         * ═══ و«نُشر الردّ» عمّا لا يقرؤه أحد كذبة ═══
          *
-         * المرفوضُ محجوبٌ عن الموقع، وردُّه محجوبٌ معه — لا يقرؤه أحد. وكانت
-         * الشاشة تقول «نُشر الردّ» خضراءَ فيطمئنّ صاحبُ المحلّ إلى أنّه
-         * أجاب زبونًا غاضبًا، والزبون لم يرَ حرفًا.
+         * ردٌّ محجوبٌ لا يبلغ زبونًا، والشاشةُ كانت تقول «نُشر الردّ» خضراءَ
+         * فيطمئنّ صاحبُ المحلّ إلى أنّه أجاب زبونًا غاضبًا وهو لم يرَ حرفًا.
          *
-         * فالردُّ يُحفظ (لئلّا يُكتب مرّتين)، ويُقال ما جرى بحرفه.
+         * وحُجب الردُّ لسببين لا سبب: تقييمٌ **مرفوض**، وتقييمٌ **نجومٌ بلا
+         * كلام** — وهذا الثاني بقي على عطبه بعد أن عولج الأوّل، لأنّ الشرطَ
+         * كان مكتوبًا هنا بيدٍ بدل أن يُسأل.
+         *
+         * فيُسأل الشرطُ نفسُه الذي يرسم به الموقعُ صفحتَه — `scopeShowable`.
+         * ومن بدّله بدّل الجوابَين معًا.
          */
-        return back()->with('toast', $hidden
-            ? [
-                'msg' => __('حُفظ الردّ — ولن يقرأه أحد: التقييم مرفوضٌ ومحجوب. انشره ليظهرا معًا.'),
-                'type' => 'warning',
-            ]
-            : ['msg' => __('نُشر الردّ'), 'type' => 'success']);
+        $read = Review::whereKey($review->id)->showable()->exists();
+
+        return back()->with('toast', $read
+            ? ['msg' => __('نُشر الردّ'), 'type' => 'success']
+            : ['msg' => $this->whyUnread($review->fresh()), 'type' => 'warning']);
+    }
+
+    /** ولمَ لن يُقرأ هذا الردّ — بحرفه لا بعبارةٍ عامّة */
+    private function whyUnread(Review $review): string
+    {
+        return $review->status !== 'منشور'
+            ? __('حُفظ الردّ — ولن يقرأه أحد: التقييم مرفوضٌ ومحجوب. انشره ليظهرا معًا.')
+            : __('حُفظ الردّ — ولن يقرأه أحد: التقييم نجومٌ بلا كلام، ولا يُعرض في قسم الآراء إلا ما فيه تعليق.');
     }
 
     public function destroy($id)

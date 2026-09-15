@@ -171,4 +171,68 @@ class EveryScreenOpensTest extends TestCase
     {
         $this->sweep($this->owner, 'pos.');
     }
+
+    /**
+     * ولا شاشتان في لوحة التاجر تحملان الاسمَ نفسَه.
+     *
+     * ═══ وكيف وُجد هذا ═══
+     *
+     * كانت «الظهور في البحث» اسمَ شاشتين: واحدةٌ في «التسويق» تربط Google
+     * Analytics وتفحص الصفحة، وأخرى في «الموقع الإلكتروني» يُكتب فيها عنوانُ
+     * الصفحة ووصفُها. ومن سأل «لماذا لا أظهر في Google» يفتح إحداهما
+     * بالصدفة — وقد تكون التي لا تكتب في صفحته حرفًا.
+     *
+     * وأسوأُ منه: نصائحُ الأولى تقول «اكتبه في الموقع الإلكتروني ‹ الظهور في
+     * البحث»، فيقرؤها وهو واقفٌ على صفحةٍ تحمل الاسمَ نفسَه.
+     *
+     * ولوحةُ المنصّة تُستثنى: شاشاتُها لا يفتحها تاجرٌ قطّ، و«التقارير» عنده
+     * غيرُ «التقارير» عندنا — واسمان متطابقان لا يلتقيان لا يُخلطان.
+     */
+    public function test_no_two_merchant_screens_share_a_name(): void
+    {
+        $titles = [];
+
+        foreach ($this->pages(resource_path('js/Pages/Admin')) as $file) {
+            preg_match('/<PageHeader\s[^>]*?title="([^"]+)"/s', (string) file_get_contents($file), $m);
+
+            if (($m[1] ?? '') !== '') {
+                /*
+                 * والمسارُ لا الاسمُ المجرّد.
+                 *
+                 * الشاشتان المتصادمتان كلتاهما `Seo.tsx` — واحدةٌ تحت
+                 * `Website` وأخرى تحت `Marketing`. و`basename` تجعلهما
+                 * ملفًّا واحدًا في عين الحارس، فيمرّ التصادمُ الذي وُجد
+                 * الحارسُ لأجله. وقد نجت طفرةٌ أعادت الاسمَ المكرَّر قبل أن
+                 * يُصلَح هذا السطر.
+                 */
+                $titles[$m[1]][] = str_replace(resource_path('js/Pages/'), '', (string) $file);
+            }
+        }
+
+        $clashes = [];
+
+        foreach ($titles as $title => $files) {
+            if (count(array_unique($files)) > 1) {
+                $clashes[] = $title.' → '.implode('، ', array_unique($files));
+            }
+        }
+
+        $this->assertSame([], $clashes, 'شاشتان في لوحة التاجر تحملان الاسم نفسه');
+    }
+
+    /** @return list<string> */
+    private function pages(string $dir): array
+    {
+        $out = [];
+
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir)) as $file) {
+            /* والرسّامُ المستعارُ خارجَ القياس — ليس شاشةً في القائمة */
+            if ($file->isFile() && $file->getExtension() === 'tsx'
+                && ! str_contains($file->getPathname(), 'preview/renderer')) {
+                $out[] = $file->getPathname();
+            }
+        }
+
+        return $out;
+    }
 }

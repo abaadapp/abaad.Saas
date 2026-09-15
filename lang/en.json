@@ -5764,5 +5764,18 @@
     "جُهِّزت الرسالة — افتح واتساب واضغط «إرسال» فيه.": "The message is ready — open WhatsApp and press Send there.",
     "جُهِّز الطلب — افتح واتساب واضغط «إرسال» فيه.": "The request is ready — open WhatsApp and press Send there.",
     "جُهِّز الإشعار — افتح واتساب واضغط «إرسال» فيه.": "The notice is ready — open WhatsApp and press Send there.",
-    "جُهِّز التذكير — افتح واتساب واضغط «إرسال» فيه.": "The reminder is ready — open WhatsApp and press Send there."
+    "جُهِّز التذكير — افتح واتساب واضغط «إرسال» فيه.": "The reminder is ready — open WhatsApp and press Send there.",
+    ":title (:n حرفًا) — قصيرٌ، ولا يُبحث عنه.": ":title (:n characters) — too short, and nobody searches for it.",
+    "اختصره من «الموقع الإلكتروني ‹ الظهور في البحث» إلى نحو :max حرفًا — Google تقطع ما زاد.": "Shorten it under Website › Search appearance to about :max characters — Google truncates the rest.",
+    "وسّعه من «الموقع الإلكتروني ‹ الظهور في البحث»: اسمُ المحلّ وحده لا يُبحث عنه — أضِف ما تبيع ومدينتك، :min حرفًا فأكثر.": "Expand it under Website › Search appearance: the shop name alone is not searched for — add what you sell and your city, :min characters or more.",
+    "اختصره إلى نحو :max حرفًا — Google تقطع ما زاد.": "Shorten it to about :max characters — Google truncates the rest.",
+    "وسّعه: اسمُ المحلّ وحده لا يُبحث عنه — أضِف ما تبيع ومدينتك، :min حرفًا فأكثر.": "Expand it: the shop name alone is not searched for — add what you sell and your city, :min characters or more.",
+    ":n حرفًا — قصيرٌ، وGoogle تستبدله غالبًا بجملةٍ تختارها هي.": ":n characters — too short; Google will usually replace it with a sentence of its own choosing.",
+    "اكتبه في «الموقع الإلكتروني ‹ الظهور في البحث» في :min–:max حرفًا — هو السطر الرمادي تحت العنوان.": "Write it under Website › Search appearance, :min–:max characters — it is the grey line under the title.",
+    "اختصره من «الموقع الإلكتروني ‹ الظهور في البحث» إلى نحو :max حرفًا.": "Shorten it under Website › Search appearance to about :max characters.",
+    "وسّعه من «الموقع الإلكتروني ‹ الظهور في البحث» إلى :min–:max حرفًا تقول ما تبيع ولمن — الوصفُ الحاليّ حشوٌ كتبه النظام لا أنت.": "Expand it under Website › Search appearance to :min–:max characters saying what you sell and to whom — the current text is filler written by the system, not by you.",
+    "أضف <meta name=\"description\"> في :min–:max حرفًا — هو السطر الرمادي تحت العنوان.": "Add a <meta name=\"description\"> of :min–:max characters — it is the grey line under the title.",
+    "اختصره إلى نحو :max حرفًا.": "Shorten it to about :max characters.",
+    "وسّعه إلى :min–:max حرفًا تقول ما تبيع ولمن.": "Expand it to :min–:max characters saying what you sell and to whom.",
+    "التحليلات وفحص الظهور": "Analytics & visibility check"
 }

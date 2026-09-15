@@ -50,6 +50,31 @@ class Seo
      */
     public const CACHE_MINUTES = 30;
 
+    /*
+     * ═══ حدودُ ما يُعرض في نتيجة البحث ═══
+     *
+     * تُقرأ في الفحص وفي نصّ النصيحة معًا — رقمٌ في الشرط وآخرُ في الجملة
+     * يفترقان يومَ يُبدَّل أحدهما، فتقول الشاشة «✓» وتحتها «اكتبه في ١٢٠».
+     *
+     * والحدُّ الأدنى ليس تزيّدًا: الباني يكتب للمتجر وصفًا افتراضيًّا
+     * («تسوّق من متجري.» — خمسةَ عشرَ حرفًا)، وكان الفحصُ يُجيزه بعلامةٍ
+     * خضراء. فيقرأ التاجر «وصف الصفحة ✓» ولا يكتب وصفًا قطّ — وGoogle
+     * تطرح الوصفَ القصير وتختار جملةً من صفحته هي.
+     *
+     * فنظامٌ يكتب حشوًا ثمّ يشهد له بالسلامة أسوأ من نظامٍ لا يكتب شيئًا.
+     */
+
+    /** أقلُّ عنوانٍ يُفيد — اسمُ المحلّ وحده لا يُبحث عنه */
+    public const TITLE_MIN = 15;
+
+    /** وما زاد تقطعه Google بثلاث نقاط */
+    public const TITLE_MAX = 60;
+
+    /** أقلُّ وصفٍ تعرضه Google كما كُتب — وما دونه تستبدله غالبًا */
+    public const DESC_MIN = 70;
+
+    public const DESC_MAX = 160;
+
     /**
      * معرّفُ القياس — أو null إن لم يُقرأ.
      *
@@ -334,39 +359,71 @@ class Seo
          * Google تقطع ما تجاوز نحوَ ستّين حرفًا في النتيجة، فعنوانٌ طويلٌ
          * يُعرض ناقصًا بثلاث نقاط — واسمُ المحلّ يكون في نصفه المقطوع.
          */
+        $titleLength = mb_strlen($title);
+
         $out[] = self::item(
             'title',
             'عنوان الصفحة',
-            $title === '' ? 'fail' : (mb_strlen($title) > 60 ? 'warn' : 'pass'),
-            $title === ''
-                ? __('لا عنوان في الصفحة.')
-                : __(':title (:n حرفًا)', ['title' => $title, 'n' => mb_strlen($title)]),
+            match (true) {
+                $title === '' => 'fail',
+                $titleLength > self::TITLE_MAX, $titleLength < self::TITLE_MIN => 'warn',
+                default => 'pass',
+            },
+            match (true) {
+                $title === '' => __('لا عنوان في الصفحة.'),
+                $titleLength < self::TITLE_MIN => __(':title (:n حرفًا) — قصيرٌ، ولا يُبحث عنه.', [
+                    'title' => $title, 'n' => $titleLength,
+                ]),
+                default => __(':title (:n حرفًا)', ['title' => $title, 'n' => $titleLength]),
+            },
             self::fixText(
                 $hosted,
-                $title === ''
-                    ? __('اكتبه في «الموقع الإلكتروني ‹ الظهور في البحث» — هو السطر الأزرق في نتيجة البحث.')
-                    : (mb_strlen($title) > 60 ? __('اختصره من «الموقع الإلكتروني ‹ الظهور في البحث» إلى نحو ٦٠ حرفًا — Google تقطع ما زاد.') : null),
-                $title === ''
-                    ? __('أضف <title> يحمل اسم محلّك ومدينته — هو السطر الأزرق في نتيجة البحث.')
-                    : (mb_strlen($title) > 60 ? __('اختصره إلى نحو ٦٠ حرفًا — Google تقطع ما زاد.') : null),
+                match (true) {
+                    $title === '' => __('اكتبه في «الموقع الإلكتروني ‹ الظهور في البحث» — هو السطر الأزرق في نتيجة البحث.'),
+                    $titleLength > self::TITLE_MAX => __('اختصره من «الموقع الإلكتروني ‹ الظهور في البحث» إلى نحو :max حرفًا — Google تقطع ما زاد.', ['max' => self::TITLE_MAX]),
+                    $titleLength < self::TITLE_MIN => __('وسّعه من «الموقع الإلكتروني ‹ الظهور في البحث»: اسمُ المحلّ وحده لا يُبحث عنه — أضِف ما تبيع ومدينتك، :min حرفًا فأكثر.', ['min' => self::TITLE_MIN]),
+                    default => null,
+                },
+                match (true) {
+                    $title === '' => __('أضف <title> يحمل اسم محلّك ومدينته — هو السطر الأزرق في نتيجة البحث.'),
+                    $titleLength > self::TITLE_MAX => __('اختصره إلى نحو :max حرفًا — Google تقطع ما زاد.', ['max' => self::TITLE_MAX]),
+                    $titleLength < self::TITLE_MIN => __('وسّعه: اسمُ المحلّ وحده لا يُبحث عنه — أضِف ما تبيع ومدينتك، :min حرفًا فأكثر.', ['min' => self::TITLE_MIN]),
+                    default => null,
+                },
             ),
         );
+
+        $descriptionLength = mb_strlen($description);
 
         $out[] = self::item(
             'description',
             'وصف الصفحة',
-            $description === '' ? 'warn' : (mb_strlen($description) > 160 ? 'warn' : 'pass'),
-            $description === ''
-                ? __('لا وصف في الصفحة.')
-                : __(':n حرفًا', ['n' => mb_strlen($description)]),
+            match (true) {
+                $description === '' => 'warn',
+                $descriptionLength > self::DESC_MAX, $descriptionLength < self::DESC_MIN => 'warn',
+                default => 'pass',
+            },
+            match (true) {
+                $description === '' => __('لا وصف في الصفحة.'),
+                $descriptionLength < self::DESC_MIN => __(':n حرفًا — قصيرٌ، وGoogle تستبدله غالبًا بجملةٍ تختارها هي.', [
+                    'n' => $descriptionLength,
+                ]),
+                default => __(':n حرفًا', ['n' => $descriptionLength]),
+            },
             self::fixText(
                 $hosted,
-                $description === ''
-                    ? __('اكتبه في «الموقع الإلكتروني ‹ الظهور في البحث» في ١٢٠–١٦٠ حرفًا — هو السطر الرمادي تحت العنوان.')
-                    : (mb_strlen($description) > 160 ? __('اختصره من «الموقع الإلكتروني ‹ الظهور في البحث» إلى نحو ١٦٠ حرفًا.') : null),
-                $description === ''
-                    ? __('أضف <meta name="description"> في ١٢٠–١٦٠ حرفًا — هو السطر الرمادي تحت العنوان.')
-                    : (mb_strlen($description) > 160 ? __('اختصره إلى نحو ١٦٠ حرفًا.') : null),
+                match (true) {
+                    $description === '' => __('اكتبه في «الموقع الإلكتروني ‹ الظهور في البحث» في :min–:max حرفًا — هو السطر الرمادي تحت العنوان.', ['min' => self::DESC_MIN, 'max' => self::DESC_MAX]),
+                    $descriptionLength > self::DESC_MAX => __('اختصره من «الموقع الإلكتروني ‹ الظهور في البحث» إلى نحو :max حرفًا.', ['max' => self::DESC_MAX]),
+                    $descriptionLength < self::DESC_MIN => __('وسّعه من «الموقع الإلكتروني ‹ الظهور في البحث» إلى :min–:max حرفًا تقول ما تبيع ولمن — الوصفُ الحاليّ حشوٌ كتبه النظام لا أنت.', ['min' => self::DESC_MIN, 'max' => self::DESC_MAX]),
+                    default => null,
+                },
+                match (true) {
+                    $description === '' => __('أضف <meta name="description"> في :min–:max حرفًا — هو السطر الرمادي تحت العنوان.', ['min' => self::DESC_MIN, 'max' => self::DESC_MAX]),
+                    $descriptionLength > self::DESC_MAX => __('اختصره إلى نحو :max حرفًا.', ['max' => self::DESC_MAX]),
+                    $descriptionLength < self::DESC_MIN => __('وسّعه إلى :min–:max حرفًا تقول ما تبيع ولمن.', ['min' => self::DESC_MIN, 'max' => self::DESC_MAX]),
+                    default => null,
+                },
             ),
         );
 

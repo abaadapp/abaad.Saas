@@ -1,0 +1,31 @@
+{
+    "name": "abaad-storefront",
+    "version": "1.0.0",
+    "private": true,
+    "description": "عارض مواقع التجّار — يقرأ مستند أبعاد ويرسم الموقع",
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "renderer:hash": "node scripts/renderer-hash.mjs"
+    },
+    "dependencies": {
+        "next": "^16.3.4",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0"
+    },
+    "devDependencies": {
+        "@testing-library/react": "^16.3.0",
+        "@types/node": "^24.0.0",
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "@vitejs/plugin-react": "^6.1.0",
+        "jsdom": "^30.0.0",
+        "typescript": "^5.9.0",
+        "vitest": "^4.1.0"
+    }
+}

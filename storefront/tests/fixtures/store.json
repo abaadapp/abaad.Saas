@@ -1,0 +1,565 @@
+{
+    "schema_version": 3,
+    "version": 3,
+    "name": "ورود مسقط",
+    "goal": "store",
+    "template": "modern",
+    "theme": {
+        "primary": "#2563eb",
+        "background": "#ffffff",
+        "text": "#0f172a",
+        "font": "cairo",
+        "radius": "medium",
+        "button": "solid"
+    },
+    "layout": {
+        "width": "normal",
+        "density": "balanced",
+        "scale": "balanced",
+        "heading": "center",
+        "header": "minimal",
+        "hero": "classic",
+        "card": "plain",
+        "grid": "classic",
+        "ratio": "square",
+        "categories": "cards",
+        "footer": "columns",
+        "surface_style": "bordered",
+        "heading_font": ""
+    },
+    "tokens": {
+        "primary": "#2563eb",
+        "background": "#ffffff",
+        "text": "#0f172a",
+        "font": "cairo",
+        "radius": "medium",
+        "button": "solid",
+        "on_primary": "#ffffff",
+        "surface": "#f7f7f7",
+        "border": "#e6e6e6",
+        "muted": "#7b7f8a",
+        "radius_px": 12,
+        "width": "normal",
+        "density": "balanced",
+        "scale": "balanced",
+        "heading": "center",
+        "header": "minimal",
+        "hero": "classic",
+        "card": "plain",
+        "grid": "classic",
+        "ratio": "square",
+        "categories": "cards",
+        "footer": "columns",
+        "surface_style": "bordered",
+        "heading_font": ""
+    },
+    "seo": {
+        "title": "ورود مسقط",
+        "description": "ورودٌ طازجة كلّ صباح",
+        "image": "http://localhost/storage/logos/wrood.png",
+        "index": true
+    },
+    "commerce": {
+        "show_prices": true,
+        "allow_orders": true
+    },
+    "maintenance": false,
+    "maintenance_message": null,
+    "globals": [
+        {
+            "slot": "footer",
+            "type": "footer",
+            "visible": true,
+            "data": {
+                "about": "محلُّ ورودٍ في الخوير منذ ٢٠١٥.",
+                "show_contact": true,
+                "show_social": true,
+                "show_payments": true,
+                "copyright": "جميع الحقوق محفوظة — ورود مسقط",
+                "links": [
+                    {
+                        "label": "الرئيسية",
+                        "href": "/",
+                        "type": "page",
+                        "page_id": 1
+                    },
+                    {
+                        "label": "المتجر",
+                        "href": "/shop",
+                        "type": "page",
+                        "page_id": 2
+                    },
+                    {
+                        "label": "من نحن",
+                        "href": "/about",
+                        "type": "page",
+                        "page_id": 3
+                    },
+                    {
+                        "label": "تواصل معنا",
+                        "href": "/contact",
+                        "type": "page",
+                        "page_id": 4
+                    }
+                ]
+            }
+        },
+        {
+            "slot": "header",
+            "type": "header",
+            "visible": true,
+            "data": {
+                "preset": "auto",
+                "show_search": true,
+                "show_cart": true,
+                "show_whatsapp": true,
+                "sticky": true,
+                "links": [
+                    {
+                        "label": "الرئيسية",
+                        "href": "/",
+                        "type": "page",
+                        "page_id": 1
+                    },
+                    {
+                        "label": "المتجر",
+                        "href": "/shop",
+                        "type": "page",
+                        "page_id": 2
+                    },
+                    {
+                        "label": "من نحن",
+                        "href": "/about",
+                        "type": "page",
+                        "page_id": 3
+                    },
+                    {
+                        "label": "تواصل معنا",
+                        "href": "/contact",
+                        "type": "page",
+                        "page_id": 4
+                    }
+                ]
+            }
+        }
+    ],
+    "pages": [
+        {
+            "key": "home",
+            "title": "الرئيسية",
+            "slug": "/",
+            "status": "published",
+            "is_home": true,
+            "removable": false,
+            "seo": {
+                "title": "",
+                "description": "",
+                "image": ""
+            },
+            "sections": [
+                {
+                    "type": "hero",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "layout": "auto",
+                        "eyebrow": "",
+                        "title": "ورودٌ طازجة كلّ صباح",
+                        "subtitle": "محلُّ ورودٍ في الخوير منذ ٢٠١٥.",
+                        "image": "",
+                        "cta_label": "تسوّق الآن",
+                        "cta_href": "/shop",
+                        "align": "center",
+                        "height": "medium",
+                        "overlay": "medium"
+                    },
+                    "items": null
+                },
+                {
+                    "type": "categories",
+                    "visible": true,
+                    "source": "categories",
+                    "data": {
+                        "title": "تسوّق حسب القسم",
+                        "limit": 8,
+                        "style": "cards"
+                    },
+                    "items": [
+                        {
+                            "id": 1,
+                            "name": "باقات",
+                            "icon": "tag",
+                            "color": "primary",
+                            "image": "http://localhost/storage/products/sample2.jpg"
+                        },
+                        {
+                            "id": 2,
+                            "name": "نباتات داخلية",
+                            "icon": "tag",
+                            "color": "primary",
+                            "image": null
+                        }
+                    ]
+                },
+                {
+                    "type": "featured_products",
+                    "visible": true,
+                    "source": "products",
+                    "data": {
+                        "title": "منتجات مختارة",
+                        "layout": "auto",
+                        "eyebrow": "",
+                        "product_ids": [],
+                        "limit": 8,
+                        "columns": "3"
+                    },
+                    "items": [
+                        {
+                            "id": 3,
+                            "name": "صبّار صغير",
+                            "excerpt": "وصفٌ قصير للمنتج يظهر في البطاقة.",
+                            "price": 4.75,
+                            "was": null,
+                            "final": 4.75,
+                            "image": "http://localhost/storage/products/sample2.jpg",
+                            "category_id": 1
+                        },
+                        {
+                            "id": 2,
+                            "name": "باقة توليب",
+                            "excerpt": "وصفٌ قصير للمنتج يظهر في البطاقة.",
+                            "price": 18,
+                            "was": 18,
+                            "final": 14.4,
+                            "image": "http://localhost/storage/products/sample1.jpg",
+                            "category_id": 1
+                        },
+                        {
+                            "id": 1,
+                            "name": "باقة ورد جوري",
+                            "excerpt": "وصفٌ قصير للمنتج يظهر في البطاقة.",
+                            "price": 12.5,
+                            "was": null,
+                            "final": 12.5,
+                            "image": "http://localhost/storage/products/sample0.jpg",
+                            "category_id": 1
+                        }
+                    ]
+                },
+                {
+                    "type": "promo",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "عرض هذا الأسبوع",
+                        "text": "خصمٌ على منتجاتٍ مختارة — لمدّةٍ محدودة.",
+                        "image": "",
+                        "cta_label": "تسوّق الآن",
+                        "cta_href": "/shop",
+                        "ends_at": ""
+                    },
+                    "items": null
+                },
+                {
+                    "type": "benefits",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "لماذا نحن",
+                        "items": [
+                            {
+                                "icon": "truck",
+                                "title": "توصيل سريع",
+                                "text": "نوصل طلبك في وقته."
+                            },
+                            {
+                                "icon": "shield-check",
+                                "title": "جودة مضمونة",
+                                "text": "ما نبيعه نستعمله."
+                            },
+                            {
+                                "icon": "headphones",
+                                "title": "خدمة قريبة",
+                                "text": "نردّ على استفسارك في يومه."
+                            }
+                        ]
+                    },
+                    "items": null
+                },
+                {
+                    "type": "testimonials",
+                    "visible": true,
+                    "source": "reviews",
+                    "data": {
+                        "title": "ماذا يقول عملاؤنا",
+                        "limit": 6,
+                        "min_rating": "4"
+                    },
+                    "items": [
+                        {
+                            "author": "سالم",
+                            "rating": 5,
+                            "comment": "خدمة ممتازة والورد وصل طازجًا."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "key": "shop",
+            "title": "المتجر",
+            "slug": "/shop",
+            "status": "published",
+            "is_home": false,
+            "removable": false,
+            "seo": {
+                "title": "",
+                "description": "",
+                "image": ""
+            },
+            "sections": [
+                {
+                    "type": "product_catalog",
+                    "visible": true,
+                    "source": "products",
+                    "data": {
+                        "title": "كلّ المنتجات",
+                        "layout": "auto",
+                        "limit": 60,
+                        "columns": "4"
+                    },
+                    "items": [
+                        {
+                            "id": 3,
+                            "name": "صبّار صغير",
+                            "excerpt": "وصفٌ قصير للمنتج يظهر في البطاقة.",
+                            "price": 4.75,
+                            "was": null,
+                            "final": 4.75,
+                            "image": "http://localhost/storage/products/sample2.jpg",
+                            "category_id": 1
+                        },
+                        {
+                            "id": 2,
+                            "name": "باقة توليب",
+                            "excerpt": "وصفٌ قصير للمنتج يظهر في البطاقة.",
+                            "price": 18,
+                            "was": 18,
+                            "final": 14.4,
+                            "image": "http://localhost/storage/products/sample1.jpg",
+                            "category_id": 1
+                        },
+                        {
+                            "id": 1,
+                            "name": "باقة ورد جوري",
+                            "excerpt": "وصفٌ قصير للمنتج يظهر في البطاقة.",
+                            "price": 12.5,
+                            "was": null,
+                            "final": 12.5,
+                            "image": "http://localhost/storage/products/sample0.jpg",
+                            "category_id": 1
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "key": "about",
+            "title": "من نحن",
+            "slug": "/about",
+            "status": "published",
+            "is_home": false,
+            "removable": true,
+            "seo": {
+                "title": "",
+                "description": "",
+                "image": ""
+            },
+            "sections": [
+                {
+                    "type": "image_text",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "من نحن",
+                        "body": "محلُّ ورودٍ في الخوير منذ ٢٠١٥.",
+                        "image": "",
+                        "cta_label": "",
+                        "cta_href": "",
+                        "side": "start"
+                    },
+                    "items": null
+                },
+                {
+                    "type": "stats",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "items": [
+                            {
+                                "value": "+1000",
+                                "label": "عميل"
+                            },
+                            {
+                                "value": "+5",
+                                "label": "سنوات خبرة"
+                            },
+                            {
+                                "value": "24س",
+                                "label": "زمن الردّ"
+                            }
+                        ]
+                    },
+                    "items": null
+                }
+            ]
+        },
+        {
+            "key": "contact",
+            "title": "تواصل معنا",
+            "slug": "/contact",
+            "status": "published",
+            "is_home": false,
+            "removable": true,
+            "seo": {
+                "title": "",
+                "description": "",
+                "image": ""
+            },
+            "sections": [
+                {
+                    "type": "contact",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "تواصل معنا",
+                        "text": "",
+                        "phone": "96890000000",
+                        "whatsapp": "96890000000",
+                        "email": "shop@abaad.om",
+                        "address": "الخوير، شارع ١٨، مسقط",
+                        "show_form": false
+                    },
+                    "items": null
+                },
+                {
+                    "type": "map",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "أين نحن",
+                        "address": "الخوير، شارع ١٨، مسقط",
+                        "url": "",
+                        "height": "medium"
+                    },
+                    "items": null
+                },
+                {
+                    "type": "social",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "تابعنا",
+                        "accounts": [
+                            {
+                                "network": "instagram",
+                                "value": "wroodmuscat"
+                            }
+                        ]
+                    },
+                    "items": null
+                }
+            ]
+        }
+    ],
+    "data": {
+        "products": [
+            {
+                "id": 3,
+                "name": "صبّار صغير",
+                "excerpt": "وصفٌ قصير للمنتج يظهر في البطاقة.",
+                "price": 4.75,
+                "was": null,
+                "final": 4.75,
+                "image": "http://localhost/storage/products/sample2.jpg",
+                "category_id": 1
+            },
+            {
+                "id": 2,
+                "name": "باقة توليب",
+                "excerpt": "وصفٌ قصير للمنتج يظهر في البطاقة.",
+                "price": 18,
+                "was": 18,
+                "final": 14.4,
+                "image": "http://localhost/storage/products/sample1.jpg",
+                "category_id": 1
+            },
+            {
+                "id": 1,
+                "name": "باقة ورد جوري",
+                "excerpt": "وصفٌ قصير للمنتج يظهر في البطاقة.",
+                "price": 12.5,
+                "was": null,
+                "final": 12.5,
+                "image": "http://localhost/storage/products/sample0.jpg",
+                "category_id": 1
+            }
+        ],
+        "categories": [
+            {
+                "id": 1,
+                "name": "باقات",
+                "icon": "tag",
+                "color": "primary",
+                "image": "http://localhost/storage/products/sample2.jpg"
+            },
+            {
+                "id": 2,
+                "name": "نباتات داخلية",
+                "icon": "tag",
+                "color": "primary",
+                "image": null
+            }
+        ],
+        "reviews": [
+            {
+                "author": "سالم",
+                "rating": 5,
+                "comment": "خدمة ممتازة والورد وصل طازجًا."
+            }
+        ],
+        "best": []
+    },
+    "brand": {
+        "name": "ورود مسقط",
+        "logo": "http://localhost/storage/logos/wrood.png",
+        "tagline": "ورودٌ طازجة كلّ صباح",
+        "phone": "96890000000",
+        "email": "shop@abaad.om",
+        "address": "الخوير، شارع ١٨، مسقط",
+        "whatsapp": "96890000000",
+        "social": [
+            {
+                "network": "instagram",
+                "value": "wroodmuscat",
+                "url": "https://instagram.com/wroodmuscat",
+                "label": "إنستغرام"
+            }
+        ],
+        "payments": [
+            "نقدي",
+            "بطاقة",
+            "تحويل بنكي"
+        ]
+    },
+    "currency": {
+        "code": "OMR",
+        "symbol": "ر.ع",
+        "rate": 1,
+        "is_base": true,
+        "decimals": 3,
+        "before": false
+    },
+    "locale": "ar",
+    "dir": "rtl"
+}

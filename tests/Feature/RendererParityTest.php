@@ -9,9 +9,10 @@ use Tests\TestCase;
  * المعاينة والموقع يُرسمان بالشيفرة نفسها.
  *
  * `resources/js/Pages/Admin/Website/preview/renderer/` ليست نسخةً «مأخوذة
- * عن» عارض المتاجر — هي هو، تُنسخ إليه بأمرٍ واحد من مستودع `Storefront`
- * (`node scripts/sync-renderer.mjs`). والبصمة المسجَّلة بجانبها هي ما يمنع
- * الافتراق: من عدّل ملفًّا هنا بيده ولم يُعدّل الأصل يسقط هذا الاختبار.
+ * عن» عارض المتاجر — هي هو، تُنسخ إليه بأمرٍ واحد من `storefront/`
+ * (`node storefront/scripts/sync-renderer.mjs`). والبصمة المسجَّلة بجانبها هي
+ * ما يمنع الافتراق: من عدّل ملفًّا هنا بيده ولم يُعدّل الأصل يسقط هذا
+ * الاختبار.
  *
  * ولماذا كلّ هذا؟ لأنّ الافتراق يظهر في أسوأ موضعٍ ممكن: التاجر يرى في
  * معاينته موقعًا، ثمّ ينشر، فيرى زبونُه موقعًا آخر. وهو لا يشكّ في المعاينة
@@ -49,14 +50,14 @@ class RendererParityTest extends TestCase
     {
         $dir = $this->dir();
 
-        $this->assertFileExists($dir.'/RENDERER_HASH', 'طبقة الرسم غير منسوخة — شغّل sync-renderer في مستودع العارض');
+        $this->assertFileExists($dir.'/RENDERER_HASH', 'طبقة الرسم غير منسوخة — شغّل: node storefront/scripts/sync-renderer.mjs');
 
         $recorded = trim((string) file_get_contents($dir.'/RENDERER_HASH'));
 
         $this->assertSame(
             $recorded,
             $this->fingerprint($dir),
-            'طبقة الرسم عُدّلت هنا بلا مزامنة: عدّلها في مستودع Storefront ثمّ شغّل `node scripts/sync-renderer.mjs`',
+            'طبقة الرسم عُدّلت هنا بلا مزامنة: عدّلها في storefront/src/site ثمّ شغّل `node storefront/scripts/sync-renderer.mjs`',
         );
     }
 

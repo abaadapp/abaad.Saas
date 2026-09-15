@@ -1,0 +1,11 @@
+# بلا شرطةٍ مائلة: `node_modules/` تعني مجلّدًا وحده، ولا تُطابق وصلةً
+# رمزية إليه — ومن وصل تبعيّاته بوصلةٍ وجدها تُلتزَم في المستودع
+node_modules
+.next
+out/
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+coverage/

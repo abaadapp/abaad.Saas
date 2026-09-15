@@ -1,0 +1,351 @@
+{
+    "schema_version": 3,
+    "version": 3,
+    "name": "عيادة نور",
+    "goal": "profile",
+    "template": "minimal",
+    "theme": {
+        "primary": "#111111",
+        "background": "#ffffff",
+        "text": "#111111",
+        "font": "system",
+        "radius": "none",
+        "button": "outline"
+    },
+    "layout": {
+        "width": "normal",
+        "density": "balanced",
+        "scale": "balanced",
+        "heading": "center",
+        "header": "minimal",
+        "hero": "classic",
+        "card": "plain",
+        "grid": "classic",
+        "ratio": "square",
+        "categories": "cards",
+        "footer": "columns",
+        "surface_style": "bordered",
+        "heading_font": ""
+    },
+    "tokens": {
+        "primary": "#111111",
+        "background": "#ffffff",
+        "text": "#111111",
+        "font": "system",
+        "radius": "none",
+        "button": "outline",
+        "on_primary": "#ffffff",
+        "surface": "#f7f7f7",
+        "border": "#e6e6e6",
+        "muted": "#7c7c7c",
+        "radius_px": 0,
+        "width": "normal",
+        "density": "balanced",
+        "scale": "balanced",
+        "heading": "center",
+        "header": "minimal",
+        "hero": "classic",
+        "card": "plain",
+        "grid": "classic",
+        "ratio": "square",
+        "categories": "cards",
+        "footer": "columns",
+        "surface_style": "bordered",
+        "heading_font": ""
+    },
+    "seo": {
+        "title": "عيادة نور",
+        "description": "تسوّق من عيادة نور.",
+        "image": "",
+        "index": true
+    },
+    "commerce": {
+        "show_prices": false,
+        "allow_orders": false
+    },
+    "maintenance": false,
+    "maintenance_message": null,
+    "globals": [
+        {
+            "slot": "footer",
+            "type": "footer",
+            "visible": true,
+            "data": {
+                "about": "",
+                "show_contact": true,
+                "show_social": true,
+                "copyright": "جميع الحقوق محفوظة — عيادة نور",
+                "links": [
+                    {
+                        "label": "الرئيسية",
+                        "href": "/",
+                        "type": "page",
+                        "page_id": 5
+                    },
+                    {
+                        "label": "من نحن",
+                        "href": "/about",
+                        "type": "page",
+                        "page_id": 6
+                    },
+                    {
+                        "label": "تواصل معنا",
+                        "href": "/contact",
+                        "type": "page",
+                        "page_id": 7
+                    }
+                ]
+            }
+        },
+        {
+            "slot": "header",
+            "type": "header",
+            "visible": true,
+            "data": {
+                "preset": "auto",
+                "show_whatsapp": true,
+                "sticky": true,
+                "links": [
+                    {
+                        "label": "الرئيسية",
+                        "href": "/",
+                        "type": "page",
+                        "page_id": 5
+                    },
+                    {
+                        "label": "من نحن",
+                        "href": "/about",
+                        "type": "page",
+                        "page_id": 6
+                    },
+                    {
+                        "label": "تواصل معنا",
+                        "href": "/contact",
+                        "type": "page",
+                        "page_id": 7
+                    }
+                ]
+            }
+        }
+    ],
+    "pages": [
+        {
+            "key": "home",
+            "title": "الرئيسية",
+            "slug": "/",
+            "status": "published",
+            "is_home": true,
+            "removable": false,
+            "seo": {
+                "title": "",
+                "description": "",
+                "image": ""
+            },
+            "sections": [
+                {
+                    "type": "hero",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "layout": "auto",
+                        "eyebrow": "",
+                        "title": "عيادة نور",
+                        "subtitle": "تسوّق من عيادة نور — جودةٌ تثق بها وخدمةٌ قريبة.",
+                        "image": "",
+                        "cta_label": "تواصل معنا",
+                        "cta_href": "/contact",
+                        "align": "start",
+                        "height": "small",
+                        "overlay": "light"
+                    },
+                    "items": null
+                },
+                {
+                    "type": "image_text",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "من نحن",
+                        "body": "عيادة نور نشاطٌ يخدم زبائنه منذ سنوات، ويحرص على جودة ما يقدّمه.",
+                        "image": "",
+                        "cta_label": "",
+                        "cta_href": "",
+                        "side": "start"
+                    },
+                    "items": null
+                },
+                {
+                    "type": "benefits",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "لماذا نحن",
+                        "items": [
+                            {
+                                "icon": "truck",
+                                "title": "توصيل سريع",
+                                "text": "نوصل طلبك في وقته."
+                            },
+                            {
+                                "icon": "shield-check",
+                                "title": "جودة مضمونة",
+                                "text": "ما نبيعه نستعمله."
+                            },
+                            {
+                                "icon": "headphones",
+                                "title": "خدمة قريبة",
+                                "text": "نردّ على استفسارك في يومه."
+                            }
+                        ]
+                    },
+                    "items": null
+                },
+                {
+                    "type": "gallery",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "",
+                        "images": [],
+                        "columns": "3"
+                    },
+                    "items": null
+                }
+            ]
+        },
+        {
+            "key": "about",
+            "title": "من نحن",
+            "slug": "/about",
+            "status": "published",
+            "is_home": false,
+            "removable": true,
+            "seo": {
+                "title": "",
+                "description": "",
+                "image": ""
+            },
+            "sections": [
+                {
+                    "type": "image_text",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "من نحن",
+                        "body": "عيادة نور نشاطٌ يخدم زبائنه منذ سنوات، ويحرص على جودة ما يقدّمه.",
+                        "image": "",
+                        "cta_label": "",
+                        "cta_href": "",
+                        "side": "start"
+                    },
+                    "items": null
+                },
+                {
+                    "type": "stats",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "items": [
+                            {
+                                "value": "+1000",
+                                "label": "عميل"
+                            },
+                            {
+                                "value": "+5",
+                                "label": "سنوات خبرة"
+                            },
+                            {
+                                "value": "24س",
+                                "label": "زمن الردّ"
+                            }
+                        ]
+                    },
+                    "items": null
+                }
+            ]
+        },
+        {
+            "key": "contact",
+            "title": "تواصل معنا",
+            "slug": "/contact",
+            "status": "published",
+            "is_home": false,
+            "removable": true,
+            "seo": {
+                "title": "",
+                "description": "",
+                "image": ""
+            },
+            "sections": [
+                {
+                    "type": "contact",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "تواصل معنا",
+                        "text": "",
+                        "phone": "96899999999",
+                        "whatsapp": "96899999999",
+                        "email": "",
+                        "address": "صلالة",
+                        "show_form": false
+                    },
+                    "items": null
+                },
+                {
+                    "type": "map",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "أين نحن",
+                        "address": "صلالة",
+                        "url": "",
+                        "height": "medium"
+                    },
+                    "items": null
+                },
+                {
+                    "type": "social",
+                    "visible": true,
+                    "source": null,
+                    "data": {
+                        "title": "تابعنا",
+                        "accounts": []
+                    },
+                    "items": null
+                }
+            ]
+        }
+    ],
+    "data": {
+        "products": [],
+        "categories": [],
+        "reviews": [],
+        "best": []
+    },
+    "brand": {
+        "name": "عيادة نور",
+        "logo": null,
+        "tagline": "",
+        "phone": "96899999999",
+        "email": "",
+        "address": "صلالة",
+        "whatsapp": "96899999999",
+        "social": [],
+        "payments": [
+            "نقدي",
+            "بطاقة",
+            "تحويل بنكي"
+        ]
+    },
+    "currency": {
+        "code": "OMR",
+        "symbol": "ر.ع",
+        "rate": 1,
+        "is_base": true,
+        "decimals": 3,
+        "before": false
+    },
+    "locale": "ar",
+    "dir": "rtl"
+}

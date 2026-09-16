@@ -6,6 +6,7 @@ import Tabs, { type TabItem } from '@/Components/Tabs';
 import { Badge, statusDot } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -17,6 +18,10 @@ interface PrepItem {
     image: string | null;
     /** الإضافات المختارة — يراها من يجهّز الطلب */
     addons?: { name: string; qty: number }[];
+    /** موادُّ الطلب المخصَّص — لقطتُها لحظة البيع، لا وصفةٌ تُقرأ اليوم */
+    components?: { name: string; kind: string; qty: number }[];
+    /** ما لا يُخصم من الرفّ: تفضيلاتُ اللون والتغليف وملاحظاتُ المنسّق */
+    custom?: { colors: string[]; packaging_label: string | null; florist_notes: string | null } | null;
 }
 
 interface PrepOrder {
@@ -275,6 +280,36 @@ export default function PreparationIndex() {
                                             {i.note && (
                                                 <span className="block text-[12px] font-medium text-[#b45309]">
                                                     {i.note}
+                                                </span>
+                                            )}
+                                            {/*
+                                              * موادُّ الطلب المخصَّص — وهي كلُّ ما يعرفه المنسّق عنه.
+                                              *
+                                              * الباقةُ الجاهزة اسمُها يقول ما فيها، والمخصَّصةُ اسمُها
+                                              * «تنسيق ورد مخصص» ولا شيءَ تحته. فبلا هذه يقف من يجهّز
+                                              * أمام بطاقةٍ لا تقول ممّ تُصنع.
+                                              *
+                                              * وبالنسق نفسِه الذي تُرسم به الإضافات — لا بطاقةَ جديدة.
+                                              */}
+                                            {(i.components ?? []).map((c, k) => (
+                                                <span key={`c${k}`} className="block text-[12px] text-[#047857]">
+                                                    {c.name} ×{number(c.qty, Number.isInteger(c.qty) ? 0 : 3)}
+                                                </span>
+                                            ))}
+                                            {i.custom?.colors && i.custom.colors.length > 0 && (
+                                                <span className="block text-[12px] text-[#6b7280]">
+                                                    {t('ألوان الورد')}: {i.custom.colors.join(' + ')}
+                                                </span>
+                                            )}
+                                            {i.custom?.packaging_label && (
+                                                <span className="block text-[12px] text-[#6b7280]">
+                                                    {t('التغليف')}: {i.custom.packaging_label}
+                                                </span>
+                                            )}
+                                            {/* ملاحظاتُ المنسّق داخليّة — تُقرأ هنا ولا تُطبع على الفاتورة */}
+                                            {i.custom?.florist_notes && (
+                                                <span className="block text-[12px] font-medium text-[#b45309]">
+                                                    {i.custom.florist_notes}
                                                 </span>
                                             )}
                                         </span>

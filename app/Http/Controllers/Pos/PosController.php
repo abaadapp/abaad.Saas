@@ -23,6 +23,7 @@ use App\Support\Books;
 use App\Support\Contention;
 use App\Support\CreditSales;
 use App\Support\CustomerInvoices;
+use App\Support\CustomArrangement;
 use App\Support\CustomerPayments;
 use App\Support\Customers;
 use App\Support\Demo;
@@ -231,6 +232,65 @@ class PosController extends Controller
         foreach ($items as $idx => $i) {
             $qty = max(1, (int) $i['qty']);
 
+            /*
+             * ═══ الطلبُ المخصَّص يسبق الصنف: لا معرّفَ له يُبحث عنه ═══
+             *
+             * وسعرُه يُقرأ من الطلب — وهو الوحيد في هذه الدالّة. لأنّه لا
+             * صنفَ له يُقرأ منه، وذاك معنى «مخصَّص».
+             *
+             * وحارسُه صلاحيةُ «نقطة البيع» نفسُها التي تحرس كلّ بيعةٍ في هذا
+             * المسار — ولا صلاحيةَ «تعديل سعر» في النظام تُحترم أو تُتجاوَز:
+             * الصندوقُ لا يسمح بتغيير سعرٍ أصلًا، فهذه قدرةٌ تُضاف لا قيدٌ
+             * يُلتَفّ عليه. ومن لم يُمنح الصندوقَ لا يبلغ هذا السطر.
+             *
+             * وتكلفتُه ليست كذلك: تُحسب من `products.cost` لموادّه، ولو
+             * أرسلها المتصفّح أُهملت — كما تُهمل تكلفةُ أيّ بندٍ آخر.
+             */
+            if (! empty($i['custom'])) {
+                $custom = $i['custom'];
+                $components = CustomArrangement::components($bid, $custom['components'] ?? [], "items.$idx.custom.components");
+                $materialCost = CustomArrangement::materialCost($components);
+
+                $lines[] = [
+                    'product' => null,
+                    'variant' => null,
+                    'name' => CustomArrangement::label(),
+                    'price' => round((float) $custom['price'], 3),
+                    'list_price' => round((float) $custom['price'], 3),
+                    'cost' => $materialCost,
+                    'has_recipe' => false,
+                    'recipe' => collect(),
+                    'qty' => $qty,
+                    'note' => $i['note'] ?? null,
+                    /*
+                     * وإضافاتُه لا تُسأل عن منتجٍ يأذن بها.
+                     *
+                     * `pickAddons` تسأل `ProductAddons::map()` أيَّ إضافةٍ
+                     * يسمح بها هذا المنتج — ولا منتجَ هنا. فالمسموحُ هو ما
+                     * مداه «مع الجميع» (`Addon::SCOPE_ALL`)، وهو المدى الذي
+                     * تُعرض به الإضافةُ العامّة على كلّ صنفٍ في الصندوق.
+                     */
+                    'addons' => $this->freeAddons($i['addons'] ?? [], $addons, $idx),
+                    'addons_total' => 0.0,
+                    'custom' => $custom,
+                    'components' => $components,
+                ];
+
+                /*
+                 * و«الميزانية النهائيّة» لا تزيد بالإضافات.
+                 *
+                 * الزبون قال «ثلاثون للطلب كلّه»، فالكرتُ والشريطةُ داخلَها
+                 * لا فوقها: يُخصمان من الرفّ ويدخلان التكلفة، ولا يُضافان
+                 * إلى ما يدفع. وفي وضع «قيمة الورد + الإضافات» يُضافان.
+                 */
+                $last = array_key_last($lines);
+                if ($custom['mode'] === CustomArrangement::MODE_VALUE) {
+                    $lines[$last]['addons_total'] = round(collect($lines[$last]['addons'])->sum('total'), 3);
+                }
+
+                continue;
+            }
+
             if (! empty($i['id'])) {
                 $product = $products->get((int) $i['id']);
                 if (! $product) {
@@ -415,6 +475,58 @@ class PosController extends Controller
     }
 
     /**
+     * إضافاتُ الطلب المخصَّص — ما مداه «مع الجميع» وحدَه.
+     *
+     * ═══ ولمَ لا تُنادى `pickAddons` ═══
+     *
+     * تلك تسأل `ProductAddons::allows($product, …)`: أيَّ إضافةٍ يأذن بها
+     * **هذا المنتج**. والطلبُ المخصَّص بلا منتج، فلا مالكَ يُسأل.
+     *
+     * والجوابُ ليس «كلُّ إضافة»: إضافةٌ مداها `SCOPE_SELECTED` اختِيرت
+     * لمنتجاتٍ بعينها، وإضافةٌ مملوكةٌ لمنتج (`product_id`) لا تُعرض إلا
+     * معه. فالمسموحُ هنا هو `SCOPE_ALL` — وهو المدى الذي تُعرض به الإضافةُ
+     * على كلّ صنفٍ في الصندوق اليوم.
+     *
+     * وما عدا الإذن فالقاعدةُ واحدة: السعرُ من القاعدة، والاستهلاكُ من
+     * `AddonStock::each`، والتكلفةُ من الصنف. ولا يُقرأ رقمٌ من الطلب.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function freeAddons(array $requested, $addons, int $idx): array
+    {
+        $chosen = [];
+
+        foreach ($requested as $r) {
+            $id = (int) ($r['addon_id'] ?? $r['id'] ?? 0);
+            $addon = $id ? $addons->firstWhere('id', $id) : null;
+
+            if (! $addon || ! $addon->active || $addon->scopeName() !== Addon::SCOPE_ALL) {
+                throw ValidationException::withMessages([
+                    "items.$idx.addons" => __('إضافة غير متاحة مع هذا الصنف.'),
+                ]);
+            }
+
+            $qty = max(1, (int) ($r['qty'] ?? 1));
+            $price = round((float) $addon->price, 3);
+            $each = AddonStock::each($addon);
+
+            $chosen[] = [
+                'addon' => $addon,
+                'qty' => $qty,
+                'price' => $price,
+                'total' => round($price * $qty, 3),
+                'inventory_product_id' => $addon->inventory_product_id ? (int) $addon->inventory_product_id : null,
+                'each' => $each,
+                'cost' => $addon->inventory_product_id
+                    ? round((float) (Product::find($addon->inventory_product_id)?->cost ?? 0) * $each, 3)
+                    : null,
+            ];
+        }
+
+        return $chosen;
+    }
+
+    /**
      * ما يُخصم فعلًا من الرفّ مقابل هذه السلّة — بالأعداد الصحيحة.
      *
      * ثلاثة مصادر تجتمع في خريطةٍ واحدة:
@@ -438,6 +550,17 @@ class PosController extends Controller
         $addonExact = self::addonConsumption($lines);
 
         foreach ($lines as $l) {
+
+            /*
+             * وموادُّ الطلب المخصَّص تدخل الوعاءَ الكسريّ نفسَه.
+             *
+             * قبل الرفع لا بعده: وردٌ أبيضُ في طلبٍ مخصَّص وفي باقةٍ عاديّةٍ
+             * في السلّة نفسِها يُجمعان ثمّ يُرفعان مرّةً — ولو رُفع كلٌّ
+             * وحدَه لَنقص الرفُّ وردةً لم تخرج منه.
+             */
+            foreach (CustomArrangement::consumption($l['components'] ?? [], (int) $l['qty']) as $pid => $q) {
+                $exact[$pid] = ($exact[$pid] ?? 0.0) + $q;
+            }
 
             if (! $l['product']) {
                 continue;
@@ -845,7 +968,13 @@ class PosController extends Controller
              * حقولًا لا معنى لها في نصف بيعات اليوم — فيملؤها بأيّ شيء،
              * وتصير البيانات أسوأ من غيابها.
              */
-        ] + FlowerOrder::rules(), [
+            /*
+             * والطلبُ المخصَّص — بندٌ رُكّب على الطاولة لا صنفٌ من الكتالوج.
+             *
+             * وقواعدُه في `CustomArrangement::rules` لا مكتوبةً هنا: يقرؤها
+             * هذا المسار ويقرؤها الحارس، وقائمتان تُكتبان باليد تفترقان يومًا.
+             */
+        ] + CustomArrangement::rules('items.*.custom') + FlowerOrder::rules(), [
             'payment_method.required' => __('اختر وسيلة الدفع.'),
         ] + FlowerOrder::messages());
 
@@ -1116,7 +1245,35 @@ class PosController extends Controller
                     'note' => $l['note'],
                     'total' => round($l['price'] * $l['qty'], 3),
                     'addons_total' => (float) ($l['addons_total'] ?? 0),
+                    // وصفُ الطلب المخصَّص — فارغٌ لكلّ بندٍ من الكتالوج
+                    'custom_details' => isset($l['custom'])
+                        ? CustomArrangement::details($l['custom'], (float) $l['cost'])
+                        : null,
                 ]);
+
+                /*
+                 * ولقطةُ الموادّ تُكتب مع البند — لا تُقرأ من وصفةٍ يومًا.
+                 *
+                 * الوصفةُ العاديّة معرَّفةٌ في `recipe_items` وتخصّ المنتج،
+                 * وهذه اختِيرت لهذا الطلب وحده. فإن تغيّر اسمُ الورد أو
+                 * تكلفتُه أو حُذف من الكتالوج، بقي طلبُ الشهر الماضي مفهومًا.
+                 *
+                 * وتُكتب في البيع وفي التعليق معًا: سلّةٌ عُلّقت ثمّ استُؤنفت
+                 * يجب أن تعود بموادّها — وإلّا خرجت الباقةُ نفسُها بمكوّناتٍ
+                 * أقلّ ولا أحدَ يعلم.
+                 */
+                foreach ($l['components'] ?? [] as $c) {
+                    $item->components()->create([
+                        'product_id' => $c['product']->id,
+                        'name' => $c['name'],
+                        'sku' => $c['sku'],
+                        'kind' => $c['kind'],
+                        'quantity' => $c['quantity'],
+                        'unit_cost' => $c['unit_cost'],
+                        'total_cost' => $c['total_cost'],
+                        'restockable' => $c['restockable'],
+                    ]);
+                }
 
                 foreach ($l['addons'] ?? [] as $a) {
                     $item->addons()->create([
@@ -1156,6 +1313,11 @@ class PosController extends Controller
             $addonUse = AddonStock::units(self::addonConsumption($lines));
 
             foreach ($lines as $l) {
+                // الخصمُ يقرأ ما قرأه `demand` بالحرف — نفس الدالّة لا نسختها
+                foreach (CustomArrangement::consumption($l['components'] ?? [], (int) $l['qty']) as $pid => $q) {
+                    $recipeUse[$pid] = ($recipeUse[$pid] ?? 0.0) + $q;
+                }
+
                 if (! $l['product']) {
                     continue;
                 }
@@ -1301,7 +1463,8 @@ class PosController extends Controller
             'coupon_code' => ['nullable', 'string', 'max:40'],
             // معلّق = بانتظار الاستكمال الآن · محفوظ = مسودّة للرجوع إليها لاحقًا
             'kind' => ['nullable', 'in:hold,save'],
-        ]);
+            // والطلبُ المخصَّص يُعلَّق بموادّه — وإلّا عاد سطرًا بسعرٍ بلا مواد
+        ] + CustomArrangement::rules('items.*.custom'));
         $saved = ($data['kind'] ?? 'hold') === 'save';
 
         // المعلّق يُستكمل لاحقًا فيصير فاتورة، فأسعاره تُقرأ من القاعدة أيضًا.
@@ -1350,7 +1513,35 @@ class PosController extends Controller
                     'note' => $l['note'],
                     'total' => round($l['price'] * $l['qty'], 3),
                     'addons_total' => (float) ($l['addons_total'] ?? 0),
+                    // وصفُ الطلب المخصَّص — فارغٌ لكلّ بندٍ من الكتالوج
+                    'custom_details' => isset($l['custom'])
+                        ? CustomArrangement::details($l['custom'], (float) $l['cost'])
+                        : null,
                 ]);
+
+                /*
+                 * ولقطةُ الموادّ تُكتب مع البند — لا تُقرأ من وصفةٍ يومًا.
+                 *
+                 * الوصفةُ العاديّة معرَّفةٌ في `recipe_items` وتخصّ المنتج،
+                 * وهذه اختِيرت لهذا الطلب وحده. فإن تغيّر اسمُ الورد أو
+                 * تكلفتُه أو حُذف من الكتالوج، بقي طلبُ الشهر الماضي مفهومًا.
+                 *
+                 * وتُكتب في البيع وفي التعليق معًا: سلّةٌ عُلّقت ثمّ استُؤنفت
+                 * يجب أن تعود بموادّها — وإلّا خرجت الباقةُ نفسُها بمكوّناتٍ
+                 * أقلّ ولا أحدَ يعلم.
+                 */
+                foreach ($l['components'] ?? [] as $c) {
+                    $item->components()->create([
+                        'product_id' => $c['product']->id,
+                        'name' => $c['name'],
+                        'sku' => $c['sku'],
+                        'kind' => $c['kind'],
+                        'quantity' => $c['quantity'],
+                        'unit_cost' => $c['unit_cost'],
+                        'total_cost' => $c['total_cost'],
+                        'restockable' => $c['restockable'],
+                    ]);
+                }
 
                 foreach ($l['addons'] ?? [] as $a) {
                     $item->addons()->create([
@@ -1404,7 +1595,7 @@ class PosController extends Controller
         session()->flash('resume_cart', [
             'id' => $order->id,
             'customer' => $order->customer_name,
-            'items' => $order->items->map(fn ($i) => [
+            'items' => $order->items->load('components')->map(fn ($i) => [
                 'id' => $i->product_id,
                 // المقاس يعود بمعرّفه: السلّة تُسعَّر من جديد عند الدفع،
                 // والاسم وحده لا يكفي الخادم ليعرف أيّ صفٍّ يقرأ
@@ -1420,6 +1611,22 @@ class PosController extends Controller
                     'price' => (float) $a->unit_price,
                     'qty' => (int) $a->quantity,
                 ])->all(),
+                /*
+                 * والطلبُ المخصَّص يعود بموادّه — من اللقطة لا من وصفة.
+                 *
+                 * `null` لكلّ بندٍ من الكتالوج، فلا تتغيّر سلّةٌ قائمة.
+                 * ولولا هذا لَعادت الباقةُ المخصَّصة سطرًا بسعرٍ بلا موادّ:
+                 * تُباع فلا يَنقص الرفُّ شيئًا — وهو أسوأ من ألّا تعود أصلًا.
+                 */
+                'custom' => $i->isCustom() ? ($i->custom_details + [
+                    'price' => (float) $i->price,
+                    'components' => $i->components->map(fn ($c) => [
+                        'product_id' => $c->product_id,
+                        'name' => $c->name,
+                        'kind' => $c->kind,
+                        'quantity' => (float) $c->quantity,
+                    ])->all(),
+                ]) : null,
             ])->all(),
             // يعود الكود إلى السلة لتُعيد الواجهة تطبيقه، فيراه الكاشير
             // ويُحتسب عند الدفع. لا نُعيد قيمة الخصم — تُحسب من جديد.

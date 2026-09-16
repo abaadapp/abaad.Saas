@@ -189,7 +189,24 @@ class OrderCorrection
 
     private static function moveStock(Order $order, OrderItem $item, int $delta): void
     {
-        if ($delta === 0 || ! $item->product_id) {
+        if ($delta === 0) {
+            return;
+        }
+
+        /*
+         * والطلبُ المخصَّص لا صنفَ له — وموادُّه لقطةٌ على البند.
+         *
+         * `product_id` فيه فارغٌ بطبيعته، فكان يسقط من هذا الباب صامتًا:
+         * يُلغى طلبٌ فيبقى الكيسُ منقوصًا من الرفّ وهو في الدرج. وموادُّه
+         * تُقرأ من `order_item_components` لا من وصفةِ منتجٍ لا وجود له.
+         */
+        if ($item->isCustom()) {
+            self::moveArrangement($order, $item, $delta);
+
+            return;
+        }
+
+        if (! $item->product_id) {
             return;
         }
 
@@ -302,6 +319,77 @@ class OrderCorrection
 
         StockLedger::move(
             (int) $order->business_id, $branchId, $units,
+            StockLedger::CORRECTION,
+            PosCashier::name() ?? auth()->user()?->name,
+            $order->number,
+        );
+    }
+
+    /**
+     * يردّ موادَّ الطلب المخصَّص — أو يأخذها ثانيةً حين تزيد كميّتُه.
+     *
+     * ═══ والطريقان غيرُ متماثلين، عن قصد ═══
+     *
+     * زيادةُ الكميّة تأخذ **كلّ** الموادّ: باقةٌ ثانيةٌ تُركَّب من وردٍ
+     * وتغليفٍ كما رُكّبت الأولى. أمّا النقصانُ والإلغاء فلا يردّان إلّا ما
+     * `restockable`: وردٌ قُصّ ورُكّب لا يعود إلى الدلو، وكيسٌ لم يُفتح
+     * يعود. والسياسةُ محفوظةٌ في الصفّ منذ البيع لا تُخمَّن اليوم.
+     *
+     * ═══ والمردودُ فرقُ رفعين لا رفعُ فرق ═══
+     *
+     * البيعُ رفع مجموعَ الصنف كلِّه إلى الصحيح مرّةً واحدة. فلو رُفع
+     * المردودُ وحده لَجاز أن يعود أكثرُ ممّا أُخذ حين يظهر الصنفُ نفسُه
+     * وردًا وتغليفًا في طلبٍ واحد: نصفٌ ونصفٌ أُخذا واحدًا، ويعود المردودُ
+     * منهما واحدًا كاملًا. فالمردودُ = رفعُ الكلّ ناقصَ رفعِ ما لا يُردّ —
+     * وهو أبدًا لا يتجاوز ما خرج.
+     */
+    private static function moveArrangement(Order $order, OrderItem $item, int $delta): void
+    {
+        $item->loadMissing('components');
+
+        $lines = (int) abs($delta);
+        $all = [];
+        $keep = [];
+
+        foreach ($item->components as $c) {
+            $pid = (int) $c->product_id;
+            $q = (float) $c->quantity * $lines;
+
+            // صنفٌ مُحي من الكتالوج، أو صفرُ كميّة — تنقيةٌ كالتي في
+            // `CustomArrangement::consumption`، لا حارسٌ يدّعي حمايةً
+            if ($pid < 1 || $q <= 0) {
+                continue;
+            }
+
+            $all[$pid] = ($all[$pid] ?? 0.0) + $q;
+
+            if (! $c->restockable) {
+                $keep[$pid] = ($keep[$pid] ?? 0.0) + $q;
+            }
+        }
+
+        $units = [];
+        foreach ($all as $pid => $q) {
+            $n = $delta > 0
+                ? Recipe::units($q) - Recipe::units($keep[$pid] ?? 0.0)
+                : Recipe::units($q);
+
+            if ($n > 0) {
+                $units[$pid] = $n;
+            }
+        }
+
+        if (! $units) {
+            return;
+        }
+
+        if ($delta < 0) {
+            self::assertAvailable($order, $units, $order->branch_id);
+            $units = array_map(fn ($n) => -$n, $units);
+        }
+
+        StockLedger::move(
+            (int) $order->business_id, $order->branch_id, $units,
             StockLedger::CORRECTION,
             PosCashier::name() ?? auth()->user()?->name,
             $order->number,
@@ -631,7 +719,7 @@ class OrderCorrection
 
             $totalBefore = (float) $order->total;
 
-            $order->loadMissing('items.addons.addon');
+            $order->loadMissing('items.addons.addon', 'items.components');
 
             // ما بيع يعود إلى الرفّ — بالطريق نفسه الذي خرج به
             foreach ($order->items as $item) {

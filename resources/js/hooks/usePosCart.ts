@@ -37,6 +37,8 @@ export interface CartItem {
      * تحمل نسبةً مكتوبة — يجعل ما يقرؤه الزبون غير ما يُخصم منه.
      */
     tax?: number | null;
+    /** وصفُ الطلب المخصَّص — `null` لكلّ بندٍ من الكتالوج */
+    custom?: CustomCart | null;
 }
 
 export interface CartAddon {
@@ -44,6 +46,34 @@ export interface CartAddon {
     name: string;
     price: number;
     qty: number;
+}
+
+/** مادّةٌ تدخل في طلبٍ مخصَّص — تشير إلى صنفٍ حقيقيّ في المخزون */
+export interface CustomComponent {
+    product_id: number;
+    /** للعرض وحده — الخادمُ يقرأ الاسمَ والتكلفةَ من صفّ الصنف */
+    name: string;
+    kind: 'flower' | 'packaging';
+    qty: number;
+}
+
+/**
+ * طلبٌ رُكّب على الطاولة — ما يصفه ولا يُقرأ من كتالوج.
+ *
+ * `price` هو الوحيد الذي يُرسَل ويُقبَل سعرًا: لا صنفَ له يُقرأ منه، وذاك
+ * معنى «مخصَّص». وكلُّ ما عداه — التكلفةُ وأسماءُ الموادّ — يُقرأ في الخادم
+ * من صفوف المتجر، فلا يُوثق بما يرسله المتصفّح.
+ */
+export interface CustomCart {
+    mode: 'value' | 'budget';
+    price: number;
+    flower_value?: number | null;
+    colors?: string[];
+    packaging_label?: string | null;
+    florist_notes?: string | null;
+    components: CustomComponent[];
+    /** تكلفةُ الموادّ كما حُسبت في الشاشة — تُعرض ولا تُرسَل للحفظ */
+    material_cost?: number;
 }
 
 export interface PosCustomer {
@@ -417,6 +447,19 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         setItems((prev) => prev.filter((i) => i.key !== key));
     }, []);
 
+    /**
+     * يستبدل بندًا بمحتواه الجديد — للطلب المخصَّص حين يُعدَّل قبل الدفع.
+     *
+     * ولا `remove` ثمّ `add`: تلك تُلحق البندَ بآخر السلّة فيقفز من مكانه
+     * تحت يد الكاشير، وتُصفّر كميّته. والاستبدالُ في موضعه يُبقي الترتيب.
+     *
+     * ولا مخزونَ يُمسّ هنا: السلّةُ في الذاكرة، والرفُّ لا يَنقص إلا في
+     * `completeSale` — فالتعديلُ قبل الدفع لا يترك أثرًا في الدفتر.
+     */
+    const replace = useCallback((key: string, next: Omit<CartItem, 'key' | 'qty' | 'note'>) => {
+        setItems((prev) => prev.map((i) => (i.key === key ? { ...i, ...next } : i)));
+    }, []);
+
     const setNote = useCallback((key: string, note: string) => {
         setItems((prev) => prev.map((i) => (i.key === key ? { ...i, note } : i)));
     }, []);
@@ -696,6 +739,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                     price: i.price,
                     qty: i.qty,
                     note: i.note ?? '',
+                    // الطلبُ المخصَّص — الخادمُ يقرأ منه السعرَ والموادّ، ويحسب التكلفة بنفسه
+                    custom: i.custom ?? null,
                 })),
                 customer,
                 customer_id: customerId,
@@ -757,6 +802,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                         name: i.name,
                         qty: i.qty,
                         note: i.note ?? '',
+                        // وتُعلَّق بموادّها: سلّةٌ تعود ناقصةً تبيع ما لا يَنقص الرفُّ به
+                        custom: i.custom ?? null,
                     })),
                     customer,
                     // الكوبون يُعلَّق مع الطلب: بدونه كان الكاشير يطبّق خصمًا،
@@ -789,6 +836,6 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         setCouponCode, applyCoupon, removeCoupon,
         setRedeemActive, selectCustomer, setCustomerSearch, addCustomer,
         reset,
-        checkoutSale, holdOrder, overStock,
+        checkoutSale, holdOrder, overStock, replace,
     };
 }

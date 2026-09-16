@@ -55,7 +55,7 @@ class TenantTables
         'fixed_assets', 'inventory_movements', 'stock_adjustments', 'stock_transfers',
         'purchase_orders', 'purchase_order_items', 'supplier_invoices',
         'goods_receipt_notes', 'goods_receipt_note_items',
-        'orders', 'order_items', 'order_item_addons', 'order_edits',
+        'orders', 'order_items', 'order_item_addons', 'order_item_components', 'order_edits',
         /*
          * فواتيرُ العملاء وذممُهم — بعد الطلبات لأنّها قد تُولد منها.
          *
@@ -128,6 +128,8 @@ class TenantTables
         'goods_receipt_note_items' => ['goods_receipt_notes', 'goods_receipt_note_id'],
         'journal_lines' => ['journal_entries', 'journal_entry_id'],
         'order_item_addons' => ['order_items', 'order_item_id'],
+        // موادُّ الطلب المخصَّص — تتبع بندَها كما تتبعه إضافاتُه
+        'order_item_components' => ['order_items', 'order_item_id'],
         'order_items' => ['orders', 'order_id'],
         'customer_invoice_items' => ['customer_invoices', 'customer_invoice_id'],
         'customer_invoice_orders' => ['customer_invoices', 'customer_invoice_id'],

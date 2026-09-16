@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import PosLayout from '@/Layouts/PosLayout';
 import NewCustomerDialog from '@/Pages/Pos/partials/NewCustomerDialog';
 import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDialog';
+import CustomArrangementDialog from '@/Pages/Pos/partials/CustomArrangementDialog';
 import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -146,6 +147,9 @@ export default function PosIndex() {
      * الإضافات معناها. فلا تُفتح إلا لمن له مقاسٌ أو إضافةٌ مسموحة فعلًا.
      */
     const [optionsFor, setOptionsFor] = useState<(typeof products)[number] | null>(null);
+    /** نافذةُ الطلب المخصَّص — و`customEdit` مفتاحُ البند حين تُفتح للتعديل */
+    const [customOpen, setCustomOpen] = useState(false);
+    const [customEdit, setCustomEdit] = useState<string | null>(null);
 
     const pick = (p: (typeof products)[number]) => {
         const allowed = activeAddons.filter((a) => p.addon_ids == null || p.addon_ids.includes(a.id));
@@ -281,6 +285,27 @@ export default function PosIndex() {
 
                     {/* تبويبات الأقسام */}
                     <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1">
+                        {/*
+                          * «طلب مخصص» — طريقٌ ثانٍ للبيع لا بديلٌ عن الأوّل.
+                          *
+                          * الزبون يقول «ورد بعشرين في كيسٍ أسود»، ولا صنفَ في
+                          * الكتالوج بهذا الوصف. وكان الكاشير يبيع أقربَ باقةٍ
+                          * شبيهةٍ بسعرٍ معدَّل — فيُخصم من الرفّ ما في وصفة تلك
+                          * الباقة لا ما أُخذ منه فعلًا.
+                          *
+                          * وموضعُه هنا لا في شبكة المنتجات: هو اختيارُ **طريقة
+                          * بيع** كما أنّ الأقسام اختيارُ ما يُعرض، وبطاقةٌ في
+                          * الشبكة كانت ستُزيح منتجًا حقيقيًّا من مكانه.
+                          */}
+                        <button
+                            type="button"
+                            onClick={() => { setCustomEdit(null); setCustomOpen(true); }}
+                            className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 touch:px-5 touch:py-2.5"
+                        >
+                            <Plus className="size-4" />
+                            {t('طلب مخصص')}
+                        </button>
+
                         {categories.map((c) => (
                             <button
                                 key={c.value}
@@ -538,12 +563,28 @@ export default function PosIndex() {
                                                 </div>
                                                 {/* ثمن البند كاملًا: سعره في كميّته وإضافاته — وهو ما
                                                     يجمعه المجموع الفرعيّ في الخادم أيضًا */}
-                                                <p className="text-sm font-bold text-gray-800">
-                                                    {money(
-                                                        item.price * item.qty +
-                                                            (item.addons ?? []).reduce((s, a) => s + a.price * a.qty, 0),
+                                                <div className="flex items-center gap-2">
+                                                    {/*
+                                                      * «تعديل» للطلب المخصَّص وحدَه — وتعود به الاختيارات
+                                                      * كما تُركت. ولا مخزونَ يُمسّ: السلّةُ في الذاكرة،
+                                                      * والرفُّ لا يَنقص إلا عند الدفع.
+                                                      */}
+                                                    {item.custom && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setCustomEdit(item.key); setCustomOpen(true); }}
+                                                            className="text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline"
+                                                        >
+                                                            {t('تعديل')}
+                                                        </button>
                                                     )}
-                                                </p>
+                                                    <p className="text-sm font-bold text-gray-800">
+                                                        {money(
+                                                            item.price * item.qty +
+                                                                (item.addons ?? []).reduce((s, a) => s + a.price * a.qty, 0),
+                                                        )}
+                                                    </p>
+                                                </div>
                                             </div>
 
                                             <Input
@@ -780,6 +821,39 @@ export default function PosIndex() {
                 orderOptions={orderOptions}
                 onCheckout={cart.checkoutSale}
                 onNewOrder={() => { cart.reset(); toast.success(t('طلب جديد جاهز')); }}
+            />
+
+            <CustomArrangementDialog
+                open={customOpen}
+                products={products}
+                addons={addons}
+                money={money}
+                initial={customEdit ? (cart.items.find((i) => i.key === customEdit)?.custom ?? null) : null}
+                onClose={() => { setCustomOpen(false); setCustomEdit(null); }}
+                onConfirm={(custom, chosen) => {
+                    const line = {
+                        id: null,
+                        name: t('تنسيق ورد مخصص'),
+                        price: custom.price,
+                        custom,
+                        addons: chosen,
+                    };
+
+                    /*
+                     * التعديلُ يستبدل في موضعه، والجديدُ يُضاف بمفتاحٍ فريد.
+                     *
+                     * ولولا التفريق لَصار «حفظ التعديل» يُضيف بندًا ثانيًا —
+                     * فتخرج باقتان من طلبٍ واحد ويُخصم الرفُّ مرّتين.
+                     */
+                    if (customEdit) {
+                        cart.replace(customEdit, line);
+                    } else {
+                        cart.add({ ...line, key: `c${Date.now()}` });
+                    }
+
+                    setCustomOpen(false);
+                    setCustomEdit(null);
+                }}
             />
 
             <ItemOptionsDialog

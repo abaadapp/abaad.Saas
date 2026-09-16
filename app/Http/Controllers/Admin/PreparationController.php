@@ -70,7 +70,9 @@ class PreparationController extends Controller
             ->with([
                 // `variant_name` في الانتقاء وإلّا عاد الاسم بلا مقاسه:
                 // عمودٌ لم يُنتقَ يُقرأ فارغًا لا مفقودًا، فيصمت العطب
-                'items:id,order_id,name,variant_name,quantity,note,product_id',
+                'items:id,order_id,name,variant_name,quantity,note,product_id,custom_details',
+                // موادُّ الطلب المخصَّص — تُحمَّل مع البنود لا باستعلامٍ لكلّ بطاقة
+                'items.components',
                 // الصورة وحدها من المنتج — لا سعرَه ولا تكلفتَه
                 'items.product:id,image',
                 'items.addons',
@@ -241,6 +243,27 @@ class PreparationController extends Controller
                     'name' => $a->name,
                     'qty' => (int) $a->quantity,
                 ])->all(),
+                /*
+                 * وموادُّ الطلب المخصَّص — وهي كلُّ ما يعرفه المنسّق عنه.
+                 *
+                 * الباقةُ الجاهزة اسمُها يقول ما فيها، والمخصَّصةُ اسمُها
+                 * «تنسيق ورد مخصص» ولا شيءَ تحته. فبلا هذه يقف من يجهّز أمام
+                 * بطاقةٍ تقول «تنسيق مخصص ×١» ولا تقول ممّ يُصنع.
+                 *
+                 * وبلا تكلفةٍ ولا سعر: اللوحةُ شاشةُ من يصنع لا من يحاسب.
+                 */
+                'components' => $i->components->map(fn ($c) => [
+                    'name' => $c->name,
+                    'kind' => $c->kind,
+                    // كسرٌ يُعرض كما هو: «١.٥ لفّة» لا «٢»
+                    'qty' => (float) $c->quantity,
+                ])->all(),
+                // تفضيلاتُ الألوان وملاحظاتُ المنسّق — لا تُطبع على فاتورة العميل
+                'custom' => $i->isCustom() ? [
+                    'colors' => $i->custom_details['colors'] ?? [],
+                    'packaging_label' => $i->custom_details['packaging_label'] ?? null,
+                    'florist_notes' => $i->custom_details['florist_notes'] ?? null,
+                ] : null,
             ])->values()->all(),
             // ما يجوز الانتقال إليه من هنا — تُبنى منه أزرار البطاقة
             'next' => OrderStatus::nextFrom($o->status),

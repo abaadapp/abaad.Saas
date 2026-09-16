@@ -234,6 +234,65 @@ class ARoleIsNotWrittenByAHandThatCannotAssignItTest extends TestCase
         $this->assertSame('manager', JobTitle::where('name', 'مشرف عام')->firstOrFail()->role);
     }
 
+    /* ══════════════ ٣ · والوظيفةُ لا تنزع صفةَ صاحب النشاط ══════════════ */
+
+    /**
+     * صاحبُ نشاطٍ يحمل وظيفةً دورُها `manager` — وهي حالُ متجرين على الإنتاج.
+     *
+     * يفتح بطاقتَه ليصحّح رقمَ هاتفه، فكان دورُ الوظيفة يُكتب في صفّه: يصير
+     * مديرَ فرع. ولا شيء يبدو معطوبًا — `manager` تملك `'*'` — لكنّه يفقد
+     * صفةً لا تُستعاد من لوحة التاجر.
+     */
+    public function test_a_phone_correction_does_not_uncrown_the_owner(): void
+    {
+        $title = JobTitle::where('name', 'مدير فرع')->firstOrFail();
+        $this->owner->update(['job_title' => $title->name]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.employees.update', $this->owner->id), [
+                'name' => 'المالك', 'job_title' => 'مدير فرع', 'phone' => '99887766',
+            ])->assertRedirect();
+
+        $this->assertSame('admin', $this->owner->fresh()->role, 'حفظُ رقمِ هاتفٍ نزع صفةَ صاحب النشاط');
+        $this->assertSame('99887766', $this->owner->fresh()->phone, 'الحفظُ لم يمضِ');
+    }
+
+    /** ولا تُنزع بيد صاحبِ نشاطٍ آخر — والبابُ يُغلق من الجهتين */
+    public function test_no_owner_uncrowns_another_owner_through_a_job_title(): void
+    {
+        $second = User::create([
+            'business_id' => $this->shop->id, 'name' => 'شريك', 'email' => 's@abaad.om',
+            'password' => bcrypt('password12345'), 'role' => 'admin',
+            'job_title' => 'صاحب النشاط', 'status' => 'نشط',
+        ]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.employees.update', $second->id), [
+                'name' => 'شريك', 'job_title' => 'كاشير',
+            ])->assertRedirect();
+
+        $this->assertSame('admin', $second->fresh()->role);
+        // والاسمُ المعروضُ يتبدّل — الوظيفةُ اسمٌ يُعرض لا صفةٌ تُنزع
+        $this->assertSame('كاشير', $second->fresh()->job_title);
+    }
+
+    /** ومن ليس صاحبَ نشاطٍ يتبع وظيفتَه كما كان */
+    public function test_an_ordinary_employee_still_follows_his_job_title(): void
+    {
+        $clerk = User::create([
+            'business_id' => $this->shop->id, 'name' => 'كاتب', 'email' => 'clerk2@abaadapp.om',
+            'password' => bcrypt('password12345'), 'role' => 'cashier',
+            'job_title' => 'كاشير', 'status' => 'نشط',
+        ]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.employees.update', $clerk->id), [
+                'name' => 'كاتب', 'job_title' => 'بائع',
+            ])->assertRedirect();
+
+        $this->assertSame('sales', $clerk->fresh()->role);
+    }
+
     /* ══════════════ ٣ · ولا يعود السؤالُ يُسأل بصيغتين ══════════════ */
 
     /**
@@ -265,11 +324,24 @@ class ARoleIsNotWrittenByAHandThatCannotAssignItTest extends TestCase
                 $src,
             );
 
-            $this->assertStringNotContainsString(
-                "role === 'admin'",
-                $src,
-                "{$file}: سؤالُ المالك يُسأل خارج `Permissions::isOwner`",
-            );
+            /*
+             * والمقيسُ صيغةُ **الفاعل** وحدَها.
+             *
+             * و`$employee->role === 'admin'` ليست منها: تلك تسأل عن المستهدَف
+             * — أصفُّه صفُّ صاحب نشاط؟ — وهي سؤالٌ آخر جوابُه في مكانه. ولولا
+             * التفريق لَمنع هذا الحارسُ إصلاحًا لا يَعنيه.
+             */
+            foreach ([
+                "\$actor->role === 'admin'",
+                "auth()->user()?->role === 'admin'",
+                "auth()->user()->role === 'admin'",
+            ] as $halfQuestion) {
+                $this->assertStringNotContainsString(
+                    $halfQuestion,
+                    $src,
+                    "{$file}: سؤالُ المالك يُسأل خارج `Permissions::isOwner`",
+                );
+            }
         }
     }
 }

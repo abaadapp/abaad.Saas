@@ -7,12 +7,55 @@ use App\Models\JobTitle;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Permissions;
+use App\Support\Roles;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class JobTitleController extends Controller
 {
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+
+    /**
+     * ودورُ الوظيفة لا يُكتب بيد من لا يُسنده.
+     *
+     * ═══ العطب ═══
+     *
+     * `role` كانت تُقبل من الطلب بلا قياسٍ واحد. ولا شاشةَ ترسلها — نافذةُ
+     * الوظيفة في «الرواتب والموظفين» ترسل الاسمَ والوصفَ وحدهما — فالحقلُ
+     * بابٌ مفتوحٌ لا لافتةَ عليه، يبلغه كلُّ من مُنح القسم.
+     *
+     * وثمنُه أنّ المحاسبَ يفتح وظيفةَ «كاشير» ويكتب فيها `role=manager`.
+     * ولا يتغيّر شيءٌ في الحال — دورُ الموظّف عمودٌ في صفّه — لكنّ
+     * `EmployeeController::update` تكتب `role = $title->role` في **كلّ**
+     * حفظة. فيصحّح صاحبُ المتجر رقمَ هاتف كاشيره بعد شهر، فيصير الكاشيرُ
+     * مديرَ فرعٍ يملك كلَّ قسمٍ في المحلّ. قِسناه: ٣٠٢ ودورُه صار `manager`.
+     *
+     * ولا شيء يقول ذلك لأحد: لا رسالةَ خطأ، ولا سطرَ في سجلّ النشاط يقول
+     * «رُفع»، إنّما «عدّل بيانات الموظف».
+     *
+     * ═══ والقاعدةُ هي قاعدةُ الموظّف نفسِها ═══
+     *
+     * `mayAssignRole` هي التي تُبنى منها `blockedTitles` في الشاشة، وهي
+     * التي يقيس بها `refuseGrantingMoreThanIHave`. فمن لا يُسند الدورَ إلى
+     * موظّفٍ لا يكتبه في وظيفةٍ تُسنده غدًا.
+     *
+     * والمسكوتُ عنه لا يُقاس: وظيفةٌ تُنشأ بلا دورٍ تأخذ أدناها (`cashier`)،
+     * ووظيفةٌ تُعدَّل بلا دورٍ تبقى على دورها. فمن يضيف مسمًّى ليرتّب به
+     * موظّفيه لا يُردّ لأنّه لا يملك «نقطة البيع».
+     */
+    private function refuseAssigningARoleAboveMine(?string $role): void
+    {
+        if ($role === null || $role === '') {
+            return;
+        }
+
+        abort_unless(
+            Permissions::mayAssignRole(auth()->user(), $role),
+            403,
+            __('لا تملك صلاحية إسناد دور «:role».', ['role' => Roles::label($role)]),
+        );
+    }
 
     public function store(Request $request)
     {
@@ -32,6 +75,8 @@ class JobTitleController extends Controller
         ], [
             'name.unique' => __('هذه الوظيفة موجودة مسبقًا.'),
         ], ['name' => __('اسم الوظيفة')]);
+
+        $this->refuseAssigningARoleAboveMine($data['role'] ?? null);
 
         JobTitle::create([
             'business_id' => $bid,
@@ -72,6 +117,8 @@ class JobTitleController extends Controller
         ], [
             'name.unique' => __('هذه الوظيفة موجودة مسبقًا.'),
         ], ['name' => __('اسم الوظيفة')]);
+
+        $this->refuseAssigningARoleAboveMine($data['role'] ?? null);
 
         $oldName = $title->name;
         $data['role'] = ($data['role'] ?? null) ?: $title->role;

@@ -232,7 +232,13 @@ class EmployeeController extends Controller
     {
         $actor = auth()->user();
 
-        if (! $actor || $actor->role === 'admin') {
+        /*
+         * وصاحبُ النشاط وحدَه يُعفى — لا كلُّ صفٍّ دورُه `admin`. انظر `Permissions::isOwner`.
+         *
+         * وبلا فاعلٍ لا إعفاء: `grantable(null)` فارغةٌ فيُردّ كلُّ منح. وكان
+         * الشرطُ `! $actor ||` فيمرّ بلا قياسٍ أصلًا — وهو أوسعُ إعفاءٍ كُتب.
+         */
+        if (Permissions::isOwner($actor)) {
             return;
         }
 
@@ -278,7 +284,8 @@ class EmployeeController extends Controller
      */
     private function refuseRaisingMyself(User $employee, JobTitle $title, Request $request): ?string
     {
-        if ($employee->id !== auth()->id() || auth()->user()?->role === 'admin') {
+        // والإعفاءُ لصاحب النشاط لا لكلّ صفٍّ دورُه `admin` — انظر `Permissions::isOwner`
+        if ($employee->id !== auth()->id() || Permissions::isOwner(auth()->user())) {
             return null;
         }
 

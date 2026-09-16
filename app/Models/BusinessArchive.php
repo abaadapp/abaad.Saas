@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Archive\Period;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -41,8 +42,8 @@ class BusinessArchive extends Model
     public const EXPIRED = 'منتهي';
 
     protected $casts = [
-        'year' => 'integer',
-        'month' => 'integer',
+        'period_start' => 'date',
+        'period_end' => 'date',
         'file_size' => 'integer',
         'archive_version' => 'integer',
         'started_at' => 'datetime',
@@ -80,15 +81,38 @@ class BusinessArchive extends Model
         return $this->expires_at !== null && $this->expires_at->isPast();
     }
 
-    /** «2026-08» — ما يُكتب في البيان وفي اسم الملفّ */
-    public function periodKey(): string
+    /**
+     * مداه كائنًا — ومنه يُقرأ كلُّ اسمٍ وكلُّ حدّ.
+     *
+     * والصفُّ يحمل التاريخين والنوع، و`Period` تعرف ماذا تعني: طولَ القفزة
+     * وشكلَ العنوان. فلا يُحسب في النموذج ما تحسبه هي — ولو حُسب لافترقا
+     * يومَ يُضاف نوعٌ ثالث.
+     */
+    public function period(): Period
     {
-        return sprintf('%04d-%02d', $this->year, $this->month);
+        return Period::stored((string) $this->archive_type, $this->period_start);
     }
 
-    /** أوّلُ لحظةٍ في شهره — بمنطقة التطبيق الزمنيّة */
+    /** «2026-08» أو «2026-W37» — ما يُكتب في البيان وفي اسم الملفّ */
+    public function periodKey(): string
+    {
+        return $this->period()->key();
+    }
+
+    /** «أغسطس 2026» أو «7 – 13 سبتمبر 2026» — بلغة القارئ الآن */
+    public function periodLabel(): string
+    {
+        return $this->period()->label();
+    }
+
+    /** أوّلُ لحظةٍ في مداه — بمنطقة التطبيق الزمنيّة */
     public function periodStart(): Carbon
     {
-        return Carbon::create($this->year, $this->month, 1, 0, 0, 0);
+        return $this->period()->start();
+    }
+
+    public function isWeekly(): bool
+    {
+        return $this->archive_type === Period::WEEKLY;
     }
 }

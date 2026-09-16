@@ -12,7 +12,9 @@ use App\Support\Archive\Policy;
 use App\Support\Demo;
 use App\Support\Permissions;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 /**
  * الأرشيفُ الشهريّ في لوحة صاحب النشاط — عرضٌ وطلبٌ وتنزيل.
@@ -28,8 +30,11 @@ use Illuminate\Support\Facades\Storage;
  */
 class BusinessArchiveController extends Controller
 {
-    /** كم شهرًا يُعرض في الشاشة — سنتان تكفيان لأطول احتفاظٍ افتراضيّ */
-    private const SHOWN = 24;
+    /** كم صفًّا يُعرض من كلّ نوع — سنتان شهريّةً، وربعُ سنةٍ أسبوعيّةً */
+    private const SHOWN = [Period::MONTHLY => 24, Period::WEEKLY => 16];
+
+    /** كم فترةً مغلقةً تُعرض في قائمة «أنشئ الآن» */
+    private const OFFERED = [Period::MONTHLY => 12, Period::WEEKLY => 8];
 
     private function bid(): int
     {
@@ -37,30 +42,57 @@ class BusinessArchiveController extends Controller
     }
 
     /**
-     * ما يُرسَل إلى تبويب «النسخ الاحتياطي» — يُنادى من `SettingController`.
+     * ما يُرسَل إلى تبويب «النسخ الاحتياطي» — يُنادى من `PageController`.
      *
      * ولا شاشةَ مستقلّة: التبويبُ قائمٌ منذ أوّل يوم («تنزيل نسخة من بياناتك
      * واستعادتها»)، والأرشيفُ قسمٌ ثالثٌ فيه. وشاشةٌ ثانيةٌ اسمُها «البيانات
      * والنسخ الاحتياطية» بجانب تبويبٍ اسمُه «النسخ الاحتياطي» تجعل التاجر
      * يبحث في أيّهما.
+     *
+     * ═══ والنوعان مفصولان في الرسالة لا في الشاشة وحدها ═══
+     *
+     * قائمةٌ واحدةٌ مختلطة تجعل التاجر يقرأ «7 – 13 سبتمبر» فوق «أغسطس
+     * 2026» ولا يعرف أيُّهما يُغني عن الآخر. والفصلُ هنا لا في الواجهة:
+     * لو فرزت الواجهةُ لَبقي الخادمُ يرسل ستّةً وأربعين صفًّا لتُعرض
+     * أربعون.
      */
     public static function panel(int $bid, ?User $user): array
     {
-        $rows = BusinessArchive::where('business_id', $bid)
-            ->orderByDesc('year')->orderByDesc('month')
-            ->limit(self::SHOWN)
-            ->get();
+        $may = (bool) $user?->may(Permissions::BUSINESS_EXPORT);
 
         return [
             'enabled' => Policy::enabled(),
-            'may_generate' => Policy::manualAllowed() && (bool) $user?->may(Permissions::BUSINESS_EXPORT),
-            'may_download' => (bool) $user?->may(Permissions::BUSINESS_EXPORT),
+            'weekly_enabled' => Policy::weeklyEnabled(),
+            'may_generate' => Policy::manualAllowed() && $may,
+            'may_download' => $may,
             'retention_months' => Policy::retentionMonths(),
-            'months' => self::selectable($bid),
-            'items' => $rows->map(fn (BusinessArchive $a) => [
+            'retention_weeks' => Policy::retentionWeeks(),
+            'monthly' => self::rows($bid, Period::MONTHLY),
+            'weekly' => Policy::weeklyEnabled() ? self::rows($bid, Period::WEEKLY) : [],
+            'offer_monthly' => self::selectable($bid, Period::MONTHLY),
+            'offer_weekly' => Policy::weeklyEnabled() ? self::selectable($bid, Period::WEEKLY) : [],
+        ];
+    }
+
+    /** صفوفُ نوعٍ واحد، من الأحدث */
+    private static function rows(int $bid, string $type): array
+    {
+        return BusinessArchive::where('business_id', $bid)
+            ->where('archive_type', $type)
+            ->orderByDesc('period_start')
+            ->limit(self::SHOWN[$type])
+            ->get()
+            ->map(fn (BusinessArchive $a) => [
                 'id' => $a->id,
                 'period' => $a->periodKey(),
-                'label' => $a->periodStart()->translatedFormat('F Y'),
+                /*
+                 * والعنوانُ يُبنى هنا بلغة الطلب لا يُخزَّن في القاعدة.
+                 *
+                 * `translatedFormat` تقرأ لغةَ الطلب الحاليّة — فالتاجرُ
+                 * الذي بدّل لغتَه يرى «7 – 13 September» في اللحظة نفسِها،
+                 * ولا تُعاد كتابةُ صفٍّ واحد.
+                 */
+                'label' => $a->periodLabel(),
                 'status' => $a->status,
                 'created_at' => optional($a->completed_at ?? $a->created_at)->format('Y-m-d'),
                 /*
@@ -70,40 +102,43 @@ class BusinessArchiveController extends Controller
                 'size_mb' => $a->file_size ? round($a->file_size / 1048576, 1) : null,
                 'downloadable' => $a->downloadable(),
                 'failure_reason' => $a->failure_reason,
-            ])->all(),
-        ];
+            ])->all();
     }
 
     /**
-     * الشهورُ المغلقةُ التي لا أرشيفَ لها بعد — تُعرض في القائمة.
+     * الفتراتُ المغلقةُ التي لا أرشيفَ لها بعد — تُعرض في القائمة.
      *
      * وما له أرشيفٌ لا يُعرض: خيارٌ يُختار فيردّ «موجودٌ أصلًا» مقبضٌ لا
      * يُدير شيئًا.
+     *
+     * والقيمةُ المرسَلة تاريخُ البداية لا المفتاح: الخادمُ يعيد بناء المدى
+     * منها بـ`Period::stored`، فلا يُكتب مُحلِّلٌ ثانٍ لـ«2026-W37» يفترق
+     * عن الذي بناه.
      */
-    private static function selectable(int $bid): array
+    private static function selectable(int $bid, string $type): array
     {
         $taken = BusinessArchive::where('business_id', $bid)
-            ->get(['year', 'month'])
-            ->map(fn ($a) => sprintf('%04d-%02d', $a->year, $a->month))
+            ->where('archive_type', $type)
+            ->pluck('period_start')
+            ->map(fn ($d) => Carbon::parse($d)->toDateString())
             ->all();
 
-        $months = [];
-        $cursor = Period::previous();
+        $out = [];
+        $cursor = Period::previous($type);
 
-        for ($i = 0; $i < 12; $i++) {
-            $key = $cursor->key();
+        for ($i = 0; $i < self::OFFERED[$type]; $i++) {
+            $value = $cursor->start()->toDateString();
 
-            if (! in_array($key, $taken, true)) {
-                $months[] = ['value' => $key, 'label' => $cursor->label()];
+            if (! in_array($value, $taken, true)) {
+                $out[] = ['value' => $value, 'label' => $cursor->label()];
             }
 
-            $cursor = Period::of(
-                $cursor->month === 1 ? $cursor->year - 1 : $cursor->year,
-                $cursor->month === 1 ? 12 : $cursor->month - 1,
-            );
+            $cursor = Period::stored($type, $cursor->start()->sub(
+                $type === Period::WEEKLY ? '1 week' : '1 month'
+            ));
         }
 
-        return $months;
+        return $out;
     }
 
     /**
@@ -115,8 +150,12 @@ class BusinessArchiveController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'period' => ['required', 'string', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
-        ], [], ['period' => __('فترة الأرشيف')]);
+            'type' => ['required', 'string', Rule::in(Period::TYPES)],
+            'period' => ['required', 'date_format:Y-m-d'],
+        ], [], [
+            'type' => __('نوع الأرشيف'),
+            'period' => __('فترة الأرشيف'),
+        ]);
 
         if (! Policy::manualAllowed()) {
             return back()->with('toast', [
@@ -125,10 +164,20 @@ class BusinessArchiveController extends Controller
             ]);
         }
 
-        [$year, $month] = array_map('intval', explode('-', $data['period']));
+        /*
+         * والمدى يُعاد بناؤه من النوع لا يُؤخذ كما أُرسل.
+         *
+         * `Period::stored` تُنزل التاريخَ إلى أوّل يومٍ في مداه: من أرسل
+         * يومًا في وسط أسبوعٍ يحصل على أسبوعه، ومن أرسل يومًا في وسط شهرٍ
+         * يحصل على شهره. فلا يُكتب صفٌّ ببدايةٍ لا تطابق الفهرسَ الفريد —
+         * وإلّا صار للأسبوع الواحد سبعةُ أرشيفات.
+         */
+        $period = $data['type'] === Period::WEEKLY
+            ? Period::week(Carbon::parse($data['period']))
+            : Period::month((int) Carbon::parse($data['period'])->year, (int) Carbon::parse($data['period'])->month);
 
         try {
-            $archive = Archives::request($this->bid(), Period::of($year, $month), auth()->id());
+            $archive = Archives::request($this->bid(), $period, auth()->id());
         } catch (\Throwable $e) {
             return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'danger']);
         }
@@ -140,8 +189,8 @@ class BusinessArchiveController extends Controller
          * لم يتغيّر شيء، ولا يضغط ثالثة.
          */
         $msg = $archive->status === BusinessArchive::READY
-            ? __('أرشيف :period جاهزٌ من قبل.', ['period' => $data['period']])
-            : __('يُجهَّز أرشيف :period الآن — سيظهر «جاهز» حين يكتمل.', ['period' => $data['period']]);
+            ? __('أرشيف :period جاهزٌ من قبل.', ['period' => $period->label()])
+            : __('يُجهَّز أرشيف :period الآن — سيظهر «جاهز» حين يكتمل.', ['period' => $period->label()]);
 
         return back()->with('toast', ['msg' => $msg, 'type' => 'success']);
     }

@@ -40,8 +40,10 @@ final class Archives
      */
     public static function request(int $businessId, Period $period, ?int $userId = null): BusinessArchive
     {
-        if (! Policy::enabled()) {
-            throw new RuntimeException(__('الأرشيف الشهري غير مفعّل في هذه المنصّة.'));
+        if (! Policy::enabledFor($period->type)) {
+            throw new RuntimeException($period->type === Period::WEEKLY
+                ? __('الأرشيف الأسبوعي غير مفعّل في هذه المنصّة.')
+                : __('الأرشيف الشهري غير مفعّل في هذه المنصّة.'));
         }
 
         /*
@@ -52,13 +54,12 @@ final class Archives
          * عليه إقرارٌ ضريبيٌّ بنصف الشهر.
          */
         if (! $period->isClosed()) {
-            throw new RuntimeException(__('لا يُؤرشَف إلّا شهرٌ انتهى — الشهرُ الجاري لم ينتهِ بعد.'));
+            throw new RuntimeException($period->type === Period::WEEKLY
+                ? __('لا يُؤرشَف إلّا أسبوعٌ انتهى — الأسبوعُ الجاري لم ينتهِ بعد.')
+                : __('لا يُؤرشَف إلّا شهرٌ انتهى — الشهرُ الجاري لم ينتهِ بعد.'));
         }
 
-        $existing = BusinessArchive::where('business_id', $businessId)
-            ->where('year', $period->year)
-            ->where('month', $period->month)
-            ->first();
+        $existing = self::find($businessId, $period);
 
         if ($existing) {
             return self::revive($existing, $userId);
@@ -67,8 +68,9 @@ final class Archives
         try {
             $archive = BusinessArchive::create([
                 'business_id' => $businessId,
-                'year' => $period->year,
-                'month' => $period->month,
+                'archive_type' => $period->type,
+                'period_start' => $period->start()->toDateString(),
+                'period_end' => $period->endDate()->toDateString(),
                 'status' => BusinessArchive::PENDING,
                 'archive_version' => Builder::VERSION,
                 'generated_by' => $userId,
@@ -80,10 +82,7 @@ final class Archives
              * والصفُّ يُقرأ ويُردّ: من ضغط الزرَّ يريد أرشيفَ أغسطس، وقد
              * صار في الطريق. ورسالةُ خطأٍ هنا تجعله يظنّ أنّ شيئًا لم يقع.
              */
-            $raced = BusinessArchive::where('business_id', $businessId)
-                ->where('year', $period->year)
-                ->where('month', $period->month)
-                ->first();
+            $raced = self::find($businessId, $period);
 
             if (! $raced) {
                 throw $e;
@@ -101,6 +100,21 @@ final class Archives
         BuildBusinessArchive::dispatch($archive->id);
 
         return $archive;
+    }
+
+    /**
+     * صفُّ هذا المتجر لهذا المدى — بمفتاح الفهرس الفريد نفسِه.
+     *
+     * وثلاثةُ أعمدة لا اثنان: أرشيفُ شهرِ سبتمبر وأرشيفُ أسبوعِ ١–٧ سبتمبر
+     * يبدآن في اليوم نفسه. ولو سُئل بالبداية وحدها لَردّ أحدُهما مكان
+     * الآخر — فيُقال «موجودٌ من قبل» عن مدًى لم يُؤرشَف قطّ.
+     */
+    private static function find(int $businessId, Period $period): ?BusinessArchive
+    {
+        return BusinessArchive::where('business_id', $businessId)
+            ->where('archive_type', $period->type)
+            ->whereDate('period_start', $period->start()->toDateString())
+            ->first();
     }
 
     /**
@@ -139,14 +153,18 @@ final class Archives
      *
      * والمساحةُ هي المقصودة، وهي في الملفّ لا في الصفّ.
      */
-    public static function prune(?int $months = null): int
+    public static function prune(): int
     {
-        $months ??= Policy::retentionMonths();
-
-        if ($months <= 0) {
-            return 0;
-        }
-
+        /*
+         * ولا تُقرأ المدّةُ هنا: الصفُّ يحمل يومَ موته.
+         *
+         * كانت تُقرأ `retentionMonths()` وتُقارَن — وصار للنوعين مدّتان
+         * (أسبوعيٌّ باثني عشرَ أسبوعًا، وشهريٌّ باثني عشرَ شهرًا). فقراءةُ
+         * مدّةٍ واحدة هنا تحذف أحدَهما بمدّة الآخر.
+         *
+         * و`expires_at` يكتبها `Policy::expiresAt` مرّةً يومَ يُبنى الملفّ،
+         * وفارغُها يعني «لا ينتهي». فهذه تحذف ما مضى أجلُه ولا تحسب أجلًا.
+         */
         $gone = 0;
 
         $expired = BusinessArchive::where('status', BusinessArchive::READY)

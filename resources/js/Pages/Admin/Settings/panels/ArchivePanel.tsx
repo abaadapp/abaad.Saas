@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { router } from '@inertiajs/react';
-import { Archive, Download, Loader2, TriangleAlert } from 'lucide-react';
+import { router, usePage } from '@inertiajs/react';
+import { Archive, CalendarRange, Download, Loader2, TriangleAlert } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { Select } from '@/Components/Field';
 import StatusPill, { type SetupState } from '@/Components/StatusPill';
@@ -10,9 +10,9 @@ import { useTranslate } from '@/lib/i18n';
 /** ما يصل من `BusinessArchiveController::panel` — ولا يُخمَّن شيءٌ منه هنا */
 export interface ArchiveRow {
     id: number;
-    /** «2026-08» — يُرسَل عند الإنشاء ويُستعمل مفتاحًا للصفّ */
+    /** «2026-08» أو «2026-W37» — مفتاحٌ ثابتٌ لا يتبدّل بلغة القارئ */
     period: string;
-    /** «أغسطس 2026» — مترجَمٌ على الخادم بلغة القارئ */
+    /** «أغسطس 2026» أو «7 – 13 سبتمبر 2026» — مترجَمٌ على الخادم بلغة القارئ */
     label: string;
     status: string;
     created_at: string | null;
@@ -21,18 +21,28 @@ export interface ArchiveRow {
     failure_reason: string | null;
 }
 
+interface Offer {
+    /** تاريخُ بداية المدى — الخادمُ يعيد بناءه منه */
+    value: string;
+    label: string;
+}
+
 export interface ArchiveData {
     enabled: boolean;
+    weekly_enabled: boolean;
     may_generate: boolean;
     may_download: boolean;
     retention_months: number;
-    months: { value: string; label: string }[];
-    items: ArchiveRow[];
+    retention_weeks: number;
+    monthly: ArchiveRow[];
+    weekly: ArchiveRow[];
+    offer_monthly: Offer[];
+    offer_weekly: Offer[];
 }
 
 /**
  * حالُ الأرشيف بمفردات `StatusPill` المغلقة — لا بألوانٍ تُخترع هنا.
-
+ *
  * الشارةُ في هذا النظام ستُّ حالاتٍ لكلٍّ معنًى مفروز، ولها أيقونتُها
  * ونصُّها لا لونُها وحده. فحالاتُ الأرشيف الخمسُ تُسنَد إليها، ولا يُبنى
  * لها سلّمُ ألوانٍ سابع تفترق به هذه الشاشة عن بقيّة اللوحة.
@@ -49,20 +59,43 @@ const STATE: Record<string, SetupState> = {
 };
 
 /**
- * الأرشيفُ الشهريّ — قائمةُ شهورٍ وزرُّ تنزيل.
+ * قسمُ أرشيفٍ واحد — أسبوعيًّا كان أو شهريًّا.
  *
- * ═══ وما لا يُعرض هنا ═══
+ * ═══ ولمَ مكوّنٌ واحد لا قسمان مكتوبان ═══
  *
- * لا مسارُ تخزين، ولا اسمُ قرص، ولا بصمة، ولا اسمُ جدول. صاحبُ المحلّ يسأل
- * سؤالين: أجاهزٌ أرشيفُ أغسطس؟ وكم حجمُه؟ وما سواهما تفاصيلُ تشغيلٍ تخصّ
- * من يُصلح، ومكانُها لوحةُ المنصّة.
- *
- * وسببُ الفشل يُعرض: هو الشيءُ الوحيد الذي يُملي على التاجر فعلًا («الشهر
- * فارغ» ≠ «القرص ممتلئ»). وبلا سببٍ يبقى صفٌّ أحمرُ لا يُعرف ما يُفعل به.
+ * القسمان يعرضان الشيء نفسَه: قائمةَ صفوفٍ بحالةٍ وحجمٍ وزرِّ تنزيل، ثمّ
+ * قائمةَ فتراتٍ وزرَّ إنشاء. والفرقُ كلُّه في العنوان والأيقونة وسطرِ
+ * المدّة. ونسخُ ستّين سطرًا لأجل ثلاثةٍ يعني أنّ إصلاحًا في أحدهما لا يبلغ
+ * الآخر — وهو ما يُرى بعد شهرين: زرُّ تنزيلٍ أُصلح في الشهريّ وبقي معطوبًا
+ * في الأسبوعيّ.
  */
-export default function ArchivePanel({ archive }: { archive: ArchiveData }) {
+function ArchiveGroup({
+    title,
+    description,
+    icon,
+    note,
+    rows,
+    offers,
+    type,
+    mayDownload,
+    mayGenerate,
+    highlighted,
+    emptyText,
+}: {
+    title: string;
+    description: string;
+    icon: typeof Archive;
+    note: string;
+    rows: ArchiveRow[];
+    offers: Offer[];
+    type: 'weekly' | 'monthly';
+    mayDownload: boolean;
+    mayGenerate: boolean;
+    highlighted: number | null;
+    emptyText: string;
+}) {
     const t = useTranslate();
-    const [period, setPeriod] = useState(archive.months[0]?.value ?? '');
+    const [period, setPeriod] = useState(offers[0]?.value ?? '');
     const [sending, setSending] = useState(false);
 
     const generate = () => {
@@ -70,7 +103,7 @@ export default function ArchivePanel({ archive }: { archive: ArchiveData }) {
         setSending(true);
         router.post(
             route('admin.archives.store'),
-            { period },
+            { type, period },
             {
                 preserveScroll: true,
                 /*
@@ -85,51 +118,37 @@ export default function ArchivePanel({ archive }: { archive: ArchiveData }) {
         );
     };
 
-    if (!archive.enabled) {
-        return null;
-    }
-
     return (
-        <SettingsSection
-            title="الأرشيف الشهري"
-            description="نسخة مقروءة من بيانات كل شهر: ملفات Excel وفواتير PDF والمرفقات — للاحتفاظ بها أو تسليمها لمحاسبك."
-            icon={Archive}
-        >
-            {/*
-                والفرقُ يُقال في الشاشة لا في ورقةٍ داخل الملفّ وحدها.
-
-                التبويبُ نفسُه فيه «تنزيل نسخة احتياطية» فوق هذا القسم. ومن
-                يقرأ الاثنين بلا تمييزٍ يظنّ أحدَهما يُغني عن الآخر — فينزّل
-                الأرشيفَ كلَّ شهر ويظنّ أنّه أمّن قاعدتَه.
-            */}
+        <SettingsSection title={title} description={description} icon={icon}>
             <p className="mb-4 rounded-[12px] bg-[#f6f6f4] px-3 py-2.5 text-[12px] leading-relaxed text-[#555]">
-                {t('الأرشيف الشهري تصدير مقروء لبياناتك، وليس نسخة احتياطية تقنية تُستعاد بها قاعدة البيانات.')}
-                {archive.retention_months > 0 && (
-                    <>
-                        {' '}
-                        {t('يُحتفظ بكل أرشيف :n شهرًا.', { n: String(archive.retention_months) })}
-                    </>
-                )}
+                {note}
             </p>
 
-            {archive.items.length === 0 ? (
-                <p className="py-6 text-center text-[13px] text-[#777]">
-                    {t('لا أرشيف بعد — أنشئ أول أرشيف لشهر مضى.')}
-                </p>
+            {rows.length === 0 ? (
+                <p className="py-6 text-center text-[13px] text-[#777]">{emptyText}</p>
             ) : (
                 <div className="space-y-2">
-                    {archive.items.map((row) => (
+                    {rows.map((row) => (
                         <div
                             key={row.period}
-                            className="flex flex-wrap items-center gap-3 rounded-[12px] border border-[#ececec] px-3.5 py-3"
+                            className={
+                                'flex flex-wrap items-center gap-3 rounded-[12px] border px-3.5 py-3 ' +
+                                (row.id === highlighted
+                                    ? 'border-[#111] bg-[#fafaf9]'
+                                    : 'border-[#ececec]')
+                            }
                         >
                             <div className="min-w-[8rem] flex-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-[14px] font-semibold text-[#111]">{row.label}</span>
                                     <StatusPill state={STATE[row.status] ?? 'idle'} label={row.status} />
                                 </div>
                                 <div className="mt-0.5 text-[12px] text-[#777]">
-                                    {row.created_at && <span>{t('تاريخ الإنشاء')}: {row.created_at}</span>}
+                                    {row.created_at && (
+                                        <span>
+                                            {t('تاريخ الإنشاء')}: {row.created_at}
+                                        </span>
+                                    )}
                                     {row.size_mb !== null && <span> · {row.size_mb} MB</span>}
                                 </div>
                                 {row.failure_reason && (
@@ -140,7 +159,7 @@ export default function ArchivePanel({ archive }: { archive: ArchiveData }) {
                                 )}
                             </div>
 
-                            {row.downloadable && archive.may_download && (
+                            {row.downloadable && mayDownload && (
                                 <Button asChild variant="outline">
                                     <a href={route('admin.archives.download', row.id)}>
                                         <Download />
@@ -153,18 +172,18 @@ export default function ArchivePanel({ archive }: { archive: ArchiveData }) {
                 </div>
             )}
 
-            {archive.may_generate && archive.months.length > 0 && (
+            {mayGenerate && offers.length > 0 && (
                 <div className="mt-5 border-t border-[#ececec] pt-4">
                     {/*
-                        والشهورُ المعروضة مغلقةٌ كلُّها ولا أرشيفَ لها.
+                        والفتراتُ المعروضة مغلقةٌ كلُّها ولا أرشيفَ لها.
 
-                        الخادمُ يبنيها (`selectable`) — فلا يُعرض الشهرُ
-                        الجاري، ولا شهرٌ له أرشيفٌ يُختار فيُردّ «موجود».
+                        الخادمُ يبنيها (`selectable`) — فلا تُعرض الفترةُ
+                        الجارية، ولا فترةٌ لها أرشيفٌ تُختار فيُردّ «موجود».
                     */}
                     <Select
                         value={period}
                         onChange={(e) => setPeriod(e.target.value)}
-                        options={archive.months.map((m) => ({ value: m.value, label: m.label }))}
+                        options={offers.map((o) => ({ value: o.value, label: o.label }))}
                         aria-label={t('فترة الأرشيف')}
                     />
                     <PageActions className="mt-3">
@@ -176,5 +195,87 @@ export default function ArchivePanel({ archive }: { archive: ArchiveData }) {
                 </div>
             )}
         </SettingsSection>
+    );
+}
+
+/**
+ * الأرشيفُ الأسبوعيُّ والشهريُّ — قائمتان وزرّا تنزيل.
+ *
+ * ═══ وما لا يُعرض هنا ═══
+ *
+ * لا مسارُ تخزين، ولا اسمُ قرص، ولا بصمة، ولا اسمُ جدول. صاحبُ المحلّ يسأل
+ * سؤالين: أجاهزٌ أرشيفُ أغسطس؟ وكم حجمُه؟ وما سواهما تفاصيلُ تشغيلٍ تخصّ
+ * من يُصلح، ومكانُها لوحةُ المنصّة.
+ *
+ * وسببُ الفشل يُعرض: هو الشيءُ الوحيد الذي يُملي على التاجر فعلًا («الفترة
+ * فارغة» ≠ «القرص ممتلئ»). وبلا سببٍ يبقى صفٌّ أحمرُ لا يُعرف ما يُفعل به.
+ */
+export default function ArchivePanel({ archive }: { archive: ArchiveData }) {
+    const t = useTranslate();
+    const { url } = usePage();
+
+    if (!archive.enabled) {
+        return null;
+    }
+
+    /*
+     * والجرسُ يقود إلى الصفّ بعينه لا إلى القائمة.
+     *
+     * أربعون صفًّا بين أسبوعيٍّ وشهريّ، و«تم تجهيز الأرشيف» بلا إشارةٍ إلى
+     * أيِّها تجعل التاجر يقرأ القائمةَ كلَّها. والمعامل `archive` يصل في
+     * الرابط، فيُحاط صفُّه بإطار.
+     */
+    const highlighted = Number(new URLSearchParams(url.split('?')[1] ?? '').get('archive')) || null;
+
+    return (
+        <>
+            {archive.weekly_enabled && (
+                <ArchiveGroup
+                    title={t('الأرشيف الأسبوعي')}
+                    description={t('نسخة مقروءة من بيانات كل أسبوع منقضٍ — تُجهَّز تلقائيًّا كل اثنين.')}
+                    icon={CalendarRange}
+                    note={
+                        archive.retention_weeks > 0
+                            ? t('يُحتفظ بكل أرشيف أسبوعي :n أسبوعًا، ثم يُحذف ملفه ويبقى سجله.', {
+                                  n: String(archive.retention_weeks),
+                              })
+                            : t('يُحتفظ بالأرشيف الأسبوعي بلا مدة محددة.')
+                    }
+                    rows={archive.weekly}
+                    offers={archive.offer_weekly}
+                    type="weekly"
+                    mayDownload={archive.may_download}
+                    mayGenerate={archive.may_generate}
+                    highlighted={highlighted}
+                    emptyText={t('لا أرشيف أسبوعي بعد — يُجهَّز أول أرشيف بعد انتهاء أسبوع كامل.')}
+                />
+            )}
+
+            <ArchiveGroup
+                title={t('الأرشيف الشهري')}
+                description={t('نسخة مقروءة من بيانات كل شهر: ملفات Excel وفواتير PDF والمرفقات — للاحتفاظ بها أو تسليمها لمحاسبك.')}
+                icon={Archive}
+                note={
+                    /*
+                        والفرقُ يُقال في الشاشة لا في ورقةٍ داخل الملفّ وحدها.
+
+                        التبويبُ نفسُه فيه «تنزيل نسخة احتياطية» فوق هذا القسم.
+                        ومن يقرأ الاثنين بلا تمييزٍ يظنّ أحدَهما يُغني عن الآخر
+                        — فينزّل الأرشيفَ كلَّ شهر ويظنّ أنّه أمّن قاعدتَه.
+                    */
+                    t('الأرشيف الشهري تصدير مقروء لبياناتك، وليس نسخة احتياطية تقنية تُستعاد بها قاعدة البيانات.') +
+                    (archive.retention_months > 0
+                        ? ' ' + t('يُحتفظ بكل أرشيف :n شهرًا.', { n: String(archive.retention_months) })
+                        : '')
+                }
+                rows={archive.monthly}
+                offers={archive.offer_monthly}
+                type="monthly"
+                mayDownload={archive.may_download}
+                mayGenerate={archive.may_generate}
+                highlighted={highlighted}
+                emptyText={t('لا أرشيف بعد — أنشئ أول أرشيف لشهر مضى.')}
+            />
+        </>
     );
 }

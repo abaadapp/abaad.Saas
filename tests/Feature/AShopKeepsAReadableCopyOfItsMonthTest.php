@@ -78,7 +78,7 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
          */
         $this->app->setLocale('ar');
 
-        $this->period = Period::of(2026, 8);
+        $this->period = Period::month(2026, 8);
 
         $this->shop = Business::create(['name' => 'متجر الأرشيف', 'type' => 'عام', 'status' => 'نشط']);
         $this->neighbour = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
@@ -136,7 +136,7 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
 
     public function test_a_month_with_nothing_in_it_fails_and_says_so(): void
     {
-        $archive = $this->build(Period::of(2026, 3));
+        $archive = $this->build(Period::month(2026, 3));
 
         $this->assertSame(BusinessArchive::FAILED, $archive->status);
         $this->assertNotNull($archive->failure_reason);
@@ -267,10 +267,10 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
     {
         Carbon::setTestNow(Carbon::create(2027, 1, 3, 4, 0, 0));
 
-        $previous = Period::previous();
+        $previous = Period::previous(Period::MONTHLY);
 
-        $this->assertSame(2026, $previous->year);
-        $this->assertSame(12, $previous->month);
+        $this->assertSame(2026, $previous->start->year);
+        $this->assertSame(12, $previous->start->month);
     }
 
     /**
@@ -284,10 +284,10 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
     {
         Carbon::setTestNow(Carbon::create(2028, 3, 31, 9, 0, 0));
 
-        $previous = Period::previous();
+        $previous = Period::previous(Period::MONTHLY);
 
-        $this->assertSame(2, $previous->month, 'الشهرُ المنقضي عن ٣١ مارس هو فبراير');
-        $this->assertSame(2028, $previous->year);
+        $this->assertSame(2, $previous->start->month, 'الشهرُ المنقضي عن ٣١ مارس هو فبراير');
+        $this->assertSame(2028, $previous->start->year);
         $this->assertSame('2028-02-29', $previous->end()->format('Y-m-d'), 'فبراير الكبيسة ٢٩ يومًا');
     }
 
@@ -295,7 +295,7 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
     {
         $this->expectExceptionMessageMatches('/لم ينتهِ/u');
 
-        Archives::request($this->shop->id, Period::current(), null);
+        Archives::request($this->shop->id, Period::current(Period::MONTHLY), null);
     }
 
     /* ======================== التكرارُ والوحدانيّة ======================== */
@@ -313,17 +313,17 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
 
     public function test_the_database_refuses_a_second_row_for_the_same_month(): void
     {
-        BusinessArchive::create([
-            'business_id' => $this->shop->id, 'year' => 2026, 'month' => 8,
+        $row = [
+            'business_id' => $this->shop->id, 'archive_type' => Period::MONTHLY,
+            'period_start' => '2026-08-01', 'period_end' => '2026-08-31',
             'status' => BusinessArchive::PENDING,
-        ]);
+        ];
+
+        BusinessArchive::create($row);
 
         $this->expectException(QueryException::class);
 
-        BusinessArchive::create([
-            'business_id' => $this->shop->id, 'year' => 2026, 'month' => 8,
-            'status' => BusinessArchive::PENDING,
-        ]);
+        BusinessArchive::create($row);
     }
 
     public function test_a_failed_archive_is_tried_again_when_asked_again(): void
@@ -409,7 +409,7 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
     public function test_a_cashier_may_not_ask_for_an_archive_either(): void
     {
         $this->actingAs($this->staff($this->shop, 'cashier'))
-            ->post(route('admin.archives.store'), ['period' => '2026-08'])
+            ->post(route('admin.archives.store'), ['type' => 'monthly', 'period' => '2026-08-01'])
             ->assertForbidden();
 
         $this->assertSame(0, BusinessArchive::count());
@@ -418,7 +418,7 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
     public function test_the_owner_may_ask_and_the_row_appears(): void
     {
         $this->actingAs($this->owner($this->shop))
-            ->post(route('admin.archives.store'), ['period' => '2026-08'])
+            ->post(route('admin.archives.store'), ['type' => 'monthly', 'period' => '2026-08-01'])
             ->assertRedirect();
 
         $this->assertSame(1, BusinessArchive::where('business_id', $this->shop->id)->count());
@@ -428,7 +428,7 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
     public function test_asking_for_the_current_month_through_the_door_changes_nothing(): void
     {
         $this->actingAs($this->owner($this->shop))
-            ->post(route('admin.archives.store'), ['period' => '2026-09'])
+            ->post(route('admin.archives.store'), ['type' => 'monthly', 'period' => '2026-09-01'])
             ->assertRedirect();
 
         $this->assertSame(0, BusinessArchive::count());
@@ -439,7 +439,7 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
     {
         foreach (['2026-13', 'abc', '2026-00', '../../etc', '2026'] as $bad) {
             $this->actingAs($this->owner($this->shop))
-                ->post(route('admin.archives.store'), ['period' => $bad])
+                ->post(route('admin.archives.store'), ['type' => 'monthly', 'period' => $bad])
                 ->assertSessionHasErrors('period');
         }
 
@@ -489,7 +489,7 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
             $archive->refresh();
 
             $panel = BusinessArchiveController::panel($this->shop->id, $owner);
-            $drawn = $panel['items'][0]['downloadable'];
+            $drawn = $panel['monthly'][0]['downloadable'];
 
             $status = $this->actingAs($owner)
                 ->get(route('admin.archives.download', $archive->id))->getStatusCode();
@@ -506,19 +506,37 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
         $path = $archive->storage_path;
         $archive->update(['expires_at' => now()->subDay()]);
 
-        $this->assertSame(1, Archives::prune(12));
+        $this->assertSame(1, Archives::prune());
 
         $this->assertFalse(Storage::disk('local')->exists($path));
         $this->assertSame(BusinessArchive::EXPIRED, $archive->refresh()->status);
         $this->assertNull($archive->storage_path);
     }
 
-    public function test_retention_of_zero_months_deletes_nothing(): void
+    /**
+     * ومدّةُ صفرٍ تعني «بلا أجل» — فلا يُكتب للأرشيف يومُ موت.
+     *
+     * ═══ وانتقل القياسُ من الحذف إلى الكتابة ═══
+     *
+     * كان الاختبارُ يكتب `expires_at` بيده ثمّ ينادي `prune(0)` ويتوقّع
+     * ألّا تحذف. وصار للنوعين مدّتان، فلم تعد `prune` تقرأ مدّةً أصلًا:
+     * الصفُّ يحمل أجلَه، وهي تحذف ما مضى أجلُه.
+     *
+     * فالقياسُ الصحيح أعلى من ذلك بدرجة: أرشيفٌ بُني ومدّةُ الاحتفاظ صفرٌ
+     * يخرج **بلا أجل**. ومن لا أجلَ له لا تبلغه `prune` أبدًا — وهو ما
+     * يُراد، لا أن تُفحص دالّةٌ بوسيطٍ لم يعد لها.
+     */
+    public function test_retention_of_zero_months_writes_no_expiry_at_all(): void
     {
-        $archive = $this->build();
-        $archive->update(['expires_at' => now()->subDay()]);
+        Setting::updateOrCreate(
+            ['business_id' => null, 'key' => Policy::RETENTION_MONTHS],
+            ['value' => '0'],
+        );
 
-        $this->assertSame(0, Archives::prune(0));
+        $archive = $this->build();
+
+        $this->assertNull($archive->expires_at, 'كُتب أجلٌ لأرشيفٍ بلا مدّة');
+        $this->assertSame(0, Archives::prune());
         $this->assertSame(BusinessArchive::READY, $archive->refresh()->status);
     }
 
@@ -650,7 +668,7 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
     /** وسببُ الفشل لا يحمل مساراتِ الخادم إلى شاشةِ تاجر */
     public function test_a_failure_reason_never_leaks_server_paths(): void
     {
-        $reason = (string) $this->build(Period::of(2026, 3))->failure_reason;
+        $reason = (string) $this->build(Period::month(2026, 3))->failure_reason;
 
         $this->assertStringNotContainsString(base_path(), $reason);
         $this->assertStringNotContainsString('/var/', $reason);
@@ -805,10 +823,13 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
 
     private function build(?Period $period = null, ?int $userId = null): BusinessArchive
     {
+        $p = $period ?? $this->period;
+
         $archive = BusinessArchive::create([
             'business_id' => $this->shop->id,
-            'year' => ($period ?? $this->period)->year,
-            'month' => ($period ?? $this->period)->month,
+            'archive_type' => $p->type,
+            'period_start' => $p->start()->toDateString(),
+            'period_end' => $p->endDate()->toDateString(),
             'status' => BusinessArchive::PENDING,
             'generated_by' => $userId,
         ]);

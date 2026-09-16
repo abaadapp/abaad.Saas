@@ -3487,7 +3487,14 @@ class Demo
                     BusinessArchive::FAILED,
                 ])
                 ->orderByDesc('completed_at')
-                ->limit(3)->get();
+                /*
+                 * وأربعةٌ لا ثلاثة: صار للأرشيف نوعان.
+                 *
+                 * ثلاثةٌ كانت تكفي حين كان شهريًّا وحدَه. ومع الأسبوعيّ تصدر
+                 * أربعُ ورقاتٍ في الشهر الواحد — فثلاثةٌ تُخرج الشهريَّ من
+                 * الجرس في أوّل أسبوعٍ من الشهر، وهو أهمُّهما.
+                 */
+                ->limit(4)->get();
 
             foreach ($archives as $archive) {
                 $ready = $archive->status === BusinessArchive::READY;
@@ -3497,24 +3504,43 @@ class Demo
                     continue;
                 }
 
+                $period = $archive->periodLabel();
+                $weekly = $archive->isWeekly();
+
+                /*
+                 * ═══ والإشعارُ مشتقٌّ من الصفّ لا مكتوبٌ عند نجاح الوظيفة ═══
+                 *
+                 * لا جدولَ إشعاراتٍ في هذا النظام، وهو ما يجعل «لا تُرسل
+                 * مرّتين» مسألةَ بنيةٍ لا مسألةَ حارس: الإشعارُ **هو** حالةُ
+                 * الصفّ مقروءةً الآن. فوظيفةٌ أُعيدت ثلاثَ مرّاتٍ لا تُنتج
+                 * ثلاثةَ أسطر — الصفُّ واحد، والسطرُ واحد.
+                 *
+                 * والمفتاحُ يحمل الحالة: من أخفى «فشل» ثمّ نجح البناءُ يرى
+                 * «جاهز» — لأنّه خبرٌ آخر. ومن أخفى «جاهز» لا يعود يراه.
+                 */
                 $add('archive-'.$archive->id.'-'.$archive->status, [
-                    'text' => $ready
-                        ? __('تم تجهيز أرشيف بيانات :period — يمكنك تحميله من «البيانات والنسخ الاحتياطية».', [
-                            'period' => $archive->periodStart()->translatedFormat('F Y'),
-                        ])
-                        : __('تعذّر تجهيز أرشيف بيانات :period.', [
-                            'period' => $archive->periodStart()->translatedFormat('F Y'),
-                        ]),
+                    'text' => match (true) {
+                        $ready && $weekly => __('تم تجهيز الأرشيف الأسبوعي :period — يمكنك تحميله الآن.', ['period' => $period]),
+                        $ready => __('تم تجهيز الأرشيف الشهري :period — يمكنك تحميله الآن.', ['period' => $period]),
+                        $weekly => __('تعذّر تجهيز الأرشيف الأسبوعي :period.', ['period' => $period]),
+                        default => __('تعذّر تجهيز الأرشيف الشهري :period.', ['period' => $period]),
+                    },
                     'time' => optional($archive->completed_at)->diffForHumans() ?? '—',
                     'icon' => $ready ? 'archive' : 'triangle-alert',
                     'color' => $ready ? 'success' : 'warning',
                     /*
-                     * والرابطُ يقود إلى قسمه لا إلى الإعدادات.
+                     * والرابطُ يقود إلى الأرشيف بعينه لا إلى الإعدادات.
                      *
                      * `?section=backup` هو ما يقرؤه الخادمُ ليبني القائمة —
                      * ومرساةٌ وحدها لا تصله، فتُفتح الإعدادات بلا أرشيف.
+                     * و`archive` تقرؤه الشاشةُ فتُبرز صفَّه: ستّةَ عشرَ صفًّا
+                     * أسبوعيًّا فوق أربعةٍ وعشرين شهريًّا تجعل «أيُّها الذي
+                     * جهُز؟» سؤالًا حقيقيًّا.
                      */
-                    'url' => route('admin.settings.index', ['section' => 'backup']),
+                    'url' => route('admin.settings.index', [
+                        'section' => 'backup',
+                        'archive' => $archive->id,
+                    ]),
                 ]);
             }
         }

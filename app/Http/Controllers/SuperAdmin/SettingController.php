@@ -89,6 +89,8 @@ class SettingController extends Controller
         'archive_enabled' => ['nullable', 'boolean'],
         'archive_manual_enabled' => ['nullable', 'boolean'],
         'archive_retention_months' => ['nullable', 'integer', 'min:0', 'max:120'],
+        'archive_weekly_enabled' => ['nullable', 'boolean'],
+        'archive_weekly_retention_weeks' => ['nullable', 'integer', 'min:0', 'max:520'],
         'archive_max_mb' => ['nullable', 'integer', 'min:0', 'max:20000'],
         'archive_remote_disk' => ['nullable', 'string', 'max:40'],
         'backup_remote_enabled' => ['nullable', 'boolean'],

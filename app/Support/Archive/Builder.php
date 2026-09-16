@@ -69,7 +69,7 @@ final class Builder
             return $this->fail(__('لم يعد هذا المتجر موجودًا.'));
         }
 
-        $period = Period::of($this->archive->year, $this->archive->month);
+        $period = $this->archive->period();
         $work = Storage::disk('local')->path(self::WORKSPACE.'/'.$this->archive->id);
         $zipPath = $work.'.zip';
 
@@ -476,8 +476,6 @@ final class Builder
             return $this->fail(__('تعذّر حفظ الأرشيف في مكانه.'));
         }
 
-        $months = Policy::retentionMonths();
-
         $this->archive->update([
             'status' => BusinessArchive::READY,
             'storage_disk' => $disk,
@@ -486,7 +484,7 @@ final class Builder
             'checksum' => $checksum,
             'archive_version' => self::VERSION,
             'completed_at' => now(),
-            'expires_at' => $months > 0 ? now()->addMonthsNoOverflow($months) : null,
+            'expires_at' => Policy::expiresAt($period),
             'failure_reason' => null,
         ]);
 
@@ -526,7 +524,7 @@ final class Builder
         ]);
 
         Activity::log('backup', __('فشل إنشاء أرشيف :period', [
-            'period' => sprintf('%04d-%02d', $this->archive->year, $this->archive->month),
+            'period' => $this->archive->periodKey(),
         ]), [
             'business_id' => $this->archive->business_id,
             'subject_type' => BusinessArchive::class,

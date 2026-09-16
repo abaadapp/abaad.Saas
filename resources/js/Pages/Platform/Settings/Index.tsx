@@ -90,6 +90,8 @@ const FIELD_TAB: Record<string, string> = {
     archive_enabled: 'archive',
     archive_manual_enabled: 'archive',
     archive_retention_months: 'archive',
+    archive_weekly_enabled: 'archive',
+    archive_weekly_retention_weeks: 'archive',
     archive_max_mb: 'archive',
     archive_remote_disk: 'archive',
     backup_remote_enabled: 'archive',
@@ -195,6 +197,8 @@ export default function PlatformSettings() {
         archive_enabled: onByDefault('archive_enabled'),
         archive_manual_enabled: onByDefault('archive_manual_enabled'),
         archive_retention_months: get('archive_retention_months'),
+        archive_weekly_enabled: onByDefault('archive_weekly_enabled'),
+        archive_weekly_retention_weeks: get('archive_weekly_retention_weeks'),
         archive_max_mb: get('archive_max_mb'),
         archive_remote_disk: get('archive_remote_disk'),
         /* والنسخُ البعيد افتراضُه مُطفأ: لا قرصَ مضبوطًا فلا يُدَّعى نسخ */
@@ -454,6 +458,22 @@ export default function PlatformSettings() {
                                 type: 'number',
                                 ltr: true,
                                 hint: 'صفر = بلا حدّ. وهي غير مدة الاحتفاظ بالنسخة التقنية (١٤ يومًا) ولا علاقة بينهما',
+                            })}
+                            {/*
+                                والأسبوعيُّ مقبضٌ داخل مقبض: إطفاء «الأرشيف»
+                                يوقف الاثنين، وإطفاء هذا يوقف الأسبوعيَّ وحده
+                                ويبقى الشهريُّ — انظر `Policy::weeklyEnabled`.
+                            */}
+                            <Toggle
+                                on={form.data.archive_weekly_enabled}
+                                onChange={(v) => form.setData('archive_weekly_enabled', v)}
+                                label="تفعيل الأرشيف الأسبوعي"
+                                hint="يُطلب كل اثنين عن الأسبوع المنقضي — ولا يُغني عن الشهري ولا يُلغيه"
+                            />
+                            {text('archive_weekly_retention_weeks', 'مدة الاحتفاظ بالأرشيف الأسبوعي (أسبوعًا)', {
+                                type: 'number',
+                                ltr: true,
+                                hint: 'صفر = بلا حدّ. والأسبوعي ٥٢ ملفًّا في السنة مقابل ١٢ للشهري، فمدّته أقصر عمدًا',
                             })}
                             {text('archive_max_mb', 'أقصى حجم للأرشيف الواحد (ميجابايت)', {
                                 type: 'number',

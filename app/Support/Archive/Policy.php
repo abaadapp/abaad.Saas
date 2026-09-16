@@ -3,6 +3,7 @@
 namespace App\Support\Archive;
 
 use App\Models\Setting;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -37,6 +38,11 @@ final class Policy
 
     public const MAX_MB = 'archive_max_mb';
 
+    /** الأسبوعيُّ مقبضُه منفصلٌ عن الشهريّ — يُطفأ وحدَه ويبقى الشهريُّ */
+    public const WEEKLY = 'archive_weekly_enabled';
+
+    public const WEEKLY_RETENTION_WEEKS = 'archive_weekly_retention_weeks';
+
     public const REMOTE_DISK = 'archive_remote_disk';
 
     public const BACKUP_REMOTE = 'backup_remote_enabled';
@@ -48,6 +54,21 @@ final class Policy
      * شهرٍ في السنة الماضية.
      */
     public const DEFAULT_RETENTION_MONTHS = 12;
+
+    /**
+     * اثنا عشرَ أسبوعًا — ربعُ سنةٍ لا سنة.
+     *
+     * ═══ ولمَ لا يُحتفظ به كالشهريّ ═══
+     *
+     * الشهريُّ اثنا عشرَ ملفًّا في السنة، والأسبوعيُّ اثنان وخمسون. ومدّةُ
+     * سنةٍ لهما معًا تجعل أربعةً وستّين ملفًّا على القرص لكلّ متجر — وخمسون
+     * متجرًا تملأ ثلاثةَ آلاف.
+     *
+     * والغايةُ من الأسبوعيّ غيرُ الغاية من الشهريّ: هذا يُطلب في مراجعةٍ
+     * ضريبيّةٍ بعد سنة، وذاك يُفتح في الأسبوع التالي ليُرى ما باع المتجر.
+     * فمن احتاج شهرًا مضى وجده في أرشيفه الشهريّ.
+     */
+    public const DEFAULT_WEEKLY_RETENTION_WEEKS = 12;
 
     /** خمسُ مئة ميجابايت — سقفٌ يمنع أرشيفًا واحدًا من ملء قرص الخادم */
     public const DEFAULT_MAX_MB = 500;
@@ -101,6 +122,57 @@ final class Policy
     public static function manualAllowed(): bool
     {
         return self::flag(self::MANUAL, true);
+    }
+
+    /** والأسبوعيُّ لا يعمل إن كان الأرشيفُ كلُّه مُطفأً — مقبضٌ داخل مقبض */
+    public static function weeklyEnabled(): bool
+    {
+        return self::enabled() && self::flag(self::WEEKLY, true);
+    }
+
+    /** أيعمل هذا النوعُ الآن؟ — سؤالٌ واحد يجيب عنه موضعٌ واحد */
+    public static function enabledFor(string $type): bool
+    {
+        return $type === Period::WEEKLY ? self::weeklyEnabled() : self::enabled();
+    }
+
+    /** صفرٌ يعني «بلا حدّ» — كما في مدّة الشهريّ */
+    public static function retentionWeeks(): int
+    {
+        $value = self::raw(self::WEEKLY_RETENTION_WEEKS);
+
+        if ($value === null || $value === '') {
+            return self::DEFAULT_WEEKLY_RETENTION_WEEKS;
+        }
+
+        return max(0, (int) $value);
+    }
+
+    /**
+     * متى تنتهي مدّةُ أرشيفٍ من هذا النوع — و`null` يعني «لا ينتهي».
+     *
+     * ═══ ولمَ يُحسب هنا لا في `Builder` ═══
+     *
+     * `Builder` يكتب `expires_at` مرّةً، و`Archives::prune` تحذف ما مضى.
+     * فلو حَسَبَ كلٌّ منهما المدّةَ بنفسه لَبقي في القاعدة صفٌّ كُتب بمدّةٍ
+     * وحُذف بأخرى. والمدّةُ سؤالٌ واحد: كم يعيش هذا الملفّ.
+     *
+     * و`NoOverflow` في الشهريّ: ٣١ يناير + شهر = ٣ مارس بلا هذا القيد،
+     * فيعيش الملفُّ يومين زائدين. والأسبوعُ سبعةٌ دائمًا فلا يتدحرج.
+     */
+    public static function expiresAt(Period $period, ?Carbon $now = null): ?Carbon
+    {
+        $at = ($now ?? Carbon::now())->copy();
+
+        if ($period->type === Period::WEEKLY) {
+            $weeks = self::retentionWeeks();
+
+            return $weeks > 0 ? $at->addWeeks($weeks) : null;
+        }
+
+        $months = self::retentionMonths();
+
+        return $months > 0 ? $at->addMonthsNoOverflow($months) : null;
     }
 
     /** صفرٌ يعني «بلا حدّ» — ولا يُحذف شيء */

@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, Clock, Gift, MapPin, Phone, StickyNote, Store, Truck, User } from 'lucide-react';
+import { AlertTriangle, Clock, Gift, MapPin, Phone, Printer, StickyNote, Store, Truck, User } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Tabs, { type TabItem } from '@/Components/Tabs';
@@ -310,20 +310,42 @@ export default function PreparationIndex() {
                                 </div>
                             )}
 
-                            {o.next.length > 0 && (
-                                <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
-                                    {o.next.map((s) => (
-                                        <Button
-                                            key={s}
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => move(o.number, s)}
-                                        >
-                                            {t(s)}
-                                        </Button>
-                                    ))}
-                                </div>
-                            )}
+                            <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
+                                {/*
+                                    سندُ التسليم — الورقةُ التي تمشي مع الشحنة.
+
+                                    كانت اللوحةُ تنقل الطلبَ إلى «خرج للتوصيل»
+                                    ولا تطبع شيئًا، ولا رابطَ يخرج من البطاقة.
+                                    ومسارُها هنا `preparation.*` فيتبع قسمَ من
+                                    يجهّز — وصفحةُ الطلب داخل «المبيعات» كانت
+                                    تردّه بـ٤٠٣.
+
+                                    وفي لسانٍ جديد: الورقةُ PDF تُفتح في تبويبٍ
+                                    آخر، فلا تُغادر اللوحةُ مكانَها ولا يضيع
+                                    المرشّحُ الذي يقف عليه.
+                                */}
+                                <Button variant="outline" size="sm" asChild>
+                                    <a
+                                        href={route('admin.preparation.deliveryNote', o.number)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                    >
+                                        <Printer className="size-3.5" />
+                                        {t('سند تسليم')}
+                                    </a>
+                                </Button>
+
+                                {o.next.map((s) => (
+                                    <Button
+                                        key={s}
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => move(o.number, s)}
+                                    >
+                                        {t(s)}
+                                    </Button>
+                                ))}
+                            </div>
                         </Card>
                     ))}
                 </div>

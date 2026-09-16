@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Support\Activity;
+use App\Support\DeliveryPaper;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\OrderStatus;
@@ -253,6 +254,40 @@ class PreparationController extends Controller
      * حارسٌ ثانٍ لَافترق عن أخيه عند أول تعديل، فأجاز أحدهما ما يمنعه الآخر
      * — والعامل يستطيع من لوحته ما لا يستطيعه صاحبُ المحلّ من شاشته.
      */
+    /**
+     * سندُ التسليم من اللوحة — الورقةُ التي تمشي مع الشحنة.
+     *
+     * ═══ العطب ═══
+     *
+     * اللوحةُ تنقل الطلبَ إلى «خرج للتوصيل» ولا تطبع شيئًا، ولا رابطَ واحدٌ
+     * يخرج من بطاقتها. والورقةُ موجودةٌ وجاهزة — لكنّ بابَها الوحيد كان في
+     * صفحة الطلب داخل «المبيعات».
+     *
+     * ومسارُ تلك الصفحة يُشتقّ منه قسمُ `orders`، فمن يجهّز يُردّ عنه بـ٤٠٣.
+     * قِسناه: يفتح لوحتَه ٢٠٠، ويطبع السندَ ٤٠٣. فيطبعها صاحبُ المحلّ بيده
+     * لكلّ طلب، أو يمنح المجهِّزَ «المبيعات» — فيفتح له الفواتيرَ
+     * والإجماليّاتِ وأرباحَ المحلّ، وهي عينُ ما فُصل قسمُ التجهيز ليمنعه.
+     *
+     * ═══ ولمَ يتبع `preparation` لا `orders` ═══
+     *
+     * القسمُ يُشتقّ من اسم المسار، واسمُه هنا `admin.preparation.*` — فالبابُ
+     * بابُ من يجهّز. وليس في الورقة ما يُخفى عنه: قالبُ `delivery` يُطفئ
+     * الأسعار افتراضًا، وما فيها هو ما يراه على بطاقته أصلًا — الأصنافُ
+     * والمستلِمُ وعنوانُه وموعدُه. وهو الذي يضعها في الصندوق.
+     *
+     * ═══ والحصرُ حصرُ اللوحة نفسِها ═══
+     *
+     * `base()` لا `Order::where(...)`: متجرُه، وفرعُه المختار، وما لم يُغلق
+     * بعدُ. فلا يطبع سندَ طلبٍ ليس على لوحته — ولا سندَ طلبٍ سُلّم وأُغلق.
+     * و«خرج للتوصيل» ليست من `CLOSED`، فالورقةُ تبقى في متناوله بعد الضغطة.
+     */
+    public function deliveryNote(string $number)
+    {
+        $order = $this->base()->where('number', $number)->with('items')->firstOrFail();
+
+        return DeliveryPaper::pdf($this->bid(), $order);
+    }
+
     public function move(Request $request, string $number)
     {
         $data = $request->validate([

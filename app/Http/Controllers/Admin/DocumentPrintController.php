@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\PurchaseOrder;
 use App\Models\SupplierInvoice;
 use App\Support\Activity;
+use App\Support\DeliveryPaper;
 use App\Support\Demo;
 use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
@@ -38,19 +39,8 @@ class DocumentPrintController extends Controller
         $order = Order::where('business_id', $bid)->where('number', $number)
             ->with('items')->firstOrFail();
 
-        Activity::log('report', 'طبع سند تسليم للطلب: '.$order->number, ['subject_id' => $order->id]);
-
-        /*
-         * والطلبُ يُمرَّر لا بيانُه وحده: منه يُبنى رمزُ الورقة أونلاين.
-         *
-         * سندُ التسليم يمشي مع الشحنة إلى يد المستلِم، فيحمل أسفلَه طريقَه
-         * إلى نسخةٍ لا تبهت ولا تُبلَّل.
-         */
-        return DocumentRenderer::pdf(
-            DocumentRenderer::generic($bid, 'delivery', DocumentPaper::forDelivery($order), null, $order),
-            'delivery-'.$order->number,
-            __('سند تسليم').' '.$order->number,
-        );
+        // والورقةُ تُبنى في موضعٍ واحد تقرؤه لوحةُ التجهيز كذلك — انظر `DeliveryPaper`
+        return DeliveryPaper::pdf($bid, $order);
     }
 
     public function purchase(int $id)

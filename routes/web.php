@@ -467,6 +467,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/preparation', [PreparationController::class, 'index'])->name('preparation.index');
     Route::post('/preparation/{number}/move', [PreparationController::class, 'move'])->name('preparation.move');
+    /*
+     * وسندُ التسليم يُطبع من اللوحة — ورقةٌ بلا أسعار يضعها المجهِّزُ في
+     * الصندوق. واسمُه `preparation.*` فيتبع قسمَها لا «المبيعات»؛ ونسختُه
+     * في صفحة الطلب (`orders.deliveryNote`) تبقى كما هي، والورقةُ تُبنى
+     * لهما في موضعٍ واحد — انظر `App\Support\DeliveryPaper`.
+     */
+    Route::get('/preparation/{number}/delivery-note', [PreparationController::class, 'deliveryNote'])
+        ->name('preparation.deliveryNote');
 
     // الفروع
     Route::get('/branches', [PageController::class, 'branchesIndex'])->name('branches.index');

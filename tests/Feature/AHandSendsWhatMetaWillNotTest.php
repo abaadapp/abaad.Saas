@@ -39,6 +39,9 @@ class AHandSendsWhatMetaWillNotTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** عدّادُ أرقام الطلبات — يتسلسل ولا يتصادم */
+    private static int $sequence = 0;
+
     private Business $business;
 
     private User $owner;
@@ -72,7 +75,17 @@ class AHandSendsWhatMetaWillNotTest extends TestCase
             'business_id' => $this->business->id,
             'branch_id' => Branch::where('business_id', $this->business->id)->value('id'),
             'customer_id' => $this->customer->id,
-            'number' => 'INV-000'.rand(100, 999),
+            /*
+             * ورقمٌ يتسلسل لا يُقرَع — الطلباتُ تتفرّد بأرقامها في متجرها.
+             *
+             * كان `'INV-000'.rand(100, 999)`: تسعُمئة قيمةٍ يُسحب منها مرارًا
+             * في الملفّ الواحد، فيقع التصادمُ ويسقط الاختبارُ بانتهاك التفرّد
+             * — لا لعطبٍ في المنتج بل لقرعة. سقطت بها CI على بصمةٍ لا تمسّها.
+             *
+             * وسقوطٌ عشوائيّ أسوأ من سقوطٍ ثابت: يُقرأ عطبًا في تغييرٍ بريء،
+             * أو — وهو أسوأ — يُعتاد فيُتجاهَل يومَ يصدق.
+             */
+            'number' => sprintf('INV-%06d', ++self::$sequence),
             'status' => $status,
             'is_held' => false,
             'payment_method' => 'نقدي',

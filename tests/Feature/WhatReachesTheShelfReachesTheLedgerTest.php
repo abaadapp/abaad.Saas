@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Expense;
+use App\Models\GoodsReceiptNote;
 use App\Models\InventoryMovement;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
@@ -332,6 +333,33 @@ class WhatReachesTheShelfReachesTheLedgerTest extends TestCase
         $this->receive($this->order());
         $this->forget();
         $this->assertSame(0.0, $this->balance('inventory'));
+
+        $this->artisan('finance:post-missing-goods-receipts')->assertExitCode(0);
+
+        $this->assertSame(30.0, $this->balance('inventory'));
+        $this->assertSame(-30.0, $this->balance('goods_received_not_invoiced'));
+    }
+
+    /**
+     * وأمرٌ استُلم قبل أن يوجد «إذنُ الاستلام» ورقةً يُستدرك كذلك.
+     *
+     * ═══ وهذا ما أسقط أمري الأوّل ═══
+     *
+     * كان يقيس من أوراق الاستلام. وأوامرُ ما قبل هجرة
+     * `goods_receipt_notes` استُلمت بلا ورقة: بضاعتُها على الرفّ،
+     * و`received_quantity` يشهد، ولا إشعارَ يُجمع. فقال الأمرُ على الإنتاج
+     * «١٠٫٦٥٤ ر.ع» والحقيقةُ ٢٦٠٫٦٥٤ — أمرٌ واحدٌ قديمٌ يحمل ٢٥٠ منها.
+     *
+     * فصار القياسُ من بنود الأمر: `received_quantity` لا يتحرّك إلّا
+     * باعتماد استلام، فهو يشهد لما وصل بورقةٍ ولما وصل بغيرها.
+     */
+    public function test_an_order_received_before_receipt_papers_existed_is_caught(): void
+    {
+        $po = $this->order();
+        // ما يفعله الاستلامُ القديم: يرفع المستلَم ولا يترك ورقةً ولا قيدًا
+        $po->items()->first()->update(['received_quantity' => 5]);
+
+        $this->assertSame(0, GoodsReceiptNote::where('purchase_order_id', $po->id)->count());
 
         $this->artisan('finance:post-missing-goods-receipts')->assertExitCode(0);
 

@@ -3,13 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\Business;
-use App\Models\GoodsReceiptNote;
 use App\Models\PurchaseOrder;
-use App\Models\SupplierInvoice;
 use App\Support\GoodsReceipts;
 use App\Support\Ledger;
-use App\Support\SupplierInvoices;
-use App\Support\Vat;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -138,9 +134,11 @@ class PostMissingGoodsReceipts extends Command
     }
 
     /**
-     * أوامرُ الشراء التي فيها إشعارُ استلامٍ معتمَدٌ بلا قيد.
+     * أوامرُ الشراء التي وصلت بضاعتُها — وحدَها.
      *
-     * والاستدراكُ يُستثنى بنفسه: أمرٌ كُتب له قيدُ استدراكٍ قبلُ لا يُعاد.
+     * ولا شرطَ ثانٍ يمنع التكرار: القياسُ نفسُه يمنعه. أمرٌ استُدرك قبلُ
+     * صار مُعترَفًا به في الدفتر، ففجوتُه صفرٌ ولا يُلمس — انظر `gap`.
+     * وحارسٌ ثانٍ لسؤالٍ واحد يفترق عنه يومَ يُبدَّل أحدُهما.
      *
      * @return Collection<int, PurchaseOrder>
      */
@@ -148,41 +146,32 @@ class PostMissingGoodsReceipts extends Command
     {
         return PurchaseOrder::where('business_id', $businessId)
             ->whereExists(function ($q) {
-                $q->selectRaw('1')->from('goods_receipt_notes as n')
-                    ->whereColumn('n.purchase_order_id', 'purchase_orders.id')
-                    ->where('n.status', GoodsReceipts::APPROVED)
-                    ->whereNotExists(function ($e) {
-                        $e->selectRaw('1')->from('journal_entries as j')
-                            ->whereColumn('j.sourceable_id', 'n.id')
-                            ->where('j.sourceable_type', GoodsReceiptNote::class);
-                    });
-            })
-            ->whereNotExists(function ($q) {
-                $q->selectRaw('1')->from('journal_entries as j')
-                    ->whereColumn('j.sourceable_id', 'purchase_orders.id')
-                    ->where('j.sourceable_type', PurchaseOrder::class)
-                    ->where('j.source', self::SOURCE);
+                $q->selectRaw('1')->from('purchase_order_items as i')
+                    ->whereColumn('i.purchase_order_id', 'purchase_orders.id')
+                    ->whereNotNull('i.product_id')
+                    ->where('i.received_quantity', '>', 0);
             })
             ->orderBy('id')->get();
     }
 
-    /** ما دخل الرفَّ بلا قيد، ناقصًا ما فُوتر من الأمر — وصفرٌ يعني أنّ الدفتر يعرفه */
+    /**
+     * ما وصل ولم يعترف به الدفتر — وصفرٌ أو أقلُّ يعني أنّه يعرفه.
+     *
+     * ═══ ولمَ يُقاس المُعترَفُ به من الدفتر لا من السندات ═══
+     *
+     * كان: «ما وصل ناقصًا ما فُوتر». وهو يفترض أنّ كلَّ سندٍ قُيّد مخزونًا،
+     * وأنّ كلَّ استلامٍ لم يُفوتر لم يُقيَّد. والفرضان يسقطان معًا: سندٌ بلا
+     * أمرٍ لا يُنسب، واستلامٌ استُدرك أمسِ يُستدرك اليوم ثانيةً.
+     *
+     * والدفترُ يقول الجواب بلا فرض: كم قُيّد مخزونًا لهذا الأمر من أيّ باب.
+     */
     private function gap(PurchaseOrder $po): float
     {
-        $shelved = GoodsReceipts::shelvedValue((int) $po->id);
-        $registered = Vat::enabled((int) $po->business_id);
-
-        $invoiced = 0.0;
-
-        foreach (SupplierInvoice::where('purchase_order_id', $po->id)
-            ->where('approval_status', SupplierInvoices::APPROVED)
-            ->get(['total', 'tax']) as $row) {
-            $invoiced += $registered
-                ? (float) $row->total - (float) $row->tax
-                : (float) $row->total;
-        }
-
-        return round($shelved - $invoiced, 3);
+        return round(
+            GoodsReceipts::receivedOnOrder((int) $po->id)
+            - GoodsReceipts::recognizedStock((int) $po->business_id, (int) $po->id),
+            3,
+        );
     }
 
     /** تاريخُ آخر استلامٍ معتمَدٍ على الأمر — وإلّا فاليوم */

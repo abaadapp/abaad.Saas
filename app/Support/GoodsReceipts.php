@@ -337,34 +337,6 @@ final class GoodsReceipts
     }
 
     /**
-     * قيمةُ ما دخل الرفَّ من أمرٍ باستلاماتٍ معتمَدة — وهي المبلغُ المُقيَّد.
-     *
-     * ═══ ولمَ ليست `SupplierInvoices::receivedValue` ═══
-     *
-     * تلك تقيس **الورقةَ كلَّها** لأنّ المطابقة الثلاثيّة تسأل: بكم طُولبنا
-     * مقابل ما وصل؟ فتدخلها بنودُ ما لا صنفَ له — خدمةٌ، أو صنفٌ خارج
-     * الكتالوج — لأنّ المورّد يُطالب بها.
-     *
-     * وهذه تقيس ما **قُيّد** في الدفتر، وهو ما دخل رفًّا وحدَه: بندٌ بلا
-     * صنفٍ لا يُنادى له `shelve` فلا يُقيَّد مخزونًا ولا يُقيَّد دائنًا في
-     * الخصم الوسيط. ولو سُدِّد الخصمُ بقيمة الورقة كلّها لَنزل تحت الصفر.
-     *
-     * فسؤالان مختلفان لا سؤالٌ واحد في موضعين — ولكلٍّ اسمُه.
-     */
-    public static function shelvedValue(int $purchaseOrderId): float
-    {
-        $value = (float) DB::table('goods_receipt_note_items as i')
-            ->join('goods_receipt_notes as n', 'n.id', '=', 'i.goods_receipt_note_id')
-            ->where('n.purchase_order_id', $purchaseOrderId)
-            ->where('n.status', self::APPROVED)
-            ->whereNotNull('i.product_id')
-            ->selectRaw('coalesce(sum(i.quantity * i.cost), 0) as v')
-            ->value('v');
-
-        return round($value, 3);
-    }
-
-    /**
      * ما تبقّى من هذا الأمر في الخصم الوسيط — مقروءًا من الدفتر لا مُقدَّرًا.
      *
      * ═══ ولمَ لا يُحسب من الجداول ═══
@@ -384,10 +356,68 @@ final class GoodsReceipts
      */
     public static function holdingBalance(int $businessId, int $purchaseOrderId): float
     {
-        $account = Ledger::account($businessId, 'goods_received_not_invoiced');
+        [$debit, $credit] = self::ledgerSums($businessId, $purchaseOrderId, 'goods_received_not_invoiced');
+
+        return round($credit - $debit, 3);
+    }
+
+    /**
+     * كم من هذا الأمر اعترف به الدفترُ أصلًا — مهما كان الطريق.
+     *
+     * قيدُ استلامٍ، أو سندُ مورّدٍ قُيّد بالشفرة القديمة، أو استدراكٌ سابق:
+     * ثلاثتُها تُقيّد المخزونَ مدينًا، وثلاثتُها تُقرأ هنا. فمن قاس بها لا
+     * يحتاج أن يعرف متى نُشر الإصلاح ولا أيَّ بابٍ سلكت البضاعة — والاستدراكُ
+     * يصير غيرَ قابلٍ للتكرار بطبعه لا بحارسٍ ثانٍ يُنسى.
+     */
+    public static function recognizedStock(int $businessId, int $purchaseOrderId): float
+    {
+        [$debit, $credit] = self::ledgerSums($businessId, $purchaseOrderId, 'inventory');
+
+        return round($debit - $credit, 3);
+    }
+
+    /**
+     * قيمةُ ما وصل على الأمر — من بنوده لا من أوراق استلامه.
+     *
+     * ═══ ولمَ من البنود ═══
+     *
+     * `received_quantity` لا يتحرّك إلّا باعتماد استلام، فهو مجموعُ ما وصل
+     * مهما تعدّدت الأوراق. وهو **أوسع** من جمع أوراق الاستلام: أوامرُ ما
+     * قبل هجرة `goods_receipt_notes` استُلمت بلا ورقةٍ أصلًا — فجمعُ الأوراق
+     * يقول عنها صفرًا وقد وصلت بضاعتُها ودخلت الرفّ. وقيس على الإنتاج:
+     * أمرٌ واحدٌ من هذا النوع يحمل وحدَه ٢٥٠ ر.ع.
+     *
+     * وبندٌ بلا صنفٍ لا يُحسب: لم يدخل رفًّا فلا يُقيَّد — كما في `approve`.
+     */
+    public static function receivedOnOrder(int $purchaseOrderId): float
+    {
+        $value = (float) DB::table('purchase_order_items')
+            ->where('purchase_order_id', $purchaseOrderId)
+            ->whereNotNull('product_id')
+            ->selectRaw('coalesce(sum(received_quantity * cost), 0) as v')
+            ->value('v');
+
+        return round($value, 3);
+    }
+
+    /**
+     * مجموعا المدين والدائن على حسابٍ، من أوراق هذا الأمر وحدها.
+     *
+     * والأوراقُ ثلاث: إشعاراتُ استلامه، وسنداتُ مورّده المعلّقةُ به، وقيدُ
+     * الاستدراك المعلَّق على الأمر نفسه. وما عداها لا يخصّه.
+     *
+     * وموضعٌ واحد يحدّد النطاق: `holdingBalance` و`recognizedStock` يسألان
+     * عن حسابين ونطاقُهما واحد — ولو كُتب مرّتين لافترقا يومَ يُضاف بابٌ
+     * رابع.
+     *
+     * @return array{0: float, 1: float} [المدين، الدائن]
+     */
+    private static function ledgerSums(int $businessId, int $purchaseOrderId, string $accountKey): array
+    {
+        $account = Ledger::account($businessId, $accountKey);
 
         if (! $account) {
-            return 0.0;
+            return [0.0, 0.0];
         }
 
         $notes = GoodsReceiptNote::where('purchase_order_id', $purchaseOrderId)->pluck('id');
@@ -405,10 +435,10 @@ final class GoodsReceipts
                     ->orWhere(fn ($x) => $x->where('j.sourceable_type', PurchaseOrder::class)
                         ->where('j.sourceable_id', $purchaseOrderId));
             })
-            ->selectRaw('coalesce(sum(l.credit),0) as c, coalesce(sum(l.debit),0) as d')
+            ->selectRaw('coalesce(sum(l.debit),0) as d, coalesce(sum(l.credit),0) as c')
             ->first();
 
-        return round((float) ($row->c ?? 0) - (float) ($row->d ?? 0), 3);
+        return [(float) ($row->d ?? 0), (float) ($row->c ?? 0)];
     }
 
     /**

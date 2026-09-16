@@ -29,15 +29,15 @@ const buttonVariants = cva(
              *
              * ٣٢ بكسل مقاسٌ للفأرة لا لليد: زرُّ حذفٍ أو تعديلٍ بهذا الحجم
              * يُخطئه الإصبع أو يضغط جارَه — وفي صفٍّ من الجداول يعني ذلك
-             * حذفَ الصفّ الخطأ. و`pointer-coarse` تخصّ اللمس وحده، فلا
+             * حذفَ الصفّ الخطأ. و`touch:` تخصّ اللمس وحده، فلا
              * يتغيّر شيءٌ على شاشةٍ بفأرة.
              */
             size: {
-                sm: 'h-8 px-3 text-[13px] pointer-coarse:h-11 pointer-coarse:px-4 [&_svg]:size-4',
-                md: 'h-10 px-4 text-sm pointer-coarse:h-11 [&_svg]:size-[18px]',
+                sm: 'h-8 px-3 text-[13px] touch:h-11 touch:px-4 [&_svg]:size-4',
+                md: 'h-10 px-4 text-sm touch:h-11 [&_svg]:size-[18px]',
                 lg: 'h-12 px-6 text-[15px] [&_svg]:size-5',
-                icon: 'h-10 w-10 pointer-coarse:size-11 [&_svg]:size-[18px]',
-                'icon-sm': 'h-8 w-8 pointer-coarse:size-11 [&_svg]:size-4',
+                icon: 'h-10 w-10 touch:size-11 [&_svg]:size-[18px]',
+                'icon-sm': 'h-8 w-8 touch:size-11 [&_svg]:size-4',
             },
         },
         defaultVariants: {

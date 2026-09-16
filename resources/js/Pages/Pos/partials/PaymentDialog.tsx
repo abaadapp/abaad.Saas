@@ -345,7 +345,7 @@ export default function PaymentDialog({
                                 value={paid}
                                 onChange={(e) => setPaid(e.target.value)}
                                 placeholder="0.000"
-                                className="h-12 text-lg font-bold pointer-coarse:h-14"
+                                className="h-12 text-lg font-bold touch:h-14"
                             />
                         </div>
 
@@ -376,7 +376,7 @@ export default function PaymentDialog({
                                             type="button"
                                             onClick={() => { setMethod(m.value); setMethodError(false); }}
                                             className={cn(
-                                                'flex flex-col items-center gap-1 rounded-full border py-2.5 text-xs font-medium transition-colors pointer-coarse:py-3.5',
+                                                'flex flex-col items-center gap-1 rounded-full border py-2.5 text-xs font-medium transition-colors touch:py-3.5',
                                                 active
                                                     ? 'border-[#111] bg-gray-100 text-[#111]'
                                                     : 'border-gray-200 text-gray-600 hover:bg-gray-50',
@@ -652,7 +652,7 @@ export default function PaymentDialog({
 
                     {/* زرّ الدفع خارج المجرى: لا يُمرَّر بعيدًا مهما طال ما فوقه */}
                     <div className="shrink-0 border-t border-gray-100 px-5 pb-5 pt-4">
-                        <Button variant="success" size="lg" className="w-full rounded-full pointer-coarse:h-14 pointer-coarse:text-base" disabled={busy} onClick={confirm}>
+                        <Button variant="success" size="lg" className="w-full rounded-full touch:h-14 touch:text-base" disabled={busy} onClick={confirm}>
                             {busy ? '…' : t('تأكيد الدفع')}
                         </Button>
                     </div>

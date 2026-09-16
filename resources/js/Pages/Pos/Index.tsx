@@ -232,7 +232,7 @@ export default function PosIndex() {
                                 autoCorrect="off"
                                 autoCapitalize="off"
                                 spellCheck={false}
-                                className="ps-9 pointer-coarse:h-12"
+                                className="ps-9 touch:h-12"
                             />
                         </div>
                         <div className="flex gap-2">
@@ -254,7 +254,7 @@ export default function PosIndex() {
                                     autoCorrect="off"
                                     autoCapitalize="off"
                                     spellCheck={false}
-                                    className="ps-9 pointer-coarse:h-12"
+                                    className="ps-9 touch:h-12"
                                 />
                             </div>
                             {/* تركيز الحقل ليبدأ الماسح الإدخال — الماسح يعمل كلوحة مفاتيح ثم Enter */}
@@ -287,7 +287,7 @@ export default function PosIndex() {
                                 type="button"
                                 onClick={() => setCat(c.value)}
                                 className={cn(
-                                    'whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors pointer-coarse:px-5 pointer-coarse:py-2.5',
+                                    'whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors touch:px-5 touch:py-2.5',
                                     cat === c.value
                                         ? 'bg-gray-900 text-white shadow-sm'
                                         : 'border border-gray-100 bg-white text-gray-600 hover:bg-gray-50',
@@ -518,7 +518,7 @@ export default function PosIndex() {
                                                 <button
                                                     type="button"
                                                     onClick={() => cart.remove(item.key)}
-                                                    className="flex size-7 shrink-0 items-center justify-center rounded-full text-[#ef4444] transition-colors hover:bg-[#fef2f2] pointer-coarse:size-10"
+                                                    className="flex size-7 shrink-0 items-center justify-center rounded-full text-[#ef4444] transition-colors hover:bg-[#fef2f2] touch:size-10"
                                                 >
                                                     <Trash2 className="size-4" />
                                                 </button>
@@ -528,11 +528,11 @@ export default function PosIndex() {
                                                 <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white">
                                                     {/* ٤٤ بكسل هو مقاس الإصبع — و٢٨ كانت تُنقص الكميّة
                                                         بدل أن تزيدها حين تنزلق الضغطة */}
-                                                    <button type="button" onClick={() => cart.dec(item.key)} className="flex size-7 items-center justify-center text-gray-500 hover:text-gray-900 pointer-coarse:size-11">
+                                                    <button type="button" onClick={() => cart.dec(item.key)} className="flex size-7 items-center justify-center text-gray-500 hover:text-gray-900 touch:size-11">
                                                         <Minus className="size-4" />
                                                     </button>
-                                                    <span className="w-7 text-center text-sm font-bold text-gray-800 pointer-coarse:w-9 pointer-coarse:text-base">{item.qty}</span>
-                                                    <button type="button" onClick={() => cart.inc(item.key)} className="flex size-7 items-center justify-center text-gray-500 hover:text-gray-900 pointer-coarse:size-11">
+                                                    <span className="w-7 text-center text-sm font-bold text-gray-800 touch:w-9 touch:text-base">{item.qty}</span>
+                                                    <button type="button" onClick={() => cart.inc(item.key)} className="flex size-7 items-center justify-center text-gray-500 hover:text-gray-900 touch:size-11">
                                                         <Plus className="size-4" />
                                                     </button>
                                                 </div>
@@ -550,7 +550,7 @@ export default function PosIndex() {
                                                 value={item.note}
                                                 onChange={(e) => cart.setNote(item.key, e.target.value)}
                                                 placeholder={t('ملاحظة…')}
-                                                className="mt-2 h-8 text-xs pointer-coarse:h-11"
+                                                className="mt-2 h-8 text-xs touch:h-11"
                                             />
                                         </motion.div>
                                     ))}
@@ -584,7 +584,7 @@ export default function PosIndex() {
                                                 autoCorrect="off"
                                                 autoCapitalize="characters"
                                                 enterKeyHint="done"
-                                                className="h-9 ps-8 uppercase pointer-coarse:h-12"
+                                                className="h-9 ps-8 uppercase touch:h-12"
                                             />
                                         </div>
                                         <Button
@@ -731,7 +731,7 @@ export default function PosIndex() {
                                 type="button"
                                 disabled={cart.items.length === 0}
                                 onClick={() => void cart.holdOrder('hold')}
-                                className="flex flex-col items-center gap-1 rounded-full bg-[#fffbeb] py-2 text-xs font-medium text-[#d97706] transition-colors hover:bg-[#fef3c7] disabled:opacity-40 pointer-coarse:py-3"
+                                className="flex flex-col items-center gap-1 rounded-full bg-[#fffbeb] py-2 text-xs font-medium text-[#d97706] transition-colors hover:bg-[#fef3c7] disabled:opacity-40 touch:py-3"
                             >
                                 <PauseCircle className="size-5" /> {t('تعليق')}
                             </button>
@@ -739,7 +739,7 @@ export default function PosIndex() {
                                 type="button"
                                 disabled={cart.items.length === 0}
                                 onClick={cart.clear}
-                                className="flex flex-col items-center gap-1 rounded-full bg-[#fef2f2] py-2 text-xs font-medium text-[#dc2626] transition-colors hover:bg-[#fee2e2] disabled:opacity-40 pointer-coarse:py-3"
+                                className="flex flex-col items-center gap-1 rounded-full bg-[#fef2f2] py-2 text-xs font-medium text-[#dc2626] transition-colors hover:bg-[#fee2e2] disabled:opacity-40 touch:py-3"
                             >
                                 <Trash2 className="size-5" /> {t('إلغاء')}
                             </button>
@@ -747,7 +747,7 @@ export default function PosIndex() {
                                 type="button"
                                 disabled={cart.items.length === 0}
                                 onClick={() => void cart.holdOrder('save')}
-                                className="flex flex-col items-center gap-1 rounded-full bg-gray-100 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-200 disabled:opacity-40 pointer-coarse:py-3"
+                                className="flex flex-col items-center gap-1 rounded-full bg-gray-100 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-200 disabled:opacity-40 touch:py-3"
                             >
                                 <Save className="size-5" /> {t('حفظ')}
                             </button>

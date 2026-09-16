@@ -101,7 +101,7 @@ export default function ComboBox({
                     window.setTimeout(() => search.current?.focus(), 0);
                 }}
                 className={cn(
-                    'flex h-10 w-full items-center justify-between gap-2 rounded-[10px] pointer-coarse:h-11',
+                    'flex h-10 w-full items-center justify-between gap-2 rounded-[10px] touch:h-11',
                     'border border-[var(--ui-border,#e8e8e8)] bg-white px-3 text-start text-sm text-[#111]',
                     'transition-[border-color,box-shadow] outline-none',
                     'focus:border-[#d1d5db] focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)]',

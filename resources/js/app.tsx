@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import type { ComponentType } from 'react';
 import ErrorBoundary from '@/Components/ErrorBoundary';
 import { enterEndsTypingOnTouch } from '@/lib/enter-key';
+import { markTouchDevice } from '@/lib/touch';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Abad POS';
 
@@ -48,6 +49,15 @@ createInertiaApp({
     setup({ el, App, props }) {
         if (el) {
             syncDirection(props.initialPage.props as Record<string, unknown>);
+            /*
+             * وقبل أوّل رسم: هل الأصبعُ على الزجاج؟
+             *
+             * السمةُ يقرؤها المحوّل `touch:` في `app.css` فتُكبّر الأزرارَ
+             * والحقول إلى ما يبلغه الإبهام. وتُكتب هنا لا في `useEffect`:
+             * لو تأخّرت لَرُسمت أزرارُ نقطة البيع بمقاسِ سطح المكتب ثمّ
+             * قفزت تحت إصبع الكاشير وهو يمدّها.
+             */
+            markTouchDevice();
             // مرّةً واحدة على المستند — يبقى عبر تنقّلات Inertia كلّها
             enterEndsTypingOnTouch();
             // وكل تنقّل أو تبديل لغة بعدها

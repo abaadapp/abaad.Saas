@@ -12,9 +12,49 @@ import { enterEndsTypingOnTouch } from '@/lib/enter-key';
  * لمسيّ، وأربعةُ استثناءات — وقراءةُ `if` في ملفّ لا تُثبت أيًّا منها.
  */
 describe('Enter تُنهي الكتابة على الأجهزة اللمسية', () => {
-    /** جهازٌ لمسيّ أو غيرُه — الشرطُ الأوّل في الدالّة */
-    const device = (touch: boolean) => {
-        window.matchMedia = vi.fn().mockReturnValue({ matches: touch }) as never;
+    interface Device {
+        /** ما يردّه استعلامُ `(hover: none) and (pointer: coarse)` */
+        coarse: boolean;
+        touchPoints: number;
+        ua: string;
+    }
+
+    const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15';
+
+    /** هاتفٌ يقول ما هو: استعلامٌ صادقٌ ولمسٌ ظاهر */
+    const PHONE: Device = {
+        coarse: true,
+        touchPoints: 5,
+        ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1',
+    };
+
+    /**
+     * والآيباد يقول إنّه حاسوب.
+     *
+     * «عرض كموقع حاسوب» هو الافتراض عليه منذ iPadOS 13: وكيلُ المستخدم
+     * يصير وكيلَ ماك، والاستعلامُ يردّ `hover: hover` و`pointer: fine`.
+     * ولا يبقى ممّا يفضحه إلّا `maxTouchPoints`.
+     */
+    const IPAD: Device = { coarse: false, touchPoints: 5, ua: MAC };
+
+    /** وحاسوبُ ماك حقيقيّ: وكيلٌ مثلُه ولا لمسَ فيه */
+    const DESKTOP: Device = { coarse: false, touchPoints: 0, ua: MAC };
+
+    /**
+     * وحاسوبٌ محمولٌ بشاشةٍ لمسيّة — لمسٌ ظاهرٌ وتحته لوحةُ مفاتيحَ حقيقيّة.
+     *
+     * لا يُمسّ: لا لوحةَ تنغلق، ومنعُ Enter فيه إزعاجٌ لا حماية.
+     */
+    const TOUCH_LAPTOP: Device = {
+        coarse: false,
+        touchPoints: 10,
+        ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+    };
+
+    const device = (d: Device) => {
+        window.matchMedia = vi.fn().mockReturnValue({ matches: d.coarse }) as never;
+        Object.defineProperty(navigator, 'maxTouchPoints', { value: d.touchPoints, configurable: true });
+        Object.defineProperty(navigator, 'userAgent', { value: d.ua, configurable: true });
     };
 
     /** حقلٌ في الصفحة، وفي نموذجٍ إن طُلب */
@@ -81,10 +121,22 @@ describe('Enter تُنهي الكتابة على الأجهزة اللمسية',
 
     afterEach(() => {
         attached.forEach(([type, handler]) => document.removeEventListener(type, handler));
+
+        /*
+         * وصفاتُ المتصفّح تُنزع لا تُعاد بقيمةٍ مكتوبة.
+         *
+         * `restoreMocks` تُعيد ما صنعته `vi.spyOn` ولا تعرف شيئًا عن
+         * خاصيّةٍ كُتبت فوق `navigator`. وكتابةُ قيمةٍ «أصليّة» باليد
+         * تجعل بيئةَ الاختبار تدّعي جهازًا لم يُشغّلها — فتُحذف الخاصيّةُ
+         * المكتوبة ويعود ما في jsdom.
+         */
+        const browser = navigator as unknown as Record<string, unknown>;
+        delete browser.maxTouchPoints;
+        delete browser.userAgent;
     });
 
     it('تُغلق اللوحة في حقلٍ لا نموذجَ له', () => {
-        device(true);
+        device(PHONE);
         enterEndsTypingOnTouch();
 
         const el = field();
@@ -96,7 +148,7 @@ describe('Enter تُنهي الكتابة على الأجهزة اللمسية',
     });
 
     it('تُغلق اللوحة في حقلٍ داخل نموذج — ولا تُرسله', () => {
-        device(true);
+        device(PHONE);
         enterEndsTypingOnTouch();
 
         const el = field({ form: 'plain' });
@@ -106,8 +158,20 @@ describe('Enter تُنهي الكتابة على الأجهزة اللمسية',
         expect(event.defaultPrevented).toBe(true);
     });
 
+    it('وعلى آيبادٍ يقول إنّه حاسوب تُغلقها كذلك — ولا تقفز إلى الحقل التالي', () => {
+        device(IPAD);
+        enterEndsTypingOnTouch();
+
+        const el = field({ form: 'plain' });
+        const event = press(el);
+
+        // القفزةُ فعلُ المتصفّح الافتراضيُّ على Enter: مُنِعت فلم تقع
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.activeElement).not.toBe(el);
+    });
+
     it('ولا تمسّ نموذجًا أذِن لها أن ترسله', () => {
-        device(true);
+        device(PHONE);
         enterEndsTypingOnTouch();
 
         const el = field({ form: 'submits' });
@@ -118,7 +182,7 @@ describe('Enter تُنهي الكتابة على الأجهزة اللمسية',
     });
 
     it('ولا تمسّ حقلًا استهلك المفتاحَ قبلها — ماسحُ الباركود', () => {
-        device(true);
+        device(PHONE);
         enterEndsTypingOnTouch();
 
         const el = field();
@@ -129,7 +193,7 @@ describe('Enter تُنهي الكتابة على الأجهزة اللمسية',
     });
 
     it('ولا تمسّ منطقةَ نصٍّ — Enter فيها سطرٌ جديد', () => {
-        device(true);
+        device(PHONE);
         enterEndsTypingOnTouch();
 
         const el = field({ tag: 'textarea' });
@@ -140,7 +204,7 @@ describe('Enter تُنهي الكتابة على الأجهزة اللمسية',
     });
 
     it('ولا تمسّ زرًّا — Enter عليه تضغطه', () => {
-        device(true);
+        device(PHONE);
         enterEndsTypingOnTouch();
 
         const el = field({ form: 'plain', type: 'submit' });
@@ -150,7 +214,18 @@ describe('Enter تُنهي الكتابة على الأجهزة اللمسية',
     });
 
     it('وعلى سطح المكتب لا شيء يتغيّر', () => {
-        device(false);
+        device(DESKTOP);
+        enterEndsTypingOnTouch();
+
+        const el = field({ form: 'plain' });
+        const event = press(el);
+
+        expect(document.activeElement).toBe(el);
+        expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('ولا على حاسوبٍ محمولٍ بشاشةٍ لمسيّة — لوحتُه تحت أصابعه', () => {
+        device(TOUCH_LAPTOP);
         enterEndsTypingOnTouch();
 
         const el = field({ form: 'plain' });

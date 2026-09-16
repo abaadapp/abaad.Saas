@@ -96,8 +96,8 @@ class EmployeeController extends Controller
         $manual = $request->boolean('manual_permissions')
             ? array_values(array_unique($data['permissions'] ?? []))
             : null;
-        $this->refuseManualPermissionsBeyondPlan($title, $manual);
-        $this->refuseGrantingMoreThanIHave($title, $manual);
+        $this->refuseManualPermissionsBeyondPlan($title->role, $manual);
+        $this->refuseGrantingMoreThanIHave($title->role, $manual);
 
         PlanLimits::enforce(auth()->user()->business, 'employees');
 
@@ -174,7 +174,7 @@ class EmployeeController extends Controller
      * و`null` — أي «اتبع الدور» — لا تُفحص أصلًا: الرجوع عن التخصيص يجب أن
      * يبقى مفتوحًا لمن نزلت باقتُه، وإلّا حُبس على ما خصّصه قبلها.
      */
-    private function refuseManualPermissionsBeyondPlan(JobTitle $title, ?array $manual, ?User $employee = null): void
+    private function refuseManualPermissionsBeyondPlan(string $role, ?array $manual, ?User $employee = null): void
     {
         if ($manual === null) {
             return;
@@ -182,7 +182,7 @@ class EmployeeController extends Controller
 
         $byRole = array_values(array_filter(
             Permissions::sections(),
-            fn ($s) => Permissions::allows($title->role, $s),
+            fn ($s) => Permissions::allows($role, $s),
         ));
 
         $wanted = array_values(array_unique($manual));
@@ -228,7 +228,7 @@ class EmployeeController extends Controller
         ]);
     }
 
-    private function refuseGrantingMoreThanIHave(JobTitle $title, ?array $manual): void
+    private function refuseGrantingMoreThanIHave(string $role, ?array $manual): void
     {
         $actor = auth()->user();
 
@@ -260,7 +260,7 @@ class EmployeeController extends Controller
          * فيُجمع الاثنان: ما تحمله الوظيفةُ بدورها، وما أُشّر في القائمة. ومن
          * لا يملك ما يحمله الدورُ لا يُسنده إلى أحد.
          */
-        $granted = array_unique([...Permissions::roleGrants($title->role), ...($manual ?? [])]);
+        $granted = array_unique([...Permissions::roleGrants($role), ...($manual ?? [])]);
 
         // والمقارنةُ بما تقرؤه الشاشةُ نفسُها — فلا يُعرض مربّعٌ يُردّ عند الحفظ
         $beyond = array_values(array_diff($granted, Permissions::grantable($actor)));
@@ -282,14 +282,14 @@ class EmployeeController extends Controller
      * حقل الصلاحيات: فبدَلُ الوظيفة وحده كان يرفع صاحبه. والراتب مثله —
      * مسيرةُ الشهر تقرأ العمود، فمن رفع راتبه رفع ما يُصرف له.
      */
-    private function refuseRaisingMyself(User $employee, JobTitle $title, Request $request): ?string
+    private function refuseRaisingMyself(User $employee, string $role, Request $request): ?string
     {
         // والإعفاءُ لصاحب النشاط لا لكلّ صفٍّ دورُه `admin` — انظر `Permissions::isOwner`
         if ($employee->id !== auth()->id() || Permissions::isOwner(auth()->user())) {
             return null;
         }
 
-        if ($title->role !== $employee->role) {
+        if ($role !== $employee->role) {
             return __('لا يمكنك تغيير وظيفتك بنفسك.');
         }
 
@@ -543,21 +543,57 @@ class EmployeeController extends Controller
         unset($data['login_username']);
 
         $title = $this->findJobTitle($data['job_title']);
-        if (! $title) {
+
+        /*
+         * ═══ ومسمًّى قديمٌ لا صفَّ له لا يحبس صاحبَه ═══
+         *
+         * الموظّف مربوطٌ بوظيفته **بالاسم لا بالمعرّف**، فصفٌّ قد يحمل اسمًا
+         * لا وجود له: بذرةٌ كتبته بيدٍ غير التي كتبت الوظائف، أو متجرٌ نُقل،
+         * أو وظيفةٌ حُذفت يوم لم يكن الحذفُ محروسًا.
+         *
+         * وكان الردُّ «الوظيفة المحددة غير موجودة» يقع على **كلّ** حفظة:
+         * فلا يُصحَّح اسمُه، ولا رقمُ هاتفه، ولا يُعطَّل حسابُه، ولا تُعاد
+         * كلمةُ مروره — حسابٌ يعمل ولا يُدار. وعلى الإنتاج واحدٌ كهذا:
+         * «يوسف السيابي» على «أمين مخزن» — ووظائفُ متجره ستٌّ ليست فيها.
+         *
+         * ورسالةُ الخطأ تشير إلى حقلٍ لم يلمسه أحد، فيظنّ التاجرُ العطبَ في
+         * اختياره ويعيد المحاولة.
+         *
+         * فإن كان المسمّى **هو هو** — أي لا أحدَ يبدّله — مضى الحفظُ ولم
+         * يُمسّ دورٌ ولا مسمّى. وأيُّ **تبديلٍ** إلى اسمٍ لا صفَّ له يبقى
+         * مردودًا كما كان: الاسمُ يُختار من قائمةٍ، وما خرج عنها مصنوع.
+         */
+        $keepsALegacyTitle = ! $title && $data['job_title'] === $employee->job_title;
+
+        if (! $title && ! $keepsALegacyTitle) {
             return back()->withInput()->withErrors(['job_title' => __('الوظيفة المحددة غير موجودة.')]);
         }
         $manual = $request->has('manual_permissions') && $request->boolean('manual_permissions')
             ? array_values(array_unique($data['permissions'] ?? []))
             : null;
-        $this->refuseManualPermissionsBeyondPlan($title, $manual, $employee);
-        $this->refuseGrantingMoreThanIHave($title, $manual);
+        /*
+         * ودورُ المقياس: دورُ الوظيفة إن وُجدت، وإلا دورُ الموظّف كما هو.
+         *
+         * والحرّاسُ الثلاثةُ تجري في الحالين — لا يُعفى منها من يحمل مسمًّى
+         * قديمًا. ولو أُعفي لَصار المسمّى المفقود **بابًا**: يُمنح صاحبُه ما
+         * لا يملكه المانح، ولا يُقاس شيء.
+         */
+        $role = $title?->role ?? $employee->role;
 
-        if ($refusal = $this->refuseRaisingMyself($employee, $title, $request)) {
+        $this->refuseManualPermissionsBeyondPlan($role, $manual, $employee);
+        $this->refuseGrantingMoreThanIHave($role, $manual);
+
+        if ($refusal = $this->refuseRaisingMyself($employee, $role, $request)) {
             return back()->withInput()->withErrors(['job_title' => $refusal]);
         }
 
-        $data['job_title'] = $title->name;
-        $data['role'] = $title->role;
+        if ($title) {
+            $data['job_title'] = $title->name;
+            $data['role'] = $title->role;
+        } else {
+            // مسمًّى قديمٌ يبقى كما هو — لا دورَ يُشتقّ منه ولا اسمَ يُنقل
+            unset($data['job_title']);
+        }
 
         /*
          * ═══ والوظيفةُ لا تصنع صاحبَ نشاطٍ ولا تنزعه ═══

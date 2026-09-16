@@ -338,27 +338,41 @@ class DemoStore
         $users = [User::create([
             'business_id' => $bid, 'name' => 'سالم الحارثي', 'email' => self::ownerEmail($bid),
             'role' => 'admin', 'phone' => '+968 90000000', 'password' => Hash::make(self::PASSWORD),
-            'status' => 'نشط', 'branch' => $main, 'job_title' => 'مدير',
+            // وصاحبُ النشاط لا مسمّى له في `job_titles` — انظر `MerchantAccount::provision`
+            'status' => 'نشط', 'branch' => $main, 'job_title' => Roles::name('admin'),
             'basic_salary' => 1800, 'allowances' => 250, 'last_login_at' => now(),
         ])];
 
         $users[] = User::create([
             'business_id' => $bid, 'name' => 'نورة البلوشي', 'email' => self::cashierEmail($bid),
             'role' => 'cashier', 'phone' => '+968 90000001', 'password' => Hash::make(self::PASSWORD),
-            'status' => 'نشط', 'branch' => $main, 'job_title' => 'كاشير',
+            'status' => 'نشط', 'branch' => $main, 'job_title' => Roles::name('cashier'),
             'basic_salary' => 420, 'allowances' => 60, 'last_login_at' => now()->subHours(3),
         ]);
 
+        /*
+         * ═══ والمسمّى يُقرأ من دوره لا يُكتب بجانبه ═══
+         *
+         * كان مكتوبًا بيدٍ: «أمين مخزن» لدور `inventory` — و`defaults()` تبذر
+         * المسمّيات من `Roles::staffLabels()` وفيها «مسؤول مخزون». فخرج من
+         * المتجر التجريبيّ موظّفٌ على وظيفةٍ **لا وجود لها في متجره**، وهو
+         * قائمٌ على الإنتاج: «يوسف السيابي».
+         *
+         * وقائمتان تُكتبان باليد تفترقان يومًا. فصار الاسمُ يُشتقّ من الدور
+         * نفسِه الذي تُبذَر به الوظيفة — فلا تفترقان.
+         */
         $rest = [
-            ['خالد الشعيلي', 'manager', 'مدير', 950, 150],
-            ['ريم الكندي', 'accountant', 'محاسب', 780, 110],
-            ['ماجد المعمري', 'sales', 'موظف مبيعات', 500, 80],
-            ['هدى الرواحي', 'sales', 'موظف مبيعات', 500, 80],
-            ['يوسف السيابي', 'inventory', 'أمين مخزن', 460, 70],
-            ['أسماء الهنائي', 'cashier', 'كاشير', 420, 60],
+            ['خالد الشعيلي', 'manager', 950, 150],
+            ['ريم الكندي', 'accountant', 780, 110],
+            ['ماجد المعمري', 'sales', 500, 80],
+            ['هدى الرواحي', 'sales', 500, 80],
+            ['يوسف السيابي', 'inventory', 460, 70],
+            ['أسماء الهنائي', 'cashier', 420, 60],
         ];
 
-        foreach ($rest as $i => [$name, $role, $title, $basic, $allow]) {
+        foreach ($rest as $i => [$name, $role, $basic, $allow]) {
+            $title = Roles::name($role);
+
             $users[] = User::create([
                 'business_id' => $bid, 'name' => $name, 'email' => "demo{$bid}-{$role}-{$i}@abaadapp.om",
                 'role' => $role, 'password' => Hash::make(self::PASSWORD), 'status' => 'نشط',
@@ -380,9 +394,8 @@ class DemoStore
             'rate' => 1, 'is_base' => true, 'active' => true,
         ]);
 
-        foreach (JobTitle::roles() as $roleKey => $roleLabel) {
-            JobTitle::create(['business_id' => $bid, 'name' => $roleLabel, 'role' => $roleKey]);
-        }
+        // ونسختان تفترقان — فالبذرُ من المصدر الذي يبذر لكلّ متجرٍ جديد
+        JobTitle::seedDefaults($bid);
 
         foreach ([
             'إيجار' => 'إيجار المحل والمستودعات',

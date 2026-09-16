@@ -122,10 +122,14 @@ class MerchantAccount
      */
     public static function provision(Business $business, string $email, string $password, ?string $name = null): User
     {
-        JobTitle::firstOrCreate(
-            ['business_id' => $business->id, 'name' => 'مدير'],
-            ['role' => 'admin'],
-        );
+        /*
+         * ═══ الستُّ تُبذَر، لا واحدةٌ تصنع مالكًا ═══
+         *
+         * كان يُبذَر مسمًّى واحد — «مدير» دورُه `admin` — فيفتح التاجرُ الجديد
+         * «الرواتب والموظفين» فلا يجد مسمًّى لكاشيرٍ ولا لبائعٍ ولا لمحاسب،
+         * **والوحيدُ الجاهز يصنع صاحبَ نشاطٍ ثانيًا**. انظر `JobTitle::seedDefaults`.
+         */
+        JobTitle::seedDefaults($business->id);
 
         return User::create([
             'business_id' => $business->id,
@@ -133,7 +137,14 @@ class MerchantAccount
             'email' => mb_strtolower(trim($email)),
             'phone' => $business->phone,
             'role' => 'admin',
-            'job_title' => 'مدير',
+            /*
+             * ووظيفتُه المعروضة «مدير نشاط» — وليست صفًّا في `job_titles`.
+             *
+             * `Roles::STAFF` تُخرج `admin` من الوظائف عمدًا، فلا مسمّى يحمله.
+             * وهو نصٌّ يُعرض لا مفتاحٌ يُقرأ: دورُ صاحب النشاط محفوظٌ في صفّه
+             * ولا تكتبه وظيفة — انظر `EmployeeController::update`.
+             */
+            'job_title' => Roles::name('admin'),
             'status' => 'نشط',
             'password' => $password,
         ]);

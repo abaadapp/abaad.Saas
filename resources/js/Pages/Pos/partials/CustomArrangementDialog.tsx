@@ -320,14 +320,25 @@ export default function CustomArrangementDialog({
                             <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
                             <Input
                                 value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                onFocus={() => setBrowsing(true)}
+                                /*
+                                 * الضغطةُ تُبدّل الحال: تفتح المغلقَ وتُغلق المفتوح.
+                                 *
+                                 * و`onClick` لا `onFocus`: الاثنان معًا يُلغي أحدُهما
+                                 * الآخر — يفتحه التركيزُ ثمّ تُغلقه الضغطةُ نفسُها،
+                                 * فلا تنكشف القائمةُ أبدًا.
+                                 */
+                                onClick={() => setBrowsing((v) => !v)}
+                                // والكتابةُ تفتح دائمًا: من كتب يطلب جوابًا
+                                onChange={(e) => {
+                                    setSearch(e.target.value);
+                                    setBrowsing(true);
+                                }}
                                 placeholder={t('ابحث عن صنف من المخزون')}
                                 className="ps-9"
                             />
                         </div>
 
-                        {(browsing || search !== '') && results.length > 0 && (
+                        {browsing && results.length > 0 && (
                             <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto rounded-[12px] border border-gray-100 p-2">
                                 {results.map((p) => (
                                     <li key={p.id} className="flex items-center justify-between gap-2">

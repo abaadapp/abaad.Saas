@@ -81,6 +81,66 @@ describe('قائمةُ المخزون', () => {
         expect(offered()).toEqual(['ورد أبيض', 'ورد وردي', 'كيس أسود']);
     });
 
+    /** وضغطةٌ ثانيةٌ تُخفيها — المقبضُ نفسُه يفتح ويغلق */
+    it('تختفي بالضغطة الثانية', async () => {
+        const { user } = open();
+        await user.click(field());
+        expect(offered()).not.toEqual([]);
+
+        await user.click(field());
+
+        expect(offered()).toEqual([]);
+    });
+
+    /** والثالثةُ تعيدها — لا ضغطةَ تُعطّل المقبض */
+    it('تعود بالضغطة الثالثة', async () => {
+        const { user } = open();
+        await user.click(field());
+        await user.click(field());
+        await user.click(field());
+
+        expect(offered()).toEqual(['ورد أبيض', 'ورد وردي', 'كيس أسود']);
+    });
+
+    /**
+     * والكتابةُ تفتحها وإن كانت مغلقة.
+     *
+     * من كتب يطلب جوابًا. وحقلٌ يُكتب فيه ولا يردّ شيئًا لأنّ ضغطةً سابقةً
+     * أغلقت قائمتَه يقول للكاشير إنّ الصنفَ غيرُ موجود — وهو في الرفّ.
+     */
+    it('تنفتح بالكتابة وإن أُغلقت', async () => {
+        const { user } = open();
+        await user.click(field());
+        await user.click(field());
+        expect(offered()).toEqual([]);
+
+        await user.type(field(), 'وردي');
+
+        expect(offered()).toEqual(['ورد وردي']);
+    });
+
+    /**
+     * وتُغلق بالضغطة ولو بقي النصُّ مكتوبًا.
+     *
+     * ═══ وهذه طفرةٌ نجت قبل أن يُكتب هذا الحارس ═══
+     *
+     * كان شرطُ العرض `browsing || search !== ''`، والكتابةُ تفتح الحالَ
+     * دائمًا — فبدا الشرطان سواءً. وليسا: من كتب «وردي» ثمّ ضغط الحقلَ
+     * ليُخفي القائمة يجدها باقيةً فوق نصِّه، والمقبضُ الذي وُعد به لا يُدير
+     * شيئًا. والحالُ وحدَها تحكم العرض.
+     */
+    it('تختفي بالضغطة ولو بقي النصّ مكتوبًا', async () => {
+        const { user } = open();
+        await user.click(field());
+        await user.type(field(), 'وردي');
+        expect(offered()).toEqual(['ورد وردي']);
+
+        await user.click(field());
+
+        expect(field()).toHaveValue('وردي');
+        expect(offered()).toEqual([]);
+    });
+
     /** والموقوفُ عن البيع لا يُعرض — مُرشِّحُ الخادم نفسُه */
     it('لا تعرض صنفًا موقوفًا عن البيع', async () => {
         const { user } = open();

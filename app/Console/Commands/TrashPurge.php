@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\Admin\TrashController;
+use App\Models\DismissedNotification;
+use App\Support\Demo;
 use Illuminate\Console\Command;
 
 /**
@@ -15,6 +17,10 @@ use Illuminate\Console\Command;
  *
  * هذا الأمر هو الطرف الآخر من الجملة. وبه يصير الرقم وعدًا، وتتوقّف القاعدة
  * عن حمل كل ما حُذف منذ أوّل يوم.
+ *
+ * ويكنس معها صفوفَ التنبيهات المُخفاة التي انقضت مدّتُها — انظر
+ * `purgeDismissals`: ليست محذوفاتٍ تُستردّ، لكنّها مثلُها صفوفٌ لم تعد
+ * تعني شيئًا وتنمو بلا سقف.
  */
 class TrashPurge extends Command
 {
@@ -57,6 +63,39 @@ class TrashPurge extends Command
             ? "سيُمحى {$total} صفًّا مضى على حذفها أكثر من {$days} يومًا"
             : "مُحي {$total} صفًّا نهائيًّا (أقدم من {$days} يومًا)");
 
+        $this->purgeDismissals($dry);
+
         return self::SUCCESS;
+    }
+
+    /**
+     * وصفوفُ التنبيهات المُخفاة التي انقضت مدّتُها.
+     *
+     * ═══ ولمَ هنا ═══
+     *
+     * ليست «محذوفات» يستردّها أحد، لكنّها الشيءُ نفسُه: صفوفٌ لم تعد تعني
+     * شيئًا وتبقى في القاعدة أبدًا. و`daily-<تاريخ>` صفٌّ كلَّ يومٍ لكلّ من
+     * أخفاه، و`order-<رقم>` صفٌّ لكلّ طلب — تنمو بلا سقفٍ ولا تُقرأ.
+     *
+     * ═══ وهذا تنظيفٌ لا سلوك ═══
+     *
+     * انقضاءُ المدّة يقع عند القراءة (`Demo::dismissedNotificationKeys`)،
+     * فالتنبيهُ يعود وإن لم يُشغَّل هذا الأمرُ ليلةً. وهذه الخطوةُ تمحو ما
+     * صار بلا أثر — ولو سقطت لَما تغيّر ما يراه التاجر.
+     */
+    private function purgeDismissals(bool $dry): void
+    {
+        $cutoff = now()->subDays(Demo::DISMISSAL_DAYS);
+        $stale = DismissedNotification::where('created_at', '<', $cutoff);
+        $count = $stale->count();
+
+        if (! $dry && $count > 0) {
+            $stale->delete();
+        }
+
+        $this->line(sprintf('  %-8s %d', 'تنبيهات', $count));
+        $this->info($dry
+            ? "سيُمحى {$count} صفَّ إخفاءٍ انقضت مدّته"
+            : "مُحي {$count} صفَّ إخفاءٍ انقضت مدّته (أقدم من ".Demo::DISMISSAL_DAYS.' يومًا)');
     }
 }

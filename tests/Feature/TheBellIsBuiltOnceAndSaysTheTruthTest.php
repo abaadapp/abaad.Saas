@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Business;
+use App\Models\DismissedNotification;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
@@ -139,6 +140,53 @@ class TheBellIsBuiltOnceAndSaysTheTruthTest extends TestCase
         );
     }
 
+    /** ‏n صنفًا نفد — مصدرٌ واحدٌ يملأ الجرسَ وحدَه */
+    private function outOfStock(int $n): void
+    {
+        for ($i = 1; $i <= $n; $i++) {
+            Product::create([
+                'business_id' => $this->business->id, 'name' => 'صنف '.$i,
+                'price' => 1, 'quantity' => 0, 'alert_qty' => 5,
+            ]);
+        }
+    }
+
+    /*
+     * ═══ والشارةُ تصدق عند الحدّ الفاصل ═══
+     *
+     * الحدُّ لكلّ مصدرٍ لا للجملة. فمصدرٌ واحدٌ فيه عشرةٌ يُعدُّ منه بقدر
+     * الحدّ لا غير — ولو كان الحدُّ تسعًا لقالت الشارةُ «٩» وعنده عشرة، رقمًا
+     * يُقرأ دقيقًا وهو ناقص. وبعشرةٍ يبلغ العدُّ عشرًا فتكتب «9+»، وهو الصدق.
+     */
+    public function test_the_badge_says_more_than_nine_when_there_are_more_than_nine(): void
+    {
+        $this->outOfStock(Demo::BELL_COUNT_CEILING + 1);
+
+        $feed = Demo::notificationFeed();
+
+        $this->assertGreaterThan(
+            Demo::BELL_COUNT_CEILING,
+            $feed['count'],
+            'الشارةُ تكتب رقمًا دقيقًا وهو ناقص — والجملةُ فوق سقفها',
+        );
+    }
+
+    /*
+     * ودونه يكون الرقمُ هو الرقم.
+     *
+     * ثمانيةُ أصنافٍ نفدت من مصدرٍ واحد: كان الحدُّ ستًّا فتقول الشارةُ «٦».
+     */
+    public function test_the_badge_is_exact_below_its_ceiling(): void
+    {
+        $this->outOfStock(Demo::BELL_COUNT_CEILING - 1);
+
+        $this->assertSame(
+            Demo::BELL_COUNT_CEILING - 1,
+            Demo::notificationFeed()['count'],
+            'الشارةُ تنقص عمّا عند التاجر',
+        );
+    }
+
     public function test_a_quiet_shop_counts_exactly_what_it_shows(): void
     {
         Order::create([
@@ -166,6 +214,111 @@ class TheBellIsBuiltOnceAndSaysTheTruthTest extends TestCase
             $http,
             'مسارُ التغذية الحيّة يبني مرّتين — وهو ما يُستطلع كلَّ بضع ثوانٍ',
         );
+    }
+
+    /*
+     * ═══ والرقمان اللذان يقرؤهما الجرسُ على الشاشة ═══
+     *
+     * `Topbar` يقصّ الصفوفَ بنفسه ويكتب «9+» فوق حدٍّ يعرفه هو. والخادمُ
+     * يبني على الرقمين. ورقمان يقولان الشيء نفسه في ملفّين يفترقان يومَ
+     * يُبدَّل أحدهما — فيُرفع حدُّ الشارة إلى ٩٩ ويبقى العدُّ عند ١٠، فتقرأ
+     * الشارةُ «١٠» ولها مئتان.
+     */
+    public function test_the_screen_and_the_server_agree_on_the_two_numbers(): void
+    {
+        $bell = (string) file_get_contents(resource_path('js/Components/Topbar.tsx'));
+
+        $this->assertSame(
+            1,
+            preg_match('/feed\.count > (\d+) \? /', $bell, $ceiling),
+            'لم يُعثر على حدّ الشارة في الشاشة — وقد يكون بُدِّل شكلُه',
+        );
+        $this->assertSame(
+            1,
+            preg_match('/feed\.items\.slice\(0, (\d+)\)/', $bell, $rows),
+            'لم يُعثر على قصّ الصفوف في الشاشة',
+        );
+
+        $this->assertSame(
+            (int) $ceiling[1],
+            Demo::BELL_COUNT_CEILING,
+            'الشاشةُ تكتب رقمًا فوق حدٍّ والخادمُ يعدّ إلى غيره',
+        );
+        $this->assertSame(
+            (int) $rows[1],
+            Demo::BELL_ROWS,
+            'الشاشةُ تعرض عددًا والخادمُ يرسل غيره',
+        );
+    }
+
+    /*
+     * ═══ و«أخفِه» تعني «ليس الآن» لا «إلى الأبد» ═══
+     *
+     * مفتاحُ تنبيه المخزون `low-<صنف>` ثابتٌ للصنف نفسِه. فمن أخفاه مرّةً
+     * كان لا يُنبَّه عنه أبدًا: يُعيد التخزين، ينفد بعد شهرين، ويقف أمام
+     * زبونٍ يطلبه ولا شيءَ قاله له.
+     */
+    public function test_a_hidden_alert_comes_back_when_its_reason_outlives_the_month(): void
+    {
+        $product = Product::create([
+            'business_id' => $this->business->id, 'name' => 'وردٌ أحمر',
+            'price' => 1, 'quantity' => 0, 'alert_qty' => 5,
+        ]);
+
+        $key = 'low-'.$product->id;
+        $this->assertContains($key, array_column(Demo::allNotifications(), 'key'));
+
+        DismissedNotification::create(['user_id' => $this->owner->id, 'notif_key' => $key]);
+        $this->assertNotContains($key, array_column(Demo::allNotifications(), 'key'), 'الإخفاءُ لا يُخفي');
+
+        // وبعد انقضاء المدّة والسببُ قائم
+        DismissedNotification::where('notif_key', $key)
+            ->update(['created_at' => now()->subDays(Demo::DISMISSAL_DAYS + 1)]);
+
+        $this->assertContains(
+            $key,
+            array_column(Demo::allNotifications(), 'key'),
+            'الصنفُ صامتٌ إلى الأبد — طمأنينةٌ كاذبة أسوأ من تحذيرٍ كاذب',
+        );
+    }
+
+    public function test_a_hidden_alert_stays_hidden_inside_the_month(): void
+    {
+        $product = Product::create([
+            'business_id' => $this->business->id, 'name' => 'وردٌ أبيض',
+            'price' => 1, 'quantity' => 0, 'alert_qty' => 5,
+        ]);
+
+        $key = 'low-'.$product->id;
+        DismissedNotification::create([
+            'user_id' => $this->owner->id, 'notif_key' => $key,
+            'created_at' => now()->subDays(Demo::DISMISSAL_DAYS - 1),
+        ]);
+
+        // ولا يعود قبل أوانه: «ليس الآن» تعني شهرًا لا يومين
+        $this->assertNotContains($key, array_column(Demo::allNotifications(), 'key'));
+    }
+
+    public function test_the_nightly_sweep_removes_only_what_expired(): void
+    {
+        $fresh = DismissedNotification::create(['user_id' => $this->owner->id, 'notif_key' => 'low-1']);
+        $stale = DismissedNotification::create(['user_id' => $this->owner->id, 'notif_key' => 'daily-2026-01-01']);
+        $stale->forceFill(['created_at' => now()->subDays(Demo::DISMISSAL_DAYS + 1)])->save();
+
+        $this->artisan('trash:purge')->assertExitCode(0);
+
+        $this->assertModelExists($fresh);
+        $this->assertNull(DismissedNotification::find($stale->id), 'الصفُّ المنقضي باقٍ — والجدولُ ينمو بلا سقف');
+    }
+
+    public function test_the_sweep_counts_without_deleting_when_asked(): void
+    {
+        $stale = DismissedNotification::create(['user_id' => $this->owner->id, 'notif_key' => 'daily-2026-01-01']);
+        $stale->forceFill(['created_at' => now()->subDays(Demo::DISMISSAL_DAYS + 1)])->save();
+
+        $this->artisan('trash:purge', ['--dry-run' => true])->assertExitCode(0);
+
+        $this->assertModelExists($stale);
     }
 
     public function test_the_shared_shape_the_bell_reads_did_not_change(): void

@@ -239,7 +239,32 @@ class DocumentRenderer
              * و`Paper::brand` تقبل المصفوفةَ كما تقبل الصفَّ، فتُمرَّر اللقطةُ
              * إليها بلا فرعٍ ثانٍ في الشفرة يبني منها ما تبنيه هي.
              */
-            'business' => Snapshot::seller($snapshot) ?: DocumentPaper::business($businessId),
+            /*
+             * ═══ والشعارُ يُضاف إليها — ولا تحمله اللقطة ═══
+             *
+             * لقطةُ البائع تحمل الاسمَ والعنوانَ والهاتف، ولا `logo` فيها.
+             * و`Paper::brand` تسأل مصدرَها عن الشعار كما تسأله عن الاسم —
+             * فكانت تسأل مصفوفةً لا تحمل المفتاح وتردّ الفراغَ دائمًا.
+             *
+             * وأثرُه أنّ **فاتورة A4 لم تحمل شعارَ متجرٍ قطّ**: يراه التاجر
+             * على إيصاله الحراريّ وعلى أمر الشراء، ويغيب عن الورقة التي
+             * تُرسَل إلى الشركات — وهي أَولى الثلاثة به. ولا مقبضَ يُصلحه:
+             * `show_logo` يُشعَل فلا يقع شيء.
+             *
+             * ولا يدخل اللقطةَ نفسَها: مفاتيحُها تطغى على ما تبنيه
+             * `InvoiceBranding` لفاتورة العميل (انظر `array_intersect_key`
+             * في `CustomerInvoiceController::paper`)، فيُستبدل الشعارُ
+             * المُضمَّنُ برابطٍ لا يقرؤه mpdf. ولأنّه ليس من هويّة البائع
+             * التي تُجمَّد: الشريطُ الحراريّ يقرؤه حيًّا كذلك
+             * (`thermal.blade.php`)، فالورقتان تتبعان ملفَّ اليوم معًا.
+             *
+             * ومُضمَّنٌ لا رابط: الورقةُ تُقرأ في إطارٍ معزولٍ على الشاشة
+             * وفي mpdf الذي لا جلسةَ له، ورابطٌ نسبيٌّ يعمل في أحدهما
+             * ويسقط في الآخر بلا صوت.
+             */
+            'business' => ($seller = Snapshot::seller($snapshot)) !== []
+                ? $seller + ['logo' => (string) (InvoiceBranding::logo($businessId) ?? '')]
+                : DocumentPaper::business($businessId),
             'headerNote' => trim((string) ($values['header'] ?? '')),
             'scale' => $scale,
             'vatNumber' => Snapshot::stamped($order) ? Snapshot::vat($snapshot) : Paper::vatNumber($businessId),

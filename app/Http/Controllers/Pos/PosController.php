@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\PdfController;
 use App\Mail\NewOrderMail;
 use App\Models\Addon;
 use App\Models\Branch;
@@ -702,6 +703,45 @@ class PosController extends Controller
         abort_if($receipt === null, 404);
 
         return response()->json(['receipt' => $receipt]);
+    }
+
+    /**
+     * ورقةُ الإيصال مرسومةً — HTML لا PDF.
+     *
+     * ═══ ولمَ بابٌ ثانٍ إلى جانب `receipt.pdf` ═══
+     *
+     * الكاشيرُ بعد البيع يريد أن **يرى** ما سيُسلَّم، لا أن يغادر صندوقَه.
+     * وبابُ الـPDF يخرج ملفًّا: يفتحه المتصفّح بقارئه في لسانٍ آخر، فتختفي
+     * شاشةُ البيع خلفه — وعلى الآيباد والهاتف لا يظهر شريطُ الألسنة أصلًا،
+     * فيقف صاحبُ المحلّ أمام ورقةٍ لا يعرف كيف يرجع منها.
+     *
+     * فالمعاينةُ تُرسَم داخل الشاشة (`Components/DocumentPreview`)، وهذا
+     * البابُ يعطيها نصَّها.
+     *
+     * ووصفتُها من `PdfController::saleHtml` نفسِها التي تُطبع، وبـ`thermal`
+     * مثلِها — فما يراه الكاشير هو ما يخرج من الطابعة حرفًا بحرف. ولو بُنيت
+     * هنا بيدها لَافترقت المعروضةُ عن المطبوعة يومًا، ولا يُكتشف ذلك إلّا
+     * بعد أن يأخذ الزبون ورقته.
+     *
+     * ولا يُنتَج ملفٌّ: من جاء يقرأ لا يُشغَّل له محرّكُ طباعةٍ كامل.
+     *
+     * ويردّ `{html, size}` — نصَّ الورقة واسمَ مقاسها («80mm» أو «58mm»).
+     */
+    public function receiptPaper(string $number)
+    {
+        $bid = $this->bid();
+
+        // بـ`business_id` لا `findOrFail`: إيصالُ متجرٍ آخر لا يوجد، لا «ممنوع»
+        $order = Order::where('business_id', $bid)
+            ->where('number', $number)
+            ->with('items')
+            ->first();
+
+        abort_if($order === null, 404);
+
+        $paper = PdfController::saleHtml($bid, $order, thermal: true);
+
+        return response()->json(['html' => $paper['html'], 'size' => $paper['paper']]);
     }
 
     /** إتمام البيع وحفظ الطلب */

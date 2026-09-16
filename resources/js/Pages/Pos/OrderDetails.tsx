@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import { ArrowRight, Pencil, Printer } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
+import ReceiptPreviewButton from './partials/ReceiptPreview';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
@@ -99,6 +100,8 @@ export default function PosOrderDetails() {
                                 {t('نقطة البيع')}
                             </a>
                         </Button>
+                        {/* والورقةُ تُرى في مكانها — انظر `partials/ReceiptPreview` */}
+                        <ReceiptPreviewButton number={order.id} />
                         <Button asChild>
                             <a href={route('pos.receipt.pdf', order.id)} target="_blank" rel="noreferrer">
                                 <Printer />

@@ -1465,6 +1465,13 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
      * تُرسَل إلى شركةٍ لا يطلبها من درج النقد.
      */
     Route::get('/receipt/{number}/pdf', [PdfController::class, 'orderThermal'])->name('receipt.pdf');
+    /*
+     * ونصُّ الورقة لمن يريد أن يراها ولا يغادر صندوقَه — انظر `receiptPaper`.
+     *
+     * وبابٌ ثانٍ لا تبديلٌ للأوّل: الطباعةُ والتحميلُ يبقيان على `receipt.pdf`
+     * كما كانا، وهذا يخدم المعاينةَ وحدها.
+     */
+    Route::get('/receipt/{number}/paper', [PosController::class, 'receiptPaper'])->name('receipt.paper');
     Route::get('/customers', [App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
     // مناسبةٌ جديدة تُضاف من نافذة الدفع نفسها — تُحفظ للمتجر وتظهر في قائمته

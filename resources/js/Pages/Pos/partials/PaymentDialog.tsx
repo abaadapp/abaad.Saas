@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePage } from '@inertiajs/react';
+import { toast } from 'sonner';
 import { Banknote, Check, CheckCircle, ChevronDown, CreditCard, Landmark, Plus, Printer, X } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
@@ -14,6 +15,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import ReceiptPreviewButton from './ReceiptPreview';
 import type { CheckoutResult } from '@/hooks/usePosCart';
 import type { PageProps } from '@/types';
 
@@ -264,6 +266,22 @@ export default function PaymentDialog({
         }
         setFlowerError(null);
 
+        /*
+         * ═══ والنافذةُ تُفتح الآن، في ضغطة الكاشير نفسِها ═══
+         *
+         * كانت تُفتح بعد `await onCheckout` — أي بعد أن ينتهي أثرُ الضغطة.
+         * والمتصفّحات لا تسمح بفتح نافذةٍ إلّا من إيماءةِ مستخدمٍ حيّة، فكان
+         * مانعُ النوافذ يبتلعها **صامتًا**: الكاشيرُ ضبط «طباعة تلقائية»،
+         * ويرى شاشةَ النجاح، ولا يخرج من الطابعة شيء — ولا رسالةَ تقول لمَ.
+         * فتُفتح فارغةً هنا، ويُكتب فيها العنوانُ حين يُعرف رقمُ الفاتورة.
+         *
+         * وبلا `noopener` عن ضرورة: المواصفةُ تجعل `open` تردّ `null` معه،
+         * فلا يبقى مقبضٌ تُوجَّه به النافذة بعد الانتظار. والوجهةُ مسارُنا
+         * نفسُه على أصلنا نفسِه — فلا صفحةَ غريبةٍ تُمنح `opener`.
+         */
+        const sheet = printer?.autoPrint ? window.open('', '_blank') : null;
+        let printed = false;
+
         setBusy(true);
         try {
             // المفاتيح الفارغة لا تُرسل: الخادم يقرأ الفراغ قيمةً تُكتب
@@ -293,16 +311,38 @@ export default function PaymentDialog({
              *
              * ومشروطةٌ بـres.invoice: البيع بلا اتصال يُحفظ في الطابور بلا رقم
              * فاتورة بعد، وفتحُ نافذةٍ على رابطٍ لا وجود له يعطي الكاشير صفحة
-             * خطأ عند رأس الزبون. يطبع حين يوجد ما يُطبع.
+             * خطأ عند رأس الزبون. يطبع حين يوجد ما يُطبع — وتُغلق الفارغةُ
+             * حين لا يوجد، فلا يُترك للكاشير لسانٌ أبيضُ يسأل عنه.
              *
              * ونافذةٌ منفصلة لا طباعةٌ في مكانها: الشاشة نفسها لا تزال تعرض
              * تأكيد البيع، وحوارُ الطباعة يجمّد ما تحته.
+             *
+             * و`replace` لا `href`: الصفحةُ الفارغة لا تدخل تاريخَ اللسان،
+             * فرجوعُ الكاشير من الورقة لا يقف على بياض.
              */
-            if (printer?.autoPrint && res.synced && res.invoice) {
-                window.open(route('pos.receipt.pdf', res.invoice), '_blank', 'noopener');
+            if (sheet && res.synced && res.invoice) {
+                sheet.location.replace(route('pos.receipt.pdf', res.invoice));
+                printed = true;
+            } else if (!sheet && printer?.autoPrint && res.synced && res.invoice) {
+                /*
+                 * ومُنعت رغم الإيماءة — فيُقال، ولا يُسكت عنه.
+                 *
+                 * «طباعة تلقائية» مقبضٌ وعد، وصمتُه يجعل الكاشير يسلّم الزبونَ
+                 * بلا إيصالٍ وهو يظنّ أنّه خرج. وزرُّ الطباعة أمامه في الشاشة
+                 * نفسِها، فالرسالةُ تدلّه عليه.
+                 */
+                toast.warning(t('منع المتصفح فتح نافذة الطباعة — اطبع الفاتورة من الزر أدناه.'));
             }
         } finally {
             setBusy(false);
+            /*
+             * وما فُتح ولم يُوجَّه يُغلق — أيًّا كان الطريق.
+             *
+             * بيعةٌ حُفظت بلا اتصال، أو سقطت بخطأ: يبقى لسانٌ أبيضُ مفتوحٌ
+             * أمام الكاشير لا يعرف ما هو ولا لمَ فُتح. و`finally` لا `catch`
+             * كي لا يتبدّل ما يقع عند الخطأ عمّا كان — يُغلق اللسان لا غير.
+             */
+            if (sheet && !printed) sheet.close();
         }
     };
 
@@ -693,12 +733,29 @@ export default function PaymentDialog({
                         )}
 
                         <div className="grid grid-cols-2 gap-3">
+                            {/*
+                                والمعاينةُ قبل الطباعة — ترتيبًا ومعنًى.
+
+                                الكاشير يسأل «أصحيحةٌ هي؟» قبل أن يسأل «كيف
+                                أطبعها؟»، والورقةُ تُرى فوق هذه الشاشة ولا
+                                تُغادَر إليها — انظر `ReceiptPreview`.
+                            */}
+                            {result?.synced && result.invoice && (
+                                <ReceiptPreviewButton number={result.invoice} className="rounded-full" />
+                            )}
                             {result?.synced && result.invoice && (
                                 <Button
                                     variant="outline"
                                     className="rounded-full"
+                                    /*
+                                     * والطباعةُ كما كانت: لسانٌ جديد لا ملاحةٌ
+                                     * في مكانها. و`route()` لا رابطٌ مكتوبٌ
+                                     * باليد — نسخةٌ ثانية للمسار تفترق يومًا
+                                     * يُبدَّل. و`noopener` كمسار الطباعة
+                                     * التلقائية فوق.
+                                     */
                                     onClick={() =>
-                                        window.open(`/pos/receipt/${encodeURIComponent(result.invoice!)}/pdf`, '_blank')
+                                        window.open(route('pos.receipt.pdf', result.invoice!), '_blank', 'noopener')
                                     }
                                 >
                                     <Printer />
@@ -706,7 +763,7 @@ export default function PaymentDialog({
                                 </Button>
                             )}
                             <Button
-                                className={cn('rounded-full', !(result?.synced && result.invoice) && 'col-span-2')}
+                                className={cn('rounded-full', 'col-span-2')}
                                 /* الإغلاق وحده — و`closeTo` تُنظّف لكلّ سبيل */
                                 onClick={() => closeTo(false)}
                             >

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import { Printer, Receipt as ReceiptIcon, Search } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
+import ReceiptPreviewButton from './partials/ReceiptPreview';
 import DataTable, { type Column } from '@/Components/DataTable';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -255,7 +256,10 @@ export default function PosReceipts() {
                                 </div>
                             </div>
 
-                            <Button className="mt-4 w-full rounded-full" asChild>
+                            {/* والورقةُ تُرى هنا ولا يُغادَر إليها — انظر `partials/ReceiptPreview` */}
+                            <ReceiptPreviewButton number={open.number} className="mt-4 w-full rounded-full" />
+
+                            <Button className="mt-2 w-full rounded-full" asChild>
                                 <a href={route('pos.receipt.pdf', open.number)} target="_blank" rel="noreferrer">
                                     <Printer />
                                     {t('طباعة الفاتورة')}

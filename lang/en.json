@@ -5917,5 +5917,7 @@
     "صيغةُ الأسبوع غير صحيحة — استعمل YYYY-MM-DD ليومٍ فيه.": "Invalid week format — use YYYY-MM-DD for any day within it.",
     "تفعيل الأرشيف الأسبوعي": "Enable the weekly archive",
     "يُطلب كل اثنين عن الأسبوع المنقضي — ولا يُغني عن الشهري ولا يُلغيه": "Requested every Monday for the completed week — it neither replaces nor cancels the monthly one",
-    "صفر = بلا حدّ. والأسبوعي ٥٢ ملفًّا في السنة مقابل ١٢ للشهري، فمدّته أقصر عمدًا": "Zero = no limit. Weekly produces 52 files a year against 12 monthly, so its retention is deliberately shorter"
+    "صفر = بلا حدّ. والأسبوعي ٥٢ ملفًّا في السنة مقابل ١٢ للشهري، فمدّته أقصر عمدًا": "Zero = no limit. Weekly produces 52 files a year against 12 monthly, so its retention is deliberately shorter",
+    "تعذّر عرض الفاتورة الآن — يمكنك طباعتها.": "The invoice preview is unavailable right now — you can still print it.",
+    "منع المتصفح فتح نافذة الطباعة — اطبع الفاتورة من الزر أدناه.": "Your browser blocked the print window — print the invoice using the button below."
 }

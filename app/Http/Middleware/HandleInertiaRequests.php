@@ -185,10 +185,8 @@ class HandleInertiaRequests extends Middleware
                     ->all()
                 : null,
 
-            'notifications' => fn () => $user?->business_id ? [
-                'items' => Demo::notifications(),
-                'count' => Demo::notificationsCount(),
-            ] : null,
+            // بناءٌ واحدٌ للصفوف والعدّاد — انظر `Demo::notificationFeed`
+            'notifications' => fn () => $user?->business_id ? Demo::notificationFeed() : null,
 
             /*
              * شارةُ الدعم — محسوبةٌ في كلّ طلب لا مكتوبةٌ في الشاشة.

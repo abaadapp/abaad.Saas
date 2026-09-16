@@ -20,9 +20,12 @@ class NotificationController extends Controller
             ->when(Demo::currentBranchId(), fn ($q) => $q->where('branch_id', Demo::currentBranchId()))
             ->orderByDesc('id')->first();
 
+        // بناءٌ واحدٌ للصفوف والعدّاد — انظر `Demo::notificationFeed`
+        $feed = Demo::notificationFeed();
+
         return response()->json([
-            'count' => Demo::notificationsCount(),
-            'items' => Demo::notifications(),
+            'count' => $feed['count'],
+            'items' => $feed['items'],
             'latest_order' => $latest ? [
                 'id' => $latest->id,
                 'number' => $latest->number,

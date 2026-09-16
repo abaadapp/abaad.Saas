@@ -124,6 +124,28 @@ class StockLedger
      * `inventory_movements`: عند الإنشاء، وعند التعديل، وفي التعديل السريع.
      * فيرى التاجرُ رصيدَه تغيّر ولا يجد في «حركات المخزون» ما يقول متى ولا
      * بيدِ من. ومخزونٌ يتغيّر بلا أثرٍ يُقرأ بابٌ مفتوحٌ على سرقةٍ لا تُكتشف.
+     *
+     * ═══ والدفترُ الثاني كان ما يزال مفتوحًا ═══
+     *
+     * سُدّ الأثرُ في `inventory_movements` وبقي الأستاذُ لا يعلم: بضاعةٌ
+     * تدخل الرفَّ بقيمتها ولا تُقيَّد أصلًا، ثمّ تخرج بالبيع فتُنقص المخزونَ
+     * بتكلفتها. وقيس على الإنتاج: رصيدُ حساب المخزون سالب.
+     *
+     * فصار التقييدُ هنا — في المضيق الذي تمرّ منه الأبواب الخمسة (إنشاءُ
+     * صنفٍ، وتعديلُه، والتعديلُ السريع، والاستيراد، والتراجعُ عنه) لا في
+     * خمسة مواضعَ تُنسى السادسة:
+     *
+     *  • **رصيدٌ افتتاحيّ** → مخزونٌ مدين / **رأس المال** دائن. بضاعةٌ
+     *    يملكها صاحبُها قبل النظام، لا ربحٌ حقّقه هذا الشهر — ولو قُيّدت
+     *    إيرادًا لَقرأ متجرٌ يُدخل أصنافَه أوّلَ يومٍ أنّه ربح ثمنَ مخزونه.
+     *
+     *  • **تعديلٌ يدويّ** → تسويةُ مخزونٍ كما في شاشة التسويات، بوصفة
+     *    `StockLosses` نفسِها: نقصٌ يُكتب خسارةً وصفَّ مصروف، وزيادةٌ تُردّ.
+     *    ولا قاعدةٌ ثانيةٌ للشاشة الثانية.
+     *
+     * ومرجعُ القيد صفُّ الحركة لا الصنف: لصنفٍ واحد حركاتٌ كثيرة، ومرجعٌ
+     * يشير إليه يجعل تعديلَ اليوم وتعديلَ أمسٍ قيدًا واحدًا في عين من
+     * يستدرك أو يبحث عن تكرار.
      */
     public static function note(
         int $businessId,
@@ -139,7 +161,7 @@ class StockLedger
             return;
         }
 
-        InventoryMovement::create([
+        $movement = InventoryMovement::create([
             'business_id' => $businessId,
             'branch_id' => $branchId,
             'product_id' => $product->id,
@@ -151,6 +173,48 @@ class StockLedger
             'employee_name' => $employeeName,
             'note' => $note,
         ]);
+
+        $value = round(abs($delta) * (float) $product->cost, 3);
+
+        /* وصنفٌ بلا تكلفةٍ لا قيدَ له: لا مبلغَ يُقيَّد — كما في شاشة التسويات */
+        if ($value <= 0) {
+            return;
+        }
+
+        $label = $product->name.($note !== null && trim($note) !== '' ? ' — '.$note : '');
+
+        if ($type === self::OPENING) {
+            Ledger::post(
+                $businessId,
+                __('رصيد افتتاحي: ').$label,
+                [
+                    ['account' => 'inventory', 'debit' => $value],
+                    ['account' => 'capital', 'credit' => $value],
+                ],
+                now(),
+                self::OPENING,
+                $branchId,
+                auth()->id(),
+                $movement,
+            );
+
+            return;
+        }
+
+        if ($type === self::MANUAL) {
+            StockLosses::record(
+                $businessId,
+                $value,
+                $delta < 0,
+                __('تعديل يدوي: ').$label,
+                now(),
+                $branchId,
+                auth()->id(),
+                $employeeName,
+                self::MANUAL,
+                $movement,
+            );
+        }
     }
 
     /** نوع الحركة حين تُستهلك مكوّناتٌ لصنع باقة */

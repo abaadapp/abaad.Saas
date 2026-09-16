@@ -5893,5 +5893,10 @@
     "رقم السجل التجاري": "Commercial registration number",
     "اسم المتجر بالإنجليزية": "Shop name in English",
     "يظهر على الأوراق الإنجليزية — اكتبه كما في شهادة السجل التجاري": "Shown on English documents — write it as it appears on the commercial registration certificate",
-    "يُطبع في ترويسة فواتيرك تحت الرقم الضريبي": "Printed in your invoice header below the tax number"
+    "يُطبع في ترويسة فواتيرك تحت الرقم الضريبي": "Printed in your invoice header below the tax number",
+    "استلام بضاعة — ": "Goods received — ",
+    "رصيد افتتاحي: ": "Opening balance: ",
+    "تعديل يدوي: ": "Manual adjustment: ",
+    "بضاعة مستلمة بلا فاتورة": "Goods received not invoiced",
+    "استدراك استلام — أمر ": "Goods-receipt catch-up — order "
 }

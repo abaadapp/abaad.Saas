@@ -8,6 +8,7 @@ use App\Models\Currency;
 use App\Models\GoodsReceiptNote;
 use App\Models\InventoryMovement;
 use App\Models\JournalEntry;
+use App\Models\JournalLine;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Setting;
@@ -607,7 +608,37 @@ class TheOrderSaysWhatItBuysAndInWhatUnitTest extends TestCase
         $this->assertSame(18.0, SupplierInvoices::receivedValue($po->id));
     }
 
-    /** ولا ذمّةَ حتى يُعتمد السند — والأمرُ وحدَه لا يُنشئ شيئًا في الدفتر */
+    /** رصيدُ حسابٍ نظاميّ — مدينُه ناقصًا دائنَه */
+    private function balance(string $systemKey): float
+    {
+        $account = Ledger::account($this->business->id, $systemKey);
+
+        if (! $account) {
+            return 0.0;
+        }
+
+        return round(
+            (float) JournalLine::where('account_id', $account->id)->sum('debit')
+            - (float) JournalLine::where('account_id', $account->id)->sum('credit'),
+            3,
+        );
+    }
+
+    /**
+     * ولا **ذمّةَ** حتى يُعتمد السند — والبضاعةُ أصلٌ من لحظة وصولها.
+     *
+     * ═══ وكان هذا الحارسُ يقيس غيرَ ما يحرس ═══
+     *
+     * كان يقول «صفرُ قيودٍ بعد الاستلام»، والقاعدةُ التي يحرسها «لا ذمّةَ
+     * للمورّد قبل سنده». وهما شيئان: البضاعةُ على الرفّ أصلٌ يملكه المتجر
+     * ويُباع منه، ولا تُقيَّد لأنّ **الذمّة** لم تنشأ يجعل المخزونَ في
+     * الدفتر أقلَّ ممّا في المخزن — ثمّ سالبًا بعد أن يُباع.
+     *
+     * فصار يقيس القاعدةَ نفسَها: `payable` صفرٌ حتى الاعتماد، والبضاعةُ
+     * تجلس في خصمٍ وسيطٍ (`goods_received_not_invoiced`) ينتقل إلى الذمّة
+     * يومَ يصل السند. وهو أقوى: العدُّ يمرّ على أيّ قيدٍ كان، وهذا يسأل
+     * أيَّ حسابٍ تحرّك وبكم.
+     */
     public function test_liability_still_waits_for_the_invoice_signature(): void
     {
         $po = $this->create();
@@ -618,9 +649,11 @@ class TheOrderSaysWhatItBuysAndInWhatUnitTest extends TestCase
         ])->assertSessionHasNoErrors();
         $this->approvePendingReceipts($this->business->id, $this->owner);
 
-        // بضاعةٌ على الرفّ، ولا قيدَ بعد
+        // ‏٥ ربطات × ٢٠ = ١٠٠ حبّة على الرفّ، بقيمة ٥ × ٦ = ٣٠
         $this->assertSame(100, (int) $this->product->fresh()->quantity);
-        $this->assertSame(0, JournalEntry::count());
+        $this->assertSame(30.0, $this->balance('inventory'));
+        $this->assertSame(-30.0, $this->balance('goods_received_not_invoiced'));
+        $this->assertSame(0.0, $this->balance('payable'), 'نشأت ذمّةٌ بالاستلام');
 
         $invoice = SupplierInvoices::create($this->business->id, [
             'supplier_id' => $this->supplier->id,
@@ -630,10 +663,14 @@ class TheOrderSaysWhatItBuysAndInWhatUnitTest extends TestCase
             'subtotal' => 30, 'tax' => 0,
         ], $this->owner);
 
-        $this->assertSame(0, JournalEntry::count(), 'نشأت ذمّةٌ بسندٍ لم يُعتمد');
+        $this->assertSame(0.0, $this->balance('payable'), 'نشأت ذمّةٌ بسندٍ لم يُعتمد');
 
         SupplierInvoices::approve($invoice, $this->owner);
 
+        // الذمّةُ نشأت، والخصمُ الوسيط أُفرغ، والمخزونُ لم يُقيَّد مرّتين
+        $this->assertSame(-30.0, $this->balance('payable'));
+        $this->assertSame(0.0, $this->balance('goods_received_not_invoiced'));
+        $this->assertSame(30.0, $this->balance('inventory'), 'حُسبت الشحنةُ مرّتين');
         $this->assertGreaterThan(0, JournalEntry::count());
     }
 }

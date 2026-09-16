@@ -269,7 +269,41 @@ final class SupplierInvoices
             $registered = Vat::enabled($locked->business_id);
             $cost = $registered ? round($total - $tax, 3) : $total;
 
-            $lines = [['account' => 'inventory', 'debit' => $cost, 'memo' => $locked->supplier?->name]];
+            /*
+             * ═══ وأوّلُ ما يُسدَّد هو ما استُلم ولم يُفوتر ═══
+             *
+             * البضاعةُ الواصلة قُيّدت مخزونًا مدينًا و«مستلمة بلا فاتورة»
+             * دائنةً يومَ اعتُمد استلامُها (انظر `GoodsReceipts::approve`).
+             * فلو قُيّد المخزونُ هنا ثانيةً لَحُسبت الشحنةُ الواحدة مرّتين —
+             * ولَبقي الخصمُ الوسيط منتفخًا إلى الأبد يقول إنّ على المتجر
+             * بضاعةً لم تُفوتر وقد فُوترت.
+             *
+             * فيُقاس ما ينتظر **من الدفتر**: ما قُيّد دائنًا لهذا الأمر ولم
+             * يُفرَغ بعد (انظر `GoodsReceipts::holdingBalance`). ويُسدَّد منه
+             * بقدر هذا السند، وما فاض يذهب مخزونًا — سندٌ بلا أمرٍ أصلًا، أو
+             * سندٌ أكبرُ ممّا وصل (سعرٌ ارتفع، أو شحنٌ يُحمَّل على البضاعة)،
+             * أو أمرٌ استُلم قبل أن يُقيَّد الاستلامُ أصلًا.
+             *
+             * والفرقُ لا يُجبر صامتًا: المطابقةُ الثلاثيّة تكتبه في
+             * `match_notes` ليقرأه من يعتمد.
+             */
+            $waiting = $locked->purchase_order_id
+                ? max(0.0, GoodsReceipts::holdingBalance(
+                    (int) $locked->business_id, (int) $locked->purchase_order_id))
+                : 0.0;
+
+            $clear = round(min($cost, $waiting), 3);
+            $lines = [];
+
+            if ($clear > 0) {
+                $lines[] = ['account' => 'goods_received_not_invoiced', 'debit' => $clear,
+                    'memo' => $locked->supplier?->name];
+            }
+
+            if (round($cost - $clear, 3) > 0) {
+                $lines[] = ['account' => 'inventory', 'debit' => round($cost - $clear, 3),
+                    'memo' => $locked->supplier?->name];
+            }
 
             if ($registered && $tax > 0) {
                 $lines[] = ['account' => 'tax_payable', 'debit' => $tax];

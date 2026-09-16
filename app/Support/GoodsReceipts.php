@@ -7,7 +7,9 @@ use App\Models\GoodsReceiptNote;
 use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Models\SupplierInvoice;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,11 +32,19 @@ use Illuminate\Support\Facades\DB;
  *
  *  • `reject()` — تُوسم ولا تُمحى، ولا يتحرّك بها شيء.
  *
- * ═══ ولا ذمّةَ من هنا ═══
+ * ═══ ولا ذمّةَ من هنا — لكنّ الأصلَ ينشأ ═══
  *
- * الاستلامُ حركةُ بضاعة لا حدثٌ ماليّ: لا قيدَ له ولا ذمّةَ للمورّد. الذمّةُ
- * تنشأ باعتماد سند المورّد وحده — ولو نشأت هنا أيضًا لحُمّل المورّد مرّتين
- * عن شحنةٍ واحدة.
+ * كان هنا: «الاستلامُ حركةُ بضاعة لا حدثٌ ماليّ: لا قيدَ له». والشطرُ
+ * الأوّل صوابٌ والثاني خطأ، وكلّفنا مخزونًا برصيدٍ سالب.
+ *
+ * الذمّةُ لا تنشأ بالاستلام: مبلغُها غيرُ معلومٍ قبل الفاتورة، ولا يُطالب
+ * به مورّدٌ لم يُفوتر. أمّا **البضاعة** فقد صارت على الرفّ — وهي أصلٌ
+ * يملكه المتجر من لحظة وصولها، ويُباع منها ويُنقص المخزونَ بتكلفته.
+ *
+ * فالقيدُ هنا: مخزونٌ مدين / «بضاعة مستلمة بلا فاتورة» دائن. والثاني
+ * خصمٌ وسيطٌ ينتقل إلى ذمّة المورّد يومَ يصل سندُه بقيمته الحقيقيّة —
+ * انظر `SupplierInvoices::approve`. فلا يُحمَّل المورّد مرّتين، ولا يجلس
+ * على الرفّ أصلٌ لا يعرفه الدفتر.
  */
 final class GoodsReceipts
 {
@@ -43,6 +53,9 @@ final class GoodsReceipts
     public const APPROVED = 'معتمد';
 
     public const REJECTED = 'مرفوض';
+
+    /** مصدرُ القيد في الدفتر — يُقرأ في السجلّ وفي الاستدراك */
+    public const SOURCE = 'إذن استلام';
 
     /**
      * كتابةُ ما وصل — بلا أثرٍ على الرفّ.
@@ -202,6 +215,7 @@ final class GoodsReceipts
                 : null;
 
             $orderItems = $po ? $po->items()->lockForUpdate()->get()->keyBy('id') : collect();
+            $value = 0.0;
 
             foreach ($locked->items()->get() as $line) {
                 $qty = (int) $line->quantity;
@@ -254,7 +268,45 @@ final class GoodsReceipts
                     );
                 }
 
+                /*
+                 * وقيمةُ ما دخل الرفَّ تُجمع بوحدة الشراء لا بوحدة التخزين.
+                 *
+                 * `shelve` تُدوّر الكميّةَ إلى عددٍ صحيحٍ وتُدوّر التكلفةَ إلى
+                 * ثلاث خانات، وضربُ المُدوَّرَين يفترق عن القيمة الحقيقيّة في
+                 * وحداتٍ كسريّة. والدفترُ يحمل ما دُفع فعلًا: كميّةُ الشراء في
+                 * تكلفة وحدته.
+                 */
+                if ($line->product_id) {
+                    $value += $qty * (float) $line->cost;
+                }
+
                 $item?->increment('received_quantity', $qty);
+            }
+
+            /*
+             * وبندٌ بلا صنفٍ لا قيمةَ له في المخزون.
+             *
+             * ورقةُ استلامٍ قد تحمل سطرًا لخدمةٍ أو لصنفٍ خارج الكتالوج — لا
+             * يدخل رفًّا فلا يُقيَّد أصلًا. والحلقةُ تجمع ما دخل وحدَه.
+             */
+            $value = round($value, 3);
+
+            if ($value > 0) {
+                Ledger::post(
+                    $locked->business_id,
+                    __('استلام بضاعة — ').$locked->number,
+                    [
+                        ['account' => 'inventory', 'debit' => $value],
+                        ['account' => 'goods_received_not_invoiced', 'credit' => $value,
+                            'memo' => $locked->supplier?->name],
+                    ],
+                    /* بتاريخ وصولها لا تاريخِ اعتمادها: ورقةٌ تُعتمد بعد يومين تخصّ يومَ وصلت */
+                    Carbon::parse($locked->received_at ?? now()),
+                    self::SOURCE,
+                    $locked->branch_id,
+                    $by?->id,
+                    $locked,
+                );
             }
 
             $locked->update([
@@ -282,6 +334,81 @@ final class GoodsReceipts
 
             return $locked->fresh('items');
         });
+    }
+
+    /**
+     * قيمةُ ما دخل الرفَّ من أمرٍ باستلاماتٍ معتمَدة — وهي المبلغُ المُقيَّد.
+     *
+     * ═══ ولمَ ليست `SupplierInvoices::receivedValue` ═══
+     *
+     * تلك تقيس **الورقةَ كلَّها** لأنّ المطابقة الثلاثيّة تسأل: بكم طُولبنا
+     * مقابل ما وصل؟ فتدخلها بنودُ ما لا صنفَ له — خدمةٌ، أو صنفٌ خارج
+     * الكتالوج — لأنّ المورّد يُطالب بها.
+     *
+     * وهذه تقيس ما **قُيّد** في الدفتر، وهو ما دخل رفًّا وحدَه: بندٌ بلا
+     * صنفٍ لا يُنادى له `shelve` فلا يُقيَّد مخزونًا ولا يُقيَّد دائنًا في
+     * الخصم الوسيط. ولو سُدِّد الخصمُ بقيمة الورقة كلّها لَنزل تحت الصفر.
+     *
+     * فسؤالان مختلفان لا سؤالٌ واحد في موضعين — ولكلٍّ اسمُه.
+     */
+    public static function shelvedValue(int $purchaseOrderId): float
+    {
+        $value = (float) DB::table('goods_receipt_note_items as i')
+            ->join('goods_receipt_notes as n', 'n.id', '=', 'i.goods_receipt_note_id')
+            ->where('n.purchase_order_id', $purchaseOrderId)
+            ->where('n.status', self::APPROVED)
+            ->whereNotNull('i.product_id')
+            ->selectRaw('coalesce(sum(i.quantity * i.cost), 0) as v')
+            ->value('v');
+
+        return round($value, 3);
+    }
+
+    /**
+     * ما تبقّى من هذا الأمر في الخصم الوسيط — مقروءًا من الدفتر لا مُقدَّرًا.
+     *
+     * ═══ ولمَ لا يُحسب من الجداول ═══
+     *
+     * كان يُحسب «قيمةُ ما وصل ناقصًا ما فُوتر» — وهو صوابٌ لأمرٍ عاش كلَّه
+     * بعد الإصلاح. أمّا أمرٌ استُلم قبله (فلا قيدَ لاستلامه) ووصل سندُه
+     * بعده، فالحسابُ يقول «ينتظر ثلاثون» والخصمُ خالٍ. فيُفرَغ ما لم يُملأ:
+     * يصير الخصمُ مدينًا — يقول إنّ للمتجر عند مورّده بضاعةً لم تصل —
+     * ويبقى المخزونُ ناقصًا ثلاثين إلى الأبد.
+     *
+     * فالجوابُ في الدفتر نفسِه: كم قُيّد دائنًا لهذا الأمر وكم أُفرغ منه.
+     * والأوراقُ الثلاثُ التي تمسّ الخصمَ تُجمع: إشعاراتُ الاستلام، وسنداتُ
+     * المورّد، وقيدُ الاستدراك المعلَّق على الأمر نفسه. وما عداها لا يمسّه.
+     *
+     * فمن قرأ الدفترَ لا يحتاج أن يفترض تاريخًا: الرقمُ صادقٌ مهما كان
+     * الماضي.
+     */
+    public static function holdingBalance(int $businessId, int $purchaseOrderId): float
+    {
+        $account = Ledger::account($businessId, 'goods_received_not_invoiced');
+
+        if (! $account) {
+            return 0.0;
+        }
+
+        $notes = GoodsReceiptNote::where('purchase_order_id', $purchaseOrderId)->pluck('id');
+        $invoices = SupplierInvoice::where('purchase_order_id', $purchaseOrderId)->pluck('id');
+
+        $row = DB::table('journal_lines as l')
+            ->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
+            ->where('l.account_id', $account->id)
+            ->where('j.business_id', $businessId)
+            ->where(function ($w) use ($notes, $invoices, $purchaseOrderId) {
+                $w->where(fn ($x) => $x->where('j.sourceable_type', GoodsReceiptNote::class)
+                    ->whereIn('j.sourceable_id', $notes))
+                    ->orWhere(fn ($x) => $x->where('j.sourceable_type', SupplierInvoice::class)
+                        ->whereIn('j.sourceable_id', $invoices))
+                    ->orWhere(fn ($x) => $x->where('j.sourceable_type', PurchaseOrder::class)
+                        ->where('j.sourceable_id', $purchaseOrderId));
+            })
+            ->selectRaw('coalesce(sum(l.credit),0) as c, coalesce(sum(l.debit),0) as d')
+            ->first();
+
+        return round((float) ($row->c ?? 0) - (float) ($row->d ?? 0), 3);
     }
 
     /**

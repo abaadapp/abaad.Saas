@@ -62,6 +62,18 @@ export default function CustomArrangementDialog({
     const [addonQty, setAddonQty] = useState<Record<number, number>>({});
     const [search, setSearch] = useState('');
 
+    /**
+     * هل فُتحت قائمةُ المخزون؟ — تُفتح بضغطةٍ على الحقل لا بالكتابة وحدَها.
+     *
+     * الكاشيرُ لا يحفظ أسماءَ الدلاء. وحقلُ بحثٍ لا يُظهر شيئًا حتى يُكتب فيه
+     * يُلزمه أن يعرف ما يبحث عنه قبل أن يبحث — فيبقى المخزونُ مخفيًّا خلف
+     * كلمةٍ لا يعرفها، ويكتب ما ليس في المتجر.
+     *
+     * وتبقى مفتوحةً بعد الاختيار: الباقةُ تُركَّب من موادَّ عدّة، وإغلاقُها
+     * بعد كلّ إضافةٍ يجعل الموظّف يضغط الحقلَ خمس مرّات لخمس موادّ.
+     */
+    const [browsing, setBrowsing] = useState(false);
+
     /*
      * تُهيَّأ عند كلّ فتحة — لا مرّةً واحدة.
      *
@@ -79,6 +91,7 @@ export default function CustomArrangementDialog({
         setPicked(initial?.components ?? []);
         setAddonQty({});
         setSearch('');
+        setBrowsing(false);
     }, [open, initial]);
 
     /** الإضافاتُ العامّة وحدَها: الطلبُ المخصَّص بلا منتجٍ يأذن بغيرها */
@@ -116,12 +129,24 @@ export default function CustomArrangementDialog({
     const budgetNum = Number(budget) || 0;
     const sellingPrice = mode === 'budget' ? budgetNum : flowerNum + addonsTotal;
 
+    /*
+     * ما يُعرض تحت الحقل: نتيجةُ البحث، أو المخزونُ كلُّه حين لا بحث.
+     *
+     * والمُرشِّحُ واحدٌ في الحالتين — `p.active` — لأنّه المُرشِّحُ نفسُه الذي
+     * يطبّقه `CustomArrangement::components` في الخادم. ولو عرضت الشاشةُ
+     * صنفًا موقوفًا لَاختاره الموظّف ثمّ رُدّت البيعةُ بـ٤٢٢ بلا سببٍ مفهوم.
+     *
+     * والحدُّ أربعون في التصفّح وثمانيةٌ في البحث: التصفّحُ قائمةٌ تُمرَّر،
+     * والبحثُ جوابٌ يُقرأ بلمحة.
+     */
     const results = useMemo(() => {
         const q = search.trim().toLowerCase();
-        if (q === '') return [] as Product[];
+        const stock = products.filter((p) => p.active);
 
-        return products
-            .filter((p) => p.active && (p.label.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q)))
+        if (q === '') return stock.slice(0, 40);
+
+        return stock
+            .filter((p) => p.label.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q))
             .slice(0, 8);
     }, [search, products]);
 
@@ -296,13 +321,14 @@ export default function CustomArrangementDialog({
                             <Input
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
+                                onFocus={() => setBrowsing(true)}
                                 placeholder={t('ابحث عن صنف من المخزون')}
                                 className="ps-9"
                             />
                         </div>
 
-                        {results.length > 0 && (
-                            <ul className="mt-2 space-y-1 rounded-[12px] border border-gray-100 p-2">
+                        {(browsing || search !== '') && results.length > 0 && (
+                            <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto rounded-[12px] border border-gray-100 p-2">
                                 {results.map((p) => (
                                     <li key={p.id} className="flex items-center justify-between gap-2">
                                         <span className="min-w-0 truncate text-sm text-gray-700">

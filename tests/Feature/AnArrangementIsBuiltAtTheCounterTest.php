@@ -8,12 +8,14 @@ use App\Models\BranchStock;
 use App\Models\Business;
 use App\Models\CustomOrderTemplate;
 use App\Models\InventoryMovement;
+use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\RecipeItem;
 use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\CustomArrangement;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
@@ -181,6 +183,52 @@ class AnArrangementIsBuiltAtTheCounterTest extends TestCase
             0.0005,
             'الكميّةُ التي كتبتها الشاشةُ لم تصل الصفَّ المحفوظ',
         );
+    }
+
+    /* ══════════════ ٠٠ · الطلبُ المخصَّص يصل المالية كما يصل المخزون ══════════════ */
+
+    /**
+     * ما خرج من الرفّ يُقيَّد تكلفةً، وما دفعه الزبون يُقيَّد إيرادًا.
+     *
+     * ═══ ولمَ يُسأل عن هذا البند بعينه ═══
+     *
+     * بندُ الكتالوج تكلفتُه في بطاقة صنفه، فلو سقطت لقطتُها لَالتقطها
+     * `Books::costOf` من البطاقة. والطلبُ المخصَّص **لا صنفَ له**: تكلفتُه
+     * مجموعُ موادِّه محسوبًا لحظةَ البيع ومكتوبًا في `order_items.cost`
+     * وحدَه. فلو كُتب صفرًا — أو نُسي — لَخرجت البضاعةُ من الرفّ ولم تخرج
+     * من الميزانية: ينتفخ المخزونُ بما لم يعد فيه، ويظهر الربحُ أكبرَ ممّا
+     * هو، ولا شيءَ في الشاشة يقول ذلك.
+     *
+     * فيُسأل عن الطرفين معًا: القيدُ موجودٌ وبالمبلغ الصحيح.
+     */
+    public function test_a_custom_order_reaches_the_ledger_with_the_cost_of_what_left_the_shelf(): void
+    {
+        // ٨ × ٠٫٥ + ٦ × ٠٫٦ + ١ × ٠٫٨ = ٨٫٤
+        $this->sell()->assertOk();
+
+        $order = $this->order();
+        $this->assertEqualsWithDelta(8.4, (float) $order->items->first()->cost, 0.0005, 'تكلفةُ الموادّ لم تُكتب في البند');
+
+        // ١ · معاملةُ الدخل — وهي ما تقرؤه لوحاتُ المالية
+        $this->assertDatabaseHas('transactions', [
+            'business_id' => $this->shop->id,
+            'order_id' => $order->id,
+            'type' => 'دخل',
+        ]);
+
+        // ٢ · قيدُ تكلفة البيع في دفتر الأستاذ
+        $entry = JournalEntry::where('business_id', $this->shop->id)
+            ->where('source', Books::SALE_COST)
+            ->latest('id')->with('lines.account')->first();
+
+        $this->assertNotNull($entry, 'الطلبُ المخصَّص لم يصل دفترَ الأستاذ بتكلفته');
+
+        $debit = $entry->lines->firstWhere(fn ($l) => (float) $l->debit > 0);
+        $credit = $entry->lines->firstWhere(fn ($l) => (float) $l->credit > 0);
+
+        $this->assertEqualsWithDelta(8.4, (float) $debit->debit, 0.0005, 'تكلفةُ البضاعة المباعة لا تساوي تكلفةَ الموادّ');
+        $this->assertEqualsWithDelta(8.4, (float) $credit->credit, 0.0005, 'المخزونُ لم يُنقَص في الميزانية بما خرج منه');
+        $this->assertSame($entry->lines->sum('debit'), $entry->lines->sum('credit'), 'القيدُ غيرُ متوازن');
     }
 
     private function order(): Order

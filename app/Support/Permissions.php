@@ -806,6 +806,8 @@ class Permissions
         'expenseTypes' => 'expenses',
         'goals' => 'dashboard',
         'alerts' => 'settings',
+        // قوالبُ الطلب المخصَّص تُكتب في الإعدادات — ولا مفتاحَ ثالثٌ لها
+        'customOrders' => 'settings',
         'backup' => 'settings',
         /*
          * والأرشيفُ الشهريّ يجاور النسخةَ الاحتياطيّة في تبويبها.

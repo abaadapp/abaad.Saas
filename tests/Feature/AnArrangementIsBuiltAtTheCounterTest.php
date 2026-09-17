@@ -6,6 +6,7 @@ use App\Models\Addon;
 use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Business;
+use App\Models\CustomOrderTemplate;
 use App\Models\InventoryMovement;
 use App\Models\Order;
 use App\Models\Product;
@@ -66,6 +67,9 @@ class AnArrangementIsBuiltAtTheCounterTest extends TestCase
     /** إضافةٌ خدمةٌ لا بضاعة — لا رصيدَ لها فلا تُخصم */
     private Addon $wrapService;
 
+    /** قالبُ المتجر — المحرّكُ لا يعرف صناعةً، يعرف قالبًا */
+    private CustomOrderTemplate $template;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -107,6 +111,8 @@ class AnArrangementIsBuiltAtTheCounterTest extends TestCase
                 'price' => 0.3, 'cost' => 0.05, 'quantity' => 25, 'active' => true,
             ])->id,
         ]);
+        $this->template = CustomOrderTemplate::ensureDefault($this->shop->id);
+
         // خدمةٌ بلا رصيد — `inventory_product_id` فارغ
         $this->wrapService = Addon::create([
             'business_id' => $this->shop->id, 'name' => 'تغليف فاخر', 'price' => 1, 'active' => true,
@@ -143,6 +149,38 @@ class AnArrangementIsBuiltAtTheCounterTest extends TestCase
             'payment_method' => 'نقدي',
             'client_uuid' => uniqid('c', true),
         ], $extra));
+    }
+
+    /* ══════════════ ٠ · ما ترسله الشاشةُ هو ما يقبله الخادم ══════════════ */
+
+    /**
+     * كميّةُ المادّة اسمُها واحدٌ في الشاشة والخادم.
+     *
+     * ═══ العطب ═══
+     *
+     * كانت النافذةُ تكتب `qty` و`CustomArrangement::rules` تطلب `quantity`.
+     * فكلُّ اختباراتِ هذا الملفّ تمرّ — لأنّها تُرسل ما يقبله الخادم — وكلُّ
+     * بيعةٍ من الشاشة تُردّ بـ٤٢٢ عند الحرف الأوّل.
+     *
+     * واختبارُ خادمٍ وحدَه لا يمسك هذا أبدًا: الطرفان لا يلتقيان في اختباره.
+     * فهذا الحارسُ يرسل **ما تكتبه النافذة بالحرف** ويطلب أن يُقبل.
+     *
+     * ولا يُقرأ منه أنّ الاسمين جائزان: الاسمُ `quantity` وحده — هو اسمُ
+     * العمود في `order_item_components` واسمُه في حمولة الاستئناف.
+     */
+    public function test_the_key_the_screen_writes_is_the_key_the_server_reads(): void
+    {
+        $this->sell(['components' => [
+            // بالحرف كما في `CustomArrangementDialog` — لا كما في بقيّة هذا الملفّ
+            ['product_id' => $this->white->id, 'name' => 'ورد أبيض', 'quantity' => 8, 'restockable' => false],
+        ]])->assertOk()->assertJsonPath('ok', true);
+
+        $this->assertEqualsWithDelta(
+            8.0,
+            (float) $this->order()->items->first()->components->first()->quantity,
+            0.0005,
+            'الكميّةُ التي كتبتها الشاشةُ لم تصل الصفَّ المحفوظ',
+        );
     }
 
     private function order(): Order
@@ -498,17 +536,57 @@ class AnArrangementIsBuiltAtTheCounterTest extends TestCase
         $this->assertSame('ورد أبيض', $row->name);
     }
 
-    /** ووصفُ الطلب يُحفظ: الوضعُ والألوانُ والتغليفُ وملاحظاتُ المنسّق */
-    public function test_the_arrangement_remembers_how_it_was_described(): void
+    /**
+     * ووصفُ الطلب يُحفظ — والحمولةُ القديمة تُقرأ حقولًا عامّة.
+     *
+     * ═══ وهذه هي الهجرةُ التي لا تمسّ صفًّا ═══
+     *
+     * سلّةٌ عُلّقت قبل الترقية ترسل `colors` و`packaging_label`
+     * و`florist_notes` مفاتيحَ في الجذر. فتُقبل — رفضُها يُسقط طلبًا صحيحًا
+     * — وتُكتب حقولًا عامّةً بتسمياتها التي رآها الموظّف يومها، فيُقرأ
+     * الطلبُ بقارئٍ واحدٍ لا بقارئين.
+     */
+    public function test_a_legacy_payload_is_stored_as_generic_fields(): void
     {
         $this->sell()->assertOk();
         $details = $this->order()->items->first()->custom_details;
 
         $this->assertSame(CustomArrangement::MODE_VALUE, $details['mode']);
-        $this->assertSame(['أبيض', 'وردي'], $details['colors']);
-        $this->assertSame('كيس أسود', $details['packaging_label']);
-        $this->assertSame('الأبيض أكثر من الوردي', $details['florist_notes']);
         $this->assertEqualsWithDelta(8.4, (float) $details['material_cost'], 0.0005);
+        $this->assertSame(2, $details['v'], 'كُتبت بالصيغة القديمة');
+
+        $view = CustomArrangement::view($details);
+        $said = collect($view['fields'])->mapWithKeys(fn ($f) => [$f['label'] => $f['values']]);
+
+        $this->assertSame(['أبيض', 'وردي'], $said['ألوان الورد']);
+        $this->assertSame(['كيس أسود'], $said['لون التغليف']);
+        $this->assertSame(['الأبيض أكثر من الوردي'], $said['ملاحظات المنسق']);
+        // وملاحظةُ المنسّق تبقى داخليّةً بوسمها، لا باسمها في قالب فاتورة
+        $this->assertTrue(collect($view['fields'])->firstWhere('label', 'ملاحظات المنسق')['internal']);
+    }
+
+    /**
+     * والطلبُ الذي بيع بالشكل الأوّل يُقرأ كما كُتب — لا يُهاجَر ولا يُمحى.
+     *
+     * صفٌّ كُتب في سبتمبر ليس فيه `v` ولا `fields` ولا `template`. وقارئٌ
+     * ينهار عليه يعني طلبات شهرٍ كاملٍ لا تُفتح بطاقةُ تجهيزٍ لها.
+     */
+    public function test_a_first_format_snapshot_is_still_readable(): void
+    {
+        $view = CustomArrangement::view([
+            'mode' => CustomArrangement::MODE_VALUE,
+            'flower_value' => 20,
+            'colors' => ['أحمر'],
+            'florist_notes' => 'بلا شريطة',
+            'material_cost' => 3.5,
+        ]);
+
+        $this->assertNull($view['template'], 'اختُلق قالبٌ لطلبٍ بيع قبل القوالب');
+        $this->assertSame(20.0, $view['base_value']);
+        $this->assertSame(['أحمر'], $view['fields'][0]['values']);
+        $this->assertSame('ألوان الورد', $view['fields'][0]['label']);
+        $this->assertSame('ملاحظات المنسق', $view['fields'][1]['label']);
+        $this->assertTrue($view['fields'][1]['internal']);
     }
 
     /** ورسالةُ الكرت تُحفظ في مكانها القائم — لا حقلَ ثانٍ لها */
@@ -521,9 +599,17 @@ class AnArrangementIsBuiltAtTheCounterTest extends TestCase
 
     /* ══════════════ ٨ · الفاتورة والمالية ══════════════ */
 
-    /** الفاتورةُ تقول «تنسيق ورد مخصص» ولا تفشي موادَّه */
+    /**
+     * الفاتورةُ تقول اسمَ القالب ولا تفشي موادَّه.
+     *
+     * والاسمُ من القالب لا من الكود: كان «تنسيق ورد مخصص» مكتوبًا في
+     * `CustomArrangement::label()` — أي أنّ محلَّ العطر يطبع على فاتورته
+     * كلمةَ «ورد». فصار اسمَ القالب الذي كتبه صاحبُ النشاط.
+     */
     public function test_the_customer_paper_names_the_line_and_hides_its_materials(): void
     {
+        $this->template->update(['name' => 'باقة على الطلب']);
+
         $this->sell()->assertOk();
         $order = $this->order();
 
@@ -533,7 +619,8 @@ class AnArrangementIsBuiltAtTheCounterTest extends TestCase
             DocumentTemplates::settings($this->shop->id, 'sale'),
         );
 
-        $this->assertStringContainsString('تنسيق ورد مخصص', $html);
+        $this->assertStringContainsString('باقة على الطلب', $html);
+        $this->assertStringNotContainsString('تنسيق ورد مخصص', $html, 'اسمٌ مكتوبٌ في الكود على ورقة الزبون');
         $this->assertStringNotContainsString('ROSE-WHITE', $html, 'رمزُ الورد على ورقة الزبون');
         $this->assertStringNotContainsString('الأبيض أكثر من الوردي', $html, 'ملاحظةُ المنسّق على ورقة الزبون');
     }

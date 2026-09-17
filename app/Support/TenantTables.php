@@ -45,7 +45,19 @@ class TenantTables
 
         // ما يتفرّع عنها
         'branch_user', 'branch_google_places', 'google_business_accounts', 'google_business_reviews',
-        'custom_alerts', 'products', 'product_variants', 'product_images',
+        'custom_alerts',
+        /*
+         * قوالبُ الطلب المخصَّص وحقولُها وخياراتُها — وصفُ ما يبيعه المتجر.
+         *
+         * وتُنسخ وتُستعاد كما تُنسخ الأصنافُ والإضافات: من استعاد نسختَه بلا
+         * قوالبه يجد شاشةَ طلبه المخصَّص فارغة، ويُعيد كتابة حقوله وخياراته
+         * واحدًا واحدًا من ذاكرته.
+         *
+         * وترتيبُها قبل `orders` لا يلزم — الطلبُ يحمل لقطتَه لا مرجعًا إلى
+         * قالب — لكنّها تسبق لأنّها وصفٌ يُقرأ قبل ما وُصف به.
+         */
+        'custom_order_templates', 'custom_order_fields', 'custom_order_field_options',
+        'products', 'product_variants', 'product_images',
         'addons', 'product_addons', 'recipe_items',
         'customers', 'customer_addresses',
         'pos_devices', 'pos_peripherals',
@@ -127,6 +139,8 @@ class TenantTables
         'delivery_note_items' => ['delivery_notes', 'delivery_note_id'],
         'goods_receipt_note_items' => ['goods_receipt_notes', 'goods_receipt_note_id'],
         'journal_lines' => ['journal_entries', 'journal_entry_id'],
+        'custom_order_fields' => ['custom_order_templates', 'template_id'],
+        'custom_order_field_options' => ['custom_order_fields', 'field_id'],
         'order_item_addons' => ['order_items', 'order_item_id'],
         // موادُّ الطلب المخصَّص — تتبع بندَها كما تتبعه إضافاتُه
         'order_item_components' => ['order_items', 'order_item_id'],

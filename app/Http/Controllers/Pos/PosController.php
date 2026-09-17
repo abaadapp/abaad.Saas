@@ -248,13 +248,45 @@ class PosController extends Controller
              */
             if (! empty($i['custom'])) {
                 $custom = $i['custom'];
-                $components = CustomArrangement::components($bid, $custom['components'] ?? [], "items.$idx.custom.components");
+
+                /*
+                 * ═══ البابُ يُقفل من الخادم لا من الشاشة ═══
+                 *
+                 * إخفاءُ زرٍّ لا يمنع طلبًا: من أطفأ الميزةَ أطفأها لسببٍ —
+                 * كاشيرٌ يكتب أسعارًا بيده — ومن يعرف شكلَ الحمولة يرسلها.
+                 * فالفحصُ هنا قبل أن يُقرأ سعرٌ أو تُحجز بضاعة.
+                 */
+                if (! CustomArrangement::enabled($bid)) {
+                    $errors["items.$idx.custom"] = __('الطلبات المخصصة غير مفعّلة في هذا المتجر.');
+
+                    continue;
+                }
+
+                $template = CustomArrangement::template($bid, $custom['template_id'] ?? 0, "items.$idx.custom.template_id");
+
+                /*
+                 * والوضعُ يُفحص بالقالب لا بقائمة النظام.
+                 *
+                 * قالبٌ يسمح بالميزانية وحدها يُرسَل إليه «قيمة أساسية»
+                 * فيُقبل لولا هذا: فيخرج طلبٌ بسعرٍ يزيد بالإضافات من قالبٍ
+                 * كتب صاحبُه أنّ سعره نهائيّ.
+                 */
+                if (! $template->allowsMode($custom['mode'] ?? null)) {
+                    $errors["items.$idx.custom.mode"] = __('طريقة التسعير غير مسموحة في هذا القالب.');
+
+                    continue;
+                }
+
+                $rows = $template->allow_components ? ($custom['components'] ?? []) : [];
+                $components = CustomArrangement::components($bid, $rows, "items.$idx.custom.components", $template);
                 $materialCost = CustomArrangement::materialCost($components);
+                $fields = CustomArrangement::fieldValues($template, $custom['fields'] ?? [], "items.$idx.custom.fields");
 
                 $lines[] = [
                     'product' => null,
                     'variant' => null,
-                    'name' => CustomArrangement::label(),
+                    // لقطةُ اسم القالب — لا يُقرأ الحيُّ يوم الطباعة
+                    'name' => CustomArrangement::label($template),
                     'price' => round((float) $custom['price'], 3),
                     'list_price' => round((float) $custom['price'], 3),
                     'cost' => $materialCost,
@@ -270,9 +302,13 @@ class PosController extends Controller
                      * مداه «مع الجميع» (`Addon::SCOPE_ALL`)، وهو المدى الذي
                      * تُعرض به الإضافةُ العامّة على كلّ صنفٍ في الصندوق.
                      */
-                    'addons' => $this->freeAddons($i['addons'] ?? [], $addons, $idx),
+                    'addons' => $template->allow_addons
+                        ? $this->freeAddons($i['addons'] ?? [], $addons, $idx)
+                        : [],
                     'addons_total' => 0.0,
                     'custom' => $custom,
+                    'template' => $template,
+                    'fields' => $fields,
                     'components' => $components,
                 ];
 
@@ -1247,7 +1283,12 @@ class PosController extends Controller
                     'addons_total' => (float) ($l['addons_total'] ?? 0),
                     // وصفُ الطلب المخصَّص — فارغٌ لكلّ بندٍ من الكتالوج
                     'custom_details' => isset($l['custom'])
-                        ? CustomArrangement::details($l['custom'], (float) $l['cost'])
+                        ? CustomArrangement::details(
+                            $l['custom'],
+                            (float) $l['cost'],
+                            $l['template'] ?? null,
+                            $l['fields'] ?? [],
+                        )
                         : null,
                 ]);
 
@@ -1515,7 +1556,12 @@ class PosController extends Controller
                     'addons_total' => (float) ($l['addons_total'] ?? 0),
                     // وصفُ الطلب المخصَّص — فارغٌ لكلّ بندٍ من الكتالوج
                     'custom_details' => isset($l['custom'])
-                        ? CustomArrangement::details($l['custom'], (float) $l['cost'])
+                        ? CustomArrangement::details(
+                            $l['custom'],
+                            (float) $l['cost'],
+                            $l['template'] ?? null,
+                            $l['fields'] ?? [],
+                        )
                         : null,
                 ]);
 
@@ -1618,15 +1664,22 @@ class PosController extends Controller
                  * ولولا هذا لَعادت الباقةُ المخصَّصة سطرًا بسعرٍ بلا موادّ:
                  * تُباع فلا يَنقص الرفُّ شيئًا — وهو أسوأ من ألّا تعود أصلًا.
                  */
-                'custom' => $i->isCustom() ? ($i->custom_details + [
+                'custom' => $i->isCustom() ? [
+                    'template_id' => $i->custom_details['template']['id'] ?? null,
+                    // اسمُ اللقطة لا اسمُ القالب الحيّ — البندُ يبقى كما بيع
+                    'template_name' => $i->name,
+                    'mode' => $i->custom_details['mode'] ?? CustomArrangement::MODE_VALUE,
+                    'base_value' => $i->custom_details['base_value'] ?? ($i->custom_details['flower_value'] ?? null),
                     'price' => (float) $i->price,
+                    'fields' => CustomArrangement::resumeFields($i->custom_details),
                     'components' => $i->components->map(fn ($c) => [
                         'product_id' => $c->product_id,
                         'name' => $c->name,
-                        'kind' => $c->kind,
                         'quantity' => (float) $c->quantity,
+                        // والسياسةُ تعود كما كُتبت، فلا تُستأنف سلّةٌ بسياسةٍ أخرى
+                        'restockable' => (bool) $c->restockable,
                     ])->all(),
-                ]) : null,
+                ] : null,
             ])->all(),
             // يعود الكود إلى السلة لتُعيد الواجهة تطبيقه، فيراه الكاشير
             // ويُحتسب عند الدفع. لا نُعيد قيمة الخصم — تُحسب من جديد.

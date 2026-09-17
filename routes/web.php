@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\CustomAlertController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerImportExportController;
 use App\Http\Controllers\Admin\CustomerInvoiceController;
+use App\Http\Controllers\Admin\CustomOrderTemplateController;
 use App\Http\Controllers\Admin\DocumentPrintController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\ExpenseController;
@@ -1407,6 +1408,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/alerts', [CustomAlertController::class, 'store'])->name('alerts.store');
     Route::put('/alerts/{id}', [CustomAlertController::class, 'update'])->name('alerts.update');
     Route::delete('/alerts/{id}', [CustomAlertController::class, 'destroy'])->name('alerts.destroy');
+
+    /*
+     * قوالبُ الطلب المخصَّص — شكلُ الطلب كما يكتبه صاحبُ النشاط.
+     *
+     * وتحت حارس القسم نفسِه الذي يحرس بقيّة الإعدادات: من يكتب قالبًا يكتب
+     * ما يُباع به، وهو قرارُ صاحب النشاط لا الكاشير.
+     */
+    Route::post('/custom-order-templates', [CustomOrderTemplateController::class, 'store'])->name('customOrders.store');
+    Route::put('/custom-order-templates/{id}', [CustomOrderTemplateController::class, 'update'])->name('customOrders.update');
+    Route::delete('/custom-order-templates/{id}', [CustomOrderTemplateController::class, 'destroy'])->name('customOrders.destroy');
+    Route::post('/custom-order-templates/reorder', [CustomOrderTemplateController::class, 'reorder'])->name('customOrders.reorder');
 });
 
 /* -------------------------------- POS ------------------------------ */

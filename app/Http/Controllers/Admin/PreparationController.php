@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Support\Activity;
+use App\Support\CustomArrangement;
 use App\Support\DeliveryPaper;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
@@ -254,16 +255,29 @@ class PreparationController extends Controller
                  */
                 'components' => $i->components->map(fn ($c) => [
                     'name' => $c->name,
-                    'kind' => $c->kind,
                     // كسرٌ يُعرض كما هو: «١.٥ لفّة» لا «٢»
                     'qty' => (float) $c->quantity,
                 ])->all(),
-                // تفضيلاتُ الألوان وملاحظاتُ المنسّق — لا تُطبع على فاتورة العميل
-                'custom' => $i->isCustom() ? [
-                    'colors' => $i->custom_details['colors'] ?? [],
-                    'packaging_label' => $i->custom_details['packaging_label'] ?? null,
-                    'florist_notes' => $i->custom_details['florist_notes'] ?? null,
-                ] : null,
+                /*
+                 * وخياراتُ الطلب كما كُتبت يوم البيع — لا كما يقول القالبُ اليوم.
+                 *
+                 * ═══ ولمَ لا تُقرأ الحقولُ بأسمائها ═══
+                 *
+                 * كانت ثلاثةَ مفاتيح تُقرأ بأسمائها: `colors` و`packaging_label`
+                 * و`florist_notes`. فبطاقةُ التجهيز كانت تعرف أنّ في الدنيا
+                 * ألوانًا وتغليفًا ومنسّقًا — وهي شاشةُ نظامٍ لا يعرف ما يبيع
+                 * التاجر. ومن أضاف حقلًا رابعًا لم يظهر على البطاقة أصلًا.
+                 *
+                 * فصارت قائمةً: تسميةٌ وقيمة، أيًّا كانت. والقارئُ واحدٌ يفهم
+                 * الشكلين — ما بيع قبل القوالب وما بعدها.
+                 *
+                 * ولا سعرَ ولا تكلفة: اللوحةُ شاشةُ من يصنع لا من يحاسب.
+                 */
+                'custom' => $i->isCustom() ? (function () use ($i) {
+                    $v = CustomArrangement::view($i->custom_details);
+
+                    return ['template' => $v['template'], 'fields' => $v['fields']];
+                })() : null,
             ])->values()->all(),
             // ما يجوز الانتقال إليه من هنا — تُبنى منه أزرار البطاقة
             'next' => OrderStatus::nextFrom($o->status),

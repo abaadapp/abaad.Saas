@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
+use App\Models\CustomOrderTemplate;
 use App\Models\Order;
 use App\Support\Activity;
+use App\Support\CustomArrangement;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\PlanFeatures;
@@ -92,6 +94,44 @@ class PageController extends Controller
             'customers' => Demo::customers(),
             'addons' => Demo::addons(),
             'coupons' => Demo::activeCoupons(),
+            /*
+             * قوالبُ الطلب المخصَّص — النشطةُ وحدها، وبلغة الواجهة.
+             *
+             * ═══ ولمَ تُرسل جاهزةً للعرض ═══
+             *
+             * الشاشةُ تعرض ما تُعطى ولا تختار: لو أُرسل الموقوفُ لَاحتاجت أن
+             * ترشّح، ولو أُرسل الاسمان لَاحتاجت أن تختار بينهما — وقاعدتان
+             * للاختيار (هنا وفي الخادم) تفترقان يوم تُبدَّل إحداهما، فيُعرض
+             * قالبٌ يرفضه الخادم.
+             *
+             * وفارغةٌ حين تُطفأ الميزة: الزرُّ لا يُعرض، والبابُ مقفلٌ في
+             * الخادم أيضًا — انظر `PosController::priceItems`.
+             */
+            'customOrder' => CustomArrangement::enabled(Demo::bid()) ? [
+                'templates' => CustomOrderTemplate::sellable(Demo::bid())
+                    ->with(['fields' => fn ($q) => $q->where('active', true), 'fields.options' => fn ($q) => $q->where('active', true)])
+                    ->get()->map(fn ($t) => [
+                        'id' => $t->id,
+                        'name' => $t->display(),
+                        'modes' => $t->modes,
+                        'default_mode' => $t->default_mode ?: ($t->modes[0] ?? null),
+                        'base_label' => $t->baseLabel(),
+                        'allow_components' => $t->allow_components,
+                        'allow_addons' => $t->allow_addons,
+                        'restockable_default' => $t->components_restockable_default,
+                        'fields' => $t->fields->map(fn ($f) => [
+                            'id' => $f->id,
+                            'label' => $f->display(),
+                            'type' => $f->type,
+                            'required' => $f->required,
+                            'internal' => $f->internal,
+                            'options' => $f->options->map(fn ($o) => [
+                                'id' => $o->id,
+                                'label' => $o->display(),
+                            ])->values(),
+                        ])->values(),
+                    ])->values(),
+            ] : ['templates' => []],
             // سلة مستعادة من طلب معلّق (تُمرَّر عبر الجلسة من PosController::resume)
             'resumeCart' => session('resume_cart'),
             'settings' => $this->loyaltySettings(),

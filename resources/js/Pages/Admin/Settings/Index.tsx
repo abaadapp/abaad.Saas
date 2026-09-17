@@ -55,6 +55,7 @@ import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
 import ArchivePanel, { type ArchiveData } from './panels/ArchivePanel';
+import CustomOrdersPanel, { type CustomOrderTemplate } from './panels/CustomOrdersPanel';
 import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
@@ -104,6 +105,9 @@ interface Props {
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
     alertMetrics: AlertMetric[];
     alertSections: Record<string, string>;
+    /** قوالبُ الطلب المخصَّص بحقولها — تُرسل كاملةً كما تُرسل التنبيهات فوقها */
+    customOrderTemplates: CustomOrderTemplate[];
+    customOrderFieldTypes: { value: string; label: string }[];
     locale: string;
     /* لا تصل إلا حين يُطلب قسمها في الرابط — انظر settingsSection في PageController */
     branches?: Branch[];
@@ -231,7 +235,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, settingsFields, business, recovery, mail, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, settingsFields, business, recovery, mail, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, customOrderTemplates, customOrderFieldTypes, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types, archive } =
         usePage<PageProps<Props>>().props;
@@ -356,6 +360,8 @@ export default function SettingsIndex() {
         currency: get('currency', 'OMR'),
         decimals: get('decimals', '3'),
         symbol_pos: get('symbol_pos', 'after'),
+
+        custom_orders_enabled: on('custom_orders_enabled'),
 
         pay_cash: on('pay_cash'),
         pay_card: on('pay_card'),
@@ -1630,6 +1636,18 @@ export default function SettingsIndex() {
                                 </SettingsGroup>
                                 </SettingsSection>
 
+                                {saveBar}
+                            </>
+                        )}
+
+                        {tab === 'custom-orders' && (
+                            <>
+                                <CustomOrdersPanel
+                                    enabled={form.data.custom_orders_enabled}
+                                    onEnabledChange={(v) => form.setData('custom_orders_enabled', v)}
+                                    templates={customOrderTemplates ?? []}
+                                    fieldTypes={customOrderFieldTypes ?? []}
+                                />
                                 {saveBar}
                             </>
                         )}

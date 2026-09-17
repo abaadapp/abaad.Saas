@@ -28,9 +28,10 @@ import { toast } from 'sonner';
 import PosLayout from '@/Layouts/PosLayout';
 import NewCustomerDialog from '@/Pages/Pos/partials/NewCustomerDialog';
 import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDialog';
-import CustomArrangementDialog from '@/Pages/Pos/partials/CustomArrangementDialog';
+import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
 import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
 import { Badge } from '@/Components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { decimalsFor, money as fmtMoney } from '@/lib/format';
@@ -57,10 +58,17 @@ interface Props {
     settings: LoyaltySettings & { loyaltyEnabled?: boolean; paymentMethods?: string[]; vat?: VatSettings };
     /** خيارات طلب الورد — تصل من الخادم فلا تُكتب هنا مرّةً ثانية */
     orderOptions?: OrderOptions;
+    /**
+     * قوالبُ الطلب المخصَّص — نشطةً ومترجمةً كما أرسلها الخادم.
+     *
+     * وفارغةٌ حين تُطفأ الميزةُ أو حين لا قالبَ في المتجر، فيختفي الزرّ:
+     * «مقبضٌ لا يُدير شيئًا أسوأ من غياب المقبض».
+     */
+    customOrder?: { templates: PosTemplate[] };
 }
 
 export default function PosIndex() {
-    const { products: serverProducts, categories, customers, addons, coupons, resumeCart, settings, orderOptions, context } =
+    const { products: serverProducts, categories, customers, addons, coupons, resumeCart, settings, orderOptions, customOrder, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -150,6 +158,55 @@ export default function PosIndex() {
     /** نافذةُ الطلب المخصَّص — و`customEdit` مفتاحُ البند حين تُفتح للتعديل */
     const [customOpen, setCustomOpen] = useState(false);
     const [customEdit, setCustomEdit] = useState<string | null>(null);
+    /** القالبُ الذي تُركَّب عليه هذه الطلبة — شكلُ النافذة كلِّه يُقرأ منه */
+    const [customTemplate, setCustomTemplate] = useState<PosTemplate | null>(null);
+    /** مُنتقي القوالب — يُفتح حين يكون للمتجر أكثرُ من قالب */
+    const [pickTemplate, setPickTemplate] = useState(false);
+
+    const customTemplates = customOrder?.templates ?? [];
+
+    /*
+     * ═══ ضغطةُ «طلب مخصص» ═══
+     *
+     * قالبٌ واحد: تُفتح النافذةُ عليه مباشرةً. وسؤالٌ جوابُه واحدٌ ليس
+     * سؤالًا — ونقرةٌ زائدةٌ على كلّ طلبٍ في يومٍ كاملٍ ثمنُها ظاهر.
+     *
+     * وأكثرُ من قالب: يُسأل، لأنّ اختيارَ القالب هو اختيارُ ما يُسأل عنه
+     * بعده، ولا يُخمَّن.
+     */
+    const openCustom = () => {
+        setCustomEdit(null);
+
+        if (customTemplates.length === 1) {
+            setCustomTemplate(customTemplates[0]);
+            setCustomOpen(true);
+
+            return;
+        }
+
+        setPickTemplate(true);
+    };
+
+    /*
+     * والتعديلُ يفتح على القالب الذي رُكّب عليه البند لا على غيره.
+     *
+     * ولو حُذف القالبُ والسلّةُ مفتوحة لم يُفتح شيء: تعديلُ بندٍ بقالبٍ آخر
+     * كان سيُبدّل أسئلتَه صامتًا — يخرج الطلبُ بإجاباتٍ عن أسئلةٍ لم تُسأل.
+     */
+    const editCustom = (key: string) => {
+        const line = cart.items.find((i) => i.key === key);
+        const tpl = customTemplates.find((x) => x.id === line?.custom?.template_id);
+
+        if (!tpl) {
+            toast.error(t('قالب هذا الطلب لم يعد متاحًا'));
+
+            return;
+        }
+
+        setCustomTemplate(tpl);
+        setCustomEdit(key);
+        setCustomOpen(true);
+    };
 
     const pick = (p: (typeof products)[number]) => {
         const allowed = activeAddons.filter((a) => p.addon_ids == null || p.addon_ids.includes(a.id));
@@ -297,14 +354,16 @@ export default function PosIndex() {
                           * بيع** كما أنّ الأقسام اختيارُ ما يُعرض، وبطاقةٌ في
                           * الشبكة كانت ستُزيح منتجًا حقيقيًّا من مكانه.
                           */}
-                        <button
-                            type="button"
-                            onClick={() => { setCustomEdit(null); setCustomOpen(true); }}
-                            className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 touch:px-5 touch:py-2.5"
-                        >
-                            <Plus className="size-4" />
-                            {t('طلب مخصص')}
-                        </button>
+                        {customTemplates.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={openCustom}
+                                className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 touch:px-5 touch:py-2.5"
+                            >
+                                <Plus className="size-4" />
+                                {customTemplates.length === 1 ? customTemplates[0].name : t('طلب مخصص')}
+                            </button>
+                        )}
 
                         {categories.map((c) => (
                             <button
@@ -572,7 +631,7 @@ export default function PosIndex() {
                                                     {item.custom && (
                                                         <button
                                                             type="button"
-                                                            onClick={() => { setCustomEdit(item.key); setCustomOpen(true); }}
+                                                            onClick={() => editCustom(item.key)}
                                                             className="text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline"
                                                         >
                                                             {t('تعديل')}
@@ -823,17 +882,57 @@ export default function PosIndex() {
                 onNewOrder={() => { cart.reset(); toast.success(t('طلب جديد جاهز')); }}
             />
 
+            {/*
+              * مُنتقي القوالب — يُعرض حين يكون للمتجر أكثرُ من شكلِ طلب.
+              *
+              * ولا يُعرض القالبُ الموقوف: الخادمُ لا يرسله أصلًا، فلا قائمةَ
+              * ثانيةٌ هنا تُرشِّح — «فحصان لسؤالٍ واحد يفترقان يوم يُبدَّل أحدهما».
+              */}
+            <Dialog open={pickTemplate} onOpenChange={(o) => !o && setPickTemplate(false)}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader className="px-5 pt-5">
+                        <DialogTitle>{t('طلب مخصص')}</DialogTitle>
+                        <DialogDescription>{t('اختر شكل الطلب')}</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 px-5 pb-5">
+                        {customTemplates.map((tpl) => (
+                            <button
+                                key={tpl.id}
+                                type="button"
+                                onClick={() => {
+                                    setCustomTemplate(tpl);
+                                    setPickTemplate(false);
+                                    setCustomOpen(true);
+                                }}
+                                className="flex w-full items-center justify-between rounded-[12px] border border-gray-200 bg-white px-4 py-3 text-start text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50"
+                            >
+                                {tpl.name}
+                                <Plus className="size-4 text-gray-400" />
+                            </button>
+                        ))}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             <CustomArrangementDialog
                 open={customOpen}
+                template={customTemplate}
                 products={products}
                 addons={addons}
                 money={money}
                 initial={customEdit ? (cart.items.find((i) => i.key === customEdit)?.custom ?? null) : null}
                 onClose={() => { setCustomOpen(false); setCustomEdit(null); }}
                 onConfirm={(custom, chosen) => {
+                    /*
+                     * واسمُ البند اسمُ القالب — لا نصٌّ مكتوبٌ في الشاشة.
+                     *
+                     * «تنسيق ورد مخصص» كان يظهر في سلّة بائع العطر وفي
+                     * فاتورته. والخادمُ يكتب الاسمَ من لقطة القالب عند الحفظ،
+                     * وهذا ما يراه الكاشيرُ قبلها.
+                     */
                     const line = {
                         id: null,
-                        name: t('تنسيق ورد مخصص'),
+                        name: custom.template_name,
                         price: custom.price,
                         custom,
                         addons: chosen,

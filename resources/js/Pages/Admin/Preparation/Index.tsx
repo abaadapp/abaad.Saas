@@ -19,9 +19,17 @@ interface PrepItem {
     /** الإضافات المختارة — يراها من يجهّز الطلب */
     addons?: { name: string; qty: number }[];
     /** موادُّ الطلب المخصَّص — لقطتُها لحظة البيع، لا وصفةٌ تُقرأ اليوم */
-    components?: { name: string; kind: string; qty: number }[];
-    /** ما لا يُخصم من الرفّ: تفضيلاتُ اللون والتغليف وملاحظاتُ المنسّق */
-    custom?: { colors: string[]; packaging_label: string | null; florist_notes: string | null } | null;
+    components?: { name: string; qty: number }[];
+    /**
+     * خياراتُ الطلب المخصَّص — تسميةٌ وقيمةٌ، أيًّا كانت.
+     *
+     * كانت ثلاثةَ حقولٍ بأسمائها: ألوانٌ وتغليفٌ وملاحظاتُ منسّق. وهذه شاشةُ
+     * نظامٍ لا يعرف ما يبيع التاجر، فصارت قائمةً يقولها قالبُه.
+     */
+    custom?: {
+        template: string | null;
+        fields: { label: string; internal: boolean; values: string[] }[];
+    } | null;
 }
 
 interface PrepOrder {
@@ -296,22 +304,24 @@ export default function PreparationIndex() {
                                                     {c.name} ×{number(c.qty, Number.isInteger(c.qty) ? 0 : 3)}
                                                 </span>
                                             ))}
-                                            {i.custom?.colors && i.custom.colors.length > 0 && (
-                                                <span className="block text-[12px] text-[#6b7280]">
-                                                    {t('ألوان الورد')}: {i.custom.colors.join(' + ')}
+                                            {/*
+                                              * وخياراتُ الطلب بتسمياتها كما كُتبت يوم البيع.
+                                              *
+                                              * والداخليُّ يُلوَّن كالملاحظة: هو ما لا يراه العميل على
+                                              * الفاتورة ويراه من يجهّز — وتمييزُه بلونه يقول ذلك بلا
+                                              * سطرٍ يشرحه.
+                                              */}
+                                            {(i.custom?.fields ?? []).map((f, k) => (
+                                                <span
+                                                    key={`f${k}`}
+                                                    className={cn(
+                                                        'block text-[12px]',
+                                                        f.internal ? 'font-medium text-[#b45309]' : 'text-[#6b7280]',
+                                                    )}
+                                                >
+                                                    {f.label}: {f.values.join(' + ')}
                                                 </span>
-                                            )}
-                                            {i.custom?.packaging_label && (
-                                                <span className="block text-[12px] text-[#6b7280]">
-                                                    {t('التغليف')}: {i.custom.packaging_label}
-                                                </span>
-                                            )}
-                                            {/* ملاحظاتُ المنسّق داخليّة — تُقرأ هنا ولا تُطبع على الفاتورة */}
-                                            {i.custom?.florist_notes && (
-                                                <span className="block text-[12px] font-medium text-[#b45309]">
-                                                    {i.custom.florist_notes}
-                                                </span>
-                                            )}
+                                            ))}
                                         </span>
                                         <span className="font-bold tabular-nums text-[#111]">×{i.qty}</span>
                                     </li>

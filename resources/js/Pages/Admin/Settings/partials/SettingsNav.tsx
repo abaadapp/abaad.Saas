@@ -10,6 +10,7 @@ import {
     MonitorSmartphone,
     Percent,
     ShieldCheck,
+    SlidersHorizontal,
     Store,
     Target,
     Trash2,
@@ -91,6 +92,23 @@ export const SETTINGS_NAV = [
                 // والأربعةُ هي ما في `DocumentTemplates::TYPES` — ورُفع «التحويل» مع شاشته
                 desc: 'فاتورة البيع وسند التسليم وأمر الشراء وسند استلام البضاعة — لكلٍّ محرّرُه',
                 icon: LayoutTemplate,
+            },
+        ],
+    },
+    {
+        /*
+         * مجموعةٌ لنقطة البيع — وفيها اليوم بندٌ واحد.
+         *
+         * والبندُ لا يُحشر في «المتجر»: من يبحث عن شكل طلبه المخصَّص يبحث
+         * حيث يبيعه، لا تحت «اسم المتجر ورقم التواصل».
+         */
+        group: 'نقطة البيع',
+        items: [
+            {
+                key: 'custom-orders',
+                label: 'الطلبات المخصصة',
+                desc: 'تفعيلها وقوالبها وحقولها — شكل الطلب كما تكتبه أنت',
+                icon: SlidersHorizontal,
             },
         ],
     },

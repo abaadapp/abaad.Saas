@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import CustomArrangementDialog from '@/Pages/Pos/partials/CustomArrangementDialog';
+import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
 import type { Addon, Product } from '@/types/models';
 
 /**
@@ -33,11 +33,30 @@ const ADDONS: Addon[] = [
     { id: 10, label: 'كرت', price: 0.5, active: true },
 ] as unknown as Addon[];
 
+/**
+ * قالبٌ يسمح بالموادّ — وهذا الحارسُ عن حقل البحث لا عن شكل القالب.
+ *
+ * ولا حقولَ فيه: حقلٌ اسمُه فيه كلمةُ «ورد» كان سيُحسب في `offered`
+ * ويجعل الحارسَ يمرّ أو يسقط لسببٍ لا علاقةَ له بالرفّ.
+ */
+const TEMPLATE: PosTemplate = {
+    id: 1,
+    name: 'باقة على الطلب',
+    modes: ['value', 'budget'],
+    default_mode: 'value',
+    base_label: 'قيمة الطلب',
+    allow_components: true,
+    allow_addons: true,
+    restockable_default: false,
+    fields: [],
+};
+
 /** النافذةُ بحمولةٍ ثابتة — يبقى `open` وحدَه متغيّرًا بين التركيبتين */
 function Dialog({ open }: { open: boolean }) {
     return (
         <CustomArrangementDialog
             open={open}
+            template={TEMPLATE}
             products={PRODUCTS}
             addons={ADDONS}
             money={(v: number) => `${v.toFixed(3)} ر.ع`}
@@ -189,7 +208,7 @@ describe('قائمةُ المخزون', () => {
         await user.clear(field());
         await user.type(field(), 'أبيض');
 
-        await user.click(screen.getByRole('button', { name: 'ورد' }));
+        await user.click(screen.getByRole('button', { name: 'إضافة' }));
 
         // خلا الحقلُ ورجعت القائمةُ كاملةً — لا فراغ
         expect(field()).toHaveValue('');

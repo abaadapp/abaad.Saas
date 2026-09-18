@@ -710,6 +710,34 @@ class EmployeeController extends Controller
         if ($employee->id === auth()->id()) {
             return back()->with('toast', ['msg' => __('لا يمكنك تعطيل حسابك الخاص'), 'type' => 'danger']);
         }
+        /*
+         * وإعادةُ التفعيل تُقاس بسقف الباقة.
+         *
+         * المعطَّلُ لا يشغل مقعدًا (انظر `PlanLimits::used`) — ولولا هذا
+         * السطر لكان التعطيلُ بابًا يُلتفّ به على السقف: عطِّل واحدًا، وظِّف
+         * بديلًا، ثمّ أعِد تفعيل الأوّل. فيصير في المتجر أربعةٌ يعملون
+         * وباقتُه ثلاثة.
+         *
+         * والتعطيلُ نفسُه لا يُقاس: النزولُ عن السقف لا يُمنع أبدًا.
+         */
+        if ($employee->status !== 'نشط' && PlanLimits::reached(auth()->user()->business, 'employees')) {
+            /*
+             * والرفضُ يُقال على قناةٍ تُعرض.
+             *
+             * `PlanLimits::enforce` ترمي `ValidationException` — وهي صحيحةٌ
+             * في نموذجٍ له حقلٌ يُعلَّق عليه الخطأ. وهذا زرٌّ في صفٍّ بلا
+             * نموذج: الخطأ يُكتب في الجلسة ولا يقرؤه أحد، فيضغط التاجرُ
+             * «تفعيل» ولا يقع شيء ولا يُقال شيء.
+             */
+            return back()->with('toast', [
+                'msg' => __('بلغت حدّ باقة «:plan»: :cap من الموظفين النشطين. عطّل غيره أو رقِّ الباقة.', [
+                    'plan' => auth()->user()->business?->plan?->name,
+                    'cap' => PlanLimits::cap(auth()->user()->business, 'employees'),
+                ]),
+                'type' => 'danger',
+            ]);
+        }
+
         $employee->status = $employee->status === 'نشط' ? 'معطل' : 'نشط';
         $employee->save();
         $on = $employee->status === 'نشط';

@@ -207,6 +207,100 @@ class ABranchIsCorrectedNotReopenedTest extends TestCase
         $this->assertSame($this->second->id, $order->fresh()->branch_id, 'انقطعت الفاتورةُ عن فرعها');
     }
 
+    /* ─────────── والاسمُ يُنقل إلى من كُتب عندهم ─────────── */
+
+    /**
+     * بطاقةُ الموظّف تقول اسمَ فرعه الحاليّ.
+     *
+     * ═══ العطب ═══
+     *
+     * `users.branch` نصٌّ لا مفتاح — اسمُ فرع الموظّف كما يُعرض في بطاقته
+     * وفي قائمة الموظّفين وفي عدّ الفروع. فإعادةُ التسمية كانت تتركه على
+     * الاسم القديم: تُفتح بطاقةُ الكاشير فيقال «فرعه: فرغ صحار» ولا فرعَ
+     * بهذا الاسم في القائمة — فيُظنّ محذوفًا، أو يُظنّ الموظّفُ معلَّقًا.
+     *
+     * وهو القيدُ نفسُه في `JobTitleController::update`: الموظّف مربوطٌ
+     * بمسمّاه بالاسم، فالاسمُ وحده هو ما يُنقل إليه.
+     */
+    public function test_renaming_a_branch_follows_its_staff(): void
+    {
+        $emp = User::create([
+            'business_id' => $this->business->id, 'name' => 'كاشير', 'email' => 'k@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
+            'branch' => 'فرغ صحار',
+        ]);
+
+        $this->save(['name' => 'فرع صحار']);
+
+        $this->assertSame('فرع صحار', $emp->fresh()->branch,
+            'بطاقةُ الموظّف تسمّي فرعًا لا وجود له');
+    }
+
+    /** ولا يُمسّ موظّفُ فرعٍ آخر */
+    public function test_renaming_leaves_other_branches_staff_alone(): void
+    {
+        $mine = User::create([
+            'business_id' => $this->business->id, 'name' => 'كاشير صحار', 'email' => 'k1@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
+            'branch' => 'فرغ صحار',
+        ]);
+        $other = User::create([
+            'business_id' => $this->business->id, 'name' => 'كاشير الرئيسي', 'email' => 'k2@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
+            'branch' => 'الرئيسي',
+        ]);
+
+        $this->save(['name' => 'فرع صحار']);
+
+        $this->assertSame('فرع صحار', $mine->fresh()->branch);
+        $this->assertSame('الرئيسي', $other->fresh()->branch, 'نُقل اسمُ فرعٍ إلى موظّف فرعٍ آخر');
+    }
+
+    /** ولا موظّفُ متجرٍ آخر يحمل الاسم نفسَه */
+    public function test_renaming_does_not_cross_into_a_neighbours_staff(): void
+    {
+        $neighbour = Business::create(['name' => 'جار', 'type' => 'عام', 'status' => 'نشط']);
+        $his = User::create([
+            'business_id' => $neighbour->id, 'name' => 'كاشير الجار', 'email' => 'n@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
+            'branch' => 'فرغ صحار',
+        ]);
+
+        $this->save(['name' => 'فرع صحار']);
+
+        $this->assertSame('فرغ صحار', $his->fresh()->branch, 'تسميةُ فرعي بدّلت بطاقةَ موظّفِ جاري');
+    }
+
+    /** ويُقال للمدير كم بطاقةً تبدّلت — الأثرُ الصامت يُقرأ عطبًا */
+    public function test_the_manager_is_told_how_many_cards_moved(): void
+    {
+        User::create([
+            'business_id' => $this->business->id, 'name' => 'كاشير', 'email' => 'k@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
+            'branch' => 'فرغ صحار',
+        ]);
+
+        $this->save(['name' => 'فرع صحار']);
+
+        $this->assertStringContainsString('1', (string) (session('toast')['msg'] ?? ''),
+            'نُقل اسمٌ إلى موظّف ولم يُقل');
+    }
+
+    /** وحفظٌ بلا تغيير اسمٍ لا ينقل شيئًا ولا يدّعي */
+    public function test_saving_without_a_rename_claims_nothing(): void
+    {
+        User::create([
+            'business_id' => $this->business->id, 'name' => 'كاشير', 'email' => 'k@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
+            'branch' => 'فرغ صحار',
+        ]);
+
+        $this->save(['name' => 'فرغ صحار', 'phone' => '+968 26999999']);
+
+        $this->assertStringNotContainsString('موظف', (string) (session('toast')['msg'] ?? ''),
+            'ادّعى الحفظُ نقلًا لم يقع');
+    }
+
     /* ─────────── والتصحيحُ هو مخرجُ آخرِ فرع ─────────── */
 
     /**

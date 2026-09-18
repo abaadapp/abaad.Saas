@@ -63,7 +63,23 @@ class MerchantAccount
     /** هل البريد الكامل محجوز؟ (التحقق يجري على الاسم فيُبنى الكامل هنا) */
     public static function taken(string $username, ?int $exceptUserId = null): bool
     {
-        return User::where('email', self::email($username))
+        /*
+         * ═══ والمحذوفُ يُقرأ ═══
+         *
+         * `users.email` فريدٌ في القاعدة، والفهرسُ لا يعرف الحذفَ الليّن.
+         * و`User::where(…)` تقرأ عبر النموذج فتُخفي المحذوف — ففحصٌ يقول
+         * «الاسمُ حرّ» ثمّ إدراجٌ يصطدم بالفهرس: **صفحةُ خطأٍ بيضاء** مكان
+         * رسالةٍ تقول ما جرى. قِسناه: ٥٠٠ على `admin/employees`.
+         *
+         * ويقع فعلًا: حسابات الموظّفين تُحذف ليّنًا من لوحة المنصّة
+         * (`SuperAdmin\UserController`)، ثمّ يفتح التاجرُ شاشته ويعيد إنشاء
+         * الموظّف بالاسم نفسِه — وهو أوّلُ ما يفعله.
+         *
+         * فيُقاس بما يقيس به الفهرس. والاسمُ يبقى محجوزًا بصفٍّ لا يراه
+         * التاجر — وهو أهونُ من انهيارٍ لا يُفهم، وأصدقُ منه.
+         */
+        return User::withTrashed()
+            ->where('email', self::email($username))
             ->when($exceptUserId, fn ($q) => $q->where('id', '!=', $exceptUserId))
             ->exists();
     }

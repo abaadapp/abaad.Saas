@@ -6020,5 +6020,9 @@
     "الصندوق الملغى يُحذف سجلّه إن لم يبع شيئًا. وما باع يبقى في القائمة لتبقى فواتيره منسوبة إليه.": "A revoked till's record can be deleted if it never sold. One that sold stays in the list so its invoices keep their till.",
     "هذا الصندوق ما زال مفعَّلًا — ألغِ تفعيله أوّلًا، ثم احذف سجلّه.": "This till is still active — revoke it first, then delete its record.",
     "على «:name» — الفواتير: :orders · الورديات: :shifts. حذف سجلّه يمحو نسبتَها إليه، فلا يُعرف من أيّ صندوق خرجت. يبقى ملغًى في القائمة.": "On «:name» — invoices: :orders · shifts: :shifts. Deleting its record erases their attribution, so no one can tell which till they came from. It stays revoked in the list.",
-    "حُذف سجلّ الجهاز": "Device record deleted"
+    "حُذف سجلّ الجهاز": "Device record deleted",
+    "بلغت حدّ باقة «:plan»: :cap من الموظفين النشطين. عطّل غيره أو رقِّ الباقة.": "You've reached the «:plan» plan limit: :cap active employees. Disable someone else, or upgrade.",
+    "تم حفظ الفرع · حُدِّث :n موظفًا يعمل فيه": "Branch saved · :n employees working there were updated",
+    "أُبطل تفعيل :count من أجهزته": ":count of its tills were revoked",
+    ":count موظفًا كان فرعهم الوحيد — أسنِدهم إلى فرعٍ آخر": ":count employees had it as their only branch — assign them to another"
 }

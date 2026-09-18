@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\PosDevice;
+use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\PlanLimits;
@@ -138,6 +139,23 @@ class BranchController extends Controller
         $branch->update($data);
 
         /*
+         * ═══ والاسمُ يُنقل إلى من كان مكتوبًا عندهم ═══
+         *
+         * `users.branch` نصٌّ لا مفتاح — اسمُ فرع الموظّف كما يُعرض في بطاقته
+         * وفي قائمة الموظّفين وفي عدّ الفروع. فإعادةُ التسمية كانت تتركه على
+         * الاسم القديم: تُفتح بطاقةُ الكاشير فيقال «فرعه: الخوير» ولا خويرَ
+         * في القائمة، فيُظنّ الفرعُ محذوفًا.
+         *
+         * وهو القيدُ نفسُه في `JobTitleController::update`: الموظّف مربوطٌ
+         * بمسمّاه بالاسم، فالاسمُ وحده هو ما يُنقل إليه.
+         *
+         * ولا يُمسّ `orders.branch`: ذاك لقطةُ ورقةٍ صدرت، وهذا صفةٌ قائمة.
+         * وجدولُ الإذن (`branch_user`) لا يُمسّ أصلًا — يحمل معرّفًا لا اسمًا.
+         */
+        $moved = $was === $branch->name ? 0 : User::where('business_id', $this->bid())
+            ->where('branch', $was)->update(['branch' => $branch->name]);
+
+        /*
          * والسجلُّ يحفظ الاسمَ القديم.
          *
          * من يقرأ تقريرًا قديمًا يجد فيه «فرع الخوير» ولا يجده في القائمة،
@@ -148,7 +166,12 @@ class BranchController extends Controller
             : 'غيّر اسم الفرع: '.$was.' ← '.$data['name'],
             ['subject_id' => $branch->id, 'subject_type' => 'branch']);
 
-        return back()->with('toast', ['msg' => __('تم حفظ الفرع'), 'type' => 'success']);
+        return back()->with('toast', [
+            'msg' => $moved > 0
+                ? __('تم حفظ الفرع · حُدِّث :n موظفًا يعمل فيه', ['n' => $moved])
+                : __('تم حفظ الفرع'),
+            'type' => 'success',
+        ]);
     }
 
     /**
@@ -225,12 +248,39 @@ class BranchController extends Controller
             PosTerminal::revoke($device);
         }
 
+        /*
+         * ═══ ومن كان هذا فرعَه الوحيد يُقال عنه ═══
+         *
+         * إسنادُ الفروع (`branch_user`) قيدٌ: من أُسند إلى «الخوير» لا يبيع
+         * في «السيب». وحذفُ الخوير يترك صفَّه معلَّقًا على فرعٍ لا يُقرأ —
+         * فيُفشل `User::worksAt` مغلقًا ولا يعمل الموظّف في مكان.
+         *
+         * وهذا الصوابُ — البديلُ أن يُفتح له المتجرُ كلُّه، وقد كان يُفتح —
+         * لكنّه صمتٌ إن لم يُقل. فيُقال للمدير وهو واقفٌ على الزرّ، لا يُترك
+         * ليكتشفه من كاشيرٍ يُردّ صباحًا عن صندوقه ولا يعرف لماذا.
+         *
+         * ويُقاس **قبل** الحذف: بعده يصير الفرعُ محذوفًا، و`whereHas` تقرأ
+         * عبر النموذج فلا تراه — فيخرج العددُ صفرًا دائمًا وتصمت الرسالة.
+         *
+         * والصفُّ يبقى: إن استُعيد الفرعُ من سلّة المحذوفات عاد الإسنادُ كما
+         * كان، ولا يُعاد بناؤه بيد.
+         */
+        $stranded = User::where('business_id', $this->bid())
+            ->whereHas('branches', fn ($q) => $q->whereKey($branch->id))
+            ->whereDoesntHave('branches', fn ($q) => $q->whereKeyNot($branch->id))
+            ->count();
+
         Activity::log('deleted', 'حذف الفرع: '.$branch->name, ['subject_id' => $branch->id, 'subject_type' => 'branch']);
         $branch->delete();
 
-        $msg = $devices->isEmpty()
+        $notes = array_values(array_filter([
+            $devices->isEmpty() ? null : __('أُبطل تفعيل :count من أجهزته', ['count' => $devices->count()]),
+            $stranded === 0 ? null : __(':count موظفًا كان فرعهم الوحيد — أسنِدهم إلى فرعٍ آخر', ['count' => $stranded]),
+        ]));
+
+        $msg = $notes === []
             ? __('تم حذف الفرع')
-            : __('تم حذف الفرع، وأُبطل تفعيل :count من أجهزته.', ['count' => $devices->count()]);
+            : __('تم حذف الفرع').' · '.implode(' · ', $notes);
 
         return back()->with('toast', [
             'msg' => $msg,

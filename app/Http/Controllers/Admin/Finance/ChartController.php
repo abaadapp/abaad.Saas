@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\Account;
+use App\Models\BankAccount;
 use App\Support\Demo;
 use App\Support\Ledger;
 use Illuminate\Http\Request;
@@ -14,13 +15,17 @@ use Inertia\Response;
 /**
  * شجرة الحسابات — الهيكل الذي تُقرأ عليه كلّ الأرقام.
  *
- * ما يُحرَس هنا ثلاثة، وكلٌّ منها يُفسد الدفتر بصمت لو تُرك:
+ * ما يُحرَس هنا خمسة، وكلٌّ منها يُفسد الدفتر بصمت لو تُرك:
  *
  * ١) حسابٌ عليه حركة لا يُحذف. حذفُه يترك سطورًا معلّقة على حسابٍ مجهول،
  *    فلا يتوازن ميزانٌ بعده ولا يُعرف السبب.
  * ٢) حسابٌ نظاميّ لا يُحذف ولا يُغلق. الترحيل التلقائي يقصده بمفتاحه، فإغلاقه
  *    يوقف البيع نفسه — والكاشير يرى «لا يُرحَّل إلى الصندوق» ولا يفهمها.
  * ٣) أبٌ لا يصير ابنًا لابنه. الشجرة تصير حلقةً فيدور كل جمعٍ عليها إلى الأبد.
+ * ٤) وحسابٌ عليه قيودٌ لا يصير أبًا: الأبوّةُ تُقفل بابَ الترحيل كما يُقفله
+ *    الإغلاق — لكنّها تفعله صامتةً، والإغلاقُ يُقال لصاحبه.
+ * ٥) وورقةُ حسابٍ بنكيّ لا تُحذف من هنا: حذفُها يقطع الرابط، فيدخل مالُ
+ *    البطاقة صفحةَ بنكٍ آخر حتّى تُفتح شاشةُ الحسابات البنكية فتُصلحه.
  */
 class ChartController extends Controller
 {
@@ -83,7 +88,7 @@ class ChartController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        if ($refusal = $this->systemParentRefusal($bid, $data['parent_id'] ?? null)) {
+        if ($refusal = $this->parentRefusal($bid, $data['parent_id'] ?? null)) {
             return back()->withErrors(['parent_id' => $refusal])->withInput();
         }
 
@@ -120,7 +125,16 @@ class ChartController extends Controller
             return back()->withErrors(['parent_id' => __('لا يصير الحساب تابعًا لأحد فروعه')]);
         }
 
-        if ($refusal = $this->systemParentRefusal($bid, $data['parent_id'] ?? null)) {
+        /*
+         * والحارسُ يُسأل عند **التبديل** لا عند كلّ حفظ.
+         *
+         * شجرةٌ فيها أبٌ عليه قيود — بُنيت قبل هذا الحارس — لا يجوز أن تُقفل
+         * على صاحبها: يُعاد تسميةُ ابنٍ فيها فيُردّ عن أبٍ لم يمسّه. فما لم
+         * يتحرّك الأبُ لا يُسأل عنه.
+         */
+        $movedParent = (int) ($data['parent_id'] ?? 0) !== (int) ($account->parent_id ?? 0);
+
+        if ($movedParent && $refusal = $this->parentRefusal($bid, $data['parent_id'] ?? null)) {
             return back()->withErrors(['parent_id' => $refusal]);
         }
 
@@ -179,6 +193,28 @@ class ChartController extends Controller
             return back()->with('toast', ['msg' => __('احذف الحسابات الفرعية أولًا'), 'type' => 'warning']);
         }
 
+        /*
+         * ═══ وورقةٌ يملكها حسابٌ بنكيّ لا تُنتزَع من تحته ═══
+         *
+         * ورقةُ الحساب البنكيّ الثاني ليست نظاميّة ولا قيودَ عليها ما لم
+         * يُحصَّل فيه بعد — فتمرّ من الحارسين فوق وتُحذف، ويصير
+         * `bank_accounts.account_id` فارغًا (`nullOnDelete`).
+         *
+         * وبعدها `Bank::leaf` تردّ `null`، فيسقط كلُّ ترحيلٍ بنكيٍّ إلى
+         * الورقة النظاميّة: يبيع الكاشير بالبطاقة فيدخل المالُ صفحةَ بنكٍ
+         * آخر — ولا شيءَ يقول ذلك. وشاشةُ «الحسابات البنكية» تُصلح الرابط
+         * عند أوّل فتحةٍ لها، فيبقى العطبُ بين الحذف والفتحة ولا يُعرف مداه.
+         */
+        $owner = BankAccount::where('business_id', $this->bid())
+            ->where('account_id', $account->id)->first();
+
+        if ($owner) {
+            return back()->with('toast', [
+                'msg' => __('هذه ورقةُ «:name» في الشجرة — تُحذف بحذف الحساب البنكيّ لا من هنا.', ['name' => $owner->displayName()]),
+                'type' => 'warning',
+            ]);
+        }
+
         \App\Support\Activity::log('deleted', 'حذف الحساب: '.$account->code.' '.$account->name, ['subject_id' => $account->id]);
         $account->delete();
 
@@ -205,7 +241,7 @@ class ChartController extends Controller
      * وأوراقُ الحسابات البنكية تفعل الصواب أصلًا: ورقةُ كلّ بنكٍ تُوضع
      * **أختًا** للحساب النظاميّ لا ابنةً له — انظر `BankAccountController`.
      */
-    private function systemParentRefusal(int $businessId, $parentId): ?string
+    private function parentRefusal(int $businessId, $parentId): ?string
     {
         if (blank($parentId)) {
             return null;
@@ -213,9 +249,38 @@ class ChartController extends Controller
 
         $parent = Account::where('business_id', $businessId)->find($parentId);
 
-        return $parent?->system_key
-            ? __('«:name» يرحّل إليه النظام تلقائيًّا — والحسابُ الذي تحته فروعٌ لا يقبل قيدًا. اجعله أختًا له لا ابنًا.', ['name' => $parent->name])
-            : null;
+        if (! $parent) {
+            return null;
+        }
+
+        if ($parent->system_key) {
+            return __('«:name» يرحّل إليه النظام تلقائيًّا — والحسابُ الذي تحته فروعٌ لا يقبل قيدًا. اجعله أختًا له لا ابنًا.', ['name' => $parent->name]);
+        }
+
+        /*
+         * ═══ وحسابٌ عليه قيودٌ لا يصير أبًا ═══
+         *
+         * الحارسُ فوق يحرس الحسابات النظاميّة وحدها، والعلّةُ ليست في
+         * «النظاميّ» بل في الأبوّة نفسها: `isPostable` تشترط ألّا فروعَ
+         * للحساب، فأوّلُ ابنٍ يُسنَد إليه يُقفل بابَه.
+         *
+         * فمن رحّل إلى «٥٩٥٠ بترول» شهرًا كاملًا، ثمّ بوّبه فأضاف «بنزين»
+         * تحته — وهو تبويبٌ معقولٌ تمامًا — يجد حسابَه اختفى من قائمة القيد
+         * اليدويّ بلا كلمة، وقيودُه الماضية معلّقةٌ على عقدةٍ لم تعد تقبل
+         * شيئًا: تُقرأ في الميزان ولا تُزاد ولا تُعكس.
+         *
+         * والإغلاقُ يُقال لصاحبه («أغلقه إن لم تعد تستعمله») وأثرُه هو أثرُ
+         * الأبوّة بحرفه — فبابٌ يُقال فيه وبابٌ يُفعل فيه صامتًا.
+         *
+         * والعلاجُ الذي يُعرض هو الصواب المحاسبيّ نفسُه: الأوراق تحمل
+         * الأرصدة، والآباء تبويبٌ. فمن أراد التبويب أنشأ أبًا جديدًا ونقل
+         * حسابَه تحته أخًا لفروعه.
+         */
+        if ($parent->lines()->exists()) {
+            return __('«:name» عليه قيودٌ مُرحَّلة — والحسابُ الذي تحته فروعٌ لا يقبل قيدًا بعدها. أنشئ حسابًا أبًا وانقله تحته أخًا لهذا الفرع.', ['name' => $parent->name]);
+        }
+
+        return null;
     }
 
     /** هل يجعل هذا الأبُ الشجرةَ حلقة؟ */

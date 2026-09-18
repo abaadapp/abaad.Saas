@@ -278,13 +278,14 @@ class Ledger
         ?int $branchId = null,
         ?int $userId = null,
         $sourceable = null,
+        bool $unwinding = false,
     ): JournalEntry {
         if (count($lines) < 2) {
             throw new RuntimeException(__('القيد يحتاج سطرين على الأقل: مدين ودائن'));
         }
 
         return DB::transaction(function () use (
-            $businessId, $description, $lines, $date, $source, $branchId, $userId, $sourceable
+            $businessId, $description, $lines, $date, $source, $branchId, $userId, $sourceable, $unwinding
         ) {
             $entry = JournalEntry::create([
                 'business_id' => $businessId,
@@ -309,7 +310,24 @@ class Ledger
                     throw new RuntimeException(__('حسابٌ غير موجود في الشجرة: :key', ['key' => (string) $line['account']]));
                 }
 
-                if (! $account->isPostable()) {
+                /*
+                 * ═══ والعكسُ لا يُسأل عن قابليّة الترحيل ═══
+                 *
+                 * الحارسُ يمنع **دخولًا جديدًا** إلى حسابٍ أُغلق أو صار أبًا،
+                 * وهو صواب. لكنّ العكسَ ليس دخولًا: هو إخراجُ ما دخل فعلًا،
+                 * ولا يزيد رصيدَ الحساب بشيءٍ لم يكن فيه — يردّه إلى صفره.
+                 *
+                 * وكان يُسأل عنه، فصار الإغلاقُ بابًا يُقفل على مستندٍ لا
+                 * يُلغى أبدًا: يكتب التاجرُ قيدًا على حسابه، ثمّ يُغلقه —
+                 * والشاشةُ نفسُها تدعوه إلى ذلك: «أغلقه إن لم تعد تستعمله» —
+                 * ثمّ يضغط «عكس القيد» فيُردّ بخطأ خادمٍ لا رسالةَ فيه. وكذلك
+                 * إلغاءُ سند مورّد، وارتدادُ شيك، وإلغاءُ تحصيل: كلُّها تمرّ
+                 * من هنا.
+                 *
+                 * والبابُ لا يتّسع بهذا: `reverse` وحدها ترفع العلَم، وسطورُها
+                 * مبنيّةٌ من قيدٍ مُرحَّلٍ قائم — لا من حمولةٍ تصل من متصفّح.
+                 */
+                if (! $unwinding && ! $account->isPostable()) {
                     throw new RuntimeException(__('لا يُرحَّل إلى «:name»: حسابٌ مغلق أو له حسابات فرعية', ['name' => $account->name]));
                 }
 
@@ -407,6 +425,7 @@ class Ledger
                 $original->branch_id,
                 $userId,
                 $original->sourceable,
+                unwinding: true,
             );
 
             $reversal->update(['reverses_id' => $original->id]);

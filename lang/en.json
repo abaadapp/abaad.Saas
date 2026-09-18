@@ -6039,5 +6039,7 @@
     "لم يُنشأ موقع هذا المتجر بعد": "This shop has no website yet",
     "حين يُنشأ ستجد هنا صفحاته ومنتجاته وطلباته.": "Once it is created you will find its pages, products and orders here.",
     "إنشاء الموقع لصاحب المتجر — اطلبه منه.": "Creating the website is the owner's to do — ask them for it.",
-    "هذا القالب لا يقبل موادّ — أعد بناء الطلب.": "This template does not accept materials — rebuild the order."
+    "هذا القالب لا يقبل موادّ — أعد بناء الطلب.": "This template does not accept materials — rebuild the order.",
+    "هذه ورقةُ «:name» في الشجرة — تُحذف بحذف الحساب البنكيّ لا من هنا.": "This is «:name»'s leaf in the chart — delete it by deleting the bank account, not from here.",
+    "«:name» عليه قيودٌ مُرحَّلة — والحسابُ الذي تحته فروعٌ لا يقبل قيدًا بعدها. أنشئ حسابًا أبًا وانقله تحته أخًا لهذا الفرع.": "«:name» already carries posted entries — an account with children accepts none. Create a parent account and move it there as a sibling of this branch."
 }

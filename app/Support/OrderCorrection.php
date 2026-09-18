@@ -485,7 +485,26 @@ class OrderCorrection
         $tax = 0.0;
         if (Vat::enabled($bid) && $gross > 0) {
             $inclusive = Vat::inclusive($bid);
-            $products = Product::whereIn('id', $items->pluck('product_id')->filter())->get()->keyBy('id');
+            /*
+             * ═══ والصنفُ المحذوف يُقرأ، وإلّا رجعت نسبتُه إلى نسبة المتجر ═══
+             *
+             * `Product::whereIn` تُسقط المحذوفَ ليّنًا (`SoftDeletes`)، فيردّ
+             * `$products->get($id)` فراغًا، و`Vat::rateFor(null)` تردّ نسبة
+             * المتجر. فصنفٌ صفريُّ الضريبة — خبزٌ أو حليب — يُحذف من الكتالوج
+             * بعد بيعه، ثمّ تُصحَّح كميّتُه في اليوم نفسه، **فتُضاف إليه ضريبةٌ
+             * لم تُجبَ من الزبون**: قِيس فخرجت ٥ على فاتورةٍ ضريبتُها صفر.
+             *
+             * وهي تُكتب في الفاتورة وفي الإقرار معًا — لا في الشاشة وحدها.
+             *
+             * والحصرُ بالمتجر عُرفُ كلّ استعلامٍ هنا، لا حارسٌ يدّعي منعًا:
+             * المعرّفاتُ تأتي من بنود هذه الفاتورة، وهي فريدةٌ في الجدول كلِّه
+             * — فلا يبلغه معرّفُ متجرٍ آخر. وطفرةٌ تنزعه لا يقتلها شيء،
+             * ويُقال ذلك ولا يُدَّعى غيره.
+             */
+            $products = Product::withTrashed()
+                ->where('business_id', $bid)
+                ->whereIn('id', $items->pluck('product_id')->filter())
+                ->get()->keyBy('id');
 
             foreach ($items as $i) {
                 $net = (float) $i->price * (int) $i->quantity + (float) $i->addons_total;

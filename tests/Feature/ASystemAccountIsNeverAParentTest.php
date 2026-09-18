@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
+use App\Models\JournalLine;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
@@ -215,5 +216,114 @@ class ASystemAccountIsNeverAParentTest extends TestCase
             ->filter(fn ($c) => str_contains($c, 'finance:post-missing-sales'));
 
         $this->assertCount(1, $commands, 'أمرُ استدراك المبيعات غيرُ مجدول');
+    }
+
+    /* ══════════ وحسابُ التاجر عليه قيودٌ — البابُ نفسُه ══════════ */
+
+    /**
+     * ═══ العلّةُ ليست في «النظاميّ» بل في الأبوّة ═══
+     *
+     * الحارسُ فوق يسأل عن `system_key`. و`isPostable` لا تسأل عنه: تشترط
+     * ألّا فروعَ للحساب، كائنًا من كان. فمن رحّل إلى حسابٍ أنشأه بيده شهرًا
+     * كاملًا، ثمّ بوّبه فأضاف فرعًا تحته — تبويبٌ معقولٌ تمامًا — أقفل بابَه
+     * صامتًا: يختفي من قائمة القيد اليدويّ بلا كلمة، وقيودُه الماضية معلّقةٌ
+     * على عقدةٍ لا تقبل شيئًا ولا يُعكس منها قيد.
+     *
+     * والإغلاقُ يُقال لصاحبه («أغلقه إن لم تعد تستعمله») وأثرُه هو الأثرُ
+     * نفسُه — فبابٌ يُقال فيه وبابٌ يفعله صامتًا.
+     */
+    public function test_an_account_that_carries_entries_never_becomes_a_parent(): void
+    {
+        $mine = Account::create([
+            'business_id' => $this->business->id, 'code' => '5950',
+            'name' => 'بترول', 'type' => 'مصروف', 'normal_side' => 'debit',
+        ]);
+
+        Ledger::post($this->business->id, 'قيد', [
+            ['account' => $mine, 'debit' => 10],
+            ['account' => 'cash', 'credit' => 10],
+        ]);
+
+        $this->actingAs($this->owner)->post(route('admin.finance.chart.store'), [
+            'code' => '5951', 'name' => 'بنزين', 'type' => 'مصروف', 'normal_side' => 'debit',
+            'parent_id' => $mine->id,
+        ])->assertSessionHasErrors('parent_id');
+
+        $this->assertFalse($mine->fresh()->children()->exists(), 'صار أبًا وعليه قيود');
+        $this->assertTrue($mine->fresh()->isPostable(), 'أُقفل بابُ الترحيل إليه');
+    }
+
+    /** ونقلُ حسابٍ قائمٍ تحته مردودٌ كذلك — البابان لا بابٌ واحد */
+    public function test_nor_is_one_moved_under_an_account_that_carries_entries(): void
+    {
+        $mine = Account::create([
+            'business_id' => $this->business->id, 'code' => '5950',
+            'name' => 'بترول', 'type' => 'مصروف', 'normal_side' => 'debit',
+        ]);
+        $other = Account::create([
+            'business_id' => $this->business->id, 'code' => '5951',
+            'name' => 'بنزين', 'type' => 'مصروف', 'normal_side' => 'debit',
+        ]);
+
+        Ledger::post($this->business->id, 'قيد', [
+            ['account' => $mine, 'debit' => 10],
+            ['account' => 'cash', 'credit' => 10],
+        ]);
+
+        $this->actingAs($this->owner)->put(route('admin.finance.chart.update', $other->id), [
+            'code' => '5951', 'name' => 'بنزين', 'type' => 'مصروف', 'normal_side' => 'debit',
+            'parent_id' => $mine->id,
+        ])->assertSessionHasErrors('parent_id');
+
+        $this->assertNull($other->fresh()->parent_id);
+    }
+
+    /** وحسابٌ فارغٌ يبقى يقبل فروعًا — القيدُ على من عليه قيود وحده */
+    public function test_an_empty_account_still_takes_children(): void
+    {
+        $mine = Account::create([
+            'business_id' => $this->business->id, 'code' => '5950',
+            'name' => 'تنقلات', 'type' => 'مصروف', 'normal_side' => 'debit',
+        ]);
+
+        $this->actingAs($this->owner)->post(route('admin.finance.chart.store'), [
+            'code' => '5951', 'name' => 'بنزين', 'type' => 'مصروف', 'normal_side' => 'debit',
+            'parent_id' => $mine->id,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertTrue($mine->fresh()->children()->exists());
+    }
+
+    /**
+     * وشجرةٌ بُنيت قبل هذا الحارس لا تُقفل على صاحبها.
+     *
+     * أبٌ عليه قيودٌ وتحته فرع — حالٌ قائمةٌ في قواعد اليوم. ولو سُئل
+     * الحارسُ عند كلّ حفظ لَرُدّ التاجرُ عن إعادة تسمية فرعٍ لم يمسّ أباه.
+     * فالسؤالُ عند تبديل الأب وحده.
+     */
+    public function test_an_old_tree_is_not_locked_against_its_owner(): void
+    {
+        $parent = Account::create([
+            'business_id' => $this->business->id, 'code' => '5950',
+            'name' => 'تنقلات', 'type' => 'مصروف', 'normal_side' => 'debit',
+        ]);
+        $child = Account::create([
+            'business_id' => $this->business->id, 'parent_id' => $parent->id, 'code' => '5951',
+            'name' => 'بنزين', 'type' => 'مصروف', 'normal_side' => 'debit',
+        ]);
+
+        // قيدٌ على الأب كما في شجرةٍ بُنيت قبل الحارس
+        Ledger::post($this->business->id, 'قيد', [
+            ['account' => $child, 'debit' => 10],
+            ['account' => 'cash', 'credit' => 10],
+        ]);
+        JournalLine::where('account_id', $child->id)->update(['account_id' => $parent->id]);
+
+        $this->actingAs($this->owner)->put(route('admin.finance.chart.update', $child->id), [
+            'code' => '5951', 'name' => 'بنزين وزيوت', 'parent_id' => $parent->id,
+            'type' => 'مصروف', 'normal_side' => 'debit',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('بنزين وزيوت', $child->fresh()->name);
     }
 }

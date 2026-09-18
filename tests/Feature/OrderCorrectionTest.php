@@ -95,6 +95,48 @@ class OrderCorrectionTest extends TestCase
 
     /* --------------------------- الحساب --------------------------- */
 
+    /**
+     * وصنفٌ صفريُّ الضريبة يبقى صفريًّا ولو حُذف من الكتالوج.
+     *
+     * ═══ العطب ═══
+     *
+     * `recompute` تقرأ الأصنافَ بـ`Product::whereIn` — والنطاقُ يُسقط المحذوفَ
+     * ليّنًا. فيردّ البحثُ فراغًا، و`Vat::rateFor(null)` تردّ **نسبة المتجر**.
+     *
+     * فخبزٌ ضريبتُه صفر يُباع، ثمّ يُحذف من الكتالوج، ثمّ تُصحَّح كميّتُه في
+     * يوم بيعه — فتُضاف إليه ضريبةٌ لم تُجبَ من الزبون: قِيست فخرجت على
+     * فاتورةٍ ضريبتُها صفر. وتُكتب في الورقة التي بيده وفي الإقرار معًا.
+     */
+    public function test_a_zero_rated_line_stays_zero_rated_after_its_product_is_deleted(): void
+    {
+        $bread = Product::create([
+            'business_id' => $this->business->id, 'name' => 'خبز', 'sku' => 'BR-1',
+            'price' => 10, 'cost' => 4, 'quantity' => 20, 'active' => true, 'tax' => 0,
+        ]);
+
+        $order = Order::create([
+            'business_id' => $this->business->id, 'branch_id' => $this->branch->id,
+            'number' => 'INV-000009', 'customer_name' => 'عميل نقدي',
+            'employee_name' => 'نورة', 'user_id' => $this->cashier->id,
+            'subtotal' => 20, 'discount' => 0, 'tax' => 0, 'delivery_fee' => 0,
+            'total' => 20, 'payment_method' => 'نقدي', 'status' => 'مكتمل',
+            'payment_status' => 'مدفوع', 'is_held' => false, 'ordered_at' => now(),
+        ]);
+        $item = $order->items()->create([
+            'product_id' => $bread->id, 'name' => 'خبز',
+            'price' => 10, 'cost' => 4, 'quantity' => 2, 'total' => 20,
+        ]);
+
+        $bread->delete();
+
+        $this->actingAs($this->cashier);
+        OrderCorrection::setQuantity($order->fresh('items'), $item->fresh(), 1, 'تصحيح إدخال');
+
+        $after = $order->fresh();
+        $this->assertSame(0.0, (float) $after->tax, 'أُضيفت ضريبةٌ إلى صنفٍ صفريّ بعد حذفه');
+        $this->assertSame(10.0, (float) $after->total);
+    }
+
     public function test_lowering_a_quantity_recomputes_the_whole_invoice(): void
     {
         $order = $this->sale(3);

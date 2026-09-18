@@ -807,14 +807,47 @@ final class CustomerInvoices
             throw new RuntimeException(__('لا فاتورةَ عميلٍ لطلبٍ بلا عميل مسجَّل.'));
         }
 
-        $lines = $order->items->map(fn ($item) => [
-            'product_id' => $item->product_id,
-            'order_item_id' => $item->id,
-            'description' => $item->name ?: __('بند'),
-            'quantity' => (float) $item->quantity,
-            'unit_price' => (float) $item->price,
-            'discount' => 0.0,
-        ])->all();
+        /*
+         * ═══ وسطرُ الورقة يحمل ضريبةَ صنفه، لا نسبةَ المتجر ═══
+         *
+         * `compute` تسقط إلى `Vat::rate` حين لا تُعطى نسبةَ بند. ورأسُ
+         * الفاتورة يُكتب من الطلب بعد قليل — فتخرج ورقةٌ **تناقض نفسها**:
+         * خبزٌ صفريُّ الضريبة يُباع آجلًا، فيقول سطرُه «نسبة ٥٪، ضريبة ٥،
+         * المبلغ ١٠٥» ويقول ذيلُها «الضريبة صفر، الإجمالي ١٠٠». وقِيست.
+         *
+         * وهي ورقةٌ ضريبيّة: يُقدّمها العميلُ في إقراره هو، ويقرأ منها سطرًا
+         * لم يُدفع. فالنسبةُ تُقرأ بالقارئ نفسِه الذي قرأها لحظة البيع
+         * (`Vat::rateFor`).
+         *
+         * ولا `withTrashed` هنا خلافًا لـ`OrderCorrection::recompute`: هذه
+         * تُنادى لحظةَ البيع وحدها (`PosController`)، و`create` ترفض أصلًا
+         * بندًا لصنفٍ ليس في متجر الفاتورة — فلا تبلغها لقطةُ صنفٍ محذوف.
+         *
+         * وخصمُ الطلب يُوزَّع على البنود بحصّتها كما وزّعه
+         * `PosController::taxFor`: فبلا توزيعٍ تُحسب ضريبةُ السطر على مبلغٍ
+         * لم يدفعه أحد، ويقول السطرُ غيرَ ما يقول الذيل ثانيةً.
+         */
+        $products = Product::where('business_id', $order->business_id)
+            ->whereIn('id', $order->items->pluck('product_id')->filter())
+            ->get()->keyBy('id');
+
+        $gross = round($order->items->sum(fn ($i) => (float) $i->price * (float) $i->quantity), 3);
+        $orderDiscount = round((float) $order->discount, 3);
+
+        $lines = $order->items->map(function ($item) use ($order, $products, $gross, $orderDiscount) {
+            $net = round((float) $item->price * (float) $item->quantity, 3);
+            $share = $gross > 0 ? $net / $gross : 0.0;
+
+            return [
+                'product_id' => $item->product_id,
+                'order_item_id' => $item->id,
+                'description' => $item->name ?: __('بند'),
+                'quantity' => (float) $item->quantity,
+                'unit_price' => (float) $item->price,
+                'discount' => round($orderDiscount * $share, 3),
+                'tax_rate' => Vat::rateFor($products->get($item->product_id), (int) $order->business_id),
+            ];
+        })->all();
 
         /*
          * والإجماليُّ يتبع الطلبَ لا حسابَ البنود.

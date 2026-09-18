@@ -6031,5 +6031,8 @@
     "قائمةٌ له وحده — لا تتبدّل مع الوظيفة": "A list of their own — it does not follow the job title",
     "الصلاحيات المخصّصة ليست في باقتك الحالية.": "Custom permissions are not in your current plan.",
     "ما تفتحه وظيفة «:title» — يُعرض ولا يُعدَّل من هنا.": "What the «:title» job title opens — shown here, not edited here.",
-    "مسمّى «:title» ليس في قائمة الوظائف — تبقى صلاحياته على ما هي حتى تُسنَد إليه وظيفةٌ معروفة.": "«:title» is not among your job titles — their permissions stay as they are until a known title is assigned."
+    "مسمّى «:title» ليس في قائمة الوظائف — تبقى صلاحياته على ما هي حتى تُسنَد إليه وظيفةٌ معروفة.": "«:title» is not among your job titles — their permissions stay as they are until a known title is assigned.",
+    "نفاد المخزون، تراجع المبيعات، والعملاء المتعثّرون.": "Out of stock, falling sales, and lapsed customers.",
+    "تنبيه العملاء الراكدين": "Dormant customer alerts",
+    "يظهر في جرس الإشعارات لمن مضى عليه أكثر من مدّة الركود بلا شراء.": "Shown in the notification bell for anyone who has not bought within the dormancy period."
 }

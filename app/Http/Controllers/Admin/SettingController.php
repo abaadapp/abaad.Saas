@@ -167,6 +167,16 @@ class SettingController extends Controller
             'rules' => ['sometimes', 'boolean']],
         'notify_daily_summary' => ['section' => 'notifications', 'label' => 'ملخّص الأداء اليومي',
             'rules' => ['sometimes', 'boolean']],
+        /*
+         * ومفتاحٌ كان يُقرأ ولا يُكتب.
+         *
+         * `Demo::buildNotifications` تسأل عن `notify_dormant_customers` منذ
+         * زمن — ولا مدخلَ له هنا ولا مقبضَ في الشاشة. فالقراءةُ تَعِد بخيارٍ
+         * لا يملكه أحد: متجرٌ له ثلاثمئة زبونٍ راكد يمتلئ جرسُه بهم كلَّ يوم
+         * ولا سبيل إلى إسكاتهم.
+         */
+        'notify_dormant_customers' => ['section' => 'notifications', 'label' => 'تنبيه العملاء الراكدين',
+            'rules' => ['sometimes', 'boolean']],
 
         /*
          * لا ولاءَ ولا ورديةً هنا — وغيابُهما مقصود.

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Permissions;
 use Illuminate\Database\Eloquent\Model;
 
 class CustomAlert extends Model
@@ -43,24 +44,37 @@ class CustomAlert extends Model
         return $this->belongsTo(Business::class);
     }
 
-    /** المسار الذي تفتحه نقرة التنبيه */
+    /**
+     * المسار الذي تفتحه نقرة التنبيه.
+     *
+     * ═══ وقائمتان لسؤالٍ واحد ═══
+     *
+     * كانت هنا قائمةٌ مكتوبةٌ باليد تُقابل القسمَ بمساره — و`Permissions::ROUTES`
+     * تقول الشيء نفسه للّوحة كلِّها. فقسمٌ في تلك ولا في هذه (الموقع، المورّدون،
+     * التسويق، لوحة التجهيز) كان يسقط إلى اللوحة: يكتب التاجرُ تنبيهًا على
+     * «الموقع الإلكتروني» فتقوده نقرتُه إلى لوحة التحكّم.
+     *
+     * وصار ذلك أخطرَ منذ صار الجرسُ يحجب ما لا يُفتح: القسمُ يحرس، والوجهةُ
+     * تُفتح — فلو افترقا حُرس صفٌّ بقسمٍ وفُتح غيرُه، وردّ الخادمُ من أُذن له.
+     *
+     * فالمصدرُ واحد، ويبقى استثناءان مقصودان:
+     *
+     *   `reports` → ملخّص المبيعات لا فهرس التقارير: التنبيه على رقمٍ يقود
+     *   إلى الرقم، ومن نقر «مبيعات اليوم تجاوزت كذا» لا يريد قائمةً يختار منها.
+     *
+     *   `profitability` → لا بابَ لها في `ROUTES` أصلًا، ولها شاشةٌ قائمة.
+     */
+    public const URL_OVERRIDES = [
+        'reports' => 'admin.reports.sales',
+        'profitability' => 'admin.profitability.index',
+    ];
+
     public function url(): string
     {
-        $routes = [
-            // ملخّص المبيعات لا فهرس التقارير: التنبيه على رقمٍ يقود إلى الرقم،
-            // ومن نقر «مبيعات اليوم تجاوزت كذا» لا يريد قائمةً يختار منها
-            'reports' => 'admin.reports.sales',
-            'expenses' => 'admin.expenses.index',
-            'orders' => 'admin.orders.index',
-            'inventory' => 'admin.inventory.index',
-            'customers' => 'admin.customers.index',
-            'purchases' => 'admin.purchases.index',
-            'profitability' => 'admin.profitability.index',
-            'products' => 'admin.products.index',
-            'employees' => 'admin.employees.index',
-            'finance' => 'admin.finance.index',
-        ];
+        $name = self::URL_OVERRIDES[$this->section]
+            ?? Permissions::ROUTES[$this->section]
+            ?? 'admin.dashboard';
 
-        return route($routes[$this->section] ?? 'admin.dashboard');
+        return route($name);
     }
 }

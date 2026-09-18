@@ -383,6 +383,7 @@ export default function SettingsIndex() {
         notify_new_order: on('notify_new_order'),
         notify_smart_alerts: on('notify_smart_alerts'),
         notify_daily_summary: on('notify_daily_summary'),
+        notify_dormant_customers: on('notify_dormant_customers'),
 
         /*
          * لا نقاط ولا وردية هنا.
@@ -1810,17 +1811,36 @@ export default function SettingsIndex() {
                                     label="إرسال بريد إلكتروني عند كل طلب جديد"
                                     hint="يُرسل إلى بريد صاحب النشاط عند إتمام أي عملية بيع."
                                 />
+                                {/*
+                                    واللافتةُ تقول ما يقع.
+
+                                    كانت تَعِد بـ«ركود المنتجات» ولا مهمّةَ في النظام
+                                    تقيسه — لا في `alerts:smart` ولا في `alerts:low-stock`.
+                                    ووعدٌ لا يقع يجعل التاجر ينتظر بريدًا لا يأتي ويظنّ
+                                    العطب في بريده.
+                                */}
                                 <Toggle
                                     on={form.data.notify_smart_alerts}
                                     onChange={(v) => form.setData('notify_smart_alerts', v)}
                                     label="التنبيهات الذكية"
-                                    hint="نفاد المخزون، ركود المنتجات، وتغيّر الأداء."
+                                    hint="نفاد المخزون، تراجع المبيعات، والعملاء المتعثّرون."
                                 />
                                 <Toggle
                                     on={form.data.notify_daily_summary}
                                     onChange={(v) => form.setData('notify_daily_summary', v)}
                                     label="ملخّص الأداء اليومي"
                                     hint="يصل آخر اليوم بمبيعات اليوم وأبرز أرقامه."
+                                />
+                                {/*
+                                    والراكدون في الجرس لا في البريد — ولذلك مقبضٌ
+                                    مستقلّ: متجرٌ له ثلاثمئة زبونٍ راكد يمتلئ جرسُه
+                                    بهم، والمفتاحُ كان مقروءًا في الكود بلا مقبض.
+                                */}
+                                <Toggle
+                                    on={form.data.notify_dormant_customers}
+                                    onChange={(v) => form.setData('notify_dormant_customers', v)}
+                                    label="تنبيه العملاء الراكدين"
+                                    hint="يظهر في جرس الإشعارات لمن مضى عليه أكثر من مدّة الركود بلا شراء."
                                 />
 
                                 {saveBar}

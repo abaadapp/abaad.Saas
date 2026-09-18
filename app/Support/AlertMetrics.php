@@ -117,7 +117,7 @@ class AlertMetrics
                 ->whereIn('status', ['جديد', 'قيد التجهيز'])->count(),
 
             'low_stock_products' => (float) Product::where('business_id', $businessId)
-                ->whereColumn('quantity', '<', 'alert_qty')->count(),
+                ->needsStockAlert()->count(),
 
             'dormant_customers' => (float) self::dormantCustomers($businessId)->count(),
 
@@ -136,6 +136,26 @@ class AlertMetrics
         $revenue = (float) Order::where('business_id', $businessId)
             ->sold()->whereDate('ordered_at', today())->sum('total');
 
+        /*
+         * ═══ والتكلفةُ من لقطةِ البيع لا من بطاقة اليوم ═══
+         *
+         * `order_items.cost` هي التكلفةُ كما كانت ساعةَ خرجت البضاعةُ من
+         * الرفّ — وهي ما يقيّده الدفتر (`Books::costOf`). وكانت تُقرأ هنا من
+         * `products.cost`: سعرُ البطاقة **الآن**.
+         *
+         * فيفترقان في حالين يقعان كلَّ يوم:
+         *
+         *   ١ — تُصحَّح تكلفةُ صنفٍ بعد الظهر، فيتبدّل «ربحُ اليوم» لبيعاتٍ
+         *       وقعت في الصباح — ورقمٌ مضى يتغيّر خلف ظهر صاحبه.
+         *
+         *   ٢ — **الطلبُ المخصَّص لا صنفَ له**: `product_id` فارغ، فالانضمامُ
+         *       الأيسر يردّ لا شيء و`COALESCE` تكتب صفرًا. فمحلُّ وردٍ يبيع
+         *       باقاتٍ بعشرين ريالًا يقرأ ربحَه كاملًا بلا تكلفة، وتنبيهُ
+         *       «صافي ربح اليوم أقلّ من كذا» لا يُطلق أبدًا.
+         *
+         * والقاعدةُ هي قاعدةُ الدفتر نفسُها: اللقطةُ أوّلًا، وبطاقةُ الصنف
+         * حين تكون اللقطةُ صفرًا (صفوفٌ كُتبت قبل أن يوجد العمود).
+         */
         $cost = (float) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
@@ -143,7 +163,10 @@ class AlertMetrics
             // الشرط بيدٍ هنا لأنه انضمام: النطاق يكتب `is_held` بلا بادئة
             ->where('orders.is_held', false)->where('orders.status', '!=', \App\Models\Order::CANCELLED)
             ->whereDate('orders.ordered_at', today())
-            ->sum(DB::raw('COALESCE(products.cost, 0) * order_items.quantity'));
+            ->sum(DB::raw(
+                'case when coalesce(order_items.cost, 0) > 0 then order_items.cost'
+                .' else coalesce(products.cost, 0) end * order_items.quantity'
+            ));
 
         $expenses = (float) Expense::where('business_id', $businessId)
             ->whereDate('spent_at', today())->sum('amount');

@@ -893,7 +893,7 @@ class Demo
          */
         $lowStock = self::currentBranchId()
             ? self::lowStockInBranch($bid, (int) self::currentBranchId())
-            : Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')->count();
+            : Product::where('business_id', $bid)->needsStockAlert()->count();
 
         // المصروفات وصافي الأرباح: هذا الشهر مقابل السابق
         $expMonth = (float) Expense::where('business_id', $bid)->paid()->where('spent_at', '>=', $mStart)->sum('amount');
@@ -2818,7 +2818,7 @@ class Demo
             'expenses' => $expenses,
             'tax' => $tax,
             'products' => Product::where('business_id', $bid)->count(),
-            'inventory_alerts' => Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')->count(),
+            'inventory_alerts' => Product::where('business_id', $bid)->needsStockAlert()->count(),
             'employees' => User::where('business_id', $bid)->where('role', '!=', 'super_admin')->count(),
             'customers' => Customer::where('business_id', $bid)->count(),
             'payment_methods' => (int) (clone $ordersQ)->distinct('payment_method')->count('payment_method'),
@@ -3346,10 +3346,39 @@ class Demo
         $u = auth()->user();
         $dismissed = self::dismissedNotificationKeys();
         $items = [];
-        $add = function (string $key, array $item) use (&$items, $dismissed) {
-            if (! in_array($key, $dismissed, true)) {
-                $items[] = array_merge(['key' => $key], $item);
+
+        /*
+         * ═══ ولا يُنبَّه أحدٌ بما لا يفتحه ═══
+         *
+         * القاعدةُ كانت مكتوبةً في موضعين من هذا الملفّ — عند الأرشيف وعند
+         * سند الاستلام — ومطبَّقةً فيهما وحدهما. وبقيّةُ المصادر تصل كلَّ من
+         * يدخل اللوحة أيًّا كان ما مُنح.
+         *
+         * قِسناه على موظّفٍ يملك «المبيعات» وحدها: أربعةُ صفوفٍ في جرسه،
+         * **ثلاثةٌ منها تردّه بـ٤٠٣**. ولم يكن الردُّ أسوأ ما فيه — الصفوفُ
+         * نفسُها تحمل ما لا يملك قراءته: اسمَ صنفٍ نفد، واسمَ زبونٍ راكد،
+         * ومبيعاتِ اليوم **وصافيَ ربحه** لمن لا تُفتح له لوحةٌ ولا تقرير.
+         *
+         * فصار القيدُ في موضعٍ واحد: كلُّ صفٍّ يحمل قسمَه، ومن لا يفتح القسمَ
+         * لا يصله الصفّ. والقسمُ هو قسمُ الوجهة نفسِها — فلا يُقاس الإذنُ
+         * بشيءٍ ويُفتح شيءٌ آخر.
+         *
+         * و`null` تعني «لا قسمَ يحرسه»: ردُّ الدعم يقود إلى شاشةٍ من هيكل
+         * اللوحة (`Permissions::isShell`) تُفتح لكلّ من دخل.
+         */
+        $add = function (string $key, array $item) use (&$items, $dismissed, $u) {
+            if (in_array($key, $dismissed, true)) {
+                return;
             }
+
+            $section = $item['section'] ?? null;
+            unset($item['section']);
+
+            if ($section !== null && $u && ! $u->allows($section)) {
+                return;
+            }
+
+            $items[] = array_merge(['key' => $key], $item);
         };
 
         if ($u && $u->isSuperAdmin()) {
@@ -3462,6 +3491,7 @@ class Demo
                             'n' => $review->rating, 'branch' => $review->branch?->name ?? '—',
                         ]),
                     'time' => optional($review->reviewed_at)->diffForHumans(),
+                    'section' => 'integrations',
                     'icon' => 'star',
                     /* واللونُ يفرّق: المنخفضُ يُقرأ قبل أن يُقرأ نصُّه */
                     'color' => $low ? 'danger' : 'info',
@@ -3491,6 +3521,7 @@ class Demo
                     ? __('لم تصل :n رسالة واتساب إلى زبائنك — العطب عندنا ونعالجه', ['n' => $waAlert['count']])
                     : __('لم تصل :n رسالة واتساب إلى زبائنك — راجع أرقامهم', ['n' => $waAlert['count']]),
                 'time' => __('آخر يوم'),
+                'section' => 'marketing',
                 'icon' => 'message-circle',
                 'color' => 'danger',
                 /*
@@ -3517,6 +3548,7 @@ class Demo
                         'net' => self::money($sum['net']),
                     ]),
                     'time' => __('ملخّص اليوم'),
+                    'section' => 'dashboard',
                     'icon' => 'bar-chart-3', 'color' => 'success',
                     'url' => route('admin.dashboard'),
                 ]);
@@ -3585,6 +3617,7 @@ class Demo
                         default => __('تعذّر تجهيز الأرشيف الشهري :period.', ['period' => $period]),
                     },
                     'time' => optional($archive->completed_at)->diffForHumans() ?? '—',
+                    'section' => 'settings',
                     'icon' => $ready ? 'archive' : 'triangle-alert',
                     'color' => $ready ? 'success' : 'warning',
                     /*
@@ -3629,13 +3662,14 @@ class Demo
                         's' => $note->supplier?->name ?? __('بلا مورّد'),
                     ]),
                     'time' => optional($note->received_at)->format('Y-m-d'),
+                    'section' => 'inventory',
                     'icon' => 'package-plus', 'color' => 'warning',
                     'url' => route('admin.inventory.receipts', ['status' => GoodsReceipts::PENDING]),
                 ]);
             }
         }
 
-        $low = Product::where('business_id', $bid)->whereColumn('quantity', '<', 'alert_qty')
+        $low = Product::where('business_id', $bid)->needsStockAlert()
             ->orderBy('quantity')->limit($limit)->get();
         foreach ($low as $p) {
             $add('low-'.$p->id, [
@@ -3643,6 +3677,7 @@ class Demo
                     ? __('نفد المخزون: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity])
                     : __('مخزون منخفض: :name (:qty متبقٍ)', ['name' => $p->name, 'qty' => $p->quantity]),
                 'time' => __('تنبيه مخزون'),
+                'section' => 'inventory',
                 'icon' => 'alert-triangle', 'color' => $p->quantity <= 0 ? 'danger' : 'warning',
                 'url' => route('admin.inventory.index'),
             ]);
@@ -3661,9 +3696,12 @@ class Demo
                 $add('dormant-'.$c->id, [
                     'text' => __('عميل راكد: :name — آخر شراء قبل :days يومًا', [
                         'name' => self::ln($c->name, $c->name_en),
-                        'days' => $since->diffInDays(now()),
+                        // وعددُ الأيّام صحيحٌ لا كسر: `diffInDays` تردّ عائمًا
+                        // في Carbon 3، فيُقرأ «منذ 200.000002702 يومًا».
+                        'days' => (int) $since->diffInDays(now()),
                     ]),
                     'time' => $since->format('Y-m-d'),
+                    'section' => 'customers',
                     'icon' => 'user-x', 'color' => 'warning',
                     'url' => route('admin.customers.show', $c->id),
                 ]);
@@ -3685,6 +3723,7 @@ class Demo
                 'time' => $alert->type === 'reminder'
                     ? optional($alert->due_at)->format('Y-m-d')
                     : __('تنبيه مخصّص'),
+                'section' => $alert->section,
                 'icon' => $alert->type === 'reminder' ? 'bell-ring' : 'target',
                 'color' => $alert->color ?: 'warning',
                 'url' => $alert->url(),
@@ -3697,6 +3736,7 @@ class Demo
             $add('order-'.$o->number, [
                 'text' => __('طلب :number بانتظار التجهيز', ['number' => $o->number]),
                 'time' => optional($o->ordered_at)->format('Y-m-d H:i'),
+                'section' => 'orders',
                 'icon' => 'receipt', 'color' => 'info',
                 'url' => route('admin.orders.show', $o->number),
             ]);

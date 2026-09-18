@@ -10,6 +10,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\AlertMetrics;
 use App\Support\Demo;
+use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -201,5 +202,62 @@ class CustomAlertsTest extends TestCase
                 "المقياس {$metric} لا يُحسب",
             );
         }
+    }
+
+    /* ─────────── ورابطُ التنبيه يتبع قسمَه ─────────── */
+
+    /**
+     * ═══ وقائمتان لسؤالٍ واحد ═══
+     *
+     * `CustomAlert::url()` كانت تحمل قائمةً مكتوبةً باليد تُقابل القسمَ بمساره،
+     * و`Permissions::ROUTES` تقول الشيء نفسه للّوحة كلِّها. فقسمٌ في تلك ولا
+     * في هذه — الموقعُ، والمورّدون، والتسويق، ولوحةُ التجهيز — كان يسقط إلى
+     * لوحة التحكّم: يكتب التاجرُ تنبيهًا على «المورّدين» فتقوده نقرتُه إلى
+     * مكانٍ آخر.
+     *
+     * وصار ذلك أخطرَ منذ صار الجرسُ يحجب ما لا يُفتح: القسمُ يحرس، والوجهةُ
+     * تُفتح — فلو افترقا حُرس صفٌّ بقسمٍ وفُتح غيرُه.
+     */
+    public function test_an_alert_opens_the_section_it_was_filed_under(): void
+    {
+        foreach (Permissions::sections() as $section) {
+            $alert = new CustomAlert(['section' => $section]);
+
+            $name = CustomAlert::URL_OVERRIDES[$section]
+                ?? Permissions::ROUTES[$section]
+                ?? null;
+
+            if ($name === null) {
+                continue; // قسمٌ بلا بابٍ في اللوحة — يسقط إلى اللوحة عمدًا
+            }
+
+            $this->assertSame(route($name), $alert->url(),
+                'تنبيهُ «'.$section.'» يقود إلى غير قسمه');
+        }
+    }
+
+    /** ولا قسمَ له بابٌ في اللوحة يسقط إلى مكانٍ عشوائيّ */
+    public function test_no_section_with_a_door_falls_back_to_the_dashboard(): void
+    {
+        $withDoors = array_values(array_filter(
+            Permissions::sections(),
+            fn ($s) => isset(Permissions::ROUTES[$s]) && $s !== 'dashboard',
+        ));
+
+        $this->assertNotEmpty($withDoors, 'المقدّمة خاطئة: لا قسمَ له باب');
+
+        foreach ($withDoors as $section) {
+            $this->assertNotSame(route('admin.dashboard'), (new CustomAlert(['section' => $section]))->url(),
+                'قسمٌ له بابٌ وسقط تنبيهُه إلى اللوحة: '.$section);
+        }
+    }
+
+    /** والاستثناءان مقصودان: التقريرُ يقود إلى الرقم لا إلى فهرسه */
+    public function test_a_reports_alert_opens_the_figure_not_the_index(): void
+    {
+        $this->assertSame(
+            route('admin.reports.sales'),
+            (new CustomAlert(['section' => 'reports']))->url(),
+        );
     }
 }

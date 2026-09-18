@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\PdfController;
+use App\Models\Order;
 use App\Models\Transaction;
 use App\Support\Books;
 use App\Support\Demo;
@@ -43,11 +45,53 @@ class FinanceController extends Controller
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
+    /**
+     * ورقةُ الحركة — الفاتورةُ كما يقرؤها العميل، إلى جانب الجدول.
+     *
+     * ═══ ولمَ بابٌ مستقلٌّ لا حمولةٌ مع الصفحة ═══
+     *
+     * رسمُ عشرين ورقةً لكلّ فتحةٍ للحركة المالية يُشغّل قالبَ المستند عشرين
+     * مرّة ويحمل معها صورَ الشعار والرموز — والتاجرُ يفتح واحدةً أو لا يفتح
+     * شيئًا. فتُطلب حين تُطلب.
+     *
+     * ═══ ولمَ HTML لا PDF ═══
+     *
+     * PDF يخرج من الصفحة إلى قارئ المتصفّح، فيفقد التاجر مكانَه في الجدول —
+     * ويعود بزرّ المتصفّح لا بزرٍّ نعرفه. والورقةُ هنا هي نفسُها التي تُطبع:
+     * `PdfController::saleHtml` بابٌ واحد، فلا تفترق المعاينةُ عن الطابعة.
+     * والـPDF يبقى خلف «تكبير» و«تحميل» و«طباعة» في اللوحة نفسها.
+     *
+     * وحركةٌ بلا فاتورة — مصروفٌ أو تحويل — تُردّ ٤٠٤: لا ورقةَ لها أصلًا،
+     * والشاشةُ لا تعرض لها بابًا.
+     */
+    public function paper(Request $request, int $id)
+    {
+        $bid = $this->bid();
+
+        // المفتاحُ بعد حصر المتجر: رقمٌ مُخمَّن في العنوان لا يفتح ورقة جار
+        $transaction = Transaction::where('business_id', $bid)->findOrFail($id);
+
+        $order = $transaction->order_id
+            ? Order::where('business_id', $bid)->whereKey($transaction->order_id)->with('items')->first()
+            : null;
+
+        abort_unless((bool) $order, 404);
+
+        $paper = PdfController::saleHtml($bid, $order);
+
+        return response()->json([
+            'html' => $paper['html'],
+            'size' => $paper['paper'],
+            'number' => $order->number,
+            'url' => route('admin.orders.pdf', $order->number),
+        ]);
+    }
+
     public function index(Request $request): Response
     {
         $bid = $this->bid();
 
-        $q = Transaction::where('business_id', $bid)->with('order:id,status');
+        $q = Transaction::where('business_id', $bid)->with('order:id,status,number');
 
         // والمعامل من المحرّك لا مكتوبًا بيدٍ: `like` تفرّق في PostgreSQL وحدها
         if ($s = Search::term($request)) {
@@ -102,6 +146,15 @@ class FinanceController extends Controller
                 'posted' => $t->journal_entry_id !== null,
                 // والملغاة تُوسم ولا تُحذف: خرجت من المجموع وبقيت في السجلّ
                 'cancelled' => $t->isCancelled(),
+                /*
+                 * رقمُ الفاتورة إن كان للحركة فاتورة — وبه يصير المرجع بابًا.
+                 *
+                 * كان المرجعُ نصًّا لا يُنقر: يقرأ صاحبُ النشاط «POS-1042»
+                 * ولا سبيل له إلى ورقتها إلّا أن يخرج إلى الطلبات ويبحث
+                 * برقمها. ومصروفٌ أو تحويلٌ لا فاتورةَ له، فيبقى نصًّا —
+                 * ولا يُعرض بابٌ لا يُفتح.
+                 */
+                'invoice' => $t->order?->number,
             ])->all(),
             'pagination' => Pagination::meta($rows),
             'filters' => $request->only('q', 'kind', 'from', 'to') + Sort::params($request, self::SORTS),

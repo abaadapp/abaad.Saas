@@ -1197,6 +1197,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
 
     // الحركة المالية — ما دخل وما خرج، وبابُ تسجيل ما لا مستند له
     Route::get('/finance/transactions', [FinanceController::class, 'index'])->name('finance.transactions');
+    // وورقةُ الحركة تُقرأ إلى جانب الجدول — لا تُخرج التاجر من صفحته
+    Route::get('/finance/transactions/{id}/paper', [FinanceController::class, 'paper'])->name('finance.transactionPaper');
 
     // الملخّص المالي والمبالغ المستحقة — قراءتان لا تكتبان شيئًا
     Route::get('/finance/summary', [OverviewController::class, 'summary'])->name('finance.summary');

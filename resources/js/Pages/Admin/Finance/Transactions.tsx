@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Check, Plus } from 'lucide-react';
+import { ArrowRight, Check, FileText, Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
 import ExportMenu from '@/Components/ExportMenu';
 import MovementForm, { type Movement } from '@/Components/MovementForm';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
+import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import StatCard from '@/Components/StatCard';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
+import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -32,6 +34,16 @@ interface Row {
     posted: boolean;
     /** بيعةٌ أُلغيت فاتورتها — تبقى في السجلّ ولا تُجمع */
     cancelled: boolean;
+    /** رقمُ فاتورتها إن كانت لها فاتورة — وبه يصير المرجع بابًا */
+    invoice: string | null;
+}
+
+/** الورقةُ كما يردّها الخادم — تُطلب عند فتحها لا مع الصفحة */
+interface Paper {
+    html: string;
+    size: string;
+    number: string;
+    url: string;
 }
 
 interface Props {
@@ -71,12 +83,79 @@ export default function Transactions() {
 
     const [adding, setAdding] = useState(false);
 
+    /*
+     * الورقةُ إلى جانب الجدول — لا تخرج بالتاجر من صفحته.
+     *
+     * كان المرجعُ نصًّا لا يُنقر، فمن أراد ورقةَ حركةٍ خرج إلى الطلبات وبحث
+     * برقمها، ثمّ عاد فوجد الجدولَ على صفحته الأولى بلا فلترته. فصارت تُفتح
+     * هنا، ويعود منها بزرٍّ يعرفه — لا بزرِّ رجوع المتصفّح.
+     *
+     * و`viewing` معرّفُ الحركة لا الورقة: بالنقر يُعرَض الإطارُ فورًا وفيه
+     * «يُحمَّل…»، فلا يُنقر زرٌّ ولا يحدث شيءٌ حتى يصل الخادم.
+     */
+    const [viewing, setViewing] = useState<Row | null>(null);
+    const [paper, setPaper] = useState<Paper | null>(null);
+    const [paperError, setPaperError] = useState<string | null>(null);
+    const [previewing, setPreviewing] = useState(false);
+
+    useEffect(() => {
+        if (!viewing) return;
+
+        let alive = true;
+        setPaper(null);
+        setPaperError(null);
+
+        fetch(route('admin.finance.transactionPaper', viewing.id), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        })
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+            .then((data: Paper) => {
+                if (alive) setPaper(data);
+            })
+            .catch(() => {
+                if (alive) setPaperError('تعذّر فتح الورقة — أعد المحاولة.');
+            });
+
+        return () => {
+            alive = false;
+        };
+    }, [viewing?.id]);
+
+    const close = () => {
+        setViewing(null);
+        setPaper(null);
+        setPaperError(null);
+    };
+
     const columns: Column<Row>[] = [
         {
             key: 'reference',
             header: 'المرجع',
             sortable: true,
-            cell: (r) => <span className="font-mono text-[13px] text-[#6b7280]">{r.reference}</span>,
+            /*
+             * والمرجعُ بابٌ حين يكون خلفه ورقة.
+             *
+             * ومصروفٌ أو تحويلٌ لا فاتورةَ له فيبقى نصًّا: مقبضٌ لا يُدير
+             * شيئًا أسوأ من غياب المقبض.
+             */
+            cell: (r) =>
+                r.invoice ? (
+                    <button
+                        type="button"
+                        onClick={() => setViewing(r)}
+                        title={t('عرض الفاتورة')}
+                        className={cn(
+                            'inline-flex items-center gap-1.5 rounded font-mono text-[13px] underline-offset-4 hover:underline',
+                            viewing?.id === r.id ? 'font-semibold text-[#111]' : 'text-[#1d4ed8]',
+                        )}
+                    >
+                        <FileText className="size-3.5 shrink-0" />
+                        {r.reference}
+                    </button>
+                ) : (
+                    <span className="font-mono text-[13px] text-[#6b7280]">{r.reference}</span>
+                ),
         },
         {
             key: 'date',
@@ -218,15 +297,63 @@ export default function Transactions() {
                 />
             </div>
 
-            <DataTable
-                rows={rows}
-                columns={columns}
-                rowKey={(r) => r.id}
-                filters={tableFilters}
-                searchPlaceholder="ابحث بالمرجع أو البيان…"
-                empty="لا حركة في هذه المدة"
-                server={{ pagination, params: filters, sorts }}
-            />
+            {/*
+                والجدولُ يضيق ولا يُستبدل.
+                الورقةُ تُفتح إلى جانبه فيبقى السطرُ المفتوح في مكانه، وفلترةُ
+                التاجر وصفحتُه كما تركها. وعلى الشاشة الضيّقة يعلوها الجدول —
+                عمودان لا يتّسعان لهاتف.
+            */}
+            <div
+                className={cn(
+                    viewing && 'grid grid-cols-1 items-start gap-6 xl:grid-cols-5',
+                )}
+            >
+                <div className={cn('min-w-0', viewing && 'xl:col-span-3')}>
+                    <DataTable
+                        rows={rows}
+                        columns={columns}
+                        rowKey={(r) => r.id}
+                        filters={tableFilters}
+                        searchPlaceholder="ابحث بالمرجع أو البيان…"
+                        empty="لا حركة في هذه المدة"
+                        server={{ pagination, params: filters, sorts }}
+                    />
+                </div>
+
+                {viewing && (
+                    <DocumentAside className="xl:col-span-2">
+                        {/*
+                            وزرُّ الرجوع فوق الورقة لا تحتها: هو أوّلُ ما تقع
+                            عليه العين حين تُفتح، ولا يُبحث عنه بعد تمريرة.
+                        */}
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                            <Button variant="outline" size="sm" onClick={close}>
+                                <ArrowRight />
+                                {t('رجوع إلى الحركة المالية')}
+                            </Button>
+                            <span className="truncate font-mono text-[13px] text-[#6b7280]">
+                                {viewing.invoice}
+                            </span>
+                        </div>
+
+                        {paper ? (
+                            <DocumentPanel
+                                html={paper.html}
+                                size={paper.size}
+                                url={paper.url}
+                                filename={`${paper.number}.pdf`}
+                                label={`${t('الفاتورة')} ${paper.number}`}
+                                open={previewing}
+                                onOpenChange={setPreviewing}
+                            />
+                        ) : (
+                            <Card className="p-6 text-center text-[13px] text-[#6b7280]">
+                                {t(paperError ?? 'يُحمَّل…')}
+                            </Card>
+                        )}
+                    </DocumentAside>
+                )}
+            </div>
 
             <Dialog open={adding} onOpenChange={(o) => !o && setAdding(false)}>
                 <DialogContent className="sm:max-w-lg">

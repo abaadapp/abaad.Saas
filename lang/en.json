@@ -6046,5 +6046,9 @@
     "رصيد افتتاحي — ": "Opening balance — ",
     "بنك جهاز الشبكة": "Card terminal's bank",
     "إليه تُرحَّل مبيعات البطاقة من هذا الصندوق ويُطابَق كشفُه": "Card sales from this register post here and reconcile against its statement",
-    "الحساب الرئيسي": "Primary account"
+    "الحساب الرئيسي": "Primary account",
+    "عرض الفاتورة": "View invoice",
+    "رجوع إلى الحركة المالية": "Back to transactions",
+    "تعذّر فتح الورقة — أعد المحاولة.": "Could not open the paper — try again.",
+    "يُحمَّل…": "Loading…"
 }

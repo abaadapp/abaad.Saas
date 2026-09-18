@@ -613,7 +613,18 @@ class DemoStore
         $days = max(1, (int) $from->diffInDays(now()));
         $sellers = array_values(array_filter($staff, fn ($u) => in_array($u->role, ['cashier', 'sales'], true)));
         $statuses = ['مكتمل', 'مكتمل', 'مكتمل', 'مكتمل', 'قيد التجهيز', 'جاهز', 'خرج للتوصيل', 'ملغي'];
-        $methods = ['نقدي', 'بطاقة', 'تحويل', 'نقدي', 'بطاقة'];
+        /*
+         * ووسائلُ الدفع من مصدرها — لا نصوصٌ تُكتب هنا بيدٍ.
+         *
+         * كانت «تحويل»، والنظامُ كلُّه يقول «تحويل بنكي» (`PaymentMethods`).
+         * فوسيلةٌ لا يعرفها أحد: `Bank::METHODS` لا تعدّها بنكيّة فتسقط من
+         * كشف الحساب ومن المطابقة، وشاشةُ وسائل الدفع تعرض صفًّا رابعًا لا
+         * يُطفأ ولا يُضبط. وبذرةُ العرض تُفتح لتُرى، فتُري عطبًا.
+         */
+        $methods = [
+            PaymentMethods::CASH, PaymentMethods::CARD, PaymentMethods::TRANSFER,
+            PaymentMethods::CASH, PaymentMethods::CARD,
+        ];
 
         /** مجاميع الشهر لترحيلها قيدًا واحدًا — انظر ترويسة الصنف */
         $monthly = [];
@@ -695,21 +706,46 @@ class DemoStore
             ]);
 
             $key = $at->format('Y-m');
-            $monthly[$key] ??= ['subtotal' => 0.0, 'tax' => 0.0, 'total' => 0.0, 'cost' => 0.0, 'date' => $at->copy()->endOfMonth()];
+            $monthly[$key] ??= ['subtotal' => 0.0, 'tax' => 0.0, 'cash' => 0.0, 'bank' => 0.0, 'cost' => 0.0, 'date' => $at->copy()->endOfMonth()];
             $monthly[$key]['subtotal'] += $subtotal;
             $monthly[$key]['tax'] += $tax;
-            $monthly[$key]['total'] += $total;
+            /*
+             * والمقبوضُ يُفرَز بوسيلته — كما تفرزه `Books::recordSale`.
+             *
+             * ═══ العطب ═══
+             *
+             * كان مجموعُ الشهر كلُّه يُقيَّد مدينًا في **الصندوق** مهما قال
+             * الطلب. فالطلبُ يقول «بطاقة»، والمعاملةُ تقول «بطاقة»، وشاشةُ
+             * وسائل الدفع تقول «بطاقة» — والدفترُ وحده يقول «نقد». أربعةُ
+             * قرّاءٍ لسؤالٍ واحد، أحدُهم يخالف الثلاثة.
+             *
+             * وأثرُه ليس في مكانٍ واحد: العرضُ يشتري بضاعتَه ويدفع رواتبَه
+             * وأصولَه ومصروفاتِه **من البنك**، ولا يُودِع فيه ريالًا. فبنكُه
+             * على الإنتاج ‎−٦٢٣٬٢٤٨‎ وصندوقُه منتفخٌ بالمثل — ميزانيّةُ متجرٍ
+             * تُفتح لتُقنع، فتُرِي حسابًا مكشوفًا بستّمئة ألف.
+             */
+            if (in_array($order->payment_method, Bank::METHODS, true)) {
+                $monthly[$key]['bank'] += $total;
+            } else {
+                $monthly[$key]['cash'] += $total;
+            }
             $monthly[$key]['cost'] += $cost;
         }
 
         foreach ($monthly as $month => $m) {
             $date = $m['date']->isFuture() ? now() : $m['date'];
 
-            Ledger::post($bid, "مبيعات شهر {$month}", [
-                ['account' => 'cash', 'debit' => round($m['total'], 3)],
-                ['account' => 'sales', 'credit' => round($m['subtotal'], 3)],
-                ['account' => 'tax_payable', 'credit' => round($m['tax'], 3)],
-            ], $date, 'مبيعات');
+            $lines = [];
+            foreach (['cash', 'bank'] as $side) {
+                // وطرفٌ بصفرٍ لا يُكتب: سطرٌ يقول لا شيء، و`Ledger::post` تردّه
+                if (round($m[$side], 3) > 0) {
+                    $lines[] = ['account' => $side, 'debit' => round($m[$side], 3)];
+                }
+            }
+            $lines[] = ['account' => 'sales', 'credit' => round($m['subtotal'], 3)];
+            $lines[] = ['account' => 'tax_payable', 'credit' => round($m['tax'], 3)];
+
+            Ledger::post($bid, "مبيعات شهر {$month}", $lines, $date, 'مبيعات');
 
             Ledger::post($bid, "تكلفة مبيعات شهر {$month}", [
                 ['account' => 'cogs', 'debit' => round($m['cost'], 3)],

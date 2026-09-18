@@ -107,31 +107,9 @@ class PageController extends Controller
              * وفارغةٌ حين تُطفأ الميزة: الزرُّ لا يُعرض، والبابُ مقفلٌ في
              * الخادم أيضًا — انظر `PosController::priceItems`.
              */
-            'customOrder' => CustomArrangement::enabled(Demo::bid()) ? [
-                'templates' => CustomOrderTemplate::sellable(Demo::bid())
-                    ->with(['fields' => fn ($q) => $q->where('active', true), 'fields.options' => fn ($q) => $q->where('active', true)])
-                    ->get()->map(fn ($t) => [
-                        'id' => $t->id,
-                        'name' => $t->display(),
-                        'modes' => $t->modes,
-                        'default_mode' => $t->default_mode ?: ($t->modes[0] ?? null),
-                        'base_label' => $t->baseLabel(),
-                        'allow_components' => $t->allow_components,
-                        'allow_addons' => $t->allow_addons,
-                        'restockable_default' => $t->components_restockable_default,
-                        'fields' => $t->fields->map(fn ($f) => [
-                            'id' => $f->id,
-                            'label' => $f->display(),
-                            'type' => $f->type,
-                            'required' => $f->required,
-                            'internal' => $f->internal,
-                            'options' => $f->options->map(fn ($o) => [
-                                'id' => $o->id,
-                                'label' => $o->display(),
-                            ])->values(),
-                        ])->values(),
-                    ])->values(),
-            ] : ['templates' => []],
+            'customOrder' => CustomArrangement::enabled(Demo::bid())
+                ? ['templates' => self::customTemplates(Demo::bid())]
+                : ['templates' => []],
             // سلة مستعادة من طلب معلّق (تُمرَّر عبر الجلسة من PosController::resume)
             'resumeCart' => session('resume_cart'),
             'settings' => $this->loyaltySettings(),
@@ -142,6 +120,92 @@ class PageController extends Controller
                 'cardMax' => FlowerOrder::CARD_MAX,
             ],
         ]);
+    }
+
+    /**
+     * قوالبُ الصندوق — ومتجرٌ لم يكتب قالبًا يجد القالبَ الأوّل.
+     *
+     * ═══ العطب ═══
+     *
+     * الهجرةُ بذرت قالبًا افتراضيًّا لكلّ متجرٍ قائم، فبقيت الميزةُ تعمل
+     * عندهم بعد الترقية. أمّا من سجّل متجرَه **بعدها** فلا قالبَ له —
+     * والشاشةُ لا ترسم الزرَّ إلّا لقالب. فالميزةُ التي يقول الإعدادُ إنّها
+     * «مفعّلة» لا بابَ لها في صندوقه، ولا شيءَ يقول له لماذا.
+     *
+     * والخادمُ كان يقبله طَوالَ الوقت: `CustomArrangement::template` تُنادي
+     * `ensureDefault` حين لا يُسمَّى قالب، فتبذر الأوّلَ وتبيع به. أي أنّ
+     * البابَ مفتوحٌ من الداخل ولا يُعرض من الخارج — وفرعٌ من الكود يحرس
+     * حالًا لا تصله يدٌ أبدًا.
+     *
+     * ═══ والصفُّ لا يُكتب في فتحةِ شاشة ═══
+     *
+     * البذرُ هنا يعني كتابةً في قراءة: كلُّ متجرٍ يفتح صندوقَه — باع أو لم
+     * يبع — يُكتب له صفّ. فيُعرض القالبُ الأوّل بمعرّف `0` كما يقبله
+     * الخادمُ بالضبط، ويُكتب صفُّه في أوّل بيعةٍ به لا قبلها.
+     *
+     * وشكلُه من `CustomOrderTemplate::STARTER` — هي نفسُها التي يُكتب بها
+     * الصفّ، فلا يُعرض قالبٌ بوضعين ويُنشأ بواحد.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function customTemplates(int $businessId): array
+    {
+        $rows = CustomOrderTemplate::sellable($businessId)
+            ->with([
+                'fields' => fn ($q) => $q->where('active', true),
+                'fields.options' => fn ($q) => $q->where('active', true),
+            ])
+            ->get()->map(fn ($t) => [
+                'id' => $t->id,
+                'name' => $t->display(),
+                'modes' => $t->modes,
+                'default_mode' => $t->default_mode ?: ($t->modes[0] ?? null),
+                'base_label' => $t->baseLabel(),
+                'allow_components' => $t->allow_components,
+                'allow_addons' => $t->allow_addons,
+                'restockable_default' => $t->components_restockable_default,
+                'fields' => $t->fields->map(fn ($f) => [
+                    'id' => $f->id,
+                    'label' => $f->display(),
+                    'type' => $f->type,
+                    'required' => $f->required,
+                    'internal' => $f->internal,
+                    'options' => $f->options->map(fn ($o) => [
+                        'id' => $o->id,
+                        'label' => $o->display(),
+                    ])->values(),
+                ])->values(),
+            ])->values()->all();
+
+        if ($rows) {
+            return $rows;
+        }
+
+        /*
+         * ولا يُعرض الأوّلُ لمن حذف قوالبَه كلَّها.
+         *
+         * `ensureDefault` تنصرف متى وُجد صفٌّ ولو محذوفًا أو موقوفًا — فمن
+         * أغلق الميزةَ بيده يُردّ طلبُه بـ«قالب غير متاح». وعرضُ زرٍّ يقود
+         * إلى ذلك الردّ بابٌ يُفتح ليُغلق في وجهه.
+         */
+        if (CustomOrderTemplate::withTrashed()->where('business_id', $businessId)->exists()) {
+            return [];
+        }
+
+        $starter = CustomOrderTemplate::STARTER;
+
+        return [[
+            // صفرٌ لا معرّف: `template()` تقرؤه «لم يُسمَّ قالب» فتبذر وتبيع
+            'id' => 0,
+            'name' => Demo::ln($starter['name'], $starter['name_en']),
+            'modes' => $starter['modes'],
+            'default_mode' => $starter['default_mode'],
+            'base_label' => __('القيمة الأساسية'),
+            'allow_components' => $starter['allow_components'],
+            'allow_addons' => $starter['allow_addons'],
+            'restockable_default' => $starter['components_restockable_default'],
+            'fields' => [],
+        ]];
     }
 
     public function orders(): Response

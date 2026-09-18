@@ -163,13 +163,53 @@ class RunningTheSiteIsNotConfiguringItTest extends TestCase
         $this->get(route('admin.website.site'))->assertOk();
     }
 
-    /** ومن لا موقع له ولا يملك ضبطَه لا يُعرض عليه إنشاؤه */
-    public function test_an_operator_is_not_offered_a_site_he_cannot_create(): void
+    /**
+     * ومن لا موقع له ولا يملك ضبطَه لا يُعرض عليه إنشاؤه — ويُقال له لماذا.
+     *
+     * ═══ ولمَ لا ٤٠٣ ═══
+     *
+     * كان يُردّ بصفحة خادمٍ سوداء. والقسمُ في شريطه الجانبيّ لأنّه مُنح له،
+     * فالبابُ معروضٌ ولا يُفتح — وهو أسوأ من بابٍ لا يُعرض: يظنّ العطبَ في
+     * النظام، أو يظنّ صلاحيتَه ناقصةً، ولا شيءَ يقول له ما يفعل.
+     *
+     * والحارسُ باقٍ كما هو: لا يكتب موقعًا من لا يملك ذلك — الحمولةُ
+     * `Admin/Website/Absent` لا `Wizard`، ولا زرَّ إنشاءٍ فيها.
+     */
+    public function test_an_operator_is_told_why_there_is_no_site_yet(): void
     {
         Website::query()->delete();
 
         $this->actingAs($this->operator(['website']));
 
-        $this->get(route('admin.website.index'))->assertForbidden();
+        $this->assertSame(
+            'Admin/Website/Absent',
+            $this->get(route('admin.website.index'))->assertOk()->viewData('page')['component'],
+        );
+    }
+
+    /** وصاحبُ المتجر يجد بابَ الإنشاء في موضعه */
+    public function test_the_owner_is_offered_the_wizard(): void
+    {
+        Website::query()->delete();
+
+        $this->actingAs($this->owner);
+
+        $this->assertSame(
+            'Admin/Website/Wizard',
+            $this->get(route('admin.website.index'))->assertOk()->viewData('page')['component'],
+        );
+    }
+
+    /** ومن مُنح الفعلَ باسمه يجده كذلك — القسمُ وحده لا يكفي، والفعلُ يكفي */
+    public function test_an_operator_granted_the_action_is_offered_the_wizard(): void
+    {
+        Website::query()->delete();
+
+        $this->actingAs($this->operator(['website', Permissions::WEBSITE_CONFIGURE]));
+
+        $this->assertSame(
+            'Admin/Website/Wizard',
+            $this->get(route('admin.website.index'))->assertOk()->viewData('page')['component'],
+        );
     }
 }

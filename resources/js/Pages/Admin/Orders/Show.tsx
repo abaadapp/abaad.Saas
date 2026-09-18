@@ -75,7 +75,25 @@ interface OrderDetail {
     delivery: number;
     total: number;
     /** والمعرّف يُقرأ لا يُعرض: به يُنادى مسارُ التصحيح على البند بعينه */
-    items: { id: number; name: string; qty: number; price: number; total: number }[];
+    items: {
+        id: number;
+        name: string;
+        qty: number;
+        price: number;
+        total: number;
+        /**
+         * وصفُ الطلب المخصَّص كما بيع — لقطةٌ لا مرجع.
+         *
+         * `null` لكلّ بندٍ من الكتالوج. والداخليُّ من حقوله يظهر هنا خلافًا
+         * للورق: هذه شاشةُ صاحب المتجر، وتلك ورقةُ زبونه.
+         */
+        custom?: {
+            template: string | null;
+            base_label: string | null;
+            base_value: number | null;
+            fields: { label: string; internal: boolean; values: string[] }[];
+        } | null;
+    }[];
     /** ما أذن به التاجر وحده — لا تُصحَّح وسيلةُ الدفع إلى وسيلةٍ مُطفأة */
     payment_methods: string[];
     /** تصحيحات وقعت على الفاتورة بعد بيعها — انظر App\Support\OrderCorrection */
@@ -618,7 +636,38 @@ export default function OrderShow() {
                                     <TableBody>
                                         {order.items.map((line, i) => (
                                             <TableRow key={i}>
-                                                <TableCell className="font-medium text-[#111]">{line.name}</TableCell>
+                                                <TableCell className="font-medium text-[#111]">
+                                                    {line.name}
+                                                    {/*
+                                                        وما اختاره الزبونُ تحت اسم بنده.
+
+                                                        كان البندُ المخصَّص سطرًا واحدًا هنا — اسمًا وسعرًا —
+                                                        واللونُ والمقاسُ واسمُ المُهدى إليه في القاعدة لا يقرؤها
+                                                        أحد. فيتّصل الزبونُ يقول «طلبتُ الأحمر» وصاحبُ المتجر
+                                                        أمام شاشةٍ لا تحسم. والورقةُ تحملها ولوحةُ التجهيز
+                                                        تحملها، وهذه وحدها كانت عمياء.
+                                                    */}
+                                                    {line.custom && line.custom.fields.length > 0 && (
+                                                        <ul className="mt-1 space-y-0.5">
+                                                            {line.custom.fields.map((f, k) => (
+                                                                <li
+                                                                    key={k}
+                                                                    className="text-[12px] font-normal text-[#6b7280]"
+                                                                >
+                                                                    <span className="text-[#4b4b4b]">{f.label}</span>
+                                                                    {': '}
+                                                                    {f.values.join(' · ')}
+                                                                    {/* والداخليُّ يُوسم: يُقرأ هنا ولا يُطبع للزبون */}
+                                                                    {f.internal && (
+                                                                        <span className="ms-1 text-[11px] text-[#b45309]">
+                                                                            {t('داخلي')}
+                                                                        </span>
+                                                                    )}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                </TableCell>
                                                 <TableCell className="text-end tabular-nums">
                                                     {number(line.qty)}
                                                 </TableCell>

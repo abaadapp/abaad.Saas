@@ -188,6 +188,21 @@ class EveryScreenOpensTest extends TestCase
      * ولوحةُ المنصّة تُستثنى: شاشاتُها لا يفتحها تاجرٌ قطّ، و«التقارير» عنده
      * غيرُ «التقارير» عندنا — واسمان متطابقان لا يلتقيان لا يُخلطان.
      */
+    /**
+     * وحالٌ ثانيةٌ لبابٍ واحد ليست شاشةً ثانية.
+     *
+     * `admin.website.index` تعرض `Hub` لمن له موقع، و`Absent` لمن لا موقعَ
+     * لمتجره ولا يملك إنشاءه. عنوانٌ واحد، وحالٌ منهما تُعرض — والاسمُ
+     * المشترك هو الصواب لا التصادم: الشاشةُ واحدةٌ اسمُها «الموقع الإلكتروني»،
+     * ولا يقف التاجرُ يومًا بين بابين يحملان الاسمَ ذاته.
+     *
+     * وتُكتب بأسمائها لا تُستنتج: ما يُستثنى يُقرأ ويُراجَع، ووجهٌ ثالثٌ
+     * يُضاف بقرارٍ لا بصدفة.
+     *
+     * @var list<string>
+     */
+    private const FACES = ['Admin/Website/Absent.tsx'];
+
     public function test_no_two_merchant_screens_share_a_name(): void
     {
         $titles = [];
@@ -212,8 +227,10 @@ class EveryScreenOpensTest extends TestCase
         $clashes = [];
 
         foreach ($titles as $title => $files) {
-            if (count(array_unique($files)) > 1) {
-                $clashes[] = $title.' → '.implode('، ', array_unique($files));
+            $files = array_values(array_diff(array_unique($files), self::FACES));
+
+            if (count($files) > 1) {
+                $clashes[] = $title.' → '.implode('، ', $files);
             }
         }
 

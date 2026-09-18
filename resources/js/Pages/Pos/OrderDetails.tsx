@@ -27,6 +27,13 @@ interface OrderItem {
     total: number;
     note?: string | null;
     addons?: { name: string; qty: number; total: number }[];
+    /** وصفُ الطلب المخصَّص كما بيع — `null` لبند الكتالوج */
+    custom?: {
+        template: string | null;
+        base_label: string | null;
+        base_value: number | null;
+        fields: { label: string; internal: boolean; values: string[] }[];
+    } | null;
 }
 
 interface OrderDetail {
@@ -141,6 +148,16 @@ export default function PosOrderDetails() {
                                                 {it.note && (
                                                     <span className="block text-[11px] text-gray-400">{it.note}</span>
                                                 )}
+                                                {/*
+                                                    وما اختاره الزبونُ تحت اسم بنده — كما في شاشة الطلبات.
+                                                    الكاشيرُ يُسأل عند التسليم «أيُّ لونٍ طلبتُ؟» وهو أقربُ
+                                                    من صاحب المتجر إلى السؤال.
+                                                */}
+                                                {(it.custom?.fields ?? []).map((f, i) => (
+                                                    <span key={i} className="block text-[11px] text-gray-500">
+                                                        {f.label}: {f.values.join(' · ')}
+                                                    </span>
+                                                ))}
                                             </TableCell>
                                             <TableCell className="text-center tabular-nums">{it.qty}</TableCell>
                                             <TableCell className="text-end tabular-nums">{m(it.price)}</TableCell>

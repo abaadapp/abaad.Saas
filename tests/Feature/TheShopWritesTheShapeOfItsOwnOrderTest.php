@@ -587,4 +587,89 @@ class TheShopWritesTheShapeOfItsOwnOrderTest extends TestCase
     {
         $this->assertSame(100, CustomOrderFieldOption::MAX_PER_FIELD);
     }
+
+    /* ══════════════ ٩ · الصندوقُ يعرض ما يقبله الخادمُ بالضبط ══════════════ */
+
+    /**
+     * متجرٌ لم يكتب قالبًا قطّ يجد القالبَ الأوّل في صندوقه.
+     *
+     * ═══ العطب ═══
+     *
+     * الهجرةُ بذرت قالبًا لكلّ متجرٍ قائمٍ يومَها، فبقيت الميزةُ تعمل عند
+     * من رُقّي. أمّا من سجّل متجرَه بعدها فلا قالبَ له — والشاشةُ لا ترسم
+     * زرَّ «طلب مخصص» إلّا لقالب. فالإعدادُ يقول «مفعّلة» ولا بابَ لها في
+     * صندوقه.
+     *
+     * **والخادمُ كان يقبله طَوالَ الوقت**: `template()` تُنادي `ensureDefault`
+     * حين لا يُسمَّى قالب، فتبذر الأوّلَ وتبيع به. بابٌ مفتوحٌ من الداخل لا
+     * يُعرض من الخارج، وفرعُ كودٍ يحرس حالًا لا تصلها يد.
+     */
+    public function test_a_shop_that_never_wrote_a_template_is_offered_the_first_one(): void
+    {
+        $this->assertSame(0, CustomOrderTemplate::where('business_id', $this->shop->id)->count(),
+            'المقدّمةُ خاطئة — المتجرُ عنده قالب');
+
+        $templates = $this->actingAs($this->owner)->get(route('pos.index'))
+            ->assertOk()->viewData('page')['props']['customOrder']['templates'];
+
+        $this->assertCount(1, $templates, 'الصندوقُ لا يعرض قالبًا لمن لم يكتب واحدًا');
+        $this->assertSame(0, $templates[0]['id'], 'المعرّفُ ليس صفرًا — فلن تبذر `template()`');
+        $this->assertSame(CustomArrangement::MODES, $templates[0]['modes']);
+    }
+
+    /** ويبيع به فعلًا — ويُكتب صفُّه عند البيع لا عند فتح الشاشة */
+    public function test_the_offered_first_template_actually_sells(): void
+    {
+        $this->actingAs($this->owner)->get(route('pos.index'))->assertOk();
+
+        $this->assertSame(0, CustomOrderTemplate::where('business_id', $this->shop->id)->count(),
+            'فتحةُ شاشةٍ كتبت صفًّا');
+
+        $this->actingAs($this->owner)->postJson('/pos/checkout', [
+            'items' => [['name' => 'مخصص', 'qty' => 1, 'custom' => [
+                'template_id' => 0, 'mode' => CustomArrangement::MODE_VALUE, 'price' => 15,
+            ]]],
+            'payment_method' => 'نقدي', 'client_uuid' => uniqid('c', true),
+        ])->assertOk()->assertJsonPath('ok', true);
+
+        $this->assertSame(1, CustomOrderTemplate::where('business_id', $this->shop->id)->count(),
+            'البيعةُ لم تكتب القالبَ الأوّل');
+    }
+
+    /**
+     * ومن حذف قوالبَه كلَّها لا يُعرض عليه شيء.
+     *
+     * `ensureDefault` تنصرف متى وُجد صفٌّ ولو محذوفًا، فطلبُه يُردّ بـ«قالب
+     * غير متاح». وزرٌّ يقود إلى ذلك الردّ بابٌ يُفتح ليُغلق في وجهه.
+     */
+    public function test_a_shop_that_deleted_its_templates_is_offered_nothing(): void
+    {
+        CustomOrderTemplate::ensureDefault($this->shop->id)->delete();
+
+        $templates = $this->actingAs($this->owner)->get(route('pos.index'))
+            ->assertOk()->viewData('page')['props']['customOrder']['templates'];
+
+        $this->assertSame([], $templates, 'عُرض قالبٌ على من أغلق الميزةَ بيده');
+    }
+
+    /**
+     * وأوضاعُ التسعير تُرقَّم قبل أن يُقرأ أوّلُها.
+     *
+     * `'array'` تقبل `{"a": "budget"}` كما تقبل `["budget"]`. فقراءةُ `[0]`
+     * مباشرةً تُسقط الحفظَ بـ٥٠٠، وتكتب في العمود مصفوفةً بمفاتيحَ نصّيّة
+     * يقرؤها الصندوقُ بعدُ بـ`modes[0]` فتسقط ثانية.
+     */
+    public function test_the_pricing_modes_are_stored_numbered(): void
+    {
+        $this->actingAs($this->owner)->post('/admin/custom-order-templates', [
+            'name' => 'قالب',
+            'modes' => ['x' => CustomArrangement::MODE_BUDGET],
+            'active' => true,
+        ])->assertRedirect();
+
+        $template = CustomOrderTemplate::where('name', 'قالب')->firstOrFail();
+
+        $this->assertSame([CustomArrangement::MODE_BUDGET], $template->modes);
+        $this->assertSame(CustomArrangement::MODE_BUDGET, $template->default_mode);
+    }
 }

@@ -277,8 +277,28 @@ class PosController extends Controller
                     continue;
                 }
 
-                $rows = $template->allow_components ? ($custom['components'] ?? []) : [];
-                $components = CustomArrangement::components($bid, $rows, "items.$idx.custom.components", $template);
+                /*
+                 * ═══ وقالبٌ لا يقبل موادَّ يردّها ولا يبتلعها ═══
+                 *
+                 * كانت تُطرح صامتةً: يُباع الطلبُ بسعره، ولا يَنقص الرفُّ
+                 * شيئًا، وتُكتب تكلفتُه صفرًا — فيخرج الوردُ من الدلو ويبقى
+                 * في الدفتر، ويُقرأ ربحُ البيعة كاملًا بلا تكلفة. وهو
+                 * بالضبط العطبُ الذي وُجدت هذه الميزةُ كلُّها لمنعه.
+                 *
+                 * ويقع حين يُطفئ صاحبُ النشاط «الموادّ» في قالبه وفي
+                 * الصناديق سلالٌ عُلّقت به قبل الإطفاء — تُستأنف بموادّها،
+                 * فتُدفع ناقصةَ ما أُخذ ولا أحدَ يعلم.
+                 *
+                 * والردُّ يُقال للكاشير فيُعيد بناءَ السلّة، ولا يُقال
+                 * للرفّ بعد شهرٍ في الجرد.
+                 */
+                if (! $template->allow_components && ! empty($custom['components'])) {
+                    $errors["items.$idx.custom.components"] = __('هذا القالب لا يقبل موادّ — أعد بناء الطلب.');
+
+                    continue;
+                }
+
+                $components = CustomArrangement::components($bid, $custom['components'] ?? [], "items.$idx.custom.components", $template);
                 $materialCost = CustomArrangement::materialCost($components);
                 $fields = CustomArrangement::fieldValues($template, $custom['fields'] ?? [], "items.$idx.custom.fields");
 

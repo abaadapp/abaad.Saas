@@ -108,10 +108,29 @@ class CustomOrderTemplate extends Model
     }
 
     /**
-     * قالبٌ افتراضيّ لمتجرٍ لا قالبَ له — يصف السلوك القائم بالحرف.
+     * شكلُ القالب الافتراضيّ — يصف السلوكَ القائم قبل القوالب بالحرف.
      *
      * الوضعان كلاهما، والموادُّ والإضافات مفتوحة، ولا حقولَ فيه. فمتجرٌ
      * يُرقّى اليوم يجد طلبَه المخصَّص كما تركه أمس، ومن أراد حقولًا أضافها.
+     *
+     * ويُقرأ من موضعين: `seedDefault` تكتبه صفًّا، و`Pos\PageController`
+     * يعرضه في الصندوق **قبل أن يُكتب** لمتجرٍ لم يبع طلبًا مخصَّصًا قطّ.
+     * ولو كُتب في الشاشة ثانيةً لافترقا: يُعرض قالبٌ بوضعين ويُنشأ بواحد.
+     */
+    public const STARTER = [
+        'name' => 'طلب مخصص',
+        'name_en' => 'Custom Order',
+        'modes' => CustomArrangement::MODES,
+        'default_mode' => CustomArrangement::MODE_VALUE,
+        'allow_components' => true,
+        'allow_addons' => true,
+        'components_restockable_default' => false,
+        'active' => true,
+        'sort_order' => 0,
+    ];
+
+    /**
+     * قالبٌ افتراضيّ لمتجرٍ لا قالبَ له.
      *
      * ويُنادى مرّةً لكلّ متجر: وجودُ قالبٍ واحدٍ — أيًّا كان — يعني أنّ
      * التاجر قد بدأ، فلا يُقحَم عليه قالبٌ لم يطلبه.
@@ -122,17 +141,6 @@ class CustomOrderTemplate extends Model
             return null;
         }
 
-        return self::create([
-            'business_id' => $businessId,
-            'name' => 'طلب مخصص',
-            'name_en' => 'Custom Order',
-            'modes' => CustomArrangement::MODES,
-            'default_mode' => CustomArrangement::MODE_VALUE,
-            'allow_components' => true,
-            'allow_addons' => true,
-            'components_restockable_default' => false,
-            'active' => true,
-            'sort_order' => 0,
-        ]);
+        return self::create(self::STARTER + ['business_id' => $businessId]);
     }
 }

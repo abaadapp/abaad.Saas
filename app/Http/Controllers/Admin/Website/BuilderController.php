@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\Review;
 use App\Support\Activity;
+use App\Support\Permissions;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use App\Support\Website\MerchantData;
@@ -50,15 +51,24 @@ class BuilderController extends Controller
     {
         if (! $this->site()) {
             /*
-             * ومن لا يملك ضبطَ الموقع لا يُعرض عليه إنشاؤه.
+             * ومن لا يملك ضبطَ الموقع لا يُعرض عليه إنشاؤه — ولا يُصفع بـ٤٠٣.
              *
              * شاشةُ الاختيار تنتهي بزرٍّ يكتب موقعًا في القاعدة — وهو فعلُ
              * صاحب المتجر. وعرضُها على موظّفٍ لا يملكه بابٌ يُفتح ليُغلق في
              * وجهه عند الضغط.
+             *
+             * وكان `mayConfigure()` هنا يردّه بصفحةِ خادمٍ سوداء: بابٌ في
+             * شريطه الجانبيّ — لأنّ القسمَ مُنح له — يُصفع عند الضغط بلا أن
+             * يقول ما يفعل. والقسمُ مُنح ليتفقّد منتجاتِ موقعه، فلا ذنبَ له
+             * أنّ الموقعَ لم يُنشأ بعد.
+             *
+             * فيُقال له بلغته: لا موقعَ بعد، وإنشاؤه لصاحب المتجر. وهو ما
+             * يجعل كلَّ رابطٍ يقود إلى هذا القسم يُفتح فعلًا — انظر الجرسَ في
+             * `Demo::buildNotifications`.
              */
-            $this->mayConfigure();
-
-            return $this->wizard();
+            return auth()->user()?->may(Permissions::WEBSITE_CONFIGURE)
+                ? $this->wizard()
+                : Inertia::render('Admin/Website/Absent');
         }
 
         return app(HubController::class)->index();

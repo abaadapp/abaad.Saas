@@ -126,13 +126,24 @@ class CustomOrderTemplateController extends Controller
     /** أعمدةُ القالب وحدها — الحقولُ تُكتب بمعاملتها */
     private function columns(array $data): array
     {
+        /*
+         * والمفاتيحُ تُرقَّم قبل أن يُقرأ الأوّل.
+         *
+         * `'array'` تقبل `{"a": "budget"}` كما تقبل `["budget"]` — والشاشةُ
+         * ترسل الثانية دائمًا. فقراءةُ `[0]` مباشرةً تُسقط الطلبَ بـ٥٠٠ على
+         * حمولةٍ لا ترسلها الشاشةُ ويرسلها من يعرف شكلَها، وتُكتب في العمود
+         * مصفوفةٌ بمفاتيحَ نصّيّة يقرؤها بعدُ `allowsMode` بـ`in_array` —
+         * فتمرّ — و`$t->modes[0]` في الصندوق فتسقط ثانية.
+         */
+        $modes = array_values($data['modes']);
+
         return [
             'name' => $data['name'],
             'name_en' => $data['name_en'] ?? null,
-            'modes' => $data['modes'],
-            'default_mode' => in_array($data['default_mode'] ?? null, $data['modes'], true)
+            'modes' => $modes,
+            'default_mode' => in_array($data['default_mode'] ?? null, $modes, true)
                 ? $data['default_mode']
-                : $data['modes'][0],
+                : $modes[0],
             'base_label' => $data['base_label'] ?? null,
             'base_label_en' => $data['base_label_en'] ?? null,
             'allow_components' => (bool) ($data['allow_components'] ?? false),

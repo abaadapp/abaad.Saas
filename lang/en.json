@@ -6034,5 +6034,10 @@
     "مسمّى «:title» ليس في قائمة الوظائف — تبقى صلاحياته على ما هي حتى تُسنَد إليه وظيفةٌ معروفة.": "«:title» is not among your job titles — their permissions stay as they are until a known title is assigned.",
     "نفاد المخزون، تراجع المبيعات، والعملاء المتعثّرون.": "Out of stock, falling sales, and lapsed customers.",
     "تنبيه العملاء الراكدين": "Dormant customer alerts",
-    "يظهر في جرس الإشعارات لمن مضى عليه أكثر من مدّة الركود بلا شراء.": "Shown in the notification bell for anyone who has not bought within the dormancy period."
+    "يظهر في جرس الإشعارات لمن مضى عليه أكثر من مدّة الركود بلا شراء.": "Shown in the notification bell for anyone who has not bought within the dormancy period.",
+    "موقع متجرك على الإنترنت": "Your shop's website",
+    "لم يُنشأ موقع هذا المتجر بعد": "This shop has no website yet",
+    "حين يُنشأ ستجد هنا صفحاته ومنتجاته وطلباته.": "Once it is created you will find its pages, products and orders here.",
+    "إنشاء الموقع لصاحب المتجر — اطلبه منه.": "Creating the website is the owner's to do — ask them for it.",
+    "هذا القالب لا يقبل موادّ — أعد بناء الطلب.": "This template does not accept materials — rebuild the order."
 }

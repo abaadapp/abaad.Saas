@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { Check, GitBranch, Plus, Store } from 'lucide-react';
+import { Check, GitBranch, Pencil, Plus, Store } from 'lucide-react';
 import DataTable, { type Column } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -26,6 +27,31 @@ export default function BranchesPanel({ branches }: { branches: Branch[] }) {
     const [adding, setAdding] = useState(Object.keys(errors ?? {}).length > 0);
 
     const form = useForm({ name: '', phone: '', address: '' });
+
+    const [editing, setEditing] = useState<Branch | null>(null);
+    const edit = useForm({ name: '', phone: '', address: '' });
+
+    // النافذة تُملأ عند تبديل الفرع لا عند كل رسمة، وإلا مُحيت كتابةُ المستخدم
+    useEffect(() => {
+        if (editing) {
+            edit.setData({
+                name: editing.name,
+                phone: editing.phone ?? '',
+                address: editing.address ?? '',
+            });
+            edit.clearErrors();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editing?.id]);
+
+    const saveEdit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editing) return;
+        edit.put(route('admin.branches.update', editing.id), {
+            preserveScroll: true,
+            onSuccess: () => setEditing(null),
+        });
+    };
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -72,6 +98,9 @@ export default function BranchesPanel({ branches }: { branches: Branch[] }) {
              */
             cell: (b) => (
                 <RowActions
+                    extra={[
+                        { label: 'تعديل', icon: <Pencil className="size-4" />, onSelect: () => setEditing(b) },
+                    ]}
                     destroy={{
                         url: route('admin.branches.destroy', b.id),
                         /*
@@ -169,6 +198,64 @@ export default function BranchesPanel({ branches }: { branches: Branch[] }) {
                     empty="لا توجد فروع — أضف أول فرع من زر «إضافة فرع» بالأعلى."
                 />
             </Card>
+
+            {/*
+                نافذةُ التعديل — بشكل «تعديل الجهاز»: حقولٌ في شبكة والأزرار
+                في ذيل النموذج.
+
+                والاسمُ يُصحَّح هنا لا بالحذف وإعادة الفتح: ذاك لا يمرّ إن كان
+                في الفرع بضاعة، ولا إن كان آخرَ فرع، ولا إن كانت الباقةُ
+                بفرعٍ واحد.
+            */}
+            <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{t('تعديل الفرع')}</DialogTitle>
+                    </DialogHeader>
+
+                    <form onSubmit={saveEdit} className="space-y-4 px-5 pb-5">
+                        <Field
+                            label="اسم الفرع"
+                            required
+                            hint="الفواتير الصادرة تحتفظ بالاسم الذي طُبع عليها"
+                            error={edit.errors.name}
+                        >
+                            <Input
+                                value={edit.data.name}
+                                onChange={(e) => edit.setData('name', e.target.value)}
+                                required
+                            />
+                        </Field>
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <Field label="الهاتف" error={edit.errors.phone}>
+                                <Input
+                                    dir="ltr"
+                                    value={edit.data.phone}
+                                    onChange={(e) => edit.setData('phone', e.target.value)}
+                                    placeholder="+968 2xxxxxxx"
+                                />
+                            </Field>
+                            <Field label="العنوان" error={edit.errors.address}>
+                                <Input
+                                    value={edit.data.address}
+                                    onChange={(e) => edit.setData('address', e.target.value)}
+                                    placeholder={t('المدينة - الحي')}
+                                />
+                            </Field>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="outline" onClick={() => setEditing(null)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button type="submit" loading={edit.processing}>
+                                {t('حفظ التغييرات')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

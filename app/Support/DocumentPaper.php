@@ -171,6 +171,17 @@ class DocumentPaper
             'items' => $order->items->map(fn ($i) => [
                 'name' => $i->name,
                 'note' => $i->note,
+                /*
+                 * وخياراتُ الطلب المخصَّص تحت اسمه.
+                 *
+                 * بندٌ مخصَّص اسمُه اسمُ القالب — «باقة» — وسعرُه. وما سُئل
+                 * عنه الزبون ودُوِّن (اللون، المقاس، اسم المهدى إليه) كان
+                 * يبقى في القاعدة ولا يبلغ ورقتَه.
+                 *
+                 * والداخليُّ منها لا يُطبع — انظر `CustomArrangement::paperLines`،
+                 * وهي القارئُ نفسُه الذي يقرأ للشريط الحراريّ.
+                 */
+                'custom' => $i->isCustom() ? CustomArrangement::paperLines($i->custom_details) : [],
                 'qty' => self::qty($i->quantity),
                 'unit' => self::money($i->price, $cur),
                 'total' => self::money($i->total ?: $i->price * $i->quantity, $cur),

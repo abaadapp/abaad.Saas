@@ -6010,5 +6010,15 @@
     "اختيار واحد": "Single choice",
     "اختيار متعدد": "Multiple choice",
     "مربع اختيار": "Checkbox",
-    "تعذّرت الاستعادة: «:name» صار اسمًا لفرعٍ آخر — غيّره أولًا.": "Cannot restore: «:name» is now another branch’s name — rename it first."
+    "تعذّرت الاستعادة: «:name» صار اسمًا لفرعٍ آخر — غيّره أولًا.": "Cannot restore: «:name» is now another branch’s name — rename it first.",
+    "تعديل الفرع": "Edit branch",
+    "الفواتير الصادرة تحتفظ بالاسم الذي طُبع عليها": "Issued invoices keep the name printed on them",
+    "تم حفظ الفرع": "Branch saved",
+    "لا يمكن حذف آخر فرع — المتجر بلا فرعٍ يبيع ولا يُنسب بيعُه إلى مكان. أضِف فرعًا آخر أوّلًا، أو عدّل بيانات هذا الفرع.": "You can't delete your last branch — a shop with no branch still sells, but no sale is attributed to a place. Add another branch first, or edit this one.",
+    "حذف السجل": "Delete record",
+    "يُمحى سجلّ هذا الصندوق وملحقاته نهائيًا. لم يبع شيئًا، فلا تُفقد نسبة فاتورة. متابعة؟": "This till's record and its peripherals will be erased permanently. It never sold anything, so no invoice loses its till. Continue?",
+    "الصندوق الملغى يُحذف سجلّه إن لم يبع شيئًا. وما باع يبقى في القائمة لتبقى فواتيره منسوبة إليه.": "A revoked till's record can be deleted if it never sold. One that sold stays in the list so its invoices keep their till.",
+    "هذا الصندوق ما زال مفعَّلًا — ألغِ تفعيله أوّلًا، ثم احذف سجلّه.": "This till is still active — revoke it first, then delete its record.",
+    "على «:name» — الفواتير: :orders · الورديات: :shifts. حذف سجلّه يمحو نسبتَها إليه، فلا يُعرف من أيّ صندوق خرجت. يبقى ملغًى في القائمة.": "On «:name» — invoices: :orders · shifts: :shifts. Deleting its record erases their attribution, so no one can tell which till they came from. It stays revoked in the list.",
+    "حُذف سجلّ الجهاز": "Device record deleted"
 }

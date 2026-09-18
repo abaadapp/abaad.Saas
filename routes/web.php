@@ -481,11 +481,20 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/branches', [PageController::class, 'branchesIndex'])->name('branches.index');
     Route::get('/branch/{branch}/switch', [BranchController::class, 'switch'])->name('branch.switch');
     Route::post('/branches', [BranchController::class, 'store'])->name('branches.store');
+    // والتعديلُ يجاور الإنشاء: الفرعُ يُصحَّح اسمُه ولا يُحذف ليُفتح من جديد
+    Route::put('/branches/{id}', [BranchController::class, 'update'])->name('branches.update');
 
     // أجهزة نقطة البيع — تسقط على صلاحية الإعدادات (انظر Permissions::ALIASES)
     Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
     Route::put('/devices/{id}', [DeviceController::class, 'update'])->name('devices.update');
     Route::delete('/devices/{id}', [DeviceController::class, 'revoke'])->name('devices.revoke');
+    /*
+     * وحذفُ الصفّ غيرُ إبطال التفعيل — فمسارٌ آخر.
+     *
+     * الإبطالُ يُميت الرمزَ ويُبقي السجلّ: الجهازُ باع، ونسبةُ ما باعه إليه
+     * تبقى. والحذفُ يمحو الصفَّ نفسَه، ولا يُقبل إلّا على صندوقٍ لم يبع.
+     */
+    Route::delete('/devices/{id}/record', [DeviceController::class, 'destroy'])->name('devices.destroy');
 
     // الأجهزة الملحقة بكل صندوق: طابعة، ماسح، درج… — تحت صلاحية الإعدادات
     // نفسها: من يبدّل طابعة صندوق يوجّه إيصالات فرعٍ إلى ورق فرعٍ آخر

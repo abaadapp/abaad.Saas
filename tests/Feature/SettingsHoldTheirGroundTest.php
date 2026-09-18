@@ -162,10 +162,17 @@ class SettingsHoldTheirGroundTest extends TestCase
             'product_id' => $this->product->id, 'quantity' => 6,
         ]);
 
-        $res = $this->actingAs($this->owner)->delete(route('admin.branches.destroy', $other->id));
+        $this->actingAs($this->owner)->delete(route('admin.branches.destroy', $other->id));
 
-        $res->assertSessionHasErrors('branch');
-        $message = (string) session('errors')->first('branch');
+        /*
+         * والرفضُ يمرّ على `flash.toast` لا على `errors`.
+         *
+         * كان يُكتب في `errors.branch` ولا مكوّنَ واحدٌ في الواجهة يقرؤه —
+         * فتُغلق نافذةُ التأكيد ولا يقع شيء ولا يُقال شيء. انظر
+         * `BranchController::refuse`.
+         */
+        $this->assertSame('danger', session('toast')['type'] ?? null, 'الرفض لا يصل الشاشة');
+        $message = (string) (session('toast')['msg'] ?? '');
 
         /*
          * والنصيحة تُسمّي بابًا موجودًا.

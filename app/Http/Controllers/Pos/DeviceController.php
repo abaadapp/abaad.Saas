@@ -97,6 +97,7 @@ class DeviceController extends Controller
         return [
             'devices' => PosDevice::where('business_id', Demo::bid())
                 ->with('branch:id,name', 'activatedBy:id,name', 'peripherals')
+                ->withCount('orders', 'shifts')
                 ->orderByDesc('id')->get()->map(fn ($d) => [
                     'id' => $d->id,
                     'name' => $d->name,
@@ -108,6 +109,16 @@ class DeviceController extends Controller
                     'activatedBy' => $d->activatedBy?->name ?? '—',
                     // الجهاز الذي تقف عليه الآن — لئلا يُلغي المدير جهازه بيده
                     'isThis' => $current?->id === $d->id,
+                    /*
+                     * أيُحذف صفُّه؟ — يُقاس هنا لا في الشاشة.
+                     *
+                     * الشاشةُ ترسم بهذا، والخادمُ يردّ بالشرط نفسِه في
+                     * `destroy`. ومقياسان لسؤالٍ واحد يفترقان يوم يُبدَّل
+                     * أحدهما، فيُعرض زرٌّ يردّه الخادم — وهو أسوأ من غيابه.
+                     */
+                    'erasable' => ! $d->isActive() && $d->orders_count === 0 && $d->shifts_count === 0,
+                    'orders' => (int) $d->orders_count,
+                    'shifts' => (int) $d->shifts_count,
                     'peripherals' => $d->peripherals->map(fn ($p) => [
                         'id' => $p->id,
                         'name' => $p->name,
@@ -180,6 +191,72 @@ class DeviceController extends Controller
         Activity::log('deleted', 'ألغى تفعيل جهاز: '.$device->name, ['subject_id' => $device->id]);
 
         return back()->with('toast', ['msg' => __('أُلغي تفعيل الجهاز'), 'type' => 'warning']);
+    }
+
+    /**
+     * حذفُ صفّ الجهاز — وهو غيرُ إبطال تفعيله.
+     *
+     * ═══ ولمَ لزم ═══
+     *
+     * القائمةُ كانت تنمو ولا تنقص. جهازٌ فُعِّل بالخطأ على الفرع الخطأ، أو
+     * حاسوبٌ بيع، أو تجربةٌ يوم التركيب — يبقى صفُّه في الجدول أبدًا يقول
+     * «ملغى». وبعد سنةٍ تُقرأ شاشةُ الأجهزة فلا يُعرف الصندوقُ القائم من
+     * أثرِ تجربةٍ قديمة.
+     *
+     * ═══ وما لا يُحذف ═══
+     *
+     * **صندوقٌ باع لا يُحذف.** `orders.pos_device_id` و`shifts.pos_device_id`
+     * يسقطان إلى `NULL` عند حذف الصفّ (`nullOnDelete`) — فحذفُ الجهاز يمحو
+     * الجوابَ عن سؤالٍ لا يُسأل إلّا حين يقع خطب: «الدرج ناقصٌ عشرين ريالًا،
+     * من أيّ صندوقٍ خرجت؟». والعمودُ كُتب لهذا وحده.
+     *
+     * فيُمنع الحذف ويُقال كم عليه، كما يُمنع حذفُ فرعٍ فيه بضاعة.
+     *
+     * **وجهازٌ نشطٌ لا يُحذف قبل إبطاله.** خطوتان لا واحدة: الإبطالُ يقتل
+     * الرمز، والحذفُ يمحو الصفّ. وحذفٌ يفعلهما معًا بنقرةٍ واحدة يُخرج
+     * صندوقًا من الخدمة وهو يظنّ أنّه يُرتّب قائمة.
+     *
+     * والملحقاتُ تذهب معه — طابعتُه ودرجُه صفوفٌ لا معنى لها بلا جهازها
+     * (`cascadeOnDelete`)، وهي بعضُ ما يُراد حذفُه أصلًا.
+     */
+    public function destroy(int $id)
+    {
+        $device = $this->find($id);
+
+        if ($device->isActive()) {
+            return self::refuse(__('هذا الصندوق ما زال مفعَّلًا — ألغِ تفعيله أوّلًا، ثم احذف سجلّه.'));
+        }
+
+        $orders = $device->orders()->count();
+        $shifts = $device->shifts()->count();
+
+        if ($orders > 0 || $shifts > 0) {
+            /*
+             * والرقمان بصيغة «تسمية: رقم» لا داخل جملة: «:n فاتورة» تنكسر
+             * مع كلّ عدد — «فاتورة» للواحدة و«فواتير» للثلاث.
+             */
+            return self::refuse(__(
+                'على «:name» — الفواتير: :orders · الورديات: :shifts. حذف سجلّه يمحو نسبتَها إليه، فلا يُعرف من أيّ صندوق خرجت. يبقى ملغًى في القائمة.',
+                ['name' => $device->name, 'orders' => $orders, 'shifts' => $shifts]
+            ));
+        }
+
+        Activity::log('deleted', 'حذف سجلّ جهاز: '.$device->name, ['subject_id' => $device->id]);
+        $device->delete();
+
+        return back()->with('toast', ['msg' => __('حُذف سجلّ الجهاز'), 'type' => 'warning']);
+    }
+
+    /**
+     * رفضُ حذفٍ يُقال — على القناة التي تعرضها الشاشة.
+     *
+     * `withErrors` لا قارئَ لها هنا: لا حقلَ في جدول الأجهزة يُعلَّق عليه
+     * خطأ، ونافذةُ التأكيد تُغلق بعد الإرسال. فرسالةٌ تُكتب هناك تُكتب
+     * لنفسها — انظر `BranchController::refuse`، العطبُ واحد.
+     */
+    private static function refuse(string $message): \Illuminate\Http\RedirectResponse
+    {
+        return back()->with('toast', ['msg' => $message, 'type' => 'danger']);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Pos\DeviceController;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\JobTitle;
@@ -9,6 +10,7 @@ use App\Models\Order;
 use App\Models\PosDevice;
 use App\Models\PosPeripheral;
 use App\Models\Product;
+use App\Models\Shift;
 use App\Models\User;
 use App\Support\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -429,5 +431,201 @@ class PosDeviceTest extends TestCase
         $this->enterPos($dev, $raw, $cashier);
         $this->assertAuthenticated();
         $this->assertSame($this->khuwair->id, session('current_branch'));
+    }
+
+    /* ─────────── حذفُ صفّ الجهاز — غيرُ إبطال تفعيله ─────────── */
+
+    /**
+     * صندوقٌ فُعِّل بالخطأ ولم يبع يُمحى صفُّه.
+     *
+     * القائمةُ كانت تنمو ولا تنقص: جهازٌ فُعِّل على الفرع الخطأ، أو تجربةُ
+     * يوم التركيب، يبقى صفُّه أبدًا يقول «ملغى». وبعد سنةٍ لا يُعرف الصندوقُ
+     * القائم من أثرِ تجربةٍ قديمة.
+     */
+    public function test_a_revoked_till_that_never_sold_is_erased(): void
+    {
+        [$dev] = $this->device($this->khuwair, 'تجربة التركيب');
+        PosTerminal::revoke($dev);
+
+        $this->actingAs($this->ownerA)
+            ->delete(route('admin.devices.destroy', $dev->id))
+            ->assertRedirect();
+
+        $this->assertNull(PosDevice::find($dev->id), 'بقي صفُّ صندوقٍ لم يبع شيئًا');
+    }
+
+    /** وملحقاتُه تذهب معه — طابعةٌ بلا جهازها صفٌّ لا معنى له */
+    public function test_erasing_a_till_takes_its_peripherals(): void
+    {
+        [$dev] = $this->device($this->khuwair);
+        PosTerminal::revoke($dev);
+
+        $p = PosPeripheral::create([
+            'business_id' => $this->a->id, 'pos_device_id' => $dev->id,
+            'name' => 'طابعة', 'type' => 'printer', 'connection' => 'network', 'active' => true,
+        ]);
+
+        $this->actingAs($this->ownerA)->delete(route('admin.devices.destroy', $dev->id));
+
+        $this->assertNull(PosPeripheral::find($p->id), 'بقيت طابعةٌ معلَّقةٌ على جهازٍ محذوف');
+    }
+
+    /**
+     * ═══ وصندوقٌ باع لا يُحذف ═══
+     *
+     * `orders.pos_device_id` يسقط إلى `NULL` عند حذف الصفّ. فحذفُ الجهاز
+     * يمحو الجوابَ عن سؤالٍ لا يُسأل إلّا حين يقع خطب: «الدرج ناقصٌ عشرين
+     * ريالًا — من أيّ صندوقٍ خرجت؟». والعمودُ كُتب لهذا وحده.
+     */
+    public function test_a_till_that_sold_is_never_erased(): void
+    {
+        $cashier = $this->cashier($this->a, 'k20@abaad.om', [$this->seeb->id]);
+        [$dev, $raw] = $this->device($this->seeb);
+
+        $product = Product::create([
+            'business_id' => $this->a->id, 'name' => 'صنف', 'price' => 1.5, 'quantity' => 10,
+        ]);
+
+        $this->enterPos($dev, $raw, $cashier);
+        $this->onDevice($dev, $raw)->actingAs($cashier)->post(route('pos.checkout'), [
+            'items' => [['id' => $product->id, 'name' => 'صنف', 'qty' => 1, 'price' => 1.5]],
+            'payment_method' => 'نقدي',
+        ]);
+
+        $order = Order::where('pos_device_id', $dev->id)->first();
+        $this->assertNotNull($order, 'لم تُسجَّل فاتورة على الجهاز');
+
+        PosTerminal::revoke($dev);
+        $this->actingAs($this->ownerA)->delete(route('admin.devices.destroy', $dev->id));
+
+        $this->assertNotNull(PosDevice::find($dev->id), 'حُذف صندوقٌ باع');
+        $this->assertSame($dev->id, $order->fresh()->pos_device_id,
+            'فُقدت نسبةُ فاتورةٍ إلى صندوقها');
+    }
+
+    /** والرفضُ يقول كم عليه — على القناة التي تعرضها الشاشة */
+    public function test_the_refusal_counts_what_is_on_the_till(): void
+    {
+        [$dev] = $this->device($this->khuwair, 'صندوق الخوير');
+        PosTerminal::revoke($dev);
+        Order::create([
+            'business_id' => $this->a->id, 'branch_id' => $this->khuwair->id,
+            'pos_device_id' => $dev->id, 'number' => 'INV-9', 'status' => 'مكتمل',
+            'subtotal' => 5, 'total' => 5, 'ordered_at' => now(),
+        ]);
+
+        $this->actingAs($this->ownerA)->delete(route('admin.devices.destroy', $dev->id));
+
+        $toast = session('toast');
+        $this->assertSame('danger', $toast['type'] ?? null, 'رفضٌ لا يصل الشاشةَ بلون الخطأ');
+        $this->assertStringContainsString('صندوق الخوير', (string) ($toast['msg'] ?? ''));
+        $this->assertStringContainsString('1', (string) ($toast['msg'] ?? ''), 'الرفض لا يقول كم عليه');
+    }
+
+    /**
+     * ووردياتٌ بلا فاتورةٍ واحدة تمنع الحذف كذلك.
+     *
+     * الوردية تُفتح ويُعدّ الدرج ثمّ تُغلق — ولو لم تُبع فيها قطعة. والفرقُ
+     * في الدرج يُنسب إلى صندوقه من `shifts.pos_device_id`؛ فحذفُ الصفّ يمحو
+     * الجوابَ عن «أيُّ صندوقٍ نقص»، وهو أوّلُ ما يُسأل.
+     *
+     * والشرطُ شرطان لا واحد: فواتيرُه **أو** ورديّاته. ولو قِيس بالفواتير
+     * وحدَها لَمُحي صندوقٌ فُتحت عليه ورديةٌ بلا بيع — وهو يقع كلَّ يومٍ
+     * هادئ.
+     */
+    public function test_a_till_with_shifts_but_no_sales_is_not_erased(): void
+    {
+        [$dev] = $this->device($this->khuwair, 'صندوق الورديّة');
+        PosTerminal::revoke($dev);
+
+        $shift = Shift::create([
+            'business_id' => $this->a->id, 'branch_id' => $this->khuwair->id,
+            'pos_device_id' => $dev->id, 'user_id' => $this->ownerA->id,
+            'employee_name' => 'مالك أ', 'opened_at' => now()->subHours(3),
+            'closed_at' => now(), 'opening_balance' => 20, 'status' => 'مغلقة',
+        ]);
+
+        $this->assertSame(0, Order::where('pos_device_id', $dev->id)->count(), 'الوردية ليست بلا بيع');
+
+        $this->actingAs($this->ownerA)->delete(route('admin.devices.destroy', $dev->id));
+
+        $this->assertNotNull(PosDevice::find($dev->id), 'حُذف صندوقٌ فُتحت عليه ورديّة');
+        $this->assertSame($dev->id, $shift->fresh()->pos_device_id, 'فُقدت نسبةُ وردية إلى صندوقها');
+    }
+
+    /** وجهازٌ نشطٌ لا يُحذف قبل إبطاله — خطوتان لا واحدة */
+    public function test_an_active_till_is_not_erased_in_one_step(): void
+    {
+        [$dev] = $this->device($this->khuwair);
+
+        $this->actingAs($this->ownerA)->delete(route('admin.devices.destroy', $dev->id));
+
+        $this->assertNotNull(PosDevice::find($dev->id), 'حُذف صندوقٌ ما زال مفعَّلًا');
+        $this->assertSame(PosDevice::ACTIVE, $dev->fresh()->status);
+        $this->assertSame('danger', session('toast')['type'] ?? null);
+    }
+
+    /** ولا يُحذف صندوقُ متجرٍ آخر بمعرّفه */
+    public function test_another_tenants_till_is_not_erased(): void
+    {
+        [$his] = $this->device($this->branchB);
+        PosTerminal::revoke($his);
+
+        $this->actingAs($this->ownerA)
+            ->delete(route('admin.devices.destroy', $his->id))
+            ->assertNotFound();
+
+        $this->assertNotNull(PosDevice::find($his->id), 'حُذف صندوقُ متجرٍ آخر');
+    }
+
+    /** والكاشير لا يحذف سجلَّ صندوق — القسم تحت «الإعدادات» */
+    public function test_a_cashier_cannot_erase_a_till(): void
+    {
+        $cashier = $this->cashier($this->a, 'k21@abaad.om');
+        [$dev] = $this->device($this->khuwair);
+        PosTerminal::revoke($dev);
+
+        $this->actingAs($cashier)
+            ->delete(route('admin.devices.destroy', $dev->id))
+            ->assertForbidden();
+
+        $this->assertNotNull(PosDevice::find($dev->id));
+    }
+
+    /**
+     * ═══ والشاشةُ تقيس ما يقيسه الخادم ═══
+     *
+     * `erasable` هي ما يرسم به الجدولُ زرَّ الحذف، وشرطُ `destroy` هو ما
+     * يردّ به الخادم. ومقياسان لسؤالٍ واحد يفترقان يوم يُبدَّل أحدهما —
+     * فيُعرض زرٌّ يردّه الخادم، وهو أسوأ من غيابه.
+     */
+    public function test_the_screen_and_the_server_agree_on_what_is_erasable(): void
+    {
+        [$clean] = $this->device($this->khuwair, 'نظيف');
+        PosTerminal::revoke($clean);
+
+        [$sold] = $this->device($this->seeb, 'باع');
+        PosTerminal::revoke($sold);
+        Order::create([
+            'business_id' => $this->a->id, 'branch_id' => $this->seeb->id,
+            'pos_device_id' => $sold->id, 'number' => 'INV-8', 'status' => 'مكتمل',
+            'subtotal' => 5, 'total' => 5, 'ordered_at' => now(),
+        ]);
+
+        [$live] = $this->device($this->khuwair, 'نشط');
+
+        $this->actingAs($this->ownerA);
+        $rows = collect(DeviceController::panelData()['devices'])
+            ->keyBy('id');
+
+        foreach ([$clean, $sold, $live] as $d) {
+            $says = (bool) $rows[$d->id]['erasable'];
+
+            $this->delete(route('admin.devices.destroy', $d->id));
+            $gone = PosDevice::find($d->id) === null;
+
+            $this->assertSame($says, $gone,
+                'الشاشة تقول عن «'.$d->name.'» غيرَ ما يفعله الخادم');
+        }
     }
 }

@@ -81,21 +81,54 @@ class BranchIsEmptiedBeforeDeletionTest extends TestCase
     {
         $this->stockIn($this->second, 6);
 
-        $this->delete(route('admin.branches.destroy', $this->second->id))
-            ->assertSessionHasErrors('branch');
+        $this->delete(route('admin.branches.destroy', $this->second->id));
 
         $this->assertNotNull(Branch::find($this->second->id), 'حُذف فرعٌ فيه بضاعة');
     }
 
-    /** والرسالة تقول كم بقي — لا «لا يمكن الحذف» وحدها */
+    /**
+     * والرسالة تقول كم بقي — لا «لا يمكن الحذف» وحدها.
+     *
+     * وتقولها على القناة التي تعرضها الشاشة: كانت `withErrors(['branch'…])`
+     * ولا مكوّنَ واحدٌ يقرأ `errors.branch`، فتُغلق نافذةُ التأكيد ولا يقع
+     * شيء ولا يُقال شيء. انظر `test_a_refusal_travels_on_a_channel_the_screen_reads`.
+     */
     public function test_the_refusal_says_how_much_is_left(): void
     {
         $this->stockIn($this->second, 6);
 
         $this->delete(route('admin.branches.destroy', $this->second->id));
 
-        $this->assertStringContainsString('6', json_encode(session()->get('errors'), JSON_UNESCAPED_UNICODE));
-        $this->assertStringContainsString('فرع القرم', json_encode(session()->get('errors'), JSON_UNESCAPED_UNICODE));
+        $toast = json_encode(session('toast'), JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('6', $toast, 'الرفض لا يقول كم بقي');
+        $this->assertStringContainsString('فرع القرم', $toast, 'الرفض لا يسمّي الفرع');
+    }
+
+    /**
+     * ═══ والرفضُ يصل الشاشة ═══
+     *
+     * تقريرُ حالٍ لا يصل كأن لم يُكتب. والرسالةُ كانت محسوبةً — تسمّي الفرعَ
+     * وتقول كم بقي وأين يُصرَف — وتذهب إلى مفتاحٍ لا قارئَ له في الواجهة.
+     *
+     * فهذا الحارسُ يقرأ الطرفين: أنّ الخادمَ يكتب في `flash.toast`، وأنّ
+     * `AdminLayout` يقرأ منه فعلًا. ولو نُقلت القناةُ في أحدهما وحدَه سقط.
+     */
+    public function test_a_refusal_travels_on_a_channel_the_screen_reads(): void
+    {
+        $this->stockIn($this->second, 6);
+        $this->delete(route('admin.branches.destroy', $this->second->id));
+
+        $toast = session('toast');
+        $this->assertIsArray($toast, 'الرفض لم يُكتب في flash.toast');
+        $this->assertSame('danger', $toast['type'] ?? null, 'رفضٌ لا يُعرض بلون الخطأ');
+        $this->assertNotEmpty($toast['msg'] ?? '', 'رفضٌ بلا نصّ');
+
+        $layout = file_get_contents(base_path('resources/js/Layouts/AdminLayout.tsx'));
+        $this->assertStringContainsString('flash?.toast', $layout,
+            'الشاشة لم تعد تقرأ flash.toast — الرفض يُكتب حيث لا يُقرأ');
+
+        // ولا يُكتب في القناة المهجورة: خطأُ حقلٍ يفتح نموذجَ الإضافة بلا سبب
+        $this->assertNull(session('errors'), 'رفضُ حذفٍ كُتب كخطأ حقل');
     }
 
     /** ولا يبقى إجماليُّ الصنف مخالفًا لمجموع فروعه */
@@ -259,5 +292,75 @@ class BranchIsEmptiedBeforeDeletionTest extends TestCase
             ->assertRedirect();
 
         $this->assertNull($this->second->fresh()->deleted_at, 'اسمُ جارٍ منع إحياءَ فرعي');
+    }
+
+    /* ─────────── ولا يُحذف آخرُ فرع ─────────── */
+
+    /**
+     * متجرٌ بلا فرعٍ واحد يعمل — ويعمل بغير ما يظنّ صاحبُه.
+     *
+     * الصندوق يفتح ويبيع، والفاتورة تُكتب بـ`branch_id = NULL`، ورصيدُ
+     * الشركة ينقص. فليس فسادًا في الدفتر — إنّما كلُّ بيعةٍ تُنسب إلى لا
+     * أحد، وتقريرُ الفروع يسقط منه ما بيع، ولا شاشةَ تقول لماذا.
+     */
+    public function test_the_last_branch_is_not_deleted(): void
+    {
+        $this->delete(route('admin.branches.destroy', $this->second->id));
+        $this->assertNull(Branch::find($this->second->id));
+
+        $this->delete(route('admin.branches.destroy', $this->main->id));
+
+        $this->assertNotNull(Branch::find($this->main->id), 'حُذف آخرُ فرعٍ في المتجر');
+        $this->assertSame(1, Branch::where('business_id', $this->business->id)->count());
+    }
+
+    /** ويُقال له لمَ، وما المخرج */
+    public function test_the_last_branch_refusal_names_the_way_out(): void
+    {
+        $this->delete(route('admin.branches.destroy', $this->second->id));
+        $this->delete(route('admin.branches.destroy', $this->main->id));
+
+        $msg = (string) (session('toast')['msg'] ?? '');
+        $this->assertStringContainsString('آخر فرع', $msg, 'الرفض لا يقول إنّه آخرُ فرع');
+        $this->assertStringContainsString('عدّل', $msg, 'الرفض لا يدلّ على التعديل — وهو المخرج الوحيد');
+    }
+
+    /** وفرعٌ ثانٍ يُحذف كما كان: المنعُ على الأخير لا على الحذف */
+    public function test_a_branch_with_a_sibling_is_still_deleted(): void
+    {
+        $this->delete(route('admin.branches.destroy', $this->second->id));
+
+        $this->assertNull(Branch::find($this->second->id));
+        $this->assertNotSame('danger', session('toast')['type'] ?? null, 'رُفض حذفُ فرعٍ له أخ');
+    }
+
+    /**
+     * ولا يُحسب المحذوفُ فرعًا باقيًا.
+     *
+     * لو عُدّ لَجاز حذفُ آخر فرعٍ حيّ في متجرٍ له محذوفٌ في السلّة — وهو
+     * الحالُ نفسُه الذي يمنعه الحارس.
+     */
+    public function test_a_trashed_branch_does_not_count_as_a_surviving_one(): void
+    {
+        $this->delete(route('admin.branches.destroy', $this->second->id));
+        $this->assertSoftDeleted('branches', ['id' => $this->second->id]);
+
+        $this->delete(route('admin.branches.destroy', $this->main->id));
+
+        $this->assertNotNull(Branch::find($this->main->id),
+            'فرعٌ محذوفٌ في السلّة أُجيز به حذفُ آخر فرعٍ حيّ');
+    }
+
+    /** وفرعُ جارٍ في المنصّة ليس فرعي: لا يُجيز لي حذفَ آخر فرعي */
+    public function test_a_neighbours_branch_does_not_let_me_delete_my_last(): void
+    {
+        $neighbour = Business::create(['name' => 'جار', 'type' => 'عام', 'status' => 'نشط']);
+        Branch::create(['business_id' => $neighbour->id, 'name' => 'فرع الجار']);
+
+        $this->delete(route('admin.branches.destroy', $this->second->id));
+        $this->delete(route('admin.branches.destroy', $this->main->id));
+
+        $this->assertNotNull(Branch::find($this->main->id),
+            'فرعُ متجرٍ آخر عُدّ في نصاب فروعي');
     }
 }

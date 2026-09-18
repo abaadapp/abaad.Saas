@@ -673,6 +673,139 @@ class AnArrangementIsBuiltAtTheCounterTest extends TestCase
         $this->assertStringNotContainsString('الأبيض أكثر من الوردي', $html, 'ملاحظةُ المنسّق على ورقة الزبون');
     }
 
+    /**
+     * ═══ وما اختاره الزبونُ يصل ورقته ═══
+     *
+     * التاجرُ يكتب شكلَ طلبه — «لون الورد»، «المقاس»، «اسم المهدى إليه» —
+     * ويملؤه عند الصندوق. ثمّ كانت الفاتورةُ تخرج بسطرٍ واحد: اسمُ القالب
+     * وسعرُه. فكلُّ ما سُئل عنه الزبونُ ودُوِّن لا أثرَ له على ورقته.
+     *
+     * فيعود بعد يومين يقول «طلبتُ الأحمر» ولا ورقةَ تحسم، وموظّفٌ آخر
+     * يُسلّم الطلبَ فلا يجد على الإيصال ما يطابقه به. والبيانُ كان في
+     * القاعدة طَوالَ الوقت.
+     */
+    public function test_what_the_customer_chose_reaches_the_customers_paper(): void
+    {
+        $this->sell()->assertOk();
+
+        $html = DocumentRenderer::saleSheet(
+            $this->shop->id,
+            $this->order(),
+            DocumentTemplates::settings($this->shop->id, 'sale'),
+        );
+
+        $this->assertStringContainsString('ألوان الورد', $html, 'تسميةُ الحقل لم تبلغ الورقة');
+        $this->assertStringContainsString('أبيض', $html, 'ما اختاره الزبون لم يبلغ ورقته');
+        $this->assertStringContainsString('وردي', $html, 'سقطت إحدى القيمتين');
+        $this->assertStringContainsString('لون التغليف', $html);
+    }
+
+    /**
+     * والداخليُّ لا يُطبع.
+     *
+     * `internal` علامةٌ يضعها التاجر على حقلٍ لعينه هو — «ملاحظة المنسّق»،
+     * «التكلفة التقديريّة». وطباعتُها على ورقة الزبون تُفشي ما لم يُقصد
+     * إفشاؤه، وتجعل العلامةَ نفسَها كاذبة.
+     */
+    public function test_an_internal_field_is_never_printed(): void
+    {
+        $this->sell()->assertOk();
+
+        $html = DocumentRenderer::saleSheet(
+            $this->shop->id,
+            $this->order(),
+            DocumentTemplates::settings($this->shop->id, 'sale'),
+        );
+
+        $this->assertStringNotContainsString('الأبيض أكثر من الوردي', $html,
+            'ملاحظةٌ داخليّةٌ على ورقة الزبون');
+        $this->assertStringNotContainsString('ملاحظات المنسق', $html,
+            'تسميةُ حقلٍ داخليّ على ورقة الزبون');
+    }
+
+    /**
+     * والشريطُ الحراريّ يقول ما تقوله الورقة.
+     *
+     * وهو ما يمسكه الزبونُ فعلًا: الورقةُ تُطبع عند الطلب، والشريطُ يخرج
+     * من الصندوق مع كلّ بيعة. وقارئٌ واحدٌ للورقتين — ولو حسبت كلٌّ منهما
+     * سطورَها لافترقتا يوم يُبدَّل معنى `internal` في إحداهما، فيخرج للزبون
+     * على الشريط ما يُخفى عنه على الورقة.
+     */
+    public function test_the_thermal_strip_says_what_the_sheet_says(): void
+    {
+        $this->sell()->assertOk();
+
+        $strip = DocumentRenderer::saleStrip(
+            $this->shop->id,
+            $this->order(),
+            DocumentTemplates::settings($this->shop->id, 'sale'),
+            80,
+        );
+
+        $this->assertStringContainsString('ألوان الورد', $strip, 'الشريط بلا خيارات الطلب');
+        $this->assertStringContainsString('أبيض', $strip);
+        $this->assertStringNotContainsString('الأبيض أكثر من الوردي', $strip,
+            'ملاحظةٌ داخليّةٌ على شريط الزبون');
+    }
+
+    /* ─────────── وقارئُ السطور نفسُه ─────────── */
+
+    /** حقلٌ تُرك فارغًا لا يُطبع سطرًا بتسميةٍ ونقطتين وبياض */
+    public function test_an_empty_field_prints_no_line(): void
+    {
+        $lines = CustomArrangement::paperLines([
+            'v' => CustomArrangement::SNAPSHOT_VERSION,
+            'fields' => [
+                ['label' => 'اللون', 'internal' => false, 'values' => [['label' => 'أحمر']]],
+                ['label' => 'ملاحظة', 'internal' => false, 'values' => []],
+                ['label' => 'فراغ', 'internal' => false, 'values' => [['label' => '   ']]],
+            ],
+        ]);
+
+        $this->assertSame([['label' => 'اللون', 'value' => 'أحمر']], $lines);
+    }
+
+    /** وقيمٌ عدّة في حقلٍ واحد تُجمع في سطرٍ واحد */
+    public function test_many_values_share_one_line(): void
+    {
+        $lines = CustomArrangement::paperLines([
+            'v' => CustomArrangement::SNAPSHOT_VERSION,
+            'fields' => [
+                ['label' => 'اللون', 'internal' => false, 'values' => [['label' => 'أحمر'], ['label' => 'أبيض']]],
+            ],
+        ]);
+
+        $this->assertSame('أحمر · أبيض', $lines[0]['value']);
+    }
+
+    /** وبندٌ عاديٌّ لا لقطةَ له لا يُخرج سطرًا ولا ينهار */
+    public function test_a_plain_item_has_no_custom_lines(): void
+    {
+        $this->assertSame([], CustomArrangement::paperLines(null));
+        $this->assertSame([], CustomArrangement::paperLines([]));
+    }
+
+    /**
+     * وطلبٌ بيع قبل القوالب يُطبع كما يُقرأ.
+     *
+     * صفٌّ بالصيغة الأولى لا `fields` فيه ولا `v`. و`paperLines` تقرأ عبر
+     * `view()` — القارئُ الواحد — فلا يفترق ما يُطبع عمّا يُعرض في بطاقة
+     * التجهيز، ولا تحتاج الورقةُ أن تعرف أنّ للنظام صيغتين.
+     */
+    public function test_a_first_format_snapshot_still_prints(): void
+    {
+        $lines = collect(CustomArrangement::paperLines([
+            'mode' => CustomArrangement::MODE_VALUE,
+            'flower_value' => 20,
+            'colors' => ['أحمر'],
+            'florist_notes' => 'بلا شريطة',
+        ]))->keyBy('label');
+
+        $this->assertSame('أحمر', $lines['ألوان الورد']['value'] ?? null);
+        $this->assertArrayNotHasKey('ملاحظات المنسق', $lines,
+            'ملاحظةُ المنسّق في الصيغة القديمة طُبعت على ورقة الزبون');
+    }
+
     /** والمالية تقرأ البيعةَ كأيّ بيعةٍ أخرى — لا مسارَ ثانٍ */
     public function test_the_sale_reaches_finance_like_any_other(): void
     {

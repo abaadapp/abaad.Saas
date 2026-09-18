@@ -22,6 +22,10 @@ export interface Device {
     activatedAt: string;
     activatedBy: string;
     isThis: boolean;
+    /** أيُحذف صفُّه؟ — يقيسه الخادم، ولا يُعاد حسابُه هنا */
+    erasable: boolean;
+    orders: number;
+    shifts: number;
     peripherals: Peripheral[];
 }
 
@@ -137,6 +141,16 @@ export default function DevicesPanel({ devices, branches, peripheralTypes, driva
                             onSelect: () => setLinking(d.id),
                         },
                     ]}
+                    /*
+                        إجراءان لا واحد، ولا يجتمعان على صفٍّ واحد:
+
+                        النشطُ يُبطَّل — يموت رمزُه ويبقى سجلّه، فما باعه
+                        يبقى منسوبًا إليه.
+
+                        والملغى يُحذف — إن لم يبع. وصندوقٌ باع لا يُعرض عليه
+                        الزرّ أصلًا: `erasable` يقيسها الخادمُ بالشرط نفسِه
+                        الذي يردّ به، فلا بابَ معروضًا لا يُفتح.
+                    */
                     destroy={
                         d.status === 'نشط'
                             ? {
@@ -146,7 +160,13 @@ export default function DevicesPanel({ devices, branches, peripheralTypes, driva
                                       ? 'هذا هو الجهاز الذي تستخدمه الآن — إلغاؤه يطلب تفعيله من جديد. متابعة؟'
                                       : 'إلغاء تفعيل هذا الجهاز؟ لن يقبل رمز أي موظف بعدها.',
                               }
-                            : undefined
+                            : d.erasable
+                              ? {
+                                    url: route('admin.devices.destroy', d.id),
+                                    label: 'حذف السجل',
+                                    message: 'يُمحى سجلّ هذا الصندوق وملحقاته نهائيًا. لم يبع شيئًا، فلا تُفقد نسبة فاتورة. متابعة؟',
+                                }
+                              : undefined
                     }
                 />
             ),
@@ -163,6 +183,17 @@ export default function DevicesPanel({ devices, branches, peripheralTypes, driva
                     empty={t('لا أجهزة مفعَّلة بعد. افتح نقطة البيع على الجهاز وفعّله من هناك.')}
                 />
             </Card>
+
+            {/*
+                وسطرٌ يقول لمَ لا يُحذف بعضُ الصفوف.
+
+                زرُّ «حذف السجل» يغيب عن صندوقٍ باع — وغيابٌ بلا سببٍ مكتوب
+                يُقرأ عطبًا. والسطرُ ثابتٌ صادقٌ في كل حال، فلا يُلاحق حالةَ
+                صفٍّ بعينه ولا يَعِد بما لا يقع.
+            */}
+            <p className="mt-3 text-[12px] text-[#9ca3af]">
+                {t('الصندوق الملغى يُحذف سجلّه إن لم يبع شيئًا. وما باع يبقى في القائمة لتبقى فواتيره منسوبة إليه.')}
+            </p>
 
             <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
                 {/* بشكل نافذة «إنشاء كوبون خصم»: حقلان في صفّ، والأزرار في ذيل النموذج */}

@@ -3894,7 +3894,7 @@ class Demo
         $acc = self::bankAccount($accountId);
         $balance = $acc['opening_balance'];
 
-        $rows = Bank::transactions(self::bid())
+        $rows = Bank::transactions(self::bid(), $acc['id'] ?? null)
             ->orderBy('occurred_at')->orderBy('id')->get()->map(function ($t) use (&$balance) {
                 // المصروفات مخزّنة بإشارة سالبة — نوحّد على القيمة المطلقة والاتجاه من النوع
                 $in = $t->type === 'دخل';
@@ -3951,7 +3951,7 @@ class Demo
          * السابقة «ناقصة من البنك» — وهي في كشوفها هي. رقمٌ يخيف بلا سبب،
          * ويُفقد الرقمَ معناه حين يكبر.
          */
-        $unmatchedSystem = Bank::transactions($bid)
+        $unmatchedSystem = Bank::transactions($bid, $accountId)
             ->when($matchedIds, fn ($q) => $q->whereNotIn('id', $matchedIds))
             ->when($lines->count(), fn ($q) => $q
                 ->whereBetween('occurred_at', [

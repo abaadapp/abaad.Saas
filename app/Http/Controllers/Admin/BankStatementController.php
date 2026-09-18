@@ -156,7 +156,7 @@ class BankStatementController extends Controller
             $imported++;
         }
 
-        $matched = $this->reconcile();
+        $matched = $this->reconcile($account);
         Activity::log('created', "استورد كشف البنك ({$imported} سطرًا) وطابَق {$matched}");
 
         $msg = __('تم استيراد :imported سطرًا · مطابَق تلقائيًا: :matched', ['imported' => $imported, 'matched' => $matched]);
@@ -205,10 +205,10 @@ class BankStatementController extends Controller
         return abs($credit ?? 0) - abs($debit ?? 0);
     }
 
-    /** إعادة تشغيل المطابقة يدويًا */
-    public function rematch()
+    /** إعادة تشغيل المطابقة يدويًا — للحساب المعروض وحده */
+    public function rematch(Request $request)
     {
-        $matched = $this->reconcile();
+        $matched = $this->reconcile($this->account($request));
 
         return back()->with('toast', ['msg' => __('أُعيدت المطابقة — مطابَق: :matched', ['matched' => $matched]), 'type' => 'success']);
     }
@@ -252,15 +252,33 @@ class BankStatementController extends Controller
      * واحدٌ لا يتبدّل بين استيرادٍ وآخر، فلا يرى التاجر مطابقةً تنتقل من سطرٍ
      * إلى سطر بلا سبب.
      */
-    private function reconcile(): int
+    private function reconcile(?BankAccount $account = null): int
     {
         $bid = $this->bid();
+        $id = $account?->id;
 
-        BankStatementLine::where('business_id', $bid)
+        $mine = fn ($q) => $q->when($id, fn ($w) => $w->where(fn ($x) => $x
+            ->where('bank_account_id', $id)->orWhereNull('bank_account_id')));
+
+        BankStatementLine::where('business_id', $bid)->where($mine)
             ->update(['transaction_id' => null, 'match_status' => BankStatementLine::UNMATCHED]);
 
-        $transactions = Bank::transactions($bid)->get();
-        $lines = BankStatementLine::where('business_id', $bid)->orderBy('date')->orderBy('id')->get();
+        /*
+         * ولا تُخطف حركةٌ مطابَقةٌ في كشفٍ آخر.
+         *
+         * المطابقةُ صارت تعمل على حسابٍ واحد — وإلا طابَقت كشفَ بنكٍ بحركةٍ لم
+         * تمرّ به. لكنّ المعاملات السابقة لعمود الحساب لا حسابَ عليها، فهي
+         * مرشَّحةٌ لكلّ كشف: فلو تُركت لطُوبقت مرّتين، ولقال الكشفان معًا
+         * «هذا الإيداع هو تلك البيعة» وهو واحد. فما أمسكه كشفُ حسابٍ آخر
+         * يُستثنى — وسطورُ هذا الحساب أُفرغت قبل السؤال فلا تستثني نفسها.
+         */
+        $held = BankStatementLine::where('business_id', $bid)
+            ->whereNotNull('transaction_id')->pluck('transaction_id')->all();
+
+        $transactions = Bank::transactions($bid, $id)
+            ->when($held, fn ($q) => $q->whereNotIn('id', $held))->get();
+        $lines = BankStatementLine::where('business_id', $bid)->where($mine)
+            ->orderBy('date')->orderBy('id')->get();
 
         // كلّ زوجٍ صالح، مع فارق أيامه
         $pairs = [];

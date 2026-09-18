@@ -17,6 +17,9 @@ export interface Device {
     name: string;
     branch: string;
     branchId: number;
+    /** بنكُ جهاز الشبكة — فارغٌ يعني الحساب الرئيسيّ، لا «لا حساب» */
+    bankAccountId: number | null;
+    bankAccount: string | null;
     status: string;
     lastSeen: string;
     activatedAt: string;
@@ -32,6 +35,7 @@ export interface Device {
 export interface DevicesData {
     devices: Device[];
     branches: { value: number; label: string }[];
+    bankAccounts: { value: number; label: string }[];
     peripheralTypes: string[];
     drivableTypes: string[];
     paperWidths: number[];
@@ -43,17 +47,28 @@ export interface DevicesData {
  * ولا يُعرض رمز الجهاز هنا ولا في أي مكان: يُولَّد مرّةً، يوضع في كوكي الجهاز،
  * ولا يُخزَّن إلا مجزَّأً. ما لا يُخزَّن لا يُسرَّب.
  */
-export default function DevicesPanel({ devices, branches, peripheralTypes, drivableTypes, paperWidths }: DevicesData) {
+export default function DevicesPanel({
+    devices,
+    branches,
+    bankAccounts,
+    peripheralTypes,
+    drivableTypes,
+    paperWidths,
+}: DevicesData) {
     const { errors } = usePage<PageProps>().props;
     const t = useTranslate();
     const [editing, setEditing] = useState<Device | null>(null);
     const [linking, setLinking] = useState<number | null>(null);
-    const form = useForm({ name: '', branch_id: '' });
+    const form = useForm({ name: '', branch_id: '', bank_account_id: '' });
 
     // Radix Select لا يقبل قيمةً تتغيّر أثناء الفتح، فتُملأ عند تبديل الجهاز
     useEffect(() => {
         if (editing) {
-            form.setData({ name: editing.name, branch_id: String(editing.branchId) });
+            form.setData({
+                name: editing.name,
+                branch_id: String(editing.branchId),
+                bank_account_id: editing.bankAccountId ? String(editing.bankAccountId) : '',
+            });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editing?.id]);
@@ -231,6 +246,25 @@ export default function DevicesPanel({ devices, branches, peripheralTypes, driva
                                 />
                             </Field>
                         </div>
+
+                        {/*
+                            بنكُ جهاز الشبكة: البيعُ بالبطاقة من هذا الصندوق
+                            يُرحَّل إلى ورقة هذا الحساب ويُطابَق بكشفه. والفارغ
+                            ليس «بلا حساب» بل الحسابُ الرئيسيّ — وهو مكتوبٌ في
+                            الخيار نفسه لا في حاشيةٍ تُقرأ بعد فوات الأوان.
+                        */}
+                        <Field
+                            label="بنك جهاز الشبكة"
+                            hint="إليه تُرحَّل مبيعات البطاقة من هذا الصندوق ويُطابَق كشفُه"
+                            error={errors.bank_account_id}
+                        >
+                            <Select
+                                value={form.data.bank_account_id}
+                                onChange={(e) => form.setData('bank_account_id', e.target.value)}
+                                options={bankAccounts}
+                                placeholder="الحساب الرئيسي"
+                            />
+                        </Field>
 
                         <div className="flex justify-end gap-2 pt-1">
                             <Button type="button" variant="outline" onClick={() => setEditing(null)}>

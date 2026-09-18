@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
+use App\Models\BankAccount;
 use App\Models\Branch;
 use App\Models\PosDevice;
 use App\Support\Activity;
@@ -96,13 +97,22 @@ class DeviceController extends Controller
 
         return [
             'devices' => PosDevice::where('business_id', Demo::bid())
-                ->with('branch:id,name', 'activatedBy:id,name', 'peripherals')
+                ->with('branch:id,name', 'activatedBy:id,name', 'peripherals', 'bankAccount')
                 ->withCount('orders', 'shifts')
                 ->orderByDesc('id')->get()->map(fn ($d) => [
                     'id' => $d->id,
                     'name' => $d->name,
                     'branch' => $d->branch?->name ?? '—',
                     'branchId' => $d->branch_id,
+                    /*
+                     * البنكُ الذي يودع فيه جهازُ الشبكة الموصول بهذا الصندوق.
+                     *
+                     * يُعرض فارغًا بوصفه «الرئيسيّ» لا بوصفه «لا شيء»: الفارغ
+                     * وجهةٌ فعليّة (انظر `Bank::depositFor`)، وعرضُه شاغرًا
+                     * يوهم التاجر أنّ بيعَه بالبطاقة لا يصل حسابًا.
+                     */
+                    'bankAccountId' => $d->bank_account_id,
+                    'bankAccount' => $d->bankAccount?->displayName(),
                     'status' => $d->status,
                     'lastSeen' => $d->last_seen_at?->diffForHumans() ?? '—',
                     'activatedAt' => $d->activated_at?->format('Y-m-d') ?? '—',
@@ -138,6 +148,16 @@ class DeviceController extends Controller
             'branches' => Branch::where('business_id', Demo::bid())
                 ->orderBy('id')->get(['id', 'name'])
                 ->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
+            /*
+             * حسابات المتجر البنكيّة — ومنها يختار المديرُ بنكَ كلّ جهاز.
+             *
+             * والموقوفةُ تُعرض: جهازٌ أُسنِد إلى حسابٍ ثمّ أُوقف الحساب يبقى
+             * مسندًا إليه، وحجبُ الصفّ من القائمة يجعل الشاشة تعرض فراغًا
+             * وتقول «الرئيسيّ» — وهي تكذب.
+             */
+            'bankAccounts' => BankAccount::where('business_id', Demo::bid())
+                ->orderByDesc('is_primary')->orderBy('id')->get()
+                ->map(fn ($a) => ['value' => $a->id, 'label' => $a->displayName()])->values()->all(),
             'peripheralTypes' => \App\Models\PosPeripheral::TYPES,
             'drivableTypes' => \App\Models\PosPeripheral::DRIVABLE,
             'paperWidths' => \App\Models\PosPeripheral::PAPER_WIDTHS,
@@ -150,6 +170,7 @@ class DeviceController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:60'],
             'branch_id' => ['required', 'integer'],
+            'bank_account_id' => ['nullable', 'integer'],
         ]);
 
         $branch = Branch::where('business_id', Demo::bid())->find($data['branch_id']);
@@ -157,8 +178,32 @@ class DeviceController extends Controller
             return back()->withErrors(['branch_id' => __('هذا الفرع غير متاح.')]);
         }
 
+        /*
+         * وحسابُ متجرٍ آخر يُردّ — لا يُقبل صامتًا.
+         *
+         * `Bank::leaf` تُسقط غيرَ المملوك إلى الورقة النظاميّة، فلا يُرحَّل
+         * إلى دفتر جارٍ أبدًا. لكنّ القبولَ الصامت يكتب في الصفّ رقمًا تعرضه
+         * الشاشةُ باسمٍ فارغ، ويبقى الجهاز مسندًا إلى ما لا يملكه.
+         */
+        $bankAccountId = null;
+
+        if (filled($data['bank_account_id'] ?? null)) {
+            $owned = BankAccount::where('business_id', Demo::bid())
+                ->whereKey($data['bank_account_id'])->exists();
+
+            if (! $owned) {
+                return back()->withErrors(['bank_account_id' => __('هذا الحساب البنكي ليس من حسابات متجرك.')]);
+            }
+
+            $bankAccountId = (int) $data['bank_account_id'];
+        }
+
         $moved = $device->branch_id !== $branch->id;
-        $device->update(['name' => $data['name'], 'branch_id' => $branch->id]);
+        $device->update([
+            'name' => $data['name'],
+            'branch_id' => $branch->id,
+            'bank_account_id' => $bankAccountId,
+        ]);
 
         /*
          * نقل الجهاز إلى فرعٍ آخر يُبطل تفعيله.

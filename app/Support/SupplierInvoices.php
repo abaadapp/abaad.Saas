@@ -305,8 +305,14 @@ final class SupplierInvoices
                     'memo' => $locked->supplier?->name];
             }
 
+            /*
+             * وضريبةُ المشتريات في حسابها — «ضريبة المدخلات» لا «مستحقّة».
+             *
+             * هي مالُ المتجر عند الجهاز يُستردّ، لا مالُ الجهاز عند المتجر.
+             * انظر `Ledger::DEFAULT_CHART` — 1250.
+             */
             if ($registered && $tax > 0) {
-                $lines[] = ['account' => 'tax_payable', 'debit' => $tax];
+                $lines[] = ['account' => 'tax_input', 'debit' => $tax];
             }
 
             $lines[] = ['account' => 'payable', 'credit' => $total];

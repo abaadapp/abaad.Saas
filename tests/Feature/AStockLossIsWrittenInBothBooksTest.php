@@ -221,10 +221,23 @@ class AStockLossIsWrittenInBothBooksTest extends TestCase
         SupplierInvoices::approve($this->invoice(25, 5), $this->owner);
 
         $this->assertSame(25.0, $this->inventory(), 'ضريبةٌ تُستردّ حُمّلت على تكلفة البضاعة');
+
+        /*
+         * وضريبةُ الشراء في «المدخلات» لا في «المستحقّة».
+         *
+         * كانت تُقيَّد مدينةً في 2300 نفسِها، فيقرأ التاجر رقمًا واحدًا لا
+         * يعرف أهو ما حصّله من زبائنه أم ما دفعه لمورّديه. والصافي يبقى صافيًا
+         * — وهو ما يحرسه الفحص التالي.
+         */
         $this->assertSame(
-            -5.0,
+            5.0,
+            Ledger::account($this->business->id, 'tax_input')->balance(),
+            'الضريبةُ المستردّة ليست في حسابها'
+        );
+        $this->assertSame(
+            0.0,
             Ledger::account($this->business->id, 'tax_payable')->balance(),
-            'الضريبةُ المستردّة لا تُنقص ما يُدفع للجهة'
+            'ضريبةُ شراءٍ جلست في حساب ضريبة المبيعات'
         );
         // والذمّةُ كاملةً: المورّد يُطالب بالمبلغ مع ضريبته
         $this->assertSame(30.0, Ledger::account($this->business->id, 'payable')->balance());
@@ -262,21 +275,25 @@ class AStockLossIsWrittenInBothBooksTest extends TestCase
     }
 
     /**
-     * والحسابُ الضريبيُّ يقول ما يقوله الإقرار.
+     * والحسابانِ الضريبيّانِ يقولان ما يقوله الإقرار.
      *
-     * ضريبةُ المبيعات دائنةً وضريبةُ المشتريات مدينةً في الحساب نفسه، فرصيدُه
-     * صافي ما يُدفع — وهو الرقم الذي يقوله تقرير الإقرار. حسابٌ لا يفترق عن
-     * تقريره.
+     * صارا اثنين: «مستحقّة» (2300) لما حُصّل من الزبائن، و«المدخلات» (1250)
+     * لما دُفع للمورّدين. وصافيهما هو ما يُدفع للجهة — وهو الرقم الذي يقوله
+     * تقرير الإقرار. حسابان لا يفترقان عن تقريرهما.
      */
     public function test_the_tax_account_reads_what_the_return_reads(): void
     {
         SupplierInvoices::approve($this->invoice(25, 5), $this->owner);
 
         $due = ReportData::vat($this->business->id, ['range' => 'all'])['summary']['due'];
-        $account = Ledger::account($this->business->id, 'tax_payable')->balance();
+        $net = round(
+            Ledger::account($this->business->id, 'tax_payable')->balance()
+            - Ledger::account($this->business->id, 'tax_input')->balance(),
+            3
+        );
 
         $this->assertSame(-5.0, $due, 'الإقرار لا يقرأ ضريبة المشتريات');
-        $this->assertSame($due, $account, 'الحسابُ الضريبيُّ والإقرارُ يقولان قولين');
-        $this->assertSame(Demo::money($due), Demo::money($account));
+        $this->assertSame($due, $net, 'الحسابانِ الضريبيّانِ والإقرارُ يقولان قولين');
+        $this->assertSame(Demo::money($due), Demo::money($net));
     }
 }

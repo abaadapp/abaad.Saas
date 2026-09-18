@@ -46,7 +46,13 @@ class BankAccountController extends Controller
          * بلا حارسٍ لأن الحارس يسأل عن حركة ورقته.
          */
         BankAccount::where('business_id', $bid)->whereNull('account_id')->orderBy('id')->get()
-            ->each(fn ($a) => $a->update(['account_id' => $this->leafFor($bid, $a)->id]));
+            ->each(function (BankAccount $a) use ($bid) {
+                $a->update(['account_id' => $this->leafFor($bid, $a)->id]);
+
+                // وحسابٌ نال ورقتَه الآن ينال قيدَ افتتاحيّه: الترحيل الذي
+                // استدرك الحسابات القديمة تخطّى من لا ورقةَ له يومَها
+                Bank::syncOpening($a->fresh(), auth()->id());
+            });
 
         $accounts = BankAccount::where('business_id', $bid)->with('account')
             ->orderByDesc('is_primary')->orderBy('id')->get();
@@ -93,6 +99,9 @@ class BankAccountController extends Controller
             ]);
 
             $account->update(['account_id' => $this->leafFor($bid, $account)->id]);
+
+            // والافتتاحيُّ يدخل الدفتر مقابلَ حقوق الملكية — لا يبقى خارجه
+            Bank::syncOpening($account->fresh(), auth()->id());
         });
 
         \App\Support\Activity::log('created', 'أضاف حسابًا بنكيًّا: '.($data['label'] ?? $data['bank_name'] ?? ''));
@@ -119,6 +128,15 @@ class BankAccountController extends Controller
         } elseif (! $account->account) {
             $account->update(['account_id' => $this->leafFor($bid, $account->fresh())->id]);
         }
+
+        /*
+         * والافتتاحيُّ المصحَّح يُصحَّح في الدفتر معه.
+         *
+         * يُنادى في كلّ حفظ — و`syncOpening` لا تكتب شيئًا إن لم يتغيّر
+         * المبلغ. فحفظُ الآيبان وحده لا يُنشئ قيدين، وتغييرُ الرقم يُعكس
+         * القديمُ ويُكتب الجديد.
+         */
+        Bank::syncOpening($account->fresh(), auth()->id());
 
         return back()->with('toast', ['msg' => __('حُفظ الحساب البنكي'), 'type' => 'success']);
     }

@@ -38,6 +38,17 @@ class PosDevice extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    /**
+     * الحساب البنكيّ الذي يودع فيه جهازُ الشبكة الموصول بهذا الصندوق.
+     *
+     * فارغٌ يعني الرئيسيّ — انظر `Bank::depositFor`. والعمود `nullOnDelete`:
+     * حذفُ الحساب البنكيّ لا يعطّل الصندوق، يُعيده إلى الرئيسيّ.
+     */
+    public function bankAccount(): BelongsTo
+    {
+        return $this->belongsTo(BankAccount::class);
+    }
+
     public function activatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'activated_by');

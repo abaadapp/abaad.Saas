@@ -19,6 +19,7 @@ use App\Models\Setting;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\AddonStock;
+use App\Support\Bank;
 use App\Support\Books;
 use App\Support\Contention;
 use App\Support\CreditSales;
@@ -1213,6 +1214,9 @@ class PosController extends Controller
                 $coupon->increment('used_count');
             }
 
+            $method = $this->paymentMethod($data['payment_method'] ?? null);
+            $device = PosTerminal::current();
+
             $order = $this->createNumbered([
                 'business_id' => $bid,
                 'client_uuid' => $data['client_uuid'] ?? null,
@@ -1232,8 +1236,23 @@ class PosController extends Controller
                  * رمز الجهاز في الكوكي الموقَّعة. وحين ينقص الدرج عشرين ريالًا
                  * في محلٍّ فيه ثلاثة صناديق، هذا العمود وحده يقول أيّها.
                  */
-                'pos_device_id' => PosTerminal::current()?->id,
-                'payment_method' => $this->paymentMethod($data['payment_method'] ?? null),
+                'pos_device_id' => $device?->id,
+                /*
+                 * والبنكُ الذي دخله المال — لقطةً، لا قراءةً متأخّرة.
+                 *
+                 * جهازُ الشبكة موصولٌ ببنكٍ بعينه، والمديرُ قد ينقله إلى بنكٍ
+                 * آخر بعد شهر. فلو قُرئ الجهازُ يومَ الترحيل لقال عن بيعةٍ
+                 * قديمة غيرَ ما وقع — ولانتقل رصيدٌ في الميزانية من حسابٍ إلى
+                 * حساب بلا قيد. انظر `Bank::depositFor`.
+                 *
+                 * والنقدُ لا حسابَ بنكيًّا له: مالٌ في الدرج يحمل اسمَ بنكٍ لا
+                 * يطابقه كشفُه أبدًا لأنّه لم يمرّ به — وهي القاعدة نفسُها في
+                 * `CustomerPayments::accountFor`، ولا تفترق عنها هنا.
+                 */
+                'bank_account_id' => in_array($method, Bank::METHODS, true)
+                    ? Bank::depositFor($bid, $device?->id)
+                    : null,
+                'payment_method' => $method,
                 /*
                  * وحالُ السداد تتبع ما وقع فعلًا.
                  *
@@ -1414,6 +1433,9 @@ class PosController extends Controller
                 'reference' => $order->number,
                 'description' => 'مبيعات نقطة البيع — '.($order->customer_name ?? 'عميل نقدي'),
                 'method' => $order->payment_method ?? 'نقدي',
+                // ولقطةُ البنك تُنقل إلى المعاملة: بها تُرشَّح مطابقةُ كشف
+                // الحساب، فلا يُطابَق كشفُ بنكٍ بحركةٍ لم تمرّ به
+                'bank_account_id' => $order->bank_account_id,
                 'type' => 'دخل',
                 'amount' => $order->total,
                 'tax_amount' => $order->tax ?? 0,

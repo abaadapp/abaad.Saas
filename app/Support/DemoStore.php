@@ -414,7 +414,7 @@ class DemoStore
     {
         $account = Ledger::account($this->business->id, 'bank');
 
-        BankAccount::create([
+        $bank = BankAccount::create([
             'business_id' => $this->business->id,
             'account_id' => $account?->id,
             'label' => 'بنك مسقط — الجاري',
@@ -424,10 +424,14 @@ class DemoStore
             'active' => true, 'is_primary' => true,
         ]);
 
-        Ledger::post($this->business->id, 'رصيد افتتاحيّ — بنك مسقط', [
-            ['account' => 'bank', 'debit' => 12500],
-            ['account' => 'capital', 'credit' => 12500],
-        ], $registered, 'افتتاحي');
+        /*
+         * والافتتاحيُّ من بابه — لا بقيدٍ يُكتب هنا بيده.
+         *
+         * كان يُكتب مرّتين: صفًّا في `bank_accounts` وقيدًا يدويًّا مقابل رأس
+         * المال. و`BankAccount::balance()` كانت تجمع الصفَّ على الدفتر، فقرأ
+         * متجرُ العرض ٢٥٠٠٠ ريالًا وفيه ١٢٥٠٠ — والعرضُ يُفتح ليُرى.
+         */
+        Bank::syncOpening($bank);
     }
 
     /* ------------------------------ الكتالوج ------------------------------ */

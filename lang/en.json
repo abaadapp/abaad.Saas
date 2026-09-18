@@ -6041,5 +6041,10 @@
     "إنشاء الموقع لصاحب المتجر — اطلبه منه.": "Creating the website is the owner's to do — ask them for it.",
     "هذا القالب لا يقبل موادّ — أعد بناء الطلب.": "This template does not accept materials — rebuild the order.",
     "هذه ورقةُ «:name» في الشجرة — تُحذف بحذف الحساب البنكيّ لا من هنا.": "This is «:name»'s leaf in the chart — delete it by deleting the bank account, not from here.",
-    "«:name» عليه قيودٌ مُرحَّلة — والحسابُ الذي تحته فروعٌ لا يقبل قيدًا بعدها. أنشئ حسابًا أبًا وانقله تحته أخًا لهذا الفرع.": "«:name» already carries posted entries — an account with children accepts none. Create a parent account and move it there as a sibling of this branch."
+    "«:name» عليه قيودٌ مُرحَّلة — والحسابُ الذي تحته فروعٌ لا يقبل قيدًا بعدها. أنشئ حسابًا أبًا وانقله تحته أخًا لهذا الفرع.": "«:name» already carries posted entries — an account with children accepts none. Create a parent account and move it there as a sibling of this branch.",
+    "تصحيح الرصيد الافتتاحي": "Opening balance corrected",
+    "رصيد افتتاحي — ": "Opening balance — ",
+    "بنك جهاز الشبكة": "Card terminal's bank",
+    "إليه تُرحَّل مبيعات البطاقة من هذا الصندوق ويُطابَق كشفُه": "Card sales from this register post here and reconcile against its statement",
+    "الحساب الرئيسي": "Primary account"
 }

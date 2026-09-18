@@ -115,6 +115,7 @@ interface Props {
     jobTitles?: JobTitle[];
     devices?: DevicesData['devices'];
     branchOptions?: DevicesData['branches'];
+    bankAccounts?: { value: number; label: string }[];
     peripheralTypes?: string[];
     drivableTypes?: string[];
     paperWidths?: number[];
@@ -235,7 +236,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, settingsFields, business, recovery, mail, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, customOrderTemplates, customOrderFieldTypes, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, settingsFields, business, recovery, mail, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, customOrderTemplates, customOrderFieldTypes, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types, archive } =
         usePage<PageProps<Props>>().props;
@@ -1241,6 +1242,7 @@ export default function SettingsIndex() {
                 <DevicesPanel
                     devices={devices ?? []}
                     branches={branchOptions ?? []}
+                    bankAccounts={bankAccounts ?? []}
                     peripheralTypes={peripheralTypes ?? []}
                     drivableTypes={drivableTypes ?? []}
                     paperWidths={paperWidths ?? []}

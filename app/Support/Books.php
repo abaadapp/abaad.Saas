@@ -88,11 +88,19 @@ class Books
          * فاتورةٌ لم تُدفع ليست نقدًا في الدرج بل ذمّةً على العميل. وبطاقةٌ
          * أو تحويلٌ يدخلان البنك لا الصندوق — وخلطُهما يجعل تسوية كشف البنك
          * مستحيلة، وهي شاشةٌ قائمة في النظام.
+         *
+         * ═══ وأيُّ بنك: الذي ختمته البيعة ═══
+         *
+         * كان `'bank'` يقصد ورقةَ الحساب **الرئيسيّ** دائمًا. ومتجرٌ بجهازَي
+         * شبكةٍ على بنكين يقرأ رصيدَ أحدهما لا يتحرّك ومالَه كلَّه في ورقة
+         * الآخر. فالوجهةُ لقطةُ الطلب — انظر `Bank::depositFor` — وما لا
+         * لقطةَ له (طلبٌ قديم، أو بيعةٌ من غير صندوق) يسقط إلى الرئيسيّ كما
+         * كان.
          */
         $debit = match (true) {
             (string) $order->payment_status === 'غير مدفوع' => 'receivable',
             in_array((string) $order->payment_method, ['نقدي', 'كاش'], true) => 'cash',
-            default => 'bank',
+            default => Bank::leaf((int) $order->business_id, $order->bank_account_id) ?? 'bank',
         };
 
         DB::transaction(function () use ($order, $debit, $total, $subtotal, $tax, $cost, $at) {
@@ -167,12 +175,32 @@ class Books
      * لما بيع قبل وجودها، وتكلفةُ الإضافات معها. وقاعدتان لرقمٍ واحد تعنيان
      * دفترًا يخالف تقريره.
      *
+     * ═══ والبطاقاتُ لا تُقرأ كلُّها ═══
+     *
+     * كانت تسحب تكلفةَ **كلّ** صنفٍ في المتجر عند كلّ بيعة — وهي لا تحتاج
+     * إلا ما نقصته لقطتُه. فمتجرٌ بعشرة آلاف صنفٍ يحمل عشرة آلاف صفٍّ إلى
+     * الذاكرة ليقرأ منها صفًّا واحدًا، والكاشيرُ واقفٌ ينتظر. وهو الطريق
+     * المعتاد: كلُّ فاتورةٍ تمرّ من هنا.
+     *
+     * والأكثرُ منه: اللقطةُ تكفي في كلّ بيعةٍ عاديّة، فلا حاجة إلى استعلامٍ
+     * أصلًا. ولا تُطلب البطاقاتُ إلا حين ينقص بندًا ثمنُ تكلفته — بيعةٌ
+     * وقعت قبل أن يُلتقط العمود.
+     *
      * @see Demo::reportSummary
      */
     public static function costOf(Order $order): float
     {
         $order->loadMissing('items.addons');
-        $cards = Product::where('business_id', $order->business_id)->pluck('cost', 'id');
+
+        $missing = $order->items
+            ->filter(fn ($i) => (float) $i->cost <= 0)
+            ->pluck('product_id')->filter()->unique()->values()->all();
+
+        $cards = $missing
+            ? Product::where('business_id', $order->business_id)
+                ->whereIn('id', $missing)->pluck('cost', 'id')
+            : collect();
+
         $cost = 0.0;
 
         foreach ($order->items as $item) {
@@ -628,8 +656,12 @@ class Books
      * والعكسُ يُستثنى صراحةً: هو معلَّقٌ بالمستند نفسه (يحمل `sourceable`
      * الأصل ليُقرأ تاريخُه من مكانٍ واحد)، فلو عُدّ حيًّا لعكسه نداءٌ ثانٍ
      * فعاد الرصيد إلى ما قبل الإلغاء.
+     *
+     * ومعلنةٌ لأنّ غيرَ هذا الصنف يسأل السؤال نفسه — `Bank::syncOpening`
+     * تسأله عن قيد الرصيد الافتتاحيّ. وسؤالٌ واحدٌ له قارئان يفترقان يوم
+     * يُبدَّل أحدهما، فيبقى قيدٌ معكوسٌ محسوبًا حيًّا عند أحدهما دون الآخر.
      */
-    private static function liveEntriesFor($model)
+    public static function liveEntriesFor($model)
     {
         return JournalEntry::where('sourceable_type', $model::class)
             ->where('sourceable_id', $model->id)

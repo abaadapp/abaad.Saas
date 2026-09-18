@@ -60,8 +60,15 @@ class TenantTables
         'products', 'product_variants', 'product_images',
         'addons', 'product_addons', 'recipe_items',
         'customers', 'customer_addresses',
-        'pos_devices', 'pos_peripherals',
+        /*
+         * والبنوكُ قبل الأجهزة.
+         *
+         * صار الجهازُ يحمل حسابَه البنكيّ — البنكُ الذي يودع فيه جهازُ الشبكة
+         * الموصول به. فصفُّ جهازٍ يُكتب قبل حسابه يردّه المفتاحُ الأجنبيّ
+         * وتسقط الاستعادةُ في منتصفها، فيقف التاجر أمام متجرٍ نصفِ عائد.
+         */
         'bank_accounts', 'bank_statement_lines',
+        'pos_devices', 'pos_peripherals',
         'journal_entries', 'journal_lines',
         'transactions', 'expenses',
         'fixed_assets', 'inventory_movements', 'stock_adjustments', 'stock_transfers',

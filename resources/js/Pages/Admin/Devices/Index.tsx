@@ -10,7 +10,7 @@ import type { PageProps } from '@/types';
  * صفحة أجهزة نقاط البيع المستقلّة — الجسم نفسه الذي يُفتح داخل الإعدادات.
  */
 export default function DevicesIndex() {
-    const { devices, branches, peripheralTypes, drivableTypes, paperWidths } =
+    const { devices, branches, bankAccounts, peripheralTypes, drivableTypes, paperWidths } =
         usePage<PageProps<DevicesData>>().props;
     const t = useTranslate();
 
@@ -25,6 +25,7 @@ export default function DevicesIndex() {
             <DevicesPanel
                 devices={devices}
                 branches={branches}
+                bankAccounts={bankAccounts}
                 peripheralTypes={peripheralTypes}
                 drivableTypes={drivableTypes}
                 paperWidths={paperWidths}

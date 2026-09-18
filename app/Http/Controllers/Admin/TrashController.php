@@ -232,6 +232,25 @@ class TrashController extends Controller
         return null;
     }
 
+    /**
+     * فرعٌ حيٌّ يحمل اسمَ هذا المحذوف — أو `null`.
+     *
+     * ولا `whereKeyNot` هنا: الصفُّ الذي يُستعاد محذوفٌ بعد، و`Branch::where`
+     * تستثني المحذوف بحكم `SoftDeletes`. فشرطٌ يُقصي نفسَه لا يُقصي شيئًا —
+     * «ما لا يحرس شيئًا لا يُكتب». وقد نجت طفرتُه فعلًا قبل أن يُحذف.
+     *
+     * والحصرُ بالمتجر يحرس: بدونه يُردّ إحياءُ «صلالة» لأنّ متجرًا آخر في
+     * المنصّة فتح فرعًا بالاسم نفسِه — رفضٌ لا يفهمه صاحبُه ولا سبيلَ له إليه.
+     */
+    private static function nameClash(Branch $row): ?string
+    {
+        $taken = Branch::where('business_id', $row->business_id)
+            ->where('name', $row->name)
+            ->exists();
+
+        return $taken ? (string) $row->name : null;
+    }
+
     private static function label(string $type, $row): string
     {
         return $type === 'expense'
@@ -288,6 +307,27 @@ class TrashController extends Controller
         if ($type === 'product' && ($clash = self::codeClash($row))) {
             return back()->with('toast', [
                 'msg' => __('تعذّرت الاستعادة: :code صار لمنتج «:name» — غيّره أولًا.', $clash),
+                'type' => 'danger',
+            ]);
+        }
+
+        /*
+         * والفرعُ كذلك: اسمُه قد يكون شُغل بعد حذفه.
+         *
+         * قيدُ التفرّد في `BranchController` يتجاوز المحذوف عمدًا — فرعٌ حُذف
+         * لا يحجز اسمه. فيُحذف «صلالة» ويُفتح «صلالة» جديدٌ في مكانه، ثمّ
+         * تُضغط «تراجع»: فرعان حيّان بالاسم نفسِه.
+         *
+         * وهو أسوأ من تكرارٍ في قائمة: الفرعُ يُعرَف باسمه في ترويسة الملفّ
+         * وفي عمود «الفرع» وفي رسائل الجرد. فيقرأ التاجر تقريرَ «صلالة» ولا
+         * يدري أيَّ صلالة يقرأ، وينسب بضاعةَ أحدهما إلى الآخر.
+         *
+         * والردُّ أسلم من تسميةٍ صامتة: كتابةُ اسمٍ لم يطلبه في فرعٍ يعود
+         * تُخفي المشكلة ولا تحلّها.
+         */
+        if ($type === 'branch' && ($holder = self::nameClash($row))) {
+            return back()->with('toast', [
+                'msg' => __('تعذّرت الاستعادة: «:name» صار اسمًا لفرعٍ آخر — غيّره أولًا.', ['name' => $holder]),
                 'type' => 'danger',
             ]);
         }

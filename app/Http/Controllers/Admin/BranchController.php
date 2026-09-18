@@ -55,8 +55,16 @@ class BranchController extends Controller
              * لا يُعرف أيّهما أيّ، وتقريرًا يُنسب إلى أحدهما ولا يُدرى أيّهما.
              *
              * والمحذوف لا يحجز اسمه: من حذف «صلالة» يفتحها من جديد.
+             *
+             * و`whereNull('deleted_at')` هي التي تجعل السطرَ أعلاه صحيحًا.
+             * بدونها كانت `unique` تقرأ الصفَّ المحذوف: يحذف التاجر «صلالة»
+             * ثمّ يفتحها فيُقال له «لديك فرعٌ بهذا الاسم» — وهو ينظر إلى
+             * قائمةٍ ليس فيها صلالة. فلا يفهم، ولا شيءَ في الشاشة يدلّه على
+             * سلّة المحذوفات.
+             *
+             * وهو القيدُ نفسُه في `ProductController`: صنفٌ حُذف لا يحجز رمزه.
              */
-            'name' => ['required', 'string', 'max:255', Rule::unique('branches', 'name')->where('business_id', $this->bid())],
+            'name' => ['required', 'string', 'max:255', Rule::unique('branches', 'name')->where('business_id', $this->bid())->whereNull('deleted_at')],
             'phone' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
         ], [

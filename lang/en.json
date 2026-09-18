@@ -6009,5 +6009,6 @@
     "رقم": "Number",
     "اختيار واحد": "Single choice",
     "اختيار متعدد": "Multiple choice",
-    "مربع اختيار": "Checkbox"
+    "مربع اختيار": "Checkbox",
+    "تعذّرت الاستعادة: «:name» صار اسمًا لفرعٍ آخر — غيّره أولًا.": "Cannot restore: «:name» is now another branch’s name — rename it first."
 }

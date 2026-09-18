@@ -160,4 +160,104 @@ class BranchIsEmptiedBeforeDeletionTest extends TestCase
         $this->assertSame(PosDevice::ACTIVE, $mine->fresh()->status, 'أُبطل جهازٌ في فرعٍ لم يُحذف');
         $this->assertSame(PosDevice::REVOKED, $his->fresh()->status);
     }
+
+    /* ─────────── الاسمُ لا يُحجَز بعد الحذف ─────────── */
+
+    /**
+     * فرعٌ حُذف لا يحجز اسمه.
+     *
+     * ═══ العطب ═══
+     *
+     * `Rule::unique` تقرأ الجدولَ كما هو — والصفُّ المحذوف ليّنًا باقٍ فيه.
+     * فيحذف التاجر «فرع القرم» ثمّ يفتحه من جديد، فيُقال له «لديك فرعٌ بهذا
+     * الاسم» — وهو ينظر إلى قائمةٍ ليس فيها فرعُ القرم.
+     *
+     * فلا يفهم، ولا شيءَ في الرسالة يدلّه على سلّة المحذوفات. ويظنّ العطبَ
+     * في بصره أو في النظام، ويسمّيه «فرع القرم 2».
+     *
+     * وهو القيدُ نفسُه الذي يتّبعه المنتج: صنفٌ حُذف لا يحجز رمزه.
+     */
+    public function test_a_deleted_branch_does_not_hold_its_name(): void
+    {
+        $this->delete(route('admin.branches.destroy', $this->second->id))->assertRedirect();
+        $this->assertSoftDeleted('branches', ['id' => $this->second->id]);
+
+        $this->post(route('admin.branches.store'), ['name' => 'فرع القرم'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(1, Branch::where('business_id', $this->business->id)
+            ->where('name', 'فرع القرم')->count(), 'لم يُفتح الفرع باسمه بعد حذفه');
+    }
+
+    /** والاسمُ الحيُّ يبقى محجوزًا — القيدُ لم يُرفع، إنّما ضُبط */
+    public function test_a_live_branch_still_holds_its_name(): void
+    {
+        $this->post(route('admin.branches.store'), ['name' => 'فرع القرم'])
+            ->assertSessionHasErrors('name');
+
+        $this->assertSame(1, Branch::where('business_id', $this->business->id)
+            ->where('name', 'فرع القرم')->count());
+    }
+
+    /**
+     * ولا يعود فرعان بالاسم نفسِه من سلّة المحذوفات.
+     *
+     * ثمنُ تحرير الاسم أنّ الاسمَ قد يُشغَل قبل «تراجع». والفرعُ يُعرَف باسمه
+     * في ترويسة الملفّ وفي عمود «الفرع» وفي رسائل الجرد — ففرعان بالاسم
+     * نفسِه يعني تقريرًا لا يُعرف لأيّهما.
+     *
+     * فيُردّ الإحياء ويُقال سببُه، كما يُردّ إحياءُ منتجٍ صار رمزُه لغيره.
+     */
+    public function test_a_restore_that_would_duplicate_a_live_name_is_refused(): void
+    {
+        $this->delete(route('admin.branches.destroy', $this->second->id));
+        $this->post(route('admin.branches.store'), ['name' => 'فرع القرم']);
+
+        $this->post(route('admin.branches.restore', $this->second->id), ['type' => 'branch'])
+            ->assertRedirect();
+
+        $this->assertSoftDeleted('branches', ['id' => $this->second->id]);
+        $this->assertSame(1, Branch::where('business_id', $this->business->id)
+            ->where('name', 'فرع القرم')->count(), 'عاد فرعان بالاسم نفسِه');
+    }
+
+    /** وما لم يُشغل اسمُه يعود كما كان */
+    public function test_a_restore_whose_name_is_free_still_works(): void
+    {
+        $this->delete(route('admin.branches.destroy', $this->second->id));
+
+        $this->post(route('admin.branches.restore', $this->second->id), ['type' => 'branch'])
+            ->assertRedirect();
+
+        $this->assertNull($this->second->fresh()->deleted_at, 'لم يعد الفرع وقد كان اسمُه حرًّا');
+    }
+
+    /* ─────────── والاسمُ يُحجَز في هذا المتجر وحده ─────────── */
+
+    /** جارٌ في المنصّة له «فرع القرم» — ولا يمنعني من فتح فرعي بالاسم نفسِه */
+    public function test_a_neighbours_branch_name_does_not_block_mine(): void
+    {
+        $neighbour = Business::create(['name' => 'جار', 'type' => 'عام', 'status' => 'نشط']);
+        Branch::create(['business_id' => $neighbour->id, 'name' => 'فرع صحار']);
+
+        $this->post(route('admin.branches.store'), ['name' => 'فرع صحار'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(1, Branch::where('business_id', $this->business->id)
+            ->where('name', 'فرع صحار')->count(), 'اسمُ جارٍ منع فتحَ فرعي');
+    }
+
+    /** ولا يمنعني من إحياء فرعي المحذوف */
+    public function test_a_neighbours_branch_name_does_not_block_my_restore(): void
+    {
+        $neighbour = Business::create(['name' => 'جار', 'type' => 'عام', 'status' => 'نشط']);
+        Branch::create(['business_id' => $neighbour->id, 'name' => 'فرع القرم']);
+
+        $this->delete(route('admin.branches.destroy', $this->second->id));
+
+        $this->post(route('admin.branches.restore', $this->second->id), ['type' => 'branch'])
+            ->assertRedirect();
+
+        $this->assertNull($this->second->fresh()->deleted_at, 'اسمُ جارٍ منع إحياءَ فرعي');
+    }
 }

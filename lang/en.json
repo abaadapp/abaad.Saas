@@ -6024,5 +6024,12 @@
     "بلغت حدّ باقة «:plan»: :cap من الموظفين النشطين. عطّل غيره أو رقِّ الباقة.": "You've reached the «:plan» plan limit: :cap active employees. Disable someone else, or upgrade.",
     "تم حفظ الفرع · حُدِّث :n موظفًا يعمل فيه": "Branch saved · :n employees working there were updated",
     "أُبطل تفعيل :count من أجهزته": ":count of its tills were revoked",
-    ":count موظفًا كان فرعهم الوحيد — أسنِدهم إلى فرعٍ آخر": ":count employees had it as their only branch — assign them to another"
+    ":count موظفًا كان فرعهم الوحيد — أسنِدهم إلى فرعٍ آخر": ":count employees had it as their only branch — assign them to another",
+    "اتبع صلاحيات الوظيفة": "Follow the job title's permissions",
+    "تتبدّل صلاحياته كلّما تبدّلت وظيفته": "They change whenever the job title changes",
+    "خصّص لهذا الموظّف": "Customize for this employee",
+    "قائمةٌ له وحده — لا تتبدّل مع الوظيفة": "A list of their own — it does not follow the job title",
+    "الصلاحيات المخصّصة ليست في باقتك الحالية.": "Custom permissions are not in your current plan.",
+    "ما تفتحه وظيفة «:title» — يُعرض ولا يُعدَّل من هنا.": "What the «:title» job title opens — shown here, not edited here.",
+    "مسمّى «:title» ليس في قائمة الوظائف — تبقى صلاحياته على ما هي حتى تُسنَد إليه وظيفةٌ معروفة.": "«:title» is not among your job titles — their permissions stay as they are until a known title is assigned."
 }

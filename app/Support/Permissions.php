@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\JobTitle;
 use App\Models\User;
 
 /**
@@ -479,6 +480,27 @@ class Permissions
             ...array_values(array_filter(self::SECTIONS, fn ($s) => self::allows($role, $s))),
             ...array_values(array_filter(self::actions(), fn ($a) => self::allowsAction($role, $a))),
         ];
+    }
+
+    /**
+     * ما تفتحه كلُّ وظيفةٍ في هذا المتجر — تسميةً ← مفاتيحَ.
+     *
+     * تقرؤها الشاشةُ حين يختار المديرُ «اتبع صلاحيات الوظيفة»: تعرض له ما
+     * سيفتحه الموظّف فعلًا، وتتبدّل حين يبدّل المسمّى في النموذج نفسِه.
+     *
+     * ═══ ولمَ لا تُحسب في الشاشة ═══
+     *
+     * الدورُ عمودٌ في صفّ الوظيفة لا يصل الواجهةَ أصلًا، و`MAP` تعيش هنا.
+     * وشاشةٌ تخمّن ما يفتحه دورٌ تقول للمدير غيرَ ما يقع — وتقريرُ حالٍ كاذب
+     * أسوأ من غياب التقرير. فتُرسل محسوبةً من المصدر الذي يحكم.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function titleGrants(int $businessId): array
+    {
+        return JobTitle::where('business_id', $businessId)->orderBy('name')->get()
+            ->mapWithKeys(fn ($t) => [$t->name => self::roleGrants((string) $t->role)])
+            ->all();
     }
 
     /** أيُسند هذا الفاعلُ وظيفةً بهذا الدور؟ */

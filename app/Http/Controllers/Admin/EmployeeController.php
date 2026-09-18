@@ -68,13 +68,27 @@ class EmployeeController extends Controller
             /*
              * الصلاحيات إلزامية: قسمٌ واحد على الأقل. موظفٌ بلا صلاحية حسابٌ
              * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
+             *
+             * ═══ و«حين تُخصَّص» لا «حين يُرسل العلم» ═══
+             *
+             * كانت `required_with` — وهي تعمل على **حضور** الحقل لا على قيمته.
+             * والنموذج يرسل `manual_permissions` في كلّ حفظة، فاختيارُ «اتبع
+             * صلاحيات الوظيفة» (`0`) كان يُردّ بـ«حدّد صلاحيات الموظف» — وهو
+             * لم يُطلَب منه أن يحدّد شيئًا.
+             *
+             * وثمنُه أنّ الرجوعَ عن التخصيص لم يكن يقع أصلًا: المتحكّم يعالج
+             * `null` بعنايةٍ — «اتبع الدور»، تتغيّر صلاحياته مع وظيفته — وبابُه
+             * مسدود. فمن خُصّصت صلاحياتُه مرّةً بقي عليها أبدًا.
+             *
+             * و`min:1` رُفعت لأنّها تكرارٌ: `required` تردّ المصفوفة الفارغة
+             * أصلًا. وببقائها كانت تردّ `[]` حتى حين لا تخصيص — أي تردّ الحال
+             * نفسَها من بابٍ ثانٍ.
              */
-            'permissions' => ['required_with:manual_permissions', 'array', 'min:1'],
+            'permissions' => ['required_if:manual_permissions,1', 'array'],
             // والأفعالُ تُمنح من القائمة نفسها — انظر Permissions::ACTIONS
             'permissions.*' => ['string', Rule::in([...Permissions::sections(), ...Permissions::actions()])],
         ], [
-            'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
-            'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
+            'permissions.required_if' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'login_username.required' => __('اسم المستخدم مطلوب — وبه يدخل الموظف إلى النظام.'),
         ] + MerchantAccount::messages());
 
@@ -460,6 +474,8 @@ class EmployeeController extends Controller
             'blockedTitles' => JobTitle::where('business_id', Demo::bid())->orderBy('name')->get()
                 ->reject(fn ($t) => Permissions::mayAssignRole(auth()->user(), $t->role))
                 ->pluck('name')->values()->all(),
+            // ما تفتحه كلُّ وظيفة — تقرؤها الشاشةُ حين يُختار «اتبع صلاحيات الوظيفة»
+            'titleGrants' => Permissions::titleGrants(Demo::bid()),
             // ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر `readsPayroll`
             'may_read_payroll' => $this->readsPayroll(),
             'branches' => Demo::branches(),
@@ -521,13 +537,27 @@ class EmployeeController extends Controller
             /*
              * الصلاحيات إلزامية: قسمٌ واحد على الأقل. موظفٌ بلا صلاحية حسابٌ
              * يدخل ولا يجد شيئًا — يُحفظ بنجاح ثمّ يُكتشف عطله عند أوّل دخول.
+             *
+             * ═══ و«حين تُخصَّص» لا «حين يُرسل العلم» ═══
+             *
+             * كانت `required_with` — وهي تعمل على **حضور** الحقل لا على قيمته.
+             * والنموذج يرسل `manual_permissions` في كلّ حفظة، فاختيارُ «اتبع
+             * صلاحيات الوظيفة» (`0`) كان يُردّ بـ«حدّد صلاحيات الموظف» — وهو
+             * لم يُطلَب منه أن يحدّد شيئًا.
+             *
+             * وثمنُه أنّ الرجوعَ عن التخصيص لم يكن يقع أصلًا: المتحكّم يعالج
+             * `null` بعنايةٍ — «اتبع الدور»، تتغيّر صلاحياته مع وظيفته — وبابُه
+             * مسدود. فمن خُصّصت صلاحياتُه مرّةً بقي عليها أبدًا.
+             *
+             * و`min:1` رُفعت لأنّها تكرارٌ: `required` تردّ المصفوفة الفارغة
+             * أصلًا. وببقائها كانت تردّ `[]` حتى حين لا تخصيص — أي تردّ الحال
+             * نفسَها من بابٍ ثانٍ.
              */
-            'permissions' => ['required_with:manual_permissions', 'array', 'min:1'],
+            'permissions' => ['required_if:manual_permissions,1', 'array'],
             // والأفعالُ تُمنح من القائمة نفسها — انظر Permissions::ACTIONS
             'permissions.*' => ['string', Rule::in([...Permissions::sections(), ...Permissions::actions()])],
         ], [
-            'permissions.required_with' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
-            'permissions.min' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
+            'permissions.required_if' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
         ] + MerchantAccount::messages());
 
         if (filled($data['login_username'] ?? null)) {

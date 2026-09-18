@@ -68,6 +68,16 @@ interface Props {
     grantable?: string[];
     /** وظائفُ لا يُسندها الفاعل: دورُها يحمل ما لا يملكه — `mayAssignRole` */
     blockedTitles?: string[];
+    /**
+     * ما تفتحه كلُّ وظيفة: تسميتها ← مفاتيحُها.
+     *
+     * تُقرأ حين يُختار «اتبع صلاحيات الوظيفة»، فيرى المديرُ ما سيفتحه
+     * الموظّف فعلًا — ويتبدّل حين يبدّل المسمّى في النموذج نفسِه.
+     *
+     * وتُحسب في الخادم (`Permissions::titleGrants`): الدورُ عمودٌ لا يصل
+     * الواجهةَ أصلًا، وشاشةٌ تخمّنه تقول غيرَ ما يقع.
+     */
+    titleGrants?: Record<string, string[]>;
     /** لا يُعدّل المدير صلاحيات حسابه */
     canEditPermissions?: boolean;
     /*
@@ -129,6 +139,7 @@ export default function EmployeeForm({
     actions,
     grantable,
     blockedTitles,
+    titleGrants,
     canEditPermissions = true,
     mayReadPayroll = true,
 }: Props) {
@@ -170,11 +181,57 @@ export default function EmployeeForm({
         monthly_target: Number(employee?.monthly_target ?? 0) ? String(employee!.monthly_target) : '',
         basic_salary: Number(employee?.basic_salary ?? 0) ? String(employee!.basic_salary) : '',
         allowances: Number(employee?.allowances ?? 0) ? String(employee!.allowances) : '',
-        // علمٌ يُرسل دائمًا: مصفوفة فارغة تسقط من طلب HTTP، فبدونه لا يميّز
-        // الخادم «لم تُرسل الصلاحيات» من «أُرسلت فارغة» — ولا يستطيع رفضها
-        manual_permissions: true,
+        /*
+         * علمٌ يُرسل دائمًا: مصفوفة فارغة تسقط من طلب HTTP، فبدونه لا يميّز
+         * الخادم «لم تُرسل الصلاحيات» من «أُرسلت فارغة» — ولا يستطيع رفضها.
+         *
+         * وقيمتُه تتبع الموظّف: من صلاحياتُه موروثةٌ من وظيفته (`null`) يُفتح
+         * نموذجُه على «اتبع الوظيفة»، ومن خُصّصت له قائمةٌ يُفتح على «خصّص».
+         * وكان يُرسل `true` أبدًا — فلا سبيل إلى الرجوع، ولا تُقرأ حالُ
+         * الموظّف كما هي.
+         */
+        manual_permissions: employee ? employee.permissions != null : true,
         permissions: employee?.permissions ?? employee?.role_permissions ?? [],
     });
+
+    /*
+     * ما تفتحه الوظيفةُ المختارةُ **الآن** — لا وظيفةُ الموظّف يوم فُتحت الشاشة.
+     *
+     * المديرُ قد يبدّل المسمّى ويختار «اتبع الوظيفة» في الحفظة نفسِها، فلو
+     * عُرضت له قائمةُ الوظيفة القديمة لَقرأ غيرَ ما سيقع.
+     *
+     * ومسمًّى قديمٌ لا صفَّ له (وقعت على الإنتاج: «أمين مخزن» بلا وظيفة) لا
+     * يُخترع له جواب — يُقال إنّه غير معروف، وتبقى صلاحياتُ الموظّف على
+     * دورها. انظر `EmployeeController::update`.
+     */
+    const titleKnown = !titleGrants || form.data.job_title in (titleGrants ?? {});
+    const roleGrants = titleGrants?.[form.data.job_title] ?? employee?.role_permissions ?? [];
+
+    // ما يُعرض مؤشَّرًا: المخصَّصُ قائمتُه، والمتبِعُ قائمةَ وظيفته
+    const shown = form.data.manual_permissions ? form.data.permissions : roleGrants;
+
+    /*
+     * والمربّعاتُ تُؤشَّر حين تُخصَّص وحدها.
+     *
+     * في «اتبع الوظيفة» هي عرضٌ لا مقبض: نقرةٌ عليها تُغيّر قائمةً لا تُقرأ
+     * أصلًا، فيظنّ المديرُ أنّه نزع صلاحيةً وهي قائمة. ومقبضٌ لا يُدير شيئًا
+     * أسوأ من غياب المقبض.
+     */
+    const boxesLive = canCustomize && form.data.manual_permissions;
+
+    /*
+     * والتخصيصُ يبدأ من حيث انتهت الوظيفة.
+     *
+     * من ضغط «خصّص» يريد أن يزيد أو ينقص، لا أن يبدأ من صفحةٍ بيضاء فيعيد
+     * تأشير ما كانت وظيفتُه تمنحه أصلًا — وأوّلُ حفظةٍ بلا تأشير تُردّ.
+     */
+    const setManual = (on: boolean) => {
+        if (on && form.data.permissions.length === 0) {
+            form.setData({ ...form.data, manual_permissions: true, permissions: roleGrants });
+            return;
+        }
+        form.setData('manual_permissions', on);
+    };
 
     /*
      * ما لا يُمنح يُعطَّل — ولا يُرفع.
@@ -552,6 +609,90 @@ export default function EmployeeForm({
                                 </p>
                             )}
 
+                            {/*
+                                ═══ مصدرُ الصلاحية: وظيفتُه أم قائمةٌ له وحده ═══
+
+                                سؤالٌ كان يُجاب في الخادم ولا يُسأل في الشاشة:
+                                `null` تعني «اتبع الوظيفة» ويعالجها المتحكّم
+                                بعناية — وبابُها كان مسدودًا، فالنموذج يرسل
+                                «خصّص» أبدًا. فمن خُصّصت صلاحياتُه مرّةً بقي
+                                عليها ولو بُدِّلت وظيفتُه.
+
+                                والفرقُ بين الحالين ليس شكلًا: المتبِعُ تتبدّل
+                                صلاحياتُه حين يُرقّى، والمخصَّصُ لا تتبدّل.
+                            */}
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                {([
+                                    { on: false, title: 'اتبع صلاحيات الوظيفة', hint: 'تتبدّل صلاحياته كلّما تبدّلت وظيفته' },
+                                    { on: true, title: 'خصّص لهذا الموظّف', hint: 'قائمةٌ له وحده — لا تتبدّل مع الوظيفة' },
+                                ] as const).map((opt) => {
+                                    /*
+                                        وما لا تفتحه الباقة يُعطَّل — إلّا لمن خُصّصت
+                                        صلاحياتُه قبل أن يوجد الحدّ أو قبل أن تنزل
+                                        باقتُه. والخادمُ يُبقي القائم ولا يجيز إحداثَ
+                                        جديد (`refuseManualPermissionsBeyondPlan`)،
+                                        فتقول الشاشةُ ما يقوله الباب.
+                                    */
+                                    const locked = opt.on && ! canCustomize && employee?.permissions == null;
+                                    const picked = form.data.manual_permissions === opt.on;
+
+                                    return (
+                                        <button
+                                            key={String(opt.on)}
+                                            type="button"
+                                            disabled={locked}
+                                            onClick={() => setManual(opt.on)}
+                                            title={locked ? t('الصلاحيات المخصّصة ليست في باقتك الحالية.') : undefined}
+                                            className={cn(
+                                                'rounded-[10px] border p-3 text-start transition-colors',
+                                                picked
+                                                    ? 'border-[#111] bg-[#f9fafb]'
+                                                    : 'border-[#e5e7eb] hover:bg-[#f9fafb]',
+                                                locked && 'cursor-not-allowed opacity-60 hover:bg-transparent',
+                                            )}
+                                        >
+                                            <span className="flex items-center gap-2">
+                                                <span
+                                                    className={cn(
+                                                        'flex size-4 shrink-0 items-center justify-center rounded-full border',
+                                                        picked ? 'border-[#111]' : 'border-[#d1d5db]',
+                                                    )}
+                                                >
+                                                    {picked && <span className="size-2 rounded-full bg-[#111]" />}
+                                                </span>
+                                                <span className="text-sm font-medium text-[#111]">{t(opt.title)}</span>
+                                            </span>
+                                            <span className="mt-1 block ps-6 text-[12px] text-[#6b7280]">
+                                                {t(opt.hint)}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/*
+                                ومسمًّى لا صفَّ له لا يُخترع له جواب.
+
+                                يقع فعلًا: موظّفٌ على الإنتاج يحمل «أمين مخزن»
+                                وليست في وظائف متجره. فتُقال الحالُ كما هي بدل
+                                أن تُعرض قائمةٌ فارغة تُقرأ «بلا صلاحيات».
+                            */}
+                            {! form.data.manual_permissions && ! titleKnown && (
+                                <p className="rounded-[10px] border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]">
+                                    {t('مسمّى «:title» ليس في قائمة الوظائف — تبقى صلاحياته على ما هي حتى تُسنَد إليه وظيفةٌ معروفة.', {
+                                        title: form.data.job_title,
+                                    })}
+                                </p>
+                            )}
+
+                            {! form.data.manual_permissions && titleKnown && (
+                                <p className="text-[12px] text-[#6b7280]">
+                                    {t('ما تفتحه وظيفة «:title» — يُعرض ولا يُعدَّل من هنا.', {
+                                        title: form.data.job_title || '—',
+                                    })}
+                                </p>
+                            )}
+
                             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                                 {Object.entries(sections).map(([key, label]) => (
                                     <label
@@ -559,16 +700,17 @@ export default function EmployeeForm({
                                         title={mayGrant(key) ? undefined : t('لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.')}
                                         className={cn(
                                             'flex items-center gap-2.5',
-                                            canCustomize && mayGrant(key)
+                                            boxesLive && mayGrant(key)
                                                 ? 'cursor-pointer'
                                                 : 'cursor-not-allowed opacity-60',
                                         )}
                                     >
+                                        {/* والمعروضُ من المصدر المختار: قائمتُه هو، أو قائمةُ وظيفته */}
                                         <input
                                             type="checkbox"
-                                            checked={form.data.permissions.includes(key)}
+                                            checked={shown.includes(key)}
                                             onChange={() => togglePermission(key)}
-                                            disabled={! canCustomize || ! mayGrant(key)}
+                                            disabled={! boxesLive || ! mayGrant(key)}
                                             className="size-4 rounded border-[#d1d5db] accent-[#111]"
                                         />
                                         <span className="text-sm text-[#374151]">{label}</span>
@@ -596,16 +738,16 @@ export default function EmployeeForm({
                                             title={mayGrant(key) ? undefined : t('لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.')}
                                             className={cn(
                                                 'flex items-center gap-2.5',
-                                                canCustomize && mayGrant(key)
+                                                boxesLive && mayGrant(key)
                                                     ? 'cursor-pointer'
                                                     : 'cursor-not-allowed opacity-60',
                                             )}
                                         >
                                             <input
                                                 type="checkbox"
-                                                checked={form.data.permissions.includes(key)}
+                                                checked={shown.includes(key)}
                                                 onChange={() => togglePermission(key)}
-                                                disabled={! canCustomize || ! mayGrant(key)}
+                                                disabled={! boxesLive || ! mayGrant(key)}
                                                 className="size-4 rounded border-[#d1d5db] accent-[#111]"
                                             />
                                             <span className="text-sm text-[#374151]">{label}</span>

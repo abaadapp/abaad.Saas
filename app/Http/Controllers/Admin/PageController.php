@@ -470,6 +470,8 @@ class PageController extends Controller
              */
             'grantable' => Permissions::grantable(auth()->user()),
             'blockedTitles' => self::blockedJobTitles(),
+            // ما تفتحه كلُّ وظيفة — تقرؤها الشاشةُ حين يُختار «اتبع صلاحيات الوظيفة»
+            'titleGrants' => Permissions::titleGrants(Demo::bid()),
             // ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر EmployeeController
             'may_read_payroll' => (bool) auth()->user()?->may(Permissions::PAYROLL_VIEW),
         ]);

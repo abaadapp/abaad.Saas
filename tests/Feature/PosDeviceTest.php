@@ -7,6 +7,8 @@ use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\PosDevice;
+use App\Models\PosPeripheral;
+use App\Models\Product;
 use App\Models\User;
 use App\Support\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -247,6 +249,105 @@ class PosDeviceTest extends TestCase
         $this->enterPos($dev, $raw, $cashier)->assertRedirect(route('pos.setup'));
     }
 
+    /* ------------------- الجهاز يُحيا ولا يُستنسخ ------------------- */
+
+    /**
+     * إعادةُ التفعيل تُحيي الصفَّ نفسَه — بعتاده.
+     *
+     * ═══ العطب ═══
+     *
+     * نقلُ جهازٍ إلى فرعٍ آخر يُبطل تفعيله، وتقول الرسالةُ للمدير: «أعد
+     * تفعيله من الجهاز نفسه». فكان يفعل، فيُنشأ صفٌّ ثانٍ: واحدٌ ملغًى يحمل
+     * طابعةَ الصندوق ودرجَه، وواحدٌ نشطٌ بلا عتاد.
+     *
+     * فيتوقّف الإيصالُ عن الطباعة ولا أحدَ يعرف لماذا: المديرُ اتّبع ما قيل
+     * له، والشاشةُ قالت «تمّ التفعيل»، والملحقاتُ معلَّقةٌ على صفٍّ لا يُقرأ.
+     *
+     * فيُسأل عن الثلاثة: صفٌّ واحد، نشطٌ على الفرع الجديد، وعتادُه معه.
+     */
+    public function test_reactivating_revives_the_same_register_with_its_hardware(): void
+    {
+        [$dev] = $this->device($this->khuwair, 'كاشير الخوير');
+        $printer = $this->printer($dev);
+
+        $this->actingAs($this->ownerA)->put(route('admin.devices.update', $dev->id), [
+            'name' => 'كاشير الخوير', 'branch_id' => $this->seeb->id,
+        ])->assertRedirect();
+
+        $this->assertSame(PosDevice::REVOKED, $dev->fresh()->status);
+
+        // «أعد تفعيله من الجهاز نفسه» — بالكوكي التي يحملها هذا المتصفّح
+        $this->onDevice($dev, 'رمزٌ بطل')->actingAs($this->ownerA)
+            ->post(route('pos.setup.activate'), ['branch_id' => $this->seeb->id, 'name' => 'كاشير الخوير'])
+            ->assertRedirect(route('pos.index'));
+
+        $this->assertSame(1, PosDevice::where('business_id', $this->a->id)->count(), 'وُلد للجهاز توأم');
+
+        $dev->refresh();
+        $this->assertSame(PosDevice::ACTIVE, $dev->status);
+        $this->assertSame($this->seeb->id, $dev->branch_id);
+        $this->assertSame($dev->id, $printer->fresh()->pos_device_id, 'الطابعةُ بقيت على صفٍّ ملغى');
+        $this->assertCount(1, $dev->peripherals, 'الجهازُ عاد بلا عتاده');
+    }
+
+    /** والرمزُ القديم يبقى ميتًا بعد الإحياء — الإحياءُ ليس استرجاعًا لما بطل */
+    public function test_the_dead_token_stays_dead_after_a_revival(): void
+    {
+        [$dev, $raw] = $this->device($this->khuwair);
+
+        $this->actingAs($this->ownerA)->delete(route('admin.devices.revoke', $dev->id));
+
+        $this->onDevice($dev, $raw)->actingAs($this->ownerA)
+            ->post(route('pos.setup.activate'), ['branch_id' => $this->khuwair->id, 'name' => 'كاشير 01']);
+
+        $cashier = $this->cashier($this->a, 'k20@abaad.om');
+        $this->enterPos($dev->fresh(), $raw, $cashier)->assertRedirect(route('pos.setup'));
+    }
+
+    /**
+     * ولا يُتبنّى صفُّ جارٍ بمعرّفٍ في كوكي.
+     *
+     * الكوكي مشفَّرةٌ بمفتاح التطبيق فلا يكتبها إلّا النظام — لكنّ متصفّحًا
+     * خدم متجرًا ثمّ صار في يد متجرٍ آخر يحملها. فيُحصر البحثُ بالمتجر،
+     * وإلّا انتقل صفُّ جهازٍ — بعتاده وسجلّه — إلى متجرٍ لا يملكه.
+     */
+    public function test_a_cookie_from_another_tenant_does_not_hand_over_a_register(): void
+    {
+        [$theirs] = $this->device($this->branchB, 'جهازهم');
+        $ownerB = User::create([
+            'business_id' => $this->b->id, 'name' => 'صاحب ب', 'email' => 'ob@abaad.om',
+            'password' => 'password12345', 'role' => 'admin', 'status' => 'نشط',
+        ]);
+
+        // صاحبُ «ب» يفعّل على متصفّحٍ يحمل كوكي جهازِ «أ»
+        [$mine] = $this->device($this->khuwair, 'جهازي');
+
+        $this->onDevice($mine, 'أيًّا كان')->actingAs($ownerB)
+            ->post(route('pos.setup.activate'), ['branch_id' => $this->branchB->id, 'name' => 'جهاز ب الجديد']);
+
+        $mine->refresh();
+        $this->assertSame($this->a->id, $mine->business_id, 'صفُّ جهازٍ انتقل بين متجرين');
+        $this->assertSame('جهازي', $mine->name);
+        $this->assertSame(2, PosDevice::where('business_id', $this->b->id)->count(), 'لم يُنشأ صفٌّ لمتجر ب');
+        $this->assertSame($theirs->id, $theirs->fresh()->id);
+    }
+
+    /** طابعةُ شبكةٍ على هذا الصندوق */
+    private function printer(PosDevice $device): PosPeripheral
+    {
+        return PosPeripheral::create([
+            'business_id' => $device->business_id,
+            'pos_device_id' => $device->id,
+            'name' => 'طابعة الإيصالات',
+            'type' => 'طابعة',
+            'connection' => 'شبكة',
+            'address' => '192.168.1.50',
+            'paper_width' => 80,
+            'auto_print' => true,
+            'active' => true,
+        ]);
+    }
+
     /* -------------------------- سياق الجلسة -------------------------- */
 
     /** الجلسة تحمل الموظف والفرع والجهاز والمتجر الصحيح */
@@ -293,7 +394,7 @@ class PosDeviceTest extends TestCase
         $cashier = $this->cashier($this->a, 'k11@abaad.om', [$this->seeb->id]);
         [$dev, $raw] = $this->device($this->seeb);
 
-        $product = \App\Models\Product::create([
+        $product = Product::create([
             'business_id' => $this->a->id, 'name' => 'صنف', 'price' => 1.5, 'quantity' => 10,
         ]);
 

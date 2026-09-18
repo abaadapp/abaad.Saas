@@ -52,7 +52,7 @@ class PosTerminal
     {
         $raw = Str::random(64);
 
-        $device = PosDevice::create([
+        $columns = [
             'business_id' => $branch->business_id,
             'branch_id' => $branch->id,
             'name' => $name,
@@ -61,11 +61,57 @@ class PosTerminal
             'activated_by' => $byUserId,
             'activated_at' => now(),
             'last_seen_at' => now(),
-        ]);
+        ];
+
+        /*
+         * ═══ الجهازُ نفسُه يُحيا، ولا يُولد له توأم ═══
+         *
+         * نقلُ جهازٍ إلى فرعٍ آخر يُبطل تفعيله، وتقول الرسالةُ للمدير: «أعد
+         * تفعيله **من الجهاز نفسه**». فكان يفعل، فيُنشأ صفٌّ ثانٍ: واحدٌ ملغًى
+         * يحمل طابعةَ الصندوق ودرجَه، وواحدٌ نشطٌ بلا عتاد.
+         *
+         * فيتوقّف الإيصالُ عن الطباعة ولا أحدَ يعرف لماذا — المديرُ اتّبع ما
+         * قيل له، والشاشةُ تقول «تمّ التفعيل»، والملحقاتُ معلَّقةٌ على صفٍّ
+         * لا يُقرأ. وتنمو القائمةُ صفًّا كلَّ مرّة.
+         *
+         * والصفُّ يُعرف بالكوكي: هذا المتصفّحُ كان الجهازَ رقمَ كذا. وهي
+         * مشفَّرةٌ بمفتاح التطبيق فلا يكتبها إلّا نحن — ومع ذلك تُحصر بالمتجر،
+         * فمعرّفُ جهازِ جارٍ لا يُتبنّى.
+         */
+        $device = self::claimed($branch->business_id);
+
+        if ($device) {
+            $device->update($columns);
+        } else {
+            $device = PosDevice::create($columns);
+        }
 
         self::bind($device, $raw);
 
         return $device;
+    }
+
+    /**
+     * الصفُّ الذي يحمل هذا المتصفّحُ معرّفَه — ولو أُبطل رمزُه.
+     *
+     * تختلف عن `current()`: تلك تسأل «أهذا المتصفّحُ مأذونٌ الآن؟» فتفحص
+     * الرمزَ والحالة. وهذه تسأل «أيُّ صفٍّ هو؟» — سؤالُ هويّةٍ لا إذن.
+     *
+     * ولا تُستعمل إلّا في التفعيل، وهو بابٌ يحرسه `authorizeActivation`:
+     * لا يفتحه إلّا من يملك الإعدادات، وهو واقفٌ على الجهاز.
+     */
+    private static function claimed(int $businessId): ?PosDevice
+    {
+        $raw = (string) Request::cookie(self::COOKIE);
+
+        if (! str_contains($raw, '|')) {
+            return null;
+        }
+
+        [$id] = explode('|', $raw, 2);
+
+        // والحصرُ بالمتجر: كوكي متصفّحٍ خدم متجرًا آخر لا تُسلّمه صفَّ جاره
+        return PosDevice::where('business_id', $businessId)->find((int) $id);
     }
 
     /** يكتب هوية الجهاز في كوكي موقَّعة طويلة العمر */

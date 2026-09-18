@@ -40,6 +40,9 @@ class ASentAlertObeysItsSwitchTest extends TestCase
 
     private User $owner;
 
+    /** الصنفُ الذي يستحقّ التنبيه — ويُمسك بمعرّفه لا برقمٍ مفترَض */
+    private Product $rare;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -54,7 +57,7 @@ class ASentAlertObeysItsSwitchTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
         ]);
 
-        Product::create([
+        $this->rare = Product::create([
             'business_id' => $this->biz->id, 'name' => 'صنف نادر',
             'price' => 5, 'cost' => 2, 'quantity' => 1, 'alert_qty' => 10,
         ]);
@@ -136,8 +139,8 @@ class ASentAlertObeysItsSwitchTest extends TestCase
         $this->assertFalse($mail->contains($muted->id), 'البريد ينبّه بصنفٍ أُسكت');
 
         // وما يستحقّ التنبيه يصل الاثنين
-        $this->assertTrue($bell->contains('low-1'));
-        $this->assertTrue($mail->contains(1));
+        $this->assertTrue($bell->contains('low-'.$this->rare->id));
+        $this->assertTrue($mail->contains($this->rare->id));
     }
 
     /**

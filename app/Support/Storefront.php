@@ -8,7 +8,6 @@ use App\Models\Product;
 use App\Support\Website\Published;
 use App\Support\Website\Shelf;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * متجرُ التاجر على الإنترنت — الصفحة التي يفتحها الزبون.
@@ -430,7 +429,13 @@ class Storefront
             'categories' => self::categories($bid),
             'currency' => $currency,
             'products' => self::products($bid, $showPrices, $whatsapp, $currency),
-            'logo' => $business->logo ? Storage::url($business->logo) : null,
+            /*
+             * الشعارُ يصل من النموذج رابطًا جاهزًا (`Business::getLogoAttribute`
+             * تمرّ `Storage::url` أو تُبقي الرابط المطلق كما هو). فتغليفُه هنا
+             * ثانيةً كان يُخرج `/storage/storage/logos/…` — ٤٠٤ على كلّ شعارٍ
+             * مرفوع، و`/storage/https://…` على كلّ رابطٍ خارجيّ.
+             */
+            'logo' => $business->logo ?: null,
             /*
              * معدّلُ Google — إن أذن صاحبُه، وإن كان لفرعه ملفٌّ مربوط.
              *

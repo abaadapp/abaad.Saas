@@ -65,6 +65,38 @@ class StorefrontTest extends TestCase
         return $this->get(route('store.show', $slug));
     }
 
+    /* --------------------------- الشعار --------------------------- */
+
+    /**
+     * الشعارُ المرفوع يُعرض من مكانه — لا من `/storage/storage/…`.
+     *
+     * النموذجُ يردّ الشعارَ رابطًا جاهزًا، وكانت الصفحةُ تغلّفه ثانيةً فيصير
+     * `/storage/storage/logos/…` — ٤٠٤ على كلّ شعارٍ مرفوع.
+     */
+    public function test_an_uploaded_logo_is_linked_once_not_twice(): void
+    {
+        $this->business->forceFill(['logo' => 'logos/ward.png'])->save();
+
+        $logo = Storefront::page($this->business->fresh())['logo'];
+
+        $this->assertStringEndsWith('/storage/logos/ward.png', $logo);
+        $this->assertStringNotContainsString('/storage/storage/', $logo);
+    }
+
+    /** ورابطٌ خارجيّ يبقى كما هو — لا يُسبَق بـ`/storage/` */
+    public function test_an_external_logo_is_left_alone(): void
+    {
+        $this->business->forceFill(['logo' => 'https://cdn.example.com/ward.png'])->save();
+
+        $this->assertSame('https://cdn.example.com/ward.png', Storefront::page($this->business->fresh())['logo']);
+    }
+
+    /** ولا شعارَ يُقال فراغًا */
+    public function test_no_logo_is_null(): void
+    {
+        $this->assertNull(Storefront::page($this->business->fresh())['logo']);
+    }
+
     /* --------------------------- العنوان --------------------------- */
 
     public function test_a_slug_is_cleaned_to_something_a_customer_can_type(): void

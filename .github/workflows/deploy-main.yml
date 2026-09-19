@@ -88,14 +88,23 @@ jobs:
               root@165.227.145.219 2>&1 | tee deploy.log
           test "${PIPESTATUS[0]}" -eq 0
 
+      # الخادمُ فحص نفسه في `deploy.sh` (من داخله)؛ وهذا رأيٌ ثانٍ من الخارج.
+      # والعنوانُ مثبَّتٌ بالرقم: سقطت مرّةً خمسَ محاولاتٍ بـ`000` — لا ٥٠٢ ولا
+      # ٥٠٠ — ونجنكس لم يرَ طلبًا واحدًا؛ أي أنّ الاتّصال لم يُبنَ أصلًا (DNS
+      # على الأرجح، ووظيفةُ الوسم سُقطت معه). `--resolve` يُسقط DNS من المعادلة
+      # ويُبقي التحقّق من الشهادة باسم النطاق الحقيقيّ. و`-S` تُظهر السبب
+      # بدل رقمٍ أصمّ.
       - name: التحقّق من الموقع
         run: |
-          set -euo pipefail
-          for i in 1 2 3 4 5; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' https://app.abaadapp.om/health || true)
+          set -uo pipefail
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' \
+                     --resolve app.abaadapp.om:443:165.227.145.219 \
+                     --connect-timeout 10 --max-time 30 \
+                     https://app.abaadapp.om/health 2>curl.err || true)
             [ "$code" = "200" ] && { echo "health → 200"; exit 0; }
-            echo "محاولة $i: $code"
-            sleep 10
+            echo "محاولة $i: ${code} $(cat curl.err)"
+            sleep 15
           done
           echo "::error::الموقع لا يردّ 200 بعد النشر"
           exit 1

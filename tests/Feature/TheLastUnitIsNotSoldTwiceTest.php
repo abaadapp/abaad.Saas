@@ -34,6 +34,9 @@ use Tests\TestCase;
  * وبدونه يقرأ «١» ويمرّ.
  *
  * ولا `RefreshDatabase` هنا: معاملتُها تُخفي الصفوفَ عن الاتّصال الثاني.
+ * فالصفوفُ تُودَع فعلًا — و`DatabaseTruncation` تكنس **قبل** الاختبار لا
+ * بعده، فيُكنَس هنا بعده أيضًا: ما أودعه هذا الاختبار كان يبقى لمن بعده،
+ * فعدّ اختبارٌ آخر «متجرًا نشطًا» لم يُنشئه.
  */
 class TheLastUnitIsNotSoldTwiceTest extends TestCase
 {
@@ -46,6 +49,15 @@ class TheLastUnitIsNotSoldTwiceTest extends TestCase
     private Product $bouquet;
 
     private Product $rose;
+
+    protected function tearDown(): void
+    {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            $this->truncateTablesForAllConnections();
+        }
+
+        parent::tearDown();
+    }
 
     protected function setUp(): void
     {

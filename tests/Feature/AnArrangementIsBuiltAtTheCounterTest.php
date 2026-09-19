@@ -444,6 +444,66 @@ class AnArrangementIsBuiltAtTheCounterTest extends TestCase
         $this->assertSame(47, (int) $this->white->fresh()->quantity, 'رُفع الكسرُ مرّتين');
     }
 
+    /**
+     * وأربعةُ أبوابٍ على الرفّ نفسه تُجمع قبل الحكم — لا يمرّ كلُّ بابٍ وحده.
+     *
+     * الصنفُ الواحد يُطلب بندًا عاديًّا، ومكوّنَ وصفة، ومادّةَ تنسيق، وإضافةً
+     * مخزنيّة في الطلب نفسه. كلُّ جزءٍ وحده أقلُّ من الرفّ، ومجموعُها أكثر.
+     */
+    public function test_demand_from_every_door_is_summed_before_the_shelf_is_judged(): void
+    {
+        $bouquet = Product::create([
+            'business_id' => $this->shop->id, 'name' => 'بوكيه', 'price' => 10,
+            'cost' => 0, 'quantity' => 0, 'active' => true,
+        ]);
+        RecipeItem::create([
+            'business_id' => $this->shop->id, 'product_id' => $bouquet->id,
+            'component_product_id' => $this->white->id, 'quantity' => 2,
+        ]);
+        $twoWhite = Addon::create([
+            'business_id' => $this->shop->id, 'name' => 'وردتان', 'price' => 1, 'active' => true,
+            'inventory_product_id' => $this->white->id, 'inventory_quantity' => 2,
+        ]);
+        $this->white->update(['quantity' => 5]);
+        BranchStock::ensureAllocated($this->shop->id, $this->white->id, 5);
+
+        // ١ عاديّ + ٢ وصفة + ١ تنسيق + ٢ إضافة = ٦ > ٥
+        $cart = fn () => [
+            'items' => [
+                ['id' => $this->white->id, 'name' => 'ورد أبيض', 'qty' => 1],
+                ['id' => $bouquet->id, 'name' => 'بوكيه', 'qty' => 1],
+                [
+                    'name' => 'تنسيق ورد مخصص', 'qty' => 1,
+                    'addons' => [['addon_id' => $twoWhite->id, 'qty' => 1]],
+                    'custom' => $this->custom(['components' => [
+                        ['product_id' => $this->white->id, 'quantity' => 1, 'kind' => 'flower'],
+                    ]]),
+                ],
+            ],
+            'payment_method' => 'نقدي',
+            'client_uuid' => uniqid('d', true),
+        ];
+
+        $this->actingAs($this->cashier)->postJson('/pos/checkout', $cart())
+            ->assertStatus(422)->assertJsonValidationErrors('items');
+        $this->assertSame(5, (int) $this->white->fresh()->quantity, 'خُصم شيءٌ من بيعٍ مرفوض');
+        $this->assertSame(0, Order::count());
+
+        // وبستٍّ على الرفّ يمرّ — ويخرج ستٌّ بالضبط، من كلّ بابٍ حركتُه
+        $this->white->update(['quantity' => 6]);
+        BranchStock::where('product_id', $this->white->id)->update(['quantity' => 6]);
+
+        $this->actingAs($this->cashier)->postJson('/pos/checkout', $cart())->assertOk();
+
+        $this->assertSame(0, (int) $this->white->fresh()->quantity);
+        $this->assertSame(0, (int) BranchStock::where('product_id', $this->white->id)->sum('quantity'));
+        $this->assertSame(
+            ['بيع' => -1, StockLedger::RECIPE => -3, StockLedger::ADDON => -2],
+            InventoryMovement::where('product_id', $this->white->id)->get()
+                ->mapWithKeys(fn ($m) => [$m->type => (int) $m->quantity])->all(),
+        );
+    }
+
     /** والحركةُ تُقيَّد برقم الطلب — فيُعرف من أين خرجت */
     public function test_the_movement_names_the_order_it_belongs_to(): void
     {

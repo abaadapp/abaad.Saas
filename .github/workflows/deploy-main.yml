@@ -1,0 +1,143 @@
+# النشر التلقائي — ولا يُنشر إلّا ما مرّ من البوابة.
+#
+# ═══ لمَ `workflow_run` لا `push` ═══
+#
+# `push` على main يبدأ مع CI لا بعدها، فيُنشر ما لم يُفحص بعدُ — ثم تحمرّ
+# البوابة على شيءٍ يعمل عند التجّار. فالبدايةُ هي **انتهاء** CI بنجاح.
+#
+# ═══ وmain وحدها ═══
+#
+# CI تعمل على طلبات الدمج أيضًا، و`workflow_run` يبلغه ذلك. فالفرعُ يُفحص
+# صراحةً: فرعٌ آخر أخضر لا يعني شيئًا للإنتاج.
+#
+# ═══ ويُوسَم ما نُشر لا ما نُوي نشرُه ═══
+#
+# `deploy.sh` تسحب رأس main، وقد يكون أحدث من البصمة التي فحصتها CI إن لحقت
+# دفعتان. فالوسمُ يُوضع على البصمة التي قرأها **الخادم بعد النشر** — الوسم
+# يقول «هذا ما يعمل»، فلا يقوله عن شيءٍ آخر.
+#
+# ═══ والمفتاح لا يفتح صدفة ═══
+#
+# مفتاحُ النشر مقيَّدٌ في `authorized_keys` بـ`command=`: مهما أُرسل عبره
+# يُنفَّذ سكربتُ النشر وحدَه. فتسرّبُه يعني نشرَ ما على main — لا جذرًا على
+# خادمٍ يواجه الإنترنت. والمستودعُ عامّ، والأسرارُ لا تصل إلى طلبات الدمج
+# من النسخ المتفرّعة.
+name: Deploy Main
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # وبابٌ يدويّ: نشرُ ما على main الآن بلا انتظار دفعةٍ جديدة
+  workflow_dispatch:
+
+# نشرتان متوازيتان تسحبان الشجرة نفسها في آنٍ واحد — لا تُلغى الجارية،
+# تُنتظر: إلغاءُ نشرٍ في منتصفه يترك الخادم نصفَ محدَّث
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: نشر على الإنتاج ووسمه
+    runs-on: ubuntu-latest
+    # الشرطُ صريحٌ هنا لا في خطوة: وظيفةٌ تبدأ ثم تنسحب تُقرأ في القائمة
+    # كأنها نشرت. واليدويُّ يمرّ بلا `workflow_run`.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: تهيئة مفتاح النشر
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          # سرٌّ غائب يُقال بصراحة: وظيفةٌ تسقط بـ«Permission denied» بعد
+          # دقيقتين لا تقول للقارئ إنّ السرّ لم يُضَف أصلًا
+          [ -n "$KEY" ]   || { echo "::error::السرّ DEPLOY_SSH_KEY غير مضبوط"; exit 1; }
+          [ -n "$KNOWN" ] || { echo "::error::السرّ DEPLOY_KNOWN_HOSTS غير مضبوط"; exit 1; }
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY"   > ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      # ‏`command=` في authorized_keys تتجاهل ما يُرسَل وتُشغّل النشر، فلا
+      # أمرَ هنا. و`-T` لأنّ المفتاح يمنع الطرفية. والمخرجُ يُحفظ: السكربتُ
+      # يطبع «تمّ: من → إلى»، ومنه تُقرأ البصمةُ التي تعمل فعلًا.
+      - name: النشر
+        run: |
+          set -euo pipefail
+          ssh -T -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=30 \
+              root@165.227.145.219 2>&1 | tee deploy.log
+          test "${PIPESTATUS[0]}" -eq 0
+
+      - name: التحقّق من الموقع
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://app.abaadapp.om/health || true)
+            [ "$code" = "200" ] && { echo "health → 200"; exit 0; }
+            echo "محاولة $i: $code"
+            sleep 10
+          done
+          echo "::error::الموقع لا يردّ 200 بعد النشر"
+          exit 1
+
+      # البصمةُ من الخادم لا من هنا: انظر ترويسة الملفّ. والسكربتُ يقولها
+      # في سطره الأخير «تمّ: من → إلى» — فتُقرأ منه، ولا تُخمَّن.
+      - name: قراءة ما يعمل على الخادم
+        id: deployed
+        run: |
+          set -euo pipefail
+          short=$(sed 's/\x1b\[[0-9;]*m//g' deploy.log | grep -oE 'تمّ: [0-9a-f]+ → [0-9a-f]+' | tail -1 | awk '{print $4}' || true)
+
+          if [ -z "$short" ]; then
+            echo "::error::لم يقل السكربتُ ما نشر — لا وسمَ بلا بصمة"
+            exit 1
+          fi
+
+          git fetch --quiet origin main
+          sha=$(git rev-parse --verify "${short}^{commit}")
+          echo "deployed: $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: الوسم
+        env:
+          SHA: ${{ steps.deployed.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --quiet
+
+          # موسومٌ بـv6 أصلًا؟ نشرةٌ ثانية للبصمة نفسها لا تُنشئ رقمًا ثانيًا
+          existing=$(git tag --points-at "$SHA" | grep -E '^v6\.[0-9]+$' | head -1 || true)
+          if [ -n "$existing" ]; then
+            echo "موسوم أصلًا: $existing"
+            exit 0
+          fi
+
+          last=$(git tag -l 'v6.*' | sed -E 's/^v6\.//' | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+          next="v6.$(( ${last:-0} + 1 ))"
+
+          git tag -a "$next" "$SHA" -m "نُشر على الإنتاج $(date -u +%Y-%m-%d\ %H:%M) UTC"
+          git push origin "$next"
+          echo "### نُشر ووُسم \`$next\` → \`$(git rev-parse --short "$SHA")\`" >> "$GITHUB_STEP_SUMMARY"

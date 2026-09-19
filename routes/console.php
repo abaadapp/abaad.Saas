@@ -61,6 +61,13 @@ Schedule::command('trash:purge')->dailyAt('02:30')->withoutOverlapping();
 Schedule::command('subscriptions:notify')->dailyAt('07:30')->withoutOverlapping();
 
 /*
+ * إعادةُ فحص نطاقات التجّار (05:00) — حالُ النطاق تتبع DNS لا الذاكرة.
+ * نطاقٌ قيل عنه «متصل» ثمّ زال سجلُّه يبقى «متصلًا» في اللوحة إلى الأبد
+ * إن لم يسأل أحد. انظر `DomainsCheck`.
+ */
+Schedule::command('domains:check')->dailyAt('05:00')->withoutOverlapping();
+
+/*
  * تذكيرُ سداد فواتير العملاء (09:00) — بعد فتح المحلّات لا قبلها.
  *
  * ورسالةٌ واحدة لكلّ فاتورةٍ وحدث: فاتورةٌ تأخّرت شهرًا لا تُرسل ثلاثين

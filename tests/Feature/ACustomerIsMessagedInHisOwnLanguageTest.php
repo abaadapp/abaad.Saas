@@ -211,4 +211,26 @@ class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
             'name' => 'John', 'phone' => '99112233', 'language' => 'fr',
         ])->assertSessionHasErrors('language');
     }
+
+    /** وشاشةُ الطلب تُعلِم الكاشيرَ بلغة الزبون قبل أن يغيّر الحالة */
+    public function test_the_order_screen_tells_the_cashier_which_language_the_customer_gets(): void
+    {
+        $owner = User::create([
+            'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'o@abaad.om',
+            'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
+        ]);
+        $english = Customer::create(['business_id' => $this->shop->id, 'name' => 'John', 'phone' => '99110001', 'language' => 'en']);
+        $unset = Customer::create(['business_id' => $this->shop->id, 'name' => 'سالم', 'phone' => '99110002']);
+
+        foreach ([[$english, 'en'], [$unset, null]] as [$customer, $expected]) {
+            $order = Order::create([
+                'business_id' => $this->shop->id, 'branch_id' => $this->branch->id,
+                'customer_id' => $customer->id, 'number' => 'ORD-L-'.$customer->id,
+                'status' => OrderStatus::PREPARING, 'total' => 10, 'subtotal' => 10,
+            ]);
+
+            $this->actingAs($owner)->get(route('admin.orders.show', $order->number))
+                ->assertInertia(fn ($p) => $p->where('order.customer_language', $expected));
+        }
+    }
 }

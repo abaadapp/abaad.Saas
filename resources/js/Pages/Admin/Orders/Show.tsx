@@ -47,6 +47,8 @@ import type { PageProps } from '@/types';
 interface OrderDetail {
     id: string;
     customer: string;
+    /** لغةُ رسائل واتساب من بطاقة الزبون — `null` يعني لغةَ المتجر */
+    customer_language: string | null;
     employee: string;
     branch: string | null;
     date: string;
@@ -725,7 +727,17 @@ export default function OrderShow() {
                                     {order.customer.slice(0, 1)}
                                 </span>
                                 <div>
-                                    <p className="font-medium text-[#111]">{order.customer}</p>
+                                    <p className="flex items-center gap-2 font-medium text-[#111]">
+                                        {order.customer}
+                                        {order.customer_language === 'en' && (
+                                            <span
+                                                title={t('يُراسَل بالإنجليزيّة على واتساب')}
+                                                className="rounded-md border border-[#c7d2fe] bg-[#eef2ff] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#4338ca]"
+                                            >
+                                                EN
+                                            </span>
+                                        )}
+                                    </p>
                                     <p className="text-[12px] text-[#9ca3af]">{order.branch || '—'}</p>
                                 </div>
                             </div>

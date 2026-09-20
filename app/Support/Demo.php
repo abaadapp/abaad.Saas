@@ -1233,6 +1233,14 @@ class Demo
             'id' => $o->number,
             'db_id' => $o->id,
             'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
+            /*
+             * ولغةُ رسائل واتساب التي ستخرج بها إشعاراتُ هذا الطلب.
+             *
+             * تُقرأ من بطاقة الزبون لا من الطلب: الشاشةُ تُعلِم الكاشيرَ
+             * قبل أن يغيّر الحالةَ بأيّ لغةٍ سيُراسَل الزبون — بلا سؤالٍ
+             * ولا نقرة. وفارغُها يعني لغةَ القالب (العربيّة).
+             */
+            'customer_language' => $o->customer?->language,
             'employee' => $o->employee_name ?? '—',
             'branch' => $o->branch ?? __('الفرع الرئيسي'),
             'status' => $o->status,

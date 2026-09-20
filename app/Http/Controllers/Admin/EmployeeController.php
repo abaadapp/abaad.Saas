@@ -118,6 +118,19 @@ class EmployeeController extends Controller
         // ولا يُكتب راتبٌ بيد من لا يقرؤه — يبقى صفرًا حتى يكتبه صاحبُه
         $data = $this->withoutPayrollFields($data);
 
+        /*
+         * ═══ والفراغُ في حقل كلمة المرور يعني «ولّدها» — لا «password» ═══
+         *
+         * كان يُملأ بـ`'password'` حرفيًّا. فتاجرٌ يترك الحقلَ — يظنّ أنّ
+         * النظام يولّدها أو يرسلها — يُخرج حسابًا اسمُ دخوله ظاهرٌ في كلّ
+         * شاشة وكلمتُه أشهرُ كلمةٍ في العالم، ومن جرّبها على أيّ اسمٍ دخل.
+         *
+         * فتُولَّد عشوائيّةً وتُعرض مرّةً واحدة في بطاقة الموظّف — البابُ
+         * نفسُه الذي تسلكه «إعادة تعيين كلمة المرور» — ولا تُحفظ إلّا مُجزَّأة.
+         */
+        $issued = filled($data['password'] ?? null) ? null : MerchantAccount::temporaryPassword();
+        $password = $issued ?? $data['password'];
+
         $employee = User::create([
             'business_id' => $this->bid(),
             'name' => $data['name'],
@@ -138,7 +151,7 @@ class EmployeeController extends Controller
              * والشاشاتُ كلُّها تكتب حالتَها الفارغة أصلًا — الحرفُ الأول في
              * دائرةٍ — ولا تقع أبدًا ما دام العمود يُملأ. فتُرك فارغًا، ووقعت.
              */
-            'password' => Hash::make($data['password'] ?? 'password'),
+            'password' => Hash::make($password),
             // العمودان لا يقبلان NULL، والحقل الفارغ يعني صفرًا لا فراغًا
             'basic_salary' => $data['basic_salary'] ?? 0,
             'allowances' => $data['allowances'] ?? 0,
@@ -153,6 +166,13 @@ class EmployeeController extends Controller
         ]);
         $this->syncBranches($employee, $data['branches'] ?? []);
         Activity::log('created', 'أضاف موظفًا: '.$data['name']);
+
+        // والمولَّدةُ تُقرأ في بطاقته لا في القائمة: هناك وحدَه تُعرض — انظر `resetPassword`
+        if ($issued !== null) {
+            return redirect()->route('admin.employees.show', $employee->id)
+                ->with('issued_password', $issued)
+                ->with('toast', ['msg' => __('أُضيف الموظف — انسخ كلمة مروره قبل إغلاق النافذة'), 'type' => 'success']);
+        }
 
         return redirect()->route('admin.employees.index')->with('toast', ['msg' => __('تم إضافة الموظف بنجاح'), 'type' => 'success']);
     }
@@ -194,10 +214,14 @@ class EmployeeController extends Controller
             return;
         }
 
-        $byRole = array_values(array_filter(
-            Permissions::sections(),
-            fn ($s) => Permissions::allows($role, $s),
-        ));
+        /*
+         * وما يمنحه الدورُ يُقاس أقسامًا **وأفعالًا** — بما تقرؤه الشاشةُ نفسُها.
+         *
+         * كان يُقاس بالأقسام وحدها، والشاشةُ تُرسل ما تحمله الوظيفةُ كاملًا
+         * (`titleGrants` → `roleGrants`). فمحاسبٌ — ووظيفتُه تحمل أفعالًا —
+         * يُضاف بعينِ قائمتها على باقةٍ لا تبيع التخصيص كان يُردّ «مخصَّصًا».
+         */
+        $byRole = Permissions::roleGrants($role);
 
         $wanted = array_values(array_unique($manual));
         sort($byRole);
@@ -463,9 +487,8 @@ class EmployeeController extends Controller
                 'allowances' => $this->readsPayroll() ? $employee->allowances : null,
                 // null تعني «اتبع الدور»؛ مصفوفة تعني قائمة يدوية
                 'permissions' => $employee->permissions,
-                'role_permissions' => collect(Permissions::sections())
-                    ->filter(fn ($s) => Permissions::allows($employee->role, $s))
-                    ->values()->all(),
+                // ما يفتحه دورُه كاملًا — أفعالَه لا أقسامَه وحدها — لمسمًّى لا صفَّ له في `titleGrants`
+                'role_permissions' => Permissions::roleGrants((string) $employee->role),
             ],
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),

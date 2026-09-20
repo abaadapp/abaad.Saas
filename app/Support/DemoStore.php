@@ -832,9 +832,18 @@ class DemoStore
 
             $net = round($gross - $deductions, 3);
 
+            /*
+             * والحالُ من حالات المسيرة الثلاث لا رابعة: «مصروفة».
+             *
+             * كانت تُكتب «مدفوعة» — كلمةٌ لا يعرفها `PayrollRunController` ولا
+             * شاشةُ الصرف: فتختفي المسيراتُ الستّ من شاشة الصرف (تُرشَّح على
+             * «معتمدة» و«مصروفة»)، وتُرسم بلا لون في القائمة. وطريقةُ الدفع
+             * كذلك بلفظ الصندوق نفسِه: «تحويل بنكي». حقلان يقولان الشيء نفسه
+             * يفترقان يومًا — وقد افترقا.
+             */
             $run = PayrollRun::create([
                 'business_id' => $bid, 'number' => 'PR-' . $period->format('Ym'),
-                'period' => $period->toDateString(), 'status' => 'مدفوعة',
+                'period' => $period->toDateString(), 'status' => 'مصروفة',
                 'gross' => round($gross, 3), 'deductions' => round($deductions, 3), 'net' => $net,
                 'approved_at' => $period->copy()->endOfMonth(),
                 'paid_at' => $period->copy()->endOfMonth()->addDay(),
@@ -845,7 +854,7 @@ class DemoStore
                     'payroll_run_id' => $run->id, 'user_id' => $u->id, 'employee_name' => $u->name,
                     'basic' => $basic, 'allowances' => $allow, 'overtime' => 0,
                     'deductions' => $ded, 'net' => $lineNet,
-                    'payment_method' => 'تحويل', 'paid' => true,
+                    'payment_method' => 'تحويل بنكي', 'paid' => true,
                     'paid_at' => $period->copy()->endOfMonth()->addDay(),
                 ]);
             }

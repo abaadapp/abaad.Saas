@@ -6,6 +6,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
+import LanguageChoice from '@/Components/LanguageChoice';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import {
@@ -2081,6 +2082,7 @@ function NewCustomerDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     const form = useForm({
         name: '',
         customer_type: 'شركة',
+        language: '',
         phone: '',
         email: '',
         tax_number: '',
@@ -2130,6 +2132,10 @@ function NewCustomerDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                                 { label: 'فرد', value: 'فرد' },
                             ]}
                         />
+                    </Field>
+
+                    <Field label="لغة رسائل واتساب" required error={form.errors.language}>
+                        <LanguageChoice value={form.data.language} onChange={(v) => form.setData('language', v)} />
                     </Field>
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

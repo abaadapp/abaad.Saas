@@ -1,9 +1,10 @@
-import { type FormEvent, useRef } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { UserPlus } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
+import LanguageChoice from '@/Components/LanguageChoice';
 import { useTranslate } from '@/lib/i18n';
 
 interface Props {
@@ -16,11 +17,15 @@ interface Props {
 export default function NewCustomerDialog({ open, onOpenChange, onSubmit }: Props) {
     const t = useTranslate();
     const formRef = useRef<HTMLFormElement>(null);
+    const [language, setLanguage] = useState('');
 
     const submit = async (e: FormEvent) => {
         e.preventDefault();
         if (!formRef.current) return;
-        if (await onSubmit(formRef.current)) onOpenChange(false);
+        if (await onSubmit(formRef.current)) {
+            setLanguage('');
+            onOpenChange(false);
+        }
     };
 
     return (
@@ -52,6 +57,11 @@ export default function NewCustomerDialog({ open, onOpenChange, onSubmit }: Prop
                     <div>
                         <Label htmlFor="c-email" className="mb-1.5">{t('البريد الإلكتروني')}</Label>
                         <Input id="c-email" name="email" type="email" placeholder="example@mail.com" dir="ltr" />
+                    </div>
+                    {/* إجباريّة: الحفظ يُردّ في `usePosCart.addCustomer` والخادمِ معًا حتى تُختار */}
+                    <div>
+                        <Label required className="mb-1.5">{t('لغة رسائل واتساب')}</Label>
+                        <LanguageChoice name="language" value={language} onChange={setLanguage} />
                     </div>
                 </form>
 

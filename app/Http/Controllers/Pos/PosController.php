@@ -1788,6 +1788,7 @@ class PosController extends Controller
             'phone' => Customers::phoneRule($this->bid()),
             'email' => ['nullable', 'email', 'max:255'],
             'tax_number' => ['nullable', 'string', 'max:50'],
+            'language' => Customers::languageRule(),
         ]);
         $data['business_id'] = $this->bid();
         $data = Customers::localizeName($data);

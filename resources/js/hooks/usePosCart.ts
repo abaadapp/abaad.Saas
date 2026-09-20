@@ -613,6 +613,10 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 onToast(t('أدخل اسم العميل'), 'warning');
                 return false;
             }
+            if (!fd.get('language')) {
+                onToast(t('اختر لغة رسائل واتساب للعميل'), 'warning');
+                return false;
+            }
             try {
                 const res = await fetch(form.action, {
                     method: 'POST',

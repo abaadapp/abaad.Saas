@@ -186,14 +186,19 @@ class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
         $this->assertSame('en', $message->language_code);
     }
 
-    /* ═════════════ والشاشةُ تكتبها ═════════════ */
+    /* ═════════════ والشاشةُ تكتبها — ولا تحفظ بلا جواب ═════════════ */
 
-    public function test_the_owner_saves_a_customers_language_from_the_form(): void
+    private function owner(): User
     {
-        $owner = User::create([
+        return User::create([
             'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'o@abaad.om',
             'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
         ]);
+    }
+
+    public function test_the_owner_saves_a_customers_language_from_the_form(): void
+    {
+        $owner = $this->owner();
 
         $this->actingAs($owner)->post(route('admin.customers.store'), [
             'name' => 'John', 'phone' => '99112233', 'language' => 'en',
@@ -203,22 +208,69 @@ class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
         $this->assertSame('en', $john->language);
 
         $this->actingAs($owner)->put(route('admin.customers.update', $john->id), [
-            'name' => 'John', 'phone' => '99112233', 'language' => '',
+            'name' => 'John', 'phone' => '99112233', 'language' => 'ar',
         ])->assertSessionHasNoErrors();
-        $this->assertNull($john->fresh()->language, 'الفراغُ يعني «لغة المتجر» لا يُردّ');
+        $this->assertSame('ar', $john->fresh()->language);
 
         $this->actingAs($owner)->put(route('admin.customers.update', $john->id), [
             'name' => 'John', 'phone' => '99112233', 'language' => 'fr',
         ])->assertSessionHasErrors('language');
+        $this->assertSame('ar', $john->fresh()->language, 'لغةٌ خارج الاثنتين كُتبت');
+    }
+
+    /**
+     * اللغةُ تُسأل ولا تُفترض — في الأبواب الأربعة.
+     *
+     * الرسالةُ تخرج وحدَها عند تغيير الحالة، فلا لحظةَ سؤالٍ غيرَ التسجيل.
+     * وعميلٌ حُفظ بلا لغةٍ يُراسَل بالعربيّة بلا أن يُسأل أحد.
+     */
+    public function test_no_customer_is_saved_without_a_language_from_any_door(): void
+    {
+        $owner = $this->owner();
+        $before = Customer::count();
+
+        // شاشةُ العملاء — إضافة
+        $this->actingAs($owner)->post(route('admin.customers.store'), [
+            'name' => 'John', 'phone' => '99112233', 'language' => '',
+        ])->assertSessionHasErrors('language');
+        $this->actingAs($owner)->post(route('admin.customers.store'), [
+            'name' => 'John', 'phone' => '99112233',
+        ])->assertSessionHasErrors('language');
+
+        // نافذةُ الصندوق — تُجيب JSON
+        $this->actingAs($owner)->postJson(route('pos.customers.store'), [
+            'name' => 'John', 'phone' => '99112234',
+        ])->assertStatus(422)->assertJsonValidationErrors('language');
+
+        // نافذةُ الفاتورة
+        $this->actingAs($owner)->post('/admin/customer-invoices/customers', [
+            'name' => 'John', 'phone' => '99112235',
+        ])->assertSessionHasErrors('language');
+
+        $this->assertSame($before, Customer::count(), 'حُفظ عميلٌ لا يُعرف بأيّ لغةٍ يُراسَل');
+
+        // والتعديلُ لا يمحوها
+        $john = Customer::create(['business_id' => $this->shop->id, 'name' => 'John', 'phone' => '99112236', 'language' => 'en']);
+        $this->actingAs($owner)->put(route('admin.customers.update', $john->id), [
+            'name' => 'John', 'phone' => '99112236', 'language' => '',
+        ])->assertSessionHasErrors('language');
+        $this->assertSame('en', $john->fresh()->language);
+
+        // ومع الجواب تمرّ الأبوابُ الثلاثة
+        $this->actingAs($owner)->postJson(route('pos.customers.store'), [
+            'name' => 'Ravi', 'phone' => '99112237', 'language' => 'en',
+        ])->assertOk();
+        $this->actingAs($owner)->post('/admin/customer-invoices/customers', [
+            'name' => 'شركة', 'phone' => '99112238', 'language' => 'ar',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame('en', Customer::where('phone', '99112237')->value('language'));
+        $this->assertSame('ar', Customer::where('phone', '99112238')->value('language'));
     }
 
     /** وشاشةُ الطلب تُعلِم الكاشيرَ بلغة الزبون قبل أن يغيّر الحالة */
     public function test_the_order_screen_tells_the_cashier_which_language_the_customer_gets(): void
     {
-        $owner = User::create([
-            'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'o@abaad.om',
-            'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
-        ]);
+        $owner = $this->owner();
         $english = Customer::create(['business_id' => $this->shop->id, 'name' => 'John', 'phone' => '99110001', 'language' => 'en']);
         $unset = Customer::create(['business_id' => $this->shop->id, 'name' => 'سالم', 'phone' => '99110002']);
 

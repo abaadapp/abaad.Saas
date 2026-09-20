@@ -104,6 +104,7 @@ class ArabicNumeralsTest extends TestCase
     public function test_a_phone_typed_in_arabic_is_stored_in_english(): void
     {
         $this->actingAs($this->owner)->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'زبون',
             'phone' => '٩١٢٣٤٥٦٧',
         ])->assertSessionHasNoErrors();
@@ -120,6 +121,7 @@ class ArabicNumeralsTest extends TestCase
     public function test_a_nested_value_is_normalised_too(): void
     {
         $this->actingAs($this->owner)->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'زبون',
             'phone' => '٩١٢٣٤٥٦٧',
             'address' => 'شارع ٢٣، بيت ٥',
@@ -214,7 +216,8 @@ class ArabicNumeralsTest extends TestCase
                  * شيئًا — ويحرس ذلك `RendererParityTest`. فإلزامُها به يعني
                  * كسرَ حارسٍ لإرضاء حارس.
                  */
-                $isTyped = preg_match('/type=(["\'])(checkbox|radio|file|color|search)\1/', $element);
+                // والمخفيّ لا يُكتب فيه أصلًا — قيمتُه يضعها الكود لا لوحةُ المفاتيح
+                $isTyped = preg_match('/type=(["\'])(checkbox|radio|file|color|search|hidden)\1/', $element);
 
                 if ($isTyped || str_contains($element, 'useAsciiDigits') || str_contains($element, 'ref={attach}')
                     || str_contains($element, 'ref={searchRef}')) {

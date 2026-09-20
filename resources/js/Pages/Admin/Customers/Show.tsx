@@ -22,11 +22,7 @@ import {
 } from '@/Components/ui/dropdown-menu';
 import Field, { Select } from '@/Components/Field';
 
-/** لغاتُ الرسائل — كما في `WhatsAppEvent::LANGUAGES` */
-const LANGUAGE_OPTIONS = [
-    { label: 'العربية', value: 'ar' },
-    { label: 'English', value: 'en' },
-];
+import LanguageChoice from '@/Components/LanguageChoice';
 import { Input, Textarea } from '@/Components/ui/input';
 import {
     Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
@@ -451,13 +447,8 @@ export default function CustomerShow() {
                         <Field label="البريد الإلكتروني" error={edit.errors.email}>
                             <Input type="email" dir="ltr" value={edit.data.email} onChange={(e) => edit.setData('email', e.target.value)} />
                         </Field>
-                        <Field label="لغة رسائل واتساب" hint="بأي لغة تصله إشعارات طلباته وفواتيره" error={edit.errors.language}>
-                            <Select
-                                value={edit.data.language}
-                                onChange={(e) => edit.setData('language', e.target.value)}
-                                options={LANGUAGE_OPTIONS}
-                                placeholder="لغة المتجر"
-                            />
+                        <Field label="لغة رسائل واتساب" required hint="بأي لغة تصله إشعارات طلباته وفواتيره" error={edit.errors.language}>
+                            <LanguageChoice value={edit.data.language} onChange={(v) => edit.setData('language', v)} />
                         </Field>
                         {branches.length > 0 && (
                             <Field label="الفرع" error={edit.errors.branch_id}>

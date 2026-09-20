@@ -85,6 +85,7 @@ class CustomerSectionAuditTest extends TestCase
 
         // النموذج يرسل ما حمّله: فرعٌ فارغ كان يعني فصلَ العميل عن فرعه
         $this->put(route('admin.customers.update', $c->id), [
+            'language' => 'ar',
             'name' => 'سالم', 'phone' => '90000001', 'branch_id' => (string) $this->branch->id,
         ])->assertSessionHasNoErrors();
 
@@ -98,7 +99,7 @@ class CustomerSectionAuditTest extends TestCase
         $gone = $this->customer(['name' => 'أحمد', 'phone' => '95555555']);
         $gone->delete();
 
-        $this->post(route('admin.customers.store'), ['name' => 'أحمد', 'phone' => '95555555'])
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'أحمد', 'phone' => '95555555'])
             ->assertSessionHasErrors('phone');
 
         $msg = session('errors')->getBag('default')->first('phone');
@@ -110,7 +111,7 @@ class CustomerSectionAuditTest extends TestCase
     {
         $this->customer(['phone' => '96666666']);
 
-        $this->post(route('admin.customers.store'), ['name' => 'آخر', 'phone' => '96666666'])
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'آخر', 'phone' => '96666666'])
             ->assertSessionHasErrors('phone');
 
         $this->assertStringContainsString(
@@ -121,7 +122,7 @@ class CustomerSectionAuditTest extends TestCase
 
     public function test_a_free_number_passes(): void
     {
-        $this->post(route('admin.customers.store'), ['name' => 'جديد', 'phone' => '97777777'])
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'جديد', 'phone' => '97777777'])
             ->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('customers', ['phone' => '97777777']);
@@ -132,7 +133,7 @@ class CustomerSectionAuditTest extends TestCase
         $other = Business::create(['name' => 'محل آخر', 'status' => 'نشط']);
         Customer::create(['business_id' => $other->id, 'name' => 'غريب', 'phone' => '98888888']);
 
-        $this->post(route('admin.customers.store'), ['name' => 'عندنا', 'phone' => '98888888'])
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'عندنا', 'phone' => '98888888'])
             ->assertSessionHasNoErrors();
     }
 
@@ -301,7 +302,7 @@ class CustomerSectionAuditTest extends TestCase
         $theirs = Customer::create(['business_id' => $other->id, 'name' => 'غريب']);
 
         $this->get(route('admin.customers.show', $theirs->id))->assertNotFound();
-        $this->put(route('admin.customers.update', $theirs->id), ['name' => 'مسروق'])->assertNotFound();
+        $this->put(route('admin.customers.update', $theirs->id), ['language' => 'ar', 'name' => 'مسروق'])->assertNotFound();
         $this->delete(route('admin.customers.destroy', $theirs->id))->assertNotFound();
         $this->get(route('admin.customers.statement', $theirs->id))->assertNotFound();
         $this->post(route('admin.customers.redeem', $theirs->id))->assertNotFound();

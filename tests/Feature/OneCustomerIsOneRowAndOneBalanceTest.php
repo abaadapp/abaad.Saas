@@ -56,7 +56,7 @@ class OneCustomerIsOneRowAndOneBalanceTest extends TestCase
     private function add(string $name, string $phone)
     {
         return $this->actingAs($this->owner)
-            ->post(route('admin.customers.store'), ['name' => $name, 'phone' => $phone]);
+            ->post(route('admin.customers.store'), ['language' => 'ar', 'name' => $name, 'phone' => $phone]);
     }
 
     /* ═════════════ الرقمُ رقمٌ مهما كُتب ═════════════ */
@@ -112,6 +112,7 @@ class OneCustomerIsOneRowAndOneBalanceTest extends TestCase
         $customer = Customer::where('business_id', $this->shop->id)->firstOrFail();
 
         $this->actingAs($this->owner)->put(route('admin.customers.update', $customer->id), [
+            'language' => 'ar',
             'name' => 'سالم بن علي', 'phone' => '91234567',
         ])->assertSessionHasNoErrors();
 
@@ -153,6 +154,7 @@ class OneCustomerIsOneRowAndOneBalanceTest extends TestCase
         ]);
 
         $this->actingAs($neighbour)->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'سالم', 'phone' => '+968 91234567',
         ])->assertSessionHasNoErrors();
 

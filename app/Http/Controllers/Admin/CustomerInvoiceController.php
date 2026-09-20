@@ -910,6 +910,7 @@ class CustomerInvoiceController extends Controller
             'commercial_registration' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
             'customer_type' => ['nullable', 'string', 'in:فرد,شركة,جهة حكومية'],
+            'language' => Customers::languageRule(),
         ], [], ['name' => __('اسم العميل')]);
 
         $data['business_id'] = $this->bid();

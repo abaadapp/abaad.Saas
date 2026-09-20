@@ -188,10 +188,10 @@ class LoyaltyIdentityTest extends TestCase
     {
         $this->customer('محمد', '9111');
 
-        $this->post(route('admin.customers.store'), ['name' => 'محمد آخر', 'phone' => '9111'])
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'محمد آخر', 'phone' => '9111'])
             ->assertSessionHasErrors('phone');
 
-        $this->postJson(route('pos.customers.store'), ['name' => 'ثالث', 'phone' => '9111'])
+        $this->postJson(route('pos.customers.store'), ['language' => 'ar', 'name' => 'ثالث', 'phone' => '9111'])
             ->assertStatus(422);
 
         $this->assertSame(1, Customer::where('phone', '9111')->count());
@@ -200,8 +200,8 @@ class LoyaltyIdentityTest extends TestCase
     /** والفراغ مسموح: عابرٌ بلا هاتف عميلٌ صحيح */
     public function test_customers_without_a_phone_are_still_allowed(): void
     {
-        $this->post(route('admin.customers.store'), ['name' => 'عابر أول'])->assertSessionHasNoErrors();
-        $this->post(route('admin.customers.store'), ['name' => 'عابر ثانٍ'])->assertSessionHasNoErrors();
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'عابر أول'])->assertSessionHasNoErrors();
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'عابر ثانٍ'])->assertSessionHasNoErrors();
 
         $this->assertSame(2, Customer::whereNull('phone')->count());
     }

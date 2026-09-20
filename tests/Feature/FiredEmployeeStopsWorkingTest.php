@@ -67,7 +67,7 @@ class FiredEmployeeStopsWorkingTest extends TestCase
 
         $this->employee->delete();
 
-        $this->post(route('admin.customers.store'), ['name' => 'زبونٌ بعد الطرد', 'phone' => '90000009']);
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'زبونٌ بعد الطرد', 'phone' => '90000009']);
 
         $this->assertFalse(Customer::where('name', 'زبونٌ بعد الطرد')->exists(),
             'الموظف المحذوف كتب صفًّا في متجرٍ لم يعد يعمل فيه');
@@ -115,7 +115,7 @@ class FiredEmployeeStopsWorkingTest extends TestCase
     public function test_an_employee_who_was_never_deleted_still_works(): void
     {
         $this->actingAs($this->employee)->get(route('admin.dashboard'))->assertSuccessful();
-        $this->post(route('admin.customers.store'), ['name' => 'زبونٌ عاديّ', 'phone' => '90000008']);
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'زبونٌ عاديّ', 'phone' => '90000008']);
 
         $this->assertTrue(Customer::where('name', 'زبونٌ عاديّ')->exists());
     }

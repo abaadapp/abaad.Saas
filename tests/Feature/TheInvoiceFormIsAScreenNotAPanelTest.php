@@ -211,6 +211,7 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
         $this->actingAs($this->owner)
             ->from('/admin/customer-invoices/create')
             ->post('/admin/customer-invoices/customers', [
+                'language' => 'ar',
                 'name' => 'شركة الزهور الحديثة',
                 'customer_type' => 'شركة',
                 'phone' => '91234567',
@@ -230,7 +231,7 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
     /** ولا عميلَ بلا اسم */
     public function test_a_nameless_customer_is_refused(): void
     {
-        $this->actingAs($this->owner)->post('/admin/customer-invoices/customers', ['name' => ''])
+        $this->actingAs($this->owner)->post('/admin/customer-invoices/customers', ['language' => 'ar', 'name' => ''])
             ->assertSessionHasErrors('name');
 
         $this->assertSame(1, Customer::count());
@@ -244,7 +245,7 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
         ]);
 
-        $this->actingAs($cashier)->post('/admin/customer-invoices/customers', ['name' => 'جهة'])
+        $this->actingAs($cashier)->post('/admin/customer-invoices/customers', ['language' => 'ar', 'name' => 'جهة'])
             ->assertForbidden();
 
         $this->assertSame(1, Customer::count());

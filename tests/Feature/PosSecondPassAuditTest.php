@@ -238,6 +238,7 @@ class PosSecondPassAuditTest extends TestCase
     public function test_a_customer_added_from_the_till_belongs_to_the_till_shop(): void
     {
         $this->actingAs($this->cashier)->postJson(route('pos.customers.store'), [
+            'language' => 'ar',
             'name' => 'زبونٌ جديد', 'phone' => '90000003',
         ])->assertOk();
 

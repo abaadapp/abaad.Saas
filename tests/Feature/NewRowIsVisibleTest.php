@@ -59,6 +59,7 @@ class NewRowIsVisibleTest extends TestCase
         $owner = $business->users()->where('role', 'admin')->first();
 
         $this->actingAs($owner)->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'عميلٌ أُضيف الآن', 'phone' => '90000001',
         ]);
 

@@ -40,6 +40,7 @@ class BilingualNamesTest extends TestCase
     public function test_a_latin_customer_name_is_transliterated_and_the_original_kept(): void
     {
         $this->actingAs($this->owner)->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'Mohammed Salem', 'phone' => '91110001',
         ])->assertSessionHasNoErrors();
 
@@ -59,6 +60,7 @@ class BilingualNamesTest extends TestCase
     public function test_a_hand_written_english_name_is_not_overwritten(): void
     {
         $this->actingAs($this->owner)->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'Mohammed Salem', 'name_en' => 'Mo Salem', 'phone' => '91110002',
         ])->assertSessionHasNoErrors();
 
@@ -71,6 +73,7 @@ class BilingualNamesTest extends TestCase
     public function test_an_arabic_customer_can_be_given_an_english_name_by_hand(): void
     {
         $this->actingAs($this->owner)->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'محمد سالم', 'name_en' => 'Mohammed Salem', 'phone' => '91110003',
         ])->assertSessionHasNoErrors();
 
@@ -84,6 +87,7 @@ class BilingualNamesTest extends TestCase
     public function test_an_arabic_customer_without_a_second_name_keeps_only_one(): void
     {
         $this->actingAs($this->owner)->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'محمد سالم', 'phone' => '91110004',
         ])->assertSessionHasNoErrors();
 

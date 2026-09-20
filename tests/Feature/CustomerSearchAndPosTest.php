@@ -140,6 +140,7 @@ class CustomerSearchAndPosTest extends TestCase
         $theirBranch = Branch::create(['business_id' => $other->id, 'name' => 'فرعهم']);
 
         $this->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'سالم', 'phone' => '90000009', 'branch_id' => $theirBranch->id,
         ])->assertSessionHasNoErrors();
 
@@ -150,6 +151,7 @@ class CustomerSearchAndPosTest extends TestCase
     public function test_the_branch_of_this_shop_is_kept(): void
     {
         $this->post(route('admin.customers.store'), [
+            'language' => 'ar',
             'name' => 'سالم', 'phone' => '90000010', 'branch_id' => $this->branch->id,
         ])->assertSessionHasNoErrors();
 
@@ -158,7 +160,7 @@ class CustomerSearchAndPosTest extends TestCase
 
     public function test_a_malformed_email_is_refused(): void
     {
-        $this->post(route('admin.customers.store'), ['name' => 'سالم', 'email' => 'ليس بريدًا'])
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'سالم', 'email' => 'ليس بريدًا'])
             ->assertSessionHasErrors('email');
     }
 
@@ -166,13 +168,13 @@ class CustomerSearchAndPosTest extends TestCase
     {
         $long = str_repeat('a', 300).'@x.om';
 
-        $this->post(route('admin.customers.store'), ['name' => 'سالم', 'email' => $long])
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'name' => 'سالم', 'email' => $long])
             ->assertSessionHasErrors('email');
     }
 
     public function test_a_nameless_customer_is_refused(): void
     {
-        $this->post(route('admin.customers.store'), ['phone' => '90000011'])
+        $this->post(route('admin.customers.store'), ['language' => 'ar', 'phone' => '90000011'])
             ->assertSessionHasErrors('name');
     }
 
@@ -210,13 +212,13 @@ class CustomerSearchAndPosTest extends TestCase
     {
         $this->customer(['name' => 'أحمد', 'phone' => '94444444'])->delete();
 
-        $this->post(route('pos.customers.store'), ['name' => 'أحمد', 'phone' => '94444444'])
+        $this->post(route('pos.customers.store'), ['language' => 'ar', 'name' => 'أحمد', 'phone' => '94444444'])
             ->assertSessionHasErrors('phone');
     }
 
     public function test_the_till_still_adds_a_free_number(): void
     {
-        $this->post(route('pos.customers.store'), ['name' => 'مريم', 'phone' => '95555555'])
+        $this->post(route('pos.customers.store'), ['language' => 'ar', 'name' => 'مريم', 'phone' => '95555555'])
             ->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('customers', ['phone' => '95555555', 'business_id' => $this->business->id]);

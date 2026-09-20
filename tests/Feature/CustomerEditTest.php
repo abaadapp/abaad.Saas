@@ -47,7 +47,7 @@ class CustomerEditTest extends TestCase
     private function fields(array $over = []): array
     {
         return array_merge([
-            'name' => 'سالم الحارثي', 'phone' => '90000002',
+            'name' => 'سالم الحارثي', 'phone' => '90000002', 'language' => 'ar',
             'email' => 's@x.om', 'tax_number' => 'OM123', 'address' => 'مسقط',
         ], $over);
     }
@@ -151,6 +151,7 @@ class CustomerEditTest extends TestCase
         $this->customer->update(['tax_number' => 'OM7654321', 'address' => 'صلالة']);
 
         $this->put(route('admin.customers.update', $this->customer->id), [
+            'language' => 'ar',
             'name' => 'سالم', 'phone' => '90000001', 'email' => 's@x.om',
         ])->assertSessionHasNoErrors();
 

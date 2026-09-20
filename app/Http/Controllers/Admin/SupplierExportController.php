@@ -7,6 +7,7 @@ use App\Models\Supplier;
 use App\Support\Activity;
 use App\Support\Demo;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use App\Support\Pdf;
 use App\Support\Sheet;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -264,37 +265,45 @@ class SupplierExportController extends Controller
         $added = 0;
         $updated = 0;
 
-        foreach ($payload['rows'] as $r) {
-            $fields = [
-                'name' => $r['name'],
-                'phone' => $r['phone'] ?: null,
-                'email' => $r['email'] ?: null,
-                'contact_person' => $r['contact'] ?: null,
-                'notes' => $r['notes'] ?: null,
-            ];
-
-            if ($r['status'] === 'new') {
-                Supplier::create($fields + ['business_id' => $bid]);
-                $added++;
-            } elseif ($r['status'] === 'update' && $r['targetId']) {
-                $supplier = Supplier::where('business_id', $bid)->find($r['targetId']);
-                if (! $supplier) {
-                    continue;
-                }
-                // وما لم يذكره الملفّ لا يُكتب — انظر بناء `stated` أعلاه
-                $columns = [
-                    'name' => 'name', 'phone' => 'phone', 'email' => 'email',
-                    'contact' => 'contact_person', 'notes' => 'notes',
+        /*
+         * الملفُّ كلُّه أو لا شيء — كما في استيراد المنتجات والعملاء.
+         *
+         * بلا معاملة: يسقط الصفُّ العاشر فتبقى تسعةٌ مكتوبة، والجلسةُ ما زالت
+         * تقول عنها «جديدة» — فإعادةُ التأكيد تكتبها ثانيةً.
+         */
+        DB::transaction(function () use ($payload, $bid, &$added, &$updated) {
+            foreach ($payload['rows'] as $r) {
+                $fields = [
+                    'name' => $r['name'],
+                    'phone' => $r['phone'] ?: null,
+                    'email' => $r['email'] ?: null,
+                    'contact_person' => $r['contact'] ?: null,
+                    'notes' => $r['notes'] ?: null,
                 ];
-                foreach ($columns as $field => $column) {
-                    if (! ($r['stated'][$field] ?? true)) {
-                        unset($fields[$column]);
+
+                if ($r['status'] === 'new') {
+                    Supplier::create($fields + ['business_id' => $bid]);
+                    $added++;
+                } elseif ($r['status'] === 'update' && $r['targetId']) {
+                    $supplier = Supplier::where('business_id', $bid)->find($r['targetId']);
+                    if (! $supplier) {
+                        continue;
                     }
+                    // وما لم يذكره الملفّ لا يُكتب — انظر بناء `stated` أعلاه
+                    $columns = [
+                        'name' => 'name', 'phone' => 'phone', 'email' => 'email',
+                        'contact' => 'contact_person', 'notes' => 'notes',
+                    ];
+                    foreach ($columns as $field => $column) {
+                        if (! ($r['stated'][$field] ?? true)) {
+                            unset($fields[$column]);
+                        }
+                    }
+                    $supplier->update($fields);
+                    $updated++;
                 }
-                $supplier->update($fields);
-                $updated++;
             }
-        }
+        });
 
         session()->forget(self::SESSION_KEY);
         Activity::log('updated', "استيراد الموردين من ملف: {$payload['file']} — أُضيف {$added}، حُدِّث {$updated}");

@@ -166,6 +166,36 @@ class SupplierExportTest extends TestCase
         ]);
     }
 
+    /**
+     * الملفُّ كلُّه أو لا شيء.
+     *
+     * سقوطُ الصفّ الثاني كان يُبقي الأوّلَ مكتوبًا والجلسةَ تقول عنه «جديد» —
+     * فإعادةُ التأكيد تكتبه ثانيةً. كما في استيراد المنتجات والعملاء.
+     */
+    public function test_a_failure_in_the_middle_of_the_file_writes_nothing(): void
+    {
+        $this->upload(['الاسم,الهاتف', 'مصنع الشرق,90000009', 'مصنع الغرب,90000010'])
+            ->assertRedirect(route('admin.suppliers.import.preview'));
+
+        $seen = 0;
+        Supplier::creating(function () use (&$seen) {
+            if (++$seen === 2) {
+                throw new \RuntimeException('انقطع في منتصف الملفّ');
+            }
+        });
+
+        try {
+            $this->withoutExceptionHandling()->post(route('admin.suppliers.import.confirm'));
+            $this->fail('لم يسقط');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('انقطع في منتصف الملفّ', $e->getMessage());
+        }
+
+        $this->assertDatabaseMissing('suppliers', ['name' => 'مصنع الشرق']);
+        $this->assertDatabaseMissing('suppliers', ['name' => 'مصنع الغرب']);
+        $this->assertNotNull(session('supplier_import'), 'الجلسةُ مُحيت بعد سقوط — لا سبيلَ إلى إعادة المحاولة');
+    }
+
     public function test_it_reads_the_header_whatever_the_column_order(): void
     {
         $this->upload(['الهاتف,الاسم,البريد', '90000009,مصنع الشرق,east@x.om']);

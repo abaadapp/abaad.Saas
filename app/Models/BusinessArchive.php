@@ -3,9 +3,13 @@
 namespace App\Models;
 
 use App\Support\Archive\Period;
+use App\Support\Archive\Sheets;
+use App\Support\Permissions;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
+use ZipArchive;
 
 /**
  * أرشيفُ شهرٍ واحدٍ لمتجرٍ واحد — صفٌّ يصف ملفًّا.
@@ -73,6 +77,81 @@ class BusinessArchive extends Model
         return $this->status === self::READY
             && $this->storage_path !== null
             && ! $this->hasExpired();
+    }
+
+    /**
+     * لمَ يُحجب هذا الملفُّ عن هذا القارئ؟ — أو `null` فيُنزَّل.
+     *
+     * ═══ بابان لسؤالٍ واحد، وكان أحدُهما مفتوحًا ═══
+     *
+     * الطلبُ اليدويّ يُسقط ورقةَ الرواتب عمّن لا يقرؤها (`Builder::maySee`)،
+     * والمجدولُ يكتبها لأنّ لا شخصَ له — واكتُفي هناك بالقول إنّ الحارسَ «على
+     * التنزيل». ولم يكن على التنزيل حارسٌ إلّا `business.export`: فمن مُنح
+     * التصديرَ بالاسم ولم يُمنح قراءةَ الرواتب كان يُنزّل أرشيفَ الجدولة
+     * ويقرأ راتبَ كلّ من في المتجر.
+     *
+     * ═══ والجوابُ من الملفّ نفسِه لا من إعادة الحساب ═══
+     *
+     * `manifest.json` داخل الـZIP يسمّي أوراقَه. وإعادةُ استنتاج «أكان فيه
+     * مسيرة؟» من الجداول حسابٌ ثانٍ يفترق عن الأوّل يومًا. والقراءةُ لا
+     * تقع إلّا لمن يفتقر إلى الفعل — فصاحبُ النشاط لا يدفع ثمنَها.
+     *
+     * وتقرؤه الشاشةُ كما يقرؤه الباب: فلا زرَّ مرسومًا على بابٍ مغلق.
+     */
+    public function withheldFrom(?User $user): ?string
+    {
+        if ($user === null) {
+            return null;
+        }
+
+        $lacking = array_filter(Sheets::GATED, fn (string $action) => ! $user->may($action));
+
+        if ($lacking === []) {
+            return null;
+        }
+
+        foreach ($this->sheets() as $sheet) {
+            if (isset($lacking[$sheet])) {
+                return __('يحوي :sheet — يُنزّله من يملك «:action».', [
+                    'sheet' => __(Sheets::FILES[$sheet] ?? $sheet),
+                    'action' => Permissions::actionLabels()[$lacking[$sheet]] ?? $lacking[$sheet],
+                ]);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * أوراقُ الملفّ كما يسمّيها `manifest.json` — وفارغةٌ لملفٍّ لا يُفتح.
+     *
+     * @return list<string>
+     */
+    public function sheets(): array
+    {
+        if ($this->storage_path === null) {
+            return [];
+        }
+
+        $path = Storage::disk($this->storage_disk ?? 'local')->path($this->storage_path);
+
+        if (! is_file($path)) {
+            return [];
+        }
+
+        $zip = new ZipArchive;
+
+        if ($zip->open($path, ZipArchive::RDONLY) !== true) {
+            return [];
+        }
+
+        try {
+            $manifest = json_decode((string) $zip->getFromName('manifest.json'), true);
+        } finally {
+            $zip->close();
+        }
+
+        return array_keys((array) ($manifest['sections'] ?? []));
     }
 
     /** مضت مدّتُه؟ — وفارغُ المدّة لا يمضي */

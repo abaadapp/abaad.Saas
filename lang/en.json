@@ -2203,6 +2203,7 @@
     "تصحيح البند": "Correct the line",
     "تصحيح فاتورة مكتملة": "Correct a completed invoice",
     "تصحيح فاتورة: ": "Invoice correction: ",
+    "يحوي :sheet — يُنزّله من يملك «:action».": "Contains :sheet — downloadable by whoever holds \":action\".",
     "الفاتورة :n ليست على هذا العميل.": "Invoice :n is not this customer's.",
     "الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.": "Tax is part of the note amount — it cannot exceed it.",
     "تصحيح وسيلة الدفع": "Correct the payment method",

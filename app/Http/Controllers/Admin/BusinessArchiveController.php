@@ -67,15 +67,15 @@ class BusinessArchiveController extends Controller
             'may_download' => $may,
             'retention_months' => Policy::retentionMonths(),
             'retention_weeks' => Policy::retentionWeeks(),
-            'monthly' => self::rows($bid, Period::MONTHLY),
-            'weekly' => Policy::weeklyEnabled() ? self::rows($bid, Period::WEEKLY) : [],
+            'monthly' => self::rows($bid, Period::MONTHLY, $user),
+            'weekly' => Policy::weeklyEnabled() ? self::rows($bid, Period::WEEKLY, $user) : [],
             'offer_monthly' => self::selectable($bid, Period::MONTHLY),
             'offer_weekly' => Policy::weeklyEnabled() ? self::selectable($bid, Period::WEEKLY) : [],
         ];
     }
 
     /** صفوفُ نوعٍ واحد، من الأحدث */
-    private static function rows(int $bid, string $type): array
+    private static function rows(int $bid, string $type, ?User $user = null): array
     {
         return BusinessArchive::where('business_id', $bid)
             ->where('archive_type', $type)
@@ -100,7 +100,12 @@ class BusinessArchiveController extends Controller
                  * و`null` حين لا ملفَّ — فلا يُطبع «0.0 MB» عن شيءٍ لا وجود له.
                  */
                 'size_mb' => $a->file_size ? round($a->file_size / 1048576, 1) : null,
-                'downloadable' => $a->downloadable(),
+                /*
+                 * ومحجوبٌ عن هذا القارئ لا يُرسم له زرٌّ — والسببُ يُقال مكانه.
+                 * انظر `BusinessArchive::withheldFrom`: البابُ يسأله قبل أن يفتح.
+                 */
+                'downloadable' => $a->downloadable() && $a->withheldFrom($user) === null,
+                'withheld' => $a->downloadable() ? $a->withheldFrom($user) : null,
                 'failure_reason' => $a->failure_reason,
             ])->all();
     }
@@ -224,6 +229,11 @@ class BusinessArchiveController extends Controller
         $disk = Storage::disk($row->storage_disk ?? 'local');
 
         abort_if(! $disk->exists($row->storage_path), 404);
+
+        // وورقةٌ لا يقرؤها في الشاشة لا يقرؤها في ملفّ — انظر `withheldFrom`
+        if (($withheld = $row->withheldFrom(auth()->user())) !== null) {
+            abort(403, $withheld);
+        }
 
         Activity::log('backup', __('نزّل أرشيف بيانات :period', ['period' => $row->periodKey()]), [
             'business_id' => $row->business_id,

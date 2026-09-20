@@ -704,6 +704,67 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
         $this->assertContains('Excel/Payroll.xlsx', $names);
     }
 
+    /**
+     * والمجدولُ يكتب المسيرةَ لأنّ لا شخصَ له — فالحارسُ على **بابِ التنزيل**.
+     *
+     * ═══ العطب ═══
+     *
+     * كان التعليقُ في `Builder::maySee` يقول: «يُسأل عن `payroll.view` عند
+     * بابه» — ولا سؤالَ عند الباب: `download` تقيس `business.export` وحدَها.
+     * فموظّفٌ مُنح التصديرَ بالاسم ولم يُمنح قراءةَ الرواتب يُنزّل أرشيفَ
+     * الجدولة ويقرأ راتبَ كلّ من في المتجر — وهو عينُ ما نزعه
+     * `test_payroll_is_left_out_when_the_asker_may_not_read_it` عن الطلب
+     * اليدويّ. بابان لسؤالٍ واحد، أحدُهما مفتوح.
+     */
+    public function test_a_scheduled_archive_with_payroll_is_withheld_from_who_may_not_read_it(): void
+    {
+        $this->payroll();
+        $archive = $this->build(null, null);
+        $this->assertContains('Excel/Payroll.xlsx', $this->namesIn($archive), 'المجدولُ لم يكتب المسيرة — الاختبارُ لا يقيس شيئًا');
+
+        $sales = $this->staff($this->shop, 'sales');
+        $sales->update(['permissions' => ['settings', Permissions::BUSINESS_EXPORT]]);
+
+        $this->actingAs($sales)
+            ->get(route('admin.archives.download', $archive->id))
+            ->assertForbidden();
+
+        /* والشاشةُ تقول ما يقوله الباب — لا زرَّ مرسومًا على بابٍ مغلق */
+        $row = collect(BusinessArchiveController::panel($this->shop->id, $sales)['monthly'])->firstWhere('id', $archive->id);
+        $this->assertFalse($row['downloadable']);
+        $this->assertNotNull($row['withheld']);
+    }
+
+    public function test_the_same_archive_opens_for_who_reads_payroll(): void
+    {
+        $this->payroll();
+        $archive = $this->build(null, null);
+
+        $sales = $this->staff($this->shop, 'sales');
+        $sales->update(['permissions' => ['settings', Permissions::BUSINESS_EXPORT, Permissions::PAYROLL_VIEW]]);
+
+        $this->actingAs($sales)
+            ->get(route('admin.archives.download', $archive->id))
+            ->assertOk();
+
+        $row = collect(BusinessArchiveController::panel($this->shop->id, $sales)['monthly'])->firstWhere('id', $archive->id);
+        $this->assertTrue($row['downloadable']);
+        $this->assertNull($row['withheld']);
+    }
+
+    /** وأرشيفٌ بلا مسيرة يبقى مفتوحًا لمن مُنح التصديرَ وحدَه — كما كان */
+    public function test_an_archive_without_payroll_is_not_withheld(): void
+    {
+        $archive = $this->build(null, null);
+
+        $sales = $this->staff($this->shop, 'sales');
+        $sales->update(['permissions' => ['settings', Permissions::BUSINESS_EXPORT]]);
+
+        $this->actingAs($sales)
+            ->get(route('admin.archives.download', $archive->id))
+            ->assertOk();
+    }
+
     /* ======================= المنصّةُ لا تُكسر ======================= */
 
     public function test_a_disabled_archive_refuses_and_says_why(): void

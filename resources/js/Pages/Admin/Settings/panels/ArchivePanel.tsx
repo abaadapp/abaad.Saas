@@ -18,6 +18,8 @@ export interface ArchiveRow {
     created_at: string | null;
     size_mb: number | null;
     downloadable: boolean;
+    /** محجوبٌ عن هذا القارئ — ولمَ؛ يُعرض مكان زرّ التحميل */
+    withheld: string | null;
     failure_reason: string | null;
 }
 
@@ -156,6 +158,9 @@ function ArchiveGroup({
                                         <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
                                         {row.failure_reason}
                                     </p>
+                                )}
+                                {row.withheld && mayDownload && (
+                                    <p className="mt-1 text-[12px] text-[#92400e]">{row.withheld}</p>
                                 )}
                             </div>
 

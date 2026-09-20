@@ -198,6 +198,19 @@ final class CustomerPayments
                 continue;
             }
 
+            /*
+             * ومالُ عميلٍ لا يسدّد فاتورةَ عميلٍ آخر.
+             *
+             * الطلبُ يحمل العميلَ والفاتورةَ كليهما، وكانت الفاتورةُ تُقفل
+             * بمتجرها وحدَه: «من الوزارة، على فاتورة الشركة» كان يمرّ — فتُوسَم
+             * فاتورةُ الشركة مسدَّدةً بمالٍ لم تدفعه، ويُكتب للوزارة رصيدٌ لم
+             * تقصده. ويُردّ بالاسم لا يُتخطّى في صمت: تخطّيه يترك المالَ رصيدًا
+             * «للعميل» ويقول التنبيهُ إنّه بقي — وهو مالٌ سُجّل على غير صاحبه.
+             */
+            if ((int) $invoice->customer_id !== (int) $payment->customer_id) {
+                throw new RuntimeException(__('الفاتورة :n ليست على هذا العميل.', ['n' => $invoice->number]));
+            }
+
             $wanted = $explicit !== [] ? round((float) $explicit[$invoiceId], 3) : $invoice->outstanding();
             $share = round(min($wanted, $invoice->outstanding(), $left), 3);
 

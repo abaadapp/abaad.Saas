@@ -1259,8 +1259,11 @@ class CustomerInvoiceController extends Controller
 
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'gt:0'],
-            'tax_amount' => ['nullable', 'numeric', 'min:0'],
+            // والضريبةُ جزءٌ من المبلغ لا فوقه — وإلّا سقط على ميزان الدفتر برسالةٍ لا تسمّي الحقل
+            'tax_amount' => ['nullable', 'numeric', 'min:0', 'lte:amount'],
             'reason' => ['required', 'string', 'max:200'],
+        ], [
+            'tax_amount.lte' => __('الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.'),
         ]);
 
         try {

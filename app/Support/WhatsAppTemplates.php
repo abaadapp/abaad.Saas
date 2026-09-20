@@ -109,9 +109,25 @@ class WhatsAppTemplates
              * الفارغُ يعني «لم نسأل»، وهذا سُئل ولم يُوجد — وهما حالان:
              * الأوّل يُنتظر، والثاني يُنشأ عند ميتا أو يُصحَّح اسمُه.
              */
-            $status = $result['templates'][$row->template_name] ?? self::MISSING;
+            $byLanguage = $result['templates'][$row->template_name] ?? [];
+            $status = $byLanguage[$row->language_code] ?? $byLanguage['*'] ?? self::MISSING;
 
-            $row->forceFill(['meta_status' => $status, 'meta_synced_at' => now()])->save();
+            /*
+             * ولغاتُ الاسم المعتمَدةُ كلُّها تُكتب معه — منها يُختار للزبون.
+             *
+             * `*` (صفٌّ بلا لغة) يُنسب إلى لغة القالب نفسِه لا يُعدّ لغةً.
+             */
+            $approvedLanguages = collect($byLanguage)
+                ->filter(fn ($s) => $s === self::APPROVED)
+                ->keys()
+                ->map(fn ($lang) => $lang === '*' ? (string) $row->language_code : (string) $lang)
+                ->unique()->values()->all();
+
+            $row->forceFill([
+                'meta_status' => $status,
+                'approved_languages' => $approvedLanguages,
+                'meta_synced_at' => now(),
+            ])->save();
 
             if ($status === self::APPROVED) {
                 $approved++;

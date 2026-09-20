@@ -7,6 +7,12 @@ import SectionTabs, { CUSTOMER_TABS } from '@/Components/SectionTabs';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import DataTable, { type Column, type ServerPagination } from '@/Components/DataTable';
 import Field, { Select } from '@/Components/Field';
+
+/** لغاتُ الرسائل — كما في `WhatsAppEvent::LANGUAGES` */
+const LANGUAGE_OPTIONS = [
+    { label: 'العربية', value: 'ar' },
+    { label: 'English', value: 'en' },
+];
 import SmartLink from '@/Components/SmartLink';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -60,6 +66,7 @@ export default function CustomersIndex() {
         name_en: '',
         phone: '',
         email: '',
+        language: '',
         branch_id: currentBranchId ? String(currentBranchId) : '',
     });
 
@@ -292,6 +299,15 @@ export default function CustomersIndex() {
                                 value={add.data.email}
                                 onChange={(e) => add.setData('email', e.target.value)}
                                 placeholder="name@example.com"
+                            />
+                        </Field>
+                        {/* لغةُ رسائل واتساب: القالبُ يُرسَل بها إن اعتمدته ميتا بها — وإلّا بلغة المتجر */}
+                        <Field label="لغة رسائل واتساب" hint="اختياري — بأي لغة تصله إشعارات طلباته وفواتيره" error={add.errors.language}>
+                            <Select
+                                value={add.data.language}
+                                onChange={(e) => add.setData('language', e.target.value)}
+                                options={LANGUAGE_OPTIONS}
+                                placeholder="لغة المتجر"
                             />
                         </Field>
                         <Field label="الفرع" hint="اختياري — يُربط العميل بالفرع المحدد." error={add.errors.branch_id}>

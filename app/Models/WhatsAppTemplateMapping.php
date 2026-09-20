@@ -22,8 +22,27 @@ class WhatsAppTemplateMapping extends Model
     protected $casts = [
         'enabled' => 'boolean',
         'variable_mapping' => 'array',
+        'approved_languages' => 'array',
         'meta_synced_at' => 'datetime',
     ];
+
+    /**
+     * بأيّ لغةٍ يُرسَل هذا القالبُ لزبونٍ لغتُه `$wanted`؟
+     *
+     * لغتُه إن كانت ميتا قد اعتمدت القالبَ بها — وإلّا لغةُ القالب الأصل.
+     * فلا يُطلب من ميتا ما لم تعتمده فتردّه بـ`132001` وتُقيَّد الرسالةُ
+     * فاشلةً على زبونٍ كان يقبل العربيّة.
+     */
+    public function languageFor(?string $wanted): string
+    {
+        $own = (string) $this->language_code;
+
+        if ($wanted === null || $wanted === '' || $wanted === $own) {
+            return $own;
+        }
+
+        return in_array($wanted, (array) ($this->approved_languages ?? []), true) ? $wanted : $own;
+    }
 
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
 

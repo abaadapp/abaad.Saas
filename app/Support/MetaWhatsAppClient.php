@@ -121,11 +121,19 @@ class MetaWhatsAppClient
             ];
         }
 
+        /*
+         * والاسمُ الواحد يعود صفًّا لكلّ لغة — فيُحفظ بلغته لا يُطوى.
+         *
+         * كان يُكتب `اسم ← حال` فيبقى آخرُ صفٍّ وحدَه: نسخةٌ إنجليزيّة أُضيفت
+         * أمس وهي PENDING كانت تمحو APPROVED العربيّةَ — فتُقرأ العربيّة غيرَ
+         * معتمَدة وتُتخطّى رسائلُ كلّ المتاجر. وصفٌّ بلا لغة (كما تردّه بعضُ
+         * الوهميّات) يُحفظ تحت `*` فيصلح لكلّ لغة.
+         */
         $out = [];
 
         foreach ((array) $response->json('data', []) as $row) {
             if (filled($row['name'] ?? null)) {
-                $out[(string) $row['name']] = (string) ($row['status'] ?? '');
+                $out[(string) $row['name']][(string) ($row['language'] ?? '*')] = (string) ($row['status'] ?? '');
             }
         }
 

@@ -87,7 +87,8 @@ class WhatsAppAutomation
             'direction' => 'outbound',
             'recipient_phone' => $phone,
             'template_name' => $template?->template_name,
-            'language_code' => $template?->language_code,
+            // وبلغة الزبون إن اعتُمد القالبُ بها — انظر `languageFor`
+            'language_code' => $template?->languageFor($order->customer?->language),
             'dedupe_key' => $dedupe,
         ];
 
@@ -183,7 +184,8 @@ class WhatsAppAutomation
             'direction' => 'outbound',
             'recipient_phone' => $phone,
             'template_name' => $template?->template_name,
-            'language_code' => $template?->language_code,
+            // وبلغة الزبون إن اعتُمد القالبُ بها — انظر `languageFor`
+            'language_code' => $template?->languageFor($customer?->language),
             'dedupe_key' => 'inv:'.$business->id.':'.$invoice->id.':'.$event,
         ];
 

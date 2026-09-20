@@ -81,6 +81,13 @@ class WhatsAppEvent
         self::INVOICE_OVERDUE => 'تأخّر سداد فاتورة',
     ];
 
+    /**
+     * لغاتُ الرسائل التي يُخيَّر فيها الزبون — والقالبُ يُعتمد عند ميتا بكلٍّ منها.
+     *
+     * مصدرٌ واحد: يقرؤه تحقّقُ نموذج العميل، وقائمةُ الشاشة، والمزامنة.
+     */
+    public const LANGUAGES = ['ar', 'en'];
+
     /** اسم قالب أبعاد الافتراضي لكلّ حدث — يُهيَّأ عند ربط الرقم المشترك */
     public const DEFAULT_TEMPLATES = [
         self::ORDER_CONFIRMED => 'abaad_order_confirmed',

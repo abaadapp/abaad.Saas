@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Support\Demo;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
 {
@@ -102,6 +103,8 @@ class CustomerController extends Controller
             'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => \App\Support\Customers::phoneRule($this->bid()),
             'email' => ['nullable', 'email', 'max:255'],
+            // لغةُ رسائل واتساب: فارغةٌ تعني لغةَ القالب — انظر `WhatsAppTemplateMapping::languageFor`
+            'language' => ['nullable', Rule::in(\App\Support\WhatsAppEvent::LANGUAGES)],
             'tax_number' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
             'branch_id' => ['nullable', 'integer'],
@@ -139,6 +142,7 @@ class CustomerController extends Controller
             // يتجاوز نفسه: وإلّا لرفض حفظَ عميلٍ لم يُغيَّر رقمه
             'phone' => \App\Support\Customers::phoneRule($this->bid(), $customer->id),
             'email' => ['nullable', 'email', 'max:255'],
+            'language' => ['nullable', Rule::in(\App\Support\WhatsAppEvent::LANGUAGES)],
             'tax_number' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:255'],
             'branch_id' => ['nullable', 'integer'],

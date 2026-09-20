@@ -124,7 +124,7 @@ class ImportFileEncodingTest extends TestCase
     public function test_customers_import_from_a_windows_file_keeps_names(): void
     {
         $this->post(route('admin.customers.import.upload'), [
-            'file' => $this->windowsFile("الاسم,الهاتف\nزبونٌ كريم,91234567\n", 'c.csv'),
+            'file' => $this->windowsFile("الاسم,الهاتف,اللغة\nزبونٌ كريم,91234567,العربية\n", 'c.csv'),
         ]);
         $this->post(route('admin.customers.import.confirm'));
 

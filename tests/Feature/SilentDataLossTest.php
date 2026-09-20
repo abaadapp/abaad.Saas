@@ -150,6 +150,7 @@ class SilentDataLossTest extends TestCase
     public function test_a_contact_list_does_not_wipe_loyalty_points(): void
     {
         $c = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'سالم',
             'phone' => '99887766', 'email' => 'salem@abaad.om', 'points' => 350,
         ]);
@@ -164,6 +165,7 @@ class SilentDataLossTest extends TestCase
     public function test_stated_points_are_still_applied(): void
     {
         $c = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'سالم', 'phone' => '99887766', 'points' => 350,
         ]);
 

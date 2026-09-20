@@ -73,14 +73,25 @@ class CustomerController extends Controller
              * فرُفع الحقل من الحمولة، ووقع البديل: الحرف الأول من الاسم.
              */
             'points' => $c->points,
+            'language' => $c->language,
         ]);
 
         $stats = Demo::customerStats();
 
+        /*
+         * جولةُ اللغة على من سُجّل قبل أن يُسأل.
+         *
+         * العميلُ القديم لغتُه فارغة ويُراسَل بالعربيّة بلا أن يُسأل أحد.
+         * فالشاشةُ تعدّهم وتعرض الزرّين في صفّ كلٍّ منهم، ومرشِّحُ
+         * `missing=language` يجمعهم — حتى يصير العدد صفرًا ويختفي الشريط.
+         */
+        $unlanguaged = Customer::where('business_id', $this->bid())->whereNull('language')->count();
+
         return \Inertia\Inertia::render('Admin/Customers/Index', [
             'customers' => $customers->items(),
             'pagination' => \App\Support\Pagination::meta($customers),
-            'filters' => $request->only('q') + \App\Support\Sort::params($request, self::SORTS),
+            'filters' => $request->only('q', 'missing') + \App\Support\Sort::params($request, self::SORTS),
+            'unlanguaged' => $unlanguaged,
             'sorts' => \App\Support\Sort::keys(self::SORTS),
             'stats' => [
                 ['label' => __('إجمالي العملاء'), 'value' => (string) $stats['total'], 'icon' => 'users', 'color' => 'primary'],
@@ -181,6 +192,17 @@ class CustomerController extends Controller
 
         return redirect()->route('admin.customers.index')
             ->with('toast', ['msg' => __('حُذف العميل «:name» — يمكن استعادته من المحذوفات', ['name' => $name]), 'type' => 'success']);
+    }
+
+    /** لغةُ رسائل واتساب من صفّ القائمة — لمن سُجّل قبل أن تُسأل */
+    public function language(Request $request, $id)
+    {
+        $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
+        $data = $request->validate(['language' => \App\Support\Customers::languageRule()]);
+        $customer->update(['language' => $data['language']]);
+        \App\Support\Activity::log('updated', 'حدّد لغة رسائل العميل: ' . $customer->name . ' — ' . $data['language'], ['subject_id' => $customer->id]);
+
+        return back();
     }
 
     public function saveNote(Request $request, $id)

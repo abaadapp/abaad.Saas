@@ -59,6 +59,8 @@ export interface Customer {
     last_invoice?: string | null;
     last_invoice_total?: number | null;
     points: number;
+    /** لغةُ رسائل واتساب — `null` لمن سُجّل قبل أن تُسأل */
+    language?: string | null;
 }
 
 export interface Employee {

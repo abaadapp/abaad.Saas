@@ -207,7 +207,7 @@ class CustomerSectionAuditTest extends TestCase
 
     public function test_the_import_still_adds_a_free_number(): void
     {
-        $this->upload("الاسم,الهاتف\nمريم,91111111\n");
+        $this->upload("الاسم,الهاتف,اللغة\nمريم,91111111,العربية\n");
         $this->post(route('admin.customers.import.confirm'));
 
         $this->assertDatabaseHas('customers', ['phone' => '91111111', 'name' => 'مريم']);

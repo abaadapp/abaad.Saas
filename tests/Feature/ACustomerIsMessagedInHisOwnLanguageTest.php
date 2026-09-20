@@ -341,6 +341,95 @@ class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
                 ->where('customers.1.language', null));
     }
 
+    /* ═════════════ جولةُ اللغة على من سُجّل قبل السؤال ═════════════ */
+
+    public function test_the_customers_screen_counts_the_unasked_and_answers_from_the_row(): void
+    {
+        $owner = $this->owner();
+        $old = Customer::create(['business_id' => $this->shop->id, 'name' => 'قديم', 'phone' => '99330001']);
+        Customer::create(['business_id' => $this->shop->id, 'name' => 'John', 'phone' => '99330002', 'language' => 'en']);
+        // وجارٌ في متجرٍ آخر لا يُعدّ ولا يُجاب عنه من هنا
+        $other = Business::create(['name' => 'جار', 'type' => 'عام', 'status' => 'نشط']);
+        $theirs = Customer::create(['business_id' => $other->id, 'name' => 'جارهم', 'phone' => '99330003']);
+
+        $this->actingAs($owner)->get(route('admin.customers.index'))
+            ->assertInertia(fn ($p) => $p->where('unlanguaged', 1)->has('customers', 2));
+
+        $this->actingAs($owner)->get(route('admin.customers.index', ['missing' => 'language']))
+            ->assertInertia(fn ($p) => $p->has('customers', 1)->where('customers.0.id', $old->id)->where('customers.0.language', null));
+
+        $this->actingAs($owner)->post(route('admin.customers.language', $old->id), ['language' => 'en'])->assertSessionHasNoErrors();
+        $this->assertSame('en', $old->fresh()->language);
+        $this->actingAs($owner)->post(route('admin.customers.language', $old->id), ['language' => 'xx'])->assertSessionHasErrors('language');
+        $this->actingAs($owner)->post(route('admin.customers.language', $theirs->id), ['language' => 'en'])->assertNotFound();
+        $this->assertNull($theirs->fresh()->language);
+
+        $this->actingAs($owner)->get(route('admin.customers.index'))
+            ->assertInertia(fn ($p) => $p->where('unlanguaged', 0));
+    }
+
+    /* ═════════════ والاستيرادُ يسألها كما يسألها كلُّ باب ═════════════ */
+
+    private function upload(string $csv): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'imp').'.csv';
+        file_put_contents($path, $csv);
+        $this->actingAs($this->owner())->post(route('admin.customers.import.upload'), [
+            'file' => new \Illuminate\Http\UploadedFile($path, 'customers.csv', 'text/csv', null, true),
+        ]);
+        $this->actingAs($this->owner())->post(route('admin.customers.import.confirm'));
+    }
+
+    public function test_the_import_refuses_rows_without_a_language_and_reads_any_reasonable_spelling(): void
+    {
+        $this->upload("الاسم,الهاتف,اللغة\nسالم,99440001,العربية\nRavi,99440002,English\nنورة,99440003,عربي\nJohn,99440004,en\nبلا,99440005,\nغامض,99440006,فرنسي\n");
+
+        $this->assertSame('ar', Customer::where('phone', '99440001')->value('language'));
+        $this->assertSame('en', Customer::where('phone', '99440002')->value('language'));
+        $this->assertSame('ar', Customer::where('phone', '99440003')->value('language'));
+        $this->assertSame('en', Customer::where('phone', '99440004')->value('language'));
+        $this->assertNull(Customer::where('phone', '99440005')->first(), 'صفٌّ بلا لغةٍ دخل');
+        $this->assertNull(Customer::where('phone', '99440006')->first(), 'لغةٌ لا تُفهم دخلت');
+
+        // ملفٌّ بلا عمود لغةٍ أصلًا: لا صفَّ جديدًا يدخل
+        $this->upload("الاسم,الهاتف\nجديد,99440007\n");
+        $this->assertNull(Customer::where('phone', '99440007')->first());
+    }
+
+    public function test_the_import_answers_for_an_old_customer_but_does_not_update_him_silently(): void
+    {
+        $old = Customer::create(['business_id' => $this->shop->id, 'name' => 'قديم', 'phone' => '99450001', 'points' => 5]);
+        $answered = Customer::create(['business_id' => $this->shop->id, 'name' => 'مُجاب', 'phone' => '99450002', 'language' => 'en', 'points' => 5]);
+
+        // بلا عمود لغة: القديم يُردّ صفُّه، والمُجاب يُحدَّث ولا تُمسّ لغتُه
+        $this->upload("الاسم,الهاتف,النقاط\nقديم,99450001,50\nمُجاب,99450002,50\n");
+        $this->assertSame(5, (int) $old->fresh()->points, 'حُدّث عميلٌ بلا لغةٍ بلا أن يُسأل');
+        $this->assertSame(50, (int) $answered->fresh()->points);
+        $this->assertSame('en', $answered->fresh()->language);
+
+        // ومع العمود يُجاب عنه ويُحدَّث
+        $this->upload("الاسم,الهاتف,النقاط,اللغة\nقديم,99450001,50,English\n");
+        $this->assertSame('en', $old->fresh()->language);
+        $this->assertSame(50, (int) $old->fresh()->points);
+    }
+
+    public function test_the_export_carries_the_language_column_so_the_round_trip_works(): void
+    {
+        Customer::create(['business_id' => $this->shop->id, 'name' => 'John', 'phone' => '99460001', 'language' => 'en']);
+        Customer::create(['business_id' => $this->shop->id, 'name' => 'قديم', 'phone' => '99460002']);
+
+        $body = $this->actingAs($this->owner())->get(route('admin.customers.export.xlsx'))->assertOk()->streamedContent();
+        $path = tempnam(sys_get_temp_dir(), 'exp').'.xlsx';
+        file_put_contents($path, $body);
+        $rows = \App\Support\Sheet::rows($path);
+
+        $this->assertContains('اللغة', array_map('strval', $rows[0]));
+        $col = array_search('اللغة', array_map('strval', $rows[0]), true);
+        $byPhone = collect(array_slice($rows, 1))->keyBy(fn ($r) => (string) $r[1]);
+        $this->assertSame('English', (string) $byPhone['99460001'][$col]);
+        $this->assertSame('', (string) $byPhone['99460002'][$col]);
+    }
+
     /** وشاشةُ الطلب تُعلِم الكاشيرَ بلغة الزبون قبل أن يغيّر الحالة */
     public function test_the_order_screen_tells_the_cashier_which_language_the_customer_gets(): void
     {

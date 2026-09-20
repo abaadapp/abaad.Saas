@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
-import { Eye, FileDown, FileSpreadsheet, FileText, MoreVertical, Upload, UserPlus } from 'lucide-react';
+import { router, useForm, usePage } from '@inertiajs/react';
+import { Eye, FileDown, FileSpreadsheet, FileText, MessageSquareWarning, MoreVertical, Upload, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { CUSTOMER_TABS } from '@/Components/SectionTabs';
@@ -38,10 +38,12 @@ interface Props {
     stats: Stat[];
     branches: Branch[];
     currentBranchId: number | null;
+    /** من سُجّل قبل أن تُسأل لغتُه — جولةُ اللغة تُعرض حتى يصير صفرًا */
+    unlanguaged: number;
 }
 
 export default function CustomersIndex() {
-    const { customers, pagination, filters, sorts, stats, branches, currentBranchId, context } =
+    const { customers, pagination, filters, sorts, stats, branches, currentBranchId, unlanguaged, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -151,6 +153,27 @@ export default function CustomersIndex() {
             ),
         },
         {
+            key: 'language',
+            header: 'لغة الرسائل',
+            /*
+                جولةُ اللغة من الصفّ نفسه: من سُجّل قبل أن يُسأل يرى الزرّين
+                في صفّه ويُجاب عنه بنقرة، بلا فتح ملفّه. ومن أُجيب عنه تُعرض
+                لغتُه شارةً.
+            */
+            cell: (c) =>
+                c.language ? (
+                    <Badge variant={c.language === 'en' ? 'info' : 'neutral'}>{c.language === 'en' ? 'English' : t('العربية')}</Badge>
+                ) : (
+                    <LanguageChoice
+                        value=""
+                        className="w-40 gap-1 [&>button]:h-8 [&>button]:text-xs"
+                        onChange={(v) =>
+                            router.post(route('admin.customers.language', c.id), { language: v }, { preserveScroll: true, preserveState: true })
+                        }
+                    />
+                ),
+        },
+        {
             key: 'actions',
             header: 'إجراءات',
             align: 'end',
@@ -234,6 +257,25 @@ export default function CustomersIndex() {
                     <StatCard key={s.label} stat={s} index={i} />
                 ))}
             </div>
+
+            {/* جولةُ اللغة: يبقى الشريط حتى يُجاب عن آخرهم */}
+            {unlanguaged > 0 && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]">
+                    <span className="flex items-center gap-2">
+                        <MessageSquareWarning className="size-5 shrink-0" />
+                        {t(':n من العملاء لم تُحدَّد لغة رسائل واتساب لهم — يُراسَلون بالعربيّة حتى تُحدَّد', { n: number(unlanguaged) })}
+                    </span>
+                    {filters.missing === 'language' ? (
+                        <Button variant="outline" size="sm" onClick={() => router.get(route('admin.customers.index'), {}, { preserveState: false })}>
+                            {t('عرض الكل')}
+                        </Button>
+                    ) : (
+                        <Button size="sm" onClick={() => router.get(route('admin.customers.index'), { missing: 'language' }, { preserveState: false })}>
+                            {t('حدّدها الآن')}
+                        </Button>
+                    )}
+                </div>
+            )}
 
             <Card className="overflow-hidden">
                 <DataTable
@@ -331,7 +373,7 @@ export default function CustomersIndex() {
                     <form onSubmit={submitImport} className="space-y-4 px-5 pb-5">
                         <Field
                             label="ملف العملاء"
-                            hint="الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، الهاتف، البريد، العنوان، الفرع، النقاط. يمكنك تصدير ملف ثم تعديله وإعادة استيراده."
+                            hint="الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، الهاتف، البريد، العنوان، الفرع، النقاط، اللغة (العربية/English — إجباريّة). يمكنك تصدير ملف ثم تعديله وإعادة استيراده."
                             error={upload.errors.file}
                             required
                         >

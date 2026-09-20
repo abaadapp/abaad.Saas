@@ -122,6 +122,11 @@ class ListFilters
                 ->orWhere('email', $like, "%{$s}%"));
         }
 
+        // من لم تُحدَّد لغةُ رسائله بعد — جولةُ اللغة في شاشة العملاء
+        if ((string) $request->query('missing') === 'language') {
+            $q->whereNull('language');
+        }
+
         return $q;
     }
 

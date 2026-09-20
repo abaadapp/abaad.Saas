@@ -25,7 +25,31 @@ class CustomerImportExportController extends Controller
     /** أعمدة الملف بترتيب النشاط (تُستخدم للتصدير والنموذج) */
     private function columns(): array
     {
-        return [__('الاسم'), __('الهاتف'), __('البريد'), __('العنوان'), __('الفرع'), __('النقاط')];
+        return [__('الاسم'), __('الهاتف'), __('البريد'), __('العنوان'), __('الفرع'), __('النقاط'), __('اللغة')];
+    }
+
+    /**
+     * لغةُ رسائل واتساب كما تُكتب في الملفّ — بأيّ لفظٍ معقول.
+     *
+     * الملفُّ يكتبه إنسان: «العربية» و«عربي» و«ar» و«Arabic» لغةٌ واحدة.
+     * وما لم يُفهم يُردّ `null` فيُقال في المعاينة لا بعد الاستيراد.
+     */
+    public static function parseLanguage(string $value): ?string
+    {
+        $v = mb_strtolower(trim($value));
+        $v = str_replace(['أ', 'إ', 'آ'], 'ا', $v);
+
+        return match (true) {
+            $v === '' => null,
+            in_array($v, ['ar', 'ara', 'arabic', 'العربية', 'العربيه', 'عربي', 'عربية', 'عربيه', 'ع'], true) => 'ar',
+            in_array($v, ['en', 'eng', 'english', 'الانجليزية', 'الانجليزيه', 'انجليزي', 'انجليزية', 'انجليزيه', 'انكليزي', 'e'], true) => 'en',
+            default => null,
+        };
+    }
+
+    private static function languageLabel(?string $code): string
+    {
+        return match ($code) { 'ar' => 'العربية', 'en' => 'English', default => '' };
     }
 
     /**
@@ -56,6 +80,7 @@ class CustomerImportExportController extends Controller
                 $c->address ?? '',
                 $c->branch?->name ?? '',
                 (int) $c->points,
+                self::languageLabel($c->language),
             ])->all();
     }
 
@@ -162,10 +187,12 @@ class CustomerImportExportController extends Controller
         $idx = $map['index'];
 
         // العملاء الحاليون: للمطابقة (تحديث بدل تكرار)
-        $existing = Customer::where('business_id', $bid)->get(['id', 'name', 'phone']);
+        $existing = Customer::where('business_id', $bid)->get(['id', 'name', 'phone', 'language']);
         $byPhone = [];
         $byName = [];
+        $languageOf = [];
         foreach ($existing as $c) {
+            $languageOf[$c->id] = $c->language;
             $np = $this->normPhone((string) $c->phone);
             if ($np !== '') {
                 $byPhone[$np] ??= $c->id;
@@ -202,6 +229,8 @@ class CustomerImportExportController extends Controller
             $address = $get('address');
             $fileBranch = $get('branch');
             $points = (int) ($idx['points'] !== null ? ($r[$idx['points']] ?? 0) : 0);
+            $languageText = $get('language');
+            $language = self::parseLanguage($languageText);
 
             // تحديد الفرع: فرع الملف إن طابق فرعًا موجودًا، وإلا الفرع الافتراضي
             $branchId = $defaultBranchId;
@@ -245,6 +274,23 @@ class CustomerImportExportController extends Controller
                 }
             }
 
+            /*
+             * ولغةُ رسائل واتساب تُسأل هنا كما تُسأل في كلّ باب.
+             *
+             * صفٌّ جديدٌ بلا لغةٍ يُردّ، وصفٌّ يحدّث عميلًا لا لغةَ له يُردّ
+             * كذلك — فالاستيرادُ أسرعُ طريقٍ لجولة اللغة: صدّر الملفّ،
+             * املأ العمود، أعد رفعه. ومن كتب لفظًا لا يُفهم يُقال له.
+             */
+            if (in_array($status, ['new', 'update'], true)) {
+                if ($languageText !== '' && $language === null) {
+                    $status = 'invalid';
+                    $note = __('لغة غير معروفة — اكتب «العربية» أو «English» — يُتجاهل');
+                } elseif ($language === null && ($status === 'new' || ($languageOf[$targetId] ?? null) === null)) {
+                    $status = 'invalid';
+                    $note = __('بلا لغة رسائل واتساب — أضف عمود «اللغة» (العربية/English) — يُتجاهل');
+                }
+            }
+
             if ($np !== '') {
                 $seen[$np] = true;
             }
@@ -258,11 +304,11 @@ class CustomerImportExportController extends Controller
              * وعنوانه معها. ولا شيء في الشاشة يقول ذلك.
              */
             $stated = [];
-            foreach (['name', 'phone', 'email', 'address', 'points'] as $field) {
+            foreach (['name', 'phone', 'email', 'address', 'points', 'language'] as $field) {
                 $stated[$field] = $idx[$field] !== null && $get($field) !== '';
             }
 
-            $rows[] = compact('name', 'phone', 'email', 'address', 'points', 'branchId', 'branchDisplay', 'status', 'note', 'targetId', 'stated');
+            $rows[] = compact('name', 'phone', 'email', 'address', 'points', 'language', 'branchId', 'branchDisplay', 'status', 'note', 'targetId', 'stated');
         }
 
         session()->put(self::SESSION_KEY, [
@@ -292,7 +338,7 @@ class CustomerImportExportController extends Controller
         ];
 
         // ما لا يذكره الملفّ يبقى كما هو — يُقال قبل التأكيد لا بعده
-        $labels = ['name' => 'الاسم', 'phone' => 'الهاتف', 'email' => 'البريد', 'address' => 'العنوان', 'points' => 'النقاط'];
+        $labels = ['name' => 'الاسم', 'phone' => 'الهاتف', 'email' => 'البريد', 'address' => 'العنوان', 'points' => 'النقاط', 'language' => 'اللغة'];
         $untouched = [];
         if ($counts['update'] > 0) {
             foreach ($labels as $key => $label) {
@@ -338,6 +384,7 @@ class CustomerImportExportController extends Controller
                     'email' => $r['email'] ?: null,
                     'address' => $r['address'] ?: null,
                     'points' => (int) $r['points'],
+                    'language' => $r['language'] ?? null,
                 ];
 
                 if ($r['status'] === 'new') {
@@ -355,7 +402,7 @@ class CustomerImportExportController extends Controller
                             $fields['branch_id'] = $r['branchId'];
                         }
                         // وما لم يذكره الملفّ لا يُكتب — انظر بناء `stated` أعلاه
-                        foreach (['name', 'phone', 'email', 'address', 'points'] as $field) {
+                        foreach (['name', 'phone', 'email', 'address', 'points', 'language'] as $field) {
                             if (! ($r['stated'][$field] ?? true)) {
                                 unset($fields[$field]);
                             }
@@ -451,9 +498,10 @@ class CustomerImportExportController extends Controller
             'address' => ['العنوان', 'عنوان', 'address'],
             'branch' => ['الفرع', 'فرع', 'branch'],
             'points' => ['النقاط', 'نقاط', 'points'],
+            'language' => ['اللغة', 'لغة', 'language', 'lang'],
         ];
 
-        $index = ['name' => 0, 'phone' => 1, 'email' => 2, 'address' => 3, 'branch' => 4, 'points' => 5];
+        $index = ['name' => 0, 'phone' => 1, 'email' => 2, 'address' => 3, 'branch' => 4, 'points' => 5, 'language' => 6];
         $found = [];
         $isHeader = false;
 
@@ -485,6 +533,7 @@ class CustomerImportExportController extends Controller
                 'address' => $found['address'] ?? null,
                 'branch' => $found['branch'] ?? null,
                 'points' => $found['points'] ?? null,
+                'language' => $found['language'] ?? null,
             ];
         } else {
             // بلا ترويسة: افتراض الترتيب حسب عدد الأعمدة المتاحة
@@ -496,6 +545,7 @@ class CustomerImportExportController extends Controller
                 'address' => $cols > 3 ? 3 : null,
                 'branch' => $cols > 5 ? 4 : null,
                 'points' => $cols > 5 ? 5 : ($cols > 4 ? 4 : null),
+                'language' => $cols > 6 ? 6 : null,
             ];
         }
 

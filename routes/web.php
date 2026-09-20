@@ -657,6 +657,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/customers/import/cancel', [CustomerImportExportController::class, 'cancel'])->name('customers.import.cancel');
     Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
+    // جولةُ اللغة: زرٌّ في صفّ القائمة لمن سُجّل قبل أن يُسأل
+    Route::post('/customers/{id}/language', [CustomerController::class, 'language'])->name('customers.language');
     Route::put('/customers/{id}', [CustomerController::class, 'update'])->name('customers.update');
     Route::delete('/customers/{id}', [CustomerController::class, 'destroy'])->name('customers.destroy');
     Route::post('/customers/{id}/restore', [TrashController::class, 'restore'])

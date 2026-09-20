@@ -186,7 +186,7 @@ class OneCustomerIsOneRowAndOneBalanceTest extends TestCase
 
     public function test_points_imported_for_a_new_customer_are_explained(): void
     {
-        $this->import("الاسم,الهاتف,النقاط\nنورة,99887766,5000\n");
+        $this->import("الاسم,الهاتف,النقاط,اللغة\nنورة,99887766,5000,العربية\n");
 
         $customer = Customer::where('business_id', $this->shop->id)->firstOrFail();
         $this->assertSame(5000, (int) $customer->points, 'الاستيراد لم يعد يكتب الرصيد');
@@ -202,6 +202,7 @@ class OneCustomerIsOneRowAndOneBalanceTest extends TestCase
     public function test_raising_a_balance_by_import_records_only_the_difference(): void
     {
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->shop->id, 'name' => 'نورة', 'phone' => '99887766', 'points' => 100,
         ]);
         PointTransaction::record($customer, 'earn', 100, 100, null, 'بيع');
@@ -217,6 +218,7 @@ class OneCustomerIsOneRowAndOneBalanceTest extends TestCase
     public function test_lowering_a_balance_by_import_is_recorded_as_a_withdrawal(): void
     {
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->shop->id, 'name' => 'نورة', 'phone' => '99887766', 'points' => 900,
         ]);
         PointTransaction::record($customer, 'earn', 900, 900, null, 'بيع');
@@ -234,6 +236,7 @@ class OneCustomerIsOneRowAndOneBalanceTest extends TestCase
     public function test_a_file_that_never_mentions_points_moves_nothing(): void
     {
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->shop->id, 'name' => 'نورة', 'phone' => '99887766', 'points' => 300,
         ]);
         PointTransaction::record($customer, 'earn', 300, 300, null, 'بيع');
@@ -250,6 +253,7 @@ class OneCustomerIsOneRowAndOneBalanceTest extends TestCase
     private function spender(string $name, string $phone, float $total): Customer
     {
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->shop->id, 'name' => $name, 'phone' => $phone,
         ]);
 

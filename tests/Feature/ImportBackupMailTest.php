@@ -62,7 +62,7 @@ class ImportBackupMailTest extends TestCase
 
     public function test_it_imports_customers_from_a_csv(): void
     {
-        $file = $this->csv("الاسم,الهاتف,البريد\nسالم البلوشي,+96891000001,salem@abaad.om\nمريم الحارثي,+96891000002,maryam@abaad.om\n");
+        $file = $this->csv("الاسم,الهاتف,البريد,اللغة\nسالم البلوشي,+96891000001,salem@abaad.om,العربية\nمريم الحارثي,+96891000002,maryam@abaad.om,English\n");
 
         $this->actingAs($this->owner)
             ->post(route('admin.customers.import.upload'), ['file' => $file])
@@ -82,7 +82,7 @@ class ImportBackupMailTest extends TestCase
     {
         $theirs = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
 
-        $file = $this->csv("الاسم,الهاتف\nعميل مستورد,+96891000003\n");
+        $file = $this->csv("الاسم,الهاتف,اللغة\nعميل مستورد,+96891000003,العربية\n");
 
         $this->actingAs($this->owner)->post(route('admin.customers.import.upload'), ['file' => $file]);
         $this->actingAs($this->owner)->post(route('admin.customers.import.confirm'));

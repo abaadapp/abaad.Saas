@@ -13,6 +13,8 @@ use App\Models\Product;
 use App\Models\Setting;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Books;
+use App\Support\Ledger;
 use App\Support\OrderCorrection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
@@ -190,6 +192,72 @@ class OrderCorrectionTest extends TestCase
         $row = Transaction::where('order_id', $order->id)->first();
         $this->assertSame(10.5, (float) $row->amount);
         $this->assertSame(0.5, (float) $row->tax_amount);
+    }
+
+    /** ما يُطالَب به الدفتر بعد التصحيح — حسابًا حسابًا */
+    private function liveLines(Order $order): array
+    {
+        return Books::liveEntriesFor($order)->load('lines.account')
+            ->flatMap(fn ($e) => $e->lines)
+            ->groupBy(fn ($l) => $l->account->system_key)
+            ->map(fn ($ls) => round((float) $ls->sum('debit') - (float) $ls->sum('credit'), 3))
+            ->all();
+    }
+
+    /**
+     * والدفترُ يتبع الفاتورة كما تتبعها المعاملة.
+     *
+     * كان تصحيحُ الكميّة يعدّل الفاتورة والمعاملة والمخزون ويترك القيد على
+     * الإيراد القديم: الحركةُ المالية تقول ١٠٫٥ وقائمةُ الدخل تقول ٣١٫٥.
+     */
+    public function test_the_ledger_follows_the_invoice_after_a_correction(): void
+    {
+        Ledger::seedChart($this->business->id);
+        $order = $this->sale(3);
+        Books::recordSale($order);
+        $this->actingAs($this->cashier);
+
+        OrderCorrection::setQuantity($order, $order->items->first(), 1, 'خطأ كمية');
+
+        $lines = $this->liveLines($order->fresh());
+        $this->assertSame(-10.0, $lines['sales'], 'الإيرادُ في الدفتر بقي على الكميّة القديمة');
+        $this->assertSame(-0.5, $lines['tax_payable'], 'الضريبةُ في الدفتر بقيت على الكميّة القديمة');
+        $this->assertSame(10.5, $lines['cash']);
+        $this->assertSame(6.0, $lines['cogs'], 'تكلفةُ المبيعات بقيت على ثلاث قطع');
+        $this->assertSame(-6.0, $lines['inventory']);
+        $this->assertTrue(Ledger::trialBalance($this->business->id)['balanced']);
+    }
+
+    /** والقيدُ القديم يُعكس لا يُمحى — الدفتر لا يُمحى */
+    public function test_the_old_entry_is_reversed_not_erased(): void
+    {
+        Ledger::seedChart($this->business->id);
+        $order = $this->sale(3);
+        Books::recordSale($order);
+        $before = \App\Models\JournalEntry::where('business_id', $this->business->id)->count();
+        $this->actingAs($this->cashier);
+
+        OrderCorrection::setQuantity($order, $order->items->first(), 1, 'خطأ كمية');
+
+        $this->assertGreaterThan($before, \App\Models\JournalEntry::where('business_id', $this->business->id)->count());
+        $this->assertSame(0, \App\Models\JournalEntry::where('business_id', $this->business->id)->whereNull('reversed_at')->where('created_at', '<', now()->subMinute())->count());
+    }
+
+    /** وتصحيحُ وسيلة الدفع ينقل الجانب المدين من الصندوق إلى البنك */
+    public function test_the_ledger_follows_a_payment_method_correction(): void
+    {
+        Ledger::seedChart($this->business->id);
+        $order = $this->sale(3);
+        Books::recordSale($order);
+        $this->assertSame(31.5, $this->liveLines($order)['cash']);
+        $this->actingAs($this->cashier);
+
+        OrderCorrection::setPaymentMethod($order, 'بطاقة', 'دفع بالبطاقة وسجّلتُها نقدًا');
+
+        $lines = $this->liveLines($order->fresh());
+        $this->assertArrayNotHasKey('cash', $lines, 'الصندوقُ ما زال مدينًا ببيعٍ صار بالبطاقة');
+        $this->assertSame(31.5, $lines['bank'] ?? null);
+        $this->assertTrue(Ledger::trialBalance($this->business->id)['balanced']);
     }
 
     public function test_loyalty_points_are_pulled_back_to_what_was_really_bought(): void

@@ -88,6 +88,7 @@ class OrderCorrection
             $order->refresh();
 
             self::syncTransaction($order);
+            self::syncBooks($order, $reason);
             self::syncLoyalty($order);
 
             $edit = OrderEdit::create([
@@ -609,6 +610,7 @@ class OrderCorrection
             $order->refresh();
 
             self::syncTransaction($order);
+            self::syncBooks($order, $reason);
             self::syncLoyalty($order);
 
             $edit = OrderEdit::create([
@@ -668,6 +670,8 @@ class OrderCorrection
         return DB::transaction(function () use ($order, $before, $method, $reason) {
             $order->update(['payment_method' => $method]);
             Transaction::where('order_id', $order->id)->update(['method' => $method]);
+            // والدفترُ يتبع: الجانبُ المدين (صندوق/بنك/ذمّة) يُقرأ من الوسيلة
+            self::syncBooks($order->fresh(), $reason);
 
             $edit = OrderEdit::create([
                 'business_id' => (int) $order->business_id,
@@ -858,6 +862,32 @@ class OrderCorrection
             'amount' => (float) $order->total,
             'tax_amount' => (float) $order->tax,
         ]);
+    }
+
+    /**
+     * والدفترُ يتبع الفاتورة كما تتبعها معاملةُ المالية.
+     *
+     * ═══ ما كان ═══
+     *
+     * تصحيحُ كميّةٍ يعدّل الفاتورة والمعاملة والمخزون — والقيدُ يبقى على
+     * الإيراد والضريبة والتكلفة القديمة. فشاشةُ الحركة المالية تقول ١١٫٥٥
+     * وقائمةُ الدخل تقول ٢٣٫١ عن الفاتورة نفسها. حقلان يقولان الشيء نفسه
+     * يفترقان يومًا — وقد افترقا. ومثلُه تصحيحُ وسيلة الدفع: المعاملةُ
+     * تقول «بطاقة» والقيدُ ما زال يُدين الصندوق.
+     *
+     * ═══ وما صار ═══
+     *
+     * القيدُ القديم يُعكس (لا يُمحى — الدفتر لا يُمحى) ويُرحَّل قيدٌ جديد من
+     * الفاتورة بعد تصحيحها عبر البابِ نفسه الذي رحّل الأوّل. وفاتورةٌ لم
+     * يكن لها قيدٌ أصلًا تكسب واحدًا — وهو ما كانت `finance:post-missing-sales`
+     * ستفعله ليلًا.
+     */
+    private static function syncBooks(Order $order, string $reason): void
+    {
+        $userId = PosCashier::id() ?? auth()->id();
+
+        Books::unpostSale($order, $userId, __('تصحيح فاتورة: ').$reason);
+        Books::recordSale($order->fresh(['items.addons']));
     }
 
     /**
